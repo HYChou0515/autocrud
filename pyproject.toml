@@ -1,8 +1,9 @@
 [project]
 name = "autocrud"
-version = "0.1.0"
+version = "0.1.1"
 description = "自動產生 CRUD API 的 Python 函式庫"
 readme = "README.md"
+license = {file = "LICENSE"}
 requires-python = ">=3.11"
 authors = [
     {name = "HYChou0515", email = "hychou.svm@example.com"}
@@ -44,12 +45,13 @@ dev = [
 
 [project.urls]
 Homepage = "https://github.com/HYChou0515/autocrud"
-Documentation = "https://autocrud.readthedocs.io/"
+Documentation = "https://HYChou0515.github.io/autocrud/"
 Repository = "https://github.com/HYChou0515/autocrud.git"
 Issues = "https://github.com/HYChou0515/autocrud/issues"
 
 [dependency-groups]
 dev = [
+    "build>=1.2.2.post1",
     "coverage>=7.9.2",
     "furo>=2025.7.19",
     "linkify-it-py>=2.0.3",
@@ -58,5 +60,10 @@ dev = [
     "ruff>=0.12.4",
     "sphinx>=8.2.3",
     "sphinx-autodoc-typehints>=3.2.0",
+    "twine>=6.1.0",
 ]
 pytest = []
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"

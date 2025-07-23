@@ -26,35 +26,33 @@ git push origin master
 - 前往倉函式庫的 `Actions` 標籤查看構建狀態
 - 文件將自動部署到：`https://HYChou0515.github.io/autocrud/`
 
-## 📖 Read the Docs 部署 (可選，推薦)
+## � GitHub Pages 部署
 
-### 優勢
-- 更專業的文件託管
-- 支援版本控制
-- 更好的搜索功能
+文件已自動部署到 GitHub Pages，提供：
+
+- 自動化建置和部署
+- 版本控制整合
 - 自訂域名支援
 
 ### 設定步驟
 
-1. **註冊帳號**：
-   - 前往 https://readthedocs.org/
-   - 使用 GitHub/GitLab 帳號登錄
+1. **啟用 GitHub Pages**：
+   - 前往 https://github.com/HYChou0515/autocrud/settings/pages
+   - 在 'Source' 選擇 'GitHub Actions'
 
-2. **導入專案**：
-   - 點擊 "Import a Project"
-   - 選擇你的 `autocrud` 倉函式庫
-   - 點擊 "Next"
+2. **自動部署**：
+   - 每次 push 到 master branch 時自動觸發
+   - GitHub Actions 會自動建置文件
+   - 部署完成後可訪問：`https://HYChou0515.github.io/autocrud/`
 
-3. **設定專案**：
-   - 專案名：`autocrud`
-   - 描述：`自動產生 CRUD API 的 Python 函式庫`
-   - 語言：`繁體中文`
-   - 點擊 "Finish"
+3. **檢查部署狀態**：
+   - 前往 Actions 頁面查看建置狀態
+   - 綠色勾號表示部署成功
+   - 紅色 X 表示需要檢查錯誤
 
-4. **構建文件**：
-   - RTD 會自動使用我們的 `.readthedocs.yaml` 設定
-   - 首次構建可能需要幾分鐘
-   - 完成後文件將可在：`https://autocrud.readthedocs.io/` 訪問
+4. **訪問文件**：
+   - 主要文件：`https://HYChou0515.github.io/autocrud/`
+   - 文件會自動更新當 master branch 有新的 commit
 
 ## 🔧 本地文件開發
 
@@ -150,6 +148,6 @@ uv run sphinx-build -b doctest docs/source docs/build/doctest
 可以在 README.md 中新增這些徽章：
 
 ```markdown
-[![Documentation Status](https://readthedocs.org/projects/autocrud/badge/?version=latest)](https://autocrud.readthedocs.io/en/latest/?badge=latest)
 [![GitHub Pages](https://img.shields.io/badge/docs-GitHub%20Pages-blue)](https://HYChou0515.github.io/autocrud/)
+[![Build Status](https://github.com/HYChou0515/autocrud/actions/workflows/docs.yml/badge.svg)](https://github.com/HYChou0515/autocrud/actions/workflows/docs.yml)
 ```
