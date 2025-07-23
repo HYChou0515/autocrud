@@ -5,9 +5,9 @@ from dataclasses import dataclass, is_dataclass, fields
 
 # 嘗試導入 TypedDict，Python 3.8+ 可從 typing 導入
 try:
-    from typing import TypedDict
+    from typing import _TypedDictMeta  # 用於類型檢查
 except ImportError:
-    pass
+    _TypedDictMeta = None
 
 
 class ModelConverter:
