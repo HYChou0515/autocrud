@@ -15,20 +15,17 @@ def temp_dir():
     """提供臨時目錄"""
     temp_dir = tempfile.mkdtemp()
     yield temp_dir
-    
+
     # 清理
     import shutil
+
     shutil.rmtree(temp_dir, ignore_errors=True)
 
 
 @pytest.fixture
 def sample_user_data():
     """提供示例用戶數據"""
-    return {
-        "name": "Alice",
-        "email": "alice@example.com", 
-        "age": 30
-    }
+    return {"name": "Alice", "email": "alice@example.com", "age": 30}
 
 
 @pytest.fixture
@@ -38,5 +35,5 @@ def sample_product_data():
         "name": "筆記本電腦",
         "description": "高性能筆記本電腦",
         "price": 25000.0,
-        "category": "電子產品"
+        "category": "電子產品",
     }
