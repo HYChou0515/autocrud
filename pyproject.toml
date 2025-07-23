@@ -1,6 +1,6 @@
 [project]
 name = "autocrud"
-version = "0.1.1"
+version = "0.1.2"
 description = "自動產生 CRUD API 的 Python 函式庫"
 readme = "README.md"
 license = {file = "LICENSE"}
