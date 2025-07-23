@@ -244,3 +244,127 @@ class TestCountFastAPI:
         response = client.get("/api/v1/items/count")
         assert response.status_code == 200
         assert response.json()["count"] == 2
+
+
+class TestCountAPIOptions:
+    """測試 count API 選項功能"""
+
+    def test_count_api_disabled_in_generator(self):
+        """測試在 FastAPIGenerator 中禁用 count API"""
+        from autocrud.fastapi_generator import FastAPIGenerator
+
+        storage = MemoryStorage()
+        crud = AutoCRUD(model=Item, storage=storage, resource_name="items")
+
+        # 創建禁用 count 的生成器
+        generator = FastAPIGenerator(crud, enable_count=False)
+
+        from fastapi import FastAPI
+
+        app = FastAPI()
+        generator.create_routes(app, "/api/v1")
+
+        # 檢查路由
+        routes = []
+        for route in app.routes:
+            if hasattr(route, "methods") and hasattr(route, "path"):
+                for method in route.methods:
+                    if method not in ["HEAD", "OPTIONS"]:
+                        routes.append(f"{method} {route.path}")
+
+        # 驗證沒有 count 路由
+        assert "GET /api/v1/items/count" not in routes
+        # 驗證其他路由存在
+        assert "POST /api/v1/items" in routes
+        assert "GET /api/v1/items/{resource_id}" in routes
+
+    def test_autocrud_count_disabled(self):
+        """測試 AutoCRUD.create_fastapi_app 禁用 count"""
+        storage = MemoryStorage()
+        crud = AutoCRUD(model=Item, storage=storage, resource_name="items")
+
+        # 創建禁用 count 的應用
+        app = crud.create_fastapi_app(enable_count=False)
+
+        routes = []
+        for route in app.routes:
+            if hasattr(route, "methods") and hasattr(route, "path"):
+                for method in route.methods:
+                    if method not in ["HEAD", "OPTIONS"]:
+                        routes.append(f"{method} {route.path}")
+
+        assert "GET /api/v1/items/count" not in routes
+
+    def test_autocrud_count_enabled_by_default(self):
+        """測試 AutoCRUD.create_fastapi_app 預設啟用 count"""
+        storage = MemoryStorage()
+        crud = AutoCRUD(model=Item, storage=storage, resource_name="items")
+
+        # 創建應用（預設啟用 count）
+        app = crud.create_fastapi_app()
+
+        routes = []
+        for route in app.routes:
+            if hasattr(route, "methods") and hasattr(route, "path"):
+                for method in route.methods:
+                    if method not in ["HEAD", "OPTIONS"]:
+                        routes.append(f"{method} {route.path}")
+
+        assert "GET /api/v1/items/count" in routes
+
+    def test_multi_model_count_disabled(self):
+        """測試多模型禁用 count API"""
+
+        @dataclass
+        class User:
+            name: str
+            email: str
+
+        storage = MemoryStorage()
+        multi_crud = MultiModelAutoCRUD(storage)
+        multi_crud.register_model(User)
+        multi_crud.register_model(Item, resource_name="items")
+
+        # 創建禁用 count 的多模型應用
+        app = multi_crud.create_fastapi_app(enable_count=False)
+
+        routes = []
+        for route in app.routes:
+            if hasattr(route, "methods") and hasattr(route, "path"):
+                for method in route.methods:
+                    if method not in ["HEAD", "OPTIONS"]:
+                        routes.append(f"{method} {route.path}")
+
+        # 驗證所有模型都沒有 count 路由
+        assert "GET /api/v1/users/count" not in routes
+        assert "GET /api/v1/items/count" not in routes
+        # 驗證其他路由存在
+        assert "GET /api/v1/users" in routes
+        assert "GET /api/v1/items" in routes
+
+    def test_multi_model_count_enabled_by_default(self):
+        """測試多模型預設啟用 count API"""
+
+        @dataclass
+        class User:
+            name: str
+            email: str
+
+        storage = MemoryStorage()
+        multi_crud = MultiModelAutoCRUD(storage)
+        multi_crud.register_model(User)
+        multi_crud.register_model(Item, resource_name="items")
+
+        # 創建應用（預設啟用 count）
+        app = multi_crud.create_fastapi_app()
+
+        routes = []
+        for route in app.routes:
+            if hasattr(route, "methods") and hasattr(route, "path"):
+                for method in route.methods:
+                    if method not in ["HEAD", "OPTIONS"]:
+                        routes.append(f"{method} {route.path}")
+
+        # 驗證所有模型都有 count 路由
+        assert "GET /api/v1/users/count" in routes
+        assert "GET /api/v1/items/count" in routes

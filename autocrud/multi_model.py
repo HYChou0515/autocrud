@@ -95,6 +95,7 @@ class MultiModelAutoCRUD:
         description: str = "自動生成的多模型 CRUD API",
         version: str = "1.0.0",
         prefix: str = "/api/v1",
+        enable_count: bool = True,
     ) -> FastAPI:
         """
         創建包含所有註冊模型路由的 FastAPI 應用
@@ -104,6 +105,7 @@ class MultiModelAutoCRUD:
             description: API 描述
             version: API 版本
             prefix: 路由前綴
+            enable_count: 是否啟用 count API 端點
 
         Returns:
             配置好的 FastAPI 應用
@@ -122,7 +124,7 @@ class MultiModelAutoCRUD:
 
         # 為每個註冊的模型創建路由
         for resource_name, crud in self.cruds.items():
-            generator = FastAPIGenerator(crud)
+            generator = FastAPIGenerator(crud, enable_count=enable_count)
             generator.create_routes(app, prefix)
 
         return app

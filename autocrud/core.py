@@ -115,11 +115,11 @@ class AutoCRUD:
 
         return count
 
-    def create_fastapi_app(self, **kwargs):
+    def create_fastapi_app(self, enable_count: bool = True, **kwargs):
         """創建 FastAPI 應用的便利方法"""
         from .fastapi_generator import FastAPIGenerator
 
-        generator = FastAPIGenerator(self)
+        generator = FastAPIGenerator(self, enable_count=enable_count)
         return generator.create_fastapi_app(**kwargs)
 
 

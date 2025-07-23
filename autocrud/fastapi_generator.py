@@ -10,9 +10,10 @@ from .converter import ModelConverter
 class FastAPIGenerator:
     """FastAPI 路由自動生成器"""
 
-    def __init__(self, crud: AutoCRUD):
+    def __init__(self, crud: AutoCRUD, enable_count: bool = True):
         self.crud = crud
         self.converter = ModelConverter()
+        self.enable_count = enable_count
 
         # 生成 Pydantic 模型用於請求/響應
         self.request_model = self._create_request_model()
@@ -72,11 +73,14 @@ class FastAPIGenerator:
         # 設定類型提示
         create_resource.__annotations__["item"] = request_model
 
-        @app.get(f"{resource_path}/count", response_model=Dict[str, int])
-        async def count_resources():
-            """取得資源總數量"""
-            count = crud.count()
-            return {"count": count}
+        # 只有在啟用時才建立 count 路由
+        if self.enable_count:
+
+            @app.get(f"{resource_path}/count", response_model=Dict[str, int])
+            async def count_resources():
+                """取得資源總數量"""
+                count = crud.count()
+                return {"count": count}
 
         @app.get(f"{resource_path}/{{resource_id}}", response_model=response_model)
         async def get_resource(resource_id: str):
@@ -141,6 +145,7 @@ class FastAPIGenerator:
         description: Optional[str] = None,
         version: str = "1.0.0",
         prefix: str = "/api/v1",
+        enable_count: Optional[bool] = None,
     ) -> FastAPI:
         """創建完整的 FastAPI 應用"""
 
@@ -149,6 +154,11 @@ class FastAPIGenerator:
 
         if description is None:
             description = f"自動生成的 {self.crud.model.__name__} CRUD API"
+
+        # 如果 enable_count 有指定，則覆蓋實例設定
+        if enable_count is not None:
+            original_enable_count = self.enable_count
+            self.enable_count = enable_count
 
         app = FastAPI(title=title, description=description, version=version)
 
@@ -160,13 +170,17 @@ class FastAPIGenerator:
         # 添加 CRUD 路由
         self.create_routes(app, prefix)
 
+        # 恢復原始設定（如果有修改）
+        if enable_count is not None:
+            self.enable_count = original_enable_count
+
         return app
 
 
 # 為了向後兼容，在 AutoCRUD 類中添加 create_fastapi_app 方法
-def create_fastapi_app_method(self, **kwargs) -> FastAPI:
+def create_fastapi_app_method(self, enable_count: bool = True, **kwargs) -> FastAPI:
     """創建 FastAPI 應用的便利方法"""
-    generator = FastAPIGenerator(self)
+    generator = FastAPIGenerator(self, enable_count=enable_count)
     return generator.create_fastapi_app(**kwargs)
 
 
