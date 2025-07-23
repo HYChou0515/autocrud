@@ -1,6 +1,6 @@
 # 貢獻指南
 
-感謝你對 AutoCRUD 項目的關注！我們歡迎各種形式的貢獻。
+感謝你對 AutoCRUD 專案的關注！我們歡迎各種形式的貢獻。
 
 ## 如何貢獻
 
@@ -9,22 +9,22 @@
 如果你發現了 bug 或有功能請求，請：
 
 1. 檢查 [GitHub Issues](https://github.com/your-repo/autocrud/issues) 確認問題未被報告
-2. 創建新的 Issue，包含：
+2. 建立新的 Issue，包含：
    - 清晰的問題描述
    - 重現步驟
    - 期望的行為
    - 系統環境信息
 
-### 2. 提交代碼
+### 2. 送出程式碼
 
-#### 開發環境設置
+#### 開發環境設定
 
 ```bash
-# 克隆倉庫
+# clone repository
 git clone https://github.com/your-repo/autocrud.git
 cd autocrud
 
-# 安裝依賴 (使用 uv)
+# 安裝 dependency (使用 uv)
 uv sync --dev
 
 # 或使用 pip
@@ -33,56 +33,56 @@ pip install -e ".[dev]"
 
 #### 開發流程
 
-1. **創建分支**：
+1. **建立分支**：
    ```bash
    git checkout -b feature/your-feature-name
    ```
 
-2. **編寫代碼**：
-   - 遵循項目的代碼風格
-   - 添加適當的文檔字符串
+2. **編寫程式碼**：
+   - 遵循專案的 coding style
+   - 新增適當的檔案字符串
    - 編寫測試用例
 
-3. **運行測試**：
+3. **執行測試**：
    ```bash
-   # 運行所有測試
+   # 執行所有測試
    pytest
 
    # 檢查測試覆蓋率
    coverage run -m pytest
    coverage report
 
-   # 代碼風格檢查
+   # code style 檢查
    ruff check
    ruff format
    ```
 
-4. **提交更改**：
+4. **commit 更改**：
    ```bash
    git add .
    git commit -m "feat: add your feature description"
    ```
 
-5. **推送並創建 PR**：
+5. **push 並建立 PR**：
    ```bash
    git push origin feature/your-feature-name
    ```
 
-## 代碼規範
+## Coding 規範
 
-### 代碼風格
+### Code Style
 
-我們使用 Ruff 來維護代碼質量：
+我們使用 Ruff 來維護程式碼品質：
 
 ```bash
-# 檢查代碼風格
+# 檢查 code style
 ruff check
 
 # 自動格式化
 ruff format
 ```
 
-### 提交消息規範
+### Commit Message 規範
 
 使用 [Conventional Commits](https://www.conventionalcommits.org/) 格式：
 
@@ -91,37 +91,37 @@ type(scope): description
 
 - feat: 新功能
 - fix: 修復 bug
-- docs: 文檔更新
-- style: 代碼格式化
-- refactor: 代碼重構
+- docs: 檔案更新
+- style: 程式碼格式化
+- refactor: 程式碼重構
 - test: 測試相關
-- chore: 構建或輔助工具更改
+- chore: build 或輔助工具更改
 ```
 
-示例：
+範例：
 ```
 feat(multi-model): add URL plural choice support
 fix(storage): handle file permission errors
 docs: update installation guide
 ```
 
-### 文檔字符串
+### 檔案字符串
 
-使用 Google 風格的文檔字符串：
+使用 Google 風格的檔案字符串：
 
 ```python
 def create_item(self, data: Dict[str, Any]) -> Dict[str, Any]:
-    """創建新項目。
+    """建立新專案。
 
     Args:
-        data: 要創建的項目數據
+        data: 要建立的專案資料
 
     Returns:
-        創建的項目，包含生成的 ID
+        建立的專案，包含產生的 ID
 
     Raises:
-        ValidationError: 當數據驗證失敗時
-        StorageError: 當存儲操作失敗時
+        ValidationError: 當資料驗證失敗時
+        StorageError: 當儲存操作失敗時
     """
     pass
 ```
@@ -130,7 +130,7 @@ def create_item(self, data: Dict[str, Any]) -> Dict[str, Any]:
 
 ### 編寫測試
 
-1. **測試文件命名**：`test_*.py`
+1. **測試檔案命名**：`test_*.py`
 2. **測試類命名**：`TestClassName`
 3. **測試方法命名**：`test_method_name`
 
@@ -148,7 +148,7 @@ class TestAutoCRUD:
         return AutoCRUD(model=YourModel, storage=storage)
     
     def test_create_item(self, crud):
-        """測試項目創建功能"""
+        """測試專案建立功能"""
         data = {"field1": "value1", "field2": "value2"}
         result = crud.create(data)
         
@@ -156,7 +156,7 @@ class TestAutoCRUD:
         assert "id" in result
     
     def test_create_item_validation_error(self, crud):
-        """測試無效數據的處理"""
+        """測試無效資料的處理"""
         with pytest.raises(ValidationError):
             crud.create({"invalid": "data"})
 ```
@@ -170,26 +170,26 @@ coverage run -m pytest
 coverage report --show-missing
 ```
 
-## 文檔貢獻
+## 檔案貢獻
 
-### 文檔構建
+### 檔案建置
 
 ```bash
-# 安裝文檔依賴
+# 安裝文件 dependency
 uv add --dev sphinx myst-parser furo sphinx-autodoc-typehints
 
-# 構建文檔
+# 建置檔案
 sphinx-build -b html docs/source docs/build/html
 
-# 查看文檔
+# 查看檔案
 open docs/build/html/index.html
 ```
 
-### 文檔類型
+### 檔案類型
 
-1. **API 文檔**：自動從代碼生成
-2. **用戶指南**：使用說明和最佳實踐
-3. **示例**：實際使用案例
+1. **API 檔案**：自動從程式碼產生
+2. **使用者指南**：使用說明和最佳實踐
+3. **範例**：實際使用案例
 4. **變更日誌**：版本更新記錄
 
 ## 發布流程
@@ -199,8 +199,8 @@ open docs/build/html/index.html
 使用 [語義化版本](https://semver.org/)：
 
 - `MAJOR.MINOR.PATCH`
-- `1.0.0`: 主要版本（不兼容的變更）
-- `0.1.0`: 次要版本（新功能，向後兼容）
+- `1.0.0`: 主要版本（不相容的變更）
+- `0.1.0`: 次要版本（新功能，向後相容）
 - `0.0.1`: 修復版本（bug 修復）
 
 ### 發布檢查清單
@@ -208,10 +208,10 @@ open docs/build/html/index.html
 在發布新版本前：
 
 - [ ] 所有測試通過
-- [ ] 文檔更新完成
+- [ ] 檔案更新完成
 - [ ] 變更日誌更新
 - [ ] 版本號更新
-- [ ] 創建 Git 標籤
+- [ ] 建立 Git 標籤
 
 ## 社群規範
 
@@ -228,7 +228,7 @@ open docs/build/html/index.html
 
 - **GitHub Issues**：bug 報告和功能請求
 - **GitHub Discussions**：一般討論和問答
-- **Pull Requests**：代碼審查和討論
+- **Pull Requests**：code review 和討論
 
 ## 常見問題
 
@@ -236,20 +236,20 @@ open docs/build/html/index.html
 
 A: 當然可以！任何改進都是歡迎的，包括：
 - 修復拼寫錯誤
-- 優化代碼
-- 改進文檔
+- 優化程式碼
+- 改進檔案
 
 ### Q: 如何建議新功能？
 
-A: 請先創建 GitHub Issue 描述你的想法：
+A: 請先建立 GitHub Issue 描述你的想法：
 - 解釋功能的用途
 - 提供使用案例
-- 討論實現方法
+- 討論實作方法
 
 ### Q: 我不熟悉某個技術，還能貢獻嗎？
 
 A: 絕對可以！我們歡迎：
-- 文檔改進
+- 檔案改進
 - 測試用例
 - 使用反饋
 - 功能建議
@@ -257,9 +257,9 @@ A: 絕對可以！我們歡迎：
 ### Q: 如何成為維護者？
 
 A: 通過持續貢獻展現你的承諾：
-- 定期提交高質量的代碼
+- 定期送出高品質的程式碼
 - 幫助回答問題
-- 參與代碼審查
-- 維護文檔
+- 參與 code review
+- 維護檔案
 
-感謝你考慮為 AutoCRUD 做出貢獻！每一個貢獻都讓這個項目變得更好。
+感謝你考慮為 AutoCRUD 做出貢獻！每一個貢獻都讓這個專案變得更好。

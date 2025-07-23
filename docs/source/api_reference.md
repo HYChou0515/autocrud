@@ -1,6 +1,6 @@
 # API 參考
 
-這裡包含 AutoCRUD 所有類和函數的詳細 API 文檔。
+這裡包含 AutoCRUD 所有類和函數的詳細 API 檔案。
 
 ## 核心模組
 
@@ -22,7 +22,7 @@
    :show-inheritance:
 ```
 
-## 存儲後端
+## 儲存後端
 
 ### MemoryStorage
 
@@ -53,7 +53,7 @@
    :show-inheritance:
 ```
 
-## FastAPI 生成器
+## FastAPI 產生器
 
 ### FastAPIGenerator
 

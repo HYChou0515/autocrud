@@ -1,11 +1,11 @@
 [project]
 name = "autocrud"
 version = "0.1.0"
-description = "自動生成 CRUD API 的 Python 庫"
+description = "自動產生 CRUD API 的 Python 函式庫"
 readme = "README.md"
 requires-python = ">=3.11"
 authors = [
-    {name = "Your Name", email = "your.email@example.com"}
+    {name = "HYChou0515", email = "hychou.svm@example.com"}
 ]
 keywords = ["fastapi", "crud", "api", "automation", "rest"]
 classifiers = [
@@ -43,10 +43,10 @@ dev = [
 ]
 
 [project.urls]
-Homepage = "https://github.com/your-repo/autocrud"
+Homepage = "https://github.com/HYChou0515/autocrud"
 Documentation = "https://autocrud.readthedocs.io/"
-Repository = "https://github.com/your-repo/autocrud.git"
-Issues = "https://github.com/your-repo/autocrud/issues"
+Repository = "https://github.com/HYChou0515/autocrud.git"
+Issues = "https://github.com/HYChou0515/autocrud/issues"
 
 [dependency-groups]
 dev = [
