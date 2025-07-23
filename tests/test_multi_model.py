@@ -92,6 +92,48 @@ class TestMultiModelAutoCRUD:
         with pytest.raises(ValueError, match="Resource 'users' already registered"):
             multi_crud.register_model(User)
 
+    def test_register_model_plural_choice(self):
+        """測試資源名稱複數形式選擇"""
+        storage = MemoryStorage()
+        multi_crud = MultiModelAutoCRUD(storage)
+        
+        # 測試默認行為（複數）
+        multi_crud.register_model(User)
+        assert "users" in multi_crud.list_resources()
+        
+        # 測試明確指定複數
+        multi_crud.unregister_model("users")
+        multi_crud.register_model(User, use_plural=True)
+        assert "users" in multi_crud.list_resources()
+        
+        # 測試指定單數
+        multi_crud.unregister_model("users")
+        multi_crud.register_model(User, use_plural=False) 
+        assert "user" in multi_crud.list_resources()
+        
+        # 測試自定義資源名稱（忽略 use_plural）
+        multi_crud.unregister_model("user")
+        multi_crud.register_model(User, resource_name="people", use_plural=False)
+        assert "people" in multi_crud.list_resources()
+        assert "person" not in multi_crud.list_resources()
+
+    def test_singularize_resource_name(self):
+        """測試單數資源名稱生成"""
+        storage = MemoryStorage()
+        multi_crud = MultiModelAutoCRUD(storage)
+        
+        # 測試不同的模型名稱
+        test_cases = [
+            ("User", "user"),
+            ("Company", "company"), 
+            ("ProductCategory", "product_category"),
+            ("XMLParser", "xml_parser"),
+        ]
+        
+        for model_name, expected in test_cases:
+            result = multi_crud._singularize_resource_name(model_name)
+            assert result == expected, f"Expected {expected}, got {result} for {model_name}"
+
     def test_get_crud(self):
         """測試獲取 CRUD 實例"""
         storage = MemoryStorage()

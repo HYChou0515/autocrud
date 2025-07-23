@@ -26,21 +26,28 @@ class MultiModelAutoCRUD:
         model: Type,
         resource_name: Optional[str] = None,
         id_generator: Optional[callable] = None,
+        use_plural: bool = True,
     ) -> AutoCRUD:
         """
         註冊一個模型
 
         Args:
             model: 要註冊的模型類
-            resource_name: 資源名稱，默認使用模型類名的小寫複數形式
+            resource_name: 資源名稱，如果為 None 則自動生成
             id_generator: ID 生成器函數
+            use_plural: 是否使用複數形式，僅在 resource_name 為 None 時生效
 
         Returns:
             創建的 AutoCRUD 實例
         """
         if resource_name is None:
-            # 自動生成資源名稱：ModelName -> model_names
-            resource_name = self._pluralize_resource_name(model.__name__)
+            # 自動生成資源名稱
+            if use_plural:
+                # ModelName -> model_names
+                resource_name = self._pluralize_resource_name(model.__name__)
+            else:
+                # ModelName -> model_name
+                resource_name = self._singularize_resource_name(model.__name__)
 
         if resource_name in self.cruds:
             raise ValueError(f"Resource '{resource_name}' already registered")
@@ -143,6 +150,24 @@ class MultiModelAutoCRUD:
             return snake_case + "es"
         else:
             return snake_case + "s"
+
+    def _singularize_resource_name(self, model_name: str) -> str:
+        """
+        將模型名稱轉換為單數資源名稱
+
+        Args:
+            model_name: 模型類名稱
+
+        Returns:
+            單數形式的資源名稱
+        """
+        # 將駝峰命名轉換為下劃線命名
+        import re
+
+        snake_case = re.sub("(.)([A-Z][a-z]+)", r"\1_\2", model_name)
+        snake_case = re.sub("([a-z0-9])([A-Z])", r"\1_\2", snake_case).lower()
+
+        return snake_case
 
     # 便利方法：直接在多模型系統上執行 CRUD 操作
     def create(self, resource_name: str, data: Dict[str, Any]) -> Dict[str, Any]:
