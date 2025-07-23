@@ -1,7 +1,6 @@
 """多模型 AutoCRUD 使用範例"""
 
 from dataclasses import dataclass
-from typing import Optional
 from autocrud import MultiModelAutoCRUD, MemoryStorage
 
 
@@ -40,9 +39,9 @@ def main():
 
     # 註冊多個模型
     print("\n📝 註冊模型...")
-    user_crud = multi_crud.register_model(User)  # 自動命名為 'users'
-    product_crud = multi_crud.register_model(Product)  # 自動命名為 'products'
-    order_crud = multi_crud.register_model(Order)  # 自動命名為 'orders'
+    _ = multi_crud.register_model(User)  # 自動命名為 'users'
+    _ = multi_crud.register_model(Product)  # 自動命名為 'products'
+    _ = multi_crud.register_model(Order)  # 自動命名為 'orders'
 
     print(f"已註冊的資源: {multi_crud.list_resources()}")
 

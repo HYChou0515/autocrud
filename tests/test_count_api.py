@@ -1,0 +1,246 @@
+"""測試 count API 功能"""
+
+from dataclasses import dataclass
+from autocrud import AutoCRUD, MultiModelAutoCRUD, MemoryStorage
+
+
+@dataclass
+class Item:
+    name: str
+    value: int
+
+
+class TestCountAPI:
+    """測試 count API 功能"""
+
+    def test_count_empty(self):
+        """測試空集合的 count"""
+        storage = MemoryStorage()
+        crud = AutoCRUD(model=Item, storage=storage, resource_name="items")
+
+        assert crud.count() == 0
+
+    def test_count_after_create(self):
+        """測試建立項目後的 count"""
+        storage = MemoryStorage()
+        crud = AutoCRUD(model=Item, storage=storage, resource_name="items")
+
+        # 建立幾個項目
+        crud.create({"name": "item1", "value": 1})
+        assert crud.count() == 1
+
+        crud.create({"name": "item2", "value": 2})
+        assert crud.count() == 2
+
+        crud.create({"name": "item3", "value": 3})
+        assert crud.count() == 3
+
+    def test_count_after_delete(self):
+        """測試刪除項目後的 count"""
+        storage = MemoryStorage()
+        crud = AutoCRUD(model=Item, storage=storage, resource_name="items")
+
+        # 建立項目
+        item1 = crud.create({"name": "item1", "value": 1})
+        item2 = crud.create({"name": "item2", "value": 2})
+        item3 = crud.create({"name": "item3", "value": 3})
+
+        assert crud.count() == 3
+
+        # 刪除一個項目
+        crud.delete(item1["id"])
+        assert crud.count() == 2
+
+        # 刪除另一個項目
+        crud.delete(item2["id"])
+        assert crud.count() == 1
+
+        # 刪除最後一個項目
+        crud.delete(item3["id"])
+        assert crud.count() == 0
+
+    def test_count_with_multiple_resources(self):
+        """測試多個資源的 count 獨立性"""
+        storage = MemoryStorage()
+
+        crud1 = AutoCRUD(model=Item, storage=storage, resource_name="items1")
+        crud2 = AutoCRUD(model=Item, storage=storage, resource_name="items2")
+
+        # 在第一個資源中建立項目
+        crud1.create({"name": "item1", "value": 1})
+        crud1.create({"name": "item2", "value": 2})
+
+        # 在第二個資源中建立項目
+        crud2.create({"name": "item3", "value": 3})
+
+        # 驗證 count 是獨立的
+        assert crud1.count() == 2
+        assert crud2.count() == 1
+
+
+class TestMultiModelCount:
+    """測試多模型 count 功能"""
+
+    @dataclass
+    class User:
+        name: str
+        email: str
+
+    @dataclass
+    class Product:
+        name: str
+        price: float
+
+    def test_multi_model_count(self):
+        """測試多模型的 count 功能"""
+        storage = MemoryStorage()
+        multi_crud = MultiModelAutoCRUD(storage)
+
+        # 註冊模型
+        multi_crud.register_model(self.User)
+        multi_crud.register_model(self.Product)
+
+        # 初始 count 應該為 0
+        assert multi_crud.count("users") == 0
+        assert multi_crud.count("products") == 0
+
+        # 建立使用者
+        multi_crud.create("users", {"name": "Alice", "email": "alice@example.com"})
+        multi_crud.create("users", {"name": "Bob", "email": "bob@example.com"})
+
+        # 建立產品
+        multi_crud.create("products", {"name": "Laptop", "price": 999.99})
+
+        # 驗證各自的 count
+        assert multi_crud.count("users") == 2
+        assert multi_crud.count("products") == 1
+
+        # 新增更多項目
+        multi_crud.create("products", {"name": "Mouse", "price": 29.99})
+        multi_crud.create("products", {"name": "Keyboard", "price": 99.99})
+
+        # 再次驗證
+        assert multi_crud.count("users") == 2
+        assert multi_crud.count("products") == 3
+
+    def test_multi_model_count_after_operations(self):
+        """測試多模型在各種操作後的 count"""
+        storage = MemoryStorage()
+        multi_crud = MultiModelAutoCRUD(storage)
+
+        multi_crud.register_model(self.User)
+
+        # 建立幾個使用者
+        user1 = multi_crud.create(
+            "users", {"name": "Alice", "email": "alice@example.com"}
+        )
+        user2 = multi_crud.create("users", {"name": "Bob", "email": "bob@example.com"})
+        user3 = multi_crud.create(
+            "users", {"name": "Charlie", "email": "charlie@example.com"}
+        )
+
+        assert multi_crud.count("users") == 3
+
+        # 更新使用者（count 不應該改變）
+        multi_crud.update(
+            "users",
+            user1["id"],
+            {"name": "Alice Smith", "email": "alice.smith@example.com"},
+        )
+        assert multi_crud.count("users") == 3
+
+        # 刪除使用者
+        multi_crud.delete("users", user2["id"])
+        assert multi_crud.count("users") == 2
+
+        # 再刪除一個
+        multi_crud.delete("users", user3["id"])
+        assert multi_crud.count("users") == 1
+
+
+class TestCountFastAPI:
+    """測試 count API 端點"""
+
+    def test_count_api_endpoint_creation(self):
+        """測試 count API 端點是否被建立"""
+        from autocrud.fastapi_generator import FastAPIGenerator
+
+        storage = MemoryStorage()
+        crud = AutoCRUD(model=Item, storage=storage, resource_name="items")
+        generator = FastAPIGenerator(crud)
+
+        from fastapi import FastAPI
+
+        app = FastAPI()
+        generator.create_routes(app, "/api/v1")
+
+        # 檢查是否有 count 路由
+        routes = []
+        for route in app.routes:
+            if hasattr(route, "methods") and hasattr(route, "path"):
+                for method in route.methods:
+                    if method not in ["HEAD", "OPTIONS"]:
+                        routes.append(f"{method} {route.path}")
+
+        # 應該包含 count 端點
+        assert "GET /api/v1/items/count" in routes
+
+    def test_count_api_response_format(self):
+        """測試 count API 的回應格式"""
+        storage = MemoryStorage()
+        crud = AutoCRUD(model=Item, storage=storage, resource_name="items")
+
+        # 建立一些項目
+        crud.create({"name": "item1", "value": 1})
+        crud.create({"name": "item2", "value": 2})
+
+        # 建立 FastAPI 應用
+        app = crud.create_fastapi_app()
+
+        # 使用 TestClient 測試
+        from fastapi.testclient import TestClient
+
+        client = TestClient(app)
+
+        response = client.get("/api/v1/items/count")
+
+        assert response.status_code == 200
+        data = response.json()
+        assert "count" in data
+        assert data["count"] == 2
+        assert isinstance(data["count"], int)
+
+    def test_multi_model_count_api(self):
+        """測試多模型的 count API"""
+
+        @dataclass
+        class User:
+            name: str
+            email: str
+
+        storage = MemoryStorage()
+        multi_crud = MultiModelAutoCRUD(storage)
+        multi_crud.register_model(User)
+        multi_crud.register_model(Item, resource_name="items")
+
+        # 建立一些資料
+        multi_crud.create("users", {"name": "Alice", "email": "alice@example.com"})
+        multi_crud.create("items", {"name": "item1", "value": 1})
+        multi_crud.create("items", {"name": "item2", "value": 2})
+
+        # 建立 FastAPI 應用
+        app = multi_crud.create_fastapi_app()
+
+        from fastapi.testclient import TestClient
+
+        client = TestClient(app)
+
+        # 測試 users count
+        response = client.get("/api/v1/users/count")
+        assert response.status_code == 200
+        assert response.json()["count"] == 1
+
+        # 測試 items count
+        response = client.get("/api/v1/items/count")
+        assert response.status_code == 200
+        assert response.json()["count"] == 2

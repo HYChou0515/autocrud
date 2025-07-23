@@ -1,4 +1,4 @@
-# AutoCRUD 文檔 Makefile
+# AutoCRUD 開發與文檔 Makefile
 
 # 變數設定
 SPHINXOPTS    ?=
@@ -9,14 +9,143 @@ BUILDDIR     = docs/build
 # 默認目標
 .PHONY: help
 help:
-	@echo "AutoCRUD 文檔構建工具"
+	@echo "AutoCRUD 開發與文檔工具"
 	@echo ""
-	@echo "可用的命令："
-	@echo "  html       構建 HTML 文檔"
-	@echo "  clean      清理構建文件"
-	@echo "  serve      啟動本地文檔服務器"
-	@echo "  linkcheck  檢查文檔中的連結"
-	@echo "  test       運行文檔測試"
+	@echo "開發工具："
+	@echo "  test         執行所有測試"
+	@echo "  coverage     執行測試並生成覆蓋率報告"
+	@echo "  cov-html     生成 HTML 覆蓋率報告"
+	@echo "  style        格式化程式碼並修復程式碼風格問題 (ruff format + ruff check --fix)"
+	@echo "  check        檢查程式碼品質 (ruff check)"
+	@echo "  format       格式化程式碼 (ruff format)"
+	@echo "  lint         執行 lint 檢查"
+	@echo "  install      安裝專案依賴"
+	@echo "  dev-install  安裝開發依賴"
+	@echo "  build        建置套件"
+	@echo "  publish      發布套件到 PyPI"
+	@echo "  clean-dev    清理開發暫存檔案"
+	@echo ""
+	@echo "文檔工具："
+	@echo "  html         構建 HTML 文檔"
+	@echo "  clean-docs   清理文檔構建文件"
+	@echo "  serve        啟動本地文檔服務器"
+	@echo "  linkcheck    檢查文檔中的連結"
+	@echo "  all-docs     構建所有文檔格式"
+	@echo ""
+	@echo "複合指令："
+	@echo "  quality      完整的程式碽品質檢查 (style + check + test)"
+	@echo "  dev          快速開發循環 (style + test)"
+	@echo "  ci           CI/CD 流程 (check + test + coverage)"
+	@echo "  full-check   完整檢查 (dev-install + quality + coverage)"
+
+# === 開發工具 ===
+
+# 安裝依賴
+.PHONY: install
+install:
+	@echo "安裝專案依賴..."
+	uv sync
+
+# 安裝開發依賴
+.PHONY: dev-install
+dev-install:
+	@echo "安裝開發依賴..."
+	uv sync --dev
+
+# 執行測試
+.PHONY: test
+test:
+	@echo "執行測試..."
+	uv run pytest -v
+
+# 執行測試並生成覆蓋率報告
+.PHONY: coverage
+coverage:
+	@echo "執行測試並生成覆蓋率報告..."
+	uv run coverage run -m pytest
+	uv run coverage report
+
+# 生成 HTML 覆蓋率報告
+.PHONY: cov-html
+cov-html: coverage
+	@echo "生成 HTML 覆蓋率報告..."
+	uv run coverage html
+	@echo "HTML 報告已生成在 htmlcov/ 目錄"
+
+# 程式碼格式化和修復
+.PHONY: style
+style:
+	@echo "格式化程式碼並修復程式碼風格問題..."
+	uv run ruff format .
+	uv run ruff check --fix .
+
+# 檢查程式碼品質
+.PHONY: check
+check:
+	@echo "檢查程式碼品質..."
+	uv run ruff check .
+
+# 格式化程式碼
+.PHONY: format
+format:
+	@echo "格式化程式碼..."
+	uv run ruff format .
+
+# Lint 檢查
+.PHONY: lint
+lint: check
+	@echo "Lint 檢查完成"
+
+# 清理開發暫存檔案
+.PHONY: clean-dev
+clean-dev:
+	@echo "清理開發暫存檔案..."
+	rm -rf __pycache__/
+	rm -rf .pytest_cache/
+	rm -rf .coverage
+	rm -rf htmlcov/
+	rm -rf dist/
+	rm -rf build/
+	rm -rf *.egg-info/
+	find . -type d -name "__pycache__" -exec rm -rf {} +
+	find . -type f -name "*.pyc" -delete
+	find . -type f -name "*.pyo" -delete
+
+# 建置套件
+.PHONY: build
+build: clean-dev
+	@echo "建置套件..."
+	uv build
+
+# 發布套件到 PyPI
+.PHONY: publish
+publish: build
+	@echo "發布套件到 PyPI..."
+	uv run python scripts/publish.py
+
+# === 複合指令 ===
+
+# 完整的程式碼品質檢查
+.PHONY: quality
+quality: style check test
+	@echo "程式碼品質檢查完成"
+
+# 快速開發循環
+.PHONY: dev
+dev: style test
+	@echo "開發循環完成"
+
+# CI/CD 流程
+.PHONY: ci
+ci: check test coverage
+	@echo "CI 流程完成"
+
+# 完整檢查（發布前）
+.PHONY: full-check
+full-check: clean-dev dev-install quality coverage
+	@echo "完整檢查完成"
+
+# === 文檔工具 ===
 
 # 構建 HTML 文檔
 .PHONY: html
@@ -26,11 +155,11 @@ html:
 	@echo "HTML 文檔構建完成。文檔位置："
 	@echo "  file://$(PWD)/$(BUILDDIR)/html/index.html"
 
-# 清理構建文件
-.PHONY: clean
-clean:
+# 清理文檔構建文件
+.PHONY: clean-docs
+clean-docs:
 	rm -rf "$(BUILDDIR)"/*
-	@echo "構建文件已清理"
+	@echo "文檔構建文件已清理"
 
 # 啟動本地服務器
 .PHONY: serve
@@ -43,9 +172,9 @@ serve: html
 linkcheck:
 	$(SPHINXBUILD) -b linkcheck "$(SOURCEDIR)" "$(BUILDDIR)/linkcheck" $(SPHINXOPTS)
 
-# 構建所有格式
-.PHONY: all
-all: clean html
+# 構建所有文檔格式
+.PHONY: all-docs
+all-docs: clean-docs html
 	@echo "所有文檔格式構建完成"
 
 # 快速構建（不清理）

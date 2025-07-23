@@ -192,6 +192,10 @@ class MultiModelAutoCRUD:
         """列出指定資源的所有項目"""
         return self.get_crud(resource_name).list_all()
 
+    def count(self, resource_name: str) -> int:
+        """取得指定資源的總數量"""
+        return self.get_crud(resource_name).count()
+
     def exists(self, resource_name: str, resource_id: str) -> bool:
         """檢查指定資源的項目是否存在"""
         return self.get_crud(resource_name).exists(resource_id)

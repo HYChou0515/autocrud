@@ -100,6 +100,21 @@ class AutoCRUD:
 
         return result
 
+    def count(self) -> int:
+        """取得資源總數量"""
+        prefix = f"{self.resource_name}:"
+        all_keys = self.storage.list_keys()
+
+        count = 0
+        for key in all_keys:
+            if key.startswith(prefix):
+                # 確認資料確實存在（不是空值）
+                data = self.storage.get(key)
+                if data:
+                    count += 1
+
+        return count
+
     def create_fastapi_app(self, **kwargs):
         """創建 FastAPI 應用的便利方法"""
         from .fastapi_generator import FastAPIGenerator

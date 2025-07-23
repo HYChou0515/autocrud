@@ -72,6 +72,12 @@ class FastAPIGenerator:
         # 設定類型提示
         create_resource.__annotations__["item"] = request_model
 
+        @app.get(f"{resource_path}/count", response_model=Dict[str, int])
+        async def count_resources():
+            """取得資源總數量"""
+            count = crud.count()
+            return {"count": count}
+
         @app.get(f"{resource_path}/{{resource_id}}", response_model=response_model)
         async def get_resource(resource_id: str):
             """獲取單個資源"""

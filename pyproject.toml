@@ -54,6 +54,7 @@ dev = [
     "build>=1.2.2.post1",
     "coverage>=7.9.2",
     "furo>=2025.7.19",
+    "httpx>=0.28.1",
     "linkify-it-py>=2.0.3",
     "myst-parser>=4.0.1",
     "pytest>=8.4.1",
