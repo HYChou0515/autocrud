@@ -1,9 +1,26 @@
 [project]
 name = "autocrud"
 version = "0.1.0"
-description = "Add your description here"
+description = "自動生成 CRUD API 的 Python 庫"
 readme = "README.md"
-requires-python = ">=3.13"
+requires-python = ">=3.11"
+authors = [
+    {name = "Your Name", email = "your.email@example.com"}
+]
+keywords = ["fastapi", "crud", "api", "automation", "rest"]
+classifiers = [
+    "Development Status :: 4 - Beta",
+    "Intended Audience :: Developers", 
+    "License :: OSI Approved :: MIT License",
+    "Operating System :: OS Independent",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3.13",
+    "Topic :: Software Development :: Libraries :: Python Modules",
+    "Topic :: Internet :: WWW/HTTP :: HTTP Servers",
+    "Framework :: FastAPI",
+]
 dependencies = [
     "dependency-injector>=4.48.1",
     "fastapi>=0.116.1",
@@ -11,10 +28,35 @@ dependencies = [
     "pydantic>=2.11.7",
 ]
 
-[dependency-groups]
+[project.optional-dependencies]
+docs = [
+    "furo>=2025.7.19",
+    "linkify-it-py>=2.0.3",
+    "myst-parser>=4.0.1",
+    "sphinx>=8.2.3",
+    "sphinx-autodoc-typehints>=3.2.0",
+]
 dev = [
     "coverage>=7.9.2",
     "pytest>=8.4.1",
     "ruff>=0.12.4",
+]
+
+[project.urls]
+Homepage = "https://github.com/your-repo/autocrud"
+Documentation = "https://autocrud.readthedocs.io/"
+Repository = "https://github.com/your-repo/autocrud.git"
+Issues = "https://github.com/your-repo/autocrud/issues"
+
+[dependency-groups]
+dev = [
+    "coverage>=7.9.2",
+    "furo>=2025.7.19",
+    "linkify-it-py>=2.0.3",
+    "myst-parser>=4.0.1",
+    "pytest>=8.4.1",
+    "ruff>=0.12.4",
+    "sphinx>=8.2.3",
+    "sphinx-autodoc-typehints>=3.2.0",
 ]
 pytest = []

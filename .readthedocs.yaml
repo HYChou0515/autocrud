@@ -1,0 +1,38 @@
+# .readthedocs.yaml
+# Read the Docs 配置文件
+# 參考: https://docs.readthedocs.io/en/stable/config-file/v2.html
+
+version: 2
+
+# 設定 OS, Python 版本等
+build:
+  os: ubuntu-22.04
+  tools:
+    python: "3.11"
+    nodejs: "18"
+
+# 指定 Python 環境和依賴
+python:
+  install:
+    - method: pip
+      path: .
+      extra_requirements:
+        - docs
+
+# 構建 HTML 和 PDF 文檔
+formats:
+  - pdf
+  - htmlzip
+
+# Sphinx 配置
+sphinx:
+  configuration: docs/source/conf.py
+  builder: html
+  fail_on_warning: false
+
+# 搜索功能
+search:
+  ranking:
+    api_reference.html: -1
+  ignore:
+    - 404.html
