@@ -31,7 +31,7 @@ CRUD 操作幾乎都長一樣，每次都要重複寫相同的代碼，很煩人
 
 ### 4. 多種序列化格式支援
 支援各種序列化方法，可根據需求選擇最適合的格式：
-- **msgpack** - 高效二進制格式，體積小速度快
+- **msgpack** - 高效二進位格式，體積小速度快
 - **json** - 標準文本格式，易讀易調試
 - **pickle** - Python 原生格式，支援複雜對象
 - **其他** - 可擴展支援更多自訂格式
@@ -40,7 +40,7 @@ CRUD 操作幾乎都長一樣，每次都要重複寫相同的代碼，很煩人
 
 ```python
 from dataclasses import dataclass
-from autocrud import AutoCRUD, MemoryStorage, DiskStorage
+from autocrud import SingleModelCRUD, AutoCRUD, MemoryStorage, DiskStorage
 
 @dataclass
 class User:
@@ -48,22 +48,19 @@ class User:
     email: str
     age: int
 
-# 純內存儲存（演示用）
-crud_memory = AutoCRUD(
+# 單模型 CRUD（直接操作）
+crud_memory = SingleModelCRUD(
     model=User,
     storage=MemoryStorage(),
     resource_name="users"
 )
 
-# 持久化磁碟儲存
-crud_disk = AutoCRUD(
-    model=User,
-    storage=DiskStorage("./data"),
-    resource_name="users"
-)
+# 多模型系統
+multi_crud = AutoCRUD()
+multi_crud.register_model(User)
 
 # 產生 FastAPI 應用
-app = crud_disk.create_fastapi_app(title="使用者管理 API")
+app = multi_crud.create_fastapi_app(title="使用者管理 API")
 ```
 
 ## 開發計劃
@@ -91,7 +88,7 @@ app = crud_disk.create_fastapi_app(title="使用者管理 API")
 
 ## 快速開始
 
-### 安裝dependency
+### 安裝依賴套件
 ```bash
 pip install fastapi uvicorn
 ```

@@ -2,6 +2,13 @@
 
 深入了解 AutoCRUD 的功能和最佳實踐。
 
+## 系統架構
+
+AutoCRUD 提供兩個主要類別：
+
+- **`SingleModelCRUD`**：處理單一資料模型的 CRUD 操作
+- **`AutoCRUD`**：管理多個資料模型的系統，可註冊多個模型
+
 ## 資料模型支援
 
 AutoCRUD 支援多種 Python 資料模型格式：
@@ -62,7 +69,7 @@ storage = MemoryStorage()
 - 程式結束後資料消失
 - 適合測試和原型開發
 
-### 磁碟儲存 (DiskStorage)
+### 硬碟儲存 (DiskStorage)
 
 適用於持久化資料：
 
@@ -108,7 +115,7 @@ storage = DiskStorage(serializer_type="pickle")
 storage = DiskStorage(serializer_type="msgpack")
 ```
 
-- 二進制格式
+- 二進位格式
 - 高效壓縮
 - 跨語言支援
 
@@ -117,11 +124,11 @@ storage = DiskStorage(serializer_type="msgpack")
 ### 基本用法
 
 ```python
-from autocrud import MultiModelAutoCRUD
+from autocrud import AutoCRUD
 from autocrud.storage import MemoryStorage
 
-storage = MemoryStorage()
-multi_crud = MultiModelAutoCRUD(storage)
+# 建立多模型系統（會自動使用內存儲存工廠）
+multi_crud = AutoCRUD()
 
 # 註冊多個模型
 multi_crud.register_model(User)
@@ -146,8 +153,8 @@ multi_crud.register_model(Company, resource_name="organizations")  # -> organiza
 
 ```python
 # 直接在多模型系統上執行操作
-user = multi_crud.create("users", {"name": "Alice", "email": "alice@example.com"})
-product = multi_crud.create("products", {"name": "Laptop", "price": 999.99})
+user_id = multi_crud.create("users", {"name": "Alice", "email": "alice@example.com"})
+product_id = multi_crud.create("products", {"name": "Laptop", "price": 999.99})
 
 # 取得特定模型的 CRUD 實例
 user_crud = multi_crud.get_crud("users")
@@ -159,9 +166,9 @@ all_users = user_crud.list_all()
 ### 單模型 API
 
 ```python
-from autocrud import AutoCRUD
+from autocrud import SingleModelCRUD
 
-user_crud = AutoCRUD(model=User, storage=storage)
+user_crud = SingleModelCRUD(model=User, storage=storage, resource_name="users")
 app = user_crud.create_fastapi_app(
     title="User API",
     description="使用者管理 API",
@@ -172,9 +179,9 @@ app = user_crud.create_fastapi_app(
 ### 多模型 API
 
 ```python
-from autocrud import MultiModelAutoCRUD
+from autocrud import AutoCRUD
 
-multi_crud = MultiModelAutoCRUD(storage)
+multi_crud = AutoCRUD()
 multi_crud.register_model(User)
 multi_crud.register_model(Product)
 
@@ -199,7 +206,7 @@ app = multi_crud.create_fastapi_app(
 
 ```python
 # 使用預設的 UUID4 產生器
-crud = AutoCRUD(model=User, storage=storage)
+crud = SingleModelCRUD(model=User, storage=storage, resource_name="users")
 ```
 
 ### 自訂 ID 產生器
@@ -209,9 +216,10 @@ def custom_id_generator():
     import time
     return f"user_{int(time.time())}"
 
-crud = AutoCRUD(
+crud = SingleModelCRUD(
     model=User,
     storage=storage,
+    resource_name="users",
     id_generator=custom_id_generator
 )
 ```
@@ -225,9 +233,10 @@ def sequential_id_generator():
     sequential_id_generator.counter += 1
     return str(sequential_id_generator.counter)
 
-crud = AutoCRUD(
+crud = SingleModelCRUD(
     model=User,
     storage=storage,
+    resource_name="users",
     id_generator=sequential_id_generator
 )
 ```
@@ -314,23 +323,23 @@ def safe_create_user(data: dict):
         raise HTTPException(status_code=500, detail="儲存錯誤")
 ```
 
-## 性能考慮
+## 效能考慮
 
 ### 記憶體使用
 
 - `MemoryStorage` 將所有資料保存在記憶體中
 - 對於大量資料，考慮使用 `DiskStorage`
 
-### 序列化性能
+### 序列化效能
 
-- JSON: 平衡性能和可讀性
+- JSON: 平衡效能和可讀性
 - Pickle: 最快，但僅限 Python
-- MessagePack: 高效的二進制格式
+- MessagePack: 高效的二進位格式
 
-### 併發訪問
+### 併發存取
 
-目前的實作不是線程安全的。在高併發環境中：
+目前的實作不是執行緒安全的。在高併發環境中：
 
 1. 使用適當的鎖機制
-2. 考慮使用資料函式庫後端
-3. 實作自訂的線程安全儲存後端
+2. 考慮使用資料庫後端
+3. 實作自訂的執行緒安全儲存後端

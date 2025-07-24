@@ -4,19 +4,19 @@
 
 ## 核心模組
 
-### AutoCRUD 類
+### SingleModelCRUD 類
 
 ```{eval-rst}
-.. autoclass:: autocrud.core.AutoCRUD
+.. autoclass:: autocrud.core.SingleModelCRUD
    :members:
    :inherited-members:
    :show-inheritance:
 ```
 
-### MultiModelAutoCRUD 類
+### AutoCRUD 類
 
 ```{eval-rst}
-.. autoclass:: autocrud.multi_model.MultiModelAutoCRUD
+.. autoclass:: autocrud.multi_model.AutoCRUD
    :members:
    :inherited-members:
    :show-inheritance:

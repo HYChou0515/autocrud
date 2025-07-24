@@ -80,7 +80,7 @@ class MemoryStorage(Storage):
 
 
 class DiskStorage(Storage):
-    """磁碟文件存儲實現（真正的持久化存儲）"""
+    """硬碟檔案儲存實作（真正的持久化儲存）"""
 
     def __init__(self, base_dir: str, serializer: Optional[Serializer] = None):
         super().__init__(serializer)
@@ -182,23 +182,23 @@ if __name__ == "__main__":
 
     print(f"內存存儲大小: {memory_storage.size()}")
 
-    # 測試磁碟存儲
-    print("\n=== 測試磁碟存儲 ===")
+    # 測試硬碟儲存
+    print("\n=== 測試硬碟儲存 ===")
     import tempfile
 
     temp_dir = tempfile.mkdtemp()
     disk_storage = DiskStorage(temp_dir)
 
-    # 存儲數據
+    # 儲存資料
     disk_storage.set("user:1", test_data)
-    print(f"磁碟存儲成功: {disk_storage.exists('user:1')}")
+    print(f"硬碟儲存成功: {disk_storage.exists('user:1')}")
 
-    # 獲取數據
+    # 取得資料
     retrieved_data = disk_storage.get("user:1")
-    print(f"磁碟獲取數據: {retrieved_data}")
+    print(f"硬碟取得資料: {retrieved_data}")
 
-    print(f"磁碟存儲大小: {disk_storage.size()}")
-    print(f"磁碟所有鍵: {disk_storage.list_keys()}")
+    print(f"硬碟儲存大小: {disk_storage.size()}")
+    print(f"硬碟所有鍵: {disk_storage.list_keys()}")
 
     # 清理
     disk_storage.clear()

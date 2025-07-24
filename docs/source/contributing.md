@@ -24,7 +24,7 @@
 git clone https://github.com/your-repo/autocrud.git
 cd autocrud
 
-# 安裝 dependency (使用 uv)
+# 安裝依賴套件 (使用 uv)
 uv sync --dev
 
 # 或使用 pip
@@ -40,7 +40,7 @@ pip install -e ".[dev]"
 
 2. **編寫程式碼**：
    - 遵循專案的 coding style
-   - 新增適當的檔案字符串
+   - 新增適當的文件字串
    - 編寫測試用例
 
 3. **執行測試**：
@@ -105,9 +105,9 @@ fix(storage): handle file permission errors
 docs: update installation guide
 ```
 
-### 檔案字符串
+### 文件字串
 
-使用 Google 風格的檔案字符串：
+使用 Google 風格的文件字串：
 
 ```python
 def create_item(self, data: Dict[str, Any]) -> Dict[str, Any]:

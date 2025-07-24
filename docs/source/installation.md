@@ -17,9 +17,9 @@ pip install autocrud
 uv add autocrud
 ```
 
-## 開發 dependency
+## 開發依賴套件
 
-如果你想參與開發或執行測試，可以安裝開發 dependency：
+如果你想參與開發或執行測試，可以安裝開發依賴套件：
 
 ```bash
 # 使用 uv
@@ -29,7 +29,7 @@ uv add --dev autocrud[dev]
 pip install autocrud[dev]
 ```
 
-## 可選 dependency
+## 可選依賴套件
 
 ### FastAPI 支援
 

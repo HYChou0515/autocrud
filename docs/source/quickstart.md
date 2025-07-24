@@ -18,14 +18,14 @@ class User:
 ### 第二步：建立 CRUD 系統
 
 ```python
-from autocrud import AutoCRUD
+from autocrud import SingleModelCRUD
 from autocrud.storage import MemoryStorage
 
 # 建立儲存後端
 storage = MemoryStorage()
 
-# 建立 CRUD 實例
-user_crud = AutoCRUD(model=User, storage=storage)
+# 建立單模型 CRUD 實例
+user_crud = SingleModelCRUD(model=User, storage=storage, resource_name="users")
 ```
 
 ### 第三步：執行 CRUD 操作

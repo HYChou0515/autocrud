@@ -31,15 +31,15 @@
   - Pydantic 模型
   - TypedDict
 - 💾 **儲存後端**：
-  - `MemoryStorage`：內儲存存，適用於開發和測試
-  - `DiskStorage`：磁碟持久化儲存
+  - `MemoryStorage`：記憶體儲存，適用於開發和測試
+  - `DiskStorage`：硬碟持久化儲存
 - 🔧 **多種序列化格式**：
   - JSON（預設）
   - Pickle
   - MessagePack
 - 🚀 **FastAPI 整合**：
-  - 自動產生 RESTful API routing
-  - OpenAPI/Swagger 檔案產生
+  - 自動產生 RESTful API 路由
+  - OpenAPI/Swagger 文件產生
   - 類型安全的請求/響應模型
 - 🔄 **多模型支援**：
   - `MultiModelAutoCRUD` 類

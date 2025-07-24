@@ -7,7 +7,7 @@ from .test_models import Product
 
 
 class TestDiskPersistence:
-    """測試磁碟存儲持久化功能"""
+    """測試硬碟儲存持久化功能"""
 
     def test_disk_persistence_basic(self, temp_dir):
         """測試基本持久化功能"""
