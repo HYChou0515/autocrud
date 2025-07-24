@@ -124,7 +124,10 @@ class TestDiskStorage:
 
         all_products = crud2.list_all()
         assert len(all_products) == 1
-        assert product_id in all_products
+
+        # 檢查產品 ID 是否在列表中
+        product_ids = [product["id"] for product in all_products]
+        assert product_id in product_ids
 
     def test_disk_storage_with_different_serializers(
         self, temp_dir, sample_product_data

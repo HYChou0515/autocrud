@@ -55,9 +55,10 @@ class TestCountAPI:
 
     def test_count_with_multiple_resources(self):
         """測試多個資源的 count 獨立性"""
-        storage = MemoryStorage()
-        crud1 = SingleModelCRUD(model=Item, storage=storage, resource_name="items1")
-        crud2 = SingleModelCRUD(model=Item, storage=storage, resource_name="items2")
+        storage1 = MemoryStorage()
+        storage2 = MemoryStorage()
+        crud1 = SingleModelCRUD(model=Item, storage=storage1, resource_name="items1")
+        crud2 = SingleModelCRUD(model=Item, storage=storage2, resource_name="items2")
 
         # 在第一個資源中建立項目
         crud1.create({"name": "item1", "value": 1})

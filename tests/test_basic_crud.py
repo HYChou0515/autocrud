@@ -117,10 +117,18 @@ class TestBasicCrud:
         all_users = crud.list_all()
 
         assert len(all_users) == 2
-        assert user1["id"] in all_users
-        assert user2["id"] in all_users
-        assert all_users[user1["id"]]["name"] == "Alice"
-        assert all_users[user2["id"]]["name"] == "Bob"
+
+        # 提取所有用戶的 ID
+        user_ids = [user["id"] for user in all_users]
+        assert user1["id"] in user_ids
+        assert user2["id"] in user_ids
+
+        # 根據 ID 找到對應的用戶
+        user1_from_list = next(user for user in all_users if user["id"] == user1["id"])
+        user2_from_list = next(user for user in all_users if user["id"] == user2["id"])
+
+        assert user1_from_list["name"] == "Alice"
+        assert user2_from_list["name"] == "Bob"
 
     def test_exists_user(self, sample_user_data):
         """測試檢查用戶是否存在"""

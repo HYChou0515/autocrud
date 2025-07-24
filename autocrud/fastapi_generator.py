@@ -173,7 +173,7 @@ class FastAPIGenerator:
             async def list_resources():
                 """列出所有資源"""
                 items = crud.list_all()
-                return list(items.values())
+                return items
 
         return router
 

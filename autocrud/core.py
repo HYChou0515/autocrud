@@ -153,33 +153,28 @@ class SingleModelCRUD:
         key = self._make_key(resource_id)
         return self.storage.exists(key)
 
-    def list_all(self) -> Dict[str, Dict[str, Any]]:
+    def list_all(self) -> list[Dict[str, Any]]:
         """列出所有資源"""
-        prefix = f"{self.resource_name}:"
         all_keys = self.storage.list_keys()
 
-        result = {}
+        result = []
         for key in all_keys:
-            if key.startswith(prefix):
-                resource_id = key[len(prefix) :]
-                data = self.storage.get(key)
-                if data:
-                    result[resource_id] = data
+            data = self.storage.get(key)
+            if data:
+                result.append(data)
 
         return result
 
     def count(self) -> int:
         """取得資源總數量"""
-        prefix = f"{self.resource_name}:"
         all_keys = self.storage.list_keys()
 
         count = 0
         for key in all_keys:
-            if key.startswith(prefix):
-                # 確認資料確實存在（不是空值）
-                data = self.storage.get(key)
-                if data:
-                    count += 1
+            # 確認資料確實存在（不是空值）
+            data = self.storage.get(key)
+            if data:
+                count += 1
 
         return count
 

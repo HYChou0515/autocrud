@@ -56,7 +56,7 @@ class TestDiskPersistence:
         assert len(all_products) == 3
 
         # 驗證產品內容
-        for product_id, product in all_products.items():
+        for product in all_products:
             assert "name" in product
             assert "description" in product
             assert "price" in product
@@ -146,7 +146,7 @@ class TestDiskPersistence:
         loaded_products = crud2.list_all()
         assert len(loaded_products) == 1
 
-        remaining_product = list(loaded_products.values())[0]
+        remaining_product = loaded_products[0]
         assert remaining_product["name"] == "產品2"
 
 
@@ -189,7 +189,7 @@ class TestSerializerPersistence:
             loaded_products = crud2.list_all()
             assert len(loaded_products) == 1
 
-            loaded_product = list(loaded_products.values())[0]
+            loaded_product = loaded_products[0]
             assert loaded_product["name"] == test_data["name"]
             assert loaded_product["price"] == test_data["price"]
 

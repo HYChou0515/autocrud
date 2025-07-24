@@ -97,7 +97,7 @@ class TestFullAPICreation:
         assert len(all_books) == 3
 
         # 驗證每本書的數據
-        for i, (book_id, book) in enumerate(all_books.items()):
+        for i, book in enumerate(all_books):
             original_book = sample_books[i]
             assert book["title"] == original_book["title"]
             assert book["author"] == original_book["author"]

@@ -316,9 +316,16 @@ class TestMultiModelCRUDOperations:
         assert len(all_users) == 3
 
         # 驗證所有用戶都在列表中
+        user_ids = [user["id"] for user in all_users]
         for created_user in created_users:
-            assert created_user["id"] in all_users
-            assert all_users[created_user["id"]]["name"] == created_user["name"]
+            assert created_user["id"] in user_ids
+
+        # 根據 ID 找到對應的用戶並驗證
+        for created_user in created_users:
+            found_user = next(
+                user for user in all_users if user["id"] == created_user["id"]
+            )
+            assert found_user["name"] == created_user["name"]
 
     def test_cross_model_operations(self, multi_crud):
         """測試跨模型操作"""
