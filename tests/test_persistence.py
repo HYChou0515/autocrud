@@ -3,7 +3,7 @@
 import os
 import pytest
 from dataclasses import dataclass
-from autocrud import AutoCRUD, DiskStorage, SerializerFactory
+from autocrud import SingleModelCRUD, DiskStorage, SerializerFactory
 
 
 @dataclass
@@ -21,7 +21,9 @@ class TestDiskPersistence:
         """測試基本持久化功能"""
         # 第一階段：創建數據並保存
         storage1 = DiskStorage(temp_dir)
-        crud1 = AutoCRUD(model=Product, storage=storage1, resource_name="products")
+        crud1 = SingleModelCRUD(
+            model=Product, storage=storage1, resource_name="products"
+        )
 
         # 創建一些產品
         products_data = [
@@ -54,7 +56,9 @@ class TestDiskPersistence:
 
         # 第二階段：重新載入數據
         storage2 = DiskStorage(temp_dir)
-        crud2 = AutoCRUD(model=Product, storage=storage2, resource_name="products")
+        crud2 = SingleModelCRUD(
+            model=Product, storage=storage2, resource_name="products"
+        )
 
         all_products = crud2.list_all()
         assert len(all_products) == 3
@@ -70,7 +74,9 @@ class TestDiskPersistence:
         """測試持久化更新操作"""
         # 創建初始數據
         storage1 = DiskStorage(temp_dir)
-        crud1 = AutoCRUD(model=Product, storage=storage1, resource_name="products")
+        crud1 = SingleModelCRUD(
+            model=Product, storage=storage1, resource_name="products"
+        )
 
         product = crud1.create(
             {
@@ -98,7 +104,9 @@ class TestDiskPersistence:
 
         # 重新載入驗證更新
         storage2 = DiskStorage(temp_dir)
-        crud2 = AutoCRUD(model=Product, storage=storage2, resource_name="products")
+        crud2 = SingleModelCRUD(
+            model=Product, storage=storage2, resource_name="products"
+        )
 
         loaded_product = crud2.get(product_id)
         assert loaded_product["name"] == "高端筆記本電腦"
@@ -108,7 +116,9 @@ class TestDiskPersistence:
         """測試持久化刪除操作"""
         # 創建初始數據
         storage1 = DiskStorage(temp_dir)
-        crud1 = AutoCRUD(model=Product, storage=storage1, resource_name="products")
+        crud1 = SingleModelCRUD(
+            model=Product, storage=storage1, resource_name="products"
+        )
 
         product1 = crud1.create(
             {
@@ -137,7 +147,9 @@ class TestDiskPersistence:
 
         # 重新載入驗證刪除
         storage2 = DiskStorage(temp_dir)
-        crud2 = AutoCRUD(model=Product, storage=storage2, resource_name="products")
+        crud2 = SingleModelCRUD(
+            model=Product, storage=storage2, resource_name="products"
+        )
 
         loaded_products = crud2.list_all()
         assert len(loaded_products) == 1
@@ -167,7 +179,9 @@ class TestSerializerPersistence:
             # 創建特定序列化器的存儲
             serializer = SerializerFactory.create(serializer_type)
             storage = DiskStorage(storage_dir, serializer=serializer)
-            crud = AutoCRUD(model=Product, storage=storage, resource_name="products")
+            crud = SingleModelCRUD(
+                model=Product, storage=storage, resource_name="products"
+            )
 
             # 創建數據
             product = crud.create(test_data)
@@ -176,7 +190,9 @@ class TestSerializerPersistence:
 
             # 重新載入
             storage2 = DiskStorage(storage_dir, serializer=serializer)
-            crud2 = AutoCRUD(model=Product, storage=storage2, resource_name="products")
+            crud2 = SingleModelCRUD(
+                model=Product, storage=storage2, resource_name="products"
+            )
 
             loaded_products = crud2.list_all()
             assert len(loaded_products) == 1
@@ -200,7 +216,7 @@ class TestSerializerPersistence:
 
         # 應該能處理損壞的文件並創建新的存儲
         storage = DiskStorage(temp_dir)
-        crud = AutoCRUD(model=Product, storage=storage, resource_name="products")
+        crud = SingleModelCRUD(model=Product, storage=storage, resource_name="products")
 
         # 應該能正常創建數據
         product = crud.create(
@@ -223,7 +239,7 @@ class TestSerializerPersistence:
 
         # 創建存儲應該自動創建目錄
         storage = DiskStorage(nested_dir)
-        crud = AutoCRUD(model=Product, storage=storage, resource_name="products")
+        crud = SingleModelCRUD(model=Product, storage=storage, resource_name="products")
 
         crud.create(
             {
@@ -239,7 +255,9 @@ class TestSerializerPersistence:
 
         # 重新載入應該正常工作
         storage2 = DiskStorage(nested_dir)
-        crud2 = AutoCRUD(model=Product, storage=storage2, resource_name="products")
+        crud2 = SingleModelCRUD(
+            model=Product, storage=storage2, resource_name="products"
+        )
 
         loaded_products = crud2.list_all()
         assert len(loaded_products) == 1

@@ -1,7 +1,7 @@
 """測試 FastAPI 自動生成功能"""
 
 from dataclasses import dataclass
-from autocrud import AutoCRUD, MemoryStorage, FastAPIGenerator
+from autocrud import SingleModelCRUD, MemoryStorage, FastAPIGenerator
 
 
 @dataclass
@@ -18,7 +18,7 @@ class TestFastAPIGenerator:
     def test_create_generator(self):
         """測試創建 FastAPI 生成器"""
         storage = MemoryStorage()
-        crud = AutoCRUD(model=Product, storage=storage, resource_name="products")
+        crud = SingleModelCRUD(model=Product, storage=storage, resource_name="products")
 
         generator = FastAPIGenerator(crud)
 
@@ -29,7 +29,7 @@ class TestFastAPIGenerator:
     def test_request_model_fields(self):
         """測試請求模型欄位"""
         storage = MemoryStorage()
-        crud = AutoCRUD(model=Product, storage=storage, resource_name="products")
+        crud = SingleModelCRUD(model=Product, storage=storage, resource_name="products")
         generator = FastAPIGenerator(crud)
 
         request_fields = list(generator.request_model.model_fields.keys())
@@ -44,7 +44,7 @@ class TestFastAPIGenerator:
     def test_response_model_fields(self):
         """測試響應模型欄位"""
         storage = MemoryStorage()
-        crud = AutoCRUD(model=Product, storage=storage, resource_name="products")
+        crud = SingleModelCRUD(model=Product, storage=storage, resource_name="products")
         generator = FastAPIGenerator(crud)
 
         response_fields = list(generator.response_model.model_fields.keys())
@@ -59,7 +59,7 @@ class TestFastAPIGenerator:
     def test_create_fastapi_app(self):
         """測試創建 FastAPI 應用"""
         storage = MemoryStorage()
-        crud = AutoCRUD(model=Product, storage=storage, resource_name="products")
+        crud = SingleModelCRUD(model=Product, storage=storage, resource_name="products")
         generator = FastAPIGenerator(crud)
 
         app = generator.create_fastapi_app(
@@ -73,7 +73,7 @@ class TestFastAPIGenerator:
     def test_create_routes(self):
         """測試創建路由"""
         storage = MemoryStorage()
-        crud = AutoCRUD(model=Product, storage=storage, resource_name="products")
+        crud = SingleModelCRUD(model=Product, storage=storage, resource_name="products")
         generator = FastAPIGenerator(crud)
 
         from fastapi import FastAPI
@@ -104,7 +104,7 @@ class TestFastAPIGenerator:
     def test_pydantic_model_creation(self, sample_product_data):
         """測試 Pydantic 模型創建"""
         storage = MemoryStorage()
-        crud = AutoCRUD(model=Product, storage=storage, resource_name="products")
+        crud = SingleModelCRUD(model=Product, storage=storage, resource_name="products")
         generator = FastAPIGenerator(crud)
 
         # 測試請求模型
@@ -129,7 +129,7 @@ class TestAutoCRUDFastAPIIntegration:
     def test_create_fastapi_app_convenience_method(self):
         """測試便利方法創建 FastAPI 應用"""
         storage = MemoryStorage()
-        crud = AutoCRUD(model=Product, storage=storage, resource_name="products")
+        crud = SingleModelCRUD(model=Product, storage=storage, resource_name="products")
 
         app = crud.create_fastapi_app(
             title="產品 API", description="便利方法創建的 API"
@@ -141,7 +141,7 @@ class TestAutoCRUDFastAPIIntegration:
     def test_fastapi_app_has_health_endpoint(self):
         """測試 FastAPI 應用包含健康檢查端點"""
         storage = MemoryStorage()
-        crud = AutoCRUD(model=Product, storage=storage, resource_name="products")
+        crud = SingleModelCRUD(model=Product, storage=storage, resource_name="products")
 
         app = crud.create_fastapi_app()
 
@@ -156,7 +156,7 @@ class TestAutoCRUDFastAPIIntegration:
     def test_fastapi_app_has_openapi_docs(self):
         """測試 FastAPI 應用包含 OpenAPI 文檔端點"""
         storage = MemoryStorage()
-        crud = AutoCRUD(model=Product, storage=storage, resource_name="products")
+        crud = SingleModelCRUD(model=Product, storage=storage, resource_name="products")
 
         app = crud.create_fastapi_app()
 
@@ -193,7 +193,9 @@ class TestFastAPIAppBehavior:
 
         for model, resource_name in models:
             storage = MemoryStorage()
-            crud = AutoCRUD(model=model, storage=storage, resource_name=resource_name)
+            crud = SingleModelCRUD(
+                model=model, storage=storage, resource_name=resource_name
+            )
 
             app = crud.create_fastapi_app(title=f"{model.__name__} API")
 
@@ -210,7 +212,7 @@ class TestFastAPIAppBehavior:
     def test_custom_prefix_and_settings(self):
         """測試自定義前綴和設定"""
         storage = MemoryStorage()
-        crud = AutoCRUD(model=Product, storage=storage, resource_name="products")
+        crud = SingleModelCRUD(model=Product, storage=storage, resource_name="products")
         generator = FastAPIGenerator(crud)
 
         from fastapi import FastAPI

@@ -6,7 +6,7 @@ from .converter import ModelConverter
 from .storage import Storage
 
 
-class AutoCRUD:
+class SingleModelCRUD:
     """自動 CRUD 系統核心類"""
 
     def __init__(
@@ -136,7 +136,7 @@ if __name__ == "__main__":
 
     # 創建 AutoCRUD 實例
     storage = MemoryStorage()
-    crud = AutoCRUD(model=User, storage=storage, resource_name="users")
+    crud = SingleModelCRUD(model=User, storage=storage, resource_name="users")
 
     # 測試創建
     user_data = {"name": "Alice", "email": "alice@example.com", "age": 30}

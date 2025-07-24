@@ -3,14 +3,14 @@
 from typing import Dict, Optional, Type
 from fastapi import FastAPI, HTTPException, status
 from pydantic import BaseModel, create_model
-from .core import AutoCRUD
+from .core import SingleModelCRUD
 from .converter import ModelConverter
 
 
 class FastAPIGenerator:
     """FastAPI 路由自動生成器"""
 
-    def __init__(self, crud: AutoCRUD, enable_count: bool = True):
+    def __init__(self, crud: SingleModelCRUD, enable_count: bool = True):
         self.crud = crud
         self.converter = ModelConverter()
         self.enable_count = enable_count
@@ -177,7 +177,7 @@ class FastAPIGenerator:
         return app
 
 
-# 為了向後兼容，在 AutoCRUD 類中添加 create_fastapi_app 方法
+# 為了向後兼容，在 SingleModelCRUD 類中添加 create_fastapi_app 方法
 def create_fastapi_app_method(self, enable_count: bool = True, **kwargs) -> FastAPI:
     """創建 FastAPI 應用的便利方法"""
     generator = FastAPIGenerator(self, enable_count=enable_count)
@@ -188,7 +188,7 @@ def create_fastapi_app_method(self, enable_count: bool = True, **kwargs) -> Fast
 if __name__ == "__main__":
     from dataclasses import dataclass
     from .storage import MemoryStorage
-    from .core import AutoCRUD
+    from .core import SingleModelCRUD
 
     @dataclass
     class User:
@@ -198,7 +198,7 @@ if __name__ == "__main__":
 
     # 創建 CRUD 系統
     storage = MemoryStorage()
-    crud = AutoCRUD(model=User, storage=storage, resource_name="users")
+    crud = SingleModelCRUD(model=User, storage=storage, resource_name="users")
 
     # 生成 FastAPI 應用
     generator = FastAPIGenerator(crud)

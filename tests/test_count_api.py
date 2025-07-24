@@ -1,7 +1,7 @@
 """測試 count API 功能"""
 
 from dataclasses import dataclass
-from autocrud import AutoCRUD, MultiModelAutoCRUD, MemoryStorage
+from autocrud import SingleModelCRUD, AutoCRUD, MemoryStorage
 
 
 @dataclass
@@ -16,14 +16,14 @@ class TestCountAPI:
     def test_count_empty(self):
         """測試空集合的 count"""
         storage = MemoryStorage()
-        crud = AutoCRUD(model=Item, storage=storage, resource_name="items")
+        crud = SingleModelCRUD(model=Item, storage=storage, resource_name="items")
 
         assert crud.count() == 0
 
     def test_count_after_create(self):
         """測試建立項目後的 count"""
         storage = MemoryStorage()
-        crud = AutoCRUD(model=Item, storage=storage, resource_name="items")
+        crud = SingleModelCRUD(model=Item, storage=storage, resource_name="items")
 
         # 建立幾個項目
         crud.create({"name": "item1", "value": 1})
@@ -38,7 +38,7 @@ class TestCountAPI:
     def test_count_after_delete(self):
         """測試刪除項目後的 count"""
         storage = MemoryStorage()
-        crud = AutoCRUD(model=Item, storage=storage, resource_name="items")
+        crud = SingleModelCRUD(model=Item, storage=storage, resource_name="items")
 
         # 建立項目
         item1 = crud.create({"name": "item1", "value": 1})
@@ -62,9 +62,8 @@ class TestCountAPI:
     def test_count_with_multiple_resources(self):
         """測試多個資源的 count 獨立性"""
         storage = MemoryStorage()
-
-        crud1 = AutoCRUD(model=Item, storage=storage, resource_name="items1")
-        crud2 = AutoCRUD(model=Item, storage=storage, resource_name="items2")
+        crud1 = SingleModelCRUD(model=Item, storage=storage, resource_name="items1")
+        crud2 = SingleModelCRUD(model=Item, storage=storage, resource_name="items2")
 
         # 在第一個資源中建立項目
         crud1.create({"name": "item1", "value": 1})
@@ -93,8 +92,7 @@ class TestMultiModelCount:
 
     def test_multi_model_count(self):
         """測試多模型的 count 功能"""
-        storage = MemoryStorage()
-        multi_crud = MultiModelAutoCRUD(storage)
+        multi_crud = AutoCRUD()
 
         # 註冊模型
         multi_crud.register_model(self.User)
@@ -125,8 +123,7 @@ class TestMultiModelCount:
 
     def test_multi_model_count_after_operations(self):
         """測試多模型在各種操作後的 count"""
-        storage = MemoryStorage()
-        multi_crud = MultiModelAutoCRUD(storage)
+        multi_crud = AutoCRUD()
 
         multi_crud.register_model(self.User)
 
@@ -166,7 +163,7 @@ class TestCountFastAPI:
         from autocrud.fastapi_generator import FastAPIGenerator
 
         storage = MemoryStorage()
-        crud = AutoCRUD(model=Item, storage=storage, resource_name="items")
+        crud = SingleModelCRUD(model=Item, storage=storage, resource_name="items")
         generator = FastAPIGenerator(crud)
 
         from fastapi import FastAPI
@@ -188,7 +185,7 @@ class TestCountFastAPI:
     def test_count_api_response_format(self):
         """測試 count API 的回應格式"""
         storage = MemoryStorage()
-        crud = AutoCRUD(model=Item, storage=storage, resource_name="items")
+        crud = SingleModelCRUD(model=Item, storage=storage, resource_name="items")
 
         # 建立一些項目
         crud.create({"name": "item1", "value": 1})
@@ -218,8 +215,7 @@ class TestCountFastAPI:
             name: str
             email: str
 
-        storage = MemoryStorage()
-        multi_crud = MultiModelAutoCRUD(storage)
+        multi_crud = AutoCRUD()
         multi_crud.register_model(User)
         multi_crud.register_model(Item, resource_name="items")
 
@@ -254,7 +250,7 @@ class TestCountAPIOptions:
         from autocrud.fastapi_generator import FastAPIGenerator
 
         storage = MemoryStorage()
-        crud = AutoCRUD(model=Item, storage=storage, resource_name="items")
+        crud = SingleModelCRUD(model=Item, storage=storage, resource_name="items")
 
         # 創建禁用 count 的生成器
         generator = FastAPIGenerator(crud, enable_count=False)
@@ -281,7 +277,7 @@ class TestCountAPIOptions:
     def test_autocrud_count_disabled(self):
         """測試 AutoCRUD.create_fastapi_app 禁用 count"""
         storage = MemoryStorage()
-        crud = AutoCRUD(model=Item, storage=storage, resource_name="items")
+        crud = SingleModelCRUD(model=Item, storage=storage, resource_name="items")
 
         # 創建禁用 count 的應用
         app = crud.create_fastapi_app(enable_count=False)
@@ -298,7 +294,7 @@ class TestCountAPIOptions:
     def test_autocrud_count_enabled_by_default(self):
         """測試 AutoCRUD.create_fastapi_app 預設啟用 count"""
         storage = MemoryStorage()
-        crud = AutoCRUD(model=Item, storage=storage, resource_name="items")
+        crud = SingleModelCRUD(model=Item, storage=storage, resource_name="items")
 
         # 創建應用（預設啟用 count）
         app = crud.create_fastapi_app()
@@ -320,8 +316,7 @@ class TestCountAPIOptions:
             name: str
             email: str
 
-        storage = MemoryStorage()
-        multi_crud = MultiModelAutoCRUD(storage)
+        multi_crud = AutoCRUD()
         multi_crud.register_model(User)
         multi_crud.register_model(Item, resource_name="items")
 
@@ -350,8 +345,7 @@ class TestCountAPIOptions:
             name: str
             email: str
 
-        storage = MemoryStorage()
-        multi_crud = MultiModelAutoCRUD(storage)
+        multi_crud = AutoCRUD()
         multi_crud.register_model(User)
         multi_crud.register_model(Item, resource_name="items")
 

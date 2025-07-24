@@ -2,43 +2,53 @@
 
 from typing import Dict, Type, List, Any, Optional
 from fastapi import FastAPI
-from .core import AutoCRUD
+from .core import SingleModelCRUD
 from .storage import Storage
 from .fastapi_generator import FastAPIGenerator
+from .storage_factory import StorageFactory, DefaultStorageFactory
 
 
-class MultiModelAutoCRUD:
+class AutoCRUD:
     """支持多個模型的 AutoCRUD 系統"""
 
-    def __init__(self, storage: Storage):
+    def __init__(self, storage_factory: Optional[StorageFactory] = None):
         """
         初始化多模型 CRUD 系統
 
         Args:
-            storage: 共享的存儲後端
+            storage_factory: 存儲工廠，用於為每個資源創建獨立的存儲後端
+                           如果為 None，將使用默認的內存存儲工廠
         """
-        self.storage = storage
-        self.cruds: Dict[str, AutoCRUD] = {}
+        if storage_factory is not None:
+            self.storage_factory = storage_factory
+        else:
+            # 默認使用內存存儲工廠
+            self.storage_factory = DefaultStorageFactory.memory()
+
+        self.cruds: Dict[str, SingleModelCRUD] = {}
         self.models: Dict[str, Type] = {}
+        self.storages: Dict[str, Storage] = {}  # 記錄每個資源的 storage
 
     def register_model(
         self,
         model: Type,
         resource_name: Optional[str] = None,
+        storage: Optional[Storage] = None,
         id_generator: Optional[callable] = None,
         use_plural: bool = True,
-    ) -> AutoCRUD:
+    ) -> SingleModelCRUD:
         """
         註冊一個模型
 
         Args:
             model: 要註冊的模型類
             resource_name: 資源名稱，如果為 None 則自動生成
+            storage: 該資源專用的存儲後端，如果為 None 則使用 storage_factory 創建
             id_generator: ID 生成器函數
             use_plural: 是否使用複數形式，僅在 resource_name 為 None 時生效
 
         Returns:
-            創建的 AutoCRUD 實例
+            創建的 SingleModelCRUD 實例
         """
         if resource_name is None:
             # 自動生成資源名稱
@@ -52,20 +62,28 @@ class MultiModelAutoCRUD:
         if resource_name in self.cruds:
             raise ValueError(f"Resource '{resource_name}' already registered")
 
+        # 決定使用哪個 storage
+        if storage is not None:
+            actual_storage = storage
+        else:
+            # 使用工廠為該資源創建獨立的存儲
+            actual_storage = self.storage_factory.create_storage(resource_name)
+
         # 創建該模型的 CRUD 實例
-        crud = AutoCRUD(
+        crud = SingleModelCRUD(
             model=model,
-            storage=self.storage,
+            storage=actual_storage,
             resource_name=resource_name,
             id_generator=id_generator,
         )
 
         self.cruds[resource_name] = crud
         self.models[resource_name] = model
+        self.storages[resource_name] = actual_storage
 
         return crud
 
-    def get_crud(self, resource_name: str) -> AutoCRUD:
+    def get_crud(self, resource_name: str) -> SingleModelCRUD:
         """獲取指定資源的 CRUD 實例"""
         if resource_name not in self.cruds:
             raise ValueError(f"Resource '{resource_name}' not registered")
@@ -77,6 +95,12 @@ class MultiModelAutoCRUD:
             raise ValueError(f"Resource '{resource_name}' not registered")
         return self.models[resource_name]
 
+    def get_storage(self, resource_name: str) -> Storage:
+        """獲取指定資源的存儲後端"""
+        if resource_name not in self.storages:
+            raise ValueError(f"Resource '{resource_name}' not registered")
+        return self.storages[resource_name]
+
     def list_resources(self) -> List[str]:
         """列出所有註冊的資源名稱"""
         return list(self.cruds.keys())
@@ -86,6 +110,7 @@ class MultiModelAutoCRUD:
         if resource_name in self.cruds:
             del self.cruds[resource_name]
             del self.models[resource_name]
+            del self.storages[resource_name]
             return True
         return False
 
@@ -115,11 +140,19 @@ class MultiModelAutoCRUD:
         # 添加健康檢查端點
         @app.get("/health")
         async def health_check():
+            resources_info = {}
+            for resource_name in self.cruds.keys():
+                storage = self.storages[resource_name]
+                resources_info[resource_name] = {
+                    "model": self.models[resource_name].__name__,
+                    "storage_type": storage.__class__.__name__,
+                }
+
             return {
                 "status": "healthy",
                 "service": title,
                 "registered_models": len(self.cruds),
-                "resources": list(self.cruds.keys()),
+                "resources": resources_info,
             }
 
         # 為每個註冊的模型創建路由

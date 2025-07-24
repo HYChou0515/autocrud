@@ -2,7 +2,7 @@
 
 import pytest
 from dataclasses import dataclass
-from autocrud import AutoCRUD, MemoryStorage
+from autocrud import SingleModelCRUD, MemoryStorage
 
 
 @dataclass
@@ -47,7 +47,7 @@ class TestFullAPICreation:
     def test_api_creation_basic(self):
         """測試基本 API 創建"""
         storage = MemoryStorage()
-        crud = AutoCRUD(model=Book, storage=storage, resource_name="books")
+        crud = SingleModelCRUD(model=Book, storage=storage, resource_name="books")
 
         app = crud.create_fastapi_app(
             title="書籍管理 API",
@@ -62,7 +62,7 @@ class TestFullAPICreation:
     def test_api_routes_generation(self):
         """測試 API 路由生成"""
         storage = MemoryStorage()
-        crud = AutoCRUD(model=Book, storage=storage, resource_name="books")
+        crud = SingleModelCRUD(model=Book, storage=storage, resource_name="books")
 
         app = crud.create_fastapi_app()
 
@@ -88,7 +88,7 @@ class TestFullAPICreation:
     def test_api_with_preloaded_data(self, sample_books):
         """測試預載數據的 API"""
         storage = MemoryStorage()
-        crud = AutoCRUD(model=Book, storage=storage, resource_name="books")
+        crud = SingleModelCRUD(model=Book, storage=storage, resource_name="books")
 
         # 預填測試數據
         created_books = []
@@ -115,7 +115,7 @@ class TestFullAPICreation:
     def test_crud_operations_through_api_backend(self, sample_books):
         """測試通過 API 後端進行 CRUD 操作"""
         storage = MemoryStorage()
-        crud = AutoCRUD(model=Book, storage=storage, resource_name="books")
+        crud = SingleModelCRUD(model=Book, storage=storage, resource_name="books")
 
         # 創建 API
         crud.create_fastapi_app()
@@ -180,7 +180,9 @@ class TestFullAPICreation:
 
         for model, resource_name, title in models:
             storage = MemoryStorage()
-            crud = AutoCRUD(model=model, storage=storage, resource_name=resource_name)
+            crud = SingleModelCRUD(
+                model=model, storage=storage, resource_name=resource_name
+            )
 
             app = crud.create_fastapi_app(title=title)
 
@@ -197,7 +199,7 @@ class TestFullAPICreation:
     def test_api_health_and_docs_endpoints(self):
         """測試 API 健康檢查和文檔端點"""
         storage = MemoryStorage()
-        crud = AutoCRUD(model=Book, storage=storage, resource_name="books")
+        crud = SingleModelCRUD(model=Book, storage=storage, resource_name="books")
 
         app = crud.create_fastapi_app()
 
@@ -216,7 +218,7 @@ class TestFullAPICreation:
     def test_api_configuration_options(self):
         """測試 API 配置選項"""
         storage = MemoryStorage()
-        crud = AutoCRUD(model=Book, storage=storage, resource_name="books")
+        crud = SingleModelCRUD(model=Book, storage=storage, resource_name="books")
 
         # 測試完整配置
         app = crud.create_fastapi_app(

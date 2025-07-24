@@ -2,7 +2,7 @@
 
 import pytest
 from dataclasses import dataclass
-from autocrud import ModelConverter, SerializerFactory, MemoryStorage, AutoCRUD
+from autocrud import ModelConverter, SerializerFactory, MemoryStorage, SingleModelCRUD
 
 # 嘗試導入可選依賴
 try:
@@ -194,7 +194,9 @@ class TestIntegratedDataTypes:
     def test_dataclass_with_memory_storage(self, sample_user_data):
         """測試 dataclass 與內存存儲的整合"""
         storage = MemoryStorage()
-        crud = AutoCRUD(model=DataclassUser, storage=storage, resource_name="users")
+        crud = SingleModelCRUD(
+            model=DataclassUser, storage=storage, resource_name="users"
+        )
 
         created_user = crud.create(sample_user_data)
         retrieved_user = crud.get(created_user["id"])
@@ -206,7 +208,9 @@ class TestIntegratedDataTypes:
     def test_pydantic_with_memory_storage(self, sample_user_data):
         """測試 Pydantic 與內存存儲的整合"""
         storage = MemoryStorage()
-        crud = AutoCRUD(model=PydanticUser, storage=storage, resource_name="users")
+        crud = SingleModelCRUD(
+            model=PydanticUser, storage=storage, resource_name="users"
+        )
 
         created_user = crud.create(sample_user_data)
         retrieved_user = crud.get(created_user["id"])
@@ -217,7 +221,9 @@ class TestIntegratedDataTypes:
     def test_typeddict_with_memory_storage(self, sample_user_data):
         """測試 TypedDict 與內存存儲的整合"""
         storage = MemoryStorage()
-        crud = AutoCRUD(model=TypedDictUser, storage=storage, resource_name="users")
+        crud = SingleModelCRUD(
+            model=TypedDictUser, storage=storage, resource_name="users"
+        )
 
         created_user = crud.create(sample_user_data)
         retrieved_user = crud.get(created_user["id"])
@@ -232,7 +238,9 @@ class TestIntegratedDataTypes:
         for serializer_type in serializer_types:
             serializer = SerializerFactory.create(serializer_type)
             storage = MemoryStorage(serializer=serializer)
-            crud = AutoCRUD(model=DataclassUser, storage=storage, resource_name="users")
+            crud = SingleModelCRUD(
+                model=DataclassUser, storage=storage, resource_name="users"
+            )
 
             created_user = crud.create(sample_user_data)
             retrieved_user = crud.get(created_user["id"])

@@ -2,7 +2,7 @@
 
 import pytest
 from dataclasses import dataclass
-from autocrud import MultiModelAutoCRUD, MemoryStorage, DiskStorage
+from autocrud import AutoCRUD, DefaultStorageFactory
 
 
 @dataclass
@@ -34,17 +34,17 @@ class TestMultiModelAutoCRUD:
 
     def test_create_multi_model_crud(self):
         """測試創建多模型 CRUD 系統"""
-        storage = MemoryStorage()
-        multi_crud = MultiModelAutoCRUD(storage)
+        multi_crud = AutoCRUD()
 
-        assert multi_crud.storage == storage
+        assert multi_crud.storage_factory is not None
         assert len(multi_crud.cruds) == 0
         assert len(multi_crud.models) == 0
+        assert len(multi_crud.storages) == 0
 
     def test_register_single_model(self):
         """測試註冊單個模型"""
-        storage = MemoryStorage()
-        multi_crud = MultiModelAutoCRUD(storage)
+        # storage = MemoryStorage()  # 不再需要，使用 StorageFactory
+        multi_crud = AutoCRUD()
 
         crud = multi_crud.register_model(User)
 
@@ -55,8 +55,8 @@ class TestMultiModelAutoCRUD:
 
     def test_register_multiple_models(self):
         """測試註冊多個模型"""
-        storage = MemoryStorage()
-        multi_crud = MultiModelAutoCRUD(storage)
+        # storage = MemoryStorage()  # 不再需要，使用 StorageFactory
+        multi_crud = AutoCRUD()
 
         user_crud = multi_crud.register_model(User)
         product_crud = multi_crud.register_model(Product)
@@ -73,8 +73,8 @@ class TestMultiModelAutoCRUD:
 
     def test_custom_resource_name(self):
         """測試自定義資源名稱"""
-        storage = MemoryStorage()
-        multi_crud = MultiModelAutoCRUD(storage)
+        # storage = MemoryStorage()  # 不再需要，使用 StorageFactory
+        multi_crud = AutoCRUD()
 
         crud = multi_crud.register_model(User, resource_name="people")
 
@@ -84,8 +84,8 @@ class TestMultiModelAutoCRUD:
 
     def test_duplicate_resource_name_error(self):
         """測試重複資源名稱錯誤"""
-        storage = MemoryStorage()
-        multi_crud = MultiModelAutoCRUD(storage)
+        # storage = MemoryStorage()  # 不再需要，使用 StorageFactory
+        multi_crud = AutoCRUD()
 
         multi_crud.register_model(User)
 
@@ -94,8 +94,8 @@ class TestMultiModelAutoCRUD:
 
     def test_register_model_plural_choice(self):
         """測試資源名稱複數形式選擇"""
-        storage = MemoryStorage()
-        multi_crud = MultiModelAutoCRUD(storage)
+        # storage = MemoryStorage()  # 不再需要，使用 StorageFactory
+        multi_crud = AutoCRUD()
 
         # 測試默認行為（複數）
         multi_crud.register_model(User)
@@ -119,8 +119,8 @@ class TestMultiModelAutoCRUD:
 
     def test_singularize_resource_name(self):
         """測試單數資源名稱生成"""
-        storage = MemoryStorage()
-        multi_crud = MultiModelAutoCRUD(storage)
+        # storage = MemoryStorage()  # 不再需要，使用 StorageFactory
+        multi_crud = AutoCRUD()
 
         # 測試不同的模型名稱
         test_cases = [
@@ -138,8 +138,8 @@ class TestMultiModelAutoCRUD:
 
     def test_get_crud(self):
         """測試獲取 CRUD 實例"""
-        storage = MemoryStorage()
-        multi_crud = MultiModelAutoCRUD(storage)
+        # storage = MemoryStorage()  # 不再需要，使用 StorageFactory
+        multi_crud = AutoCRUD()
 
         user_crud = multi_crud.register_model(User)
 
@@ -150,8 +150,8 @@ class TestMultiModelAutoCRUD:
 
     def test_get_model(self):
         """測試獲取模型類"""
-        storage = MemoryStorage()
-        multi_crud = MultiModelAutoCRUD(storage)
+        # storage = MemoryStorage()  # 不再需要，使用 StorageFactory
+        multi_crud = AutoCRUD()
 
         multi_crud.register_model(User)
 
@@ -162,8 +162,8 @@ class TestMultiModelAutoCRUD:
 
     def test_list_resources(self):
         """測試列出資源"""
-        storage = MemoryStorage()
-        multi_crud = MultiModelAutoCRUD(storage)
+        # storage = MemoryStorage()  # 不再需要，使用 StorageFactory
+        multi_crud = AutoCRUD()
 
         assert multi_crud.list_resources() == []
 
@@ -177,8 +177,8 @@ class TestMultiModelAutoCRUD:
 
     def test_unregister_model(self):
         """測試取消註冊模型"""
-        storage = MemoryStorage()
-        multi_crud = MultiModelAutoCRUD(storage)
+        # storage = MemoryStorage()  # 不再需要，使用 StorageFactory
+        multi_crud = AutoCRUD()
 
         multi_crud.register_model(User)
         multi_crud.register_model(Product)
@@ -203,8 +203,8 @@ class TestMultiModelCRUDOperations:
     @pytest.fixture
     def multi_crud(self):
         """創建配置好的多模型 CRUD 系統"""
-        storage = MemoryStorage()
-        multi_crud = MultiModelAutoCRUD(storage)
+        # storage = MemoryStorage()  # 不再需要，使用 StorageFactory
+        multi_crud = AutoCRUD()
         multi_crud.register_model(User)
         multi_crud.register_model(Product)
         multi_crud.register_model(Order)
@@ -379,8 +379,8 @@ class TestResourceNameGeneration:
 
     def test_pluralize_simple_names(self):
         """測試簡單名稱複數化"""
-        storage = MemoryStorage()
-        multi_crud = MultiModelAutoCRUD(storage)
+        # storage = MemoryStorage()  # 不再需要，使用 StorageFactory
+        multi_crud = AutoCRUD()
 
         @dataclass
         class Cat:
@@ -399,8 +399,8 @@ class TestResourceNameGeneration:
 
     def test_pluralize_complex_names(self):
         """測試複雜名稱複數化"""
-        storage = MemoryStorage()
-        multi_crud = MultiModelAutoCRUD(storage)
+        # storage = MemoryStorage()  # 不再需要，使用 StorageFactory
+        multi_crud = AutoCRUD()
 
         @dataclass
         class UserProfile:
@@ -419,8 +419,8 @@ class TestResourceNameGeneration:
 
     def test_pluralize_words_ending_in_y(self):
         """測試以 y 結尾的詞複數化"""
-        storage = MemoryStorage()
-        multi_crud = MultiModelAutoCRUD(storage)
+        # storage = MemoryStorage()  # 不再需要，使用 StorageFactory
+        multi_crud = AutoCRUD()
 
         @dataclass
         class Company:
@@ -437,8 +437,8 @@ class TestMultiModelFastAPIIntegration:
 
     def test_create_fastapi_app(self):
         """測試創建 FastAPI 應用"""
-        storage = MemoryStorage()
-        multi_crud = MultiModelAutoCRUD(storage)
+        # storage = MemoryStorage()  # 不再需要，使用 StorageFactory
+        multi_crud = AutoCRUD()
 
         multi_crud.register_model(User)
         multi_crud.register_model(Product)
@@ -453,8 +453,8 @@ class TestMultiModelFastAPIIntegration:
 
     def test_fastapi_routes_generation(self):
         """測試 FastAPI 路由生成"""
-        storage = MemoryStorage()
-        multi_crud = MultiModelAutoCRUD(storage)
+        # storage = MemoryStorage()  # 不再需要，使用 StorageFactory
+        multi_crud = AutoCRUD()
 
         multi_crud.register_model(User)
         multi_crud.register_model(Product)
@@ -492,8 +492,8 @@ class TestMultiModelFastAPIIntegration:
 
     def test_health_endpoint_with_model_info(self):
         """測試健康檢查端點包含模型信息"""
-        storage = MemoryStorage()
-        multi_crud = MultiModelAutoCRUD(storage)
+        # storage = MemoryStorage()  # 不再需要，使用 StorageFactory
+        multi_crud = AutoCRUD()
 
         multi_crud.register_model(User)
         multi_crud.register_model(Product)
@@ -515,8 +515,8 @@ class TestMultiModelWithDifferentStorages:
 
     def test_with_memory_storage(self):
         """測試使用內存存儲"""
-        storage = MemoryStorage()
-        multi_crud = MultiModelAutoCRUD(storage)
+        # storage = MemoryStorage()  # 不再需要，使用 StorageFactory
+        multi_crud = AutoCRUD()
 
         multi_crud.register_model(User)
         multi_crud.register_model(Product)
@@ -544,8 +544,8 @@ class TestMultiModelWithDifferentStorages:
 
     def test_with_disk_storage(self, temp_dir):
         """測試使用磁碟存儲"""
-        storage = DiskStorage(temp_dir)
-        multi_crud = MultiModelAutoCRUD(storage)
+        factory = DefaultStorageFactory.disk(temp_dir)
+        multi_crud = AutoCRUD(storage_factory=factory)
 
         multi_crud.register_model(User)
         multi_crud.register_model(Product)
@@ -564,9 +564,9 @@ class TestMultiModelWithDifferentStorages:
             },
         )
 
-        # 創建新的多模型實例來測試持久化
-        storage2 = DiskStorage(temp_dir)
-        multi_crud2 = MultiModelAutoCRUD(storage2)
+        # 創建新的多模型實例來測試持久化，使用同一個目錄
+        factory2 = DefaultStorageFactory.disk(temp_dir)
+        multi_crud2 = AutoCRUD(storage_factory=factory2)
         multi_crud2.register_model(User)
         multi_crud2.register_model(Product)
 

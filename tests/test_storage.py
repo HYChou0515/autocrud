@@ -2,7 +2,7 @@
 
 import os
 from dataclasses import dataclass
-from autocrud import AutoCRUD, MemoryStorage, DiskStorage, SerializerFactory
+from autocrud import SingleModelCRUD, MemoryStorage, DiskStorage, SerializerFactory
 
 
 @dataclass
@@ -19,7 +19,7 @@ class TestMemoryStorage:
     def test_memory_storage_basic_operations(self, sample_product_data):
         """測試內存存儲基本操作"""
         storage = MemoryStorage()
-        crud = AutoCRUD(model=Product, storage=storage, resource_name="products")
+        crud = SingleModelCRUD(model=Product, storage=storage, resource_name="products")
 
         # 創建
         product = crud.create(sample_product_data)
@@ -49,12 +49,16 @@ class TestMemoryStorage:
         """測試內存存儲數據不會在實例間保持"""
         # 第一個存儲實例
         storage1 = MemoryStorage()
-        crud1 = AutoCRUD(model=Product, storage=storage1, resource_name="products")
+        crud1 = SingleModelCRUD(
+            model=Product, storage=storage1, resource_name="products"
+        )
         product = crud1.create(sample_product_data)
 
         # 第二個存儲實例（應該是空的）
         storage2 = MemoryStorage()
-        crud2 = AutoCRUD(model=Product, storage=storage2, resource_name="products")
+        crud2 = SingleModelCRUD(
+            model=Product, storage=storage2, resource_name="products"
+        )
 
         # 在新實例中查找數據
         result = crud2.get(product["id"])
@@ -70,7 +74,7 @@ class TestDiskStorage:
     def test_disk_storage_basic_operations(self, temp_dir, sample_product_data):
         """測試磁碟存儲基本操作"""
         storage = DiskStorage(temp_dir)
-        crud = AutoCRUD(model=Product, storage=storage, resource_name="products")
+        crud = SingleModelCRUD(model=Product, storage=storage, resource_name="products")
 
         # 創建
         product = crud.create(sample_product_data)
@@ -109,13 +113,17 @@ class TestDiskStorage:
         """測試磁碟存儲數據持久化"""
         # 第一個存儲實例
         storage1 = DiskStorage(temp_dir)
-        crud1 = AutoCRUD(model=Product, storage=storage1, resource_name="products")
+        crud1 = SingleModelCRUD(
+            model=Product, storage=storage1, resource_name="products"
+        )
         product = crud1.create(sample_product_data)
         product_id = product["id"]
 
         # 第二個存儲實例（應該能讀取相同數據）
         storage2 = DiskStorage(temp_dir)
-        crud2 = AutoCRUD(model=Product, storage=storage2, resource_name="products")
+        crud2 = SingleModelCRUD(
+            model=Product, storage=storage2, resource_name="products"
+        )
 
         # 在新實例中查找數據
         retrieved = crud2.get(product_id)
@@ -139,7 +147,9 @@ class TestDiskStorage:
 
             serializer = SerializerFactory.create(serializer_type)
             storage = DiskStorage(storage_dir, serializer=serializer)
-            crud = AutoCRUD(model=Product, storage=storage, resource_name="products")
+            crud = SingleModelCRUD(
+                model=Product, storage=storage, resource_name="products"
+            )
 
             # 基本操作測試
             product = crud.create(sample_product_data)
@@ -159,7 +169,7 @@ class TestStorageComparison:
 
         # 內存存儲性能
         memory_storage = MemoryStorage()
-        memory_crud = AutoCRUD(
+        memory_crud = SingleModelCRUD(
             model=Product, storage=memory_storage, resource_name="products"
         )
 
@@ -171,7 +181,7 @@ class TestStorageComparison:
 
         # 磁碟存儲性能
         disk_storage = DiskStorage(temp_dir)
-        disk_crud = AutoCRUD(
+        disk_crud = SingleModelCRUD(
             model=Product, storage=disk_storage, resource_name="products"
         )
 

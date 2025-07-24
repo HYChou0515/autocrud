@@ -1,7 +1,7 @@
 """測試基本 CRUD 功能"""
 
 from dataclasses import dataclass
-from autocrud import AutoCRUD, MemoryStorage
+from autocrud import SingleModelCRUD, MemoryStorage
 
 
 @dataclass
@@ -17,7 +17,7 @@ class TestBasicCrud:
     def test_create_user(self, sample_user_data):
         """測試創建用戶"""
         storage = MemoryStorage()
-        crud = AutoCRUD(model=User, storage=storage, resource_name="users")
+        crud = SingleModelCRUD(model=User, storage=storage, resource_name="users")
 
         created_user = crud.create(sample_user_data)
 
@@ -30,7 +30,7 @@ class TestBasicCrud:
     def test_get_user(self, sample_user_data):
         """測試獲取用戶"""
         storage = MemoryStorage()
-        crud = AutoCRUD(model=User, storage=storage, resource_name="users")
+        crud = SingleModelCRUD(model=User, storage=storage, resource_name="users")
 
         # 先創建用戶
         created_user = crud.create(sample_user_data)
@@ -46,7 +46,7 @@ class TestBasicCrud:
     def test_get_nonexistent_user(self):
         """測試獲取不存在的用戶"""
         storage = MemoryStorage()
-        crud = AutoCRUD(model=User, storage=storage, resource_name="users")
+        crud = SingleModelCRUD(model=User, storage=storage, resource_name="users")
 
         result = crud.get("nonexistent-id")
         assert result is None
@@ -54,7 +54,7 @@ class TestBasicCrud:
     def test_update_user(self, sample_user_data):
         """測試更新用戶"""
         storage = MemoryStorage()
-        crud = AutoCRUD(model=User, storage=storage, resource_name="users")
+        crud = SingleModelCRUD(model=User, storage=storage, resource_name="users")
 
         # 創建用戶
         created_user = crud.create(sample_user_data)
@@ -77,7 +77,7 @@ class TestBasicCrud:
     def test_update_nonexistent_user(self, sample_user_data):
         """測試更新不存在的用戶"""
         storage = MemoryStorage()
-        crud = AutoCRUD(model=User, storage=storage, resource_name="users")
+        crud = SingleModelCRUD(model=User, storage=storage, resource_name="users")
 
         result = crud.update("nonexistent-id", sample_user_data)
         assert result is None
@@ -85,7 +85,7 @@ class TestBasicCrud:
     def test_delete_user(self, sample_user_data):
         """測試刪除用戶"""
         storage = MemoryStorage()
-        crud = AutoCRUD(model=User, storage=storage, resource_name="users")
+        crud = SingleModelCRUD(model=User, storage=storage, resource_name="users")
 
         # 創建用戶
         created_user = crud.create(sample_user_data)
@@ -105,7 +105,7 @@ class TestBasicCrud:
     def test_delete_nonexistent_user(self):
         """測試刪除不存在的用戶"""
         storage = MemoryStorage()
-        crud = AutoCRUD(model=User, storage=storage, resource_name="users")
+        crud = SingleModelCRUD(model=User, storage=storage, resource_name="users")
 
         result = crud.delete("nonexistent-id")
         assert result is False
@@ -113,7 +113,7 @@ class TestBasicCrud:
     def test_list_all_users(self, sample_user_data):
         """測試列出所有用戶"""
         storage = MemoryStorage()
-        crud = AutoCRUD(model=User, storage=storage, resource_name="users")
+        crud = SingleModelCRUD(model=User, storage=storage, resource_name="users")
 
         # 創建多個用戶
         user1 = crud.create(sample_user_data)
@@ -132,7 +132,7 @@ class TestBasicCrud:
     def test_exists_user(self, sample_user_data):
         """測試檢查用戶是否存在"""
         storage = MemoryStorage()
-        crud = AutoCRUD(model=User, storage=storage, resource_name="users")
+        crud = SingleModelCRUD(model=User, storage=storage, resource_name="users")
 
         # 創建用戶
         created_user = crud.create(sample_user_data)
