@@ -42,15 +42,15 @@ class TestCountAPI:
         assert crud.count() == 3
 
         # 刪除一個項目
-        crud.delete(item1["id"])
+        crud.delete(item1)
         assert crud.count() == 2
 
         # 刪除另一個項目
-        crud.delete(item2["id"])
+        crud.delete(item2)
         assert crud.count() == 1
 
         # 刪除最後一個項目
-        crud.delete(item3["id"])
+        crud.delete(item3)
         assert crud.count() == 0
 
     def test_count_with_multiple_resources(self):
@@ -126,17 +126,17 @@ class TestMultiModelCount:
         # 更新使用者（count 不應該改變）
         multi_crud.update(
             "users",
-            user1["id"],
+            user1,
             {"name": "Alice Smith", "email": "alice.smith@example.com"},
         )
         assert multi_crud.count("users") == 3
 
         # 刪除使用者
-        multi_crud.delete("users", user2["id"])
+        multi_crud.delete("users", user2)
         assert multi_crud.count("users") == 2
 
         # 再刪除一個
-        multi_crud.delete("users", user3["id"])
+        multi_crud.delete("users", user3)
         assert multi_crud.count("users") == 1
 
 

@@ -234,9 +234,9 @@ class TestSingleModelCRUDAdvancedUpdate:
             "metadata": {"role": "admin", "level": 5},
             "email": None,
         }
-        created = self.crud.create(user_data)
-        assert created is not None
-        user_id = created["id"]
+        created_id = self.crud.create(user_data)
+        assert created_id is not None
+        user_id = created_id
 
         # 使用 advanced_update 更新
         update_data = {
@@ -262,9 +262,9 @@ class TestSingleModelCRUDAdvancedUpdate:
             "metadata": {"role": "admin"},
             "email": None,
         }
-        created = self.crud.create(user_data)
-        assert created is not None
-        user_id = created["id"]
+        created_id = self.crud.create(user_data)
+        assert created_id is not None
+        user_id = created_id
 
         # 使用 undefined 操作
         update_data = {"name": undefined(), "tags": list_add(["python"])}
@@ -283,9 +283,9 @@ class TestSingleModelCRUDAdvancedUpdate:
             "metadata": {},
             "email": None,
         }
-        created = self.crud.create(user_data)
-        assert created is not None
-        user_id = created["id"]
+        created_id = self.crud.create(user_data)
+        assert created_id is not None
+        user_id = created_id
 
         # 測試 list_remove
         update_data = {"tags": list_remove(["javascript"])}
@@ -310,9 +310,9 @@ class TestSingleModelCRUDAdvancedUpdate:
             "metadata": {"role": "admin", "level": 5, "department": "IT"},
             "email": None,
         }
-        created = self.crud.create(user_data)
-        assert created is not None
-        user_id = created["id"]
+        created_id = self.crud.create(user_data)
+        assert created_id is not None
+        user_id = created_id
 
         # 測試 dict_remove
         update_data = {"metadata": dict_remove(["department"])}
@@ -337,9 +337,9 @@ class TestSingleModelCRUDAdvancedUpdate:
         """測試數據驗證失敗的情況"""
         # 創建測試數據
         user_data = {"name": "John", "tags": [], "metadata": {}, "email": None}
-        created = self.crud.create(user_data)
-        assert created is not None
-        user_id = created["id"]
+        created_id = self.crud.create(user_data)
+        assert created_id is not None
+        user_id = created_id
 
         # 嘗試設置無效的數據類型（字符串設為整數）
         # 在 dataclass 中，通常會進行類型轉換，所以這個更新可能會成功
@@ -372,9 +372,9 @@ class TestAutoCRUDAdvancedUpdate:
             "metadata": {"role": "admin"},
             "email": None,
         }
-        created = self.autocrud.create("users", user_data)
-        assert created is not None
-        user_id = created["id"]
+        created_id = self.autocrud.create("users", user_data)
+        assert created_id is not None
+        user_id = created_id
 
         # 使用 advanced_update
         update_data = {
@@ -427,9 +427,9 @@ class TestAdvancedUpdateIntegration:
             },
             "email": None,
         }
-        created = self.crud.create(user_data)
-        assert created is not None
-        user_id = created["id"]
+        created_id = self.crud.create(user_data)
+        assert created_id is not None
+        user_id = created_id
 
         # 執行複雜的更新操作
         update_data = {
@@ -469,9 +469,9 @@ class TestAdvancedUpdateIntegration:
             "metadata": {"role": "admin"},
             "email": None,
         }
-        created = self.crud.create(user_data)
-        assert created is not None
-        user_id = created["id"]
+        created_id = self.crud.create(user_data)
+        assert created_id is not None
+        user_id = created_id
 
         # 混合簡單值和結構化操作
         update_data = {

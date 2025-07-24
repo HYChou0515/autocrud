@@ -137,8 +137,7 @@ class TestSingleModelCRUDRouteSelection:
 
         # 創建一些測試數據（直接通過 CRUD）
         user_data = {"name": "John", "age": 30}
-        created_user = self.crud.create(user_data)
-        user_id = created_user["id"]
+        user_id = self.crud.create(user_data)
 
         # 應該可以讀取
         response = client.get(f"/api/v1/users/{user_id}")
@@ -172,7 +171,8 @@ class TestSingleModelCRUDRouteSelection:
         # 應該可以創建
         response = client.post("/api/v1/users", json={"name": "John", "age": 30})
         assert response.status_code == 201
-        user_id = response.json()["id"]
+        user_data = response.json()
+        user_id = user_data["id"]
 
         # 應該可以更新
         response = client.put(
@@ -240,8 +240,7 @@ class TestAutoCRUDRouteSelection:
 
         # 創建測試數據（直接通過 CRUD）
         user_data = {"name": "John", "age": 30}
-        created_user = self.autocrud.create("users", user_data)
-        user_id = created_user["id"]
+        user_id = self.autocrud.create("users", user_data)
 
         # 只讀操作應該可用
         response = client.get(f"/api/v1/users/{user_id}")

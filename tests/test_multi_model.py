@@ -200,14 +200,19 @@ class TestMultiModelCRUDOperations:
     def test_create_operations(self, multi_crud):
         """測試創建操作"""
         # 創建用戶
-        user = multi_crud.create(
+        user_id = multi_crud.create(
             "users", {"name": "Alice", "email": "alice@example.com", "age": 30}
         )
+        assert isinstance(user_id, str)
+
+        # 驗證用戶創建成功
+        user = multi_crud.get("users", user_id)
+        assert user is not None
         assert user["name"] == "Alice"
-        assert "id" in user
+        assert user["id"] == user_id
 
         # 創建產品
-        product = multi_crud.create(
+        product_id = multi_crud.create(
             "products",
             {
                 "name": "筆記本電腦",
@@ -216,32 +221,42 @@ class TestMultiModelCRUDOperations:
                 "category": "電子產品",
             },
         )
+        assert isinstance(product_id, str)
+
+        # 驗證產品創建成功
+        product = multi_crud.get("products", product_id)
+        assert product is not None
         assert product["name"] == "筆記本電腦"
-        assert "id" in product
+        assert product["id"] == product_id
 
         # 創建訂單
-        order = multi_crud.create(
+        order_id = multi_crud.create(
             "orders",
             {
-                "user_id": user["id"],
-                "product_id": product["id"],
+                "user_id": user_id,
+                "product_id": product_id,
                 "quantity": 1,
                 "total_price": 25000.0,
             },
         )
-        assert order["user_id"] == user["id"]
+        assert isinstance(order_id, str)
+
+        # 驗證訂單創建成功
+        order = multi_crud.get("orders", order_id)
+        assert order is not None
+        assert order["user_id"] == user_id
         assert order["status"] == "pending"  # 默認值
-        assert "id" in order
+        assert order["id"] == order_id
 
     def test_get_operations(self, multi_crud):
         """測試獲取操作"""
         # 創建測試數據
-        user = multi_crud.create(
+        user_id = multi_crud.create(
             "users", {"name": "Bob", "email": "bob@example.com", "age": 25}
         )
 
         # 獲取存在的項目
-        retrieved_user = multi_crud.get("users", user["id"])
+        retrieved_user = multi_crud.get("users", user_id)
         assert retrieved_user is not None
         assert retrieved_user["name"] == "Bob"
 
@@ -252,7 +267,7 @@ class TestMultiModelCRUDOperations:
     def test_update_operations(self, multi_crud):
         """測試更新操作"""
         # 創建測試數據
-        product = multi_crud.create(
+        product_id = multi_crud.create(
             "products",
             {
                 "name": "原始產品",
@@ -263,9 +278,9 @@ class TestMultiModelCRUDOperations:
         )
 
         # 更新產品
-        updated = multi_crud.update(
+        success = multi_crud.update(
             "products",
-            product["id"],
+            product_id,
             {
                 "name": "更新產品",
                 "description": "更新描述",
@@ -274,28 +289,32 @@ class TestMultiModelCRUDOperations:
             },
         )
 
+        assert success is True
+
+        # 驗證更新結果
+        updated = multi_crud.get("products", product_id)
         assert updated is not None
         assert updated["name"] == "更新產品"
         assert updated["price"] == 200.0
-        assert updated["id"] == product["id"]
+        assert updated["id"] == product_id
 
     def test_delete_operations(self, multi_crud):
         """測試刪除操作"""
         # 創建測試數據
-        user = multi_crud.create(
+        user_id = multi_crud.create(
             "users", {"name": "Charlie", "email": "charlie@example.com", "age": 35}
         )
 
         # 確認項目存在
-        assert multi_crud.exists("users", user["id"]) is True
+        assert multi_crud.exists("users", user_id) is True
 
         # 刪除項目
-        deleted = multi_crud.delete("users", user["id"])
+        deleted = multi_crud.delete("users", user_id)
         assert deleted is True
 
         # 確認項目已刪除
-        assert multi_crud.exists("users", user["id"]) is False
-        assert multi_crud.get("users", user["id"]) is None
+        assert multi_crud.exists("users", user_id) is False
+        assert multi_crud.get("users", user_id) is None
 
     def test_list_all_operations(self, multi_crud):
         """測試列出所有項目操作"""
@@ -308,8 +327,8 @@ class TestMultiModelCRUDOperations:
 
         created_users = []
         for user_data in users_data:
-            user = multi_crud.create("users", user_data)
-            created_users.append(user)
+            user_id = multi_crud.create("users", user_data)
+            created_users.append(user_id)
 
         # 列出所有用戶
         all_users = multi_crud.list_all("users")
@@ -317,24 +336,24 @@ class TestMultiModelCRUDOperations:
 
         # 驗證所有用戶都在列表中
         user_ids = [user["id"] for user in all_users]
-        for created_user in created_users:
-            assert created_user["id"] in user_ids
+        for created_user_id in created_users:
+            assert created_user_id in user_ids
 
         # 根據 ID 找到對應的用戶並驗證
-        for created_user in created_users:
+        for i, created_user_id in enumerate(created_users):
             found_user = next(
-                user for user in all_users if user["id"] == created_user["id"]
+                user for user in all_users if user["id"] == created_user_id
             )
-            assert found_user["name"] == created_user["name"]
+            assert found_user["name"] == users_data[i]["name"]
 
     def test_cross_model_operations(self, multi_crud):
         """測試跨模型操作"""
         # 創建用戶和產品
-        user = multi_crud.create(
+        user_id = multi_crud.create(
             "users", {"name": "David", "email": "david@example.com", "age": 28}
         )
 
-        product = multi_crud.create(
+        product_id = multi_crud.create(
             "products",
             {
                 "name": "滑鼠",
@@ -345,20 +364,22 @@ class TestMultiModelCRUDOperations:
         )
 
         # 創建訂單連接用戶和產品
-        order = multi_crud.create(
+        order_id = multi_crud.create(
             "orders",
             {
-                "user_id": user["id"],
-                "product_id": product["id"],
+                "user_id": user_id,
+                "product_id": product_id,
                 "quantity": 2,
                 "total_price": 1000.0,
                 "status": "confirmed",
             },
         )
 
-        # 驗證關聯
-        assert order["user_id"] == user["id"]
-        assert order["product_id"] == product["id"]
+        # 驗證訂單創建成功
+        order = multi_crud.get("orders", order_id)
+        assert order is not None
+        assert order["user_id"] == user_id
+        assert order["product_id"] == product_id
 
         # 驗證可以獲取關聯的數據
         retrieved_user = multi_crud.get("users", order["user_id"])
@@ -501,10 +522,10 @@ class TestMultiModelWithDifferentStorages:
         multi_crud.register_model(Product)
 
         # 創建數據
-        user = multi_crud.create(
+        user_id = multi_crud.create(
             "users", {"name": "Alice", "email": "alice@example.com", "age": 30}
         )
-        product = multi_crud.create(
+        product_id = multi_crud.create(
             "products",
             {
                 "name": "商品",
@@ -515,8 +536,8 @@ class TestMultiModelWithDifferentStorages:
         )
 
         # 驗證數據
-        assert multi_crud.get("users", user["id"]) is not None
-        assert multi_crud.get("products", product["id"]) is not None
+        assert multi_crud.get("users", user_id) is not None
+        assert multi_crud.get("products", product_id) is not None
 
         assert len(multi_crud.list_all("users")) == 1
         assert len(multi_crud.list_all("products")) == 1
@@ -530,10 +551,10 @@ class TestMultiModelWithDifferentStorages:
         multi_crud.register_model(Product)
 
         # 創建數據
-        user = multi_crud.create(
+        user_id = multi_crud.create(
             "users", {"name": "Bob", "email": "bob@example.com", "age": 25}
         )
-        product = multi_crud.create(
+        product_id = multi_crud.create(
             "products",
             {
                 "name": "商品",
@@ -550,8 +571,8 @@ class TestMultiModelWithDifferentStorages:
         multi_crud2.register_model(Product)
 
         # 驗證數據持久化
-        retrieved_user = multi_crud2.get("users", user["id"])
-        retrieved_product = multi_crud2.get("products", product["id"])
+        retrieved_user = multi_crud2.get("users", user_id)
+        retrieved_product = multi_crud2.get("products", product_id)
 
         assert retrieved_user is not None
         assert retrieved_user["name"] == "Bob"

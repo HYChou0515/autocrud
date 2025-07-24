@@ -116,8 +116,12 @@ class TestSchemaValidation:
 
         # 測試創建操作
         user_data = {"name": "John", "email": "john@example.com"}
-        created_user = crud.create(user_data)
+        user_id = crud.create(user_data)
+        assert isinstance(user_id, str)
 
+        # 驗證創建成功
+        created_user = crud.get(user_id)
+        assert created_user is not None
         assert created_user["name"] == "John"
         assert created_user["email"] == "john@example.com"
         assert created_user["id"] is not None

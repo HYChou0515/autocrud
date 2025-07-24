@@ -91,7 +91,8 @@ class FastAPIGenerator:
                 """創建資源"""
                 try:
                     item_dict = item.model_dump()
-                    created_item = crud.create(item_dict)
+                    created_id = crud.create(item_dict)
+                    created_item = crud.get(created_id)
                     return created_item
                 except Exception as e:
                     raise HTTPException(
@@ -138,11 +139,12 @@ class FastAPIGenerator:
                 """更新資源"""
                 try:
                     item_dict = item.model_dump()
-                    updated_item = crud.update(resource_id, item_dict)
-                    if updated_item is None:
+                    success = crud.update(resource_id, item_dict)
+                    if not success:
                         raise HTTPException(
                             status_code=status.HTTP_404_NOT_FOUND, detail="資源不存在"
                         )
+                    updated_item = crud.get(resource_id)
                     return updated_item
                 except Exception as e:
                     raise HTTPException(

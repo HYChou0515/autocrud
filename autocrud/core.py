@@ -1,20 +1,23 @@
 """AutoCRUD 核心模組"""
 
 import uuid
-from typing import Any, Dict, Type, Optional
+from typing import Any, Dict, Type, Optional, TypeVar, Generic
 from .converter import ModelConverter
 from .storage import Storage
 from .updater import AdvancedUpdater
 from .metadata import MetadataConfig
 from .schema_analyzer import SchemaAnalyzer
 
+# 定義泛型類型變數
+T = TypeVar("T")
 
-class SingleModelCRUD:
+
+class SingleModelCRUD(Generic[T]):
     """自動 CRUD 系統核心類"""
 
     def __init__(
         self,
-        model: Type,
+        model: Type[T],
         storage: Storage,
         resource_name: str,
         id_generator: Optional[callable] = None,
@@ -38,8 +41,8 @@ class SingleModelCRUD:
         """生成存儲鍵"""
         return f"{self.resource_name}:{resource_id}"
 
-    def create(self, data: Dict[str, Any]) -> Dict[str, Any]:
-        """創建資源"""
+    def create(self, data: Dict[str, Any]) -> str:
+        """創建資源，回傳資源 ID"""
         # 應用 metadata（時間戳和用戶追蹤）
         enriched_data = self.schema_analyzer.prepare_create_data(data)
 
@@ -60,27 +63,25 @@ class SingleModelCRUD:
         key = self._make_key(resource_id)
         self.storage.set(key, instance_dict)
 
-        return instance_dict
+        return resource_id
 
     def get(self, resource_id: str) -> Optional[Dict[str, Any]]:
         """獲取資源"""
         key = self._make_key(resource_id)
         return self.storage.get(key)
 
-    def update(
-        self, resource_id: str, data: Dict[str, Any]
-    ) -> Optional[Dict[str, Any]]:
-        """更新資源"""
+    def update(self, resource_id: str, data: Dict[str, Any]) -> bool:
+        """更新資源，回傳是否更新成功"""
         key = self._make_key(resource_id)
 
         # 檢查資源是否存在
         if not self.storage.exists(key):
-            return None
+            return False
 
         # 獲取現有資料
         existing_data = self.storage.get(key)
         if existing_data is None:
-            return None
+            return False
 
         # 合併現有資料和更新資料
         merged_data = existing_data.copy()
@@ -102,7 +103,7 @@ class SingleModelCRUD:
         # 更新存儲
         self.storage.set(key, instance_dict)
 
-        return instance_dict
+        return True
 
     def advanced_update(
         self, resource_id: str, update_data: Dict[str, Any]

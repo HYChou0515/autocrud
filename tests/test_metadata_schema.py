@@ -269,7 +269,8 @@ class TestSingleModelCRUDWithMetadata:
         """測試帶 metadata 的創建"""
         user_data = {"name": "John Doe", "email": "john@example.com", "age": 30}
 
-        result = self.crud.create(user_data)
+        user_id = self.crud.create(user_data)
+        result = self.crud.get(user_id)
 
         # 檢查基本數據
         assert result["name"] == "John Doe"
@@ -287,8 +288,8 @@ class TestSingleModelCRUDWithMetadata:
         """測試帶 metadata 的更新"""
         # 先創建一個用戶
         user_data = {"name": "John Doe", "email": "john@example.com"}
-        created_user = self.crud.create(user_data)
-        user_id = created_user["id"]
+        created_user_id = self.crud.create(user_data)
+        user_id = created_user_id
 
         # 模擬時間推進和用戶變更
         self.current_time = "2023-01-02T00:00:00"
@@ -296,7 +297,8 @@ class TestSingleModelCRUDWithMetadata:
 
         # 更新用戶
         update_data = {"name": "Jane Doe", "age": 25}
-        result = self.crud.update(user_id, update_data)
+        assert self.crud.update(user_id, update_data)
+        result = self.crud.get(user_id)
 
         # 檢查更新的數據
         assert result["name"] == "Jane Doe"
@@ -313,8 +315,8 @@ class TestSingleModelCRUDWithMetadata:
         """測試 advanced update 與 metadata"""
         # 先創建一個用戶
         user_data = {"name": "John Doe", "email": "john@example.com"}
-        created_user = self.crud.create(user_data)
-        user_id = created_user["id"]
+        created_user_id = self.crud.create(user_data)
+        user_id = created_user_id
 
         # 模擬時間推進
         self.current_time = "2023-01-03T00:00:00"
@@ -352,7 +354,8 @@ class TestSingleModelCRUDWithMetadata:
 
         product_data = {"title": "Test Product", "price": 99.99}
 
-        result = crud.create(product_data)
+        result_id = crud.create(product_data)
+        result = crud.get(result_id)
 
         # 檢查自定義 ID 欄位
         assert "pk" in result

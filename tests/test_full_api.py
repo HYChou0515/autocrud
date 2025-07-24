@@ -84,8 +84,8 @@ class TestFullAPICreation:
         # 預填測試數據
         created_books = []
         for book_data in sample_books:
-            book = crud.create(book_data)
-            created_books.append(book)
+            book_id = crud.create(book_data)
+            created_books.append(crud.get(book_id))
 
         assert len(created_books) == 3
 
@@ -114,8 +114,8 @@ class TestFullAPICreation:
         # 添加測試數據
         created_books = []
         for book_data in sample_books:
-            book = crud.create(book_data)
-            created_books.append(book)
+            book_id = crud.create(book_data)
+            created_books.append(crud.get(book_id))
 
         # 測試列出所有書籍
         all_books = crud.list_all()
@@ -134,7 +134,8 @@ class TestFullAPICreation:
             "price": 550.0,
             "published_year": 2024,
         }
-        updated_book = crud.update(first_book_id, updated_data)
+        assert crud.update(first_book_id, updated_data)
+        updated_book = crud.get(first_book_id)
         assert updated_book["title"] == "Python 高級程式設計"
         assert updated_book["price"] == 550.0
 

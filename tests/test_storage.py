@@ -14,11 +14,16 @@ class TestMemoryStorage:
         crud = SingleModelCRUD(model=Product, storage=storage, resource_name="products")
 
         # 創建
-        product = crud.create(sample_product_data)
+        product_id = crud.create(sample_product_data)
+        assert isinstance(product_id, str)
+
+        # 驗證創建成功
+        product = crud.get(product_id)
+        assert product is not None
         assert product["name"] == sample_product_data["name"]
 
         # 獲取
-        retrieved = crud.get(product["id"])
+        retrieved = crud.get(product_id)
         assert retrieved is not None
         assert retrieved["name"] == sample_product_data["name"]
 
@@ -29,13 +34,18 @@ class TestMemoryStorage:
             "price": 999.0,
             "category": "測試",
         }
-        updated = crud.update(product["id"], updated_data)
+        success = crud.update(product_id, updated_data)
+        assert success is True
+
+        # 驗證更新結果
+        updated = crud.get(product_id)
+        assert updated is not None
         assert updated["name"] == "更新產品"
 
         # 刪除
-        deleted = crud.delete(product["id"])
+        deleted = crud.delete(product_id)
         assert deleted is True
-        assert crud.get(product["id"]) is None
+        assert crud.get(product_id) is None
 
     def test_memory_storage_persistence(self, sample_product_data):
         """測試內存存儲數據不會在實例間保持"""
@@ -44,7 +54,7 @@ class TestMemoryStorage:
         crud1 = SingleModelCRUD(
             model=Product, storage=storage1, resource_name="products"
         )
-        product = crud1.create(sample_product_data)
+        product_id = crud1.create(sample_product_data)
 
         # 第二個存儲實例（應該是空的）
         storage2 = MemoryStorage()
@@ -53,7 +63,7 @@ class TestMemoryStorage:
         )
 
         # 在新實例中查找數據
-        result = crud2.get(product["id"])
+        result = crud2.get(product_id)
         assert result is None  # 數據不應該存在
 
         all_products = crud2.list_all()
@@ -69,7 +79,12 @@ class TestDiskStorage:
         crud = SingleModelCRUD(model=Product, storage=storage, resource_name="products")
 
         # 創建
-        product = crud.create(sample_product_data)
+        product_id = crud.create(sample_product_data)
+        assert isinstance(product_id, str)
+
+        # 驗證創建成功
+        product = crud.get(product_id)
+        assert product is not None
         assert product["name"] == sample_product_data["name"]
 
         # 檢查文件是否創建
@@ -78,7 +93,7 @@ class TestDiskStorage:
         assert files[0].endswith(".data")
 
         # 獲取
-        retrieved = crud.get(product["id"])
+        retrieved = crud.get(product_id)
         assert retrieved is not None
         assert retrieved["name"] == sample_product_data["name"]
 
@@ -89,13 +104,18 @@ class TestDiskStorage:
             "price": 999.0,
             "category": "測試",
         }
-        updated = crud.update(product["id"], updated_data)
+        success = crud.update(product_id, updated_data)
+        assert success is True
+
+        # 驗證更新結果
+        updated = crud.get(product_id)
+        assert updated is not None
         assert updated["name"] == "更新產品"
 
         # 刪除
-        deleted = crud.delete(product["id"])
+        deleted = crud.delete(product_id)
         assert deleted is True
-        assert crud.get(product["id"]) is None
+        assert crud.get(product_id) is None
 
         # 檢查文件是否刪除
         files = os.listdir(temp_dir)
@@ -108,8 +128,7 @@ class TestDiskStorage:
         crud1 = SingleModelCRUD(
             model=Product, storage=storage1, resource_name="products"
         )
-        product = crud1.create(sample_product_data)
-        product_id = product["id"]
+        product_id = crud1.create(sample_product_data)
 
         # 第二個存儲實例（應該能讀取相同數據）
         storage2 = DiskStorage(temp_dir)
@@ -126,7 +145,7 @@ class TestDiskStorage:
         assert len(all_products) == 1
 
         # 檢查產品 ID 是否在列表中
-        product_ids = [product["id"] for product in all_products]
+        product_ids = [product_id for product in all_products]
         assert product_id in product_ids
 
     def test_disk_storage_with_different_serializers(
@@ -147,8 +166,8 @@ class TestDiskStorage:
             )
 
             # 基本操作測試
-            product = crud.create(sample_product_data)
-            retrieved = crud.get(product["id"])
+            product_id = crud.create(sample_product_data)
+            retrieved = crud.get(product_id)
 
             assert retrieved is not None
             assert retrieved["name"] == sample_product_data["name"]

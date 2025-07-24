@@ -74,16 +74,16 @@ def test_disk_storage_factory():
         user_data = {"name": "Bob", "email": "bob@example.com"}
         product_data = {"name": "Mouse", "price": 25.99}
 
-        created_user = multi_crud.create("users", user_data)
-        created_product = multi_crud.create("products", product_data)
+        created_user_id = multi_crud.create("users", user_data)
+        created_product_id = multi_crud.create("products", product_data)
 
         # 確認目錄被創建並且數據被存儲
         assert os.path.exists(expected_user_dir)
         assert os.path.exists(expected_product_dir)
 
         # 確認可以檢索數據
-        assert multi_crud.get("users", created_user["id"]) is not None
-        assert multi_crud.get("products", created_product["id"]) is not None
+        assert multi_crud.get("users", created_user_id) is not None
+        assert multi_crud.get("products", created_product_id) is not None
 
 
 def test_custom_storage_factory():
@@ -204,6 +204,7 @@ def test_storage_factory_backwards_compatibility():
 
     # 功能應該正常工作
     user_data = {"name": "TestUser", "email": "test@example.com"}
-    created_user = multi_crud.create("users", user_data)
+    created_user_id = multi_crud.create("users", user_data)
+    created_user = multi_crud.get("users", created_user_id)
     assert created_user["name"] == "TestUser"
     assert multi_crud.count("users") == 1

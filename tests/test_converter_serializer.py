@@ -187,8 +187,8 @@ class TestIntegratedDataTypes:
             model=DataclassUser, storage=storage, resource_name="users"
         )
 
-        created_user = crud.create(sample_user_data)
-        retrieved_user = crud.get(created_user["id"])
+        created_user_id = crud.create(sample_user_data)
+        retrieved_user = crud.get(created_user_id)
 
         assert retrieved_user is not None
         assert retrieved_user["name"] == sample_user_data["name"]
@@ -201,8 +201,8 @@ class TestIntegratedDataTypes:
             model=PydanticUser, storage=storage, resource_name="users"
         )
 
-        created_user = crud.create(sample_user_data)
-        retrieved_user = crud.get(created_user["id"])
+        created_user_id = crud.create(sample_user_data)
+        retrieved_user = crud.get(created_user_id)
 
         assert retrieved_user is not None
         assert retrieved_user["name"] == sample_user_data["name"]
@@ -214,8 +214,8 @@ class TestIntegratedDataTypes:
             model=TypedDictUser, storage=storage, resource_name="users"
         )
 
-        created_user = crud.create(sample_user_data)
-        retrieved_user = crud.get(created_user["id"])
+        created_user_id = crud.create(sample_user_data)
+        retrieved_user = crud.get(created_user_id)
 
         assert retrieved_user is not None
         assert retrieved_user["name"] == sample_user_data["name"]
@@ -231,8 +231,8 @@ class TestIntegratedDataTypes:
                 model=DataclassUser, storage=storage, resource_name="users"
             )
 
-            created_user = crud.create(sample_user_data)
-            retrieved_user = crud.get(created_user["id"])
+            created_user_id = crud.create(sample_user_data)
+            retrieved_user = crud.get(created_user_id)
 
             assert retrieved_user is not None
             assert retrieved_user["name"] == sample_user_data["name"]

@@ -1,6 +1,6 @@
 """多模型 AutoCRUD 系統"""
 
-from typing import Dict, Type, List, Any, Optional, TYPE_CHECKING
+from typing import Dict, Type, List, Any, Optional, TYPE_CHECKING, TypeVar
 from fastapi import FastAPI, APIRouter
 from .core import SingleModelCRUD
 from .storage import Storage
@@ -8,6 +8,9 @@ from .storage_factory import StorageFactory, DefaultStorageFactory
 
 if TYPE_CHECKING:
     from .route_config import RouteConfig
+
+# 定義泛型類型變數
+T = TypeVar("T")
 
 
 class AutoCRUD:
@@ -33,12 +36,12 @@ class AutoCRUD:
 
     def register_model(
         self,
-        model: Type,
+        model: Type[T],
         resource_name: Optional[str] = None,
         storage: Optional[Storage] = None,
         id_generator: Optional[callable] = None,
         use_plural: bool = True,
-    ) -> SingleModelCRUD:
+    ) -> SingleModelCRUD[T]:
         """
         註冊一個模型
 
@@ -240,8 +243,8 @@ class AutoCRUD:
         return snake_case
 
     # 便利方法：直接在多模型系統上執行 CRUD 操作
-    def create(self, resource_name: str, data: Dict[str, Any]) -> Dict[str, Any]:
-        """在指定資源上創建項目"""
+    def create(self, resource_name: str, data: Dict[str, Any]) -> str:
+        """在指定資源上創建項目，返回創建的項目ID"""
         return self.get_crud(resource_name).create(data)
 
     def get(self, resource_name: str, resource_id: str) -> Optional[Dict[str, Any]]:
@@ -250,8 +253,8 @@ class AutoCRUD:
 
     def update(
         self, resource_name: str, resource_id: str, data: Dict[str, Any]
-    ) -> Optional[Dict[str, Any]]:
-        """更新指定資源的項目"""
+    ) -> bool:
+        """更新指定資源的項目，返回是否成功"""
         return self.get_crud(resource_name).update(resource_id, data)
 
     def advanced_update(
@@ -264,7 +267,7 @@ class AutoCRUD:
         """從指定資源刪除項目"""
         return self.get_crud(resource_name).delete(resource_id)
 
-    def list_all(self, resource_name: str) -> Dict[str, Dict[str, Any]]:
+    def list_all(self, resource_name: str) -> List[Dict[str, Any]]:
         """列出指定資源的所有項目"""
         return self.get_crud(resource_name).list_all()
 

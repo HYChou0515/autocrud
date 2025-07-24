@@ -70,7 +70,7 @@ class TestDiskPersistence:
             model=Product, storage=storage1, resource_name="products"
         )
 
-        product = crud1.create(
+        product_id = crud1.create(
             {
                 "name": "筆記本電腦",
                 "description": "普通筆記本",
@@ -78,10 +78,9 @@ class TestDiskPersistence:
                 "category": "電子產品",
             }
         )
-        product_id = product["id"]
 
         # 更新數據
-        updated_product = crud1.update(
+        assert crud1.update(
             product_id,
             {
                 "name": "高端筆記本電腦",
@@ -90,6 +89,7 @@ class TestDiskPersistence:
                 "category": "電子產品",
             },
         )
+        updated_product = crud1.get(product_id)
 
         assert updated_product["name"] == "高端筆記本電腦"
         assert updated_product["price"] == 30000.0
@@ -130,7 +130,7 @@ class TestDiskPersistence:
         )
 
         # 刪除一個產品
-        deleted = crud1.delete(product1["id"])
+        deleted = crud1.delete(product1)
         assert deleted is True
 
         # 驗證只剩一個產品
@@ -176,7 +176,8 @@ class TestSerializerPersistence:
             )
 
             # 創建數據
-            product = crud.create(test_data)
+            product_id = crud.create(test_data)
+            product = crud.get(product_id)
             assert product["name"] == test_data["name"]
             assert product["price"] == test_data["price"]
 
@@ -211,7 +212,7 @@ class TestSerializerPersistence:
         crud = SingleModelCRUD(model=Product, storage=storage, resource_name="products")
 
         # 應該能正常創建數據
-        product = crud.create(
+        product_id = crud.create(
             {
                 "name": "測試產品",
                 "description": "測試描述",
@@ -220,6 +221,7 @@ class TestSerializerPersistence:
             }
         )
 
+        product = crud.get(product_id)
         assert product["name"] == "測試產品"
 
     def test_persistence_directory_creation(self, temp_dir):
