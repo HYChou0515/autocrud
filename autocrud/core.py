@@ -4,6 +4,7 @@ import uuid
 from typing import Any, Dict, Type, Optional
 from .converter import ModelConverter
 from .storage import Storage
+from .updater import AdvancedUpdater
 
 
 class SingleModelCRUD:
@@ -69,6 +70,42 @@ class SingleModelCRUD:
         # 轉換為字典並保持 ID
         instance_dict = self.converter.to_dict(instance)
         instance_dict["id"] = resource_id
+
+        # 更新存儲
+        self.storage.set(key, instance_dict)
+
+        return instance_dict
+
+    def advanced_update(
+        self, resource_id: str, update_data: Dict[str, Any]
+    ) -> Optional[Dict[str, Any]]:
+        """使用 Advanced Updater 進行細部更新"""
+        key = self._make_key(resource_id)
+
+        # 檢查資源是否存在
+        if not self.storage.exists(key):
+            return None
+
+        # 獲取當前數據
+        current_data = self.storage.get(key)
+        if current_data is None:
+            return None
+
+        # 創建並應用 updater
+        updater = AdvancedUpdater.from_dict(update_data)
+        updated_data = updater.apply_to(current_data)
+
+        # 保持 ID 不變
+        updated_data["id"] = resource_id
+
+        # 驗證更新後的數據
+        try:
+            instance = self.converter.from_dict(self.model, updated_data)
+            instance_dict = self.converter.to_dict(instance)
+            instance_dict["id"] = resource_id
+        except Exception:
+            # 如果數據驗證失敗，返回 None
+            return None
 
         # 更新存儲
         self.storage.set(key, instance_dict)

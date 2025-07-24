@@ -7,6 +7,19 @@ from .converter import ModelConverter
 from .serializer import SerializerFactory
 from .fastapi_generator import FastAPIGenerator
 from .storage_factory import StorageFactory, DefaultStorageFactory
+from .updater import (
+    AdvancedUpdater,
+    UpdateOperation,
+    UpdateAction,
+    undefined,
+    set_value,
+    list_set,
+    list_add,
+    list_remove,
+    dict_set,
+    dict_update,
+    dict_remove,
+)
 
 __version__ = "0.1.0"
 __all__ = [
@@ -20,4 +33,15 @@ __all__ = [
     "FastAPIGenerator",
     "StorageFactory",
     "DefaultStorageFactory",
+    "AdvancedUpdater",
+    "UpdateOperation",
+    "UpdateAction",
+    "undefined",
+    "set_value",
+    "list_set",
+    "list_add",
+    "list_remove",
+    "dict_set",
+    "dict_update",
+    "dict_remove",
 ]

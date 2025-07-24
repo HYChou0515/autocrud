@@ -1,7 +1,7 @@
 """多模型 AutoCRUD 系統"""
 
 from typing import Dict, Type, List, Any, Optional
-from fastapi import FastAPI
+from fastapi import FastAPI, APIRouter
 from .core import SingleModelCRUD
 from .storage import Storage
 from .fastapi_generator import FastAPIGenerator
@@ -114,6 +114,35 @@ class AutoCRUD:
             return True
         return False
 
+    def create_router(
+        self,
+        prefix: str = "",
+        enable_count: bool = True,
+    ) -> "APIRouter":
+        """
+        創建包含所有註冊模型路由的 APIRouter
+
+        Args:
+            prefix: 路由前綴
+            enable_count: 是否啟用 count API 端點
+
+        Returns:
+            配置好的 APIRouter
+        """
+        from fastapi import APIRouter
+
+        main_router = APIRouter()
+
+        # 為每個註冊的模型創建路由
+        for resource_name, crud in self.cruds.items():
+            from .fastapi_generator import FastAPIGenerator
+
+            generator = FastAPIGenerator(crud, enable_count=enable_count)
+            resource_router = generator.create_router()
+            main_router.include_router(resource_router)
+
+        return main_router
+
     def create_fastapi_app(
         self,
         title: str = "Multi-Model CRUD API",
@@ -218,6 +247,12 @@ class AutoCRUD:
     ) -> Optional[Dict[str, Any]]:
         """更新指定資源的項目"""
         return self.get_crud(resource_name).update(resource_id, data)
+
+    def advanced_update(
+        self, resource_name: str, resource_id: str, update_data: Dict[str, Any]
+    ) -> Optional[Dict[str, Any]]:
+        """使用 Advanced Updater 更新指定資源的項目"""
+        return self.get_crud(resource_name).advanced_update(resource_id, update_data)
 
     def delete(self, resource_name: str, resource_id: str) -> bool:
         """從指定資源刪除項目"""

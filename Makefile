@@ -54,16 +54,19 @@ dev-install:
 
 # 執行測試
 .PHONY: test
-test:
+test: check test-func coverage
+
+# 執行測試
+.PHONY: test-func
+test-func:
 	@echo "執行測試..."
-	uv run pytest -v
+	uv run coverage run --branch -m pytest
 
 # 執行測試並生成覆蓋率報告
 .PHONY: coverage
-coverage:
+coverage: test-func
 	@echo "執行測試並生成覆蓋率報告..."
-	uv run coverage run -m pytest
-	uv run coverage report
+	uv run coverage report -m
 
 # 生成 HTML 覆蓋率報告
 .PHONY: cov-html
@@ -84,6 +87,7 @@ style:
 check:
 	@echo "檢查程式碼品質..."
 	uv run ruff check .
+	uv run ruff format --check
 
 # 格式化程式碼
 .PHONY: format
