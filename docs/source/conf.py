@@ -12,9 +12,9 @@ sys.path.insert(0, os.path.abspath("../../"))
 # https://www.sphinx-doc.org/en/master/usage/configuration.html#project-information
 
 project = "AutoCRUD"
-copyright = "2025, Your Name"
-author = "Your Name"
-release = "0.1.0"
+copyright = "2025, HYChou0515"
+author = "HYChou0515"
+release = "0.1.3"
 
 # -- General configuration ---------------------------------------------------
 # https://www.sphinx-doc.org/en/master/usage/configuration.html#general-configuration
