@@ -151,8 +151,11 @@ class AdvancedUpdater:
                 elif action_type == "dict_remove":
                     operations[attr_name] = UpdateOperation.dict_remove(operation_value)
                 else:
-                    # Default to set if unknown action
-                    operations[attr_name] = UpdateOperation.set_value(value)
+                    # Raise error for unknown action
+                    valid_actions = [action.value for action in UpdateAction]
+                    raise ValueError(
+                        f"Unknown action type '{action_type}' for attribute '{attr_name}'. Valid actions are: {', '.join(valid_actions)}"
+                    )
             else:
                 # Simple value update
                 operations[attr_name] = UpdateOperation.set_value(value)

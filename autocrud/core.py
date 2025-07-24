@@ -5,6 +5,8 @@ from typing import Any, Dict, Type, Optional
 from .converter import ModelConverter
 from .storage import Storage
 from .updater import AdvancedUpdater
+from .metadata import MetadataConfig
+from .schema_analyzer import SchemaAnalyzer
 
 
 class SingleModelCRUD:
@@ -16,14 +18,19 @@ class SingleModelCRUD:
         storage: Storage,
         resource_name: str,
         id_generator: Optional[callable] = None,
+        metadata_config: Optional[MetadataConfig] = None,
     ):
         self.model = model
         self.storage = storage
         self.resource_name = resource_name
         self.converter = ModelConverter()
         self.id_generator = id_generator or (lambda: str(uuid.uuid4()))
+        self.metadata_config = metadata_config or MetadataConfig()
 
-        # 驗證模型類型
+        # 使用 schema 分析器
+        self.schema_analyzer = SchemaAnalyzer(model, self.metadata_config)
+
+        # 驗證模型類型（保持向後兼容）
         self.model_type = self.converter.detect_model_type(model)
         self.model_fields = self.converter.extract_fields(model)
 
@@ -33,15 +40,21 @@ class SingleModelCRUD:
 
     def create(self, data: Dict[str, Any]) -> Dict[str, Any]:
         """創建資源"""
-        # 生成 ID
+        # 應用 metadata（時間戳和用戶追蹤）
+        enriched_data = self.schema_analyzer.prepare_create_data(data)
+
+        # 生成資源 ID
         resource_id = self.id_generator()
 
-        # 創建模型實例
-        instance = self.converter.from_dict(self.model, data)
+        # 設置 ID 欄位（用戶必須在模型中定義此欄位）
+        id_field = self.schema_analyzer.get_id_field_name()
+        enriched_data[id_field] = resource_id
 
-        # 轉換為字典並添加 ID
+        # 創建模型實例
+        instance = self.converter.from_dict(self.model, enriched_data)
+
+        # 轉換為字典
         instance_dict = self.converter.to_dict(instance)
-        instance_dict["id"] = resource_id
 
         # 存儲
         key = self._make_key(resource_id)
@@ -64,12 +77,27 @@ class SingleModelCRUD:
         if not self.storage.exists(key):
             return None
 
-        # 創建模型實例驗證數據
-        instance = self.converter.from_dict(self.model, data)
+        # 獲取現有資料
+        existing_data = self.storage.get(key)
+        if existing_data is None:
+            return None
 
-        # 轉換為字典並保持 ID
+        # 合併現有資料和更新資料
+        merged_data = existing_data.copy()
+        merged_data.update(data)
+
+        # 應用 metadata（更新時間戳和用戶追蹤）
+        enriched_data = self.schema_analyzer.prepare_update_data(merged_data)
+
+        # 保持 ID
+        id_field = self.schema_analyzer.get_id_field_name()
+        enriched_data[id_field] = resource_id
+
+        # 創建模型實例驗證數據
+        instance = self.converter.from_dict(self.model, enriched_data)
+
+        # 轉換為字典
         instance_dict = self.converter.to_dict(instance)
-        instance_dict["id"] = resource_id
 
         # 更新存儲
         self.storage.set(key, instance_dict)
@@ -95,14 +123,17 @@ class SingleModelCRUD:
         updater = AdvancedUpdater.from_dict(update_data)
         updated_data = updater.apply_to(current_data)
 
+        # 應用 update metadata（更新時間戳和用戶追蹤）
+        updated_data = self.schema_analyzer.prepare_update_data(updated_data)
+
         # 保持 ID 不變
-        updated_data["id"] = resource_id
+        id_field = self.schema_analyzer.get_id_field_name()
+        updated_data[id_field] = resource_id
 
         # 驗證更新後的數據
         try:
             instance = self.converter.from_dict(self.model, updated_data)
             instance_dict = self.converter.to_dict(instance)
-            instance_dict["id"] = resource_id
         except Exception:
             # 如果數據驗證失敗，返回 None
             return None
@@ -152,11 +183,11 @@ class SingleModelCRUD:
 
         return count
 
-    def create_fastapi_app(self, enable_count: bool = True, **kwargs):
+    def create_fastapi_app(self, route_config=None, **kwargs):
         """創建 FastAPI 應用的便利方法"""
         from .fastapi_generator import FastAPIGenerator
 
-        generator = FastAPIGenerator(self, enable_count=enable_count)
+        generator = FastAPIGenerator(self, route_config=route_config)
         return generator.create_fastapi_app(**kwargs)
 
 

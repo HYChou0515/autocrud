@@ -7,6 +7,9 @@ from .converter import ModelConverter
 from .serializer import SerializerFactory
 from .fastapi_generator import FastAPIGenerator
 from .storage_factory import StorageFactory, DefaultStorageFactory
+from .route_config import RouteConfig
+from .metadata import MetadataConfig
+from .schema_analyzer import SchemaAnalyzer
 from .updater import (
     AdvancedUpdater,
     UpdateOperation,
@@ -33,6 +36,9 @@ __all__ = [
     "FastAPIGenerator",
     "StorageFactory",
     "DefaultStorageFactory",
+    "RouteConfig",
+    "MetadataConfig",
+    "SchemaAnalyzer",
     "AdvancedUpdater",
     "UpdateOperation",
     "UpdateAction",

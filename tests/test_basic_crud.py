@@ -1,14 +1,7 @@
 """測試基本 CRUD 功能"""
 
-from dataclasses import dataclass
 from autocrud import SingleModelCRUD, MemoryStorage
-
-
-@dataclass
-class User:
-    name: str
-    email: str
-    age: int
+from .test_models import User
 
 
 class TestBasicCrud:

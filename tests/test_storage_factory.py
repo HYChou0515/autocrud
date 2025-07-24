@@ -2,7 +2,6 @@
 
 import os
 import tempfile
-from dataclasses import dataclass
 from autocrud import (
     AutoCRUD,
     StorageFactory,
@@ -10,18 +9,7 @@ from autocrud import (
     MemoryStorage,
     DiskStorage,
 )
-
-
-@dataclass
-class User:
-    name: str
-    email: str
-
-
-@dataclass
-class Product:
-    name: str
-    price: float
+from .test_models import User, Product
 
 
 def test_memory_storage_factory():

@@ -2,12 +2,7 @@
 
 from dataclasses import dataclass
 from autocrud import SingleModelCRUD, AutoCRUD, MemoryStorage
-
-
-@dataclass
-class Item:
-    name: str
-    value: int
+from .test_models import Item, User, Product
 
 
 class TestCountAPI:
@@ -80,23 +75,13 @@ class TestCountAPI:
 class TestMultiModelCount:
     """測試多模型 count 功能"""
 
-    @dataclass
-    class User:
-        name: str
-        email: str
-
-    @dataclass
-    class Product:
-        name: str
-        price: float
-
     def test_multi_model_count(self):
         """測試多模型的 count 功能"""
         multi_crud = AutoCRUD()
 
         # 註冊模型
-        multi_crud.register_model(self.User)
-        multi_crud.register_model(self.Product)
+        multi_crud.register_model(User)
+        multi_crud.register_model(Product)
 
         # 初始 count 應該為 0
         assert multi_crud.count("users") == 0
@@ -125,7 +110,7 @@ class TestMultiModelCount:
         """測試多模型在各種操作後的 count"""
         multi_crud = AutoCRUD()
 
-        multi_crud.register_model(self.User)
+        multi_crud.register_model(User)
 
         # 建立幾個使用者
         user1 = multi_crud.create(
@@ -210,11 +195,6 @@ class TestCountFastAPI:
     def test_multi_model_count_api(self):
         """測試多模型的 count API"""
 
-        @dataclass
-        class User:
-            name: str
-            email: str
-
         multi_crud = AutoCRUD()
         multi_crud.register_model(User)
         multi_crud.register_model(Item, resource_name="items")
@@ -248,12 +228,14 @@ class TestCountAPIOptions:
     def test_count_api_disabled_in_generator(self):
         """測試在 FastAPIGenerator 中禁用 count API"""
         from autocrud.fastapi_generator import FastAPIGenerator
+        from autocrud.route_config import RouteConfig
 
         storage = MemoryStorage()
         crud = SingleModelCRUD(model=Item, storage=storage, resource_name="items")
 
         # 創建禁用 count 的生成器
-        generator = FastAPIGenerator(crud, enable_count=False)
+        config = RouteConfig(count=False)
+        generator = FastAPIGenerator(crud, route_config=config)
 
         from fastapi import FastAPI
 
@@ -276,11 +258,14 @@ class TestCountAPIOptions:
 
     def test_autocrud_count_disabled(self):
         """測試 AutoCRUD.create_fastapi_app 禁用 count"""
+        from autocrud.route_config import RouteConfig
+
         storage = MemoryStorage()
         crud = SingleModelCRUD(model=Item, storage=storage, resource_name="items")
 
         # 創建禁用 count 的應用
-        app = crud.create_fastapi_app(enable_count=False)
+        config = RouteConfig(count=False)
+        app = crud.create_fastapi_app(route_config=config)
 
         routes = []
         for route in app.routes:
@@ -310,18 +295,15 @@ class TestCountAPIOptions:
 
     def test_multi_model_count_disabled(self):
         """測試多模型禁用 count API"""
-
-        @dataclass
-        class User:
-            name: str
-            email: str
+        from autocrud.route_config import RouteConfig
 
         multi_crud = AutoCRUD()
         multi_crud.register_model(User)
         multi_crud.register_model(Item, resource_name="items")
 
         # 創建禁用 count 的多模型應用
-        app = multi_crud.create_fastapi_app(enable_count=False)
+        config = RouteConfig(count=False)
+        app = multi_crud.create_fastapi_app(route_config=config)
 
         routes = []
         for route in app.routes:
@@ -339,11 +321,6 @@ class TestCountAPIOptions:
 
     def test_multi_model_count_enabled_by_default(self):
         """測試多模型預設啟用 count API"""
-
-        @dataclass
-        class User:
-            name: str
-            email: str
 
         multi_crud = AutoCRUD()
         multi_crud.register_model(User)

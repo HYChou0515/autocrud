@@ -25,13 +25,14 @@ def temp_dir():
 @pytest.fixture
 def sample_user_data():
     """提供示例用戶數據"""
-    return {"name": "Alice", "email": "alice@example.com", "age": 30}
+    return {"id": "user-1", "name": "Alice", "email": "alice@example.com", "age": 30}
 
 
 @pytest.fixture
 def sample_product_data():
     """提供示例產品數據"""
     return {
+        "id": "product-1",
         "name": "筆記本電腦",
         "description": "高性能筆記本電腦",
         "price": 25000.0,

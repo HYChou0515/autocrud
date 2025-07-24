@@ -1,16 +1,8 @@
 """測試存儲後端"""
 
 import os
-from dataclasses import dataclass
 from autocrud import SingleModelCRUD, MemoryStorage, DiskStorage, SerializerFactory
-
-
-@dataclass
-class Product:
-    name: str
-    description: str
-    price: float
-    category: str
+from .test_models import Product
 
 
 class TestMemoryStorage:

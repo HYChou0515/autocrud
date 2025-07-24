@@ -1,16 +1,10 @@
 """測試 create_router 新功能"""
 
-from dataclasses import dataclass
 from fastapi import APIRouter, Depends
 from fastapi.testclient import TestClient
 from autocrud import SingleModelCRUD, MemoryStorage
 from autocrud.fastapi_generator import FastAPIGenerator
-
-
-@dataclass
-class Product:
-    name: str
-    price: float
+from .test_models import Product
 
 
 def test_create_router_basic():
@@ -56,7 +50,7 @@ def test_create_router_route_order():
     """測試路由順序：count 應該在 {resource_id} 之前"""
     storage = MemoryStorage()
     crud = SingleModelCRUD(model=Product, storage=storage, resource_name="products")
-    generator = FastAPIGenerator(crud, enable_count=True)
+    generator = FastAPIGenerator(crud)  # 使用預設配置，包含 count
 
     # 創建應用並添加路由
     from fastapi import FastAPI
@@ -103,9 +97,12 @@ def test_create_router_route_order():
 
 def test_create_router_with_disabled_count():
     """測試禁用 count 時的路由"""
+    from autocrud.route_config import RouteConfig
+
     storage = MemoryStorage()
     crud = SingleModelCRUD(model=Product, storage=storage, resource_name="products")
-    generator = FastAPIGenerator(crud, enable_count=False)
+    config = RouteConfig(count=False)
+    generator = FastAPIGenerator(crud, route_config=config)
 
     from fastapi import FastAPI
 

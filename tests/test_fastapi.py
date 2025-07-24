@@ -1,15 +1,7 @@
 """測試 FastAPI 自動生成功能"""
 
-from dataclasses import dataclass
 from autocrud import SingleModelCRUD, MemoryStorage, FastAPIGenerator
-
-
-@dataclass
-class Product:
-    name: str
-    description: str
-    price: float
-    category: str
+from .test_models import Product, User, Book
 
 
 class TestFastAPIGenerator:
@@ -176,18 +168,6 @@ class TestFastAPIAppBehavior:
 
     def test_app_creation_with_different_models(self):
         """測試使用不同模型創建應用"""
-
-        @dataclass
-        class User:
-            name: str
-            email: str
-            age: int
-
-        @dataclass
-        class Book:
-            title: str
-            author: str
-            isbn: str
 
         models = [(User, "users"), (Book, "books"), (Product, "products")]
 

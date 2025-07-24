@@ -3,8 +3,6 @@
 """
 
 import pytest
-from dataclasses import dataclass
-from typing import List, Dict, Any, Optional
 
 from autocrud import (
     SingleModelCRUD,
@@ -22,17 +20,7 @@ from autocrud import (
     dict_update,
     dict_remove,
 )
-
-
-@dataclass
-class ComplexUser:
-    """包含複雜屬性的測試用戶模型"""
-
-    name: str
-    tags: List[str]
-    metadata: Dict[str, Any]
-    email: Optional[str] = None
-    id: Optional[str] = None  # id 改為可選，會在創建時自動生成
+from .test_models import ComplexUser
 
 
 class TestAdvancedUpdater:
@@ -193,6 +181,22 @@ class TestAdvancedUpdater:
         assert result["age"] == 30  # unchanged
         assert result["tags"] == ["old_tag", "new_tag"]
         assert result["metadata"] == {"old_key": "old_value", "new_key": "new_value"}
+
+    def test_updater_from_dict_invalid_action(self):
+        """測試未知 action 時拋出錯誤"""
+        update_data = {"name": {"_action": "invalid_action", "value": "test"}}
+
+        with pytest.raises(ValueError) as exc_info:
+            AdvancedUpdater.from_dict(update_data)
+
+        error_message = str(exc_info.value)
+        assert "Unknown action type 'invalid_action'" in error_message
+        assert "name" in error_message
+        assert "Valid actions are:" in error_message
+        # 確保錯誤訊息包含動態生成的有效 actions
+        assert "set" in error_message
+        assert "undefined" in error_message
+        assert "list_add" in error_message
 
 
 class TestConvenienceFunctions:

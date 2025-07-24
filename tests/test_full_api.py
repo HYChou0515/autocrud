@@ -1,17 +1,8 @@
 """測試完整 API 創建功能"""
 
 import pytest
-from dataclasses import dataclass
 from autocrud import SingleModelCRUD, MemoryStorage
-
-
-@dataclass
-class Book:
-    title: str
-    author: str
-    isbn: str
-    price: float
-    published_year: int
+from .test_models import Book, User
 
 
 class TestFullAPICreation:
@@ -159,18 +150,15 @@ class TestFullAPICreation:
     def test_api_with_different_models(self):
         """測試不同模型的 API 創建"""
 
+        from dataclasses import dataclass
+
         @dataclass
         class Article:
+            id: str
             title: str
             content: str
             author: str
             published: bool
-
-        @dataclass
-        class User:
-            username: str
-            email: str
-            age: int
 
         models = [
             (Book, "books", "書籍管理 API"),

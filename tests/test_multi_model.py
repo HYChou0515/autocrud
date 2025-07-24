@@ -3,25 +3,12 @@
 import pytest
 from dataclasses import dataclass
 from autocrud import AutoCRUD, DefaultStorageFactory
-
-
-@dataclass
-class User:
-    name: str
-    email: str
-    age: int
-
-
-@dataclass
-class Product:
-    name: str
-    description: str
-    price: float
-    category: str
+from .test_models import User, Product, Cat, UserProfile, ProductCategory, Company
 
 
 @dataclass
 class Order:
+    id: str
     user_id: str
     product_id: str
     quantity: int
@@ -383,11 +370,8 @@ class TestResourceNameGeneration:
         multi_crud = AutoCRUD()
 
         @dataclass
-        class Cat:
-            name: str
-
-        @dataclass
         class Dog:
+            id: str
             name: str
 
         multi_crud.register_model(Cat)
@@ -402,14 +386,6 @@ class TestResourceNameGeneration:
         # storage = MemoryStorage()  # 不再需要，使用 StorageFactory
         multi_crud = AutoCRUD()
 
-        @dataclass
-        class UserProfile:
-            name: str
-
-        @dataclass
-        class ProductCategory:
-            name: str
-
         multi_crud.register_model(UserProfile)
         multi_crud.register_model(ProductCategory)
 
@@ -421,10 +397,6 @@ class TestResourceNameGeneration:
         """測試以 y 結尾的詞複數化"""
         # storage = MemoryStorage()  # 不再需要，使用 StorageFactory
         multi_crud = AutoCRUD()
-
-        @dataclass
-        class Company:
-            name: str
 
         multi_crud.register_model(Company)
 

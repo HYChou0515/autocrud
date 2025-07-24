@@ -1,11 +1,13 @@
 """多模型 AutoCRUD 系統"""
 
-from typing import Dict, Type, List, Any, Optional
+from typing import Dict, Type, List, Any, Optional, TYPE_CHECKING
 from fastapi import FastAPI, APIRouter
 from .core import SingleModelCRUD
 from .storage import Storage
-from .fastapi_generator import FastAPIGenerator
 from .storage_factory import StorageFactory, DefaultStorageFactory
+
+if TYPE_CHECKING:
+    from .route_config import RouteConfig
 
 
 class AutoCRUD:
@@ -117,28 +119,33 @@ class AutoCRUD:
     def create_router(
         self,
         prefix: str = "",
-        enable_count: bool = True,
+        route_config: Optional["RouteConfig"] = None,
     ) -> "APIRouter":
         """
         創建包含所有註冊模型路由的 APIRouter
 
         Args:
             prefix: 路由前綴
-            enable_count: 是否啟用 count API 端點
+            route_config: 路由配置，控制哪些路由要啟用
 
         Returns:
             配置好的 APIRouter
         """
         from fastapi import APIRouter
+        from .route_config import RouteConfig
 
         main_router = APIRouter()
+
+        # 使用預設配置如果沒有提供
+        if route_config is None:
+            route_config = RouteConfig()
 
         # 為每個註冊的模型創建路由
         for resource_name, crud in self.cruds.items():
             from .fastapi_generator import FastAPIGenerator
 
-            generator = FastAPIGenerator(crud, enable_count=enable_count)
-            resource_router = generator.create_router()
+            generator = FastAPIGenerator(crud, route_config=route_config)
+            resource_router = generator.create_router(route_config=route_config)
             main_router.include_router(resource_router)
 
         return main_router
@@ -149,7 +156,7 @@ class AutoCRUD:
         description: str = "自動生成的多模型 CRUD API",
         version: str = "1.0.0",
         prefix: str = "/api/v1",
-        enable_count: bool = True,
+        route_config: Optional["RouteConfig"] = None,
     ) -> FastAPI:
         """
         創建包含所有註冊模型路由的 FastAPI 應用
@@ -159,7 +166,7 @@ class AutoCRUD:
             description: API 描述
             version: API 版本
             prefix: 路由前綴
-            enable_count: 是否啟用 count API 端點
+            route_config: 路由配置，控制哪些路由要啟用
 
         Returns:
             配置好的 FastAPI 應用
@@ -184,10 +191,9 @@ class AutoCRUD:
                 "resources": resources_info,
             }
 
-        # 為每個註冊的模型創建路由
-        for resource_name, crud in self.cruds.items():
-            generator = FastAPIGenerator(crud, enable_count=enable_count)
-            generator.create_routes(app, prefix)
+        # 創建路由
+        router = self.create_router(route_config=route_config)
+        app.include_router(router, prefix=prefix)
 
         return app
 

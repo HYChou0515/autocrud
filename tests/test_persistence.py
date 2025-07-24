@@ -2,16 +2,8 @@
 
 import os
 import pytest
-from dataclasses import dataclass
 from autocrud import SingleModelCRUD, DiskStorage, SerializerFactory
-
-
-@dataclass
-class Product:
-    name: str
-    description: str
-    price: float
-    category: str
+from .test_models import Product
 
 
 class TestDiskPersistence:
