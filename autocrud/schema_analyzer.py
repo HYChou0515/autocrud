@@ -2,7 +2,16 @@
 Schema analyzer for generating request/response models from full user schema
 """
 
-from typing import Type, Dict, Any, Optional, Union, get_type_hints, get_origin, get_args
+from typing import (
+    Type,
+    Dict,
+    Any,
+    Optional,
+    Union,
+    get_type_hints,
+    get_origin,
+    get_args,
+)
 from dataclasses import fields, is_dataclass, MISSING
 from pydantic import BaseModel, create_model
 
@@ -24,7 +33,9 @@ class SchemaAnalyzer:
             self._analyze_dataclass()
         elif issubclass(self.model, BaseModel):
             self._analyze_pydantic()
-        elif hasattr(self.model, '__annotations__') and hasattr(self.model, '__total__'):
+        elif hasattr(self.model, "__annotations__") and hasattr(
+            self.model, "__total__"
+        ):
             # This is likely a TypedDict
             self._analyze_typeddict()
         else:
@@ -211,7 +222,8 @@ class SchemaAnalyzer:
             # Handle types.UnionType for X | None syntax (Python 3.10+)
             try:
                 import types
-                if hasattr(types, 'UnionType') and origin is types.UnionType:
+
+                if hasattr(types, "UnionType") and origin is types.UnionType:
                     if len(args) == 2 and type(None) in args:
                         return True
             except ImportError:

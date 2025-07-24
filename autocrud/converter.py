@@ -20,8 +20,10 @@ class ModelConverter:
             return "dataclass"
 
         # 檢查是否為 Pydantic 模型
-        if hasattr(model_class, "__pydantic_core_schema__") or hasattr(
-            model_class, "__fields__"
+        if (
+            hasattr(model_class, "__pydantic_core_schema__")
+            or hasattr(model_class, "model_fields")
+            or hasattr(model_class, "__fields__")
         ):
             return "pydantic"
 

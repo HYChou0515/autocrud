@@ -4,7 +4,7 @@ Metadata field configuration system for AutoCRUD
 
 from typing import Optional, Dict, Any, Callable
 from dataclasses import dataclass
-from datetime import datetime
+import datetime
 
 
 @dataclass
@@ -31,7 +31,9 @@ class MetadataConfig:
     def __post_init__(self):
         """Set default functions if not provided"""
         if self.get_current_time is None:
-            self.get_current_time = lambda: datetime.utcnow().isoformat()
+            self.get_current_time = lambda: datetime.datetime.now(
+                datetime.UTC
+            ).isoformat()
 
         if self.get_current_user is None:
             self.get_current_user = lambda: None  # Default to None, can be overridden

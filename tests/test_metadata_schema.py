@@ -178,7 +178,7 @@ class TestSchemaAnalyzer:
         assert CreateModel.__name__ == "UserWithMetadataCreateRequest"
 
         # 檢查 create 模型的欄位
-        fields = CreateModel.__fields__
+        fields = CreateModel.model_fields
         assert "name" in fields
         assert "email" in fields
         assert "age" in fields
@@ -195,7 +195,7 @@ class TestSchemaAnalyzer:
         assert UpdateModel.__name__ == "UserWithMetadataUpdateRequest"
 
         # 檢查 update 模型的欄位（大部分應該都是可選的）
-        fields = UpdateModel.__fields__
+        fields = UpdateModel.model_fields
         assert "name" in fields
         assert "email" in fields
         assert "age" in fields
@@ -211,7 +211,7 @@ class TestSchemaAnalyzer:
         assert ResponseModel.__name__ == "UserWithMetadataResponse"
 
         # 檢查響應模型包含所有欄位
-        fields = ResponseModel.__fields__
+        fields = ResponseModel.model_fields
         assert "id" in fields
         assert "name" in fields
         assert "email" in fields
@@ -230,7 +230,7 @@ class TestSchemaAnalyzer:
         assert analyzer.get_id_field_name() == "pk"
 
         CreateModel = analyzer.get_create_model()
-        fields = CreateModel.__fields__
+        fields = CreateModel.model_fields
         assert "title" in fields
         assert "price" in fields
         assert "pk" not in fields  # 自定義 ID 應該被排除

@@ -1,6 +1,5 @@
 """測試 count API 功能"""
 
-from dataclasses import dataclass
 from autocrud import SingleModelCRUD, AutoCRUD, MemoryStorage
 from .test_models import Item, User, Product
 
