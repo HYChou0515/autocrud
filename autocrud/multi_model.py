@@ -57,6 +57,7 @@ class AutoCRUD:
         id_generator: Optional[callable] = None,
         metadata_config: Optional[MetadataConfig] = None,
         use_plural: Optional[bool] = None,
+        default_values: Optional[Dict[str, Any]] = None,
     ) -> SingleModelCRUD[T]:
         """
         註冊一個模型
@@ -68,6 +69,7 @@ class AutoCRUD:
             id_generator: ID 生成器函數，如果為 None 則使用預設值
             metadata_config: metadata 配置，如果為 None 則使用預設值
             use_plural: 是否使用複數形式，如果為 None 則使用預設值，僅在 resource_name 為 None 時生效
+            default_values: 預設值字典，對於 TypedDict 特別有用，可以讓必填欄位變成選填
 
         Returns:
             創建的 SingleModelCRUD 實例
@@ -111,6 +113,7 @@ class AutoCRUD:
             resource_name=resource_name,
             id_generator=actual_id_generator,
             metadata_config=actual_metadata_config,
+            default_values=default_values,
         )
 
         self.cruds[resource_name] = crud

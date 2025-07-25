@@ -21,9 +21,15 @@ from .metadata import MetadataConfig
 class SchemaAnalyzer:
     """Analyzes user-provided schemas and generates appropriate request/response models"""
 
-    def __init__(self, model: Type, metadata_config: Optional[MetadataConfig] = None):
+    def __init__(
+        self,
+        model: Type,
+        metadata_config: Optional[MetadataConfig] = None,
+        default_values: Optional[Dict[str, Any]] = None,
+    ):
         self.model = model
         self.metadata_config = metadata_config or MetadataConfig()
+        self.default_values = default_values or {}
         self._analyze_model()
         self._validate_schema()
 
@@ -185,6 +191,10 @@ class SchemaAnalyzer:
 
     def _is_optional_field(self, field_name: str) -> bool:
         """Check if a field is optional in the original model"""
+        # Check if field has default value provided at registration time
+        if field_name in self.default_values:
+            return True
+
         if is_dataclass(self.model):
             for field in fields(self.model):
                 if field.name == field_name:
@@ -207,6 +217,13 @@ class SchemaAnalyzer:
                 field_info = self.model.__fields__.get(field_name)
                 if field_info:
                     return not field_info.required
+        elif hasattr(self.model, "__annotations__") and hasattr(
+            self.model, "__total__"
+        ):
+            # TypedDict: check if type is Optional or field has default value
+            if field_name in self.model.__annotations__:
+                field_type = self.model.__annotations__[field_name]
+                return self._is_optional_type(field_type)
 
         return False
 
