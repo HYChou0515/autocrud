@@ -22,6 +22,7 @@ class SingleModelCRUD(Generic[T]):
         resource_name: str,
         id_generator: Optional[callable] = None,
         metadata_config: Optional[MetadataConfig] = None,
+        default_values: Optional[Dict[str, Any]] = None,
     ):
         self.model = model
         self.storage = storage
@@ -29,9 +30,12 @@ class SingleModelCRUD(Generic[T]):
         self.converter = ModelConverter()
         self.id_generator = id_generator or (lambda: str(uuid.uuid4()))
         self.metadata_config = metadata_config or MetadataConfig()
+        self.default_values = default_values or {}
 
-        # 使用 schema 分析器
-        self.schema_analyzer = SchemaAnalyzer(model, self.metadata_config)
+        # 使用 schema 分析器，並傳遞 default_values
+        self.schema_analyzer = SchemaAnalyzer(
+            model, self.metadata_config, self.default_values
+        )
 
         # 驗證模型類型（保持向後兼容）
         self.model_type = self.converter.detect_model_type(model)
@@ -43,8 +47,11 @@ class SingleModelCRUD(Generic[T]):
 
     def create(self, data: Dict[str, Any]) -> str:
         """創建資源，回傳資源 ID"""
+        # 先合併預設值，但不覆蓋用戶提供的值
+        merged_data = {**self.default_values, **data}
+
         # 應用 metadata（時間戳和用戶追蹤）
-        enriched_data = self.schema_analyzer.prepare_create_data(data)
+        enriched_data = self.schema_analyzer.prepare_create_data(merged_data)
 
         # 生成資源 ID
         resource_id = self.id_generator()

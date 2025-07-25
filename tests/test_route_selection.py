@@ -182,7 +182,7 @@ class TestSingleModelCRUDRouteSelection:
 
         # 應該可以刪除
         response = client.delete(f"/api/v1/users/{user_id}")
-        assert response.status_code == 200
+        assert response.status_code == 204  # No Content
 
         # 不應該能讀取
         response = client.get("/api/v1/users")

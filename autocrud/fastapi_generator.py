@@ -1,15 +1,15 @@
 """FastAPI 自動生成模組"""
 
 from typing import Optional, Type
-from fastapi import FastAPI, HTTPException, status, APIRouter
+from fastapi import FastAPI, HTTPException, status, APIRouter, BackgroundTasks
 from pydantic import BaseModel, create_model
 from .core import SingleModelCRUD
 from .converter import ModelConverter
-from .route_config import RouteConfig
+from .route_config import RouteConfig, BackgroundTaskMode
 
 
 class FastAPIGenerator:
-    """FastAPI 路由自動生成器"""
+    """FastAPI 路由生成器"""
 
     def __init__(
         self,
@@ -80,31 +80,78 @@ class FastAPIGenerator:
         crud = self.crud
 
         # CREATE 路由
-        if config.create:
+        if config.is_route_enabled("create"):
+            create_options = config.get_route_options("create")
 
-            @router.post(
-                f"/{self.crud.resource_name}",
-                response_model=response_model,
-                status_code=status.HTTP_201_CREATED,
-            )
-            async def create_resource(item):
-                """創建資源"""
-                try:
-                    item_dict = item.model_dump()
-                    created_id = crud.create(item_dict)
-                    created_item = crud.get(created_id)
-                    return created_item
-                except Exception as e:
-                    raise HTTPException(
-                        status_code=status.HTTP_400_BAD_REQUEST,
-                        detail=f"創建失敗: {str(e)}",
-                    )
+            # 決定是否需要 BackgroundTasks 參數
+            if create_options.background_task != BackgroundTaskMode.DISABLED:
+
+                @router.post(
+                    f"/{self.crud.resource_name}",
+                    response_model=response_model,
+                    status_code=create_options.custom_status_code
+                    or status.HTTP_201_CREATED,
+                )
+                async def create_resource(item, background_tasks: BackgroundTasks):
+                    """創建資源（包含 background task）"""
+                    try:
+                        item_dict = item.model_dump()
+                        created_id = crud.create(item_dict)
+                        created_item = crud.get(created_id)
+
+                        # 執行 background task
+                        if create_options.background_task_func:
+                            if (
+                                create_options.background_task
+                                == BackgroundTaskMode.CONDITIONAL
+                            ):
+                                if (
+                                    create_options.background_task_condition
+                                    and create_options.background_task_condition(
+                                        created_item
+                                    )
+                                ):
+                                    background_tasks.add_task(
+                                        create_options.background_task_func,
+                                        created_item,
+                                    )
+                            else:  # ENABLED
+                                background_tasks.add_task(
+                                    create_options.background_task_func, created_item
+                                )
+
+                        return created_item
+                    except Exception as e:
+                        raise HTTPException(
+                            status_code=status.HTTP_400_BAD_REQUEST,
+                            detail=f"創建失敗: {str(e)}",
+                        )
+            else:
+
+                @router.post(
+                    f"/{self.crud.resource_name}",
+                    response_model=response_model,
+                    status_code=create_options.custom_status_code
+                    or status.HTTP_201_CREATED,
+                )
+                async def create_resource(item):
+                    """創建資源"""
+                    try:
+                        item_dict = item.model_dump()
+                        created_id = crud.create(item_dict)
+                        created_item = crud.get(created_id)
+                        return created_item
+                    except Exception as e:
+                        raise HTTPException(
+                            status_code=status.HTTP_400_BAD_REQUEST,
+                            detail=f"創建失敗: {str(e)}",
+                        )
 
             # 設定類型提示
             create_resource.__annotations__["item"] = request_model
 
         # COUNT 路由（必須在 {resource_id} 路由之前）
-        if config.count:
+        if config.is_route_enabled("count"):
 
             @router.get(f"/{self.crud.resource_name}/count")
             async def count_resources():
@@ -113,7 +160,7 @@ class FastAPIGenerator:
                 return {"count": count}
 
         # GET 單個資源路由
-        if config.get:
+        if config.is_route_enabled("get"):
 
             @router.get(
                 f"/{self.crud.resource_name}/{{resource_id}}",
@@ -129,47 +176,161 @@ class FastAPIGenerator:
                 return item
 
         # UPDATE 路由
-        if config.update:
+        if config.is_route_enabled("update"):
+            update_options = config.get_route_options("update")
 
-            @router.put(
-                f"/{self.crud.resource_name}/{{resource_id}}",
-                response_model=response_model,
-            )
-            async def update_resource(resource_id: str, item):
-                """更新資源"""
-                try:
-                    item_dict = item.model_dump()
-                    success = crud.update(resource_id, item_dict)
-                    if not success:
+            if update_options.background_task != BackgroundTaskMode.DISABLED:
+
+                @router.put(
+                    f"/{self.crud.resource_name}/{{resource_id}}",
+                    response_model=response_model,
+                    status_code=update_options.custom_status_code or status.HTTP_200_OK,
+                )
+                async def update_resource(
+                    resource_id: str, item, background_tasks: BackgroundTasks
+                ):
+                    """更新資源（包含 background task）"""
+                    try:
+                        item_dict = item.model_dump()
+                        success = crud.update(resource_id, item_dict)
+                        if not success:
+                            raise HTTPException(
+                                status_code=status.HTTP_404_NOT_FOUND,
+                                detail="資源不存在",
+                            )
+                        updated_item = crud.get(resource_id)
+
+                        # 執行 background task
+                        if update_options.background_task_func:
+                            if (
+                                update_options.background_task
+                                == BackgroundTaskMode.CONDITIONAL
+                            ):
+                                if (
+                                    update_options.background_task_condition
+                                    and update_options.background_task_condition(
+                                        updated_item
+                                    )
+                                ):
+                                    background_tasks.add_task(
+                                        update_options.background_task_func,
+                                        updated_item,
+                                        resource_id,
+                                    )
+                            else:  # ENABLED
+                                background_tasks.add_task(
+                                    update_options.background_task_func,
+                                    updated_item,
+                                    resource_id,
+                                )
+
+                        return updated_item
+                    except Exception as e:
                         raise HTTPException(
-                            status_code=status.HTTP_404_NOT_FOUND, detail="資源不存在"
+                            status_code=status.HTTP_400_BAD_REQUEST,
+                            detail=f"更新失敗: {str(e)}",
                         )
-                    updated_item = crud.get(resource_id)
-                    return updated_item
-                except Exception as e:
-                    raise HTTPException(
-                        status_code=status.HTTP_400_BAD_REQUEST,
-                        detail=f"更新失敗: {str(e)}",
-                    )
+            else:
+
+                @router.put(
+                    f"/{self.crud.resource_name}/{{resource_id}}",
+                    response_model=response_model,
+                    status_code=update_options.custom_status_code or status.HTTP_200_OK,
+                )
+                async def update_resource(resource_id: str, item):
+                    """更新資源"""
+                    try:
+                        item_dict = item.model_dump()
+                        success = crud.update(resource_id, item_dict)
+                        if not success:
+                            raise HTTPException(
+                                status_code=status.HTTP_404_NOT_FOUND,
+                                detail="資源不存在",
+                            )
+                        updated_item = crud.get(resource_id)
+                        return updated_item
+                    except Exception as e:
+                        raise HTTPException(
+                            status_code=status.HTTP_400_BAD_REQUEST,
+                            detail=f"更新失敗: {str(e)}",
+                        )
 
             # 設定類型提示
             update_resource.__annotations__["item"] = request_model
 
         # DELETE 路由
-        if config.delete:
+        if config.is_route_enabled("delete"):
+            delete_options = config.get_route_options("delete")
 
-            @router.delete(f"/{self.crud.resource_name}/{{resource_id}}")
-            async def delete_resource(resource_id: str):
-                """刪除資源"""
-                success = crud.delete(resource_id)
-                if not success:
-                    raise HTTPException(
-                        status_code=status.HTTP_404_NOT_FOUND, detail="資源不存在"
+            if delete_options.background_task != BackgroundTaskMode.DISABLED:
+
+                @router.delete(
+                    f"/{self.crud.resource_name}/{{resource_id}}",
+                    status_code=delete_options.custom_status_code
+                    or status.HTTP_204_NO_CONTENT,
+                )
+                async def delete_resource(
+                    resource_id: str, background_tasks: BackgroundTasks
+                ):
+                    """刪除資源（包含 background task）"""
+                    # 先取得資源（用於 background task）
+                    item_to_delete = (
+                        crud.get(resource_id)
+                        if delete_options.background_task_func
+                        else None
                     )
-                return {"message": "資源已刪除"}
 
-        # LIST 路由
-        if config.list:
+                    success = crud.delete(resource_id)
+                    if not success:
+                        raise HTTPException(
+                            status_code=status.HTTP_404_NOT_FOUND, detail="資源不存在"
+                        )
+
+                    # 執行 background task
+                    if delete_options.background_task_func and item_to_delete:
+                        if (
+                            delete_options.background_task
+                            == BackgroundTaskMode.CONDITIONAL
+                        ):
+                            if (
+                                delete_options.background_task_condition
+                                and delete_options.background_task_condition(
+                                    item_to_delete
+                                )
+                            ):
+                                background_tasks.add_task(
+                                    delete_options.background_task_func,
+                                    item_to_delete,
+                                    resource_id,
+                                )
+                        else:  # ENABLED
+                            background_tasks.add_task(
+                                delete_options.background_task_func,
+                                item_to_delete,
+                                resource_id,
+                            )
+
+                    # 204 No Content 不應該有響應體
+                    return
+            else:
+
+                @router.delete(
+                    f"/{self.crud.resource_name}/{{resource_id}}",
+                    status_code=delete_options.custom_status_code
+                    or status.HTTP_204_NO_CONTENT,
+                )
+                async def delete_resource(resource_id: str):
+                    """刪除資源"""
+                    success = crud.delete(resource_id)
+                    if not success:
+                        raise HTTPException(
+                            status_code=status.HTTP_404_NOT_FOUND, detail="資源不存在"
+                        )
+                    # 204 No Content 不應該有響應體
+                    return
+
+        # LIST 所有資源路由
+        if config.is_route_enabled("list"):
 
             @router.get(f"/{self.crud.resource_name}")
             async def list_resources():
