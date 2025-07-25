@@ -5,6 +5,7 @@ from fastapi import FastAPI, APIRouter
 from .core import SingleModelCRUD
 from .storage import Storage
 from .storage_factory import StorageFactory, DefaultStorageFactory
+from .metadata import MetadataConfig
 
 if TYPE_CHECKING:
     from .route_config import RouteConfig
@@ -16,19 +17,33 @@ T = TypeVar("T")
 class AutoCRUD:
     """支持多個模型的 AutoCRUD 系統"""
 
-    def __init__(self, storage_factory: Optional[StorageFactory] = None):
+    def __init__(
+        self,
+        storage_factory: Optional[StorageFactory] = None,
+        metadata_config: Optional[MetadataConfig] = None,
+        id_generator: Optional[callable] = None,
+        use_plural: bool = True,
+    ):
         """
         初始化多模型 CRUD 系統
 
         Args:
             storage_factory: 存儲工廠，用於為每個資源創建獨立的存儲後端
                            如果為 None，將使用默認的內存存儲工廠
+            metadata_config: 預設的 metadata 配置，在 register_model 時可以被覆蓋
+            id_generator: 預設的 ID 生成器，在 register_model 時可以被覆蓋
+            use_plural: 預設是否使用複數形式，在 register_model 時可以被覆蓋
         """
         if storage_factory is not None:
             self.storage_factory = storage_factory
         else:
             # 默認使用內存存儲工廠
             self.storage_factory = DefaultStorageFactory.memory()
+
+        # 預設配置
+        self.default_metadata_config = metadata_config
+        self.default_id_generator = id_generator
+        self.default_use_plural = use_plural
 
         self.cruds: Dict[str, SingleModelCRUD] = {}
         self.models: Dict[str, Type] = {}
@@ -40,7 +55,8 @@ class AutoCRUD:
         resource_name: Optional[str] = None,
         storage: Optional[Storage] = None,
         id_generator: Optional[callable] = None,
-        use_plural: bool = True,
+        metadata_config: Optional[MetadataConfig] = None,
+        use_plural: Optional[bool] = None,
     ) -> SingleModelCRUD[T]:
         """
         註冊一個模型
@@ -49,15 +65,29 @@ class AutoCRUD:
             model: 要註冊的模型類
             resource_name: 資源名稱，如果為 None 則自動生成
             storage: 該資源專用的存儲後端，如果為 None 則使用 storage_factory 創建
-            id_generator: ID 生成器函數
-            use_plural: 是否使用複數形式，僅在 resource_name 為 None 時生效
+            id_generator: ID 生成器函數，如果為 None 則使用預設值
+            metadata_config: metadata 配置，如果為 None 則使用預設值
+            use_plural: 是否使用複數形式，如果為 None 則使用預設值，僅在 resource_name 為 None 時生效
 
         Returns:
             創建的 SingleModelCRUD 實例
         """
+        # 使用預設值填充未提供的參數
+        actual_id_generator = (
+            id_generator if id_generator is not None else self.default_id_generator
+        )
+        actual_metadata_config = (
+            metadata_config
+            if metadata_config is not None
+            else self.default_metadata_config
+        )
+        actual_use_plural = (
+            use_plural if use_plural is not None else self.default_use_plural
+        )
+
         if resource_name is None:
             # 自動生成資源名稱
-            if use_plural:
+            if actual_use_plural:
                 # ModelName -> model_names
                 resource_name = self._pluralize_resource_name(model.__name__)
             else:
@@ -79,7 +109,8 @@ class AutoCRUD:
             model=model,
             storage=actual_storage,
             resource_name=resource_name,
-            id_generator=id_generator,
+            id_generator=actual_id_generator,
+            metadata_config=actual_metadata_config,
         )
 
         self.cruds[resource_name] = crud

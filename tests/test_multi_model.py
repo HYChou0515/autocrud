@@ -3,6 +3,7 @@
 import pytest
 from dataclasses import dataclass
 from autocrud import AutoCRUD, DefaultStorageFactory
+from autocrud.metadata import MetadataConfig
 from .test_models import User, Product, Cat, UserProfile, ProductCategory, Company
 
 
@@ -578,3 +579,192 @@ class TestMultiModelWithDifferentStorages:
         assert retrieved_user["name"] == "Bob"
         assert retrieved_product is not None
         assert retrieved_product["name"] == "商品"
+
+
+class TestAutoCRUDDefaults:
+    """Test AutoCRUD with default configuration parameters"""
+
+    def test_autocrud_with_default_metadata_config(self):
+        """Test AutoCRUD with default metadata configuration"""
+        # Use metadata config that doesn't require additional fields
+        metadata_config = MetadataConfig(
+            enable_timestamps=False, enable_user_tracking=False
+        )
+        autocrud = AutoCRUD(metadata_config=metadata_config)
+
+        # Register model without explicit metadata config - should use default
+        autocrud.register_model(User)
+
+        # Check that the model uses the default metadata config
+        # Use the resource name "users" (plural form by default)
+        single_crud = autocrud.get_crud("users")
+        assert single_crud.metadata_config == metadata_config
+        assert not single_crud.metadata_config.enable_timestamps
+        assert not single_crud.metadata_config.enable_user_tracking
+
+    def test_autocrud_with_default_id_generator(self):
+        """測試 AutoCRUD 初始化時提供預設 id_generator"""
+        import time
+
+        def custom_id_generator():
+            return f"custom_{int(time.time() * 1000)}"
+
+        multi_crud = AutoCRUD(id_generator=custom_id_generator)
+
+        # 驗證預設 ID 生成器被設置
+        assert multi_crud.default_id_generator == custom_id_generator
+
+        # 註冊模型會使用預設 ID 生成器
+        multi_crud.register_model(User)
+
+        # 創建使用者來驗證自訂 ID 生成器被使用
+        user_id = multi_crud.create(
+            "users", {"name": "Test User", "email": "test@example.com", "age": 25}
+        )
+
+        assert user_id.startswith("custom_")
+
+    def test_autocrud_with_default_use_plural(self):
+        """測試 AutoCRUD 初始化時提供預設 use_plural 設定"""
+        # 測試預設為 False（單數）
+        multi_crud = AutoCRUD(use_plural=False)
+
+        assert multi_crud.default_use_plural is False
+
+        # 註冊模型會使用單數形式
+        multi_crud.register_model(User)
+
+        # 檢查資源名稱是單數
+        resources = multi_crud.list_resources()
+        assert "user" in resources  # 單數形式
+        assert "users" not in resources
+
+    def test_register_model_override_defaults(self):
+        """測試 register_model 可以覆蓋預設配置"""
+        # 設置預設配置 - 使用簡單配置避免欄位需求
+        default_metadata = MetadataConfig(
+            enable_timestamps=False, enable_user_tracking=False
+        )
+
+        def default_id_generator():
+            return "default_id"
+
+        multi_crud = AutoCRUD(
+            metadata_config=default_metadata,
+            id_generator=default_id_generator,
+            use_plural=True,
+        )
+
+        # 覆蓋配置
+        override_metadata = MetadataConfig(
+            enable_timestamps=False, enable_user_tracking=False
+        )
+
+        def override_id_generator():
+            return "override_id"
+
+        multi_crud.register_model(
+            User,
+            metadata_config=override_metadata,
+            id_generator=override_id_generator,
+            use_plural=False,  # 覆蓋為單數
+        )
+
+        # 驗證覆蓋生效
+        resources = multi_crud.list_resources()
+        assert "user" in resources  # 使用了單數形式
+
+        # 創建使用者驗證覆蓋的配置被使用
+        user_id = multi_crud.create(
+            "user",
+            {"name": "Override User", "email": "override@example.com", "age": 30},
+        )
+
+        assert user_id == "override_id"  # 使用了覆蓋的 ID 生成器
+
+    def test_none_defaults_use_builtin_behavior(self):
+        """測試當預設值為 None 時使用內建行為"""
+        multi_crud = AutoCRUD(metadata_config=None, id_generator=None, use_plural=True)
+
+        # 註冊模型
+        multi_crud.register_model(User)
+
+        # 應該使用複數形式
+        resources = multi_crud.list_resources()
+        assert "users" in resources
+
+        # 創建使用者
+        user_id = multi_crud.create(
+            "users",
+            {"name": "None Default User", "email": "none@example.com", "age": 25},
+        )
+
+        # ID 應該是 UUID 格式（預設行為）
+        import uuid
+
+        try:
+            uuid.UUID(user_id)  # 如果是有效的 UUID 就不會拋出異常
+        except ValueError:
+            pytest.fail("Expected UUID format for default ID generator")
+
+        user = multi_crud.get("users", user_id)
+        # 沒有 metadata 配置，所以不應該有額外的欄位
+        expected_fields = {"id", "name", "email", "age"}
+        assert set(user.keys()) == expected_fields
+
+    def test_mixed_default_and_explicit_models(self):
+        """測試混合使用預設和明確配置的模型"""
+        # 設置一些預設值 - 使用簡單配置避免欄位需求
+        default_metadata = MetadataConfig(
+            enable_timestamps=False, enable_user_tracking=False
+        )
+        multi_crud = AutoCRUD(
+            metadata_config=default_metadata,
+            use_plural=False,  # 預設單數
+        )
+
+        # 第一個模型使用預設配置
+        multi_crud.register_model(User)  # 應該是 "user"
+
+        # 第二個模型覆蓋 use_plural
+        multi_crud.register_model(Product, use_plural=True)  # 應該是 "products"
+
+        # 第三個模型指定資源名稱（忽略 use_plural）
+        multi_crud.register_model(Order, resource_name="custom_orders")
+
+        resources = multi_crud.list_resources()
+        assert "user" in resources  # 使用預設單數
+        assert "products" in resources  # 覆蓋為複數
+        assert "custom_orders" in resources  # 明確指定名稱
+
+        assert len(resources) == 3
+
+    def test_storage_factory_with_defaults(self):
+        """測試 storage_factory 與預設配置的結合"""
+        from autocrud.storage_factory import DefaultStorageFactory
+
+        # 使用自訂 storage_factory
+        storage_factory = DefaultStorageFactory.disk("./test_data")
+        metadata_config = MetadataConfig(
+            enable_timestamps=False, enable_user_tracking=False
+        )
+
+        multi_crud = AutoCRUD(
+            storage_factory=storage_factory, metadata_config=metadata_config
+        )
+
+        # 註冊模型
+        multi_crud.register_model(User)
+
+        # 驗證使用了正確的 storage
+        storage = multi_crud.get_storage("users")
+        assert storage.__class__.__name__ == "DiskStorage"
+
+        # 驗證可以正常創建和取得資料
+        user_id = multi_crud.create(
+            "users",
+            {"name": "Storage Test User", "email": "storage@example.com", "age": 28},
+        )
+
+        user = multi_crud.get("users", user_id)
+        assert user["name"] == "Storage Test User"
