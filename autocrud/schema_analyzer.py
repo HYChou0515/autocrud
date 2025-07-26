@@ -75,7 +75,7 @@ class SchemaAnalyzer:
             self.model_fields = self.model.model_fields
         else:
             # Fallback for Pydantic v1
-            self.model_fields = self.model.__fields__
+            self.model_fields = self.model.__fields__  # pragma: no cover
         self.field_types = get_type_hints(self.model)
 
     def _validate_schema(self):
@@ -212,7 +212,7 @@ class SchemaAnalyzer:
                 field_info = self.model.model_fields.get(field_name)
                 if field_info:
                     return not field_info.is_required()
-            else:
+            else:  # pragma: no cover
                 # Fallback for Pydantic v1
                 field_info = self.model.__fields__.get(field_name)
                 if field_info:
