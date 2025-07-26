@@ -83,15 +83,22 @@ class FastAPIGenerator:
         if config.is_route_enabled("create"):
             create_options = config.get_route_options("create")
 
+            # 構建路由裝飾器參數
+            route_kwargs = {
+                "path": f"/{self.crud.resource_name}",
+                "response_model": response_model,
+                "status_code": create_options.custom_status_code
+                or status.HTTP_201_CREATED,
+            }
+
+            # 添加自定義依賴
+            if create_options.custom_dependencies:
+                route_kwargs["dependencies"] = create_options.custom_dependencies
+
             # 決定是否需要 BackgroundTasks 參數
             if create_options.background_task != BackgroundTaskMode.DISABLED:
 
-                @router.post(
-                    f"/{self.crud.resource_name}",
-                    response_model=response_model,
-                    status_code=create_options.custom_status_code
-                    or status.HTTP_201_CREATED,
-                )
+                @router.post(**route_kwargs)
                 async def create_resource(item, background_tasks: BackgroundTasks):
                     """創建資源（包含 background task）"""
                     try:
@@ -128,12 +135,7 @@ class FastAPIGenerator:
                         )
             else:
 
-                @router.post(
-                    f"/{self.crud.resource_name}",
-                    response_model=response_model,
-                    status_code=create_options.custom_status_code
-                    or status.HTTP_201_CREATED,
-                )
+                @router.post(**route_kwargs)
                 async def create_resource(item):
                     """創建資源"""
                     try:
@@ -152,8 +154,16 @@ class FastAPIGenerator:
 
         # COUNT 路由（必須在 {resource_id} 路由之前）
         if config.is_route_enabled("count"):
+            count_options = config.get_route_options("count")
 
-            @router.get(f"/{self.crud.resource_name}/count")
+            # 構建路由裝飾器參數
+            route_kwargs = {"path": f"/{self.crud.resource_name}/count"}
+
+            # 添加自定義依賴
+            if count_options.custom_dependencies:
+                route_kwargs["dependencies"] = count_options.custom_dependencies
+
+            @router.get(**route_kwargs)
             async def count_resources():
                 """獲取資源總數"""
                 count = crud.count()
@@ -161,11 +171,19 @@ class FastAPIGenerator:
 
         # GET 單個資源路由
         if config.is_route_enabled("get"):
+            get_options = config.get_route_options("get")
 
-            @router.get(
-                f"/{self.crud.resource_name}/{{resource_id}}",
-                response_model=response_model,
-            )
+            # 構建路由裝飾器參數
+            route_kwargs = {
+                "path": f"/{self.crud.resource_name}/{{resource_id}}",
+                "response_model": response_model,
+            }
+
+            # 添加自定義依賴
+            if get_options.custom_dependencies:
+                route_kwargs["dependencies"] = get_options.custom_dependencies
+
+            @router.get(**route_kwargs)
             async def get_resource(resource_id: str):
                 """獲取單個資源"""
                 item = crud.get(resource_id)
@@ -179,13 +197,20 @@ class FastAPIGenerator:
         if config.is_route_enabled("update"):
             update_options = config.get_route_options("update")
 
+            # 構建路由裝飾器參數
+            route_kwargs = {
+                "path": f"/{self.crud.resource_name}/{{resource_id}}",
+                "response_model": response_model,
+                "status_code": update_options.custom_status_code or status.HTTP_200_OK,
+            }
+
+            # 添加自定義依賴
+            if update_options.custom_dependencies:
+                route_kwargs["dependencies"] = update_options.custom_dependencies
+
             if update_options.background_task != BackgroundTaskMode.DISABLED:
 
-                @router.put(
-                    f"/{self.crud.resource_name}/{{resource_id}}",
-                    response_model=response_model,
-                    status_code=update_options.custom_status_code or status.HTTP_200_OK,
-                )
+                @router.put(**route_kwargs)
                 async def update_resource(
                     resource_id: str, item, background_tasks: BackgroundTasks
                 ):
@@ -232,11 +257,7 @@ class FastAPIGenerator:
                         )
             else:
 
-                @router.put(
-                    f"/{self.crud.resource_name}/{{resource_id}}",
-                    response_model=response_model,
-                    status_code=update_options.custom_status_code or status.HTTP_200_OK,
-                )
+                @router.put(**route_kwargs)
                 async def update_resource(resource_id: str, item):
                     """更新資源"""
                     try:
@@ -262,13 +283,20 @@ class FastAPIGenerator:
         if config.is_route_enabled("delete"):
             delete_options = config.get_route_options("delete")
 
+            # 構建路由裝飾器參數
+            route_kwargs = {
+                "path": f"/{self.crud.resource_name}/{{resource_id}}",
+                "status_code": delete_options.custom_status_code
+                or status.HTTP_204_NO_CONTENT,
+            }
+
+            # 添加自定義依賴
+            if delete_options.custom_dependencies:
+                route_kwargs["dependencies"] = delete_options.custom_dependencies
+
             if delete_options.background_task != BackgroundTaskMode.DISABLED:
 
-                @router.delete(
-                    f"/{self.crud.resource_name}/{{resource_id}}",
-                    status_code=delete_options.custom_status_code
-                    or status.HTTP_204_NO_CONTENT,
-                )
+                @router.delete(**route_kwargs)
                 async def delete_resource(
                     resource_id: str, background_tasks: BackgroundTasks
                 ):
@@ -314,11 +342,7 @@ class FastAPIGenerator:
                     return
             else:
 
-                @router.delete(
-                    f"/{self.crud.resource_name}/{{resource_id}}",
-                    status_code=delete_options.custom_status_code
-                    or status.HTTP_204_NO_CONTENT,
-                )
+                @router.delete(**route_kwargs)
                 async def delete_resource(resource_id: str):
                     """刪除資源"""
                     success = crud.delete(resource_id)
@@ -331,8 +355,16 @@ class FastAPIGenerator:
 
         # LIST 所有資源路由
         if config.is_route_enabled("list"):
+            list_options = config.get_route_options("list")
 
-            @router.get(f"/{self.crud.resource_name}")
+            # 構建路由裝飾器參數
+            route_kwargs = {"path": f"/{self.crud.resource_name}"}
+
+            # 添加自定義依賴
+            if list_options.custom_dependencies:
+                route_kwargs["dependencies"] = list_options.custom_dependencies
+
+            @router.get(**route_kwargs)
             async def list_resources():
                 """列出所有資源"""
                 items = crud.list_all()

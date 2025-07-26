@@ -26,7 +26,6 @@ class RouteOptions:
 
     # Additional route-specific options
     custom_status_code: Optional[int] = None
-    custom_response_model: Optional[type] = None
     custom_dependencies: Optional[list] = None
 
     @classmethod
@@ -190,7 +189,6 @@ class RouteConfig:
                 if (
                     options.background_task == BackgroundTaskMode.DISABLED
                     and options.custom_status_code is None
-                    and options.custom_response_model is None
                     and options.custom_dependencies is None
                 ):
                     result[field_name] = options.enabled
