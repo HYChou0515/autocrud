@@ -2,7 +2,7 @@
 
 import pytest
 from dataclasses import dataclass
-from autocrud import AutoCRUD, DefaultStorageFactory
+from autocrud import AutoCRUD, DefaultStorageFactory, ResourceNameStyle
 from autocrud.metadata import MetadataConfig
 from .test_models import User, Product, Cat, UserProfile, ProductCategory, Company
 
@@ -119,7 +119,9 @@ class TestMultiModelAutoCRUD:
         ]
 
         for model_name, expected in test_cases:
-            result = multi_crud._singularize_resource_name(model_name)
+            result = multi_crud._singularize_resource_name(
+                model_name, ResourceNameStyle.SNAKE
+            )
             assert result == expected, (
                 f"Expected {expected}, got {result} for {model_name}"
             )

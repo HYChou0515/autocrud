@@ -1,7 +1,7 @@
 """AutoCRUD - 自動化 CRUD 系統"""
 
 from .core import SingleModelCRUD
-from .multi_model import AutoCRUD
+from .multi_model import AutoCRUD, ResourceNameStyle
 from .storage import MemoryStorage, DiskStorage, Storage
 from .converter import ModelConverter
 from .serializer import SerializerFactory
@@ -27,6 +27,7 @@ from .updater import (
 __version__ = "0.1.0"
 __all__ = [
     "AutoCRUD",
+    "ResourceNameStyle",
     "SingleModelCRUD",
     "MemoryStorage",
     "DiskStorage",

@@ -1,6 +1,7 @@
 """多模型 AutoCRUD 系統"""
 
 from typing import Dict, Type, List, Any, Optional, TYPE_CHECKING, TypeVar
+from enum import Enum
 from fastapi import FastAPI, APIRouter
 from .core import SingleModelCRUD
 from .storage import Storage
@@ -14,6 +15,14 @@ if TYPE_CHECKING:
 T = TypeVar("T")
 
 
+class ResourceNameStyle(Enum):
+    """資源名稱命名風格"""
+
+    SNAKE = "snake"  # user_profile -> user_profiles
+    CAMEL = "camel"  # user_profile -> userProfiles
+    DASH = "dash"  # user_profile -> user-profiles
+
+
 class AutoCRUD:
     """支持多個模型的 AutoCRUD 系統"""
 
@@ -23,6 +32,7 @@ class AutoCRUD:
         metadata_config: Optional[MetadataConfig] = None,
         id_generator: Optional[callable] = None,
         use_plural: bool = True,
+        resource_name_style: ResourceNameStyle = ResourceNameStyle.SNAKE,
     ):
         """
         初始化多模型 CRUD 系統
@@ -33,6 +43,7 @@ class AutoCRUD:
             metadata_config: 預設的 metadata 配置，在 register_model 時可以被覆蓋
             id_generator: 預設的 ID 生成器，在 register_model 時可以被覆蓋
             use_plural: 預設是否使用複數形式，在 register_model 時可以被覆蓋
+            resource_name_style: 資源名稱命名風格 (snake/camel/dash)
         """
         if storage_factory is not None:
             self.storage_factory = storage_factory
@@ -44,6 +55,7 @@ class AutoCRUD:
         self.default_metadata_config = metadata_config
         self.default_id_generator = id_generator
         self.default_use_plural = use_plural
+        self.default_resource_name_style = resource_name_style
 
         self.cruds: Dict[str, SingleModelCRUD] = {}
         self.models: Dict[str, Type] = {}
@@ -57,6 +69,7 @@ class AutoCRUD:
         id_generator: Optional[callable] = None,
         metadata_config: Optional[MetadataConfig] = None,
         use_plural: Optional[bool] = None,
+        resource_name_style: Optional[ResourceNameStyle] = None,
         default_values: Optional[Dict[str, Any]] = None,
     ) -> SingleModelCRUD[T]:
         """
@@ -69,6 +82,7 @@ class AutoCRUD:
             id_generator: ID 生成器函數，如果為 None 則使用預設值
             metadata_config: metadata 配置，如果為 None 則使用預設值
             use_plural: 是否使用複數形式，如果為 None 則使用預設值，僅在 resource_name 為 None 時生效
+            resource_name_style: 資源名稱命名風格，如果為 None 則使用預設值，僅在 resource_name 為 None 時生效
             default_values: 預設值字典，對於 TypedDict 特別有用，可以讓必填欄位變成選填
 
         Returns:
@@ -86,15 +100,24 @@ class AutoCRUD:
         actual_use_plural = (
             use_plural if use_plural is not None else self.default_use_plural
         )
+        actual_resource_name_style = (
+            resource_name_style
+            if resource_name_style is not None
+            else self.default_resource_name_style
+        )
 
         if resource_name is None:
             # 自動生成資源名稱
             if actual_use_plural:
-                # ModelName -> model_names
-                resource_name = self._pluralize_resource_name(model.__name__)
+                # ModelName -> model_names (根據風格)
+                resource_name = self._pluralize_resource_name(
+                    model.__name__, actual_resource_name_style
+                )
             else:
-                # ModelName -> model_name
-                resource_name = self._singularize_resource_name(model.__name__)
+                # ModelName -> model_name (根據風格)
+                resource_name = self._singularize_resource_name(
+                    model.__name__, actual_resource_name_style
+                )
 
         if resource_name in self.cruds:
             raise ValueError(f"Resource '{resource_name}' already registered")
@@ -234,17 +257,20 @@ class AutoCRUD:
 
         return app
 
-    def _pluralize_resource_name(self, model_name: str) -> str:
+    def _pluralize_resource_name(
+        self, model_name: str, style: ResourceNameStyle
+    ) -> str:
         """
         將模型名稱轉換為複數資源名稱
 
         Args:
             model_name: 模型類名稱
+            style: 命名風格
 
         Returns:
             複數形式的資源名稱
         """
-        # 將駝峰命名轉換為下劃線命名
+        # 先轉換為基本形式 (snake_case)
         import re
 
         snake_case = re.sub("(.)([A-Z][a-z]+)", r"\1_\2", model_name)
@@ -252,29 +278,59 @@ class AutoCRUD:
 
         # 簡單的複數化規則
         if snake_case.endswith("y"):
-            return snake_case[:-1] + "ies"
+            plural_snake = snake_case[:-1] + "ies"
         elif snake_case.endswith(("s", "sh", "ch", "x", "z")):
-            return snake_case + "es"
+            plural_snake = snake_case + "es"
         else:
-            return snake_case + "s"
+            plural_snake = snake_case + "s"
 
-    def _singularize_resource_name(self, model_name: str) -> str:
+        # 根據風格轉換
+        return self._convert_to_style(plural_snake, style)
+
+    def _singularize_resource_name(
+        self, model_name: str, style: ResourceNameStyle
+    ) -> str:
         """
         將模型名稱轉換為單數資源名稱
 
         Args:
             model_name: 模型類名稱
+            style: 命名風格
 
         Returns:
             單數形式的資源名稱
         """
-        # 將駝峰命名轉換為下劃線命名
+        # 先轉換為基本形式 (snake_case)
         import re
 
         snake_case = re.sub("(.)([A-Z][a-z]+)", r"\1_\2", model_name)
         snake_case = re.sub("([a-z0-9])([A-Z])", r"\1_\2", snake_case).lower()
 
-        return snake_case
+        # 根據風格轉換
+        return self._convert_to_style(snake_case, style)
+
+    def _convert_to_style(self, snake_case_name: str, style: ResourceNameStyle) -> str:
+        """
+        將 snake_case 名稱轉換為指定風格
+
+        Args:
+            snake_case_name: snake_case 格式的名稱
+            style: 目標命名風格
+
+        Returns:
+            轉換後的名稱
+        """
+        if style == ResourceNameStyle.SNAKE:
+            return snake_case_name
+        elif style == ResourceNameStyle.CAMEL:
+            # snake_case -> camelCase
+            components = snake_case_name.split("_")
+            return components[0] + "".join(word.capitalize() for word in components[1:])
+        elif style == ResourceNameStyle.DASH:
+            # snake_case -> dash-case
+            return snake_case_name.replace("_", "-")
+        else:
+            return snake_case_name
 
     # 便利方法：直接在多模型系統上執行 CRUD 操作
     def create(self, resource_name: str, data: Dict[str, Any]) -> str:

@@ -5,7 +5,7 @@ from fastapi import FastAPI, HTTPException, status, APIRouter, BackgroundTasks
 from pydantic import BaseModel, create_model
 from .core import SingleModelCRUD
 from .converter import ModelConverter
-from .route_config import RouteConfig, BackgroundTaskMode
+from .route_config import RouteConfig, BackgroundTaskMode, RouteOptions
 
 
 class FastAPIGenerator:
@@ -25,7 +25,10 @@ class FastAPIGenerator:
             self.route_config = route_config
 
     def _execute_background_task(
-        self, route_options, background_tasks: BackgroundTasks, route_output
+        self,
+        route_options: RouteOptions,
+        background_tasks: BackgroundTasks,
+        route_output,
     ):
         """統一的背景任務執行邏輯"""
         if not route_options.background_task_func:
