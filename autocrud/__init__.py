@@ -7,10 +7,20 @@ from .converter import ModelConverter
 from .serializer import SerializerFactory
 from .fastapi_generator import FastAPIGenerator
 from .storage_factory import StorageFactory, DefaultStorageFactory
-from .route_config import RouteConfig
+from .route_config import RouteConfig, RouteOptions
 from .metadata import MetadataConfig
 from .schema_analyzer import SchemaAnalyzer
 from .list_params import ListQueryParams, ListResult, DateTimeRange, SortOrder
+from .plugin_system import (
+    RoutePlugin,
+    BaseRoutePlugin,
+    PluginManager,
+    PluginRouteConfig,
+    RouteMethod,
+    plugin_manager,
+    ensure_default_plugins_registered,
+)
+from .default_plugins import DEFAULT_PLUGINS
 from .updater import (
     AdvancedUpdater,
     UpdateOperation,
@@ -39,12 +49,21 @@ __all__ = [
     "StorageFactory",
     "DefaultStorageFactory",
     "RouteConfig",
+    "RouteOptions",
     "MetadataConfig",
     "SchemaAnalyzer",
     "ListQueryParams",
     "ListResult",
     "DateTimeRange",
     "SortOrder",
+    "RoutePlugin",
+    "BaseRoutePlugin",
+    "PluginManager",
+    "PluginRouteConfig",
+    "RouteMethod",
+    "plugin_manager",
+    "ensure_default_plugins_registered",
+    "DEFAULT_PLUGINS",
     "AdvancedUpdater",
     "UpdateOperation",
     "UpdateAction",

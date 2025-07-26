@@ -91,23 +91,31 @@ class RouteConfig:
 
     def get_route_options(self, route_name: str) -> RouteOptions:
         """Get RouteOptions for a specific route"""
-        # 直接通過 object.__getattribute__ 獲取原始值，避免 __getattribute__ 的布爾轉換
-        options = object.__getattribute__(self, route_name)
-        if isinstance(options, RouteOptions):
-            return options
-        # 如果是 bool，轉換成 RouteOptions
-        if options:
+        try:
+            # 直接通過 object.__getattribute__ 獲取原始值，避免 __getattribute__ 的布爾轉換
+            options = object.__getattribute__(self, route_name)
+            if isinstance(options, RouteOptions):
+                return options
+            # 如果是 bool，轉換成 RouteOptions
+            if options:
+                return RouteOptions.enabled_route()
+            else:
+                return RouteOptions.disabled_route()
+        except AttributeError:
+            # 對於未知的路由名稱，返回預設啟用的選項
             return RouteOptions.enabled_route()
-        else:
-            return RouteOptions.disabled_route()
 
     def is_route_enabled(self, route_name: str) -> bool:
         """Check if a route is enabled"""
-        options = object.__getattribute__(self, route_name)
-        if isinstance(options, RouteOptions):
-            return options.enabled
-        # 處理遺留的布爾值
-        return bool(options)
+        try:
+            options = object.__getattribute__(self, route_name)
+            if isinstance(options, RouteOptions):
+                return options.enabled
+            # 處理遺留的布爾值
+            return bool(options)
+        except AttributeError:
+            # 對於未知的路由名稱，預設為啟用
+            return True
 
     @classmethod
     def all_enabled(cls) -> "RouteConfig":

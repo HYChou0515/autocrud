@@ -1,14 +1,13 @@
 """FastAPI 自動生成模組"""
 
-from typing import Optional, Type, Callable, Any, List
+from typing import Optional, Type, Callable, Any
 from functools import wraps
-from datetime import datetime
-from fastapi import FastAPI, HTTPException, status, APIRouter, BackgroundTasks, Query
+from fastapi import FastAPI, APIRouter, BackgroundTasks
 from pydantic import BaseModel, create_model
 from .core import SingleModelCRUD
 from .converter import ModelConverter
 from .route_config import RouteConfig, BackgroundTaskMode, RouteOptions
-from .list_params import ListQueryParams, DateTimeRange, SortOrder
+from .plugin_system import plugin_manager, PluginRouteConfig, RouteMethod
 
 
 def background_task_decorator(func: Callable) -> Callable:
@@ -177,253 +176,149 @@ class FastAPIGenerator:
             **kwargs,
         )
 
-        request_model = self.request_model
-        response_model = self.response_model
-        crud = self.crud
+        # 從 plugin manager 獲取所有適用的路由配置
+        plugin_routes = plugin_manager.get_routes_for_crud(self.crud)
 
-        # CREATE 路由
-        if config.is_route_enabled("create"):
-            create_options = config.get_route_options("create")
+        # 根據 route_config 過濾和處理路由
+        for plugin_route in plugin_routes:
+            # 檢查路由是否啟用
+            if not config.is_route_enabled(plugin_route.name):
+                continue
 
-            # 構建路由裝飾器參數
-            route_kwargs = {
-                "path": f"/{self.crud.resource_name}",
-                "response_model": response_model,
-                "status_code": create_options.custom_status_code
-                or status.HTTP_201_CREATED,
-            }
+            # 獲取路由選項，可能會覆蓋 plugin 的預設選項
+            route_options = config.get_route_options(plugin_route.name)
 
-            # 添加自定義依賴
-            if create_options.custom_dependencies:
-                route_kwargs["dependencies"] = create_options.custom_dependencies
+            # 合併路由選項
+            merged_options = self._merge_route_options(
+                plugin_route.options, route_options
+            )
 
-            @router.post(**route_kwargs)
-            @self._with_background_task("create", create_options)
-            async def create_resource(item, background_tasks: BackgroundTasks):
-                """創建資源"""
-                try:
-                    item_dict = item.model_dump()
-                    created_id = crud.create(item_dict)
-                    created_item = crud.get(created_id)
-                    return created_item
-                except Exception as e:
-                    raise HTTPException(
-                        status_code=status.HTTP_400_BAD_REQUEST,
-                        detail=f"創建失敗: {str(e)}",
-                    )
-
-            # 設定類型提示
-            create_resource.__annotations__["item"] = request_model
-
-        # COUNT 路由（必須在 {resource_id} 路由之前）
-        if config.is_route_enabled("count"):
-            count_options = config.get_route_options("count")
-
-            # 構建路由裝飾器參數
-            route_kwargs = {"path": f"/{self.crud.resource_name}/count"}
-
-            # 添加自定義依賴
-            if count_options.custom_dependencies:
-                route_kwargs["dependencies"] = count_options.custom_dependencies
-
-            @router.get(**route_kwargs)
-            @self._with_background_task("count", count_options)
-            async def count_resources(background_tasks: BackgroundTasks):
-                """獲取資源總數"""
-                count = crud.count()
-                count_result = {"count": count}
-                return count_result
-
-        # GET 單個資源路由
-        if config.is_route_enabled("get"):
-            get_options = config.get_route_options("get")
-
-            # 構建路由裝飾器參數
-            route_kwargs = {
-                "path": f"/{self.crud.resource_name}/{{resource_id}}",
-                "response_model": response_model,
-            }
-
-            # 添加自定義依賴
-            if get_options.custom_dependencies:
-                route_kwargs["dependencies"] = get_options.custom_dependencies
-
-            @router.get(**route_kwargs)
-            @self._with_background_task("get", get_options)
-            async def get_resource(resource_id: str, background_tasks: BackgroundTasks):
-                """獲取單個資源"""
-                item = crud.get(resource_id)
-                if item is None:
-                    raise HTTPException(
-                        status_code=status.HTTP_404_NOT_FOUND, detail="資源不存在"
-                    )
-                return item
-
-        # UPDATE 路由
-        if config.is_route_enabled("update"):
-            update_options = config.get_route_options("update")
-
-            # 構建路由裝飾器參數
-            route_kwargs = {
-                "path": f"/{self.crud.resource_name}/{{resource_id}}",
-                "response_model": response_model,
-                "status_code": update_options.custom_status_code or status.HTTP_200_OK,
-            }
-
-            # 添加自定義依賴
-            if update_options.custom_dependencies:
-                route_kwargs["dependencies"] = update_options.custom_dependencies
-
-            @router.put(**route_kwargs)
-            @self._with_background_task("update", update_options)
-            async def update_resource(
-                resource_id: str, item, background_tasks: BackgroundTasks
-            ):
-                """更新資源"""
-                try:
-                    item_dict = item.model_dump()
-                    success = crud.update(resource_id, item_dict)
-                    if not success:
-                        raise HTTPException(
-                            status_code=status.HTTP_404_NOT_FOUND,
-                            detail="資源不存在",
-                        )
-                    updated_item = crud.get(resource_id)
-                    return updated_item
-                except Exception as e:
-                    raise HTTPException(
-                        status_code=status.HTTP_400_BAD_REQUEST,
-                        detail=f"更新失敗: {str(e)}",
-                    )
-
-            # 設定類型提示
-            update_resource.__annotations__["item"] = request_model
-
-        # DELETE 路由
-        if config.is_route_enabled("delete"):
-            delete_options = config.get_route_options("delete")
-
-            # 構建路由裝飾器參數
-            route_kwargs = {
-                "path": f"/{self.crud.resource_name}/{{resource_id}}",
-                "status_code": delete_options.custom_status_code
-                or status.HTTP_204_NO_CONTENT,
-            }
-
-            # 添加自定義依賴
-            if delete_options.custom_dependencies:
-                route_kwargs["dependencies"] = delete_options.custom_dependencies
-
-            @router.delete(**route_kwargs)
-            @self._with_background_task("delete", delete_options)
-            async def delete_resource(
-                resource_id: str, background_tasks: BackgroundTasks
-            ):
-                """刪除資源"""
-                success = crud.delete(resource_id)
-                if not success:
-                    raise HTTPException(
-                        status_code=status.HTTP_404_NOT_FOUND, detail="資源不存在"
-                    )
-                # DELETE 路由的回傳值是 None (204 No Content)
-                return None
-
-        # LIST 所有資源路由
-        if config.is_route_enabled("list"):
-            list_options = config.get_route_options("list")
-
-            # 構建路由裝飾器參數
-            route_kwargs = {"path": f"/{self.crud.resource_name}"}
-
-            # 添加自定義依賴
-            if list_options.custom_dependencies:
-                route_kwargs["dependencies"] = list_options.custom_dependencies
-
-            @router.get(**route_kwargs)
-            @self._with_background_task("list", list_options)
-            async def list_resources(
-                background_tasks: BackgroundTasks,
-                # 分頁參數
-                page: int = Query(1, ge=1, description="頁碼"),
-                page_size: int = Query(20, ge=1, le=1000, description="每頁大小"),
-                # 過濾參數
-                created_by: Optional[List[str]] = Query(
-                    None, description="按創建者過濾"
-                ),
-                updated_by: Optional[List[str]] = Query(
-                    None, description="按更新者過濾"
-                ),
-                created_time_start: Optional[datetime] = Query(
-                    None, description="創建時間開始"
-                ),
-                created_time_end: Optional[datetime] = Query(
-                    None, description="創建時間結束"
-                ),
-                updated_time_start: Optional[datetime] = Query(
-                    None, description="更新時間開始"
-                ),
-                updated_time_end: Optional[datetime] = Query(
-                    None, description="更新時間結束"
-                ),
-                # 排序參數
-                sort_by: Optional[str] = Query(None, description="排序字段"),
-                sort_order: SortOrder = Query(SortOrder.DESC, description="排序順序"),
-                # 向後兼容：簡單模式
-                simple: bool = Query(
-                    False, description="簡單模式（返回項目列表而非分頁結果）"
-                ),
-            ):
-                """列出所有資源"""
-                # 檢查是否使用了任何高級查詢參數
-                has_advanced_params = any(
-                    [
-                        page != 1,
-                        page_size != 20,
-                        created_by,
-                        updated_by,
-                        created_time_start,
-                        created_time_end,
-                        updated_time_start,
-                        updated_time_end,
-                        sort_by,
-                    ]
-                )
-
-                if not has_advanced_params and simple:
-                    # 向後兼容：返回簡單的項目列表
-                    items = crud.list_all()
-                    return items
-                else:
-                    # 構建查詢參數
-                    params = ListQueryParams(
-                        page=page,
-                        page_size=page_size,
-                        created_by_filter=created_by,
-                        updated_by_filter=updated_by,
-                        created_time_range=DateTimeRange(
-                            start=created_time_start, end=created_time_end
-                        )
-                        if created_time_start or created_time_end
-                        else None,
-                        updated_time_range=DateTimeRange(
-                            start=updated_time_start, end=updated_time_end
-                        )
-                        if updated_time_start or updated_time_end
-                        else None,
-                        sort_by=sort_by,
-                        sort_order=sort_order,
-                    )
-
-                    if simple:
-                        # 簡單模式：只返回項目列表
-                        items = crud.list_all(params)
-                        return items
-                    else:
-                        # 高級模式：返回分頁結果
-                        result = crud.list_with_params(params)
-                        return result
+            # 註冊路由到 router
+            self._register_plugin_route(router, plugin_route, merged_options)
 
         return router
+
+    def _merge_route_options(
+        self, plugin_options: RouteOptions, config_options: RouteOptions
+    ) -> RouteOptions:
+        """合併 plugin 選項和配置選項"""
+        # config_options 優先級更高
+        return RouteOptions(
+            enabled=config_options.enabled,
+            background_task=config_options.background_task
+            if config_options.background_task != BackgroundTaskMode.DISABLED
+            else plugin_options.background_task,
+            background_task_func=config_options.background_task_func
+            or plugin_options.background_task_func,
+            background_task_condition=config_options.background_task_condition
+            or plugin_options.background_task_condition,
+            custom_status_code=config_options.custom_status_code
+            or plugin_options.custom_status_code,
+            custom_dependencies=config_options.custom_dependencies
+            or plugin_options.custom_dependencies,
+        )
+
+    def _register_plugin_route(
+        self, router: APIRouter, plugin_route: PluginRouteConfig, options: RouteOptions
+    ):
+        """註冊一個 plugin 路由到 router"""
+        # 準備路由裝飾器參數
+        route_kwargs = {
+            "path": plugin_route.path,
+        }
+
+        # 添加可選參數
+        if plugin_route.response_model:
+            route_kwargs["response_model"] = plugin_route.response_model
+        if options.custom_status_code or plugin_route.status_code:
+            route_kwargs["status_code"] = (
+                options.custom_status_code or plugin_route.status_code
+            )
+        if plugin_route.summary:
+            route_kwargs["summary"] = plugin_route.summary
+        if plugin_route.description:
+            route_kwargs["description"] = plugin_route.description
+        if plugin_route.tags:
+            route_kwargs["tags"] = plugin_route.tags
+        if plugin_route.responses:
+            route_kwargs["responses"] = plugin_route.responses
+
+        # 合併依賴
+        combined_dependencies = []
+        if plugin_route.dependencies:
+            combined_dependencies.extend(plugin_route.dependencies)
+        if options.custom_dependencies:
+            combined_dependencies.extend(options.custom_dependencies)
+        if combined_dependencies:
+            route_kwargs["dependencies"] = combined_dependencies
+
+        # 創建路由處理函數
+        handler = self._create_route_handler(plugin_route, options)
+
+        # 根據 HTTP 方法註冊路由
+        method_map = {
+            RouteMethod.GET: router.get,
+            RouteMethod.POST: router.post,
+            RouteMethod.PUT: router.put,
+            RouteMethod.DELETE: router.delete,
+            RouteMethod.PATCH: router.patch,
+            RouteMethod.HEAD: router.head,
+            RouteMethod.OPTIONS: router.options,
+        }
+
+        route_decorator = method_map.get(plugin_route.method)
+        if route_decorator:
+            route_decorator(**route_kwargs)(handler)
+        else:
+            raise ValueError(f"Unsupported HTTP method: {plugin_route.method}")
+
+    def _create_route_handler(
+        self, plugin_route: PluginRouteConfig, options: RouteOptions
+    ):
+        """創建路由處理函數，包含 background task 和 CRUD 注入邏輯"""
+        original_handler = plugin_route.handler
+
+        # 添加背景任務支持
+        @self._with_background_task(plugin_route.name, options)
+        async def final_handler(*args, **kwargs):
+            # 檢查是否為異步函數
+            import asyncio
+
+            # 如果需要 CRUD 實例，將其作為第一個參數傳入
+            if plugin_route.requires_crud:
+                if asyncio.iscoroutinefunction(original_handler):
+                    return await original_handler(self.crud, *args, **kwargs)
+                else:
+                    return original_handler(self.crud, *args, **kwargs)
+            else:
+                if asyncio.iscoroutinefunction(original_handler):
+                    return await original_handler(*args, **kwargs)
+                else:
+                    return original_handler(*args, **kwargs)
+
+        # 保持原始函數的註解信息
+        if hasattr(original_handler, "__annotations__"):
+            final_handler.__annotations__ = original_handler.__annotations__.copy()
+
+        # 保持原始函數的參數信息
+        import inspect
+
+        if hasattr(original_handler, "__code__"):
+            # 獲取原始函數的參數信息，但要跳過第一個 crud 參數（如果有的話）
+            original_sig = inspect.signature(original_handler)
+            params = list(original_sig.parameters.values())
+
+            if plugin_route.requires_crud and params:
+                # 跳過第一個 crud 參數
+                params = params[1:]
+
+            # 重建簽名
+            new_sig = inspect.Signature(
+                parameters=params, return_annotation=original_sig.return_annotation
+            )
+            final_handler.__signature__ = new_sig
+
+        return final_handler
 
     def create_routes(self, app: FastAPI, prefix: str = "") -> FastAPI:
         """在 FastAPI 應用中創建 CRUD 路由（向後兼容方法）"""
