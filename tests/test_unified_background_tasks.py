@@ -14,11 +14,17 @@ class User(TypedDict):
     role: str
 
 
-# 統一的 background task 函數，只接收路由的輸出
-def unified_background_task(route_output: Any):
-    """統一的背景任務函數，接收路由的輸出結果"""
-    print(f"Background task called with route output: {route_output}")
-    print(f"Output type: {type(route_output)}")
+# 統一的 background task 函數，接收 4 個標準參數
+def unified_background_task(
+    route_name: str, resource_name: str, route_input: Any, route_output: Any
+):
+    """統一的背景任務函數，接收標準的 4 個參數"""
+    print("Background task called:")
+    print(f"  Route name: {route_name}")
+    print(f"  Resource name: {resource_name}")
+    print(f"  Route input: {route_input}")
+    print(f"  Route output: {route_output}")
+    print(f"  Output type: {type(route_output)}")
 
     # 根據不同的輸出類型進行處理
     if isinstance(route_output, dict):
@@ -38,9 +44,12 @@ def unified_background_task(route_output: Any):
         print(f"Unknown output type: {type(route_output)}")
 
 
-def log_task_execution(route_output: Any):
+def log_task_execution(
+    route_name: str, resource_name: str, route_input: Any, route_output: Any
+):
     """另一個統一的背景任務函數，用於記錄"""
-    print(f"LOG: Route executed with output: {route_output}")
+    print(f"LOG: Route '{route_name}' on resource '{resource_name}' executed")
+    print(f"LOG: Input: {route_input}, Output: {route_output}")
 
 
 def test_unified_background_task_signature():

@@ -1,11 +1,27 @@
 """FastAPI 自動生成模組"""
 
-from typing import Optional, Type
+from typing import Optional, Type, Callable, Any
+from functools import wraps
 from fastapi import FastAPI, HTTPException, status, APIRouter, BackgroundTasks
 from pydantic import BaseModel, create_model
 from .core import SingleModelCRUD
 from .converter import ModelConverter
 from .route_config import RouteConfig, BackgroundTaskMode, RouteOptions
+
+
+def background_task_decorator(func: Callable) -> Callable:
+    """
+    Decorator 來確保 background task 函數接收正確的參數格式：
+    (route_name: str, resource_name: str, route_input: Any, route_output: Any)
+    """
+
+    @wraps(func)
+    def wrapper(
+        route_name: str, resource_name: str, route_input: Any, route_output: Any
+    ):
+        return func(route_name, resource_name, route_input, route_output)
+
+    return wrapper
 
 
 class FastAPIGenerator:
@@ -24,15 +40,66 @@ class FastAPIGenerator:
         else:
             self.route_config = route_config
 
+    def _with_background_task(
+        self,
+        route_name: str,
+        route_options: RouteOptions,
+    ):
+        """Decorator 來自動處理 background task 的執行"""
+
+        def decorator(route_func: Callable) -> Callable:
+            @wraps(route_func)
+            async def wrapper(*args, **kwargs):
+                # 執行原始的路由函數
+                result = await route_func(*args, **kwargs)
+
+                # 從 kwargs 中獲取 background_tasks（確保一定存在）
+                background_tasks = kwargs["background_tasks"]
+
+                # 執行 background task，傳遞完整的 args 和 kwargs
+                self._execute_background_task(
+                    route_options,
+                    background_tasks,
+                    route_name,
+                    args,  # route_args: 位置參數
+                    kwargs,  # route_kwargs: 關鍵字參數
+                    result,  # route_output: 路由的返回值
+                )
+
+                return result
+
+            return wrapper
+
+        return decorator
+
     def _execute_background_task(
         self,
         route_options: RouteOptions,
         background_tasks: BackgroundTasks,
+        route_name: str,
+        route_args,
+        route_kwargs,
         route_output,
     ):
         """統一的背景任務執行邏輯"""
+        # 檢查是否禁用背景任務
+        if route_options.background_task == BackgroundTaskMode.DISABLED:
+            return
+
+        # 檢查是否有背景任務函數
         if not route_options.background_task_func:
             return
+
+        # 自動裝飾 background task 函數以確保正確的參數格式
+        decorated_func = background_task_decorator(route_options.background_task_func)
+
+        # 構建 route_input，包含 args 和 kwargs（排除 background_tasks）
+        route_input = {
+            "args": route_args,
+            "kwargs": {
+                k: v for k, v in route_kwargs.items() if k != "background_tasks"
+            },
+        }
 
         if route_options.background_task == BackgroundTaskMode.CONDITIONAL:
             # 條件式執行：需要檢查條件函數
@@ -41,12 +108,21 @@ class FastAPIGenerator:
                 and route_options.background_task_condition(route_output)
             ):
                 background_tasks.add_task(
-                    route_options.background_task_func,
+                    decorated_func,
+                    route_name,
+                    self.crud.resource_name,
+                    route_input,
                     route_output,
                 )
         else:  # BackgroundTaskMode.ENABLED
             # 直接執行
-            background_tasks.add_task(route_options.background_task_func, route_output)
+            background_tasks.add_task(
+                decorated_func,
+                route_name,
+                self.crud.resource_name,
+                route_input,
+                route_output,
+            )
 
     @property
     def request_model(self) -> Type[BaseModel]:
@@ -119,49 +195,23 @@ class FastAPIGenerator:
             if create_options.custom_dependencies:
                 route_kwargs["dependencies"] = create_options.custom_dependencies
 
-            # 決定是否需要 BackgroundTasks 參數
-            if create_options.background_task != BackgroundTaskMode.DISABLED:
+            @router.post(**route_kwargs)
+            @self._with_background_task("create", create_options)
+            async def create_resource(item, background_tasks: BackgroundTasks):
+                """創建資源"""
+                try:
+                    item_dict = item.model_dump()
+                    created_id = crud.create(item_dict)
+                    created_item = crud.get(created_id)
+                    return created_item
+                except Exception as e:
+                    raise HTTPException(
+                        status_code=status.HTTP_400_BAD_REQUEST,
+                        detail=f"創建失敗: {str(e)}",
+                    )
 
-                @router.post(**route_kwargs)
-                async def create_resource(item, background_tasks: BackgroundTasks):
-                    """創建資源（包含 background task）"""
-                    try:
-                        item_dict = item.model_dump()
-                        created_id = crud.create(item_dict)
-                        created_item = crud.get(created_id)
-
-                        # 執行 background task
-                        self._execute_background_task(
-                            create_options, background_tasks, created_item
-                        )
-
-                        return created_item
-                    except Exception as e:
-                        raise HTTPException(
-                            status_code=status.HTTP_400_BAD_REQUEST,
-                            detail=f"創建失敗: {str(e)}",
-                        )
-
-                # 設定類型提示
-                create_resource.__annotations__["item"] = request_model
-            else:
-
-                @router.post(**route_kwargs)
-                async def create_resource(item):
-                    """創建資源"""
-                    try:
-                        item_dict = item.model_dump()
-                        created_id = crud.create(item_dict)
-                        created_item = crud.get(created_id)
-                        return created_item
-                    except Exception as e:
-                        raise HTTPException(
-                            status_code=status.HTTP_400_BAD_REQUEST,
-                            detail=f"創建失敗: {str(e)}",
-                        )
-
-                # 設定類型提示
-                create_resource.__annotations__["item"] = request_model
+            # 設定類型提示
+            create_resource.__annotations__["item"] = request_model
 
         # COUNT 路由（必須在 {resource_id} 路由之前）
         if config.is_route_enabled("count"):
@@ -174,29 +224,13 @@ class FastAPIGenerator:
             if count_options.custom_dependencies:
                 route_kwargs["dependencies"] = count_options.custom_dependencies
 
-            # 決定是否需要 BackgroundTasks 參數
-            if count_options.background_task != BackgroundTaskMode.DISABLED:
-
-                @router.get(**route_kwargs)
-                async def count_resources(background_tasks: BackgroundTasks):
-                    """獲取資源總數（包含 background task）"""
-                    count = crud.count()
-                    count_result = {"count": count}
-
-                    # 執行 background task
-                    self._execute_background_task(
-                        count_options, background_tasks, count_result
-                    )
-
-                    return count_result
-            else:
-
-                @router.get(**route_kwargs)
-                async def count_resources():
-                    """獲取資源總數"""
-                    count = crud.count()
-                    count_result = {"count": count}
-                    return count_result
+            @router.get(**route_kwargs)
+            @self._with_background_task("count", count_options)
+            async def count_resources(background_tasks: BackgroundTasks):
+                """獲取資源總數"""
+                count = crud.count()
+                count_result = {"count": count}
+                return count_result
 
         # GET 單個資源路由
         if config.is_route_enabled("get"):
@@ -212,35 +246,16 @@ class FastAPIGenerator:
             if get_options.custom_dependencies:
                 route_kwargs["dependencies"] = get_options.custom_dependencies
 
-            # 決定是否需要 BackgroundTasks 參數
-            if get_options.background_task != BackgroundTaskMode.DISABLED:
-
-                @router.get(**route_kwargs)
-                async def get_resource(
-                    resource_id: str, background_tasks: BackgroundTasks
-                ):
-                    """獲取單個資源（包含 background task）"""
-                    item = crud.get(resource_id)
-                    if item is None:
-                        raise HTTPException(
-                            status_code=status.HTTP_404_NOT_FOUND, detail="資源不存在"
-                        )
-
-                    # 執行 background task
-                    self._execute_background_task(get_options, background_tasks, item)
-
-                    return item
-            else:
-
-                @router.get(**route_kwargs)
-                async def get_resource(resource_id: str):
-                    """獲取單個資源"""
-                    item = crud.get(resource_id)
-                    if item is None:
-                        raise HTTPException(
-                            status_code=status.HTTP_404_NOT_FOUND, detail="資源不存在"
-                        )
-                    return item
+            @router.get(**route_kwargs)
+            @self._with_background_task("get", get_options)
+            async def get_resource(resource_id: str, background_tasks: BackgroundTasks):
+                """獲取單個資源"""
+                item = crud.get(resource_id)
+                if item is None:
+                    raise HTTPException(
+                        status_code=status.HTTP_404_NOT_FOUND, detail="資源不存在"
+                    )
+                return item
 
         # UPDATE 路由
         if config.is_route_enabled("update"):
@@ -257,60 +272,30 @@ class FastAPIGenerator:
             if update_options.custom_dependencies:
                 route_kwargs["dependencies"] = update_options.custom_dependencies
 
-            if update_options.background_task != BackgroundTaskMode.DISABLED:
-
-                @router.put(**route_kwargs)
-                async def update_resource(
-                    resource_id: str, item, background_tasks: BackgroundTasks
-                ):
-                    """更新資源（包含 background task）"""
-                    try:
-                        item_dict = item.model_dump()
-                        success = crud.update(resource_id, item_dict)
-                        if not success:
-                            raise HTTPException(
-                                status_code=status.HTTP_404_NOT_FOUND,
-                                detail="資源不存在",
-                            )
-                        updated_item = crud.get(resource_id)
-
-                        # 執行 background task
-                        self._execute_background_task(
-                            update_options, background_tasks, updated_item
-                        )
-
-                        return updated_item
-                    except Exception as e:
+            @router.put(**route_kwargs)
+            @self._with_background_task("update", update_options)
+            async def update_resource(
+                resource_id: str, item, background_tasks: BackgroundTasks
+            ):
+                """更新資源"""
+                try:
+                    item_dict = item.model_dump()
+                    success = crud.update(resource_id, item_dict)
+                    if not success:
                         raise HTTPException(
-                            status_code=status.HTTP_400_BAD_REQUEST,
-                            detail=f"更新失敗: {str(e)}",
+                            status_code=status.HTTP_404_NOT_FOUND,
+                            detail="資源不存在",
                         )
+                    updated_item = crud.get(resource_id)
+                    return updated_item
+                except Exception as e:
+                    raise HTTPException(
+                        status_code=status.HTTP_400_BAD_REQUEST,
+                        detail=f"更新失敗: {str(e)}",
+                    )
 
-                # 設定類型提示
-                update_resource.__annotations__["item"] = request_model
-            else:
-
-                @router.put(**route_kwargs)
-                async def update_resource(resource_id: str, item):
-                    """更新資源"""
-                    try:
-                        item_dict = item.model_dump()
-                        success = crud.update(resource_id, item_dict)
-                        if not success:
-                            raise HTTPException(
-                                status_code=status.HTTP_404_NOT_FOUND,
-                                detail="資源不存在",
-                            )
-                        updated_item = crud.get(resource_id)
-                        return updated_item
-                    except Exception as e:
-                        raise HTTPException(
-                            status_code=status.HTTP_400_BAD_REQUEST,
-                            detail=f"更新失敗: {str(e)}",
-                        )
-
-                # 設定類型提示
-                update_resource.__annotations__["item"] = request_model
+            # 設定類型提示
+            update_resource.__annotations__["item"] = request_model
 
         # DELETE 路由
         if config.is_route_enabled("delete"):
@@ -327,41 +312,19 @@ class FastAPIGenerator:
             if delete_options.custom_dependencies:
                 route_kwargs["dependencies"] = delete_options.custom_dependencies
 
-            if delete_options.background_task != BackgroundTaskMode.DISABLED:
-
-                @router.delete(**route_kwargs)
-                async def delete_resource(
-                    resource_id: str, background_tasks: BackgroundTasks
-                ):
-                    """刪除資源（包含 background task）"""
-                    success = crud.delete(resource_id)
-                    if not success:
-                        raise HTTPException(
-                            status_code=status.HTTP_404_NOT_FOUND, detail="資源不存在"
-                        )
-
-                    # DELETE 路由的回傳值是 None (204 No Content)
-                    delete_result = None
-
-                    # 執行 background task
-                    self._execute_background_task(
-                        delete_options, background_tasks, delete_result
+            @router.delete(**route_kwargs)
+            @self._with_background_task("delete", delete_options)
+            async def delete_resource(
+                resource_id: str, background_tasks: BackgroundTasks
+            ):
+                """刪除資源"""
+                success = crud.delete(resource_id)
+                if not success:
+                    raise HTTPException(
+                        status_code=status.HTTP_404_NOT_FOUND, detail="資源不存在"
                     )
-
-                    # 204 No Content 不應該有響應體
-                    return delete_result
-            else:
-
-                @router.delete(**route_kwargs)
-                async def delete_resource(resource_id: str):
-                    """刪除資源"""
-                    success = crud.delete(resource_id)
-                    if not success:
-                        raise HTTPException(
-                            status_code=status.HTTP_404_NOT_FOUND, detail="資源不存在"
-                        )
-                    # 204 No Content 不應該有響應體
-                    return
+                # DELETE 路由的回傳值是 None (204 No Content)
+                return None
 
         # LIST 所有資源路由
         if config.is_route_enabled("list"):
@@ -374,25 +337,12 @@ class FastAPIGenerator:
             if list_options.custom_dependencies:
                 route_kwargs["dependencies"] = list_options.custom_dependencies
 
-            # 決定是否需要 BackgroundTasks 參數
-            if list_options.background_task != BackgroundTaskMode.DISABLED:
-
-                @router.get(**route_kwargs)
-                async def list_resources(background_tasks: BackgroundTasks):
-                    """列出所有資源（包含 background task）"""
-                    items = crud.list_all()
-
-                    # 執行 background task
-                    self._execute_background_task(list_options, background_tasks, items)
-
-                    return items
-            else:
-
-                @router.get(**route_kwargs)
-                async def list_resources():
-                    """列出所有資源"""
-                    items = crud.list_all()
-                    return items
+            @router.get(**route_kwargs)
+            @self._with_background_task("list", list_options)
+            async def list_resources(background_tasks: BackgroundTasks):
+                """列出所有資源"""
+                items = crud.list_all()
+                return items
 
         return router
 
