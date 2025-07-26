@@ -1,12 +1,14 @@
 """FastAPI 自動生成模組"""
 
-from typing import Optional, Type, Callable, Any
+from typing import Optional, Type, Callable, Any, List
 from functools import wraps
-from fastapi import FastAPI, HTTPException, status, APIRouter, BackgroundTasks
+from datetime import datetime
+from fastapi import FastAPI, HTTPException, status, APIRouter, BackgroundTasks, Query
 from pydantic import BaseModel, create_model
 from .core import SingleModelCRUD
 from .converter import ModelConverter
 from .route_config import RouteConfig, BackgroundTaskMode, RouteOptions
+from .list_params import ListQueryParams, DateTimeRange, SortOrder
 
 
 def background_task_decorator(func: Callable) -> Callable:
@@ -339,10 +341,87 @@ class FastAPIGenerator:
 
             @router.get(**route_kwargs)
             @self._with_background_task("list", list_options)
-            async def list_resources(background_tasks: BackgroundTasks):
+            async def list_resources(
+                background_tasks: BackgroundTasks,
+                # 分頁參數
+                page: int = Query(1, ge=1, description="頁碼"),
+                page_size: int = Query(20, ge=1, le=1000, description="每頁大小"),
+                # 過濾參數
+                created_by: Optional[List[str]] = Query(
+                    None, description="按創建者過濾"
+                ),
+                updated_by: Optional[List[str]] = Query(
+                    None, description="按更新者過濾"
+                ),
+                created_time_start: Optional[datetime] = Query(
+                    None, description="創建時間開始"
+                ),
+                created_time_end: Optional[datetime] = Query(
+                    None, description="創建時間結束"
+                ),
+                updated_time_start: Optional[datetime] = Query(
+                    None, description="更新時間開始"
+                ),
+                updated_time_end: Optional[datetime] = Query(
+                    None, description="更新時間結束"
+                ),
+                # 排序參數
+                sort_by: Optional[str] = Query(None, description="排序字段"),
+                sort_order: SortOrder = Query(SortOrder.DESC, description="排序順序"),
+                # 向後兼容：簡單模式
+                simple: bool = Query(
+                    False, description="簡單模式（返回項目列表而非分頁結果）"
+                ),
+            ):
                 """列出所有資源"""
-                items = crud.list_all()
-                return items
+                # 檢查是否使用了任何高級查詢參數
+                has_advanced_params = any(
+                    [
+                        page != 1,
+                        page_size != 20,
+                        created_by,
+                        updated_by,
+                        created_time_start,
+                        created_time_end,
+                        updated_time_start,
+                        updated_time_end,
+                        sort_by,
+                    ]
+                )
+
+                if not has_advanced_params and simple:
+                    # 向後兼容：返回簡單的項目列表
+                    items = crud.list_all()
+                    return items
+                else:
+                    # 構建查詢參數
+                    params = ListQueryParams(
+                        page=page,
+                        page_size=page_size,
+                        created_by_filter=created_by,
+                        updated_by_filter=updated_by,
+                        created_time_range=DateTimeRange(
+                            start=created_time_start, end=created_time_end
+                        )
+                        if created_time_start or created_time_end
+                        else None,
+                        updated_time_range=DateTimeRange(
+                            start=updated_time_start, end=updated_time_end
+                        )
+                        if updated_time_start or updated_time_end
+                        else None,
+                        sort_by=sort_by,
+                        sort_order=sort_order,
+                    )
+
+                    if simple:
+                        # 簡單模式：只返回項目列表
+                        items = crud.list_all(params)
+                        return items
+                    else:
+                        # 高級模式：返回分頁結果
+                        result = crud.list_with_params(params)
+                        return result
 
         return router
 

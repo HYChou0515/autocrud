@@ -1,12 +1,14 @@
 """AutoCRUD 核心模組"""
 
 import uuid
-from typing import Any, Dict, Type, Optional, TypeVar, Generic
+from typing import Any, Dict, Type, Optional, TypeVar, Generic, List
+from datetime import datetime
 from .converter import ModelConverter
 from .storage import Storage
 from .updater import AdvancedUpdater
 from .metadata import MetadataConfig
 from .schema_analyzer import SchemaAnalyzer
+from .list_params import ListQueryParams, ListResult, DateTimeRange, SortOrder
 
 # 定義泛型類型變數
 T = TypeVar("T")
@@ -161,17 +163,163 @@ class SingleModelCRUD(Generic[T]):
         key = self._make_key(resource_id)
         return self.storage.exists(key)
 
-    def list_all(self) -> list[Dict[str, Any]]:
-        """列出所有資源"""
-        all_keys = self.storage.list_keys()
+    def list_all(
+        self, params: Optional[ListQueryParams] = None
+    ) -> List[Dict[str, Any]]:
+        """列出所有資源（保持向後兼容）"""
+        if params is None:
+            # 向後兼容：返回所有資源的簡單列表
+            return self._get_all_items()
+        else:
+            # 使用新的高級查詢
+            result = self.list_with_params(params)
+            return result.items
 
+    def list_with_params(self, params: ListQueryParams) -> ListResult:
+        """使用查詢參數列出資源"""
+        # 獲取所有項目
+        all_items = self._get_all_items()
+
+        # 應用過濾器
+        filtered_items = self._apply_filters(all_items, params)
+
+        # 應用排序
+        sorted_items = self._apply_sorting(filtered_items, params)
+
+        # 計算總數
+        total = len(sorted_items)
+
+        # 應用分頁
+        paginated_items = self._apply_pagination(sorted_items, params)
+
+        return ListResult.create(paginated_items, total, params)
+
+    def _get_all_items(self) -> List[Dict[str, Any]]:
+        """獲取所有項目"""
+        all_keys = self.storage.list_keys()
         result = []
         for key in all_keys:
             data = self.storage.get(key)
             if data:
                 result.append(data)
-
         return result
+
+    def _apply_filters(
+        self, items: List[Dict[str, Any]], params: ListQueryParams
+    ) -> List[Dict[str, Any]]:
+        """應用過濾器"""
+        if not items:
+            return items
+
+        filtered_items = items
+
+        # 按創建者過濾
+        if params.created_by_filter and self.metadata_config.enable_user_tracking:
+            created_by_field = self.metadata_config.created_by_field
+            filtered_items = [
+                item
+                for item in filtered_items
+                if item.get(created_by_field) in params.created_by_filter
+            ]
+
+        # 按更新者過濾
+        if params.updated_by_filter and self.metadata_config.enable_user_tracking:
+            updated_by_field = self.metadata_config.updated_by_field
+            filtered_items = [
+                item
+                for item in filtered_items
+                if item.get(updated_by_field) in params.updated_by_filter
+            ]
+
+        # 按創建時間過濾
+        if params.created_time_range and self.metadata_config.enable_timestamps:
+            created_time_field = self.metadata_config.created_time_field
+            filtered_items = [
+                item
+                for item in filtered_items
+                if self._is_datetime_in_range(
+                    item.get(created_time_field), params.created_time_range
+                )
+            ]
+
+        # 按更新時間過濾
+        if params.updated_time_range and self.metadata_config.enable_timestamps:
+            updated_time_field = self.metadata_config.updated_time_field
+            filtered_items = [
+                item
+                for item in filtered_items
+                if self._is_datetime_in_range(
+                    item.get(updated_time_field), params.updated_time_range
+                )
+            ]
+
+        return filtered_items
+
+    def _apply_sorting(
+        self, items: List[Dict[str, Any]], params: ListQueryParams
+    ) -> List[Dict[str, Any]]:
+        """應用排序"""
+        if not items or not params.sort_by:
+            return items
+
+        # 檢查排序字段是否有效
+        valid_sort_fields = []
+        if self.metadata_config.enable_timestamps:
+            valid_sort_fields.extend(
+                [
+                    self.metadata_config.created_time_field,
+                    self.metadata_config.updated_time_field,
+                ]
+            )
+        if self.metadata_config.enable_user_tracking:
+            valid_sort_fields.extend(
+                [
+                    self.metadata_config.created_by_field,
+                    self.metadata_config.updated_by_field,
+                ]
+            )
+
+        if params.sort_by not in valid_sort_fields:
+            # 如果排序字段無效，返回原始列表
+            return items
+
+        # 執行排序
+        reverse = params.sort_order == SortOrder.DESC
+        try:
+            return sorted(
+                items, key=lambda x: x.get(params.sort_by) or "", reverse=reverse
+            )
+        except (TypeError, KeyError):
+            # 如果排序失敗，返回原始列表
+            return items
+
+    def _apply_pagination(
+        self, items: List[Dict[str, Any]], params: ListQueryParams
+    ) -> List[Dict[str, Any]]:
+        """應用分頁"""
+        if not items:
+            return items
+
+        start_index = (params.page - 1) * params.page_size
+        end_index = start_index + params.page_size
+
+        return items[start_index:end_index]
+
+    def _is_datetime_in_range(self, value: Any, date_range: DateTimeRange) -> bool:
+        """檢查日期時間是否在範圍內"""
+        if not value:
+            return False
+
+        # 如果值是字符串，嘗試解析為 datetime
+        if isinstance(value, str):
+            try:
+                value = datetime.fromisoformat(value.replace("Z", "+00:00"))
+            except (ValueError, AttributeError):
+                return False
+        elif not isinstance(value, datetime):
+            return False
+
+        return date_range.contains(value)
 
     def count(self) -> int:
         """取得資源總數量"""

@@ -7,6 +7,7 @@ from .core import SingleModelCRUD
 from .storage import Storage
 from .storage_factory import StorageFactory, DefaultStorageFactory
 from .metadata import MetadataConfig
+from .list_params import ListQueryParams, ListResult
 
 if TYPE_CHECKING:
     from .route_config import RouteConfig
@@ -60,6 +61,9 @@ class AutoCRUD:
         self.cruds: Dict[str, SingleModelCRUD] = {}
         self.models: Dict[str, Type] = {}
         self.storages: Dict[str, Storage] = {}  # 記錄每個資源的 storage
+        self.model_to_resources: Dict[
+            Type, List[str]
+        ] = {}  # model class 到 resource names 的映射
 
     def register_model(
         self,
@@ -143,6 +147,11 @@ class AutoCRUD:
         self.models[resource_name] = model
         self.storages[resource_name] = actual_storage
 
+        # 更新 model class 到 resource names 的映射
+        if model not in self.model_to_resources:
+            self.model_to_resources[model] = []
+        self.model_to_resources[model].append(resource_name)
+
         return crud
 
     def get_crud(self, resource_name: str) -> SingleModelCRUD:
@@ -156,6 +165,107 @@ class AutoCRUD:
         if resource_name not in self.models:
             raise ValueError(f"Resource '{resource_name}' not registered")
         return self.models[resource_name]
+
+    def get_model_by_class(self, model_class: Type) -> Type:
+        """根據 model class 獲取模型類
+
+        Args:
+            model_class: 要查找的模型類
+
+        Returns:
+            模型類（其實就是輸入的 model_class）
+
+        Raises:
+            ValueError: 如果模型未註冊
+            ValueError: 如果模型註冊了多次（有多個不同的 resource_name）
+        """
+        if model_class not in self.model_to_resources:
+            raise ValueError(f"Model class '{model_class.__name__}' not registered")
+
+        resource_names = self.model_to_resources[model_class]
+        if len(resource_names) > 1:
+            raise ValueError(
+                f"Model class '{model_class.__name__}' is registered multiple times "
+                f"with different resource names: {resource_names}. "
+                f"Please use get_model(resource_name) instead."
+            )
+
+        return model_class
+
+    def get_crud_by_class(self, model_class: Type) -> SingleModelCRUD:
+        """根據 model class 獲取 CRUD 實例
+
+        Args:
+            model_class: 要查找的模型類
+
+        Returns:
+            對應的 SingleModelCRUD 實例
+
+        Raises:
+            ValueError: 如果模型未註冊
+            ValueError: 如果模型註冊了多次（有多個不同的 resource_name）
+        """
+        if model_class not in self.model_to_resources:
+            raise ValueError(f"Model class '{model_class.__name__}' not registered")
+
+        resource_names = self.model_to_resources[model_class]
+        if len(resource_names) > 1:
+            raise ValueError(
+                f"Model class '{model_class.__name__}' is registered multiple times "
+                f"with different resource names: {resource_names}. "
+                f"Please use get_crud(resource_name) instead."
+            )
+
+        resource_name = resource_names[0]
+        return self.cruds[resource_name]
+
+    def get_storage_by_class(self, model_class: Type) -> Storage:
+        """根據 model class 獲取存儲後端
+
+        Args:
+            model_class: 要查找的模型類
+
+        Returns:
+            對應的 Storage 實例
+
+        Raises:
+            ValueError: 如果模型未註冊
+            ValueError: 如果模型註冊了多次（有多個不同的 resource_name）
+        """
+        if model_class not in self.model_to_resources:
+            raise ValueError(f"Model class '{model_class.__name__}' not registered")
+
+        resource_names = self.model_to_resources[model_class]
+        if len(resource_names) > 1:
+            raise ValueError(
+                f"Model class '{model_class.__name__}' is registered multiple times "
+                f"with different resource names: {resource_names}. "
+                f"Please use get_storage(resource_name) instead."
+            )
+
+        resource_name = resource_names[0]
+        return self.storages[resource_name]
+
+    def list_model_classes(self) -> List[Type]:
+        """列出所有註冊的模型類"""
+        return list(self.model_to_resources.keys())
+
+    def get_resource_names_by_class(self, model_class: Type) -> List[str]:
+        """獲取指定模型類對應的所有 resource names
+
+        Args:
+            model_class: 要查找的模型類
+
+        Returns:
+            該模型類對應的所有 resource names
+
+        Raises:
+            ValueError: 如果模型未註冊
+        """
+        if model_class not in self.model_to_resources:
+            raise ValueError(f"Model class '{model_class.__name__}' not registered")
+
+        return self.model_to_resources[model_class].copy()
 
     def get_storage(self, resource_name: str) -> Storage:
         """獲取指定資源的存儲後端"""
@@ -357,9 +467,17 @@ class AutoCRUD:
         """從指定資源刪除項目"""
         return self.get_crud(resource_name).delete(resource_id)
 
-    def list_all(self, resource_name: str) -> List[Dict[str, Any]]:
+    def list_all(
+        self, resource_name: str, params: Optional[ListQueryParams] = None
+    ) -> List[Dict[str, Any]]:
         """列出指定資源的所有項目"""
-        return self.get_crud(resource_name).list_all()
+        return self.get_crud(resource_name).list_all(params)
+
+    def list_with_params(
+        self, resource_name: str, params: ListQueryParams
+    ) -> ListResult:
+        """使用查詢參數列出指定資源的項目"""
+        return self.get_crud(resource_name).list_with_params(params)
 
     def count(self, resource_name: str) -> int:
         """取得指定資源的總數量"""
