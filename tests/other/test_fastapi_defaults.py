@@ -44,22 +44,17 @@ def test_fastapi_routes_with_defaults():
 
     # 測試實際創建一個實例
     print("\n測試創建實例：")
-    try:
-        # 創建實例時不提供有預設值的欄位
-        instance = create_model(name="Test User", email="test@example.com")
-        print(f"成功創建實例: {instance}")
+    # 創建實例時不提供有預設值的欄位
+    instance = create_model(name="Test User", email="test@example.com")
+    print(f"成功創建實例: {instance}")
 
-        # 測試包含部分欄位
-        instance_2 = create_model(
-            name="Test User 2",
-            email="test2@example.com",
-            age=25,  # 覆蓋預設值
-        )
-        print(f"成功創建實例 2: {instance_2}")
-
-    except Exception as e:
-        print(f"創建實例失敗: {e}")
-        raise
+    # 測試包含部分欄位
+    instance_2 = create_model(
+        name="Test User 2",
+        email="test2@example.com",
+        age=25,  # 覆蓋預設值
+    )
+    print(f"成功創建實例 2: {instance_2}")
 
 
 if __name__ == "__main__":

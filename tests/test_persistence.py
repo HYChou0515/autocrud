@@ -1,9 +1,17 @@
 """測試持久化功能"""
 
+import importlib.util
 import os
 import pytest
 from autocrud import SingleModelCRUD, DiskStorage, SerializerFactory
 from .test_models import Product
+
+try:
+    importlib.util.find_spec("msgpack")
+
+    HAS_MSGPACK = True
+except ImportError:
+    HAS_MSGPACK = False
 
 
 class TestDiskPersistence:
@@ -156,6 +164,9 @@ class TestSerializerPersistence:
     @pytest.mark.parametrize("serializer_type", ["json", "pickle", "msgpack"])
     def test_different_serializers_persistence(self, temp_dir, serializer_type):
         """測試不同序列化器的持久化"""
+        if serializer_type == "msgpack" and not HAS_MSGPACK:
+            pytest.skip("msgpack not available")
+
         test_data = {
             "name": "測試產品",
             "description": "測試描述",
@@ -163,42 +174,33 @@ class TestSerializerPersistence:
             "category": "測試",
         }
 
-        try:
-            # 為每個序列化器使用不同的目錄
-            storage_dir = os.path.join(temp_dir, serializer_type)
-            os.makedirs(storage_dir, exist_ok=True)
+        # 為每個序列化器使用不同的目錄
+        storage_dir = os.path.join(temp_dir, serializer_type)
+        os.makedirs(storage_dir, exist_ok=True)
 
-            # 創建特定序列化器的存儲
-            serializer = SerializerFactory.create(serializer_type)
-            storage = DiskStorage(storage_dir, serializer=serializer)
-            crud = SingleModelCRUD(
-                model=Product, storage=storage, resource_name="products"
-            )
+        # 創建特定序列化器的存儲
+        serializer = SerializerFactory.create(serializer_type)
+        storage = DiskStorage(storage_dir, serializer=serializer)
+        crud = SingleModelCRUD(model=Product, storage=storage, resource_name="products")
 
-            # 創建數據
-            product_id = crud.create(test_data)
-            product = crud.get(product_id)
-            assert product["name"] == test_data["name"]
-            assert product["price"] == test_data["price"]
+        # 創建數據
+        product_id = crud.create(test_data)
+        product = crud.get(product_id)
+        assert product["name"] == test_data["name"]
+        assert product["price"] == test_data["price"]
 
-            # 重新載入
-            storage2 = DiskStorage(storage_dir, serializer=serializer)
-            crud2 = SingleModelCRUD(
-                model=Product, storage=storage2, resource_name="products"
-            )
+        # 重新載入
+        storage2 = DiskStorage(storage_dir, serializer=serializer)
+        crud2 = SingleModelCRUD(
+            model=Product, storage=storage2, resource_name="products"
+        )
 
-            loaded_products = crud2.list_all()
-            assert len(loaded_products) == 1
+        loaded_products = crud2.list_all()
+        assert len(loaded_products) == 1
 
-            loaded_product = loaded_products[0]
-            assert loaded_product["name"] == test_data["name"]
-            assert loaded_product["price"] == test_data["price"]
-
-        except ImportError as e:
-            if serializer_type == "msgpack":
-                pytest.skip(f"msgpack not available: {e}")
-            else:
-                raise
+        loaded_product = loaded_products[0]
+        assert loaded_product["name"] == test_data["name"]
+        assert loaded_product["price"] == test_data["price"]
 
     def test_persistence_file_corruption_handling(self, temp_dir):
         """測試持久化文件損壞處理"""

@@ -3,6 +3,7 @@
 import pytest
 from autocrud import ModelConverter, SerializerFactory, MemoryStorage, SingleModelCRUD
 from .test_models import DataclassUser, PydanticUser
+import importlib.util
 
 # 檢查 pydantic 是否可用
 HAS_PYDANTIC = PydanticUser is not None
@@ -11,6 +12,12 @@ try:
     from typing import TypedDict
 except ImportError:
     from typing_extensions import TypedDict
+
+try:
+    importlib.util.find_spec("msgpack")
+    HAS_MSGPACK = True
+except ImportError:
+    HAS_MSGPACK = False
 
 
 if HAS_PYDANTIC:
@@ -157,19 +164,17 @@ class TestSerializerFactory:
         assert isinstance(serialized, bytes)
         assert deserialized == test_data
 
+    @pytest.mark.skipif(not HAS_MSGPACK, reason="msgpack not available")
     def test_create_msgpack_serializer(self):
         """測試創建 MsgPack 序列化器"""
-        try:
-            serializer = SerializerFactory.create("msgpack")
+        serializer = SerializerFactory.create("msgpack")
 
-            test_data = {"name": "test", "value": 123}
-            serialized = serializer.serialize(test_data)
-            deserialized = serializer.deserialize(serialized)
+        test_data = {"name": "test", "value": 123}
+        serialized = serializer.serialize(test_data)
+        deserialized = serializer.deserialize(serialized)
 
-            assert isinstance(serialized, bytes)
-            assert deserialized == test_data
-        except ImportError:
-            pytest.skip("msgpack not available")
+        assert isinstance(serialized, bytes)
+        assert deserialized == test_data
 
     def test_invalid_serializer_type(self):
         """測試無效的序列化器類型"""

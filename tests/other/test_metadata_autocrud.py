@@ -3,6 +3,7 @@
 from dataclasses import dataclass
 from typing import Optional
 
+
 from autocrud import AutoCRUD, MetadataConfig
 
 
@@ -131,11 +132,7 @@ def test_use_plural_inheritance():
     auto_crud.register_model(User, resource_name="single_user")  # 手動指定避免衝突
 
     # 覆蓋為複數（但因為前面已經註冊了，這裡會改用不同的資源名稱）
-    try:
-        auto_crud.register_model(User, resource_name="plural_users", use_plural=True)
-    except ValueError:
-        # 如果模型已註冊會拋出錯誤，這是預期的
-        pass
+    auto_crud.register_model(User, resource_name="plural_users", use_plural=True)
 
     # 檢查資源名稱
     resources = auto_crud.list_resources()

@@ -313,13 +313,37 @@ class SingleModelCRUD(Generic[T]):
         # 如果值是字符串，嘗試解析為 datetime
         if isinstance(value, str):
             try:
-                value = datetime.fromisoformat(value.replace("Z", "+00:00"))
+                value = datetime.fromisoformat(value)
             except (ValueError, AttributeError):
                 return False
         elif not isinstance(value, datetime):
             return False
 
-        return date_range.contains(value)
+        # 處理時區不匹配問題：統一轉換到 local timezone
+        from datetime import timezone
+
+        # 獲取本地時區偏移
+        local_tz = timezone(datetime.now().astimezone().utcoffset())
+
+        # 如果 date_range 的 start/end 是 naive，假設為 local timezone
+        start = date_range.start
+        end = date_range.end
+
+        if start and start.tzinfo is None:
+            start = start.replace(tzinfo=local_tz)
+        if end and end.tzinfo is None:
+            end = end.replace(tzinfo=local_tz)
+
+        # 如果 value 有時區信息，轉換到 local timezone；如果沒有，假設為 UTC 然後轉換
+        if value.tzinfo is not None:
+            value = value.astimezone(local_tz)
+        else:
+            # 系統存儲的時間戳沒有時區信息時，假設為 UTC
+            value = value.replace(tzinfo=timezone.utc).astimezone(local_tz)
+
+        # 創建臨時的 DateTimeRange 進行比較
+        temp_range = DateTimeRange(start=start, end=end)
+        return temp_range.contains(value)
 
     def count(self) -> int:
         """取得資源總數量"""

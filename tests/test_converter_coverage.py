@@ -4,6 +4,13 @@
 
 import pytest
 from autocrud.converter import ModelConverter
+import importlib.util
+
+try:
+    importlib.util.find_spec("pydantic")
+    HAS_PYDANTIC = True
+except ImportError:
+    HAS_PYDANTIC = False
 
 
 def test_unsupported_model_type():
@@ -47,29 +54,27 @@ def test_typeddict_conversion():
     assert new_user == user_data
 
 
+@pytest.mark.skipif(not HAS_PYDANTIC, reason="Pydantic not available")
 def test_pydantic_v1_compatibility():
     """測試 Pydantic v1 兼容性（如果可用）"""
-    try:
-        # 嘗試創建一個有 __fields__ 的模型（模擬 v1）
-        class MockPydanticV1Model:
-            __fields__ = {
-                "name": type("Field", (), {"type_": str}),
-                "age": type("Field", (), {"type_": int}),
-            }
 
-        converter = ModelConverter()
+    # 嘗試創建一個有 __fields__ 的模型（模擬 v1）
+    class MockPydanticV1Model:
+        __fields__ = {
+            "name": type("Field", (), {"type_": str}),
+            "age": type("Field", (), {"type_": int}),
+        }
 
-        # 這應該被檢測為 pydantic（即使是模擬的 v1）
-        model_type = converter.detect_model_type(MockPydanticV1Model)
-        assert model_type == "pydantic"
+    converter = ModelConverter()
 
-        # 提取欄位應該使用 __fields__
-        fields = converter.extract_fields(MockPydanticV1Model)
-        assert fields.get("name") is str
-        assert fields.get("age") is int
+    # 這應該被檢測為 pydantic（即使是模擬的 v1）
+    model_type = converter.detect_model_type(MockPydanticV1Model)
+    assert model_type == "pydantic"
 
-    except ImportError:
-        pytest.skip("Pydantic not available")
+    # 提取欄位應該使用 __fields__
+    fields = converter.extract_fields(MockPydanticV1Model)
+    assert fields.get("name") is str
+    assert fields.get("age") is int
 
 
 def test_dict_instance_conversion():

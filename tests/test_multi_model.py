@@ -704,10 +704,7 @@ class TestAutoCRUDDefaults:
         # ID 應該是 UUID 格式（預設行為）
         import uuid
 
-        try:
-            uuid.UUID(user_id)  # 如果是有效的 UUID 就不會拋出異常
-        except ValueError:
-            pytest.fail("Expected UUID format for default ID generator")
+        assert uuid.UUID(user_id)
 
         user = multi_crud.get("users", user_id)
         # 沒有 metadata 配置，所以不應該有額外的欄位
