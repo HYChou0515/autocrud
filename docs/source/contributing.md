@@ -8,7 +8,7 @@
 
 如果你發現了 bug 或有功能請求，請：
 
-1. 檢查 [GitHub Issues](https://github.com/your-repo/autocrud/issues) 確認問題未被報告
+1. 檢查 [GitHub Issues](https://github.com/HYChou0515/autocrud/issues) 確認問題未被報告
 2. 建立新的 Issue，包含：
    - 清晰的問題描述
    - 重現步驟
@@ -21,10 +21,10 @@
 
 ```bash
 # clone repository
-git clone https://github.com/your-repo/autocrud.git
+git clone https://github.com/HYChou0515/autocrud.git
 cd autocrud
 
-# 安裝依賴套件 (使用 uv)
+# 安裝依賴套件 (使用 uv - 推薦)
 uv sync --dev
 
 # 或使用 pip
@@ -42,11 +42,31 @@ pip install -e ".[dev]"
    - 遵循專案的 coding style
    - 新增適當的文件字串
    - 編寫測試用例
+   - 確保所有模型都包含必要的 `id` 欄位
 
 3. **執行測試**：
    ```bash
    # 執行所有測試
-   pytest
+   make test
+   
+   # 或單獨執行
+   uv run pytest
+   
+   # 執行特定測試文件
+   uv run pytest tests/test_specific.py
+   ```
+
+4. **代碼檢查**：
+   ```bash
+   # 執行代碼格式化
+   make format
+   
+   # 執行代碼檢查
+   make lint
+   
+   # 執行類型檢查
+   make type-check
+   ```
 
    # 檢查測試覆蓋率
    coverage run -m pytest

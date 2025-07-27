@@ -5,16 +5,57 @@
 - Python 3.8+
 - pip 或 uv (推薦)
 
-## 使用 pip 安裝
+## 基本安裝
+
+### 使用 pip 安裝
 
 ```bash
 pip install autocrud
 ```
 
-## 使用 uv 安裝 (推薦)
+### 使用 uv 安裝 (推薦)
 
 ```bash
 uv add autocrud
+```
+
+## 完整安裝（包含所有可選依賴）
+
+```bash
+# 使用 uv
+uv add autocrud[all]
+
+# 使用 pip  
+pip install autocrud[all]
+```
+
+## 可選依賴套件
+
+AutoCRUD 支援多種可選的依賴套件，你可以根據需要安裝：
+
+### FastAPI 支援
+
+預設已包含 FastAPI 支援，用於自動產生 REST API：
+
+```bash
+# 單獨安裝 FastAPI 和 ASGI 伺服器
+uv add fastapi uvicorn[standard]
+```
+
+### MessagePack 序列化
+
+如果需要使用高效能的 MessagePack 序列化：
+
+```bash
+uv add msgpack
+```
+
+### Pydantic 驗證
+
+增強的資料驗證支援：
+
+```bash
+uv add pydantic[email]  # 包含 email 驗證
 ```
 
 ## 開發依賴套件
@@ -22,30 +63,24 @@ uv add autocrud
 如果你想參與開發或執行測試，可以安裝開發依賴套件：
 
 ```bash
-# 使用 uv
-uv add --dev autocrud[dev]
+# 使用 uv (推薦)
+git clone https://github.com/HYChou0515/autocrud.git
+cd autocrud
+uv sync --dev
 
 # 使用 pip
-pip install autocrud[dev]
+git clone https://github.com/HYChou0515/autocrud.git
+cd autocrud
+pip install -e .[dev]
 ```
 
-## 可選依賴套件
-
-### FastAPI 支援
-
-預設已包含 FastAPI 支援，用於自動產生 API：
-
-```bash
-uv add fastapi uvicorn
-```
-
-### MessagePack 序列化
-
-如果需要使用 MessagePack 序列化：
-
-```bash
-uv add msgpack
-```
+開發依賴包含：
+- pytest (測試框架)
+- pytest-asyncio (非同步測試)
+- black (程式碼格式化)
+- ruff (程式碼檢查)
+- mypy (類型檢查)
+- sphinx (文檔產生)
 
 ### 開發工具
 

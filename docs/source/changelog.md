@@ -7,23 +7,61 @@
 ## [未發布]
 
 ### 新增
-- 無
+- 🧩 **插件系統**：
+  - `BaseRoutePlugin` 基類用於創建自訂路由
+  - `PluginManager` 管理插件註冊和執行
+  - 預設插件：create, get, update, delete, count, list
+  - 支援插件優先級和路由覆蓋
+- ⚡ **高級查詢功能**：
+  - `ListQueryParams` 支援分頁、排序、時間範圍查詢
+  - `ListResult` 包含分頁資訊的查詢結果
+  - 支援 `created_by` 和 `updated_by` 用戶過濾
+- 🔄 **高級更新系統**：
+  - `AdvancedUpdater` 支援原子操作
+  - 多種更新操作：`set_value`, `list_add`, `list_remove`, `dict_update`
+  - 防止資料競爭和不一致狀態
+- 📊 **元資料管理**：
+  - `MetadataConfig` 配置自動時間戳和用戶追蹤
+  - 自動添加 `created_time`, `updated_time`, `created_by`, `updated_by`
+  - 可自訂欄位名稱
+- 🏭 **儲存工廠系統**：
+  - `StorageFactory` 抽象工廠介面
+  - `DefaultStorageFactory` 預設實作
+  - 支援為不同資源創建獨立的儲存後端
+- 🔧 **路由配置系統**：
+  - `RouteConfig` 和 `RouteOptions` 控制路由行為
+  - 支援啟用/禁用特定 CRUD 操作
+  - 細粒度的路由控制
+- 📋 **Schema 分析器**：
+  - `SchemaAnalyzer` 自動分析模型結構
+  - 支援預設值和必要欄位檢測
+  - ID 欄位自動識別
 
 ### 變更
-- 無
+- 🔄 **重要 API 變更**：
+  - 所有模型現在必須包含 `id` 欄位
+  - `SingleModelCRUD.create()` 現在返回生成的 ID 而非完整對象
+  - `list_all()` 替換為支援分頁的 `list()` 方法
+  - `MultiModelAutoCRUD` 重命名為 `AutoCRUD`
+- 🎯 **資源名稱系統改進**：
+  - 新增 `ResourceNameStyle` 枚舉支援不同命名風格
+  - 更靈活的複數化選項
+- 📝 **更好的類型支援**：
+  - `SingleModelCRUD` 現在是泛型類 `SingleModelCRUD[T]`
+  - 改進的類型註解和 IDE 支援
 
 ### 修復
-- 無
-
-### 移除
-- 無
+- 🐛 修復 Pydantic v1/v2 相容性問題
+- 🔧 改進錯誤處理和異常訊息
+- 📦 修復序列化器的邊界情況
+- 🎯 修復 FastAPI 路由生成的優先級問題
 
 ## [0.1.0] - 2025-07-23
 
 ### 新增
 - 🎉 **初始版本發布**
 - ✨ **核心 CRUD 功能**：
-  - `AutoCRUD` 類，支援基本的建立、讀取、更新、刪除操作
+  - `SingleModelCRUD` 類，支援基本的建立、讀取、更新、刪除操作
   - 自動 ID 產生（UUID4）
   - 資料驗證和轉換
 - 📦 **多種資料模型支援**：
@@ -42,7 +80,7 @@
   - OpenAPI/Swagger 文件產生
   - 類型安全的請求/響應模型
 - 🔄 **多模型支援**：
-  - `MultiModelAutoCRUD` 類
+  - `AutoCRUD` 類（原 `MultiModelAutoCRUD`）
   - 支援在單個應用中管理多個不同的資料模型
   - 自動資源名稱產生（複數化）
 - 🎯 **API URL 自訂**：
