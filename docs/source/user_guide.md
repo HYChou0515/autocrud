@@ -1,93 +1,187 @@
 # 使用者指南
 
-深入了解 AutoCRUD 的功能和最佳實踐。
+深入了解 AutoCRUD 的功能，掌握從原型到生產的完整開發流程。
 
-## 系統架構
+## 🎯 核心概念：自動 API 生成
 
-AutoCRUD 提供兩個主要類別：
+AutoCRUD 的核心價值在於**自動從資料模型生成完整的 REST API**。這不僅僅是簡單的 CRUD 操作，而是包含驗證、文檔、分頁、查詢的 API 解決方案。
 
-- **`SingleModelCRUD`**：處理單一資料模型的 CRUD 操作，支援泛型
-- **`AutoCRUD`**：管理多個資料模型的系統，可註冊多個模型
+### 系統架構
 
-## 資料模型支援
+AutoCRUD 提供兩個層次的介面：
 
-AutoCRUD 支援多種 Python 資料模型格式。**注意：所有模型都必須包含 `id` 欄位。**
+- **`AutoCRUD`**：**主要推薦**！多模型 API 管理系統，自動生成 REST API
+- **`SingleModelCRUD`**：單一模型的程式化 CRUD 操作（當你需要細粒度控制時使用）
 
-### Dataclass 模型
+## 🚀 推薦開發流程
+
+### 1. 從 AutoCRUD 開始
+
+```python
+from autocrud import AutoCRUD
+from dataclasses import dataclass
+
+@dataclass
+class User:
+    id: str
+    name: str
+    email: str
+
+# 主要開發入口
+crud = AutoCRUD()
+crud.register_model(User)  # 🎯 完整 REST API 自動生成
+
+app = crud.create_fastapi_app(title="我的 API")
+# 訪問 http://localhost:8000/docs 查看自動生成的 API
+```
+
+### 2. 當需要程式化控制時
+
+```python
+# AutoCRUD 同時提供程式化介面
+user_id = crud.create("users", {"name": "Alice", "email": "alice@example.com"})
+user = crud.get("users", user_id)
+
+# 如果需要更細粒度的控制，可以獲取單模型 CRUD
+user_crud = crud.get_crud("users")  # 返回 SingleModelCRUD 實例
+```
+
+## 🎨 資料模型支援
+
+AutoCRUD 支援所有主流 Python 資料模型格式，讓你用喜歡的方式定義資料結構。**重要：所有模型都必須包含 `id` 欄位。**
+
+### 🔥 推薦：使用 Pydantic 獲得進階驗證
+
+```python
+from pydantic import BaseModel, EmailStr, Field, validator
+from typing import Optional
+from datetime import datetime
+
+class User(BaseModel):
+    id: str
+    name: str = Field(..., min_length=1, max_length=100, description="使用者姓名")
+    email: EmailStr  # 自動 email 格式驗證
+    age: Optional[int] = Field(None, ge=0, le=150, description="年齡")
+    is_active: bool = Field(True, description="是否啟用")
+    
+    @validator('name')
+    def name_must_not_be_empty(cls, v):
+        if not v.strip():
+            raise ValueError('姓名不能為空')
+        return v.strip()
+
+# 註冊後自動獲得完整的驗證 API
+crud = AutoCRUD()
+crud.register_model(User)  # 🎯 所有驗證規則自動應用到 API
+```
+
+### 📦 簡潔選擇：Dataclass
 
 ```python
 from dataclasses import dataclass
 from typing import Optional
 
 @dataclass
-class User:
-    id: str  # 必需的 ID 欄位
+class Product:
+    id: str
     name: str
-    email: str
-    age: Optional[int] = None
-    is_active: bool = True
+    price: float
+    category: str
+    stock: int = 0
+    
+# 同樣能獲得完整的 REST API
+crud.register_model(Product)  # -> 完整的 /products API
 ```
 
-### Pydantic 模型
-
-```python
-from pydantic import BaseModel, EmailStr
-from typing import Optional
-
-class User(BaseModel):
-    id: str  # 必需的 ID 欄位
-    name: str
-    email: EmailStr
-    age: Optional[int] = None
-    is_active: bool = True
-```
-
-### TypedDict 模型
+### 🔧 靈活選擇：TypedDict
 
 ```python
 from typing import TypedDict, Optional
 
-class User(TypedDict):
-    id: str  # 必需的 ID 欄位
-    name: str
-    email: str
-    age: Optional[int]
-    is_active: bool
+class Order(TypedDict):
+    id: str
+    user_id: str
+    items: list
+    total: float
+    status: str
+
+crud.register_model(Order)  # -> 完整的 /orders API
 ```
 
-## 元資料配置
+## ⚙️ 企業級功能配置
 
-AutoCRUD 支援自動時間戳和用戶追蹤：
+### 🕒 自動時間戳管理
+
+讓 AutoCRUD 自動管理資料的創建和更新時間：
 
 ```python
-from autocrud import MetadataConfig
+from autocrud import AutoCRUD, MetadataConfig
 
+# 啟用自動時間戳
 metadata_config = MetadataConfig(
     enable_timestamps=True,  # 自動添加 created_time 和 updated_time
-    enable_user_tracking=True,  # 自動添加 created_by 和 updated_by
+    enable_user_tracking=True,  # 自動添加 created_by 和 updated_by（如果需要）
     timestamp_field_names={
         "created_time": "created_time",
         "updated_time": "updated_time"
-    },
-    user_field_names={
-        "created_by": "created_by", 
-        "updated_by": "updated_by"
     }
 )
 
-user_crud = SingleModelCRUD(
-    model=User,
-    storage=storage,
-    resource_name="users",
-    metadata_config=metadata_config
-)
+crud = AutoCRUD(metadata_config=metadata_config)
+crud.register_model(User)
+
+# 創建資料時自動添加時間戳
+user_id = crud.create("users", {"name": "Alice", "email": "alice@example.com"})
+user = crud.get("users", user_id)
+print(user["created_time"])  # 2024-01-15T10:30:00Z
+print(user["updated_time"])  # 2024-01-15T10:30:00Z
+
+# 你的 API 也自動支援時間範圍查詢
+# GET /users?created_time_start=2024-01-01&created_time_end=2024-12-31
 ```
 
-## 儲存後端
+### 🔍 高級查詢功能
 
-### 記憶體儲存 (MemoryStorage)
+AutoCRUD 自動為你的 API 提供豐富的查詢功能：
 
-適用於開發、測試或臨時資料：
+```python
+from autocrud import ListQueryParams, SortOrder
+from datetime import datetime, timedelta
+
+# 程式化查詢範例
+params = ListQueryParams(
+    page=1,
+    page_size=20,
+    sort_by="created_time",
+    sort_order=SortOrder.DESC,
+    created_time_start=datetime.now() - timedelta(days=7),  # 最近7天
+    created_time_end=datetime.now()
+)
+
+result = crud.list("users", params)
+print(f"找到 {result.total} 個最近創建的使用者")
+
+# 這些查詢功能自動對應到 REST API：
+# GET /users?page=1&page_size=20&sort_by=created_time&sort_order=desc
+#             &created_time_start=2024-01-08T10:00:00Z
+#             &created_time_end=2024-01-15T10:00:00Z
+```
+
+## 🏢 生產環境：資料持久化
+
+### 開發環境：記憶體存儲
+
+適用於原型開發和測試：
+
+```python
+# 預設使用記憶體存儲，重啟後資料消失
+crud = AutoCRUD()  # 開發時最簡單
+crud.register_model(User)
+```
+
+### 生產環境：磁碟存儲
+
+確保資料持久化，適用於生產環境：
 
 ```python
 from autocrud.storage import MemoryStorage

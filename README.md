@@ -1,66 +1,175 @@
 # AutoCRUD
 
-自動化 CRUD 系統，解決重複性 CRUD 操作的煩人問題。
+**🚀 從資料模型到完整 REST API**
 
-## 目標
+AutoCRUD 是一個 Python 函式庫，能夠自動從資料模型生成完整的、生產就緒的 REST API。核心技術價值在於自動化 API 路由生成，而不只是簡單的程式化 CRUD 操作。
 
-### 問題
-CRUD 操作幾乎都長一樣，每次都要重複寫相同的代碼，很煩人。希望能有一個系統性的解決方案。
+## 🎯 核心價值
 
-### 解決方案
-建立一個自動化系統，輸入資料模型，自動產生完整的 CRUD API。
-
-## 核心功能
-
-### 1. 支援多種輸入格式
-- `dataclasses` - Python 標準資料類
-- `pydantic` - 資料驗證和序列化
-- `typeddict` - 類型化字典
-
-### 2. 自動產生 FastAPI CRUD 接口
-- `GET /{resource}/{id}` - 取得單個資源
-- `POST /{resource}` - 建立資源（自動產生 ID）
-- `PUT /{resource}/{id}` - 更新資源
-- `DELETE /{resource}/{id}` - 刪除資源
-
-### 3. 靈活的儲存後端
-支援簡單的 key-value 儲存，不一定要 SQL：
-- **Memory** - 純內存儲存（快速、測試用、重啟後資料消失）
-- **Disk** - 文件系統儲存（持久化、本地儲存）
-- **S3** - 雲端對象儲存（未來實現）
-
-### 4. 多種序列化格式支援
-支援各種序列化方法，可根據需求選擇最適合的格式：
-- **msgpack** - 高效二進位格式，體積小速度快
-- **json** - 標準文本格式，易讀易調試
-- **pickle** - Python 原生格式，支援複雜對象
-- **其他** - 可擴展支援更多自訂格式
-
-## 預期使用方式
+**AutoCRUD 自動化傳統 FastAPI CRUD 開發中的重複工作：**
 
 ```python
+from autocrud import AutoCRUD
 from dataclasses import dataclass
-from autocrud import SingleModelCRUD, AutoCRUD, MemoryStorage, DiskStorage
 
 @dataclass
 class User:
+    id: str
     name: str
     email: str
-    age: int
 
-# 單模型 CRUD（直接操作）
-crud_memory = SingleModelCRUD(
-    model=User,
-    storage=MemoryStorage(),
-    resource_name="users"
+# 簡單設定
+crud = AutoCRUD()
+crud.register_model(User)  # 完整 REST API 自動生成
+
+# 創建生產就緒的 API 應用
+app = crud.create_fastapi_app(title="我的 API")
+# 執行: uvicorn main:app --reload
+# 訪問: http://localhost:8000/docs
+```
+
+**🎯 主要功能：**
+- **完整的 REST API**: `GET /users`, `POST /users`, `PUT /users/{id}`, `DELETE /users/{id}`, `GET /users/count`
+- **高級查詢功能**: `GET /users?page=1&page_size=10&sort_by=name&sort_order=asc`
+- **時間範圍篩選**: `GET /users?created_time_start=2024-01-01&created_time_end=2024-12-31`
+- **自動 Swagger 文檔**: 交互式 API 文檔 (訪問 `/docs`)
+- **資料驗證**: 自動請求/響應驗證，錯誤處理
+- **開箱即用**: 無需額外設置
+
+## 🌟 為什麼選擇 AutoCRUD？
+
+### 🎯 自動 API 生成優勢
+
+手寫完整的 FastAPI CRUD 路由需要大量樣板代碼：
+
+```python
+# 傳統方式 - 繁瑣且容易出錯
+from fastapi import FastAPI, HTTPException, Query
+from pydantic import BaseModel
+from typing import Optional, List
+
+# 每個模型都需要這樣的重複代碼...
+@app.post("/users", response_model=UserResponse, status_code=201)
+async def create_user(user: UserCreate):
+    # 驗證、ID生成、存儲、錯誤處理邏輯...
+    pass
+
+@app.get("/users", response_model=List[UserResponse])
+async def list_users(
+    page: int = Query(1, ge=1),
+    page_size: int = Query(20, ge=1, le=100),
+    sort_by: Optional[str] = None,
+    sort_order: str = Query("desc", regex="^(asc|desc)$")
+):
+    # 分頁、排序、查詢邏輯...
+    pass
+
+# ... 還需要 GET, PUT, DELETE, COUNT 等路由
+```
+
+**用 AutoCRUD，這些全部自動完成！**
+
+- � **自動 API 路由產生**: 從資料模型直接產生生產級 REST API
+- 🔄 **企業級多模型支援**: 一次管理多個業務實體的完整 API 生態系統
+- 📦 **全格式支援**: Pydantic、Dataclass、TypedDict 無縫整合
+- 💾 **生產級持久化**: 從原型到生產環境的儲存解決方案
+- 🔧 **企業級序列化**: JSON、Pickle、MessagePack 多重選擇
+- ⚙️ **高度可客製化**: 資源命名、ID 策略、路由配置完全可控
+- ⚡ **進階查詢 API**: 複雜查詢、排序、分頁、時間範圍篩選
+- 📖 **零維護文檔**: 完整 OpenAPI/Swagger 文檔自動同步
+- 💻 **程式化後備**: 當 API 不夠用時，完整的程式化 CRUD 控制
+
+## 🎨 企業級多模型範例
+
+```python
+from autocrud import AutoCRUD
+from dataclasses import dataclass
+from typing import List
+from enum import Enum
+
+class OrderStatus(str, Enum):
+    PENDING = "pending"
+    CONFIRMED = "confirmed"
+    SHIPPED = "shipped"
+
+@dataclass
+class User:
+    id: str
+    name: str
+    email: str
+    is_premium: bool = False
+
+@dataclass  
+class Product:
+    id: str
+    name: str
+    price: float
+    category: str
+    
+@dataclass
+class Order:
+    id: str
+    user_id: str
+    items: List[str]
+    total: float
+    status: OrderStatus = OrderStatus.PENDING
+
+# 一次註冊，獲得完整的企業級 API 平台
+crud = AutoCRUD()
+crud.register_model(User)     # -> 完整的 /users API
+crud.register_model(Product)  # -> 完整的 /products API  
+crud.register_model(Order)    # -> 完整的 /orders API
+
+# 立即可用的企業級 API 平台
+app = crud.create_fastapi_app(
+    title="電商 API 平台",
+    description="基於 AutoCRUD 的企業級電商 API",
+    version="1.0.0"
 )
 
-# 多模型系統
-multi_crud = AutoCRUD()
-multi_crud.register_model(User)
+# 執行: uvicorn main:app --reload
+# 訪問: http://localhost:8000/docs
+```
 
-# 產生 FastAPI 應用
-app = multi_crud.create_fastapi_app(title="使用者管理 API")
+## 🚀 生產環境部署
+
+```python
+# main.py - 生產就緒
+from autocrud import AutoCRUD
+from autocrud.storage import DiskStorage
+import os
+
+# 生產環境配置
+storage = DiskStorage(storage_dir=os.getenv("DATA_DIR", "./production_data"))
+crud = AutoCRUD(storage_factory=lambda name: storage)
+
+# 註冊你的業務模型
+crud.register_model(User)
+crud.register_model(Product)
+crud.register_model(Order)
+
+# 創建生產級應用
+app = crud.create_fastapi_app(
+    title="生產 API v1.0",
+    version="1.0.0", 
+    prefix="/api/v1"
+)
+
+if __name__ == "__main__":
+    import uvicorn
+    uvicorn.run(app, host="0.0.0.0", port=8000)
+```
+
+**部署命令：**
+```bash
+# 開發環境
+uvicorn main:app --reload
+
+# 生產環境  
+uvicorn main:app --host 0.0.0.0 --port 8000 --workers 4
+
+# Docker 部署
+docker build -t my-api . && docker run -p 8000:8000 my-api
 ```
 
 ## 開發計劃

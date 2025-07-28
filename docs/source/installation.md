@@ -1,50 +1,79 @@
 # 安裝指南
 
-## 系統要求
+# 安裝指南
 
-- Python 3.8+
-- pip 或 uv (推薦)
+## 🎯 快速開始
 
-## 基本安裝
+AutoCRUD 設計為開箱即用，讓你快速開始構建 REST API。
 
-### 使用 pip 安裝
+### 快速安裝
 
 ```bash
 pip install autocrud
 ```
 
-### 使用 uv 安裝 (推薦)
+**開始使用：**
+
+```python
+from autocrud import AutoCRUD
+from dataclasses import dataclass
+
+@dataclass
+class User:
+    id: str
+    name: str
+    email: str
+
+# 簡單設定
+crud = AutoCRUD()
+crud.register_model(User)
+app = crud.create_fastapi_app(title="我的 API")
+
+# 執行: uvicorn main:app --reload
+# 訪問: http://localhost:8000/docs
+```
+
+## 🔧 系統要求
+
+- **Python 3.8+** - 支援現代 Python 特性
+- **pip** 或 **uv** (推薦) - 套件管理工具
+
+## 🚀 推薦安裝方式
+
+### 使用 uv (推薦)
+
+uv 是快速的 Python 套件管理器，適合現代 Python 開發：
 
 ```bash
+# 安裝 uv（如果還沒有）
+curl -LsSf https://astral.sh/uv/install.sh | sh
+
+# 安裝 AutoCRUD
 uv add autocrud
 ```
 
-## 完整安裝（包含所有可選依賴）
+### 使用傳統 pip
 
 ```bash
-# 使用 uv
-uv add autocrud[all]
-
-# 使用 pip  
-pip install autocrud[all]
+pip install autocrud
 ```
 
-## 可選依賴套件
+## 可選功能安裝
 
-AutoCRUD 支援多種可選的依賴套件，你可以根據需要安裝：
+AutoCRUD 採用模組化設計，你可以根據需求安裝額外功能：
 
-### FastAPI 支援
+### FastAPI 支援（預設已包含）
 
-預設已包含 FastAPI 支援，用於自動產生 REST API：
+AutoCRUD 的核心功能是自動生成 REST API，FastAPI 支援已經內建：
 
 ```bash
-# 單獨安裝 FastAPI 和 ASGI 伺服器
-uv add fastapi uvicorn[standard]
+# 如需要額外的 ASGI 伺服器功能
+uv add uvicorn[standard]  # 包含額外的效能最佳化
 ```
 
-### MessagePack 序列化
+### MessagePack 高效序列化
 
-如果需要使用高效能的 MessagePack 序列化：
+對於需要高效能資料序列化的場景：
 
 ```bash
 uv add msgpack

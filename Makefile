@@ -23,6 +23,7 @@ help:
 	@echo "  dev-install  安裝開發依賴"
 	@echo "  build        建置套件"
 	@echo "  publish      發布套件到 PyPI"
+	@echo "  clean        清理所有暫存和構建文件 (clean-dev + clean-docs)"
 	@echo "  clean-dev    清理開發暫存檔案"
 	@echo ""
 	@echo "文檔工具："
@@ -99,6 +100,11 @@ format:
 .PHONY: lint
 lint: check
 	@echo "Lint 檢查完成"
+
+# 清理所有暫存和構建文件
+.PHONY: clean
+clean: clean-dev clean-docs
+	@echo "所有暫存和構建文件已清理"
 
 # 清理開發暫存檔案
 .PHONY: clean-dev
