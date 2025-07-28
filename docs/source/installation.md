@@ -33,9 +33,9 @@ app = crud.create_fastapi_app(title="我的 API")
 # 訪問: http://localhost:8000/docs
 ```
 
-## 🔧 系統要求
+## 系統需求
 
-- **Python 3.8+** - 支援現代 Python 特性
+- **Python 3.11+** - 支援現代 Python 特性
 - **pip** 或 **uv** (推薦) - 套件管理工具
 
 ## 🚀 推薦安裝方式
@@ -133,21 +133,25 @@ uv add --dev sphinx myst-parser furo sphinx-autodoc-typehints
 
 ```python
 # test_installation.py
-from autocrud import AutoCRUD, MultiModelAutoCRUD
+from autocrud import AutoCRUD
 from autocrud.storage import MemoryStorage
 from dataclasses import dataclass
 
 @dataclass
 class TestModel:
+    id: str
     name: str
     value: int
 
 def test_basic_functionality():
-    storage = MemoryStorage()
-    crud = AutoCRUD(model=TestModel, storage=storage)
+    # 測試多模型系統
+    crud = AutoCRUD()
+    crud.register_model(TestModel)
     
     # 測試建立
-    item = crud.create({"name": "test", "value": 42})
+    user_id = crud.create("testmodels", {"name": "test", "value": 42})
+    item = crud.get("testmodels", user_id)
+    
     assert item["name"] == "test"
     assert item["value"] == 42
     
@@ -202,6 +206,6 @@ uv add msgpack
 
 如果遇到問題，可以：
 
-1. 查看 [GitHub Issues](https://github.com/your-repo/autocrud/issues)
+1. 查看 [GitHub Issues](https://github.com/HYChou0515/autocrud/issues)
 2. 閱讀 [使用者指南](user_guide.md) 取得更多信息
 3. 查看 [範例](examples.md) 了解常見用法

@@ -1,6 +1,6 @@
 [project]
 name = "autocrud"
-version = "0.2.0"
+dynamic = ["version"]
 description = "自動產生 CRUD API 的 Python 函式庫"
 readme = "README.md"
 license = {file = "LICENSE"}
@@ -27,7 +27,6 @@ dependencies = [
     "fastapi>=0.116.1",
     "msgpack>=1.1.1",
     "pydantic>=2.11.7",
-    "pytest-asyncio>=1.1.0",
 ]
 
 [project.optional-dependencies]
@@ -42,6 +41,7 @@ dev = [
     "coverage>=7.9.2",
     "pytest>=8.4.1",
     "ruff>=0.12.4",
+    "pytest-asyncio>=1.1.0",
 ]
 
 [project.urls]
@@ -69,6 +69,9 @@ pytest = []
 [build-system]
 requires = ["hatchling"]
 build-backend = "hatchling.build"
+
+[tool.hatch.version]
+path = "autocrud/__init__.py"
 
 [tool.coverage.report]
 exclude_also = [

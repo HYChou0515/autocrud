@@ -1,5 +1,7 @@
 """AutoCRUD - 自動化 CRUD 系統"""
 
+__version__ = "0.2.0"
+
 from .core import SingleModelCRUD
 from .multi_model import AutoCRUD, ResourceNameStyle
 from .storage import MemoryStorage, DiskStorage, Storage
@@ -35,7 +37,6 @@ from .updater import (
     dict_remove,
 )
 
-__version__ = "0.1.0"
 __all__ = [
     "AutoCRUD",
     "ResourceNameStyle",
