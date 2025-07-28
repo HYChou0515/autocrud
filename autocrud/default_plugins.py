@@ -52,7 +52,6 @@ class CreateRoutePlugin(BaseRoutePlugin):
 
         # 生成響應模型
         fields = self.converter.extract_fields(crud.model)
-        fields["id"] = str
         response_model = create_model(
             f"{crud.model.__name__}Response",
             **{name: (field_type, ...) for name, field_type in fields.items()},
@@ -100,7 +99,6 @@ class GetRoutePlugin(BaseRoutePlugin):
 
         # 生成響應模型
         fields = self.converter.extract_fields(crud.model)
-        fields["id"] = str
         response_model = create_model(
             f"{crud.model.__name__}Response",
             **{name: (field_type, ...) for name, field_type in fields.items()},
@@ -166,7 +164,6 @@ class UpdateRoutePlugin(BaseRoutePlugin):
 
         # 生成響應模型
         fields = self.converter.extract_fields(crud.model)
-        fields["id"] = str
         response_model = create_model(
             f"{crud.model.__name__}Response",
             **{name: (field_type, ...) for name, field_type in fields.items()},

@@ -137,9 +137,6 @@ class FastAPIGenerator:
         """生成響應模型（用於 GET）"""
         fields = self.converter.extract_fields(self.crud.model)
 
-        # 確保響應包含 id 字段
-        fields["id"] = str
-
         # 創建 Pydantic 模型
         return create_model(
             f"{self.crud.model.__name__}Response",
