@@ -59,6 +59,7 @@ dev = [
     "linkify-it-py>=2.0.3",
     "myst-parser>=4.0.1",
     "pytest>=8.4.1",
+    "pytest-asyncio>=1.1.0",
     "ruff>=0.12.4",
     "sphinx>=8.2.3",
     "sphinx-autodoc-typehints>=3.2.0",
