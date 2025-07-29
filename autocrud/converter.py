@@ -3,12 +3,6 @@
 from typing import Any, Dict, Type, get_type_hints
 from dataclasses import dataclass, is_dataclass, fields
 
-# 嘗試導入 TypedDict，Python 3.8+ 可從 typing 導入
-try:
-    from typing import _TypedDictMeta  # 用於類型檢查
-except ImportError:
-    _TypedDictMeta = None
-
 
 class ModelConverter:
     """統一的數據模型轉換器"""
@@ -59,7 +53,7 @@ class ModelConverter:
         elif model_type == "typeddict":
             return get_type_hints(model_class)
 
-        return {}
+        raise NotImplementedError(f"不支援的模型類型: {model_class}")
 
     @staticmethod
     def to_dict(instance: Any) -> Dict[str, Any]:
@@ -96,7 +90,7 @@ class ModelConverter:
             # TypedDict 只是類型提示，實際上還是字典
             return data
 
-        raise ValueError(f"無法從字典創建實例: {model_class}")
+        raise NotImplementedError(f"無法從字典創建實例: {model_class}")
 
 
 # 使用範例

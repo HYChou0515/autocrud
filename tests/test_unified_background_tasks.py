@@ -299,6 +299,46 @@ def test_conditional_background_task():
     print("\n✅ 條件式背景任務測試完成")
 
 
+def test_enable_without_task():
+    """測試啟用背景任務但不提供函數的情況"""
+
+    autocrud = AutoCRUD()
+    autocrud.register_model(User)
+
+    config = RouteConfig(
+        create=RouteOptions(
+            enabled=True,
+            background_task=BackgroundTaskMode.ENABLED,  # 啟用背景任務
+            background_task_func=None,  # 不提供函數
+        ),
+        get=RouteOptions(enabled=True),
+        update=RouteOptions(enabled=True),
+        delete=RouteOptions(enabled=True),
+        list=RouteOptions(enabled=True),
+        count=RouteOptions(enabled=True),
+    )
+
+    app = autocrud.create_fastapi_app(route_config=config)
+    client = TestClient(app)
+
+    print("\n=== 測試啟用背景任務但不提供函數 ===")
+
+    # 嘗試創建用戶
+    print("\n1. 嘗試創建用戶")
+    response = client.post(
+        "/api/v1/users",
+        json={
+            "name": "Test User",
+            "email": "test.user@example.com",
+            "age": 30,
+            "role": "user",
+        },
+    )
+    assert response.status_code == 201
+
+    print("\n✅ 測試啟用背景任務但不提供函數完成")
+
+
 if __name__ == "__main__":
     test_unified_background_task_signature()
     test_mixed_background_tasks()

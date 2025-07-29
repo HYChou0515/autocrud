@@ -90,24 +90,37 @@ class SchemaAnalyzer:
 
         # Check metadata fields if enabled
         if self.metadata_config.enable_timestamps:
-            if self.metadata_config.created_time_field not in self.field_types:
+            if (
+                self.metadata_config.created_time_field
+                and self.metadata_config.created_time_field not in self.field_types
+            ):
                 raise ValueError(
                     f"Model '{self.model.__name__}' must have a '{self.metadata_config.created_time_field}' field "
                     f"when timestamps are enabled. Please add this field or disable timestamps."
                 )
-            if self.metadata_config.updated_time_field not in self.field_types:
+            if (
+                self.metadata_config.updated_time_field
+                and self.metadata_config.updated_time_field not in self.field_types
+            ):
                 raise ValueError(
                     f"Model '{self.model.__name__}' must have a '{self.metadata_config.updated_time_field}' field "
                     f"when timestamps are enabled. Please add this field or disable timestamps."
                 )
 
         if self.metadata_config.enable_user_tracking:
-            if self.metadata_config.created_by_field not in self.field_types:
+            if (
+                self.metadata_config.created_by_field
+                and self.metadata_config.created_by_field not in self.field_types
+            ):
                 raise ValueError(
                     f"Model '{self.model.__name__}' must have a '{self.metadata_config.created_by_field}' field "
                     f"when user tracking is enabled. Please add this field or disable user tracking."
                 )
-            if self.metadata_config.updated_by_field not in self.field_types:
+            if (
+                self.metadata_config.updated_by_field
+                and self.metadata_config.updated_by_field
+                and self.metadata_config.updated_by_field not in self.field_types
+            ):
                 raise ValueError(
                     f"Model '{self.model.__name__}' must have a '{self.metadata_config.updated_by_field}' field "
                     f"when user tracking is enabled. Please add this field or disable user tracking."

@@ -87,4 +87,5 @@ exclude_also = [
     'class .*\bProtocol\):',
     '@(abc\.)?abstractmethod',
     "except ImportError:",
+    "warnings.warn.*AutoCRUDWarning",
 ]

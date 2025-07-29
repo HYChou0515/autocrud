@@ -91,16 +91,13 @@ class AdvancedUpdater:
             elif operation.action == UpdateAction.LIST_ADD:
                 # Add items to list
                 current_list = result.get(attr_name, [])
-                if not isinstance(current_list, list):
-                    current_list = []
                 result[attr_name] = current_list + operation.value
             elif operation.action == UpdateAction.LIST_REMOVE:
                 # Remove items from list
                 current_list = result.get(attr_name, [])
-                if isinstance(current_list, list):
-                    result[attr_name] = [
-                        item for item in current_list if item not in operation.value
-                    ]
+                result[attr_name] = [
+                    item for item in current_list if item not in operation.value
+                ]
             elif operation.action == UpdateAction.DICT_SET:
                 # Replace entire dict
                 result[attr_name] = operation.value

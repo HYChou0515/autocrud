@@ -267,7 +267,7 @@ class FastAPIGenerator:
         if route_decorator:
             route_decorator(**route_kwargs)(handler)
         else:
-            raise ValueError(f"Unsupported HTTP method: {plugin_route.method}")
+            raise NotImplementedError(f"Unsupported HTTP method: {plugin_route.method}")
 
     def _create_route_handler(
         self, plugin_route: PluginRouteConfig, options: RouteOptions
@@ -282,38 +282,29 @@ class FastAPIGenerator:
             import asyncio
 
             # 如果需要 CRUD 實例，將其作為第一個參數傳入
-            if plugin_route.requires_crud:
-                if asyncio.iscoroutinefunction(original_handler):
-                    return await original_handler(self.crud, *args, **kwargs)
-                else:
-                    return original_handler(self.crud, *args, **kwargs)
+            if asyncio.iscoroutinefunction(original_handler):
+                return await original_handler(self.crud, *args, **kwargs)
             else:
-                if asyncio.iscoroutinefunction(original_handler):
-                    return await original_handler(*args, **kwargs)
-                else:
-                    return original_handler(*args, **kwargs)
+                return original_handler(self.crud, *args, **kwargs)
 
         # 保持原始函數的註解信息
-        if hasattr(original_handler, "__annotations__"):
-            final_handler.__annotations__ = original_handler.__annotations__.copy()
+        final_handler.__annotations__ = original_handler.__annotations__.copy()
 
         # 保持原始函數的參數信息
         import inspect
 
-        if hasattr(original_handler, "__code__"):
-            # 獲取原始函數的參數信息，但要跳過第一個 crud 參數（如果有的話）
-            original_sig = inspect.signature(original_handler)
-            params = list(original_sig.parameters.values())
+        # 獲取原始函數的參數信息，但要跳過第一個 crud 參數（如果有的話）
+        original_sig = inspect.signature(original_handler)
+        params = list(original_sig.parameters.values())
 
-            if plugin_route.requires_crud and params:
-                # 跳過第一個 crud 參數
-                params = params[1:]
+        # 跳過第一個 crud 參數
+        params = params[1:]
 
-            # 重建簽名
-            new_sig = inspect.Signature(
-                parameters=params, return_annotation=original_sig.return_annotation
-            )
-            final_handler.__signature__ = new_sig
+        # 重建簽名
+        new_sig = inspect.Signature(
+            parameters=params, return_annotation=original_sig.return_annotation
+        )
+        final_handler.__signature__ = new_sig
 
         return final_handler
 

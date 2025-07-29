@@ -41,8 +41,8 @@ class MetadataConfig:
     @classmethod
     def with_timestamps(
         cls,
-        created_time_field: str = "created_time",
-        updated_time_field: str = "updated_time",
+        created_time_field: str | None = "created_time",
+        updated_time_field: str | None = "updated_time",
         get_current_time: Optional[Callable[[], Any]] = None,
         **kwargs,
     ) -> "MetadataConfig":

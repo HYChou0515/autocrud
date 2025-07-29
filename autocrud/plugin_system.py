@@ -48,7 +48,6 @@ class PluginRouteConfig:
 
     # Plugin metadata
     priority: int = 100  # 路由優先級，數字越小優先級越高
-    requires_crud: bool = True  # 是否需要 CRUD 實例作為依賴
 
 
 class RoutePlugin(Protocol):

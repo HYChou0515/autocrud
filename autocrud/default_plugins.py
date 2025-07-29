@@ -15,6 +15,16 @@ from .converter import ModelConverter
 from .list_params import ListQueryParams, DateTimeRange, SortOrder
 
 
+def _to_dict_if_pydantic(item: Any) -> dict:
+    """Convert Pydantic model to dict if applicable"""
+    if hasattr(item, "model_dump"):
+        return item.model_dump()
+    elif hasattr(item, "dict"):
+        return item.dict()  # pragma no cover: For Pydantic v1 compatibility
+    else:
+        return item  # Assume it's already a dict or compatible type
+
+
 class CreateRoutePlugin(BaseRoutePlugin):
     """Plugin for CREATE route (POST /{resource})"""
 
@@ -30,14 +40,7 @@ class CreateRoutePlugin(BaseRoutePlugin):
         ):
             """創建資源"""
             try:
-                # 如果 item 是 Pydantic 模型，轉換為字典
-                if hasattr(item, "model_dump"):
-                    item_dict = item.model_dump()
-                elif hasattr(item, "dict"):
-                    item_dict = item.dict()
-                else:
-                    item_dict = item
-
+                item_dict = _to_dict_if_pydantic(item)
                 created_id = crud.create(item_dict)
                 created_item = crud.get(created_id)
                 return created_item
@@ -138,12 +141,7 @@ class UpdateRoutePlugin(BaseRoutePlugin):
             """更新資源"""
             try:
                 # 如果 item 是 Pydantic 模型，轉換為字典
-                if hasattr(item, "model_dump"):
-                    item_dict = item.model_dump()
-                elif hasattr(item, "dict"):
-                    item_dict = item.dict()
-                else:
-                    item_dict = item
+                item_dict = _to_dict_if_pydantic(item)
 
                 success = crud.update(resource_id, item_dict)
                 if not success:
@@ -287,60 +285,30 @@ class ListRoutePlugin(BaseRoutePlugin):
             # 排序參數
             sort_by: Optional[str] = Query(None, description="排序字段"),
             sort_order: SortOrder = Query(SortOrder.DESC, description="排序順序"),
-            # 向後兼容：簡單模式
-            simple: bool = Query(
-                False, description="簡單模式（返回項目列表而非分頁結果）"
-            ),
         ):
             """列出所有資源"""
-            # 檢查是否使用了任何高級查詢參數
-            has_advanced_params = any(
-                [
-                    page != 1,
-                    page_size != 20,
-                    created_by,
-                    updated_by,
-                    created_time_start,
-                    created_time_end,
-                    updated_time_start,
-                    updated_time_end,
-                    sort_by,
-                ]
+            # 構建查詢參數
+            params = ListQueryParams(
+                page=page,
+                page_size=page_size,
+                created_by_filter=created_by,
+                updated_by_filter=updated_by,
+                created_time_range=DateTimeRange(
+                    start=created_time_start, end=created_time_end
+                )
+                if created_time_start or created_time_end
+                else None,
+                updated_time_range=DateTimeRange(
+                    start=updated_time_start, end=updated_time_end
+                )
+                if updated_time_start or updated_time_end
+                else None,
+                sort_by=sort_by,
+                sort_order=sort_order,
             )
 
-            if not has_advanced_params and simple:
-                # 向後兼容：返回簡單的項目列表
-                items = crud.list_all()
-                return items
-            else:
-                # 構建查詢參數
-                params = ListQueryParams(
-                    page=page,
-                    page_size=page_size,
-                    created_by_filter=created_by,
-                    updated_by_filter=updated_by,
-                    created_time_range=DateTimeRange(
-                        start=created_time_start, end=created_time_end
-                    )
-                    if created_time_start or created_time_end
-                    else None,
-                    updated_time_range=DateTimeRange(
-                        start=updated_time_start, end=updated_time_end
-                    )
-                    if updated_time_start or updated_time_end
-                    else None,
-                    sort_by=sort_by,
-                    sort_order=sort_order,
-                )
-
-                if simple:
-                    # 簡單模式：只返回項目列表
-                    items = crud.list_all(params)
-                    return items
-                else:
-                    # 高級模式：返回分頁結果
-                    result = crud.list_with_params(params)
-                    return result
+            result = crud.list_with_params(params)
+            return result
 
         return [
             PluginRouteConfig(

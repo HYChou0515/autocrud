@@ -5,6 +5,8 @@
 from dataclasses import dataclass
 from typing import Optional
 
+from fastapi.testclient import TestClient
+
 from autocrud import (
     AutoCRUD,
     SingleModelCRUD,
@@ -15,7 +17,7 @@ from autocrud import (
     RouteMethod,
     RouteOptions,
 )
-from fastapi import BackgroundTasks
+from fastapi import BackgroundTasks, Depends, Header
 
 
 @dataclass
@@ -24,6 +26,13 @@ class User:
     name: str
     email: str
     age: Optional[int] = None
+
+
+def some_dependency(x_user: str = Header(None)):
+    """示例依賴函數"""
+    if not x_user:
+        raise ValueError("User header is required")
+    return x_user
 
 
 class CustomPingPlugin(BaseRoutePlugin):
@@ -35,7 +44,7 @@ class CustomPingPlugin(BaseRoutePlugin):
     def get_routes(self, crud):
         """生成 ping 路由"""
 
-        async def ping_handler(crud, background_tasks: BackgroundTasks):
+        def ping_handler(crud, background_tasks: BackgroundTasks):
             """Ping 端點"""
             return {
                 "message": "pong",
@@ -51,9 +60,24 @@ class CustomPingPlugin(BaseRoutePlugin):
                 method=RouteMethod.GET,
                 handler=ping_handler,
                 options=RouteOptions.enabled_route(),
-                summary=f"Ping {crud.model.__name__} service",
-                description=f"健康檢查端點，用於檢查 {crud.model.__name__} 服務狀態",
                 priority=1,  # 高優先級
+                tags=["ping"],
+                responses={
+                    200: {
+                        "description": "Ping response",
+                        "content": {
+                            "application/json": {
+                                "example": {
+                                    "message": "pong",
+                                    "resource": crud.resource_name,
+                                    "model": crud.model.__name__,
+                                    "storage_type": type(crud.storage).__name__,
+                                }
+                            }
+                        },
+                    }
+                },
+                dependencies=[Depends(some_dependency)],
             )
         ]
 
@@ -115,6 +139,26 @@ def test_custom_plugin():
     assert ping_route.path == "/users/ping"
     assert ping_route.method == RouteMethod.GET
     assert ping_route.priority == 1
+
+    app = crud.create_fastapi_app()
+    client = TestClient(app)
+
+    # 先檢查 app 中有哪些路由
+    print("App 中的所有路由:")
+    for route in app.routes:
+        if hasattr(route, "path"):
+            print(f"  {route.path} - {getattr(route, 'methods', 'N/A')}")
+
+    # 嘗試訪問 ping 路由（注意要加上 /api/v1 前綴）
+    resp = client.get("/api/v1/users/ping", headers={"x-user": "test-user"})
+
+    assert resp.status_code == 200
+
+    # 檢查回應內容
+    data = resp.json()
+    assert data["message"] == "pong"
+    assert data["resource"] == "users"
+    print(f"Ping 回應: {data}")
 
     print("✅ 自定義 plugin 測試通過")
 

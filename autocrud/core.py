@@ -2,13 +2,16 @@
 
 import uuid
 from typing import Any, Dict, Type, Optional, TypeVar, Generic, List
-from datetime import datetime
+import warnings
+
+from autocrud.exc import AutoCRUDWarning
+
 from .converter import ModelConverter
 from .storage import Storage
 from .updater import AdvancedUpdater
 from .metadata import MetadataConfig
 from .schema_analyzer import SchemaAnalyzer
-from .list_params import ListQueryParams, ListResult, DateTimeRange, SortOrder
+from .list_params import ListQueryParams, ListResult, SortOrder
 
 # 定義泛型類型變數
 T = TypeVar("T")
@@ -83,10 +86,6 @@ class SingleModelCRUD(Generic[T]):
         """更新資源，回傳是否更新成功"""
         key = self._make_key(resource_id)
 
-        # 檢查資源是否存在
-        if not self.storage.exists(key):
-            return False
-
         # 獲取現有資料
         existing_data = self.storage.get(key)
         if existing_data is None:
@@ -119,10 +118,6 @@ class SingleModelCRUD(Generic[T]):
     ) -> Optional[Dict[str, Any]]:
         """使用 Advanced Updater 進行細部更新"""
         key = self._make_key(resource_id)
-
-        # 檢查資源是否存在
-        if not self.storage.exists(key):
-            return None
 
         # 獲取當前數據
         current_data = self.storage.get(key)
@@ -200,8 +195,10 @@ class SingleModelCRUD(Generic[T]):
         result = []
         for key in all_keys:
             data = self.storage.get(key)
-            if data:
+            if data is not None:
                 result.append(data)
+            else:
+                warnings.warn(f"Key '{key}' exists but has no data.", AutoCRUDWarning)
         return result
 
     def _apply_filters(
@@ -237,9 +234,7 @@ class SingleModelCRUD(Generic[T]):
             filtered_items = [
                 item
                 for item in filtered_items
-                if self._is_datetime_in_range(
-                    item.get(created_time_field), params.created_time_range
-                )
+                if params.created_time_range.contains(item.get(created_time_field))
             ]
 
         # 按更新時間過濾
@@ -248,9 +243,7 @@ class SingleModelCRUD(Generic[T]):
             filtered_items = [
                 item
                 for item in filtered_items
-                if self._is_datetime_in_range(
-                    item.get(updated_time_field), params.updated_time_range
-                )
+                if params.updated_time_range.contains(item.get(updated_time_field))
             ]
 
         return filtered_items
@@ -285,13 +278,7 @@ class SingleModelCRUD(Generic[T]):
 
         # 執行排序
         reverse = params.sort_order == SortOrder.DESC
-        try:
-            return sorted(
-                items, key=lambda x: x.get(params.sort_by) or "", reverse=reverse
-            )
-        except (TypeError, KeyError):
-            # 如果排序失敗，返回原始列表
-            return items
+        return sorted(items, key=lambda x: x.get(params.sort_by) or "", reverse=reverse)
 
     def _apply_pagination(
         self, items: List[Dict[str, Any]], params: ListQueryParams
@@ -305,46 +292,6 @@ class SingleModelCRUD(Generic[T]):
 
         return items[start_index:end_index]
 
-    def _is_datetime_in_range(self, value: Any, date_range: DateTimeRange) -> bool:
-        """檢查日期時間是否在範圍內"""
-        if not value:
-            return False
-
-        # 如果值是字符串，嘗試解析為 datetime
-        if isinstance(value, str):
-            try:
-                value = datetime.fromisoformat(value)
-            except (ValueError, AttributeError):
-                return False
-        elif not isinstance(value, datetime):
-            return False
-
-        # 處理時區不匹配問題：統一轉換到 local timezone
-        from datetime import timezone
-
-        # 獲取本地時區偏移
-        local_tz = timezone(datetime.now().astimezone().utcoffset())
-
-        # 如果 date_range 的 start/end 是 naive，假設為 local timezone
-        start = date_range.start
-        end = date_range.end
-
-        if start and start.tzinfo is None:
-            start = start.replace(tzinfo=local_tz)
-        if end and end.tzinfo is None:
-            end = end.replace(tzinfo=local_tz)
-
-        # 如果 value 有時區信息，轉換到 local timezone；如果沒有，假設為 UTC 然後轉換
-        if value.tzinfo is not None:
-            value = value.astimezone(local_tz)
-        else:
-            # 系統存儲的時間戳沒有時區信息時，假設為 UTC
-            value = value.replace(tzinfo=timezone.utc).astimezone(local_tz)
-
-        # 創建臨時的 DateTimeRange 進行比較
-        temp_range = DateTimeRange(start=start, end=end)
-        return temp_range.contains(value)
-
     def count(self) -> int:
         """取得資源總數量"""
         all_keys = self.storage.list_keys()
@@ -355,6 +302,8 @@ class SingleModelCRUD(Generic[T]):
             data = self.storage.get(key)
             if data:
                 count += 1
+            else:
+                warnings.warn(f"Key '{key}' exists but has no data.", AutoCRUDWarning)
 
         return count
 

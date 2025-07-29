@@ -26,7 +26,7 @@ from autocrud.default_plugins import (
 from autocrud.core import SingleModelCRUD
 from autocrud.storage import MemoryStorage
 from autocrud.metadata import MetadataConfig
-from autocrud.list_params import SortOrder
+from autocrud.list_params import ListResult, SortOrder
 from autocrud.plugin_system import RouteMethod
 from autocrud.route_config import RouteOptions
 
@@ -484,7 +484,9 @@ class TestListRoutePlugin:
         """創建 ListRoutePlugin 實例"""
         return ListRoutePlugin()
 
-    def _call_list_handler(self, handler, crud, background_tasks, **kwargs):
+    def _call_list_handler(
+        self, handler, crud, background_tasks, **kwargs
+    ) -> ListResult:
         """輔助方法：調用列表處理器並提供默認參數"""
         default_params = {
             "page": 1,
@@ -497,7 +499,6 @@ class TestListRoutePlugin:
             "updated_time_end": None,
             "sort_by": None,
             "sort_order": SortOrder.DESC,
-            "simple": False,
         }
         default_params.update(kwargs)
         return handler(crud, background_tasks, **default_params)
@@ -526,11 +527,9 @@ class TestListRoutePlugin:
         handler = routes[0].handler
         background_tasks = MagicMock(spec=BackgroundTasks)
 
-        result = await self._call_list_handler(
-            handler, crud, background_tasks, simple=True
-        )
-
-        assert result == []
+        result = await self._call_list_handler(handler, crud, background_tasks)
+        assert isinstance(result, ListResult)
+        assert result.items == []
 
     @pytest.mark.asyncio
     async def test_list_handler_simple_mode_with_data(self, plugin, crud):
@@ -543,12 +542,10 @@ class TestListRoutePlugin:
         handler = routes[0].handler
         background_tasks = MagicMock(spec=BackgroundTasks)
 
-        result = await self._call_list_handler(
-            handler, crud, background_tasks, simple=True
-        )
+        result = await self._call_list_handler(handler, crud, background_tasks)
 
-        assert isinstance(result, list)
-        assert len(result) == 2
+        assert isinstance(result, ListResult)
+        assert len(result.items) == 2
 
     @pytest.mark.asyncio
     async def test_list_handler_advanced_mode_default_params(self, plugin, crud):
@@ -563,6 +560,7 @@ class TestListRoutePlugin:
 
         result = await self._call_list_handler(handler, crud, background_tasks)
 
+        assert isinstance(result, ListResult)
         assert hasattr(result, "items")
         assert hasattr(result, "total")
         assert hasattr(result, "page")
@@ -589,6 +587,7 @@ class TestListRoutePlugin:
             handler, crud, background_tasks, page=2, page_size=2
         )
 
+        assert isinstance(result, ListResult)
         assert len(result.items) == 2
         assert result.page == 2
         assert result.page_size == 2
@@ -654,13 +653,11 @@ class TestListRoutePlugin:
         handler = routes[0].handler
         background_tasks = MagicMock(spec=BackgroundTasks)
 
-        result = await self._call_list_handler(
-            handler, crud, background_tasks, simple=True
-        )
+        result = await self._call_list_handler(handler, crud, background_tasks)
 
         # 有高級參數時，即使 simple=True 也返回列表
-        assert isinstance(result, list)
-        assert len(result) == 1
+        assert isinstance(result, ListResult)
+        assert len(result.items) == 1
 
 
 class TestDefaultPluginsExports:

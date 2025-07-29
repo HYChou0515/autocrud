@@ -8,6 +8,7 @@ from autocrud.core import SingleModelCRUD
 from autocrud.storage import MemoryStorage
 from autocrud.metadata import MetadataConfig
 from autocrud.list_params import ListQueryParams, DateTimeRange
+from autocrud.utils import LOCAL_TZ
 
 
 @dataclass
@@ -44,12 +45,11 @@ class TestTimezoneHandling:
             storage.set(key, data)
 
         # 創建一個本地時區的查詢範圍
-        local_tz = timezone(datetime.now().astimezone().utcoffset())
         # 假設本地時區是 UTC+8，那麼 UTC 12:00 對應本地 20:00
         start_time = datetime(2024, 1, 1, 19, 0, 0).replace(
-            tzinfo=local_tz
+            tzinfo=LOCAL_TZ
         )  # 本地 19:00
-        end_time = datetime(2024, 1, 1, 21, 0, 0).replace(tzinfo=local_tz)  # 本地 21:00
+        end_time = datetime(2024, 1, 1, 21, 0, 0).replace(tzinfo=LOCAL_TZ)  # 本地 21:00
 
         params = ListQueryParams(
             created_time_range=DateTimeRange(start=start_time, end=end_time)

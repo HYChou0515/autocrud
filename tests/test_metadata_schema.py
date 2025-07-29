@@ -5,6 +5,8 @@
 from dataclasses import dataclass
 from typing import Optional
 
+import pytest
+
 from autocrud import SingleModelCRUD, MemoryStorage, MetadataConfig, SchemaAnalyzer
 
 
@@ -235,6 +237,65 @@ class TestSchemaAnalyzer:
         assert "price" in fields
         assert "pk" not in fields  # 自定義 ID 應該被排除
         assert "created_at" not in fields  # 時間戳應該被排除
+
+    @pytest.mark.parametrize("id_field", ["id", "pk"])
+    @pytest.mark.parametrize("created_time_field", ["created_at", None])
+    @pytest.mark.parametrize("updated_time_field", ["updated_at", None])
+    @pytest.mark.parametrize("updated_by_field", ["updated_by", None])
+    @pytest.mark.parametrize("created_by_field", ["created_by", None])
+    def test_partial_time_field(
+        self,
+        id_field: str,
+        created_time_field: str | None,
+        updated_time_field: str | None,
+        updated_by_field: str | None,
+        created_by_field: str | None,
+    ):
+        @dataclass
+        class ProductWithCreatedTIme:
+            """使用自定義 ID 欄位名稱的產品模型"""
+
+            if created_time_field == "created_at":
+                created_at: str
+            if updated_time_field == "updated_at":
+                updated_at: str
+            if updated_by_field == "updated_by":
+                updated_by: str
+            if created_by_field == "created_by":
+                created_by: str
+            if id_field == "pk":
+                pk: str
+            else:
+                id: str
+            title: str
+            price: float
+
+        config = MetadataConfig(
+            id_field=id_field,
+            enable_timestamps=True,
+            enable_user_tracking=True,
+            created_time_field=created_time_field,
+            updated_time_field=updated_time_field,
+            created_by_field=created_by_field,
+            updated_by_field=updated_by_field,
+        )
+        analyzer = SchemaAnalyzer(ProductWithCreatedTIme, config)
+
+        assert analyzer.get_id_field_name() == id_field
+
+        CreateModel = analyzer.get_create_model()
+        fields = CreateModel.model_fields
+        assert "title" in fields
+        assert "price" in fields
+        assert id_field not in fields
+        assert created_time_field not in fields  # 創建時間不應該出現在 create model 中
+        assert updated_time_field not in fields  # 更新時間不應該出現在 create model 中
+        if updated_by_field is not None:
+            assert (
+                updated_by_field not in fields
+            )  # 更新者欄位不應該出現在 create model 中
+        if created_by_field is not None:
+            assert created_by_field in fields
 
 
 class TestSingleModelCRUDWithMetadata:

@@ -2,8 +2,10 @@
 
 from typing import List, Dict, Any, Optional
 from dataclasses import dataclass
-from datetime import datetime
+from datetime import datetime, timezone
 from enum import Enum
+
+from autocrud.utils import LOCAL_TZ
 
 
 class SortOrder(Enum):
@@ -20,13 +22,35 @@ class DateTimeRange:
     start: Optional[datetime] = None
     end: Optional[datetime] = None
 
-    def contains(self, value: datetime) -> bool:
+    def contains(self, value: datetime | str) -> bool:
         """檢查日期是否在範圍內"""
+        # 如果值是字符串，嘗試解析為 datetime
+        if not value:
+            return False
+        if isinstance(value, str):
+            try:
+                value = datetime.fromisoformat(value)
+            except (ValueError, AttributeError):
+                return False
+        elif not isinstance(value, datetime):
+            return False
+
+        # 如果 value 有時區信息，轉換到 local timezone；如果沒有，假設為 UTC 然後轉換
+        if value.tzinfo is None:
+            value = value.replace(tzinfo=timezone.utc)
+        value = value.astimezone(LOCAL_TZ)
+
         if self.start and value < self.start:
             return False
         if self.end and value > self.end:
             return False
         return True
+
+    def __post_init__(self):
+        if self.start and self.start.tzinfo is None:
+            self.start = self.start.replace(tzinfo=LOCAL_TZ)
+        if self.end and self.end.tzinfo is None:
+            self.end = self.end.replace(tzinfo=LOCAL_TZ)
 
 
 @dataclass
