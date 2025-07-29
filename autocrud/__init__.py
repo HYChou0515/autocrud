@@ -1,6 +1,6 @@
 """AutoCRUD - 自動化 CRUD 系統"""
 
-__version__ = "0.2.1"
+__version__ = "0.2.2"
 
 from .core import SingleModelCRUD
 from .multi_model import AutoCRUD, ResourceNameStyle
