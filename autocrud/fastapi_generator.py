@@ -2,8 +2,11 @@
 
 from typing import Optional, Type, Callable, Any
 from functools import wraps
+import warnings
 from fastapi import FastAPI, APIRouter, BackgroundTasks
 from pydantic import BaseModel, create_model
+
+from autocrud.exc import AutoCRUDWarning
 from .core import SingleModelCRUD
 from .converter import ModelConverter
 from .route_config import RouteConfig, BackgroundTaskMode, RouteOptions
@@ -54,10 +57,10 @@ class FastAPIGenerator:
                 # 執行原始的路由函數
                 result = await route_func(*args, **kwargs)
 
-                # 從 kwargs 中獲取 background_tasks（確保一定存在）
-                background_tasks = kwargs["background_tasks"]
+                # 從 kwargs 或 args 中查找 background_tasks
+                background_tasks = kwargs.get("background_tasks")
 
-                # 執行 background task，傳遞完整的 args 和 kwargs
+                # 只有在有 background_tasks 時才執行背景任務
                 self._execute_background_task(
                     route_options,
                     background_tasks,
@@ -76,7 +79,7 @@ class FastAPIGenerator:
     def _execute_background_task(
         self,
         route_options: RouteOptions,
-        background_tasks: BackgroundTasks,
+        background_tasks: BackgroundTasks | None,
         route_name: str,
         route_args,
         route_kwargs,
@@ -85,6 +88,14 @@ class FastAPIGenerator:
         """統一的背景任務執行邏輯"""
         # 檢查是否禁用背景任務
         if route_options.background_task == BackgroundTaskMode.DISABLED:
+            return
+
+        if background_tasks is None:
+            warnings.warn(
+                f"BackgroundTasks is None for route '{route_name}'. "
+                "Ensure that the route handler accepts BackgroundTasks as a parameter.",
+                AutoCRUDWarning,
+            )
             return
 
         # 檢查是否有背景任務函數
@@ -275,17 +286,30 @@ class FastAPIGenerator:
         """創建路由處理函數，包含 background task 和 CRUD 注入邏輯"""
         original_handler = plugin_route.handler
 
+        # 檢查原始 handler 的簽名，看是否需要 crud 參數
+        import inspect
+
+        original_sig = inspect.signature(original_handler)
+        params = list(original_sig.parameters.keys())
+        needs_crud = len(params) > 0 and params[0] == "crud"
+
         # 添加背景任務支持
         @self._with_background_task(plugin_route.name, options)
         async def final_handler(*args, **kwargs):
             # 檢查是否為異步函數
             import asyncio
 
-            # 如果需要 CRUD 實例，將其作為第一個參數傳入
-            if asyncio.iscoroutinefunction(original_handler):
-                return await original_handler(self.crud, *args, **kwargs)
+            # 根據是否需要 CRUD 來決定如何調用
+            if needs_crud:
+                if asyncio.iscoroutinefunction(original_handler):
+                    return await original_handler(self.crud, *args, **kwargs)
+                else:
+                    return original_handler(self.crud, *args, **kwargs)
             else:
-                return original_handler(self.crud, *args, **kwargs)
+                if asyncio.iscoroutinefunction(original_handler):
+                    return await original_handler(*args, **kwargs)
+                else:
+                    return original_handler(*args, **kwargs)
 
         # 保持原始函數的註解信息
         final_handler.__annotations__ = original_handler.__annotations__.copy()
@@ -293,12 +317,13 @@ class FastAPIGenerator:
         # 保持原始函數的參數信息
         import inspect
 
-        # 獲取原始函數的參數信息，但要跳過第一個 crud 參數（如果有的話）
+        # 獲取原始函數的參數信息
         original_sig = inspect.signature(original_handler)
         params = list(original_sig.parameters.values())
 
-        # 跳過第一個 crud 參數
-        params = params[1:]
+        # 檢查第一個參數是否是 'crud'，如果是則移除，否則保留所有參數
+        if params and params[0].name == "crud":
+            params = params[1:]
 
         # 重建簽名
         new_sig = inspect.Signature(

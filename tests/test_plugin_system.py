@@ -19,6 +19,8 @@ from autocrud import (
 )
 from fastapi import BackgroundTasks, Depends, Header
 
+from autocrud.route_config import BackgroundTaskMode
+
 
 @dataclass
 class User:
@@ -44,8 +46,9 @@ class CustomPingPlugin(BaseRoutePlugin):
     def get_routes(self, crud):
         """生成 ping 路由"""
 
-        def ping_handler(crud, background_tasks: BackgroundTasks):
+        def ping_handler(background_tasks: BackgroundTasks):
             """Ping 端點"""
+            print("ping_handler 被調用了！")
             return {
                 "message": "pong",
                 "resource": crud.resource_name,
@@ -78,6 +81,32 @@ class CustomPingPlugin(BaseRoutePlugin):
                     }
                 },
                 dependencies=[Depends(some_dependency)],
+            )
+        ]
+
+
+class CustomDummyPlugin(BaseRoutePlugin):
+    def __init__(self):
+        super().__init__("dummy", "1.0.0")
+
+    def get_routes(self, crud):
+        """生成 dummy 路由"""
+
+        def dummy():
+            return "dummy"
+
+        return [
+            PluginRouteConfig(
+                name="dummy",
+                path=f"/{crud.resource_name}/dummy",
+                method=RouteMethod.GET,
+                handler=dummy,
+                options=RouteOptions(
+                    enabled=True,  # 啟用此路由
+                    background_task=BackgroundTaskMode.ENABLED,
+                ),
+                priority=-1,  # 高優先級
+                dependencies=[],
             )
         ]
 
@@ -149,8 +178,10 @@ def test_custom_plugin():
         if hasattr(route, "path"):
             print(f"  {route.path} - {getattr(route, 'methods', 'N/A')}")
 
-    # 嘗試訪問 ping 路由（注意要加上 /api/v1 前綴）
+    # 嘗試訪問 ping 路由 - 使用正確的前綴
     resp = client.get("/api/v1/users/ping", headers={"x-user": "test-user"})
+    print(f"回應狀態碼: {resp.status_code}")
+    print(f"回應內容: {resp.text}")
 
     assert resp.status_code == 200
 
@@ -161,6 +192,51 @@ def test_custom_plugin():
     print(f"Ping 回應: {data}")
 
     print("✅ 自定義 plugin 測試通過")
+
+    # 清理
+    plugin_manager.unregister_plugin("ping")
+
+
+def test_custom_dummy_plugin():
+    # 註冊自定義 plugin
+    custom_plugin = CustomDummyPlugin()
+    plugin_manager.register_plugin(custom_plugin)
+
+    # 創建 CRUD
+    crud = SingleModelCRUD(model=User, storage=MemoryStorage(), resource_name="users")
+
+    # 獲取路由，應該包含自定義的 ping 路由
+    routes = plugin_manager.get_routes_for_crud(crud)
+    route_names = {r.name for r in routes}
+
+    print(f"包含自定義 plugin 的路由: {route_names}")
+    assert "dummy" in route_names
+
+    # 檢查 dummy 路由的配置
+    ping_route = next(r for r in routes if r.name == "dummy")
+    assert ping_route.path == "/users/dummy"
+    assert ping_route.method == RouteMethod.GET
+    assert ping_route.priority == -1
+
+    app = crud.create_fastapi_app()
+    client = TestClient(app)
+
+    # 先檢查 app 中有哪些路由
+    print("App 中的所有路由:")
+    for route in app.routes:
+        if hasattr(route, "path"):
+            print(f"  {route.path} - {getattr(route, 'methods', 'N/A')}")
+
+    # 嘗試訪問 dummy 路由 - 使用正確的前綴
+    resp = client.get("/api/v1/users/dummy")
+    print(f"回應狀態碼: {resp.status_code}")
+    print(f"回應內容: {resp.text}")
+
+    assert resp.status_code == 200
+
+    # 檢查回應內容
+    data = resp.json()
+    assert data == "dummy"
 
     # 清理
     plugin_manager.unregister_plugin("ping")
