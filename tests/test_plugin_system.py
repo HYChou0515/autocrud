@@ -185,7 +185,14 @@ def test_custom_plugin():
         model=User,
         storage=MemoryStorage(),
         resource_name="users",
-        metadata_config=MetadataConfig(),
+        metadata_config=MetadataConfig(
+            enable_timestamps=True,
+            created_time_field=None,
+            updated_time_field=None,
+            enable_user_tracking=True,
+            created_by_field=None,
+            updated_by_field=None,
+        ),
     )
 
     # 獲取路由，應該包含自定義的 ping 路由
@@ -228,6 +235,16 @@ def test_custom_plugin():
     print(f"Ping 回應: {data}")
 
     print("✅ 自定義 plugin 測試通過")
+
+    resp = client.post(
+        "/api/v1/users", json={"name": "Test User", "email": "test@example.com"}
+    )
+    assert resp.status_code == 201
+    resp = client.put(
+        f"/api/v1/users/{resp.json()['id']}",
+        json={"name": "Test User2", "email": "test2@example.com"},
+    )
+    assert resp.status_code == 200
 
     # 清理
     plugin_manager.unregister_plugin("ping")
