@@ -19,6 +19,7 @@ from autocrud import (
 )
 from fastapi import BackgroundTasks, Depends, Header
 
+from autocrud.metadata import MetadataConfig
 from autocrud.route_config import BackgroundTaskMode
 
 
@@ -56,6 +57,9 @@ class CustomPingPlugin(BaseRoutePlugin):
                 "storage_type": type(crud.storage).__name__,
             }
 
+        async def ping_handler2(background_tasks: BackgroundTasks):
+            return 1
+
         return [
             PluginRouteConfig(
                 name="ping",
@@ -81,7 +85,15 @@ class CustomPingPlugin(BaseRoutePlugin):
                     }
                 },
                 dependencies=[Depends(some_dependency)],
-            )
+            ),
+            PluginRouteConfig(
+                name="ping2",
+                path=f"/{crud.resource_name}/ping2",
+                method=RouteMethod.GET,
+                handler=ping_handler2,
+                options=RouteOptions.enabled_route(),
+                priority=1,  # 高優先級
+            ),
         ]
 
 
@@ -92,7 +104,10 @@ class CustomDummyPlugin(BaseRoutePlugin):
     def get_routes(self, crud):
         """生成 dummy 路由"""
 
-        def dummy():
+        async def dummy2(crud):
+            return 2
+
+        def dummy(crud):
             return "dummy"
 
         return [
@@ -107,7 +122,19 @@ class CustomDummyPlugin(BaseRoutePlugin):
                 ),
                 priority=-1,  # 高優先級
                 dependencies=[],
-            )
+            ),
+            PluginRouteConfig(
+                name="dummy2",
+                path=f"/{crud.resource_name}/dummy2",
+                method=RouteMethod.GET,
+                handler=dummy2,
+                options=RouteOptions(
+                    enabled=True,  # 啟用此路由
+                    background_task=BackgroundTaskMode.ENABLED,
+                ),
+                priority=-1,  # 高優先級
+                dependencies=[],
+            ),
         ]
 
 
@@ -154,7 +181,12 @@ def test_custom_plugin():
     plugin_manager.register_plugin(custom_plugin)
 
     # 創建 CRUD
-    crud = SingleModelCRUD(model=User, storage=MemoryStorage(), resource_name="users")
+    crud = SingleModelCRUD(
+        model=User,
+        storage=MemoryStorage(),
+        resource_name="users",
+        metadata_config=MetadataConfig(),
+    )
 
     # 獲取路由，應該包含自定義的 ping 路由
     routes = plugin_manager.get_routes_for_crud(crud)
@@ -179,6 +211,10 @@ def test_custom_plugin():
             print(f"  {route.path} - {getattr(route, 'methods', 'N/A')}")
 
     # 嘗試訪問 ping 路由 - 使用正確的前綴
+    resp = client.get("/api/v1/users/ping2", headers={"x-user": "test-user"})
+    assert resp.status_code == 200
+    assert resp.json() == 1
+
     resp = client.get("/api/v1/users/ping", headers={"x-user": "test-user"})
     print(f"回應狀態碼: {resp.status_code}")
     print(f"回應內容: {resp.text}")
@@ -228,6 +264,9 @@ def test_custom_dummy_plugin():
             print(f"  {route.path} - {getattr(route, 'methods', 'N/A')}")
 
     # 嘗試訪問 dummy 路由 - 使用正確的前綴
+    resp = client.get("/api/v1/users/dummy2")
+    assert resp.status_code == 200
+    assert resp.json() == 2
     resp = client.get("/api/v1/users/dummy")
     print(f"回應狀態碼: {resp.status_code}")
     print(f"回應內容: {resp.text}")

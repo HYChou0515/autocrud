@@ -378,10 +378,6 @@ class TestSchemaAnalyzerAdvancedCoverage:
         extracted_id = analyzer.extract_id_from_data(data_with_id)
         assert extracted_id == "123"
 
-        # 測試 get_metadata_fields
-        metadata_fields = analyzer.get_metadata_fields()
-        assert isinstance(metadata_fields, dict)
-
     def test_schema_analyzer_with_default_values_parameter(self):
         """測試使用 default_values 參數的 SchemaAnalyzer"""
 

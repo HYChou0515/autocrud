@@ -80,17 +80,6 @@ class TestMetadataConfig:
         assert config.created_by_field == "creator"
         assert config.updated_by_field == "updater"
 
-    def test_get_metadata_fields(self):
-        """測試獲取 metadata 欄位"""
-        config = MetadataConfig.with_full_tracking()
-        fields = config.get_metadata_fields()
-
-        assert "id" in fields
-        assert "created_time" in fields
-        assert "updated_time" in fields
-        assert "created_by" in fields
-        assert "updated_by" in fields
-
     def test_get_create_excluded_fields(self):
         """測試獲取 create 時排除的欄位"""
         config = MetadataConfig.with_full_tracking()

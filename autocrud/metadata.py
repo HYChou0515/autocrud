@@ -96,24 +96,6 @@ class MetadataConfig:
             **kwargs,
         )
 
-    def get_metadata_fields(self) -> Dict[str, bool]:
-        """Get all metadata field names and their enabled status"""
-        fields = {self.id_field: True}  # ID is always present
-
-        if self.enable_timestamps:
-            if self.created_time_field:
-                fields[self.created_time_field] = True
-            if self.updated_time_field:
-                fields[self.updated_time_field] = True
-
-        if self.enable_user_tracking:
-            if self.created_by_field:
-                fields[self.created_by_field] = True
-            if self.updated_by_field:
-                fields[self.updated_by_field] = True
-
-        return fields
-
     def get_create_excluded_fields(self) -> set[str]:
         """Get fields that should be excluded from create request body"""
         excluded = {self.id_field}  # ID is auto-generated
