@@ -28,6 +28,39 @@ class ResourceMeta(Struct, kw_only=True):
     is_deleted: bool = False
 
 
+class ResourceMetaSortKey(StrEnum):
+    created_time = "created_time"
+    updated_time = "updated_time"
+    resource_id = "resource_id"
+
+
+class ResourceMetaSortDirection(StrEnum):
+    ascending = "+"
+    descending = "-"
+
+
+class ResourceMetaSearchSort(Struct, kw_only=True):
+    direction: ResourceMetaSortDirection = ResourceMetaSortDirection.ascending
+    key: ResourceMetaSortKey
+
+
+class ResourceMetaSearchQuery(Struct, kw_only=True):
+    is_deleted: bool | UnsetType = UNSET
+
+    created_time_start: dt.datetime | UnsetType = UNSET
+    created_time_end: dt.datetime | UnsetType = UNSET
+    updated_time_start: dt.datetime | UnsetType = UNSET
+    updated_time_end: dt.datetime | UnsetType = UNSET
+
+    created_bys: list[str] | UnsetType = UNSET
+    updated_bys: list[str] | UnsetType = UNSET
+
+    limit: int = 1
+    offset: int = 0
+
+    sorts: list[ResourceMetaSearchSort] | UnsetType = UNSET
+
+
 class RevisionStatus(StrEnum):
     draft = "draft"
     stable = "stable"
@@ -134,6 +167,57 @@ class IResourceManager(ABC, Generic[T]):
         - ResourceIsDeletedError: The resource exists but is marked as deleted (is_deleted=True)
 
         For soft-deleted resources, use restore() first to make them accessible again.
+        """
+
+    @abstractmethod
+    def get_meta(self, resource_id: str) -> ResourceMeta:
+        """Get the metadata of the resource.
+
+        Arguments:
+
+            - resource_id (str): the id of the resource to get metadata for.
+
+        Returns:
+
+            - meta (ResourceMeta): the metadata of the resource.
+
+        Raises:
+
+            - ResourceIDNotFoundError: if resource id does not exist.
+            - ResourceIsDeletedError: if resource is soft-deleted.
+
+        ---
+
+        Returns the metadata of the specified resource, including its current revision,
+        total revision count, creation and update timestamps, and user information.
+        This method will raise exceptions similar to get() based on the resource state.
+        """
+
+    @abstractmethod
+    def search_resources(self, query: ResourceMetaSearchQuery) -> list[str]:
+        """Search for resources based on a query.
+
+        Arguments:
+
+            - query (ResourceMetaSearchQuery): the search criteria and options.
+
+        Returns:
+
+            - list[str]: list of resource IDs matching the query criteria.
+
+        ---
+
+        This method allows searching for resources based on various criteria defined
+        in the ResourceMetaSearchQuery. The query supports filtering by:
+        - Deletion status (is_deleted)
+        - Time ranges (created_time_start/end, updated_time_start/end)
+        - User filters (created_bys, updated_bys)
+        - Pagination (limit, offset)
+        - Sorting (sorts with direction and key)
+
+        The results are returned as a list of resource IDs that match the specified
+        criteria, ordered according to the sort parameters and limited by the
+        pagination settings.
         """
 
     @abstractmethod
@@ -379,7 +463,7 @@ class _BuildResMetaUpdate(Struct):
     rev_info: RevisionInfo
 
 
-class MsgspecSerializer:
+class MsgspecSerializer(Generic[T]):
     def __init__(self, encoding: Literal["json", "msgpack"], resource_type: type[T]):
         if encoding not in ["json", "msgpack"]:
             raise ValueError("Encoding must be either 'json' or 'msgpack'")
@@ -476,12 +560,21 @@ class ResourceManager(IResourceManager[T], Generic[T]):
         )
         return info
 
-    def get_meta(self, resource_id: str) -> ResourceMeta:
+    def _get_meta_no_check_is_deleted(self, resource_id: str) -> ResourceMeta:
         if not self.storage.exists(resource_id):
             raise ResourceIDNotFoundError(resource_id)
         meta_b = self.storage.get_meta(resource_id)
         meta = self.resmeta_serializer.decode(meta_b)
         return meta
+
+    def get_meta(self, resource_id: str) -> ResourceMeta:
+        meta = self._get_meta_no_check_is_deleted(resource_id)
+        if meta.is_deleted:
+            raise ResourceIsDeletedError(resource_id)
+        return meta
+
+    def search_resources(self, query: ResourceMetaSearchQuery) -> list[str]:
+        return []
 
     def create(self, data: T) -> RevisionInfo:
         info = self._rev_info(_BuildRevMetaCreate())
@@ -498,21 +591,15 @@ class ResourceManager(IResourceManager[T], Generic[T]):
         )
         return info
 
-    def _get_meta_and_check_not_deleted(self, resource_id: str) -> ResourceMeta:
-        meta = self.get_meta(resource_id)
-        if meta.is_deleted:
-            raise ResourceIsDeletedError(resource_id)
-        return meta
-
     def get(self, resource_id: str) -> Resource[T]:
-        meta = self._get_meta_and_check_not_deleted(resource_id)
+        meta = self.get_meta(resource_id)
         data_b = self.storage.get_resource_revision(
             resource_id, meta.current_revision_id
         )
         return self.reource_serializer.decode(data_b)
 
     def update(self, resource_id: str, data: T) -> RevisionInfo:
-        prev_res_meta = self._get_meta_and_check_not_deleted(resource_id)
+        prev_res_meta = self.get_meta(resource_id)
         rev_info = self._rev_info(_BuildRevInfoUpdate(prev_res_meta))
         res_meta = self._res_meta(_BuildResMetaUpdate(prev_res_meta, rev_info))
         resource = Resource(
@@ -533,7 +620,7 @@ class ResourceManager(IResourceManager[T], Generic[T]):
         return self.update(resource_id, data)
 
     def switch(self, resource_id: str, revision_id: str) -> ResourceMeta:
-        meta = self._get_meta_and_check_not_deleted(resource_id)
+        meta = self.get_meta(resource_id)
         if meta.current_revision_id == revision_id:
             return meta
         if not self.storage.revision_exists(resource_id, revision_id):
@@ -545,7 +632,7 @@ class ResourceManager(IResourceManager[T], Generic[T]):
         return meta
 
     def delete(self, resource_id: str) -> ResourceMeta:
-        meta = self._get_meta_and_check_not_deleted(resource_id)
+        meta = self.get_meta(resource_id)
         meta.is_deleted = True
         meta.updated_by = self.user_ctx.get()
         meta.updated_time = self.now_ctx.get()
@@ -553,7 +640,7 @@ class ResourceManager(IResourceManager[T], Generic[T]):
         return meta
 
     def restore(self, resource_id: str) -> ResourceMeta:
-        meta = self.get_meta(resource_id)
+        meta = self._get_meta_no_check_is_deleted(resource_id)
         if meta.is_deleted:
             meta.is_deleted = False
             meta.updated_by = self.user_ctx.get()

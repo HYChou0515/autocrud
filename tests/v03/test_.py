@@ -85,7 +85,7 @@ class Test:
         assert got.info.data_hash is UNSET
         assert got.info.uid
         assert got.info.resource_id
-        res_meta = self.mgr.get_meta(meta.resource_id)
+        res_meta = self.mgr._get_meta_no_check_is_deleted(meta.resource_id)
         assert res_meta.current_revision_id == got.info.revision_id
         assert res_meta.resource_id == got.info.resource_id
         assert res_meta.total_revision_count == 1
@@ -117,7 +117,7 @@ class Test:
         got = self.mgr.get(meta.resource_id)
         assert got.info == u_meta
         assert got.data == u_data
-        res_meta = self.mgr.get_meta(meta.resource_id)
+        res_meta = self.mgr._get_meta_no_check_is_deleted(meta.resource_id)
         assert res_meta.current_revision_id == u_meta.revision_id
         assert res_meta.resource_id == u_meta.resource_id
         assert res_meta.total_revision_count == 2
@@ -215,7 +215,7 @@ class Test:
             assert len(got.data.dict_data) == len(data.dict_data) - 1
 
         # 驗證 resource metadata
-        res_meta = self.mgr.get_meta(meta.resource_id)
+        res_meta = self.mgr._get_meta_no_check_is_deleted(meta.resource_id)
         assert res_meta.current_revision_id == p_meta.revision_id
         assert res_meta.resource_id == p_meta.resource_id
         assert res_meta.total_revision_count == 2
@@ -260,7 +260,7 @@ class Test:
         assert switch_result.updated_by == switch_user  # 更新者是 switch 的用戶
 
         # 驗證 get_meta 返回的結果與 switch 結果一致
-        res_meta_after = self.mgr.get_meta(meta1.resource_id)
+        res_meta_after = self.mgr._get_meta_no_check_is_deleted(meta1.resource_id)
         assert res_meta_after == switch_result
 
         # 驗證 get 返回的資料現在是 data1
@@ -282,7 +282,7 @@ class Test:
         assert meta4.revision_id != meta3.revision_id
 
         # 驗證 ResourceMeta 的 current_revision_id 更新為 meta4
-        res_meta_final = self.mgr.get_meta(meta1.resource_id)
+        res_meta_final = self.mgr._get_meta_no_check_is_deleted(meta1.resource_id)
         assert res_meta_final.current_revision_id == meta4.revision_id
         assert res_meta_final.total_revision_count == 4
 
@@ -321,7 +321,7 @@ class Test:
             meta2 = self.mgr.update(meta1.resource_id, data2)
 
         # 獲取 switch 前的 ResourceMeta
-        res_meta_before = self.mgr.get_meta(meta1.resource_id)
+        res_meta_before = self.mgr._get_meta_no_check_is_deleted(meta1.resource_id)
         assert res_meta_before.current_revision_id == meta2.revision_id
         assert res_meta_before.updated_time == now2
         assert res_meta_before.updated_by == user2
@@ -341,7 +341,7 @@ class Test:
         assert switch_result.updated_by == user2  # updated_by 沒變（重點！）
 
         # 再次驗證 get_meta 返回的結果也沒有改變
-        res_meta_after = self.mgr.get_meta(meta1.resource_id)
+        res_meta_after = self.mgr._get_meta_no_check_is_deleted(meta1.resource_id)
         assert res_meta_after == res_meta_before
         assert res_meta_after.updated_time == now2  # 時間戳沒有更新
         assert res_meta_after.updated_by == user2  # 用戶沒有更新
@@ -359,7 +359,7 @@ class Test:
             meta2 = self.mgr.update(meta1.resource_id, data2)
 
         # 驗證刪除前的狀態
-        res_meta_before = self.mgr.get_meta(meta1.resource_id)
+        res_meta_before = self.mgr._get_meta_no_check_is_deleted(meta1.resource_id)
         assert res_meta_before.is_deleted is False
         assert res_meta_before.current_revision_id == meta2.revision_id
         assert res_meta_before.updated_time == now2
@@ -385,7 +385,9 @@ class Test:
         assert delete_result.updated_by == delete_user  # 更新者是刪除的用戶
 
         # 重點1: 刪除後，任何 get_meta 會回傳 is_deleted=True
-        assert self.mgr.get_meta(meta1.resource_id) == delete_result
+        assert (
+            self.mgr._get_meta_no_check_is_deleted(meta1.resource_id) == delete_result
+        )
 
         # 重點4: 刪除後的 updated_time/updated_by
         assert delete_result.updated_time == delete_now  # 更新時間是刪除的時間
@@ -464,7 +466,7 @@ class Test:
             self.mgr.delete(meta1.resource_id)
 
         # 驗證已刪除
-        res_meta_deleted = self.mgr.get_meta(meta1.resource_id)
+        res_meta_deleted = self.mgr._get_meta_no_check_is_deleted(meta1.resource_id)
         assert res_meta_deleted.is_deleted is True
 
         # 執行還原
@@ -487,7 +489,9 @@ class Test:
         assert restore_result.updated_by == restore_user  # 更新者是還原的用戶
 
         # 驗證 restore 返回的 meta 與 get_meta 返回的一致
-        assert restore_result == self.mgr.get_meta(meta1.resource_id)
+        assert restore_result == self.mgr._get_meta_no_check_is_deleted(
+            meta1.resource_id
+        )
 
         # 驗證 CRUD 操作重新可用
         current_data = self.mgr.get(meta1.resource_id)
@@ -521,7 +525,7 @@ class Test:
         user, now, meta = self.create(data)
 
         # 獲取還原前的狀態
-        res_meta_before = self.mgr.get_meta(meta.resource_id)
+        res_meta_before = self.mgr._get_meta_no_check_is_deleted(meta.resource_id)
         assert res_meta_before.is_deleted is False
 
         # 執行還原（即使未刪除）
@@ -537,4 +541,6 @@ class Test:
         assert restore_result.updated_by == user  # 用戶不會更新
 
         # 驗證 restore 返回的 meta 與 get_meta 返回的一致
-        assert restore_result == self.mgr.get_meta(meta.resource_id)
+        assert restore_result == self.mgr._get_meta_no_check_is_deleted(
+            meta.resource_id
+        )
