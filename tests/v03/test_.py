@@ -1,7 +1,10 @@
 from msgspec import Struct
 import msgspec
 import pytest
-from autocrud.v03.core import ResourceManager
+from autocrud.v03.core import (
+    ResourceManager,
+    ResourceMeta,
+)
 import datetime as dt
 from faker import Faker
 import jsonpatch
@@ -75,7 +78,7 @@ class Test:
         assert got.info.created_time == now
         assert got.info.updated_time == now
         assert got.info.status == "stable"
-        assert got.info.last_revision_id == ""
+        assert got.info.parent_revision_id == ""
         assert got.info.schema_version == ""
         assert got.info.uid
         assert got.info.resource_id
@@ -83,7 +86,6 @@ class Test:
         assert res_meta.current_revision_id == got.info.revision_id
         assert res_meta.resource_id == got.info.resource_id
         assert res_meta.total_revision_count == 1
-        assert res_meta.valid_revision_count == 1
         assert res_meta.created_time == now
         assert res_meta.created_by == user
         assert res_meta.updated_time == now
@@ -100,7 +102,7 @@ class Test:
         assert u_meta.uid != meta.uid
         assert u_meta.resource_id == meta.resource_id
         assert u_meta.revision_id != meta.revision_id
-        assert u_meta.last_revision_id == meta.revision_id
+        assert u_meta.parent_revision_id == meta.revision_id
         assert u_meta.schema_version == ""
         assert u_meta.data_hash == ""
         assert u_meta.status == "stable"
@@ -115,7 +117,6 @@ class Test:
         assert res_meta.current_revision_id == u_meta.revision_id
         assert res_meta.resource_id == u_meta.resource_id
         assert res_meta.total_revision_count == 2
-        assert res_meta.valid_revision_count == 2
         assert res_meta.created_time == now
         assert res_meta.created_by == user
         assert res_meta.updated_time == u_now
@@ -174,7 +175,7 @@ class Test:
         assert p_meta.uid != meta.uid
         assert p_meta.resource_id == meta.resource_id
         assert p_meta.revision_id != meta.revision_id
-        assert p_meta.last_revision_id == meta.revision_id
+        assert p_meta.parent_revision_id == meta.revision_id
         assert p_meta.schema_version == ""
         assert p_meta.data_hash == ""
         assert p_meta.status == "stable"
@@ -214,8 +215,129 @@ class Test:
         assert res_meta.current_revision_id == p_meta.revision_id
         assert res_meta.resource_id == p_meta.resource_id
         assert res_meta.total_revision_count == 2
-        assert res_meta.valid_revision_count == 2
         assert res_meta.created_time == now
         assert res_meta.created_by == user
         assert res_meta.updated_time == p_now
         assert res_meta.updated_by == p_user
+
+    def test_switch(self):
+        # 創建初始版本
+        data1 = new_data()
+        user1, now1, meta1 = self.create(data1)
+
+        # 第一次更新
+        data2 = new_data()
+        user2, now2 = faker.user_name(), faker.date_time()
+        with self.mgr.meta_provide(user2, now2):
+            meta2 = self.mgr.update(meta1.resource_id, data2)
+
+        # 第二次更新
+        data3 = new_data()
+        user3, now3 = faker.user_name(), faker.date_time()
+        with self.mgr.meta_provide(user3, now3):
+            meta3 = self.mgr.update(meta1.resource_id, data3)
+
+        # Switch 到 revision 1
+        switch_user = faker.user_name()
+        switch_now = faker.date_time()
+        with self.mgr.meta_provide(switch_user, switch_now):
+            switch_result = self.mgr.switch(meta1.resource_id, meta1.revision_id)
+
+        # 驗證 switch 後的 ResourceMeta
+        assert isinstance(switch_result, ResourceMeta)
+        assert (
+            switch_result.current_revision_id == meta1.revision_id
+        )  # 改變為 revision 1
+        assert switch_result.resource_id == meta1.resource_id
+        assert switch_result.total_revision_count == 3  # 總數不變
+        assert switch_result.created_time == now1  # 創建時間不變
+        assert switch_result.created_by == user1  # 創建者不變
+        assert switch_result.updated_time == switch_now  # 更新時間是 switch 的時間
+        assert switch_result.updated_by == switch_user  # 更新者是 switch 的用戶
+
+        # 驗證 get_meta 返回的結果與 switch 結果一致
+        res_meta_after = self.mgr.get_meta(meta1.resource_id)
+        assert res_meta_after == switch_result
+
+        # 驗證 get 返回的資料現在是 data1
+        current_after = self.mgr.get(meta1.resource_id)
+        assert current_after.data == data1
+        assert current_after.info.revision_id == meta1.revision_id
+
+        # 重點測試：從當前 revision (meta1) 進行 update
+        data4 = new_data()
+        user4, now4 = faker.user_name(), faker.date_time()
+        with self.mgr.meta_provide(user4, now4):
+            meta4 = self.mgr.update(meta1.resource_id, data4)
+
+        # 驗證新的 revision 4 的 parent_revision_id 是當前的 current_revision_id (meta1)
+        assert meta4.parent_revision_id == meta1.revision_id
+        assert meta4.resource_id == meta1.resource_id
+        assert meta4.revision_id != meta1.revision_id
+        assert meta4.revision_id != meta2.revision_id
+        assert meta4.revision_id != meta3.revision_id
+
+        # 驗證 ResourceMeta 的 current_revision_id 更新為 meta4
+        res_meta_final = self.mgr.get_meta(meta1.resource_id)
+        assert res_meta_final.current_revision_id == meta4.revision_id
+        assert res_meta_final.total_revision_count == 4
+
+        # 驗證當前資料是 data4
+        current_final = self.mgr.get(meta1.resource_id)
+        assert current_final.data == data4
+        assert current_final.info.revision_id == meta4.revision_id
+
+        # 再次 switch 到 revision 2，然後測試 patch
+        with self.mgr.meta_provide(switch_user, switch_now):
+            self.mgr.switch(meta1.resource_id, meta2.revision_id)
+
+        # 從 revision 2 進行 patch
+        patch_operations = [
+            {"op": "replace", "path": "/string", "value": "patched_from_rev2"}
+        ]
+        patch = jsonpatch.JsonPatch(patch_operations)
+
+        user5, now5 = faker.user_name(), faker.date_time()
+        with self.mgr.meta_provide(user5, now5):
+            meta5 = self.mgr.patch(meta1.resource_id, patch)
+
+        # 驗證 patch 產生的新 revision 5 的 parent_revision_id 是 meta2
+        assert meta5.parent_revision_id == meta2.revision_id
+
+    def test_switch_to_same_revision(self):
+        """測試 switch 到相同的 revision_id 時不做任何事"""
+        # 創建初始版本
+        data1 = new_data()
+        user1, now1, meta1 = self.create(data1)
+
+        # 創建第二個版本
+        data2 = new_data()
+        user2, now2 = faker.user_name(), faker.date_time()
+        with self.mgr.meta_provide(user2, now2):
+            meta2 = self.mgr.update(meta1.resource_id, data2)
+
+        # 獲取 switch 前的 ResourceMeta
+        res_meta_before = self.mgr.get_meta(meta1.resource_id)
+        assert res_meta_before.current_revision_id == meta2.revision_id
+        assert res_meta_before.updated_time == now2
+        assert res_meta_before.updated_by == user2
+
+        # Switch 到當前已經是的 revision (meta2) - 應該不做任何事
+        switch_user = faker.user_name()
+        switch_now = faker.date_time()
+        with self.mgr.meta_provide(switch_user, switch_now):
+            switch_result = self.mgr.switch(meta1.resource_id, meta2.revision_id)
+
+        # 驗證 switch 後的 ResourceMeta 完全沒有改變
+        assert switch_result == res_meta_before  # 完全相同
+        assert (
+            switch_result.current_revision_id == meta2.revision_id
+        )  # current_revision_id 沒變
+        assert switch_result.updated_time == now2  # updated_time 沒變（重點！）
+        assert switch_result.updated_by == user2  # updated_by 沒變（重點！）
+
+        # 再次驗證 get_meta 返回的結果也沒有改變
+        res_meta_after = self.mgr.get_meta(meta1.resource_id)
+        assert res_meta_after == res_meta_before
+        assert res_meta_after.updated_time == now2  # 時間戳沒有更新
+        assert res_meta_after.updated_by == user2  # 用戶沒有更新

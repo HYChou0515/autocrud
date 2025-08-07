@@ -19,7 +19,6 @@ class ResourceMeta(Struct, kw_only=True):
     schema_version: str
 
     total_revision_count: int
-    valid_revision_count: int
 
     created_time: dt.datetime
     updated_time: dt.datetime
@@ -37,7 +36,7 @@ class RevisionInfo(Struct, kw_only=True):
     uid: UUID
     resource_id: str
     revision_id: str
-    last_revision_id: str
+    parent_revision_id: str
     schema_version: str
     data_hash: str
 
@@ -89,7 +88,7 @@ class IResourceManager(ABC, Generic[T]):
 
         Returns:
 
-            - meta (RevisionMeta): the metadata of the created data.
+            - info (RevisionInfo): the metadata of the created data.
 
         """
 
@@ -132,7 +131,7 @@ class IResourceManager(ABC, Generic[T]):
 
         Returns:
 
-            meta (RevisionMeta): the metadata of the updated data
+            info (RevisionInfo): the metadata of the updated data
 
         Raises:
 
@@ -153,7 +152,7 @@ class IResourceManager(ABC, Generic[T]):
 
         Returns:
 
-            meta (RevisionMeta): the metadata of the updated data
+            info (RevisionInfo): the metadata of the updated data
 
         Raises:
 
@@ -164,25 +163,29 @@ class IResourceManager(ABC, Generic[T]):
         """
 
     @abstractmethod
-    def yank(self, resource_id: str, revision_id: str) -> RevisionInfo:
-        """Delete a revision of a resource.
+    def switch(self, resource_id: str, revision_id: str) -> ResourceMeta:
+        """Switch the current revision to a specific revision.
 
         Arguments:
 
-            - resource_id (str): the id of the resource want to update.
-            - revision_id (str): the id of the revision.
+            - resource_id (str): the id of the resource.
+            - revision_id (str): the id of the revision to switch to.
 
         Returns:
 
-            meta (RevisionMeta): the metadata of the updated data
+            meta (ResourceMeta): the metadata of the resource after switching.
 
         Raises:
 
             - ResourceIDNotFoundError: if resource id not exists.
             - RevisionIDNotFoundError: if revision id not exists.
 
-        Yank a revision of a resource. The next latest revision will be used as the current revision.
-        If no revision left, this action is identical to `delete(resource_id)`.
+        Switch the current revision pointer to the specified revision.
+        This allows you to make any historical revision the current one without
+        deleting any revisions. All historical revisions remain accessible.
+
+        The operation only updates the current_revision_id in ResourceMeta,
+        and records the switch time and user in updated_time and updated_by fields.
         """
 
     @abstractmethod
@@ -231,6 +234,12 @@ class MemoryStorage(IStorage):
 
     def exists(self, resource_id: str) -> bool:
         return resource_id in self.meta
+
+    def revision_exists(self, resource_id: str, revision_id: str) -> bool:
+        return (
+            self.exists(resource_id)
+            and revision_id in self.resource_revisions[resource_id]
+        )
 
     def get_meta(self, resource_id: str) -> bytes:
         return self.meta[resource_id]
@@ -286,7 +295,7 @@ class MsgspecSerializer:
         return self.decoder.decode(b)
 
 
-class ResourceManager(Generic[T]):
+class ResourceManager(IResourceManager[T], Generic[T]):
     def __init__(
         self, resource_type: type[T], *, encoding: Literal["json", "msgpack"] = "json"
     ):
@@ -319,21 +328,18 @@ class ResourceManager(Generic[T]):
             current_revision_id = mode.rev_info.revision_id
             resource_id = mode.rev_info.resource_id
             total_revision_count = 1
-            valid_revision_count = 1
             created_time = self.now_ctx.get()
             created_by = self.user_ctx.get()
         elif isinstance(mode, _BuildResMetaUpdate):
             current_revision_id = mode.rev_info.revision_id
             resource_id = mode.prev_res_meta.resource_id
             total_revision_count = mode.prev_res_meta.total_revision_count + 1
-            valid_revision_count = mode.prev_res_meta.valid_revision_count + 1
             created_time = mode.prev_res_meta.created_time
             created_by = mode.prev_res_meta.created_by
         return ResourceMeta(
             current_revision_id=current_revision_id,
             resource_id=resource_id,
             total_revision_count=total_revision_count,
-            valid_revision_count=valid_revision_count,
             schema_version="",
             created_time=created_time,
             updated_time=self.now_ctx.get(),
@@ -359,7 +365,7 @@ class ResourceManager(Generic[T]):
             uid=uid,
             resource_id=resource_id,
             revision_id=revision_id,
-            last_revision_id=last_revision_id,
+            parent_revision_id=last_revision_id,
             schema_version="",
             data_hash="",
             status=RevisionStatus.stable,
@@ -376,17 +382,6 @@ class ResourceManager(Generic[T]):
         return meta
 
     def create(self, data: T) -> RevisionInfo:
-        """Create resource and return the revision info.
-
-        Arguments:
-
-            - data (T): the data to be created.
-
-        Returns:
-
-            - meta (RevisionMeta): the revision info of the created data.
-
-        """
         info = self._rev_info(_BuildRevMetaCreate())
         resource = Resource(
             info=info,
@@ -402,31 +397,6 @@ class ResourceManager(Generic[T]):
         return info
 
     def get(self, resource_id: str) -> Resource[T]:
-        """Get the latest revision of the resource_id.
-
-        Arguments:
-
-            - resource_id (str): the id of the resource want to get.
-
-        Returns:
-
-            - resource (Resource[T]): the resource got for the id.
-
-        Raises:
-
-            - ResourceIDNotFoundError: if resource id not exists.
-            - ResourceIDNotFoundError: if resource id has no revision.
-            - SchemaConflictError: if resource schema version doesn't match the latest version.
-
-        ---
-
-        If resource id not found, raises ResourceIDNotFoundError.
-        If no revisions found, raises RevisionNotFoundError.
-
-        If schema version doesn't match:
-        - if self.auto_migrate is True, migrate to latest schema version
-        - otherwise, raises SchemaConflictError
-        """
         meta = self.get_meta(resource_id)
         data_b = self.storage.get_resource_revision(
             resource_id, meta.current_revision_id
@@ -434,24 +404,6 @@ class ResourceManager(Generic[T]):
         return self.reource_serializer.decode(data_b)
 
     def update(self, resource_id: str, data: T) -> RevisionInfo:
-        """Update the data of the resource.
-
-        Arguments:
-
-            - resource_id (str): the id of the resource want to update.
-            - data (T): the data want to replace the current one.
-
-        Returns:
-
-            meta (RevisionMeta): the metadata of the updated data
-
-        Raises:
-
-            - ResourceIDNotFoundError: if resource id not exists.
-            - SchemaConflictError: if resource schema version doesn't match the latest version.
-
-        It will directly replace the data. If need partial update, use patch.
-        """
         prev_res_meta = self.get_meta(resource_id)
         rev_info = self._rev_info(_BuildRevInfoUpdate(prev_res_meta))
         res_meta = self._res_meta(_BuildResMetaUpdate(prev_res_meta, rev_info))
@@ -466,61 +418,24 @@ class ResourceManager(Generic[T]):
         return rev_info
 
     def patch(self, resource_id: str, patch_data: JsonPatch) -> RevisionInfo:
-        """Patch update data of the resource.
-
-        Arguments:
-
-            - resource_id (str): the id of the resource want to update.
-            - patch_data (JsonPatch): patch data with format JsonPatch.
-
-        Returns:
-
-            meta (RevisionMeta): the metadata of the updated data
-
-        Raises:
-
-            - ResourceIDNotFoundError: if resource id not exists.
-            - SchemaConflictError: if resource schema version doesn't match the latest version.
-
-        Use JsonPatch to update the resource data.
-        """
         data = self.get(resource_id).data
         d = msgspec.to_builtins(data)
         patch_data.apply(d, in_place=True)
         data = msgspec.convert(d, type=self.resource_type)
         return self.update(resource_id, data)
 
-    def yank(self, resource_id: str, revision_id: str) -> RevisionInfo:
-        """Delete a revision of a resource.
+    def switch(self, resource_id: str, revision_id: str) -> ResourceMeta:
+        meta = self.get_meta(resource_id)
+        if meta.current_revision_id == revision_id:
+            return meta
+        if not self.storage.revision_exists(resource_id, revision_id):
+            raise ResourceIDNotFoundError(
+                f"Revision '{resource_id}'/'{revision_id}' not found."
+            )
+        meta.updated_by = self.user_ctx.get()
+        meta.updated_time = self.now_ctx.get()
+        meta.current_revision_id = revision_id
+        self.storage.save_meta(resource_id, self.resmeta_serializer.encode(meta))
+        return meta
 
-        Arguments:
-
-            - resource_id (str): the id of the resource want to update.
-            - revision_id (str): the id of the revision.
-
-        Returns:
-
-            meta (RevisionMeta): the metadata of the updated data
-
-        Raises:
-
-            - ResourceIDNotFoundError: if resource id not exists.
-            - RevisionIDNotFoundError: if revision id not exists.
-
-        Yank a revision of a resource. The next latest revision will be used as the current revision.
-        If no revision left, this action is identical to `delete(resource_id)`.
-        """
-
-    def delete(self, resource_id: str) -> None:
-        """Delete the resource.
-
-        Arguments:
-
-            - resource_id (str): the id of the resource want to update.
-
-        Raises:
-
-            - ResourceIDNotFoundError: if resource id not exists.
-
-        Delete a resource with the resource ID. It will delete all revision of the resource.
-        """
+    def delete(self, resource_id: str) -> None: ...
