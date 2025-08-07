@@ -2,6 +2,7 @@ from msgspec import Struct
 import msgspec
 import pytest
 from autocrud.v03.core import (
+    ResourceIDNotFoundError,
     ResourceManager,
     ResourceMeta,
 )
@@ -341,3 +342,198 @@ class Test:
         assert res_meta_after == res_meta_before
         assert res_meta_after.updated_time == now2  # 時間戳沒有更新
         assert res_meta_after.updated_by == user2  # 用戶沒有更新
+
+    def test_delete(self):
+        """測試軟刪除功能"""
+        # 創建初始版本
+        data1 = new_data()
+        user1, now1, meta1 = self.create(data1)
+
+        # 創建第二個版本
+        data2 = new_data()
+        user2, now2 = faker.user_name(), faker.date_time()
+        with self.mgr.meta_provide(user2, now2):
+            meta2 = self.mgr.update(meta1.resource_id, data2)
+
+        # 驗證刪除前的狀態
+        res_meta_before = self.mgr.get_meta(meta1.resource_id)
+        assert res_meta_before.is_deleted is False
+        assert res_meta_before.current_revision_id == meta2.revision_id
+        assert res_meta_before.updated_time == now2
+        assert res_meta_before.updated_by == user2
+
+        # 執行軟刪除
+        delete_user = faker.user_name()
+        delete_now = faker.date_time()
+        with self.mgr.meta_provide(delete_user, delete_now):
+            delete_result = self.mgr.delete(meta1.resource_id)
+
+        # 驗證 delete 方法返回的 ResourceMeta
+        assert isinstance(delete_result, ResourceMeta)
+        assert delete_result.is_deleted is True  # 標記為已刪除
+        assert (
+            delete_result.current_revision_id == meta2.revision_id
+        )  # current_revision_id 不變
+        assert delete_result.resource_id == meta1.resource_id  # resource_id 不變
+        assert delete_result.total_revision_count == 2  # 總數不變
+        assert delete_result.created_time == now1  # 創建時間不變
+        assert delete_result.created_by == user1  # 創建者不變
+        assert delete_result.updated_time == delete_now  # 更新時間是刪除的時間
+        assert delete_result.updated_by == delete_user  # 更新者是刪除的用戶
+
+        # 重點1: 刪除後，任何 get_meta 會回傳 is_deleted=True
+        assert self.mgr.get_meta(meta1.resource_id) == delete_result
+
+        # 重點4: 刪除後的 updated_time/updated_by
+        assert delete_result.updated_time == delete_now  # 更新時間是刪除的時間
+        assert delete_result.updated_by == delete_user  # 更新者是刪除的用戶
+
+        # 驗證所有 revision 資料仍然存在（軟刪除不刪除實際資料）
+        assert self.mgr.storage.exists(meta1.resource_id)
+        assert self.mgr.storage.revision_exists(meta1.resource_id, meta1.revision_id)
+        assert self.mgr.storage.revision_exists(meta1.resource_id, meta2.revision_id)
+
+        # 重點2: 刪除後，CRUD 會 raise notfound
+        with pytest.raises(ResourceIDNotFoundError):
+            self.mgr.get(meta1.resource_id)
+
+        with pytest.raises(ResourceIDNotFoundError):
+            self.mgr.update(meta1.resource_id, new_data())
+
+        with pytest.raises(ResourceIDNotFoundError):
+            patch = jsonpatch.JsonPatch(
+                [{"op": "replace", "path": "/string", "value": "test"}]
+            )
+            self.mgr.patch(meta1.resource_id, patch)
+
+        with pytest.raises(ResourceIDNotFoundError):
+            self.mgr.switch(meta1.resource_id, meta1.revision_id)
+
+    def test_delete_already_deleted(self):
+        """重點3: 刪除已刪除的東西是不可以的"""
+        from autocrud.v03.core import ResourceIDNotFoundError
+
+        # 創建資源
+        data = new_data()
+        user, now, meta = self.create(data)
+
+        # 第一次刪除
+        delete_user1 = faker.user_name()
+        delete_now1 = faker.date_time()
+        with self.mgr.meta_provide(delete_user1, delete_now1):
+            self.mgr.delete(meta.resource_id)
+
+        # 嘗試再次刪除已刪除的資源 - 應該 raise
+        delete_user2 = faker.user_name()
+        delete_now2 = faker.date_time()
+        with pytest.raises(ResourceIDNotFoundError):
+            with self.mgr.meta_provide(delete_user2, delete_now2):
+                self.mgr.delete(meta.resource_id)
+
+    def test_delete_nonexistent_resource(self):
+        """重點3: 刪除不存在的東西是不可以的"""
+
+        nonexistent_id = "nonexistent-resource-id"
+
+        delete_user = faker.user_name()
+        delete_now = faker.date_time()
+
+        with pytest.raises(ResourceIDNotFoundError):
+            with self.mgr.meta_provide(delete_user, delete_now):
+                self.mgr.delete(nonexistent_id)
+
+    def test_restore(self):
+        """測試還原功能"""
+
+        # 創建初始版本
+        data1 = new_data()
+        user1, now1, meta1 = self.create(data1)
+
+        # 創建第二個版本
+        data2 = new_data()
+        user2, now2 = faker.user_name(), faker.date_time()
+        with self.mgr.meta_provide(user2, now2):
+            meta2 = self.mgr.update(meta1.resource_id, data2)
+
+        # 執行軟刪除
+        delete_user = faker.user_name()
+        delete_now = faker.date_time()
+        with self.mgr.meta_provide(delete_user, delete_now):
+            self.mgr.delete(meta1.resource_id)
+
+        # 驗證已刪除
+        res_meta_deleted = self.mgr.get_meta(meta1.resource_id)
+        assert res_meta_deleted.is_deleted is True
+
+        # 執行還原
+        restore_user = faker.user_name()
+        restore_now = faker.date_time()
+        with self.mgr.meta_provide(restore_user, restore_now):
+            restore_result = self.mgr.restore(meta1.resource_id)
+
+        # 驗證 restore 方法返回的 ResourceMeta
+        assert isinstance(restore_result, ResourceMeta)
+        assert restore_result.is_deleted is False  # 不再標記為已刪除
+        assert (
+            restore_result.current_revision_id == meta2.revision_id
+        )  # current_revision_id 不變
+        assert restore_result.resource_id == meta1.resource_id  # resource_id 不變
+        assert restore_result.total_revision_count == 2  # 總數不變
+        assert restore_result.created_time == now1  # 創建時間不變
+        assert restore_result.created_by == user1  # 創建者不變
+        assert restore_result.updated_time == restore_now  # 更新時間是還原的時間
+        assert restore_result.updated_by == restore_user  # 更新者是還原的用戶
+
+        # 驗證 restore 返回的 meta 與 get_meta 返回的一致
+        assert restore_result == self.mgr.get_meta(meta1.resource_id)
+
+        # 驗證 CRUD 操作重新可用
+        current_data = self.mgr.get(meta1.resource_id)
+        assert current_data.data == data2
+        assert current_data.info.revision_id == meta2.revision_id
+
+        # 驗證可以進行更新
+        data3 = new_data()
+        user3, now3 = faker.user_name(), faker.date_time()
+        with self.mgr.meta_provide(user3, now3):
+            meta3 = self.mgr.update(meta1.resource_id, data3)
+
+        assert meta3.parent_revision_id == meta2.revision_id
+
+    def test_restore_nonexistent_resource(self):
+        """重點6: restore 不存在的東西是不可以的"""
+        from autocrud.v03.core import ResourceIDNotFoundError
+
+        nonexistent_id = "nonexistent-resource-id"
+
+        restore_user = faker.user_name()
+        restore_now = faker.date_time()
+
+        with pytest.raises(ResourceIDNotFoundError):
+            with self.mgr.meta_provide(restore_user, restore_now):
+                self.mgr.restore(nonexistent_id)
+
+    def test_restore_non_deleted_resource(self):
+        """測試還原未刪除的資源（邊界情況）"""
+        # 創建資源但不刪除
+        data = new_data()
+        user, now, meta = self.create(data)
+
+        # 獲取還原前的狀態
+        res_meta_before = self.mgr.get_meta(meta.resource_id)
+        assert res_meta_before.is_deleted is False
+
+        # 執行還原（即使未刪除）
+        restore_user = faker.user_name()
+        restore_now = faker.date_time()
+        with self.mgr.meta_provide(restore_user, restore_now):
+            restore_result = self.mgr.restore(meta.resource_id)
+
+        # 驗證 restore 方法返回的 ResourceMeta（未刪除資源的情況）
+        assert isinstance(restore_result, ResourceMeta)
+        assert restore_result.is_deleted is False  # 仍然是 False
+        assert restore_result.updated_time == now  # 時間戳不會更新
+        assert restore_result.updated_by == user  # 用戶不會更新
+
+        # 驗證 restore 返回的 meta 與 get_meta 返回的一致
+        assert restore_result == self.mgr.get_meta(meta.resource_id)

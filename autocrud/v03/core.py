@@ -25,11 +25,12 @@ class ResourceMeta(Struct, kw_only=True):
     created_by: str
     updated_by: str
 
+    is_deleted: bool = False
+
 
 class RevisionStatus(StrEnum):
     draft = "draft"
     stable = "stable"
-    deleted = "deleted"
 
 
 class RevisionInfo(Struct, kw_only=True):
@@ -189,18 +190,64 @@ class IResourceManager(ABC, Generic[T]):
         """
 
     @abstractmethod
-    def delete(self, resource_id: str) -> None:
-        """Delete the resource.
+    def delete(self, resource_id: str) -> ResourceMeta:
+        """Mark the resource as deleted (soft delete).
 
         Arguments:
 
-            - resource_id (str): the id of the resource want to update.
+            - resource_id (str): the id of the resource to delete.
 
         Raises:
 
-            - ResourceIDNotFoundError: if resource id not exists.
+            - ResourceIDNotFoundError: if resource id does not exist.
 
-        Delete a resource with the resource ID. It will delete all revision of the resource.
+        ---
+
+        This operation performs a soft delete by setting the `is_deleted` flag to True
+        in the ResourceMeta. The resource and all its revisions remain in storage
+        and can be recovered later.
+
+        Behavior:
+        - Sets `is_deleted = True` in ResourceMeta
+        - Updates `updated_time` and `updated_by` to record the deletion
+        - All revision data and metadata are preserved
+        - Resource can be restored by setting `is_deleted = False`
+
+        This is a reversible operation that maintains data integrity while
+        marking the resource as logically deleted.
+        """
+
+    @abstractmethod
+    def restore(self, resource_id: str) -> ResourceMeta:
+        """Restore a previously deleted resource (undo soft delete).
+
+        Arguments:
+
+            - resource_id (str): the id of the resource to restore.
+
+        Raises:
+
+            - ResourceIDNotFoundError: if resource id does not exist.
+
+        ---
+
+        This operation restores a previously soft-deleted resource by setting
+        the `is_deleted` flag back to False in the ResourceMeta. This undoes
+        the soft delete operation.
+
+        Behavior:
+        - Sets `is_deleted = False` in ResourceMeta
+        - Updates `updated_time` and `updated_by` to record the restoration
+        - All revision data and metadata remain unchanged
+        - Resource becomes accessible again through normal operations
+
+        This operation can be performed on any resource that was previously
+        soft-deleted using the delete() method. If the resource is not
+        currently marked as deleted, the operation will still update the
+        metadata timestamps.
+
+        Note: This method pairs with delete() to provide reversible
+        soft delete functionality.
         """
 
 
@@ -377,6 +424,8 @@ class ResourceManager(IResourceManager[T], Generic[T]):
         return info
 
     def get_meta(self, resource_id: str) -> ResourceMeta:
+        if not self.storage.exists(resource_id):
+            raise ResourceIDNotFoundError(f"Resource '{resource_id}' not found.")
         meta_b = self.storage.get_meta(resource_id)
         meta = self.resmeta_serializer.decode(meta_b)
         return meta
@@ -396,15 +445,21 @@ class ResourceManager(IResourceManager[T], Generic[T]):
         )
         return info
 
-    def get(self, resource_id: str) -> Resource[T]:
+    def _get_meta_and_check_not_deleted(self, resource_id: str) -> ResourceMeta:
         meta = self.get_meta(resource_id)
+        if meta.is_deleted:
+            raise ResourceIDNotFoundError(f"Resource '{resource_id}' is deleted.")
+        return meta
+
+    def get(self, resource_id: str) -> Resource[T]:
+        meta = self._get_meta_and_check_not_deleted(resource_id)
         data_b = self.storage.get_resource_revision(
             resource_id, meta.current_revision_id
         )
         return self.reource_serializer.decode(data_b)
 
     def update(self, resource_id: str, data: T) -> RevisionInfo:
-        prev_res_meta = self.get_meta(resource_id)
+        prev_res_meta = self._get_meta_and_check_not_deleted(resource_id)
         rev_info = self._rev_info(_BuildRevInfoUpdate(prev_res_meta))
         res_meta = self._res_meta(_BuildResMetaUpdate(prev_res_meta, rev_info))
         resource = Resource(
@@ -425,7 +480,7 @@ class ResourceManager(IResourceManager[T], Generic[T]):
         return self.update(resource_id, data)
 
     def switch(self, resource_id: str, revision_id: str) -> ResourceMeta:
-        meta = self.get_meta(resource_id)
+        meta = self._get_meta_and_check_not_deleted(resource_id)
         if meta.current_revision_id == revision_id:
             return meta
         if not self.storage.revision_exists(resource_id, revision_id):
@@ -438,4 +493,22 @@ class ResourceManager(IResourceManager[T], Generic[T]):
         self.storage.save_meta(resource_id, self.resmeta_serializer.encode(meta))
         return meta
 
-    def delete(self, resource_id: str) -> None: ...
+    def delete(self, resource_id: str) -> ResourceMeta:
+        meta = self._get_meta_and_check_not_deleted(resource_id)
+        meta.is_deleted = True
+        meta.updated_by = self.user_ctx.get()
+        meta.updated_time = self.now_ctx.get()
+        self.storage.save_meta(resource_id, self.resmeta_serializer.encode(meta))
+        return meta
+
+    def restore(self, resource_id) -> ResourceMeta:
+        meta = self.get_meta(resource_id)
+        if meta.is_deleted:
+            meta.is_deleted = False
+            meta.updated_by = self.user_ctx.get()
+            meta.updated_time = self.now_ctx.get()
+            self.storage.save_meta(
+                resource_id,
+                self.resmeta_serializer.encode(meta),
+            )
+        return meta
