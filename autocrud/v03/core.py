@@ -5,7 +5,7 @@ from enum import StrEnum
 from typing import Any, Literal, TypeVar, Generic
 import datetime as dt
 from uuid import uuid4, UUID
-from msgspec import Struct
+from msgspec import UNSET, Struct, UnsetType
 from abc import ABC, abstractmethod
 from jsonpatch import JsonPatch
 import msgspec
@@ -16,7 +16,7 @@ T = TypeVar("T")
 class ResourceMeta(Struct, kw_only=True):
     current_revision_id: str
     resource_id: str
-    schema_version: str
+    schema_version: str | UnsetType = UNSET
 
     total_revision_count: int
 
@@ -37,9 +37,10 @@ class RevisionInfo(Struct, kw_only=True):
     uid: UUID
     resource_id: str
     revision_id: str
-    parent_revision_id: str
-    schema_version: str
-    data_hash: str
+
+    parent_revision_id: str | UnsetType = UNSET
+    schema_version: str | UnsetType = UNSET
+    data_hash: str | UnsetType = UNSET
 
     status: RevisionStatus
 
@@ -442,7 +443,6 @@ class ResourceManager(IResourceManager[T], Generic[T]):
             current_revision_id=current_revision_id,
             resource_id=resource_id,
             total_revision_count=total_revision_count,
-            schema_version="",
             created_time=created_time,
             updated_time=self.now_ctx.get(),
             created_by=created_by,
@@ -456,7 +456,7 @@ class ResourceManager(IResourceManager[T], Generic[T]):
         if isinstance(mode, _BuildRevMetaCreate):
             resource_id = str(uid)
             revision_id = f"{resource_id}-1"
-            last_revision_id = ""
+            last_revision_id = UNSET
         elif isinstance(mode, _BuildRevInfoUpdate):
             prev_res_meta = mode.prev_res_meta
             resource_id = prev_res_meta.resource_id
@@ -468,8 +468,6 @@ class ResourceManager(IResourceManager[T], Generic[T]):
             resource_id=resource_id,
             revision_id=revision_id,
             parent_revision_id=last_revision_id,
-            schema_version="",
-            data_hash="",
             status=RevisionStatus.stable,
             created_time=self.now_ctx.get(),
             updated_time=self.now_ctx.get(),

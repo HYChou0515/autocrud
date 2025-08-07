@@ -1,4 +1,4 @@
-from msgspec import Struct
+from msgspec import UNSET, Struct
 import msgspec
 import pytest
 from autocrud.v03.core import (
@@ -80,8 +80,9 @@ class Test:
         assert got.info.created_time == now
         assert got.info.updated_time == now
         assert got.info.status == "stable"
-        assert got.info.parent_revision_id == ""
-        assert got.info.schema_version == ""
+        assert got.info.parent_revision_id is UNSET
+        assert got.info.schema_version is UNSET
+        assert got.info.data_hash is UNSET
         assert got.info.uid
         assert got.info.resource_id
         res_meta = self.mgr.get_meta(meta.resource_id)
@@ -92,6 +93,7 @@ class Test:
         assert res_meta.created_by == user
         assert res_meta.updated_time == now
         assert res_meta.updated_by == user
+        assert res_meta.schema_version is UNSET
 
     def test_update(self):
         data = new_data()
@@ -105,8 +107,8 @@ class Test:
         assert u_meta.resource_id == meta.resource_id
         assert u_meta.revision_id != meta.revision_id
         assert u_meta.parent_revision_id == meta.revision_id
-        assert u_meta.schema_version == ""
-        assert u_meta.data_hash == ""
+        assert u_meta.schema_version is UNSET
+        assert u_meta.data_hash is UNSET
         assert u_meta.status == "stable"
         assert u_meta.created_time == u_now
         assert u_meta.updated_time == u_now
@@ -178,8 +180,8 @@ class Test:
         assert p_meta.resource_id == meta.resource_id
         assert p_meta.revision_id != meta.revision_id
         assert p_meta.parent_revision_id == meta.revision_id
-        assert p_meta.schema_version == ""
-        assert p_meta.data_hash == ""
+        assert p_meta.schema_version is UNSET
+        assert p_meta.data_hash is UNSET
         assert p_meta.status == "stable"
         assert p_meta.created_time == p_now
         assert p_meta.updated_time == p_now
