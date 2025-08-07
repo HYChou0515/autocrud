@@ -2,6 +2,7 @@ from collections import defaultdict
 from contextlib import contextmanager
 from contextvars import ContextVar
 from enum import StrEnum
+import functools
 from typing import Any, Literal, TypeVar, Generic
 import datetime as dt
 from uuid import uuid4, UUID
@@ -55,7 +56,7 @@ class ResourceMetaSearchQuery(Struct, kw_only=True):
     created_bys: list[str] | UnsetType = UNSET
     updated_bys: list[str] | UnsetType = UNSET
 
-    limit: int = 1
+    limit: int = 10
     offset: int = 0
 
     sorts: list[ResourceMetaSearchSort] | UnsetType = UNSET
@@ -445,6 +446,9 @@ class MemoryStorage(IStorage):
     ) -> None:
         self.resource_revisions[resource_id][revision_id] = b
 
+    def unarchived_resources(self) -> list[str]:
+        return self.meta.keys()
+
 
 class _BuildRevMetaCreate(Struct):
     pass
@@ -574,7 +578,82 @@ class ResourceManager(IResourceManager[T], Generic[T]):
         return meta
 
     def search_resources(self, query: ResourceMetaSearchQuery) -> list[str]:
-        return []
+        results: list[ResourceMeta] = []
+        for res_id in self.storage.unarchived_resources():
+            meta_b = self.storage.get_meta(res_id)
+            meta = self.resmeta_serializer.decode(meta_b)
+
+            if query.is_deleted is not UNSET and meta.is_deleted != query.is_deleted:
+                continue
+
+            if (
+                query.created_time_start is not UNSET
+                and meta.created_time < query.created_time_start
+            ):
+                continue
+            if (
+                query.created_time_end is not UNSET
+                and meta.created_time > query.created_time_end
+            ):
+                continue
+            if (
+                query.updated_time_start is not UNSET
+                and meta.updated_time < query.updated_time_start
+            ):
+                continue
+            if (
+                query.updated_time_end is not UNSET
+                and meta.updated_time > query.updated_time_end
+            ):
+                continue
+
+            if (
+                query.created_bys is not UNSET
+                and meta.created_by not in query.created_bys
+            ):
+                continue
+            if (
+                query.updated_bys is not UNSET
+                and meta.updated_by not in query.updated_bys
+            ):
+                continue
+
+            results.append(meta)
+        qsorts = [] if query.sorts is UNSET else query.sorts
+
+        def bool_to_sign(b: bool) -> int:
+            return 1 if b else -1
+
+        def compare(meta1: ResourceMeta, meta2: ResourceMeta) -> int:
+            for sort in qsorts:
+                if sort.key == ResourceMetaSortKey.created_time:
+                    if meta1.created_time != meta2.created_time:
+                        return bool_to_sign(meta1.created_time > meta2.created_time) * (
+                            1
+                            if sort.direction == ResourceMetaSortDirection.ascending
+                            else -1
+                        )
+                elif sort.key == ResourceMetaSortKey.updated_time:
+                    if meta1.updated_time != meta2.updated_time:
+                        return bool_to_sign(meta1.updated_time > meta2.updated_time) * (
+                            1
+                            if sort.direction == ResourceMetaSortDirection.ascending
+                            else -1
+                        )
+                elif sort.key == ResourceMetaSortKey.resource_id:
+                    if meta1.resource_id != meta2.resource_id:
+                        return bool_to_sign(meta1.resource_id > meta2.resource_id) * (
+                            1
+                            if sort.direction == ResourceMetaSortDirection.ascending
+                            else -1
+                        )
+            return 0
+
+        results.sort(key=functools.cmp_to_key(compare))
+        return [
+            meta.resource_id
+            for meta in results[query.offset : query.offset + query.limit]
+        ]
 
     def create(self, data: T) -> RevisionInfo:
         info = self._rev_info(_BuildRevMetaCreate())

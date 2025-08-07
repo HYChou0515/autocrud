@@ -6,6 +6,10 @@ from autocrud.v03.core import (
     ResourceIsDeletedError,
     ResourceManager,
     ResourceMeta,
+    ResourceMetaSearchQuery,
+    ResourceMetaSearchSort,
+    ResourceMetaSortKey,
+    ResourceMetaSortDirection,
 )
 import datetime as dt
 from faker import Faker
@@ -544,3 +548,235 @@ class Test:
         assert restore_result == self.mgr._get_meta_no_check_is_deleted(
             meta.resource_id
         )
+
+    def test_search_resources_basic(self):
+        """測試基本的資源搜索功能"""
+        # 創建多個資源用於測試
+        data1 = new_data()
+        user1, now1, meta1 = self.create(data1)
+
+        data2 = new_data()
+        user2, now2, meta2 = self.create(data2)
+
+        # 基本搜索 - 默認參數
+        query = ResourceMetaSearchQuery()
+        with self.mgr.meta_provide(user1, now1):
+            results = self.mgr.search_resources(query)
+
+        # 應該返回兩個結果（因為 limit=10，只有2個資源）
+        assert len(results) == 2
+        assert isinstance(results[0], str)
+        assert isinstance(results[1], str)
+        # 結果應該包含兩個資源的 ID
+        assert meta1.resource_id in results
+        assert meta2.resource_id in results
+
+    def test_search_resources_with_limit_and_offset(self):
+        """測試分頁功能"""
+        # 創建多個資源
+        resources = []
+        for i in range(5):
+            data = new_data()
+            user, now, meta = self.create(data)
+            resources.append((user, now, meta))
+
+        # 測試 limit
+        query = ResourceMetaSearchQuery(limit=3)
+        user, now = faker.user_name(), faker.date_time()
+        with self.mgr.meta_provide(user, now):
+            results = self.mgr.search_resources(query)
+        assert len(results) == 3
+
+        # 測試 offset
+        query = ResourceMetaSearchQuery(offset=2)
+        with self.mgr.meta_provide(user, now):
+            results_with_offset = self.mgr.search_resources(query)
+        assert len(results_with_offset) == 3  # 總共5個，offset=2，limit=10，應該有3個
+
+    def test_search_resources_by_deletion_status(self):
+        """測試按刪除狀態搜索"""
+        # 創建資源
+        data1 = new_data()
+        user1, now1, meta1 = self.create(data1)
+
+        data2 = new_data()
+        user2, now2, meta2 = self.create(data2)
+
+        # 刪除一個資源
+        delete_user, delete_now = faker.user_name(), faker.date_time()
+        with self.mgr.meta_provide(delete_user, delete_now):
+            self.mgr.delete(meta1.resource_id)
+
+        # 搜索未刪除的資源
+        query = ResourceMetaSearchQuery(is_deleted=False)
+        user, now = faker.user_name(), faker.date_time()
+        with self.mgr.meta_provide(user, now):
+            active_results = self.mgr.search_resources(query)
+        assert meta2.resource_id in active_results
+        assert meta1.resource_id not in active_results
+
+        # 搜索已刪除的資源
+        query = ResourceMetaSearchQuery(is_deleted=True)
+        with self.mgr.meta_provide(user, now):
+            deleted_results = self.mgr.search_resources(query)
+        assert meta1.resource_id in deleted_results
+        assert meta2.resource_id not in deleted_results
+
+    def test_search_resources_by_user(self):
+        """測試按用戶搜索"""
+        # 使用不同用戶創建資源
+        data1 = new_data()
+        user1 = "test_user_1"
+        now1 = faker.date_time()
+        with self.mgr.meta_provide(user1, now1):
+            meta1 = self.mgr.create(data1)
+
+        data2 = new_data()
+        user2 = "test_user_2"
+        now2 = faker.date_time()
+        with self.mgr.meta_provide(user2, now2):
+            meta2 = self.mgr.create(data2)
+
+        # 按創建者搜索
+        query = ResourceMetaSearchQuery(created_bys=[user1])
+        search_user, search_now = faker.user_name(), faker.date_time()
+        with self.mgr.meta_provide(search_user, search_now):
+            results = self.mgr.search_resources(query)
+        assert meta1.resource_id in results
+        assert meta2.resource_id not in results
+
+        # 按多個創建者搜索
+        query = ResourceMetaSearchQuery(created_bys=[user1, user2])
+        with self.mgr.meta_provide(search_user, search_now):
+            results = self.mgr.search_resources(query)
+        assert meta1.resource_id in results
+        assert meta2.resource_id in results
+
+    def test_search_resources_by_time_range(self):
+        """測試按時間範圍搜索"""
+        # 創建資源在不同時間點
+        base_time = dt.datetime(2023, 1, 1, 12, 0, 0)
+
+        data1 = new_data()
+        user1, meta1 = faker.user_name(), None
+        with self.mgr.meta_provide(user1, base_time):
+            meta1 = self.mgr.create(data1)
+
+        data2 = new_data()
+        user2, meta2 = faker.user_name(), None
+        with self.mgr.meta_provide(user2, base_time + dt.timedelta(hours=1)):
+            meta2 = self.mgr.create(data2)
+
+        data3 = new_data()
+        user3, meta3 = faker.user_name(), None
+        with self.mgr.meta_provide(user3, base_time + dt.timedelta(hours=2)):
+            meta3 = self.mgr.create(data3)
+
+        # 搜索特定時間範圍
+        query = ResourceMetaSearchQuery(
+            created_time_start=base_time + dt.timedelta(minutes=30),
+            created_time_end=base_time + dt.timedelta(hours=1, minutes=30),
+        )
+        search_user, search_now = faker.user_name(), faker.date_time()
+        with self.mgr.meta_provide(search_user, search_now):
+            results = self.mgr.search_resources(query)
+
+        # 只有 meta2 應該在範圍內
+        assert meta2.resource_id in results
+        assert meta1.resource_id not in results
+        assert meta3.resource_id not in results
+
+    def test_search_resources_with_sorting(self):
+        """測試排序功能"""
+        # 創建多個資源用於排序測試
+        base_time = dt.datetime(2023, 1, 1, 12, 0, 0)
+        metas: list[ResourceMeta] = []
+
+        for i in range(3):
+            data = new_data()
+            user = f"user_{i}"
+            create_time = base_time + dt.timedelta(hours=i)
+            with self.mgr.meta_provide(user, create_time):
+                meta = self.mgr.create(data)
+                metas.append(meta)
+
+        # 按創建時間升序排列
+        sort_asc = ResourceMetaSearchSort(
+            key=ResourceMetaSortKey.created_time,
+            direction=ResourceMetaSortDirection.ascending,
+        )
+        query = ResourceMetaSearchQuery(sorts=[sort_asc])
+        search_user, search_now = faker.user_name(), faker.date_time()
+        with self.mgr.meta_provide(search_user, search_now):
+            results_asc = self.mgr.search_resources(query)
+
+        # 按創建時間降序排列
+        sort_desc = ResourceMetaSearchSort(
+            key=ResourceMetaSortKey.created_time,
+            direction=ResourceMetaSortDirection.descending,
+        )
+        query = ResourceMetaSearchQuery(sorts=[sort_desc])
+        with self.mgr.meta_provide(search_user, search_now):
+            results_desc = self.mgr.search_resources(query)
+
+        # 降序結果應該與升序結果相反
+        assert results_asc == results_desc[::-1]
+        # 都應該包含所有資源ID
+        expected_ids = {meta.resource_id for meta in metas}
+        assert set(results_asc) == expected_ids
+        assert set(results_desc) == expected_ids
+
+    def test_search_resources_complex_query(self):
+        """測試複雜搜索查詢"""
+        # 創建測試數據
+        base_time = dt.datetime(2023, 1, 1, 12, 0, 0)
+        user1, user2 = "alice", "bob"
+
+        # Alice 創建兩個資源
+        data1 = new_data()
+        with self.mgr.meta_provide(user1, base_time):
+            meta1 = self.mgr.create(data1)
+
+        data2 = new_data()
+        with self.mgr.meta_provide(user1, base_time + dt.timedelta(hours=1)):
+            meta2 = self.mgr.create(data2)
+
+        # Bob 創建一個資源
+        data3 = new_data()
+        with self.mgr.meta_provide(user2, base_time + dt.timedelta(minutes=30)):
+            meta3 = self.mgr.create(data3)
+
+        # 刪除其中一個資源
+        with self.mgr.meta_provide(user1, base_time + dt.timedelta(hours=2)):
+            self.mgr.delete(meta1.resource_id)
+
+        # 複雜查詢：Alice 創建的、未刪除的、在特定時間範圍內的資源
+        query = ResourceMetaSearchQuery(
+            is_deleted=False,
+            created_bys=[user1],
+            created_time_start=base_time,
+            created_time_end=base_time + dt.timedelta(hours=2),
+        )
+        search_user, search_now = faker.user_name(), faker.date_time()
+        with self.mgr.meta_provide(search_user, search_now):
+            results = self.mgr.search_resources(query)
+
+        # 只有 meta2 應該匹配（Alice 創建、未刪除、在時間範圍內）
+        assert meta2.resource_id in results
+        assert meta1.resource_id not in results  # 已刪除
+        assert meta3.resource_id not in results  # 不是 Alice 創建的
+
+    def test_search_resources_empty_results(self):
+        """測試沒有匹配結果的搜索"""
+        # 創建一個資源
+        data = new_data()
+        user, now, meta = self.create(data)
+
+        # 搜索不存在的用戶創建的資源
+        query = ResourceMetaSearchQuery(created_bys=["nonexistent_user"])
+        search_user, search_now = faker.user_name(), faker.date_time()
+        with self.mgr.meta_provide(search_user, search_now):
+            results = self.mgr.search_resources(query)
+
+        assert len(results) == 0
+        assert isinstance(results, list)
