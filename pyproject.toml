@@ -25,7 +25,9 @@ classifiers = [
 dependencies = [
     "dependency-injector>=4.48.1",
     "fastapi>=0.116.1",
+    "jsonpatch>=1.33",
     "msgpack>=1.1.1",
+    "msgspec>=0.19.0",
     "pydantic>=2.11.7",
 ]
 
@@ -54,6 +56,7 @@ Issues = "https://github.com/HYChou0515/autocrud/issues"
 dev = [
     "build>=1.2.2.post1",
     "coverage>=7.9.2",
+    "faker>=37.5.3",
     "furo>=2025.7.19",
     "httpx>=0.28.1",
     "ipython>=9.4.0",
