@@ -3,6 +3,7 @@ import msgspec
 import pytest
 from autocrud.v03.core import (
     ResourceIDNotFoundError,
+    ResourceIsDeletedError,
     ResourceManager,
     ResourceMeta,
 )
@@ -393,25 +394,24 @@ class Test:
         assert self.mgr.storage.revision_exists(meta1.resource_id, meta1.revision_id)
         assert self.mgr.storage.revision_exists(meta1.resource_id, meta2.revision_id)
 
-        # 重點2: 刪除後，CRUD 會 raise notfound
-        with pytest.raises(ResourceIDNotFoundError):
+        # 重點2: 刪除後，CRUD 會 raise ResourceIsDeletedError
+        with pytest.raises(ResourceIsDeletedError):
             self.mgr.get(meta1.resource_id)
 
-        with pytest.raises(ResourceIDNotFoundError):
+        with pytest.raises(ResourceIsDeletedError):
             self.mgr.update(meta1.resource_id, new_data())
 
-        with pytest.raises(ResourceIDNotFoundError):
+        with pytest.raises(ResourceIsDeletedError):
             patch = jsonpatch.JsonPatch(
                 [{"op": "replace", "path": "/string", "value": "test"}]
             )
             self.mgr.patch(meta1.resource_id, patch)
 
-        with pytest.raises(ResourceIDNotFoundError):
+        with pytest.raises(ResourceIsDeletedError):
             self.mgr.switch(meta1.resource_id, meta1.revision_id)
 
     def test_delete_already_deleted(self):
         """重點3: 刪除已刪除的東西是不可以的"""
-        from autocrud.v03.core import ResourceIDNotFoundError
 
         # 創建資源
         data = new_data()
@@ -423,10 +423,10 @@ class Test:
         with self.mgr.meta_provide(delete_user1, delete_now1):
             self.mgr.delete(meta.resource_id)
 
-        # 嘗試再次刪除已刪除的資源 - 應該 raise
+        # 嘗試再次刪除已刪除的資源 - 應該 raise ResourceIsDeletedError
         delete_user2 = faker.user_name()
         delete_now2 = faker.date_time()
-        with pytest.raises(ResourceIDNotFoundError):
+        with pytest.raises(ResourceIsDeletedError):
             with self.mgr.meta_provide(delete_user2, delete_now2):
                 self.mgr.delete(meta.resource_id)
 
@@ -502,7 +502,6 @@ class Test:
 
     def test_restore_nonexistent_resource(self):
         """重點6: restore 不存在的東西是不可以的"""
-        from autocrud.v03.core import ResourceIDNotFoundError
 
         nonexistent_id = "nonexistent-resource-id"
 
