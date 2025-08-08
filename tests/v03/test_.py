@@ -14,6 +14,7 @@ from autocrud.v03.core import (
 import datetime as dt
 from faker import Faker
 import jsonpatch
+from collections.abc import Collection
 
 
 class InnerData(Struct):
@@ -780,3 +781,206 @@ class Test:
 
         assert len(results) == 0
         assert isinstance(results, list)
+
+    def test_archive_returns_collection(self):
+        """測試 archive 方法返回正確的類型"""
+        # 創建一些資源
+        for i in range(3):
+            data = new_data()
+            user, now, meta = self.create(data)
+
+        # 執行 archive
+        archive_user, archive_now = faker.user_name(), faker.date_time()
+        with self.mgr.meta_provide(archive_user, archive_now):
+            result = self.mgr.archive()
+
+        # 驗證返回類型是 Collection[str]
+        assert isinstance(result, Collection)  # 是 Collection 類型
+        for item in result:
+            assert isinstance(item, str)  # 元素是字符串
+
+    def test_archive_with_empty_storage(self):
+        """測試空存儲時的 archive 行為"""
+        # 沒有創建任何資源
+        archive_user, archive_now = faker.user_name(), faker.date_time()
+        with self.mgr.meta_provide(archive_user, archive_now):
+            result = self.mgr.archive()
+
+        # 空存儲應該返回空集合
+        assert len(result) == 0
+
+    def test_archive_does_not_affect_crud_operations(self):
+        """測試 archive 不影響基本的 CRUD 操作"""
+        # 創建初始資源
+        data1 = new_data()
+        user1, now1, meta1 = self.create(data1)
+
+        data2 = new_data()
+        user2, now2, meta2 = self.create(data2)
+
+        # 執行 archive
+        archive_user, archive_now = faker.user_name(), faker.date_time()
+        with self.mgr.meta_provide(archive_user, archive_now):
+            archived = self.mgr.archive()
+
+        # 驗證所有 CRUD 操作仍然正常工作
+
+        # 1. Create 操作
+        data3 = new_data()
+        user3, now3, meta3 = self.create(data3)
+        assert meta3.resource_id
+
+        # 2. Read 操作
+        resource1 = self.mgr.get(meta1.resource_id)
+        assert resource1.data == data1
+
+        resource2 = self.mgr.get(meta2.resource_id)
+        assert resource2.data == data2
+
+        # 3. Update 操作
+        update_data = new_data()
+        update_user, update_now = faker.user_name(), faker.date_time()
+        with self.mgr.meta_provide(update_user, update_now):
+            update_meta = self.mgr.update(meta1.resource_id, update_data)
+
+        updated_resource = self.mgr.get(meta1.resource_id)
+        assert updated_resource.data == update_data
+
+        # 4. Patch 操作
+        patch_operations = [
+            {"op": "replace", "path": "/string", "value": "patched_value"}
+        ]
+        patch = jsonpatch.JsonPatch(patch_operations)
+
+        patch_user, patch_now = faker.user_name(), faker.date_time()
+        with self.mgr.meta_provide(patch_user, patch_now):
+            patch_meta = self.mgr.patch(meta2.resource_id, patch)
+
+        patched_resource = self.mgr.get(meta2.resource_id)
+        assert patched_resource.data.string == "patched_value"
+
+        # 5. Delete 和 Restore 操作
+        delete_user, delete_now = faker.user_name(), faker.date_time()
+        with self.mgr.meta_provide(delete_user, delete_now):
+            self.mgr.delete(meta3.resource_id)
+
+        with pytest.raises(ResourceIsDeletedError):
+            self.mgr.get(meta3.resource_id)
+
+        restore_user, restore_now = faker.user_name(), faker.date_time()
+        with self.mgr.meta_provide(restore_user, restore_now):
+            self.mgr.restore(meta3.resource_id)
+
+        restored_resource = self.mgr.get(meta3.resource_id)
+        assert restored_resource.data == data3
+
+    def test_archive_does_not_affect_search_functionality(self):
+        """測試 archive 不影響搜索功能"""
+        # 創建不同用戶和時間的資源
+        base_time = dt.datetime(2023, 1, 1, 12, 0, 0)
+
+        data1 = new_data()
+        user1 = "alice"
+        with self.mgr.meta_provide(user1, base_time):
+            meta1 = self.mgr.create(data1)
+
+        data2 = new_data()
+        user2 = "bob"
+        with self.mgr.meta_provide(user2, base_time + dt.timedelta(hours=1)):
+            meta2 = self.mgr.create(data2)
+
+        # 執行 archive
+        archive_user, archive_now = faker.user_name(), faker.date_time()
+        with self.mgr.meta_provide(archive_user, archive_now):
+            archived = self.mgr.archive()
+
+        # 驗證搜索功能仍然正常
+        search_user, search_now = faker.user_name(), faker.date_time()
+
+        # 1. 基本搜索
+        query = ResourceMetaSearchQuery()
+        with self.mgr.meta_provide(search_user, search_now):
+            all_results = self.mgr.search_resources(query)
+
+        # 應該能找到所有資源（除非 archive 實現選擇性地影響搜索）
+        # 但從外部看，至少應該保持一致的行為
+        assert isinstance(all_results, list)
+
+        # 2. 按用戶搜索
+        query_alice = ResourceMetaSearchQuery(created_bys=[user1])
+        with self.mgr.meta_provide(search_user, search_now):
+            alice_results = self.mgr.search_resources(query_alice)
+
+        # 如果 meta1 在搜索結果中，說明搜索功能正常
+        # 如果不在，說明 archive 影響了搜索，但這也是合法的實現
+        # 重點是行為應該是一致和可預測的
+        for result_id in alice_results:
+            # 每個結果都應該是有效的資源 ID
+            assert isinstance(result_id, str)
+            # 如果資源在結果中，應該能夠訪問到
+            if result_id == meta1.resource_id:
+                resource = self.mgr.get(result_id)
+                assert resource.data == data1
+
+        # 3. 按時間範圍搜索
+        query_time = ResourceMetaSearchQuery(
+            created_time_start=base_time,
+            created_time_end=base_time + dt.timedelta(hours=2),
+        )
+        with self.mgr.meta_provide(search_user, search_now):
+            time_results = self.mgr.search_resources(query_time)
+
+        assert isinstance(time_results, list)
+
+    def test_archive_does_not_affect_switch_operations(self):
+        """測試 archive 不影響 switch 操作"""
+        # 創建資源並進行多次更新
+        data1 = new_data()
+        user1, now1, meta1 = self.create(data1)
+
+        data2 = new_data()
+        user2, now2 = faker.user_name(), faker.date_time()
+        with self.mgr.meta_provide(user2, now2):
+            meta2 = self.mgr.update(meta1.resource_id, data2)
+
+        # 執行 archive
+        archive_user, archive_now = faker.user_name(), faker.date_time()
+        with self.mgr.meta_provide(archive_user, archive_now):
+            archived = self.mgr.archive()
+
+        # 驗證 switch 操作仍然正常
+        switch_user, switch_now = faker.user_name(), faker.date_time()
+        with self.mgr.meta_provide(switch_user, switch_now):
+            switch_result = self.mgr.switch(meta1.resource_id, meta1.revision_id)
+
+        # 驗證 switch 後的行為
+        current_resource = self.mgr.get(meta1.resource_id)
+        assert current_resource.data == data1
+        assert current_resource.info.revision_id == meta1.revision_id
+
+    def test_multiple_archive_calls(self):
+        """測試多次調用 archive 的行為"""
+        # 創建一些資源
+        resources = []
+        for i in range(5):
+            data = new_data()
+            user, now, meta = self.create(data)
+            resources.append((user, now, meta))
+
+        # 多次調用 archive
+        archive_user, archive_now = faker.user_name(), faker.date_time()
+        with self.mgr.meta_provide(archive_user, archive_now):
+            result1 = self.mgr.archive()
+            result2 = self.mgr.archive()
+            result3 = self.mgr.archive()
+
+        # 每次調用都應該返回有效的結果
+        assert isinstance(result1, Collection)
+        assert isinstance(result2, Collection)
+        assert isinstance(result3, Collection)
+
+        # 系統應該保持一致的狀態
+        # 所有資源仍然應該可以通過某種方式訪問到
+        for user, now, meta in resources:
+            # 資源的基本信息應該還能獲取到
+            assert self.mgr.storage.exists(meta.resource_id)

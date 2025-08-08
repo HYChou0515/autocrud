@@ -767,46 +767,5 @@ class ResourceManager(IResourceManager[T], Generic[T]):
             )
         return meta
 
-    def archive(self, archive_percentage: float = 0.5) -> Collection[str]:
-        """Archive resources from fast storage to slow storage.
-
-        Args:
-            archive_percentage: Percentage of oldest resources to archive (0.0 to 1.0)
-
-        Returns:
-            Collection of resource IDs that were archived
-        """
-        unarchived_ids = list(self.storage.list_unarchived())
-
-        if not unarchived_ids:
-            return []
-
-        # Get metadata for all unarchived resources and sort by updated_time
-        resources_with_meta: list[tuple[str, ResourceMeta]] = []
-        for resource_id in unarchived_ids:
-            try:
-                meta_b = self.storage.get_meta(resource_id)
-                meta = self.resmeta_serializer.decode(meta_b)
-                resources_with_meta.append((resource_id, meta))
-            except (ResourceIDNotFoundError, Exception):
-                # Skip resources that can't be loaded
-                continue
-
-        # Sort by updated_time (oldest first)
-        resources_with_meta.sort(key=lambda x: x[1].updated_time)
-
-        # Calculate how many resources to archive
-        archive_count = max(1, int(len(resources_with_meta) * archive_percentage))
-        resources_to_archive = resources_with_meta[:archive_count]
-
-        # Archive the selected resources
-        archived_ids = []
-        for resource_id, _ in resources_to_archive:
-            try:
-                self.storage.archive_resources(resource_id)
-                archived_ids.append(resource_id)
-            except Exception:
-                # Continue archiving other resources even if one fails
-                continue
-
-        return archived_ids
+    def archive(self) -> Collection[str]:
+        return []
