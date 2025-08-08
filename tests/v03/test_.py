@@ -10,6 +10,7 @@ from autocrud.v03.core import (
     ResourceMetaSearchSort,
     ResourceMetaSortKey,
     ResourceMetaSortDirection,
+    RevisionInfo,
 )
 import datetime as dt
 from faker import Faker
@@ -563,14 +564,13 @@ class Test:
         query = ResourceMetaSearchQuery()
         with self.mgr.meta_provide(user1, now1):
             results = self.mgr.search_resources(query)
+        results_id = [meta.resource_id for meta in results]
 
         # 應該返回兩個結果（因為 limit=10，只有2個資源）
-        assert len(results) == 2
-        assert isinstance(results[0], str)
-        assert isinstance(results[1], str)
+        assert len(results_id) == 2
         # 結果應該包含兩個資源的 ID
-        assert meta1.resource_id in results
-        assert meta2.resource_id in results
+        assert meta1.resource_id in results_id
+        assert meta2.resource_id in results_id
 
     def test_search_resources_with_limit_and_offset(self):
         """測試分頁功能"""
@@ -612,16 +612,18 @@ class Test:
         query = ResourceMetaSearchQuery(is_deleted=False)
         user, now = faker.user_name(), faker.date_time()
         with self.mgr.meta_provide(user, now):
-            active_results = self.mgr.search_resources(query)
-        assert meta2.resource_id in active_results
-        assert meta1.resource_id not in active_results
+            results = self.mgr.search_resources(query)
+        results_id = [meta.resource_id for meta in results]
+        assert meta2.resource_id in results_id
+        assert meta1.resource_id not in results_id
 
         # 搜索已刪除的資源
         query = ResourceMetaSearchQuery(is_deleted=True)
         with self.mgr.meta_provide(user, now):
-            deleted_results = self.mgr.search_resources(query)
-        assert meta1.resource_id in deleted_results
-        assert meta2.resource_id not in deleted_results
+            results = self.mgr.search_resources(query)
+        results_id = [meta.resource_id for meta in results]
+        assert meta1.resource_id in results_id
+        assert meta2.resource_id not in results_id
 
     def test_search_resources_by_user(self):
         """測試按用戶搜索"""
@@ -643,15 +645,17 @@ class Test:
         search_user, search_now = faker.user_name(), faker.date_time()
         with self.mgr.meta_provide(search_user, search_now):
             results = self.mgr.search_resources(query)
-        assert meta1.resource_id in results
-        assert meta2.resource_id not in results
+        results_id = [meta.resource_id for meta in results]
+        assert meta1.resource_id in results_id
+        assert meta2.resource_id not in results_id
 
         # 按多個創建者搜索
         query = ResourceMetaSearchQuery(created_bys=[user1, user2])
         with self.mgr.meta_provide(search_user, search_now):
             results = self.mgr.search_resources(query)
-        assert meta1.resource_id in results
-        assert meta2.resource_id in results
+        results_id = [meta.resource_id for meta in results]
+        assert meta1.resource_id in results_id
+        assert meta2.resource_id in results_id
 
     def test_search_resources_by_time_range(self):
         """測試按時間範圍搜索"""
@@ -681,11 +685,12 @@ class Test:
         search_user, search_now = faker.user_name(), faker.date_time()
         with self.mgr.meta_provide(search_user, search_now):
             results = self.mgr.search_resources(query)
+        results_id = [meta.resource_id for meta in results]
 
         # 只有 meta2 應該在範圍內
-        assert meta2.resource_id in results
-        assert meta1.resource_id not in results
-        assert meta3.resource_id not in results
+        assert meta2.resource_id in results_id
+        assert meta1.resource_id not in results_id
+        assert meta3.resource_id not in results_id
 
     def test_search_resources_with_sorting(self):
         """測試排序功能"""
@@ -724,8 +729,8 @@ class Test:
         assert results_asc == results_desc[::-1]
         # 都應該包含所有資源ID
         expected_ids = {meta.resource_id for meta in metas}
-        assert set(results_asc) == expected_ids
-        assert set(results_desc) == expected_ids
+        assert {r.resource_id for r in results_asc} == expected_ids
+        assert {r.resource_id for r in results_desc} == expected_ids
 
     def test_search_resources_complex_query(self):
         """測試複雜搜索查詢"""
@@ -761,11 +766,12 @@ class Test:
         search_user, search_now = faker.user_name(), faker.date_time()
         with self.mgr.meta_provide(search_user, search_now):
             results = self.mgr.search_resources(query)
+        results_id = [meta.resource_id for meta in results]
 
         # 只有 meta2 應該匹配（Alice 創建、未刪除、在時間範圍內）
-        assert meta2.resource_id in results
-        assert meta1.resource_id not in results  # 已刪除
-        assert meta3.resource_id not in results  # 不是 Alice 創建的
+        assert meta2.resource_id in results_id
+        assert meta1.resource_id not in results_id  # 已刪除
+        assert meta3.resource_id not in results_id  # 不是 Alice 創建的
 
     def test_search_resources_empty_results(self):
         """測試沒有匹配結果的搜索"""
@@ -875,7 +881,7 @@ class Test:
         assert restored_resource.data == data3
 
     def test_archive_does_not_affect_search_functionality(self):
-        """測試 archive 不影響搜索功能"""
+        """測試 archive 不影響搜索功能 - 搜尋應該要搜全部資源，不受 archive 影響"""
         # 創建不同用戶和時間的資源
         base_time = dt.datetime(2023, 1, 1, 12, 0, 0)
 
@@ -894,43 +900,45 @@ class Test:
         with self.mgr.meta_provide(archive_user, archive_now):
             archived = self.mgr.archive()
 
-        # 驗證搜索功能仍然正常
+        # 驗證搜索功能仍然正常 - 這裡測試的是正確的預期行為
         search_user, search_now = faker.user_name(), faker.date_time()
 
-        # 1. 基本搜索
+        # 1. 基本搜索 - 必須能找到所有資源
         query = ResourceMetaSearchQuery()
         with self.mgr.meta_provide(search_user, search_now):
             all_results = self.mgr.search_resources(query)
+        results_id = [meta.resource_id for meta in all_results]
 
-        # 應該能找到所有資源（除非 archive 實現選擇性地影響搜索）
-        # 但從外部看，至少應該保持一致的行為
-        assert isinstance(all_results, list)
+        # 搜尋必須要搜全部資源，不受 archive 狀態影響
+        assert meta1.resource_id in results_id
+        assert meta2.resource_id in results_id
 
-        # 2. 按用戶搜索
+        # 2. 按用戶搜索 - 必須找到符合條件的所有資源
         query_alice = ResourceMetaSearchQuery(created_bys=[user1])
         with self.mgr.meta_provide(search_user, search_now):
             alice_results = self.mgr.search_resources(query_alice)
+        results_id = [meta.resource_id for meta in alice_results]
 
-        # 如果 meta1 在搜索結果中，說明搜索功能正常
-        # 如果不在，說明 archive 影響了搜索，但這也是合法的實現
-        # 重點是行為應該是一致和可預測的
-        for result_id in alice_results:
-            # 每個結果都應該是有效的資源 ID
-            assert isinstance(result_id, str)
-            # 如果資源在結果中，應該能夠訪問到
-            if result_id == meta1.resource_id:
-                resource = self.mgr.get(result_id)
-                assert resource.data == data1
+        # alice 創建的資源必須在搜索結果中，無論是否被 archive
+        assert meta1.resource_id in results_id
+        assert meta2.resource_id not in results_id  # meta2 是 bob 創建的
 
-        # 3. 按時間範圍搜索
+        # 驗證搜索到的資源能夠正常訪問
+        resource = self.mgr.get(meta1.resource_id)
+        assert resource.data == data1
+
+        # 3. 按時間範圍搜索 - 必須找到時間範圍內的所有資源
         query_time = ResourceMetaSearchQuery(
             created_time_start=base_time,
             created_time_end=base_time + dt.timedelta(hours=2),
         )
         with self.mgr.meta_provide(search_user, search_now):
             time_results = self.mgr.search_resources(query_time)
+        results_id = [meta.resource_id for meta in time_results]
 
-        assert isinstance(time_results, list)
+        # 時間範圍內的所有資源都必須能找到，無論是否被 archive
+        assert meta1.resource_id in results_id  # 在時間範圍內，必須被找到
+        assert meta2.resource_id in results_id  # 在時間範圍內，必須被找到
 
     def test_archive_does_not_affect_switch_operations(self):
         """測試 archive 不影響 switch 操作"""
@@ -961,11 +969,11 @@ class Test:
     def test_multiple_archive_calls(self):
         """測試多次調用 archive 的行為"""
         # 創建一些資源
-        resources = []
+        infos: list[RevisionInfo] = []
         for i in range(5):
             data = new_data()
-            user, now, meta = self.create(data)
-            resources.append((user, now, meta))
+            user, now, info = self.create(data)
+            infos.append(info)
 
         # 多次調用 archive
         archive_user, archive_now = faker.user_name(), faker.date_time()
@@ -981,6 +989,6 @@ class Test:
 
         # 系統應該保持一致的狀態
         # 所有資源仍然應該可以通過某種方式訪問到
-        for user, now, meta in resources:
+        for info in infos:
             # 資源的基本信息應該還能獲取到
-            assert self.mgr.storage.exists(meta.resource_id)
+            assert self.mgr.get_meta(info.resource_id)

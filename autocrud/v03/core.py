@@ -4,7 +4,7 @@ from contextlib import contextmanager
 from contextvars import ContextVar
 from enum import StrEnum
 import functools
-from typing import Any, Literal, TypeVar, Generic
+from typing import Literal, TypeVar, Generic
 import datetime as dt
 from uuid import uuid4, UUID
 from msgspec import UNSET, Struct, UnsetType
@@ -196,7 +196,7 @@ class IResourceManager(ABC, Generic[T]):
         """
 
     @abstractmethod
-    def search_resources(self, query: ResourceMetaSearchQuery) -> list[str]:
+    def search_resources(self, query: ResourceMetaSearchQuery) -> list[ResourceMeta]:
         """Search for resources based on a query.
 
         Arguments:
@@ -205,7 +205,7 @@ class IResourceManager(ABC, Generic[T]):
 
         Returns:
 
-            - list[str]: list of resource IDs matching the query criteria.
+            - list[ResourceMeta]: list of resource metadata matching the query criteria.
 
         ---
 
@@ -217,7 +217,7 @@ class IResourceManager(ABC, Generic[T]):
         - Pagination (limit, offset)
         - Sorting (sorts with direction and key)
 
-        The results are returned as a list of resource IDs that match the specified
+        The results are returned as a list of resource metadata that match the specified
         criteria, ordered according to the sort parameters and limited by the
         pagination settings.
         """
@@ -442,49 +442,166 @@ class Ctx(Generic[T]):
         return self.v.get()
 
 
+class MsgspecSerializer(Generic[T]):
+    def __init__(self, encoding: Literal["json", "msgpack"], resource_type: type[T]):
+        if encoding not in ["json", "msgpack"]:
+            raise ValueError("Encoding must be either 'json' or 'msgpack'")
+        self.encoding = encoding
+        if self.encoding == "msgpack":
+            self.encoder = msgspec.msgpack.Encoder()
+            self.decoder = msgspec.msgpack.Decoder(resource_type)
+        else:
+            self.encoder = msgspec.json.Encoder()
+            self.decoder = msgspec.json.Decoder(resource_type)
+
+    def encode(self, obj: T) -> bytes:
+        return self.encoder.encode(obj)
+
+    def decode(self, b: bytes) -> T:
+        return self.decoder.decode(b)
+
+
 class IStorage:
     @abstractmethod
     def list_revisions(self, resource_id: str): ...
 
 
 class MemoryStorage(IStorage):
-    def __init__(self):
-        self.unarchived: set[str] = set()
-        self.meta: dict[str, bytes] = {}
-        self.resource_revisions: dict[str, dict[str, bytes]] = defaultdict(dict)
+    def __init__(self, *, encoding: Literal["json", "msgpack"] = "json"):
+        self._slow_meta: dict[str, bytes] = {}
+        self._fast_meta: dict[str, bytes] = {}
+        self._resource_revisions: dict[str, dict[str, bytes]] = defaultdict(dict)
+        self.resmeta_serializer = MsgspecSerializer(
+            encoding=encoding, resource_type=ResourceMeta
+        )
 
     def exists(self, resource_id: str) -> bool:
-        return resource_id in self.meta
+        return resource_id in self._fast_meta or resource_id in self._slow_meta
 
     def revision_exists(self, resource_id: str, revision_id: str) -> bool:
         return (
             self.exists(resource_id)
-            and revision_id in self.resource_revisions[resource_id]
+            and revision_id in self._resource_revisions[resource_id]
         )
 
-    def get_meta(self, resource_id: str) -> bytes:
-        return self.meta[resource_id]
+    def get_meta(self, resource_id: str) -> ResourceMeta:
+        if resource_id in self._fast_meta:
+            meta_b = self._fast_meta[resource_id]
+        else:
+            meta_b = self._slow_meta[resource_id]
+        return self.resmeta_serializer.decode(meta_b)
 
-    def save_meta(self, resource_id: str, b: bytes) -> None:
-        self.meta[resource_id] = b
-        self.unarchived.add(resource_id)
+    def save_meta(self, meta: ResourceMeta) -> None:
+        b = self.resmeta_serializer.encode(meta)
+        if meta.resource_id in self._slow_meta:
+            self._slow_meta[meta.resource_id] = b
+        else:
+            self._fast_meta[meta.resource_id] = b
 
     def list_revisions(self, resource_id: str) -> list[str]:
-        return list(self.resource_revisions[resource_id].keys())
+        return list(self._resource_revisions[resource_id].keys())
 
     def get_resource_revision(self, resource_id: str, revision_id: str) -> bytes:
-        return self.resource_revisions[resource_id][revision_id]
+        return self._resource_revisions[resource_id][revision_id]
 
     def save_resource_revision(
         self, resource_id: str, revision_id: str, b: bytes
     ) -> None:
-        self.resource_revisions[resource_id][revision_id] = b
+        self._resource_revisions[resource_id][revision_id] = b
 
-    def list_unarchived(self) -> Collection[str]:
-        return self.unarchived
+    def trigger_archive(self) -> Collection[str]:
+        to_archived = list(self._fast_meta)
+        for r in to_archived:
+            self._slow_meta[r] = self._fast_meta.pop(r)
+        return to_archived
 
-    def archive_resources(self, resource_id: str) -> None:
-        self.unarchived.discard(resource_id)
+    def search(self, query: ResourceMetaSearchQuery) -> list[ResourceMeta]:
+        rms = self._search_fast(query)
+        rms.extend(self._search_slow(query))
+        rms.sort(key=self._get_sort_fn([] if query.sorts is UNSET else query.sorts))
+        return rms[query.offset : query.offset + query.limit]
+
+    @staticmethod
+    def _is_match_query(meta: ResourceMeta, query: ResourceMetaSearchQuery) -> bool:
+        if query.is_deleted is not UNSET and meta.is_deleted != query.is_deleted:
+            return False
+
+        if (
+            query.created_time_start is not UNSET
+            and meta.created_time < query.created_time_start
+        ):
+            return False
+        if (
+            query.created_time_end is not UNSET
+            and meta.created_time > query.created_time_end
+        ):
+            return False
+        if (
+            query.updated_time_start is not UNSET
+            and meta.updated_time < query.updated_time_start
+        ):
+            return False
+        if (
+            query.updated_time_end is not UNSET
+            and meta.updated_time > query.updated_time_end
+        ):
+            return False
+
+        if query.created_bys is not UNSET and meta.created_by not in query.created_bys:
+            return False
+        if query.updated_bys is not UNSET and meta.updated_by not in query.updated_bys:
+            return False
+        return True
+
+    @staticmethod
+    def _get_sort_fn(qsorts: list[ResourceMetaSearchSort]):
+        def bool_to_sign(b: bool) -> int:
+            return 1 if b else -1
+
+        def compare(meta1: ResourceMeta, meta2: ResourceMeta) -> int:
+            for sort in qsorts:
+                if sort.key == ResourceMetaSortKey.created_time:
+                    if meta1.created_time != meta2.created_time:
+                        return bool_to_sign(meta1.created_time > meta2.created_time) * (
+                            1
+                            if sort.direction == ResourceMetaSortDirection.ascending
+                            else -1
+                        )
+                elif sort.key == ResourceMetaSortKey.updated_time:
+                    if meta1.updated_time != meta2.updated_time:
+                        return bool_to_sign(meta1.updated_time > meta2.updated_time) * (
+                            1
+                            if sort.direction == ResourceMetaSortDirection.ascending
+                            else -1
+                        )
+                elif sort.key == ResourceMetaSortKey.resource_id:
+                    if meta1.resource_id != meta2.resource_id:
+                        return bool_to_sign(meta1.resource_id > meta2.resource_id) * (
+                            1
+                            if sort.direction == ResourceMetaSortDirection.ascending
+                            else -1
+                        )
+            return 0
+
+        return functools.cmp_to_key(compare)
+
+    def _search_slow(self, query: ResourceMetaSearchQuery) -> list[ResourceMeta]:
+        results: list[ResourceMeta] = []
+        for res_id in self._slow_meta.keys():
+            meta = self.get_meta(res_id)
+            if self._is_match_query(meta, query):
+                results.append(meta)
+        results.sort(key=self._get_sort_fn([] if query.sorts is UNSET else query.sorts))
+        return results[: query.offset + query.limit]
+
+    def _search_fast(self, query: ResourceMetaSearchQuery) -> list[ResourceMeta]:
+        results: list[ResourceMeta] = []
+        for res_id in self._fast_meta.keys():
+            meta = self.get_meta(res_id)
+            if self._is_match_query(meta, query):
+                results.append(meta)
+        results.sort(key=self._get_sort_fn([] if query.sorts is UNSET else query.sorts))
+        return results[: query.offset + query.limit]
 
 
 class _BuildRevMetaCreate(Struct):
@@ -504,25 +621,6 @@ class _BuildResMetaUpdate(Struct):
     rev_info: RevisionInfo
 
 
-class MsgspecSerializer(Generic[T]):
-    def __init__(self, encoding: Literal["json", "msgpack"], resource_type: type[T]):
-        if encoding not in ["json", "msgpack"]:
-            raise ValueError("Encoding must be either 'json' or 'msgpack'")
-        self.encoding = encoding
-        if self.encoding == "msgpack":
-            self.encoder = msgspec.msgpack.Encoder()
-            self.decoder = msgspec.msgpack.Decoder(resource_type)
-        else:
-            self.encoder = msgspec.json.Encoder()
-            self.decoder = msgspec.json.Decoder(resource_type)
-
-    def encode(self, obj: Any) -> bytes:
-        return self.encoder.encode(obj)
-
-    def decode(self, b: bytes) -> T:
-        return self.decoder.decode(b)
-
-
 class ResourceManager(IResourceManager[T], Generic[T]):
     def __init__(
         self, resource_type: type[T], *, encoding: Literal["json", "msgpack"] = "json"
@@ -530,16 +628,13 @@ class ResourceManager(IResourceManager[T], Generic[T]):
         self.user_ctx = Ctx[str]("user_ctx")
         self.now_ctx = Ctx[dt.datetime]("now_ctx")
         self.resource_type = resource_type
-        self.storage = MemoryStorage()
-        self.reource_serializer = MsgspecSerializer(
+        self.resource_serializer = MsgspecSerializer(
             encoding=encoding, resource_type=Resource[self.resource_type]
-        )
-        self.resmeta_serializer = MsgspecSerializer(
-            encoding=encoding, resource_type=ResourceMeta
         )
         self.revinfo_serializer = MsgspecSerializer(
             encoding=encoding, resource_type=RevisionInfo
         )
+        self.storage = MemoryStorage(encoding=encoding)
 
     @contextmanager
     def meta_provide(self, user: str, now: dt.datetime):
@@ -604,8 +699,7 @@ class ResourceManager(IResourceManager[T], Generic[T]):
     def _get_meta_no_check_is_deleted(self, resource_id: str) -> ResourceMeta:
         if not self.storage.exists(resource_id):
             raise ResourceIDNotFoundError(resource_id)
-        meta_b = self.storage.get_meta(resource_id)
-        meta = self.resmeta_serializer.decode(meta_b)
+        meta = self.storage.get_meta(resource_id)
         return meta
 
     def get_meta(self, resource_id: str) -> ResourceMeta:
@@ -614,83 +708,8 @@ class ResourceManager(IResourceManager[T], Generic[T]):
             raise ResourceIsDeletedError(resource_id)
         return meta
 
-    def search_resources(self, query: ResourceMetaSearchQuery) -> list[str]:
-        results: list[ResourceMeta] = []
-        for res_id in self.storage.list_unarchived():
-            meta_b = self.storage.get_meta(res_id)
-            meta = self.resmeta_serializer.decode(meta_b)
-
-            if query.is_deleted is not UNSET and meta.is_deleted != query.is_deleted:
-                continue
-
-            if (
-                query.created_time_start is not UNSET
-                and meta.created_time < query.created_time_start
-            ):
-                continue
-            if (
-                query.created_time_end is not UNSET
-                and meta.created_time > query.created_time_end
-            ):
-                continue
-            if (
-                query.updated_time_start is not UNSET
-                and meta.updated_time < query.updated_time_start
-            ):
-                continue
-            if (
-                query.updated_time_end is not UNSET
-                and meta.updated_time > query.updated_time_end
-            ):
-                continue
-
-            if (
-                query.created_bys is not UNSET
-                and meta.created_by not in query.created_bys
-            ):
-                continue
-            if (
-                query.updated_bys is not UNSET
-                and meta.updated_by not in query.updated_bys
-            ):
-                continue
-
-            results.append(meta)
-        qsorts = [] if query.sorts is UNSET else query.sorts
-
-        def bool_to_sign(b: bool) -> int:
-            return 1 if b else -1
-
-        def compare(meta1: ResourceMeta, meta2: ResourceMeta) -> int:
-            for sort in qsorts:
-                if sort.key == ResourceMetaSortKey.created_time:
-                    if meta1.created_time != meta2.created_time:
-                        return bool_to_sign(meta1.created_time > meta2.created_time) * (
-                            1
-                            if sort.direction == ResourceMetaSortDirection.ascending
-                            else -1
-                        )
-                elif sort.key == ResourceMetaSortKey.updated_time:
-                    if meta1.updated_time != meta2.updated_time:
-                        return bool_to_sign(meta1.updated_time > meta2.updated_time) * (
-                            1
-                            if sort.direction == ResourceMetaSortDirection.ascending
-                            else -1
-                        )
-                elif sort.key == ResourceMetaSortKey.resource_id:
-                    if meta1.resource_id != meta2.resource_id:
-                        return bool_to_sign(meta1.resource_id > meta2.resource_id) * (
-                            1
-                            if sort.direction == ResourceMetaSortDirection.ascending
-                            else -1
-                        )
-            return 0
-
-        results.sort(key=functools.cmp_to_key(compare))
-        return [
-            meta.resource_id
-            for meta in results[query.offset : query.offset + query.limit]
-        ]
+    def search_resources(self, query: ResourceMetaSearchQuery) -> list[ResourceMeta]:
+        return self.storage.search(query)
 
     def create(self, data: T) -> RevisionInfo:
         info = self._rev_info(_BuildRevMetaCreate())
@@ -699,12 +718,11 @@ class ResourceManager(IResourceManager[T], Generic[T]):
             data=data,
         )
         self.storage.save_resource_revision(
-            info.resource_id, info.revision_id, self.reource_serializer.encode(resource)
-        )
-        self.storage.save_meta(
             info.resource_id,
-            self.resmeta_serializer.encode(self._res_meta(_BuildResMetaCreate(info))),
+            info.revision_id,
+            self.resource_serializer.encode(resource),
         )
+        self.storage.save_meta(self._res_meta(_BuildResMetaCreate(info)))
         return info
 
     def get(self, resource_id: str) -> Resource[T]:
@@ -712,7 +730,7 @@ class ResourceManager(IResourceManager[T], Generic[T]):
         data_b = self.storage.get_resource_revision(
             resource_id, meta.current_revision_id
         )
-        return self.reource_serializer.decode(data_b)
+        return self.resource_serializer.decode(data_b)
 
     def update(self, resource_id: str, data: T) -> RevisionInfo:
         prev_res_meta = self.get_meta(resource_id)
@@ -723,9 +741,9 @@ class ResourceManager(IResourceManager[T], Generic[T]):
             data=data,
         )
         self.storage.save_resource_revision(
-            resource_id, rev_info.revision_id, self.reource_serializer.encode(resource)
+            resource_id, rev_info.revision_id, self.resource_serializer.encode(resource)
         )
-        self.storage.save_meta(resource_id, self.resmeta_serializer.encode(res_meta))
+        self.storage.save_meta(res_meta)
         return rev_info
 
     def patch(self, resource_id: str, patch_data: JsonPatch) -> RevisionInfo:
@@ -744,7 +762,7 @@ class ResourceManager(IResourceManager[T], Generic[T]):
         meta.updated_by = self.user_ctx.get()
         meta.updated_time = self.now_ctx.get()
         meta.current_revision_id = revision_id
-        self.storage.save_meta(resource_id, self.resmeta_serializer.encode(meta))
+        self.storage.save_meta(meta)
         return meta
 
     def delete(self, resource_id: str) -> ResourceMeta:
@@ -752,7 +770,7 @@ class ResourceManager(IResourceManager[T], Generic[T]):
         meta.is_deleted = True
         meta.updated_by = self.user_ctx.get()
         meta.updated_time = self.now_ctx.get()
-        self.storage.save_meta(resource_id, self.resmeta_serializer.encode(meta))
+        self.storage.save_meta(meta)
         return meta
 
     def restore(self, resource_id: str) -> ResourceMeta:
@@ -761,11 +779,9 @@ class ResourceManager(IResourceManager[T], Generic[T]):
             meta.is_deleted = False
             meta.updated_by = self.user_ctx.get()
             meta.updated_time = self.now_ctx.get()
-            self.storage.save_meta(
-                resource_id,
-                self.resmeta_serializer.encode(meta),
-            )
+            self.storage.save_meta(meta)
         return meta
 
     def archive(self) -> Collection[str]:
-        return []
+        archived = self.storage.trigger_archive()
+        return archived
