@@ -461,17 +461,38 @@ class MsgspecSerializer(Generic[T]):
         return self.decoder.decode(b)
 
 
-class IStorage:
+class IStorage(ABC):
     @abstractmethod
-    def list_revisions(self, resource_id: str): ...
+    def exists(self, resource_id: str) -> bool: ...
+    @abstractmethod
+    def revision_exists(self, resource_id: str, revision_id: str) -> bool: ...
+    @abstractmethod
+    def get_meta(self, resource_id: str) -> ResourceMeta: ...
+    @abstractmethod
+    def save_meta(self, meta: ResourceMeta) -> None: ...
+    @abstractmethod
+    def list_revisions(self, resource_id: str) -> list[str]: ...
+    @abstractmethod
+    def get_resource_revision(self, resource_id: str, revision_id: str) -> bytes: ...
+    @abstractmethod
+    def save_resource_revision(
+        self, resource_id: str, revision_id: str, b: bytes
+    ) -> None: ...
+    @abstractmethod
+    def search(self, query: ResourceMetaSearchQuery) -> list[ResourceMeta]: ...
 
 
-class MemoryStorage(IStorage):
+class IFastSlowStorage(IStorage):
+    @abstractmethod
+    def trigger_archive(self) -> Collection[str]: ...
+
+
+class MemoryStorage(IFastSlowStorage):
     def __init__(self, *, encoding: Literal["json", "msgpack"] = "json"):
         self._slow_meta: dict[str, bytes] = {}
         self._fast_meta: dict[str, bytes] = {}
         self._resource_revisions: dict[str, dict[str, bytes]] = defaultdict(dict)
-        self.resmeta_serializer = MsgspecSerializer(
+        self._resmeta_serializer = MsgspecSerializer(
             encoding=encoding, resource_type=ResourceMeta
         )
 
@@ -489,10 +510,10 @@ class MemoryStorage(IStorage):
             meta_b = self._fast_meta[resource_id]
         else:
             meta_b = self._slow_meta[resource_id]
-        return self.resmeta_serializer.decode(meta_b)
+        return self._resmeta_serializer.decode(meta_b)
 
     def save_meta(self, meta: ResourceMeta) -> None:
-        b = self.resmeta_serializer.encode(meta)
+        b = self._resmeta_serializer.encode(meta)
         if meta.resource_id in self._slow_meta:
             self._slow_meta[meta.resource_id] = b
         else:
@@ -623,7 +644,11 @@ class _BuildResMetaUpdate(Struct):
 
 class ResourceManager(IResourceManager[T], Generic[T]):
     def __init__(
-        self, resource_type: type[T], *, encoding: Literal["json", "msgpack"] = "json"
+        self,
+        resource_type: type[T],
+        *,
+        encoding: Literal["json", "msgpack"] = "json",
+        storage: IStorage,
     ):
         self.user_ctx = Ctx[str]("user_ctx")
         self.now_ctx = Ctx[dt.datetime]("now_ctx")
@@ -631,10 +656,8 @@ class ResourceManager(IResourceManager[T], Generic[T]):
         self.resource_serializer = MsgspecSerializer(
             encoding=encoding, resource_type=Resource[self.resource_type]
         )
-        self.revinfo_serializer = MsgspecSerializer(
-            encoding=encoding, resource_type=RevisionInfo
-        )
-        self.storage = MemoryStorage(encoding=encoding)
+        self.storage = storage
+        self._support_archive = isinstance(self.storage, IFastSlowStorage)
 
     @contextmanager
     def meta_provide(self, user: str, now: dt.datetime):
@@ -783,5 +806,8 @@ class ResourceManager(IResourceManager[T], Generic[T]):
         return meta
 
     def archive(self) -> Collection[str]:
-        archived = self.storage.trigger_archive()
-        return archived
+        if self._support_archive:
+            self.storage: IFastSlowStorage
+            archived = self.storage.trigger_archive()
+            return archived
+        return []

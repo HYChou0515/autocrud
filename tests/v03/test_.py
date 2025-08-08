@@ -2,6 +2,7 @@ from msgspec import UNSET, Struct
 import msgspec
 import pytest
 from autocrud.v03.core import (
+    MemoryStorage,
     ResourceIDNotFoundError,
     ResourceIsDeletedError,
     ResourceManager,
@@ -65,7 +66,8 @@ def new_data() -> Data:
 class Test:
     @pytest.fixture(autouse=True)
     def setup_method(self):
-        self.mgr = ResourceManager[Data](Data)
+        storage = MemoryStorage(encoding="msgpack")
+        self.mgr = ResourceManager(Data, storage=storage)
 
     def create(self, data: Data):
         user = faker.user_name()
