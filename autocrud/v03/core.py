@@ -1,10 +1,10 @@
-from collections import defaultdict
-from collections.abc import Collection
+from collections.abc import Collection, Generator, MutableMapping
 from contextlib import contextmanager
 from contextvars import ContextVar
 from enum import StrEnum
 import functools
-from typing import Literal, TypeVar, Generic
+from pathlib import Path
+from typing import TypeVar, Generic
 import datetime as dt
 from uuid import uuid4, UUID
 from msgspec import UNSET, Struct, UnsetType
@@ -442,10 +442,78 @@ class Ctx(Generic[T]):
         return self.v.get()
 
 
+class Encoding(StrEnum):
+    json = "json"
+    msgpack = "msgpack"
+
+
+def is_match_query(meta: ResourceMeta, query: ResourceMetaSearchQuery) -> bool:
+    if query.is_deleted is not UNSET and meta.is_deleted != query.is_deleted:
+        return False
+
+    if (
+        query.created_time_start is not UNSET
+        and meta.created_time < query.created_time_start
+    ):
+        return False
+    if (
+        query.created_time_end is not UNSET
+        and meta.created_time > query.created_time_end
+    ):
+        return False
+    if (
+        query.updated_time_start is not UNSET
+        and meta.updated_time < query.updated_time_start
+    ):
+        return False
+    if (
+        query.updated_time_end is not UNSET
+        and meta.updated_time > query.updated_time_end
+    ):
+        return False
+
+    if query.created_bys is not UNSET and meta.created_by not in query.created_bys:
+        return False
+    if query.updated_bys is not UNSET and meta.updated_by not in query.updated_bys:
+        return False
+    return True
+
+
+def bool_to_sign(b: bool) -> int:
+    return 1 if b else -1
+
+
+def get_sort_fn(qsorts: list[ResourceMetaSearchSort]):
+    def compare(meta1: ResourceMeta, meta2: ResourceMeta) -> int:
+        for sort in qsorts:
+            if sort.key == ResourceMetaSortKey.created_time:
+                if meta1.created_time != meta2.created_time:
+                    return bool_to_sign(meta1.created_time > meta2.created_time) * (
+                        1
+                        if sort.direction == ResourceMetaSortDirection.ascending
+                        else -1
+                    )
+            elif sort.key == ResourceMetaSortKey.updated_time:
+                if meta1.updated_time != meta2.updated_time:
+                    return bool_to_sign(meta1.updated_time > meta2.updated_time) * (
+                        1
+                        if sort.direction == ResourceMetaSortDirection.ascending
+                        else -1
+                    )
+            elif sort.key == ResourceMetaSortKey.resource_id:
+                if meta1.resource_id != meta2.resource_id:
+                    return bool_to_sign(meta1.resource_id > meta2.resource_id) * (
+                        1
+                        if sort.direction == ResourceMetaSortDirection.ascending
+                        else -1
+                    )
+        return 0
+
+    return functools.cmp_to_key(compare)
+
+
 class MsgspecSerializer(Generic[T]):
-    def __init__(self, encoding: Literal["json", "msgpack"], resource_type: type[T]):
-        if encoding not in ["json", "msgpack"]:
-            raise ValueError("Encoding must be either 'json' or 'msgpack'")
+    def __init__(self, encoding: Encoding, resource_type: type[T]):
         self.encoding = encoding
         if self.encoding == "msgpack":
             self.encoder = msgspec.msgpack.Encoder()
@@ -461,7 +529,183 @@ class MsgspecSerializer(Generic[T]):
         return self.decoder.decode(b)
 
 
-class IStorage(ABC):
+class IMetaStore(MutableMapping[str, ResourceMeta]):
+    @abstractmethod
+    def iter_search_no_page(
+        self, query: ResourceMetaSearchQuery
+    ) -> Generator[ResourceMeta]: ...
+
+
+class MemoryMetaStore(IMetaStore):
+    def __init__(self, encoding: Encoding = Encoding.json):
+        self._serializer = MsgspecSerializer(
+            encoding=encoding, resource_type=ResourceMeta
+        )
+        self._store: dict[str, bytes] = {}
+
+    def __getitem__(self, pk: str) -> T:
+        return self._serializer.decode(self._store[pk])
+
+    def __setitem__(self, pk: str, b: T) -> None:
+        self._store[pk] = self._serializer.encode(b)
+
+    def __delitem__(self, pk: str) -> None:
+        del self._store[pk]
+
+    def __iter__(self) -> Generator[str]:
+        yield from self._store.keys()
+
+    def __len__(self) -> int:
+        return len(self._store)
+
+    def iter_search_no_page(
+        self, query: ResourceMetaSearchQuery
+    ) -> Generator[ResourceMeta]:
+        results: list[ResourceMeta] = []
+        for meta_b in self._store.values():
+            meta = self._serializer.decode(meta_b)
+            if is_match_query(meta, query):
+                results.append(meta)
+        results.sort(key=get_sort_fn([] if query.sorts is UNSET else query.sorts))
+        yield from results
+
+
+class DiskMetaStore(IMetaStore):
+    def __init__(self, *, encoding: Encoding = Encoding.json, rootdir: Path | str):
+        self._serializer = MsgspecSerializer(
+            encoding=encoding, resource_type=ResourceMeta
+        )
+        self._rootdir = Path(rootdir)
+        self._rootdir.mkdir(parents=True, exist_ok=True)
+
+    def _get_path(self, pk: str) -> Path:
+        return self._rootdir / f"{pk}.data"
+
+    def __contains__(self, pk: str):
+        path = self._get_path(pk)
+        return path.exists()
+
+    def __getitem__(self, pk: str) -> T:
+        path = self._get_path(pk)
+        with path.open("rb") as f:
+            return self._serializer.decode(f.read())
+
+    def __setitem__(self, pk: str, b: T) -> None:
+        path = self._get_path(pk)
+        with path.open("wb") as f:
+            f.write(self._serializer.encode(b))
+
+    def __delitem__(self, pk: str) -> None:
+        path = self._get_path(pk)
+        path.unlink()
+
+    def __iter__(self) -> Generator[str]:
+        for file in self._rootdir.glob("*.data"):
+            yield file.stem
+
+    def __len__(self) -> int:
+        return len(list(self._rootdir.glob("*.data")))
+
+    def iter_search_no_page(
+        self, query: ResourceMetaSearchQuery
+    ) -> Generator[ResourceMeta]:
+        results: list[ResourceMeta] = []
+        for file in self._rootdir.glob("*.data"):
+            with file.open("rb") as f:
+                meta = self._serializer.decode(f.read())
+                if is_match_query(meta, query):
+                    results.append(meta)
+        results.sort(key=get_sort_fn([] if query.sorts is UNSET else query.sorts))
+        yield from results
+
+
+class IResourceStore(ABC, Generic[T]):
+    @abstractmethod
+    def list_resources(self) -> Generator[str]: ...
+    @abstractmethod
+    def list_revisions(self, resource_id: str) -> Generator[str]: ...
+    @abstractmethod
+    def exists(self, resource_id: str, revision_id: str) -> bool: ...
+    @abstractmethod
+    def get(self, resource_id: str, revision_id: str) -> Resource[T]: ...
+    @abstractmethod
+    def save(self, data: Resource[T]) -> None: ...
+
+
+class MemoryResourceStore(IResourceStore[T]):
+    def __init__(self, resource_type: type[T], encoding: Encoding = Encoding.json):
+        self._store: dict[str, dict[str, bytes]] = {}
+        self._serializer = MsgspecSerializer(
+            encoding=encoding, resource_type=Resource[resource_type]
+        )
+
+    def list_resources(self) -> Generator[str]:
+        yield from self._store.keys()
+
+    def list_revisions(self, resource_id: str) -> Generator[str]:
+        yield from self._store[resource_id].keys()
+
+    def exists(self, resource_id: str, revision_id: str) -> bool:
+        return resource_id in self._store and revision_id in self._store[resource_id]
+
+    def get(self, resource_id: str, revision_id: str) -> Resource[T]:
+        return self._serializer.decode(self._store[resource_id][revision_id])
+
+    def save(self, data: Resource[T]) -> None:
+        resource_id = data.info.resource_id
+        revision_id = data.info.revision_id
+        if resource_id not in self._store:
+            self._store[resource_id] = {}
+        self._store[resource_id][revision_id] = self._serializer.encode(data)
+
+
+class DiskResourceStore(IResourceStore[T]):
+    def __init__(
+        self,
+        resource_type: type[T],
+        *,
+        encoding: Encoding = Encoding.json,
+        rootdir: Path | str,
+    ):
+        self._serializer = MsgspecSerializer(
+            encoding=encoding, resource_type=Resource[resource_type]
+        )
+        self._rootdir = Path(rootdir)
+        self._rootdir.mkdir(parents=True, exist_ok=True)
+
+    def _get_path(self, resource_id: str, revision_id: str) -> Path:
+        return self._rootdir / resource_id / f"{revision_id}.data"
+
+    def list_resources(self) -> Generator[str]:
+        for resource_dir in self._rootdir.iterdir():
+            if resource_dir.is_dir():
+                yield resource_dir.name
+
+    def list_revisions(self, resource_id: str) -> Generator[str]:
+        resource_path = self._rootdir / resource_id
+        for file in resource_path.glob("*.data"):
+            yield file.stem
+
+    def exists(self, resource_id: str, revision_id: str) -> bool:
+        path = self._get_path(resource_id, revision_id)
+        return path.exists()
+
+    def get(self, resource_id: str, revision_id: str) -> Resource[T]:
+        path = self._get_path(resource_id, revision_id)
+        with path.open("rb") as f:
+            return self._serializer.decode(f.read())
+
+    def save(self, data: Resource[T]) -> None:
+        resource_id = data.info.resource_id
+        revision_id = data.info.revision_id
+        resource_path = self._rootdir / resource_id
+        resource_path.mkdir(parents=True, exist_ok=True)
+        path = self._get_path(resource_id, revision_id)
+        with path.open("wb") as f:
+            f.write(self._serializer.encode(data))
+
+
+class IStorage(ABC, Generic[T]):
     @abstractmethod
     def exists(self, resource_id: str) -> bool: ...
     @abstractmethod
@@ -473,156 +717,88 @@ class IStorage(ABC):
     @abstractmethod
     def list_revisions(self, resource_id: str) -> list[str]: ...
     @abstractmethod
-    def get_resource_revision(self, resource_id: str, revision_id: str) -> bytes: ...
+    def get_resource_revision(
+        self, resource_id: str, revision_id: str
+    ) -> Resource[T]: ...
     @abstractmethod
-    def save_resource_revision(
-        self, resource_id: str, revision_id: str, b: bytes
-    ) -> None: ...
+    def save_resource_revision(self, resource: Resource[T]) -> None: ...
     @abstractmethod
     def search(self, query: ResourceMetaSearchQuery) -> list[ResourceMeta]: ...
 
 
-class IFastSlowStorage(IStorage):
+class IFastSlowStorage(IStorage[T]):
     @abstractmethod
     def trigger_archive(self) -> Collection[str]: ...
 
 
-class MemoryStorage(IFastSlowStorage):
-    def __init__(self, *, encoding: Literal["json", "msgpack"] = "json"):
-        self._slow_meta: dict[str, bytes] = {}
-        self._fast_meta: dict[str, bytes] = {}
-        self._resource_revisions: dict[str, dict[str, bytes]] = defaultdict(dict)
-        self._resmeta_serializer = MsgspecSerializer(
-            encoding=encoding, resource_type=ResourceMeta
-        )
+class FastSlowStorage(IFastSlowStorage[T]):
+    def __init__(
+        self,
+        fast_store: IMetaStore,
+        slow_store: IMetaStore,
+        resource_store: IResourceStore[T],
+    ):
+        self._fast_store = fast_store
+        self._slow_store = slow_store
+        self._resource_store = resource_store
 
     def exists(self, resource_id: str) -> bool:
-        return resource_id in self._fast_meta or resource_id in self._slow_meta
+        if resource_id in self._fast_store:
+            return True
+        if resource_id in self._slow_store:
+            return True
+        return False
 
     def revision_exists(self, resource_id: str, revision_id: str) -> bool:
-        return (
-            self.exists(resource_id)
-            and revision_id in self._resource_revisions[resource_id]
+        return self.exists(resource_id) and self._resource_store.exists(
+            resource_id, revision_id
         )
 
     def get_meta(self, resource_id: str) -> ResourceMeta:
-        if resource_id in self._fast_meta:
-            meta_b = self._fast_meta[resource_id]
+        if resource_id in self._fast_store:
+            return self._fast_store[resource_id]
         else:
-            meta_b = self._slow_meta[resource_id]
-        return self._resmeta_serializer.decode(meta_b)
+            return self._slow_store[resource_id]
 
     def save_meta(self, meta: ResourceMeta) -> None:
-        b = self._resmeta_serializer.encode(meta)
-        if meta.resource_id in self._slow_meta:
-            self._slow_meta[meta.resource_id] = b
+        if meta.resource_id in self._fast_store:
+            self._fast_store[meta.resource_id] = meta
         else:
-            self._fast_meta[meta.resource_id] = b
+            self._slow_store[meta.resource_id] = meta
 
     def list_revisions(self, resource_id: str) -> list[str]:
-        return list(self._resource_revisions[resource_id].keys())
+        return list(self._resource_store.list_revisions(resource_id))
 
-    def get_resource_revision(self, resource_id: str, revision_id: str) -> bytes:
-        return self._resource_revisions[resource_id][revision_id]
+    def get_resource_revision(self, resource_id: str, revision_id: str) -> Resource[T]:
+        return self._resource_store.get(resource_id, revision_id)
 
-    def save_resource_revision(
-        self, resource_id: str, revision_id: str, b: bytes
-    ) -> None:
-        self._resource_revisions[resource_id][revision_id] = b
-
-    def trigger_archive(self) -> Collection[str]:
-        to_archived = list(self._fast_meta)
-        for r in to_archived:
-            self._slow_meta[r] = self._fast_meta.pop(r)
-        return to_archived
+    def save_resource_revision(self, resource: Resource[T]) -> None:
+        self._resource_store.save(resource)
 
     def search(self, query: ResourceMetaSearchQuery) -> list[ResourceMeta]:
-        rms = self._search_fast(query)
-        rms.extend(self._search_slow(query))
-        rms.sort(key=self._get_sort_fn([] if query.sorts is UNSET else query.sorts))
-        return rms[query.offset : query.offset + query.limit]
+        fast_results = self._fast_store.iter_search_no_page(query)
+        slow_results = self._slow_store.iter_search_no_page(query)
+        results = list(fast_results) + list(slow_results)
+        results.sort(key=get_sort_fn([] if query.sorts is UNSET else query.sorts))
+        return results[query.offset : query.offset + query.limit]
 
-    @staticmethod
-    def _is_match_query(meta: ResourceMeta, query: ResourceMetaSearchQuery) -> bool:
-        if query.is_deleted is not UNSET and meta.is_deleted != query.is_deleted:
-            return False
-
-        if (
-            query.created_time_start is not UNSET
-            and meta.created_time < query.created_time_start
-        ):
-            return False
-        if (
-            query.created_time_end is not UNSET
-            and meta.created_time > query.created_time_end
-        ):
-            return False
-        if (
-            query.updated_time_start is not UNSET
-            and meta.updated_time < query.updated_time_start
-        ):
-            return False
-        if (
-            query.updated_time_end is not UNSET
-            and meta.updated_time > query.updated_time_end
-        ):
-            return False
-
-        if query.created_bys is not UNSET and meta.created_by not in query.created_bys:
-            return False
-        if query.updated_bys is not UNSET and meta.updated_by not in query.updated_bys:
-            return False
-        return True
-
-    @staticmethod
-    def _get_sort_fn(qsorts: list[ResourceMetaSearchSort]):
-        def bool_to_sign(b: bool) -> int:
-            return 1 if b else -1
-
-        def compare(meta1: ResourceMeta, meta2: ResourceMeta) -> int:
-            for sort in qsorts:
-                if sort.key == ResourceMetaSortKey.created_time:
-                    if meta1.created_time != meta2.created_time:
-                        return bool_to_sign(meta1.created_time > meta2.created_time) * (
-                            1
-                            if sort.direction == ResourceMetaSortDirection.ascending
-                            else -1
-                        )
-                elif sort.key == ResourceMetaSortKey.updated_time:
-                    if meta1.updated_time != meta2.updated_time:
-                        return bool_to_sign(meta1.updated_time > meta2.updated_time) * (
-                            1
-                            if sort.direction == ResourceMetaSortDirection.ascending
-                            else -1
-                        )
-                elif sort.key == ResourceMetaSortKey.resource_id:
-                    if meta1.resource_id != meta2.resource_id:
-                        return bool_to_sign(meta1.resource_id > meta2.resource_id) * (
-                            1
-                            if sort.direction == ResourceMetaSortDirection.ascending
-                            else -1
-                        )
-            return 0
-
-        return functools.cmp_to_key(compare)
-
-    def _search_slow(self, query: ResourceMetaSearchQuery) -> list[ResourceMeta]:
-        results: list[ResourceMeta] = []
-        for res_id in self._slow_meta.keys():
-            meta = self.get_meta(res_id)
-            if self._is_match_query(meta, query):
-                results.append(meta)
-        results.sort(key=self._get_sort_fn([] if query.sorts is UNSET else query.sorts))
-        return results[: query.offset + query.limit]
-
-    def _search_fast(self, query: ResourceMetaSearchQuery) -> list[ResourceMeta]:
-        results: list[ResourceMeta] = []
-        for res_id in self._fast_meta.keys():
-            meta = self.get_meta(res_id)
-            if self._is_match_query(meta, query):
-                results.append(meta)
-        results.sort(key=self._get_sort_fn([] if query.sorts is UNSET else query.sorts))
-        return results[: query.offset + query.limit]
+    def trigger_archive(self) -> Collection[str]:
+        to_archived = self._fast_store.iter_search_no_page(
+            ResourceMetaSearchQuery(
+                sorts=[
+                    ResourceMetaSearchSort(
+                        key=ResourceMetaSortKey.updated_time,
+                        direction=ResourceMetaSortDirection.ascending,
+                    )
+                ]
+            )
+        )
+        archived_ids = set()
+        for meta in to_archived:
+            archived_ids.add(meta.resource_id)
+            self._slow_store[meta.resource_id] = meta
+            del self._fast_store[meta.resource_id]
+        return archived_ids
 
 
 class _BuildRevMetaCreate(Struct):
@@ -647,15 +823,11 @@ class ResourceManager(IResourceManager[T], Generic[T]):
         self,
         resource_type: type[T],
         *,
-        encoding: Literal["json", "msgpack"] = "json",
         storage: IStorage,
     ):
         self.user_ctx = Ctx[str]("user_ctx")
         self.now_ctx = Ctx[dt.datetime]("now_ctx")
         self.resource_type = resource_type
-        self.resource_serializer = MsgspecSerializer(
-            encoding=encoding, resource_type=Resource[self.resource_type]
-        )
         self.storage = storage
         self._support_archive = isinstance(self.storage, IFastSlowStorage)
 
@@ -740,20 +912,13 @@ class ResourceManager(IResourceManager[T], Generic[T]):
             info=info,
             data=data,
         )
-        self.storage.save_resource_revision(
-            info.resource_id,
-            info.revision_id,
-            self.resource_serializer.encode(resource),
-        )
+        self.storage.save_resource_revision(resource)
         self.storage.save_meta(self._res_meta(_BuildResMetaCreate(info)))
         return info
 
     def get(self, resource_id: str) -> Resource[T]:
         meta = self.get_meta(resource_id)
-        data_b = self.storage.get_resource_revision(
-            resource_id, meta.current_revision_id
-        )
-        return self.resource_serializer.decode(data_b)
+        return self.storage.get_resource_revision(resource_id, meta.current_revision_id)
 
     def update(self, resource_id: str, data: T) -> RevisionInfo:
         prev_res_meta = self.get_meta(resource_id)
@@ -763,9 +928,7 @@ class ResourceManager(IResourceManager[T], Generic[T]):
             info=rev_info,
             data=data,
         )
-        self.storage.save_resource_revision(
-            resource_id, rev_info.revision_id, self.resource_serializer.encode(resource)
-        )
+        self.storage.save_resource_revision(resource)
         self.storage.save_meta(res_meta)
         return rev_info
 

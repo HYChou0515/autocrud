@@ -1,8 +1,14 @@
+from pathlib import Path
 from msgspec import UNSET, Struct
 import msgspec
 import pytest
 from autocrud.v03.core import (
-    MemoryStorage,
+    DiskMetaStore,
+    DiskResourceStore,
+    FastSlowStorage,
+    IResourceStore,
+    MemoryMetaStore,
+    MemoryResourceStore,
     ResourceIDNotFoundError,
     ResourceIsDeletedError,
     ResourceManager,
@@ -63,10 +69,46 @@ def new_data() -> Data:
     )
 
 
+def get_meta_store(store_type: str, tmpdir: Path):
+    """Fixture to provide a fast store for testing."""
+    if store_type == "memory":
+        return MemoryMetaStore(encoding="msgpack")
+    else:
+        d = tmpdir / faker.pystr()
+        d.mkdir()
+        return DiskMetaStore(encoding="msgpack", rootdir=d)
+
+
+def get_resource_store(store_type: str, tmpdir: Path) -> IResourceStore:
+    """Fixture to provide a fast store for testing."""
+    if store_type == "memory":
+        return MemoryResourceStore(Data, encoding="msgpack")
+    else:
+        d = tmpdir / faker.pystr()
+        d.mkdir()
+        return DiskResourceStore(Data, encoding="msgpack", rootdir=d)
+
+
+@pytest.mark.parametrize("fast_store_type", ["memory", "disk"])
+@pytest.mark.parametrize("store_store_type", ["memory", "disk"])
+@pytest.mark.parametrize("res_store_type", ["memory", "disk"])
 class Test:
     @pytest.fixture(autouse=True)
-    def setup_method(self):
-        storage = MemoryStorage(encoding="msgpack")
+    def setup_method(
+        self,
+        fast_store_type: str,
+        store_store_type: str,
+        res_store_type: str,
+        tmpdir: str,
+    ):
+        fast_store = get_meta_store(fast_store_type, tmpdir=tmpdir)
+        slow_store = get_meta_store(store_store_type, tmpdir=tmpdir)
+        resource_store = get_resource_store(res_store_type, tmpdir=tmpdir)
+        storage = FastSlowStorage(
+            fast_store=fast_store,
+            slow_store=slow_store,
+            resource_store=resource_store,
+        )
         self.mgr = ResourceManager(Data, storage=storage)
 
     def create(self, data: Data):
