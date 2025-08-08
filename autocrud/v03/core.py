@@ -4,6 +4,7 @@ from contextlib import contextmanager
 from contextvars import ContextVar
 from enum import StrEnum
 import functools
+from pathlib import Path
 from typing import Literal, TypeVar, Generic
 import datetime as dt
 from uuid import uuid4, UUID
@@ -624,6 +625,144 @@ class MemoryStorage(IFastSlowStorage):
         results.sort(key=self._get_sort_fn([] if query.sorts is UNSET else query.sorts))
         return results[: query.offset + query.limit]
 
+class MemoryDiskStore(IFastSlowStorage):
+    def __init__(self, *, encoding: Literal["json", "msgpack"] = "json", slow_rootdir: Path|str):
+        self._slow_rootdir = Path(slow_rootdir)
+        self._fast_meta: dict[str, bytes] = {}
+        self._resource_revisions: dict[str, dict[str, bytes]] = defaultdict(dict)
+        self._resmeta_serializer = MsgspecSerializer(
+            encoding=encoding, resource_type=ResourceMeta
+        )
+
+    def exists(self, resource_id: str) -> bool:
+        return resource_id in self._fast_meta or resource_id in self._slow_meta
+
+    def revision_exists(self, resource_id: str, revision_id: str) -> bool:
+        return (
+            self.exists(resource_id)
+            and revision_id in self._resource_revisions[resource_id]
+        )
+
+    def get_meta(self, resource_id: str) -> ResourceMeta:
+        if resource_id in self._fast_meta:
+            meta_b = self._fast_meta[resource_id]
+        else:
+            meta_b = self._slow_meta[resource_id]
+        return self._resmeta_serializer.decode(meta_b)
+
+    def save_meta(self, meta: ResourceMeta) -> None:
+        b = self._resmeta_serializer.encode(meta)
+        if meta.resource_id in self._slow_meta:
+            self._slow_meta[meta.resource_id] = b
+        else:
+            self._fast_meta[meta.resource_id] = b
+
+    def list_revisions(self, resource_id: str) -> list[str]:
+        return list(self._resource_revisions[resource_id].keys())
+
+    def get_resource_revision(self, resource_id: str, revision_id: str) -> bytes:
+        return self._resource_revisions[resource_id][revision_id]
+
+    def save_resource_revision(
+        self, resource_id: str, revision_id: str, b: bytes
+    ) -> None:
+        self._resource_revisions[resource_id][revision_id] = b
+
+    def trigger_archive(self) -> Collection[str]:
+        to_archived = list(self._fast_meta)
+        for r in to_archived:
+            self._slow_meta[r] = self._fast_meta.pop(r)
+        return to_archived
+
+    def search(self, query: ResourceMetaSearchQuery) -> list[ResourceMeta]:
+        rms = self._search_fast(query)
+        rms.extend(self._search_slow(query))
+        rms.sort(key=self._get_sort_fn([] if query.sorts is UNSET else query.sorts))
+        return rms[query.offset : query.offset + query.limit]
+
+    @staticmethod
+    def _is_match_query(meta: ResourceMeta, query: ResourceMetaSearchQuery) -> bool:
+        if query.is_deleted is not UNSET and meta.is_deleted != query.is_deleted:
+            return False
+
+        if (
+            query.created_time_start is not UNSET
+            and meta.created_time < query.created_time_start
+        ):
+            return False
+        if (
+            query.created_time_end is not UNSET
+            and meta.created_time > query.created_time_end
+        ):
+            return False
+        if (
+            query.updated_time_start is not UNSET
+            and meta.updated_time < query.updated_time_start
+        ):
+            return False
+        if (
+            query.updated_time_end is not UNSET
+            and meta.updated_time > query.updated_time_end
+        ):
+            return False
+
+        if query.created_bys is not UNSET and meta.created_by not in query.created_bys:
+            return False
+        if query.updated_bys is not UNSET and meta.updated_by not in query.updated_bys:
+            return False
+        return True
+
+    @staticmethod
+    def _get_sort_fn(qsorts: list[ResourceMetaSearchSort]):
+        def bool_to_sign(b: bool) -> int:
+            return 1 if b else -1
+
+        def compare(meta1: ResourceMeta, meta2: ResourceMeta) -> int:
+            for sort in qsorts:
+                if sort.key == ResourceMetaSortKey.created_time:
+                    if meta1.created_time != meta2.created_time:
+                        return bool_to_sign(meta1.created_time > meta2.created_time) * (
+                            1
+                            if sort.direction == ResourceMetaSortDirection.ascending
+                            else -1
+                        )
+                elif sort.key == ResourceMetaSortKey.updated_time:
+                    if meta1.updated_time != meta2.updated_time:
+                        return bool_to_sign(meta1.updated_time > meta2.updated_time) * (
+                            1
+                            if sort.direction == ResourceMetaSortDirection.ascending
+                            else -1
+                        )
+                elif sort.key == ResourceMetaSortKey.resource_id:
+                    if meta1.resource_id != meta2.resource_id:
+                        return bool_to_sign(meta1.resource_id > meta2.resource_id) * (
+                            1
+                            if sort.direction == ResourceMetaSortDirection.ascending
+                            else -1
+                        )
+            return 0
+
+        return functools.cmp_to_key(compare)
+
+    def _search_slow(self, query: ResourceMetaSearchQuery) -> list[ResourceMeta]:
+        results: list[ResourceMeta] = []
+        for res_id in self._slow_meta.keys():
+            meta = self.get_meta(res_id)
+            if self._is_match_query(meta, query):
+                results.append(meta)
+        results.sort(key=self._get_sort_fn([] if query.sorts is UNSET else query.sorts))
+        return results[: query.offset + query.limit]
+
+    def _search_fast(self, query: ResourceMetaSearchQuery) -> list[ResourceMeta]:
+        results: list[ResourceMeta] = []
+        for res_id in self._fast_meta.keys():
+            meta = self.get_meta(res_id)
+            if self._is_match_query(meta, query):
+                results.append(meta)
+        results.sort(key=self._get_sort_fn([] if query.sorts is UNSET else query.sorts))
+        return results[: query.offset + query.limit]
+
+    
 
 class _BuildRevMetaCreate(Struct):
     pass
