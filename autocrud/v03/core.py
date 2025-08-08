@@ -1,4 +1,5 @@
 from collections import defaultdict
+from collections.abc import Collection
 from contextlib import contextmanager
 from contextvars import ContextVar
 from enum import StrEnum
@@ -285,6 +286,37 @@ class IResourceManager(ABC, Generic[T]):
         """
 
     @abstractmethod
+    def archive(self) -> Collection[str]:
+        """Trigger the archiving of resources.
+
+        Implements a fast-slow storage architecture for optimal performance:
+        - Fast storage: No indexing, optimized for quick writes (slow search, fast write)
+        - Slow storage: Indexed storage, optimized for quick searches (fast search, slow write)
+
+        The archive operation migrates metadata from fast storage to slow storage,
+        typically selecting the oldest resources by update_time (oldest x% of resources).
+        This creates search indexes in slow storage for efficient querying while
+        maintaining fast write performance in the primary fast storage.
+
+        Returns:
+
+            - Collection[str]: Resource IDs that were successfully archived.
+
+        ---
+
+        This method enables horizontal scaling by separating write-heavy operations
+        (using fast storage) from read-heavy operations (using indexed slow storage).
+        The archiving process is typically triggered based on:
+
+        1. Time-based criteria (resources older than threshold)
+        2. Storage capacity thresholds
+        3. Performance optimization needs
+
+        Post-archive, search operations will query both fast and slow storage
+        to provide unified results across all resources.
+        """
+
+    @abstractmethod
     def switch(self, resource_id: str, revision_id: str) -> ResourceMeta:
         """Switch the current revision to a specific revision.
 
@@ -417,6 +449,7 @@ class IStorage:
 
 class MemoryStorage(IStorage):
     def __init__(self):
+        self.unarchived: set[str] = set()
         self.meta: dict[str, bytes] = {}
         self.resource_revisions: dict[str, dict[str, bytes]] = defaultdict(dict)
 
@@ -434,6 +467,7 @@ class MemoryStorage(IStorage):
 
     def save_meta(self, resource_id: str, b: bytes) -> None:
         self.meta[resource_id] = b
+        self.unarchived.add(resource_id)
 
     def list_revisions(self, resource_id: str) -> list[str]:
         return list(self.resource_revisions[resource_id].keys())
@@ -446,8 +480,11 @@ class MemoryStorage(IStorage):
     ) -> None:
         self.resource_revisions[resource_id][revision_id] = b
 
-    def unarchived_resources(self) -> list[str]:
-        return self.meta.keys()
+    def list_unarchived(self) -> Collection[str]:
+        return self.unarchived
+
+    def archive_resources(self, resource_id: str) -> None:
+        self.unarchived.discard(resource_id)
 
 
 class _BuildRevMetaCreate(Struct):
@@ -579,7 +616,7 @@ class ResourceManager(IResourceManager[T], Generic[T]):
 
     def search_resources(self, query: ResourceMetaSearchQuery) -> list[str]:
         results: list[ResourceMeta] = []
-        for res_id in self.storage.unarchived_resources():
+        for res_id in self.storage.list_unarchived():
             meta_b = self.storage.get_meta(res_id)
             meta = self.resmeta_serializer.decode(meta_b)
 
@@ -729,3 +766,47 @@ class ResourceManager(IResourceManager[T], Generic[T]):
                 self.resmeta_serializer.encode(meta),
             )
         return meta
+
+    def archive(self, archive_percentage: float = 0.5) -> Collection[str]:
+        """Archive resources from fast storage to slow storage.
+
+        Args:
+            archive_percentage: Percentage of oldest resources to archive (0.0 to 1.0)
+
+        Returns:
+            Collection of resource IDs that were archived
+        """
+        unarchived_ids = list(self.storage.list_unarchived())
+
+        if not unarchived_ids:
+            return []
+
+        # Get metadata for all unarchived resources and sort by updated_time
+        resources_with_meta: list[tuple[str, ResourceMeta]] = []
+        for resource_id in unarchived_ids:
+            try:
+                meta_b = self.storage.get_meta(resource_id)
+                meta = self.resmeta_serializer.decode(meta_b)
+                resources_with_meta.append((resource_id, meta))
+            except (ResourceIDNotFoundError, Exception):
+                # Skip resources that can't be loaded
+                continue
+
+        # Sort by updated_time (oldest first)
+        resources_with_meta.sort(key=lambda x: x[1].updated_time)
+
+        # Calculate how many resources to archive
+        archive_count = max(1, int(len(resources_with_meta) * archive_percentage))
+        resources_to_archive = resources_with_meta[:archive_count]
+
+        # Archive the selected resources
+        archived_ids = []
+        for resource_id, _ in resources_to_archive:
+            try:
+                self.storage.archive_resources(resource_id)
+                archived_ids.append(resource_id)
+            except Exception:
+                # Continue archiving other resources even if one fails
+                continue
+
+        return archived_ids
