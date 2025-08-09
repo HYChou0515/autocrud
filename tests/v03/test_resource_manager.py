@@ -1,28 +1,38 @@
 from pathlib import Path
+from uuid import uuid4
 from msgspec import UNSET, Struct
 import msgspec
+import psycopg2
 import pytest
+import redis
+from autocrud.v03.basic import (
+    ResourceMetaSearchSort,
+    ResourceMetaSortDirection,
+    ResourceMetaSortKey,
+)
 from autocrud.v03.core import (
-    DiskMetaStore,
     DiskResourceStore,
-    FastSlowStorage,
     IResourceStore,
-    MemoryMetaStore,
     MemoryResourceStore,
     ResourceIDNotFoundError,
     ResourceIsDeletedError,
     ResourceManager,
     ResourceMeta,
     ResourceMetaSearchQuery,
-    ResourceMetaSearchSort,
-    ResourceMetaSortKey,
-    ResourceMetaSortDirection,
-    RevisionInfo,
+    SimpleStorage,
 )
 import datetime as dt
 from faker import Faker
 import jsonpatch
-from collections.abc import Collection
+
+from autocrud.v03.meta_store.redis import RedisMetaStore
+from autocrud.v03.meta_store.redis_postgres import RedisPostgresMetaStore
+from autocrud.v03.meta_store.simple import (
+    DFMemoryMetaStore,
+    DiskMetaStore,
+    MemoryMetaStore,
+)
+from autocrud.v03.meta_store.sqlite3 import FileSqliteMetaStore, MemorySqliteMetaStore
 
 
 class InnerData(Struct):
@@ -73,6 +83,30 @@ def get_meta_store(store_type: str, tmpdir: Path):
     """Fixture to provide a fast store for testing."""
     if store_type == "memory":
         return MemoryMetaStore(encoding="msgpack")
+    elif store_type == "dfm":
+        return DFMemoryMetaStore(encoding="msgpack")
+    elif store_type == "sql3-mem":
+        return MemorySqliteMetaStore(encoding="msgpack")
+    elif store_type == "sql3-file":
+        return FileSqliteMetaStore(db_filepath=tmpdir / "meta.db", encoding="msgpack")
+    elif store_type == "redis":
+        client = redis.Redis(host="localhost", port=6379, db=0)
+        client.flushall()
+        return RedisMetaStore(client=client, encoding="msgpack")
+    elif store_type == "redis-pg":
+        redis_url = "redis://localhost:6379/0"
+        client = redis.Redis.from_url(redis_url)
+        client.flushall()
+        client.close()
+        pg_dsn = "postgresql://postgres:mysecretpassword@localhost:5432/your_database"
+        pg_conn = psycopg2.connect(pg_dsn)
+        with pg_conn.cursor() as cur:
+            cur.execute("DROP TABLE IF EXISTS resource_meta;")
+            pg_conn.commit()
+        pg_conn.close()
+        return RedisPostgresMetaStore(
+            redis_url=redis_url, pg_dsn=pg_dsn, encoding="msgpack", sync_interval=1
+        )
     else:
         d = tmpdir / faker.pystr()
         d.mkdir()
@@ -89,24 +123,22 @@ def get_resource_store(store_type: str, tmpdir: Path) -> IResourceStore:
         return DiskResourceStore(Data, encoding="msgpack", rootdir=d)
 
 
-@pytest.mark.parametrize("fast_store_type", ["memory", "disk"])
-@pytest.mark.parametrize("store_store_type", ["memory", "disk"])
+@pytest.mark.parametrize(
+    "meta_store_type", ["memory", "sql3-mem", "sql3-file", "redis", "disk", "redis-pg"]
+)
 @pytest.mark.parametrize("res_store_type", ["memory", "disk"])
-class Test:
+class TestResourceManager:
     @pytest.fixture(autouse=True)
     def setup_method(
         self,
-        fast_store_type: str,
-        store_store_type: str,
+        meta_store_type: str,
         res_store_type: str,
-        tmpdir: str,
+        my_tmpdir: str,
     ):
-        fast_store = get_meta_store(fast_store_type, tmpdir=tmpdir)
-        slow_store = get_meta_store(store_store_type, tmpdir=tmpdir)
-        resource_store = get_resource_store(res_store_type, tmpdir=tmpdir)
-        storage = FastSlowStorage(
-            fast_store=fast_store,
-            slow_store=slow_store,
+        meta_store = get_meta_store(meta_store_type, tmpdir=my_tmpdir)
+        resource_store = get_resource_store(res_store_type, tmpdir=my_tmpdir)
+        storage = SimpleStorage(
+            meta_store=meta_store,
             resource_store=resource_store,
         )
         self.mgr = ResourceManager(Data, storage=storage)
@@ -832,207 +864,108 @@ class Test:
         assert len(results) == 0
         assert isinstance(results, list)
 
-    def test_archive_returns_collection(self):
-        """測試 archive 方法返回正確的類型"""
-        # 創建一些資源
-        for i in range(3):
-            data = new_data()
-            user, now, meta = self.create(data)
 
-        # 執行 archive
-        archive_user, archive_now = faker.user_name(), faker.date_time()
-        with self.mgr.meta_provide(archive_user, archive_now):
-            result = self.mgr.archive()
+@pytest.fixture
+def my_tmpdir():
+    """Fixture to provide a temporary directory for testing."""
+    import tempfile
 
-        # 驗證返回類型是 Collection[str]
-        assert isinstance(result, Collection)  # 是 Collection 類型
-        for item in result:
-            assert isinstance(item, str)  # 元素是字符串
+    with tempfile.TemporaryDirectory(dir="./") as d:
+        yield Path(d)
 
-    def test_archive_with_empty_storage(self):
-        """測試空存儲時的 archive 行為"""
-        # 沒有創建任何資源
-        archive_user, archive_now = faker.user_name(), faker.date_time()
-        with self.mgr.meta_provide(archive_user, archive_now):
-            result = self.mgr.archive()
 
-        # 空存儲應該返回空集合
-        assert len(result) == 0
+@pytest.mark.parametrize(
+    "store_type",
+    ["memory", "sql3-mem", "sql3-file", "redis", "dfm", "disk", "redis-pg"],
+)
+class TestMetaStore:
+    @pytest.fixture(autouse=True)
+    def setup_method(
+        self,
+        store_type: str,
+        my_tmpdir: str,
+    ):
+        self.meta_store = get_meta_store(store_type, tmpdir=my_tmpdir)
 
-    def test_archive_does_not_affect_crud_operations(self):
-        """測試 archive 不影響基本的 CRUD 操作"""
-        # 創建初始資源
-        data1 = new_data()
-        user1, now1, meta1 = self.create(data1)
+    def test_large_size_behavior(self):
+        def get_fake_meta():
+            return ResourceMeta(
+                resource_id=str(uuid4()),
+                current_revision_id=str(uuid4()),
+                total_revision_count=1,
+                created_time=dt.datetime.now(),
+                created_by="a",
+                updated_time=dt.datetime.now(),
+                updated_by="a",
+            )
 
-        data2 = new_data()
-        user2, now2, meta2 = self.create(data2)
-
-        # 執行 archive
-        archive_user, archive_now = faker.user_name(), faker.date_time()
-        with self.mgr.meta_provide(archive_user, archive_now):
-            archived = self.mgr.archive()
-
-        # 驗證所有 CRUD 操作仍然正常工作
-
-        # 1. Create 操作
-        data3 = new_data()
-        user3, now3, meta3 = self.create(data3)
-        assert meta3.resource_id
-
-        # 2. Read 操作
-        resource1 = self.mgr.get(meta1.resource_id)
-        assert resource1.data == data1
-
-        resource2 = self.mgr.get(meta2.resource_id)
-        assert resource2.data == data2
-
-        # 3. Update 操作
-        update_data = new_data()
-        update_user, update_now = faker.user_name(), faker.date_time()
-        with self.mgr.meta_provide(update_user, update_now):
-            update_meta = self.mgr.update(meta1.resource_id, update_data)
-
-        updated_resource = self.mgr.get(meta1.resource_id)
-        assert updated_resource.data == update_data
-
-        # 4. Patch 操作
-        patch_operations = [
-            {"op": "replace", "path": "/string", "value": "patched_value"}
-        ]
-        patch = jsonpatch.JsonPatch(patch_operations)
-
-        patch_user, patch_now = faker.user_name(), faker.date_time()
-        with self.mgr.meta_provide(patch_user, patch_now):
-            patch_meta = self.mgr.patch(meta2.resource_id, patch)
-
-        patched_resource = self.mgr.get(meta2.resource_id)
-        assert patched_resource.data.string == "patched_value"
-
-        # 5. Delete 和 Restore 操作
-        delete_user, delete_now = faker.user_name(), faker.date_time()
-        with self.mgr.meta_provide(delete_user, delete_now):
-            self.mgr.delete(meta3.resource_id)
-
-        with pytest.raises(ResourceIsDeletedError):
-            self.mgr.get(meta3.resource_id)
-
-        restore_user, restore_now = faker.user_name(), faker.date_time()
-        with self.mgr.meta_provide(restore_user, restore_now):
-            self.mgr.restore(meta3.resource_id)
-
-        restored_resource = self.mgr.get(meta3.resource_id)
-        assert restored_resource.data == data3
-
-    def test_archive_does_not_affect_search_functionality(self):
-        """測試 archive 不影響搜索功能 - 搜尋應該要搜全部資源，不受 archive 影響"""
-        # 創建不同用戶和時間的資源
-        base_time = dt.datetime(2023, 1, 1, 12, 0, 0)
-
-        data1 = new_data()
-        user1 = "alice"
-        with self.mgr.meta_provide(user1, base_time):
-            meta1 = self.mgr.create(data1)
-
-        data2 = new_data()
-        user2 = "bob"
-        with self.mgr.meta_provide(user2, base_time + dt.timedelta(hours=1)):
-            meta2 = self.mgr.create(data2)
-
-        # 執行 archive
-        archive_user, archive_now = faker.user_name(), faker.date_time()
-        with self.mgr.meta_provide(archive_user, archive_now):
-            archived = self.mgr.archive()
-
-        # 驗證搜索功能仍然正常 - 這裡測試的是正確的預期行為
-        search_user, search_now = faker.user_name(), faker.date_time()
-
-        # 1. 基本搜索 - 必須能找到所有資源
-        query = ResourceMetaSearchQuery()
-        with self.mgr.meta_provide(search_user, search_now):
-            all_results = self.mgr.search_resources(query)
-        results_id = [meta.resource_id for meta in all_results]
-
-        # 搜尋必須要搜全部資源，不受 archive 狀態影響
-        assert meta1.resource_id in results_id
-        assert meta2.resource_id in results_id
-
-        # 2. 按用戶搜索 - 必須找到符合條件的所有資源
-        query_alice = ResourceMetaSearchQuery(created_bys=[user1])
-        with self.mgr.meta_provide(search_user, search_now):
-            alice_results = self.mgr.search_resources(query_alice)
-        results_id = [meta.resource_id for meta in alice_results]
-
-        # alice 創建的資源必須在搜索結果中，無論是否被 archive
-        assert meta1.resource_id in results_id
-        assert meta2.resource_id not in results_id  # meta2 是 bob 創建的
-
-        # 驗證搜索到的資源能夠正常訪問
-        resource = self.mgr.get(meta1.resource_id)
-        assert resource.data == data1
-
-        # 3. 按時間範圍搜索 - 必須找到時間範圍內的所有資源
-        query_time = ResourceMetaSearchQuery(
-            created_time_start=base_time,
-            created_time_end=base_time + dt.timedelta(hours=2),
+        if isinstance(self.meta_store, DiskMetaStore):
+            expected_create_time = dt.timedelta(seconds=50)
+        elif isinstance(self.meta_store, MemoryMetaStore):
+            expected_create_time = dt.timedelta(seconds=1.5)
+        elif isinstance(self.meta_store, DFMemoryMetaStore):
+            expected_create_time = dt.timedelta(seconds=20)
+        elif isinstance(self.meta_store, MemorySqliteMetaStore):
+            expected_create_time = dt.timedelta(seconds=60)
+        elif isinstance(self.meta_store, FileSqliteMetaStore):
+            expected_create_time = dt.timedelta(seconds=500)
+        elif isinstance(self.meta_store, RedisMetaStore):
+            expected_create_time = dt.timedelta(seconds=240)
+        elif isinstance(self.meta_store, RedisPostgresMetaStore):
+            expected_create_time = dt.timedelta(seconds=120)
+        else:
+            raise ValueError("Unsupported store type for benchmark")
+        trials = 1000000
+        all_meta: list[ResourceMeta] = []
+        tt = dt.timedelta(0)
+        for _ in range(trials):
+            meta = get_fake_meta()
+            all_meta.append(meta)
+            st = dt.datetime.now()
+            self.meta_store[meta.resource_id] = meta
+            tt += dt.datetime.now() - st
+        assert tt < expected_create_time, (
+            f"Benchmark failed, took {tt.total_seconds()} seconds"
         )
-        with self.mgr.meta_provide(search_user, search_now):
-            time_results = self.mgr.search_resources(query_time)
-        results_id = [meta.resource_id for meta in time_results]
 
-        # 時間範圍內的所有資源都必須能找到，無論是否被 archive
-        assert meta1.resource_id in results_id  # 在時間範圍內，必須被找到
-        assert meta2.resource_id in results_id  # 在時間範圍內，必須被找到
+        times = sorted(all_meta, key=lambda x: x.created_time)[567 : 567 + 1000]
 
-    def test_archive_does_not_affect_switch_operations(self):
-        """測試 archive 不影響 switch 操作"""
-        # 創建資源並進行多次更新
-        data1 = new_data()
-        user1, now1, meta1 = self.create(data1)
+        if isinstance(self.meta_store, DiskMetaStore):
+            expected_search_time = dt.timedelta(milliseconds=5000)
+        elif isinstance(self.meta_store, MemoryMetaStore):
+            expected_search_time = dt.timedelta(milliseconds=400)
+        elif isinstance(self.meta_store, DFMemoryMetaStore):
+            expected_search_time = dt.timedelta(milliseconds=500)
+        elif isinstance(self.meta_store, MemorySqliteMetaStore):
+            expected_search_time = dt.timedelta(milliseconds=15)
+        elif isinstance(self.meta_store, FileSqliteMetaStore):
+            expected_search_time = dt.timedelta(milliseconds=15)
+        elif isinstance(self.meta_store, RedisMetaStore):
+            expected_search_time = dt.timedelta(seconds=300)
+        elif isinstance(self.meta_store, RedisPostgresMetaStore):
+            expected_search_time = dt.timedelta(milliseconds=15)
+        else:
+            raise ValueError("Unsupported store type for benchmark")
+        metas_by_time = sorted(times, key=lambda x: x.resource_id)
+        import time
 
-        data2 = new_data()
-        user2, now2 = faker.user_name(), faker.date_time()
-        with self.mgr.meta_provide(user2, now2):
-            meta2 = self.mgr.update(meta1.resource_id, data2)
-
-        # 執行 archive
-        archive_user, archive_now = faker.user_name(), faker.date_time()
-        with self.mgr.meta_provide(archive_user, archive_now):
-            archived = self.mgr.archive()
-
-        # 驗證 switch 操作仍然正常
-        switch_user, switch_now = faker.user_name(), faker.date_time()
-        with self.mgr.meta_provide(switch_user, switch_now):
-            switch_result = self.mgr.switch(meta1.resource_id, meta1.revision_id)
-
-        # 驗證 switch 後的行為
-        current_resource = self.mgr.get(meta1.resource_id)
-        assert current_resource.data == data1
-        assert current_resource.info.revision_id == meta1.revision_id
-
-    def test_multiple_archive_calls(self):
-        """測試多次調用 archive 的行為"""
-        # 創建一些資源
-        infos: list[RevisionInfo] = []
-        for i in range(5):
-            data = new_data()
-            user, now, info = self.create(data)
-            infos.append(info)
-
-        # 多次調用 archive
-        archive_user, archive_now = faker.user_name(), faker.date_time()
-        with self.mgr.meta_provide(archive_user, archive_now):
-            result1 = self.mgr.archive()
-            result2 = self.mgr.archive()
-            result3 = self.mgr.archive()
-
-        # 每次調用都應該返回有效的結果
-        assert isinstance(result1, Collection)
-        assert isinstance(result2, Collection)
-        assert isinstance(result3, Collection)
-
-        # 系統應該保持一致的狀態
-        # 所有資源仍然應該可以通過某種方式訪問到
-        for info in infos:
-            # 資源的基本信息應該還能獲取到
-            assert self.mgr.get_meta(info.resource_id)
+        time.sleep(2)
+        st = dt.datetime.now()
+        got = [
+            k
+            for k in self.meta_store.iter_search(
+                ResourceMetaSearchQuery(
+                    created_time_start=times[0].created_time,
+                    created_time_end=times[-1].created_time,
+                    sorts=[
+                        ResourceMetaSearchSort(
+                            key=ResourceMetaSortKey.resource_id,
+                            direction=ResourceMetaSortDirection.ascending,
+                        )
+                    ],
+                )
+            )
+        ]
+        tt = dt.datetime.now() - st
+        assert got == metas_by_time[:10]
+        assert tt < expected_search_time
