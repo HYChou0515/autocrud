@@ -123,12 +123,12 @@ class TestRouteTemplates:
         resource_id = create_data["resource_id"]
 
         # 讀取用戶
-        response = client.get(f"/user/{resource_id}")
+        response = client.get(f"/user/{resource_id}?response_type=full")
         assert response.status_code == 200
 
         data = response.json()
-        assert data["resource_id"] == resource_id
-        assert "revision_id" in data
+        assert data["meta"]["resource_id"] == resource_id
+        assert "revision_id" in data["revision_info"]
         assert data["data"]["name"] == "Jane Doe"
         assert data["data"]["email"] == "jane@example.com"
         assert data["data"]["age"] == 25
@@ -157,7 +157,7 @@ class TestRouteTemplates:
         assert "revision_id" in data
 
         # 驗證更新
-        get_response = client.get(f"/user/{resource_id}")
+        get_response = client.get(f"/user/{resource_id}?response_type=full")
         get_data = get_response.json()
         assert get_data["data"]["name"] == "Bob Johnson"
         assert get_data["data"]["email"] == "bob.johnson@example.com"
@@ -181,7 +181,7 @@ class TestRouteTemplates:
         assert data["deleted"] is True
 
         # 驗證刪除
-        get_response = client.get(f"/user/{resource_id}")
+        get_response = client.get(f"/user/{resource_id}?response_type=data")
         assert get_response.status_code == 404
 
     def test_list_users(self, client):
@@ -197,7 +197,7 @@ class TestRouteTemplates:
             client.post("/user", json=user)
 
         # 列出用戶
-        response = client.get("/user")
+        response = client.get("/user?response_type=data")
         assert response.status_code == 200
 
         data = response.json()
@@ -223,21 +223,122 @@ class TestRouteTemplates:
             client.post("/user", json=user)
 
         # 測試 limit 參數
-        response = client.get("/user?limit=1")
+        response = client.get("/user?response_type=data&limit=1")
         assert response.status_code == 200
         data = response.json()
         assert len(data["resources"]) <= 1
 
         # 測試 offset 參數
-        response = client.get("/user?limit=1&offset=1")
+        response = client.get("/user?response_type=data&limit=1&offset=1")
         assert response.status_code == 200
         data = response.json()
         # 應該返回第二個資源或空列表
         assert len(data["resources"]) <= 1
 
+    def test_list_users_response_types(self, client):
+        """測試不同的響應類型"""
+        # 創建一個用戶
+        user_data = {"name": "Test User", "email": "test@example.com", "age": 30}
+        client.post("/user", json=user_data)
+
+        # 測試 DATA 響應類型（預設）
+        response = client.get("/user?response_type=data")
+        assert response.status_code == 200
+        data = response.json()
+        assert "resources" in data
+        assert len(data["resources"]) >= 1
+        # 應該只包含用戶數據
+        for resource in data["resources"]:
+            assert "name" in resource
+            assert "email" in resource
+            assert "age" in resource
+
+        # 測試 META 響應類型
+        response = client.get("/user?response_type=meta")
+        assert response.status_code == 200
+        data = response.json()
+        assert "resources" in data
+        # 應該包含 ResourceMeta 字段
+        for resource in data["resources"]:
+            assert "resource_id" in resource
+            assert "current_revision_id" in resource
+            assert "created_time" in resource
+            assert "updated_time" in resource
+
+        # 測試 REVISION_INFO 響應類型
+        response = client.get("/user?response_type=revision_info")
+        assert response.status_code == 200
+        data = response.json()
+        assert "resources" in data
+        # 應該包含 RevisionInfo 字段
+        for resource in data["resources"]:
+            assert "uid" in resource
+            assert "resource_id" in resource
+            assert "revision_id" in resource
+            assert "status" in resource
+
+        # 測試 FULL 響應類型
+        response = client.get("/user?response_type=full")
+        assert response.status_code == 200
+        data = response.json()
+        assert "resources" in data
+        # 應該包含所有信息
+        for resource in data["resources"]:
+            assert "data" in resource
+            assert "meta" in resource
+            assert "revision_info" in resource
+            # 檢查 data 部分
+            assert "name" in resource["data"]
+            assert "email" in resource["data"]
+            assert "age" in resource["data"]
+
+    def test_read_user_response_types(self, client):
+        """測試讀取用戶的不同響應類型"""
+        # 創建一個用戶
+        user_data = {"name": "Test User", "email": "test@example.com", "age": 30}
+        create_response = client.post("/user", json=user_data)
+        resource_id = create_response.json()["resource_id"]
+
+        # 測試 DATA 響應類型（預設）
+        response = client.get(f"/user/{resource_id}?response_type=data")
+        assert response.status_code == 200
+        data = response.json()
+        assert "name" in data
+        assert "email" in data
+        assert "age" in data
+        assert data["name"] == "Test User"
+
+        # 測試 META 響應類型
+        response = client.get(f"/user/{resource_id}?response_type=meta")
+        assert response.status_code == 200
+        data = response.json()
+        assert "resource_id" in data
+        assert "current_revision_id" in data
+        assert "created_time" in data
+        assert "updated_time" in data
+
+        # 測試 REVISION_INFO 響應類型
+        response = client.get(f"/user/{resource_id}?response_type=revision_info")
+        assert response.status_code == 200
+        data = response.json()
+        assert "uid" in data
+        assert "resource_id" in data
+        assert "revision_id" in data
+        assert "status" in data
+
+        # 測試 FULL 響應類型
+        response = client.get(f"/user/{resource_id}?response_type=full")
+        assert response.status_code == 200
+        data = response.json()
+        assert "data" in data
+        assert "meta" in data
+        assert "revision_info" in data
+        # 檢查 data 部分
+        assert data["data"]["name"] == "Test User"
+
     def test_user_not_found(self, client):
         """測試用戶不存在的情況"""
-        response = client.get("/user/nonexistent")
+        response = client.get("/user/nonexistent?response_type=data")
         assert response.status_code == 404
 
     def test_invalid_user_data(self, client):
