@@ -7,7 +7,7 @@ import threading
 from typing import TypeVar
 from msgspec import UNSET
 
-from autocrud.v03.basic import (
+from autocrud.v03.resource_manager.basic import (
     Encoding,
     ISlowMetaStore,
     MsgspecSerializer,

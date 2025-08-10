@@ -5,7 +5,7 @@ from typing import TypeVar
 from msgspec import UNSET
 import pandas as pd
 
-from autocrud.v03.basic import (
+from autocrud.v03.resource_manager.basic import (
     Encoding,
     IFastMetaStore,
     ISlowMetaStore,

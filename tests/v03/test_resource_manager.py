@@ -5,16 +5,14 @@ import msgspec
 import psycopg2
 import pytest
 import redis
-from autocrud.v03.basic import (
+from autocrud.v03.resource_manager.basic import (
     ResourceMetaSearchSort,
     ResourceMetaSortDirection,
     ResourceMetaSortKey,
 )
 import time
-from autocrud.v03.core import (
-    DiskResourceStore,
+from autocrud.v03.resource_manager.core import (
     IResourceStore,
-    MemoryResourceStore,
     ResourceIDNotFoundError,
     ResourceIsDeletedError,
     ResourceManager,
@@ -26,15 +24,22 @@ import datetime as dt
 from faker import Faker
 import jsonpatch
 
-from autocrud.v03.meta_store.fast_slow import FastSlowMetaStore
-from autocrud.v03.meta_store.postgres import PostgresMetaStore
-from autocrud.v03.meta_store.redis import RedisMetaStore
-from autocrud.v03.meta_store.simple import (
+from autocrud.v03.resource_manager.meta_store.fast_slow import FastSlowMetaStore
+from autocrud.v03.resource_manager.meta_store.postgres import PostgresMetaStore
+from autocrud.v03.resource_manager.meta_store.redis import RedisMetaStore
+from autocrud.v03.resource_manager.meta_store.simple import (
     DFMemoryMetaStore,
     DiskMetaStore,
     MemoryMetaStore,
 )
-from autocrud.v03.meta_store.sqlite3 import FileSqliteMetaStore, MemorySqliteMetaStore
+from autocrud.v03.resource_manager.meta_store.sqlite3 import (
+    FileSqliteMetaStore,
+    MemorySqliteMetaStore,
+)
+from autocrud.v03.resource_manager.resource_store.simple import (
+    DiskResourceStore,
+    MemoryResourceStore,
+)
 
 
 class InnerData(Struct):

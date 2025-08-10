@@ -2,7 +2,7 @@ from collections.abc import Generator, Iterable
 from contextlib import contextmanager
 from msgspec import UNSET
 
-from autocrud.v03.basic import (
+from autocrud.v03.resource_manager.basic import (
     Encoding,
     IFastMetaStore,
     MsgspecSerializer,

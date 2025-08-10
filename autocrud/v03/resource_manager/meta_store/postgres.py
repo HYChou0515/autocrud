@@ -6,7 +6,7 @@ from psycopg2.extras import execute_batch, DictCursor
 from contextlib import suppress
 from msgspec import UNSET
 
-from autocrud.v03.basic import (
+from autocrud.v03.resource_manager.basic import (
     Encoding,
     ISlowMetaStore,
     MsgspecSerializer,

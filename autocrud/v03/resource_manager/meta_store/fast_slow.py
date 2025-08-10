@@ -1,7 +1,7 @@
 import threading
 from collections.abc import Generator
 
-from autocrud.v03.basic import (
+from autocrud.v03.resource_manager.basic import (
     IFastMetaStore,
     IMetaStore,
     ISlowMetaStore,
