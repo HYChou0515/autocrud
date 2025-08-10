@@ -56,6 +56,7 @@ class ListResponseType(StrEnum):
     META = "meta"  # 只返回 ResourceMeta
     REVISION_INFO = "revision_info"  # 只返回 RevisionInfo
     FULL = "full"  # 返回所有信息 (data, meta, revision_info)
+    REVISIONS = "revisions"  # 返回 meta 和所有 revision info
 
 
 def convert_resource_meta_to_response(meta: ResourceMeta) -> ResourceMetaResponse:
@@ -282,6 +283,97 @@ class CreateRouteTemplate(BaseRouteTemplate):
 class ReadRouteTemplate(BaseRouteTemplate):
     """讀取單一資源的路由模板"""
 
+    def _get_resource_and_meta(
+        self,
+        resource_manager: ResourceManager[T],
+        resource_id: str,
+        revision_id: Optional[str],
+        current_user: str,
+        current_time: dt.datetime,
+    ) -> tuple[Any, Optional[ResourceMeta]]:
+        """獲取資源和元數據"""
+        with resource_manager.meta_provide(current_user, current_time):
+            if revision_id:
+                resource = resource_manager.storage.get_resource_revision(
+                    resource_id, revision_id
+                )
+                meta = None
+            else:
+                resource = resource_manager.get(resource_id)
+                meta = resource_manager.get_meta(resource_id)
+        return resource, meta
+
+    def _handle_meta_response(self, meta: Optional[ResourceMeta]) -> dict:
+        """處理 META 響應類型"""
+        if not meta:
+            raise HTTPException(
+                status_code=400,
+                detail="Meta not available for specific revision",
+            )
+        return convert_resource_meta_to_response(meta)
+
+    def _handle_revision_info_response(self, resource: Any) -> dict:
+        """處理 REVISION_INFO 響應類型"""
+        return convert_revision_info_to_response(resource.info)
+
+    def _handle_full_response(
+        self, resource: Any, meta: Optional[ResourceMeta]
+    ) -> dict:
+        """處理 FULL 響應類型"""
+        result = {
+            "data": msgspec.to_builtins(resource.data),
+            "revision_info": convert_revision_info_to_response(resource.info),
+        }
+        if meta:
+            result["meta"] = convert_resource_meta_to_response(meta)
+        return result
+
+    def _handle_revisions_response(
+        self,
+        resource_manager: ResourceManager[T],
+        resource_id: str,
+        revision_id: Optional[str],
+        meta: Optional[ResourceMeta],
+        current_user: str,
+        current_time: dt.datetime,
+    ) -> dict:
+        """處理 REVISIONS 響應類型"""
+        if revision_id:
+            raise HTTPException(
+                status_code=400,
+                detail="Cannot list revisions when specific revision_id is provided",
+            )
+
+        if not meta:
+            raise HTTPException(
+                status_code=400,
+                detail="Meta not available for revisions response",
+            )
+
+        with resource_manager.meta_provide(current_user, current_time):
+            revision_ids = resource_manager.storage.list_revisions(resource_id)
+            revision_infos = []
+            for rev_id in revision_ids:
+                try:
+                    rev_resource = resource_manager.storage.get_resource_revision(
+                        resource_id, rev_id
+                    )
+                    revision_infos.append(
+                        convert_revision_info_to_response(rev_resource.info)
+                    )
+                except Exception:
+                    # 如果無法獲取某個版本，跳過
+                    continue
+
+            return {
+                "meta": convert_resource_meta_to_response(meta),
+                "revisions": revision_infos,
+            }
+
+    def _handle_data_response(self, resource: Any) -> dict:
+        """處理 DATA 響應類型（預設）"""
+        return msgspec.to_builtins(resource.data)
+
     def apply(
         self, model_name: str, resource_manager: ResourceManager[T], router: APIRouter
     ) -> None:
@@ -290,7 +382,7 @@ class ReadRouteTemplate(BaseRouteTemplate):
             resource_id: str,
             response_type: ListResponseType = Query(
                 ListResponseType.DATA,
-                description="Type of data to return: data, meta, revision_info, or full",
+                description="Type of data to return: data, meta, revision_info, full, or revisions",
             ),
             revision_id: Optional[str] = Query(
                 None,
@@ -301,45 +393,40 @@ class ReadRouteTemplate(BaseRouteTemplate):
         ):
             # 獲取資源和元數據
             try:
-                with resource_manager.meta_provide(current_user, current_time):
-                    if revision_id:
-                        resource = resource_manager.storage.get_resource_revision(
-                            resource_id, revision_id
-                        )
-                        meta = None
-                    else:
-                        resource = resource_manager.get(resource_id)
-                        meta = resource_manager.get_meta(resource_id)
+                resource, meta = self._get_resource_and_meta(
+                    resource_manager,
+                    resource_id,
+                    revision_id,
+                    current_user,
+                    current_time,
+                )
             except HTTPException:
                 raise
             except Exception as e:
                 raise HTTPException(status_code=404, detail=str(e))
 
-            # 處理 META 響應
+            # 根據響應類型處理數據
             if response_type == ListResponseType.META:
-                if not meta:
-                    raise HTTPException(
-                        status_code=400,
-                        detail="Meta not available for specific revision",
-                    )
-                return convert_resource_meta_to_response(meta)
+                return self._handle_meta_response(meta)
 
-            # 處理 REVISION_INFO 響應
-            if response_type == ListResponseType.REVISION_INFO:
-                return convert_revision_info_to_response(resource.info)
+            elif response_type == ListResponseType.REVISION_INFO:
+                return self._handle_revision_info_response(resource)
 
-            # 處理 FULL 響應
-            if response_type == ListResponseType.FULL:
-                result = {
-                    "data": msgspec.to_builtins(resource.data),
-                    "revision_info": convert_revision_info_to_response(resource.info),
-                }
-                if meta:
-                    result["meta"] = convert_resource_meta_to_response(meta)
-                return result
+            elif response_type == ListResponseType.FULL:
+                return self._handle_full_response(resource, meta)
 
-            # 預設：DATA 響應
-            return msgspec.to_builtins(resource.data)
+            elif response_type == ListResponseType.REVISIONS:
+                return self._handle_revisions_response(
+                    resource_manager,
+                    resource_id,
+                    revision_id,
+                    meta,
+                    current_user,
+                    current_time,
+                )
+
+            else:  # DATA (預設)
+                return self._handle_data_response(resource)
 
 
 class UpdateRouteTemplate(BaseRouteTemplate):

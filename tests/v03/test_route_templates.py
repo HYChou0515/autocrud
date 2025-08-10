@@ -416,6 +416,64 @@ class TestRouteTemplates:
         assert original_data["name"] == "Original User"
         assert original_data["age"] == 25
 
+    def test_read_user_revisions_response(self, client):
+        """測試獲取資源的所有版本信息"""
+        # 創建一個用戶
+        user_data = {"name": "Version 1", "email": "v1@example.com", "age": 20}
+        create_response = client.post("/user", json=user_data)
+        resource_id = create_response.json()["resource_id"]
+
+        # 進行幾次更新以創建多個版本
+        for i in range(2, 4):
+            updated_data = {
+                "name": f"Version {i}",
+                "email": f"v{i}@example.com",
+                "age": 20 + i,
+            }
+            client.put(f"/user/{resource_id}", json=updated_data)
+
+        # 測試 REVISIONS 響應類型
+        response = client.get(f"/user/{resource_id}?response_type=revisions")
+        assert response.status_code == 200
+        data = response.json()
+
+        # 驗證響應結構
+        assert "meta" in data
+        assert "revisions" in data
+
+        # 驗證 meta 信息
+        meta = data["meta"]
+        assert meta["resource_id"] == resource_id
+        assert meta["total_revision_count"] == 3  # 創建 + 2次更新
+
+        # 驗證 revisions 列表
+        revisions = data["revisions"]
+        assert len(revisions) == 3
+        for revision in revisions:
+            assert "uid" in revision
+            assert "resource_id" in revision
+            assert "revision_id" in revision
+            assert "status" in revision
+            assert revision["resource_id"] == resource_id
+
+    def test_read_user_revisions_with_revision_id_should_fail(self, client):
+        """測試當指定 revision_id 時，REVISIONS 響應類型應該失敗"""
+        # 創建一個用戶
+        user_data = {"name": "Test User", "email": "test@example.com", "age": 25}
+        create_response = client.post("/user", json=user_data)
+        resource_id = create_response.json()["resource_id"]
+        revision_id = create_response.json()["revision_id"]
+
+        # 嘗試同時使用 revision_id 和 revisions 響應類型
+        response = client.get(
+            f"/user/{resource_id}?response_type=revisions&revision_id={revision_id}"
+        )
+        assert response.status_code == 400
+        assert (
+            "Cannot list revisions when specific revision_id is provided"
+            in response.json()["detail"]
+        )
+
     def test_user_not_found(self, client):
         """測試用戶不存在的情況"""
         response = client.get("/user/nonexistent?response_type=data")
