@@ -204,9 +204,36 @@ class TestRouteTemplates:
         assert "resources" in data
         assert len(data["resources"]) >= 3  # 至少有我們創建的 3 個用戶
 
+        # 檢查返回的是實際的用戶數據
         for resource in data["resources"]:
-            assert "resource_id" in resource
-            assert "updated_time" in resource
+            assert "name" in resource
+            assert "email" in resource
+            assert "age" in resource
+            assert isinstance(resource["age"], int)
+
+    def test_list_users_with_query_params(self, client):
+        """測試帶查詢參數的列出用戶"""
+        # 創建幾個用戶
+        users = [
+            {"name": "User 1", "email": "user1@example.com", "age": 20},
+            {"name": "User 2", "email": "user2@example.com", "age": 25},
+        ]
+
+        for user in users:
+            client.post("/user", json=user)
+
+        # 測試 limit 參數
+        response = client.get("/user?limit=1")
+        assert response.status_code == 200
+        data = response.json()
+        assert len(data["resources"]) <= 1
+
+        # 測試 offset 參數
+        response = client.get("/user?limit=1&offset=1")
+        assert response.status_code == 200
+        data = response.json()
+        # 應該返回第二個資源或空列表
+        assert len(data["resources"]) <= 1
 
     def test_user_not_found(self, client):
         """測試用戶不存在的情況"""

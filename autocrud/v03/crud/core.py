@@ -5,7 +5,7 @@ from typing import Literal, TypeVar, Any
 import re
 import datetime
 
-from fastapi import APIRouter, HTTPException, Request
+from fastapi import APIRouter, HTTPException, Request, Query
 from pydantic import create_model
 import msgspec
 
@@ -265,36 +265,115 @@ class ListRouteTemplate(IRouteTemplate):
     def apply(
         self, model_name: str, resource_manager: ResourceManager[T], router: APIRouter
     ) -> None:
-        # 動態創建資源摘要模型
-        resource_summary_model = create_model(
-            f"{resource_manager.resource_type.__name__}Summary",
-            resource_id=(str, ...),
-            updated_time=(str, ...),
-        )
+        from autocrud.v03.resource_manager.basic import ResourceMetaSearchQuery
+        from typing import Optional
 
         # 動態創建列表響應模型
         list_response_model = create_model(
             f"{resource_manager.resource_type.__name__}ListResponse",
-            resources=(list[resource_summary_model], ...),
+            resources=(list[Any], ...),
         )
 
         @router.get(f"/{model_name}", response_model=list_response_model)
-        async def list_resources() -> dict:
+        async def list_resources(
+            # ResourceMetaSearchQuery 的查詢參數
+            is_deleted: Optional[bool] = Query(
+                None, description="Filter by deletion status"
+            ),
+            created_time_start: Optional[str] = Query(
+                None, description="Filter by created time start (ISO format)"
+            ),
+            created_time_end: Optional[str] = Query(
+                None, description="Filter by created time end (ISO format)"
+            ),
+            updated_time_start: Optional[str] = Query(
+                None, description="Filter by updated time start (ISO format)"
+            ),
+            updated_time_end: Optional[str] = Query(
+                None, description="Filter by updated time end (ISO format)"
+            ),
+            created_bys: Optional[list[str]] = Query(
+                None, description="Filter by creators"
+            ),
+            updated_bys: Optional[list[str]] = Query(
+                None, description="Filter by updaters"
+            ),
+            limit: int = Query(10, description="Maximum number of results"),
+            offset: int = Query(0, description="Number of results to skip"),
+        ) -> dict:
             try:
-                from autocrud.v03.resource_manager.basic import ResourceMetaSearchQuery
+                from msgspec import UNSET
+                import datetime as dt
+
+                # 構建查詢對象
+                query_kwargs = {
+                    "limit": limit,
+                    "offset": offset,
+                }
+
+                if is_deleted is not None:
+                    query_kwargs["is_deleted"] = is_deleted
+                else:
+                    query_kwargs["is_deleted"] = UNSET
+
+                if created_time_start:
+                    query_kwargs["created_time_start"] = dt.datetime.fromisoformat(
+                        created_time_start
+                    )
+                else:
+                    query_kwargs["created_time_start"] = UNSET
+
+                if created_time_end:
+                    query_kwargs["created_time_end"] = dt.datetime.fromisoformat(
+                        created_time_end
+                    )
+                else:
+                    query_kwargs["created_time_end"] = UNSET
+
+                if updated_time_start:
+                    query_kwargs["updated_time_start"] = dt.datetime.fromisoformat(
+                        updated_time_start
+                    )
+                else:
+                    query_kwargs["updated_time_start"] = UNSET
+
+                if updated_time_end:
+                    query_kwargs["updated_time_end"] = dt.datetime.fromisoformat(
+                        updated_time_end
+                    )
+                else:
+                    query_kwargs["updated_time_end"] = UNSET
+
+                if created_bys:
+                    query_kwargs["created_bys"] = created_bys
+                else:
+                    query_kwargs["created_bys"] = UNSET
+
+                if updated_bys:
+                    query_kwargs["updated_bys"] = updated_bys
+                else:
+                    query_kwargs["updated_bys"] = UNSET
+
+                query_kwargs["sorts"] = UNSET
+
+                query = ResourceMetaSearchQuery(**query_kwargs)
 
                 with resource_manager.meta_provide("system", datetime.datetime.now()):
-                    query = ResourceMetaSearchQuery()
                     metas = resource_manager.search_resources(query)
-                return {
-                    "resources": [
-                        {
-                            "resource_id": meta.resource_id,
-                            "updated_time": meta.updated_time.isoformat(),
-                        }
-                        for meta in metas
-                    ]
-                }
+
+                    # 獲取每個資源的實際數據
+                    resources_data = []
+                    for meta in metas:
+                        try:
+                            resource = resource_manager.get(meta.resource_id)
+                            # 使用 msgspec.to_builtins 轉換資源數據
+                            data_json = msgspec.to_builtins(resource.data)
+                            resources_data.append(data_json)
+                        except Exception:
+                            # 如果無法獲取資源數據，跳過
+                            continue
+
+                return {"resources": resources_data}
             except Exception as e:
                 raise HTTPException(status_code=400, detail=str(e))
 
