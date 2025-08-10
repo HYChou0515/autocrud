@@ -4,14 +4,13 @@ from enum import StrEnum
 from typing import Literal, TypeVar, Any
 import re
 import datetime as dt
-from datetime import datetime
 
-from fastapi import APIRouter, HTTPException, Request, Query
+from fastapi import APIRouter, HTTPException, Request, Query, Depends
 from pydantic import create_model, BaseModel
 import msgspec
 from typing import Optional
 
-from autocrud.v03.resource_manager.basic import IStorage
+from autocrud.v03.resource_manager.basic import IStorage, ResourceMeta, RevisionInfo
 from autocrud.v03.resource_manager.core import ResourceManager
 
 
@@ -21,8 +20,8 @@ class ResourceMetaResponse(BaseModel):
     resource_id: str
     schema_version: Optional[str] = None
     total_revision_count: int
-    created_time: datetime  # 使用原生 datetime
-    updated_time: datetime  # 使用原生 datetime
+    created_time: dt.datetime  # 使用原生 dt.datetime
+    updated_time: dt.datetime  # 使用原生 dt.datetime
     created_by: str
     updated_by: str
     is_deleted: bool = False
@@ -59,7 +58,7 @@ class ListResponseType(StrEnum):
     FULL = "full"  # 返回所有信息 (data, meta, revision_info)
 
 
-def convert_resource_meta_to_response(meta) -> ResourceMetaResponse:
+def convert_resource_meta_to_response(meta: ResourceMeta) -> ResourceMetaResponse:
     """將 ResourceMeta 轉換為 Pydantic 響應對象"""
     from msgspec import UNSET
 
@@ -70,15 +69,15 @@ def convert_resource_meta_to_response(meta) -> ResourceMetaResponse:
         if meta.schema_version is not UNSET
         else None,
         total_revision_count=meta.total_revision_count,
-        created_time=meta.created_time,  # 直接使用 datetime 對象
-        updated_time=meta.updated_time,  # 直接使用 datetime 對象
+        created_time=meta.created_time,  # 直接使用 dt.datetime 對象
+        updated_time=meta.updated_time,  # 直接使用 dt.datetime 對象
         created_by=meta.created_by,
         updated_by=meta.updated_by,
         is_deleted=meta.is_deleted,
     )
 
 
-def convert_revision_info_to_response(info) -> RevisionInfoResponse:
+def convert_revision_info_to_response(info: RevisionInfo) -> RevisionInfoResponse:
     """將 RevisionInfo 轉換為 Pydantic 響應對象"""
     from msgspec import UNSET
 
@@ -177,6 +176,39 @@ class NameConverter:
 T = TypeVar("T")
 
 
+class DependencyProvider:
+    """依賴提供者，統一管理用戶和時間的依賴函數"""
+
+    def __init__(self, get_user: Callable = None, get_now: Callable = None):
+        """
+        初始化依賴提供者
+
+        Args:
+            get_user: 獲取當前用戶的 dependency 函數，如果為 None 則創建預設函數
+            get_now: 獲取當前時間的 dependency 函數，如果為 None 則創建預設函數
+        """
+        # 如果沒有提供 get_user，創建一個預設的 dependency 函數
+        self.get_user = get_user or self._create_default_user_dependency()
+        # 如果沒有提供 get_now，創建一個預設的 dependency 函數
+        self.get_now = get_now or self._create_default_now_dependency()
+
+    def _create_default_user_dependency(self) -> Callable:
+        """創建預設的用戶 dependency 函數"""
+
+        def default_get_user() -> str:
+            return "anonymous"
+
+        return default_get_user
+
+    def _create_default_now_dependency(self) -> Callable:
+        """創建預設的時間 dependency 函數"""
+
+        def default_get_now() -> dt.datetime:
+            return dt.datetime.now()
+
+        return default_get_now
+
+
 class IRouteTemplate(ABC):
     """路由模板基類，定義如何為資源生成單一 API 路由"""
 
@@ -194,7 +226,18 @@ class IRouteTemplate(ABC):
         raise NotImplementedError("子類必須實作 apply 方法")
 
 
-class CreateRouteTemplate(IRouteTemplate):
+class BaseRouteTemplate(IRouteTemplate):
+    def __init__(self, dependency_provider: DependencyProvider = None):
+        """
+        初始化路由模板
+
+        Args:
+            dependency_provider: 依賴提供者，如果為 None 則創建預設的
+        """
+        self.deps = dependency_provider or DependencyProvider()
+
+
+class CreateRouteTemplate(BaseRouteTemplate):
     """創建資源的路由模板"""
 
     def apply(
@@ -210,7 +253,11 @@ class CreateRouteTemplate(IRouteTemplate):
         resource_type = resource_manager.resource_type
 
         @router.post(f"/{model_name}", response_model=create_response_model)
-        async def create_resource(request: Request) -> dict:
+        async def create_resource(
+            request: Request,
+            current_user: str = Depends(self.deps.get_user),
+            current_time: dt.datetime = Depends(self.deps.get_now),
+        ) -> dict:
             try:
                 # 直接接收原始 JSON bytes
                 json_bytes = await request.body()
@@ -218,7 +265,7 @@ class CreateRouteTemplate(IRouteTemplate):
                 # 使用 msgspec 直接從 JSON bytes 轉換為目標類型
                 data = msgspec.json.decode(json_bytes, type=resource_type)
 
-                with resource_manager.meta_provide("system", dt.datetime.now()):
+                with resource_manager.meta_provide(current_user, current_time):
                     info = resource_manager.create(data)
                 return {
                     "resource_id": info.resource_id,
@@ -232,54 +279,70 @@ class CreateRouteTemplate(IRouteTemplate):
                 raise HTTPException(status_code=400, detail=str(e))
 
 
-class ReadRouteTemplate(IRouteTemplate):
+class ReadRouteTemplate(BaseRouteTemplate):
     """讀取單一資源的路由模板"""
 
     def apply(
         self, model_name: str, resource_manager: ResourceManager[T], router: APIRouter
     ) -> None:
-        # 根據不同的響應類型創建不同的響應模型
         @router.get(f"/{model_name}/{{resource_id}}")
         async def get_resource(
             resource_id: str,
             response_type: ListResponseType = Query(
-                ...,
+                ListResponseType.DATA,
                 description="Type of data to return: data, meta, revision_info, or full",
             ),
+            revision_id: Optional[str] = Query(
+                None,
+                description="Specific revision ID to retrieve. If not provided, returns the current revision",
+            ),
+            current_user: str = Depends(self.deps.get_user),
+            current_time: dt.datetime = Depends(self.deps.get_now),
         ):
+            # 獲取資源和元數據
             try:
-                with resource_manager.meta_provide("system", dt.datetime.now()):
-                    resource = resource_manager.get(resource_id)
-                    meta = resource_manager.get_meta(resource_id)
-
-                # 根據響應類型返回不同的數據
-                if response_type == ListResponseType.DATA:
-                    # 只返回資源數據
-                    return msgspec.to_builtins(resource.data)
-                elif response_type == ListResponseType.META:
-                    # 只返回 ResourceMeta (使用 Pydantic 模型)
-                    return convert_resource_meta_to_response(meta)
-                elif response_type == ListResponseType.REVISION_INFO:
-                    # 只返回 RevisionInfo (使用 Pydantic 模型)
-                    return convert_revision_info_to_response(resource.info)
-                elif response_type == ListResponseType.FULL:
-                    # 返回所有信息
-                    return {
-                        "data": msgspec.to_builtins(resource.data),
-                        "meta": convert_resource_meta_to_response(meta),
-                        "revision_info": convert_revision_info_to_response(
-                            resource.info
-                        ),
-                    }
-                else:
-                    # 預設返回資源數據
-                    return msgspec.to_builtins(resource.data)
-
+                with resource_manager.meta_provide(current_user, current_time):
+                    if revision_id:
+                        resource = resource_manager.storage.get_resource_revision(
+                            resource_id, revision_id
+                        )
+                        meta = None
+                    else:
+                        resource = resource_manager.get(resource_id)
+                        meta = resource_manager.get_meta(resource_id)
+            except HTTPException:
+                raise
             except Exception as e:
                 raise HTTPException(status_code=404, detail=str(e))
 
+            # 處理 META 響應
+            if response_type == ListResponseType.META:
+                if not meta:
+                    raise HTTPException(
+                        status_code=400,
+                        detail="Meta not available for specific revision",
+                    )
+                return convert_resource_meta_to_response(meta)
 
-class UpdateRouteTemplate(IRouteTemplate):
+            # 處理 REVISION_INFO 響應
+            if response_type == ListResponseType.REVISION_INFO:
+                return convert_revision_info_to_response(resource.info)
+
+            # 處理 FULL 響應
+            if response_type == ListResponseType.FULL:
+                result = {
+                    "data": msgspec.to_builtins(resource.data),
+                    "revision_info": convert_revision_info_to_response(resource.info),
+                }
+                if meta:
+                    result["meta"] = convert_resource_meta_to_response(meta)
+                return result
+
+            # 預設：DATA 響應
+            return msgspec.to_builtins(resource.data)
+
+
+class UpdateRouteTemplate(BaseRouteTemplate):
     """更新資源的路由模板"""
 
     def apply(
@@ -297,7 +360,12 @@ class UpdateRouteTemplate(IRouteTemplate):
         @router.put(
             f"/{model_name}/{{resource_id}}", response_model=update_response_model
         )
-        async def update_resource(resource_id: str, request: Request) -> dict:
+        async def update_resource(
+            resource_id: str,
+            request: Request,
+            current_user: str = Depends(self.deps.get_user),
+            current_time: dt.datetime = Depends(self.deps.get_now),
+        ) -> dict:
             try:
                 # 直接接收原始 JSON bytes
                 json_bytes = await request.body()
@@ -305,7 +373,7 @@ class UpdateRouteTemplate(IRouteTemplate):
                 # 使用 msgspec 直接從 JSON bytes 轉換為目標類型
                 data = msgspec.json.decode(json_bytes, type=resource_type)
 
-                with resource_manager.meta_provide("system", dt.datetime.now()):
+                with resource_manager.meta_provide(current_user, current_time):
                     info = resource_manager.update(resource_id, data)
                 return {
                     "resource_id": info.resource_id,
@@ -319,7 +387,7 @@ class UpdateRouteTemplate(IRouteTemplate):
                 raise HTTPException(status_code=400, detail=str(e))
 
 
-class DeleteRouteTemplate(IRouteTemplate):
+class DeleteRouteTemplate(BaseRouteTemplate):
     """刪除資源的路由模板"""
 
     def apply(
@@ -335,16 +403,20 @@ class DeleteRouteTemplate(IRouteTemplate):
         @router.delete(
             f"/{model_name}/{{resource_id}}", response_model=delete_response_model
         )
-        async def delete_resource(resource_id: str) -> dict:
+        async def delete_resource(
+            resource_id: str,
+            current_user: str = Depends(self.deps.get_user),
+            current_time: dt.datetime = Depends(self.deps.get_now),
+        ) -> dict:
             try:
-                with resource_manager.meta_provide("system", dt.datetime.now()):
+                with resource_manager.meta_provide(current_user, current_time):
                     meta = resource_manager.delete(resource_id)
                 return {"resource_id": meta.resource_id, "deleted": True}
             except Exception as e:
                 raise HTTPException(status_code=400, detail=str(e))
 
 
-class ListRouteTemplate(IRouteTemplate):
+class ListRouteTemplate(BaseRouteTemplate):
     """列出所有資源的路由模板"""
 
     def apply(
@@ -389,11 +461,12 @@ class ListRouteTemplate(IRouteTemplate):
             ),
             limit: int = Query(10, description="Maximum number of results"),
             offset: int = Query(0, description="Number of results to skip"),
+            current_user: str = Depends(self.deps.get_user),
+            current_time: dt.datetime = Depends(self.deps.get_now),
         ) -> dict:
-            try:
-                from msgspec import UNSET
-                import datetime as dt
+            from msgspec import UNSET
 
+            try:
                 # 構建查詢對象
                 query_kwargs = {
                     "limit": limit,
@@ -447,7 +520,7 @@ class ListRouteTemplate(IRouteTemplate):
 
                 query = ResourceMetaSearchQuery(**query_kwargs)
 
-                with resource_manager.meta_provide("system", dt.datetime.now()):
+                with resource_manager.meta_provide(current_user, current_time):
                     metas = resource_manager.search_resources(query)
 
                     # 根據響應類型處理資源數據
@@ -490,7 +563,7 @@ class ListRouteTemplate(IRouteTemplate):
                 raise HTTPException(status_code=400, detail=str(e))
 
 
-class PatchRouteTemplate(IRouteTemplate):
+class PatchRouteTemplate(BaseRouteTemplate):
     """部分更新資源的路由模板"""
 
     def apply(
@@ -506,11 +579,16 @@ class PatchRouteTemplate(IRouteTemplate):
         @router.patch(
             f"/{model_name}/{{resource_id}}", response_model=patch_response_model
         )
-        async def patch_resource(resource_id: str, patch_data: list[dict]) -> dict:
-            try:
-                from jsonpatch import JsonPatch
+        async def patch_resource(
+            resource_id: str,
+            patch_data: list[dict],
+            current_user: str = Depends(self.deps.get_user),
+            current_time: dt.datetime = Depends(self.deps.get_now),
+        ) -> dict:
+            from jsonpatch import JsonPatch
 
-                with resource_manager.meta_provide("system", dt.datetime.now()):
+            try:
+                with resource_manager.meta_provide(current_user, current_time):
                     patch = JsonPatch(patch_data)
                     info = resource_manager.patch(resource_id, patch)
                 return {

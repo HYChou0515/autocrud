@@ -292,49 +292,129 @@ class TestRouteTemplates:
             assert "email" in resource["data"]
             assert "age" in resource["data"]
 
-    def test_read_user_response_types(self, client):
+    @pytest.mark.parametrize(
+        "response_type,expected_fields",
+        [
+            ("data", ["name", "email", "age"]),
+            (
+                "meta",
+                ["resource_id", "current_revision_id", "created_time", "updated_time"],
+            ),
+            ("revision_info", ["uid", "resource_id", "revision_id", "status"]),
+            ("full", ["data", "meta", "revision_info"]),
+        ],
+    )
+    def test_read_user_response_types(self, client, response_type, expected_fields):
         """測試讀取用戶的不同響應類型"""
         # 創建一個用戶
         user_data = {"name": "Test User", "email": "test@example.com", "age": 30}
         create_response = client.post("/user", json=user_data)
         resource_id = create_response.json()["resource_id"]
 
-        # 測試 DATA 響應類型（預設）
+        # 測試指定的響應類型
+        response = client.get(f"/user/{resource_id}?response_type={response_type}")
+        assert response.status_code == 200
+        data = response.json()
+
+        for field in expected_fields:
+            assert field in data
+
+        # 針對不同響應類型進行特定驗證
+        if response_type == "data":
+            assert data["name"] == "Test User"
+        elif response_type == "full":
+            assert data["data"]["name"] == "Test User"
+
+    @pytest.mark.parametrize(
+        "response_type,should_succeed,expected_name",
+        [
+            ("data", True, "Original User"),
+            ("revision_info", True, None),
+            ("full", True, "Original User"),
+            ("meta", False, None),  # 應該失敗
+        ],
+    )
+    def test_read_user_by_revision_id(
+        self, client, response_type, should_succeed, expected_name
+    ):
+        """測試通過 revision_id 讀取特定版本的用戶"""
+        # 創建一個用戶
+        user_data = {
+            "name": "Original User",
+            "email": "original@example.com",
+            "age": 25,
+        }
+        create_response = client.post("/user", json=user_data)
+        resource_id = create_response.json()["resource_id"]
+        original_revision_id = create_response.json()["revision_id"]
+
+        # 更新用戶數據
+        updated_data = {
+            "name": "Updated User",
+            "email": "updated@example.com",
+            "age": 30,
+        }
+        update_response = client.put(f"/user/{resource_id}", json=updated_data)
+
+        # 測試獲取特定版本
+        response = client.get(
+            f"/user/{resource_id}?response_type={response_type}&revision_id={original_revision_id}"
+        )
+
+        if should_succeed:
+            assert response.status_code == 200
+            data = response.json()
+
+            if response_type == "data":
+                assert data["name"] == expected_name
+                assert data["age"] == 25
+            elif response_type == "revision_info":
+                assert data["revision_id"] == original_revision_id
+            elif response_type == "full":
+                assert "data" in data
+                assert "revision_info" in data
+                assert "meta" not in data  # 特定版本查詢不包含 meta
+                assert data["data"]["name"] == expected_name
+        else:
+            assert response.status_code == 400
+            assert (
+                "Meta not available for specific revision" in response.json()["detail"]
+            )
+
+    def test_read_user_current_vs_specific_revision(self, client):
+        """測試當前版本與特定版本的對比"""
+        # 創建一個用戶
+        user_data = {
+            "name": "Original User",
+            "email": "original@example.com",
+            "age": 25,
+        }
+        create_response = client.post("/user", json=user_data)
+        resource_id = create_response.json()["resource_id"]
+        original_revision_id = create_response.json()["revision_id"]
+
+        # 更新用戶數據
+        updated_data = {
+            "name": "Updated User",
+            "email": "updated@example.com",
+            "age": 30,
+        }
+        client.put(f"/user/{resource_id}", json=updated_data)
+
+        # 測試獲取當前版本（不指定 revision_id）
         response = client.get(f"/user/{resource_id}?response_type=data")
         assert response.status_code == 200
-        data = response.json()
-        assert "name" in data
-        assert "email" in data
-        assert "age" in data
-        assert data["name"] == "Test User"
+        current_data = response.json()
+        assert current_data["name"] == "Updated User"
 
-        # 測試 META 響應類型
-        response = client.get(f"/user/{resource_id}?response_type=meta")
+        # 測試獲取原始版本（指定 revision_id）
+        response = client.get(
+            f"/user/{resource_id}?response_type=data&revision_id={original_revision_id}"
+        )
         assert response.status_code == 200
-        data = response.json()
-        assert "resource_id" in data
-        assert "current_revision_id" in data
-        assert "created_time" in data
-        assert "updated_time" in data
-
-        # 測試 REVISION_INFO 響應類型
-        response = client.get(f"/user/{resource_id}?response_type=revision_info")
-        assert response.status_code == 200
-        data = response.json()
-        assert "uid" in data
-        assert "resource_id" in data
-        assert "revision_id" in data
-        assert "status" in data
-
-        # 測試 FULL 響應類型
-        response = client.get(f"/user/{resource_id}?response_type=full")
-        assert response.status_code == 200
-        data = response.json()
-        assert "data" in data
-        assert "meta" in data
-        assert "revision_info" in data
-        # 檢查 data 部分
-        assert data["data"]["name"] == "Test User"
+        original_data = response.json()
+        assert original_data["name"] == "Original User"
+        assert original_data["age"] == 25
 
     def test_user_not_found(self, client):
         """測試用戶不存在的情況"""
