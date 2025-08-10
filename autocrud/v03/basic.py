@@ -1,4 +1,4 @@
-from collections.abc import Generator, MutableMapping
+from collections.abc import Generator, Iterable, MutableMapping
 from contextlib import contextmanager
 from contextvars import ContextVar
 from enum import StrEnum
@@ -502,3 +502,14 @@ class IMetaStore(MutableMapping[str, ResourceMeta]):
     def iter_search(
         self, query: ResourceMetaSearchQuery
     ) -> Generator[ResourceMeta]: ...
+
+
+class IFastMetaStore(IMetaStore):
+    @abstractmethod
+    @contextmanager
+    def get_then_delete(self) -> Generator[Iterable[ResourceMeta]]: ...
+
+
+class ISlowMetaStore(IMetaStore):
+    @abstractmethod
+    def save_many(self, metas: Iterable[ResourceMeta]) -> None: ...

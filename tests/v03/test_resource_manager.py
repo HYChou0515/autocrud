@@ -10,6 +10,7 @@ from autocrud.v03.basic import (
     ResourceMetaSortDirection,
     ResourceMetaSortKey,
 )
+import time
 from autocrud.v03.core import (
     DiskResourceStore,
     IResourceStore,
@@ -25,8 +26,9 @@ import datetime as dt
 from faker import Faker
 import jsonpatch
 
+from autocrud.v03.meta_store.fast_slow import FastSlowMetaStore
+from autocrud.v03.meta_store.postgres import PostgresMetaStore
 from autocrud.v03.meta_store.redis import RedisMetaStore
-from autocrud.v03.meta_store.redis_postgres import RedisPostgresMetaStore
 from autocrud.v03.meta_store.simple import (
     DFMemoryMetaStore,
     DiskMetaStore,
@@ -90,9 +92,11 @@ def get_meta_store(store_type: str, tmpdir: Path):
     elif store_type == "sql3-file":
         return FileSqliteMetaStore(db_filepath=tmpdir / "meta.db", encoding="msgpack")
     elif store_type == "redis":
-        client = redis.Redis(host="localhost", port=6379, db=0)
+        redis_url = "redis://localhost:6379/0"
+        client = redis.Redis.from_url(redis_url)
         client.flushall()
-        return RedisMetaStore(client=client, encoding="msgpack")
+        client.close()
+        return RedisMetaStore(redis_url=redis_url, encoding="msgpack")
     elif store_type == "redis-pg":
         redis_url = "redis://localhost:6379/0"
         client = redis.Redis.from_url(redis_url)
@@ -104,8 +108,9 @@ def get_meta_store(store_type: str, tmpdir: Path):
             cur.execute("DROP TABLE IF EXISTS resource_meta;")
             pg_conn.commit()
         pg_conn.close()
-        return RedisPostgresMetaStore(
-            redis_url=redis_url, pg_dsn=pg_dsn, encoding="msgpack", sync_interval=1
+        return FastSlowMetaStore(
+            fast_store=RedisMetaStore(redis_url=redis_url, encoding="msgpack"),
+            slow_store=PostgresMetaStore(pg_dsn=pg_dsn, encoding="msgpack"),
         )
     else:
         d = tmpdir / faker.pystr()
@@ -886,6 +891,7 @@ class TestMetaStore:
         my_tmpdir: str,
     ):
         self.meta_store = get_meta_store(store_type, tmpdir=my_tmpdir)
+        self.store_type = store_type
 
     def test_large_size_behavior(self):
         def get_fake_meta():
@@ -899,23 +905,57 @@ class TestMetaStore:
                 updated_by="a",
             )
 
-        if isinstance(self.meta_store, DiskMetaStore):
-            expected_create_time = dt.timedelta(seconds=50)
-        elif isinstance(self.meta_store, MemoryMetaStore):
-            expected_create_time = dt.timedelta(seconds=1.5)
-        elif isinstance(self.meta_store, DFMemoryMetaStore):
-            expected_create_time = dt.timedelta(seconds=20)
-        elif isinstance(self.meta_store, MemorySqliteMetaStore):
-            expected_create_time = dt.timedelta(seconds=60)
-        elif isinstance(self.meta_store, FileSqliteMetaStore):
-            expected_create_time = dt.timedelta(seconds=500)
-        elif isinstance(self.meta_store, RedisMetaStore):
-            expected_create_time = dt.timedelta(seconds=240)
-        elif isinstance(self.meta_store, RedisPostgresMetaStore):
-            expected_create_time = dt.timedelta(seconds=120)
-        else:
-            raise ValueError("Unsupported store type for benchmark")
-        trials = 1000000
+        expected_spec = {
+            "memory": {
+                "size": 1000000,
+                "create_time": dt.timedelta(seconds=1),
+                "search_time": dt.timedelta(milliseconds=400),
+                "search_wait": dt.timedelta(seconds=0),
+            },
+            "sql3-mem": {
+                "size": 100000,
+                "create_time": dt.timedelta(seconds=3.2),
+                "search_time": dt.timedelta(milliseconds=0.8),
+                "search_wait": dt.timedelta(seconds=0),
+            },
+            "sql3-file": {
+                "size": 10000,
+                "create_time": dt.timedelta(seconds=15),
+                "search_time": dt.timedelta(milliseconds=0.8),
+                "search_wait": dt.timedelta(seconds=0),
+            },
+            "redis": {
+                "size": 100000,
+                "create_time": dt.timedelta(seconds=8),
+                "search_time": dt.timedelta(milliseconds=6800),
+                "search_wait": dt.timedelta(seconds=0),
+            },
+            "dfm": {
+                "size": 100000,
+                "create_time": dt.timedelta(seconds=0.45),
+                "search_time": dt.timedelta(milliseconds=40),
+                "search_wait": dt.timedelta(seconds=0),
+            },
+            "disk": {
+                "size": 10000,
+                "create_time": dt.timedelta(seconds=0.33),
+                "search_time": dt.timedelta(milliseconds=100),
+                "search_wait": dt.timedelta(seconds=0),
+            },
+            "redis-pg": {
+                "size": 100000,
+                "create_time": dt.timedelta(seconds=12),
+                "search_time": dt.timedelta(milliseconds=4.2),
+                "search_wait": dt.timedelta(seconds=2),
+            },
+        }
+        minimum_time_rate = 0.6  # time should be at least x% of expected time
+
+        trials = expected_spec[self.store_type]["size"]
+        expected_create_time = expected_spec[self.store_type]["create_time"]
+        expected_search_time = expected_spec[self.store_type]["search_time"]
+        search_wait = expected_spec[self.store_type]["search_wait"]
+
         all_meta: list[ResourceMeta] = []
         tt = dt.timedelta(0)
         for _ in range(trials):
@@ -924,32 +964,15 @@ class TestMetaStore:
             st = dt.datetime.now()
             self.meta_store[meta.resource_id] = meta
             tt += dt.datetime.now() - st
-        assert tt < expected_create_time, (
+        assert expected_create_time * minimum_time_rate < tt < expected_create_time, (
             f"Benchmark failed, took {tt.total_seconds()} seconds"
         )
 
         times = sorted(all_meta, key=lambda x: x.created_time)[567 : 567 + 1000]
 
-        if isinstance(self.meta_store, DiskMetaStore):
-            expected_search_time = dt.timedelta(milliseconds=5000)
-        elif isinstance(self.meta_store, MemoryMetaStore):
-            expected_search_time = dt.timedelta(milliseconds=400)
-        elif isinstance(self.meta_store, DFMemoryMetaStore):
-            expected_search_time = dt.timedelta(milliseconds=500)
-        elif isinstance(self.meta_store, MemorySqliteMetaStore):
-            expected_search_time = dt.timedelta(milliseconds=15)
-        elif isinstance(self.meta_store, FileSqliteMetaStore):
-            expected_search_time = dt.timedelta(milliseconds=15)
-        elif isinstance(self.meta_store, RedisMetaStore):
-            expected_search_time = dt.timedelta(seconds=300)
-        elif isinstance(self.meta_store, RedisPostgresMetaStore):
-            expected_search_time = dt.timedelta(milliseconds=15)
-        else:
-            raise ValueError("Unsupported store type for benchmark")
         metas_by_time = sorted(times, key=lambda x: x.resource_id)
-        import time
 
-        time.sleep(2)
+        time.sleep(search_wait.total_seconds())
         st = dt.datetime.now()
         got = [
             k
@@ -968,4 +991,4 @@ class TestMetaStore:
         ]
         tt = dt.datetime.now() - st
         assert got == metas_by_time[:10]
-        assert tt < expected_search_time
+        assert expected_search_time * minimum_time_rate < tt < expected_search_time
