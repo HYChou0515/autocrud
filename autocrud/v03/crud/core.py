@@ -686,6 +686,79 @@ class PatchRouteTemplate(BaseRouteTemplate):
                 raise HTTPException(status_code=400, detail=str(e))
 
 
+class SwitchRevisionRouteTemplate(BaseRouteTemplate):
+    """切換資源版本的路由模板"""
+
+    def apply(
+        self, model_name: str, resource_manager: ResourceManager[T], router: APIRouter
+    ) -> None:
+        # 動態創建響應模型
+        switch_response_model = create_model(
+            f"{resource_manager.resource_type.__name__}SwitchResponse",
+            resource_id=(str, ...),
+            current_revision_id=(str, ...),
+            message=(str, ...),
+        )
+
+        @router.post(
+            f"/{model_name}/{{resource_id}}/switch/{{revision_id}}",
+            response_model=switch_response_model,
+        )
+        async def switch_revision(
+            resource_id: str,
+            revision_id: str,
+            current_user: str = Depends(self.deps.get_user),
+            current_time: dt.datetime = Depends(self.deps.get_now),
+        ) -> dict:
+            try:
+                with resource_manager.meta_provide(current_user, current_time):
+                    meta = resource_manager.switch(resource_id, revision_id)
+                return {
+                    "resource_id": meta.resource_id,
+                    "current_revision_id": meta.current_revision_id,
+                    "message": f"Successfully switched to revision {revision_id}",
+                }
+            except Exception as e:
+                raise HTTPException(status_code=400, detail=str(e))
+
+
+class RestoreRouteTemplate(BaseRouteTemplate):
+    """恢復已刪除資源的路由模板"""
+
+    def apply(
+        self, model_name: str, resource_manager: ResourceManager[T], router: APIRouter
+    ) -> None:
+        # 動態創建響應模型
+        restore_response_model = create_model(
+            f"{resource_manager.resource_type.__name__}RestoreResponse",
+            resource_id=(str, ...),
+            current_revision_id=(str, ...),
+            message=(str, ...),
+            is_deleted=(bool, ...),
+        )
+
+        @router.post(
+            f"/{model_name}/{{resource_id}}/restore",
+            response_model=restore_response_model,
+        )
+        async def restore_resource(
+            resource_id: str,
+            current_user: str = Depends(self.deps.get_user),
+            current_time: dt.datetime = Depends(self.deps.get_now),
+        ) -> dict:
+            try:
+                with resource_manager.meta_provide(current_user, current_time):
+                    meta = resource_manager.restore(resource_id)
+                return {
+                    "resource_id": meta.resource_id,
+                    "current_revision_id": meta.current_revision_id,
+                    "is_deleted": meta.is_deleted,
+                    "message": f"Successfully restored resource {resource_id}",
+                }
+            except Exception as e:
+                raise HTTPException(status_code=400, detail=str(e))
+
+
 class AutoCRUD:
     def __init__(
         self,

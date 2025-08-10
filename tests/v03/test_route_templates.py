@@ -11,6 +11,8 @@ from autocrud.v03.crud.core import (
     UpdateRouteTemplate,
     DeleteRouteTemplate,
     ListRouteTemplate,
+    SwitchRevisionRouteTemplate,
+    RestoreRouteTemplate,
     NameConverter,
     NamingFormat,
 )
@@ -50,6 +52,8 @@ def autocrud():
     crud.add_route_template(UpdateRouteTemplate())
     crud.add_route_template(DeleteRouteTemplate())
     crud.add_route_template(ListRouteTemplate())
+    crud.add_route_template(SwitchRevisionRouteTemplate())
+    crud.add_route_template(RestoreRouteTemplate())
 
     # 添加 User 模型
     crud.add_model(User, storage_factory=create_user_storage)
@@ -488,6 +492,116 @@ class TestRouteTemplates:
 
         response = client.post("/user", json=invalid_data)
         assert response.status_code == 422  # msgspec 驗證錯誤
+
+    def test_switch_revision(self, client):
+        """測試切換資源版本"""
+        # 創建一個用戶
+        user_data_v1 = {"name": "User V1", "email": "v1@example.com", "age": 25}
+        create_response = client.post("/user", json=user_data_v1)
+        resource_id = create_response.json()["resource_id"]
+        revision_id_v1 = create_response.json()["revision_id"]
+
+        # 更新用戶，創建第二個版本
+        user_data_v2 = {"name": "User V2", "email": "v2@example.com", "age": 30}
+        update_response = client.put(f"/user/{resource_id}", json=user_data_v2)
+        revision_id_v2 = update_response.json()["revision_id"]
+
+        # 驗證當前資料是 V2
+        response = client.get(f"/user/{resource_id}?response_type=data")
+        assert response.status_code == 200
+        assert response.json()["name"] == "User V2"
+
+        # 切換到 V1
+        switch_response = client.post(f"/user/{resource_id}/switch/{revision_id_v1}")
+        assert switch_response.status_code == 200
+        switch_data = switch_response.json()
+        assert switch_data["resource_id"] == resource_id
+        assert switch_data["current_revision_id"] == revision_id_v1
+        assert "Successfully switched" in switch_data["message"]
+
+        # 驗證當前資料現在是 V1
+        response = client.get(f"/user/{resource_id}?response_type=data")
+        assert response.status_code == 200
+        assert response.json()["name"] == "User V1"
+        assert response.json()["age"] == 25
+
+        # 切換回 V2
+        switch_response = client.post(f"/user/{resource_id}/switch/{revision_id_v2}")
+        assert switch_response.status_code == 200
+
+        # 驗證當前資料又變回 V2
+        response = client.get(f"/user/{resource_id}?response_type=data")
+        assert response.status_code == 200
+        assert response.json()["name"] == "User V2"
+        assert response.json()["age"] == 30
+
+    def test_switch_revision_not_found(self, client):
+        """測試切換到不存在的版本"""
+        # 創建一個用戶
+        user_data = {"name": "Test User", "email": "test@example.com", "age": 25}
+        create_response = client.post("/user", json=user_data)
+        resource_id = create_response.json()["resource_id"]
+
+        # 嘗試切換到不存在的版本
+        response = client.post(f"/user/{resource_id}/switch/nonexistent-revision")
+        assert response.status_code == 400
+
+    def test_switch_revision_resource_not_found(self, client):
+        """測試切換不存在資源的版本"""
+        response = client.post("/user/nonexistent/switch/some-revision")
+        assert response.status_code == 400
+
+    def test_restore_resource(self, client):
+        """測試恢復已刪除的資源"""
+        # 創建一個用戶
+        user_data = {"name": "Test User", "email": "test@example.com", "age": 25}
+        create_response = client.post("/user", json=user_data)
+        resource_id = create_response.json()["resource_id"]
+
+        # 驗證用戶存在
+        response = client.get(f"/user/{resource_id}")
+        assert response.status_code == 200
+        assert response.json()["name"] == "Test User"
+
+        # 刪除用戶
+        delete_response = client.delete(f"/user/{resource_id}")
+        assert delete_response.status_code == 200
+
+        # 驗證用戶已被刪除
+        response = client.get(f"/user/{resource_id}")
+        assert response.status_code == 404
+
+        # 恢復用戶
+        restore_response = client.post(f"/user/{resource_id}/restore")
+        assert restore_response.status_code == 200
+        restore_data = restore_response.json()
+        assert restore_data["resource_id"] == resource_id
+        assert restore_data["is_deleted"] is False
+        assert "Successfully restored" in restore_data["message"]
+
+        # 驗證用戶已被恢復
+        response = client.get(f"/user/{resource_id}")
+        assert response.status_code == 200
+        assert response.json()["name"] == "Test User"
+
+    def test_restore_resource_not_found(self, client):
+        """測試恢復不存在的資源"""
+        response = client.post("/user/nonexistent/restore")
+        assert response.status_code == 400
+
+    def test_restore_resource_not_deleted(self, client):
+        """測試恢復未被刪除的資源"""
+        # 創建一個用戶
+        user_data = {"name": "Test User", "email": "test@example.com", "age": 25}
+        create_response = client.post("/user", json=user_data)
+        resource_id = create_response.json()["resource_id"]
+
+        # 嘗試恢復未被刪除的資源（應該正常執行，但狀態不變）
+        restore_response = client.post(f"/user/{resource_id}/restore")
+        assert restore_response.status_code == 200
+        restore_data = restore_response.json()
+        assert restore_data["resource_id"] == resource_id
+        assert restore_data["is_deleted"] is False
 
 
 class TestAutoCRUD:
