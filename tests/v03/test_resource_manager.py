@@ -81,6 +81,24 @@ def new_data() -> Data:
     )
 
 
+def reset_and_get_pg_dsn():
+    pg_dsn = "postgresql://postgres:mysecretpassword@localhost:5432/your_database"
+    pg_conn = psycopg2.connect(pg_dsn)
+    with pg_conn.cursor() as cur:
+        cur.execute("DROP TABLE IF EXISTS resource_meta;")
+        pg_conn.commit()
+    pg_conn.close()
+    return pg_dsn
+
+
+def reset_and_get_redis_url():
+    redis_url = "redis://localhost:6379/0"
+    client = redis.Redis.from_url(redis_url)
+    client.flushall()
+    client.close()
+    return redis_url
+
+
 def get_meta_store(store_type: str, tmpdir: Path):
     """Fixture to provide a fast store for testing."""
     if store_type == "memory":
@@ -89,28 +107,34 @@ def get_meta_store(store_type: str, tmpdir: Path):
         return DFMemoryMetaStore(encoding="msgpack")
     elif store_type == "sql3-mem":
         return MemorySqliteMetaStore(encoding="msgpack")
+    elif store_type == "memory-pg":
+        return FastSlowMetaStore(
+            fast_store=MemoryMetaStore(encoding="msgpack"),
+            slow_store=PostgresMetaStore(
+                pg_dsn=reset_and_get_pg_dsn(), encoding="msgpack"
+            ),
+        )
     elif store_type == "sql3-file":
         return FileSqliteMetaStore(db_filepath=tmpdir / "meta.db", encoding="msgpack")
-    elif store_type == "redis":
-        redis_url = "redis://localhost:6379/0"
-        client = redis.Redis.from_url(redis_url)
-        client.flushall()
-        client.close()
-        return RedisMetaStore(redis_url=redis_url, encoding="msgpack")
-    elif store_type == "redis-pg":
-        redis_url = "redis://localhost:6379/0"
-        client = redis.Redis.from_url(redis_url)
-        client.flushall()
-        client.close()
-        pg_dsn = "postgresql://postgres:mysecretpassword@localhost:5432/your_database"
-        pg_conn = psycopg2.connect(pg_dsn)
-        with pg_conn.cursor() as cur:
-            cur.execute("DROP TABLE IF EXISTS resource_meta;")
-            pg_conn.commit()
-        pg_conn.close()
+    elif store_type == "disk-sql3file":
+        d = tmpdir / faker.pystr()
+        d.mkdir()
         return FastSlowMetaStore(
-            fast_store=RedisMetaStore(redis_url=redis_url, encoding="msgpack"),
-            slow_store=PostgresMetaStore(pg_dsn=pg_dsn, encoding="msgpack"),
+            fast_store=DiskMetaStore(encoding="msgpack", rootdir=d),
+            slow_store=FileSqliteMetaStore(
+                db_filepath=d / "meta.db", encoding="msgpack"
+            ),
+        )
+    elif store_type == "redis":
+        return RedisMetaStore(redis_url=reset_and_get_redis_url(), encoding="msgpack")
+    elif store_type == "redis-pg":
+        return FastSlowMetaStore(
+            fast_store=RedisMetaStore(
+                redis_url=reset_and_get_redis_url(), encoding="msgpack"
+            ),
+            slow_store=PostgresMetaStore(
+                pg_dsn=reset_and_get_pg_dsn(), encoding="msgpack"
+            ),
         )
     else:
         d = tmpdir / faker.pystr()
@@ -881,7 +905,17 @@ def my_tmpdir():
 
 @pytest.mark.parametrize(
     "store_type",
-    ["memory", "sql3-mem", "sql3-file", "redis", "dfm", "disk", "redis-pg"],
+    [
+        "memory",
+        "memory-pg",
+        "sql3-mem",
+        "sql3-file",
+        "disk-sql3file",
+        "redis",
+        "dfm",
+        "disk",
+        "redis-pg",
+    ],
 )
 class TestMetaStore:
     @pytest.fixture(autouse=True)
@@ -918,17 +952,11 @@ class TestMetaStore:
                 "search_time": dt.timedelta(milliseconds=0.8),
                 "search_wait": dt.timedelta(seconds=0),
             },
-            "sql3-file": {
-                "size": 10000,
-                "create_time": dt.timedelta(seconds=15),
-                "search_time": dt.timedelta(milliseconds=0.8),
-                "search_wait": dt.timedelta(seconds=0),
-            },
-            "redis": {
+            "memory-pg": {
                 "size": 100000,
-                "create_time": dt.timedelta(seconds=8),
-                "search_time": dt.timedelta(milliseconds=6800),
-                "search_wait": dt.timedelta(seconds=0),
+                "create_time": dt.timedelta(seconds=0.12),
+                "search_time": dt.timedelta(milliseconds=4),
+                "search_wait": dt.timedelta(seconds=10),
             },
             "dfm": {
                 "size": 100000,
@@ -936,10 +964,28 @@ class TestMetaStore:
                 "search_time": dt.timedelta(milliseconds=40),
                 "search_wait": dt.timedelta(seconds=0),
             },
-            "disk": {
+            "sql3-file": {
                 "size": 10000,
-                "create_time": dt.timedelta(seconds=0.33),
-                "search_time": dt.timedelta(milliseconds=100),
+                "create_time": dt.timedelta(seconds=15),
+                "search_time": dt.timedelta(milliseconds=0.8),
+                "search_wait": dt.timedelta(seconds=0),
+            },
+            "disk": {
+                "size": 100000,
+                "create_time": dt.timedelta(seconds=3.3),
+                "search_time": dt.timedelta(seconds=1.6),
+                "search_wait": dt.timedelta(seconds=0),
+            },
+            "disk-sql3file": {
+                "size": 100000,
+                "create_time": dt.timedelta(seconds=5.8),
+                "search_time": dt.timedelta(milliseconds=5),
+                "search_wait": dt.timedelta(seconds=10),
+            },
+            "redis": {
+                "size": 100000,
+                "create_time": dt.timedelta(seconds=8),
+                "search_time": dt.timedelta(milliseconds=6800),
                 "search_wait": dt.timedelta(seconds=0),
             },
             "redis-pg": {

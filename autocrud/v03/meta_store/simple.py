@@ -1,4 +1,5 @@
-from collections.abc import Generator
+from collections.abc import Generator, Iterable
+from contextlib import contextmanager, suppress
 from pathlib import Path
 from typing import TypeVar
 from msgspec import UNSET
@@ -6,7 +7,8 @@ import pandas as pd
 
 from autocrud.v03.basic import (
     Encoding,
-    IMetaStore,
+    IFastMetaStore,
+    ISlowMetaStore,
     MsgspecSerializer,
     ResourceMeta,
     ResourceMetaSearchQuery,
@@ -17,7 +19,7 @@ from autocrud.v03.basic import (
 T = TypeVar("T")
 
 
-class MemoryMetaStore(IMetaStore):
+class MemoryMetaStore(IFastMetaStore):
     def __init__(self, encoding: Encoding = Encoding.json):
         self._serializer = MsgspecSerializer(
             encoding=encoding, resource_type=ResourceMeta
@@ -48,8 +50,14 @@ class MemoryMetaStore(IMetaStore):
         results.sort(key=get_sort_fn([] if query.sorts is UNSET else query.sorts))
         yield from results[query.offset : query.offset + query.limit]
 
+    @contextmanager
+    def get_then_delete(self) -> Generator[Iterable[ResourceMeta]]:
+        """获取所有元数据然后删除，用于快速存储的批量同步"""
+        yield (self._serializer.decode(v) for v in self._store.values())
+        self._store.clear()
 
-class DFMemoryMetaStore(IMetaStore):
+
+class DFMemoryMetaStore(ISlowMetaStore):
     def __init__(self, encoding: Encoding = Encoding.json):
         self._serializer = MsgspecSerializer(
             encoding=encoding, resource_type=ResourceMeta
@@ -140,16 +148,17 @@ class DFMemoryMetaStore(IMetaStore):
         yield from results[query.offset : query.offset + query.limit]
 
 
-class DiskMetaStore(IMetaStore):
+class DiskMetaStore(IFastMetaStore):
     def __init__(self, *, encoding: Encoding = Encoding.json, rootdir: Path | str):
         self._serializer = MsgspecSerializer(
             encoding=encoding, resource_type=ResourceMeta
         )
         self._rootdir = Path(rootdir)
         self._rootdir.mkdir(parents=True, exist_ok=True)
+        self._suffix = ".data"
 
     def _get_path(self, pk: str) -> Path:
-        return self._rootdir / f"{pk}.data"
+        return self._rootdir / f"{pk}{self._suffix}"
 
     def __contains__(self, pk: str):
         path = self._get_path(pk)
@@ -170,18 +179,27 @@ class DiskMetaStore(IMetaStore):
         path.unlink()
 
     def __iter__(self) -> Generator[str]:
-        for file in self._rootdir.glob("*.data"):
+        for file in self._rootdir.glob(f"*{self._suffix}"):
             yield file.stem
 
     def __len__(self) -> int:
-        return len(list(self._rootdir.glob("*.data")))
+        return len(list(self._rootdir.glob(f"*{self._suffix}")))
 
     def iter_search(self, query: ResourceMetaSearchQuery) -> Generator[ResourceMeta]:
         results: list[ResourceMeta] = []
-        for file in self._rootdir.glob("*.data"):
+        for file in self._rootdir.glob(f"*{self._suffix}"):
             with file.open("rb") as f:
                 meta = self._serializer.decode(f.read())
                 if is_match_query(meta, query):
                     results.append(meta)
         results.sort(key=get_sort_fn([] if query.sorts is UNSET else query.sorts))
         yield from results[query.offset : query.offset + query.limit]
+
+    @contextmanager
+    def get_then_delete(self) -> Generator[Iterable[ResourceMeta]]:
+        """获取所有元数据然后删除，用于快速存储的批量同步"""
+        pks = list(self)
+        yield (self[pk] for pk in pks)
+        for pk in pks:
+            with suppress(FileNotFoundError):
+                del self[pk]

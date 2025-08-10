@@ -1,12 +1,15 @@
-from collections.abc import Generator
+from collections import defaultdict
+from collections.abc import Callable, Generator
+import functools
 from pathlib import Path
 import sqlite3
+import threading
 from typing import TypeVar
 from msgspec import UNSET
 
 from autocrud.v03.basic import (
     Encoding,
-    IMetaStore,
+    ISlowMetaStore,
     MsgspecSerializer,
     ResourceMeta,
     ResourceMetaSearchQuery,
@@ -16,14 +19,21 @@ from autocrud.v03.basic import (
 T = TypeVar("T")
 
 
-class SqliteMetaStore(IMetaStore):
-    def __init__(self, *, conn: sqlite3.Connection, encoding: Encoding = Encoding.json):
+class SqliteMetaStore(ISlowMetaStore):
+    def __init__(
+        self,
+        *,
+        get_conn: Callable[[], sqlite3.Connection],
+        encoding: Encoding = Encoding.json,
+    ):
         self._serializer = MsgspecSerializer(
             encoding=encoding, resource_type=ResourceMeta
         )
-        self._conn = conn
-        self._conn.execute("""
-            CREATE TABLE resource_meta (
+        self._get_conn = get_conn
+        self._conns: dict[int, sqlite3.Connection] = defaultdict(self._get_conn)
+        _conn = self._conns[threading.get_ident()]
+        _conn.execute("""
+            CREATE TABLE IF NOT EXISTS resource_meta (
                 resource_id TEXT PRIMARY KEY,
                 data BLOB NOT NULL,
                 created_time TEXT NOT NULL,
@@ -33,24 +43,25 @@ class SqliteMetaStore(IMetaStore):
                 is_deleted INTEGER NOT NULL
             )
         """)
-        self._conn.execute("""
-            CREATE INDEX idx_created_time ON resource_meta(created_time)
+        _conn.execute("""
+            CREATE INDEX IF NOT EXISTS idx_created_time ON resource_meta(created_time)
         """)
-        self._conn.execute("""
-            CREATE INDEX idx_updated_time ON resource_meta(updated_time)
+        _conn.execute("""
+            CREATE INDEX IF NOT EXISTS idx_updated_time ON resource_meta(updated_time)
         """)
-        self._conn.execute("""
-            CREATE INDEX idx_created_by ON resource_meta(created_by)
+        _conn.execute("""
+            CREATE INDEX IF NOT EXISTS idx_created_by ON resource_meta(created_by)
         """)
-        self._conn.execute("""
-            CREATE INDEX idx_updated_by ON resource_meta(updated_by)
+        _conn.execute("""
+            CREATE INDEX IF NOT EXISTS idx_updated_by ON resource_meta(updated_by)
         """)
-        self._conn.execute("""
-            CREATE INDEX idx_is_deleted ON resource_meta(is_deleted)
+        _conn.execute("""
+            CREATE INDEX IF NOT EXISTS idx_is_deleted ON resource_meta(is_deleted)
         """)
 
     def __getitem__(self, pk: str) -> ResourceMeta:
-        cursor = self._conn.execute(
+        _conn = self._conns[threading.get_ident()]
+        cursor = _conn.execute(
             "SELECT data FROM resource_meta WHERE resource_id = ?", (pk,)
         )
         row = cursor.fetchone()
@@ -60,7 +71,8 @@ class SqliteMetaStore(IMetaStore):
 
     def __setitem__(self, pk: str, meta: ResourceMeta) -> None:
         data = self._serializer.encode(meta)
-        self._conn.execute(
+        _conn = self._conns[threading.get_ident()]
+        _conn.execute(
             """
             INSERT OR REPLACE INTO resource_meta 
             (resource_id, data, created_time, updated_time, created_by, updated_by, is_deleted)
@@ -76,23 +88,52 @@ class SqliteMetaStore(IMetaStore):
                 1 if meta.is_deleted else 0,
             ),
         )
-        self._conn.commit()
+        _conn.commit()
+
+    def save_many(self, metas):
+        """批量保存元数据到 SQLite（ISlowMetaStore 接口方法）"""
+        if not metas:
+            return
+
+        sql = """
+        INSERT OR REPLACE INTO resource_meta 
+        (resource_id, data, created_time, updated_time, created_by, updated_by, is_deleted)
+        VALUES (?, ?, ?, ?, ?, ?, ?)
+        """
+        _conn = self._conns[threading.get_ident()]
+        with _conn:
+            _conn.executemany(
+                sql,
+                [
+                    (
+                        meta.resource_id,
+                        self._serializer.encode(meta),
+                        meta.created_time.isoformat(),
+                        meta.updated_time.isoformat(),
+                        meta.created_by,
+                        meta.updated_by,
+                        1 if meta.is_deleted else 0,
+                    )
+                    for meta in metas
+                ],
+            )
 
     def __delitem__(self, pk: str) -> None:
-        cursor = self._conn.execute(
-            "DELETE FROM resource_meta WHERE resource_id = ?", (pk,)
-        )
+        _conn = self._conns[threading.get_ident()]
+        cursor = _conn.execute("DELETE FROM resource_meta WHERE resource_id = ?", (pk,))
         if cursor.rowcount == 0:
             raise KeyError(pk)
-        self._conn.commit()
+        _conn.commit()
 
     def __iter__(self) -> Generator[str]:
-        cursor = self._conn.execute("SELECT resource_id FROM resource_meta")
+        _conn = self._conns[threading.get_ident()]
+        cursor = _conn.execute("SELECT resource_id FROM resource_meta")
         for row in cursor:
             yield row[0]
 
     def __len__(self) -> int:
-        cursor = self._conn.execute("SELECT COUNT(*) FROM resource_meta")
+        _conn = self._conns[threading.get_ident()]
+        cursor = _conn.execute("SELECT COUNT(*) FROM resource_meta")
         return cursor.fetchone()[0]
 
     def iter_search(self, query: ResourceMetaSearchQuery) -> Generator[ResourceMeta]:
@@ -150,7 +191,7 @@ class SqliteMetaStore(IMetaStore):
         sql = f"SELECT data FROM resource_meta {where_clause} {order_clause} LIMIT ? OFFSET ?"
         params.append(query.limit)
         params.append(query.offset)
-        cursor = self._conn.execute(sql, params)
+        cursor = self._conns[threading.get_ident()].execute(sql, params)
 
         for row in cursor:
             yield self._serializer.decode(row[0])
@@ -158,11 +199,11 @@ class SqliteMetaStore(IMetaStore):
 
 class FileSqliteMetaStore(SqliteMetaStore):
     def __init__(self, *, db_filepath: Path, encoding=Encoding.json):
-        conn = sqlite3.connect(db_filepath)
-        super().__init__(conn=conn, encoding=encoding)
+        get_conn = functools.partial(sqlite3.connect, db_filepath)
+        super().__init__(get_conn=get_conn, encoding=encoding)
 
 
 class MemorySqliteMetaStore(SqliteMetaStore):
     def __init__(self, *, encoding=Encoding.json):
-        conn = sqlite3.connect(":memory:")
-        super().__init__(conn=conn, encoding=encoding)
+        get_conn = functools.partial(sqlite3.connect, ":memory:")
+        super().__init__(get_conn=get_conn, encoding=encoding)
