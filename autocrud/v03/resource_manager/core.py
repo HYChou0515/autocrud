@@ -79,7 +79,7 @@ class ResourceManager(IResourceManager[T], Generic[T]):
         self,
         resource_type: type[T],
         *,
-        storage: IStorage,
+        storage: IStorage[T],
     ):
         self.user_ctx = Ctx[str]("user_ctx")
         self.now_ctx = Ctx[dt.datetime]("now_ctx")
