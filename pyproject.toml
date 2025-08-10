@@ -62,8 +62,12 @@ dev = [
     "ipython>=9.4.0",
     "linkify-it-py>=2.0.3",
     "myst-parser>=4.0.1",
+    "pandas>=2.3.1",
+    "polars>=1.32.2",
+    "psycopg2-binary>=2.9.10",
     "pytest>=8.4.1",
     "pytest-asyncio>=1.1.0",
+    "redis>=6.4.0",
     "ruff>=0.12.4",
     "sphinx>=8.2.3",
     "sphinx-autodoc-typehints>=3.2.0",
@@ -92,4 +96,21 @@ exclude_also = [
     '@(abc\.)?abstractmethod',
     "except ImportError:",
     "warnings.warn.*AutoCRUDWarning",
+]
+
+[tool.ruff.lint.pydocstyle]
+convention = "google"
+
+[tool.ruff.lint.per-file-ignores]
+"tests/*" = [
+    "F841", # Local variable name is assigned to but never used
+    # we are testing the code, so we need to use `assert` in tests
+    "S101", # Use of assert detected.
+    # allow import inside function
+    "PLC0415", # `import` should be at the top-level of a file
+    # we use pickle and dill to serialize objects in tests
+    "S301", # `pickle` and modules that wrap it can be unsafe when used to deserialize untrusted data, possible security issue
+    "S403", # `pickle`, `cPickle`, `dill`, and `shelve` modules are possibly insecure
+    # magic value comparison is allowed in tests
+    "PLR2004", # Magic value used in comparison, consider replacing `11` with a constant variable
 ]

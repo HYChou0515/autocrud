@@ -1,19 +1,45 @@
+from pathlib import Path
+from uuid import uuid4
 from msgspec import UNSET, Struct
 import msgspec
+import psycopg2
 import pytest
-from autocrud.v03.core import (
+import redis
+from autocrud.v03.resource_manager.basic import (
+    ResourceMetaSearchSort,
+    ResourceMetaSortDirection,
+    ResourceMetaSortKey,
+)
+import time
+from autocrud.v03.resource_manager.core import (
+    IResourceStore,
     ResourceIDNotFoundError,
     ResourceIsDeletedError,
     ResourceManager,
     ResourceMeta,
     ResourceMetaSearchQuery,
-    ResourceMetaSearchSort,
-    ResourceMetaSortKey,
-    ResourceMetaSortDirection,
+    SimpleStorage,
 )
 import datetime as dt
 from faker import Faker
 import jsonpatch
+
+from autocrud.v03.resource_manager.meta_store.fast_slow import FastSlowMetaStore
+from autocrud.v03.resource_manager.meta_store.postgres import PostgresMetaStore
+from autocrud.v03.resource_manager.meta_store.redis import RedisMetaStore
+from autocrud.v03.resource_manager.meta_store.simple import (
+    DFMemoryMetaStore,
+    DiskMetaStore,
+    MemoryMetaStore,
+)
+from autocrud.v03.resource_manager.meta_store.sqlite3 import (
+    FileSqliteMetaStore,
+    MemorySqliteMetaStore,
+)
+from autocrud.v03.resource_manager.resource_store.simple import (
+    DiskResourceStore,
+    MemoryResourceStore,
+)
 
 
 class InnerData(Struct):
@@ -60,10 +86,96 @@ def new_data() -> Data:
     )
 
 
-class Test:
+def reset_and_get_pg_dsn():
+    pg_dsn = "postgresql://postgres:mysecretpassword@localhost:5432/your_database"
+    pg_conn = psycopg2.connect(pg_dsn)
+    with pg_conn.cursor() as cur:
+        cur.execute("DROP TABLE IF EXISTS resource_meta;")
+        pg_conn.commit()
+    pg_conn.close()
+    return pg_dsn
+
+
+def reset_and_get_redis_url():
+    redis_url = "redis://localhost:6379/0"
+    client = redis.Redis.from_url(redis_url)
+    client.flushall()
+    client.close()
+    return redis_url
+
+
+def get_meta_store(store_type: str, tmpdir: Path):
+    """Fixture to provide a fast store for testing."""
+    if store_type == "memory":
+        return MemoryMetaStore(encoding="msgpack")
+    elif store_type == "dfm":
+        return DFMemoryMetaStore(encoding="msgpack")
+    elif store_type == "sql3-mem":
+        return MemorySqliteMetaStore(encoding="msgpack")
+    elif store_type == "memory-pg":
+        return FastSlowMetaStore(
+            fast_store=MemoryMetaStore(encoding="msgpack"),
+            slow_store=PostgresMetaStore(
+                pg_dsn=reset_and_get_pg_dsn(), encoding="msgpack"
+            ),
+        )
+    elif store_type == "sql3-file":
+        return FileSqliteMetaStore(db_filepath=tmpdir / "meta.db", encoding="msgpack")
+    elif store_type == "disk-sql3file":
+        d = tmpdir / faker.pystr()
+        d.mkdir()
+        return FastSlowMetaStore(
+            fast_store=DiskMetaStore(encoding="msgpack", rootdir=d),
+            slow_store=FileSqliteMetaStore(
+                db_filepath=d / "meta.db", encoding="msgpack"
+            ),
+        )
+    elif store_type == "redis":
+        return RedisMetaStore(redis_url=reset_and_get_redis_url(), encoding="msgpack")
+    elif store_type == "redis-pg":
+        return FastSlowMetaStore(
+            fast_store=RedisMetaStore(
+                redis_url=reset_and_get_redis_url(), encoding="msgpack"
+            ),
+            slow_store=PostgresMetaStore(
+                pg_dsn=reset_and_get_pg_dsn(), encoding="msgpack"
+            ),
+        )
+    else:
+        d = tmpdir / faker.pystr()
+        d.mkdir()
+        return DiskMetaStore(encoding="msgpack", rootdir=d)
+
+
+def get_resource_store(store_type: str, tmpdir: Path) -> IResourceStore:
+    """Fixture to provide a fast store for testing."""
+    if store_type == "memory":
+        return MemoryResourceStore(Data, encoding="msgpack")
+    else:
+        d = tmpdir / faker.pystr()
+        d.mkdir()
+        return DiskResourceStore(Data, encoding="msgpack", rootdir=d)
+
+
+@pytest.mark.parametrize(
+    "meta_store_type", ["memory", "sql3-mem", "sql3-file", "redis", "disk", "redis-pg"]
+)
+@pytest.mark.parametrize("res_store_type", ["memory", "disk"])
+class TestResourceManager:
     @pytest.fixture(autouse=True)
-    def setup_method(self):
-        self.mgr = ResourceManager[Data](Data)
+    def setup_method(
+        self,
+        meta_store_type: str,
+        res_store_type: str,
+        my_tmpdir: str,
+    ):
+        meta_store = get_meta_store(meta_store_type, tmpdir=my_tmpdir)
+        resource_store = get_resource_store(res_store_type, tmpdir=my_tmpdir)
+        storage = SimpleStorage(
+            meta_store=meta_store,
+            resource_store=resource_store,
+        )
+        self.mgr = ResourceManager(Data, storage=storage)
 
     def create(self, data: Data):
         user = faker.user_name()
@@ -562,14 +674,13 @@ class Test:
         query = ResourceMetaSearchQuery()
         with self.mgr.meta_provide(user1, now1):
             results = self.mgr.search_resources(query)
+        results_id = [meta.resource_id for meta in results]
 
         # 應該返回兩個結果（因為 limit=10，只有2個資源）
-        assert len(results) == 2
-        assert isinstance(results[0], str)
-        assert isinstance(results[1], str)
+        assert len(results_id) == 2
         # 結果應該包含兩個資源的 ID
-        assert meta1.resource_id in results
-        assert meta2.resource_id in results
+        assert meta1.resource_id in results_id
+        assert meta2.resource_id in results_id
 
     def test_search_resources_with_limit_and_offset(self):
         """測試分頁功能"""
@@ -611,16 +722,18 @@ class Test:
         query = ResourceMetaSearchQuery(is_deleted=False)
         user, now = faker.user_name(), faker.date_time()
         with self.mgr.meta_provide(user, now):
-            active_results = self.mgr.search_resources(query)
-        assert meta2.resource_id in active_results
-        assert meta1.resource_id not in active_results
+            results = self.mgr.search_resources(query)
+        results_id = [meta.resource_id for meta in results]
+        assert meta2.resource_id in results_id
+        assert meta1.resource_id not in results_id
 
         # 搜索已刪除的資源
         query = ResourceMetaSearchQuery(is_deleted=True)
         with self.mgr.meta_provide(user, now):
-            deleted_results = self.mgr.search_resources(query)
-        assert meta1.resource_id in deleted_results
-        assert meta2.resource_id not in deleted_results
+            results = self.mgr.search_resources(query)
+        results_id = [meta.resource_id for meta in results]
+        assert meta1.resource_id in results_id
+        assert meta2.resource_id not in results_id
 
     def test_search_resources_by_user(self):
         """測試按用戶搜索"""
@@ -642,15 +755,17 @@ class Test:
         search_user, search_now = faker.user_name(), faker.date_time()
         with self.mgr.meta_provide(search_user, search_now):
             results = self.mgr.search_resources(query)
-        assert meta1.resource_id in results
-        assert meta2.resource_id not in results
+        results_id = [meta.resource_id for meta in results]
+        assert meta1.resource_id in results_id
+        assert meta2.resource_id not in results_id
 
         # 按多個創建者搜索
         query = ResourceMetaSearchQuery(created_bys=[user1, user2])
         with self.mgr.meta_provide(search_user, search_now):
             results = self.mgr.search_resources(query)
-        assert meta1.resource_id in results
-        assert meta2.resource_id in results
+        results_id = [meta.resource_id for meta in results]
+        assert meta1.resource_id in results_id
+        assert meta2.resource_id in results_id
 
     def test_search_resources_by_time_range(self):
         """測試按時間範圍搜索"""
@@ -680,11 +795,12 @@ class Test:
         search_user, search_now = faker.user_name(), faker.date_time()
         with self.mgr.meta_provide(search_user, search_now):
             results = self.mgr.search_resources(query)
+        results_id = [meta.resource_id for meta in results]
 
         # 只有 meta2 應該在範圍內
-        assert meta2.resource_id in results
-        assert meta1.resource_id not in results
-        assert meta3.resource_id not in results
+        assert meta2.resource_id in results_id
+        assert meta1.resource_id not in results_id
+        assert meta3.resource_id not in results_id
 
     def test_search_resources_with_sorting(self):
         """測試排序功能"""
@@ -723,8 +839,8 @@ class Test:
         assert results_asc == results_desc[::-1]
         # 都應該包含所有資源ID
         expected_ids = {meta.resource_id for meta in metas}
-        assert set(results_asc) == expected_ids
-        assert set(results_desc) == expected_ids
+        assert {r.resource_id for r in results_asc} == expected_ids
+        assert {r.resource_id for r in results_desc} == expected_ids
 
     def test_search_resources_complex_query(self):
         """測試複雜搜索查詢"""
@@ -760,11 +876,12 @@ class Test:
         search_user, search_now = faker.user_name(), faker.date_time()
         with self.mgr.meta_provide(search_user, search_now):
             results = self.mgr.search_resources(query)
+        results_id = [meta.resource_id for meta in results]
 
         # 只有 meta2 應該匹配（Alice 創建、未刪除、在時間範圍內）
-        assert meta2.resource_id in results
-        assert meta1.resource_id not in results  # 已刪除
-        assert meta3.resource_id not in results  # 不是 Alice 創建的
+        assert meta2.resource_id in results_id
+        assert meta1.resource_id not in results_id  # 已刪除
+        assert meta3.resource_id not in results_id  # 不是 Alice 創建的
 
     def test_search_resources_empty_results(self):
         """測試沒有匹配結果的搜索"""
@@ -780,3 +897,149 @@ class Test:
 
         assert len(results) == 0
         assert isinstance(results, list)
+
+
+@pytest.fixture
+def my_tmpdir():
+    """Fixture to provide a temporary directory for testing."""
+    import tempfile
+
+    with tempfile.TemporaryDirectory(dir="./") as d:
+        yield Path(d)
+
+
+@pytest.mark.parametrize(
+    "store_type",
+    [
+        "memory",
+        "memory-pg",
+        "sql3-mem",
+        "sql3-file",
+        "disk-sql3file",
+        "redis",
+        "dfm",
+        "disk",
+        "redis-pg",
+    ],
+)
+class TestMetaStore:
+    @pytest.fixture(autouse=True)
+    def setup_method(
+        self,
+        store_type: str,
+        my_tmpdir: str,
+    ):
+        self.meta_store = get_meta_store(store_type, tmpdir=my_tmpdir)
+        self.store_type = store_type
+
+    def test_large_size_behavior(self):
+        def get_fake_meta():
+            return ResourceMeta(
+                resource_id=str(uuid4()),
+                current_revision_id=str(uuid4()),
+                total_revision_count=1,
+                created_time=dt.datetime.now(),
+                created_by="a",
+                updated_time=dt.datetime.now(),
+                updated_by="a",
+            )
+
+        expected_spec = {
+            "memory": {
+                "size": 1000000,
+                "create_time": dt.timedelta(seconds=1),
+                "search_time": dt.timedelta(milliseconds=400),
+                "search_wait": dt.timedelta(seconds=0),
+            },
+            "sql3-mem": {
+                "size": 100000,
+                "create_time": dt.timedelta(seconds=3.2),
+                "search_time": dt.timedelta(milliseconds=0.8),
+                "search_wait": dt.timedelta(seconds=0),
+            },
+            "memory-pg": {
+                "size": 100000,
+                "create_time": dt.timedelta(seconds=0.12),
+                "search_time": dt.timedelta(milliseconds=4),
+                "search_wait": dt.timedelta(seconds=10),
+            },
+            "dfm": {
+                "size": 100000,
+                "create_time": dt.timedelta(seconds=0.45),
+                "search_time": dt.timedelta(milliseconds=40),
+                "search_wait": dt.timedelta(seconds=0),
+            },
+            "sql3-file": {
+                "size": 10000,
+                "create_time": dt.timedelta(seconds=15),
+                "search_time": dt.timedelta(milliseconds=0.8),
+                "search_wait": dt.timedelta(seconds=0),
+            },
+            "disk": {
+                "size": 100000,
+                "create_time": dt.timedelta(seconds=3.3),
+                "search_time": dt.timedelta(seconds=1.6),
+                "search_wait": dt.timedelta(seconds=0),
+            },
+            "disk-sql3file": {
+                "size": 100000,
+                "create_time": dt.timedelta(seconds=5.8),
+                "search_time": dt.timedelta(milliseconds=5),
+                "search_wait": dt.timedelta(seconds=10),
+            },
+            "redis": {
+                "size": 100000,
+                "create_time": dt.timedelta(seconds=8),
+                "search_time": dt.timedelta(milliseconds=6800),
+                "search_wait": dt.timedelta(seconds=0),
+            },
+            "redis-pg": {
+                "size": 100000,
+                "create_time": dt.timedelta(seconds=12),
+                "search_time": dt.timedelta(milliseconds=4.2),
+                "search_wait": dt.timedelta(seconds=2),
+            },
+        }
+        minimum_time_rate = 0.6  # time should be at least x% of expected time
+
+        trials = expected_spec[self.store_type]["size"]
+        expected_create_time = expected_spec[self.store_type]["create_time"]
+        expected_search_time = expected_spec[self.store_type]["search_time"]
+        search_wait = expected_spec[self.store_type]["search_wait"]
+
+        all_meta: list[ResourceMeta] = []
+        tt = dt.timedelta(0)
+        for _ in range(trials):
+            meta = get_fake_meta()
+            all_meta.append(meta)
+            st = dt.datetime.now()
+            self.meta_store[meta.resource_id] = meta
+            tt += dt.datetime.now() - st
+        assert expected_create_time * minimum_time_rate < tt < expected_create_time, (
+            f"Benchmark failed, took {tt.total_seconds()} seconds"
+        )
+
+        times = sorted(all_meta, key=lambda x: x.created_time)[567 : 567 + 1000]
+
+        metas_by_time = sorted(times, key=lambda x: x.resource_id)
+
+        time.sleep(search_wait.total_seconds())
+        st = dt.datetime.now()
+        got = [
+            k
+            for k in self.meta_store.iter_search(
+                ResourceMetaSearchQuery(
+                    created_time_start=times[0].created_time,
+                    created_time_end=times[-1].created_time,
+                    sorts=[
+                        ResourceMetaSearchSort(
+                            key=ResourceMetaSortKey.resource_id,
+                            direction=ResourceMetaSortDirection.ascending,
+                        )
+                    ],
+                )
+            )
+        ]
+        tt = dt.datetime.now() - st
+        assert got == metas_by_time[:10]
+        assert expected_search_time * minimum_time_rate < tt < expected_search_time
