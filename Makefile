@@ -12,7 +12,8 @@ help:
 	@echo "AutoCRUD 開發與文檔工具"
 	@echo ""
 	@echo "開發工具："
-	@echo "  test         執行所有測試"
+	@echo "  test         執行所有測試（排除基準測試）"
+	@echo "  test-benchmark 執行基準測試（需要外部系統依賴）"
 	@echo "  coverage     執行測試並生成覆蓋率報告"
 	@echo "  cov-html     生成 HTML 覆蓋率報告"
 	@echo "  style        格式化程式碼並修復程式碼風格問題 (ruff format + ruff check --fix)"
@@ -53,21 +54,23 @@ dev-install:
 	@echo "安裝開發依賴..."
 	uv sync --dev
 
-# 執行測試
+# 執行測試（排除基準測試）
 .PHONY: test
-test: check test-func coverage
+test: check
+	@echo "執行測試（排除基準測試）..."
+	uv run coverage run --branch -m pytest -m "not benchmark"
+	uv run coverage report -m
 
-# 執行測試
-.PHONY: test-func
-test-func:
-	@echo "執行測試..."
-	uv run coverage run --branch -m pytest
+# 執行基準測試
+.PHONY: test-benchmark
+test-benchmark:
+	@echo "執行基準測試（需要外部系統依賴）..."
+	uv run pytest -m "benchmark" -v
 
 # 執行測試並生成覆蓋率報告
 .PHONY: coverage
-coverage: test-func
-	@echo "執行測試並生成覆蓋率報告..."
-	uv run coverage report -m
+coverage: test
+	@echo "生成覆蓋率報告..."
 
 # 生成 HTML 覆蓋率報告
 .PHONY: cov-html

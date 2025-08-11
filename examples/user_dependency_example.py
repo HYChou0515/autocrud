@@ -6,11 +6,11 @@ from fastapi import HTTPException, Header
 from typing import Annotated
 import msgspec
 
-from autocrud.v03.crud.core import AutoCRUD, CreateRouteTemplate, DependencyProvider
-from autocrud.v03.resource_manager.basic import IStorage
-from autocrud.v03.resource_manager.core import SimpleStorage
-from autocrud.v03.resource_manager.meta_store.simple import MemoryMetaStore
-from autocrud.v03.resource_manager.resource_store.simple import MemoryResourceStore
+from autocrud.crud.core import AutoCRUD, CreateRouteTemplate, DependencyProvider
+from autocrud.resource_manager.basic import IStorage
+from autocrud.resource_manager.core import SimpleStorage
+from autocrud.resource_manager.meta_store.simple import MemoryMetaStore
+from autocrud.resource_manager.resource_store.simple import MemoryResourceStore
 
 
 # 測試用的模型

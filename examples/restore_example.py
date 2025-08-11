@@ -7,17 +7,17 @@ RestoreRouteTemplate 使用示例
 from fastapi import FastAPI
 import msgspec
 
-from autocrud.v03.crud.core import (
+from autocrud.crud.core import (
     AutoCRUD,
     CreateRouteTemplate,
     ReadRouteTemplate,
     DeleteRouteTemplate,
     RestoreRouteTemplate,
 )
-from autocrud.v03.resource_manager.basic import IStorage
-from autocrud.v03.resource_manager.core import SimpleStorage
-from autocrud.v03.resource_manager.meta_store.simple import MemoryMetaStore
-from autocrud.v03.resource_manager.resource_store.simple import MemoryResourceStore
+from autocrud.resource_manager.basic import IStorage
+from autocrud.resource_manager.core import SimpleStorage
+from autocrud.resource_manager.meta_store.simple import MemoryMetaStore
+from autocrud.resource_manager.resource_store.simple import MemoryResourceStore
 
 
 # 定義用戶模型
