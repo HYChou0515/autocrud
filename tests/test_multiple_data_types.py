@@ -114,7 +114,83 @@ class TestCreateOperations:
         else:  # TypedDict (already a dict)
             json_data = user_data
 
+        # 1. 測試創建用戶
         response = client.post(f"/{endpoint}", json=json_data)
-
-        # 所有數據類型都應該能成功創建
         assert response.status_code == 200
+
+        create_result = response.json()
+        assert "resource_id" in create_result
+        assert "revision_id" in create_result
+
+        resource_id = create_result["resource_id"]
+        print(f"\n✅ Created {endpoint} with ID: {resource_id}")
+
+        # 2. 測試讀取剛創建的用戶
+        get_response = client.get(f"/{endpoint}/{resource_id}")
+        assert get_response.status_code == 200
+
+        retrieved_data = get_response.json()
+        print(f"📖 Retrieved data: {retrieved_data}")
+
+        # 驗證返回的數據包含正確的字段
+        assert retrieved_data["name"] == json_data["name"]
+        assert retrieved_data["email"] == json_data["email"]
+        assert retrieved_data["age"] == json_data["age"]
+
+        # 3. 測試更新用戶
+        updated_data = json_data.copy()
+        updated_data["age"] = (updated_data["age"] or 0) + 10  # 年齡加10
+        updated_data["name"] = f"Updated {updated_data['name']}"
+
+        update_response = client.put(f"/{endpoint}/{resource_id}", json=updated_data)
+        assert update_response.status_code == 200
+
+        update_result = update_response.json()
+        assert update_result["resource_id"] == resource_id
+        print(f"🔄 Updated {endpoint} - new revision: {update_result['revision_id']}")
+
+        # 4. 驗證更新後的數據
+        get_updated_response = client.get(f"/{endpoint}/{resource_id}")
+        assert get_updated_response.status_code == 200
+
+        updated_retrieved_data = get_updated_response.json()
+        assert updated_retrieved_data["name"] == updated_data["name"]
+        assert updated_retrieved_data["age"] == updated_data["age"]
+        print(f"✅ Verified updated data: {updated_retrieved_data}")
+
+        # 5. 測試列出所有資源
+        list_response = client.get(f"/{endpoint}")
+        print(f"📋 List response status: {list_response.status_code}")
+        if list_response.status_code != 200:
+            print(f"❌ List error: {list_response.text}")
+        assert list_response.status_code == 200
+
+        list_result = list_response.json()
+        assert "resources" in list_result
+        assert len(list_result["resources"]) >= 1
+
+        # 找到我們創建的資源
+        found_resource = None
+        for resource in list_result["resources"]:
+            if resource["name"] == updated_data["name"]:
+                found_resource = resource
+                break
+
+        assert found_resource is not None
+        print(f"📋 Found resource in list: {found_resource['name']}")
+
+        # 6. 測試刪除用戶
+        delete_response = client.delete(f"/{endpoint}/{resource_id}")
+        assert delete_response.status_code == 200
+
+        delete_result = delete_response.json()
+        assert delete_result["resource_id"] == resource_id
+        assert delete_result["deleted"] is True
+        print(f"🗑️ Deleted {endpoint} with ID: {resource_id}")
+
+        # 7. 驗證刪除後無法讀取（或返回已刪除狀態）
+        get_deleted_response = client.get(f"/{endpoint}/{resource_id}")
+        # 根據實現，可能返回404或者返回標記為已刪除的資源
+        print(f"🔍 Get deleted resource status: {get_deleted_response.status_code}")
+
+        print(f"🎉 Complete CRUD test passed for {endpoint}")

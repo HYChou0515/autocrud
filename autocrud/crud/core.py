@@ -9,6 +9,7 @@ from fastapi import APIRouter, HTTPException, Request, Query, Depends
 from pydantic import create_model, BaseModel
 import msgspec
 from typing import Optional
+import json
 
 from autocrud.resource_manager.basic import IStorage, ResourceMeta, RevisionInfo
 from autocrud.resource_manager.core import ResourceManager, SimpleStorage
@@ -188,16 +189,29 @@ class DataConverter:
         return issubclass(model_type, BaseModel)
 
     @staticmethod
-    def decode_json_to_data(json_bytes: bytes, resource_type: type) -> Any:
+    def decode_json_to_data(
+        json_bytes: bytes, resource_type: type
+    ) -> msgspec.Raw | bytes:
         """將 JSON bytes 轉換為指定類型的數據"""
         if issubclass(resource_type, BaseModel):
             # 對於 Pydantic 模型，先解析為字典再創建實例，然後存儲為 Raw
-            pydantic_instance = resource_type.model_validate_json(json_bytes)
+            json_data = json.loads(json_bytes)
+            pydantic_instance = resource_type(**json_data)
             # 將 Pydantic 實例序列化為 Raw 格式存儲
             return msgspec.Raw(pydantic_instance.model_dump_json().encode())
         else:
             # 對於其他類型，使用 msgspec 直接解析
             return msgspec.json.decode(json_bytes, type=resource_type)
+
+    @staticmethod
+    def data_to_builtins(data: msgspec.Raw | bytes) -> T:
+        """將數據轉換為 Python 內建類型，特殊處理 msgspec.Raw"""
+        if isinstance(data, msgspec.Raw):
+            # 如果是 Raw 數據，先解碼為 JSON，再解析為 Python 對象
+            return json.loads(bytes(data).decode("utf-8"))
+        else:
+            # 對於其他類型，使用 msgspec.to_builtins
+            return msgspec.to_builtins(data)
 
 
 class DependencyProvider:
@@ -344,7 +358,7 @@ class ReadRouteTemplate(BaseRouteTemplate):
     ) -> dict:
         """處理 FULL 響應類型"""
         result = {
-            "data": msgspec.to_builtins(resource.data),
+            "data": DataConverter.data_to_builtins(resource.data),
             "revision_info": convert_revision_info_to_response(resource.info),
         }
         if meta:
@@ -395,7 +409,7 @@ class ReadRouteTemplate(BaseRouteTemplate):
 
     def _handle_data_response(self, resource: Any) -> dict:
         """處理 DATA 響應類型（預設）"""
-        return msgspec.to_builtins(resource.data)
+        return DataConverter.data_to_builtins(resource.data)
 
     def apply(
         self, model_name: str, resource_manager: ResourceManager[T], router: APIRouter
@@ -545,7 +559,8 @@ class ListRouteTemplate(BaseRouteTemplate):
         async def list_resources(
             # 響應類型選擇
             response_type: ListResponseType = Query(
-                description="Type of data to return: data, meta, revision_info, resource, or full"
+                ListResponseType.DATA,
+                description="Type of data to return: data, meta, revision_info, resource, or full",
             ),
             # ResourceMetaSearchQuery 的查詢參數
             is_deleted: Optional[bool] = Query(
@@ -651,7 +666,9 @@ class ListRouteTemplate(BaseRouteTemplate):
                                 resource = resource_manager.get(meta.resource_id)
                                 resources_data.append(
                                     {
-                                        "data": msgspec.to_builtins(resource.data),
+                                        "data": DataConverter.data_to_builtins(
+                                            resource.data
+                                        ),
                                         "meta": msgspec.to_builtins(meta),
                                         "revision_info": msgspec.to_builtins(
                                             resource.info
@@ -662,7 +679,7 @@ class ListRouteTemplate(BaseRouteTemplate):
                                 # 只返回資源數據
                                 resource = resource_manager.get(meta.resource_id)
                                 resources_data.append(
-                                    msgspec.to_builtins(resource.data)
+                                    DataConverter.data_to_builtins(resource.data)
                                 )
                         except Exception:
                             # 如果無法獲取資源數據，跳過
@@ -810,10 +827,8 @@ class AutoCRUD:
             meta_store = MemoryMetaStore()
 
             # 檢查是否是 Pydantic 模型
-            if DataConverter.is_pydantic_model(model):
+            if issubclass(model, BaseModel):
                 # 對於 Pydantic 模型，使用 msgspec.Raw 來避免序列化問題
-                import msgspec
-
                 resource_store = MemoryResourceStore[msgspec.Raw](
                     resource_type=msgspec.Raw
                 )
