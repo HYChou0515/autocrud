@@ -11,7 +11,9 @@ import msgspec
 from typing import Optional
 
 from autocrud.resource_manager.basic import IStorage, ResourceMeta, RevisionInfo
-from autocrud.resource_manager.core import ResourceManager
+from autocrud.resource_manager.core import ResourceManager, SimpleStorage
+from autocrud.resource_manager.meta_store.simple import MemoryMetaStore
+from autocrud.resource_manager.resource_store.simple import MemoryResourceStore
 
 
 # Pydantic 版本的 ResourceMeta
@@ -177,6 +179,27 @@ class NameConverter:
 T = TypeVar("T")
 
 
+class DataConverter:
+    """數據轉換器，處理不同數據類型的序列化和反序列化"""
+
+    @staticmethod
+    def is_pydantic_model(model_type: type) -> bool:
+        """檢查是否是 Pydantic 模型"""
+        return issubclass(model_type, BaseModel)
+
+    @staticmethod
+    def decode_json_to_data(json_bytes: bytes, resource_type: type) -> Any:
+        """將 JSON bytes 轉換為指定類型的數據"""
+        if issubclass(resource_type, BaseModel):
+            # 對於 Pydantic 模型，先解析為字典再創建實例，然後存儲為 Raw
+            pydantic_instance = resource_type.model_validate_json(json_bytes)
+            # 將 Pydantic 實例序列化為 Raw 格式存儲
+            return msgspec.Raw(pydantic_instance.model_dump_json().encode())
+        else:
+            # 對於其他類型，使用 msgspec 直接解析
+            return msgspec.json.decode(json_bytes, type=resource_type)
+
+
 class DependencyProvider:
     """依賴提供者，統一管理用戶和時間的依賴函數"""
 
@@ -263,8 +286,8 @@ class CreateRouteTemplate(BaseRouteTemplate):
                 # 直接接收原始 JSON bytes
                 json_bytes = await request.body()
 
-                # 使用 msgspec 直接從 JSON bytes 轉換為目標類型
-                data = msgspec.json.decode(json_bytes, type=resource_type)
+                # 使用 DataConverter 處理數據轉換
+                data = DataConverter.decode_json_to_data(json_bytes, resource_type)
 
                 with resource_manager.meta_provide(current_user, current_time):
                     info = resource_manager.create(data)
@@ -457,8 +480,8 @@ class UpdateRouteTemplate(BaseRouteTemplate):
                 # 直接接收原始 JSON bytes
                 json_bytes = await request.body()
 
-                # 使用 msgspec 直接從 JSON bytes 轉換為目標類型
-                data = msgspec.json.decode(json_bytes, type=resource_type)
+                # 使用 DataConverter 處理數據轉換
+                data = DataConverter.decode_json_to_data(json_bytes, resource_type)
 
                 with resource_manager.meta_provide(current_user, current_time):
                     info = resource_manager.update(resource_id, data)
@@ -778,6 +801,30 @@ class AutoCRUD:
         # 使用 NameConverter 進行轉換
         return NameConverter(original_name).to(self.model_naming)
 
+    def _create_default_storage_factory(
+        self, model: type[T]
+    ) -> Callable[[], IStorage[T]]:
+        """創建默認的 storage factory"""
+
+        def factory() -> IStorage[T]:
+            meta_store = MemoryMetaStore()
+
+            # 檢查是否是 Pydantic 模型
+            if DataConverter.is_pydantic_model(model):
+                # 對於 Pydantic 模型，使用 msgspec.Raw 來避免序列化問題
+                import msgspec
+
+                resource_store = MemoryResourceStore[msgspec.Raw](
+                    resource_type=msgspec.Raw
+                )
+            else:
+                # 對於其他類型（msgspec.Struct, dataclass, TypedDict），使用原生支持
+                resource_store = MemoryResourceStore[T](resource_type=model)
+
+            return SimpleStorage(meta_store, resource_store)
+
+        return factory
+
     def add_route_template(self, template: IRouteTemplate) -> None:
         """添加路由模板"""
         self.route_templates.append(template)
@@ -787,15 +834,21 @@ class AutoCRUD:
         model: type[T],
         *,
         name: str | None = None,
-        storage_factory: Callable[[], IStorage[T]],
+        storage_factory: Callable[[], IStorage[T]] | None = None,
     ) -> None:
         """
         Add a model to the AutoCRUD system.
 
         :param model: The model class to add.
-        :param storage_factory: A callable that returns an IStorage instance for the model.
+        :param name: Optional custom name for the model. If not provided, name will be derived from the model class.
+        :param storage_factory: Optional callable that returns an IStorage instance for the model.
+                              If not provided, a default storage will be created automatically.
         :return: An instance of the model.
         """
+        # 如果沒有提供 storage_factory，創建一個默認的
+        if storage_factory is None:
+            storage_factory = self._create_default_storage_factory(model)
+
         storage = storage_factory()
         resource_manager = ResourceManager(model, storage=storage)
         model_name = name or self._resource_name(model)
