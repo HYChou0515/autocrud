@@ -182,7 +182,7 @@ class TestRouteTemplates:
 
         data = response.json()
         assert data["resource_id"] == resource_id
-        assert data["deleted"] is True
+        assert data["is_deleted"] is True
 
         # 驗證刪除
         get_response = client.get(f"/user/{resource_id}?response_type=data")
@@ -330,17 +330,15 @@ class TestRouteTemplates:
             assert data["data"]["name"] == "Test User"
 
     @pytest.mark.parametrize(
-        "response_type,should_succeed,expected_name",
+        "response_type,expected_name",
         [
-            ("data", True, "Original User"),
-            ("revision_info", True, None),
-            ("full", True, "Original User"),
-            ("meta", False, None),  # 應該失敗
+            ("data", "Original User"),
+            ("revision_info", None),
+            ("full", "Original User"),
+            ("meta", None),
         ],
     )
-    def test_read_user_by_revision_id(
-        self, client, response_type, should_succeed, expected_name
-    ):
+    def test_read_user_by_revision_id(self, client, response_type, expected_name):
         """測試通過 revision_id 讀取特定版本的用戶"""
         # 創建一個用戶
         user_data = {
@@ -365,25 +363,19 @@ class TestRouteTemplates:
             f"/user/{resource_id}?response_type={response_type}&revision_id={original_revision_id}"
         )
 
-        if should_succeed:
-            assert response.status_code == 200
-            data = response.json()
+        assert response.status_code == 200
+        data = response.json()
 
-            if response_type == "data":
-                assert data["name"] == expected_name
-                assert data["age"] == 25
-            elif response_type == "revision_info":
-                assert data["revision_id"] == original_revision_id
-            elif response_type == "full":
-                assert "data" in data
-                assert "revision_info" in data
-                assert "meta" not in data  # 特定版本查詢不包含 meta
-                assert data["data"]["name"] == expected_name
-        else:
-            assert response.status_code == 400
-            assert (
-                "Meta not available for specific revision" in response.json()["detail"]
-            )
+        if response_type == "data":
+            assert data["name"] == expected_name
+            assert data["age"] == 25
+        elif response_type == "revision_info":
+            assert data["revision_id"] == original_revision_id
+        elif response_type == "full":
+            assert "data" in data
+            assert "revision_info" in data
+            assert "meta" in data  # 特定版本查詢不包含 meta
+            assert data["data"]["name"] == expected_name
 
     def test_read_user_current_vs_specific_revision(self, client):
         """測試當前版本與特定版本的對比"""

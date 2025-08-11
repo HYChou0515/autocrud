@@ -102,7 +102,7 @@ def client(autocrud):
 class TestCreateOperations:
     """測試不同數據類型的創建操作"""
 
-    def test_create_user(self, client: TestClient, user_data, endpoint):
+    def test_crud_user(self, client: TestClient, user_data, endpoint):
         """測試創建用戶 - 統一測試所有數據類型"""
         # 將不同類型的對象轉換為字典形式供 JSON 序列化
         if isinstance(user_data, BaseModel):  # Pydantic
@@ -185,7 +185,7 @@ class TestCreateOperations:
 
         delete_result = delete_response.json()
         assert delete_result["resource_id"] == resource_id
-        assert delete_result["deleted"] is True
+        assert delete_result["is_deleted"] is True
         print(f"🗑️ Deleted {endpoint} with ID: {resource_id}")
 
         # 7. 驗證刪除後無法讀取（或返回已刪除狀態）
