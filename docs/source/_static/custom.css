@@ -1,0 +1,174 @@
+/* AutoCRUD 文檔自定義樣式 */
+
+/* 主要品牌色彩 */
+:root {
+  --autocrud-primary: #2563eb;
+  --autocrud-secondary: #1e40af;
+  --autocrud-accent: #3b82f6;
+  --autocrud-success: #10b981;
+  --autocrud-warning: #f59e0b;
+  --autocrud-error: #ef4444;
+}
+
+/* 代碼塊美化 */
+.highlight pre {
+  border-radius: 8px;
+  border-left: 4px solid var(--autocrud-primary);
+}
+
+/* 提示框樣式 */
+.admonition {
+  border-radius: 8px;
+  border-left: 4px solid var(--autocrud-primary);
+}
+
+.admonition.note {
+  border-left-color: var(--autocrud-primary);
+}
+
+.admonition.tip {
+  border-left-color: var(--autocrud-success);
+}
+
+.admonition.warning {
+  border-left-color: var(--autocrud-warning);
+}
+
+.admonition.danger {
+  border-left-color: var(--autocrud-error);
+}
+
+/* 導航優化 */
+.toctree-wrapper ul {
+  list-style-type: none;
+  padding-left: 0;
+}
+
+.toctree-wrapper ul ul {
+  padding-left: 1.5rem;
+}
+
+/* 表格美化 */
+table {
+  border-collapse: collapse;
+  margin: 1rem 0;
+}
+
+table th,
+table td {
+  border: 1px solid #e5e7eb;
+  padding: 0.5rem 1rem;
+}
+
+table th {
+  background-color: #f9fafb;
+  font-weight: 600;
+}
+
+/* 響應式優化 */
+@media (max-width: 768px) {
+  .highlight pre {
+    font-size: 0.875rem;
+    overflow-x: auto;
+  }
+}
+
+/* 標籤樣式 */
+.version-badge {
+  background-color: var(--autocrud-primary);
+  color: white;
+  padding: 0.25rem 0.5rem;
+  border-radius: 4px;
+  font-size: 0.875rem;
+  font-weight: 500;
+}
+
+.status-badge {
+  padding: 0.25rem 0.5rem;
+  border-radius: 4px;
+  font-size: 0.875rem;
+  font-weight: 500;
+}
+
+.status-stable {
+  background-color: var(--autocrud-success);
+  color: white;
+}
+
+.status-beta {
+  background-color: var(--autocrud-warning);
+  color: white;
+}
+
+.status-experimental {
+  background-color: var(--autocrud-error);
+  color: white;
+}
+
+/* 頁腳優化 */
+footer {
+  margin-top: 2rem;
+  padding-top: 2rem;
+  border-top: 1px solid #e5e7eb;
+}
+
+/* API 文檔特殊樣式 */
+.api-signature {
+  background-color: #f8fafc;
+  border: 1px solid #e2e8f0;
+  border-radius: 6px;
+  padding: 1rem;
+  margin: 1rem 0;
+  font-family: 'Monaco', 'Consolas', monospace;
+}
+
+/* 示例代碼容器 */
+.example-container {
+  margin: 1.5rem 0;
+  border: 1px solid #e5e7eb;
+  border-radius: 8px;
+  overflow: hidden;
+}
+
+.example-header {
+  background-color: #f9fafb;
+  padding: 0.75rem 1rem;
+  border-bottom: 1px solid #e5e7eb;
+  font-weight: 600;
+  color: #374151;
+}
+
+.example-content {
+  padding: 1rem;
+}
+
+/* 功能網格 */
+.feature-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+  gap: 1.5rem;
+  margin: 2rem 0;
+}
+
+.feature-card {
+  border: 1px solid #e5e7eb;
+  border-radius: 8px;
+  padding: 1.5rem;
+  background-color: white;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
+}
+
+.feature-card h3 {
+  margin-top: 0;
+  color: var(--autocrud-primary);
+}
+
+/* 代碼高亮增強 */
+.highlight .hll { background-color: #ffffcc }
+.highlight .c { color: #408080; font-style: italic } /* Comment */
+.highlight .k { color: #008000; font-weight: bold } /* Keyword */
+.highlight .o { color: #666666 } /* Operator */
+.highlight .cm { color: #408080; font-style: italic } /* Comment.Multiline */
+.highlight .cp { color: #BC7A00 } /* Comment.Preproc */
+.highlight .c1 { color: #408080; font-style: italic } /* Comment.Single */
+.highlight .cs { color: #408080; font-style: italic } /* Comment.Special */
