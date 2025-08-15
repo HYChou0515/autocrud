@@ -59,17 +59,17 @@ class Product(BaseModel):
     brand: Optional[str] = None
     tags: List[str] = []
     is_active: bool = True
-    
-    @validator('price')
+
+    @validator("price")
     def price_must_be_positive(cls, v):
         if v <= 0:
-            raise ValueError('價格必須大於0')
+            raise ValueError("價格必須大於0")
         return v
-    
-    @validator('stock_quantity')
+
+    @validator("stock_quantity")
     def stock_must_not_be_negative(cls, v):
         if v < 0:
-            raise ValueError('庫存不能為負數')
+            raise ValueError("庫存不能為負數")
         return v
 
 
@@ -83,11 +83,11 @@ class Customer(BaseModel):
     postal_code: Optional[str] = None
     country: str = "Taiwan"
     is_vip: bool = False
-    
-    @validator('phone')
+
+    @validator("phone")
     def validate_phone(cls, v):
-        if v and not v.replace('-', '').replace(' ', '').isdigit():
-            raise ValueError('無效的電話號碼格式')
+        if v and not v.replace("-", "").replace(" ", "").isdigit():
+            raise ValueError("無效的電話號碼格式")
         return v
 
 
@@ -99,7 +99,7 @@ class OrderItem:
     quantity: int
     unit_price: Decimal
     total_price: Decimal = field(init=False)
-    
+
     def __post_init__(self):
         self.total_price = self.quantity * self.unit_price
 
@@ -115,7 +115,7 @@ class Order:
     shipping_address: Optional[str] = None
     notes: Optional[str] = None
     created_at: datetime = field(default_factory=datetime.now)
-    
+
     def __post_init__(self):
         # 計算總金額
         self.total_amount = sum(item.total_price for item in self.items)
@@ -141,10 +141,10 @@ class Category(msgspec.Struct):
 
 def create_ecommerce_api() -> FastAPI:
     """創建電商 API 應用"""
-    
+
     # 創建 AutoCRUD 實例
     crud = AutoCRUD(model_naming="kebab")
-    
+
     # 添加所有 CRUD 路由模板
     templates = [
         CreateRouteTemplate(),
@@ -153,32 +153,32 @@ def create_ecommerce_api() -> FastAPI:
         DeleteRouteTemplate(),
         ListRouteTemplate(),
     ]
-    
+
     for template in templates:
         crud.add_route_template(template)
-    
+
     # 註冊所有數據模型
-    crud.add_model(Product)           # /product
-    crud.add_model(Customer)          # /customer
-    crud.add_model(Order)             # /order
-    crud.add_model(OrderItem)         # /order-item
-    crud.add_model(InventoryRecord)   # /inventory-record
-    crud.add_model(Category)          # /category
-    
+    crud.add_model(Product)  # /product
+    crud.add_model(Customer)  # /customer
+    crud.add_model(Order)  # /order
+    crud.add_model(OrderItem)  # /order-item
+    crud.add_model(InventoryRecord)  # /inventory-record
+    crud.add_model(Category)  # /category
+
     # 創建 FastAPI 應用
     app = FastAPI(
         title="電商 API",
         description="使用 AutoCRUD 構建的完整電商系統",
         version="1.0.0",
         docs_url="/docs",
-        redoc_url="/redoc"
+        redoc_url="/redoc",
     )
-    
+
     # 應用路由
     router = APIRouter()
     crud.apply(router)
     app.include_router(router)
-    
+
     # 首頁
     @app.get("/", tags=["首頁"])
     async def home():
@@ -186,32 +186,26 @@ def create_ecommerce_api() -> FastAPI:
             "message": "歡迎使用電商 API",
             "version": "1.0.0",
             "documentation": "/docs",
-            "features": [
-                "商品管理",
-                "客戶管理", 
-                "訂單處理",
-                "庫存跟踪",
-                "分類管理"
-            ],
+            "features": ["商品管理", "客戶管理", "訂單處理", "庫存跟踪", "分類管理"],
             "endpoints": {
                 "products": "/product",
                 "customers": "/customer",
                 "orders": "/order",
                 "order_items": "/order-item",
                 "inventory": "/inventory-record",
-                "categories": "/category"
-            }
+                "categories": "/category",
+            },
         }
-    
+
     # 健康檢查
     @app.get("/health", tags=["系統"])
     async def health_check():
         return {
             "status": "healthy",
             "timestamp": datetime.now().isoformat(),
-            "service": "ecommerce-api"
+            "service": "ecommerce-api",
         }
-    
+
     return app
 
 
@@ -219,7 +213,7 @@ def demo_data_examples():
     """展示示例數據"""
     print("📦 電商 API 數據示例:")
     print()
-    
+
     print("🛍️ 商品示例:")
     print("""
 {
@@ -232,7 +226,7 @@ def demo_data_examples():
   "tags": ["筆電", "Apple", "M2", "專業"],
   "is_active": true
 }""")
-    
+
     print("\n👤 客戶示例:")
     print("""
 {
@@ -245,7 +239,7 @@ def demo_data_examples():
   "country": "Taiwan",
   "is_vip": false
 }""")
-    
+
     print("\n📋 訂單示例:")
     print("""
 {
@@ -263,7 +257,7 @@ def demo_data_examples():
   "shipping_address": "台北市信義區信義路五段7號",
   "notes": "請小心包裝"
 }""")
-    
+
     print("\n📊 庫存記錄示例:")
     print("""
 {
@@ -273,7 +267,7 @@ def demo_data_examples():
   "reason": "新商品入庫",
   "timestamp": "2024-01-15T10:30:00"
 }""")
-    
+
     print("\n🏷️ 分類示例:")
     print("""
 {
@@ -289,26 +283,28 @@ def demo_api_usage():
     """演示 API 使用方法"""
     print("\n🔗 API 端點使用指南:")
     print()
-    
+
     print("📝 創建商品:")
     print('curl -X POST "http://localhost:8000/product" \\')
     print('  -H "Content-Type: application/json" \\')
-    print('  -d \'{"name": "iPhone 15", "description": "最新 iPhone", "price": "32900", "stock_quantity": 100, "category": "手機"}\'')
-    
+    print(
+        '  -d \'{"name": "iPhone 15", "description": "最新 iPhone", "price": "32900", "stock_quantity": 100, "category": "手機"}\''
+    )
+
     print("\n📋 列出所有商品:")
     print('curl "http://localhost:8000/product"')
-    
+
     print("\n🔍 查詢特定商品:")
     print('curl "http://localhost:8000/product/{product_id}"')
-    
+
     print("\n✏️ 更新商品:")
     print('curl -X PUT "http://localhost:8000/product/{product_id}" \\')
     print('  -H "Content-Type: application/json" \\')
     print('  -d \'{"name": "iPhone 15 Pro", "price": "38900"}\'')
-    
+
     print("\n🗑️ 刪除商品:")
     print('curl -X DELETE "http://localhost:8000/product/{product_id}"')
-    
+
     print("\n📊 查詢選項:")
     print("  • 分頁: ?limit=10&offset=0")
     print("  • 時間篩選: ?created_time_start=2024-01-01&created_time_end=2024-12-31")
@@ -318,22 +314,23 @@ def demo_api_usage():
 def main():
     """主函數"""
     app = create_ecommerce_api()
-    
+
     print("🛒 電商 API 服務器")
     print("=" * 50)
-    
+
     demo_data_examples()
     demo_api_usage()
-    
+
     print("\n🚀 啟動服務器...")
     print("📍 服務器地址: http://localhost:8000")
-    print("📖 API 文檔: http://localhost:8000/docs") 
+    print("📖 API 文檔: http://localhost:8000/docs")
     print("📋 ReDoc 文檔: http://localhost:8000/redoc")
     print("🏠 首頁: http://localhost:8000")
     print("\n按 Ctrl+C 停止服務器")
-    
+
     try:
         import uvicorn
+
         uvicorn.run(app, host="127.0.0.1", port=8000, reload=True)
     except ImportError:
         print("\n❌ 需要安裝 uvicorn:")

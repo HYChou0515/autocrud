@@ -13,6 +13,7 @@ sys.path.insert(0, os.path.abspath("../../"))
 try:
     # Python 3.11+ 內建支持
     import tomllib
+
     pyproject_path = Path(__file__).parent.parent.parent / "pyproject.toml"
     with open(pyproject_path, "rb") as f:
         pyproject_data = tomllib.load(f)
@@ -30,14 +31,15 @@ except (ImportError, FileNotFoundError):
 try:
     # 嘗試從已安裝的包獲取版本
     import autocrud
-    version = getattr(autocrud, '__version__', 'dev')
+
+    version = getattr(autocrud, "__version__", "dev")
     release = version
 except ImportError:
     # 如果包沒有安裝，嘗試從 pyproject.toml 獲取
     try:
         version = project_info.get("version", "dev")
         release = version
-    except:
+    except Exception:
         version = "dev"
         release = "dev"
 
@@ -46,7 +48,10 @@ except ImportError:
 
 # 從 pyproject.toml 獲取項目信息
 project = "AutoCRUD"  # 顯示名稱，保持美觀
-author = ", ".join(author_info.get("name", "Unknown") for author_info in project_info.get("authors", []))
+author = ", ".join(
+    author_info.get("name", "Unknown")
+    for author_info in project_info.get("authors", [])
+)
 copyright = "2025, " + author
 
 # 其他從 pyproject.toml 獲取的信息
@@ -150,7 +155,7 @@ napoleon_include_private_with_doc = False
 todo_include_todos = True
 
 # -- Options for internationalization ----------------------------------------
-locale_dirs = ['locale/']   # 多語言支持路徑
+locale_dirs = ["locale/"]  # 多語言支持路徑
 gettext_compact = False
 
 # -- Custom configuration ----------------------------------------------------
@@ -165,16 +170,20 @@ html_context = {
 }
 
 # 添加項目相關信息到模板上下文
-html_context.update({
-    "project_description": project_description,
-    "project_keywords": project_keywords,
-    "project_license": project_license,
-})
+html_context.update(
+    {
+        "project_description": project_description,
+        "project_keywords": project_keywords,
+        "project_license": project_license,
+    }
+)
 
 # OpenGraph 和社交媒體元標籤
-html_theme_options.update({
-    "announcement": None,  # 可以添加公告
-})
+html_theme_options.update(
+    {
+        "announcement": None,  # 可以添加公告
+    }
+)
 
 # 如果有 _static 目錄中的自定義文件，取消注釋以下行
 # html_logo = "_static/logo.png"
@@ -199,12 +208,12 @@ suppress_warnings = [
 
 # 添加外部鏈接檢查（可選）
 linkcheck_ignore = [
-    r'http://localhost:\d+/',  # 忽略本地鏈接
+    r"http://localhost:\d+/",  # 忽略本地鏈接
 ]
 
 # 設置默認角色
 default_role = "code"
 
 # 添加 GitHub Pages 支持
-if os.environ.get('GITHUB_ACTIONS'):
-    html_baseurl = 'https://hychou0515.github.io/autocrud/'
+if os.environ.get("GITHUB_ACTIONS"):
+    html_baseurl = "https://hychou0515.github.io/autocrud/"
