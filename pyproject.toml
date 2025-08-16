@@ -58,6 +58,7 @@ dev = [
     "build>=1.2.2.post1",
     "coverage>=7.9.2",
     "faker>=37.5.3",
+    "fastapi[standard]>=0.116.1",
     "furo>=2025.7.19",
     "httpx>=0.28.1",
     "ipython>=9.4.0",

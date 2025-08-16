@@ -171,6 +171,70 @@ class IResourceManager(ABC, Generic[T]):
         """
 
     @abstractmethod
+    def get_resource_revision(self, resource_id: str, revision_id: str) -> Resource[T]:
+        """Get a specific revision of the resource.
+
+        Arguments:
+
+            - resource_id (str): the id of the resource.
+            - revision_id (str): the id of the specific revision to retrieve.
+
+        Returns:
+
+            - resource (Resource[T]): the resource with its data and revision info for the specified revision.
+
+        Raises:
+
+            - ResourceIDNotFoundError: if resource id does not exist.
+            - RevisionIDNotFoundError: if revision id does not exist for this resource.
+
+        ---
+
+        Retrieves a specific historical revision of the resource identified by both
+        resource_id and revision_id. Unlike get() which returns the current revision,
+        this method allows access to any revision in the resource's history.
+
+        This method does NOT check the is_deleted status of the resource metadata,
+        allowing access to revisions of soft-deleted resources for audit and
+        recovery purposes.
+
+        The returned Resource contains both the data as it existed at that revision
+        and the RevisionInfo with metadata about that specific revision.
+        """
+
+    @abstractmethod
+    def list_revisions(self, resource_id: str) -> list[str]:
+        """Get a list of all revision IDs for the resource.
+
+        Arguments:
+
+            - resource_id (str): the id of the resource.
+
+        Returns:
+
+            - list[str]: list of revision IDs for the resource, typically ordered chronologically.
+
+        Raises:
+
+            - ResourceIDNotFoundError: if resource id does not exist.
+
+        ---
+
+        Returns all revision IDs that exist for the specified resource, providing
+        a complete history of all revisions. This is useful for:
+        - Browsing the complete revision history
+        - Selecting specific revisions for comparison
+        - Audit trails and compliance reporting
+        - Determining available restore points
+
+        The revision IDs are typically returned in chronological order (oldest to newest),
+        but the exact ordering may depend on the implementation.
+
+        This method does NOT check the is_deleted status of the resource, allowing
+        access to revision lists for soft-deleted resources.
+        """
+
+    @abstractmethod
     def get_meta(self, resource_id: str) -> ResourceMeta:
         """Get the metadata of the resource.
 

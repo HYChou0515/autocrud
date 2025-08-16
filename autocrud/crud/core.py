@@ -1,6 +1,9 @@
 from abc import ABC, abstractmethod
+from collections import OrderedDict
 from collections.abc import Callable
+from contextlib import suppress
 from enum import StrEnum
+import textwrap
 from typing import Generic, Literal, TypeVar, Any
 import re
 import datetime as dt
@@ -21,6 +24,8 @@ from autocrud.resource_manager.basic import (
 from autocrud.resource_manager.core import ResourceManager, SimpleStorage
 from autocrud.resource_manager.meta_store.simple import MemoryMetaStore
 from autocrud.resource_manager.resource_store.simple import MemoryResourceStore
+
+from autocrud.resource_manager.basic import ResourceMetaSearchQuery
 
 
 # Pydantic 版本的 ResourceMeta
@@ -77,6 +82,20 @@ class ListResponseType(StrEnum):
     REVISION_INFO = "revision_info"  # 只返回 RevisionInfo
     FULL = "full"  # 返回所有信息 (data, meta, revision_info)
     REVISIONS = "revisions"  # 返回 meta 和所有 revision info
+
+
+def convert_to_full_response(
+    meta: ResourceMeta, resource: Resource
+) -> FullResourceResponse:
+    """將 ResourceMeta 轉換為 Pydantic 響應對象"""
+    """處理 FULL 響應類型"""
+    result = {
+        "data": DataConverter.data_to_builtins(resource.data),
+        "revision_info": convert_revision_info_to_response(resource.info),
+    }
+    if meta:
+        result["meta"] = convert_resource_meta_to_response(meta)
+    return FullResourceResponse.model_validate(result)
 
 
 def convert_resource_meta_to_response(meta: ResourceMeta) -> ResourceMetaResponse:
@@ -274,11 +293,17 @@ class IRouteTemplate(ABC):
             resource_manager: 資源管理器
             router: FastAPI 路由器
         """
-        raise NotImplementedError("子類必須實作 apply 方法")
+
+    @property
+    @abstractmethod
+    def order(self) -> int:
+        """獲取路由模板的排序權重"""
 
 
 class BaseRouteTemplate(IRouteTemplate):
-    def __init__(self, dependency_provider: DependencyProvider = None):
+    def __init__(
+        self, dependency_provider: DependencyProvider = None, order: int = 100
+    ):
         """
         初始化路由模板
 
@@ -286,6 +311,17 @@ class BaseRouteTemplate(IRouteTemplate):
             dependency_provider: 依賴提供者，如果為 None 則創建預設的
         """
         self.deps = dependency_provider or DependencyProvider()
+        self._order = order
+
+    @property
+    def order(self) -> int:
+        return self._order
+
+    def __lt__(self, other: IRouteTemplate):
+        return self.order < other.order
+
+    def __le__(self, other: IRouteTemplate):
+        return self.order <= other.order
 
 
 class CreateRouteTemplate(BaseRouteTemplate):
@@ -303,7 +339,34 @@ class CreateRouteTemplate(BaseRouteTemplate):
 
         resource_type = resource_manager.resource_type
 
-        @router.post(f"/{model_name}", response_model=create_response_model)
+        @router.post(
+            f"/{model_name}",
+            response_model=create_response_model,
+            summary=f"Create {model_name}",
+            tags=[f"{model_name}"],
+            description=textwrap.dedent(
+                f"""
+                Create a new `{model_name}` resource.
+
+                **Request Body:**
+                - Send the resource data as JSON in the request body
+                - The data will be validated against the `{model_name}` schema
+                - Supports both Pydantic models and other data structures
+
+                **Response:**
+                - Returns revision information for the newly created resource
+                - Includes `resource_id` and `revision_id` for tracking
+                - All resources are version-controlled from creation
+
+                **Examples:**
+                - `POST /{model_name}` with JSON body - Create new resource
+                - Response includes resource and revision identifiers
+
+                **Error Responses:**
+                - `422`: Validation error - Invalid data format or missing required fields
+                - `400`: Bad request - General creation error"""
+            ),
+        )
         async def create_resource(
             request: Request,
             current_user: str = Depends(self.deps.get_user),
@@ -342,91 +405,139 @@ class ReadRouteTemplate(BaseRouteTemplate, Generic[T]):
         with resource_manager.meta_provide(current_user, current_time):
             meta = resource_manager.get_meta(resource_id)
             if revision_id:
-                resource = resource_manager.storage.get_resource_revision(
+                resource = resource_manager.get_resource_revision(
                     resource_id, revision_id
                 )
             else:
                 resource = resource_manager.get(resource_id)
         return resource, meta
 
-    def _handle_meta_response(self, meta: ResourceMeta) -> ResourceMetaResponse:
-        """處理 META 響應類型"""
-        return convert_resource_meta_to_response(meta)
-
-    def _handle_revision_info_response(
-        self, resource: Resource[T]
-    ) -> RevisionInfoResponse:
-        """處理 REVISION_INFO 響應類型"""
-        return convert_revision_info_to_response(resource.info)
-
-    def _handle_full_response(
-        self, resource: Resource[T], meta: Optional[ResourceMeta]
-    ) -> FullResourceResponse:
-        """處理 FULL 響應類型"""
-        result = {
-            "data": DataConverter.data_to_builtins(resource.data),
-            "revision_info": convert_revision_info_to_response(resource.info),
-        }
-        if meta:
-            result["meta"] = convert_resource_meta_to_response(meta)
-        return FullResourceResponse.model_validate(result)
-
-    def _handle_revisions_response(
-        self,
-        resource_manager: ResourceManager[T],
-        resource_id: str,
-        revision_id: Optional[str],
-        meta: Optional[ResourceMeta],
-        current_user: str,
-        current_time: dt.datetime,
-    ) -> RevisionListResponse:
-        """處理 REVISIONS 響應類型"""
-        if revision_id:
-            raise HTTPException(
-                status_code=400,
-                detail="Cannot list revisions when specific revision_id is provided",
-            )
-
-        if not meta:
-            raise HTTPException(
-                status_code=400,
-                detail="Meta not available for revisions response",
-            )
-
-        with resource_manager.meta_provide(current_user, current_time):
-            revision_ids = resource_manager.storage.list_revisions(resource_id)
-            revision_infos: list[RevisionInfoResponse] = []
-            for rev_id in revision_ids:
-                try:
-                    rev_resource = resource_manager.storage.get_resource_revision(
-                        resource_id, rev_id
-                    )
-                    revision_infos.append(
-                        convert_revision_info_to_response(rev_resource.info)
-                    )
-                except Exception:
-                    # 如果無法獲取某個版本，跳過
-                    continue
-
-            return RevisionListResponse(
-                meta=convert_resource_meta_to_response(meta),
-                revisions=revision_infos,
-            )
-
-    def _handle_data_response(self, resource: Resource[T]) -> T:
-        """處理 DATA 響應類型（預設）"""
-        return DataConverter.data_to_builtins(resource.data)
-
     def apply(
         self, model_name: str, resource_manager: ResourceManager[T], router: APIRouter
     ) -> None:
-        @router.get(f"/{model_name}/{{resource_id}}")
-        async def get_resource(
+        @router.get(
+            f"/{model_name}/{{resource_id}}/meta",
+            response_model=ResourceMetaResponse,
+            summary=f"Get {model_name} Meta by ID",
+            tags=[f"{model_name}"],
+        )
+        async def get_resource_meta(
             resource_id: str,
-            response_type: ListResponseType = Query(
-                ListResponseType.DATA,
-                description="Type of data to return: data, meta, revision_info, full, or revisions",
+            current_user: str = Depends(self.deps.get_user),
+            current_time: dt.datetime = Depends(self.deps.get_now),
+        ):
+            # 獲取資源和元數據
+            try:
+                with resource_manager.meta_provide(current_user, current_time):
+                    meta = resource_manager.get_meta(resource_id)
+            except HTTPException:
+                raise
+            except Exception as e:
+                raise HTTPException(status_code=404, detail=str(e))
+
+            # 根據響應類型處理數據
+            return convert_resource_meta_to_response(meta)
+
+        @router.get(
+            f"/{model_name}/{{resource_id}}/revision-info",
+            response_model=RevisionInfoResponse,
+            summary=f"Get {model_name} Revision Info",
+            tags=[f"{model_name}"],
+            description=textwrap.dedent(
+                f"""
+                Retrieve revision information for a specific `{model_name}` resource.
+
+                **Path Parameters:**
+                - `resource_id`: The unique identifier of the resource
+
+                **Query Parameters:**
+                - `revision_id` (optional): Specific revision ID to retrieve. If not provided, returns the current revision
+
+                **Response:**
+                - Returns detailed revision information including:
+                  - `uid`: Unique identifier for this revision
+                  - `revision_id`: The revision identifier
+                  - `parent_revision_id`: ID of the parent revision (if any)
+                  - `schema_version`: Schema version used for this revision
+                  - `data_hash`: Hash of the resource data
+                  - `status`: Current status of the revision
+
+                **Use Cases:**
+                - Get metadata about a specific revision
+                - Track revision lineage and relationships
+                - Verify data integrity through hash checking
+                - Monitor revision status changes
+
+                **Examples:**
+                - `GET /{model_name}/123/revision-info` - Get current revision info
+                - `GET /{model_name}/123/revision-info?revision_id=rev456` - Get specific revision info
+
+                **Error Responses:**
+                - `404`: Resource or revision not found"""
             ),
+        )
+        async def get_resource_revision_info(
+            resource_id: str,
+            revision_id: Optional[str] = Query(
+                None,
+                description="Specific revision ID to retrieve. If not provided, returns the current revision",
+            ),
+            current_user: str = Depends(self.deps.get_user),
+            current_time: dt.datetime = Depends(self.deps.get_now),
+        ):
+            # 獲取資源和元數據
+            try:
+                with resource_manager.meta_provide(current_user, current_time):
+                    if revision_id:
+                        resource = resource_manager.get_resource_revision(
+                            resource_id, revision_id
+                        )
+                    else:
+                        resource = resource_manager.get(resource_id)
+            except HTTPException:
+                raise
+            except Exception as e:
+                raise HTTPException(status_code=404, detail=str(e))
+
+            return convert_revision_info_to_response(resource.info)
+
+        @router.get(
+            f"/{model_name}/{{resource_id}}/full",
+            response_model=FullResourceResponse,
+            summary=f"Get Complete {model_name} Information",
+            tags=[f"{model_name}"],
+            description=textwrap.dedent(
+                f"""
+                Retrieve complete information for a `{model_name}` resource including data, metadata, and revision info.
+
+                **Path Parameters:**
+                - `resource_id`: The unique identifier of the resource
+
+                **Query Parameters:**
+                - `revision_id` (optional): Specific revision ID to retrieve. If not provided, returns the current revision
+
+                **Response:**
+                - Returns comprehensive resource information including:
+                  - `data`: The actual resource data
+                  - `meta`: Resource metadata (creation time, update time, deletion status, etc.)
+                  - `revision_info`: Detailed revision information (uid, revision_id, parent_revision, etc.)
+
+                **Use Cases:**
+                - Get all available information about a resource in one request
+                - Complete resource inspection for debugging or auditing
+                - Comprehensive data export including all metadata
+                - Full context retrieval for complex operations
+
+                **Examples:**
+                - `GET /{model_name}/123/full` - Get complete current resource information
+                - `GET /{model_name}/123/full?revision_id=rev456` - Get complete information for specific revision
+
+                **Error Responses:**
+                - `404`: Resource or revision not found"""
+            ),
+        )
+        async def get_resource_full(
+            resource_id: str,
             revision_id: Optional[str] = Query(
                 None,
                 description="Specific revision ID to retrieve. If not provided, returns the current revision",
@@ -449,27 +560,142 @@ class ReadRouteTemplate(BaseRouteTemplate, Generic[T]):
                 raise HTTPException(status_code=404, detail=str(e))
 
             # 根據響應類型處理數據
-            if response_type == ListResponseType.META:
-                return self._handle_meta_response(meta)
+            return convert_to_full_response(meta, resource)
 
-            elif response_type == ListResponseType.REVISION_INFO:
-                return self._handle_revision_info_response(resource)
+        @router.get(
+            f"/{model_name}/{{resource_id}}/revision-list",
+            response_model=RevisionListResponse,
+            summary=f"Get {model_name} Revision History",
+            tags=[f"{model_name}"],
+            description=textwrap.dedent(
+                f"""
+                Retrieve the complete revision history for a `{model_name}` resource.
 
-            elif response_type == ListResponseType.FULL:
-                return self._handle_full_response(resource, meta)
+                **Path Parameters:**
+                - `resource_id`: The unique identifier of the resource
 
-            elif response_type == ListResponseType.REVISIONS:
-                return self._handle_revisions_response(
-                    resource_manager,
-                    resource_id,
-                    revision_id,
-                    meta,
-                    current_user,
-                    current_time,
-                )
+                **Response:**
+                - Returns resource metadata and complete revision history including:
+                  - `meta`: Current resource metadata
+                  - `revisions`: Array of all revision information objects
+                    - Each revision includes uid, revision_id, parent_revision_id, schema_version, data_hash, and status
 
-            else:  # DATA (預設)
-                return self._handle_data_response(resource)
+                **Use Cases:**
+                - View complete change history of a resource
+                - Audit trail and compliance tracking
+                - Understanding resource evolution over time
+                - Selecting specific revisions for comparison or restoration
+
+                **Version Control Benefits:**
+                - Complete chronological history of all changes
+                - Parent-child relationships between revisions
+                - Data integrity verification through hashes
+                - Status tracking for each revision
+
+                **Examples:**
+                - `GET /{model_name}/123/revision-list` - Get all revisions for resource 123
+                - Response includes metadata and array of revision information
+
+                **Error Responses:**
+                - `404`: Resource not found"""
+            ),
+        )
+        async def get_resource_revision_list(
+            resource_id: str,
+            current_user: str = Depends(self.deps.get_user),
+            current_time: dt.datetime = Depends(self.deps.get_now),
+        ):
+            # 獲取資源和元數據
+            try:
+                with resource_manager.meta_provide(current_user, current_time):
+                    meta = resource_manager.get_meta(resource_id)
+                    revision_ids = resource_manager.list_revisions(resource_id)
+                    revision_infos: list[RevisionInfoResponse] = []
+                    for rev_id in revision_ids:
+                        try:
+                            rev_resource = resource_manager.get_resource_revision(
+                                resource_id, rev_id
+                            )
+                            revision_infos.append(
+                                convert_revision_info_to_response(rev_resource.info)
+                            )
+                        except Exception:
+                            # 如果無法獲取某個版本，跳過
+                            continue
+
+                    return RevisionListResponse(
+                        meta=convert_resource_meta_to_response(meta),
+                        revisions=revision_infos,
+                    )
+            except HTTPException:
+                raise
+            except Exception as e:
+                raise HTTPException(status_code=404, detail=str(e))
+
+        @router.get(
+            f"/{model_name}/{{resource_id}}/data",
+            response_model=T,
+            summary=f"Get {model_name} Data",
+            tags=[f"{model_name}"],
+            description=textwrap.dedent(
+                f"""
+                Retrieve only the data content of a `{model_name}` resource.
+
+                **Path Parameters:**
+                - `resource_id`: The unique identifier of the resource
+
+                **Query Parameters:**
+                - `revision_id` (optional): Specific revision ID to retrieve. If not provided, returns the current revision
+
+                **Response:**
+                - Returns only the resource data without metadata or revision information
+                - The response format matches the original resource schema
+                - Most lightweight option for retrieving resource content
+
+                **Use Cases:**
+                - Simple data retrieval when metadata is not needed
+                - Efficient resource content access
+                - Integration with external systems that only need the data
+                - Lightweight API calls to minimize response size
+
+                **Performance Benefits:**
+                - Minimal response payload
+                - Faster response times
+                - Reduced bandwidth usage
+                - Direct access to resource content
+
+                **Examples:**
+                - `GET /{model_name}/123/data` - Get current resource data only
+                - `GET /{model_name}/123/data?revision_id=rev456` - Get specific revision data only
+
+                **Error Responses:**
+                - `404`: Resource or revision not found"""
+            ),
+        )
+        async def get_resource_data(
+            resource_id: str,
+            revision_id: Optional[str] = Query(
+                None,
+                description="Specific revision ID to retrieve. If not provided, returns the current revision",
+            ),
+            current_user: str = Depends(self.deps.get_user),
+            current_time: dt.datetime = Depends(self.deps.get_now),
+        ):
+            # 獲取資源和元數據
+            try:
+                with resource_manager.meta_provide(current_user, current_time):
+                    if revision_id:
+                        resource = resource_manager.get_resource_revision(
+                            resource_id, revision_id
+                        )
+                    else:
+                        resource = resource_manager.get(resource_id)
+            except HTTPException:
+                raise
+            except Exception as e:
+                raise HTTPException(status_code=404, detail=str(e))
+
+            return DataConverter.data_to_builtins(resource.data)
 
 
 class UpdateRouteTemplate(BaseRouteTemplate):
@@ -488,7 +714,41 @@ class UpdateRouteTemplate(BaseRouteTemplate):
         resource_type = resource_manager.resource_type
 
         @router.put(
-            f"/{model_name}/{{resource_id}}", response_model=update_response_model
+            f"/{model_name}/{{resource_id}}",
+            response_model=update_response_model,
+            summary=f"Update {model_name}",
+            tags=[f"{model_name}"],
+            description=textwrap.dedent(
+                f"""
+                Update an existing `{model_name}` resource by replacing it entirely.
+
+                **Path Parameters:**
+                - `resource_id`: The unique identifier of the resource to update
+
+                **Request Body:**
+                - Send the complete updated resource data as JSON
+                - The data will be validated against the `{model_name}` schema
+                - This is a full replacement update (PUT semantics)
+
+                **Response:**
+                - Returns revision information for the updated resource
+                - Includes new `revision_id` and maintains `resource_id`
+                - Creates a new version while preserving revision history
+
+                **Version Control:**
+                - Each update creates a new revision
+                - Previous versions remain accessible via revision history
+                - Original resource ID is preserved across updates
+
+                **Examples:**
+                - `PUT /{model_name}/123` with JSON body - Update resource with ID 123
+                - Response includes updated revision information
+
+                **Error Responses:**
+                - `422`: Validation error - Invalid data format or missing required fields
+                - `400`: Bad request - Resource not found or update error
+                - `404`: Resource does not exist"""
+            ),
         )
         async def update_resource(
             resource_id: str,
@@ -522,7 +782,40 @@ class DeleteRouteTemplate(BaseRouteTemplate):
     ) -> None:
         # 動態創建響應模型
         @router.delete(
-            f"/{model_name}/{{resource_id}}", response_model=ResourceMetaResponse
+            f"/{model_name}/{{resource_id}}",
+            response_model=ResourceMetaResponse,
+            summary=f"Delete {model_name}",
+            tags=[f"{model_name}"],
+            description=textwrap.dedent(
+                f"""
+                Delete a `{model_name}` resource by marking it as deleted.
+
+                **Path Parameters:**
+                - `resource_id`: The unique identifier of the resource to delete
+
+                **Soft Delete:**
+                - Resources are marked as deleted rather than permanently removed
+                - Deleted resources can be restored using the restore endpoint
+                - All revision history is preserved after deletion
+
+                **Response:**
+                - Returns updated resource metadata
+                - The `is_deleted` field will be set to `true`
+                - Includes updated timestamp and user information
+
+                **Version Control:**
+                - Deletion creates a new revision in the resource history
+                - Previous versions remain accessible for audit purposes
+                - The resource can be restored to any previous revision
+
+                **Examples:**
+                - `DELETE /{model_name}/123` - Mark resource with ID 123 as deleted
+                - Response shows updated metadata with deletion status
+
+                **Error Responses:**
+                - `400`: Bad request - Resource not found or deletion error
+                - `404`: Resource does not exist"""
+            ),
         )
         async def delete_resource(
             resource_id: str,
@@ -540,147 +833,372 @@ class DeleteRouteTemplate(BaseRouteTemplate):
 class ListRouteTemplate(BaseRouteTemplate):
     """列出所有資源的路由模板"""
 
+    class QueryInputs(BaseModel):
+        # ResourceMetaSearchQuery 的查詢參數
+        is_deleted: Optional[bool] = Query(
+            None, description="Filter by deletion status"
+        )
+        created_time_start: Optional[str] = Query(
+            None, description="Filter by created time start (ISO format)"
+        )
+        created_time_end: Optional[str] = Query(
+            None, description="Filter by created time end (ISO format)"
+        )
+        updated_time_start: Optional[str] = Query(
+            None, description="Filter by updated time start (ISO format)"
+        )
+        updated_time_end: Optional[str] = Query(
+            None, description="Filter by updated time end (ISO format)"
+        )
+        created_bys: Optional[list[str]] = Query(None, description="Filter by creators")
+        updated_bys: Optional[list[str]] = Query(None, description="Filter by updaters")
+        limit: int = Query(10, description="Maximum number of results")
+        offset: int = Query(0, description="Number of results to skip")
+
+    def _build_query(self, q: QueryInputs) -> ResourceMetaSearchQuery:
+        query_kwargs = {
+            "limit": q.limit,
+            "offset": q.offset,
+        }
+
+        if q.is_deleted is not None:
+            query_kwargs["is_deleted"] = q.is_deleted
+        else:
+            query_kwargs["is_deleted"] = UNSET
+
+        if q.created_time_start:
+            query_kwargs["created_time_start"] = dt.datetime.fromisoformat(
+                q.created_time_start
+            )
+        else:
+            query_kwargs["created_time_start"] = UNSET
+
+        if q.created_time_end:
+            query_kwargs["created_time_end"] = dt.datetime.fromisoformat(
+                q.created_time_end
+            )
+        else:
+            query_kwargs["created_time_end"] = UNSET
+
+        if q.updated_time_start:
+            query_kwargs["updated_time_start"] = dt.datetime.fromisoformat(
+                q.updated_time_start
+            )
+        else:
+            query_kwargs["updated_time_start"] = UNSET
+
+        if q.updated_time_end:
+            query_kwargs["updated_time_end"] = dt.datetime.fromisoformat(
+                q.updated_time_end
+            )
+        else:
+            query_kwargs["updated_time_end"] = UNSET
+
+        if q.created_bys:
+            query_kwargs["created_bys"] = q.created_bys
+        else:
+            query_kwargs["created_bys"] = UNSET
+
+        if q.updated_bys:
+            query_kwargs["updated_bys"] = q.updated_bys
+        else:
+            query_kwargs["updated_bys"] = UNSET
+
+        query_kwargs["sorts"] = UNSET
+
+        return ResourceMetaSearchQuery(**query_kwargs)
+
     def apply(
         self, model_name: str, resource_manager: ResourceManager[T], router: APIRouter
     ) -> None:
-        from autocrud.resource_manager.basic import ResourceMetaSearchQuery
-        from typing import Optional
+        @router.get(
+            f"/{model_name}/data",
+            response_model=list[T],
+            summary=f"List {model_name} Data Only",
+            tags=[f"{model_name}"],
+            description=textwrap.dedent(
+                f"""
+                Retrieve a list of `{model_name}` resources returning only the data content.
 
-        # 動態創建列表響應模型
-        list_response_model = create_model(
-            f"{resource_manager.resource_type.__name__}ListResponse",
-            resources=(list[T], ...),
+                **Response Format:**
+                - Returns only the resource data for each item (most lightweight option)
+                - Excludes metadata and revision information
+                - Ideal for applications that only need the core resource content
+
+                **Filtering Options:**
+                - `is_deleted`: Filter by deletion status (true/false)
+                - `created_time_start/end`: Filter by creation time range (ISO format)
+                - `updated_time_start/end`: Filter by update time range (ISO format)
+                - `created_bys`: Filter by resource creators (list of usernames)
+                - `updated_bys`: Filter by resource updaters (list of usernames)
+
+                **Pagination:**
+                - `limit`: Maximum number of results to return (default: 10)
+                - `offset`: Number of results to skip for pagination (default: 0)
+
+                **Performance Benefits:**
+                - Minimal response payload size
+                - Faster response times
+                - Reduced bandwidth usage
+                - Direct access to resource content only
+
+                **Examples:**
+                - `GET /{model_name}/data` - Get first 10 resources (data only)
+                - `GET /{model_name}/data?limit=20&offset=40` - Get resources 41-60 (data only)
+                - `GET /{model_name}/data?is_deleted=false&limit=5` - Get 5 non-deleted resources (data only)
+
+                **Error Responses:**
+                - `400`: Bad request - Invalid query parameters or search error"""
+            ),
         )
-
-        @router.get(f"/{model_name}", response_model=list_response_model)
-        async def list_resources(
-            # 響應類型選擇
-            response_type: ListResponseType = Query(
-                ListResponseType.DATA,
-                description="Type of data to return: data, meta, revision_info, resource, or full",
-            ),
-            # ResourceMetaSearchQuery 的查詢參數
-            is_deleted: Optional[bool] = Query(
-                None, description="Filter by deletion status"
-            ),
-            created_time_start: Optional[str] = Query(
-                None, description="Filter by created time start (ISO format)"
-            ),
-            created_time_end: Optional[str] = Query(
-                None, description="Filter by created time end (ISO format)"
-            ),
-            updated_time_start: Optional[str] = Query(
-                None, description="Filter by updated time start (ISO format)"
-            ),
-            updated_time_end: Optional[str] = Query(
-                None, description="Filter by updated time end (ISO format)"
-            ),
-            created_bys: Optional[list[str]] = Query(
-                None, description="Filter by creators"
-            ),
-            updated_bys: Optional[list[str]] = Query(
-                None, description="Filter by updaters"
-            ),
-            limit: int = Query(10, description="Maximum number of results"),
-            offset: int = Query(0, description="Number of results to skip"),
+        async def list_resources_data(
+            query_params: ListRouteTemplate.QueryInputs = Query(...),
             current_user: str = Depends(self.deps.get_user),
             current_time: dt.datetime = Depends(self.deps.get_now),
         ) -> list[T]:
             try:
                 # 構建查詢對象
-                query_kwargs = {
-                    "limit": limit,
-                    "offset": offset,
-                }
-
-                if is_deleted is not None:
-                    query_kwargs["is_deleted"] = is_deleted
-                else:
-                    query_kwargs["is_deleted"] = UNSET
-
-                if created_time_start:
-                    query_kwargs["created_time_start"] = dt.datetime.fromisoformat(
-                        created_time_start
-                    )
-                else:
-                    query_kwargs["created_time_start"] = UNSET
-
-                if created_time_end:
-                    query_kwargs["created_time_end"] = dt.datetime.fromisoformat(
-                        created_time_end
-                    )
-                else:
-                    query_kwargs["created_time_end"] = UNSET
-
-                if updated_time_start:
-                    query_kwargs["updated_time_start"] = dt.datetime.fromisoformat(
-                        updated_time_start
-                    )
-                else:
-                    query_kwargs["updated_time_start"] = UNSET
-
-                if updated_time_end:
-                    query_kwargs["updated_time_end"] = dt.datetime.fromisoformat(
-                        updated_time_end
-                    )
-                else:
-                    query_kwargs["updated_time_end"] = UNSET
-
-                if created_bys:
-                    query_kwargs["created_bys"] = created_bys
-                else:
-                    query_kwargs["created_bys"] = UNSET
-
-                if updated_bys:
-                    query_kwargs["updated_bys"] = updated_bys
-                else:
-                    query_kwargs["updated_bys"] = UNSET
-
-                query_kwargs["sorts"] = UNSET
-
-                query = ResourceMetaSearchQuery(**query_kwargs)
-
+                query = self._build_query(query_params)
                 with resource_manager.meta_provide(current_user, current_time):
-                    metas = resource_manager.search_resources(query)
-
-                    # 根據響應類型處理資源數據
                     resources_data = []
+                    metas = resource_manager.search_resources(query)
+                    # 根據響應類型處理資源數據
                     for meta in metas:
                         try:
-                            if response_type == ListResponseType.META:
-                                # 只返回 ResourceMeta
-                                resources_data.append(msgspec.to_builtins(meta))
-                            elif response_type == ListResponseType.REVISION_INFO:
-                                # 只返回 RevisionInfo，需要獲取 resource
-                                resource = resource_manager.get(meta.resource_id)
-                                resources_data.append(
-                                    msgspec.to_builtins(resource.info)
-                                )
-                            elif response_type == ListResponseType.FULL:
-                                # 返回所有信息
-                                resource = resource_manager.get(meta.resource_id)
-                                resources_data.append(
-                                    {
-                                        "data": DataConverter.data_to_builtins(
-                                            resource.data
-                                        ),
-                                        "meta": msgspec.to_builtins(meta),
-                                        "revision_info": msgspec.to_builtins(
-                                            resource.info
-                                        ),
-                                    }
-                                )
-                            else:  # ListResponseType.DATA (預設)
-                                # 只返回資源數據
-                                resource = resource_manager.get(meta.resource_id)
-                                resources_data.append(
-                                    DataConverter.data_to_builtins(resource.data)
-                                )
+                            resource = resource_manager.get(meta.resource_id)
+                            resources_data.append(
+                                DataConverter.data_to_builtins(resource.data)
+                            )
                         except Exception:
                             # 如果無法獲取資源數據，跳過
                             continue
 
-                return {"resources": resources_data}
+                return resources_data
+            except Exception as e:
+                raise HTTPException(status_code=400, detail=str(e))
+
+        @router.get(
+            f"/{model_name}/meta",
+            response_model=list[ResourceMetaResponse],
+            summary=f"List {model_name} Metadata Only",
+            tags=[f"{model_name}"],
+            description=textwrap.dedent(
+                f"""
+                Retrieve a list of `{model_name}` resources returning only the metadata.
+
+                **Response Format:**
+                - Returns only resource metadata for each item
+                - Excludes actual data content and revision information
+                - Ideal for browsing resource overviews and management operations
+
+                **Metadata Includes:**
+                - `resource_id`: Unique identifier of the resource
+                - `current_revision_id`: ID of the current active revision
+                - `total_revision_count`: Total number of revisions
+                - `created_time` / `updated_time`: Timestamps
+                - `created_by` / `updated_by`: User information
+                - `is_deleted`: Deletion status
+                - `schema_version`: Schema version information
+
+                **Filtering Options:**
+                - `is_deleted`: Filter by deletion status (true/false)
+                - `created_time_start/end`: Filter by creation time range (ISO format)
+                - `updated_time_start/end`: Filter by update time range (ISO format)
+                - `created_bys`: Filter by resource creators (list of usernames)
+                - `updated_bys`: Filter by resource updaters (list of usernames)
+
+                **Pagination:**
+                - `limit`: Maximum number of results to return (default: 10)
+                - `offset`: Number of results to skip for pagination (default: 0)
+
+                **Use Cases:**
+                - Resource management and administration
+                - Audit trail analysis
+                - Bulk operations planning
+                - System monitoring and statistics
+
+                **Examples:**
+                - `GET /{model_name}/meta` - Get metadata for first 10 resources
+                - `GET /{model_name}/meta?is_deleted=true` - Get metadata for deleted resources
+                - `GET /{model_name}/meta?created_bys=admin&limit=50` - Get metadata for admin-created resources
+
+                **Error Responses:**
+                - `400`: Bad request - Invalid query parameters or search error"""
+            ),
+        )
+        async def list_resources_meta(
+            query_params: ListRouteTemplate.QueryInputs = Query(...),
+            current_user: str = Depends(self.deps.get_user),
+            current_time: dt.datetime = Depends(self.deps.get_now),
+        ) -> list[ResourceMetaResponse]:
+            try:
+                # 構建查詢對象
+                query = self._build_query(query_params)
+                with resource_manager.meta_provide(current_user, current_time):
+                    metas = resource_manager.search_resources(query)
+
+                    # 根據響應類型處理資源數據
+                    resources_data: list[ResourceMetaResponse] = []
+                    for meta in metas:
+                        with suppress(Exception):
+                            resources_data.append(
+                                convert_resource_meta_to_response(meta)
+                            )
+
+                return resources_data
+            except Exception as e:
+                raise HTTPException(status_code=400, detail=str(e))
+
+        @router.get(
+            f"/{model_name}/revision-info",
+            response_model=list[RevisionInfoResponse],
+            summary=f"List {model_name} Current Revision Info",
+            tags=[f"{model_name}"],
+            description=textwrap.dedent(
+                f"""
+                Retrieve a list of `{model_name}` resources returning only the current revision information.
+
+                **Response Format:**
+                - Returns only revision information for the current revision of each resource
+                - Excludes actual data content and resource metadata
+                - Focuses on version control and revision tracking information
+
+                **Revision Info Includes:**
+                - `uid`: Unique identifier for this revision
+                - `resource_id`: ID of the parent resource
+                - `revision_id`: The revision identifier
+                - `parent_revision_id`: ID of the parent revision (if any)
+                - `schema_version`: Schema version used for this revision
+                - `data_hash`: Hash of the resource data for integrity checking
+                - `status`: Current status of the revision (draft/stable)
+
+                **Filtering Options:**
+                - `is_deleted`: Filter by deletion status (true/false)
+                - `created_time_start/end`: Filter by creation time range (ISO format)
+                - `updated_time_start/end`: Filter by update time range (ISO format)
+                - `created_bys`: Filter by resource creators (list of usernames)
+                - `updated_bys`: Filter by resource updaters (list of usernames)
+
+                **Pagination:**
+                - `limit`: Maximum number of results to return (default: 10)
+                - `offset`: Number of results to skip for pagination (default: 0)
+
+                **Use Cases:**
+                - Version control system integration
+                - Data integrity verification through hashes
+                - Revision status monitoring
+                - Change tracking and audit trails
+
+                **Examples:**
+                - `GET /{model_name}/revision-info` - Get current revision info for first 10 resources
+                - `GET /{model_name}/revision-info?limit=100` - Get revision info for first 100 resources
+                - `GET /{model_name}/revision-info?updated_bys=editor` - Get revision info for editor-modified resources
+
+                **Error Responses:**
+                - `400`: Bad request - Invalid query parameters or search error"""
+            ),
+        )
+        async def list_resources_revision_info(
+            query_params: ListRouteTemplate.QueryInputs = Query(...),
+            current_user: str = Depends(self.deps.get_user),
+            current_time: dt.datetime = Depends(self.deps.get_now),
+        ) -> list[RevisionInfoResponse]:
+            try:
+                # 構建查詢對象
+                query = self._build_query(query_params)
+                with resource_manager.meta_provide(current_user, current_time):
+                    metas = resource_manager.search_resources(query)
+
+                    # 根據響應類型處理資源數據
+                    resources_data: list[RevisionInfoResponse] = []
+                    for meta in metas:
+                        try:
+                            resource = resource_manager.get(meta.resource_id)
+                            resources_data.append(
+                                convert_revision_info_to_response(resource.info)
+                            )
+                        except Exception:
+                            # 如果無法獲取資源數據，跳過
+                            continue
+                return resources_data
+            except Exception as e:
+                raise HTTPException(status_code=400, detail=str(e))
+
+        @router.get(
+            f"/{model_name}/full",
+            response_model=list[FullResourceResponse],
+            summary=f"List {model_name} Complete Information",
+            tags=[f"{model_name}"],
+            description=textwrap.dedent(
+                f"""
+                Retrieve a list of `{model_name}` resources with complete information including data, metadata, and revision info.
+
+                **Response Format:**
+                - Returns comprehensive information for each resource
+                - Includes data content, resource metadata, and current revision information
+                - Most complete but also largest response format
+
+                **Complete Information Includes:**
+                - `data`: The actual resource data content
+                - `meta`: Resource metadata (timestamps, user info, deletion status, etc.)
+                - `revision_info`: Current revision details (uid, revision_id, parent_revision, hash, status)
+
+                **Filtering Options:**
+                - `is_deleted`: Filter by deletion status (true/false)
+                - `created_time_start/end`: Filter by creation time range (ISO format)
+                - `updated_time_start/end`: Filter by update time range (ISO format)
+                - `created_bys`: Filter by resource creators (list of usernames)
+                - `updated_bys`: Filter by resource updaters (list of usernames)
+
+                **Pagination:**
+                - `limit`: Maximum number of results to return (default: 10)
+                - `offset`: Number of results to skip for pagination (default: 0)
+
+                **Use Cases:**
+                - Complete data export operations
+                - Comprehensive resource inspection
+                - Full context retrieval for complex operations
+                - Debugging and detailed analysis
+                - Administrative overview with all details
+
+                **Performance Considerations:**
+                - Largest response payload size
+                - May have slower response times for large datasets
+                - Consider using pagination with smaller limits
+
+                **Examples:**
+                - `GET /{model_name}/full` - Get complete info for first 10 resources
+                - `GET /{model_name}/full?limit=5` - Get complete info for first 5 resources (smaller payload)
+                - `GET /{model_name}/full?is_deleted=false&limit=20` - Get complete info for 20 active resources
+
+                **Error Responses:**
+                - `400`: Bad request - Invalid query parameters or search error"""
+            ),
+        )
+        async def list_resources_full(
+            query_params: ListRouteTemplate.QueryInputs = Query(...),
+            current_user: str = Depends(self.deps.get_user),
+            current_time: dt.datetime = Depends(self.deps.get_now),
+        ) -> list[FullResourceResponse]:
+            try:
+                # 構建查詢對象
+                query = self._build_query(query_params)
+                with resource_manager.meta_provide(current_user, current_time):
+                    metas = resource_manager.search_resources(query)
+
+                    # 根據響應類型處理資源數據
+                    resources_data: list[FullResourceResponse] = []
+                    for meta in metas:
+                        try:
+                            resource = resource_manager.get(meta.resource_id)
+                            resources_data.append(
+                                convert_to_full_response(meta, resource)
+                            )
+                        except Exception:
+                            # 如果無法獲取資源數據，跳過
+                            continue
+
+                return resources_data
             except Exception as e:
                 raise HTTPException(status_code=400, detail=str(e))
 
@@ -693,7 +1211,49 @@ class PatchRouteTemplate(BaseRouteTemplate):
     ) -> None:
         # 動態創建響應模型
         @router.patch(
-            f"/{model_name}/{{resource_id}}", response_model=RevisionInfoResponse
+            f"/{model_name}/{{resource_id}}",
+            response_model=RevisionInfoResponse,
+            summary=f"Partially update {model_name}",
+            tags=[f"{model_name}"],
+            description=textwrap.dedent(
+                f"""
+                Partially update a `{model_name}` resource using JSON Patch operations.
+
+                **Path Parameters:**
+                - `resource_id`: The unique identifier of the resource to patch
+
+                **Request Body:**
+                - Send JSON Patch operations as an array of patch objects
+                - Each patch operation should follow RFC 6902 JSON Patch specification
+                - Supports operations: `add`, `remove`, `replace`, `move`, `copy`, `test`
+
+                **JSON Patch Format:**
+                ```json
+                [
+                {{"op": "replace", "path": "/field_name", "value": "new_value"}},
+                {{"op": "add", "path": "/new_field", "value": "field_value"}},
+                {{"op": "remove", "path": "/unwanted_field"}}
+                ]
+                ```
+
+                **Response:**
+                - Returns revision information for the patched resource
+                - Includes new `revision_id` and maintains `resource_id`
+                - Creates a new version while preserving revision history
+
+                **Version Control:**
+                - Each patch creates a new revision
+                - Previous versions remain accessible via revision history
+                - Original resource ID is preserved across patches
+
+                **Examples:**
+                - `PATCH /{model_name}/123` with JSON Patch array - Apply patches to resource
+                - Response includes updated revision information
+
+                **Error Responses:**
+                - `400`: Bad request - Invalid patch operations or resource not found
+                - `404`: Resource does not exist"""
+            ),
         )
         async def patch_resource(
             resource_id: str,
@@ -729,6 +1289,43 @@ class SwitchRevisionRouteTemplate(BaseRouteTemplate):
         @router.post(
             f"/{model_name}/{{resource_id}}/switch/{{revision_id}}",
             response_model=switch_response_model,
+            summary=f"Switch {model_name} to specific revision",
+            tags=[f"{model_name}"],
+            description=textwrap.dedent(
+                f"""
+                Switch a `{model_name}` resource to a specific revision, making it the current active version.
+
+                **Path Parameters:**
+                - `resource_id`: The unique identifier of the resource
+                - `revision_id`: The specific revision ID to switch to
+
+                **Version Control Operation:**
+                - Changes the current active revision of the resource
+                - The specified revision becomes the new "current" version
+                - All previous revisions remain preserved in history
+                - Does not create a new revision, just changes the pointer
+
+                **Response:**
+                - Returns confirmation with resource and revision information
+                - Includes the new `current_revision_id`
+                - Provides success message confirming the switch
+
+                **Use Cases:**
+                - Roll back to a previous version of a resource
+                - Restore a specific revision as the current version
+                - Undo recent changes by switching to an earlier revision
+                - Switch between different versions for testing or comparison
+
+                **Examples:**
+                - `POST /{model_name}/123/switch/rev456` - Switch resource 123 to revision rev456
+                - Response confirms the successful revision switch
+
+                **Error Responses:**
+                - `400`: Bad request - Invalid revision ID or switch operation failed
+                - `404`: Resource or revision does not exist
+
+                **Note:** This operation changes which revision is considered "current" but does not modify the revision history."""
+            ),
         )
         async def switch_revision(
             resource_id: str,
@@ -766,6 +1363,43 @@ class RestoreRouteTemplate(BaseRouteTemplate):
         @router.post(
             f"/{model_name}/{{resource_id}}/restore",
             response_model=restore_response_model,
+            summary=f"Restore deleted {model_name}",
+            tags=[f"{model_name}"],
+            description=textwrap.dedent(
+                f"""
+                Restore a previously deleted `{model_name}` resource, making it active again.
+
+                **Path Parameters:**
+                - `resource_id`: The unique identifier of the deleted resource to restore
+
+                **Restore Operation:**
+                - Unmarks a soft-deleted resource, making it active again
+                - Changes the `is_deleted` status from `true` to `false`
+                - All revision history remains intact during restoration
+                - The resource becomes accessible through normal operations again
+
+                **Response:**
+                - Returns confirmation with resource metadata
+                - Includes updated `is_deleted` status (will be `false`)
+                - Shows current `revision_id` and resource information
+                - Provides success message confirming the restoration
+
+                **Use Cases:**
+                - Recover accidentally deleted resources
+                - Restore resources that were soft-deleted for temporary removal
+                - Undo deletion operations without losing data or history
+                - Reactivate archived resources for continued use
+
+                **Examples:**
+                - `POST /{model_name}/123/restore` - Restore deleted resource with ID 123
+                - Response shows updated metadata with `is_deleted: false`
+
+                **Error Responses:**
+                - `400`: Bad request - Resource is not deleted or restore operation failed
+                - `404`: Resource does not exist
+
+                **Note:** Only works with soft-deleted resources. The resource must exist and be marked as deleted to be restored."""
+            ),
         )
         async def restore_resource(
             resource_id: str,
@@ -791,10 +1425,25 @@ class AutoCRUD:
         *,
         model_naming: Literal["same", "pascal", "camel", "snake", "kebab"]
         | Callable[[type], str] = "kebab",
+        route_templates: list[IRouteTemplate] | None = None,
     ):
-        self.resource_managers: dict[str, ResourceManager] = {}
+        self.resource_managers: OrderedDict[str, ResourceManager] = OrderedDict()
         self.model_naming = model_naming
-        self.route_templates: list[IRouteTemplate] = []
+        self.route_templates: list[IRouteTemplate] = (
+            [
+                CreateRouteTemplate(),
+                ListRouteTemplate(),
+                ReadRouteTemplate(),
+                UpdateRouteTemplate(),
+                PatchRouteTemplate(),
+                SwitchRevisionRouteTemplate(),
+                DeleteRouteTemplate(),
+                RestoreRouteTemplate(),
+            ]
+            if route_templates is None
+            else route_templates
+        )
+        self.route_templates.sort()
 
     def _resource_name(self, model: type[T]) -> str:
         if callable(self.model_naming):

@@ -173,7 +173,13 @@ class ResourceManager(IResourceManager[T], Generic[T]):
 
     def get(self, resource_id: str) -> Resource[T]:
         meta = self.get_meta(resource_id)
-        return self.storage.get_resource_revision(resource_id, meta.current_revision_id)
+        return self.get_resource_revision(resource_id, meta.current_revision_id)
+
+    def get_resource_revision(self, resource_id: str, revision_id: str) -> Resource[T]:
+        return self.storage.get_resource_revision(resource_id, revision_id)
+
+    def list_revisions(self, resource_id: str) -> list[str]:
+        return self.storage.list_revisions(resource_id)
 
     def update(self, resource_id: str, data: T) -> RevisionInfo:
         prev_res_meta = self.get_meta(resource_id)
