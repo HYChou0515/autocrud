@@ -14,17 +14,18 @@ To run test for pydantic model, run
 python resource_crud.py pydantic
 ```
 
-Other model type choices are 
+Other model type choices are
 "msgspec", "dataclass", "typeddict".
 
 """
+
 import sys
 
 if len(sys.argv) >= 2:
     mode = sys.argv[1]
 else:
     mode = "msgspec"
-    
+
 if mode not in (
     "msgspec",
     "dataclass",
@@ -41,7 +42,7 @@ from fastapi import FastAPI
 
 if mode == "msgspec":
     from msgspec import Struct
-    
+
     class Product(Struct):
         name: str
         quantity: int
@@ -50,6 +51,7 @@ if mode == "msgspec":
 
 elif mode == "dataclass":
     from dataclasses import dataclass
+
     @dataclass
     class Product:
         name: str
@@ -64,14 +66,16 @@ elif mode == "pydantic":
         quantity: int
         price: int
         tags: list[str]
-        
+
 elif mode == "typeddict":
     from typing import TypedDict
+
     class Product(TypedDict):
         name: str
         quantity: int
         price: int
         tags: list[str]
+
 
 crud = AutoCRUD()
 crud.add_model(Product)

@@ -13,17 +13,18 @@ To run test for pydantic model, run
 python quick_start.py pydantic
 ```
 
-Other model type choices are 
+Other model type choices are
 "msgspec", "dataclass", "typeddict".
 
 """
+
 import sys
 
 if len(sys.argv) >= 2:
     mode = sys.argv[1]
 else:
     mode = "pydantic"
-    
+
 if mode not in (
     "msgspec",
     "dataclass",
@@ -42,7 +43,7 @@ from fastapi import FastAPI
 
 if mode == "msgspec":
     from msgspec import Struct
-    
+
     class TodoItem(Struct):
         title: str
         completed: bool
@@ -54,6 +55,7 @@ if mode == "msgspec":
 
 elif mode == "dataclass":
     from dataclasses import dataclass
+
     @dataclass
     class TodoItem:
         title: str
@@ -68,6 +70,7 @@ elif mode == "dataclass":
 
 elif mode == "pydantic":
     from pydantic import BaseModel
+
     class TodoItem(BaseModel):
         title: str
         completed: bool
@@ -77,9 +80,10 @@ elif mode == "pydantic":
         items: list[TodoItem]
         notes: str
 
-        
+
 elif mode == "typeddict":
     from typing import TypedDict
+
     class TodoItem(TypedDict):
         title: str
         completed: bool
@@ -106,22 +110,29 @@ def test():
     )
     print(resp.json())
     todo_list_id = resp.json()["resource_id"]
-    resp = client.patch(f"/todo-list/{todo_list_id}", json=[
-        {"op": "add", "path": "/items/-", "value": {
-            "title": "Todo 1",
-            "completed": False,
-            "due": (datetime.now() + timedelta(hours=1)).isoformat()
-        }}
-    ])
+    resp = client.patch(
+        f"/todo-list/{todo_list_id}",
+        json=[
+            {
+                "op": "add",
+                "path": "/items/-",
+                "value": {
+                    "title": "Todo 1",
+                    "completed": False,
+                    "due": (datetime.now() + timedelta(hours=1)).isoformat(),
+                },
+            }
+        ],
+    )
     print(resp.json())
     resp = client.get(f"/todo-list/{todo_list_id}/data")
     print(resp.json())
-    resp = client.patch(f"/todo-list/{todo_list_id}", json=[
-        {"op": "replace", "path": "/items/0/completed", "value": True}
-    ])
+    resp = client.patch(
+        f"/todo-list/{todo_list_id}",
+        json=[{"op": "replace", "path": "/items/0/completed", "value": True}],
+    )
     resp = client.get(f"/todo-list/{todo_list_id}/data")
     print(resp.json())
-    
 
 
 if __name__ == "__main__":
