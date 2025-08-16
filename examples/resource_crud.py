@@ -4,27 +4,74 @@ To start dev server, run
 python -m fastapi dev resource_crud.py
 ````
 
-To see run test http methods, run
+To run test http methods, run
 ```
 python resource_crud.py
 ```
+
+To run test for pydantic model, run
+```
+python resource_crud.py pydantic
+```
+
+Other model type choices are 
+"msgspec", "dataclass", "typeddict".
+
 """
+import sys
+
+if len(sys.argv) >= 2:
+    mode = sys.argv[1]
+else:
+    mode = "msgspec"
+    
+if mode not in (
+    "msgspec",
+    "dataclass",
+    "typeddict",
+    "pydantic",
+):
+    raise ValueError(f"Invalid mode: {mode}")
 
 from datetime import datetime
 
 from fastapi.testclient import TestClient
 from autocrud import AutoCRUD
-from dataclasses import dataclass
 from fastapi import FastAPI
 
+if mode == "msgspec":
+    from msgspec import Struct
+    
+    class Product(Struct):
+        name: str
+        quantity: int
+        price: int
+        tags: list[str]
 
-@dataclass
-class Product:
-    name: str
-    quantity: int
-    price: int
-    tags: list[str]
+elif mode == "dataclass":
+    from dataclasses import dataclass
+    @dataclass
+    class Product:
+        name: str
+        quantity: int
+        price: int
+        tags: list[str]
+elif mode == "pydantic":
+    from pydantic import BaseModel
 
+    class Product(BaseModel):
+        name: str
+        quantity: int
+        price: int
+        tags: list[str]
+        
+elif mode == "typeddict":
+    from typing import TypedDict
+    class Product(TypedDict):
+        name: str
+        quantity: int
+        price: int
+        tags: list[str]
 
 crud = AutoCRUD()
 crud.add_model(Product)

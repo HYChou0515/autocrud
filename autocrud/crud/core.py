@@ -13,7 +13,6 @@ from fastapi import APIRouter, HTTPException, Request, Query, Depends
 from pydantic import create_model, BaseModel
 import msgspec
 from typing import Optional
-import json
 
 from autocrud.resource_manager.basic import (
     IStorage,
@@ -21,7 +20,7 @@ from autocrud.resource_manager.basic import (
     ResourceMeta,
     RevisionInfo,
 )
-from autocrud.resource_manager.core import ResourceManager, SimpleStorage
+from autocrud.resource_manager.core import DataConverter, ResourceManager, SimpleStorage
 from autocrud.resource_manager.meta_store.simple import MemoryMetaStore
 from autocrud.resource_manager.resource_store.simple import MemoryResourceStore
 
@@ -210,40 +209,6 @@ class NameConverter:
 
 
 T = TypeVar("T")
-
-
-class DataConverter:
-    """數據轉換器，處理不同數據類型的序列化和反序列化"""
-
-    @staticmethod
-    def is_pydantic_model(model_type: type) -> bool:
-        """檢查是否是 Pydantic 模型"""
-        return issubclass(model_type, BaseModel)
-
-    @staticmethod
-    def decode_json_to_data(
-        json_bytes: bytes, resource_type: type
-    ) -> msgspec.Raw | bytes:
-        """將 JSON bytes 轉換為指定類型的數據"""
-        if issubclass(resource_type, BaseModel):
-            # 對於 Pydantic 模型，先解析為字典再創建實例，然後存儲為 Raw
-            json_data = json.loads(json_bytes)
-            pydantic_instance = resource_type(**json_data)
-            # 將 Pydantic 實例序列化為 Raw 格式存儲
-            return msgspec.Raw(pydantic_instance.model_dump_json().encode())
-        else:
-            # 對於其他類型，使用 msgspec 直接解析
-            return msgspec.json.decode(json_bytes, type=resource_type)
-
-    @staticmethod
-    def data_to_builtins(data: msgspec.Raw | bytes) -> T:
-        """將數據轉換為 Python 內建類型，特殊處理 msgspec.Raw"""
-        if isinstance(data, msgspec.Raw):
-            # 如果是 Raw 數據，先解碼為 JSON，再解析為 Python 對象
-            return json.loads(bytes(data).decode("utf-8"))
-        else:
-            # 對於其他類型，使用 msgspec.to_builtins
-            return msgspec.to_builtins(data)
 
 
 class DependencyProvider:
