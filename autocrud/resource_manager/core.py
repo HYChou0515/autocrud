@@ -1,3 +1,4 @@
+from collections.abc import Callable
 from contextlib import contextmanager
 from typing import Any, TypeVar, Generic
 import datetime as dt
@@ -23,6 +24,7 @@ from autocrud.resource_manager.basic import (
     RevisionInfo,
     RevisionStatus,
 )
+from autocrud.util.naming import NameConverter, NamingFormat
 
 try:
     import pydantic
@@ -128,11 +130,20 @@ class ResourceManager(IResourceManager[T], Generic[T]):
         resource_type: type[T],
         *,
         storage: IStorage[T],
+        id_generator: Callable[[], str] | None = None,
     ):
         self.user_ctx = Ctx[str]("user_ctx")
         self.now_ctx = Ctx[dt.datetime]("now_ctx")
         self.resource_type = resource_type
         self.storage = storage
+        _model_name = NameConverter(resource_type.__name__).to(NamingFormat.SNAKE)
+
+        def default_id_generator():
+            return f"{_model_name}:{uuid4()}"
+
+        self.id_generator = (
+            default_id_generator if id_generator is None else id_generator
+        )
 
     @contextmanager
     def meta_provide(self, user: str, now: dt.datetime):
@@ -172,13 +183,13 @@ class ResourceManager(IResourceManager[T], Generic[T]):
     ) -> RevisionInfo:
         uid = uuid4()
         if isinstance(mode, _BuildRevMetaCreate):
-            resource_id = str(uid)
-            revision_id = f"{resource_id}-1"
+            resource_id = self.id_generator()
+            revision_id = f"{resource_id}:1"
             last_revision_id = UNSET
         elif isinstance(mode, _BuildRevInfoUpdate):
             prev_res_meta = mode.prev_res_meta
             resource_id = prev_res_meta.resource_id
-            revision_id = f"{resource_id}-{prev_res_meta.total_revision_count + 1}"
+            revision_id = f"{resource_id}:{prev_res_meta.total_revision_count + 1}"
             last_revision_id = prev_res_meta.current_revision_id
 
         info = RevisionInfo(
