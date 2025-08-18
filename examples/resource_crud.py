@@ -14,8 +14,8 @@ To run test for pydantic model, run
 python resource_crud.py pydantic
 ```
 
-Other model type choices are
-"msgspec", "dataclass", "typeddict".
+Model type choices are
+"msgspec", "dataclass", "typeddict", "pydantic"
 
 """
 

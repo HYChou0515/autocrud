@@ -19,7 +19,8 @@ from autocrud.resource_manager.basic import (
     ResourceMeta,
     RevisionInfo,
 )
-from autocrud.resource_manager.core import DataConverter, ResourceManager, SimpleStorage
+from autocrud.resource_manager.core import ResourceManager, SimpleStorage
+from autocrud.resource_manager.data_converter import data_to_builtins, decode_json_to_data
 from autocrud.resource_manager.meta_store.simple import MemoryMetaStore
 from autocrud.resource_manager.resource_store.simple import MemoryResourceStore
 
@@ -78,7 +79,7 @@ def convert_to_full_response(
     """將 ResourceMeta 轉換為 Pydantic 響應對象"""
     """處理 FULL 響應類型"""
     result = {
-        "data": DataConverter.data_to_builtins(resource.data),
+        "data": data_to_builtins(resource.data),
         "revision_info": convert_revision_info_to_response(resource.info),
     }
     if meta:
@@ -253,8 +254,7 @@ class CreateRouteTemplate(BaseRouteTemplate):
                 # 直接接收原始 JSON bytes
                 json_bytes = await request.body()
 
-                # 使用 DataConverter 處理數據轉換
-                data = DataConverter.decode_json_to_data(json_bytes, resource_type)
+                data = decode_json_to_data(json_bytes, resource_type)
 
                 with resource_manager.meta_provide(current_user, current_time):
                     info = resource_manager.create(data)
@@ -572,7 +572,7 @@ class ReadRouteTemplate(BaseRouteTemplate, Generic[T]):
             except Exception as e:
                 raise HTTPException(status_code=404, detail=str(e))
 
-            return DataConverter.data_to_builtins(resource.data)
+            return data_to_builtins(resource.data)
 
 
 class UpdateRouteTemplate(BaseRouteTemplate):
@@ -637,8 +637,7 @@ class UpdateRouteTemplate(BaseRouteTemplate):
                 # 直接接收原始 JSON bytes
                 json_bytes = await request.body()
 
-                # 使用 DataConverter 處理數據轉換
-                data = DataConverter.decode_json_to_data(json_bytes, resource_type)
+                data = decode_json_to_data(json_bytes, resource_type)
 
                 with resource_manager.meta_provide(current_user, current_time):
                     info = resource_manager.update(resource_id, data)
@@ -844,7 +843,7 @@ class ListRouteTemplate(BaseRouteTemplate):
                         try:
                             resource = resource_manager.get(meta.resource_id)
                             resources_data.append(
-                                DataConverter.data_to_builtins(resource.data)
+                                data_to_builtins(resource.data)
                             )
                         except Exception:
                             # 如果無法獲取資源數據，跳過
@@ -1362,6 +1361,8 @@ class AutoCRUD:
         *,
         name: str | None = None,
         storage_factory: Callable[[], IStorage[T]] | None = None,
+        id_generator: Callable[[], str]|None=None,
+        id_field: str|None=None,
     ) -> None:
         """
         Add a model to the AutoCRUD system.
@@ -1377,7 +1378,10 @@ class AutoCRUD:
             storage_factory = self._create_default_storage_factory(model)
 
         storage = storage_factory()
-        resource_manager = ResourceManager(model, storage=storage)
+        resource_manager = ResourceManager(
+            model, storage=storage, id_generator=id_generator,
+            resource_id_field_name=id_field,
+        )
         model_name = name or self._resource_name(model)
         self.resource_managers[model_name] = resource_manager
 

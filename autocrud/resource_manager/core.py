@@ -1,12 +1,10 @@
 from collections.abc import Callable
 from contextlib import contextmanager
-from typing import Any, TypeVar, Generic
+from typing import TypeVar, Generic
 import datetime as dt
 from uuid import uuid4
 from msgspec import UNSET, Struct
 from jsonpatch import JsonPatch
-import json
-import msgspec
 
 
 from autocrud.resource_manager.basic import (
@@ -24,55 +22,11 @@ from autocrud.resource_manager.basic import (
     RevisionInfo,
     RevisionStatus,
 )
+from autocrud.resource_manager.data_converter import DataConverter
 from autocrud.util.naming import NameConverter, NamingFormat
 
-try:
-    import pydantic
-except ImportError:
-    pydantic = None
 
 T = TypeVar("T")
-
-
-class DataConverter:
-    """數據轉換器，處理不同數據類型的序列化和反序列化"""
-
-    @staticmethod
-    def is_pydantic_model(model_type: type) -> bool:
-        """檢查是否是 Pydantic 模型"""
-        if pydantic is not None:
-            return issubclass(model_type, pydantic.BaseModel)
-        return False  # assume not pydantic if not installed.
-
-    @staticmethod
-    def decode_json_to_data(json_bytes: bytes, resource_type: type) -> msgspec.Raw | T:
-        """將 JSON bytes 轉換為指定類型的數據"""
-        if pydantic is not None and issubclass(resource_type, pydantic.BaseModel):
-            # 對於 Pydantic 模型，先解析為字典再創建實例，然後存儲為 Raw
-            json_data = json.loads(json_bytes)
-            pydantic_instance = resource_type.model_validate(json_data)
-            # 將 Pydantic 實例序列化為 Raw 格式存儲
-            return msgspec.Raw(pydantic_instance.model_dump_json().encode())
-        else:
-            # 對於其他類型，使用 msgspec 直接解析
-            return msgspec.json.decode(json_bytes, type=resource_type)
-
-    @staticmethod
-    def data_to_builtins(data: msgspec.Raw | T) -> Any:
-        """將數據轉換為 Python 內建類型，特殊處理 msgspec.Raw"""
-        if isinstance(data, msgspec.Raw):
-            # 如果是 Raw 數據，先解碼為 JSON，再解析為 Python 對象
-            return json.loads(bytes(data).decode("utf-8"))
-        else:
-            # 對於其他類型，使用 msgspec.to_builtins
-            return msgspec.to_builtins(data)
-
-    @staticmethod
-    def builtins_to_data(obj: Any, resource_type: type[T]) -> msgspec.Raw | T:
-        if pydantic is not None and issubclass(resource_type, pydantic.BaseModel):
-            pydantic_instance = resource_type.model_validate(obj)
-            return msgspec.Raw(pydantic_instance.model_dump_json().encode())
-        return msgspec.convert(obj, type=resource_type)
 
 
 class SimpleStorage(IStorage[T]):
@@ -131,11 +85,16 @@ class ResourceManager(IResourceManager[T], Generic[T]):
         *,
         storage: IStorage[T],
         id_generator: Callable[[], str] | None = None,
+        resource_id_field_name: str|None=None
     ):
         self.user_ctx = Ctx[str]("user_ctx")
         self.now_ctx = Ctx[dt.datetime]("now_ctx")
         self.resource_type = resource_type
         self.storage = storage
+        self.data_converter = DataConverter(self.resource_type)
+        
+        self.resource_id_field_name = resource_id_field_name
+
         _model_name = NameConverter(resource_type.__name__).to(NamingFormat.SNAKE)
 
         def default_id_generator():
@@ -235,7 +194,10 @@ class ResourceManager(IResourceManager[T], Generic[T]):
         return self.get_resource_revision(resource_id, meta.current_revision_id)
 
     def get_resource_revision(self, resource_id: str, revision_id: str) -> Resource[T]:
-        return self.storage.get_resource_revision(resource_id, revision_id)
+        obj = self.storage.get_resource_revision(resource_id, revision_id)
+        if self.resource_id_field_name:
+            obj
+        return obj
 
     def list_revisions(self, resource_id: str) -> list[str]:
         return self.storage.list_revisions(resource_id)
@@ -254,9 +216,9 @@ class ResourceManager(IResourceManager[T], Generic[T]):
 
     def patch(self, resource_id: str, patch_data: JsonPatch) -> RevisionInfo:
         data = self.get(resource_id).data
-        d = DataConverter.data_to_builtins(data)
+        d = self.data_converter.data_to_builtins(data)
         patch_data.apply(d, in_place=True)
-        data = DataConverter.builtins_to_data(d, self.resource_type)
+        data = self.data_converter.builtins_to_data(d)
         return self.update(resource_id, data)
 
     def switch(self, resource_id: str, revision_id: str) -> ResourceMeta:

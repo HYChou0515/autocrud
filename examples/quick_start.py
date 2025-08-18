@@ -13,8 +13,8 @@ To run test for pydantic model, run
 python quick_start.py pydantic
 ```
 
-Other model type choices are
-"msgspec", "dataclass", "typeddict".
+Model type choices are
+"msgspec", "dataclass", "typeddict", "pydantic"
 
 """
 
@@ -23,7 +23,7 @@ import sys
 if len(sys.argv) >= 2:
     mode = sys.argv[1]
 else:
-    mode = "pydantic"
+    mode = "msgspec"
 
 if mode not in (
     "msgspec",

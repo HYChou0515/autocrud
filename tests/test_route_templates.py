@@ -14,7 +14,6 @@ from autocrud.crud.core import (
     SwitchRevisionRouteTemplate,
     RestoreRouteTemplate,
     NameConverter,
-    NamingFormat,
 )
 from autocrud.resource_manager.basic import (
     IStorage,
@@ -26,6 +25,8 @@ from autocrud.resource_manager.resource_store.simple import MemoryResourceStore
 
 # 測試用的模型
 import msgspec
+
+from autocrud.util.naming import NamingFormat
 
 
 class User(msgspec.Struct):
