@@ -23,6 +23,7 @@ from autocrud.resource_manager.basic import (
     RevisionStatus,
 )
 from autocrud.resource_manager.data_converter import DataConverter
+from autocrud.resource_manager.type_converter import TypeConverter
 from autocrud.util.naming import NameConverter, NamingFormat
 
 
@@ -81,21 +82,23 @@ class _BuildResMetaUpdate(Struct):
 class ResourceManager(IResourceManager[T], Generic[T]):
     def __init__(
         self,
-        resource_type: type[T],
+        resource_type: type[T]|TypeConverter,
         *,
         storage: IStorage[T],
         id_generator: Callable[[], str] | None = None,
-        resource_id_field_name: str|None=None
     ):
         self.user_ctx = Ctx[str]("user_ctx")
         self.now_ctx = Ctx[dt.datetime]("now_ctx")
-        self.resource_type = resource_type
+        if isinstance(resource_type, TypeConverter):
+            self.type_converter = resource_type
+        else:
+            self.type_converter = TypeConverter(resource_type)
+        self.resource_type = self.type_converter.input_resource_type
+        self.output_resource_type = self.type_converter.output_resource_type
         self.storage = storage
-        self.data_converter = DataConverter(self.resource_type)
-        
-        self.resource_id_field_name = resource_id_field_name
+        self.data_converter = DataConverter(self.type_converter.input_resource_type)
 
-        _model_name = NameConverter(resource_type.__name__).to(NamingFormat.SNAKE)
+        _model_name = NameConverter(self.resource_type.__name__).to(NamingFormat.SNAKE)
 
         def default_id_generator():
             return f"{_model_name}:{uuid4()}"
@@ -195,8 +198,7 @@ class ResourceManager(IResourceManager[T], Generic[T]):
 
     def get_resource_revision(self, resource_id: str, revision_id: str) -> Resource[T]:
         obj = self.storage.get_resource_revision(resource_id, revision_id)
-        if self.resource_id_field_name:
-            obj
+        self.type_converter.parse_output(obj)
         return obj
 
     def list_revisions(self, resource_id: str) -> list[str]:

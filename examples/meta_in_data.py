@@ -21,6 +21,8 @@ Model type choices are
 
 import sys
 
+from fastapi.testclient import TestClient
+
 if len(sys.argv) >= 2:
     mode = sys.argv[1]
 else:
@@ -34,9 +36,7 @@ if mode not in (
 ):
     raise ValueError(f"Invalid mode: {mode}")
 
-from datetime import datetime
 
-from fastapi.testclient import TestClient
 from autocrud import AutoCRUD
 from fastapi import FastAPI
 
@@ -48,7 +48,7 @@ if mode == "msgspec":
         name: str
         age: int
         title: str
-        manager_id: str
+        manager_id: str | None
 
 elif mode == "dataclass":
     from dataclasses import dataclass
@@ -59,7 +59,7 @@ elif mode == "dataclass":
         name: str
         age: int
         title: str
-        manager_id: str
+        manager_id: str | None
 elif mode == "pydantic":
     from pydantic import BaseModel
 
@@ -68,7 +68,7 @@ elif mode == "pydantic":
         name: str
         age: int
         title: str
-        manager_id: str
+        manager_id: str | None
 
 elif mode == "typeddict":
     from typing import TypedDict
@@ -78,12 +78,31 @@ elif mode == "typeddict":
         name: str
         age: int
         title: str
-        manager_id: str
+        manager_id: str | None
 
 
 crud = AutoCRUD()
-crud.add_model(User)
+crud.add_model(User, id_field="id")
 
 app = FastAPI()
 crud.apply(app)
 
+def test():
+    client = TestClient(app)
+    resp = client.post(
+        "/user", json={
+            "name": "John Doe",
+            "age": 32,
+            "title": "xxx",
+            "manager_id": "xx",
+        }
+    )
+    resp.raise_for_status()
+    resource_id = resp.json()['resource_id']
+    resp = client.get(
+        f"/user/{resource_id}/data"
+    )
+    resp.raise_for_status()
+
+if __name__ == "__main__":
+    test()

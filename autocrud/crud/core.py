@@ -25,6 +25,7 @@ from autocrud.resource_manager.meta_store.simple import MemoryMetaStore
 from autocrud.resource_manager.resource_store.simple import MemoryResourceStore
 
 from autocrud.resource_manager.basic import ResourceMetaSearchQuery
+from autocrud.resource_manager.type_converter import TypeConverter
 from autocrud.util.naming import NameConverter
 
 
@@ -1374,13 +1375,16 @@ class AutoCRUD:
         :return: An instance of the model.
         """
         # 如果沒有提供 storage_factory，創建一個默認的
+        self.type_converter = TypeConverter(model, resource_id_field_name=id_field)
+
         if storage_factory is None:
-            storage_factory = self._create_default_storage_factory(model)
+            storage_factory = self._create_default_storage_factory(
+                self.type_converter.input_resource_type
+            )
 
         storage = storage_factory()
         resource_manager = ResourceManager(
-            model, storage=storage, id_generator=id_generator,
-            resource_id_field_name=id_field,
+            self.type_converter, storage=storage, id_generator=id_generator,
         )
         model_name = name or self._resource_name(model)
         self.resource_managers[model_name] = resource_manager
