@@ -7,7 +7,6 @@ from typing import is_typeddict
 import msgspec
 
 
-
 try:
     import pydantic
 except ImportError:
@@ -20,11 +19,13 @@ class ResourceBaseType(StrEnum):
     MSGSPEC = "msgspec"
     DATACLASS = "dataclass"
     TYPEDDICT = "typeddict"
-    PYDANTIC="pydantic"
-    UNKNOWN="unknown"
+    PYDANTIC = "pydantic"
+    UNKNOWN = "unknown"
+
 
 class DataConverter:
     """數據轉換器，處理不同數據類型的序列化和反序列化"""
+
     def __init__(self, resource_type: type[T]):
         self.resource_type = resource_type
         if pydantic is not None and issubclass(resource_type, pydantic.BaseModel):
@@ -67,14 +68,14 @@ class DataConverter:
             pydantic_instance = self.resource_type.model_validate(obj)
             return msgspec.Raw(pydantic_instance.model_dump_json().encode())
         return msgspec.convert(obj, self.resource_type)
-    
-    def set_data_value(self, obj: T|msgspec.Raw, key: str, value: Any):
+
+    def set_data_value(self, obj: T | msgspec.Raw, key: str, value: Any):
         if self.base_type is ResourceBaseType.PYDANTIC:
             # self.resource_type: pydantic.BaseModel
             d = self.data_to_builtins(obj)
             d[key] = value
             if isinstance(obj, msgspec.Raw):
-                return msgspec.Raw(json.dumps(d).encode('utf-8'))
+                return msgspec.Raw(json.dumps(d).encode("utf-8"))
             else:
                 return d
         if self.base_type is ResourceBaseType.MSGSPEC:
@@ -90,11 +91,14 @@ class DataConverter:
         setattr(obj, key, value)
         return obj
 
+
 def decode_json_to_data(json_bytes: bytes, resource_type: type):
     return DataConverter(resource_type).decode_json_to_data(json_bytes)
 
+
 def data_to_builtins(data: msgspec.Raw | T) -> Any:
     return DataConverter.data_to_builtins(data)
+
 
 def builtins_to_data(resource_type: type[T], obj: Any) -> msgspec.Raw | T:
     return DataConverter(resource_type).builtins_to_data(obj)

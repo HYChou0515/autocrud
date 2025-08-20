@@ -85,15 +85,12 @@ class ResourceManager(IResourceManager[T], Generic[T]):
         *,
         storage: IStorage[T],
         id_generator: Callable[[], str] | None = None,
-        resource_id_field_name: str|None=None
     ):
         self.user_ctx = Ctx[str]("user_ctx")
         self.now_ctx = Ctx[dt.datetime]("now_ctx")
         self.resource_type = resource_type
         self.storage = storage
         self.data_converter = DataConverter(self.resource_type)
-        
-        self.resource_id_field_name = resource_id_field_name
 
         _model_name = NameConverter(resource_type.__name__).to(NamingFormat.SNAKE)
 
@@ -195,8 +192,6 @@ class ResourceManager(IResourceManager[T], Generic[T]):
 
     def get_resource_revision(self, resource_id: str, revision_id: str) -> Resource[T]:
         obj = self.storage.get_resource_revision(resource_id, revision_id)
-        if self.resource_id_field_name:
-            obj
         return obj
 
     def list_revisions(self, resource_id: str) -> list[str]:

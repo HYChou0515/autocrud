@@ -20,7 +20,10 @@ from autocrud.resource_manager.basic import (
     RevisionInfo,
 )
 from autocrud.resource_manager.core import ResourceManager, SimpleStorage
-from autocrud.resource_manager.data_converter import data_to_builtins, decode_json_to_data
+from autocrud.resource_manager.data_converter import (
+    data_to_builtins,
+    decode_json_to_data,
+)
 from autocrud.resource_manager.meta_store.simple import MemoryMetaStore
 from autocrud.resource_manager.resource_store.simple import MemoryResourceStore
 
@@ -842,9 +845,7 @@ class ListRouteTemplate(BaseRouteTemplate):
                     for meta in metas:
                         try:
                             resource = resource_manager.get(meta.resource_id)
-                            resources_data.append(
-                                data_to_builtins(resource.data)
-                            )
+                            resources_data.append(data_to_builtins(resource.data))
                         except Exception:
                             # 如果無法獲取資源數據，跳過
                             continue
@@ -1361,8 +1362,7 @@ class AutoCRUD:
         *,
         name: str | None = None,
         storage_factory: Callable[[], IStorage[T]] | None = None,
-        id_generator: Callable[[], str]|None=None,
-        id_field: str|None=None,
+        id_generator: Callable[[], str] | None = None,
     ) -> None:
         """
         Add a model to the AutoCRUD system.
@@ -1379,8 +1379,9 @@ class AutoCRUD:
 
         storage = storage_factory()
         resource_manager = ResourceManager(
-            model, storage=storage, id_generator=id_generator,
-            resource_id_field_name=id_field,
+            model,
+            storage=storage,
+            id_generator=id_generator,
         )
         model_name = name or self._resource_name(model)
         self.resource_managers[model_name] = resource_manager
