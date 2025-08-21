@@ -4,9 +4,10 @@ from collections.abc import Callable
 from contextlib import suppress
 from enum import StrEnum
 import textwrap
-from typing import Generic, Literal, TypeVar, Any
+from typing import IO, Generic, Literal, TypeVar, Any
 import datetime as dt
 from msgspec import UNSET
+from pathlib import Path
 
 from fastapi import APIRouter, HTTPException, Request, Query, Depends
 from pydantic import create_model, BaseModel
@@ -14,6 +15,7 @@ import msgspec
 from typing import Optional
 
 from autocrud.resource_manager.basic import (
+    IMigration,
     IStorage,
     Resource,
     ResourceMeta,
@@ -24,8 +26,8 @@ from autocrud.resource_manager.data_converter import (
     data_to_builtins,
     decode_json_to_data,
 )
-from autocrud.resource_manager.meta_store.simple import MemoryMetaStore
-from autocrud.resource_manager.resource_store.simple import MemoryResourceStore
+from autocrud.resource_manager.meta_store.simple import DiskMetaStore, MemoryMetaStore
+from autocrud.resource_manager.resource_store.simple import DiskResourceStore, MemoryResourceStore
 
 from autocrud.resource_manager.basic import ResourceMetaSearchQuery
 from autocrud.util.naming import NameConverter
@@ -1295,6 +1297,51 @@ class RestoreRouteTemplate(BaseRouteTemplate):
             except Exception as e:
                 raise HTTPException(status_code=400, detail=str(e))
 
+class IStorageFactory(ABC):
+    @abstractmethod
+    def build(self, model: type[T], model_name: str, *, migration: IMigration|None=None) -> IStorage[T]:
+        ...
+
+
+class MemoryStorageFactory(IStorageFactory):
+    def build(self, model: type[T], model_name: str, *, migration: IMigration|None=None) -> IStorage[T]:
+        meta_store = MemoryMetaStore()
+
+        # 檢查是否是 Pydantic 模型
+        if issubclass(model, BaseModel):
+            # 對於 Pydantic 模型，使用 msgspec.Raw 來避免序列化問題
+            resource_store = MemoryResourceStore[msgspec.Raw](
+                resource_type=msgspec.Raw
+            )
+        else:
+            # 對於其他類型（msgspec.Struct, dataclass, TypedDict），使用原生支持
+            resource_store = MemoryResourceStore[T](resource_type=model)
+
+        return SimpleStorage(meta_store, resource_store)
+
+class DiskStorageFactory(IStorageFactory):
+    def __init__(self,  rootdir: Path | str,):
+        self.rootdir = Path(rootdir)
+        
+    def build(self, model: type[T], model_name: str, *, migration: IMigration|None=None) -> IStorage[T]:
+        meta_store = DiskMetaStore(rootdir=self.rootdir/model_name/"meta")
+
+        # 檢查是否是 Pydantic 模型
+        if issubclass(model, BaseModel):
+            # 對於 Pydantic 模型，使用 msgspec.Raw 來避免序列化問題
+            resource_store = DiskResourceStore[msgspec.Raw](
+                resource_type=msgspec.Raw,
+                rootdir=self.rootdir/model_name/"data"
+            )
+        else:
+            # 對於其他類型（msgspec.Struct, dataclass, TypedDict），使用原生支持
+            resource_store = DiskResourceStore[T](
+                resource_type=model,
+                rootdir=self.rootdir/model_name/"data",
+                migration=migration,
+            )
+
+        return SimpleStorage(meta_store, resource_store)
 
 class AutoCRUD:
     def __init__(
@@ -1330,28 +1377,6 @@ class AutoCRUD:
         # 使用 NameConverter 進行轉換
         return NameConverter(original_name).to(self.model_naming)
 
-    def _create_default_storage_factory(
-        self, model: type[T]
-    ) -> Callable[[], IStorage[T]]:
-        """創建默認的 storage factory"""
-
-        def factory() -> IStorage[T]:
-            meta_store = MemoryMetaStore()
-
-            # 檢查是否是 Pydantic 模型
-            if issubclass(model, BaseModel):
-                # 對於 Pydantic 模型，使用 msgspec.Raw 來避免序列化問題
-                resource_store = MemoryResourceStore[msgspec.Raw](
-                    resource_type=msgspec.Raw
-                )
-            else:
-                # 對於其他類型（msgspec.Struct, dataclass, TypedDict），使用原生支持
-                resource_store = MemoryResourceStore[T](resource_type=model)
-
-            return SimpleStorage(meta_store, resource_store)
-
-        return factory
-
     def add_route_template(self, template: IRouteTemplate) -> None:
         """添加路由模板"""
         self.route_templates.append(template)
@@ -1361,8 +1386,9 @@ class AutoCRUD:
         model: type[T],
         *,
         name: str | None = None,
-        storage_factory: Callable[[], IStorage[T]] | None = None,
+        storage_factory: IStorageFactory | None = None,
         id_generator: Callable[[], str] | None = None,
+        migration: IMigration | None = None,
     ) -> None:
         """
         Add a model to the AutoCRUD system.
@@ -1375,15 +1401,16 @@ class AutoCRUD:
         """
         # 如果沒有提供 storage_factory，創建一個默認的
         if storage_factory is None:
-            storage_factory = self._create_default_storage_factory(model)
+            storage_factory = MemoryStorageFactory()
 
-        storage = storage_factory()
+        model_name = name or self._resource_name(model)
+        storage = storage_factory.build(model, model_name, migration=migration)
         resource_manager = ResourceManager(
             model,
             storage=storage,
             id_generator=id_generator,
+            migration=migration,
         )
-        model_name = name or self._resource_name(model)
         self.resource_managers[model_name] = resource_manager
 
     def apply(self, router: APIRouter) -> APIRouter:

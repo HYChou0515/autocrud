@@ -3,7 +3,7 @@ from contextlib import contextmanager
 from contextvars import ContextVar
 from enum import StrEnum
 import functools
-from typing import TypeVar, Generic
+from typing import IO, TypeVar, Generic
 import datetime as dt
 from uuid import UUID
 from msgspec import UNSET, Struct, UnsetType
@@ -124,6 +124,15 @@ class RevisionIDNotFoundError(RevisionNotFoundError):
         )
         self.resource_id = resource_id
         self.revision_id = revision_id
+
+class IMigration(ABC):
+    @abstractmethod
+    def migrate(self, data: IO[bytes], schema_version: str|None) -> T:
+        ...
+    @property
+    @abstractmethod
+    def schema_version(self) -> str:
+        ...
 
 
 class IResourceManager(ABC, Generic[T]):

@@ -10,6 +10,7 @@ from jsonpatch import JsonPatch
 from autocrud.resource_manager.basic import (
     Ctx,
     IMetaStore,
+    IMigration,
     IResourceManager,
     IResourceStore,
     IStorage,
@@ -85,12 +86,15 @@ class ResourceManager(IResourceManager[T], Generic[T]):
         *,
         storage: IStorage[T],
         id_generator: Callable[[], str] | None = None,
+        migration: IMigration | None = None,
     ):
         self.user_ctx = Ctx[str]("user_ctx")
         self.now_ctx = Ctx[dt.datetime]("now_ctx")
         self.resource_type = resource_type
         self.storage = storage
         self.data_converter = DataConverter(self.resource_type)
+        schema_version = migration.schema_version if migration else None
+        self.schema_version = UNSET if schema_version is None else schema_version
 
         _model_name = NameConverter(resource_type.__name__).to(NamingFormat.SNAKE)
 
@@ -127,6 +131,7 @@ class ResourceManager(IResourceManager[T], Generic[T]):
         return ResourceMeta(
             current_revision_id=current_revision_id,
             resource_id=resource_id,
+            schema_version=self.schema_version,
             total_revision_count=total_revision_count,
             created_time=created_time,
             updated_time=self.now_ctx.get(),
@@ -153,6 +158,7 @@ class ResourceManager(IResourceManager[T], Generic[T]):
             resource_id=resource_id,
             revision_id=revision_id,
             parent_revision_id=last_revision_id,
+            schema_version=self.schema_version,
             status=RevisionStatus.stable,
             created_time=self.now_ctx.get(),
             updated_time=self.now_ctx.get(),
