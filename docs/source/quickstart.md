@@ -1,311 +1,131 @@
 # 🚀 快速開始
 
-AutoCRUD 讓您在 5 分鐘內就能創建一個功能完整的 CRUD API。本指南將帶您快速上手。
-
-## 前置要求
-
-- Python 3.8+
-- 基本的 Python 和 FastAPI 知識
+5 分鐘上手 AutoCRUD。
 
 ## 安裝
 
-::::{tab-set}
-
-:::{tab-item} pip
 ```bash
 pip install autocrud
 ```
-:::
-
-:::{tab-item} uv
-```bash
-uv add autocrud
-```
-:::
-
-:::{tab-item} poetry
-```bash
-poetry add autocrud
-```
-:::
-
-::::
 
 ## 第一個 API
 
-讓我們從最簡單的示例開始：
-
 ```python
-# main.py
-from pydantic import BaseModel
-from fastapi import FastAPI, APIRouter
-from autocrud.crud.core import (
-    AutoCRUD, CreateRouteTemplate, ReadRouteTemplate,
-    UpdateRouteTemplate, DeleteRouteTemplate, ListRouteTemplate
-)
+from datetime import datetime, timedelta
+from fastapi import FastAPI
+from fastapi.testclient import TestClient
+from autocrud import AutoCRUD
+from msgspec import Struct
 
-# 1. 定義數據模型
-class User(BaseModel):
-    name: str
-    email: str
-    age: int = None
+class TodoItem(Struct):
+    title: str
+    completed: bool
+    due: datetime
 
-# 2. 創建 AutoCRUD 實例
-crud = AutoCRUD(model_naming="kebab")
+class TodoList(Struct):
+    items: list[TodoItem]
+    notes: str
 
-# 3. 添加 CRUD 操作
-crud.add_route_template(CreateRouteTemplate())
-crud.add_route_template(ReadRouteTemplate())
-crud.add_route_template(UpdateRouteTemplate())
-crud.add_route_template(DeleteRouteTemplate())
-crud.add_route_template(ListRouteTemplate())
+# 創建 AutoCRUD
+crud = AutoCRUD()
+crud.add_model(TodoItem)
+crud.add_model(TodoList)
 
-# 4. 註冊模型
-crud.add_model(User)
-
-# 5. 集成到 FastAPI
-app = FastAPI(title="我的第一個 CRUD API")
-router = APIRouter()
-crud.apply(router)
-app.include_router(router)
-
-if __name__ == "__main__":
-    import uvicorn
-    uvicorn.run(app, host="0.0.0.0", port=8000)
-```
-
-## 運行應用
-
-```bash
-# 方法 1: 直接運行
-python main.py
-
-# 方法 2: 使用 uvicorn
-uvicorn main:app --reload
-
-# 方法 3: 指定端口
-uvicorn main:app --host 0.0.0.0 --port 8000 --reload
+app = FastAPI()
+crud.apply(app)
 ```
 
 ## 測試 API
 
-應用啟動後，您將擁有以下端點：
-
-### 1. 創建用戶
-```bash
-curl -X POST "http://localhost:8000/user" \
-     -H "Content-Type: application/json" \
-     -d '{
-       "name": "張三",
-       "email": "zhangsan@example.com",
-       "age": 25
-     }'
-```
-
-### 2. 獲取用戶列表
-```bash
-curl http://localhost:8000/user
-```
-
-### 3. 獲取特定用戶
-```bash
-curl http://localhost:8000/user/{user_id}
-```
-
-### 4. 更新用戶
-```bash
-curl -X PUT "http://localhost:8000/user/{user_id}" \
-     -H "Content-Type: application/json" \
-     -d '{
-       "name": "張三",
-       "email": "zhangsan.new@example.com",
-       "age": 26
-     }'
-```
-
-### 5. 刪除用戶
-```bash
-curl -X DELETE http://localhost:8000/user/{user_id}
-```
-
-## 查看 API 文檔
-
-FastAPI 自動生成交互式 API 文檔：
-
-- **Swagger UI**: http://localhost:8000/docs
-- **ReDoc**: http://localhost:8000/redoc
-
-## 多數據類型示例
-
-AutoCRUD 支持多種 Python 數據類型：
-
 ```python
-from typing import TypedDict, Optional
-from dataclasses import dataclass
-from pydantic import BaseModel
-import msgspec
+def test():
+    client = TestClient(app)
+    
+    # 創建 TODO 清單
+    resp = client.post("/todo-list", json={
+        "items": [], 
+        "notes": "我的待辦事項"
+    })
+    todo_list_id = resp.json()["resource_id"]
+    
+    # 使用 JSON Patch 添加項目
+    resp = client.patch(f"/todo-list/{todo_list_id}", json=[{
+        "op": "add",
+        "path": "/items/-",
+        "value": {
+            "title": "Todo 1",
+            "completed": False,
+            "due": (datetime.now() + timedelta(hours=1)).isoformat(),
+        },
+    }])
+    
+    # 查看結果
+    resp = client.get(f"/todo-list/{todo_list_id}/data")
+    print(resp.json())
+    
+    # 標記完成
+    resp = client.patch(f"/todo-list/{todo_list_id}", json=[
+        {"op": "replace", "path": "/items/0/completed", "value": True}
+    ])
 
-# TypedDict - 輕量級
-class Product(TypedDict):
+if __name__ == "__main__":
+    test()
+```
+
+## 支援的數據類型
+
+### msgspec.Struct (推薦)
+```python
+from msgspec import Struct
+class User(Struct):
     name: str
-    price: float
-    in_stock: bool
-
-# Pydantic - 強驗證
-class User(BaseModel):
-    username: str
-    email: str
-    age: Optional[int] = None
-
-# dataclass - 原生支持
-@dataclass
-class Order:
-    customer_id: str
-    items: list
-    total: float = 0.0
-
-# msgspec - 高性能
-class Event(msgspec.Struct):
-    type: str
-    data: dict
-    timestamp: float
-
-# 創建統一的 CRUD API
-crud = AutoCRUD(model_naming="kebab")
-
-# 添加所有路由模板
-for template in [CreateRouteTemplate(), ReadRouteTemplate(), 
-                UpdateRouteTemplate(), DeleteRouteTemplate(), 
-                ListRouteTemplate()]:
-    crud.add_route_template(template)
-
-# 註冊所有模型
-crud.add_model(Product)   # /product/*
-crud.add_model(User)      # /user/*
-crud.add_model(Order)     # /order/*
-crud.add_model(Event)     # /event/*
-
-# 應用到 FastAPI
-app = FastAPI(title="多類型 CRUD API")
-router = APIRouter()
-crud.apply(router)
-app.include_router(router)
-```
-
-## 自定義配置
-
-### 命名約定
-
-```python
-# kebab-case (推薦)
-crud = AutoCRUD(model_naming="kebab")
-# UserProfile -> /user-profile
-
-# snake_case
-crud = AutoCRUD(model_naming="snake")
-# UserProfile -> /user_profile
-
-# 自定義命名
-def custom_naming(model_type):
-    return f"api_{model_type.__name__.lower()}"
-
-crud = AutoCRUD(model_naming=custom_naming)
-```
-
-### 選擇性功能
-
-```python
-# 只讀 API
-crud = AutoCRUD()
-crud.add_route_template(ReadRouteTemplate())
-crud.add_route_template(ListRouteTemplate())
-
-# 基本 CRUD (無列表)
-crud = AutoCRUD()
-crud.add_route_template(CreateRouteTemplate())
-crud.add_route_template(ReadRouteTemplate())
-crud.add_route_template(UpdateRouteTemplate())
-crud.add_route_template(DeleteRouteTemplate())
-```
-
-## 錯誤處理
-
-AutoCRUD 自動處理常見錯誤：
-
-```python
-# 自動返回適當的 HTTP 狀態碼
-# 404 - 資源不存在
-# 422 - 驗證錯誤
-# 400 - 請求格式錯誤
-# 500 - 服務器內部錯誤
-```
-
-## 下一步
-
-現在您已經有了一個基本的 CRUD API！接下來可以：
-
-1. 📖 閱讀 [用戶指南](user_guide.md) 了解高級功能
-2. 💡 查看 [示例集合](examples.md) 獲取更多靈感
-3. 🔧 探索 [API 參考](api_reference.md) 了解所有配置選項
-4. 🛠️ 學習 [安裝指南](installation.md) 進行生產部署
-
-## 常見問題
-
-### Q: 如何添加自定義驗證？
-
-使用 Pydantic 的驗證功能：
-
-```python
-from pydantic import BaseModel, validator
-
-class User(BaseModel):
-    name: str
-    email: str
     age: int
-
-    @validator('age')
-    def validate_age(cls, v):
-        if v < 0 or v > 150:
-            raise ValueError('年齡必須在 0-150 之間')
-        return v
 ```
 
-### Q: 如何自定義響應格式？
-
+### Pydantic
 ```python
-from autocrud.crud.core import ReadRouteTemplate
-
-class CustomReadTemplate(ReadRouteTemplate):
-    def get_response_model(self, model_type):
-        # 自定義響應模型
-        pass
+from pydantic import BaseModel
+class User(BaseModel):
+    name: str
+    age: int
 ```
 
-### Q: 如何添加認證？
-
+### dataclass
 ```python
-from fastapi import Depends, HTTPException
-from fastapi.security import HTTPBearer
-
-security = HTTPBearer()
-
-def verify_token(token: str = Depends(security)):
-    # 驗證邏輯
-    if not token:
-        raise HTTPException(status_code=401)
-    return token
-
-# 在應用中使用
-app.include_router(router, dependencies=[Depends(verify_token)])
+from dataclasses import dataclass
+@dataclass
+class User:
+    name: str
+    age: int
 ```
 
-### Q: 支持哪些數據庫？
+### TypedDict
+```python
+from typing import TypedDict
+class User(TypedDict):
+    name: str
+    age: int
+```
 
-AutoCRUD 設計為存儲無關。默認使用內存存儲，但可以輕松擴展到：
-- PostgreSQL
-- MySQL
-- MongoDB
-- Redis
-- 文件系統
+## 運行
 
-更多信息請參見 [用戶指南](user_guide.md#存儲後端)。
+```bash
+# 默認 msgspec
+python quick_start.py
+
+# 其他類型
+python quick_start.py pydantic
+python quick_start.py dataclass
+python quick_start.py typeddict
+
+# 開發服務器
+python -m fastapi dev quick_start.py
+```
+
+## 自動生成的端點
+
+- `POST /todo-item` - 創建
+- `GET /todo-item/{id}/data` - 讀取
+- `PATCH /todo-item/{id}` - JSON Patch 更新
+- `DELETE /todo-item/{id}` - 軟刪除
+- `GET /todo-list/full` - 列表(含元數據)

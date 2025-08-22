@@ -1,517 +1,259 @@
 # 🛠️ 安裝指南
 
-本指南詳細說明如何在不同環境中安裝和配置 AutoCRUD。
+## 📋 系統要求
 
-## 系統需求
+- **Python**: 3.11+ (根據 pyproject.toml)
+- **FastAPI**: 自動安裝為相依套件
+- **存儲**: 約 20MB
 
-### 基本要求
-- **Python**: 3.8 或更高版本
-- **操作系統**: Windows, macOS, Linux
-- **內存**: 最少 512MB RAM
-- **存儲**: 至少 100MB 可用空間
+## 🚀 安裝 AutoCRUD
 
-### 推薦環境
-- **Python**: 3.11+ (最佳性能)
-- **內存**: 2GB+ RAM
-- **虛擬環境**: 使用 venv, conda, 或 poetry
+### pip 安裝
 
-## 快速安裝
-
-::::{tab-set}
-
-:::{tab-item} pip
 ```bash
-# 基本安裝
 pip install autocrud
-
-# 包含所有可選依賴
-pip install autocrud[all]
 ```
-:::
 
-:::{tab-item} uv (推薦)
+### uv 安裝 (推薦)
+
 ```bash
-# 基本安裝
+# 安裝 uv (如果還沒有)
+curl -LsSf https://astral.sh/uv/install.sh | sh
+
+# 安裝 AutoCRUD
 uv add autocrud
-
-# 開發環境安裝
-uv add autocrud --dev
 ```
-:::
 
-:::{tab-item} poetry
+### Poetry 安裝
+
 ```bash
-# 基本安裝
 poetry add autocrud
-
-# 開發依賴
-poetry add autocrud --group dev
-```
-:::
-
-:::{tab-item} conda
-```bash
-# 通過 pip 在 conda 環境中安裝
-conda install pip
-pip install autocrud
-```
-:::
-
-::::
-
-## 可選依賴
-
-AutoCRUD 提供多個可選功能包：
-
-### 數據驗證
-```bash
-# Pydantic v2 支持 (推薦)
-pip install autocrud[pydantic]
-
-# msgspec 高性能支持
-pip install autocrud[msgspec]
 ```
 
-### 數據庫支持
-```bash
-# PostgreSQL 支持
-pip install autocrud[postgresql]
+## ✅ 驗證安裝
 
-# MySQL 支持  
-pip install autocrud[mysql]
-
-# MongoDB 支持
-pip install autocrud[mongodb]
-
-# Redis 支持
-pip install autocrud[redis]
-```
-
-### 開發工具
-```bash
-# 測試工具
-pip install autocrud[testing]
-
-# 文檔生成
-pip install autocrud[docs]
-
-# 完整開發環境
-pip install autocrud[dev]
-```
-
-### 完整安裝
-```bash
-# 安裝所有功能
-pip install autocrud[all]
-```
-
-## 虛擬環境設置
-
-### 使用 venv (推薦)
-
-::::{tab-set}
-
-:::{tab-item} Linux/macOS
-```bash
-# 創建虛擬環境
-python -m venv autocrud-env
-
-# 激活環境
-source autocrud-env/bin/activate
-
-# 安裝 AutoCRUD
-pip install autocrud
-
-# 退出環境
-deactivate
-```
-:::
-
-:::{tab-item} Windows
-```cmd
-# 創建虛擬環境
-python -m venv autocrud-env
-
-# 激活環境
-autocrud-env\Scripts\activate
-
-# 安裝 AutoCRUD
-pip install autocrud
-
-# 退出環境
-deactivate
-```
-:::
-
-::::
-
-### 使用 conda
-
-```bash
-# 創建 conda 環境
-conda create -n autocrud python=3.11
-
-# 激活環境
-conda activate autocrud
-
-# 安裝 AutoCRUD
-pip install autocrud
-
-# 退出環境
-conda deactivate
-```
-
-### 使用 Poetry
-
-```bash
-# 初始化新項目
-poetry new my-autocrud-project
-cd my-autocrud-project
-
-# 添加 AutoCRUD
-poetry add autocrud
-
-# 激活 shell
-poetry shell
-
-# 或直接運行
-poetry run python main.py
-```
-
-## 驗證安裝
-
-創建一個簡單的測試文件來驗證安裝：
+創建 `test.py` 檔案：
 
 ```python
-# test_installation.py
-from autocrud.crud.core import AutoCRUD
-from pydantic import BaseModel
+from autocrud import AutoCRUD
+from fastapi import FastAPI
+from fastapi.testclient import TestClient
+from msgspec import Struct
 
-class TestModel(BaseModel):
-    name: str
-    value: int
+class Todo(Struct):
+    title: str
+    completed: bool = False
 
-# 創建 CRUD 實例
-crud = AutoCRUD()
-print("✅ AutoCRUD 安裝成功！")
-print(f"版本: {crud.__version__ if hasattr(crud, '__version__') else '未知'}")
+def main():
+    # 建立 AutoCRUD
+    crud = AutoCRUD()
+    crud.add_model(Todo)
+    
+    # 建立 FastAPI 應用
+    app = FastAPI()
+    crud.apply(app)
+    
+    # 測試 API
+    client = TestClient(app)
+    
+    # 創建一個 todo
+    response = client.post("/todo", json={"title": "測試安裝", "completed": False})
+    print(f"創建 Todo: {response.status_code}")
+    
+    # 列出所有 todos
+    response = client.get("/todo/data")
+    print(f"Todo 列表: {response.json()}")
+    
+    print("✅ AutoCRUD 安裝成功！")
+
+if __name__ == "__main__":
+    main()
 ```
 
-運行測試：
+執行測試：
+
 ```bash
-python test_installation.py
+python test.py
 ```
 
-## 開發環境設置
+如果看到 "✅ AutoCRUD 安裝成功！" 表示安裝完成。
+
+## 🚀 快速開始開發服務器
+
+使用 AutoCRUD 內建的範例：
+
+```bash
+# 運行基本範例
+python -m fastapi dev examples/quick_start.py
+
+# 或執行測試
+python examples/quick_start.py
+
+# 測試不同資料模型
+python examples/quick_start.py pydantic
+python examples/quick_start.py dataclass
+python examples/quick_start.py typeddict
+```
+
+訪問 http://localhost:8000/docs 查看自動生成的 API 文檔。
+
+## 🧩 相依套件
+
+AutoCRUD 會自動安裝：
+
+- `fastapi` (>=0.116.1) - Web 框架
+- `msgspec` (>=0.19.0) - 高速序列化
+- `pydantic` (>=2.11.7) - 資料驗證
+- `jsonpatch` (>=1.33) - JSON Patch 支援
+- `dependency-injector` (>=4.48.1) - 相依注入
+- `msgpack` (>=1.1.1) - 二進制序列化
+
+## 🔧 開發環境設置
 
 ### 從源碼安裝
 
 ```bash
-# 克隆倉庫
+# 克隆專案
 git clone https://github.com/HYChou0515/autocrud.git
 cd autocrud
 
-# 使用 uv (推薦)
-uv sync --dev
+# 使用 uv 安裝開發環境
+uv sync --group dev
 
 # 或使用 pip
-pip install -e .[dev]
+pip install -e ".[dev]"
+```
 
-# 運行測試
+### 執行測試
+
+```bash
+# 執行所有測試
+make test
+
+# 或直接使用 pytest
 uv run pytest
-# 或
-python -m pytest
+
+# 執行特定測試
+uv run pytest tests/test_resource_manager.py
 ```
 
-### 設置 pre-commit 鈎子
+### 代碼品質檢查
 
 ```bash
-# 安裝 pre-commit
-pip install pre-commit
+# 格式化代碼
+make style
 
-# 設置鈎子
-pre-commit install
+# 檢查代碼品質
+make check
 
-# 手動運行檢查
-pre-commit run --all-files
+# 查看所有可用命令
+make help
 ```
 
-## Docker 安裝
+## � 建立你的第一個專案
 
-### 官方 Docker 鏡像
+### 基本專案結構
 
-```dockerfile
-FROM python:3.11-slim
-
-WORKDIR /app
-
-# 安裝 AutoCRUD
-RUN pip install autocrud[all]
-
-# 複製應用代碼
-COPY . .
-
-# 暴露端口
-EXPOSE 8000
-
-# 啟動命令
-CMD ["uvicorn", "main:app", "--host", "0.0.0.0", "--port", "8000"]
+```
+my-autocrud-project/
+├── main.py          # FastAPI 應用入口
+├── models.py        # 資料模型定義
+├── requirements.txt # 或 pyproject.toml
+└── data/           # 資料存儲目錄 (可選)
 ```
 
-### Docker Compose
-
-```yaml
-# docker-compose.yml
-version: '3.8'
-
-services:
-  app:
-    build: .
-    ports:
-      - "8000:8000"
-    environment:
-      - ENVIRONMENT=production
-    depends_on:
-      - db
-
-  db:
-    image: postgres:15
-    environment:
-      POSTGRES_DB: autocrud
-      POSTGRES_USER: user
-      POSTGRES_PASSWORD: password
-    volumes:
-      - postgres_data:/var/lib/postgresql/data
-
-volumes:
-  postgres_data:
-```
-
-## 生產部署
-
-### 基本 requirements.txt
-
-```txt
-# requirements.txt
-autocrud[all]==1.0.0
-uvicorn[standard]==0.25.0
-gunicorn==21.2.0
-```
-
-### 使用 Gunicorn
-
-```bash
-# 安裝 Gunicorn
-pip install gunicorn
-
-# 啟動服務
-gunicorn main:app -w 4 -k uvicorn.workers.UvicornWorker
-```
-
-### 使用 systemd (Linux)
-
-```ini
-# /etc/systemd/system/autocrud.service
-[Unit]
-Description=AutoCRUD API
-After=network.target
-
-[Service]
-Type=exec
-User=www-data
-Group=www-data
-WorkingDirectory=/opt/autocrud
-ExecStart=/opt/autocrud/venv/bin/gunicorn main:app -w 4 -k uvicorn.workers.UvicornWorker
-Restart=always
-
-[Install]
-WantedBy=multi-user.target
-```
-
-啟動服務：
-```bash
-sudo systemctl enable autocrud
-sudo systemctl start autocrud
-sudo systemctl status autocrud
-```
-
-## 環境變量配置
-
-創建 `.env` 文件：
-
-```env
-# .env
-# 基本配置
-ENVIRONMENT=production
-DEBUG=false
-LOG_LEVEL=info
-
-# API 配置
-API_TITLE=My AutoCRUD API
-API_VERSION=1.0.0
-API_PREFIX=/api/v1
-
-# 數據庫配置
-DATABASE_URL=postgresql://user:password@localhost/autocrud
-REDIS_URL=redis://localhost:6379/0
-
-# 安全配置
-SECRET_KEY=your-secret-key-here
-ALLOWED_HOSTS=localhost,127.0.0.1,yourdomain.com
-
-# 性能配置
-WORKERS=4
-MAX_CONNECTIONS=100
-TIMEOUT=30
-```
-
-## 性能優化
-
-### 基本優化
+### main.py 範例
 
 ```python
-# main.py
-import os
-from autocrud.crud.core import AutoCRUD
+from fastapi import FastAPI
+from autocrud import AutoCRUD
+from models import User, Product
 
-# 根據環境調整配置
-is_production = os.getenv("ENVIRONMENT") == "production"
+# 建立 AutoCRUD 實例
+crud = AutoCRUD()
 
-crud = AutoCRUD(
-    # 生產環境優化
-    enable_cache=is_production,
-    cache_ttl=3600 if is_production else 60,
-    batch_size=100 if is_production else 10,
-)
+# 註冊模型
+crud.add_model(User)
+crud.add_model(Product)
+
+# 建立 FastAPI 應用
+app = FastAPI(title="My AutoCRUD API")
+
+# 應用 CRUD 路由
+crud.apply(app)
+
+# 可選：自訂路由
+@app.get("/")
+async def root():
+    return {"message": "AutoCRUD API is running!"}
 ```
 
-### 內存優化
+### models.py 範例
 
-```bash
-# 設置 Python 內存限制
-export PYTHONMALLOC=malloc
-export MALLOC_ARENA_MAX=2
+```python
+from msgspec import Struct
+from typing import Optional
 
-# 限制進程內存使用
-ulimit -v 1048576  # 1GB 虛擬內存限制
+class User(Struct):
+    name: str
+    email: str
+    age: Optional[int] = None
+
+class Product(Struct):
+    name: str
+    price: float
+    description: Optional[str] = None
+    in_stock: bool = True
 ```
 
-## 常見問題
+### 啟動應用
 
-### 安裝問題
-
-#### pip 安裝失敗
 ```bash
-# 升級 pip
-pip install --upgrade pip
+# 開發模式
+python -m fastapi dev main.py
 
-# 清除緩存
+# 生產模式
+uvicorn main:app --host 0.0.0.0 --port 8000
+```
+
+## 🐛 故障排除
+
+### Python 版本過舊
+
+```bash
+# 檢查版本
+python --version
+
+# 如果小於 3.11，請升級
+pyenv install 3.11
+pyenv global 3.11
+```
+
+### 相依套件問題
+
+```bash
+# 清理 pip 快取
 pip cache purge
 
-# 使用國內鏡像
-pip install autocrud -i https://pypi.tuna.tsinghua.edu.cn/simple/
-```
-
-#### 依賴衝突
-```bash
-# 檢查依賴樹
-pip show autocrud
-
-# 創建新的虛擬環境
-python -m venv fresh-env
-source fresh-env/bin/activate
+# 重新安裝
+pip uninstall autocrud
 pip install autocrud
 ```
 
-### 運行時問題
-
-#### 導入錯誤
-```python
-# 檢查安裝路徑
-import sys
-print(sys.path)
-
-import autocrud
-print(autocrud.__file__)
-```
-
-#### 版本檢查
-```python
-import autocrud
-print(f"AutoCRUD 版本: {autocrud.__version__}")
-
-import fastapi
-print(f"FastAPI 版本: {fastapi.__version__}")
-```
-
-### 性能問題
-
-#### 啟動慢
-```python
-# 禁用自動發現功能
-crud = AutoCRUD(auto_discover=False)
-
-# 延遲加載模型
-crud.lazy_load = True
-```
-
-#### 內存使用高
-```python
-# 限制緩存大小
-crud = AutoCRUD(
-    enable_cache=True,
-    cache_size=1000,  # 限制緩存條目數
-    cache_ttl=300     # 5分鐘過期
-)
-```
-
-## 升級指南
-
-### 從舊版本升級
+### ImportError 問題
 
 ```bash
-# 檢查當前版本
-pip show autocrud
+# 檢查安裝位置
+python -c "import autocrud; print(autocrud.__file__)"
 
-# 升級到最新版本
-pip install --upgrade autocrud
-
-# 檢查更改日誌
-pip show autocrud | grep Version
+# 確認版本
+python -c "import autocrud; print(autocrud.__version__)"
 ```
 
-### 重大版本更新
-
-在升級前請查看 [更改日誌](changelog.md) 了解重大變更。
-
-### 數據遷移
-
-```python
-# migration.py
-from autocrud.migration import migrate_data
-
-# 自動遷移存儲格式
-migrate_data(
-    from_version="0.9.x",
-    to_version="1.0.x",
-    backup=True
-)
-```
-
-## 獲取幫助
-
-如果遇到安裝問題：
-
-1. 📖 查看 [常見問題](user_guide.md#常見問題)
-2. 🐛 搜索 [GitHub Issues](https://github.com/HYChou0515/autocrud/issues)
-3. 💬 發起新的 [討論](https://github.com/HYChou0515/autocrud/discussions)
-4. 📧 聯繫支持團隊
-
-## 下一步
+## � 下一步
 
 安裝完成後，建議：
 
-1. 🚀 閱讀 [快速開始](quickstart.md) 指南
-2. 📖 瀏覽 [用戶指南](user_guide.md)
-3. 💡 查看 [示例集合](examples.md)
-4. 🔧 探索 [API 參考](api_reference.md)
+1. 閱讀 {doc}`quickstart` 學習基本用法
+2. 查看 {doc}`examples` 了解進階功能
+3. 參考 {doc}`user_guide` 深入了解配置選項
