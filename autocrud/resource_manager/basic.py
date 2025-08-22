@@ -465,19 +465,74 @@ class IResourceManager(ABC, Generic[T]):
 
     @abstractmethod
     def dump(self) -> Generator[tuple[str, IO[bytes]]]:
-        """Dump the resource data as a tar archive.
+        """Dump all resource data as a series of tar archive entries.
 
-        Yields:
-            A tuple of (filename, fileobj) for each resource in the manager.
+        Returns:
+
+            - Generator[tuple[str, IO[bytes]]]: generator yielding (filename, fileobj) pairs for each resource.
+
+        ---
+
+        Exports all resources in the manager as a series of tar archive entries.
+        Each entry represents one resource and contains both its metadata and
+        all revision data in a structured format.
+
+        The generator yields tuples where:
+        - filename: A unique identifier for the resource (typically the resource_id)
+        - fileobj: An IO[bytes] object containing the tar archive data for that resource
+
+        This method is designed for:
+        - Complete data backup and export operations
+        - Migrating resources between different systems
+        - Creating portable resource archives
+        - Bulk data transfer scenarios
+
+        The tar archive format ensures that all resource information including
+        metadata, revision history, and data content is preserved in a
+        standardized, portable format.
+
+        Note: This method does not filter by deletion status, so both active
+        and soft-deleted resources will be included in the dump.
         """
 
     @abstractmethod
     def load(self, key: str, bio: IO[bytes]) -> None:
-        """Load the resource data from a tar archive.
+        """Load resource data from a tar archive entry.
 
         Arguments:
-            - key (str): the key to identify the resource.
-            - value (IO[bytes]): the tar archive containing the resource data.
+
+            - key (str): the unique identifier for the resource being loaded.
+            - bio (IO[bytes]): the tar archive containing the resource data.
+
+        ---
+
+        Imports a single resource from a tar archive entry, typically created
+        by the dump() method. The tar archive should contain both metadata
+        and all revision data for the resource.
+
+        The key parameter serves as the resource identifier and should match
+        the filename used when the resource was dumped. The bio parameter
+        contains the complete tar archive data for that specific resource.
+
+        This method handles:
+        - Extracting metadata and revision information from the archive
+        - Restoring all historical revisions with proper parent-child relationships
+        - Maintaining data integrity and revision ordering
+        - Preserving timestamps, user information, and other metadata
+
+        Use Cases:
+        - Restoring resources from backup archives
+        - Importing resources from external systems
+        - Migrating data between different AutoCRUD instances
+        - Bulk resource restoration operations
+
+        Behavior:
+        - If a resource with the same key already exists, the behavior depends on implementation
+        - All revision history and metadata from the archive will be restored
+        - The resource's deletion status and other flags are preserved as archived
+
+        Note: This method should be used in conjunction with dump() for
+        complete backup and restore workflows.
         """
 
 

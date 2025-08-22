@@ -1357,6 +1357,111 @@ class DiskStorageFactory(IStorageFactory):
 
 
 class AutoCRUD:
+    """AutoCRUD - Automatic CRUD API Generator for FastAPI
+
+    AutoCRUD is the main class that automatically generates complete CRUD (Create, Read, Update, Delete)
+    APIs for your data models. It provides a powerful, flexible, and easy-to-use system for building
+    RESTful APIs with built-in version control, soft deletion, and comprehensive querying capabilities.
+
+    Key Features:
+    - **Automatic API Generation**: Generates complete CRUD endpoints for any data model
+    - **Version Control**: Built-in revision tracking for all resources with full history
+    - **Soft Deletion**: Resources are marked as deleted rather than permanently removed
+    - **Flexible Storage**: Support for both memory and disk-based storage backends
+    - **Model Agnostic**: Works with Pydantic models, msgspec Structs, and other data types
+    - **Customizable Routes**: Extensible route template system for custom endpoints
+    - **Data Migration**: Built-in support for schema evolution and data migration
+    - **Comprehensive Querying**: Advanced filtering, sorting, and pagination capabilities
+
+    Basic Usage:
+    ```python
+    from fastapi import FastAPI
+    from autocrud import AutoCRUD
+    from pydantic import BaseModel
+
+    class User(BaseModel):
+        name: str
+        email: str
+        age: int
+
+    # Create AutoCRUD instance
+    autocrud = AutoCRUD()
+
+    # Add your model
+    autocrud.add_model(User)
+
+    # Apply to FastAPI router
+    app = FastAPI()
+    autocrud.apply(app)
+    ```
+
+    This generates the following endpoints for your User model:
+    - `POST /users` - Create a new user
+    - `GET /users/data` - List all users (data only)
+    - `GET /users/meta` - List all users (metadata only)
+    - `GET /users/revision-info` - List all users (revision info only)
+    - `GET /users/full` - List all users (complete information)
+    - `GET /users/{id}/data` - Get specific user data
+    - `GET /users/{id}/meta` - Get specific user metadata
+    - `GET /users/{id}/revision-info` - Get specific user revision info
+    - `GET /users/{id}/full` - Get complete user information
+    - `GET /users/{id}/revision-list` - Get user revision history
+    - `PUT /users/{id}` - Update user (full replacement)
+    - `PATCH /users/{id}` - Partially update user (JSON Patch)
+    - `DELETE /users/{id}` - Soft delete user
+    - `POST /users/{id}/restore` - Restore deleted user
+    - `POST /users/{id}/switch/{revision_id}` - Switch to specific revision
+
+    Advanced Features:
+    - **Custom Storage**: Use disk-based storage for persistence
+    - **Data Migration**: Handle schema changes with migration support
+    - **Custom Naming**: Control URL patterns and resource names
+    - **Route Customization**: Add custom endpoints with route templates
+    - **Backup/Restore**: Export and import complete datasets
+
+    Args:
+        model_naming: Controls how model names are converted to URL paths.
+                     Options: "same", "pascal", "camel", "snake", "kebab" (default)
+                     or a custom function that takes a type and returns a string.
+        route_templates: Custom list of route templates to use instead of defaults.
+                        If None, uses the standard CRUD route templates.
+
+    Example with Advanced Features:
+    ```python
+    from autocrud import AutoCRUD, DiskStorageFactory
+    from pathlib import Path
+
+    # Use disk storage for persistence
+    storage_factory = DiskStorageFactory(Path("./data"))
+
+    # Custom naming (convert CamelCase to snake_case)
+    autocrud = AutoCRUD(model_naming="snake")
+
+    # Add model with custom configuration
+    autocrud.add_model(
+        User,
+        name="people",  # Custom URL path
+        storage_factory=storage_factory,
+        id_generator=lambda: f"user_{uuid.uuid4()}"  # Custom ID generation
+    )
+    ```
+
+    Thread Safety:
+    The AutoCRUD instance is thread-safe for read operations, but adding models
+    should be done during application startup before handling requests.
+
+    Performance:
+    - Memory storage: Suitable for development and small datasets
+    - Disk storage: Recommended for production with large datasets
+    - All operations are optimized for typical CRUD workloads
+    - Built-in pagination prevents memory issues with large result sets
+
+    See Also:
+    - IStorageFactory: For implementing custom storage backends
+    - IRouteTemplate: For creating custom endpoint templates
+    - ResourceManager: For advanced programmatic resource management
+    """
+
     def __init__(
         self,
         *,
@@ -1383,6 +1488,29 @@ class AutoCRUD:
         self.route_templates.sort()
 
     def _resource_name(self, model: type[T]) -> str:
+        """Convert model class name to resource name using the configured naming convention.
+
+        This internal method handles the conversion of Python class names to URL-friendly
+        resource names based on the model_naming configuration.
+
+        Args:
+            model: The model class whose name should be converted.
+
+        Returns:
+            The converted resource name string that will be used in URLs.
+
+        Examples:
+            With model_naming="kebab":
+            - UserProfile -> "user-profile"
+            - BlogPost -> "blog-post"
+
+            With model_naming="snake":
+            - UserProfile -> "user_profile"
+            - BlogPost -> "blog_post"
+
+            With custom function:
+            - Can implement any custom naming logic
+        """
         if callable(self.model_naming):
             return self.model_naming(model)
         original_name = model.__name__
@@ -1391,7 +1519,33 @@ class AutoCRUD:
         return NameConverter(original_name).to(self.model_naming)
 
     def add_route_template(self, template: IRouteTemplate) -> None:
-        """添加路由模板"""
+        """Add a custom route template to extend the API with additional endpoints.
+
+        Route templates define how to generate specific API endpoints for models.
+        By adding custom templates, you can extend the default CRUD functionality
+        with specialized endpoints for your use cases.
+
+        Args:
+            template: A custom route template implementing IRouteTemplate interface.
+
+        Example:
+            ```python
+            class CustomSearchTemplate(BaseRouteTemplate):
+                def apply(self, model_name, resource_manager, router):
+                    @router.get(f"/{model_name}/search")
+                    async def search_resources(query: str):
+                        # Custom search logic
+                        pass
+
+            autocrud = AutoCRUD()
+            autocrud.add_route_template(CustomSearchTemplate())
+            autocrud.add_model(User)
+            ```
+
+        Note:
+            Templates are sorted by their order property before being applied.
+            Add templates before calling add_model() or apply() for best results.
+        """
         self.route_templates.append(template)
 
     def add_model(
@@ -1403,16 +1557,72 @@ class AutoCRUD:
         id_generator: Callable[[], str] | None = None,
         migration: IMigration | None = None,
     ) -> None:
-        """
-        Add a model to the AutoCRUD system.
+        """Add a data model to AutoCRUD and configure its API endpoints.
 
-        :param model: The model class to add.
-        :param name: Optional custom name for the model. If not provided, name will be derived from the model class.
-        :param storage_factory: Optional callable that returns an IStorage instance for the model.
-                              If not provided, a default storage will be created automatically.
-        :return: An instance of the model.
+        This is the main method for registering models with AutoCRUD. Once added,
+        the model will have a complete set of CRUD API endpoints generated automatically.
+
+        Args:
+            model: The data model class (Pydantic model, msgspec Struct, etc.).
+            name: Custom resource name for URLs. If None, derived from model class name.
+            storage_factory: Custom storage backend. If None, uses in-memory storage.
+            id_generator: Custom function for generating resource IDs. If None, uses UUID4.
+            migration: Migration handler for schema evolution. Used with disk storage.
+
+        Examples:
+            Basic usage:
+            ```python
+            autocrud.add_model(User)  # Creates /users endpoints
+            ```
+
+            With custom name:
+            ```python
+            autocrud.add_model(User, name="people")  # Creates /people endpoints
+            ```
+
+            With persistent storage:
+            ```python
+            storage = DiskStorageFactory("./data")
+            autocrud.add_model(User, storage_factory=storage)
+            ```
+
+            With custom ID generation:
+            ```python
+            autocrud.add_model(
+                User,
+                id_generator=lambda: f"user_{int(time.time())}"
+            )
+            ```
+
+            With migration support:
+            ```python
+            class UserMigration(IMigration):
+                schema_version = "v2"
+                def migrate(self, data, old_version):
+                    # Handle schema changes
+                    return updated_data
+
+            autocrud.add_model(User, migration=UserMigration())
+            ```
+
+        Generated Endpoints:
+            For a model named "User", this creates:
+            - POST /users - Create new user
+            - GET /users/data - List users (data only)
+            - GET /users/meta - List users (metadata only)
+            - GET /users/{id}/data - Get user data
+            - GET /users/{id}/full - Get complete user info
+            - PUT /users/{id} - Update user
+            - DELETE /users/{id} - Soft delete user
+            - And many more...
+
+        Raises:
+            ValueError: If model is invalid or conflicts with existing models.
+
+        Note:
+            Models should be added during application startup before handling requests.
+            The order of adding models doesn't affect the generated APIs.
         """
-        # 如果沒有提供 storage_factory，創建一個默認的
         if storage_factory is None:
             storage_factory = MemoryStorageFactory()
 
@@ -1427,13 +1637,106 @@ class AutoCRUD:
         self.resource_managers[model_name] = resource_manager
 
     def apply(self, router: APIRouter) -> APIRouter:
-        """將所有路由模板應用到所有模型"""
+        """Apply all route templates to generate API endpoints on the given router.
+
+        This method generates all the CRUD endpoints for all registered models
+        and applies them to the provided FastAPI router. This is typically the
+        final step in setting up your AutoCRUD API.
+
+        Args:
+            router: FastAPI APIRouter or FastAPI app instance to add routes to.
+
+        Returns:
+            The same router instance with all generated routes added.
+
+        Example:
+            ```python
+            from fastapi import FastAPI
+            from autocrud import AutoCRUD
+
+            app = FastAPI()
+            autocrud = AutoCRUD()
+
+            # Add your models
+            autocrud.add_model(User)
+            autocrud.add_model(Post)
+
+            # Generate and apply all routes
+            autocrud.apply(app)
+
+            # Or with a sub-router
+            api_router = APIRouter(prefix="/api/v1")
+            autocrud.apply(api_router)
+            app.include_router(api_router)
+            ```
+
+        Generated Routes:
+            For each model, applies all route templates in order to create
+            a comprehensive set of CRUD endpoints. The exact endpoints depend
+            on the route templates configured.
+
+        Note:
+            - Call this method after adding all models and custom route templates
+            - Each route template is applied to each model in the order specified
+            - Routes are generated dynamically based on model structure
+            - This method is idempotent - calling it multiple times is safe
+        """
         for model_name, resource_manager in self.resource_managers.items():
             for route_template in self.route_templates:
                 route_template.apply(model_name, resource_manager, router)
         return router
 
     def dump(self, bio: IO[bytes]) -> None:
+        """Export all resources and their data to a tar archive for backup or migration.
+
+        This method creates a complete backup of all resources managed by AutoCRUD,
+        including all data, metadata, and revision history. The output is a tar
+        archive that can be used for backup, migration, or data transfer purposes.
+
+        Args:
+            bio: A binary I/O stream to write the tar archive to.
+
+        Example:
+            ```python
+            # Backup to file
+            with open("backup.tar", "wb") as f:
+                autocrud.dump(f)
+
+            # Backup to memory buffer
+            import io
+            buffer = io.BytesIO()
+            autocrud.dump(buffer)
+            backup_data = buffer.getvalue()
+
+            # Upload to cloud storage
+            import boto3
+            s3 = boto3.client('s3')
+            with io.BytesIO() as buffer:
+                autocrud.dump(buffer)
+                buffer.seek(0)
+                s3.upload_fileobj(buffer, 'backup-bucket', 'autocrud-backup.tar')
+            ```
+
+        Archive Structure:
+            The tar archive contains:
+            - One directory per model (e.g., "users/", "posts/")
+            - Within each directory, files containing resource data
+            - All metadata, revision history, and relationships preserved
+            - Compatible with the load() method for restoration
+
+        Use Cases:
+            - Regular backups of your data
+            - Migrating between environments
+            - Data archival and compliance
+            - Disaster recovery preparations
+            - Development data seeding
+
+        Note:
+            - The archive includes ALL resources, including soft-deleted ones
+            - Large datasets may result in large archive files
+            - Consider streaming to avoid memory issues with large datasets
+            - The archive format is compatible across AutoCRUD versions
+        """
         with tarfile.open(fileobj=bio, mode="w|") as tar:
             for model_name, mgr in self.resource_managers.items():
                 for key, value in mgr.dump():
@@ -1443,6 +1746,73 @@ class AutoCRUD:
                     tar.addfile(tarinfo, fileobj=data)
 
     def load(self, bio: IO[bytes]) -> None:
+        """Import resources from a tar archive created by the dump() method.
+
+        This method restores resources from a backup archive, recreating all
+        data, metadata, and revision history. It's the complement to dump()
+        and enables complete data restoration and migration scenarios.
+
+        Args:
+            bio: A binary I/O stream containing the tar archive to load from.
+
+        Example:
+            ```python
+            # Restore from file backup
+            with open("backup.tar", "rb") as f:
+                autocrud.load(f)
+
+            # Restore from memory buffer
+            import io
+            buffer = io.BytesIO(backup_data)
+            autocrud.load(buffer)
+
+            # Download and restore from cloud storage
+            import boto3
+            s3 = boto3.client('s3')
+            with io.BytesIO() as buffer:
+                s3.download_fileobj('backup-bucket', 'autocrud-backup.tar', buffer)
+                buffer.seek(0)
+                autocrud.load(buffer)
+            ```
+
+        Behavior:
+            - Only loads data for models that are registered with add_model()
+            - Preserves all metadata including timestamps and user information
+            - Restores complete revision history for each resource
+            - Maintains data integrity and relationships
+            - Handles both active and soft-deleted resources
+
+        Migration Scenarios:
+            ```python
+            # Environment migration
+            # On source system:
+            autocrud_source.dump(backup_file)
+
+            # On target system:
+            autocrud_target.add_model(User)  # Must add models first
+            autocrud_target.add_model(Post)
+            autocrud_target.load(backup_file)
+            ```
+
+        Error Handling:
+            - Raises ValueError if archive contains unknown models
+            - Raises ValueError if archive format is invalid
+            - Existing resources may be overwritten depending on storage backend
+
+        Use Cases:
+            - Disaster recovery and data restoration
+            - Environment migrations (dev → staging → prod)
+            - Data seeding for testing environments
+            - Historical data imports
+            - System migrations and upgrades
+
+        Important Notes:
+            - Models must be registered before loading data for them
+            - Archive must be created by a compatible dump() method
+            - Loading may overwrite existing resources with same IDs
+            - Consider backup existing data before loading
+            - Large archives may take significant time to process
+        """
         with tarfile.open(fileobj=bio, mode="r|") as tar:
             for tarinfo in tar:
                 if not tarinfo.isfile():
