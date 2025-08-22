@@ -125,14 +125,13 @@ class RevisionIDNotFoundError(RevisionNotFoundError):
         self.resource_id = resource_id
         self.revision_id = revision_id
 
+
 class IMigration(ABC):
     @abstractmethod
-    def migrate(self, data: IO[bytes], schema_version: str|None) -> T:
-        ...
+    def migrate(self, data: IO[bytes], schema_version: str | None) -> T: ...
     @property
     @abstractmethod
-    def schema_version(self) -> str:
-        ...
+    def schema_version(self) -> str: ...
 
 
 class IResourceManager(ABC, Generic[T]):
@@ -464,6 +463,23 @@ class IResourceManager(ABC, Generic[T]):
         soft delete functionality.
         """
 
+    @abstractmethod
+    def dump(self) -> Generator[tuple[str, IO[bytes]]]:
+        """Dump the resource data as a tar archive.
+
+        Yields:
+            A tuple of (filename, fileobj) for each resource in the manager.
+        """
+
+    @abstractmethod
+    def load(self, key: str, bio: IO[bytes]) -> None:
+        """Load the resource data from a tar archive.
+
+        Arguments:
+            - key (str): the key to identify the resource.
+            - value (IO[bytes]): the tar archive containing the resource data.
+        """
+
 
 class Ctx(Generic[T]):
     def __init__(self, name: str):
@@ -620,3 +636,11 @@ class IStorage(ABC, Generic[T]):
     def save_resource_revision(self, resource: Resource[T]) -> None: ...
     @abstractmethod
     def search(self, query: ResourceMetaSearchQuery) -> list[ResourceMeta]: ...
+    @abstractmethod
+    def dump_meta(self) -> Generator[tuple[str, ResourceMeta]]: ...
+    @abstractmethod
+    def dump_resource(self) -> Generator[Resource[T]]: ...
+    @abstractmethod
+    def load_meta(self, key: str, value: ResourceMeta) -> None: ...
+    @abstractmethod
+    def load_resource(self, value: Resource[T]) -> None: ...

@@ -1,6 +1,7 @@
-from collections.abc import Callable
+from collections.abc import Callable, Generator
 from contextlib import contextmanager
-from typing import TypeVar, Generic
+from functools import cached_property
+from typing import IO, TypeVar, Generic
 import datetime as dt
 from uuid import uuid4
 from msgspec import UNSET, Struct
@@ -9,11 +10,13 @@ from jsonpatch import JsonPatch
 
 from autocrud.resource_manager.basic import (
     Ctx,
+    Encoding,
     IMetaStore,
     IMigration,
     IResourceManager,
     IResourceStore,
     IStorage,
+    MsgspecSerializer,
     Resource,
     ResourceIDNotFoundError,
     ResourceIsDeletedError,
@@ -60,6 +63,20 @@ class SimpleStorage(IStorage[T]):
 
     def search(self, query: ResourceMetaSearchQuery) -> list[ResourceMeta]:
         return list(self._meta_store.iter_search(query))
+
+    def dump_meta(self) -> Generator[tuple[str, ResourceMeta]]:
+        yield from self._meta_store.items()
+
+    def dump_resource(self) -> Generator[Resource[T]]:
+        for resource_id in self._resource_store.list_resources():
+            for revision_id in self._resource_store.list_revisions(resource_id):
+                yield self._resource_store.get(resource_id, revision_id)
+
+    def load_meta(self, key: str, value: ResourceMeta) -> None:
+        self._meta_store[key] = value
+
+    def load_resource(self, value: Resource[T]) -> None:
+        self._resource_store.save(value)
 
 
 class _BuildRevMetaCreate(Struct):
@@ -250,3 +267,25 @@ class ResourceManager(IResourceManager[T], Generic[T]):
             meta.updated_time = self.now_ctx.get()
             self.storage.save_meta(meta)
         return meta
+
+    def dump(self) -> Generator[tuple[str, IO[bytes]]]:
+        for k, v in self.storage.dump_meta():
+            yield f"meta/{k}", self.meta_serializer.encode(v)
+        for resource in self.storage.dump_resource():
+            yield f"data/{resource.info.uid}", self.resource_serializer.encode(resource)
+
+    def load(self, key: str, bio: IO[bytes]) -> None:
+        if key.startswith("meta/"):
+            self.storage.load_meta(key[5:], self.meta_serializer.decode(bio.read()))
+        elif key.startswith("data/"):
+            self.storage.load_resource(self.resource_serializer.decode(bio.read()))
+
+    @cached_property
+    def meta_serializer(self):
+        return MsgspecSerializer(encoding=Encoding.msgpack, resource_type=ResourceMeta)
+
+    @cached_property
+    def resource_serializer(self):
+        return MsgspecSerializer(
+            encoding=Encoding.msgpack, resource_type=Resource[self.resource_type]
+        )

@@ -3,6 +3,8 @@ from collections import OrderedDict
 from collections.abc import Callable
 from contextlib import suppress
 from enum import StrEnum
+import io
+import tarfile
 import textwrap
 from typing import IO, Generic, Literal, TypeVar, Any
 import datetime as dt
@@ -27,7 +29,10 @@ from autocrud.resource_manager.data_converter import (
     decode_json_to_data,
 )
 from autocrud.resource_manager.meta_store.simple import DiskMetaStore, MemoryMetaStore
-from autocrud.resource_manager.resource_store.simple import DiskResourceStore, MemoryResourceStore
+from autocrud.resource_manager.resource_store.simple import (
+    DiskResourceStore,
+    MemoryResourceStore,
+)
 
 from autocrud.resource_manager.basic import ResourceMetaSearchQuery
 from autocrud.util.naming import NameConverter
@@ -1297,51 +1302,59 @@ class RestoreRouteTemplate(BaseRouteTemplate):
             except Exception as e:
                 raise HTTPException(status_code=400, detail=str(e))
 
+
 class IStorageFactory(ABC):
     @abstractmethod
-    def build(self, model: type[T], model_name: str, *, migration: IMigration|None=None) -> IStorage[T]:
-        ...
+    def build(
+        self, model: type[T], model_name: str, *, migration: IMigration | None = None
+    ) -> IStorage[T]: ...
 
 
 class MemoryStorageFactory(IStorageFactory):
-    def build(self, model: type[T], model_name: str, *, migration: IMigration|None=None) -> IStorage[T]:
+    def build(
+        self, model: type[T], model_name: str, *, migration: IMigration | None = None
+    ) -> IStorage[T]:
         meta_store = MemoryMetaStore()
 
         # 檢查是否是 Pydantic 模型
         if issubclass(model, BaseModel):
             # 對於 Pydantic 模型，使用 msgspec.Raw 來避免序列化問題
-            resource_store = MemoryResourceStore[msgspec.Raw](
-                resource_type=msgspec.Raw
-            )
+            resource_store = MemoryResourceStore[msgspec.Raw](resource_type=msgspec.Raw)
         else:
             # 對於其他類型（msgspec.Struct, dataclass, TypedDict），使用原生支持
             resource_store = MemoryResourceStore[T](resource_type=model)
 
         return SimpleStorage(meta_store, resource_store)
 
+
 class DiskStorageFactory(IStorageFactory):
-    def __init__(self,  rootdir: Path | str,):
+    def __init__(
+        self,
+        rootdir: Path | str,
+    ):
         self.rootdir = Path(rootdir)
-        
-    def build(self, model: type[T], model_name: str, *, migration: IMigration|None=None) -> IStorage[T]:
-        meta_store = DiskMetaStore(rootdir=self.rootdir/model_name/"meta")
+
+    def build(
+        self, model: type[T], model_name: str, *, migration: IMigration | None = None
+    ) -> IStorage[T]:
+        meta_store = DiskMetaStore(rootdir=self.rootdir / model_name / "meta")
 
         # 檢查是否是 Pydantic 模型
         if issubclass(model, BaseModel):
             # 對於 Pydantic 模型，使用 msgspec.Raw 來避免序列化問題
             resource_store = DiskResourceStore[msgspec.Raw](
-                resource_type=msgspec.Raw,
-                rootdir=self.rootdir/model_name/"data"
+                resource_type=msgspec.Raw, rootdir=self.rootdir / model_name / "data"
             )
         else:
             # 對於其他類型（msgspec.Struct, dataclass, TypedDict），使用原生支持
             resource_store = DiskResourceStore[T](
                 resource_type=model,
-                rootdir=self.rootdir/model_name/"data",
+                rootdir=self.rootdir / model_name / "data",
                 migration=migration,
             )
 
         return SimpleStorage(meta_store, resource_store)
+
 
 class AutoCRUD:
     def __init__(
@@ -1419,3 +1432,26 @@ class AutoCRUD:
             for route_template in self.route_templates:
                 route_template.apply(model_name, resource_manager, router)
         return router
+
+    def dump(self, bio: IO[bytes]) -> None:
+        with tarfile.open(fileobj=bio, mode="w|") as tar:
+            for model_name, mgr in self.resource_managers.items():
+                for key, value in mgr.dump():
+                    data = io.BytesIO(value)
+                    tarinfo = tarfile.TarInfo(name=f"{model_name}/{key}")
+                    tarinfo.size = len(value)
+                    tar.addfile(tarinfo, fileobj=data)
+
+    def load(self, bio: IO[bytes]) -> None:
+        with tarfile.open(fileobj=bio, mode="r|") as tar:
+            for tarinfo in tar:
+                if not tarinfo.isfile():
+                    raise ValueError(f"TarInfo {tarinfo.name} is not a file.")
+                model_name, key = tarinfo.name.split("/", 1)
+                if model_name in self.resource_managers:
+                    mgr = self.resource_managers[model_name]
+                    mgr.load(key, tar.extractfile(tarinfo))
+                else:
+                    raise ValueError(
+                        f"Model {model_name} not found in resource managers."
+                    )

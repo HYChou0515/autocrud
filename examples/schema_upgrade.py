@@ -41,6 +41,7 @@ from fastapi.testclient import TestClient
 from autocrud import AutoCRUD
 from fastapi import FastAPI
 
+
 def get_after_user():
     if mode == "msgspec":
         from msgspec import Struct
@@ -70,7 +71,9 @@ def get_after_user():
         class User(TypedDict):
             name: str
             age: int
+
     return User
+
 
 def get_before_user():
     if mode == "msgspec":
@@ -101,7 +104,9 @@ def get_before_user():
         class User(TypedDict):
             name: str
             income: float
+
     return User
+
 
 def apply(before_after):
     if before_after == "before":
@@ -109,16 +114,15 @@ def apply(before_after):
     User = get_before_user() if before_after == "before" else get_after_user()
 
     crud = AutoCRUD()
+
     class Migration(IMigration):
         @property
         def schema_version(self):
             return "v1"
 
-        def migrate(self, data: IO[bytes], schema_version: str|UnsetType):
+        def migrate(self, data: IO[bytes], schema_version: str | UnsetType):
             BeforeUser = get_before_user()
-            s = MsgspecSerializer(
-                encoding=Encoding.json, resource_type=BeforeUser
-            )
+            s = MsgspecSerializer(encoding=Encoding.json, resource_type=BeforeUser)
             od = s.decode(data.read())
             if mode == "typeddict":
                 newd = User(
@@ -131,12 +135,18 @@ def apply(before_after):
                     age=-1,
                 )
             return newd
+
     storage_factory = DiskStorageFactory("_autocrud_test_resource_dir")
-    crud.add_model(User, storage_factory=storage_factory, migration=None if before_after == "before" else Migration())
+    crud.add_model(
+        User,
+        storage_factory=storage_factory,
+        migration=None if before_after == "before" else Migration(),
+    )
 
     app = FastAPI()
     crud.apply(app)
     return app
+
 
 def test_before():
     app = apply("before")
@@ -150,6 +160,7 @@ def test_before():
     resource_id = resp.json()["resource_id"]
     resp = client.get(f"/user/{resource_id}/data")
 
+
 def test_after():
     app = apply("after")
     client = TestClient(app)
@@ -160,7 +171,7 @@ def test_after():
     print(resp.json())
     resource_id = resp.json()[0]["revision_info"]["resource_id"]
     resp = client.patch(
-        f"/user/{resource_id}", 
+        f"/user/{resource_id}",
         json=[
             {"op": "replace", "path": "/age", "value": 10},
         ],

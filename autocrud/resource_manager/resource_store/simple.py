@@ -48,7 +48,7 @@ class DiskResourceStore(IResourceStore[T]):
         *,
         encoding: Encoding = Encoding.json,
         rootdir: Path | str,
-        migration: IMigration|None=None
+        migration: IMigration | None = None,
     ):
         self._data_serializer = MsgspecSerializer(
             encoding=encoding, resource_type=resource_type
