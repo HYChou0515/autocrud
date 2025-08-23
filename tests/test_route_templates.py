@@ -15,12 +15,6 @@ from autocrud.crud.core import (
     RestoreRouteTemplate,
     NameConverter,
 )
-from autocrud.resource_manager.basic import (
-    IStorage,
-)
-from autocrud.resource_manager.core import SimpleStorage
-from autocrud.resource_manager.meta_store.simple import MemoryMetaStore
-from autocrud.resource_manager.resource_store.simple import MemoryResourceStore
 
 
 # 測試用的模型
@@ -33,13 +27,6 @@ class User(msgspec.Struct):
     name: str
     email: str
     age: int
-
-
-def create_user_storage() -> IStorage[User]:
-    """創建用戶存儲"""
-    meta_store = MemoryMetaStore()
-    resource_store = MemoryResourceStore[User](resource_type=User)
-    return SimpleStorage(meta_store, resource_store)
 
 
 @pytest.fixture
@@ -57,7 +44,7 @@ def autocrud():
     crud.add_route_template(RestoreRouteTemplate())
 
     # 添加 User 模型
-    crud.add_model(User, storage_factory=create_user_storage)
+    crud.add_model(User)
 
     return crud
 
@@ -115,7 +102,8 @@ class TestRouteTemplates:
         assert "resource_id" in data
         assert "revision_id" in data
         # resource_id 是 UUID 格式
-        assert len(data["resource_id"]) == 36  # UUID 長度
+        assert data["resource_id"].startswith("user:")
+        assert len(data["resource_id"]) - len("user:") == 36  # UUID 長度
         assert "-" in data["resource_id"]  # UUID 包含連字符
 
     def test_read_user(self, client):
@@ -128,7 +116,7 @@ class TestRouteTemplates:
         resource_id = create_data["resource_id"]
 
         # 讀取用戶
-        response = client.get(f"/user/{resource_id}?response_type=full")
+        response = client.get(f"/user/{resource_id}/full")
         assert response.status_code == 200
 
         data = response.json()
@@ -162,7 +150,7 @@ class TestRouteTemplates:
         assert "revision_id" in data
 
         # 驗證更新
-        get_response = client.get(f"/user/{resource_id}?response_type=full")
+        get_response = client.get(f"/user/{resource_id}/full")
         get_data = get_response.json()
         assert get_data["data"]["name"] == "Bob Johnson"
         assert get_data["data"]["email"] == "bob.johnson@example.com"
@@ -186,7 +174,7 @@ class TestRouteTemplates:
         assert data["is_deleted"] is True
 
         # 驗證刪除
-        get_response = client.get(f"/user/{resource_id}?response_type=data")
+        get_response = client.get(f"/user/{resource_id}/data")
         assert get_response.status_code == 404
 
     def test_list_users(self, client):
@@ -202,15 +190,14 @@ class TestRouteTemplates:
             client.post("/user", json=user)
 
         # 列出用戶
-        response = client.get("/user?response_type=data")
+        response = client.get("/user/data")
         assert response.status_code == 200
 
         data = response.json()
-        assert "resources" in data
-        assert len(data["resources"]) >= 3  # 至少有我們創建的 3 個用戶
+        assert len(data) >= 3  # 至少有我們創建的 3 個用戶
 
         # 檢查返回的是實際的用戶數據
-        for resource in data["resources"]:
+        for resource in data:
             assert "name" in resource
             assert "email" in resource
             assert "age" in resource
@@ -228,17 +215,17 @@ class TestRouteTemplates:
             client.post("/user", json=user)
 
         # 測試 limit 參數
-        response = client.get("/user?response_type=data&limit=1")
+        response = client.get("/user/data?limit=1")
         assert response.status_code == 200
         data = response.json()
-        assert len(data["resources"]) <= 1
+        assert len(data) <= 1
 
         # 測試 offset 參數
-        response = client.get("/user?response_type=data&limit=1&offset=1")
+        response = client.get("/user/data?limit=1&offset=1")
         assert response.status_code == 200
         data = response.json()
         # 應該返回第二個資源或空列表
-        assert len(data["resources"]) <= 1
+        assert len(data) <= 1
 
     def test_list_users_response_types(self, client):
         """測試不同的響應類型"""
@@ -247,48 +234,44 @@ class TestRouteTemplates:
         client.post("/user", json=user_data)
 
         # 測試 DATA 響應類型（預設）
-        response = client.get("/user?response_type=data")
+        response = client.get("/user/data")
         assert response.status_code == 200
         data = response.json()
-        assert "resources" in data
-        assert len(data["resources"]) >= 1
+        assert len(data) >= 1
         # 應該只包含用戶數據
-        for resource in data["resources"]:
+        for resource in data:
             assert "name" in resource
             assert "email" in resource
             assert "age" in resource
 
         # 測試 META 響應類型
-        response = client.get("/user?response_type=meta")
+        response = client.get("/user/meta")
         assert response.status_code == 200
         data = response.json()
-        assert "resources" in data
         # 應該包含 ResourceMeta 字段
-        for resource in data["resources"]:
+        for resource in data:
             assert "resource_id" in resource
             assert "current_revision_id" in resource
             assert "created_time" in resource
             assert "updated_time" in resource
 
         # 測試 REVISION_INFO 響應類型
-        response = client.get("/user?response_type=revision_info")
+        response = client.get("/user/revision-info")
         assert response.status_code == 200
         data = response.json()
-        assert "resources" in data
         # 應該包含 RevisionInfo 字段
-        for resource in data["resources"]:
+        for resource in data:
             assert "uid" in resource
             assert "resource_id" in resource
             assert "revision_id" in resource
             assert "status" in resource
 
         # 測試 FULL 響應類型
-        response = client.get("/user?response_type=full")
+        response = client.get("/user/full")
         assert response.status_code == 200
         data = response.json()
-        assert "resources" in data
         # 應該包含所有信息
-        for resource in data["resources"]:
+        for resource in data:
             assert "data" in resource
             assert "meta" in resource
             assert "revision_info" in resource
@@ -305,7 +288,7 @@ class TestRouteTemplates:
                 "meta",
                 ["resource_id", "current_revision_id", "created_time", "updated_time"],
             ),
-            ("revision_info", ["uid", "resource_id", "revision_id", "status"]),
+            ("revision-info", ["uid", "resource_id", "revision_id", "status"]),
             ("full", ["data", "meta", "revision_info"]),
         ],
     )
@@ -317,7 +300,7 @@ class TestRouteTemplates:
         resource_id = create_response.json()["resource_id"]
 
         # 測試指定的響應類型
-        response = client.get(f"/user/{resource_id}?response_type={response_type}")
+        response = client.get(f"/user/{resource_id}/{response_type}")
         assert response.status_code == 200
         data = response.json()
 
@@ -334,7 +317,7 @@ class TestRouteTemplates:
         "response_type,expected_name",
         [
             ("data", "Original User"),
-            ("revision_info", None),
+            ("revision-info", None),
             ("full", "Original User"),
             ("meta", None),
         ],
@@ -361,7 +344,7 @@ class TestRouteTemplates:
 
         # 測試獲取特定版本
         response = client.get(
-            f"/user/{resource_id}?response_type={response_type}&revision_id={original_revision_id}"
+            f"/user/{resource_id}/{response_type}?revision_id={original_revision_id}"
         )
 
         assert response.status_code == 200
@@ -399,14 +382,14 @@ class TestRouteTemplates:
         client.put(f"/user/{resource_id}", json=updated_data)
 
         # 測試獲取當前版本（不指定 revision_id）
-        response = client.get(f"/user/{resource_id}?response_type=data")
+        response = client.get(f"/user/{resource_id}/data")
         assert response.status_code == 200
         current_data = response.json()
         assert current_data["name"] == "Updated User"
 
         # 測試獲取原始版本（指定 revision_id）
         response = client.get(
-            f"/user/{resource_id}?response_type=data&revision_id={original_revision_id}"
+            f"/user/{resource_id}/data?revision_id={original_revision_id}"
         )
         assert response.status_code == 200
         original_data = response.json()
@@ -430,7 +413,7 @@ class TestRouteTemplates:
             client.put(f"/user/{resource_id}", json=updated_data)
 
         # 測試 REVISIONS 響應類型
-        response = client.get(f"/user/{resource_id}?response_type=revisions")
+        response = client.get(f"/user/{resource_id}/revision-list")
         assert response.status_code == 200
         data = response.json()
 
@@ -453,27 +436,9 @@ class TestRouteTemplates:
             assert "status" in revision
             assert revision["resource_id"] == resource_id
 
-    def test_read_user_revisions_with_revision_id_should_fail(self, client):
-        """測試當指定 revision_id 時，REVISIONS 響應類型應該失敗"""
-        # 創建一個用戶
-        user_data = {"name": "Test User", "email": "test@example.com", "age": 25}
-        create_response = client.post("/user", json=user_data)
-        resource_id = create_response.json()["resource_id"]
-        revision_id = create_response.json()["revision_id"]
-
-        # 嘗試同時使用 revision_id 和 revisions 響應類型
-        response = client.get(
-            f"/user/{resource_id}?response_type=revisions&revision_id={revision_id}"
-        )
-        assert response.status_code == 400
-        assert (
-            "Cannot list revisions when specific revision_id is provided"
-            in response.json()["detail"]
-        )
-
     def test_user_not_found(self, client):
         """測試用戶不存在的情況"""
-        response = client.get("/user/nonexistent?response_type=data")
+        response = client.get("/user/nonexistent/data")
         assert response.status_code == 404
 
     def test_invalid_user_data(self, client):
@@ -500,7 +465,7 @@ class TestRouteTemplates:
         revision_id_v2 = update_response.json()["revision_id"]
 
         # 驗證當前資料是 V2
-        response = client.get(f"/user/{resource_id}?response_type=data")
+        response = client.get(f"/user/{resource_id}/data")
         assert response.status_code == 200
         assert response.json()["name"] == "User V2"
 
@@ -513,7 +478,7 @@ class TestRouteTemplates:
         assert "Successfully switched" in switch_data["message"]
 
         # 驗證當前資料現在是 V1
-        response = client.get(f"/user/{resource_id}?response_type=data")
+        response = client.get(f"/user/{resource_id}/data")
         assert response.status_code == 200
         assert response.json()["name"] == "User V1"
         assert response.json()["age"] == 25
@@ -523,7 +488,7 @@ class TestRouteTemplates:
         assert switch_response.status_code == 200
 
         # 驗證當前資料又變回 V2
-        response = client.get(f"/user/{resource_id}?response_type=data")
+        response = client.get(f"/user/{resource_id}/data")
         assert response.status_code == 200
         assert response.json()["name"] == "User V2"
         assert response.json()["age"] == 30
@@ -552,7 +517,7 @@ class TestRouteTemplates:
         resource_id = create_response.json()["resource_id"]
 
         # 驗證用戶存在
-        response = client.get(f"/user/{resource_id}")
+        response = client.get(f"/user/{resource_id}/data")
         assert response.status_code == 200
         assert response.json()["name"] == "Test User"
 
@@ -561,7 +526,7 @@ class TestRouteTemplates:
         assert delete_response.status_code == 200
 
         # 驗證用戶已被刪除
-        response = client.get(f"/user/{resource_id}")
+        response = client.get(f"/user/{resource_id}/data")
         assert response.status_code == 404
 
         # 恢復用戶
@@ -573,7 +538,7 @@ class TestRouteTemplates:
         assert "Successfully restored" in restore_data["message"]
 
         # 驗證用戶已被恢復
-        response = client.get(f"/user/{resource_id}")
+        response = client.get(f"/user/{resource_id}/data")
         assert response.status_code == 200
         assert response.json()["name"] == "Test User"
 
@@ -628,9 +593,7 @@ class TestAutoCRUD:
         """測試添加模型時使用自定義名稱"""
         autocrud = AutoCRUD()
 
-        autocrud.add_model(
-            User, name="custom-user", storage_factory=create_user_storage
-        )
+        autocrud.add_model(User, name="custom-user")
 
         assert "custom-user" in autocrud.resource_managers
         assert autocrud.resource_managers["custom-user"].resource_type == User

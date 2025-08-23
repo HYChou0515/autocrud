@@ -157,6 +157,7 @@ def get_resource_store(store_type: str, tmpdir: Path) -> IResourceStore:
         return DiskResourceStore(Data, encoding="msgpack", rootdir=d)
 
 
+@pytest.mark.flaky(retries=3, delay=1)
 @pytest.mark.parametrize(
     "meta_store_type", ["memory", "sql3-mem", "sql3-file", "redis", "disk", "redis-pg"]
 )

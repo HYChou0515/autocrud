@@ -69,6 +69,7 @@ dev = [
     "psycopg2-binary>=2.9.10",
     "pytest>=8.4.1",
     "pytest-asyncio>=1.1.0",
+    "pytest-retry>=1.7.0",
     "redis>=6.4.0",
     "ruff>=0.12.4",
     "sphinx>=8.2.3",

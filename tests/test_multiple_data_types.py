@@ -1,7 +1,7 @@
 """測試 AutoCRUD 對不同數據類型的支持"""
 
 import pytest
-from dataclasses import dataclass, asdict
+from dataclasses import dataclass, asdict, is_dataclass
 from typing import Optional, TypedDict
 from pydantic import BaseModel
 import msgspec
@@ -107,7 +107,7 @@ class TestCreateOperations:
         # 將不同類型的對象轉換為字典形式供 JSON 序列化
         if isinstance(user_data, BaseModel):  # Pydantic
             json_data = user_data.model_dump()
-        elif hasattr(user_data, "__dataclass_fields__"):  # Dataclass
+        elif is_dataclass(user_data):  # Dataclass
             json_data = asdict(user_data)
         elif isinstance(user_data, msgspec.Struct):  # Msgspec
             json_data = msgspec.to_builtins(user_data)
@@ -126,7 +126,7 @@ class TestCreateOperations:
         print(f"\n✅ Created {endpoint} with ID: {resource_id}")
 
         # 2. 測試讀取剛創建的用戶
-        get_response = client.get(f"/{endpoint}/{resource_id}")
+        get_response = client.get(f"/{endpoint}/{resource_id}/data")
         assert get_response.status_code == 200
 
         retrieved_data = get_response.json()
@@ -150,7 +150,7 @@ class TestCreateOperations:
         print(f"🔄 Updated {endpoint} - new revision: {update_result['revision_id']}")
 
         # 4. 驗證更新後的數據
-        get_updated_response = client.get(f"/{endpoint}/{resource_id}")
+        get_updated_response = client.get(f"/{endpoint}/{resource_id}/data")
         assert get_updated_response.status_code == 200
 
         updated_retrieved_data = get_updated_response.json()
@@ -159,19 +159,18 @@ class TestCreateOperations:
         print(f"✅ Verified updated data: {updated_retrieved_data}")
 
         # 5. 測試列出所有資源
-        list_response = client.get(f"/{endpoint}")
+        list_response = client.get(f"/{endpoint}/data")
         print(f"📋 List response status: {list_response.status_code}")
         if list_response.status_code != 200:
             print(f"❌ List error: {list_response.text}")
         assert list_response.status_code == 200
 
         list_result = list_response.json()
-        assert "resources" in list_result
-        assert len(list_result["resources"]) >= 1
+        assert len(list_result) >= 1
 
         # 找到我們創建的資源
         found_resource = None
-        for resource in list_result["resources"]:
+        for resource in list_result:
             if resource["name"] == updated_data["name"]:
                 found_resource = resource
                 break
@@ -189,7 +188,7 @@ class TestCreateOperations:
         print(f"🗑️ Deleted {endpoint} with ID: {resource_id}")
 
         # 7. 驗證刪除後無法讀取（或返回已刪除狀態）
-        get_deleted_response = client.get(f"/{endpoint}/{resource_id}")
+        get_deleted_response = client.get(f"/{endpoint}/{resource_id}/data")
         # 根據實現，可能返回404或者返回標記為已刪除的資源
         print(f"🔍 Get deleted resource status: {get_deleted_response.status_code}")
 
