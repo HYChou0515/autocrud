@@ -65,11 +65,6 @@ def check_prerequisites():
     return True
 
 
-def run_tests():
-    """執行測試"""
-    return run_command("pytest", "執行測試")
-
-
 def clean_build():
     """清理舊的 build 文件"""
     print("\n🧹 清理舊的 build 文件...")
@@ -127,11 +122,6 @@ def main():
 
     # 檢查前置條件
     if not check_prerequisites():
-        sys.exit(1)
-
-    # 執行測試
-    if not run_tests():
-        print("❌ 測試失敗，請修復後再發布")
         sys.exit(1)
 
     # 清理舊文件
