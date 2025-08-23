@@ -6,6 +6,7 @@ import datetime as dt
 from uuid import uuid4
 from msgspec import UNSET, Struct
 from jsonpatch import JsonPatch
+from xxhash import xxh3_128_hexdigest
 
 
 from autocrud.resource_manager.basic import (
@@ -58,11 +59,19 @@ class SimpleStorage(IStorage[T]):
     def get_resource_revision(self, resource_id: str, revision_id: str) -> Resource[T]:
         return self._resource_store.get(resource_id, revision_id)
 
+    def get_resource_revision_info(
+        self, resource_id: str, revision_id: str
+    ) -> RevisionInfo:
+        return self._resource_store.get_revision_info(resource_id, revision_id)
+
     def save_resource_revision(self, resource: Resource[T]) -> None:
         self._resource_store.save(resource)
 
     def search(self, query: ResourceMetaSearchQuery) -> list[ResourceMeta]:
         return list(self._meta_store.iter_search(query))
+
+    def encode_data(self, data: T) -> bytes:
+        return self._resource_store.encode(data)
 
     def dump_meta(self) -> Generator[tuple[str, ResourceMeta]]:
         yield from self._meta_store.items()
@@ -80,11 +89,12 @@ class SimpleStorage(IStorage[T]):
 
 
 class _BuildRevMetaCreate(Struct):
-    pass
+    data: T
 
 
 class _BuildRevInfoUpdate(Struct):
     prev_res_meta: ResourceMeta
+    data: T
 
 
 class _BuildResMetaCreate(Struct):
@@ -156,6 +166,11 @@ class ResourceManager(IResourceManager[T], Generic[T]):
             updated_by=self.user_ctx.get(),
         )
 
+    def get_data_hash(self, data: T) -> str:
+        b = self.storage.encode_data(data)
+        data_hash = f"xxh3_128:{xxh3_128_hexdigest(b)}"
+        return data_hash
+
     def _rev_info(
         self, mode: _BuildRevMetaCreate | _BuildRevInfoUpdate
     ) -> RevisionInfo:
@@ -170,12 +185,15 @@ class ResourceManager(IResourceManager[T], Generic[T]):
             revision_id = f"{resource_id}:{prev_res_meta.total_revision_count + 1}"
             last_revision_id = prev_res_meta.current_revision_id
 
+        data_hash = self.get_data_hash(mode.data)
+
         info = RevisionInfo(
             uid=uid,
             resource_id=resource_id,
             revision_id=revision_id,
             parent_revision_id=last_revision_id,
             schema_version=self.schema_version,
+            data_hash=data_hash,
             status=RevisionStatus.stable,
             created_time=self.now_ctx.get(),
             updated_time=self.now_ctx.get(),
@@ -200,7 +218,7 @@ class ResourceManager(IResourceManager[T], Generic[T]):
         return self.storage.search(query)
 
     def create(self, data: T) -> RevisionInfo:
-        info = self._rev_info(_BuildRevMetaCreate())
+        info = self._rev_info(_BuildRevMetaCreate(data))
         resource = Resource(
             info=info,
             data=data,
@@ -222,7 +240,13 @@ class ResourceManager(IResourceManager[T], Generic[T]):
 
     def update(self, resource_id: str, data: T) -> RevisionInfo:
         prev_res_meta = self.get_meta(resource_id)
-        rev_info = self._rev_info(_BuildRevInfoUpdate(prev_res_meta))
+        prev_info = self.storage.get_resource_revision_info(
+            resource_id, prev_res_meta.current_revision_id
+        )
+        cur_data_hash = self.get_data_hash(data)
+        if prev_info.data_hash == cur_data_hash:
+            return prev_info
+        rev_info = self._rev_info(_BuildRevInfoUpdate(prev_res_meta, data))
         res_meta = self._res_meta(_BuildResMetaUpdate(prev_res_meta, rev_info))
         resource = Resource(
             info=rev_info,

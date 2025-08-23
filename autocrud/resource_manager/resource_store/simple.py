@@ -1,7 +1,6 @@
 from collections.abc import Generator
 from pathlib import Path
 from typing import TypeVar
-from xxhash import xxh3_128_hexdigest
 
 from autocrud.resource_manager.basic import (
     Encoding,
@@ -11,6 +10,7 @@ from autocrud.resource_manager.basic import (
     Resource,
     RevisionInfo,
 )
+import io
 
 T = TypeVar("T")
 
@@ -45,8 +45,7 @@ class MemoryResourceStore(IResourceStore[T]):
         )
 
     def get(self, resource_id: str, revision_id: str) -> Resource[T]:
-        info = self._info_serializer.decode(self._info_store[resource_id][revision_id])
-
+        info = self.get_revision_info(resource_id, revision_id)
         if (
             self.migration is None
             or info.schema_version == self.migration.schema_version
@@ -56,8 +55,6 @@ class MemoryResourceStore(IResourceStore[T]):
             )
         else:
             # For migration, we need to recreate the data from bytes
-            import io
-
             data_bytes = self._data_store[resource_id][revision_id]
             data_io = io.BytesIO(data_bytes)
             data = self.migration.migrate(data_io, info.schema_version)
@@ -75,6 +72,9 @@ class MemoryResourceStore(IResourceStore[T]):
             data=data,
         )
 
+    def get_revision_info(self, resource_id: str, revision_id: str) -> RevisionInfo:
+        return self._info_serializer.decode(self._info_store[resource_id][revision_id])
+
     def save(self, data: Resource[T]) -> None:
         resource_id = data.info.resource_id
         revision_id = data.info.revision_id
@@ -83,10 +83,12 @@ class MemoryResourceStore(IResourceStore[T]):
             self._data_store[resource_id] = {}
         b = self._data_serializer.encode(data.data)
         self._data_store[resource_id][revision_id] = b
-        data.info.data_hash = f"xxh3_128:{xxh3_128_hexdigest(b)}"
         self._info_store[resource_id][revision_id] = self._info_serializer.encode(
             data.info
         )
+
+    def encode(self, data: T) -> bytes:
+        return self._data_serializer.encode(data)
 
 
 class DiskResourceStore(IResourceStore[T]):
@@ -130,8 +132,7 @@ class DiskResourceStore(IResourceStore[T]):
 
     def get(self, resource_id: str, revision_id: str) -> Resource[T]:
         info_path = self._get_info_path(resource_id, revision_id)
-        with info_path.open("rb") as f:
-            info = self._info_serializer.decode(f.read())
+        info = self.get_revision_info(resource_id, revision_id)
         data_path = self._get_data_path(resource_id, revision_id)
         with data_path.open("rb") as f:
             if (
@@ -157,6 +158,11 @@ class DiskResourceStore(IResourceStore[T]):
             data=data,
         )
 
+    def get_revision_info(self, resource_id: str, revision_id: str) -> RevisionInfo:
+        info_path = self._get_info_path(resource_id, revision_id)
+        with info_path.open("rb") as f:
+            return self._info_serializer.decode(f.read())
+
     def save(self, data: Resource[T]) -> None:
         resource_id = data.info.resource_id
         revision_id = data.info.revision_id
@@ -164,9 +170,10 @@ class DiskResourceStore(IResourceStore[T]):
         resource_path.mkdir(parents=True, exist_ok=True)
         path = self._get_data_path(resource_id, revision_id)
         with path.open("wb") as f:
-            b = self._data_serializer.encode(data.data)
-            data.info.data_hash = f"xxh3_128:{xxh3_128_hexdigest(b)}"
-            f.write(b)
+            f.write(self._data_serializer.encode(data.data))
         path = self._get_info_path(resource_id, revision_id)
         with path.open("wb") as f:
             f.write(self._info_serializer.encode(data.info))
+
+    def encode(self, data: T) -> bytes:
+        return self._data_serializer.encode(data)
