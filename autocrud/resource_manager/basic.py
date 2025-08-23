@@ -628,10 +628,10 @@ class MsgspecSerializer(Generic[T]):
     def __init__(self, encoding: Encoding, resource_type: type[T]):
         self.encoding = encoding
         if self.encoding == "msgpack":
-            self.encoder = msgspec.msgpack.Encoder()
+            self.encoder = msgspec.msgpack.Encoder(order="deterministic")
             self.decoder = msgspec.msgpack.Decoder(resource_type)
         else:
-            self.encoder = msgspec.json.Encoder()
+            self.encoder = msgspec.json.Encoder(order="deterministic")
             self.decoder = msgspec.json.Decoder(resource_type)
 
     def encode(self, obj: T) -> bytes:
