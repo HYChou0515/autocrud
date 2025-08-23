@@ -16,7 +16,12 @@ T = TypeVar("T")
 
 
 class MemoryResourceStore(IResourceStore[T]):
-    def __init__(self, resource_type: type[T], encoding: Encoding = Encoding.json):
+    def __init__(
+        self,
+        resource_type: type[T],
+        encoding: Encoding = Encoding.json,
+        migration: IMigration | None = None,
+    ):
         self._data_store: dict[str, dict[str, bytes]] = {}
         self._info_store: dict[str, dict[str, bytes]] = {}
         self._data_serializer = MsgspecSerializer(
@@ -25,6 +30,7 @@ class MemoryResourceStore(IResourceStore[T]):
         self._info_serializer = MsgspecSerializer(
             encoding=encoding, resource_type=RevisionInfo
         )
+        self.migration = migration
 
     def list_resources(self) -> Generator[str]:
         yield from self._info_store.keys()
@@ -40,7 +46,30 @@ class MemoryResourceStore(IResourceStore[T]):
 
     def get(self, resource_id: str, revision_id: str) -> Resource[T]:
         info = self._info_serializer.decode(self._info_store[resource_id][revision_id])
-        data = self._data_serializer.decode(self._data_store[resource_id][revision_id])
+
+        if (
+            self.migration is None
+            or info.schema_version == self.migration.schema_version
+        ):
+            data = self._data_serializer.decode(
+                self._data_store[resource_id][revision_id]
+            )
+        else:
+            # For migration, we need to recreate the data from bytes
+            import io
+
+            data_bytes = self._data_store[resource_id][revision_id]
+            data_io = io.BytesIO(data_bytes)
+            data = self.migration.migrate(data_io, info.schema_version)
+            info.schema_version = self.migration.schema_version
+
+            # Update both info and data storage with migrated content
+            self._info_store[resource_id][revision_id] = self._info_serializer.encode(
+                info
+            )
+            migrated_data_bytes = self._data_serializer.encode(data)
+            self._data_store[resource_id][revision_id] = migrated_data_bytes
+
         return Resource(
             info=info,
             data=data,
@@ -113,6 +142,16 @@ class DiskResourceStore(IResourceStore[T]):
             else:
                 data = self.migration.migrate(f, info.schema_version)
                 info.schema_version = self.migration.schema_version
+
+                # Persist both the updated schema version and migrated data
+                with info_path.open("wb") as info_f:
+                    info_f.write(self._info_serializer.encode(info))
+
+                # Update data file with migrated content
+                with data_path.open("wb") as data_f:
+                    migrated_data_bytes = self._data_serializer.encode(data)
+                    data_f.write(migrated_data_bytes)
+
         return Resource(
             info=info,
             data=data,
