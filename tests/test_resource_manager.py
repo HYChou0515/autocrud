@@ -24,11 +24,11 @@ import datetime as dt
 from faker import Faker
 import jsonpatch
 
+from autocrud.resource_manager.meta_store.df import DFMemoryMetaStore
 from autocrud.resource_manager.meta_store.fast_slow import FastSlowMetaStore
 from autocrud.resource_manager.meta_store.postgres import PostgresMetaStore
 from autocrud.resource_manager.meta_store.redis import RedisMetaStore
 from autocrud.resource_manager.meta_store.simple import (
-    DFMemoryMetaStore,
     DiskMetaStore,
     MemoryMetaStore,
 )
