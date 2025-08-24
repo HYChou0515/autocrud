@@ -44,6 +44,7 @@ def my_tmpdir():
         "sql3-file",
         "memory-pg",
         "redis",
+        "redis-pg",  # FastSlowMetaStore with Redis + PostgreSQL
     ],
 )
 class TestMetaStoreIterSearch:
@@ -192,6 +193,38 @@ class TestMetaStoreIterSearch:
                 return RedisMetaStore(redis_url=redis_url, encoding="msgpack")
             except Exception as e:
                 pytest.skip(f"Redis not available: {e}")
+        elif store_type == "redis-pg":
+            from autocrud.resource_manager.meta_store.fast_slow import FastSlowMetaStore
+            from autocrud.resource_manager.meta_store.redis import RedisMetaStore
+            from autocrud.resource_manager.meta_store.postgres import PostgresMetaStore
+            import redis
+            import psycopg2
+
+            # Setup Redis and PostgreSQL connections
+            redis_url = "redis://localhost:6379/0"
+            pg_dsn = (
+                "postgresql://postgres:mysecretpassword@localhost:5432/your_database"
+            )
+
+            try:
+                # Reset the test Redis database
+                client = redis.Redis.from_url(redis_url)
+                client.flushall()
+                client.close()
+
+                # Reset the test PostgreSQL database
+                pg_conn = psycopg2.connect(pg_dsn)
+                with pg_conn.cursor() as cur:
+                    cur.execute("DROP TABLE IF EXISTS resource_meta;")
+                    pg_conn.commit()
+                pg_conn.close()
+
+                return FastSlowMetaStore(
+                    fast_store=RedisMetaStore(redis_url=redis_url, encoding="msgpack"),
+                    slow_store=PostgresMetaStore(pg_dsn=pg_dsn, encoding="msgpack"),
+                )
+            except Exception as e:
+                pytest.skip(f"Redis or PostgreSQL not available: {e}")
         else:
             raise ValueError(f"Unsupported store_type: {store_type}")
 
