@@ -1,0 +1,50 @@
+{
+    // Use IntelliSense to learn about possible attributes.
+    // Hover to view descriptions of existing attributes.
+    // For more information, visit: https://go.microsoft.com/fwlink/?linkid=830387
+    "version": "0.2.0",
+    "configurations": [
+        {
+            "name": "Python Debugger: Current File",
+            "type": "debugpy",
+            "request": "launch",
+            "program": "${file}",
+            "console": "integratedTerminal",
+            "justMyCode": false,
+        },
+        {
+            "name": "Debug: schema_upgrade.py",
+            "type": "debugpy",
+            "request": "launch",
+            "program": "examples/schema_upgrade.py",
+            "console": "integratedTerminal",
+            "justMyCode": false,
+            "args": ["typeddict"]
+        },
+        {
+            "name": "Debug: backup.py",
+            "type": "debugpy",
+            "request": "launch",
+            "program": "examples/backup.py",
+            "console": "integratedTerminal",
+            "justMyCode": false,
+            "args": ["msgspec"]
+        },
+        {
+            "name": "Debug: data_search.py",
+            "type": "debugpy",
+            "request": "launch",
+            "program": "examples/data_search.py",
+            "console": "integratedTerminal",
+            "justMyCode": false,
+        },
+        {
+            "name": "Debug: test_dynamic_query_params_new.py",
+            "type": "debugpy",
+            "request": "launch",
+            "program": "test_dynamic_query_params_new.py",
+            "console": "integratedTerminal",
+            "justMyCode": false,
+        }
+    ]
+}
