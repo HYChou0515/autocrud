@@ -149,8 +149,7 @@ class ResourceManager(IResourceManager[T], Generic[T]):
             try:
                 # 使用 JSON path 提取值
                 value = self._extract_by_path(data, field.field_path)
-                if value is not None:
-                    indexed_data[field.field_path] = value
+                indexed_data[field.field_path] = value
             except Exception:
                 # 如果提取失敗，跳過該字段
                 continue
@@ -159,22 +158,21 @@ class ResourceManager(IResourceManager[T], Generic[T]):
 
     def _extract_by_path(self, data: T, field_path: str) -> Any:
         """使用 JSON path 從 data 中提取值"""
-        try:
-            # 簡單的點分隔路徑解析 (e.g., "user.email")
-            parts = field_path.split(".")
-            current = data
+        # 簡單的點分隔路徑解析 (e.g., "user.email")
+        parts = field_path.split(".")
+        current = data
 
-            for part in parts:
-                if hasattr(current, part):
-                    current = getattr(current, part)
-                elif isinstance(current, dict) and part in current:
-                    current = current[part]
-                else:
-                    return None
+        for part in parts:
+            if hasattr(current, part):
+                current = getattr(current, part)
+            elif isinstance(current, dict) and part in current:
+                current = current[part]
+            else:
+                return None
 
-            return current
-        except Exception:
+        if current is UNSET:
             return None
+        return current
 
     @contextmanager
     def meta_provide(self, user: str, now: dt.datetime):
@@ -201,7 +199,7 @@ class ResourceManager(IResourceManager[T], Generic[T]):
             created_by = mode.prev_res_meta.created_by
 
         # 提取索引數據
-        indexed_data = UNSET
+        indexed_data = {}
         if self._indexed_fields:
             extracted = self._extract_indexed_values(mode.data)
             if extracted:

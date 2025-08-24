@@ -49,7 +49,7 @@ class ResourceMeta(Struct, kw_only=True):
     is_deleted: bool = False
 
     # 新增：存儲被索引的 data 欄位值
-    indexed_data: dict[str, Any] | UnsetType = UNSET
+    indexed_data: dict[str, Any]
 
 
 class ResourceMetaSortKey(StrEnum):
