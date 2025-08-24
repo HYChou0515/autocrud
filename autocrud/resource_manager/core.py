@@ -4,7 +4,7 @@ from functools import cached_property
 from typing import IO, TypeVar, Generic, Any
 import datetime as dt
 from uuid import uuid4
-from msgspec import UNSET, Struct
+from msgspec import UNSET, Struct, UnsetType
 from jsonpatch import JsonPatch
 from xxhash import xxh3_128_hexdigest
 
@@ -121,6 +121,7 @@ class ResourceManager(IResourceManager[T], Generic[T]):
     ):
         self.user_ctx = Ctx[str]("user_ctx")
         self.now_ctx = Ctx[dt.datetime]("now_ctx")
+        self.id_ctx = Ctx[str | UnsetType]("id_ctx")
         self.resource_type = resource_type
         self.storage = storage
         self.data_converter = DataConverter(self.resource_type)
@@ -175,10 +176,13 @@ class ResourceManager(IResourceManager[T], Generic[T]):
         return current
 
     @contextmanager
-    def meta_provide(self, user: str, now: dt.datetime):
+    def meta_provide(
+        self, user: str, now: dt.datetime, *, resource_id: str | UnsetType = UNSET
+    ):
         with (
             self.user_ctx.ctx(user),
             self.now_ctx.ctx(now),
+            self.id_ctx.ctx(resource_id),
         ):
             yield
 
@@ -227,7 +231,11 @@ class ResourceManager(IResourceManager[T], Generic[T]):
     ) -> RevisionInfo:
         uid = uuid4()
         if isinstance(mode, _BuildRevMetaCreate):
-            resource_id = self.id_generator()
+            _id = self.id_ctx.get()
+            if _id is UNSET:
+                resource_id = self.id_generator()
+            else:
+                resource_id = _id
             revision_id = f"{resource_id}:1"
             last_revision_id = UNSET
         elif isinstance(mode, _BuildRevInfoUpdate):
