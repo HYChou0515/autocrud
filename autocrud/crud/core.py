@@ -22,6 +22,7 @@ from autocrud.resource_manager.basic import (
     Resource,
     ResourceMeta,
     RevisionInfo,
+    IndexableField,
 )
 from autocrud.resource_manager.core import ResourceManager, SimpleStorage
 from autocrud.resource_manager.data_converter import (
@@ -1556,6 +1557,7 @@ class AutoCRUD:
         storage_factory: IStorageFactory | None = None,
         id_generator: Callable[[], str] | None = None,
         migration: IMigration | None = None,
+        indexed_fields: list[IndexableField] | None = None,
     ) -> None:
         """Add a data model to AutoCRUD and configure its API endpoints.
 
@@ -1633,6 +1635,7 @@ class AutoCRUD:
             storage=storage,
             id_generator=id_generator,
             migration=migration,
+            indexed_fields=indexed_fields,
         )
         self.resource_managers[model_name] = resource_manager
 

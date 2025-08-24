@@ -1,7 +1,7 @@
 from collections.abc import Callable, Generator
 from contextlib import contextmanager
 from functools import cached_property
-from typing import IO, TypeVar, Generic
+from typing import IO, TypeVar, Generic, Any
 import datetime as dt
 from uuid import uuid4
 from msgspec import UNSET, Struct
@@ -26,6 +26,7 @@ from autocrud.resource_manager.basic import (
     RevisionIDNotFoundError,
     RevisionInfo,
     RevisionStatus,
+    IndexableField,
 )
 from autocrud.resource_manager.data_converter import DataConverter
 from autocrud.util.naming import NameConverter, NamingFormat
@@ -99,11 +100,13 @@ class _BuildRevInfoUpdate(Struct):
 
 class _BuildResMetaCreate(Struct):
     rev_info: RevisionInfo
+    data: T
 
 
 class _BuildResMetaUpdate(Struct):
     prev_res_meta: ResourceMeta
     rev_info: RevisionInfo
+    data: T
 
 
 class ResourceManager(IResourceManager[T], Generic[T]):
@@ -114,6 +117,7 @@ class ResourceManager(IResourceManager[T], Generic[T]):
         storage: IStorage[T],
         id_generator: Callable[[], str] | None = None,
         migration: IMigration | None = None,
+        indexed_fields: list[IndexableField] | None = None,
     ):
         self.user_ctx = Ctx[str]("user_ctx")
         self.now_ctx = Ctx[dt.datetime]("now_ctx")
@@ -122,6 +126,7 @@ class ResourceManager(IResourceManager[T], Generic[T]):
         self.data_converter = DataConverter(self.resource_type)
         schema_version = migration.schema_version if migration else None
         self.schema_version = UNSET if schema_version is None else schema_version
+        self._indexed_fields = indexed_fields or []
 
         _model_name = NameConverter(resource_type.__name__).to(NamingFormat.SNAKE)
 
@@ -131,6 +136,49 @@ class ResourceManager(IResourceManager[T], Generic[T]):
         self.id_generator = (
             default_id_generator if id_generator is None else id_generator
         )
+
+    @property
+    def indexed_fields(self) -> list[IndexableField]:
+        """取得被索引的 data 欄位列表"""
+        return self._indexed_fields
+
+    def _extract_indexed_values(self, data: T) -> dict[str, Any]:
+        """從 data 中提取需要索引的值"""
+        indexed_data = {}
+        for field in self._indexed_fields:
+            try:
+                if field.extractor:
+                    value = field.extractor(data)
+                else:
+                    # 使用 JSON path 提取值
+                    value = self._extract_by_path(data, field.field_path)
+
+                if value is not None:
+                    indexed_data[field.field_path] = value
+            except Exception:
+                # 如果提取失敗，跳過該字段
+                continue
+
+        return indexed_data
+
+    def _extract_by_path(self, data: T, field_path: str) -> Any:
+        """使用 JSON path 從 data 中提取值"""
+        try:
+            # 簡單的點分隔路徑解析 (e.g., "user.email")
+            parts = field_path.split(".")
+            current = data
+
+            for part in parts:
+                if hasattr(current, part):
+                    current = getattr(current, part)
+                elif isinstance(current, dict) and part in current:
+                    current = current[part]
+                else:
+                    return None
+
+            return current
+        except Exception:
+            return None
 
     @contextmanager
     def meta_provide(self, user: str, now: dt.datetime):
@@ -155,6 +203,14 @@ class ResourceManager(IResourceManager[T], Generic[T]):
             total_revision_count = mode.prev_res_meta.total_revision_count + 1
             created_time = mode.prev_res_meta.created_time
             created_by = mode.prev_res_meta.created_by
+
+        # 提取索引數據
+        indexed_data = UNSET
+        if self._indexed_fields:
+            extracted = self._extract_indexed_values(mode.data)
+            if extracted:
+                indexed_data = extracted
+
         return ResourceMeta(
             current_revision_id=current_revision_id,
             resource_id=resource_id,
@@ -164,6 +220,7 @@ class ResourceManager(IResourceManager[T], Generic[T]):
             updated_time=self.now_ctx.get(),
             created_by=created_by,
             updated_by=self.user_ctx.get(),
+            indexed_data=indexed_data,
         )
 
     def get_data_hash(self, data: T) -> str:
@@ -224,7 +281,7 @@ class ResourceManager(IResourceManager[T], Generic[T]):
             data=data,
         )
         self.storage.save_resource_revision(resource)
-        self.storage.save_meta(self._res_meta(_BuildResMetaCreate(info)))
+        self.storage.save_meta(self._res_meta(_BuildResMetaCreate(info, data)))
         return info
 
     def get(self, resource_id: str) -> Resource[T]:
@@ -247,7 +304,7 @@ class ResourceManager(IResourceManager[T], Generic[T]):
         if prev_info.data_hash == cur_data_hash:
             return prev_info
         rev_info = self._rev_info(_BuildRevInfoUpdate(prev_res_meta, data))
-        res_meta = self._res_meta(_BuildResMetaUpdate(prev_res_meta, rev_info))
+        res_meta = self._res_meta(_BuildResMetaUpdate(prev_res_meta, rev_info, data))
         resource = Resource(
             info=rev_info,
             data=data,
@@ -269,6 +326,13 @@ class ResourceManager(IResourceManager[T], Generic[T]):
             return meta
         if not self.storage.revision_exists(resource_id, revision_id):
             raise RevisionIDNotFoundError(resource_id, revision_id)
+
+        # 切換到指定版本時，需要更新索引數據
+        if self._indexed_fields:
+            resource = self.storage.get_resource_revision(resource_id, revision_id)
+            indexed_data = self._extract_indexed_values(resource.data)
+            meta.indexed_data = indexed_data if indexed_data else UNSET
+
         meta.updated_by = self.user_ctx.get()
         meta.updated_time = self.now_ctx.get()
         meta.current_revision_id = revision_id
