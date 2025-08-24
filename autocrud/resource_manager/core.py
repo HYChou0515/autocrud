@@ -315,6 +315,12 @@ class ResourceManager(IResourceManager[T], Generic[T]):
         self.storage.save_meta(res_meta)
         return rev_info
 
+    def create_or_update(self, resource_id, data):
+        try:
+            return self.update(resource_id, data)
+        except ResourceIDNotFoundError:
+            return self.create(data)
+
     def patch(self, resource_id: str, patch_data: JsonPatch) -> RevisionInfo:
         data = self.get(resource_id).data
         d = self.data_converter.data_to_builtins(data)

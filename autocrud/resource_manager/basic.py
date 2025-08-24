@@ -350,6 +350,10 @@ class IResourceManager(ABC, Generic[T]):
         """
 
     @abstractmethod
+    def create_or_update(self, resource_id: str, data: T) -> RevisionInfo:
+        pass
+
+    @abstractmethod
     def patch(self, resource_id: str, patch_data: JsonPatch) -> RevisionInfo:
         """Apply RFC 6902 JSON Patch operations to the resource.
 
