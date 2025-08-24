@@ -7,7 +7,7 @@ import io
 import json
 import tarfile
 import textwrap
-from typing import IO, Generic, Literal, TypeVar, Any
+from typing import IO, Generic, Literal, TypeVar, Any, Union
 import datetime as dt
 from msgspec import UNSET
 from pathlib import Path
@@ -723,6 +723,192 @@ class DeleteRouteTemplate(BaseRouteTemplate):
 class ListRouteTemplate(BaseRouteTemplate):
     """列出所有資源的路由模板"""
 
+    @staticmethod
+    def _create_dynamic_query_inputs(
+        indexed_fields: list[IndexableField],
+    ) -> type[BaseModel]:
+        """根據 indexed_fields 創建增強的 QueryInputs"""
+
+        # 基本欄位
+        base_fields = {
+            "is_deleted": (
+                Optional[bool],
+                Query(None, description="Filter by deletion status"),
+            ),
+            "created_time_start": (
+                Optional[str],
+                Query(None, description="Filter by created time start (ISO format)"),
+            ),
+            "created_time_end": (
+                Optional[str],
+                Query(None, description="Filter by created time end (ISO format)"),
+            ),
+            "updated_time_start": (
+                Optional[str],
+                Query(None, description="Filter by updated time start (ISO format)"),
+            ),
+            "updated_time_end": (
+                Optional[str],
+                Query(None, description="Filter by updated time end (ISO format)"),
+            ),
+            "created_bys": (
+                Optional[list[str]],
+                Query(None, description="Filter by creators"),
+            ),
+            "updated_bys": (
+                Optional[list[str]],
+                Query(None, description="Filter by updaters"),
+            ),
+            "limit": (int, Query(10, description="Maximum number of results")),
+            "offset": (int, Query(0, description="Number of results to skip")),
+        }
+
+        # 保留傳統的 data_conditions JSON 參數，並添加字段特定的參數
+        data_conditions_description = "Legacy data filter conditions in JSON format"
+        if indexed_fields:
+            field_examples = []
+            for field in indexed_fields[:3]:  # 只顯示前 3 個作為例子
+                field_examples.append(
+                    f"{field.field_path} (type: {field.field_type.__name__})"
+                )
+
+            if field_examples:
+                data_conditions_description += (
+                    f". Available indexed fields: {', '.join(field_examples)}"
+                )
+                if len(indexed_fields) > 3:
+                    data_conditions_description += (
+                        f" and {len(indexed_fields) - 3} more"
+                    )
+
+        base_fields["data_conditions"] = (
+            Optional[str],
+            Query(None, description=data_conditions_description),
+        )
+
+        # 為每個索引欄位添加查詢參數
+        for field in indexed_fields:
+            field_name = field.field_path
+            field_type = field.field_type
+
+            # 為每個欄位添加多種操作符支援
+            if field_type in (int, float):
+                # 數字類型：等於、大於、小於、範圍
+                base_fields[f"{field_name}"] = (
+                    Optional[field_type],
+                    Query(None, description=f"Filter by {field_name} (equals)"),
+                )
+                base_fields[f"{field_name}__gt"] = (
+                    Optional[field_type],
+                    Query(None, description=f"Filter by {field_name} (greater than)"),
+                )
+                base_fields[f"{field_name}__gte"] = (
+                    Optional[field_type],
+                    Query(
+                        None,
+                        description=f"Filter by {field_name} (greater than or equal)",
+                    ),
+                )
+                base_fields[f"{field_name}__lt"] = (
+                    Optional[field_type],
+                    Query(None, description=f"Filter by {field_name} (less than)"),
+                )
+                base_fields[f"{field_name}__lte"] = (
+                    Optional[field_type],
+                    Query(
+                        None, description=f"Filter by {field_name} (less than or equal)"
+                    ),
+                )
+                base_fields[f"{field_name}__ne"] = (
+                    Optional[field_type],
+                    Query(None, description=f"Filter by {field_name} (not equals)"),
+                )
+            elif field_type == str:
+                # 字符串類型：等於、包含、開始、結束
+                base_fields[f"{field_name}"] = (
+                    Optional[str],
+                    Query(None, description=f"Filter by {field_name} (equals)"),
+                )
+                base_fields[f"{field_name}__contains"] = (
+                    Optional[str],
+                    Query(None, description=f"Filter by {field_name} (contains)"),
+                )
+                base_fields[f"{field_name}__starts_with"] = (
+                    Optional[str],
+                    Query(None, description=f"Filter by {field_name} (starts with)"),
+                )
+                base_fields[f"{field_name}__ends_with"] = (
+                    Optional[str],
+                    Query(None, description=f"Filter by {field_name} (ends with)"),
+                )
+                base_fields[f"{field_name}__ne"] = (
+                    Optional[str],
+                    Query(None, description=f"Filter by {field_name} (not equals)"),
+                )
+            elif field_type == bool:
+                # 布爾類型：等於
+                base_fields[f"{field_name}"] = (
+                    Optional[bool],
+                    Query(None, description=f"Filter by {field_name}"),
+                )
+            else:
+                # 其他類型：等於、不等於
+                base_fields[f"{field_name}"] = (
+                    Optional[field_type],
+                    Query(None, description=f"Filter by {field_name} (equals)"),
+                )
+                base_fields[f"{field_name}__ne"] = (
+                    Optional[field_type],
+                    Query(None, description=f"Filter by {field_name} (not equals)"),
+                )
+
+        # 創建動態模型
+        return create_model("DynamicQueryInputs", **base_fields)
+
+    @staticmethod
+    def _parse_dynamic_params_to_data_conditions(
+        params: dict, indexed_fields: list[IndexableField]
+    ) -> list[dict]:
+        """將動態參數轉換為 data_conditions"""
+        data_conditions = []
+        indexed_field_names = {field.field_path for field in indexed_fields}
+
+        for param_name, value in params.items():
+            if value is None:
+                continue
+
+            # 解析參數名稱格式：field_name 或 field_name__operator
+            if "__" in param_name:
+                field_name, operator = param_name.split("__", 1)
+            else:
+                field_name = param_name
+                operator = "eq"
+
+            # 只處理索引欄位的參數
+            if field_name not in indexed_field_names:
+                continue
+
+            # 將操作符映射為標準格式
+            operator_mapping = {
+                "eq": "eq",
+                "ne": "ne",
+                "gt": "gt",
+                "gte": "gte",
+                "lt": "lt",
+                "lte": "lte",
+                "contains": "contains",
+                "starts_with": "starts_with",
+                "ends_with": "ends_with",
+            }
+
+            mapped_operator = operator_mapping.get(operator, "eq")
+
+            data_conditions.append(
+                {"field_path": field_name, "operator": mapped_operator, "value": value}
+            )
+
+        return data_conditions
+
     class QueryInputs(BaseModel):
         # ResourceMetaSearchQuery 的查詢參數
         is_deleted: Optional[bool] = Query(
@@ -744,12 +930,50 @@ class ListRouteTemplate(BaseRouteTemplate):
         updated_bys: Optional[list[str]] = Query(None, description="Filter by updaters")
         data_conditions: Optional[str] = Query(
             None,
-            description='Data filter conditions in JSON format. Example: \'[{"field_path": "department", "operator": "equals", "value": "Engineering"}]\'',
+            description='Data filter conditions in JSON format. Example: \'[{"field_path": "department", "operator": "eq", "value": "Engineering"}]\'',
         )
         limit: int = Query(10, description="Maximum number of results")
         offset: int = Query(0, description="Number of results to skip")
 
-    def _build_query(self, q: QueryInputs) -> ResourceMetaSearchQuery:
+    def _build_data_conditions_from_dynamic_params(
+        self, query_params: dict, indexed_fields: list[IndexableField]
+    ) -> list[DataSearchCondition]:
+        """從動態查詢參數構建 data_conditions"""
+        conditions = []
+
+        for field in indexed_fields:
+            field_name = field.field_path
+
+            # 檢查各種操作符
+            operators_map = {
+                field_name: DataSearchOperator.equals,
+                f"{field_name}__gt": DataSearchOperator.greater_than,
+                f"{field_name}__gte": DataSearchOperator.greater_than_or_equal,
+                f"{field_name}__lt": DataSearchOperator.less_than,
+                f"{field_name}__lte": DataSearchOperator.less_than_or_equal,
+                f"{field_name}__ne": DataSearchOperator.not_equals,
+                f"{field_name}__contains": DataSearchOperator.contains,
+                f"{field_name}__starts_with": DataSearchOperator.starts_with,
+                f"{field_name}__ends_with": DataSearchOperator.ends_with,
+            }
+
+            for param_name, operator in operators_map.items():
+                if hasattr(query_params, param_name):
+                    value = getattr(query_params, param_name)
+                    if value is not None:
+                        conditions.append(
+                            DataSearchCondition(
+                                field_path=field_name, operator=operator, value=value
+                            )
+                        )
+
+        return conditions
+
+    def _build_query(
+        self,
+        q: Union[QueryInputs, BaseModel],
+        indexed_fields: list[IndexableField] = None,
+    ) -> ResourceMetaSearchQuery:
         query_kwargs = {
             "limit": q.limit,
             "offset": q.offset,
@@ -799,12 +1023,14 @@ class ListRouteTemplate(BaseRouteTemplate):
             query_kwargs["updated_bys"] = UNSET
 
         # 處理 data_conditions
-        if q.data_conditions:
+        data_conditions = []
+
+        # 如果有傳統的 JSON data_conditions
+        if hasattr(q, "data_conditions") and q.data_conditions:
             try:
                 # 解析 JSON 字符串
                 conditions_data = json.loads(q.data_conditions)
                 # 轉換為 DataSearchCondition 對象列表
-                data_conditions = []
                 for condition_dict in conditions_data:
                     condition = DataSearchCondition(
                         field_path=condition_dict["field_path"],
@@ -812,11 +1038,20 @@ class ListRouteTemplate(BaseRouteTemplate):
                         value=condition_dict["value"],
                     )
                     data_conditions.append(condition)
-                query_kwargs["data_conditions"] = data_conditions
             except (json.JSONDecodeError, KeyError, ValueError) as e:
                 raise HTTPException(
                     status_code=400, detail=f"Invalid data_conditions format: {str(e)}"
                 )
+
+        # 如果有 indexed_fields，從動態參數構建條件
+        if indexed_fields:
+            dynamic_conditions = self._build_data_conditions_from_dynamic_params(
+                q, indexed_fields
+            )
+            data_conditions.extend(dynamic_conditions)
+
+        if data_conditions:
+            query_kwargs["data_conditions"] = data_conditions
         else:
             query_kwargs["data_conditions"] = UNSET
 
@@ -827,6 +1062,86 @@ class ListRouteTemplate(BaseRouteTemplate):
     def apply(
         self, model_name: str, resource_manager: ResourceManager[T], router: APIRouter
     ) -> None:
+        # 創建適當的 QueryInputs 類型
+        indexed_fields = resource_manager.indexed_fields
+        if indexed_fields:
+            QueryInputsClass = self._create_dynamic_query_inputs(indexed_fields)
+        else:
+            QueryInputsClass = self.QueryInputs
+
+        # 使用 Depends 的替代方案來處理動態類型
+
+        # 創建參數依賴函數
+        def get_query_params(request: Request):
+            # 直接解析查詢參數
+            params = dict(request.query_params)
+
+            # 處理基本的元數據參數
+            base_params = {}
+            for field in [
+                "is_deleted",
+                "created_time_start",
+                "created_time_end",
+                "updated_time_start",
+                "updated_time_end",
+                "created_bys",
+                "updated_bys",
+                "limit",
+                "offset",
+            ]:
+                if field in params:
+                    value = params[field]
+                    # 處理類型轉換
+                    if field == "is_deleted":
+                        base_params[field] = value.lower() in ("true", "1", "yes")
+                    elif field in ["limit", "offset"]:
+                        base_params[field] = int(value)
+                    elif field in ["created_bys", "updated_bys"]:
+                        # 處理列表參數
+                        if isinstance(value, str):
+                            base_params[field] = [value] if value else []
+                        else:
+                            base_params[field] = value
+                    else:
+                        base_params[field] = value
+
+            # 設置默認值
+            base_params.setdefault("limit", 10)
+            base_params.setdefault("offset", 0)
+
+            # 處理傳統的 data_conditions JSON 參數
+            data_conditions = []
+            if "data_conditions" in params:
+                base_params["data_conditions"] = params["data_conditions"]
+
+            # 解析動態參數並轉換為 data_conditions
+            if indexed_fields:
+                remaining_params = {
+                    k: v
+                    for k, v in params.items()
+                    if k not in base_params and k != "data_conditions"
+                }
+                dynamic_data_conditions = self._parse_dynamic_params_to_data_conditions(
+                    remaining_params, indexed_fields
+                )
+
+                # 將動態參數的 data_conditions 轉換為 JSON 字符串
+                if dynamic_data_conditions:
+                    existing_conditions = []
+                    if base_params.get("data_conditions"):
+                        try:
+                            existing_conditions = json.loads(
+                                base_params["data_conditions"]
+                            )
+                        except:
+                            pass
+
+                    all_conditions = existing_conditions + dynamic_data_conditions
+                    base_params["data_conditions"] = json.dumps(all_conditions)
+
+            # 創建基本的 QueryInputs 實例
+            return self.QueryInputs(**base_params)
+
         @router.get(
             f"/{model_name}/data",
             response_model=list[T],
@@ -876,13 +1191,14 @@ class ListRouteTemplate(BaseRouteTemplate):
             ),
         )
         async def list_resources_data(
-            query_params: ListRouteTemplate.QueryInputs = Query(...),
+            request: Request,
             current_user: str = Depends(self.deps.get_user),
             current_time: dt.datetime = Depends(self.deps.get_now),
         ) -> list[T]:
             try:
                 # 構建查詢對象
-                query = self._build_query(query_params)
+                query_params = get_query_params(request)
+                query = self._build_query(query_params, indexed_fields)
                 with resource_manager.meta_provide(current_user, current_time):
                     resources_data = []
                     metas = resource_manager.search_resources(query)
