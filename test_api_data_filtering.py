@@ -152,6 +152,9 @@ def test_api_data_filtering():
     )
 
     response = client.get(f"/user/meta?data_conditions={data_conditions}")
+    print(f"Meta endpoint response status: {response.status_code}")
+    if response.status_code != 200:
+        print(f"Meta endpoint error: {response.content}")
     assert response.status_code == 200
 
     meta_data = response.json()

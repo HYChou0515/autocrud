@@ -1069,151 +1069,86 @@ class ListRouteTemplate(BaseRouteTemplate):
         else:
             QueryInputsClass = self.QueryInputs
 
-        # 使用 Depends 的替代方案來處理動態類型
-
-        # 創建參數依賴函數
-        def get_query_params(request: Request):
-            # 直接解析查詢參數
-            params = dict(request.query_params)
-
-            # 處理基本的元數據參數
-            base_params = {}
-            for field in [
-                "is_deleted",
-                "created_time_start",
-                "created_time_end",
-                "updated_time_start",
-                "updated_time_end",
-                "created_bys",
-                "updated_bys",
-                "limit",
-                "offset",
-            ]:
-                if field in params:
-                    value = params[field]
-                    # 處理類型轉換
-                    if field == "is_deleted":
-                        base_params[field] = value.lower() in ("true", "1", "yes")
-                    elif field in ["limit", "offset"]:
-                        base_params[field] = int(value)
-                    elif field in ["created_bys", "updated_bys"]:
-                        # 處理列表參數
-                        if isinstance(value, str):
-                            base_params[field] = [value] if value else []
+        # 創建統一的查詢參數依賴函數
+        def create_query_dependency():
+            def get_query_params(request: Request):
+                # 從查詢參數構造實例
+                query_dict = dict(request.query_params)
+                # 處理數組參數
+                for key, value in query_dict.items():
+                    if key.endswith('_bys') and isinstance(value, str):
+                        # 將逗號分隔的字符串轉換為列表
+                        query_dict[key] = value.split(',') if value else []
+                
+                # 將字符串值轉換為適當的類型
+                converted_dict = {}
+                for key, value in query_dict.items():
+                    if value == '':
+                        converted_dict[key] = None
+                    elif key in ['limit', 'offset']:
+                        converted_dict[key] = int(value) if value else (10 if key == 'limit' else 0)
+                    elif key in ['is_deleted']:
+                        if value and value.lower() in ['true', '1', 'yes']:
+                            converted_dict[key] = True
+                        elif value and value.lower() in ['false', '0', 'no']:
+                            converted_dict[key] = False
                         else:
-                            base_params[field] = value
+                            converted_dict[key] = None
                     else:
-                        base_params[field] = value
+                        converted_dict[key] = value
+                
+                try:
+                    return QueryInputsClass(**converted_dict)
+                except Exception as e:
+                    # 如果創建失敗，返回默認值
+                    return QueryInputsClass()
+            return get_query_params
+        
+        # 創建統一的查詢依賴
+        query_dependency = create_query_dependency()
 
-            # 設置默認值
-            base_params.setdefault("limit", 10)
-            base_params.setdefault("offset", 0)
+        # 創建一個具有正確類型註解的端點函數
+        def create_list_data_endpoint():
+            async def list_resources_data(
+                query_params=Depends(query_dependency),
+                current_user: str = Depends(self.deps.get_user),
+                current_time: dt.datetime = Depends(self.deps.get_now),
+            ) -> list[T]:
+                try:
+                    # 構建查詢對象
+                    query = self._build_query(query_params, indexed_fields)
+                    with resource_manager.meta_provide(current_user, current_time):
+                        resources_data = []
+                        metas = resource_manager.search_resources(query)
+                        # 根據響應類型處理資源數據
+                        for meta in metas:
+                            try:
+                                resource = resource_manager.get(meta.resource_id)
+                                resources_data.append(data_to_builtins(resource.data))
+                            except Exception:
+                                # 如果無法獲取資源數據，跳過
+                                continue
 
-            # 處理傳統的 data_conditions JSON 參數
-            data_conditions = []
-            if "data_conditions" in params:
-                base_params["data_conditions"] = params["data_conditions"]
-
-            # 解析動態參數並轉換為 data_conditions
-            if indexed_fields:
-                remaining_params = {
-                    k: v
-                    for k, v in params.items()
-                    if k not in base_params and k != "data_conditions"
-                }
-                dynamic_data_conditions = self._parse_dynamic_params_to_data_conditions(
-                    remaining_params, indexed_fields
-                )
-
-                # 將動態參數的 data_conditions 轉換為 JSON 字符串
-                if dynamic_data_conditions:
-                    existing_conditions = []
-                    if base_params.get("data_conditions"):
-                        try:
-                            existing_conditions = json.loads(
-                                base_params["data_conditions"]
-                            )
-                        except:
-                            pass
-
-                    all_conditions = existing_conditions + dynamic_data_conditions
-                    base_params["data_conditions"] = json.dumps(all_conditions)
-
-            # 創建基本的 QueryInputs 實例
-            return self.QueryInputs(**base_params)
-
-        @router.get(
+                    return resources_data
+                except Exception as e:
+                    raise HTTPException(status_code=400, detail=str(e))
+            
+            # 手動設置類型註解以便 FastAPI 可以正確解析
+            list_resources_data.__annotations__["query_params"] = QueryInputsClass
+            return list_resources_data
+        
+        # 創建端點函數實例
+        list_data_func = create_list_data_endpoint()
+        
+        # 使用動態創建的端點函數
+        router.add_api_route(
             f"/{model_name}/data",
+            list_data_func,
+            methods=["GET"],
             response_model=list[T],
             summary=f"List {model_name} Data Only",
             tags=[f"{model_name}"],
-            description=textwrap.dedent(
-                f"""
-                Retrieve a list of `{model_name}` resources returning only the data content.
-
-                **Response Format:**
-                - Returns only the resource data for each item (most lightweight option)
-                - Excludes metadata and revision information
-                - Ideal for applications that only need the core resource content
-
-                **Filtering Options:**
-                - `is_deleted`: Filter by deletion status (true/false)
-                - `created_time_start/end`: Filter by creation time range (ISO format)
-                - `updated_time_start/end`: Filter by update time range (ISO format)
-                - `created_bys`: Filter by resource creators (list of usernames)
-                - `updated_bys`: Filter by resource updaters (list of usernames)
-                - `data_conditions`: Filter by data content (JSON format)
-
-                **Data Filtering:**
-                - Use `data_conditions` parameter to filter resources by their data content
-                - Format: JSON array of condition objects
-                - Each condition has: `field_path`, `operator`, `value`
-                - Supported operators: `eq`, `ne`, `gt`, `lt`, `gte`, `lte`, `contains`, `starts_with`, `ends_with`, `in`, `not_in`
-                - Example: `[{{"field_path": "department", "operator": "eq", "value": "Engineering"}}]`
-
-                **Pagination:**
-                - `limit`: Maximum number of results to return (default: 10)
-                - `offset`: Number of results to skip for pagination (default: 0)
-
-                **Performance Benefits:**
-                - Minimal response payload size
-                - Faster response times
-                - Reduced bandwidth usage
-                - Direct access to resource content only
-
-                **Examples:**
-                - `GET /{model_name}/data` - Get first 10 resources (data only)
-                - `GET /{model_name}/data?limit=20&offset=40` - Get resources 41-60 (data only)
-                - `GET /{model_name}/data?is_deleted=false&limit=5` - Get 5 non-deleted resources (data only)
-
-                **Error Responses:**
-                - `400`: Bad request - Invalid query parameters or search error"""
-            ),
         )
-        async def list_resources_data(
-            request: Request,
-            current_user: str = Depends(self.deps.get_user),
-            current_time: dt.datetime = Depends(self.deps.get_now),
-        ) -> list[T]:
-            try:
-                # 構建查詢對象
-                query_params = get_query_params(request)
-                query = self._build_query(query_params, indexed_fields)
-                with resource_manager.meta_provide(current_user, current_time):
-                    resources_data = []
-                    metas = resource_manager.search_resources(query)
-                    # 根據響應類型處理資源數據
-                    for meta in metas:
-                        try:
-                            resource = resource_manager.get(meta.resource_id)
-                            resources_data.append(data_to_builtins(resource.data))
-                        except Exception:
-                            # 如果無法獲取資源數據，跳過
-                            continue
-
-                return resources_data
-            except Exception as e:
-                raise HTTPException(status_code=400, detail=str(e))
 
         @router.get(
             f"/{model_name}/meta",
@@ -1273,13 +1208,13 @@ class ListRouteTemplate(BaseRouteTemplate):
             ),
         )
         async def list_resources_meta(
-            query_params: ListRouteTemplate.QueryInputs = Query(...),
+            query_params=Depends(query_dependency),
             current_user: str = Depends(self.deps.get_user),
             current_time: dt.datetime = Depends(self.deps.get_now),
         ) -> list[ResourceMetaResponse]:
             try:
                 # 構建查詢對象
-                query = self._build_query(query_params)
+                query = self._build_query(query_params, indexed_fields)
                 with resource_manager.meta_provide(current_user, current_time):
                     metas = resource_manager.search_resources(query)
 
@@ -1353,13 +1288,13 @@ class ListRouteTemplate(BaseRouteTemplate):
             ),
         )
         async def list_resources_revision_info(
-            query_params: ListRouteTemplate.QueryInputs = Query(...),
+            query_params=Depends(query_dependency),
             current_user: str = Depends(self.deps.get_user),
             current_time: dt.datetime = Depends(self.deps.get_now),
         ) -> list[RevisionInfoResponse]:
             try:
                 # 構建查詢對象
-                query = self._build_query(query_params)
+                query = self._build_query(query_params, indexed_fields)
                 with resource_manager.meta_provide(current_user, current_time):
                     metas = resource_manager.search_resources(query)
 
@@ -1438,13 +1373,13 @@ class ListRouteTemplate(BaseRouteTemplate):
             ),
         )
         async def list_resources_full(
-            query_params: ListRouteTemplate.QueryInputs = Query(...),
+            query_params=Depends(query_dependency),
             current_user: str = Depends(self.deps.get_user),
             current_time: dt.datetime = Depends(self.deps.get_now),
         ) -> list[FullResourceResponse]:
             try:
                 # 構建查詢對象
-                query = self._build_query(query_params)
+                query = self._build_query(query_params, indexed_fields)
                 with resource_manager.meta_provide(current_user, current_time):
                     metas = resource_manager.search_resources(query)
 
