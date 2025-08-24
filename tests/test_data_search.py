@@ -41,6 +41,7 @@ def my_tmpdir():
     [
         "memory",
         "sql3-mem",  # SQLite 測試，應該和 memory 有相同的行為
+        "sql3-file",  # 檔案式 SQLite 測試
     ],
 )
 class TestMetaStoreIterSearch:
@@ -138,12 +139,19 @@ class TestMetaStoreIterSearch:
     def _get_meta_store(self, store_type: str, tmpdir):
         """Get meta store instance."""
         from autocrud.resource_manager.meta_store.simple import MemoryMetaStore
-        from autocrud.resource_manager.meta_store.sqlite3 import MemorySqliteMetaStore
+        from autocrud.resource_manager.meta_store.sqlite3 import (
+            MemorySqliteMetaStore,
+            FileSqliteMetaStore,
+        )
 
         if store_type == "memory":
             return MemoryMetaStore(encoding="msgpack")
         elif store_type == "sql3-mem":
             return MemorySqliteMetaStore(encoding="msgpack")
+        elif store_type == "sql3-file":
+            return FileSqliteMetaStore(
+                db_filepath=tmpdir / "test_data_search.db", encoding="msgpack"
+            )
         else:
             raise ValueError(f"Unsupported store_type: {store_type}")
 
