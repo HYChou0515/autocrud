@@ -40,8 +40,10 @@ def my_tmpdir():
     "meta_store_type",
     [
         "memory",
-        "sql3-mem",  # SQLite 測試，應該和 memory 有相同的行為
-        "sql3-file",  # 檔案式 SQLite 測試
+        "sql3-mem",
+        "sql3-file",
+        "memory-pg",
+        "redis",
     ],
 )
 class TestMetaStoreIterSearch:
@@ -152,6 +154,44 @@ class TestMetaStoreIterSearch:
             return FileSqliteMetaStore(
                 db_filepath=tmpdir / "test_data_search.db", encoding="msgpack"
             )
+        elif store_type == "memory-pg":
+            from autocrud.resource_manager.meta_store.fast_slow import FastSlowMetaStore
+            from autocrud.resource_manager.meta_store.postgres import PostgresMetaStore
+            import psycopg2
+
+            # Setup PostgreSQL connection
+            pg_dsn = (
+                "postgresql://postgres:mysecretpassword@localhost:5432/your_database"
+            )
+            try:
+                # Reset the test database
+                pg_conn = psycopg2.connect(pg_dsn)
+                with pg_conn.cursor() as cur:
+                    cur.execute("DROP TABLE IF EXISTS resource_meta;")
+                    pg_conn.commit()
+                pg_conn.close()
+
+                return FastSlowMetaStore(
+                    fast_store=MemoryMetaStore(encoding="msgpack"),
+                    slow_store=PostgresMetaStore(pg_dsn=pg_dsn, encoding="msgpack"),
+                )
+            except Exception as e:
+                pytest.skip(f"PostgreSQL not available: {e}")
+        elif store_type == "redis":
+            from autocrud.resource_manager.meta_store.redis import RedisMetaStore
+            import redis
+
+            # Setup Redis connection
+            redis_url = "redis://localhost:6379/0"
+            try:
+                # Reset the test Redis database
+                client = redis.Redis.from_url(redis_url)
+                client.flushall()
+                client.close()
+
+                return RedisMetaStore(redis_url=redis_url, encoding="msgpack")
+            except Exception as e:
+                pytest.skip(f"Redis not available: {e}")
         else:
             raise ValueError(f"Unsupported store_type: {store_type}")
 

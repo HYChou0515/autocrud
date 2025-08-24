@@ -102,9 +102,19 @@ class PostgresMetaStore(ISlowMetaStore):
                     updated_time TIMESTAMP NOT NULL,
                     created_by TEXT NOT NULL,
                     updated_by TEXT NOT NULL,
-                    is_deleted BOOLEAN NOT NULL
+                    is_deleted BOOLEAN NOT NULL,
+                    indexed_data JSONB  -- JSON 格式的索引數據
                 )
             """)
+
+            # 檢查是否需要添加 indexed_data 欄位（用於向後兼容）
+            cur.execute("""
+                SELECT column_name FROM information_schema.columns 
+                WHERE table_name = 'resource_meta' AND column_name = 'indexed_data'
+            """)
+            if not cur.fetchone():
+                cur.execute("ALTER TABLE resource_meta ADD COLUMN indexed_data JSONB")
+
             # 創建索引
             cur.execute(
                 "CREATE INDEX IF NOT EXISTS idx_created_time ON resource_meta(created_time)"
@@ -121,23 +131,65 @@ class PostgresMetaStore(ISlowMetaStore):
             cur.execute(
                 "CREATE INDEX IF NOT EXISTS idx_is_deleted ON resource_meta(is_deleted)"
             )
+            # 為 JSONB 創建 GIN 索引以提高查詢效能
+            cur.execute(
+                "CREATE INDEX IF NOT EXISTS idx_indexed_data_gin ON resource_meta USING GIN (indexed_data)"
+            )
+
+            # 遷移已存在的記錄，填充 indexed_data
+            self._migrate_existing_data(cur)
+
+    def _migrate_existing_data(self, cur):
+        """為已存在但沒有 indexed_data 的記錄填充索引數據"""
+        import json
+
+        cur.execute("""
+            SELECT resource_id, data FROM resource_meta 
+            WHERE indexed_data IS NULL
+        """)
+
+        for resource_id, data_blob in cur.fetchall():
+            try:
+                data = self._serializer.decode(data_blob)
+                indexed_data_json = (
+                    json.dumps(data.indexed_data, ensure_ascii=False)
+                    if data.indexed_data is not UNSET
+                    else None
+                )
+                cur.execute(
+                    """
+                    UPDATE resource_meta SET indexed_data = %s WHERE resource_id = %s
+                """,
+                    (indexed_data_json, resource_id),
+                )
+            except Exception:
+                # 如果解析失敗，設置為空 JSON 對象
+                cur.execute(
+                    """
+                    UPDATE resource_meta SET indexed_data = %s WHERE resource_id = %s
+                """,
+                    ("{}", resource_id),
+                )
 
     def save_many(self, metas: Iterable[ResourceMeta]) -> None:
         """批量保存元数据到 PostgreSQL（ISlowMetaStore 接口方法）"""
+        import json
+
         metas_list = list(metas)
         if not metas_list:
             return
 
         sql = """
-        INSERT INTO resource_meta (resource_id, data, created_time, updated_time, created_by, updated_by, is_deleted)
-        VALUES (%s, %s, %s, %s, %s, %s, %s)
+        INSERT INTO resource_meta (resource_id, data, created_time, updated_time, created_by, updated_by, is_deleted, indexed_data)
+        VALUES (%s, %s, %s, %s, %s, %s, %s, %s)
         ON CONFLICT (resource_id) DO UPDATE SET
             data = EXCLUDED.data,
             created_time = EXCLUDED.created_time,
             updated_time = EXCLUDED.updated_time,
             created_by = EXCLUDED.created_by,
             updated_by = EXCLUDED.updated_by,
-            is_deleted = EXCLUDED.is_deleted
+            is_deleted = EXCLUDED.is_deleted,
+            indexed_data = EXCLUDED.indexed_data
         """
 
         with self.transaction() as cur:
@@ -153,6 +205,11 @@ class PostgresMetaStore(ISlowMetaStore):
                         meta.created_by,
                         meta.updated_by,
                         meta.is_deleted,
+                        (
+                            json.dumps(meta.indexed_data, ensure_ascii=False)
+                            if meta.indexed_data is not UNSET
+                            else None
+                        ),
                     )
                     for meta in metas_list
                 ],
@@ -169,17 +226,26 @@ class PostgresMetaStore(ISlowMetaStore):
 
     def __setitem__(self, pk: str, meta: ResourceMeta) -> None:
         # 直接寫入 PostgreSQL
+        import json
+
         sql = """
-        INSERT INTO resource_meta (resource_id, data, created_time, updated_time, created_by, updated_by, is_deleted)
-        VALUES (%s, %s, %s, %s, %s, %s, %s)
+        INSERT INTO resource_meta (resource_id, data, created_time, updated_time, created_by, updated_by, is_deleted, indexed_data)
+        VALUES (%s, %s, %s, %s, %s, %s, %s, %s)
         ON CONFLICT (resource_id) DO UPDATE SET
             data = EXCLUDED.data,
             created_time = EXCLUDED.created_time,
             updated_time = EXCLUDED.updated_time,
             created_by = EXCLUDED.created_by,
             updated_by = EXCLUDED.updated_by,
-            is_deleted = EXCLUDED.is_deleted
+            is_deleted = EXCLUDED.is_deleted,
+            indexed_data = EXCLUDED.indexed_data
         """
+
+        indexed_data_json = (
+            json.dumps(meta.indexed_data, ensure_ascii=False)
+            if meta.indexed_data is not UNSET
+            else None
+        )
 
         with self.transaction() as cur:
             cur.execute(
@@ -192,6 +258,7 @@ class PostgresMetaStore(ISlowMetaStore):
                     meta.created_by,
                     meta.updated_by,
                     meta.is_deleted,
+                    indexed_data_json,
                 ),
             )
 
@@ -252,6 +319,14 @@ class PostgresMetaStore(ISlowMetaStore):
             conditions.append(f"updated_by IN ({placeholders})")
             params.extend(query.updated_bys)
 
+        # 處理 data_conditions - 在 PostgreSQL 層面過濾
+        if query.data_conditions is not UNSET:
+            for condition in query.data_conditions:
+                json_condition, json_params = self._build_jsonb_condition(condition)
+                if json_condition:
+                    conditions.append(json_condition)
+                    params.extend(json_params)
+
         # 构建 WHERE 子句
         where_clause = ""
         if conditions:
@@ -278,3 +353,50 @@ class PostgresMetaStore(ISlowMetaStore):
             cur.execute(sql, params)
             for row in cur:
                 yield self._serializer.decode(row["data"])
+
+    def _build_jsonb_condition(self, condition) -> tuple[str, list]:
+        """構建 PostgreSQL JSONB 查詢條件"""
+        from autocrud.resource_manager.basic import DataSearchOperator
+
+        field_path = condition.field_path
+        operator = condition.operator
+        value = condition.value
+
+        # PostgreSQL JSONB 提取語法: indexed_data->>'field_path'
+        # 對於數字比較，使用 (indexed_data->>'field_path')::numeric
+        jsonb_text_extract = f"indexed_data->>'{field_path}'"
+        jsonb_numeric_extract = f"(indexed_data->>'{field_path}')::numeric"
+
+        if operator == DataSearchOperator.equals:
+            return f"{jsonb_text_extract} = %s", [str(value)]
+        elif operator == DataSearchOperator.not_equals:
+            return f"{jsonb_text_extract} != %s", [str(value)]
+        elif operator == DataSearchOperator.greater_than:
+            return f"{jsonb_numeric_extract} > %s", [value]
+        elif operator == DataSearchOperator.greater_than_or_equal:
+            return f"{jsonb_numeric_extract} >= %s", [value]
+        elif operator == DataSearchOperator.less_than:
+            return f"{jsonb_numeric_extract} < %s", [value]
+        elif operator == DataSearchOperator.less_than_or_equal:
+            return f"{jsonb_numeric_extract} <= %s", [value]
+        elif operator == DataSearchOperator.contains:
+            return f"{jsonb_text_extract} LIKE %s", [f"%{value}%"]
+        elif operator == DataSearchOperator.starts_with:
+            return f"{jsonb_text_extract} LIKE %s", [f"{value}%"]
+        elif operator == DataSearchOperator.ends_with:
+            return f"{jsonb_text_extract} LIKE %s", [f"%{value}"]
+        elif operator == DataSearchOperator.in_list:
+            if isinstance(value, (list, tuple, set)):
+                placeholders = ",".join(["%s"] * len(value))
+                return f"{jsonb_text_extract} IN ({placeholders})", [
+                    str(v) for v in value
+                ]
+        elif operator == DataSearchOperator.not_in_list:
+            if isinstance(value, (list, tuple, set)):
+                placeholders = ",".join(["%s"] * len(value))
+                return f"{jsonb_text_extract} NOT IN ({placeholders})", [
+                    str(v) for v in value
+                ]
+
+        # 如果不支持的操作，返回空條件
+        return "", []
