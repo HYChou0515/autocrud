@@ -147,12 +147,8 @@ class ResourceManager(IResourceManager[T], Generic[T]):
         indexed_data = {}
         for field in self._indexed_fields:
             try:
-                if field.extractor:
-                    value = field.extractor(data)
-                else:
-                    # 使用 JSON path 提取值
-                    value = self._extract_by_path(data, field.field_path)
-
+                # 使用 JSON path 提取值
+                value = self._extract_by_path(data, field.field_path)
                 if value is not None:
                     indexed_data[field.field_path] = value
             except Exception:

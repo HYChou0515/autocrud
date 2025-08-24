@@ -3,7 +3,7 @@ from contextlib import contextmanager
 from contextvars import ContextVar
 from enum import StrEnum
 import functools
-from typing import IO, TypeVar, Generic, Any, Callable
+from typing import IO, TypeVar, Generic, Any
 import datetime as dt
 from uuid import UUID
 from msgspec import UNSET, Struct, UnsetType
@@ -798,9 +798,6 @@ class IndexableField(Struct, kw_only=True):
 
     field_path: str  # JSON path to the field, e.g., "name", "user.email"
     field_type: type  # The type of the field (str, int, float, bool, datetime)
-    extractor: Callable[[T], Any] | UnsetType = (
-        UNSET  # Optional custom extractor function
-    )
 
 
 class UnifiedSortKey(StrEnum):

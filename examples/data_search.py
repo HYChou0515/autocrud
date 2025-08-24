@@ -2,7 +2,6 @@ import datetime as dt
 from dataclasses import dataclass
 from autocrud.crud.core import AutoCRUD, MemoryStorageFactory
 from autocrud.resource_manager.basic import (
-    IndexableField,
     DataSearchCondition,
     DataSearchOperator,
     ResourceMetaSearchQuery,
@@ -24,20 +23,17 @@ def test_basic_data_search():
     # 創建 AutoCRUD 實例
     autocrud = AutoCRUD()
 
-    # 定義要索引的字段
-    indexed_fields = [
-        IndexableField(field_path="name", field_type=str),
-        IndexableField(field_path="email", field_type=str),
-        IndexableField(field_path="age", field_type=int),
-        IndexableField(field_path="department", field_type=str),
-    ]
-
     # 添加 User 模型並指定索引字段
     autocrud.add_model(
         User,
         name="users",
         storage_factory=MemoryStorageFactory(),
-        indexed_fields=indexed_fields,
+        indexed_fields=[
+            ("name", str),
+            ("email", str),
+            ("age", int),
+            ("department", str),
+        ],
     )
 
     # 獲取 resource manager

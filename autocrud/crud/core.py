@@ -1557,7 +1557,7 @@ class AutoCRUD:
         storage_factory: IStorageFactory | None = None,
         id_generator: Callable[[], str] | None = None,
         migration: IMigration | None = None,
-        indexed_fields: list[IndexableField] | None = None,
+        indexed_fields: list[tuple[str, type] | IndexableField] | None = None,
     ) -> None:
         """Add a data model to AutoCRUD and configure its API endpoints.
 
@@ -1627,7 +1627,22 @@ class AutoCRUD:
         """
         if storage_factory is None:
             storage_factory = MemoryStorageFactory()
-
+        _indexed_fields = []
+        for field in indexed_fields or []:
+            if isinstance(field, IndexableField):
+                _indexed_fields.append(field)
+            elif (
+                isinstance(field, tuple)
+                and len(field) == 2
+                and isinstance(field[0], str)
+                and isinstance(field[1], type)
+            ):
+                field = IndexableField(field_path=field[0], field_type=field[1])
+                _indexed_fields.append(field)
+            else:
+                raise TypeError(
+                    "Invalid indexed field, should be IndexableField or tuple[field_name, field_type]"
+                )
         model_name = name or self._resource_name(model)
         storage = storage_factory.build(model, model_name, migration=migration)
         resource_manager = ResourceManager(
@@ -1635,7 +1650,7 @@ class AutoCRUD:
             storage=storage,
             id_generator=id_generator,
             migration=migration,
-            indexed_fields=indexed_fields,
+            indexed_fields=_indexed_fields,
         )
         self.resource_managers[model_name] = resource_manager
 
