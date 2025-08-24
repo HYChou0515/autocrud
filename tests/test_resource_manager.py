@@ -24,11 +24,11 @@ import datetime as dt
 from faker import Faker
 import jsonpatch
 
+from autocrud.resource_manager.meta_store.df import DFMemoryMetaStore
 from autocrud.resource_manager.meta_store.fast_slow import FastSlowMetaStore
 from autocrud.resource_manager.meta_store.postgres import PostgresMetaStore
 from autocrud.resource_manager.meta_store.redis import RedisMetaStore
 from autocrud.resource_manager.meta_store.simple import (
-    DFMemoryMetaStore,
     DiskMetaStore,
     MemoryMetaStore,
 )
@@ -185,6 +185,10 @@ class TestResourceManager:
             meta = self.mgr.create(data)
         return user, now, meta
 
+    def assert_valid_datahash(self, data_hash: str):
+        assert data_hash.startswith("xxh3_128:")
+        assert len(data_hash) == 41
+
     def test_create(self):
         data = new_data()
         user, now, meta = self.create(data)
@@ -199,7 +203,7 @@ class TestResourceManager:
         assert got.info.status == "stable"
         assert got.info.parent_revision_id is UNSET
         assert got.info.schema_version is UNSET
-        assert got.info.data_hash is UNSET
+        self.assert_valid_datahash(got.info.data_hash)
         assert got.info.uid
         assert got.info.resource_id
         res_meta = self.mgr._get_meta_no_check_is_deleted(meta.resource_id)
@@ -225,7 +229,7 @@ class TestResourceManager:
         assert u_meta.revision_id != meta.revision_id
         assert u_meta.parent_revision_id == meta.revision_id
         assert u_meta.schema_version is UNSET
-        assert u_meta.data_hash is UNSET
+        self.assert_valid_datahash(u_meta.data_hash)
         assert u_meta.status == "stable"
         assert u_meta.created_time == u_now
         assert u_meta.updated_time == u_now
@@ -298,7 +302,7 @@ class TestResourceManager:
         assert p_meta.revision_id != meta.revision_id
         assert p_meta.parent_revision_id == meta.revision_id
         assert p_meta.schema_version is UNSET
-        assert p_meta.data_hash is UNSET
+        self.assert_valid_datahash(p_meta.data_hash)
         assert p_meta.status == "stable"
         assert p_meta.created_time == p_now
         assert p_meta.updated_time == p_now

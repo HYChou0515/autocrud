@@ -3,7 +3,7 @@ from contextlib import contextmanager
 from contextvars import ContextVar
 from enum import StrEnum
 import functools
-from typing import IO, TypeVar, Generic
+from typing import IO, TypeVar, Generic, Any
 import datetime as dt
 from uuid import UUID
 from msgspec import UNSET, Struct, UnsetType
@@ -12,6 +12,26 @@ from jsonpatch import JsonPatch
 import msgspec
 
 T = TypeVar("T")
+
+
+class DataSearchOperator(StrEnum):
+    equals = "eq"
+    not_equals = "ne"
+    greater_than = "gt"
+    greater_than_or_equal = "gte"
+    less_than = "lt"
+    less_than_or_equal = "lte"
+    contains = "contains"  # For string fields
+    starts_with = "starts_with"  # For string fields
+    ends_with = "ends_with"  # For string fields
+    in_list = "in"
+    not_in_list = "not_in"
+
+
+class DataSearchCondition(Struct, kw_only=True):
+    field_path: str
+    operator: DataSearchOperator
+    value: Any
 
 
 class ResourceMeta(Struct, kw_only=True):
@@ -27,6 +47,9 @@ class ResourceMeta(Struct, kw_only=True):
     updated_by: str
 
     is_deleted: bool = False
+
+    # 新增：存儲被索引的 data 欄位值
+    indexed_data: dict[str, Any]
 
 
 class ResourceMetaSortKey(StrEnum):
@@ -55,6 +78,9 @@ class ResourceMetaSearchQuery(Struct, kw_only=True):
 
     created_bys: list[str] | UnsetType = UNSET
     updated_bys: list[str] | UnsetType = UNSET
+
+    # 新增：data 欄位搜尋條件
+    data_conditions: list[DataSearchCondition] | UnsetType = UNSET
 
     limit: int = 10
     offset: int = 0
@@ -324,6 +350,10 @@ class IResourceManager(ABC, Generic[T]):
         """
 
     @abstractmethod
+    def create_or_update(self, resource_id: str, data: T) -> RevisionInfo:
+        pass
+
+    @abstractmethod
     def patch(self, resource_id: str, patch_data: JsonPatch) -> RevisionInfo:
         """Apply RFC 6902 JSON Patch operations to the resource.
 
@@ -588,7 +618,60 @@ def is_match_query(meta: ResourceMeta, query: ResourceMetaSearchQuery) -> bool:
         return False
     if query.updated_bys is not UNSET and meta.updated_by not in query.updated_bys:
         return False
+
+    if query.data_conditions is not UNSET and meta.indexed_data is not UNSET:
+        for condition in query.data_conditions:
+            if not _match_data_condition(meta.indexed_data, condition):
+                return False
+    elif query.data_conditions is not UNSET:
+        # 如果有 data 條件但沒有索引資料，不匹配
+        return False
+
     return True
+
+
+def _match_data_condition(
+    indexed_data: dict[str, Any], condition: DataSearchCondition
+) -> bool:
+    """檢查索引資料是否匹配 data 條件"""
+    field_value = indexed_data.get(condition.field_path)
+
+    if condition.operator == DataSearchOperator.equals:
+        return field_value == condition.value
+    elif condition.operator == DataSearchOperator.not_equals:
+        return field_value != condition.value
+    elif condition.operator == DataSearchOperator.greater_than:
+        return field_value is not None and field_value > condition.value
+    elif condition.operator == DataSearchOperator.greater_than_or_equal:
+        return field_value is not None and field_value >= condition.value
+    elif condition.operator == DataSearchOperator.less_than:
+        return field_value is not None and field_value < condition.value
+    elif condition.operator == DataSearchOperator.less_than_or_equal:
+        return field_value is not None and field_value <= condition.value
+    elif condition.operator == DataSearchOperator.contains:
+        return field_value is not None and str(condition.value) in str(field_value)
+    elif condition.operator == DataSearchOperator.starts_with:
+        return field_value is not None and str(field_value).startswith(
+            str(condition.value)
+        )
+    elif condition.operator == DataSearchOperator.ends_with:
+        return field_value is not None and str(field_value).endswith(
+            str(condition.value)
+        )
+    elif condition.operator == DataSearchOperator.in_list:
+        return (
+            field_value in condition.value
+            if isinstance(condition.value, (list, tuple, set))
+            else False
+        )
+    elif condition.operator == DataSearchOperator.not_in_list:
+        return (
+            field_value not in condition.value
+            if isinstance(condition.value, (list, tuple, set))
+            else True
+        )
+
+    return False
 
 
 def bool_to_sign(b: bool) -> int:
@@ -628,10 +711,10 @@ class MsgspecSerializer(Generic[T]):
     def __init__(self, encoding: Encoding, resource_type: type[T]):
         self.encoding = encoding
         if self.encoding == "msgpack":
-            self.encoder = msgspec.msgpack.Encoder()
+            self.encoder = msgspec.msgpack.Encoder(order="deterministic")
             self.decoder = msgspec.msgpack.Decoder(resource_type)
         else:
-            self.encoder = msgspec.json.Encoder()
+            self.encoder = msgspec.json.Encoder(order="deterministic")
             self.decoder = msgspec.json.Decoder(resource_type)
 
     def encode(self, obj: T) -> bytes:
@@ -669,7 +752,11 @@ class IResourceStore(ABC, Generic[T]):
     @abstractmethod
     def get(self, resource_id: str, revision_id: str) -> Resource[T]: ...
     @abstractmethod
+    def get_revision_info(self, resource_id: str, revision_id: str) -> RevisionInfo: ...
+    @abstractmethod
     def save(self, data: Resource[T]) -> None: ...
+    @abstractmethod
+    def encode(self, data: T) -> bytes: ...
 
 
 class IStorage(ABC, Generic[T]):
@@ -688,9 +775,15 @@ class IStorage(ABC, Generic[T]):
         self, resource_id: str, revision_id: str
     ) -> Resource[T]: ...
     @abstractmethod
+    def get_resource_revision_info(
+        self, resource_id: str, revision_id: str
+    ) -> RevisionInfo: ...
+    @abstractmethod
     def save_resource_revision(self, resource: Resource[T]) -> None: ...
     @abstractmethod
     def search(self, query: ResourceMetaSearchQuery) -> list[ResourceMeta]: ...
+    @abstractmethod
+    def encode_data(self, data: T) -> bytes: ...
     @abstractmethod
     def dump_meta(self) -> Generator[tuple[str, ResourceMeta]]: ...
     @abstractmethod
@@ -699,3 +792,36 @@ class IStorage(ABC, Generic[T]):
     def load_meta(self, key: str, value: ResourceMeta) -> None: ...
     @abstractmethod
     def load_resource(self, value: Resource[T]) -> None: ...
+
+
+# Data Search Related Classes
+
+
+class IndexableField(Struct, kw_only=True):
+    """Defines a field that should be indexed for searching."""
+
+    field_path: str  # JSON path to the field, e.g., "name", "user.email"
+    field_type: type  # The type of the field (str, int, float, bool, datetime)
+
+
+class UnifiedSortKey(StrEnum):
+    # Meta 欄位
+    created_time = "created_time"
+    updated_time = "updated_time"
+    resource_id = "resource_id"
+
+    # Data 欄位（用前綴區分）
+    data_prefix = "data."  # 實際使用時會是 "data.name", "data.user.email" 等
+
+
+class UnifiedSearchSort(Struct, kw_only=True):
+    direction: ResourceMetaSortDirection = ResourceMetaSortDirection.ascending
+    key: str  # 可以是 meta 欄位名或 "data.field_path"
+
+
+class IndexEntry(Struct, kw_only=True):
+    resource_id: str
+    revision_id: str
+    field_path: str
+    field_value: Any
+    field_type: str  # Store type name as string

@@ -4,6 +4,7 @@ from collections.abc import Callable
 from contextlib import suppress
 from enum import StrEnum
 import io
+import json
 import tarfile
 import textwrap
 from typing import IO, Generic, Literal, TypeVar, Any
@@ -17,11 +18,14 @@ import msgspec
 from typing import Optional
 
 from autocrud.resource_manager.basic import (
+    DataSearchCondition,
+    DataSearchOperator,
     IMigration,
     IStorage,
     Resource,
     ResourceMeta,
     RevisionInfo,
+    IndexableField,
 )
 from autocrud.resource_manager.core import ResourceManager, SimpleStorage
 from autocrud.resource_manager.data_converter import (
@@ -738,6 +742,10 @@ class ListRouteTemplate(BaseRouteTemplate):
         )
         created_bys: Optional[list[str]] = Query(None, description="Filter by creators")
         updated_bys: Optional[list[str]] = Query(None, description="Filter by updaters")
+        data_conditions: Optional[str] = Query(
+            None,
+            description='Data filter conditions in JSON format. Example: \'[{"field_path": "department", "operator": "equals", "value": "Engineering"}]\'',
+        )
         limit: int = Query(10, description="Maximum number of results")
         offset: int = Query(0, description="Number of results to skip")
 
@@ -790,6 +798,28 @@ class ListRouteTemplate(BaseRouteTemplate):
         else:
             query_kwargs["updated_bys"] = UNSET
 
+        # 處理 data_conditions
+        if q.data_conditions:
+            try:
+                # 解析 JSON 字符串
+                conditions_data = json.loads(q.data_conditions)
+                # 轉換為 DataSearchCondition 對象列表
+                data_conditions = []
+                for condition_dict in conditions_data:
+                    condition = DataSearchCondition(
+                        field_path=condition_dict["field_path"],
+                        operator=DataSearchOperator(condition_dict["operator"]),
+                        value=condition_dict["value"],
+                    )
+                    data_conditions.append(condition)
+                query_kwargs["data_conditions"] = data_conditions
+            except (json.JSONDecodeError, KeyError, ValueError) as e:
+                raise HTTPException(
+                    status_code=400, detail=f"Invalid data_conditions format: {str(e)}"
+                )
+        else:
+            query_kwargs["data_conditions"] = UNSET
+
         query_kwargs["sorts"] = UNSET
 
         return ResourceMetaSearchQuery(**query_kwargs)
@@ -817,6 +847,14 @@ class ListRouteTemplate(BaseRouteTemplate):
                 - `updated_time_start/end`: Filter by update time range (ISO format)
                 - `created_bys`: Filter by resource creators (list of usernames)
                 - `updated_bys`: Filter by resource updaters (list of usernames)
+                - `data_conditions`: Filter by data content (JSON format)
+
+                **Data Filtering:**
+                - Use `data_conditions` parameter to filter resources by their data content
+                - Format: JSON array of condition objects
+                - Each condition has: `field_path`, `operator`, `value`
+                - Supported operators: `eq`, `ne`, `gt`, `lt`, `gte`, `lte`, `contains`, `starts_with`, `ends_with`, `in`, `not_in`
+                - Example: `[{{"field_path": "department", "operator": "eq", "value": "Engineering"}}]`
 
                 **Pagination:**
                 - `limit`: Maximum number of results to return (default: 10)
@@ -890,6 +928,14 @@ class ListRouteTemplate(BaseRouteTemplate):
                 - `updated_time_start/end`: Filter by update time range (ISO format)
                 - `created_bys`: Filter by resource creators (list of usernames)
                 - `updated_bys`: Filter by resource updaters (list of usernames)
+                - `data_conditions`: Filter by data content (JSON format)
+
+                **Data Filtering:**
+                - Use `data_conditions` parameter to filter resources by their data content
+                - Format: JSON array of condition objects
+                - Each condition has: `field_path`, `operator`, `value`
+                - Supported operators: `eq`, `ne`, `gt`, `lt`, `gte`, `lte`, `contains`, `starts_with`, `ends_with`, `in`, `not_in`
+                - Example: `[{{"field_path": "age", "operator": "gt", "value": 25}}]`
 
                 **Pagination:**
                 - `limit`: Maximum number of results to return (default: 10)
@@ -962,6 +1008,14 @@ class ListRouteTemplate(BaseRouteTemplate):
                 - `updated_time_start/end`: Filter by update time range (ISO format)
                 - `created_bys`: Filter by resource creators (list of usernames)
                 - `updated_bys`: Filter by resource updaters (list of usernames)
+                - `data_conditions`: Filter by data content (JSON format)
+
+                **Data Filtering:**
+                - Use `data_conditions` parameter to filter resources by their data content
+                - Format: JSON array of condition objects
+                - Each condition has: `field_path`, `operator`, `value`
+                - Supported operators: `eq`, `ne`, `gt`, `lt`, `gte`, `lte`, `contains`, `starts_with`, `ends_with`, `in`, `not_in`
+                - Example: `[{{"field_path": "status", "operator": "eq", "value": "active"}}]`
 
                 **Pagination:**
                 - `limit`: Maximum number of results to return (default: 10)
@@ -1033,6 +1087,14 @@ class ListRouteTemplate(BaseRouteTemplate):
                 - `updated_time_start/end`: Filter by update time range (ISO format)
                 - `created_bys`: Filter by resource creators (list of usernames)
                 - `updated_bys`: Filter by resource updaters (list of usernames)
+                - `data_conditions`: Filter by data content (JSON format)
+
+                **Data Filtering:**
+                - Use `data_conditions` parameter to filter resources by their data content
+                - Format: JSON array of condition objects
+                - Each condition has: `field_path`, `operator`, `value`
+                - Supported operators: `eq`, `ne`, `gt`, `lt`, `gte`, `lte`, `contains`, `starts_with`, `ends_with`, `in`, `not_in`
+                - Example: `[{{"field_path": "name", "operator": "contains", "value": "project"}}]`
 
                 **Pagination:**
                 - `limit`: Maximum number of results to return (default: 10)
@@ -1556,6 +1618,7 @@ class AutoCRUD:
         storage_factory: IStorageFactory | None = None,
         id_generator: Callable[[], str] | None = None,
         migration: IMigration | None = None,
+        indexed_fields: list[tuple[str, type] | IndexableField] | None = None,
     ) -> None:
         """Add a data model to AutoCRUD and configure its API endpoints.
 
@@ -1625,7 +1688,22 @@ class AutoCRUD:
         """
         if storage_factory is None:
             storage_factory = MemoryStorageFactory()
-
+        _indexed_fields = []
+        for field in indexed_fields or []:
+            if isinstance(field, IndexableField):
+                _indexed_fields.append(field)
+            elif (
+                isinstance(field, tuple)
+                and len(field) == 2
+                and isinstance(field[0], str)
+                and isinstance(field[1], type)
+            ):
+                field = IndexableField(field_path=field[0], field_type=field[1])
+                _indexed_fields.append(field)
+            else:
+                raise TypeError(
+                    "Invalid indexed field, should be IndexableField or tuple[field_name, field_type]"
+                )
         model_name = name or self._resource_name(model)
         storage = storage_factory.build(model, model_name, migration=migration)
         resource_manager = ResourceManager(
@@ -1633,6 +1711,7 @@ class AutoCRUD:
             storage=storage,
             id_generator=id_generator,
             migration=migration,
+            indexed_fields=_indexed_fields,
         )
         self.resource_managers[model_name] = resource_manager
 

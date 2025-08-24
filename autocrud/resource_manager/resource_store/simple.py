@@ -10,35 +10,85 @@ from autocrud.resource_manager.basic import (
     Resource,
     RevisionInfo,
 )
+import io
 
 T = TypeVar("T")
 
 
 class MemoryResourceStore(IResourceStore[T]):
-    def __init__(self, resource_type: type[T], encoding: Encoding = Encoding.json):
-        self._store: dict[str, dict[str, bytes]] = {}
-        self._serializer = MsgspecSerializer(
-            encoding=encoding, resource_type=Resource[resource_type]
+    def __init__(
+        self,
+        resource_type: type[T],
+        encoding: Encoding = Encoding.json,
+        migration: IMigration | None = None,
+    ):
+        self._data_store: dict[str, dict[str, bytes]] = {}
+        self._info_store: dict[str, dict[str, bytes]] = {}
+        self._data_serializer = MsgspecSerializer(
+            encoding=encoding, resource_type=resource_type
         )
+        self._info_serializer = MsgspecSerializer(
+            encoding=encoding, resource_type=RevisionInfo
+        )
+        self.migration = migration
 
     def list_resources(self) -> Generator[str]:
-        yield from self._store.keys()
+        yield from self._info_store.keys()
 
     def list_revisions(self, resource_id: str) -> Generator[str]:
-        yield from self._store[resource_id].keys()
+        yield from self._info_store[resource_id].keys()
 
     def exists(self, resource_id: str, revision_id: str) -> bool:
-        return resource_id in self._store and revision_id in self._store[resource_id]
+        return (
+            resource_id in self._info_store
+            and revision_id in self._info_store[resource_id]
+        )
 
     def get(self, resource_id: str, revision_id: str) -> Resource[T]:
-        return self._serializer.decode(self._store[resource_id][revision_id])
+        info = self.get_revision_info(resource_id, revision_id)
+        if (
+            self.migration is None
+            or info.schema_version == self.migration.schema_version
+        ):
+            data = self._data_serializer.decode(
+                self._data_store[resource_id][revision_id]
+            )
+        else:
+            # For migration, we need to recreate the data from bytes
+            data_bytes = self._data_store[resource_id][revision_id]
+            data_io = io.BytesIO(data_bytes)
+            data = self.migration.migrate(data_io, info.schema_version)
+            info.schema_version = self.migration.schema_version
+
+            # Update both info and data storage with migrated content
+            self._info_store[resource_id][revision_id] = self._info_serializer.encode(
+                info
+            )
+            migrated_data_bytes = self._data_serializer.encode(data)
+            self._data_store[resource_id][revision_id] = migrated_data_bytes
+
+        return Resource(
+            info=info,
+            data=data,
+        )
+
+    def get_revision_info(self, resource_id: str, revision_id: str) -> RevisionInfo:
+        return self._info_serializer.decode(self._info_store[resource_id][revision_id])
 
     def save(self, data: Resource[T]) -> None:
         resource_id = data.info.resource_id
         revision_id = data.info.revision_id
-        if resource_id not in self._store:
-            self._store[resource_id] = {}
-        self._store[resource_id][revision_id] = self._serializer.encode(data)
+        if resource_id not in self._info_store:
+            self._info_store[resource_id] = {}
+            self._data_store[resource_id] = {}
+        b = self._data_serializer.encode(data.data)
+        self._data_store[resource_id][revision_id] = b
+        self._info_store[resource_id][revision_id] = self._info_serializer.encode(
+            data.info
+        )
+
+    def encode(self, data: T) -> bytes:
+        return self._data_serializer.encode(data)
 
 
 class DiskResourceStore(IResourceStore[T]):
@@ -82,22 +132,36 @@ class DiskResourceStore(IResourceStore[T]):
 
     def get(self, resource_id: str, revision_id: str) -> Resource[T]:
         info_path = self._get_info_path(resource_id, revision_id)
-        with info_path.open("rb") as f:
-            info = self._info_serializer.decode(f.read())
+        info = self.get_revision_info(resource_id, revision_id)
         data_path = self._get_data_path(resource_id, revision_id)
         with data_path.open("rb") as f:
-            try:
+            if (
+                self.migration is None
+                or info.schema_version == self.migration.schema_version
+            ):
                 data = self._data_serializer.decode(f.read())
-            except Exception:
-                if self.migration is None:
-                    raise
-                f.seek(0)
+            else:
                 data = self.migration.migrate(f, info.schema_version)
                 info.schema_version = self.migration.schema_version
+
+                # Persist both the updated schema version and migrated data
+                with info_path.open("wb") as info_f:
+                    info_f.write(self._info_serializer.encode(info))
+
+                # Update data file with migrated content
+                with data_path.open("wb") as data_f:
+                    migrated_data_bytes = self._data_serializer.encode(data)
+                    data_f.write(migrated_data_bytes)
+
         return Resource(
             info=info,
             data=data,
         )
+
+    def get_revision_info(self, resource_id: str, revision_id: str) -> RevisionInfo:
+        info_path = self._get_info_path(resource_id, revision_id)
+        with info_path.open("rb") as f:
+            return self._info_serializer.decode(f.read())
 
     def save(self, data: Resource[T]) -> None:
         resource_id = data.info.resource_id
@@ -110,3 +174,6 @@ class DiskResourceStore(IResourceStore[T]):
         path = self._get_info_path(resource_id, revision_id)
         with path.open("wb") as f:
             f.write(self._info_serializer.encode(data.info))
+
+    def encode(self, data: T) -> bytes:
+        return self._data_serializer.encode(data)

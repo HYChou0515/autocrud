@@ -1,7 +1,9 @@
 from collections import defaultdict
 from collections.abc import Callable, Generator
 import functools
+import json
 from pathlib import Path
+import pickle
 import sqlite3
 import threading
 from typing import TypeVar
@@ -40,9 +42,18 @@ class SqliteMetaStore(ISlowMetaStore):
                 updated_time TEXT NOT NULL,
                 created_by TEXT NOT NULL,
                 updated_by TEXT NOT NULL,
-                is_deleted INTEGER NOT NULL
+                is_deleted INTEGER NOT NULL,
+                indexed_data TEXT  -- JSON 格式的索引數據
             )
         """)
+
+        # 檢查是否需要添加 indexed_data 欄位（用於向後兼容）
+        cursor = _conn.execute("PRAGMA table_info(resource_meta)")
+        columns = [column[1] for column in cursor.fetchall()]
+        if "indexed_data" not in columns:
+            _conn.execute("ALTER TABLE resource_meta ADD COLUMN indexed_data TEXT")
+            _conn.commit()
+
         _conn.execute("""
             CREATE INDEX IF NOT EXISTS idx_created_time ON resource_meta(created_time)
         """)
@@ -59,6 +70,40 @@ class SqliteMetaStore(ISlowMetaStore):
             CREATE INDEX IF NOT EXISTS idx_is_deleted ON resource_meta(is_deleted)
         """)
 
+        # 遷移已存在的記錄，填充 indexed_data
+        self._migrate_existing_data()
+
+        _conn.commit()
+
+    def _migrate_existing_data(self):
+        """為已存在但沒有 indexed_data 的記錄填充索引數據"""
+        _conn = self._conns[threading.get_ident()]
+        cursor = _conn.execute("""
+            SELECT resource_id, data FROM resource_meta 
+            WHERE indexed_data IS NULL OR indexed_data = ''
+        """)
+
+        for resource_id, data_blob in cursor.fetchall():
+            try:
+                data = pickle.loads(data_blob)
+                indexed_data = json.dumps(
+                    data.model_dump() if hasattr(data, "model_dump") else data
+                )
+                _conn.execute(
+                    """
+                    UPDATE resource_meta SET indexed_data = ? WHERE resource_id = ?
+                """,
+                    (indexed_data, resource_id),
+                )
+            except Exception:
+                # 如果解析失敗，設置為空 JSON 對象
+                _conn.execute(
+                    """
+                    UPDATE resource_meta SET indexed_data = '{}' WHERE resource_id = ?
+                """,
+                    (resource_id,),
+                )
+
     def __getitem__(self, pk: str) -> ResourceMeta:
         _conn = self._conns[threading.get_ident()]
         cursor = _conn.execute(
@@ -70,13 +115,21 @@ class SqliteMetaStore(ISlowMetaStore):
         return self._serializer.decode(row[0])
 
     def __setitem__(self, pk: str, meta: ResourceMeta) -> None:
+        import json
+
         data = self._serializer.encode(meta)
+        # 將 indexed_data 轉換為 JSON 字符串
+        indexed_data_json = (
+            json.dumps(meta.indexed_data, ensure_ascii=False)
+            if meta.indexed_data is not UNSET
+            else None
+        )
         _conn = self._conns[threading.get_ident()]
         _conn.execute(
             """
             INSERT OR REPLACE INTO resource_meta 
-            (resource_id, data, created_time, updated_time, created_by, updated_by, is_deleted)
-            VALUES (?, ?, ?, ?, ?, ?, ?)
+            (resource_id, data, created_time, updated_time, created_by, updated_by, is_deleted, indexed_data)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?)
         """,
             (
                 pk,
@@ -86,19 +139,22 @@ class SqliteMetaStore(ISlowMetaStore):
                 meta.created_by,
                 meta.updated_by,
                 1 if meta.is_deleted else 0,
+                indexed_data_json,
             ),
         )
         _conn.commit()
 
     def save_many(self, metas):
         """批量保存元数据到 SQLite（ISlowMetaStore 接口方法）"""
+        import json
+
         if not metas:
             return
 
         sql = """
         INSERT OR REPLACE INTO resource_meta 
-        (resource_id, data, created_time, updated_time, created_by, updated_by, is_deleted)
-        VALUES (?, ?, ?, ?, ?, ?, ?)
+        (resource_id, data, created_time, updated_time, created_by, updated_by, is_deleted, indexed_data)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?)
         """
         _conn = self._conns[threading.get_ident()]
         with _conn:
@@ -113,6 +169,11 @@ class SqliteMetaStore(ISlowMetaStore):
                         meta.created_by,
                         meta.updated_by,
                         1 if meta.is_deleted else 0,
+                        (
+                            json.dumps(meta.indexed_data, ensure_ascii=False)
+                            if meta.indexed_data is not UNSET
+                            else None
+                        ),
                     )
                     for meta in metas
                 ],
@@ -170,6 +231,14 @@ class SqliteMetaStore(ISlowMetaStore):
             conditions.append(f"updated_by IN ({placeholders})")
             params.extend(query.updated_bys)
 
+        # 處理 data_conditions - 在 SQL 層面過濾
+        if query.data_conditions is not UNSET:
+            for condition in query.data_conditions:
+                json_condition, json_params = self._build_json_condition(condition)
+                if json_condition:
+                    conditions.append(json_condition)
+                    params.extend(json_params)
+
         # 構建 WHERE 子句
         where_clause = ""
         if conditions:
@@ -188,13 +257,55 @@ class SqliteMetaStore(ISlowMetaStore):
                 order_parts.append(f"{sort.key} {direction}")
             order_clause = "ORDER BY " + ", ".join(order_parts)
 
+        # 在 SQL 層面應用分頁
         sql = f"SELECT data FROM resource_meta {where_clause} {order_clause} LIMIT ? OFFSET ?"
-        params.append(query.limit)
-        params.append(query.offset)
+        params.extend([query.limit, query.offset])
+
         cursor = self._conns[threading.get_ident()].execute(sql, params)
 
         for row in cursor:
             yield self._serializer.decode(row[0])
+
+    def _build_json_condition(self, condition) -> tuple[str, list]:
+        """構建 SQLite JSON 查詢條件"""
+        from autocrud.resource_manager.basic import DataSearchOperator
+
+        field_path = condition.field_path
+        operator = condition.operator
+        value = condition.value
+
+        # SQLite JSON 提取語法: json_extract(indexed_data, '$.field_path')
+        json_extract = f"json_extract(indexed_data, '$.{field_path}')"
+
+        if operator == DataSearchOperator.equals:
+            return f"{json_extract} = ?", [value]
+        elif operator == DataSearchOperator.not_equals:
+            return f"{json_extract} != ?", [value]
+        elif operator == DataSearchOperator.greater_than:
+            return f"CAST({json_extract} AS REAL) > ?", [value]
+        elif operator == DataSearchOperator.greater_than_or_equal:
+            return f"CAST({json_extract} AS REAL) >= ?", [value]
+        elif operator == DataSearchOperator.less_than:
+            return f"CAST({json_extract} AS REAL) < ?", [value]
+        elif operator == DataSearchOperator.less_than_or_equal:
+            return f"CAST({json_extract} AS REAL) <= ?", [value]
+        elif operator == DataSearchOperator.contains:
+            return f"{json_extract} LIKE ?", [f"%{value}%"]
+        elif operator == DataSearchOperator.starts_with:
+            return f"{json_extract} LIKE ?", [f"{value}%"]
+        elif operator == DataSearchOperator.ends_with:
+            return f"{json_extract} LIKE ?", [f"%{value}"]
+        elif operator == DataSearchOperator.in_list:
+            if isinstance(value, (list, tuple, set)):
+                placeholders = ",".join("?" * len(value))
+                return f"{json_extract} IN ({placeholders})", list(value)
+        elif operator == DataSearchOperator.not_in_list:
+            if isinstance(value, (list, tuple, set)):
+                placeholders = ",".join("?" * len(value))
+                return f"{json_extract} NOT IN ({placeholders})", list(value)
+
+        # 如果不支持的操作，返回空條件
+        return "", []
 
 
 class FileSqliteMetaStore(SqliteMetaStore):
