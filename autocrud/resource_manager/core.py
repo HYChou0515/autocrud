@@ -119,8 +119,8 @@ class ResourceManager(IResourceManager[T], Generic[T]):
         migration: IMigration | None = None,
         indexed_fields: list[IndexableField] | None = None,
     ):
-        self.user_ctx = Ctx[str]("user_ctx")
-        self.now_ctx = Ctx[dt.datetime]("now_ctx")
+        self.user_ctx = Ctx("user_ctx", strict_type=str)
+        self.now_ctx = Ctx("now_ctx", strict_type=dt.datetime)
         self.id_ctx = Ctx[str | UnsetType]("id_ctx")
         self.resource_type = resource_type
         self.storage = storage

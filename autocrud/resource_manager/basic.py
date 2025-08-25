@@ -567,12 +567,15 @@ class IResourceManager(ABC, Generic[T]):
 
 
 class Ctx(Generic[T]):
-    def __init__(self, name: str):
+    def __init__(self, name: str, *, strict_type: type[T] | UnsetType = UNSET):
+        self.strict_type = strict_type
         self.v = ContextVar[T](name)
         self.tok = None
 
     @contextmanager
     def ctx(self, value: T):
+        if self.strict_type is not UNSET and not isinstance(value, self.strict_type):
+            raise TypeError(f"Context value must be of type {self.strict_type}")
         self.tok = self.v.set(value)
         try:
             yield
