@@ -1,3 +1,4 @@
+from __future__ import annotations
 from abc import ABC, abstractmethod
 from collections import OrderedDict
 from collections.abc import Callable
@@ -133,6 +134,30 @@ def convert_revision_info_to_response(info: RevisionInfo) -> RevisionInfoRespons
         data_hash=info.data_hash if info.data_hash is not UNSET else None,
         status=info.status,
     )
+
+
+def msgspec_to_pydantic(
+    struct_cls: type[msgspec.Struct], *, model_name: str | None = None
+) -> type[BaseModel]:
+    try:
+        if not issubclass(struct_cls, msgspec.Struct):
+            return struct_cls
+    except Exception:
+        return struct_cls
+
+    fields: dict = {}
+    for f in msgspec.structs.fields(struct_cls):
+        ftype = msgspec_to_pydantic(f.type)
+        fields[f.name] = (ftype, None)
+
+    model = create_model(
+        model_name or (struct_cls.__name__),
+        __config__={
+            "arbitrary_types_allowed": True,
+        },
+        **fields,
+    )
+    return model
 
 
 T = TypeVar("T")
@@ -281,6 +306,33 @@ class CreateRouteTemplate(BaseRouteTemplate):
                 raise HTTPException(status_code=400, detail=str(e))
 
 
+def get_resource_model(resource_type: type[msgspec.Struct]) -> type[BaseModel]:
+    data_resp_model = msgspec_to_pydantic(
+        resource_type,
+        model_name=resource_type.__name__,
+    )
+    return data_resp_model
+
+
+def get_resource_full_resp_model(
+    resource_type: type[msgspec.Struct],
+) -> type[BaseModel]:
+    FullResp = msgspec.defstruct(
+        "FullResp",
+        fields={
+            "data": (resource_type, ...),
+            "meta": (ResourceMeta, ...),
+            "revision_info": (RevisionInfo, ...),
+        },
+    )
+
+    full_resp_model = msgspec_to_pydantic(
+        FullResp,
+        model_name=f"{resource_type.__name__}FullResponse",
+    )
+    return full_resp_model
+
+
 class ReadRouteTemplate(BaseRouteTemplate, Generic[T]):
     """讀取單一資源的路由模板"""
 
@@ -306,6 +358,8 @@ class ReadRouteTemplate(BaseRouteTemplate, Generic[T]):
     def apply(
         self, model_name: str, resource_manager: ResourceManager[T], router: APIRouter
     ) -> None:
+        resource_type = resource_manager.resource_type
+
         @router.get(
             f"/{model_name}/{{resource_id}}/meta",
             response_model=ResourceMetaResponse,
@@ -392,9 +446,11 @@ class ReadRouteTemplate(BaseRouteTemplate, Generic[T]):
 
             return convert_revision_info_to_response(resource.info)
 
+        full_resp_model = get_resource_full_resp_model(resource_type)
+
         @router.get(
             f"/{model_name}/{{resource_id}}/full",
-            response_model=FullResourceResponse,
+            response_model=full_resp_model,
             summary=f"Get Complete {model_name} Information",
             tags=[f"{model_name}"],
             description=textwrap.dedent(
@@ -523,9 +579,11 @@ class ReadRouteTemplate(BaseRouteTemplate, Generic[T]):
             except Exception as e:
                 raise HTTPException(status_code=404, detail=str(e))
 
+        data_resp_model = get_resource_model(resource_manager.resource_type)
+
         @router.get(
             f"/{model_name}/{{resource_id}}/data",
-            response_model=T,
+            response_model=data_resp_model,
             summary=f"Get {model_name} Data",
             tags=[f"{model_name}"],
             description=textwrap.dedent(
@@ -595,18 +653,11 @@ class UpdateRouteTemplate(BaseRouteTemplate):
     def apply(
         self, model_name: str, resource_manager: ResourceManager[T], router: APIRouter
     ) -> None:
-        # 動態創建響應模型
-        update_response_model = create_model(
-            f"{resource_manager.resource_type.__name__}UpdateResponse",
-            resource_id=(str, ...),
-            revision_id=(str, ...),
-        )
-
         resource_type = resource_manager.resource_type
 
         @router.put(
             f"/{model_name}/{{resource_id}}",
-            response_model=update_response_model,
+            response_model=RevisionInfoResponse,
             summary=f"Update {model_name}",
             tags=[f"{model_name}"],
             description=textwrap.dedent(
@@ -827,9 +878,12 @@ class ListRouteTemplate(BaseRouteTemplate):
     def apply(
         self, model_name: str, resource_manager: ResourceManager[T], router: APIRouter
     ) -> None:
+        full_resp_model = get_resource_full_resp_model(resource_manager.resource_type)
+        data_resp_model = get_resource_model(resource_manager.resource_type)
+
         @router.get(
             f"/{model_name}/data",
-            response_model=list[T],
+            response_model=list[data_resp_model],
             summary=f"List {model_name} Data Only",
             tags=[f"{model_name}"],
             description=textwrap.dedent(
@@ -1064,7 +1118,7 @@ class ListRouteTemplate(BaseRouteTemplate):
 
         @router.get(
             f"/{model_name}/full",
-            response_model=list[FullResourceResponse],
+            response_model=list[full_resp_model],
             summary=f"List {model_name} Complete Information",
             tags=[f"{model_name}"],
             description=textwrap.dedent(
