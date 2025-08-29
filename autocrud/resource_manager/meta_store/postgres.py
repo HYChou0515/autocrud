@@ -12,6 +12,7 @@ from autocrud.resource_manager.basic import (
     MsgspecSerializer,
     ResourceMeta,
     ResourceMetaSearchQuery,
+    ResourceMetaSearchSort,
     ResourceMetaSortDirection,
 )
 
@@ -337,12 +338,25 @@ class PostgresMetaStore(ISlowMetaStore):
         if query.sorts is not UNSET and query.sorts:
             order_parts = []
             for sort in query.sorts:
-                direction = (
-                    "ASC"
-                    if sort.direction == ResourceMetaSortDirection.ascending
-                    else "DESC"
-                )
-                order_parts.append(f"{sort.key} {direction}")
+                if isinstance(sort, ResourceMetaSearchSort):
+                    direction = (
+                        "ASC"
+                        if sort.direction == ResourceMetaSortDirection.ascending
+                        else "DESC"
+                    )
+                    order_parts.append(f"{sort.key} {direction}")
+                else:
+                    # ResourceDataSearchSort - 處理 indexed_data 欄位排序
+                    direction = (
+                        "ASC"
+                        if sort.direction == ResourceMetaSortDirection.ascending
+                        else "DESC"
+                    )
+                    # 使用 JSONB 提取語法對 indexed_data 中的欄位進行排序
+                    # PostgreSQL 可以根據 JSON 值的類型自動選擇排序方式
+                    # 使用 -> 操作符保持原始類型，讓 PostgreSQL 自動處理不同數據類型的排序
+                    jsonb_extract = f"indexed_data->'{sort.field_path}'"
+                    order_parts.append(f"{jsonb_extract} {direction}")
             order_clause = "ORDER BY " + ", ".join(order_parts)
 
         sql = f"SELECT data FROM resource_meta {where_clause} {order_clause} LIMIT %s OFFSET %s"

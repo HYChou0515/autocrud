@@ -15,6 +15,7 @@ from autocrud.resource_manager.basic import (
     MsgspecSerializer,
     ResourceMeta,
     ResourceMetaSearchQuery,
+    ResourceMetaSearchSort,
     ResourceMetaSortDirection,
 )
 
@@ -249,12 +250,23 @@ class SqliteMetaStore(ISlowMetaStore):
         if query.sorts is not UNSET and query.sorts:
             order_parts = []
             for sort in query.sorts:
-                direction = (
-                    "ASC"
-                    if sort.direction == ResourceMetaSortDirection.ascending
-                    else "DESC"
-                )
-                order_parts.append(f"{sort.key} {direction}")
+                if isinstance(sort, ResourceMetaSearchSort):
+                    direction = (
+                        "ASC"
+                        if sort.direction == ResourceMetaSortDirection.ascending
+                        else "DESC"
+                    )
+                    order_parts.append(f"{sort.key} {direction}")
+                else:
+                    # ResourceDataSearchSort - 處理 indexed_data 欄位排序
+                    direction = (
+                        "ASC"
+                        if sort.direction == ResourceMetaSortDirection.ascending
+                        else "DESC"
+                    )
+                    # 使用 JSON 提取語法對 indexed_data 中的欄位進行排序
+                    json_extract = f"json_extract(indexed_data, '$.{sort.field_path}')"
+                    order_parts.append(f"{json_extract} {direction}")
             order_clause = "ORDER BY " + ", ".join(order_parts)
 
         # 在 SQL 層面應用分頁

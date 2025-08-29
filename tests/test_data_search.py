@@ -4,8 +4,10 @@ import pytest
 from autocrud.resource_manager.basic import (
     DataSearchCondition,
     DataSearchOperator,
+    ResourceDataSearchSort,
     ResourceMetaSearchQuery,
     ResourceMeta,
+    ResourceMetaSortDirection,
 )
 from msgspec import UNSET
 from pathlib import Path
@@ -66,6 +68,11 @@ class TestMetaStoreIterSearch:
                     value="Engineering",
                 )
             ],
+            sorts=[
+                ResourceDataSearchSort(
+                    field_path="age", direction=ResourceMetaSortDirection.ascending
+                )
+            ],
             limit=10,
             offset=0,
         )
@@ -75,13 +82,13 @@ class TestMetaStoreIterSearch:
 
         # Should find 3 Engineering users (Alice, Charlie, Eve)
         assert len(results) == 3
-        engineering_names = set()
+        engineering_names = []
         for meta in results:
-            engineering_names.add(meta.indexed_data["name"])
+            engineering_names.append(meta.indexed_data["name"])
             # Verify indexed data is populated
             assert meta.indexed_data is not UNSET
             assert meta.indexed_data["department"] == "Engineering"
-        assert engineering_names == {"Alice", "Charlie", "Eve"}
+        assert engineering_names == ["Alice", "Eve", "Charlie"]
 
     def test_iter_search_age_range(self):
         """Test using IMetaStore.iter_search for age range filtering."""

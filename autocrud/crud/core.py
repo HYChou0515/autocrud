@@ -28,6 +28,10 @@ from autocrud.resource_manager.basic import (
     ResourceMeta,
     RevisionInfo,
     IndexableField,
+    ResourceMetaSearchSort,
+    ResourceDataSearchSort,
+    ResourceMetaSortDirection,
+    ResourceMetaSortKey,
 )
 from autocrud.resource_manager.core import ResourceManager, SimpleStorage
 from autocrud.resource_manager.data_converter import (
@@ -231,34 +235,6 @@ class CreateRouteTemplate(BaseRouteTemplate):
 class ReadRouteTemplate(BaseRouteTemplate, Generic[T]):
     """讀取單一資源的路由模板"""
 
-    from pydantic import BaseModel
-
-    class QueryInputs(BaseModel):
-        # ResourceMetaSearchQuery 的查詢參數
-        is_deleted: Optional[bool] = Query(
-            None, description="Filter by deletion status"
-        )
-        created_time_start: Optional[str] = Query(
-            None, description="Filter by created time start (ISO format)"
-        )
-        created_time_end: Optional[str] = Query(
-            None, description="Filter by created time end (ISO format)"
-        )
-        updated_time_start: Optional[str] = Query(
-            None, description="Filter by updated time start (ISO format)"
-        )
-        updated_time_end: Optional[str] = Query(
-            None, description="Filter by updated time end (ISO format)"
-        )
-        created_bys: Optional[list[str]] = Query(None, description="Filter by creators")
-        updated_bys: Optional[list[str]] = Query(None, description="Filter by updaters")
-        data_conditions: Optional[str] = Query(
-            None,
-            description='Data filter conditions in JSON format. Example: \'[{"field_path": "department", "operator": "equals", "value": "Engineering"}]\'',
-        )
-        limit: int = Query(10, description="Maximum number of results")
-        offset: int = Query(0, description="Number of results to skip")
-
     def _get_resource_and_meta(
         self,
         resource_manager: IResourceManager[T],
@@ -292,7 +268,6 @@ class ReadRouteTemplate(BaseRouteTemplate, Generic[T]):
         )
         async def get_resource_meta(
             resource_id: str,
-            q: ListRouteTemplate.QueryInputs = Query(...),
             current_user: str = Depends(self.deps.get_user),
             current_time: dt.datetime = Depends(self.deps.get_now),
         ):
@@ -728,7 +703,11 @@ class ListRouteTemplate(BaseRouteTemplate):
         updated_bys: Optional[list[str]] = Query(None, description="Filter by updaters")
         data_conditions: Optional[str] = Query(
             None,
-            description='Data filter conditions in JSON format. Example: \'[{"field_path": "department", "operator": "equals", "value": "Engineering"}]\'',
+            description='Data filter conditions in JSON format. Example: \'[{"field_path": "department", "operator": "eq", "value": "Engineering"}]\'',
+        )
+        sorts: Optional[str] = Query(
+            None,
+            description='Sort conditions in JSON format. Example: \'[{"type": "meta", "key": "created_time", "direction": "+"}, {"type": "data", "field_path": "name", "direction": "-"}]\'',
         )
         limit: int = Query(10, description="Maximum number of results")
         offset: int = Query(0, description="Number of results to skip")
@@ -804,7 +783,36 @@ class ListRouteTemplate(BaseRouteTemplate):
         else:
             query_kwargs["data_conditions"] = UNSET
 
-        query_kwargs["sorts"] = UNSET
+        # 處理 sorts
+        if q.sorts:
+            try:
+                # 解析 JSON 字符串
+                sorts_data = json.loads(q.sorts)
+                # 轉換為排序對象列表
+                sorts = []
+                for sort_dict in sorts_data:
+                    if sort_dict["type"] == "meta":
+                        # ResourceMetaSearchSort
+                        sort = ResourceMetaSearchSort(
+                            key=ResourceMetaSortKey(sort_dict["key"]),
+                            direction=ResourceMetaSortDirection(sort_dict["direction"]),
+                        )
+                    elif sort_dict["type"] == "data":
+                        # ResourceDataSearchSort
+                        sort = ResourceDataSearchSort(
+                            field_path=sort_dict["field_path"],
+                            direction=ResourceMetaSortDirection(sort_dict["direction"]),
+                        )
+                    else:
+                        raise ValueError(f"Invalid sort type: {sort_dict['type']}")
+                    sorts.append(sort)
+                query_kwargs["sorts"] = sorts
+            except (json.JSONDecodeError, KeyError, ValueError) as e:
+                raise HTTPException(
+                    status_code=400, detail=f"Invalid sorts format: {str(e)}"
+                )
+        else:
+            query_kwargs["sorts"] = UNSET
 
         return ResourceMetaSearchQuery(**query_kwargs)
 
@@ -840,6 +848,15 @@ class ListRouteTemplate(BaseRouteTemplate):
                 - Each condition has: `field_path`, `operator`, `value`
                 - Supported operators: `eq`, `ne`, `gt`, `lt`, `gte`, `lte`, `contains`, `starts_with`, `ends_with`, `in`, `not_in`
                 - Example: `[{{"field_path": "department", "operator": "eq", "value": "Engineering"}}]`
+
+                **Sorting Options:**
+                - Use `sorts` parameter to specify sorting criteria
+                - Format: JSON array of sort objects
+                - Each sort object has: `type`, `direction`, and either `key` (for meta) or `field_path` (for data)
+                - Sort types: `meta` (for metadata fields), `data` (for data content fields)
+                - Directions: `+` (ascending), `-` (descending)
+                - Meta sort keys: `created_time`, `updated_time`, `resource_id`
+                - Example: `[{{"type": "meta", "key": "created_time", "direction": "+"}}, {{"type": "data", "field_path": "name", "direction": "-"}}]`
 
                 **Pagination:**
                 - `limit`: Maximum number of results to return (default: 10)
@@ -922,6 +939,15 @@ class ListRouteTemplate(BaseRouteTemplate):
                 - Each condition has: `field_path`, `operator`, `value`
                 - Supported operators: `eq`, `ne`, `gt`, `lt`, `gte`, `lte`, `contains`, `starts_with`, `ends_with`, `in`, `not_in`
                 - Example: `[{{"field_path": "age", "operator": "gt", "value": 25}}]`
+
+                **Sorting Options:**
+                - Use `sorts` parameter to specify sorting criteria
+                - Format: JSON array of sort objects
+                - Each sort object has: `type`, `direction`, and either `key` (for meta) or `field_path` (for data)
+                - Sort types: `meta` (for metadata fields), `data` (for data content fields)
+                - Directions: `+` (ascending), `-` (descending)
+                - Meta sort keys: `created_time`, `updated_time`, `resource_id`
+                - Example: `[{{"type": "meta", "key": "updated_time", "direction": "-"}}, {{"type": "data", "field_path": "department", "direction": "+"}}]`
 
                 **Pagination:**
                 - `limit`: Maximum number of results to return (default: 10)

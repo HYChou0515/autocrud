@@ -68,6 +68,11 @@ class ResourceMetaSearchSort(Struct, kw_only=True):
     key: ResourceMetaSortKey
 
 
+class ResourceDataSearchSort(Struct, kw_only=True):
+    direction: ResourceMetaSortDirection = ResourceMetaSortDirection.ascending
+    field_path: str
+
+
 class ResourceMetaSearchQuery(Struct, kw_only=True):
     is_deleted: bool | UnsetType = UNSET
 
@@ -85,7 +90,7 @@ class ResourceMetaSearchQuery(Struct, kw_only=True):
     limit: int = 10
     offset: int = 0
 
-    sorts: list[ResourceMetaSearchSort] | UnsetType = UNSET
+    sorts: list[ResourceMetaSearchSort | ResourceDataSearchSort] | UnsetType = UNSET
 
 
 class RevisionStatus(StrEnum):
@@ -690,26 +695,36 @@ def bool_to_sign(b: bool) -> int:
     return 1 if b else -1
 
 
-def get_sort_fn(qsorts: list[ResourceMetaSearchSort]):
+def get_sort_fn(qsorts: list[ResourceMetaSearchSort | ResourceDataSearchSort]):
     def compare(meta1: ResourceMeta, meta2: ResourceMeta) -> int:
         for sort in qsorts:
-            if sort.key == ResourceMetaSortKey.created_time:
-                if meta1.created_time != meta2.created_time:
-                    return bool_to_sign(meta1.created_time > meta2.created_time) * (
-                        1
-                        if sort.direction == ResourceMetaSortDirection.ascending
-                        else -1
-                    )
-            elif sort.key == ResourceMetaSortKey.updated_time:
-                if meta1.updated_time != meta2.updated_time:
-                    return bool_to_sign(meta1.updated_time > meta2.updated_time) * (
-                        1
-                        if sort.direction == ResourceMetaSortDirection.ascending
-                        else -1
-                    )
-            elif sort.key == ResourceMetaSortKey.resource_id:
-                if meta1.resource_id != meta2.resource_id:
-                    return bool_to_sign(meta1.resource_id > meta2.resource_id) * (
+            if isinstance(sort, ResourceMetaSearchSort):
+                if sort.key == ResourceMetaSortKey.created_time:
+                    if meta1.created_time != meta2.created_time:
+                        return bool_to_sign(meta1.created_time > meta2.created_time) * (
+                            1
+                            if sort.direction == ResourceMetaSortDirection.ascending
+                            else -1
+                        )
+                elif sort.key == ResourceMetaSortKey.updated_time:
+                    if meta1.updated_time != meta2.updated_time:
+                        return bool_to_sign(meta1.updated_time > meta2.updated_time) * (
+                            1
+                            if sort.direction == ResourceMetaSortDirection.ascending
+                            else -1
+                        )
+                elif sort.key == ResourceMetaSortKey.resource_id:
+                    if meta1.resource_id != meta2.resource_id:
+                        return bool_to_sign(meta1.resource_id > meta2.resource_id) * (
+                            1
+                            if sort.direction == ResourceMetaSortDirection.ascending
+                            else -1
+                        )
+            else:
+                v1 = meta1.indexed_data.get(sort.field_path)
+                v2 = meta2.indexed_data.get(sort.field_path)
+                if v1 != v2:
+                    return bool_to_sign(v1 > v2) * (
                         1
                         if sort.direction == ResourceMetaSortDirection.ascending
                         else -1
