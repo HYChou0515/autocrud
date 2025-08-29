@@ -13,6 +13,28 @@
             "justMyCode": false,
         },
         {
+            "name": "Python Debugger: pytest Current File",
+            "type": "debugpy",
+            "request": "launch",
+            "module": "pytest",
+            "console": "integratedTerminal",
+            "justMyCode": false,
+            "args": [
+                "${file}"
+            ]
+        },
+        {
+            "name": "Python Debugger: Fastapi Current File",
+            "type": "debugpy",
+            "request": "launch",
+            "module": "fastapi",
+            "console": "integratedTerminal",
+            "justMyCode": false,
+            "args": [
+                "dev", "${file}"
+            ]
+        },
+        {
             "name": "Debug: schema_upgrade.py",
             "type": "debugpy",
             "request": "launch",

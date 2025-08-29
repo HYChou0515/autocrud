@@ -25,14 +25,7 @@ class TypedDictUser(TypedDict):
     age: Optional[int]
 
 
-# 2. Pydantic 方式
-class PydanticUser(BaseModel):
-    name: str
-    email: str
-    age: Optional[int] = None
-
-
-# 3. Dataclass 方式
+# 2. Dataclass 方式
 @dataclass
 class DataclassUser:
     name: str
@@ -40,7 +33,7 @@ class DataclassUser:
     age: Optional[int] = None
 
 
-# 4. Msgspec 方式
+# 3. Msgspec 方式
 class MsgspecUser(msgspec.Struct):
     name: str
     email: str
@@ -61,7 +54,6 @@ def autocrud():
 
     # 註冊所有數據類型 - 用戶期望的簡潔API
     crud.add_model(TypedDictUser)
-    crud.add_model(PydanticUser)
     crud.add_model(DataclassUser)
     crud.add_model(MsgspecUser)
 
@@ -84,10 +76,6 @@ def client(autocrud):
         (
             TypedDictUser(name="TypedDict User", email="typed@example.com", age=25),
             "typed-dict-user",
-        ),
-        (
-            PydanticUser(name="Pydantic User", email="pydantic@example.com", age=30),
-            "pydantic-user",
         ),
         (
             DataclassUser(name="Dataclass User", email="dataclass@example.com", age=35),

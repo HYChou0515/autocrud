@@ -1,5 +1,5 @@
 from collections.abc import Generator, Iterable, MutableMapping
-from contextlib import contextmanager
+from contextlib import AbstractContextManager, contextmanager
 from contextvars import ContextVar
 from enum import StrEnum
 import functools
@@ -161,6 +161,15 @@ class IMigration(ABC):
 
 
 class IResourceManager(ABC, Generic[T]):
+    @property
+    @abstractmethod
+    def resource_type(self) -> type[T]: ...
+
+    @abstractmethod
+    def meta_provide(
+        self, user: str, now: dt.datetime, *, resource_id: str | UnsetType = UNSET
+    ) -> AbstractContextManager: ...
+
     @abstractmethod
     def create(self, data: T) -> RevisionInfo:
         """Create resource and return the metadata.

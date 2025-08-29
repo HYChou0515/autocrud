@@ -27,13 +27,14 @@ class TestAutoCRUDDataSearch:
     def setup_method(self):
         """Setup AutoCRUD with User model and create test data."""
         # 創建 AutoCRUD 實例
-        self.autocrud = AutoCRUD()
+        self.autocrud = AutoCRUD(
+            storage_factory=MemoryStorageFactory(),
+        )
 
         # 添加 User 模型並指定索引字段
         self.autocrud.add_model(
             User,
             name="users",
-            storage_factory=MemoryStorageFactory(),
             indexed_fields=[
                 ("name", str),
                 ("email", str),

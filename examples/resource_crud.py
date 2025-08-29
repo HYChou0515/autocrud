@@ -81,7 +81,9 @@ crud = AutoCRUD()
 crud.add_model(Product)
 
 app = FastAPI()
+
 crud.apply(app)
+crud.openapi(app)
 
 
 def test():

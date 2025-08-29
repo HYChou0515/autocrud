@@ -122,7 +122,7 @@ class ResourceManager(IResourceManager[T], Generic[T]):
         self.user_ctx = Ctx("user_ctx", strict_type=str)
         self.now_ctx = Ctx("now_ctx", strict_type=dt.datetime)
         self.id_ctx = Ctx[str | UnsetType]("id_ctx")
-        self.resource_type = resource_type
+        self._resource_type = resource_type
         self.storage = storage
         self.data_converter = DataConverter(self.resource_type)
         schema_version = migration.schema_version if migration else None
@@ -137,6 +137,10 @@ class ResourceManager(IResourceManager[T], Generic[T]):
         self.id_generator = (
             default_id_generator if id_generator is None else id_generator
         )
+
+    @property
+    def resource_type(self):
+        return self._resource_type
 
     @property
     def indexed_fields(self) -> list[IndexableField]:

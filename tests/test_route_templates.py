@@ -89,7 +89,7 @@ class TestNameConverter:
 class TestRouteTemplates:
     """測試 RouteTemplate 功能"""
 
-    def test_create_user(self, client):
+    def test_create_user(self, client: TestClient):
         """測試創建用戶"""
         user_data = {"name": "John Doe", "email": "john@example.com", "age": 30}
 
@@ -106,7 +106,7 @@ class TestRouteTemplates:
         assert len(data["resource_id"]) - len("user:") == 36  # UUID 長度
         assert "-" in data["resource_id"]  # UUID 包含連字符
 
-    def test_read_user(self, client):
+    def test_read_user(self, client: TestClient):
         """測試讀取用戶"""
         # 先創建一個用戶
         user_data = {"name": "Jane Doe", "email": "jane@example.com", "age": 25}
@@ -126,7 +126,7 @@ class TestRouteTemplates:
         assert data["data"]["email"] == "jane@example.com"
         assert data["data"]["age"] == 25
 
-    def test_update_user(self, client):
+    def test_update_user(self, client: TestClient):
         """測試更新用戶"""
         # 先創建一個用戶
         user_data = {"name": "Bob Smith", "email": "bob@example.com", "age": 35}
@@ -156,7 +156,7 @@ class TestRouteTemplates:
         assert get_data["data"]["email"] == "bob.johnson@example.com"
         assert get_data["data"]["age"] == 36
 
-    def test_delete_user(self, client):
+    def test_delete_user(self, client: TestClient):
         """測試刪除用戶"""
         # 先創建一個用戶
         user_data = {"name": "Alice Cooper", "email": "alice@example.com", "age": 28}
@@ -177,7 +177,7 @@ class TestRouteTemplates:
         get_response = client.get(f"/user/{resource_id}/data")
         assert get_response.status_code == 404
 
-    def test_list_users(self, client):
+    def test_list_users(self, client: TestClient):
         """測試列出用戶"""
         # 創建幾個用戶
         users = [
@@ -203,7 +203,7 @@ class TestRouteTemplates:
             assert "age" in resource
             assert isinstance(resource["age"], int)
 
-    def test_list_users_with_query_params(self, client):
+    def test_list_users_with_query_params(self, client: TestClient):
         """測試帶查詢參數的列出用戶"""
         # 創建幾個用戶
         users = [
@@ -227,7 +227,7 @@ class TestRouteTemplates:
         # 應該返回第二個資源或空列表
         assert len(data) <= 1
 
-    def test_list_users_response_types(self, client):
+    def test_list_users_response_types(self, client: TestClient):
         """測試不同的響應類型"""
         # 創建一個用戶
         user_data = {"name": "Test User", "email": "test@example.com", "age": 30}
@@ -361,7 +361,7 @@ class TestRouteTemplates:
             assert "meta" in data  # 特定版本查詢不包含 meta
             assert data["data"]["name"] == expected_name
 
-    def test_read_user_current_vs_specific_revision(self, client):
+    def test_read_user_current_vs_specific_revision(self, client: TestClient):
         """測試當前版本與特定版本的對比"""
         # 創建一個用戶
         user_data = {
@@ -396,7 +396,7 @@ class TestRouteTemplates:
         assert original_data["name"] == "Original User"
         assert original_data["age"] == 25
 
-    def test_read_user_revisions_response(self, client):
+    def test_read_user_revisions_response(self, client: TestClient):
         """測試獲取資源的所有版本信息"""
         # 創建一個用戶
         user_data = {"name": "Version 1", "email": "v1@example.com", "age": 20}
@@ -436,12 +436,12 @@ class TestRouteTemplates:
             assert "status" in revision
             assert revision["resource_id"] == resource_id
 
-    def test_user_not_found(self, client):
+    def test_user_not_found(self, client: TestClient):
         """測試用戶不存在的情況"""
         response = client.get("/user/nonexistent/data")
         assert response.status_code == 404
 
-    def test_invalid_user_data(self, client):
+    def test_invalid_user_data(self, client: TestClient):
         """測試無效的用戶數據"""
         invalid_data = {
             "name": "Test User",
@@ -451,7 +451,7 @@ class TestRouteTemplates:
         response = client.post("/user", json=invalid_data)
         assert response.status_code == 422  # msgspec 驗證錯誤
 
-    def test_switch_revision(self, client):
+    def test_switch_revision(self, client: TestClient):
         """測試切換資源版本"""
         # 創建一個用戶
         user_data_v1 = {"name": "User V1", "email": "v1@example.com", "age": 25}
@@ -475,7 +475,6 @@ class TestRouteTemplates:
         switch_data = switch_response.json()
         assert switch_data["resource_id"] == resource_id
         assert switch_data["current_revision_id"] == revision_id_v1
-        assert "Successfully switched" in switch_data["message"]
 
         # 驗證當前資料現在是 V1
         response = client.get(f"/user/{resource_id}/data")
@@ -493,7 +492,7 @@ class TestRouteTemplates:
         assert response.json()["name"] == "User V2"
         assert response.json()["age"] == 30
 
-    def test_switch_revision_not_found(self, client):
+    def test_switch_revision_not_found(self, client: TestClient):
         """測試切換到不存在的版本"""
         # 創建一個用戶
         user_data = {"name": "Test User", "email": "test@example.com", "age": 25}
@@ -504,12 +503,12 @@ class TestRouteTemplates:
         response = client.post(f"/user/{resource_id}/switch/nonexistent-revision")
         assert response.status_code == 400
 
-    def test_switch_revision_resource_not_found(self, client):
+    def test_switch_revision_resource_not_found(self, client: TestClient):
         """測試切換不存在資源的版本"""
         response = client.post("/user/nonexistent/switch/some-revision")
         assert response.status_code == 400
 
-    def test_restore_resource(self, client):
+    def test_restore_resource(self, client: TestClient):
         """測試恢復已刪除的資源"""
         # 創建一個用戶
         user_data = {"name": "Test User", "email": "test@example.com", "age": 25}
@@ -535,19 +534,18 @@ class TestRouteTemplates:
         restore_data = restore_response.json()
         assert restore_data["resource_id"] == resource_id
         assert restore_data["is_deleted"] is False
-        assert "Successfully restored" in restore_data["message"]
 
         # 驗證用戶已被恢復
         response = client.get(f"/user/{resource_id}/data")
         assert response.status_code == 200
         assert response.json()["name"] == "Test User"
 
-    def test_restore_resource_not_found(self, client):
+    def test_restore_resource_not_found(self, client: TestClient):
         """測試恢復不存在的資源"""
         response = client.post("/user/nonexistent/restore")
         assert response.status_code == 400
 
-    def test_restore_resource_not_deleted(self, client):
+    def test_restore_resource_not_deleted(self, client: TestClient):
         """測試恢復未被刪除的資源"""
         # 創建一個用戶
         user_data = {"name": "Test User", "email": "test@example.com", "age": 25}

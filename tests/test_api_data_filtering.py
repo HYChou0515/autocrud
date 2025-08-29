@@ -59,16 +59,14 @@ def test_data():
 
 
 @pytest.fixture
-def autocrud_with_data(test_data):
+def autocrud_with_data(test_data: list[User]):
     """創建包含測試數據的 AutoCRUD 實例"""
-    storage_factory = MemoryStorageFactory()
-    autocrud = AutoCRUD()
+    autocrud = AutoCRUD(storage_factory=MemoryStorageFactory())
 
     # 註冊用戶模型
     autocrud.add_model(
         User,
         name="user",
-        storage_factory=storage_factory,
         indexed_fields=[
             ("department", str),
             ("age", int),
@@ -81,7 +79,7 @@ def autocrud_with_data(test_data):
 
 
 @pytest.fixture
-def test_client(autocrud_with_data, test_data):
+def test_client(autocrud_with_data: AutoCRUD, test_data: list[User]):
     """創建 FastAPI 測試客戶端"""
     app = FastAPI()
     autocrud_with_data.apply(app)
@@ -97,7 +95,7 @@ def test_client(autocrud_with_data, test_data):
     return client
 
 
-def test_data_filtering_equals(test_client):
+def test_data_filtering_equals(test_client: TestClient):
     """測試 equals 操作符"""
     # 測試部門等於 Engineering
     data_conditions = json.dumps(
@@ -113,7 +111,7 @@ def test_data_filtering_equals(test_client):
     assert all(dept == "Engineering" for dept in departments)
 
 
-def test_data_filtering_greater_than(test_client):
+def test_data_filtering_greater_than(test_client: TestClient):
     """測試 greater_than 操作符"""
     # 測試年齡大於 30
     data_conditions = json.dumps([{"field_path": "age", "operator": "gt", "value": 30}])
@@ -127,7 +125,7 @@ def test_data_filtering_greater_than(test_client):
     assert all(age > 30 for age in ages)
 
 
-def test_data_filtering_contains(test_client):
+def test_data_filtering_contains(test_client: TestClient):
     """測試 contains 操作符"""
     # 測試 email 包含 engineering
     data_conditions = json.dumps(
@@ -143,7 +141,7 @@ def test_data_filtering_contains(test_client):
     assert all("engineering" in email for email in emails)
 
 
-def test_data_filtering_multiple_conditions(test_client):
+def test_data_filtering_multiple_conditions(test_client: TestClient):
     """測試多重條件"""
     # 測試部門是 Engineering 且薪水大於等於 80000
     data_conditions = json.dumps(
@@ -167,7 +165,7 @@ def test_data_filtering_multiple_conditions(test_client):
         assert user["salary"] >= 80000.0
 
 
-def test_data_filtering_with_metadata_filter(test_client):
+def test_data_filtering_with_metadata_filter(test_client: TestClient):
     """測試 data filtering 與 metadata filtering 結合"""
     # 測試部門是 Engineering 且 is_deleted=false
     data_conditions = json.dumps(
@@ -183,7 +181,7 @@ def test_data_filtering_with_metadata_filter(test_client):
     assert len(results) == 3  # Alice, Charlie, Eve
 
 
-def test_data_filtering_meta_endpoint(test_client):
+def test_data_filtering_meta_endpoint(test_client: TestClient):
     """測試 meta 端點的 data filtering"""
     # 測試年齡小於 30
     data_conditions = json.dumps([{"field_path": "age", "operator": "lt", "value": 30}])
@@ -201,7 +199,7 @@ def test_data_filtering_meta_endpoint(test_client):
         assert "updated_time" in meta
 
 
-def test_data_filtering_revision_info_endpoint(test_client):
+def test_data_filtering_revision_info_endpoint(test_client: TestClient):
     """測試 revision-info 端點的 data filtering"""
     # 測試部門是 HR
     data_conditions = json.dumps(
@@ -221,7 +219,7 @@ def test_data_filtering_revision_info_endpoint(test_client):
         assert "revision_id" in revision_info
 
 
-def test_data_filtering_full_endpoint(test_client):
+def test_data_filtering_full_endpoint(test_client: TestClient):
     """測試 full 端點的 data filtering"""
     # 測試薪水範圍 50000-75000
     data_conditions = json.dumps(
@@ -253,7 +251,7 @@ def test_data_filtering_full_endpoint(test_client):
         assert 50000.0 <= resource["data"]["salary"] <= 75000.0
 
 
-def test_data_filtering_invalid_json(test_client):
+def test_data_filtering_invalid_json(test_client: TestClient):
     """測試無效 JSON 格式"""
     # 提供無效的 JSON
     data_conditions = "invalid json"
@@ -263,7 +261,7 @@ def test_data_filtering_invalid_json(test_client):
     assert "Invalid data_conditions format" in response.json()["detail"]
 
 
-def test_data_filtering_invalid_operator(test_client):
+def test_data_filtering_invalid_operator(test_client: TestClient):
     """測試無效的操作符"""
     # 提供無效的操作符
     data_conditions = json.dumps(
@@ -281,7 +279,7 @@ def test_data_filtering_invalid_operator(test_client):
     assert "Invalid data_conditions format" in response.json()["detail"]
 
 
-def test_data_filtering_missing_field(test_client):
+def test_data_filtering_missing_field(test_client: TestClient):
     """測試缺少必要欄位"""
     # 缺少 field_path
     data_conditions = json.dumps([{"operator": "equals", "value": "Engineering"}])
@@ -291,7 +289,7 @@ def test_data_filtering_missing_field(test_client):
     assert "Invalid data_conditions format" in response.json()["detail"]
 
 
-def test_data_filtering_with_pagination(test_client):
+def test_data_filtering_with_pagination(test_client: TestClient):
     """測試 data filtering 與分頁結合"""
     # 測試部門是 Engineering，限制 2 個結果
     data_conditions = json.dumps(
@@ -307,7 +305,7 @@ def test_data_filtering_with_pagination(test_client):
     assert all(dept == "Engineering" for dept in departments)
 
 
-def test_data_filtering_empty_result(test_client):
+def test_data_filtering_empty_result(test_client: TestClient):
     """測試沒有匹配結果的情況"""
     # 測試不存在的部門
     data_conditions = json.dumps(
