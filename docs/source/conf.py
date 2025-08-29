@@ -24,7 +24,7 @@ except (ImportError, FileNotFoundError):
         "name": "AutoCRUD",
         "description": "自動生成 CRUD API 的 Python 庫",
         "authors": [{"name": "HYChou", "email": "hychou0515@gmail.com"}],
-        "keywords": ["crud", "api", "fastapi", "pydantic"],
+        "keywords": ["crud", "api", "fastapi", "msgspec"],
     }
 
 # 自動獲取版本號

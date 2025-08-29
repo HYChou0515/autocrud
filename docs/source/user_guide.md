@@ -11,7 +11,7 @@ AutoCRUD
 ├── 模型註冊 (add_model)
 ├── 路由生成 (apply) 
 ├── 存儲管理 (Storage)
-├── 序列化 (msgspec/pydantic)
+├── 序列化 (msgspec)
 └── 版本控制 (Versioning)
 ```
 

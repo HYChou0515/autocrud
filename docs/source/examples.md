@@ -219,7 +219,7 @@ python examples/schema_upgrade.py
 python examples/backup.py
 
 # 不同數據類型
-python examples/quick_start.py pydantic
+python examples/quick_start.py typeddict
 python examples/resource_crud.py dataclass
 
 # 開發服務器

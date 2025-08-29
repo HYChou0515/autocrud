@@ -191,7 +191,6 @@ class CreateRouteTemplate(BaseRouteTemplate):
                 **Request Body:**
                 - Send the resource data as JSON in the request body
                 - The data will be validated against the `{model_name}` schema
-                - Supports both Pydantic models and other data structures
 
                 **Response:**
                 - Returns revision information for the newly created resource
@@ -1346,15 +1345,7 @@ class MemoryStorageFactory(IStorageFactory):
     ) -> IStorage[T]:
         meta_store = MemoryMetaStore()
 
-        from pydantic import BaseModel
-
-        # 檢查是否是 Pydantic 模型
-        if issubclass(model, BaseModel):
-            # 對於 Pydantic 模型，使用 msgspec.Raw 來避免序列化問題
-            resource_store = MemoryResourceStore[msgspec.Raw](resource_type=msgspec.Raw)
-        else:
-            # 對於其他類型（msgspec.Struct, dataclass, TypedDict），使用原生支持
-            resource_store = MemoryResourceStore[T](resource_type=model)
+        resource_store = MemoryResourceStore[T](resource_type=model)
 
         return SimpleStorage(meta_store, resource_store)
 
@@ -1371,21 +1362,12 @@ class DiskStorageFactory(IStorageFactory):
     ) -> IStorage[T]:
         meta_store = DiskMetaStore(rootdir=self.rootdir / model_name / "meta")
 
-        from pydantic import BaseModel
-
-        # 檢查是否是 Pydantic 模型
-        if issubclass(model, BaseModel):
-            # 對於 Pydantic 模型，使用 msgspec.Raw 來避免序列化問題
-            resource_store = DiskResourceStore[msgspec.Raw](
-                resource_type=msgspec.Raw, rootdir=self.rootdir / model_name / "data"
-            )
-        else:
-            # 對於其他類型（msgspec.Struct, dataclass, TypedDict），使用原生支持
-            resource_store = DiskResourceStore[T](
-                resource_type=model,
-                rootdir=self.rootdir / model_name / "data",
-                migration=migration,
-            )
+        # 對於其他類型（msgspec.Struct, dataclass, TypedDict），使用原生支持
+        resource_store = DiskResourceStore[T](
+            resource_type=model,
+            rootdir=self.rootdir / model_name / "data",
+            migration=migration,
+        )
 
         return SimpleStorage(meta_store, resource_store)
 
@@ -1402,7 +1384,7 @@ class AutoCRUD:
     - **Version Control**: Built-in revision tracking for all resources with full history
     - **Soft Deletion**: Resources are marked as deleted rather than permanently removed
     - **Flexible Storage**: Support for both memory and disk-based storage backends
-    - **Model Agnostic**: Works with Pydantic models, msgspec Structs, and other data types
+    - **Model Agnostic**: Works with msgspec Structs, and other data types
     - **Customizable Routes**: Extensible route template system for custom endpoints
     - **Data Migration**: Built-in support for schema evolution and data migration
     - **Comprehensive Querying**: Advanced filtering, sorting, and pagination capabilities
@@ -1411,12 +1393,6 @@ class AutoCRUD:
     ```python
     from fastapi import FastAPI
     from autocrud import AutoCRUD
-    from pydantic import BaseModel
-
-    class User(BaseModel):
-        name: str
-        email: str
-        age: int
 
     # Create AutoCRUD instance
     autocrud = AutoCRUD()
@@ -1603,7 +1579,7 @@ class AutoCRUD:
         the model will have a complete set of CRUD API endpoints generated automatically.
 
         Args:
-            model: The data model class (Pydantic model, msgspec Struct, etc.).
+            model: The data model class (msgspec Struct, dataclasses, TypedDict).
             name: Custom resource name for URLs. If None, derived from model class name.
             storage_factory: Custom storage backend. If None, uses in-memory storage.
             id_generator: Custom function for generating resource IDs. If None, uses UUID4.

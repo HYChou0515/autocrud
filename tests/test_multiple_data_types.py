@@ -3,7 +3,6 @@
 import pytest
 from dataclasses import dataclass, asdict, is_dataclass
 from typing import Optional, TypedDict
-from pydantic import BaseModel
 import msgspec
 from fastapi import FastAPI, APIRouter
 from fastapi.testclient import TestClient
@@ -93,9 +92,7 @@ class TestCreateOperations:
     def test_crud_user(self, client: TestClient, user_data, endpoint):
         """測試創建用戶 - 統一測試所有數據類型"""
         # 將不同類型的對象轉換為字典形式供 JSON 序列化
-        if isinstance(user_data, BaseModel):  # Pydantic
-            json_data = user_data.model_dump()
-        elif is_dataclass(user_data):  # Dataclass
+        if is_dataclass(user_data):  # Dataclass
             json_data = asdict(user_data)
         elif isinstance(user_data, msgspec.Struct):  # Msgspec
             json_data = msgspec.to_builtins(user_data)

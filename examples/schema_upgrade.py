@@ -3,15 +3,9 @@ To see run test http methods, run
 ```
 python schema_upgrade.py
 ```
-To run test for pydantic model, run
-```
-python schema_upgrade.py pydantic
-```
 
 Model type choices are
 "msgspec", "dataclass", "typeddict"
-
-## Note: migration is not supported for pydantic
 
 """
 
@@ -33,7 +27,6 @@ if mode not in (
     "msgspec",
     "dataclass",
     "typeddict",
-    "pydantic",
 ):
     raise ValueError(f"Invalid mode: {mode}")
 
@@ -55,13 +48,6 @@ def get_after_user():
 
         @dataclass
         class User:
-            name: str
-            age: int
-
-    elif mode == "pydantic":
-        from pydantic import BaseModel
-
-        class User(BaseModel):
             name: str
             age: int
 
@@ -88,13 +74,6 @@ def get_before_user():
 
         @dataclass
         class User:
-            name: str
-            income: float
-
-    elif mode == "pydantic":
-        from pydantic import BaseModel
-
-        class User(BaseModel):
             name: str
             income: float
 

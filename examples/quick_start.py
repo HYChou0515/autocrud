@@ -8,13 +8,9 @@ To see run test http methods, run
 ```
 python quick_start.py
 ```
-To run test for pydantic model, run
-```
-python quick_start.py pydantic
-```
 
 Model type choices are
-"msgspec", "dataclass", "typeddict", "pydantic"
+"msgspec", "dataclass", "typeddict"
 
 """
 
@@ -29,7 +25,6 @@ if mode not in (
     "msgspec",
     "dataclass",
     "typeddict",
-    "pydantic",
 ):
     raise ValueError(f"Invalid mode: {mode}")
 
@@ -64,19 +59,6 @@ elif mode == "dataclass":
 
     @dataclass
     class TodoList:
-        items: list[TodoItem]
-        notes: str
-
-
-elif mode == "pydantic":
-    from pydantic import BaseModel
-
-    class TodoItem(BaseModel):
-        title: str
-        completed: bool
-        due: datetime
-
-    class TodoList(BaseModel):
         items: list[TodoItem]
         notes: str
 

@@ -103,7 +103,6 @@ AutoCRUD 會自動安裝：
 
 - `fastapi` (>=0.116.1) - Web 框架
 - `msgspec` (>=0.19.0) - 高速序列化
-- `pydantic` (>=2.11.7) - 資料驗證
 - `jsonpatch` (>=1.33) - JSON Patch 支援
 - `dependency-injector` (>=4.48.1) - 相依注入
 - `msgpack` (>=1.1.1) - 二進制序列化
