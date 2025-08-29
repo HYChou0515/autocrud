@@ -117,6 +117,7 @@ dev = [
     { name = "ruff" },
     { name = "sphinx" },
     { name = "sphinx-autodoc-typehints" },
+    { name = "sphinx-design" },
     { name = "twine" },
     { name = "uvicorn" },
 ]
@@ -163,6 +164,7 @@ dev = [
     { name = "ruff", specifier = ">=0.12.4" },
     { name = "sphinx", specifier = ">=8.2.3" },
     { name = "sphinx-autodoc-typehints", specifier = ">=3.2.0" },
+    { name = "sphinx-design", specifier = ">=0.6.1" },
     { name = "twine", specifier = ">=6.1.0" },
     { name = "uvicorn", specifier = ">=0.35.0" },
 ]
