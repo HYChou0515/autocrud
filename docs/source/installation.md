@@ -90,7 +90,6 @@ python -m fastapi dev examples/quick_start.py
 python examples/quick_start.py
 
 # 測試不同資料模型
-python examples/quick_start.py pydantic
 python examples/quick_start.py dataclass
 python examples/quick_start.py typeddict
 ```

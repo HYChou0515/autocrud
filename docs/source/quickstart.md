@@ -82,14 +82,6 @@ class User(Struct):
     age: int
 ```
 
-### Pydantic
-```python
-from pydantic import BaseModel
-class User(BaseModel):
-    name: str
-    age: int
-```
-
 ### dataclass
 ```python
 from dataclasses import dataclass
@@ -114,7 +106,6 @@ class User(TypedDict):
 python quick_start.py
 
 # 其他類型
-python quick_start.py pydantic
 python quick_start.py dataclass
 python quick_start.py typeddict
 

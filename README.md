@@ -8,7 +8,7 @@
 
 ## ✨ 特色功能
 
-- 🎯 **多數據類型支持**: TypedDict、Pydantic BaseModel、dataclass、msgspec.Struct
+- 🎯 **多數據類型支持**: TypedDict、dataclass、msgspec.Struct
 - ⚡ **零配置**: 一行代碼生成完整 CRUD API
 - 🔧 **高度可定制**: 靈活的路由模板和命名約定
 - 📚 **自動文檔**: 集成 Swagger/OpenAPI 文檔
@@ -28,7 +28,7 @@ uv add autocrud
 ### 5 分鐘創建 API
 
 ```python
-from pydantic import BaseModel
+from msgspec import Struct
 from fastapi import FastAPI, APIRouter
 from autocrud.crud.core import (
     AutoCRUD, CreateRouteTemplate, ReadRouteTemplate,
@@ -36,10 +36,10 @@ from autocrud.crud.core import (
 )
 
 # 定義數據模型
-class User(BaseModel):
+class User(Struct):
     name: str
     email: str
-    age: int = None
+    age: int = 0
 
 # 創建 AutoCRUD 實例
 crud = AutoCRUD(model_naming="kebab")
@@ -78,7 +78,6 @@ AutoCRUD 支持 Python 主流數據類型，你可以選擇最適合的：
 ```python
 from typing import TypedDict, Optional
 from dataclasses import dataclass
-from pydantic import BaseModel
 import msgspec
 
 # 1. TypedDict - 輕量級
@@ -87,11 +86,11 @@ class Product(TypedDict):
     price: float
     in_stock: bool
 
-# 2. Pydantic - 強驗證
-class User(BaseModel):
+# 2. msgspec.Struct - 高性能
+class User(msgspec.Struct):
     username: str
     email: str
-    age: Optional[int] = None
+    age: Optional[int] = 0
 
 # 3. dataclass - 原生支持
 @dataclass
@@ -100,7 +99,7 @@ class Order:
     items: list
     total: float = 0.0
 
-# 4. msgspec - 高性能
+# 4. msgspec - 靈活數據
 class Event(msgspec.Struct):
     type: str
     data: dict
@@ -119,13 +118,13 @@ crud.add_model(Event)     # /event
 
 ```python
 from dataclasses import dataclass
-from pydantic import BaseModel, EmailStr
+from msgspec import Struct
 from typing import List, Optional
 
-class Author(BaseModel):
+class Author(Struct):
     name: str
-    email: EmailStr
-    bio: Optional[str] = None
+    email: str
+    bio: Optional[str] = ""
 
 @dataclass
 class BlogPost:
@@ -147,19 +146,20 @@ crud.add_model(BlogPost)  # /blog-post
 ```python
 from decimal import Decimal
 from enum import Enum
+from msgspec import Struct
 
 class OrderStatus(str, Enum):
     PENDING = "pending"
     SHIPPED = "shipped"
     DELIVERED = "delivered"
 
-class Product(BaseModel):
+class Product(Struct):
     name: str
     price: Decimal
     stock: int
     category: str
 
-class Order(BaseModel):
+class Order(Struct):
     customer_id: str
     items: List[dict]
     status: OrderStatus = OrderStatus.PENDING

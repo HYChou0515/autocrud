@@ -4,7 +4,7 @@
 
 ## ✨ 特色
 
-- 🎯 **多數據類型**: msgspec.Struct, Pydantic, dataclass, TypedDict
+- 🎯 **多數據類型**: msgspec.Struct, dataclass, TypedDict
 - ⚡ **零配置**: 一行代碼生成完整 CRUD API  
 - 📚 **自動文檔**: 集成 OpenAPI/Swagger
 - 🔧 **高度可定制**: 靈活的路由和命名

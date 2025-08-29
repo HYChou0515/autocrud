@@ -41,27 +41,28 @@ crud.add_model(User)
 ```
 **優點**: 極快序列化、類型安全、內存效率
 
-### Pydantic BaseModel
+### dataclass
 
 ```python
-from pydantic import BaseModel, validator, Field
+from dataclasses import dataclass, field
+from typing import List
 
-class Product(BaseModel):
-    name: str = Field(..., min_length=1)
-    price: float = Field(..., gt=0)
+@dataclass
+class Product:
+    name: str
+    price: float
+    tags: List[str] = field(default_factory=list)
     
-    @validator('name')
-    def name_not_empty(cls, v):
-        if not v.strip():
+    def __post_init__(self):
+        if not self.name.strip():
             raise ValueError('名稱不能為空')
-        return v
+        if self.price <= 0:
+            raise ValueError('價格必須大於0')
 
 crud = AutoCRUD()
 crud.add_model(Product)
 ```
-**優點**: 強驗證、豐富生態
-
-### dataclass
+**優點**: Python 原生、簡潔、驗證靈活
 
 ```python
 from dataclasses import dataclass, field
