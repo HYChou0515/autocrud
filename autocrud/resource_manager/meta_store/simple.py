@@ -24,10 +24,10 @@ class MemoryMetaStore(IFastMetaStore):
         )
         self._store: dict[str, bytes] = {}
 
-    def __getitem__(self, pk: str) -> T:
+    def __getitem__(self, pk: str) -> ResourceMeta:
         return self._serializer.decode(self._store[pk])
 
-    def __setitem__(self, pk: str, b: T) -> None:
+    def __setitem__(self, pk: str, b: ResourceMeta) -> None:
         self._store[pk] = self._serializer.encode(b)
 
     def __delitem__(self, pk: str) -> None:

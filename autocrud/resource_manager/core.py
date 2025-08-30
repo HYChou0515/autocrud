@@ -74,19 +74,13 @@ class SimpleStorage(IStorage[T]):
     def encode_data(self, data: T) -> bytes:
         return self._resource_store.encode(data)
 
-    def dump_meta(self) -> Generator[tuple[str, ResourceMeta]]:
-        yield from self._meta_store.items()
+    def dump_meta(self) -> Generator[ResourceMeta]:
+        yield from self._meta_store.values()
 
     def dump_resource(self) -> Generator[Resource[T]]:
         for resource_id in self._resource_store.list_resources():
             for revision_id in self._resource_store.list_revisions(resource_id):
                 yield self._resource_store.get(resource_id, revision_id)
-
-    def load_meta(self, key: str, value: ResourceMeta) -> None:
-        self._meta_store[key] = value
-
-    def load_resource(self, value: Resource[T]) -> None:
-        self._resource_store.save(value)
 
 
 class _BuildRevMetaCreate(Struct):
@@ -369,16 +363,18 @@ class ResourceManager(IResourceManager[T], Generic[T]):
         return meta
 
     def dump(self) -> Generator[tuple[str, IO[bytes]]]:
-        for k, v in self.storage.dump_meta():
-            yield f"meta/{k}", self.meta_serializer.encode(v)
+        for meta in self.storage.dump_meta():
+            yield f"meta/{meta.resource_id}", self.meta_serializer.encode(meta)
         for resource in self.storage.dump_resource():
             yield f"data/{resource.info.uid}", self.resource_serializer.encode(resource)
 
     def load(self, key: str, bio: IO[bytes]) -> None:
         if key.startswith("meta/"):
-            self.storage.load_meta(key[5:], self.meta_serializer.decode(bio.read()))
+            self.storage.save_meta(self.meta_serializer.decode(bio.read()))
         elif key.startswith("data/"):
-            self.storage.load_resource(self.resource_serializer.decode(bio.read()))
+            self.storage.save_resource_revision(
+                self.resource_serializer.decode(bio.read())
+            )
 
     @cached_property
     def meta_serializer(self):
