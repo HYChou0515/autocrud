@@ -46,6 +46,9 @@ dev = [
     "ruff>=0.12.4",
     "pytest-asyncio>=1.1.0",
 ]
+s3 = [
+    "boto3>=1.40.21",
+]
 
 [project.urls]
 Homepage = "https://github.com/HYChou0515/autocrud"
@@ -55,6 +58,7 @@ Issues = "https://github.com/HYChou0515/autocrud/issues"
 
 [dependency-groups]
 dev = [
+    "boto3-stubs[full]>=1.40.21",
     "build>=1.2.2.post1",
     "coverage>=7.9.2",
     "faker>=37.5.3",

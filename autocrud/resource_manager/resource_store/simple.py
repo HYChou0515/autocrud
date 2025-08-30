@@ -46,16 +46,14 @@ class MemoryResourceStore(IResourceStore[T]):
 
     def get(self, resource_id: str, revision_id: str) -> Resource[T]:
         info = self.get_revision_info(resource_id, revision_id)
+        data_bytes = self._data_store[resource_id][revision_id]
         if (
             self.migration is None
             or info.schema_version == self.migration.schema_version
         ):
-            data = self._data_serializer.decode(
-                self._data_store[resource_id][revision_id]
-            )
+            data = self._data_serializer.decode(data_bytes)
         else:
             # For migration, we need to recreate the data from bytes
-            data_bytes = self._data_store[resource_id][revision_id]
             data_io = io.BytesIO(data_bytes)
             data = self.migration.migrate(data_io, info.schema_version)
             info.schema_version = self.migration.schema_version

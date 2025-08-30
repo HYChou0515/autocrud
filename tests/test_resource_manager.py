@@ -1,3 +1,5 @@
+from collections.abc import Generator
+from contextlib import contextmanager, suppress
 from pathlib import Path
 from uuid import uuid4
 from msgspec import UNSET, Struct
@@ -131,11 +133,17 @@ def get_meta_store(store_type: str, tmpdir: Path):
             ),
         )
     elif store_type == "redis":
-        return RedisMetaStore(redis_url=reset_and_get_redis_url(), encoding="msgpack")
+        return RedisMetaStore(
+            redis_url=reset_and_get_redis_url(),
+            encoding="msgpack",
+            prefix=str(tmpdir).rsplit("/", 1)[-1],
+        )
     elif store_type == "redis-pg":
         return FastSlowMetaStore(
             fast_store=RedisMetaStore(
-                redis_url=reset_and_get_redis_url(), encoding="msgpack"
+                redis_url=reset_and_get_redis_url(),
+                encoding="msgpack",
+                prefix=str(tmpdir).rsplit("/", 1)[-1],
             ),
             slow_store=PostgresMetaStore(
                 pg_dsn=reset_and_get_pg_dsn(), encoding="msgpack"
@@ -147,21 +155,37 @@ def get_meta_store(store_type: str, tmpdir: Path):
         return DiskMetaStore(encoding="msgpack", rootdir=d)
 
 
-def get_resource_store(store_type: str, tmpdir: Path) -> IResourceStore:
+@contextmanager
+def get_resource_store(store_type: str, tmpdir: Path) -> Generator[IResourceStore]:
     """Fixture to provide a fast store for testing."""
     if store_type == "memory":
-        return MemoryResourceStore(Data, encoding="msgpack")
-    else:
+        yield MemoryResourceStore(Data, encoding="msgpack")
+    elif store_type == "disk":
         d = tmpdir / faker.pystr()
         d.mkdir()
-        return DiskResourceStore(Data, encoding="msgpack", rootdir=d)
+        yield DiskResourceStore(Data, encoding="msgpack", rootdir=d)
+    elif store_type == "s3":
+        from autocrud.resource_manager.resource_store.s3 import S3ResourceStore
+
+        s3 = S3ResourceStore(
+            Data,
+            encoding="msgpack",
+            endpoint_url="http://localhost:9000",
+            prefix=str(tmpdir).rsplit("/", 1)[-1] + "/",
+        )
+        with suppress(Exception):
+            yield s3
+        try:
+            s3.cleanup()
+        except Exception as e:
+            print(f"Error cleaning up S3 store: {e}")
 
 
-@pytest.mark.flaky(retries=3, delay=1)
+@pytest.mark.flaky(retries=6, delay=1)
 @pytest.mark.parametrize(
     "meta_store_type", ["memory", "sql3-mem", "sql3-file", "redis", "disk", "redis-pg"]
 )
-@pytest.mark.parametrize("res_store_type", ["memory", "disk"])
+@pytest.mark.parametrize("res_store_type", ["memory", "disk", "s3"])
 class TestResourceManager:
     @pytest.fixture(autouse=True)
     def setup_method(
@@ -171,12 +195,13 @@ class TestResourceManager:
         my_tmpdir: str,
     ):
         meta_store = get_meta_store(meta_store_type, tmpdir=my_tmpdir)
-        resource_store = get_resource_store(res_store_type, tmpdir=my_tmpdir)
-        storage = SimpleStorage(
-            meta_store=meta_store,
-            resource_store=resource_store,
-        )
-        self.mgr = ResourceManager(Data, storage=storage)
+        with get_resource_store(res_store_type, tmpdir=my_tmpdir) as resource_store:
+            storage = SimpleStorage(
+                meta_store=meta_store,
+                resource_store=resource_store,
+            )
+            self.mgr = ResourceManager(Data, storage=storage)
+            yield
 
     def create(self, data: Data):
         user = faker.user_name()

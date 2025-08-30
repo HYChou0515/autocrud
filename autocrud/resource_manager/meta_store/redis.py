@@ -17,12 +17,14 @@ import redis
 
 
 class RedisMetaStore(IFastMetaStore):
-    def __init__(self, redis_url: str, encoding: Encoding = Encoding.json):
+    def __init__(
+        self, redis_url: str, encoding: Encoding = Encoding.json, prefix: str = ""
+    ):
         self._serializer = MsgspecSerializer(
             encoding=encoding, resource_type=ResourceMeta
         )
         self._redis = redis.Redis.from_url(redis_url)
-        self._key_prefix = "resource_meta:"
+        self._key_prefix = f"{prefix}resource_meta:"
 
     def _get_key(self, pk: str) -> str:
         return f"{self._key_prefix}{pk}"

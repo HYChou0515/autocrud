@@ -1,3 +1,4 @@
+from contextlib import suppress
 import datetime as dt
 import tempfile
 from pathlib import Path
@@ -15,6 +16,7 @@ from autocrud.resource_manager.basic import (
     RevisionInfo,
     RevisionStatus,
 )
+from autocrud.resource_manager.resource_store.s3 import S3ResourceStore
 from autocrud.resource_manager.resource_store.simple import (
     DiskResourceStore,
     MemoryResourceStore,
@@ -162,8 +164,21 @@ def tmpdir():
         yield Path(d)
 
 
-@pytest.mark.parametrize("store_type", ["memory", "disk"])
+@pytest.mark.parametrize("store_type", ["memory", "disk", "s3"])
 class TestResourceStoreMigration:
+    @pytest.fixture(autouse=True)
+    def cleanup(self, store_type: str, tmpdir: Path):
+        yield
+        if store_type == "s3":
+            s3 = S3ResourceStore(
+                Data,
+                encoding="msgpack",
+                endpoint_url="http://localhost:9000",
+                prefix=str(tmpdir).rsplit("/", 1)[-1] + "/",
+            )
+            with suppress(Exception):
+                s3.cleanup()
+
     def get_store_with_migration(
         self, store_type: str, tmpdir: Path = None, memory_store_to_copy=None
     ):
@@ -179,20 +194,35 @@ class TestResourceStoreMigration:
                 new_store._data_store = memory_store_to_copy._data_store.copy()
                 new_store._info_store = memory_store_to_copy._info_store.copy()
             return new_store
-        else:
+        elif store_type == "disk":
             rootdir = tmpdir / "test_store"
             return DiskResourceStore(
                 Data, encoding=Encoding.json, rootdir=rootdir, migration=migration
+            )
+        elif store_type == "s3":
+            return S3ResourceStore(
+                Data,
+                encoding=Encoding.json,
+                endpoint_url="http://localhost:9000",
+                prefix=str(tmpdir).rsplit("/", 1)[-1] + "/",
+                migration=migration,
             )
 
     def get_store_without_migration(self, store_type: str, tmpdir: Path = None):
         """Create a resource store without migration (for saving legacy data)"""
         if store_type == "memory":
             return MemoryResourceStore(LegacyData, encoding=Encoding.json)
-        else:
+        elif store_type == "disk":
             rootdir = tmpdir / "test_store"
             return DiskResourceStore(
                 LegacyData, encoding=Encoding.json, rootdir=rootdir
+            )
+        elif store_type == "s3":
+            return S3ResourceStore(
+                LegacyData,
+                encoding=Encoding.json,
+                endpoint_url="http://localhost:9000",
+                prefix=str(tmpdir).rsplit("/", 1)[-1] + "/",
             )
 
     def test_migration_on_get(self, store_type: str, tmpdir: Path):
@@ -263,13 +293,7 @@ class TestResourceStoreMigration:
         revision_id = "rev_001"
 
         # Create store without migration
-        if store_type == "memory":
-            store = MemoryResourceStore(LegacyData, encoding=Encoding.json)
-        else:
-            rootdir = tmpdir / "test_store"
-            store = DiskResourceStore(
-                LegacyData, encoding=Encoding.json, rootdir=rootdir
-            )
+        store = self.get_store_without_migration(store_type, tmpdir)
 
         # Save legacy data
         legacy_resource = create_legacy_resource(resource_id, revision_id)

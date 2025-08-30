@@ -197,7 +197,11 @@ class TestMetaStoreIterSearch:
                 client.flushall()
                 client.close()
 
-                return RedisMetaStore(redis_url=redis_url, encoding="msgpack")
+                return RedisMetaStore(
+                    redis_url=redis_url,
+                    encoding="msgpack",
+                    prefix=str(tmpdir).rsplit("/", 1)[-1],
+                )
             except Exception as e:
                 pytest.skip(f"Redis not available: {e}")
         elif store_type == "redis-pg":
@@ -227,7 +231,11 @@ class TestMetaStoreIterSearch:
                 pg_conn.close()
 
                 return FastSlowMetaStore(
-                    fast_store=RedisMetaStore(redis_url=redis_url, encoding="msgpack"),
+                    fast_store=RedisMetaStore(
+                        redis_url=redis_url,
+                        encoding="msgpack",
+                        prefix=str(tmpdir).rsplit("/", 1)[-1],
+                    ),
                     slow_store=PostgresMetaStore(pg_dsn=pg_dsn, encoding="msgpack"),
                 )
             except Exception as e:
