@@ -36,7 +36,7 @@ def permission_manager():
     meta_store = MemoryMetaStore()
     resource_store = MemoryResourceStore(Permission)
     storage = SimpleStorage(meta_store, resource_store)
-    return PermissionResourceManager(storage=storage)
+    return PermissionResourceManager(Permission, storage=storage)
 
 
 @pytest.fixture
@@ -55,7 +55,7 @@ class TestACLPermissions:
     """測試 ACL 權限管理"""
 
     def test_create_user_acl_permission(
-        self, permission_manager, admin_user, current_time
+        self, permission_manager: PermissionResourceManager, admin_user, current_time
     ):
         """測試創建用戶 ACL 權限"""
         pm = permission_manager
@@ -77,7 +77,7 @@ class TestACLPermissions:
             assert retrieved.data.effect == Effect.allow
 
     def test_create_service_acl_permission(
-        self, permission_manager, admin_user, current_time
+        self, permission_manager: PermissionResourceManager, admin_user, current_time
     ):
         """測試創建服務 ACL 權限"""
         pm = permission_manager
@@ -96,7 +96,7 @@ class TestACLPermissions:
             assert retrieved.data.action == "full_access"
 
     def test_create_deny_acl_permission(
-        self, permission_manager, admin_user, current_time
+        self, permission_manager: PermissionResourceManager, admin_user, current_time
     ):
         """測試創建拒絕 ACL 權限"""
         pm = permission_manager
@@ -117,7 +117,9 @@ class TestACLPermissions:
 class TestRBACPermissions:
     """測試 RBAC 權限管理"""
 
-    def test_create_role_membership(self, permission_manager, admin_user, current_time):
+    def test_create_role_membership(
+        self, permission_manager: PermissionResourceManager, admin_user, current_time
+    ):
         """測試創建角色成員關係"""
         pm = permission_manager
 
@@ -131,7 +133,7 @@ class TestRBACPermissions:
             assert retrieved.data.group == "group:admin"
 
     def test_multiple_group_membership(
-        self, permission_manager, admin_user, current_time
+        self, permission_manager: PermissionResourceManager, admin_user, current_time
     ):
         """測試用戶屬於多個群組"""
         pm = permission_manager
@@ -152,7 +154,9 @@ class TestRBACPermissions:
             assert retrieved1.data.group == "group:editor"
             assert retrieved2.data.group == "group:reviewer"
 
-    def test_group_acl_permissions(self, permission_manager, admin_user, current_time):
+    def test_group_acl_permissions(
+        self, permission_manager: PermissionResourceManager, admin_user, current_time
+    ):
         """測試群組 ACL 權限"""
         pm = permission_manager
 
@@ -192,7 +196,7 @@ class TestPermissionChecking:
             pm.create(group_perm)
 
     def test_direct_acl_permission_check(
-        self, permission_manager, admin_user, current_time
+        self, permission_manager: PermissionResourceManager, admin_user, current_time
     ):
         """測試直接 ACL 權限檢查"""
         pm = permission_manager
@@ -202,7 +206,9 @@ class TestPermissionChecking:
         result = pm.check_permission("user:alice", "get", "file:/docs/secret.txt")
         assert result is True
 
-    def test_rbac_permission_check(self, permission_manager, admin_user, current_time):
+    def test_rbac_permission_check(
+        self, permission_manager: PermissionResourceManager, admin_user, current_time
+    ):
         """測試 RBAC 權限檢查"""
         pm = permission_manager
         self.setup_test_permissions(pm, admin_user, current_time)
@@ -211,7 +217,9 @@ class TestPermissionChecking:
         result = pm.check_permission("user:alice", "full_access", "system:*")
         assert result is True
 
-    def test_no_permission_check(self, permission_manager, admin_user, current_time):
+    def test_no_permission_check(
+        self, permission_manager: PermissionResourceManager, admin_user, current_time
+    ):
         """測試無權限情況"""
         pm = permission_manager
         self.setup_test_permissions(pm, admin_user, current_time)
@@ -220,7 +228,9 @@ class TestPermissionChecking:
         result = pm.check_permission("user:unknown", "get", "file:test.txt")
         assert result is False
 
-    def test_deny_permission_check(self, permission_manager, admin_user, current_time):
+    def test_deny_permission_check(
+        self, permission_manager: PermissionResourceManager, admin_user, current_time
+    ):
         """測試拒絕權限"""
         pm = permission_manager
 
@@ -264,7 +274,7 @@ class TestPermissionSearch:
             pm.create(membership)
 
     def test_search_all_acl_permissions(
-        self, permission_manager, admin_user, current_time
+        self, permission_manager: PermissionResourceManager, admin_user, current_time
     ):
         """測試搜尋所有 ACL 權限"""
         pm = permission_manager
@@ -283,7 +293,7 @@ class TestPermissionSearch:
         assert len(results) == 3
 
     def test_search_user_permissions(
-        self, permission_manager, admin_user, current_time
+        self, permission_manager: PermissionResourceManager, admin_user, current_time
     ):
         """測試搜尋特定用戶權限"""
         pm = permission_manager
@@ -302,7 +312,7 @@ class TestPermissionSearch:
         assert len(results) == 2  # 1 ACL + 1 RoleMembership
 
     def test_search_group_permissions(
-        self, permission_manager, admin_user, current_time
+        self, permission_manager: PermissionResourceManager, admin_user, current_time
     ):
         """測試搜尋群組權限"""
         pm = permission_manager
@@ -330,7 +340,7 @@ class TestPermissionLifecycle:
     """測試權限生命週期管理"""
 
     def test_permission_crud_operations(
-        self, permission_manager, admin_user, current_time
+        self, permission_manager: PermissionResourceManager, admin_user, current_time
     ):
         """測試權限 CRUD 操作"""
         pm = permission_manager
@@ -363,7 +373,7 @@ class TestPermissionLifecycle:
             assert len(revisions) == 2
 
     def test_permission_soft_delete_restore(
-        self, permission_manager, admin_user, current_time
+        self, permission_manager: PermissionResourceManager, admin_user, current_time
     ):
         """測試權限軟刪除和恢復"""
         pm = permission_manager
@@ -392,7 +402,9 @@ class TestPolicyBehavior:
         meta_store = MemoryMetaStore()
         resource_store = MemoryResourceStore(Permission)
         storage = SimpleStorage(meta_store, resource_store)
-        pm = PermissionResourceManager(storage=storage, policy=Policy.strict)
+        pm = PermissionResourceManager(
+            Permission, storage=storage, policy=Policy.strict
+        )
 
         user = "test_admin"
         now = dt.datetime.now()
@@ -417,7 +429,9 @@ class TestPolicyBehavior:
         meta_store = MemoryMetaStore()
         resource_store = MemoryResourceStore(Permission)
         storage = SimpleStorage(meta_store, resource_store)
-        pm = PermissionResourceManager(storage=storage, policy=Policy.permissive)
+        pm = PermissionResourceManager(
+            Permission, storage=storage, policy=Policy.permissive
+        )
 
         user = "test_admin"
         now = dt.datetime.now()
@@ -437,7 +451,9 @@ class TestPolicyBehavior:
 class TestComplexScenarios:
     """測試複雜場景"""
 
-    def test_hierarchical_roles(self, permission_manager, admin_user, current_time):
+    def test_hierarchical_roles(
+        self, permission_manager: PermissionResourceManager, admin_user, current_time
+    ):
         """測試層級角色"""
         pm = permission_manager
 
@@ -463,7 +479,7 @@ class TestComplexScenarios:
         assert result is True
 
     def test_mixed_allow_deny_permissions(
-        self, permission_manager, admin_user, current_time
+        self, permission_manager: PermissionResourceManager, admin_user, current_time
     ):
         """測試混合允許和拒絕權限"""
         pm = permission_manager
@@ -493,7 +509,9 @@ class TestComplexScenarios:
         result = pm.check_permission("user:mixed", "get", "file:test.txt")
         assert result is False
 
-    def test_wildcard_patterns(self, permission_manager, admin_user, current_time):
+    def test_wildcard_patterns(
+        self, permission_manager: PermissionResourceManager, admin_user, current_time
+    ):
         """測試通配符模式匹配"""
         pm = permission_manager
 
@@ -515,7 +533,7 @@ class TestComplexScenarios:
         assert result is True
 
     def test_large_permission_set_performance(
-        self, permission_manager, admin_user, current_time
+        self, permission_manager: PermissionResourceManager, admin_user, current_time
     ):
         """測試大量權限的性能"""
         pm = permission_manager
@@ -574,7 +592,7 @@ class TestEdgeCases:
     """測試邊界情況"""
 
     def test_empty_subject_object_action(
-        self, permission_manager, admin_user, current_time
+        self, permission_manager: PermissionResourceManager, admin_user, current_time
     ):
         """測試空的 subject, object, action"""
         pm = permission_manager
@@ -590,7 +608,7 @@ class TestEdgeCases:
             assert retrieved.data.action == ""
 
     def test_circular_role_membership(
-        self, permission_manager, admin_user, current_time
+        self, permission_manager: PermissionResourceManager, admin_user, current_time
     ):
         """測試循環角色成員關係"""
         pm = permission_manager
@@ -616,7 +634,7 @@ class TestEdgeCases:
         assert result is True
 
     def test_special_characters_in_names(
-        self, permission_manager, admin_user, current_time
+        self, permission_manager: PermissionResourceManager, admin_user, current_time
     ):
         """測試名稱中的特殊字符"""
         pm = permission_manager

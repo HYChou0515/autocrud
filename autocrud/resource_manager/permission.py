@@ -1,12 +1,13 @@
+from typing import TypeVar
 from enum import Flag, StrEnum, auto
-from typing import Literal
 import msgspec
 
-from autocrud.resource_manager.core import ResourceManager
 from autocrud.resource_manager.basic import (
     DataSearchCondition,
     DataSearchOperator,
+    IPermissionResourceManager,
     Resource,
+    ResourceAction,
     ResourceMetaSearchSort,
     ResourceDataSearchSort,
     ResourceMetaSortDirection,
@@ -15,23 +16,9 @@ from autocrud.resource_manager.basic import (
     ResourceMetaSearchQuery,
     SpecialIndex,
 )
+from autocrud.resource_manager.core import ResourceManager
 
-ResourceAction = Literal[
-    "create",
-    "get",
-    "get_resource_revision",
-    "list_revisions",
-    "get_meta",
-    "search_resources",
-    "update",
-    "create_or_update",
-    "patch",
-    "switch",
-    "delete",
-    "restore",
-    "dump",
-    "load",
-]
+T = TypeVar("T")
 
 
 class Effect(StrEnum):
@@ -79,7 +66,7 @@ class RoleMembership(BasePermission):
 Permission = ACLPermission | RoleMembership
 
 
-class PermissionResourceManager(ResourceManager[Permission]):
+class PermissionResourceManager(ResourceManager, IPermissionResourceManager):
     """權限資源管理器 - 支援 ACL、RBAC、ABAC 統一管理"""
 
     def __init__(self, *args, policy: Policy = Policy.strict, **kwargs):
@@ -97,7 +84,6 @@ class PermissionResourceManager(ResourceManager[Permission]):
         kwargs.setdefault("indexed_fields", indexed_fields)
 
         super().__init__(
-            Permission,  # resource_type
             *args,
             **kwargs,
         )

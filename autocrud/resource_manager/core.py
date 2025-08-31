@@ -1,6 +1,6 @@
 from collections.abc import Callable, Generator
 from contextlib import contextmanager
-from functools import cached_property
+from functools import cached_property, wraps
 from typing import IO, TypeVar, Generic, Any, get_origin, get_args
 import datetime as dt
 from uuid import uuid4
@@ -15,6 +15,7 @@ from autocrud.resource_manager.basic import (
     Encoding,
     IMetaStore,
     IMigration,
+    IPermissionResourceManager,
     IResourceManager,
     IResourceStore,
     IStorage,
@@ -125,6 +126,20 @@ class _BuildResMetaUpdate(Struct):
     data: T
 
 
+def permission_check(method):
+    @wraps(method)
+    def _permission_check(self: "ResourceManager[T]", *method_args, **method_kwargs):
+        if self.permission_manager is not None:
+            self.permission_manager.check_permission(
+                self.user_ctx.get(),
+                method.__name__,
+                self.resource_name,
+            )
+        return method(self, *method_args, **method_kwargs)
+
+    return _permission_check
+
+
 class ResourceManager(IResourceManager[T], Generic[T]):
     def __init__(
         self,
@@ -134,6 +149,8 @@ class ResourceManager(IResourceManager[T], Generic[T]):
         id_generator: Callable[[], str] | None = None,
         migration: IMigration | None = None,
         indexed_fields: list[IndexableField] | None = None,
+        permission_manager: IPermissionResourceManager | None = None,
+        name: str | NamingFormat = NamingFormat.SNAKE,
     ):
         self.user_ctx = Ctx("user_ctx", strict_type=str)
         self.now_ctx = Ctx("now_ctx", strict_type=dt.datetime)
@@ -145,20 +162,28 @@ class ResourceManager(IResourceManager[T], Generic[T]):
         self.schema_version = UNSET if schema_version is None else schema_version
         self._indexed_fields = indexed_fields or []
 
-        _model_name = NameConverter(_get_type_name(resource_type)).to(
-            NamingFormat.SNAKE
-        )
+        if isinstance(name, NamingFormat):
+            self._resource_name = NameConverter(_get_type_name(resource_type)).to(
+                NamingFormat.SNAKE
+            )
+        else:
+            self._resource_name = name
 
         def default_id_generator():
-            return f"{_model_name}:{uuid4()}"
+            return f"{self._resource_name}:{uuid4()}"
 
         self.id_generator = (
             default_id_generator if id_generator is None else id_generator
         )
+        self.permission_manager = permission_manager
 
     @property
     def resource_type(self):
         return self._resource_type
+
+    @property
+    def resource_name(self):
+        return self._resource_name
 
     @property
     def indexed_fields(self) -> list[IndexableField]:
@@ -292,6 +317,7 @@ class ResourceManager(IResourceManager[T], Generic[T]):
         meta = self.storage.get_meta(resource_id)
         return meta
 
+    @permission_check
     def get_meta(self, resource_id: str) -> ResourceMeta:
         meta = self._get_meta_no_check_is_deleted(resource_id)
         if meta.is_deleted:

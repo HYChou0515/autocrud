@@ -38,6 +38,7 @@ from autocrud.resource_manager.data_converter import (
     decode_json_to_data,
 )
 from autocrud.resource_manager.meta_store.simple import DiskMetaStore, MemoryMetaStore
+from autocrud.resource_manager.permission import Permission, PermissionResourceManager
 from autocrud.resource_manager.resource_store.simple import (
     DiskResourceStore,
     MemoryResourceStore,
@@ -1505,6 +1506,7 @@ class AutoCRUD:
         | Callable[[type], str] = "kebab",
         route_templates: list[IRouteTemplate] | None = None,
         storage_factory: IStorageFactory | None = None,
+        admin: str | None = None,
     ):
         if storage_factory is None:
             self.storage_factory = MemoryStorageFactory()
@@ -1527,6 +1529,10 @@ class AutoCRUD:
             else route_templates
         )
         self.route_templates.sort()
+        self.permission_manager = PermissionResourceManager(
+            Permission,
+            storage=self.storage_factory.build(Permission, "permission"),
+        )
 
     def _resource_name(self, model: type[T]) -> str:
         """Convert model class name to resource name using the configured naming convention.

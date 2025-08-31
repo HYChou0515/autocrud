@@ -5,6 +5,7 @@ from enum import Enum, StrEnum
 import functools
 from typing import IO, TypeVar, Generic, Any
 import datetime as dt
+from typing_extensions import Literal
 from uuid import UUID
 from msgspec import UNSET, Struct, UnsetType
 from abc import ABC, abstractmethod
@@ -157,6 +158,10 @@ class RevisionIDNotFoundError(RevisionNotFoundError):
         self.revision_id = revision_id
 
 
+class PermissionDeniedError(Exception):
+    pass
+
+
 class IMigration(ABC):
     @abstractmethod
     def migrate(self, data: IO[bytes], schema_version: str | None) -> T: ...
@@ -169,6 +174,10 @@ class IResourceManager(ABC, Generic[T]):
     @property
     @abstractmethod
     def resource_type(self) -> type[T]: ...
+
+    @property
+    @abstractmethod
+    def resource_name(self) -> str: ...
 
     @abstractmethod
     def meta_provide(
@@ -578,6 +587,30 @@ class IResourceManager(ABC, Generic[T]):
         Note: This method should be used in conjunction with dump() for
         complete backup and restore workflows.
         """
+
+
+ResourceAction = Literal[
+    "create",
+    "get",
+    "get_resource_revision",
+    "list_revisions",
+    "get_meta",
+    "search_resources",
+    "update",
+    "patch",
+    "switch",
+    "delete",
+    "restore",
+    "dump",
+    "load",
+]
+
+
+class IPermissionResourceManager(IResourceManager):
+    @abstractmethod
+    def check_permission(
+        self, user: str, action: ResourceAction | str, resource: str
+    ) -> bool: ...
 
 
 class Ctx(Generic[T]):
