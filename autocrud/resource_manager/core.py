@@ -1,11 +1,12 @@
 from collections.abc import Callable, Generator
 from contextlib import contextmanager
 from functools import cached_property
-from typing import IO, TypeVar, Generic, Any
+from typing import IO, TypeVar, Generic, Any, get_origin, get_args
 import datetime as dt
 from uuid import uuid4
 from msgspec import UNSET, Struct, UnsetType
 from jsonpatch import JsonPatch
+import msgspec
 from xxhash import xxh3_128_hexdigest
 
 
@@ -27,12 +28,33 @@ from autocrud.resource_manager.basic import (
     RevisionInfo,
     RevisionStatus,
     IndexableField,
+    SpecialIndex,
 )
 from autocrud.resource_manager.data_converter import DataConverter
 from autocrud.util.naming import NameConverter, NamingFormat
 
 
 T = TypeVar("T")
+
+
+def _get_type_name(resource_type) -> str:
+    """取得類型名稱，處理 Union 類型"""
+    if hasattr(resource_type, "__name__"):
+        return resource_type.__name__
+
+    # 處理 Union 類型
+    origin = get_origin(resource_type)
+    if origin is not None:
+        args = get_args(resource_type)
+        if args:
+            # 使用第一個類型的名稱，或者創建一個組合名稱
+            first_type = args[0]
+            if hasattr(first_type, "__name__"):
+                return f"{first_type.__name__}Union"
+        return "UnionType"
+
+    # 後備方案
+    return str(resource_type).replace(" ", "").replace("|", "Or")
 
 
 class SimpleStorage(IStorage[T]):
@@ -123,7 +145,9 @@ class ResourceManager(IResourceManager[T], Generic[T]):
         self.schema_version = UNSET if schema_version is None else schema_version
         self._indexed_fields = indexed_fields or []
 
-        _model_name = NameConverter(resource_type.__name__).to(NamingFormat.SNAKE)
+        _model_name = NameConverter(_get_type_name(resource_type)).to(
+            NamingFormat.SNAKE
+        )
 
         def default_id_generator():
             return f"{_model_name}:{uuid4()}"
@@ -146,8 +170,11 @@ class ResourceManager(IResourceManager[T], Generic[T]):
         indexed_data = {}
         for field in self._indexed_fields:
             try:
-                # 使用 JSON path 提取值
-                value = self._extract_by_path(data, field.field_path)
+                if field.field_type == SpecialIndex.msgspec_tag:
+                    value = msgspec.inspect.type_info(type(data)).tag
+                else:
+                    # 使用 JSON path 提取值
+                    value = self._extract_by_path(data, field.field_path)
                 indexed_data[field.field_path] = value
             except Exception:
                 # 如果提取失敗，跳過該字段

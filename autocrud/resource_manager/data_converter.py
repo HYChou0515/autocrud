@@ -1,20 +1,9 @@
-import dataclasses
-from enum import StrEnum
 from typing import Any, TypeVar
-from msgspec import Struct
 import json
-from typing import is_typeddict
 import msgspec
 
 
 T = TypeVar("T")
-
-
-class ResourceBaseType(StrEnum):
-    MSGSPEC = "msgspec"
-    DATACLASS = "dataclass"
-    TYPEDDICT = "typeddict"
-    UNKNOWN = "unknown"
 
 
 class DataConverter:
@@ -22,14 +11,6 @@ class DataConverter:
 
     def __init__(self, resource_type: type[T]):
         self.resource_type = resource_type
-        if dataclasses.is_dataclass(resource_type):
-            self.base_type = ResourceBaseType.DATACLASS
-        elif issubclass(resource_type, Struct):
-            self.base_type = ResourceBaseType.MSGSPEC
-        elif is_typeddict(resource_type):
-            self.base_type = ResourceBaseType.TYPEDDICT
-        else:
-            self.base_type = ResourceBaseType.UNKNOWN
 
     def decode_json_to_data(self, json_bytes: bytes) -> msgspec.Raw | T:
         """將 JSON bytes 轉換為指定類型的數據"""
@@ -47,20 +28,6 @@ class DataConverter:
 
     def builtins_to_data(self, obj: Any) -> msgspec.Raw | T:
         return msgspec.convert(obj, self.resource_type)
-
-    def set_data_value(self, obj: T | msgspec.Raw, key: str, value: Any):
-        if self.base_type is ResourceBaseType.MSGSPEC:
-            setattr(obj, key, value)
-            return obj
-        if self.base_type is ResourceBaseType.DATACLASS:
-            setattr(obj, key, value)
-            return obj
-        if self.base_type is ResourceBaseType.TYPEDDICT:
-            obj[key] = value
-            return obj
-        # Unknown
-        setattr(obj, key, value)
-        return obj
 
 
 def decode_json_to_data(json_bytes: bytes, resource_type: type):

@@ -1,7 +1,7 @@
 from collections.abc import Generator, Iterable, MutableMapping
 from contextlib import AbstractContextManager, contextmanager
 from contextvars import ContextVar
-from enum import StrEnum
+from enum import Enum, StrEnum
 import functools
 from typing import IO, TypeVar, Generic, Any
 import datetime as dt
@@ -1417,11 +1417,17 @@ class IStorage(ABC, Generic[T]):
 # Data Search Related Classes
 
 
+class SpecialIndex(Enum):
+    msgspec_tag = "msgspec_tag"
+
+
 class IndexableField(Struct, kw_only=True):
     """Defines a field that should be indexed for searching."""
 
     field_path: str  # JSON path to the field, e.g., "name", "user.email"
-    field_type: type  # The type of the field (str, int, float, bool, datetime)
+    field_type: (
+        type | SpecialIndex
+    )  # The type of the field (str, int, float, bool, datetime)
 
 
 class UnifiedSortKey(StrEnum):
