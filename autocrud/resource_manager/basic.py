@@ -699,6 +699,10 @@ def _match_data_condition(
     elif condition.operator == DataSearchOperator.less_than_or_equal:
         return field_value is not None and field_value <= condition.value
     elif condition.operator == DataSearchOperator.contains:
+        # 特殊處理：如果 field_value 是列表，檢查 condition.value 是否在列表中
+        if isinstance(field_value, list):
+            return condition.value in field_value
+        # 標準字符串包含檢查
         return field_value is not None and str(condition.value) in str(field_value)
     elif condition.operator == DataSearchOperator.starts_with:
         return field_value is not None and str(field_value).startswith(
