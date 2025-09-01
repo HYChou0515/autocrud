@@ -11,8 +11,8 @@ import textwrap
 from typing import IO, Generic, Literal, TypeVar
 import datetime as dt
 from msgspec import UNSET
-from fastapi.openapi.utils import get_openapi
 from pathlib import Path
+from fastapi.openapi.utils import get_openapi
 
 from fastapi import APIRouter, FastAPI, HTTPException, Request, Query, Depends, Response
 import msgspec
@@ -1694,31 +1694,38 @@ class AutoCRUD:
         self.resource_managers[model_name] = resource_manager
 
     def openapi(self, app: FastAPI):
-        def _openapi():
-            if app.openapi_schema:
-                return app.openapi_schema
-            openapi_schema = get_openapi(
-                version="3.1.0",
-                title=app.title,
-                routes=app.routes,
-            )
-            openapi_schema["components"]["schemas"] |= jsonschema_to_openapi(
-                [
-                    ResourceMeta,
-                    RevisionInfo,
-                    RevisionListResponse,
-                    *[rm.resource_type for rm in self.resource_managers.values()],
-                    *[
-                        FullResourceResponse[rm.resource_type]
-                        for rm in self.resource_managers.values()
-                    ],
-                ]
-            )[1]
+        # Handle root_path by setting servers if not already set
+        servers = app.servers
+        if app.root_path and not servers:
+            servers = [{"url": app.root_path}]
 
-            app.openapi_schema = openapi_schema
-            return app.openapi_schema
-
-        app.openapi = _openapi
+        app.openapi_schema = get_openapi(
+            title=app.title,
+            version=app.version,
+            openapi_version=app.openapi_version,
+            summary=app.summary,
+            description=app.description,
+            terms_of_service=app.terms_of_service,
+            contact=app.contact,
+            license_info=app.license_info,
+            routes=app.routes,
+            webhooks=app.webhooks.routes,
+            tags=app.openapi_tags,
+            servers=servers,
+            separate_input_output_schemas=app.separate_input_output_schemas,
+        )
+        app.openapi_schema["components"]["schemas"] |= jsonschema_to_openapi(
+            [
+                ResourceMeta,
+                RevisionInfo,
+                RevisionListResponse,
+                *[rm.resource_type for rm in self.resource_managers.values()],
+                *[
+                    FullResourceResponse[rm.resource_type]
+                    for rm in self.resource_managers.values()
+                ],
+            ]
+        )[1]
 
     def apply(self, router: APIRouter) -> APIRouter:
         """Apply all route templates to generate API endpoints on the given router.

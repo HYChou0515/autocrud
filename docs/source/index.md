@@ -4,7 +4,7 @@
 
 ## ✨ 特色
 
-- 🎯 **多數據類型**: msgspec.Struct, dataclass, TypedDict
+- 🎯 **多數據類型**: msgspec.Struct, Pydantic, dataclass, TypedDict
 - ⚡ **零配置**: 一行代碼生成完整 CRUD API  
 - 📚 **自動文檔**: 集成 OpenAPI/Swagger
 - 🔧 **高度可定制**: 靈活的路由和命名
@@ -58,6 +58,32 @@ print(result.json())
 ```
 
 **啟動開發服務器:**
+
+```bash
+python -m fastapi dev main.py
+```
+
+訪問 http://localhost:8000/docs 查看自動生成的 API 文檔。
+
+## 📚 完整文檔導航
+
+```{toctree}
+:maxdepth: 2
+:caption: 目錄
+
+quickstart
+examples  
+user_guide
+installation
+api_reference
+```
+
+## 🔗 快速連結
+
+- {doc}`quickstart` - 5分鐘入門
+- {doc}`examples` - **完整程式碼範例**
+- {doc}`api_reference` - **完整原始碼**
+- {doc}`user_guide` - 進階功能
 ```bash
 python -m fastapi dev your_file.py
 ```

@@ -15,6 +15,12 @@ Model type choices are
 """
 
 import sys
+from datetime import datetime, timedelta
+
+from fastapi.testclient import TestClient
+from autocrud import AutoCRUD
+from fastapi import FastAPI
+
 
 if len(sys.argv) >= 2:
     mode = sys.argv[1]
@@ -27,13 +33,6 @@ if mode not in (
     "typeddict",
 ):
     raise ValueError(f"Invalid mode: {mode}")
-
-
-from datetime import datetime, timedelta
-
-from fastapi.testclient import TestClient
-from autocrud import AutoCRUD
-from fastapi import FastAPI
 
 
 if mode == "msgspec":
