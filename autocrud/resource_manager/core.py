@@ -1,13 +1,16 @@
 from collections.abc import Callable, Generator
 from contextlib import contextmanager
 from functools import cached_property, wraps
-from typing import IO, TypeVar, Generic, Any, get_origin, get_args
+from typing import IO, TypeVar, Generic, Any, get_origin, get_args, TYPE_CHECKING
 import datetime as dt
 from uuid import uuid4
 from msgspec import UNSET, Struct, UnsetType
 from jsonpatch import JsonPatch
 import msgspec
 from xxhash import xxh3_128_hexdigest
+
+if TYPE_CHECKING:
+    from autocrud.resource_manager.permission_context import IPermissionChecker
 
 
 from autocrud.resource_manager.basic import (
@@ -127,6 +130,7 @@ class _BuildResMetaUpdate(Struct):
 
 
 def permission_check(method):
+    """向後相容的權限檢查裝飾器 - 使用舊的簡單檢查方式"""
     @wraps(method)
     def _permission_check(self: "ResourceManager[T]", *method_args, **method_kwargs):
         if self.permission_manager is not None:
@@ -140,6 +144,73 @@ def permission_check(method):
     return _permission_check
 
 
+def smart_permission_check(
+    action: str | None = None,
+    extract_resource_id: bool = True,
+    **extra_context
+):
+    """
+    智能權限檢查裝飾器 - 支援新的上下文模式
+    
+    Args:
+        action: 權限動作，如果為 None 則使用方法名
+        extract_resource_id: 是否從方法參數中提取 resource_id
+        **extra_context: 額外的上下文資料
+    """
+    def decorator(method):
+        @wraps(method)
+        def _permission_check(self: "ResourceManager[T]", *method_args, **method_kwargs):
+            # 如果沒有權限檢查器，回退到舊方式
+            if not hasattr(self, 'permission_checker') or self.permission_checker is None:
+                if self.permission_manager is not None:
+                    self.permission_manager.check_permission(
+                        self.user_ctx.get(),
+                        action or method.__name__,
+                        self.resource_name,
+                    )
+                return method(self, *method_args, **method_kwargs)
+            
+            # 使用新的上下文模式
+            from autocrud.resource_manager.permission_context import PermissionContext, PermissionResult
+            from autocrud.resource_manager.basic import PermissionDeniedError
+            
+            # 建構權限上下文
+            action_name = action or method.__name__
+            resource_id = None
+            
+            if extract_resource_id and method_args:
+                # 嘗試從第一個參數提取 resource_id
+                first_arg = method_args[0]
+                if isinstance(first_arg, str):
+                    resource_id = first_arg
+            
+            context = PermissionContext(
+                user=self.user_ctx.get(),
+                action=action_name,
+                resource_name=self.resource_name,
+                resource_id=resource_id,
+                method_name=method.__name__,
+                method_args=method_args,
+                method_kwargs=method_kwargs,
+                extra_data=extra_context,
+            )
+            
+            # 執行權限檢查
+            result = self.permission_checker.check_permission(context)
+            
+            if result == PermissionResult.DENY:
+                raise PermissionDeniedError(
+                    f"Permission denied for user '{context.user}' "
+                    f"to perform '{context.action}' on '{context.resource_name}'"
+                    + (f" (resource_id: {context.resource_id})" if context.resource_id else "")
+                )
+            
+            return method(self, *method_args, **method_kwargs)
+        
+        return _permission_check
+    return decorator
+
+
 class ResourceManager(IResourceManager[T], Generic[T]):
     def __init__(
         self,
@@ -150,6 +221,7 @@ class ResourceManager(IResourceManager[T], Generic[T]):
         migration: IMigration | None = None,
         indexed_fields: list[IndexableField] | None = None,
         permission_manager: IPermissionResourceManager | None = None,
+        permission_checker: "IPermissionChecker | None" = None,
         name: str | NamingFormat = NamingFormat.SNAKE,
     ):
         self.user_ctx = Ctx("user_ctx", strict_type=str)
@@ -176,6 +248,16 @@ class ResourceManager(IResourceManager[T], Generic[T]):
             default_id_generator if id_generator is None else id_generator
         )
         self.permission_manager = permission_manager
+        
+        # 設定權限檢查器
+        if permission_checker is not None:
+            self.permission_checker = permission_checker
+        elif permission_manager is not None:
+            # 如果只有 permission_manager，建立預設檢查器
+            from autocrud.resource_manager.permission_context import DefaultPermissionChecker
+            self.permission_checker = DefaultPermissionChecker(permission_manager)
+        else:
+            self.permission_checker = None
 
     @property
     def resource_type(self):
@@ -317,16 +399,18 @@ class ResourceManager(IResourceManager[T], Generic[T]):
         meta = self.storage.get_meta(resource_id)
         return meta
 
-    @permission_check
+    @smart_permission_check(extract_resource_id=True)
     def get_meta(self, resource_id: str) -> ResourceMeta:
         meta = self._get_meta_no_check_is_deleted(resource_id)
         if meta.is_deleted:
             raise ResourceIsDeletedError(resource_id)
         return meta
 
+    @smart_permission_check(action="search_resources", extract_resource_id=False)
     def search_resources(self, query: ResourceMetaSearchQuery) -> list[ResourceMeta]:
         return self.storage.search(query)
 
+    @smart_permission_check(extract_resource_id=False)
     def create(self, data: T) -> RevisionInfo:
         info = self._rev_info(_BuildRevMetaCreate(data))
         resource = Resource(
@@ -337,17 +421,21 @@ class ResourceManager(IResourceManager[T], Generic[T]):
         self.storage.save_meta(self._res_meta(_BuildResMetaCreate(info, data)))
         return info
 
+    @smart_permission_check(extract_resource_id=True)
     def get(self, resource_id: str) -> Resource[T]:
         meta = self.get_meta(resource_id)
         return self.get_resource_revision(resource_id, meta.current_revision_id)
 
+    @smart_permission_check(extract_resource_id=True)
     def get_resource_revision(self, resource_id: str, revision_id: str) -> Resource[T]:
         obj = self.storage.get_resource_revision(resource_id, revision_id)
         return obj
 
+    @smart_permission_check(extract_resource_id=True)
     def list_revisions(self, resource_id: str) -> list[str]:
         return self.storage.list_revisions(resource_id)
 
+    @smart_permission_check(extract_resource_id=True)
     def update(self, resource_id: str, data: T) -> RevisionInfo:
         prev_res_meta = self.get_meta(resource_id)
         prev_info = self.storage.get_resource_revision_info(

@@ -69,7 +69,7 @@ Permission = ACLPermission | RoleMembership
 class PermissionResourceManager(ResourceManager, IPermissionResourceManager):
     """權限資源管理器 - 支援 ACL、RBAC、ABAC 統一管理"""
 
-    def __init__(self, *args, policy: Policy = Policy.strict, **kwargs):
+    def __init__(self, resource_type=Permission, *, policy: Policy = Policy.strict, **kwargs):
         # 定義需要建立索引的欄位，以支援高效查詢
         indexed_fields = [
             IndexableField(field_path="type", field_type=SpecialIndex.msgspec_tag),
@@ -84,7 +84,7 @@ class PermissionResourceManager(ResourceManager, IPermissionResourceManager):
         kwargs.setdefault("indexed_fields", indexed_fields)
 
         super().__init__(
-            *args,
+            resource_type,
             **kwargs,
         )
         self.policy = policy
