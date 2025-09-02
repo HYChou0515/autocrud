@@ -5,7 +5,6 @@ from enum import Enum, Flag, StrEnum, auto
 import functools
 from typing import IO, TypeVar, Generic, Any
 import datetime as dt
-from typing_extensions import Literal
 from uuid import UUID
 from msgspec import UNSET, Struct, UnsetType
 from abc import ABC, abstractmethod
@@ -50,7 +49,7 @@ class ResourceMeta(Struct, kw_only=True):
     is_deleted: bool = False
 
     # 新增：存儲被索引的 data 欄位值
-    indexed_data: dict[str, Any]
+    indexed_data: dict[str, Any] | UnsetType = UNSET
 
 
 class ResourceMetaSortKey(StrEnum):
@@ -588,29 +587,31 @@ class IResourceManager(ABC, Generic[T]):
         complete backup and restore workflows.
         """
 
+
 class ResourceAction(Flag):
-    create=auto()
-    get=auto()
-    get_resource_revision=auto()
-    list_revisions=auto()
-    get_meta=auto()
-    search_resources=auto()
-    update=auto()
-    patch=auto()
-    switch=auto()
-    delete=auto()
-    restore=auto()
-    dump=auto()
-    load=auto()
+    create = auto()
+    get = auto()
+    get_resource_revision = auto()
+    list_revisions = auto()
+    get_meta = auto()
+    search_resources = auto()
+    update = auto()
+    patch = auto()
+    switch = auto()
+    delete = auto()
+    restore = auto()
+    dump = auto()
+    load = auto()
 
     create_or_update = create | update
 
     read = get | get_meta | get_resource_revision | list_revisions
-    read_list =  search_resources
+    read_list = search_resources
     write = create | update | patch
     lifecycle = switch | delete | restore
     backup = dump | load
     full = read | read_list | write | lifecycle | backup
+    owner = update | switch | restore | delete | patch
 
 
 class IPermissionResourceManager(IResourceManager):

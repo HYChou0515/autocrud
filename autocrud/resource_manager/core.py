@@ -132,6 +132,7 @@ class _BuildResMetaUpdate(Struct):
 
 def permission_check(method):
     """向後相容的權限檢查裝飾器 - 使用舊的簡單檢查方式"""
+
     @wraps(method)
     def _permission_check(self: "ResourceManager[T]", *method_args, **method_kwargs):
         if self.permission_manager is not None:
@@ -148,18 +149,25 @@ def permission_check(method):
 def smart_permission_check():
     """
     智能權限檢查裝飾器 - 支援新的上下文模式
-    
+
     Args:
         action: 權限動作，如果為 None 則使用方法名
         extract_resource_id: 是否從方法參數中提取 resource_id
         **extra_context: 額外的上下文資料
     """
+
     def decorator(method):
         action = ResourceAction[method.__name__]
+
         @wraps(method)
-        def _permission_check(self: "ResourceManager[T]", *method_args, **method_kwargs):
+        def _permission_check(
+            self: "ResourceManager[T]", *method_args, **method_kwargs
+        ):
             # 如果沒有權限檢查器，回退到舊方式
-            if not hasattr(self, 'permission_checker') or self.permission_checker is None:
+            if (
+                not hasattr(self, "permission_checker")
+                or self.permission_checker is None
+            ):
                 if self.permission_manager is not None:
                     self.permission_manager.check_permission(
                         self.user_ctx.get(),
@@ -167,11 +175,14 @@ def smart_permission_check():
                         self.resource_name,
                     )
                 return method(self, *method_args, **method_kwargs)
-            
+
             # 使用新的上下文模式
-            from autocrud.resource_manager.permission_context import PermissionContext, PermissionResult
+            from autocrud.resource_manager.permission_context import (
+                PermissionContext,
+                PermissionResult,
+            )
             from autocrud.resource_manager.basic import PermissionDeniedError
-            
+
             context = PermissionContext(
                 user=self.user_ctx.get(),
                 now=self.now_ctx.get(),
@@ -180,19 +191,20 @@ def smart_permission_check():
                 method_args=method_args,
                 method_kwargs=method_kwargs,
             )
-            
+
             # 執行權限檢查
             result = self.permission_checker.check_permission(context)
-            
+
             if result == PermissionResult.DENY:
                 raise PermissionDeniedError(
                     f"Permission denied for user '{context.user}' "
                     f"to perform '{context.action}' on '{context.resource_name}'"
                 )
-            
+
             return method(self, *method_args, **method_kwargs)
-        
+
         return _permission_check
+
     return decorator
 
 
@@ -233,13 +245,16 @@ class ResourceManager(IResourceManager[T], Generic[T]):
             default_id_generator if id_generator is None else id_generator
         )
         self.permission_manager = permission_manager
-        
+
         # 設定權限檢查器
         if permission_checker is not None:
             self.permission_checker = permission_checker
         elif permission_manager is not None:
             # 如果只有 permission_manager，建立預設檢查器
-            from autocrud.resource_manager.permission_context import DefaultPermissionChecker
+            from autocrud.resource_manager.permission_context import (
+                DefaultPermissionChecker,
+            )
+
             self.permission_checker = DefaultPermissionChecker(permission_manager)
         else:
             self.permission_checker = None
