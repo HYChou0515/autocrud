@@ -145,11 +145,7 @@ def permission_check(method):
     return _permission_check
 
 
-def smart_permission_check(
-    action: str | None = None,
-    extract_resource_id: bool = True,
-    **extra_context
-):
+def smart_permission_check():
     """
     智能權限檢查裝飾器 - 支援新的上下文模式
     
@@ -159,6 +155,7 @@ def smart_permission_check(
         **extra_context: 額外的上下文資料
     """
     def decorator(method):
+        action = ResourceAction[method.__name__]
         @wraps(method)
         def _permission_check(self: "ResourceManager[T]", *method_args, **method_kwargs):
             # 如果沒有權限檢查器，回退到舊方式
@@ -166,7 +163,7 @@ def smart_permission_check(
                 if self.permission_manager is not None:
                     self.permission_manager.check_permission(
                         self.user_ctx.get(),
-                        action or method.__name__,
+                        action,
                         self.resource_name,
                     )
                 return method(self, *method_args, **method_kwargs)
@@ -175,25 +172,12 @@ def smart_permission_check(
             from autocrud.resource_manager.permission_context import PermissionContext, PermissionResult
             from autocrud.resource_manager.basic import PermissionDeniedError
             
-            # 建構權限上下文
-            action_name = action or method.__name__
-            resource_id = None
-            
-            if extract_resource_id and method_args:
-                # 嘗試從第一個參數提取 resource_id
-                first_arg = method_args[0]
-                if isinstance(first_arg, str):
-                    resource_id = first_arg
-            
             context = PermissionContext(
                 user=self.user_ctx.get(),
-                action=ResourceAction[action_name],
+                action=action,
                 resource_name=self.resource_name,
-                resource_id=resource_id,
-                method_name=method.__name__,
                 method_args=method_args,
                 method_kwargs=method_kwargs,
-                extra_data=extra_context,
             )
             
             # 執行權限檢查
@@ -203,7 +187,6 @@ def smart_permission_check(
                 raise PermissionDeniedError(
                     f"Permission denied for user '{context.user}' "
                     f"to perform '{context.action}' on '{context.resource_name}'"
-                    + (f" (resource_id: {context.resource_id})" if context.resource_id else "")
                 )
             
             return method(self, *method_args, **method_kwargs)
@@ -400,18 +383,18 @@ class ResourceManager(IResourceManager[T], Generic[T]):
         meta = self.storage.get_meta(resource_id)
         return meta
 
-    @smart_permission_check(extract_resource_id=True)
+    @smart_permission_check()
     def get_meta(self, resource_id: str) -> ResourceMeta:
         meta = self._get_meta_no_check_is_deleted(resource_id)
         if meta.is_deleted:
             raise ResourceIsDeletedError(resource_id)
         return meta
 
-    @smart_permission_check(action="search_resources", extract_resource_id=False)
+    @smart_permission_check()
     def search_resources(self, query: ResourceMetaSearchQuery) -> list[ResourceMeta]:
         return self.storage.search(query)
 
-    @smart_permission_check(extract_resource_id=False)
+    @smart_permission_check()
     def create(self, data: T) -> RevisionInfo:
         info = self._rev_info(_BuildRevMetaCreate(data))
         resource = Resource(
@@ -422,21 +405,21 @@ class ResourceManager(IResourceManager[T], Generic[T]):
         self.storage.save_meta(self._res_meta(_BuildResMetaCreate(info, data)))
         return info
 
-    @smart_permission_check(extract_resource_id=True)
+    @smart_permission_check()
     def get(self, resource_id: str) -> Resource[T]:
         meta = self.get_meta(resource_id)
         return self.get_resource_revision(resource_id, meta.current_revision_id)
 
-    @smart_permission_check(extract_resource_id=True)
+    @smart_permission_check()
     def get_resource_revision(self, resource_id: str, revision_id: str) -> Resource[T]:
         obj = self.storage.get_resource_revision(resource_id, revision_id)
         return obj
 
-    @smart_permission_check(extract_resource_id=True)
+    @smart_permission_check()
     def list_revisions(self, resource_id: str) -> list[str]:
         return self.storage.list_revisions(resource_id)
 
-    @smart_permission_check(extract_resource_id=True)
+    @smart_permission_check()
     def update(self, resource_id: str, data: T) -> RevisionInfo:
         prev_res_meta = self.get_meta(resource_id)
         prev_info = self.storage.get_resource_revision_info(
@@ -455,12 +438,14 @@ class ResourceManager(IResourceManager[T], Generic[T]):
         self.storage.save_meta(res_meta)
         return rev_info
 
+    @smart_permission_check()
     def create_or_update(self, resource_id, data):
         try:
             return self.update(resource_id, data)
         except ResourceIDNotFoundError:
             return self.create(data)
 
+    @smart_permission_check()
     def patch(self, resource_id: str, patch_data: JsonPatch) -> RevisionInfo:
         data = self.get(resource_id).data
         d = self.data_converter.data_to_builtins(data)
@@ -468,6 +453,7 @@ class ResourceManager(IResourceManager[T], Generic[T]):
         data = self.data_converter.builtins_to_data(d)
         return self.update(resource_id, data)
 
+    @smart_permission_check()
     def switch(self, resource_id: str, revision_id: str) -> ResourceMeta:
         meta = self.get_meta(resource_id)
         if meta.current_revision_id == revision_id:
@@ -487,6 +473,7 @@ class ResourceManager(IResourceManager[T], Generic[T]):
         self.storage.save_meta(meta)
         return meta
 
+    @smart_permission_check()
     def delete(self, resource_id: str) -> ResourceMeta:
         meta = self.get_meta(resource_id)
         meta.is_deleted = True
@@ -495,6 +482,7 @@ class ResourceManager(IResourceManager[T], Generic[T]):
         self.storage.save_meta(meta)
         return meta
 
+    @smart_permission_check()
     def restore(self, resource_id: str) -> ResourceMeta:
         meta = self._get_meta_no_check_is_deleted(resource_id)
         if meta.is_deleted:
@@ -504,12 +492,14 @@ class ResourceManager(IResourceManager[T], Generic[T]):
             self.storage.save_meta(meta)
         return meta
 
+    @smart_permission_check()
     def dump(self) -> Generator[tuple[str, IO[bytes]]]:
         for meta in self.storage.dump_meta():
             yield f"meta/{meta.resource_id}", self.meta_serializer.encode(meta)
         for resource in self.storage.dump_resource():
             yield f"data/{resource.info.uid}", self.resource_serializer.encode(resource)
 
+    @smart_permission_check()
     def load(self, key: str, bio: IO[bytes]) -> None:
         if key.startswith("meta/"):
             self.storage.save_meta(self.meta_serializer.decode(bio.read()))

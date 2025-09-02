@@ -603,6 +603,8 @@ class ResourceAction(Flag):
     dump=auto()
     load=auto()
 
+    create_or_update = create | update
+
     read = get | get_meta | get_resource_revision | list_revisions
     read_list =  search_resources
     write = create | update | patch

@@ -31,10 +31,8 @@ class PermissionContext(Struct, kw_only=True):
     user: str
     action: ResourceAction
     resource_name: str
-    resource_id: Optional[str] = None
     
     # 方法調用資訊
-    method_name: str
     method_args: tuple = ()
     method_kwargs: Dict[str, Any] = {}
     
@@ -44,11 +42,6 @@ class PermissionContext(Struct, kw_only=True):
     # 資源相關資料（延遲加載）
     _resource_data: Optional[Any] = None
     _resource_meta: Optional[Any] = None
-    
-    @property
-    def has_resource_id(self) -> bool:
-        """是否有資源 ID"""
-        return self.resource_id is not None
     
     def set_resource_data(self, data: Any) -> None:
         """設置資源資料（用於延遲加載）"""
