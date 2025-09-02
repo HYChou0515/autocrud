@@ -174,6 +174,7 @@ def smart_permission_check():
             
             context = PermissionContext(
                 user=self.user_ctx.get(),
+                now=self.now_ctx.get(),
                 action=action,
                 resource_name=self.resource_name,
                 method_args=method_args,

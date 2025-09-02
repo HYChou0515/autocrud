@@ -9,6 +9,7 @@
 from abc import ABC, abstractmethod
 from enum import StrEnum
 from typing import Any, Optional, Dict, Union, TYPE_CHECKING
+import datetime as dt
 from msgspec import Struct
 
 from autocrud.resource_manager.basic import ResourceAction
@@ -29,6 +30,7 @@ class PermissionContext(Struct, kw_only=True):
     """權限檢查上下文 - 包含所有權限檢查所需的資訊"""
     # 基本資訊
     user: str
+    now: dt.datetime
     action: ResourceAction
     resource_name: str
     
@@ -117,11 +119,12 @@ class DefaultPermissionChecker(PermissionChecker):
         """使用現有的權限管理器進行檢查"""
         try:
             # 對於 ACL/RBAC，resource_id 可以是 None
-            allowed = self.permission_manager.check_permission(
-                context.user,
-                context.action,
-                context.resource_id or context.resource_name
-            )
+            with self.permission_manager.meta_provide("root", context.now):
+                allowed = self.permission_manager.check_permission(
+                    context.user,
+                    context.action,
+                    context.resource_name
+                )
             return PermissionResult.ALLOW if allowed else PermissionResult.DENY
         except Exception:
             return PermissionResult.DENY
