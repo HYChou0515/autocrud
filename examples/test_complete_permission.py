@@ -1,17 +1,15 @@
 #!/usr/bin/env python3
 """完整的權限系統測試"""
 
-import os
-import sys
-sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from datetime import datetime
 from dataclasses import dataclass
+from autocrud.resource_manager.basic import ResourceAction
 from autocrud.resource_manager.core import ResourceManager, SimpleStorage
 from autocrud.resource_manager.meta_store.simple import MemoryMetaStore  
 from autocrud.resource_manager.resource_store.simple import MemoryResourceStore
 from autocrud.resource_manager.permission import PermissionResourceManager
-from autocrud.resource_manager.permission_utils import PermissionBuilder
+from autocrud.resource_manager.permission import ACLPermission
 
 @dataclass
 class TestDocument:
@@ -39,10 +37,13 @@ def test_complete_permission_system():
     
     # 設定權限
     print("\n=== 設定權限 ===")
-    builder = PermissionBuilder()
     
     # 給 alice 創建和讀取權限
-    alice_permissions = builder.allow_user_on_resource_type("alice", "test_document", ["create", "get"])
+    alice_permissions = ACLPermission(
+        subject="alice",
+        object="test_document",
+        action=ResourceAction.write | ResourceAction.read,
+    )
     
     # 在 system context 中創建權限
     with permission_manager.meta_provide("system", current_time):
@@ -50,7 +51,11 @@ def test_complete_permission_system():
         print(f"Alice 權限: {alice_resource_id}")
         
         # 給 bob 只有讀取權限
-        bob_permissions = builder.allow_user_on_resource_type("bob", "test_document", ["get"])
+        bob_permissions = ACLPermission(
+            subject="bob",
+            object="test_document",
+            action=ResourceAction.read,
+        )
         bob_resource_id = permission_manager.create(bob_permissions).resource_id
         print(f"Bob 權限: {bob_resource_id}")
     
@@ -58,10 +63,10 @@ def test_complete_permission_system():
     
     # 測試 alice 的權限
     print("\n=== 測試 Alice 權限 ===")
-    with permission_manager.meta_provide("user:alice", current_time):
-        alice_can_create = permission_manager.check_permission("user:alice", "create", "test_document")
-        alice_can_read = permission_manager.check_permission("user:alice", "read", "test_document")
-        alice_can_update = permission_manager.check_permission("user:alice", "update", "test_document")
+    with permission_manager.meta_provide("alice", current_time):
+        alice_can_create = permission_manager.check_permission("alice", ResourceAction.create, "test_document")
+        alice_can_read = permission_manager.check_permission("alice", ResourceAction.read, "test_document")
+        alice_can_update = permission_manager.check_permission("alice", ResourceAction.update, "test_document")
         
         print(f"Alice 可以 create: {alice_can_create}")
         print(f"Alice 可以 read: {alice_can_read}")
@@ -69,10 +74,10 @@ def test_complete_permission_system():
     
     # 測試 bob 的權限
     print("\n=== 測試 Bob 權限 ===")
-    with permission_manager.meta_provide("user:bob", current_time):
-        bob_can_create = permission_manager.check_permission("user:bob", "create", "test_document")
-        bob_can_read = permission_manager.check_permission("user:bob", "read", "test_document")
-        bob_can_update = permission_manager.check_permission("user:bob", "update", "test_document")
+    with permission_manager.meta_provide("bob", current_time):
+        bob_can_create = permission_manager.check_permission("bob", ResourceAction.create, "test_document")
+        bob_can_read = permission_manager.check_permission("bob", ResourceAction.read, "test_document")
+        bob_can_update = permission_manager.check_permission("bob", ResourceAction.update, "test_document")
         
         print(f"Bob 可以 create: {bob_can_create}")
         print(f"Bob 可以 read: {bob_can_read}")
@@ -81,11 +86,11 @@ def test_complete_permission_system():
     # 測試 root 用戶權限
     print("\n=== 測試 Root 用戶權限 ===")
     with permission_manager.meta_provide("root", current_time):
-        root_can_create = permission_manager.check_permission("root", "create", "test_document")
-        root_can_read = permission_manager.check_permission("root", "read", "test_document")
-        root_can_update = permission_manager.check_permission("root", "update", "test_document")
-        root_can_delete = permission_manager.check_permission("root", "delete", "test_document")
-        
+        root_can_create = permission_manager.check_permission("root", ResourceAction.create, "test_document")
+        root_can_read = permission_manager.check_permission("root", ResourceAction.read, "test_document")
+        root_can_update = permission_manager.check_permission("root", ResourceAction.update, "test_document")
+        root_can_delete = permission_manager.check_permission("root", ResourceAction.delete, "test_document")
+
         print(f"Root 可以 create: {root_can_create}")
         print(f"Root 可以 read: {root_can_read}")
         print(f"Root 可以 update: {root_can_update}")
@@ -96,7 +101,7 @@ def test_complete_permission_system():
     
     # Alice 創建文檔
     try:
-        with document_manager.meta_provide("user:alice", current_time):
+        with document_manager.meta_provide("alice", current_time):
             doc = TestDocument(title="Alice的文檔", content="Alice的內容")
             doc_info = document_manager.create(doc)
             print(f"✅ Alice 成功創建文檔: {doc_info.resource_id}")
@@ -107,7 +112,7 @@ def test_complete_permission_system():
     
     # Bob 嘗試創建文檔（應該失敗）
     try:
-        with document_manager.meta_provide("user:bob", current_time):
+        with document_manager.meta_provide("bob", current_time):
             doc = TestDocument(title="Bob的文檔", content="Bob的內容")
             doc_info = document_manager.create(doc)
             print(f"❌ Bob 不應該能創建文檔: {doc_info.resource_id}")
@@ -116,7 +121,7 @@ def test_complete_permission_system():
     
     # Bob 讀取 Alice 的文檔
     try:
-        with document_manager.meta_provide("user:bob", current_time):
+        with document_manager.meta_provide("bob", current_time):
             retrieved_doc = document_manager.get(doc_id)
             print(f"✅ Bob 成功讀取文檔: {retrieved_doc.data.title}")
     except Exception as e:

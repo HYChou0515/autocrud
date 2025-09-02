@@ -1,7 +1,6 @@
 from typing import TypeVar
 from enum import Flag, StrEnum, auto
 import msgspec
-import datetime as dt
 
 from autocrud.resource_manager.basic import (
     DataSearchCondition,
@@ -105,7 +104,7 @@ class ACLPermission(BasePermission):
     """
     subject: str
     object: str | None
-    action: ResourceAction | str
+    action: ResourceAction
     order: int | msgspec.UnsetType = msgspec.UNSET
     effect: Effect = Effect.allow
 
@@ -133,7 +132,7 @@ class PermissionResourceManager(ResourceManager, IPermissionResourceManager):
             IndexableField(field_path="type", field_type=SpecialIndex.msgspec_tag),
             IndexableField(field_path="subject", field_type=str),
             IndexableField(field_path="object", field_type=str),
-            IndexableField(field_path="action", field_type=str),
+            IndexableField(field_path="action", field_type=int),
             IndexableField(field_path="group", field_type=str),
             IndexableField(field_path="order", field_type=int),
         ]
@@ -162,7 +161,7 @@ class PermissionResourceManager(ResourceManager, IPermissionResourceManager):
     def _check_acl_permission(
         self,
         user: str,
-        action: ResourceAction | str,
+        action: ResourceAction,
         resource_id: str | None,
         *,
         have_more_to_check: bool = False,
@@ -190,11 +189,9 @@ class PermissionResourceManager(ResourceManager, IPermissionResourceManager):
         """
         # 1. 首先檢查是否為 root 用戶
         if user in self.root_users:
-            print(f"DEBUG: User {user} is root, allowing all actions")
             return True
             
         # 調試：打印輸入參數
-        print(f"DEBUG: _check_acl_permission called with user={user}, action={action}, resource_id={resource_id}")
         # 構建可能的 object 匹配值（按優先級排序）
         possible_objects = []
         
@@ -219,83 +216,70 @@ class PermissionResourceManager(ResourceManager, IPermissionResourceManager):
         
         # Root 用戶可以做任何事
         if user == "root":
-            print(f"DEBUG: Root user access granted")
             return True
         
         # 構建可能的 action 匹配值
-        possible_actions = [action, "*"]
-        
         has_allow = False
         has_deny = False
         
         # 按優先級順序檢查所有可能的組合
         for obj in possible_objects:
-            for act in possible_actions:
-                print(f"DEBUG: Checking user={user}, action={act}, object={obj}")
-                
-                try:
-                    # 設置為 root 來執行搜尋，避免無限遞歸
-                    with self.meta_provide("root", self.now_ctx.get()):
-                        # 構建搜尋查詢
-                        query = ResourceMetaSearchQuery(
-                            data_conditions=[
-                                DataSearchCondition(
-                                    field_path="type",
-                                    operator=DataSearchOperator.equals,
-                                    value="ACLPermission",
-                                ),
-                                DataSearchCondition(
-                                    field_path="subject",
-                                    operator=DataSearchOperator.equals,
-                                    value=user,
-                                ),
-                                DataSearchCondition(
-                                    field_path="object",
-                                    operator=DataSearchOperator.equals,
-                                    value=obj,
-                                ),
-                                DataSearchCondition(
-                                    field_path="action",
-                                    operator=DataSearchOperator.contains,
-                                    value=act,  # 檢查 act 是否包含在 action 列表中
-                                ),
-                            ],
-                        )
+            try:
+                # 設置為 root 來執行搜尋，避免無限遞歸
+                with self.meta_provide("root", self.now_ctx.get()):
+                    # 構建搜尋查詢
+                    query = ResourceMetaSearchQuery(
+                        data_conditions=[
+                            DataSearchCondition(
+                                field_path="type",
+                                operator=DataSearchOperator.equals,
+                                value="ACLPermission",
+                            ),
+                            DataSearchCondition(
+                                field_path="subject",
+                                operator=DataSearchOperator.equals,
+                                value=user,
+                            ),
+                            DataSearchCondition(
+                                field_path="object",
+                                operator=DataSearchOperator.equals,
+                                value=obj,
+                            ),
+                            DataSearchCondition(
+                                field_path="action",
+                                operator=DataSearchOperator.contains,
+                                value=action,
+                            ),
+                        ],
+                    )
+                    
+                    # 搜尋符合條件的 ACL 權限
+                    search_results = self.search_resources(query)
+                    
+                    # 處理找到的權限規則
+                    for resource_info in search_results:
                         
-                        # 搜尋符合條件的 ACL 權限
-                        search_results = self.search_resources(query)
-                        print(f"DEBUG: Search query: {query}")
-                        print(f"DEBUG: Search results count: {len(search_results)}")
+                        # 直接從 indexed_data 中獲取權限信息，避免嵌套 context
+                        indexed_data = resource_info.indexed_data
+                        if indexed_data.get('type') != 'ACLPermission':
+                            continue
+                            
+                        effect_str = indexed_data.get('effect', 'allow')  # 預設為 allow
+                        effect = Effect.allow if effect_str == 'allow' else Effect.deny
                         
-                        # 處理找到的權限規則
-                        for resource_info in search_results:
-                            print(f"DEBUG: Found resource: {resource_info.resource_id}")
-                            
-                            # 直接從 indexed_data 中獲取權限信息，避免嵌套 context
-                            indexed_data = resource_info.indexed_data
-                            if indexed_data.get('type') != 'ACLPermission':
-                                continue
-                                
-                            effect_str = indexed_data.get('effect', 'allow')  # 預設為 allow
-                            effect = Effect.allow if effect_str == 'allow' else Effect.deny
-                            
-                            print(f"DEBUG: Found permission with effect: {effect}")
-                            
-                            if effect == Effect.deny:
-                                has_deny = True
-                                # 如果是 deny 優先策略，立即拒絕
-                                if Policy.deny_overrides in self.policy:
-                                    print(f"DEBUG: Deny rule found, returning False")
-                                    return False
-                            elif effect == Effect.allow:
-                                has_allow = True
-                                # 如果是 allow 優先策略，立即允許
-                                if Policy.allow_overrides in self.policy:
-                                    print(f"DEBUG: Allow rule found, returning True")
-                
-                except Exception as e:
-                    print(f"DEBUG: Search failed with error: {e}")
-                    continue
+                        
+                        if effect == Effect.deny:
+                            has_deny = True
+                            # 如果是 deny 優先策略，立即拒絕
+                            if Policy.deny_overrides in self.policy:
+                                return False
+                        elif effect == Effect.allow:
+                            has_allow = True
+                            # 如果是 allow 優先策略，立即允許
+                            if Policy.allow_overrides in self.policy:
+                                return True
+            except Exception:
+                continue
 
         # 能到達此處的條件真值表：
         # 前提：沒有在循環中提前返回（即沒有觸發優先策略）
@@ -323,7 +307,7 @@ class PermissionResourceManager(ResourceManager, IPermissionResourceManager):
         return self._default_action(have_more_to_check)
 
     def _check_rbac_permission(
-        self, user: str, action: ResourceAction | str, resource_id: str | None
+        self, user: str, action: ResourceAction, resource_id: str | None
     ) -> bool:
         """檢查用戶對特定資源的 RBAC 權限"""
         stack: list[str] = []
@@ -369,21 +353,9 @@ class PermissionResourceManager(ResourceManager, IPermissionResourceManager):
         return self._default_action(False)
 
     def check_permission(
-        self, user: str, action: ResourceAction | str, resource: str
+        self, user: str, action: ResourceAction, resource: str
     ) -> bool:
         """檢查用戶權限的主入口方法"""
-        # 1. 首先檢查是否為 root 用戶
         if user in self.root_users:
             return True
-            
-        # 2. 檢查 ACL 權限
-        acl_result = self._check_acl_permission(user, action, resource)
-        if acl_result is not None:
-            return acl_result
-            
-        # 3. 檢查 RBAC 權限
-        if self._check_rbac_permission(user, action, resource):
-            return True
-            
-        # 4. 預設拒絕
-        return False
+        return self._check_rbac_permission(user, action, resource)

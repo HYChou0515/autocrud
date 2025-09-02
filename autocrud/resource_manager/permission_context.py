@@ -29,7 +29,7 @@ class PermissionContext(Struct, kw_only=True):
     """權限檢查上下文 - 包含所有權限檢查所需的資訊"""
     # 基本資訊
     user: str
-    action: str
+    action: ResourceAction
     resource_name: str
     resource_id: Optional[str] = None
     

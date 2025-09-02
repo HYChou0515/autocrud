@@ -608,12 +608,13 @@ class ResourceAction(Flag):
     write = create | update | patch
     lifecycle = switch | delete | restore
     backup = dump | load
+    full = read | read_list | write | lifecycle | backup
 
 
 class IPermissionResourceManager(IResourceManager):
     @abstractmethod
     def check_permission(
-        self, user: str, action: ResourceAction | str, resource: str
+        self, user: str, action: ResourceAction, resource: str
     ) -> bool: ...
 
 
@@ -707,6 +708,8 @@ def _match_data_condition(
         # 特殊處理：如果 field_value 是列表，檢查 condition.value 是否在列表中
         if isinstance(field_value, list):
             return condition.value in field_value
+        if isinstance(condition.value, Flag) and isinstance(field_value, int):
+            return condition.value.value & field_value
         # 標準字符串包含檢查
         return field_value is not None and str(condition.value) in str(field_value)
     elif condition.operator == DataSearchOperator.starts_with:

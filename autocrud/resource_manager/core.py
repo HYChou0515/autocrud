@@ -24,6 +24,7 @@ from autocrud.resource_manager.basic import (
     IStorage,
     MsgspecSerializer,
     Resource,
+    ResourceAction,
     ResourceIDNotFoundError,
     ResourceIsDeletedError,
     ResourceMeta,
@@ -186,7 +187,7 @@ def smart_permission_check(
             
             context = PermissionContext(
                 user=self.user_ctx.get(),
-                action=action_name,
+                action=ResourceAction[action_name],
                 resource_name=self.resource_name,
                 resource_id=resource_id,
                 method_name=method.__name__,

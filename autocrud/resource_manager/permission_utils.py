@@ -6,218 +6,199 @@
 
 from autocrud.resource_manager.basic import ResourceAction
 from autocrud.resource_manager.permission import ACLPermission, RoleMembership, Effect
-from typing import Literal
 
 
-class PermissionBuilder:
-    """權限建構器 - 提供安全的權限設定方式"""
+# class PermissionBuilder:
+#     """權限建構器 - 提供安全的權限設定方式"""
     
-    @staticmethod
-    def allow_user_on_resource_type(
-        user: str, 
-        resource_type: str, 
-        action: ResourceAction,
-        order: int | None = None
-    ) -> ACLPermission:
-        """允許用戶對特定資源類型執行操作
+#     @staticmethod
+#     def allow_user_on_resource_type(
+#         user: str, 
+#         resource_type: str, 
+#         action: ResourceAction,
+#         order: int | None = None
+#     ) -> ACLPermission:
+#         """允許用戶對特定資源類型執行操作
         
-        Args:
-            user: 用戶名稱 (會自動加上 'user:' 前綴)
-            resource_type: 資源類型名稱 (例如 'document', 'file')
-            action: 動作名稱
-            order: 權限優先級
+#         Args:
+#             user: 用戶名稱 (會自動加上 'user:' 前綴)
+#             resource_type: 資源類型名稱 (例如 'document', 'file')
+#             action: 動作名稱
+#             order: 權限優先級
             
-        Example:
-            # 允許 alice 創建文檔
-            PermissionBuilder.allow_user_on_resource_type("alice", "document", "create")
-        """
-        subject = user if user.startswith(('user:', 'group:', 'service:')) else f"user:{user}"
-        
-        return ACLPermission(
-            subject=user,
-            object=resource_type,
-            action=action,
-            effect=Effect.allow,
-            order=order
-        )
+#         Example:
+#             # 允許 alice 創建文檔
+#             PermissionBuilder.allow_user_on_resource_type("alice", "document", "create")
+#         """
+#         return ACLPermission(
+#             subject=user,
+#             object=resource_type,
+#             action=action,
+#             effect=Effect.allow,
+#             order=order
+#         )
     
-    @staticmethod
-    def allow_user_on_specific_resource(
-        user: str,
-        resource_id: str,
-        action: str,
-        order: int | None = None
-    ) -> ACLPermission:
-        """允許用戶對特定資源執行操作
+#     @staticmethod
+#     def allow_user_on_specific_resource(
+#         user: str,
+#         resource_id: str,
+#         action: str,
+#         order: int | None = None
+#     ) -> ACLPermission:
+#         """允許用戶對特定資源執行操作
         
-        Args:
-            user: 用戶名稱
-            resource_id: 完整的資源 ID
-            action: 動作名稱
-            order: 權限優先級
+#         Args:
+#             user: 用戶名稱
+#             resource_id: 完整的資源 ID
+#             action: 動作名稱
+#             order: 權限優先級
             
-        Example:
-            # 允許 alice 讀取特定文檔
-            PermissionBuilder.allow_user_on_specific_resource(
-                "alice", "document:123e4567-e89b-12d3-a456-426614174000", "get"
-            )
-        """
-        subject = user if user.startswith(('user:', 'group:', 'service:')) else f"user:{user}"
-        
-        return ACLPermission(
-            subject=subject,
-            object=resource_id,
-            action=action,
-            effect=Effect.allow,
-            order=order
-        )
+#         Example:
+#             # 允許 alice 讀取特定文檔
+#             PermissionBuilder.allow_user_on_specific_resource(
+#                 "alice", "document:123e4567-e89b-12d3-a456-426614174000", "get"
+#             )
+#         """
+#         return ACLPermission(
+#             subject=user,
+#             object=resource_id,
+#             action=action,
+#             effect=Effect.allow,
+#             order=order
+#         )
     
-    @staticmethod
-    def allow_group_on_resource_type(
-        group: str,
-        resource_type: str,
-        action: str,
-        order: int | None = None
-    ) -> ACLPermission:
-        """允許群組對特定資源類型執行操作
+#     @staticmethod
+#     def allow_group_on_resource_type(
+#         group: str,
+#         resource_type: str,
+#         action: str,
+#         order: int | None = None
+#     ) -> ACLPermission:
+#         """允許群組對特定資源類型執行操作
         
-        Args:
-            group: 群組名稱 (會自動加上 'group:' 前綴)
-            resource_type: 資源類型名稱
-            action: 動作名稱
-            order: 權限優先級
+#         Args:
+#             group: 群組名稱 (會自動加上 'group:' 前綴)
+#             resource_type: 資源類型名稱
+#             action: 動作名稱
+#             order: 權限優先級
             
-        Example:
-            # 允許 admin 群組對所有文檔執行所有操作
-            PermissionBuilder.allow_group_on_resource_type("admin", "document", "*")
-        """
-        subject = group if group.startswith('group:') else f"group:{group}"
-        
-        return ACLPermission(
-            subject=subject,
-            object=resource_type,
-            action=action,
-            effect=Effect.allow,
-            order=order
-        )
+#         Example:
+#             # 允許 admin 群組對所有文檔執行所有操作
+#             PermissionBuilder.allow_group_on_resource_type("admin", "document", "*")
+#         """
+#         return ACLPermission(
+#             subject=group,
+#             object=resource_type,
+#             action=action,
+#             effect=Effect.allow,
+#             order=order
+#         )
     
-    @staticmethod
-    def deny_user_action(
-        user: str,
-        resource_type_or_id: str,
-        action: str,
-        order: int = 0  # deny 通常需要高優先級
-    ) -> ACLPermission:
-        """拒絕用戶執行特定操作
+#     @staticmethod
+#     def deny_user_action(
+#         user: str,
+#         resource_type_or_id: str,
+#         action: str,
+#         order: int = 0  # deny 通常需要高優先級
+#     ) -> ACLPermission:
+#         """拒絕用戶執行特定操作
         
-        Args:
-            user: 用戶名稱
-            resource_type_or_id: 資源類型或具體資源 ID
-            action: 動作名稱
-            order: 權限優先級 (deny 通常應該有高優先級)
+#         Args:
+#             user: 用戶名稱
+#             resource_type_or_id: 資源類型或具體資源 ID
+#             action: 動作名稱
+#             order: 權限優先級 (deny 通常應該有高優先級)
             
-        Example:
-            # 拒絕 bob 刪除任何文檔
-            PermissionBuilder.deny_user_action("bob", "document", "delete")
-        """
-        subject = user if user.startswith(('user:', 'group:', 'service:')) else f"user:{user}"
-        
-        return ACLPermission(
-            subject=subject,
-            object=resource_type_or_id,
-            action=action,
-            effect=Effect.deny,
-            order=order
-        )
+#         Example:
+#             # 拒絕 bob 刪除任何文檔
+#             PermissionBuilder.deny_user_action("bob", "document", "delete")
+#         """
+#         return ACLPermission(
+#             subject=user,
+#             object=resource_type_or_id,
+#             action=action,
+#             effect=Effect.deny,
+#             order=order
+#         )
     
-    @staticmethod
-    def create_role_membership(
-        user: str,
-        group: str,
-        order: int | None = None
-    ) -> RoleMembership:
-        """創建角色成員關係
+#     @staticmethod
+#     def create_role_membership(
+#         user: str,
+#         group: str,
+#         order: int | None = None
+#     ) -> RoleMembership:
+#         """創建角色成員關係
         
-        Args:
-            user: 用戶名稱 (會自動加上 'user:' 前綴)
-            group: 群組名稱 (會自動加上 'group:' 前綴)
-            order: 優先級
+#         Args:
+#             user: 用戶名稱 (會自動加上 'user:' 前綴)
+#             group: 群組名稱 (會自動加上 'group:' 前綴)
+#             order: 優先級
             
-        Example:
-            # 將 alice 加入 admin 群組
-            PermissionBuilder.create_role_membership("alice", "admin")
-        """
-        subject = user if user.startswith(('user:', 'group:', 'service:')) else f"user:{user}"
-        group_name = group if group.startswith('group:') else f"group:{group}"
-        
-        return RoleMembership(
-            subject=subject,
-            group=group_name,
-            order=order
-        )
+#         Example:
+#             # 將 alice 加入 admin 群組
+#             PermissionBuilder.create_role_membership("alice", "admin")
+#         """
+#         return RoleMembership(
+#             subject=user,
+#             group=group,
+#             order=order
+#         )
 
 
-class CommonPermissions:
-    """常用權限模式"""
+# class CommonPermissions:
+#     """常用權限模式"""
     
-    @staticmethod
-    def full_access_for_user(user: str, resource_type: str) -> list[ACLPermission]:
-        """為用戶提供對資源類型的完整權限
+#     @staticmethod
+#     def full_access_for_user(user: str, resource_type: str) -> list[ACLPermission]:
+#         """為用戶提供對資源類型的完整權限
         
-        Returns:
-            包含所有標準操作權限的列表
-        """
-        actions = ["create", "get", "get_meta", "get_resource_revision", "update", "patch", "delete", "search_resources"]
-        subject = user if user.startswith(('user:', 'group:', 'service:')) else f"user:{user}"
-        
-        return [
-            ACLPermission(
-                subject=subject,
-                object=resource_type,
-                action=action,
-                effect=Effect.allow
-            )
-            for action in actions
-        ]
+#         Returns:
+#             包含所有標準操作權限的列表
+#         """
+#         return ACLPermission(
+#             subject=user,
+#             object=resource_type,
+#             action=ResourceAction.full,
+#             effect=Effect.allow
+#         )
     
-    @staticmethod
-    def read_only_for_user(user: str, resource_type: str) -> list[ACLPermission]:
-        """為用戶提供對資源類型的唯讀權限"""
-        read_actions = ["get", "get_meta", "get_resource_revision", "search_resources"]
-        subject = user if user.startswith(('user:', 'group:', 'service:')) else f"user:{user}"
+#     @staticmethod
+#     def read_only_for_user(user: str, resource_type: str) -> list[ACLPermission]:
+#         """為用戶提供對資源類型的唯讀權限"""
+#         read_actions = ["get", "get_meta", "get_resource_revision", "search_resources"]
         
-        return [
-            ACLPermission(
-                subject=subject,
-                object=resource_type,
-                action=action,
-                effect=Effect.allow
-            )
-            for action in read_actions
-        ]
+#         return [
+#             ACLPermission(
+#                 subject=user,
+#                 object=resource_type,
+#                 action=action,
+#                 effect=Effect.allow
+#             )
+#             for action in read_actions
+#         ]
     
-    @staticmethod
-    def owner_permissions_for_user(user: str, resource_type: str) -> list[ACLPermission]:
-        """為用戶提供擁有者權限（創建 + 對自己創建的資源的完整權限）
+#     @staticmethod
+#     def owner_permissions_for_user(user: str, resource_type: str) -> list[ACLPermission]:
+#         """為用戶提供擁有者權限（創建 + 對自己創建的資源的完整權限）
         
-        注意：這需要配合 ResourceOwnershipChecker 使用
-        """
-        return [
-            # 可以創建新資源
-            ACLPermission(
-                subject=user if user.startswith(('user:', 'group:', 'service:')) else f"user:{user}",
-                object=resource_type,
-                action="create",
-                effect=Effect.allow
-            ),
-            # 可以查看資源列表
-            ACLPermission(
-                subject=user if user.startswith(('user:', 'group:', 'service:')) else f"user:{user}",
-                object=resource_type,
-                action="search_resources",
-                effect=Effect.allow
-            )
-        ]
+#         注意：這需要配合 ResourceOwnershipChecker 使用
+#         """
+#         return [
+#             # 可以創建新資源
+#             ACLPermission(
+#                 subject=user,
+#                 object=resource_type,
+#                 action="create",
+#                 effect=Effect.allow
+#             ),
+#             # 可以查看資源列表
+#             ACLPermission(
+#                 subject=user,
+#                 object=resource_type,
+#                 action="search_resources",
+#                 effect=Effect.allow
+#             )
+#         ]
 
 
 # 使用示例
