@@ -1,7 +1,7 @@
 from collections.abc import Generator, Iterable, MutableMapping
 from contextlib import AbstractContextManager, contextmanager
 from contextvars import ContextVar
-from enum import Enum, StrEnum
+from enum import Enum, Flag, StrEnum, auto
 import functools
 from typing import IO, TypeVar, Generic, Any
 import datetime as dt
@@ -588,22 +588,26 @@ class IResourceManager(ABC, Generic[T]):
         complete backup and restore workflows.
         """
 
+class ResourceAction(Flag):
+    create=auto()
+    get=auto()
+    get_resource_revision=auto()
+    list_revisions=auto()
+    get_meta=auto()
+    search_resources=auto()
+    update=auto()
+    patch=auto()
+    switch=auto()
+    delete=auto()
+    restore=auto()
+    dump=auto()
+    load=auto()
 
-ResourceAction = Literal[
-    "create",
-    "get",
-    "get_resource_revision",
-    "list_revisions",
-    "get_meta",
-    "search_resources",
-    "update",
-    "patch",
-    "switch",
-    "delete",
-    "restore",
-    "dump",
-    "load",
-]
+    read = get | get_meta | get_resource_revision | list_revisions
+    read_list =  search_resources
+    write = create | update | patch
+    lifecycle = switch | delete | restore
+    backup = dump | load
 
 
 class IPermissionResourceManager(IResourceManager):
@@ -627,8 +631,9 @@ class Ctx(Generic[T]):
         try:
             yield
         finally:
-            self.v.reset(self.tok)
-            self.tok = None
+            if self.tok is not None:
+                self.v.reset(self.tok)
+                self.tok = None
 
     def get(self) -> T:
         return self.v.get()

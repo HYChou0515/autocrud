@@ -31,7 +31,7 @@ def test_complete_permission_system():
     # 設定權限管理器
     permission_resource_store = MemoryResourceStore(dict)
     permission_storage = SimpleStorage(meta_store=meta_store, resource_store=permission_resource_store)
-    permission_manager = PermissionResourceManager(storage=permission_storage)
+    permission_manager = PermissionResourceManager(storage=permission_storage, name="permission")
     
     # 建立 document manager
     document_manager = ResourceManager(TestDocument, storage=storage, permission_manager=permission_manager)
@@ -40,10 +40,9 @@ def test_complete_permission_system():
     # 設定權限
     print("\n=== 設定權限 ===")
     builder = PermissionBuilder()
-    builder.meta_store = meta_store
     
     # 給 alice 創建和讀取權限
-    alice_permissions = builder.allow_user_on_resource_type("alice", "test_document", ["create", "read"])
+    alice_permissions = builder.allow_user_on_resource_type("alice", "test_document", ["create", "get"])
     
     # 在 system context 中創建權限
     with permission_manager.meta_provide("system", current_time):
@@ -51,7 +50,7 @@ def test_complete_permission_system():
         print(f"Alice 權限: {alice_resource_id}")
         
         # 給 bob 只有讀取權限
-        bob_permissions = builder.allow_user_on_resource_type("bob", "test_document", ["read"])
+        bob_permissions = builder.allow_user_on_resource_type("bob", "test_document", ["get"])
         bob_resource_id = permission_manager.create(bob_permissions).resource_id
         print(f"Bob 權限: {bob_resource_id}")
     

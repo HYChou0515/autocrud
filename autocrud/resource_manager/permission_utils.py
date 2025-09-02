@@ -4,6 +4,7 @@
 提供更安全、更語義化的權限設定方式，避免直接使用 object=None
 """
 
+from autocrud.resource_manager.basic import ResourceAction
 from autocrud.resource_manager.permission import ACLPermission, RoleMembership, Effect
 from typing import Literal
 
@@ -15,7 +16,7 @@ class PermissionBuilder:
     def allow_user_on_resource_type(
         user: str, 
         resource_type: str, 
-        action: str,
+        action: ResourceAction,
         order: int | None = None
     ) -> ACLPermission:
         """允許用戶對特定資源類型執行操作
@@ -33,7 +34,7 @@ class PermissionBuilder:
         subject = user if user.startswith(('user:', 'group:', 'service:')) else f"user:{user}"
         
         return ACLPermission(
-            subject=subject,
+            subject=user,
             object=resource_type,
             action=action,
             effect=Effect.allow,
