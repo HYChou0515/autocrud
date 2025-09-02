@@ -301,15 +301,12 @@ class PermissionResourceManager(ResourceManager, IPermissionResourceManager):
 
         # 下方邏輯已實現上述條件真值表的所有情況
         if has_deny:
-            print("DEBUG: Found deny rules, returning False")
             return False
 
         if has_allow:
-            print("DEBUG: Found allow rules, returning True")
             return True
 
         # 什麼都沒有
-        print("DEBUG: No matching rules found, using default policy")
         return self._default_action(have_more_to_check)
 
     def _check_rbac_permission(
