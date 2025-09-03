@@ -22,9 +22,6 @@ class CustomResourceAccessChecker(IPermissionChecker):
         self.permission_manager = permission_manager
         self.supported_actions = {"get", "update", "delete", "patch", "switch"}
 
-    def supports_action(self, action: str) -> bool:
-        return action in self.supported_actions
-
     def check_permission(self, context: PermissionContext) -> PermissionResult:
         """
         實現自定義權限檢查邏輯
@@ -67,9 +64,6 @@ class CustomResourceAccessChecker(IPermissionChecker):
 class DataFilterChecker(IPermissionChecker):
     """資料過濾檢查器 - 檢查搜尋查詢是否合理"""
 
-    def supports_action(self, action: str) -> bool:
-        return action == "search_resources"
-
     def check_permission(self, context: PermissionContext) -> PermissionResult:
         # 檢查查詢條件
         query = context.method_kwargs.get("query")
@@ -85,9 +79,6 @@ class DataFilterChecker(IPermissionChecker):
 
 class TimeBasedChecker(IPermissionChecker):
     """時間基礎檢查器 - 在特定時間段限制某些操作"""
-
-    def supports_action(self, action: str) -> bool:
-        return action in {"update", "delete", "create"}
 
     def check_permission(self, context: PermissionContext) -> PermissionResult:
         now = dt.datetime.now()

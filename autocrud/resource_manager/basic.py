@@ -172,6 +172,18 @@ class IMigration(ABC):
 class IResourceManager(ABC, Generic[T]):
     @property
     @abstractmethod
+    def user(self) -> str: ...
+    @property
+    @abstractmethod
+    def now(self) -> dt.datetime: ...
+    @property
+    @abstractmethod
+    def user_or_unset(self) -> str | UnsetType: ...
+    @property
+    @abstractmethod
+    def now_or_unset(self) -> dt.datetime | UnsetType: ...
+    @property
+    @abstractmethod
     def resource_type(self) -> type[T]: ...
 
     @property

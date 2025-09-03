@@ -1,7 +1,7 @@
 from typing import TypeVar
 from enum import Flag, StrEnum, auto
 import msgspec
-
+from msgspec import UNSET, UnsetType
 from autocrud.resource_manager.basic import (
     DataSearchCondition,
     DataSearchOperator,
@@ -106,7 +106,7 @@ class ACLPermission(BasePermission):
     subject: str
     object: str | None
     action: ResourceAction
-    order: int | msgspec.UnsetType = msgspec.UNSET
+    order: int | UnsetType = UNSET
     effect: Effect = Effect.allow
 
 
@@ -114,26 +114,33 @@ class ACLPermission(BasePermission):
 class RoleMembership(BasePermission):
     subject: str  # 用戶/主體
     group: str  # 角色群組
-    order: int | msgspec.UnsetType = msgspec.UNSET
+    order: int | UnsetType = UNSET
 
 
 # === 統一權限模型：使用 Union 類型 ===
 Permission = ACLPermission | RoleMembership
 
+ROOT_USER = "root"
+
 
 class PermissionResourceManager(ResourceManager, IPermissionResourceManager):
     """權限資源管理器 - 支援 ACL、RBAC、ABAC 統一管理"""
+
+    def user_is_root(self, user: str) -> None:
+        if user == self.root_users:
+            return True
+        return False
 
     def __init__(
         self,
         resource_type=Permission,
         *,
-        policy: Policy = Policy.strict,
-        root_users: list[str] = None,
+        policy: Policy = Policy.strict,  # deprecated
+        root_user: str = ROOT_USER,
         **kwargs,
     ):
         # 設置 root 用戶列表
-        self.root_users = set(root_users or ["root", "admin"])
+        self.root_users = root_user
 
         # 定義需要建立索引的欄位，以支援高效查詢
         indexed_fields = [
@@ -196,7 +203,7 @@ class PermissionResourceManager(ResourceManager, IPermissionResourceManager):
             None: 沒有匹配的規則，需要其他檢查器決定
         """
         # 1. 首先檢查是否為 root 用戶
-        if user in self.root_users:
+        if self.user_is_root(user):
             return True
 
         # 調試：打印輸入參數
@@ -222,10 +229,6 @@ class PermissionResourceManager(ResourceManager, IPermissionResourceManager):
         # 4. None 值匹配（向後兼容，但不推薦）
         possible_objects.append(None)
 
-        # Root 用戶可以做任何事
-        if user == "root":
-            return True
-
         # 構建可能的 action 匹配值
         has_allow = False
         has_deny = False
@@ -234,7 +237,7 @@ class PermissionResourceManager(ResourceManager, IPermissionResourceManager):
         for obj in possible_objects:
             try:
                 # 設置為 root 來執行搜尋，避免無限遞歸
-                with self.meta_provide("root", self.now_ctx.get()):
+                with self.meta_provide(ROOT_USER, self.now_ctx.get()):
                     # 構建搜尋查詢
                     query = ResourceMetaSearchQuery(
                         data_conditions=[
@@ -359,6 +362,6 @@ class PermissionResourceManager(ResourceManager, IPermissionResourceManager):
         self, user: str, action: ResourceAction, resource: str
     ) -> bool:
         """檢查用戶權限的主入口方法"""
-        if user in self.root_users:
+        if self.user_is_root(user):
             return True
         return self._check_rbac_permission(user, action, resource)

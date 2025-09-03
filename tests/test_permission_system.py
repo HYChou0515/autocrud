@@ -14,6 +14,7 @@ import datetime as dt
 from dataclasses import dataclass
 from autocrud.resource_manager.core import ResourceManager, SimpleStorage
 from autocrud.resource_manager.meta_store.simple import MemoryMetaStore
+from autocrud.resource_manager.permission_context import DefaultPermissionChecker
 from autocrud.resource_manager.resource_store.simple import MemoryResourceStore
 from autocrud.resource_manager.permission import (
     PermissionResourceManager,
@@ -45,10 +46,11 @@ class TestCaseUtil:
             meta_store=MemoryMetaStore(), resource_store=permission_resource_store
         )
         permission_manager = PermissionResourceManager(storage=permission_storage)
+        permission_checker = DefaultPermissionChecker(permission_manager)
 
         # 建立 document manager
         document_manager = ResourceManager(
-            TestDocument, storage=storage, permission_manager=permission_manager
+            TestDocument, storage=storage, permission_checker=permission_checker
         )
 
         self.permission_manager = permission_manager

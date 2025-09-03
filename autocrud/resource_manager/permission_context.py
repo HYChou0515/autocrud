@@ -7,15 +7,19 @@
 """
 
 from abc import ABC, abstractmethod
+from collections.abc import Callable
 from enum import StrEnum
 from typing import Any, Dict
 import datetime as dt
 from msgspec import UNSET, Struct, UnsetType
-
+import logging
 from autocrud.resource_manager.basic import ResourceAction, ResourceMeta
 
 from autocrud.resource_manager.basic import IPermissionResourceManager
+
 from autocrud.resource_manager.core import ResourceManager
+
+logger = logging.getLogger(__name__)
 
 
 class PermissionResult(StrEnum):
@@ -46,7 +50,7 @@ class PermissionContext(Struct, kw_only=True):
     extra_data: Dict[str, Any] = {}
 
 
-class PermissionChecker(ABC):
+class IPermissionChecker(ABC):
     """權限檢查器接口"""
 
     @abstractmethod
@@ -62,10 +66,10 @@ class PermissionChecker(ABC):
         pass
 
 
-class CompositePermissionChecker(PermissionChecker):
+class CompositePermissionChecker(IPermissionChecker):
     """組合權限檢查器 - 執行多個檢查器，任何 DENY 都會拒絕操作"""
 
-    def __init__(self, checkers: list[PermissionChecker]):
+    def __init__(self, checkers: list[IPermissionChecker]):
         self.checkers = checkers
 
     def check_permission(self, context: PermissionContext) -> PermissionResult:
@@ -88,10 +92,18 @@ class CompositePermissionChecker(PermissionChecker):
             return PermissionResult.ALLOW
 
         # 所有檢查器都不適用，預設拒絕
-        return PermissionResult.DENY
+        return PermissionResult.NOT_APPLICABLE
 
 
-class DefaultPermissionChecker(PermissionChecker):
+class AllowAll(IPermissionChecker):
+    """允許所有操作的權限檢查器"""
+
+    def check_permission(self, context: PermissionContext) -> PermissionResult:
+        """始終允許所有操作"""
+        return PermissionResult.ALLOW
+
+
+class DefaultPermissionChecker(IPermissionChecker):
     """預設權限檢查器 - 使用傳統的 ACL/RBAC 模式"""
 
     def __init__(self, permission_manager: "IPermissionResourceManager"):
@@ -100,17 +112,17 @@ class DefaultPermissionChecker(PermissionChecker):
     def check_permission(self, context: PermissionContext) -> PermissionResult:
         """使用現有的權限管理器進行檢查"""
         try:
-            # 對於 ACL/RBAC，resource_id 可以是 None
             with self.permission_manager.meta_provide("root", context.now):
                 allowed = self.permission_manager.check_permission(
                     context.user, context.action, context.resource_name
                 )
             return PermissionResult.ALLOW if allowed else PermissionResult.DENY
         except Exception:
+            logger.exception("Error on checking permission, so deny")
             return PermissionResult.DENY
 
 
-class ActionBasedPermissionChecker(PermissionChecker):
+class ActionBasedPermissionChecker(IPermissionChecker):
     """基於 Action 的權限檢查器 - 為不同操作提供專門的檢查邏輯"""
 
     def __init__(self):
@@ -127,13 +139,34 @@ class ActionBasedPermissionChecker(PermissionChecker):
 
     def check_permission(self, context: PermissionContext) -> PermissionResult:
         """根據 action 分發到對應的處理器"""
-        if context.action in self._action_handlers:
-            return self._action_handlers[context.action](context)
+
+        handlers = [h for a, h in self._action_handlers.items() if context.action in a]
+        for handler in handlers:
+            result = handler(context)
+            if result != PermissionResult.NOT_APPLICABLE:
+                return result
 
         return PermissionResult.NOT_APPLICABLE
 
+    @classmethod
+    def from_dict(
+        cls,
+        handlers: dict[
+            ResourceAction | str, Callable[[PermissionContext], PermissionResult]
+        ],
+    ) -> "ActionBasedPermissionChecker":
+        """創建自定義 action 檢查器，並註冊常用的 action 處理器"""
+        checker = cls()
 
-class ResourceOwnershipChecker(PermissionChecker):
+        for action, handler in handlers.items():
+            if isinstance(action, str):
+                action = ResourceAction[action]
+            checker.register_action_handler(action, handler)
+
+        return checker
+
+
+class ResourceOwnershipChecker(IPermissionChecker):
     """資源所有權檢查器 - 檢查用戶是否為資源創建者"""
 
     def __init__(
@@ -172,7 +205,7 @@ class ResourceOwnershipChecker(PermissionChecker):
             return PermissionResult.DENY
 
 
-class FieldLevelPermissionChecker(PermissionChecker):
+class FieldLevelPermissionChecker(IPermissionChecker):
     """欄位級權限檢查器 - 檢查用戶是否可以修改特定欄位"""
 
     def __init__(
@@ -232,7 +265,7 @@ class FieldLevelPermissionChecker(PermissionChecker):
         return allowed
 
 
-class ConditionalPermissionChecker(PermissionChecker):
+class ConditionalPermissionChecker(IPermissionChecker):
     """條件式權限檢查器 - 基於資源內容的動態權限檢查"""
 
     def __init__(self):
@@ -262,7 +295,7 @@ def create_default_permission_checker(
     resource_manager: ResourceManager = None,
     enable_ownership_check: bool = True,
     field_permissions: Dict[str, set[str]] = None,
-) -> PermissionChecker:
+) -> IPermissionChecker:
     """創建預設的權限檢查器組合"""
     checkers = []
 
@@ -280,28 +313,3 @@ def create_default_permission_checker(
         )
 
     return CompositePermissionChecker(checkers)
-
-
-def create_custom_action_checker() -> ActionBasedPermissionChecker:
-    """創建自定義 action 檢查器，並註冊常用的 action 處理器"""
-    checker = ActionBasedPermissionChecker()
-
-    # 註冊 create action 處理器
-    def handle_create(context: PermissionContext) -> PermissionResult:
-        """create 操作不需要 resource_id，檢查用戶是否有創建權限"""
-        # 可以在這裡實現創建權限邏輯
-        # 例如檢查用戶是否屬於可以創建資源的群組
-        return PermissionResult.NOT_APPLICABLE  # 交給其他檢查器處理
-
-    # 註冊 list/search action 處理器
-    def handle_list_search(context: PermissionContext) -> PermissionResult:
-        """list/search 操作的權限檢查"""
-        # 可以在這裡實現列表查看權限邏輯
-        return PermissionResult.NOT_APPLICABLE  # 交給其他檢查器處理
-
-    checker.register_action_handler("create", handle_create)
-    checker.register_action_handler("list", handle_list_search)
-    checker.register_action_handler("search", handle_list_search)
-    checker.register_action_handler("search_resources", handle_list_search)
-
-    return checker

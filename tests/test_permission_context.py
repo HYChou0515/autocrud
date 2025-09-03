@@ -56,10 +56,11 @@ class TestCaseUtil:
             meta_store=MemoryMetaStore(), resource_store=permission_resource_store
         )
         permission_manager = PermissionResourceManager(storage=permission_storage)
+        permission_checker = DefaultPermissionChecker(permission_manager)
 
         # 建立 document manager
         document_manager = ResourceManager(
-            TestDocument, storage=storage, permission_manager=permission_manager
+            TestDocument, storage=storage, permission_checker=permission_checker
         )
 
         self.permission_manager = permission_manager
@@ -114,7 +115,7 @@ class TestActionBasedPermissionChecker(TestCaseUtil):
         """測試 action 處理器註冊"""
         checker = ActionBasedPermissionChecker()
 
-        def create_handler(context):
+        def create_handler(context: PermissionContext):
             return (
                 PermissionResult.ALLOW
                 if context.user == "admin"
