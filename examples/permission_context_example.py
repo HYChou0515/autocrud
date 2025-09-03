@@ -8,11 +8,10 @@
 4. 處理複雜的業務邏輯
 """
 
+from autocrud.permission.acl import ACLPermissionChecker
+from autocrud.permission.basic import PermissionContext, PermissionResult
 from autocrud.resource_manager.permission_context import (
-    PermissionContext,
-    PermissionResult,
     PermissionChecker,
-    DefaultPermissionChecker,
     ResourceOwnershipChecker,
     FieldLevelPermissionChecker,
     CompositePermissionChecker,
@@ -44,7 +43,7 @@ class BusinessLogicChecker(PermissionChecker):
 
         # 示例：只允許在工作時間進行某些操作
         if context.action in {"delete", "update"} and not self._is_work_hours():
-            return PermissionResult.DENY
+            return PermissionResult.deny
 
         # 示例：根據資源狀態決定權限
         if context.has_resource_id and context.action == "update":
@@ -54,7 +53,7 @@ class BusinessLogicChecker(PermissionChecker):
         if context.action == "create":
             return self._check_create_permission(context)
 
-        return PermissionResult.NOT_APPLICABLE
+        return PermissionResult.not_applicable
 
     def _is_work_hours(self) -> bool:
         """檢查是否在工作時間"""
@@ -73,14 +72,14 @@ class BusinessLogicChecker(PermissionChecker):
                 pass  # resource = resource_manager.get(context.resource_id)
                 # context.set_resource_data(resource.data)
             except Exception:
-                return PermissionResult.DENY
+                return PermissionResult.deny
 
         # 檢查資源狀態（示例邏輯）
         if hasattr(context.resource_data, "status"):
             if context.resource_data.status == "locked":
-                return PermissionResult.DENY
+                return PermissionResult.deny
 
-        return PermissionResult.NOT_APPLICABLE
+        return PermissionResult.not_applicable
 
     def _check_create_permission(self, context: PermissionContext) -> PermissionResult:
         """檢查創建權限"""
@@ -92,7 +91,7 @@ class BusinessLogicChecker(PermissionChecker):
         # if created_count >= MAX_RESOURCES_PER_USER:
         #     return PermissionResult.DENY
 
-        return PermissionResult.NOT_APPLICABLE
+        return PermissionResult.not_applicable
 
 
 # 示例 3: 欄位級權限檢查
@@ -124,16 +123,16 @@ def setup_conditional_checker() -> ConditionalPermissionChecker:
             from datetime import datetime
 
             if datetime.now().weekday() >= 5:  # 週末
-                return PermissionResult.DENY
-        return PermissionResult.NOT_APPLICABLE
+                return PermissionResult.deny
+        return PermissionResult.not_applicable
 
     # 添加條件：VIP 用戶可以跳過某些限制
     def vip_user_bypass(context: PermissionContext) -> PermissionResult:
         if context.user.startswith("vip:"):
             # VIP 用戶在某些情況下可以繞過限制
             if context.action in {"update", "delete"}:
-                return PermissionResult.ALLOW
-        return PermissionResult.NOT_APPLICABLE
+                return PermissionResult.allow
+        return PermissionResult.not_applicable
 
     checker.add_condition(weekday_only_delete)
     checker.add_condition(vip_user_bypass)
@@ -149,7 +148,7 @@ def setup_complete_permission_system(
 
     checkers = [
         # 1. 首先檢查基本的 ACL/RBAC 權限
-        DefaultPermissionChecker(permission_manager),
+        ACLPermissionChecker(permission_manager),
         # 2. 檢查資源所有權
         ResourceOwnershipChecker(resource_manager),
         # 3. 檢查欄位級權限
@@ -199,13 +198,13 @@ class DynamicPermissionChecker(PermissionChecker):
         for rule_name, condition in self.rules.items():
             try:
                 result = condition(context)
-                if result == PermissionResult.DENY:
-                    return PermissionResult.DENY
+                if result == PermissionResult.deny:
+                    return PermissionResult.deny
             except Exception:
                 # 規則執行失敗，記錄但不影響其他規則
                 pass
 
-        return PermissionResult.NOT_APPLICABLE
+        return PermissionResult.not_applicable
 
 
 # 使用示例
@@ -230,7 +229,7 @@ def usage_example():
     # 方法 2: 手動組裝複雜的檢查器
     complex_checker = CompositePermissionChecker(
         [
-            DefaultPermissionChecker(permission_manager),
+            ACLPermissionChecker(permission_manager),
             BusinessLogicChecker(),
             setup_conditional_checker(),
         ]
@@ -240,10 +239,10 @@ def usage_example():
     dynamic_checker = DynamicPermissionChecker()
     dynamic_checker.add_rule(
         "no_weekend_delete",
-        lambda ctx: PermissionResult.DENY
+        lambda ctx: PermissionResult.deny
         if ctx.action == "delete"
         and __import__("datetime").datetime.now().weekday() >= 5
-        else PermissionResult.NOT_APPLICABLE,
+        else PermissionResult.not_applicable,
     )
 
     # 將檢查器傳入 ResourceManager

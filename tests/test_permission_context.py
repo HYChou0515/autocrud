@@ -12,19 +12,17 @@
 import pytest
 import datetime as dt
 from dataclasses import dataclass
+from autocrud.permission.acl import ACLPermissionChecker
+from autocrud.permission.basic import PermissionContext, PermissionResult
 from autocrud.resource_manager.core import ResourceManager, SimpleStorage
 from autocrud.resource_manager.meta_store.simple import MemoryMetaStore
 from autocrud.resource_manager.resource_store.simple import MemoryResourceStore
 from autocrud.resource_manager.permission import (
-    PermissionResourceManager,
     ACLPermission,
     Effect,
 )
 from autocrud.resource_manager.basic import ResourceAction
 from autocrud.resource_manager.permission_context import (
-    PermissionContext,
-    PermissionResult,
-    DefaultPermissionChecker,
     CompositePermissionChecker,
     ResourceOwnershipChecker,
     FieldLevelPermissionChecker,
@@ -51,19 +49,13 @@ class TestCaseUtil:
         )
 
         # 設定權限管理器
-        permission_resource_store = MemoryResourceStore(dict)
-        permission_storage = SimpleStorage(
-            meta_store=MemoryMetaStore(), resource_store=permission_resource_store
-        )
-        permission_manager = PermissionResourceManager(storage=permission_storage)
-        permission_checker = DefaultPermissionChecker(permission_manager)
+        permission_checker = ACLPermissionChecker()
 
         # 建立 document manager
         document_manager = ResourceManager(
             TestDocument, storage=storage, permission_checker=permission_checker
         )
-
-        self.permission_manager = permission_manager
+        self.pc = permission_checker
         self.document_manager = document_manager
         self.current_time = dt.datetime.now()
 
@@ -117,9 +109,9 @@ class TestActionBasedPermissionChecker(TestCaseUtil):
 
         def create_handler(context: PermissionContext):
             return (
-                PermissionResult.ALLOW
+                PermissionResult.allow
                 if context.user == "admin"
-                else PermissionResult.DENY
+                else PermissionResult.deny
             )
 
         checker.register_action_handler(ResourceAction.create, create_handler)
@@ -132,7 +124,7 @@ class TestActionBasedPermissionChecker(TestCaseUtil):
             resource_name="documents",
         )
         result = checker.check_permission(context)
-        assert result == PermissionResult.ALLOW
+        assert result == PermissionResult.allow
 
         # 測試普通用戶
         context = PermissionContext(
@@ -142,7 +134,7 @@ class TestActionBasedPermissionChecker(TestCaseUtil):
             resource_name="documents",
         )
         result = checker.check_permission(context)
-        assert result == PermissionResult.DENY
+        assert result == PermissionResult.deny
 
     def test_unregistered_action(self):
         """測試未註冊的 action"""
@@ -156,7 +148,7 @@ class TestActionBasedPermissionChecker(TestCaseUtil):
         )
 
         result = checker.check_permission(context)
-        assert result == PermissionResult.NOT_APPLICABLE
+        assert result == PermissionResult.not_applicable
 
 
 class TestFieldLevelPermissionChecker(TestCaseUtil):
@@ -178,7 +170,7 @@ class TestFieldLevelPermissionChecker(TestCaseUtil):
         )
 
         result = checker.check_permission(context)
-        assert result == PermissionResult.ALLOW
+        assert result == PermissionResult.allow
 
         # 測試 alice 修改不允許的欄位
         context = PermissionContext(
@@ -190,7 +182,7 @@ class TestFieldLevelPermissionChecker(TestCaseUtil):
         )
 
         result = checker.check_permission(context)
-        assert result == PermissionResult.DENY
+        assert result == PermissionResult.deny
 
     def test_non_update_action(self):
         """測試非 update 操作"""
@@ -205,7 +197,7 @@ class TestFieldLevelPermissionChecker(TestCaseUtil):
         )
 
         result = checker.check_permission(context)
-        assert result == PermissionResult.NOT_APPLICABLE
+        assert result == PermissionResult.not_applicable
 
 
 class TestConditionalPermissionChecker(TestCaseUtil):
@@ -218,8 +210,8 @@ class TestConditionalPermissionChecker(TestCaseUtil):
         # 添加條件：拒絕刪除操作
         def no_delete(context: PermissionContext):
             if ResourceAction.delete in context.action:
-                return PermissionResult.DENY
-            return PermissionResult.NOT_APPLICABLE
+                return PermissionResult.deny
+            return PermissionResult.not_applicable
 
         checker.add_condition(no_delete)
 
@@ -233,7 +225,7 @@ class TestConditionalPermissionChecker(TestCaseUtil):
         )
 
         result = checker.check_permission(context)
-        assert result == PermissionResult.DENY
+        assert result == PermissionResult.deny
 
         # 測試其他操作
         context = PermissionContext(
@@ -246,7 +238,7 @@ class TestConditionalPermissionChecker(TestCaseUtil):
 
         result = checker.check_permission(context)
         assert (
-            result == PermissionResult.NOT_APPLICABLE
+            result == PermissionResult.not_applicable
         )  # 沒有條件阻止，返回 NOT_APPLICABLE
 
     def test_multiple_conditions(self):
@@ -258,16 +250,16 @@ class TestConditionalPermissionChecker(TestCaseUtil):
             if context.action in [ResourceAction.update, ResourceAction.create]:
                 current_hour = context.now.hour
                 if 9 <= current_hour <= 17:  # 9AM-5PM
-                    return PermissionResult.NOT_APPLICABLE  # 繼續檢查
+                    return PermissionResult.not_applicable  # 繼續檢查
                 else:
-                    return PermissionResult.DENY  # 非工作時間拒絕
-            return PermissionResult.NOT_APPLICABLE
+                    return PermissionResult.deny  # 非工作時間拒絕
+            return PermissionResult.not_applicable
 
         # 條件2：管理員例外
         def admin_exception(context):
             if context.user == "admin":
-                return PermissionResult.ALLOW  # 管理員總是允許
-            return PermissionResult.NOT_APPLICABLE
+                return PermissionResult.allow  # 管理員總是允許
+            return PermissionResult.not_applicable
 
         checker.add_condition(admin_exception)  # 先檢查管理員例外
         checker.add_condition(work_hours_only)  # 再檢查工作時間
@@ -283,7 +275,7 @@ class TestConditionalPermissionChecker(TestCaseUtil):
         )
 
         result = checker.check_permission(context)
-        assert result == PermissionResult.ALLOW
+        assert result == PermissionResult.allow
 
 
 class TestCompositePermissionChecker(TestCaseUtil):
@@ -295,12 +287,12 @@ class TestCompositePermissionChecker(TestCaseUtil):
         # 第一個檢查器總是拒絕
         class AlwaysDenyChecker:
             def check_permission(self, context):
-                return PermissionResult.DENY
+                return PermissionResult.deny
 
         # 第二個檢查器總是允許
         class AlwaysAllowChecker:
             def check_permission(self, context):
-                return PermissionResult.ALLOW
+                return PermissionResult.allow
 
         composite = CompositePermissionChecker(
             [AlwaysDenyChecker(), AlwaysAllowChecker()]
@@ -314,18 +306,18 @@ class TestCompositePermissionChecker(TestCaseUtil):
         )
 
         result = composite.check_permission(context)
-        assert result == PermissionResult.DENY
+        assert result == PermissionResult.deny
 
     def test_composite_checker_skip_not_applicable(self):
         """測試組合檢查器：跳過 NOT_APPLICABLE"""
 
         class NotApplicableChecker:
             def check_permission(self, context):
-                return PermissionResult.NOT_APPLICABLE
+                return PermissionResult.not_applicable
 
         class AllowChecker:
             def check_permission(self, context):
-                return PermissionResult.ALLOW
+                return PermissionResult.allow
 
         composite = CompositePermissionChecker([NotApplicableChecker(), AllowChecker()])
 
@@ -337,7 +329,7 @@ class TestCompositePermissionChecker(TestCaseUtil):
         )
 
         result = composite.check_permission(context)
-        assert result == PermissionResult.ALLOW
+        assert result == PermissionResult.allow
 
 
 class MockResourceManager:
@@ -378,7 +370,7 @@ class TestResourceOwnershipChecker(TestCaseUtil):
         )
 
         result = checker.check_permission(context)
-        assert result == PermissionResult.ALLOW
+        assert result == PermissionResult.allow
 
     def test_non_owner_cannot_update(self):
         """測試非擁有者不能更新"""
@@ -396,7 +388,7 @@ class TestResourceOwnershipChecker(TestCaseUtil):
         )
 
         result = checker.check_permission(context)
-        assert result == PermissionResult.DENY
+        assert result == PermissionResult.deny
 
     def test_non_applicable_action(self):
         """測試不適用的操作"""
@@ -414,7 +406,7 @@ class TestResourceOwnershipChecker(TestCaseUtil):
         )
 
         result = checker.check_permission(context)
-        assert result == PermissionResult.NOT_APPLICABLE
+        assert result == PermissionResult.not_applicable
 
 
 class TestDefaultPermissionChecker(TestCaseUtil):
@@ -422,11 +414,11 @@ class TestDefaultPermissionChecker(TestCaseUtil):
 
     def test_default_checker_integration(self):
         """測試默認檢查器與實際權限系統的整合"""
-        pm = self.permission_manager
+        pm = self.pc.pm
         current_time = self.current_time
 
         # 設置權限
-        with pm.meta_provide("system", current_time):
+        with pm.meta_provide("root", current_time):
             # Alice 有讀取和更新權限
             alice_permissions = ACLPermission(
                 subject="alice",
@@ -437,7 +429,7 @@ class TestDefaultPermissionChecker(TestCaseUtil):
             pm.create(alice_permissions)
 
         # 創建默認檢查器
-        checker = DefaultPermissionChecker(pm)
+        checker = self.pc
 
         # 測試允許的操作
         context = PermissionContext(
@@ -449,7 +441,7 @@ class TestDefaultPermissionChecker(TestCaseUtil):
         )
 
         result = checker.check_permission(context)
-        assert result == PermissionResult.ALLOW
+        assert result == PermissionResult.allow
 
         # 測試不允許的操作
         context = PermissionContext(
@@ -461,7 +453,7 @@ class TestDefaultPermissionChecker(TestCaseUtil):
         )
 
         result = checker.check_permission(context)
-        assert result == PermissionResult.DENY
+        assert result == PermissionResult.deny
 
 
 # 整合測試
@@ -470,12 +462,12 @@ class TestIntegratedPermissionContextSystem(TestCaseUtil):
 
     def test_realistic_scenario(self):
         """測試真實場景"""
-        pm = self.permission_manager
+        pm = self.pc.pm
         dm = self.document_manager
         current_time = self.current_time
 
         # 設置權限
-        with pm.meta_provide("system", current_time):
+        with pm.meta_provide("root", current_time):
             # Editor 有完整權限
             editor_permissions = ACLPermission(
                 subject="editor",
@@ -513,7 +505,7 @@ class TestIntegratedPermissionContextSystem(TestCaseUtil):
         )
 
         # 設置默認權限檢查
-        default_checker = DefaultPermissionChecker(pm)
+        default_checker = self.pc
 
         # 組合所有檢查器
         composite = CompositePermissionChecker(
@@ -534,7 +526,7 @@ class TestIntegratedPermissionContextSystem(TestCaseUtil):
         )
 
         result = composite.check_permission(context)
-        assert result == PermissionResult.ALLOW
+        assert result == PermissionResult.allow
 
         # 測試場景 2: 普通用戶嘗試更新文檔（欄位權限拒絕）
         context = PermissionContext(
@@ -547,7 +539,7 @@ class TestIntegratedPermissionContextSystem(TestCaseUtil):
         )
 
         result = composite.check_permission(context)
-        assert result == PermissionResult.DENY  # 被欄位檢查器拒絕
+        assert result == PermissionResult.deny  # 被欄位檢查器拒絕
 
         # 測試場景 3: 普通用戶讀取文檔（應該允許）
         context = PermissionContext(
@@ -559,7 +551,7 @@ class TestIntegratedPermissionContextSystem(TestCaseUtil):
         )
 
         result = composite.check_permission(context)
-        assert result == PermissionResult.ALLOW
+        assert result == PermissionResult.allow
 
     def test_complex_business_rules(self):
         """測試複雜的業務規則"""
@@ -575,8 +567,8 @@ class TestIntegratedPermissionContextSystem(TestCaseUtil):
             if context.action == ResourceAction.create and context.user != "admin":
                 current_hour = context.now.hour
                 if not (9 <= current_hour <= 17):
-                    return PermissionResult.DENY
-            return PermissionResult.NOT_APPLICABLE
+                    return PermissionResult.deny
+            return PermissionResult.not_applicable
 
         conditional_checker.add_condition(work_hours_rule)
 
@@ -591,7 +583,7 @@ class TestIntegratedPermissionContextSystem(TestCaseUtil):
         )
 
         result = conditional_checker.check_permission(context)
-        assert result == PermissionResult.DENY
+        assert result == PermissionResult.deny
 
         # 測試管理員在非工作時間創建（應該允許）
         context = PermissionContext(
@@ -603,7 +595,7 @@ class TestIntegratedPermissionContextSystem(TestCaseUtil):
         )
 
         result = conditional_checker.check_permission(context)
-        assert result == PermissionResult.NOT_APPLICABLE  # 管理員不受工作時間限制
+        assert result == PermissionResult.not_applicable  # 管理員不受工作時間限制
 
 
 if __name__ == "__main__":

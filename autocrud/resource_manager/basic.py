@@ -724,7 +724,7 @@ def _match_data_condition(
         if isinstance(field_value, list):
             return condition.value in field_value
         if isinstance(condition.value, Flag) and isinstance(field_value, int):
-            return condition.value.value & field_value
+            return (condition.value.value & field_value) == condition.value.value
         # 標準字符串包含檢查
         return field_value is not None and str(condition.value) in str(field_value)
     elif condition.operator == DataSearchOperator.starts_with:

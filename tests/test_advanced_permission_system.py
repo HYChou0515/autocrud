@@ -7,11 +7,13 @@ import pytest
 import datetime as dt
 from msgspec import Struct
 
-from autocrud.resource_manager.permission_context import (
-    ActionBasedPermissionChecker,
+from autocrud.permission.basic import (
     IPermissionChecker,
     PermissionContext,
     PermissionResult,
+)
+from autocrud.resource_manager.permission_context import (
+    ActionBasedPermissionChecker,
     CompositePermissionChecker,
 )
 from autocrud.resource_manager.permission import (
@@ -39,7 +41,7 @@ class DoNothingPermissionChecker(IPermissionChecker):
 
     def check_permission(self, context: PermissionContext) -> PermissionResult:
         self.check_calls.append(context)
-        return PermissionResult.NOT_APPLICABLE
+        return PermissionResult.not_applicable
 
 
 class RejectingPermissionChecker(IPermissionChecker):
@@ -50,7 +52,7 @@ class RejectingPermissionChecker(IPermissionChecker):
 
     def check_permission(self, context: PermissionContext) -> PermissionResult:
         self.check_calls.append(context)
-        return PermissionResult.DENY
+        return PermissionResult.deny
 
 
 class AcceptingPermissionChecker(IPermissionChecker):
@@ -61,7 +63,7 @@ class AcceptingPermissionChecker(IPermissionChecker):
 
     def check_permission(self, context: PermissionContext) -> PermissionResult:
         self.check_calls.append(context)
-        return PermissionResult.ALLOW
+        return PermissionResult.allow
 
 
 class MockPermissionChecker(IPermissionChecker):
@@ -75,14 +77,14 @@ class MockPermissionChecker(IPermissionChecker):
 
         # 簡單的測試邏輯
         if context.user == "blocked_user":
-            return PermissionResult.DENY
+            return PermissionResult.deny
 
         if context.action == ResourceAction.create and "sensitive" in str(
             context.method_args
         ):
-            return PermissionResult.DENY
+            return PermissionResult.deny
 
-        return PermissionResult.ALLOW
+        return PermissionResult.allow
 
 
 class TestAdvancedPermissionChecking:
@@ -160,8 +162,8 @@ class TestAdvancedPermissionChecking:
         """測試自定義權限檢查器"""
         checker = ActionBasedPermissionChecker.from_dict(
             {
-                "read": lambda _: PermissionResult.DENY,
-                "create": lambda _: PermissionResult.ALLOW,
+                "read": lambda _: PermissionResult.deny,
+                "create": lambda _: PermissionResult.allow,
             }
         )
         self.resource_manager.permission_checker = checker

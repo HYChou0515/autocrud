@@ -16,7 +16,7 @@ from autocrud.resource_manager.permission import (
     ACLPermission,
     Effect,
 )
-from autocrud.resource_manager.permission_context import DefaultPermissionChecker
+from autocrud.permission.acl import ACLPermissionChecker
 from autocrud.resource_manager.basic import ResourceAction
 
 
@@ -108,7 +108,7 @@ def create_document_manager(doc_storage, permission_manager):
     """創建文檔管理器並整合權限系統"""
 
     # 創建權限檢查器
-    permission_checker = DefaultPermissionChecker(permission_manager)
+    permission_checker = ACLPermissionChecker(permission_manager)
 
     # 創建 ResourceManager 並傳入權限檢查器
     document_manager = ResourceManager(

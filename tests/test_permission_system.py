@@ -12,12 +12,12 @@
 import pytest
 import datetime as dt
 from dataclasses import dataclass
+from autocrud.permission.basic import PermissionContext, PermissionResult
 from autocrud.resource_manager.core import ResourceManager, SimpleStorage
 from autocrud.resource_manager.meta_store.simple import MemoryMetaStore
-from autocrud.resource_manager.permission_context import DefaultPermissionChecker
+from autocrud.permission.acl import ACLPermissionChecker
 from autocrud.resource_manager.resource_store.simple import MemoryResourceStore
 from autocrud.resource_manager.permission import (
-    PermissionResourceManager,
     ACLPermission,
     Effect,
 )
@@ -41,19 +41,14 @@ class TestCaseUtil:
         )
 
         # 設定權限管理器
-        permission_resource_store = MemoryResourceStore(dict)
-        permission_storage = SimpleStorage(
-            meta_store=MemoryMetaStore(), resource_store=permission_resource_store
-        )
-        permission_manager = PermissionResourceManager(storage=permission_storage)
-        permission_checker = DefaultPermissionChecker(permission_manager)
+        permission_checker = ACLPermissionChecker()
 
         # 建立 document manager
         document_manager = ResourceManager(
             TestDocument, storage=storage, permission_checker=permission_checker
         )
-
-        self.permission_manager = permission_manager
+        self.pc = permission_checker
+        self.permission_manager = self.pc.pm
         self.document_manager = document_manager
         self.current_time = dt.datetime.now()
 
@@ -67,7 +62,7 @@ class TestPermissionCreationAndManagement(TestCaseUtil):
         current_time = self.current_time
 
         # 在 system context 中創建權限
-        with pm.meta_provide("system", current_time):
+        with pm.meta_provide("root", current_time):
             # 給 alice 完整權限
             alice_permissions = ACLPermission(
                 subject="alice",
@@ -100,30 +95,61 @@ class TestRootUserPermissions(TestCaseUtil):
 
     def test_root_user_has_all_permissions(self):
         """測試 root 用戶擁有所有權限"""
-        pm = self.permission_manager
-        current_time = self.current_time
-
-        with pm.meta_provide("root", current_time):
-            # Root 應該有所有權限
-            assert (
-                pm.check_permission("root", ResourceAction.create, "test_document")
-                is True
+        assert (
+            self.pc.check_permission(
+                PermissionContext(
+                    user="root",
+                    now=self.current_time,
+                    action=ResourceAction.create,
+                    resource_name="test_document",
+                )
             )
-            assert (
-                pm.check_permission("root", ResourceAction.read, "test_document")
-                is True
+            is PermissionResult.allow
+        )
+        assert (
+            self.pc.check_permission(
+                PermissionContext(
+                    user="root",
+                    now=self.current_time,
+                    action=ResourceAction.read,
+                    resource_name="test_document",
+                )
             )
-            assert (
-                pm.check_permission("root", ResourceAction.update, "test_document")
-                is True
+            is PermissionResult.allow
+        )
+        assert (
+            self.pc.check_permission(
+                PermissionContext(
+                    user="root",
+                    now=self.current_time,
+                    action=ResourceAction.update,
+                    resource_name="test_document",
+                )
             )
-            assert (
-                pm.check_permission("root", ResourceAction.delete, "test_document")
-                is True
+            is PermissionResult.allow
+        )
+        assert (
+            self.pc.check_permission(
+                PermissionContext(
+                    user="root",
+                    now=self.current_time,
+                    action=ResourceAction.delete,
+                    resource_name="test_document",
+                )
             )
-            assert (
-                pm.check_permission("root", ResourceAction.full, "any_resource") is True
+            is PermissionResult.allow
+        )
+        assert (
+            self.pc.check_permission(
+                PermissionContext(
+                    user="root",
+                    now=self.current_time,
+                    action=ResourceAction.full,
+                    resource_name="any_resource",
+                )
             )
+            is PermissionResult.allow
+        )
 
 
 class TestResourceManagerCRUDOperations(TestCaseUtil):
@@ -134,7 +160,7 @@ class TestResourceManagerCRUDOperations(TestCaseUtil):
         pm = self.permission_manager
         current_time = self.current_time
 
-        with pm.meta_provide("system", current_time):
+        with pm.meta_provide("root", current_time):
             # Alice: 完整權限
             alice_permissions = ACLPermission(
                 subject="alice",
@@ -371,7 +397,7 @@ class TestPermissionDenialScenarios(TestCaseUtil):
         current_time = self.current_time
 
         # 設置一個只有創建權限的用戶
-        with pm.meta_provide("system", current_time):
+        with pm.meta_provide("root", current_time):
             create_only_permissions = ACLPermission(
                 subject="create_only_user",
                 object="test_document",
@@ -402,7 +428,7 @@ class TestComplexPermissionScenarios(TestCaseUtil):
         current_time = self.current_time
 
         # 設置不同用戶的權限
-        with pm.meta_provide("system", current_time):
+        with pm.meta_provide("root", current_time):
             # Owner: 完整權限
             owner_permissions = ACLPermission(
                 subject="owner",
@@ -460,7 +486,7 @@ class TestComplexPermissionScenarios(TestCaseUtil):
         pm = self.permission_manager
         current_time = self.current_time
 
-        with pm.meta_provide("system", current_time):
+        with pm.meta_provide("root", current_time):
             # 用戶只對 "other_resource" 有權限，對 "test_document" 沒有權限
             other_permissions = ACLPermission(
                 subject="specialized_user",
@@ -471,34 +497,52 @@ class TestComplexPermissionScenarios(TestCaseUtil):
             pm.create(other_permissions)
 
         # 檢查權限隔離
-        with pm.meta_provide("specialized_user", current_time):
-            # 對 other_resource 有權限
-            assert (
-                pm.check_permission(
-                    "specialized_user", ResourceAction.create, "other_resource"
-                )
-                is True
+        assert (
+            self.pc.check_permission(
+                PermissionContext(
+                    user="specialized_user",
+                    now=current_time,
+                    action=ResourceAction.create,
+                    resource_name="other_resource",
+                ),
             )
-            assert (
-                pm.check_permission(
-                    "specialized_user", ResourceAction.read, "other_resource"
-                )
-                is True
+            is PermissionResult.allow
+        )
+        assert (
+            self.pc.check_permission(
+                PermissionContext(
+                    user="specialized_user",
+                    now=current_time,
+                    action=ResourceAction.read,
+                    resource_name="other_resource",
+                ),
             )
+            is PermissionResult.allow
+        )
 
-            # 對 test_document 沒有權限
-            assert (
-                pm.check_permission(
-                    "specialized_user", ResourceAction.create, "test_document"
-                )
-                is False
+        # 對 test_document 沒有權限
+        assert (
+            self.pc.check_permission(
+                PermissionContext(
+                    user="specialized_user",
+                    now=current_time,
+                    action=ResourceAction.create,
+                    resource_name="test_document",
+                ),
             )
-            assert (
-                pm.check_permission(
-                    "specialized_user", ResourceAction.read, "test_document"
-                )
-                is False
+            is PermissionResult.deny
+        )
+        assert (
+            self.pc.check_permission(
+                PermissionContext(
+                    user="specialized_user",
+                    now=current_time,
+                    action=ResourceAction.read,
+                    resource_name="test_document",
+                ),
             )
+            is PermissionResult.deny
+        )
 
 
 if __name__ == "__main__":

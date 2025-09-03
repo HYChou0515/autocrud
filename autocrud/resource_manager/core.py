@@ -11,9 +11,10 @@ from xxhash import xxh3_128_hexdigest
 
 
 if TYPE_CHECKING:
-    from autocrud.resource_manager.permission_context import IPermissionChecker
+    from autocrud.permission.basic import IPermissionChecker
 
 
+from autocrud.permission.basic import PermissionResult
 from autocrud.resource_manager.basic import (
     Ctx,
     Encoding,
@@ -145,16 +146,15 @@ def smart_permission_check():
 
         @wraps(method)
         def _permission_check(self: IResourceManager[T], *method_args, **method_kwargs):
-            from autocrud.resource_manager.permission_context import (
+            from autocrud.permission.basic import (
                 PermissionContext,
-                PermissionResult,
             )
             from autocrud.resource_manager.basic import PermissionDeniedError
             from autocrud.resource_manager.permission import ROOT_USER
 
             user = self.user_or_unset
             if user == ROOT_USER:
-                result = PermissionResult.ALLOW
+                result = PermissionResult.allow
             else:
                 context = PermissionContext(
                     user=user,
@@ -167,7 +167,7 @@ def smart_permission_check():
                 # 執行權限檢查
                 result = self.permission_checker.check_permission(context)
 
-            if result != PermissionResult.ALLOW:
+            if result != PermissionResult.allow:
                 raise PermissionDeniedError(
                     f"Permission denied for user '{context.user}' "
                     f"to perform '{context.action}' on '{context.resource_name}'"
@@ -219,7 +219,7 @@ class ResourceManager(IResourceManager[T], Generic[T]):
         if permission_checker is not None:
             self.permission_checker = permission_checker
         else:
-            from autocrud.resource_manager.permission_context import AllowAll
+            from autocrud.permission.simple import AllowAll
 
             self.permission_checker = AllowAll()
 

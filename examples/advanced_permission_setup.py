@@ -2,13 +2,13 @@
 進階權限設定示例 - 組合多種檢查器
 """
 
+from autocrud.permission.acl import ACLPermissionChecker
+from autocrud.permission.basic import PermissionResult
 from autocrud.resource_manager.permission_context import (
-    DefaultPermissionChecker,
     FieldLevelPermissionChecker,
     ResourceOwnershipChecker,
     ConditionalPermissionChecker,
     CompositePermissionChecker,
-    PermissionResult,
     create_default_permission_checker,
 )
 
@@ -50,9 +50,9 @@ def setup_advanced_permissions(permission_manager, resource_manager):
 
     # 添加條件：只有管理員可以刪除
     conditional_checker.add_condition(
-        lambda ctx: PermissionResult.DENY
+        lambda ctx: PermissionResult.deny
         if ctx.action == "delete" and not ctx.user.endswith(":admin")
-        else PermissionResult.NOT_APPLICABLE
+        else PermissionResult.not_applicable
     )
 
     # 添加條件：工作時間限制
@@ -62,13 +62,13 @@ def setup_advanced_permissions(permission_manager, resource_manager):
         if context.action in {"delete", "update"}:
             hour = datetime.now().hour
             if hour < 9 or hour > 17:  # 非工作時間
-                return PermissionResult.DENY
-        return PermissionResult.NOT_APPLICABLE
+                return PermissionResult.deny
+        return PermissionResult.not_applicable
 
     conditional_checker.add_condition(work_hours_check)
 
     # 2.4 基本的 ACL/RBAC 檢查器
-    acl_checker = DefaultPermissionChecker(permission_manager)
+    acl_checker = ACLPermissionChecker(permission_manager)
 
     # 2.5 組合所有檢查器
     composite_checker = CompositePermissionChecker(

@@ -4,6 +4,8 @@
 
 import datetime as dt
 from dataclasses import dataclass
+from autocrud.permission.acl import ACLPermissionChecker
+from autocrud.permission.basic import PermissionContext, PermissionResult
 from autocrud.resource_manager.core import ResourceManager
 from autocrud.resource_manager.permission import (
     PermissionResourceManager,
@@ -12,14 +14,11 @@ from autocrud.resource_manager.permission import (
     Effect,
 )
 from autocrud.resource_manager.permission_context import (
-    DefaultPermissionChecker,
     FieldLevelPermissionChecker,
     ResourceOwnershipChecker,
     ConditionalPermissionChecker,
     CompositePermissionChecker,
-    PermissionResult,
     PermissionChecker,
-    PermissionContext,
 )
 from autocrud.resource_manager.resource_store.simple import SimpleResourceStore
 from autocrud.resource_manager.meta_store.simple import SimpleMetaStore
@@ -45,7 +44,7 @@ class DocumentPermissionChecker(PermissionChecker):
             if hasattr(context.resource_data, "status"):
                 if context.resource_data.status == "draft":
                     # 需要檢查是否為作者（通過所有權檢查器處理）
-                    return PermissionResult.NOT_APPLICABLE
+                    return PermissionResult.not_applicable
 
         # 2. 只有編輯者可以發布文檔
         if context.action == "update" and context.method_kwargs.get("data"):
@@ -54,15 +53,15 @@ class DocumentPermissionChecker(PermissionChecker):
                 if not context.user.startswith(
                     "editor:"
                 ) and not context.user.startswith("admin:"):
-                    return PermissionResult.DENY
+                    return PermissionResult.deny
 
         # 3. 歸檔文檔不能修改
         if context.action in {"update", "patch"} and context.resource_data:
             if hasattr(context.resource_data, "status"):
                 if context.resource_data.status == "archived":
-                    return PermissionResult.DENY
+                    return PermissionResult.deny
 
-        return PermissionResult.NOT_APPLICABLE
+        return PermissionResult.not_applicable
 
 
 def setup_document_permission_system():
@@ -111,9 +110,9 @@ def setup_document_permission_system():
 
     # 只有管理員可以刪除
     conditional_checker.add_condition(
-        lambda ctx: PermissionResult.DENY
+        lambda ctx: PermissionResult.deny
         if ctx.action == "delete" and not ctx.user.startswith("admin:")
-        else PermissionResult.NOT_APPLICABLE
+        else PermissionResult.not_applicable
     )
 
     # 週末不能發布文檔
@@ -122,13 +121,13 @@ def setup_document_permission_system():
             data = context.method_kwargs["data"]
             if hasattr(data, "status") and data.status == "published":
                 if dt.datetime.now().weekday() >= 5:  # 週末
-                    return PermissionResult.DENY
-        return PermissionResult.NOT_APPLICABLE
+                    return PermissionResult.deny
+        return PermissionResult.not_applicable
 
     conditional_checker.add_condition(no_weekend_publish)
 
     # 4.4 基本 ACL/RBAC 檢查
-    acl_checker = DefaultPermissionChecker(permission_manager)
+    acl_checker = ACLPermissionChecker(permission_manager)
 
     # 4.5 自定義文檔權限檢查
     document_checker = DocumentPermissionChecker()

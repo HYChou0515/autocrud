@@ -15,7 +15,7 @@ from typing import IO
 
 from msgspec import UnsetType
 
-from autocrud.crud.core import DiskStorageFactory
+from autocrud.resource_manager.storage_factory import DiskStorageFactory
 from autocrud.resource_manager.basic import Encoding, IMigration, MsgspecSerializer
 
 if len(sys.argv) >= 2:

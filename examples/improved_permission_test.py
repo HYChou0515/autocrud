@@ -13,7 +13,7 @@ from autocrud.resource_manager.permission import (
     PermissionResourceManager,
     Permission,
 )
-from autocrud.resource_manager.permission_context import DefaultPermissionChecker
+from autocrud.permission.acl import ACLPermissionChecker
 from autocrud.resource_manager.permission_utils import (
     PermissionBuilder,
     CommonPermissions,
@@ -44,7 +44,7 @@ def test_improved_permission_setup():
         Permission, storage=permission_storage
     )
 
-    permission_checker = DefaultPermissionChecker(permission_manager)
+    permission_checker = ACLPermissionChecker(permission_manager)
 
     document_manager = ResourceManager(
         resource_type=TestDocument,
@@ -134,7 +134,7 @@ def test_permission_hierarchy():
         Permission, storage=permission_storage
     )
 
-    permission_checker = DefaultPermissionChecker(permission_manager)
+    permission_checker = ACLPermissionChecker(permission_manager)
 
     document_manager = ResourceManager(
         resource_type=TestDocument,

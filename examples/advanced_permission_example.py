@@ -3,12 +3,14 @@
 展示如何使用新的權限上下文模式來實現靈活的權限檢查
 """
 
-from autocrud.resource_manager.permission_context import (
+from autocrud.permission.acl import ACLPermissionChecker
+from autocrud.permission.basic import (
     IPermissionChecker,
     PermissionContext,
     PermissionResult,
+)
+from autocrud.resource_manager.permission_context import (
     CompositePermissionChecker,
-    DefaultPermissionChecker,
 )
 from autocrud.resource_manager.permission import PermissionResourceManager
 from autocrud.resource_manager.core import ResourceManager
@@ -33,7 +35,7 @@ class CustomResourceAccessChecker(IPermissionChecker):
             if context.method_args:
                 resource_id = context.method_args[0]
             else:
-                return PermissionResult.DENY
+                return PermissionResult.deny
         else:
             resource_id = context.resource_id
 
@@ -43,7 +45,7 @@ class CustomResourceAccessChecker(IPermissionChecker):
         )
 
         if not is_allowed:
-            return PermissionResult.DENY
+            return PermissionResult.deny
 
         # 特殊邏輯：對於 update 操作，檢查新資料內容
         if context.action == "update" and len(context.method_args) >= 2:
@@ -56,9 +58,9 @@ class CustomResourceAccessChecker(IPermissionChecker):
                     context.user, "admin", "system"
                 )
                 if not admin_check:
-                    return PermissionResult.DENY
+                    return PermissionResult.deny
 
-        return PermissionResult.ALLOW
+        return PermissionResult.allow
 
 
 class DataFilterChecker(IPermissionChecker):
@@ -72,9 +74,9 @@ class DataFilterChecker(IPermissionChecker):
             for condition in query.data_conditions:
                 if condition.field_path == "sensitive_data":
                     # 檢查用戶是否有查詢敏感資料的權限
-                    return PermissionResult.DENY
+                    return PermissionResult.deny
 
-        return PermissionResult.ALLOW
+        return PermissionResult.allow
 
 
 class TimeBasedChecker(IPermissionChecker):
@@ -89,7 +91,7 @@ class TimeBasedChecker(IPermissionChecker):
                 # 檢查是否有緊急操作權限
                 emergency = context.extra_data.get("emergency", False)
                 if not emergency:
-                    return PermissionResult.DENY
+                    return PermissionResult.deny
 
         return PermissionResult.SKIP  # 讓其他檢查器決定
 
@@ -112,7 +114,7 @@ def setup_advanced_permission_checking(
     composite_checker.add_checker(DataFilterChecker())
 
     # 添加預設檢查器作為最後的備用
-    composite_checker.add_checker(DefaultPermissionChecker(permission_manager))
+    composite_checker.add_checker(ACLPermissionChecker(permission_manager))
 
     # 設定到 resource_manager
     resource_manager.permission_checker = composite_checker

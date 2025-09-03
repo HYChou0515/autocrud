@@ -6,64 +6,19 @@
 - DefaultPermissionChecker：預設實現，可以被繼承或組合
 """
 
-from abc import ABC, abstractmethod
 from collections.abc import Callable
-from enum import StrEnum
-from typing import Any, Dict
-import datetime as dt
-from msgspec import UNSET, Struct, UnsetType
+from typing import Dict
+from msgspec import UNSET
 import logging
-from autocrud.resource_manager.basic import ResourceAction, ResourceMeta
+from autocrud.permission.basic import PermissionResult
+from autocrud.permission.basic import PermissionContext
+from autocrud.permission.basic import IPermissionChecker
+from autocrud.resource_manager.basic import ResourceAction
 
-from autocrud.resource_manager.basic import IPermissionResourceManager
 
 from autocrud.resource_manager.core import ResourceManager
 
 logger = logging.getLogger(__name__)
-
-
-class PermissionResult(StrEnum):
-    """權限檢查結果"""
-
-    ALLOW = "allow"
-    DENY = "deny"
-    NOT_APPLICABLE = "not_applicable"  # 這個檢查器不適用於此操作
-
-
-class PermissionContext(Struct, kw_only=True):
-    """權限檢查上下文 - 包含所有權限檢查所需的資訊"""
-
-    # 基本資訊
-    user: str
-    now: dt.datetime
-    action: ResourceAction
-    resource_name: str
-
-    # 方法調用資訊
-    method_args: tuple = ()
-    method_kwargs: Dict[str, Any] = {}
-
-    # 額外上下文資料
-    resource_id: str | UnsetType = UNSET
-    resource_meta: ResourceMeta | UnsetType = UNSET
-    resource_data: Any | UnsetType = UNSET
-    extra_data: Dict[str, Any] = {}
-
-
-class IPermissionChecker(ABC):
-    """權限檢查器接口"""
-
-    @abstractmethod
-    def check_permission(self, context: PermissionContext) -> PermissionResult:
-        """檢查權限
-
-        Args:
-            context: 權限檢查上下文
-
-        Returns:
-            PermissionResult: 檢查結果
-        """
-        pass
 
 
 class CompositePermissionChecker(IPermissionChecker):
@@ -80,46 +35,19 @@ class CompositePermissionChecker(IPermissionChecker):
             result = checker.check_permission(context)
 
             # 任何 DENY 立即拒絕
-            if result == PermissionResult.DENY:
-                return PermissionResult.DENY
+            if result == PermissionResult.deny:
+                return PermissionResult.deny
 
             # 記錄是否有 ALLOW
-            if result == PermissionResult.ALLOW:
+            if result == PermissionResult.allow:
                 has_allow = True
 
         # 如果有 ALLOW 且沒有 DENY，則允許
         if has_allow:
-            return PermissionResult.ALLOW
+            return PermissionResult.allow
 
         # 所有檢查器都不適用，預設拒絕
-        return PermissionResult.NOT_APPLICABLE
-
-
-class AllowAll(IPermissionChecker):
-    """允許所有操作的權限檢查器"""
-
-    def check_permission(self, context: PermissionContext) -> PermissionResult:
-        """始終允許所有操作"""
-        return PermissionResult.ALLOW
-
-
-class DefaultPermissionChecker(IPermissionChecker):
-    """預設權限檢查器 - 使用傳統的 ACL/RBAC 模式"""
-
-    def __init__(self, permission_manager: "IPermissionResourceManager"):
-        self.permission_manager = permission_manager
-
-    def check_permission(self, context: PermissionContext) -> PermissionResult:
-        """使用現有的權限管理器進行檢查"""
-        try:
-            with self.permission_manager.meta_provide("root", context.now):
-                allowed = self.permission_manager.check_permission(
-                    context.user, context.action, context.resource_name
-                )
-            return PermissionResult.ALLOW if allowed else PermissionResult.DENY
-        except Exception:
-            logger.exception("Error on checking permission, so deny")
-            return PermissionResult.DENY
+        return PermissionResult.not_applicable
 
 
 class ActionBasedPermissionChecker(IPermissionChecker):
@@ -143,10 +71,10 @@ class ActionBasedPermissionChecker(IPermissionChecker):
         handlers = [h for a, h in self._action_handlers.items() if context.action in a]
         for handler in handlers:
             result = handler(context)
-            if result != PermissionResult.NOT_APPLICABLE:
+            if result != PermissionResult.not_applicable:
                 return result
 
-        return PermissionResult.NOT_APPLICABLE
+        return PermissionResult.not_applicable
 
     @classmethod
     def from_dict(
@@ -181,11 +109,11 @@ class ResourceOwnershipChecker(IPermissionChecker):
         """檢查用戶是否為資源擁有者"""
         # 只對特定 action 生效
         if context.action not in self.allowed_actions:
-            return PermissionResult.NOT_APPLICABLE
+            return PermissionResult.not_applicable
 
         # 需要有 resource_id
         if context.resource_id is UNSET:
-            return PermissionResult.NOT_APPLICABLE
+            return PermissionResult.not_applicable
 
         try:
             # 獲取資源元資料
@@ -197,12 +125,12 @@ class ResourceOwnershipChecker(IPermissionChecker):
 
             # 檢查創建者
             if meta.created_by == context.user:
-                return PermissionResult.ALLOW
+                return PermissionResult.allow
             else:
-                return PermissionResult.DENY
+                return PermissionResult.deny
 
         except Exception:
-            return PermissionResult.DENY
+            return PermissionResult.deny
 
 
 class FieldLevelPermissionChecker(IPermissionChecker):
@@ -220,21 +148,21 @@ class FieldLevelPermissionChecker(IPermissionChecker):
         """檢查欄位級權限"""
         # 只對 update/patch 操作生效
         if not (context.action & (ResourceAction.update | ResourceAction.patch)):
-            return PermissionResult.NOT_APPLICABLE
+            return PermissionResult.not_applicable
 
         # 從方法參數中提取要修改的欄位
         modified_fields = self._extract_modified_fields(context)
         if not modified_fields:
-            return PermissionResult.NOT_APPLICABLE
+            return PermissionResult.not_applicable
 
         # 獲取用戶允許修改的欄位
         allowed_fields = self._get_user_allowed_fields(context.user)
 
         # 檢查是否所有修改的欄位都被允許
         if modified_fields.issubset(allowed_fields):
-            return PermissionResult.ALLOW
+            return PermissionResult.allow
         else:
-            return PermissionResult.DENY
+            return PermissionResult.deny
 
     def _extract_modified_fields(self, context: PermissionContext) -> set[str]:
         """從上下文中提取要修改的欄位"""
@@ -283,33 +211,7 @@ class ConditionalPermissionChecker(IPermissionChecker):
         """執行所有條件檢查"""
         for condition in self._conditions:
             result = condition(context)
-            if result != PermissionResult.NOT_APPLICABLE:
+            if result != PermissionResult.not_applicable:
                 return result
 
-        return PermissionResult.NOT_APPLICABLE
-
-
-# 便利函數：快速創建常用的權限檢查器組合
-def create_default_permission_checker(
-    permission_manager: IPermissionResourceManager,
-    resource_manager: ResourceManager = None,
-    enable_ownership_check: bool = True,
-    field_permissions: Dict[str, set[str]] = None,
-) -> IPermissionChecker:
-    """創建預設的權限檢查器組合"""
-    checkers = []
-
-    # 添加基本的 ACL/RBAC 檢查器
-    checkers.append(DefaultPermissionChecker(permission_manager))
-
-    # 添加資源所有權檢查器
-    if enable_ownership_check and resource_manager:
-        checkers.append(ResourceOwnershipChecker(resource_manager))
-
-    # 添加欄位級權限檢查器
-    if field_permissions:
-        checkers.append(
-            FieldLevelPermissionChecker(allowed_fields_by_user=field_permissions)
-        )
-
-    return CompositePermissionChecker(checkers)
+        return PermissionResult.not_applicable

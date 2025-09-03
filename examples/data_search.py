@@ -1,6 +1,6 @@
 import datetime as dt
 from dataclasses import dataclass
-from autocrud.crud.core import AutoCRUD, MemoryStorageFactory
+from autocrud.crud.core import AutoCRUD
 from autocrud.resource_manager.basic import (
     DataSearchCondition,
     DataSearchOperator,
@@ -9,6 +9,7 @@ from autocrud.resource_manager.basic import (
 from msgspec import UNSET
 
 from autocrud.resource_manager.core import ResourceManager
+from autocrud.resource_manager.storage_factory import MemoryStorageFactory
 
 
 @dataclass

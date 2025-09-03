@@ -13,7 +13,7 @@ import shutil
 import sys
 
 
-from autocrud.crud.core import DiskStorageFactory
+from autocrud.resource_manager.storage_factory import DiskStorageFactory
 
 if len(sys.argv) >= 2:
     mode = sys.argv[1]

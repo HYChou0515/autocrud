@@ -13,7 +13,7 @@ from autocrud.resource_manager.permission import (
     Effect,
     Permission,
 )
-from autocrud.resource_manager.permission_context import DefaultPermissionChecker
+from autocrud.permission.acl import ACLPermissionChecker
 from autocrud.resource_manager.resource_store.simple import MemoryResourceStore
 from autocrud.resource_manager.meta_store.simple import MemoryMetaStore
 
@@ -41,7 +41,7 @@ def test_basic_permission_setup():
     )
 
     # 3. 創建權限檢查器
-    permission_checker = DefaultPermissionChecker(permission_manager)
+    permission_checker = ACLPermissionChecker(permission_manager)
 
     # 4. 創建文檔管理器並設定權限檢查器
     document_manager = ResourceManager(
