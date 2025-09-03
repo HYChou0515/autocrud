@@ -17,10 +17,7 @@ from autocrud.permission.basic import PermissionContext, PermissionResult
 from autocrud.resource_manager.core import ResourceManager, SimpleStorage
 from autocrud.resource_manager.meta_store.simple import MemoryMetaStore
 from autocrud.resource_manager.resource_store.simple import MemoryResourceStore
-from autocrud.resource_manager.permission import (
-    ACLPermission,
-    Effect,
-)
+from autocrud.permission.acl import ACLPermission
 from autocrud.resource_manager.basic import ResourceAction
 from autocrud.resource_manager.permission_context import (
     CompositePermissionChecker,
@@ -424,7 +421,7 @@ class TestDefaultPermissionChecker(TestCaseUtil):
                 subject="alice",
                 object="documents",
                 action=ResourceAction.get | ResourceAction.update,
-                effect=Effect.allow,
+                effect=PermissionResult.allow,
             )
             pm.create(alice_permissions)
 
@@ -475,7 +472,7 @@ class TestIntegratedPermissionContextSystem(TestCaseUtil):
                 action=ResourceAction.create
                 | ResourceAction.get
                 | ResourceAction.update,
-                effect=Effect.allow,
+                effect=PermissionResult.allow,
             )
             pm.create(editor_permissions)
 
@@ -484,7 +481,7 @@ class TestIntegratedPermissionContextSystem(TestCaseUtil):
                 subject="user",
                 object="test_document",
                 action=ResourceAction.get,
-                effect=Effect.allow,
+                effect=PermissionResult.allow,
             )
             pm.create(user_permissions)
 

@@ -15,12 +15,8 @@ from dataclasses import dataclass
 from autocrud.permission.basic import PermissionContext, PermissionResult
 from autocrud.resource_manager.core import ResourceManager, SimpleStorage
 from autocrud.resource_manager.meta_store.simple import MemoryMetaStore
-from autocrud.permission.acl import ACLPermissionChecker
+from autocrud.permission.acl import ACLPermission, ACLPermissionChecker
 from autocrud.resource_manager.resource_store.simple import MemoryResourceStore
-from autocrud.resource_manager.permission import (
-    ACLPermission,
-    Effect,
-)
 from autocrud.resource_manager.basic import PermissionDeniedError, ResourceAction
 
 
@@ -71,7 +67,7 @@ class TestPermissionCreationAndManagement(TestCaseUtil):
                 | ResourceAction.read
                 | ResourceAction.update
                 | ResourceAction.delete,
-                effect=Effect.allow,
+                effect=PermissionResult.allow,
             )
             alice_resource_id = pm.create(alice_permissions).resource_id
 
@@ -80,7 +76,7 @@ class TestPermissionCreationAndManagement(TestCaseUtil):
                 subject="bob",
                 object="test_document",
                 action=ResourceAction.read,
-                effect=Effect.allow,
+                effect=PermissionResult.allow,
             )
             bob_resource_id = pm.create(bob_permissions).resource_id
 
@@ -170,7 +166,7 @@ class TestResourceManagerCRUDOperations(TestCaseUtil):
                 | ResourceAction.update
                 | ResourceAction.delete
                 | ResourceAction.read_list,
-                effect=Effect.allow,
+                effect=PermissionResult.allow,
             )
             pm.create(alice_permissions)
 
@@ -179,7 +175,7 @@ class TestResourceManagerCRUDOperations(TestCaseUtil):
                 subject="bob",
                 object="test_document",
                 action=ResourceAction.read | ResourceAction.read_list,
-                effect=Effect.allow,
+                effect=PermissionResult.allow,
             )
             pm.create(bob_permissions)
 
@@ -188,7 +184,7 @@ class TestResourceManagerCRUDOperations(TestCaseUtil):
                 subject="charlie",
                 object="test_document",
                 action=ResourceAction.create,
-                effect=Effect.allow,
+                effect=PermissionResult.allow,
             )
             pm.create(charlie_permissions)
 
@@ -402,7 +398,7 @@ class TestPermissionDenialScenarios(TestCaseUtil):
                 subject="create_only_user",
                 object="test_document",
                 action=ResourceAction.create,
-                effect=Effect.allow,
+                effect=PermissionResult.allow,
             )
             pm.create(create_only_permissions)
 
@@ -437,7 +433,7 @@ class TestComplexPermissionScenarios(TestCaseUtil):
                 | ResourceAction.read
                 | ResourceAction.update
                 | ResourceAction.delete,
-                effect=Effect.allow,
+                effect=PermissionResult.allow,
             )
             pm.create(owner_permissions)
 
@@ -446,7 +442,7 @@ class TestComplexPermissionScenarios(TestCaseUtil):
                 subject="editor",
                 object="test_document",
                 action=ResourceAction.create | ResourceAction.update,
-                effect=Effect.allow,
+                effect=PermissionResult.allow,
             )
             pm.create(editor_permissions)
 
@@ -455,7 +451,7 @@ class TestComplexPermissionScenarios(TestCaseUtil):
                 subject="viewer",
                 object="test_document",
                 action=ResourceAction.read,
-                effect=Effect.allow,
+                effect=PermissionResult.allow,
             )
             pm.create(viewer_permissions)
 
@@ -492,7 +488,7 @@ class TestComplexPermissionScenarios(TestCaseUtil):
                 subject="specialized_user",
                 object="other_resource",
                 action=ResourceAction.create | ResourceAction.read,
-                effect=Effect.allow,
+                effect=PermissionResult.allow,
             )
             pm.create(other_permissions)
 

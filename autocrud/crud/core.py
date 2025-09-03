@@ -17,6 +17,8 @@ from fastapi import APIRouter, FastAPI, HTTPException, Request, Query, Depends, 
 import msgspec
 from typing import Optional
 
+from autocrud.permission.rbac import RBACPermissionChecker
+from autocrud.permission.simple import AllowAll
 from autocrud.resource_manager.basic import (
     DataSearchCondition,
     DataSearchOperator,
@@ -36,7 +38,6 @@ from autocrud.resource_manager.core import ResourceManager
 from autocrud.resource_manager.data_converter import (
     decode_json_to_data,
 )
-from autocrud.resource_manager.permission import Permission, PermissionResourceManager
 
 from autocrud.resource_manager.basic import ResourceMetaSearchQuery
 from autocrud.resource_manager.storage_factory import IStorageFactory
@@ -1485,10 +1486,13 @@ class AutoCRUD:
             else route_templates
         )
         self.route_templates.sort()
-        self.permission_manager = PermissionResourceManager(
-            Permission,
-            storage=self.storage_factory.build(Permission, "permission"),
-        )
+        if not admin:
+            self.permission_checker = AllowAll()
+        else:
+            self.permission_checker = RBACPermissionChecker(
+                storage_factory=self.storage_factory,
+                root_user=admin,
+            )
 
     def _resource_name(self, model: type[T]) -> str:
         """Convert model class name to resource name using the configured naming convention.

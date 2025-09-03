@@ -7,6 +7,7 @@ import pytest
 import datetime as dt
 from msgspec import Struct
 
+from autocrud.permission.acl import ACLPermissionChecker
 from autocrud.permission.basic import (
     IPermissionChecker,
     PermissionContext,
@@ -16,11 +17,7 @@ from autocrud.resource_manager.permission_context import (
     ActionBasedPermissionChecker,
     CompositePermissionChecker,
 )
-from autocrud.resource_manager.permission import (
-    PermissionResourceManager,
-    ACLPermission,
-    Effect,
-)
+from autocrud.permission.acl import ACLPermission
 from autocrud.resource_manager.core import ResourceManager, SimpleStorage
 from autocrud.resource_manager.meta_store.simple import MemoryMetaStore
 from autocrud.resource_manager.resource_store.simple import MemoryResourceStore
@@ -97,9 +94,13 @@ class TestAdvancedPermissionChecking:
             resource_store=MemoryResourceStore(DataStructTest),
         )
 
+        permission_checker = ACLPermissionChecker()
+        self.pm = permission_checker.pm
+
         resource_manager = ResourceManager(
             DataStructTest,
             storage=storage,
+            permission_checker=permission_checker,
         )
         self.resource_manager = resource_manager
         storage = SimpleStorage(
@@ -107,25 +108,18 @@ class TestAdvancedPermissionChecking:
             resource_store=MemoryResourceStore(dict),
         )
 
-        permission_manager = PermissionResourceManager(
-            storage=storage,
-        )
-        self.permission_manager = permission_manager
-
     def test_default_permission_checker(self):
         """測試預設權限檢查器"""
         # 設定權限管理器到 resource_manager
-        self.resource_manager.permission_manager = self.permission_manager
-
         # 建立權限規則
-        with self.permission_manager.meta_provide("root", dt.datetime.now()):
+        with self.pm.meta_provide("root", dt.datetime.now()):
             acl = ACLPermission(
                 subject="alice",
                 object="data_struct_test",
                 action=ResourceAction.get_meta,
-                effect=Effect.allow,
+                effect=PermissionResult.allow,
             )
-            self.permission_manager.create(acl)
+            self.pm.create(acl)
 
         # 測試權限檢查
         with self.resource_manager.meta_provide("alice", dt.datetime.now()):
@@ -263,19 +257,6 @@ class TestAdvancedPermissionChecking:
         assert update_context.method_args[0] == "test:123"
         assert isinstance(update_context.method_args[1], DataStructTest)
         assert update_context.method_args[1].name == "test"
-
-    def test_backward_compatibility(self):
-        """測試向後相容性 - 不設定 permission_checker 時應該使用舊的方式"""
-        # 不設定 permission_checker，但設定 permission_manager
-        self.resource_manager.permission_manager = self.permission_manager
-        self.resource_manager.permission_checker = None
-
-        # 這應該仍然能工作（使用舊的權限檢查方式）
-        with self.resource_manager.meta_provide("alice", dt.datetime.now()):
-            try:
-                self.resource_manager.get_meta("test:123")
-            except Exception:
-                pass  # 忽略其他錯誤
 
 
 if __name__ == "__main__":
