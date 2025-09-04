@@ -9,7 +9,6 @@ from autocrud.resource_manager.basic import (
 from msgspec import UNSET
 
 from autocrud.resource_manager.core import ResourceManager
-from autocrud.resource_manager.storage_factory import MemoryStorageFactory
 
 
 @dataclass
@@ -28,7 +27,6 @@ def test_basic_data_search():
     autocrud.add_model(
         User,
         name="users",
-        storage_factory=MemoryStorageFactory(),
         indexed_fields=[
             ("name", str),
             ("email", str),
