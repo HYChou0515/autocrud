@@ -15,9 +15,10 @@ from dataclasses import dataclass
 from autocrud.permission.basic import PermissionContext, PermissionResult
 from autocrud.resource_manager.core import ResourceManager, SimpleStorage
 from autocrud.resource_manager.meta_store.simple import MemoryMetaStore
-from autocrud.permission.acl import ACLPermission, ACLPermissionChecker
+from autocrud.permission.acl import ACLPermission, ACLPermissionChecker, Policy
 from autocrud.resource_manager.resource_store.simple import MemoryResourceStore
 from autocrud.resource_manager.basic import PermissionDeniedError, ResourceAction
+from autocrud.resource_manager.storage_factory import MemoryStorageFactory
 
 
 @dataclass
@@ -37,7 +38,10 @@ class TestCaseUtil:
         )
 
         # 設定權限管理器
-        permission_checker = ACLPermissionChecker()
+        permission_checker = ACLPermissionChecker(
+            policy=Policy.deny_overrides,
+            storage_factory=MemoryStorageFactory(),
+        )
 
         # 建立 document manager
         document_manager = ResourceManager(

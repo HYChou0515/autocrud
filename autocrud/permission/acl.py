@@ -3,7 +3,7 @@ from autocrud.permission.simple import RootOnly
 from autocrud.resource_manager.core import ResourceManager
 from autocrud.resource_manager.storage_factory import MemoryStorageFactory
 from autocrud.permission.basic import (
-    ROOT_USER,
+    DEFAULT_ROOT_USER,
     IPermissionCheckerWithStore,
     PermissionContext,
     PermissionResult,
@@ -16,13 +16,14 @@ from autocrud.resource_manager.basic import (
     ResourceMetaSearchQuery,
     ResourceMetaSortDirection,
 )
-from autocrud.resource_manager.permission_context import logger
-
+import logging
 from msgspec import UNSET, UnsetType, Struct
 from autocrud.resource_manager.basic import (
     ResourceAction,
 )
 from autocrud.resource_manager.storage_factory import IStorageFactory
+
+logger = logging.getLogger(__name__)
 
 
 class ACLPermission(Struct):
@@ -112,7 +113,7 @@ class ACLPermissionChecker(IPermissionCheckerWithStore[ACLPermission]):
         *,
         policy: Policy = Policy.strict,
         storage_factory: IStorageFactory | None = None,
-        root_user: str = ROOT_USER,
+        root_user: str = DEFAULT_ROOT_USER,
     ):
         if storage_factory is None:
             self.storage_factory = MemoryStorageFactory()

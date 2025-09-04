@@ -14,7 +14,7 @@ if TYPE_CHECKING:
     from autocrud.permission.basic import IPermissionChecker
 
 
-from autocrud.permission.basic import ROOT_USER, PermissionResult
+from autocrud.permission.basic import PermissionResult
 from autocrud.resource_manager.basic import (
     Ctx,
     Encoding,
@@ -152,19 +152,16 @@ def smart_permission_check():
             from autocrud.resource_manager.basic import PermissionDeniedError
 
             user = self.user_or_unset
-            if user == ROOT_USER:
-                result = PermissionResult.allow
-            else:
-                context = PermissionContext(
-                    user=user,
-                    now=self.now_or_unset,
-                    action=action,
-                    resource_name=self.resource_name,
-                    method_args=method_args,
-                    method_kwargs=method_kwargs,
-                )
-                # 執行權限檢查
-                result = self.permission_checker.check_permission(context)
+            context = PermissionContext(
+                user=user,
+                now=self.now_or_unset,
+                action=action,
+                resource_name=self.resource_name,
+                method_args=method_args,
+                method_kwargs=method_kwargs,
+            )
+            # 執行權限檢查
+            result = self.permission_checker.check_permission(context)
 
             if result != PermissionResult.allow:
                 raise PermissionDeniedError(

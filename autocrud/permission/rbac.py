@@ -5,7 +5,7 @@ from autocrud.permission.simple import RootOnly
 from autocrud.resource_manager.core import ResourceManager
 from autocrud.resource_manager.storage_factory import MemoryStorageFactory
 from autocrud.permission.basic import (
-    ROOT_USER,
+    DEFAULT_ROOT_USER,
     IPermissionCheckerWithStore,
     PermissionContext,
     PermissionResult,
@@ -22,10 +22,12 @@ from autocrud.resource_manager.basic import (
     ResourceMetaSortKey,
     SpecialIndex,
 )
-from autocrud.resource_manager.permission_context import logger
 
 from msgspec import UNSET, UnsetType, Struct
 from autocrud.resource_manager.storage_factory import IStorageFactory
+import logging
+
+logger = logging.getLogger(__name__)
 
 
 class RoleMembership(Struct, kw_only=True, tag=True):
@@ -34,10 +36,10 @@ class RoleMembership(Struct, kw_only=True, tag=True):
     order: int | UnsetType = UNSET
 
 
-class ACLPermission_(ACLPermission, tag=True): ...
+class RBACPermissionEntry(ACLPermission, tag=True): ...
 
 
-RBACPermission = ACLPermission_ | RoleMembership
+RBACPermission = RBACPermissionEntry | RoleMembership
 
 
 class RBACPermissionChecker(
@@ -51,16 +53,14 @@ class RBACPermissionChecker(
         *,
         policy: Policy = Policy.strict,
         storage_factory: IStorageFactory | None = None,
-        root_user: str = ROOT_USER,
+        root_user: str = DEFAULT_ROOT_USER,
     ):
-        if not root_user:
-            root_user = ROOT_USER
         if storage_factory is None:
             self.storage_factory = MemoryStorageFactory()
         else:
             self.storage_factory = storage_factory
         storage = self.storage_factory.build(RBACPermission, "RBACPermission")
-        self.pm = ResourceManager(
+        self.pm = ResourceManager[RBACPermission](
             RBACPermission,
             storage=storage,
             indexed_fields=[
@@ -124,7 +124,7 @@ class RBACPermissionChecker(
                             DataSearchCondition(
                                 field_path="type",
                                 operator=DataSearchOperator.equals,
-                                value="ACLPermission_",
+                                value="RBACPermissionEntry",
                             ),
                             DataSearchCondition(
                                 field_path="subject",
@@ -154,12 +154,17 @@ class RBACPermissionChecker(
                     search_results = self.pm.search_resources(query)
 
                     # 處理找到的權限規則
-                    for resource_info in search_results:
+                    for meta in search_results:
                         # 直接從 indexed_data 中獲取權限信息，避免嵌套 context
-                        indexed_data = resource_info.indexed_data
-                        effect_str = indexed_data.get("effect", "allow")  # 預設為 allow
-                        effect = PermissionResult[effect_str]
-
+                        resource = self.pm.get(meta.resource_id)
+                        data = resource.data
+                        if not isinstance(data, RBACPermissionEntry):
+                            logger.warning(
+                                "Found non-RBACPermissionEntry resource: %s",
+                                meta.resource_id,
+                            )
+                            continue
+                        effect = data.effect
                         if effect == PermissionResult.deny:
                             has_deny = True
                             # 如果是 deny 優先策略，立即拒絕

@@ -13,19 +13,19 @@ import pytest
 import datetime as dt
 from dataclasses import dataclass
 from autocrud.permission.acl import ACLPermissionChecker
+from autocrud.permission.action import ActionBasedPermissionChecker
 from autocrud.permission.basic import PermissionContext, PermissionResult
+from autocrud.permission.composite import (
+    CompositePermissionChecker,
+    ConditionalPermissionChecker,
+)
+from autocrud.permission.data_based import FieldLevelPermissionChecker
+from autocrud.permission.meta_based import ResourceOwnershipChecker
 from autocrud.resource_manager.core import ResourceManager, SimpleStorage
 from autocrud.resource_manager.meta_store.simple import MemoryMetaStore
 from autocrud.resource_manager.resource_store.simple import MemoryResourceStore
 from autocrud.permission.acl import ACLPermission
 from autocrud.resource_manager.basic import ResourceAction
-from autocrud.resource_manager.permission_context import (
-    CompositePermissionChecker,
-    ResourceOwnershipChecker,
-    FieldLevelPermissionChecker,
-    ActionBasedPermissionChecker,
-    ConditionalPermissionChecker,
-)
 
 
 @dataclass
@@ -111,7 +111,7 @@ class TestActionBasedPermissionChecker(TestCaseUtil):
                 else PermissionResult.deny
             )
 
-        checker.register_action_handler(ResourceAction.create, create_handler)
+        checker.register_action_handler("create", create_handler)
 
         # 測試 admin 用戶
         context = PermissionContext(
@@ -122,6 +122,35 @@ class TestActionBasedPermissionChecker(TestCaseUtil):
         )
         result = checker.check_permission(context)
         assert result == PermissionResult.allow
+
+        # 測試普通用戶
+        context = PermissionContext(
+            user="alice",
+            now=dt.datetime.now(),
+            action=ResourceAction.create,
+            resource_name="documents",
+        )
+        result = checker.check_permission(context)
+        assert result == PermissionResult.deny
+
+    def test_action_handler_registration2(self):
+        """測試 action 處理器註冊"""
+        checker = ActionBasedPermissionChecker.from_dict(
+            {
+                ResourceAction.create: [
+                    lambda ctx: (
+                        PermissionResult.allow
+                        if ctx.user == "admin"
+                        else PermissionResult.not_applicable
+                    ),
+                    lambda ctx: (
+                        PermissionResult.allow
+                        if ctx.user == "admin"
+                        else PermissionResult.deny
+                    ),
+                ]
+            }
+        )
 
         # 測試普通用戶
         context = PermissionContext(

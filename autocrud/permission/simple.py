@@ -1,5 +1,5 @@
 from autocrud.permission.basic import (
-    ROOT_USER,
+    DEFAULT_ROOT_USER,
     IPermissionChecker,
     PermissionContext,
     PermissionResult,
@@ -17,7 +17,7 @@ class AllowAll(IPermissionChecker):
 class RootOnly(IPermissionChecker):
     """允許所有操作的權限檢查器"""
 
-    def __init__(self, root_user: str = ROOT_USER):
+    def __init__(self, root_user: str = DEFAULT_ROOT_USER):
         self.root_user = root_user
 
     def check_permission(self, context: PermissionContext) -> PermissionResult:

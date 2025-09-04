@@ -7,27 +7,35 @@ import pytest
 import datetime as dt
 from msgspec import Struct
 
-from autocrud.permission.acl import ACLPermissionChecker
+from autocrud.permission.acl import ACLPermissionChecker, Policy
+from autocrud.permission.action import ActionBasedPermissionChecker
 from autocrud.permission.basic import (
     IPermissionChecker,
     PermissionContext,
     PermissionResult,
 )
-from autocrud.resource_manager.permission_context import (
-    ActionBasedPermissionChecker,
-    CompositePermissionChecker,
-)
 from autocrud.permission.acl import ACLPermission
+from autocrud.permission.composite import CompositePermissionChecker
+from autocrud.permission.rbac import (
+    RBACPermissionEntry,
+    RBACPermissionChecker,
+    RoleMembership,
+)
 from autocrud.resource_manager.core import ResourceManager, SimpleStorage
 from autocrud.resource_manager.meta_store.simple import MemoryMetaStore
 from autocrud.resource_manager.resource_store.simple import MemoryResourceStore
 from autocrud.resource_manager.basic import ResourceAction, ResourceIDNotFoundError
 from autocrud.resource_manager.basic import PermissionDeniedError
+from autocrud.resource_manager.storage_factory import MemoryStorageFactory
 
 
-class DataStructTest(Struct):
+class DataStruct(Struct):
     name: str = "default"
     sensitive_field: str | None = None
+
+
+class DataStruct2(Struct):
+    title: str = "default"
 
 
 class DoNothingPermissionChecker(IPermissionChecker):
@@ -91,14 +99,16 @@ class TestAdvancedPermissionChecking:
     def setup_method(self):
         storage = SimpleStorage(
             meta_store=MemoryMetaStore(),
-            resource_store=MemoryResourceStore(DataStructTest),
+            resource_store=MemoryResourceStore(DataStruct),
         )
 
-        permission_checker = ACLPermissionChecker()
-        self.pm = permission_checker.pm
+        permission_checker = ACLPermissionChecker(
+            policy=Policy.default_allow | Policy.deny_overrides,
+        )
+        self.pm = permission_checker.resource_manager
 
         resource_manager = ResourceManager(
-            DataStructTest,
+            DataStruct,
             storage=storage,
             permission_checker=permission_checker,
         )
@@ -115,7 +125,7 @@ class TestAdvancedPermissionChecking:
         with self.pm.meta_provide("root", dt.datetime.now()):
             acl = ACLPermission(
                 subject="alice",
-                object="data_struct_test",
+                object="data_struct",
                 action=ResourceAction.get_meta,
                 effect=PermissionResult.allow,
             )
@@ -149,7 +159,7 @@ class TestAdvancedPermissionChecking:
         context = checker.check_calls[0]
         assert context.user == "alice"
         assert context.action == ResourceAction.get_meta  # 現在是 ResourceAction enum
-        assert context.resource_name == "data_struct_test"
+        assert context.resource_name == "data_struct"
         assert context.method_args[0] == "test:123"
 
     def test_custom_permission_checker_2(self):
@@ -239,7 +249,7 @@ class TestAdvancedPermissionChecking:
 
         with self.resource_manager.meta_provide("alice", dt.datetime.now()):
             try:
-                self.resource_manager.update("test:123", DataStructTest(name="test"))
+                self.resource_manager.update("test:123", DataStruct(name="test"))
             except Exception:
                 pass
 
@@ -255,8 +265,115 @@ class TestAdvancedPermissionChecking:
 
         assert update_context is not None
         assert update_context.method_args[0] == "test:123"
-        assert isinstance(update_context.method_args[1], DataStructTest)
+        assert isinstance(update_context.method_args[1], DataStruct)
         assert update_context.method_args[1].name == "test"
+
+
+class TestRbacPermissionCheck:
+    @pytest.fixture(autouse=True)
+    def setup_method(self):
+        storage_factory = MemoryStorageFactory()
+        checker = RBACPermissionChecker(root_user="admin")
+        self.rm1 = ResourceManager(
+            resource_type=DataStruct,
+            name="DataStruct",
+            storage=storage_factory.build(DataStruct, "DataStruct"),
+            permission_checker=checker,
+        )
+        self.rm2 = ResourceManager(
+            resource_type=DataStruct,
+            name="DataStruct2",
+            storage=storage_factory.build(DataStruct2, "DataStruct2"),
+            permission_checker=checker,
+        )
+        with self.rm1.meta_provide("admin", dt.datetime.now()):
+            self.rm1.create(DataStruct(name="test1"))
+            self.rm1.create(DataStruct(name="test2"))
+            self.rm1.create(DataStruct(name="test3"))
+        with self.rm1.meta_provide("admin", dt.datetime.now()):
+            self.rm1.create(DataStruct2(title="test1"))
+            self.rm1.create(DataStruct2(title="test2"))
+            self.rm1.create(DataStruct2(title="test3"))
+        with checker.resource_manager.meta_provide("admin", dt.datetime.now()):
+            checker.resource_manager.create(
+                RoleMembership(
+                    subject="alice",
+                    group="a**",
+                )
+            )
+            checker.resource_manager.create(
+                RoleMembership(
+                    subject="amy",
+                    group="a**",
+                )
+            )
+            checker.resource_manager.create(
+                RoleMembership(
+                    subject="bob",
+                    group="b**",
+                )
+            )
+            checker.resource_manager.create(
+                RoleMembership(
+                    subject="cat",
+                    group="admin",
+                )
+            )
+            checker.resource_manager.create(
+                RBACPermissionEntry(
+                    subject="cat",
+                    object="DataStruct2",
+                    action=ResourceAction.full,
+                    effect=PermissionResult.deny,
+                )
+            )
+            checker.resource_manager.create(
+                RBACPermissionEntry(
+                    subject="a**",
+                    object="DataStruct",
+                    action=ResourceAction.read | ResourceAction.create,
+                    effect=PermissionResult.allow,
+                )
+            )
+            checker.resource_manager.create(
+                RBACPermissionEntry(
+                    subject="b**",
+                    object="DataStruct",
+                    action=ResourceAction.read,
+                    effect=PermissionResult.allow,
+                )
+            )
+            checker.resource_manager.create(
+                RBACPermissionEntry(
+                    subject="b**",
+                    object="DataStruct2",
+                    action=ResourceAction.read | ResourceAction.create,
+                    effect=PermissionResult.allow,
+                )
+            )
+
+    def test_1xx(self):
+        with self.rm1.meta_provide("alice", dt.datetime.now()):
+            rv1 = self.rm1.create(DataStruct(name="test4"))
+        with self.rm1.meta_provide("amy", dt.datetime.now()):
+            rv2 = self.rm1.create(DataStruct(name="test5"))
+        with self.rm1.meta_provide("bob", dt.datetime.now()):
+            self.rm1.get(rv1.resource_id)
+        with self.rm1.meta_provide("b**", dt.datetime.now()):
+            self.rm1.get(rv2.resource_id)
+        with self.rm2.meta_provide("bob", dt.datetime.now()):
+            rv3 = self.rm2.create(DataStruct2(title="title8"))
+        with self.rm2.meta_provide("b**", dt.datetime.now()):
+            rv4 = self.rm2.create(DataStruct2(title="title9"))
+        with self.rm2.meta_provide("alice", dt.datetime.now()):
+            with pytest.raises(PermissionDeniedError):
+                self.rm2.get(rv3.resource_id)
+        with self.rm2.meta_provide("amy", dt.datetime.now()):
+            with pytest.raises(PermissionDeniedError):
+                self.rm2.get(rv3.resource_id)
+        with self.rm2.meta_provide("cat", dt.datetime.now()):
+            with pytest.raises(PermissionDeniedError):
+                self.rm2.get(rv4.resource_id)
 
 
 if __name__ == "__main__":

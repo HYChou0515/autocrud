@@ -57,7 +57,7 @@ class IPermissionChecker(ABC):
         """
 
 
-ROOT_USER = "root"
+DEFAULT_ROOT_USER = "root"
 
 
 class IPermissionCheckerWithStore(IPermissionChecker, Generic[T]):
