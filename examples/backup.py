@@ -57,9 +57,8 @@ elif mode == "typeddict":
 def apply():
     shutil.rmtree("_autocrud_test_resource_dir", ignore_errors=True)
 
-    crud = AutoCRUD()
-    storage_factory = DiskStorageFactory("_autocrud_test_resource_dir")
-    crud.add_model(User, storage_factory=storage_factory)
+    crud = AutoCRUD(storage_factory=DiskStorageFactory("_autocrud_test_resource_dir"))
+    crud.add_model(User)
 
     app = FastAPI()
     crud.apply(app)

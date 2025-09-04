@@ -11,12 +11,8 @@ from dataclasses import dataclass
 from autocrud.resource_manager.core import ResourceManager, SimpleStorage
 from autocrud.resource_manager.meta_store.simple import MemoryMetaStore
 from autocrud.resource_manager.resource_store.simple import MemoryResourceStore
-from autocrud.resource_manager.permission import (
-    PermissionResourceManager,
-    ACLPermission,
-    Effect,
-)
-from autocrud.permission.acl import ACLPermissionChecker
+from autocrud.permission.acl import ACLPermissionChecker, ACLPermission, Policy
+from autocrud.permission.basic import PermissionResult
 from autocrud.resource_manager.basic import ResourceAction
 
 
@@ -32,7 +28,7 @@ class Document:
 
 # ===== 步驟 2: 設定基本存儲系統 =====
 def setup_storage():
-    """設定文檔和權限的存儲系統"""
+    """設定文檔的存儲系統"""
     # 文檔存儲
     doc_meta_store = MemoryMetaStore()
     doc_resource_store = MemoryResourceStore(Document)
@@ -40,62 +36,60 @@ def setup_storage():
         meta_store=doc_meta_store, resource_store=doc_resource_store
     )
 
-    # 權限存儲（使用 dict 來存儲權限規則）
-    perm_meta_store = MemoryMetaStore()
-    perm_resource_store = MemoryResourceStore(dict)
-    perm_storage = SimpleStorage(
-        meta_store=perm_meta_store, resource_store=perm_resource_store
+    return doc_storage
+
+
+# ===== 步驟 3: 創建權限檢查器 =====
+def create_permission_checker():
+    """創建 ACL 權限檢查器"""
+    # ACLPermissionChecker 會自己管理權限規則的存儲
+    return ACLPermissionChecker(
+        policy=Policy.strict,  # 嚴格模式：沒有明確允許就拒絕
+        root_user="system",  # 系統管理員用戶
     )
-
-    return doc_storage, perm_storage
-
-
-# ===== 步驟 3: 創建權限管理器 =====
-def create_permission_manager(perm_storage):
-    """創建 ACL/RBAC 權限管理器"""
-    return PermissionResourceManager(storage=perm_storage)
 
 
 # ===== 步驟 4: 設定權限規則 =====
-def setup_permissions(permission_manager: PermissionResourceManager):
+def setup_permissions(permission_checker: ACLPermissionChecker):
     """設定基本的權限規則"""
     current_time = dt.datetime.now()
 
     # 使用系統管理員身份創建權限規則
-    with permission_manager.meta_provide("system", current_time):
+    with permission_checker.resource_manager.meta_provide("system", current_time):
         # 管理員擁有所有權限
         admin_permission = ACLPermission(
             subject="admin",  # 誰：管理員
             object="document",  # 對什麼：文檔資源
-            action=ResourceAction.create  # 可以做什麼：創建、讀取、更新、刪除
-            | ResourceAction.read
-            | ResourceAction.update
-            | ResourceAction.delete
-            | ResourceAction.read_list,
-            effect=Effect.allow,  # 效果：允許
+            action=ResourceAction.read  # 可以做什麼：創建、讀取、更新、刪除
+            | ResourceAction.read_list
+            | ResourceAction.write
+            | ResourceAction.lifecycle,
+            effect=PermissionResult.allow,  # 效果：允許
+            order=1,  # 優先順序
         )
-        permission_manager.create(admin_permission)
+        permission_checker.resource_manager.create(admin_permission)
 
         # 編輯者可以創建、讀取和更新，但不能刪除
         editor_permission = ACLPermission(
             subject="editor",
             object="document",
-            action=ResourceAction.create
-            | ResourceAction.read
-            | ResourceAction.update
-            | ResourceAction.read_list,
-            effect=Effect.allow,
+            action=ResourceAction.read
+            | ResourceAction.read_list
+            | ResourceAction.write,
+            effect=PermissionResult.allow,
+            order=2,
         )
-        permission_manager.create(editor_permission)
+        permission_checker.resource_manager.create(editor_permission)
 
         # 讀者只能讀取和搜索
         reader_permission = ACLPermission(
             subject="reader",
             object="document",
             action=ResourceAction.read | ResourceAction.read_list,
-            effect=Effect.allow,
+            effect=PermissionResult.allow,
+            order=3,
         )
-        permission_manager.create(reader_permission)
+        permission_checker.resource_manager.create(reader_permission)
 
         print("✅ 權限規則設定完成")
         print("   - admin: 完整權限 (CRUD + 搜索)")
@@ -104,18 +98,14 @@ def setup_permissions(permission_manager: PermissionResourceManager):
 
 
 # ===== 步驟 5: 創建具備權限控制的 ResourceManager =====
-def create_document_manager(doc_storage, permission_manager):
+def create_document_manager(doc_storage, permission_checker):
     """創建文檔管理器並整合權限系統"""
-
-    # 創建權限檢查器
-    permission_checker = ACLPermissionChecker(permission_manager)
 
     # 創建 ResourceManager 並傳入權限檢查器
     document_manager = ResourceManager(
         resource_type=Document,
         storage=doc_storage,
-        permission_manager=permission_manager,  # 關鍵：傳入權限管理器
-        # 注意：權限檢查器會自動整合到 ResourceManager 中
+        permission_checker=permission_checker,  # 關鍵：傳入權限檢查器
     )
 
     return document_manager
@@ -127,10 +117,10 @@ def demo_permission_system():
     current_time = dt.datetime.now()
 
     # 設定系統
-    doc_storage, perm_storage = setup_storage()
-    permission_manager = create_permission_manager(perm_storage)
-    setup_permissions(permission_manager)
-    document_manager = create_document_manager(doc_storage, permission_manager)
+    doc_storage = setup_storage()
+    permission_checker = create_permission_checker()
+    setup_permissions(permission_checker)
+    document_manager = create_document_manager(doc_storage, permission_checker)
 
     print("\n" + "=" * 50)
     print("🚀 開始測試權限系統")
