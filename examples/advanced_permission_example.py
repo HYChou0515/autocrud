@@ -3,24 +3,37 @@
 展示如何使用新的權限上下文模式來實現靈活的權限檢查
 """
 
-from autocrud.permission.acl import ACLPermissionChecker
 from autocrud.permission.basic import (
     IPermissionChecker,
     PermissionContext,
     PermissionResult,
 )
-from autocrud.resource_manager.permission_context import (
-    CompositePermissionChecker,
-)
-from autocrud.resource_manager.permission import PermissionResourceManager
-from autocrud.resource_manager.core import ResourceManager
+from autocrud.permission.composite import CompositePermissionChecker
+from autocrud.permission.simple import AllowAll
 import datetime as dt
+
+
+class SimplePermissionManager:
+    """簡化的權限管理器 - 用於示範"""
+
+    def __init__(self):
+        self.permissions = {
+            "alice": {"get": ["resource:123"], "update": ["resource:123"]},
+            "bob": {"get": ["resource:456"]},
+            "admin": {"admin": ["system"]},
+        }
+
+    def check_permission(self, user: str, action: str, resource_id: str) -> bool:
+        """檢查用戶是否有對特定資源的操作權限"""
+        user_perms = self.permissions.get(user, {})
+        allowed_resources = user_perms.get(action, [])
+        return resource_id in allowed_resources
 
 
 class CustomResourceAccessChecker(IPermissionChecker):
     """自定義資源存取檢查器 - 展示如何實現複雜的權限邏輯"""
 
-    def __init__(self, permission_manager: PermissionResourceManager):
+    def __init__(self, permission_manager: SimplePermissionManager):
         self.permission_manager = permission_manager
         self.supported_actions = {"get", "update", "delete", "patch", "switch"}
 
@@ -93,33 +106,34 @@ class TimeBasedChecker(IPermissionChecker):
                 if not emergency:
                     return PermissionResult.deny
 
-        return PermissionResult.SKIP  # 讓其他檢查器決定
+        return PermissionResult.not_applicable  # 讓其他檢查器決定
 
 
-def setup_advanced_permission_checking(
-    resource_manager: ResourceManager, permission_manager: PermissionResourceManager
-) -> ResourceManager:
+def setup_advanced_permission_checking() -> CompositePermissionChecker:
     """
     設定進階權限檢查系統
 
     這個函數展示如何組合多個權限檢查器來實現複雜的權限邏輯
+
+    Returns:
+        CompositePermissionChecker: 組合的權限檢查器
     """
 
+    # 創建簡單的 permission manager
+    permission_manager = SimplePermissionManager()
+
     # 建立組合權限檢查器
-    composite_checker = CompositePermissionChecker()
+    composite_checker = CompositePermissionChecker(
+        [
+            TimeBasedChecker(),
+            CustomResourceAccessChecker(permission_manager),
+            DataFilterChecker(),
+            # 可以添加更多檢查器
+            AllowAll(),  # 作為最後的備用（允許所有操作）
+        ]
+    )
 
-    # 添加自定義檢查器（按優先順序）
-    composite_checker.add_checker(TimeBasedChecker())
-    composite_checker.add_checker(CustomResourceAccessChecker(permission_manager))
-    composite_checker.add_checker(DataFilterChecker())
-
-    # 添加預設檢查器作為最後的備用
-    composite_checker.add_checker(ACLPermissionChecker(permission_manager))
-
-    # 設定到 resource_manager
-    resource_manager.permission_checker = composite_checker
-
-    return resource_manager
+    return composite_checker
 
 
 # === 使用範例 ===
@@ -128,29 +142,85 @@ def setup_advanced_permission_checking(
 def example_usage():
     """展示如何使用新的權限檢查系統"""
 
-    # 假設你已經有了這些
-    # permission_manager = PermissionResourceManager(...)
-    # resource_manager = ResourceManager(...)
+    # 創建進階權限檢查器
+    permission_checker = setup_advanced_permission_checking()
 
-    # 方法 1: 使用預設檢查器（向後相容）
-    # resource_manager.permission_checker = DefaultPermissionChecker(permission_manager)
+    # 測試權限檢查
+    context = PermissionContext(
+        user="alice",
+        now=dt.datetime.now(),
+        action="get",
+        resource_name="test_resource",
+        resource_id="resource:123",
+        method_args=("resource:123",),
+        method_kwargs={},
+    )
 
-    # 方法 2: 使用自定義檢查器
-    # resource_manager.permission_checker = CustomResourceAccessChecker(permission_manager)
+    result = permission_checker.check_permission(context)
+    print(f"Permission check result: {result}")
 
-    # 方法 3: 使用組合檢查器（推薦）
-    # resource_manager = setup_advanced_permission_checking(resource_manager, permission_manager)
+    # 測試時間基礎的權限檢查
+    update_context = PermissionContext(
+        user="alice",
+        now=dt.datetime.now().replace(hour=22),  # 晚上10點
+        action="update",
+        resource_name="test_resource",
+        resource_id="resource:123",
+        method_args=("resource:123", {"some": "data"}),
+        method_kwargs={},
+        extra_data={"emergency": False},
+    )
 
-    # 現在所有的 CRUD 操作都會使用新的權限檢查邏輯
+    result = permission_checker.check_permission(update_context)
+    print(f"After-hours update result (no emergency): {result}")
 
-    # 範例：帶緊急標記的更新操作
-    # with resource_manager.meta_provide("user:alice", dt.datetime.now()):
-    #     # 這個更新操作會被傳遞 extra_data 到權限檢查器
-    #     # (需要在裝飾器中支援 extra_data 傳遞)
-    #     resource_manager.update("resource:123", new_data)
+    # 測試緊急更新
+    emergency_context = PermissionContext(
+        user="alice",
+        now=dt.datetime.now().replace(hour=22),
+        action="update",
+        resource_name="test_resource",
+        resource_id="resource:123",
+        method_args=("resource:123", {"some": "data"}),
+        method_kwargs={},
+        extra_data={"emergency": True},
+    )
 
-    pass
+    result = permission_checker.check_permission(emergency_context)
+    print(f"After-hours update result (with emergency): {result}")
+
+
+def demo_permission_checking():
+    """展示更多權限檢查的範例"""
+    permission_checker = setup_advanced_permission_checking()
+
+    # 測試不同用戶和資源的權限
+    test_cases = [
+        ("alice", "get", "resource:123"),
+        ("alice", "update", "resource:123"),
+        ("bob", "get", "resource:456"),
+        ("bob", "update", "resource:456"),  # 應該失敗
+        ("charlie", "get", "resource:123"),  # 應該失敗
+    ]
+
+    for user, action, resource_id in test_cases:
+        context = PermissionContext(
+            user=user,
+            now=dt.datetime.now().replace(hour=14),  # 下午2點
+            action=action,
+            resource_name="test_resource",
+            resource_id=resource_id,
+            method_args=(resource_id,),
+            method_kwargs={},
+        )
+
+        result = permission_checker.check_permission(context)
+        print(f"{user} {action} {resource_id}: {result}")
 
 
 if __name__ == "__main__":
+    print("=== 基本權限檢查範例 ===")
     example_usage()
+
+    print("\n=== 進階權限檢查範例 ===")
+    demo_permission_checking()
