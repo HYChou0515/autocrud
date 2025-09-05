@@ -1,11 +1,10 @@
 from collections.abc import Generator, Iterable, MutableMapping
 from contextlib import AbstractContextManager, contextmanager
 from contextvars import ContextVar
-from enum import Enum, StrEnum
+from enum import Enum, Flag, StrEnum, auto
 import functools
 from typing import IO, TypeVar, Generic, Any
 import datetime as dt
-from typing_extensions import Literal
 from uuid import UUID
 from msgspec import UNSET, Struct, UnsetType
 from abc import ABC, abstractmethod
@@ -50,7 +49,7 @@ class ResourceMeta(Struct, kw_only=True):
     is_deleted: bool = False
 
     # 新增：存儲被索引的 data 欄位值
-    indexed_data: dict[str, Any]
+    indexed_data: dict[str, Any] | UnsetType = UNSET
 
 
 class ResourceMetaSortKey(StrEnum):
@@ -171,6 +170,18 @@ class IMigration(ABC):
 
 
 class IResourceManager(ABC, Generic[T]):
+    @property
+    @abstractmethod
+    def user(self) -> str: ...
+    @property
+    @abstractmethod
+    def now(self) -> dt.datetime: ...
+    @property
+    @abstractmethod
+    def user_or_unset(self) -> str | UnsetType: ...
+    @property
+    @abstractmethod
+    def now_or_unset(self) -> dt.datetime | UnsetType: ...
     @property
     @abstractmethod
     def resource_type(self) -> type[T]: ...
@@ -589,27 +600,36 @@ class IResourceManager(ABC, Generic[T]):
         """
 
 
-ResourceAction = Literal[
-    "create",
-    "get",
-    "get_resource_revision",
-    "list_revisions",
-    "get_meta",
-    "search_resources",
-    "update",
-    "patch",
-    "switch",
-    "delete",
-    "restore",
-    "dump",
-    "load",
-]
+class ResourceAction(Flag):
+    create = auto()
+    get = auto()
+    get_resource_revision = auto()
+    list_revisions = auto()
+    get_meta = auto()
+    search_resources = auto()
+    update = auto()
+    patch = auto()
+    switch = auto()
+    delete = auto()
+    restore = auto()
+    dump = auto()
+    load = auto()
+
+    create_or_update = create | update
+
+    read = get | get_meta | get_resource_revision | list_revisions
+    read_list = search_resources
+    write = create | update | patch
+    lifecycle = switch | delete | restore
+    backup = dump | load
+    full = read | read_list | write | lifecycle | backup
+    owner = update | switch | restore | delete | patch
 
 
 class IPermissionResourceManager(IResourceManager):
     @abstractmethod
     def check_permission(
-        self, user: str, action: ResourceAction | str, resource: str
+        self, user: str, action: ResourceAction, resource: str
     ) -> bool: ...
 
 
@@ -627,8 +647,9 @@ class Ctx(Generic[T]):
         try:
             yield
         finally:
-            self.v.reset(self.tok)
-            self.tok = None
+            if self.tok is not None:
+                self.v.reset(self.tok)
+                self.tok = None
 
     def get(self) -> T:
         return self.v.get()
@@ -699,6 +720,12 @@ def _match_data_condition(
     elif condition.operator == DataSearchOperator.less_than_or_equal:
         return field_value is not None and field_value <= condition.value
     elif condition.operator == DataSearchOperator.contains:
+        # 特殊處理：如果 field_value 是列表，檢查 condition.value 是否在列表中
+        if isinstance(field_value, list):
+            return condition.value in field_value
+        if isinstance(condition.value, Flag) and isinstance(field_value, int):
+            return (condition.value.value & field_value) == condition.value.value
+        # 標準字符串包含檢查
         return field_value is not None and str(condition.value) in str(field_value)
     elif condition.operator == DataSearchOperator.starts_with:
         return field_value is not None and str(field_value).startswith(

@@ -1,6 +1,6 @@
 import datetime as dt
 from dataclasses import dataclass
-from autocrud.crud.core import AutoCRUD, MemoryStorageFactory
+from autocrud.crud.core import AutoCRUD
 from autocrud.resource_manager.basic import (
     DataSearchCondition,
     DataSearchOperator,
@@ -27,7 +27,6 @@ def test_basic_data_search():
     autocrud.add_model(
         User,
         name="users",
-        storage_factory=MemoryStorageFactory(),
         indexed_fields=[
             ("name", str),
             ("email", str),

@@ -6,9 +6,11 @@ import json
 import pytest
 from msgspec import Struct, to_builtins
 
-from autocrud.crud.core import MemoryStorageFactory, AutoCRUD
+from autocrud.crud.core import AutoCRUD
 from fastapi.testclient import TestClient
 from fastapi import FastAPI
+
+from autocrud.resource_manager.storage_factory import MemoryStorageFactory
 
 
 # 測試數據模型
