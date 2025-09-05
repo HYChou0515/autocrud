@@ -1,14 +1,20 @@
 from collections.abc import Callable, Generator
 from contextlib import contextmanager
-from functools import cached_property
-from typing import IO, TypeVar, Generic, Any
+from functools import cached_property, wraps
+from typing import IO, TypeVar, Generic, Any, get_origin, get_args, TYPE_CHECKING
 import datetime as dt
 from uuid import uuid4
 from msgspec import UNSET, Struct, UnsetType
 from jsonpatch import JsonPatch
+import msgspec
 from xxhash import xxh3_128_hexdigest
 
 
+if TYPE_CHECKING:
+    from autocrud.permission.basic import IPermissionChecker
+
+
+from autocrud.permission.basic import PermissionResult
 from autocrud.resource_manager.basic import (
     Ctx,
     Encoding,
@@ -19,6 +25,7 @@ from autocrud.resource_manager.basic import (
     IStorage,
     MsgspecSerializer,
     Resource,
+    ResourceAction,
     ResourceIDNotFoundError,
     ResourceIsDeletedError,
     ResourceMeta,
@@ -27,12 +34,33 @@ from autocrud.resource_manager.basic import (
     RevisionInfo,
     RevisionStatus,
     IndexableField,
+    SpecialIndex,
 )
 from autocrud.resource_manager.data_converter import DataConverter
 from autocrud.util.naming import NameConverter, NamingFormat
 
 
 T = TypeVar("T")
+
+
+def _get_type_name(resource_type) -> str:
+    """取得類型名稱，處理 Union 類型"""
+    if hasattr(resource_type, "__name__"):
+        return resource_type.__name__
+
+    # 處理 Union 類型
+    origin = get_origin(resource_type)
+    if origin is not None:
+        args = get_args(resource_type)
+        if args:
+            # 使用第一個類型的名稱，或者創建一個組合名稱
+            first_type = args[0]
+            if hasattr(first_type, "__name__"):
+                return f"{first_type.__name__}Union"
+        return "UnionType"
+
+    # 後備方案
+    return str(resource_type).replace(" ", "").replace("|", "Or")
 
 
 class SimpleStorage(IStorage[T]):
@@ -103,6 +131,51 @@ class _BuildResMetaUpdate(Struct):
     data: T
 
 
+def smart_permission_check():
+    """
+    智能權限檢查裝飾器 - 支援新的上下文模式
+
+    Args:
+        action: 權限動作，如果為 None 則使用方法名
+        extract_resource_id: 是否從方法參數中提取 resource_id
+        **extra_context: 額外的上下文資料
+    """
+
+    def decorator(method):
+        action = ResourceAction[method.__name__]
+
+        @wraps(method)
+        def _permission_check(self: IResourceManager[T], *method_args, **method_kwargs):
+            from autocrud.permission.basic import (
+                PermissionContext,
+            )
+            from autocrud.resource_manager.basic import PermissionDeniedError
+
+            user = self.user_or_unset
+            context = PermissionContext(
+                user=user,
+                now=self.now_or_unset,
+                action=action,
+                resource_name=self.resource_name,
+                method_args=method_args,
+                method_kwargs=method_kwargs,
+            )
+            # 執行權限檢查
+            result = self.permission_checker.check_permission(context)
+
+            if result != PermissionResult.allow:
+                raise PermissionDeniedError(
+                    f"Permission denied for user '{context.user}' "
+                    f"to perform '{context.action}' on '{context.resource_name}'"
+                )
+
+            return method(self, *method_args, **method_kwargs)
+
+        return _permission_check
+
+    return decorator
+
+
 class ResourceManager(IResourceManager[T], Generic[T]):
     def __init__(
         self,
@@ -112,6 +185,8 @@ class ResourceManager(IResourceManager[T], Generic[T]):
         id_generator: Callable[[], str] | None = None,
         migration: IMigration | None = None,
         indexed_fields: list[IndexableField] | None = None,
+        permission_checker: "IPermissionChecker | None" = None,
+        name: str | NamingFormat = NamingFormat.SNAKE,
     ):
         self.user_ctx = Ctx("user_ctx", strict_type=str)
         self.now_ctx = Ctx("now_ctx", strict_type=dt.datetime)
@@ -123,18 +198,56 @@ class ResourceManager(IResourceManager[T], Generic[T]):
         self.schema_version = UNSET if schema_version is None else schema_version
         self._indexed_fields = indexed_fields or []
 
-        _model_name = NameConverter(resource_type.__name__).to(NamingFormat.SNAKE)
+        if isinstance(name, NamingFormat):
+            self._resource_name = NameConverter(_get_type_name(resource_type)).to(
+                NamingFormat.SNAKE
+            )
+        else:
+            self._resource_name = name
 
         def default_id_generator():
-            return f"{_model_name}:{uuid4()}"
+            return f"{self._resource_name}:{uuid4()}"
 
         self.id_generator = (
             default_id_generator if id_generator is None else id_generator
         )
+        # 設定權限檢查器
+        if permission_checker is not None:
+            self.permission_checker = permission_checker
+        else:
+            from autocrud.permission.simple import AllowAll
+
+            self.permission_checker = AllowAll()
+
+    @property
+    def user(self) -> str:
+        return self.user_ctx.get()
+
+    @property
+    def now(self) -> dt.datetime:
+        return self.now_ctx.get()
+
+    @property
+    def user_or_unset(self) -> str | UnsetType:
+        try:
+            return self.user_ctx.get()
+        except LookupError:
+            return UNSET
+
+    @property
+    def now_or_unset(self) -> dt.datetime | UnsetType:
+        try:
+            return self.now_ctx.get()
+        except LookupError:
+            return UNSET
 
     @property
     def resource_type(self):
         return self._resource_type
+
+    @property
+    def resource_name(self):
+        return self._resource_name
 
     @property
     def indexed_fields(self) -> list[IndexableField]:
@@ -146,8 +259,11 @@ class ResourceManager(IResourceManager[T], Generic[T]):
         indexed_data = {}
         for field in self._indexed_fields:
             try:
-                # 使用 JSON path 提取值
-                value = self._extract_by_path(data, field.field_path)
+                if field.field_type == SpecialIndex.msgspec_tag:
+                    value = msgspec.inspect.type_info(type(data)).tag
+                else:
+                    # 使用 JSON path 提取值
+                    value = self._extract_by_path(data, field.field_path)
                 indexed_data[field.field_path] = value
             except Exception:
                 # 如果提取失敗，跳過該字段
@@ -265,15 +381,18 @@ class ResourceManager(IResourceManager[T], Generic[T]):
         meta = self.storage.get_meta(resource_id)
         return meta
 
+    @smart_permission_check()
     def get_meta(self, resource_id: str) -> ResourceMeta:
         meta = self._get_meta_no_check_is_deleted(resource_id)
         if meta.is_deleted:
             raise ResourceIsDeletedError(resource_id)
         return meta
 
+    @smart_permission_check()
     def search_resources(self, query: ResourceMetaSearchQuery) -> list[ResourceMeta]:
         return self.storage.search(query)
 
+    @smart_permission_check()
     def create(self, data: T) -> RevisionInfo:
         info = self._rev_info(_BuildRevMetaCreate(data))
         resource = Resource(
@@ -284,17 +403,21 @@ class ResourceManager(IResourceManager[T], Generic[T]):
         self.storage.save_meta(self._res_meta(_BuildResMetaCreate(info, data)))
         return info
 
+    @smart_permission_check()
     def get(self, resource_id: str) -> Resource[T]:
         meta = self.get_meta(resource_id)
         return self.get_resource_revision(resource_id, meta.current_revision_id)
 
+    @smart_permission_check()
     def get_resource_revision(self, resource_id: str, revision_id: str) -> Resource[T]:
         obj = self.storage.get_resource_revision(resource_id, revision_id)
         return obj
 
+    @smart_permission_check()
     def list_revisions(self, resource_id: str) -> list[str]:
         return self.storage.list_revisions(resource_id)
 
+    @smart_permission_check()
     def update(self, resource_id: str, data: T) -> RevisionInfo:
         prev_res_meta = self.get_meta(resource_id)
         prev_info = self.storage.get_resource_revision_info(
@@ -313,12 +436,14 @@ class ResourceManager(IResourceManager[T], Generic[T]):
         self.storage.save_meta(res_meta)
         return rev_info
 
+    @smart_permission_check()
     def create_or_update(self, resource_id, data):
         try:
             return self.update(resource_id, data)
         except ResourceIDNotFoundError:
             return self.create(data)
 
+    @smart_permission_check()
     def patch(self, resource_id: str, patch_data: JsonPatch) -> RevisionInfo:
         data = self.get(resource_id).data
         d = self.data_converter.data_to_builtins(data)
@@ -326,6 +451,7 @@ class ResourceManager(IResourceManager[T], Generic[T]):
         data = self.data_converter.builtins_to_data(d)
         return self.update(resource_id, data)
 
+    @smart_permission_check()
     def switch(self, resource_id: str, revision_id: str) -> ResourceMeta:
         meta = self.get_meta(resource_id)
         if meta.current_revision_id == revision_id:
@@ -345,6 +471,7 @@ class ResourceManager(IResourceManager[T], Generic[T]):
         self.storage.save_meta(meta)
         return meta
 
+    @smart_permission_check()
     def delete(self, resource_id: str) -> ResourceMeta:
         meta = self.get_meta(resource_id)
         meta.is_deleted = True
@@ -353,6 +480,7 @@ class ResourceManager(IResourceManager[T], Generic[T]):
         self.storage.save_meta(meta)
         return meta
 
+    @smart_permission_check()
     def restore(self, resource_id: str) -> ResourceMeta:
         meta = self._get_meta_no_check_is_deleted(resource_id)
         if meta.is_deleted:
@@ -362,12 +490,14 @@ class ResourceManager(IResourceManager[T], Generic[T]):
             self.storage.save_meta(meta)
         return meta
 
+    @smart_permission_check()
     def dump(self) -> Generator[tuple[str, IO[bytes]]]:
         for meta in self.storage.dump_meta():
             yield f"meta/{meta.resource_id}", self.meta_serializer.encode(meta)
         for resource in self.storage.dump_resource():
             yield f"data/{resource.info.uid}", self.resource_serializer.encode(resource)
 
+    @smart_permission_check()
     def load(self, key: str, bio: IO[bytes]) -> None:
         if key.startswith("meta/"):
             self.storage.save_meta(self.meta_serializer.decode(bio.read()))

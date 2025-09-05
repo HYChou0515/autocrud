@@ -111,6 +111,9 @@ exclude_also = [
 convention = "google"
 
 [tool.ruff.lint.per-file-ignores]
+"examples/*" = [
+    "F841", # Local variable is assigned to but never used
+]
 "tests/*" = [
     "F841", # Local variable name is assigned to but never used
     # we are testing the code, so we need to use `assert` in tests

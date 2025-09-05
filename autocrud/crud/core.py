@@ -11,13 +11,14 @@ import textwrap
 from typing import IO, Generic, Literal, TypeVar
 import datetime as dt
 from msgspec import UNSET
-from pathlib import Path
 from fastapi.openapi.utils import get_openapi
 
 from fastapi import APIRouter, FastAPI, HTTPException, Request, Query, Depends, Response
 import msgspec
 from typing import Optional
 
+from autocrud.permission.rbac import RBACPermissionChecker
+from autocrud.permission.simple import AllowAll
 from autocrud.resource_manager.basic import (
     DataSearchCondition,
     DataSearchOperator,
@@ -33,17 +34,14 @@ from autocrud.resource_manager.basic import (
     ResourceMetaSortDirection,
     ResourceMetaSortKey,
 )
-from autocrud.resource_manager.core import ResourceManager, SimpleStorage
+from autocrud.resource_manager.core import ResourceManager
 from autocrud.resource_manager.data_converter import (
     decode_json_to_data,
 )
-from autocrud.resource_manager.meta_store.simple import DiskMetaStore, MemoryMetaStore
-from autocrud.resource_manager.resource_store.simple import (
-    DiskResourceStore,
-    MemoryResourceStore,
-)
 
 from autocrud.resource_manager.basic import ResourceMetaSearchQuery
+from autocrud.resource_manager.storage_factory import IStorageFactory
+from autocrud.resource_manager.storage_factory import MemoryStorageFactory
 from autocrud.util.naming import NameConverter
 
 
@@ -1358,46 +1356,6 @@ class RestoreRouteTemplate(BaseRouteTemplate):
                 raise HTTPException(status_code=400, detail=str(e))
 
 
-class IStorageFactory(ABC):
-    @abstractmethod
-    def build(
-        self, model: type[T], model_name: str, *, migration: IMigration | None = None
-    ) -> IStorage[T]: ...
-
-
-class MemoryStorageFactory(IStorageFactory):
-    def build(
-        self, model: type[T], model_name: str, *, migration: IMigration | None = None
-    ) -> IStorage[T]:
-        meta_store = MemoryMetaStore()
-
-        resource_store = MemoryResourceStore[T](resource_type=model)
-
-        return SimpleStorage(meta_store, resource_store)
-
-
-class DiskStorageFactory(IStorageFactory):
-    def __init__(
-        self,
-        rootdir: Path | str,
-    ):
-        self.rootdir = Path(rootdir)
-
-    def build(
-        self, model: type[T], model_name: str, *, migration: IMigration | None = None
-    ) -> IStorage[T]:
-        meta_store = DiskMetaStore(rootdir=self.rootdir / model_name / "meta")
-
-        # 對於其他類型（msgspec.Struct, dataclass, TypedDict），使用原生支持
-        resource_store = DiskResourceStore[T](
-            resource_type=model,
-            rootdir=self.rootdir / model_name / "data",
-            migration=migration,
-        )
-
-        return SimpleStorage(meta_store, resource_store)
-
-
 class AutoCRUD:
     """AutoCRUD - Automatic CRUD API Generator for FastAPI
 
@@ -1505,6 +1463,7 @@ class AutoCRUD:
         | Callable[[type], str] = "kebab",
         route_templates: list[IRouteTemplate] | None = None,
         storage_factory: IStorageFactory | None = None,
+        admin: str | None = None,
     ):
         if storage_factory is None:
             self.storage_factory = MemoryStorageFactory()
@@ -1527,6 +1486,13 @@ class AutoCRUD:
             else route_templates
         )
         self.route_templates.sort()
+        if not admin:
+            self.permission_checker = AllowAll()
+        else:
+            self.permission_checker = RBACPermissionChecker(
+                storage_factory=self.storage_factory,
+                root_user=admin,
+            )
 
     def _resource_name(self, model: type[T]) -> str:
         """Convert model class name to resource name using the configured naming convention.
