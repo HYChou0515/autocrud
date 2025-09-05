@@ -9,57 +9,68 @@
 """
 
 from autocrud.permission.acl import ACLPermissionChecker
-from autocrud.permission.basic import PermissionContext, PermissionResult
-from autocrud.resource_manager.permission_context import (
-    PermissionChecker,
-    ResourceOwnershipChecker,
-    FieldLevelPermissionChecker,
+from autocrud.permission.basic import (
+    PermissionContext,
+    PermissionResult,
+    IPermissionChecker,
+)
+from autocrud.permission.composite import (
     CompositePermissionChecker,
     ConditionalPermissionChecker,
-    create_default_permission_checker,
-    create_custom_action_checker,
 )
-from autocrud.resource_manager.permission import PermissionResourceManager
+from autocrud.permission.data_based import FieldLevelPermissionChecker
+from autocrud.permission.meta_based import ResourceOwnershipChecker
+from autocrud.resource_manager.basic import ResourceAction
+import datetime as dt
 
 
 # 示例 1: 基本使用 - 結合現有的 ACL/RBAC 系統
 def setup_basic_permission_checker(
-    permission_manager: PermissionResourceManager, resource_manager
-) -> PermissionChecker:
+    permission_checker: ACLPermissionChecker, resource_manager
+) -> CompositePermissionChecker:
     """設置基本的權限檢查器"""
-    return create_default_permission_checker(
-        permission_manager=permission_manager,
-        resource_manager=resource_manager,
-        enable_ownership_check=True,
+    return CompositePermissionChecker(
+        [
+            permission_checker,
+            ResourceOwnershipChecker(
+                resource_manager=resource_manager,
+                allowed_actions={
+                    ResourceAction.update,
+                    ResourceAction.delete,
+                    ResourceAction.patch,
+                },
+            ),
+        ]
     )
 
 
 # 示例 2: 自定義業務邏輯檢查器
-class BusinessLogicChecker(PermissionChecker):
+class BusinessLogicChecker(IPermissionChecker):
     """業務邏輯檢查器 - 實現複雜的業務規則"""
 
     def check_permission(self, context: PermissionContext) -> PermissionResult:
         """實現自定義業務邏輯"""
 
         # 示例：只允許在工作時間進行某些操作
-        if context.action in {"delete", "update"} and not self._is_work_hours():
+        if (
+            context.action in {ResourceAction.delete, ResourceAction.update}
+            and not self._is_work_hours()
+        ):
             return PermissionResult.deny
 
         # 示例：根據資源狀態決定權限
-        if context.has_resource_id and context.action == "update":
+        if context.resource_id and context.action == ResourceAction.update:
             return self._check_resource_status(context)
 
         # 示例：創建操作的特殊邏輯
-        if context.action == "create":
+        if context.action == ResourceAction.create:
             return self._check_create_permission(context)
 
         return PermissionResult.not_applicable
 
     def _is_work_hours(self) -> bool:
         """檢查是否在工作時間"""
-        from datetime import datetime
-
-        now = datetime.now()
+        now = dt.datetime.now()
         return 9 <= now.hour <= 17  # 簡單示例：9-17點
 
     def _check_resource_status(self, context: PermissionContext) -> PermissionResult:
@@ -119,10 +130,8 @@ def setup_conditional_checker() -> ConditionalPermissionChecker:
 
     # 添加條件：只有週一到週五可以刪除資源
     def weekday_only_delete(context: PermissionContext) -> PermissionResult:
-        if context.action == "delete":
-            from datetime import datetime
-
-            if datetime.now().weekday() >= 5:  # 週末
+        if context.action == ResourceAction.delete:
+            if dt.datetime.now().weekday() >= 5:  # 週末
                 return PermissionResult.deny
         return PermissionResult.not_applicable
 
@@ -130,7 +139,7 @@ def setup_conditional_checker() -> ConditionalPermissionChecker:
     def vip_user_bypass(context: PermissionContext) -> PermissionResult:
         if context.user.startswith("vip:"):
             # VIP 用戶在某些情況下可以繞過限制
-            if context.action in {"update", "delete"}:
+            if context.action in {ResourceAction.update, ResourceAction.delete}:
                 return PermissionResult.allow
         return PermissionResult.not_applicable
 
@@ -142,44 +151,35 @@ def setup_conditional_checker() -> ConditionalPermissionChecker:
 
 # 示例 5: 完整的權限檢查器設置
 def setup_complete_permission_system(
-    permission_manager: PermissionResourceManager, resource_manager
-) -> PermissionChecker:
+    permission_checker: ACLPermissionChecker, resource_manager
+) -> CompositePermissionChecker:
     """設置完整的權限檢查系統"""
 
     checkers = [
         # 1. 首先檢查基本的 ACL/RBAC 權限
-        ACLPermissionChecker(permission_manager),
+        permission_checker,
         # 2. 檢查資源所有權
-        ResourceOwnershipChecker(resource_manager),
+        ResourceOwnershipChecker(
+            resource_manager=resource_manager,
+            allowed_actions={
+                ResourceAction.update,
+                ResourceAction.delete,
+                ResourceAction.patch,
+            },
+        ),
         # 3. 檢查欄位級權限
         setup_field_level_permissions(),
         # 4. 檢查業務邏輯
         BusinessLogicChecker(),
         # 5. 檢查條件式規則
         setup_conditional_checker(),
-        # 6. 自定義 action 處理器
-        create_custom_action_checker(),
     ]
 
     return CompositePermissionChecker(checkers)
 
 
-# 示例 6: 如何在 ResourceManager 中使用
-class CustomResourceManager:
-    """示例：如何在自定義 ResourceManager 中整合新的權限系統"""
-
-    def __init__(self, permission_manager, **kwargs):
-        # 創建自定義的權限檢查器
-        self.permission_checker = setup_complete_permission_system(
-            permission_manager, self
-        )
-
-        # 在 ResourceManager 初始化時傳入
-        super().__init__(permission_checker=self.permission_checker, **kwargs)
-
-
 # 示例 7: 動態權限配置
-class DynamicPermissionChecker(PermissionChecker):
+class DynamicPermissionChecker(IPermissionChecker):
     """動態權限檢查器 - 可以在運行時修改權限規則"""
 
     def __init__(self):
@@ -211,25 +211,20 @@ class DynamicPermissionChecker(PermissionChecker):
 def usage_example():
     """使用示例"""
 
-    # 假設你已經有了 permission_manager 和 resource_manager
-    permission_manager = None  # 你的 PermissionResourceManager 實例
+    # 假設你已經有了 permission_checker 和 resource_manager
+    permission_checker = ACLPermissionChecker()  # 你的 ACLPermissionChecker 實例
     resource_manager = None  # 你的 ResourceManager 實例
 
-    # 方法 1: 使用便利函數快速設置
-    simple_checker = create_default_permission_checker(
-        permission_manager=permission_manager,
+    # 方法 1: 使用基本設置
+    simple_checker = setup_basic_permission_checker(
+        permission_checker=permission_checker,
         resource_manager=resource_manager,
-        enable_ownership_check=True,
-        field_permissions={
-            "user:alice": {"name", "email"},
-            "user:bob": {"description"},
-        },
     )
 
     # 方法 2: 手動組裝複雜的檢查器
     complex_checker = CompositePermissionChecker(
         [
-            ACLPermissionChecker(permission_manager),
+            permission_checker,
             BusinessLogicChecker(),
             setup_conditional_checker(),
         ]
@@ -240,10 +235,11 @@ def usage_example():
     dynamic_checker.add_rule(
         "no_weekend_delete",
         lambda ctx: PermissionResult.deny
-        if ctx.action == "delete"
-        and __import__("datetime").datetime.now().weekday() >= 5
+        if ctx.action == ResourceAction.delete and dt.datetime.now().weekday() >= 5
         else PermissionResult.not_applicable,
     )
+
+    print("✅ 權限檢查器設置完成")
 
     # 將檢查器傳入 ResourceManager
     # resource_manager = ResourceManager(
@@ -252,3 +248,17 @@ def usage_example():
     #     permission_checker=complex_checker,  # 使用新的檢查器
     #     # ... 其他參數
     # )
+
+
+if __name__ == "__main__":
+    print("=== 權限檢查系統使用示例 ===")
+    usage_example()
+
+    print("\n=== 權限檢查器類型說明 ===")
+    print("1. ACLPermissionChecker: 基本的 ACL/RBAC 權限檢查")
+    print("2. ResourceOwnershipChecker: 資源所有權檢查")
+    print("3. FieldLevelPermissionChecker: 欄位級權限檢查")
+    print("4. BusinessLogicChecker: 自定義業務邏輯檢查")
+    print("5. ConditionalPermissionChecker: 條件式權限檢查")
+    print("6. DynamicPermissionChecker: 動態權限檢查")
+    print("7. CompositePermissionChecker: 組合多個檢查器")
