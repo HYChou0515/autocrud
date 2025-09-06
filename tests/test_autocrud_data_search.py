@@ -1,14 +1,15 @@
 import datetime as dt
 from dataclasses import dataclass
+
 import pytest
+from msgspec import UNSET
+
 from autocrud.crud.core import AutoCRUD
 from autocrud.resource_manager.basic import (
     DataSearchCondition,
     DataSearchOperator,
     ResourceMetaSearchQuery,
 )
-from msgspec import UNSET
-
 from autocrud.resource_manager.core import ResourceManager
 from autocrud.resource_manager.storage_factory import MemoryStorageFactory
 
@@ -87,7 +88,7 @@ class TestAutoCRUDDataSearch:
                         field_path="department",
                         operator=DataSearchOperator.equals,
                         value="Engineering",
-                    )
+                    ),
                 ],
                 limit=10,
                 offset=0,
@@ -101,7 +102,8 @@ class TestAutoCRUDDataSearch:
             engineering_names = set()
             for meta in results:
                 resource = self.user_manager.get_resource_revision(
-                    meta.resource_id, meta.current_revision_id
+                    meta.resource_id,
+                    meta.current_revision_id,
                 )
                 engineering_names.add(resource.data.name)
 
@@ -120,7 +122,7 @@ class TestAutoCRUDDataSearch:
                         field_path="age",
                         operator=DataSearchOperator.greater_than_or_equal,
                         value=30,
-                    )
+                    ),
                 ],
                 limit=10,
                 offset=0,
@@ -134,7 +136,8 @@ class TestAutoCRUDDataSearch:
             ages = []
             for meta in results:
                 resource = self.user_manager.get_resource_revision(
-                    meta.resource_id, meta.current_revision_id
+                    meta.resource_id,
+                    meta.current_revision_id,
                 )
                 ages.append(resource.data.age)
                 assert resource.data.age >= 30
@@ -150,7 +153,7 @@ class TestAutoCRUDDataSearch:
                         field_path="email",
                         operator=DataSearchOperator.contains,
                         value="@company.com",
-                    )
+                    ),
                 ],
                 limit=10,
                 offset=0,
@@ -164,7 +167,8 @@ class TestAutoCRUDDataSearch:
             company_users = set()
             for meta in results:
                 resource = self.user_manager.get_resource_revision(
-                    meta.resource_id, meta.current_revision_id
+                    meta.resource_id,
+                    meta.current_revision_id,
                 )
                 company_users.add(resource.data.name)
                 assert "@company.com" in resource.data.email
@@ -199,7 +203,8 @@ class TestAutoCRUDDataSearch:
             engineering_under_35 = set()
             for meta in results:
                 resource = self.user_manager.get_resource_revision(
-                    meta.resource_id, meta.current_revision_id
+                    meta.resource_id,
+                    meta.current_revision_id,
                 )
                 engineering_under_35.add(resource.data.name)
                 assert resource.data.department == "Engineering"
@@ -239,7 +244,7 @@ class TestAutoCRUDDataSearch:
                         field_path="department",
                         operator=DataSearchOperator.equals,
                         value="Engineering",
-                    )
+                    ),
                 ],
                 limit=10,
                 offset=0,
@@ -251,7 +256,8 @@ class TestAutoCRUDDataSearch:
             remaining_engineering = set()
             for meta in results:
                 resource = self.user_manager.get_resource_revision(
-                    meta.resource_id, meta.current_revision_id
+                    meta.resource_id,
+                    meta.current_revision_id,
                 )
                 remaining_engineering.add(resource.data.name)
 
@@ -305,7 +311,7 @@ class TestAutoCRUDDataSearch:
                         field_path="department",
                         operator=DataSearchOperator.equals,
                         value="NonExistentDepartment",
-                    )
+                    ),
                 ],
                 limit=10,
                 offset=0,

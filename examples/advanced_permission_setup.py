@@ -1,9 +1,9 @@
-"""
-進階權限設定示例 - 組合多種檢查器
-"""
+"""進階權限設定示例 - 組合多種檢查器"""
+
+import datetime as dt
 
 from autocrud.permission.acl import ACLPermissionChecker
-from autocrud.permission.basic import PermissionResult, PermissionContext
+from autocrud.permission.basic import PermissionContext, PermissionResult
 from autocrud.permission.composite import (
     CompositePermissionChecker,
     ConditionalPermissionChecker,
@@ -12,12 +12,10 @@ from autocrud.permission.data_based import FieldLevelPermissionChecker
 from autocrud.permission.meta_based import ResourceOwnershipChecker
 from autocrud.permission.simple import AllowAll
 from autocrud.resource_manager.basic import ResourceAction
-import datetime as dt
 
 
 def setup_advanced_permissions(permission_manager=None, resource_manager=None):
     """設定進階權限檢查"""
-
     # 手動組合檢查器
 
     # 1. 欄位級權限檢查器
@@ -26,7 +24,7 @@ def setup_advanced_permissions(permission_manager=None, resource_manager=None):
             "alice": {"name", "email", "description"},
             "bob": {"description"},
             "admin": {"name", "email", "description", "status", "priority"},
-        }
+        },
     )
 
     # 2. 資源所有權檢查器 (如果有 resource_manager)
@@ -48,7 +46,7 @@ def setup_advanced_permissions(permission_manager=None, resource_manager=None):
     conditional_checker.add_condition(
         lambda ctx: PermissionResult.deny
         if ctx.action == ResourceAction.delete and not ctx.user.endswith("admin")
-        else PermissionResult.not_applicable
+        else PermissionResult.not_applicable,
     )
 
     # 添加條件：工作時間限制
@@ -85,7 +83,6 @@ def setup_advanced_permissions(permission_manager=None, resource_manager=None):
 # 使用示例
 def main():
     """示範如何設定和使用進階權限系統"""
-
     # 設定權限檢查器（不需要實際的 managers）
     permission_checker = setup_advanced_permissions()
 

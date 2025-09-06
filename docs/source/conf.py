@@ -175,14 +175,14 @@ html_context.update(
         "project_description": project_description,
         "project_keywords": project_keywords,
         "project_license": project_license,
-    }
+    },
 )
 
 # OpenGraph 和社交媒體元標籤
 html_theme_options.update(
     {
         "announcement": None,  # 可以添加公告
-    }
+    },
 )
 
 # 如果有 _static 目錄中的自定義文件，取消注釋以下行
@@ -198,7 +198,7 @@ html_sidebars = {
         "sidebar/navigation.html",
         "sidebar/ethical-ads.html",
         "sidebar/scroll-end.html",
-    ]
+    ],
 }
 
 # 禁用某些警告

@@ -1,31 +1,32 @@
-"""
-測試新的權限檢查系統
-"""
+"""測試新的權限檢查系統"""
 
-from contextlib import suppress
-import pytest
 import datetime as dt
+from contextlib import suppress
+
+import pytest
 from msgspec import Struct
 
-from autocrud.permission.acl import ACLPermissionChecker, Policy
+from autocrud.permission.acl import ACLPermission, ACLPermissionChecker, Policy
 from autocrud.permission.action import ActionBasedPermissionChecker
 from autocrud.permission.basic import (
     IPermissionChecker,
     PermissionContext,
     PermissionResult,
 )
-from autocrud.permission.acl import ACLPermission
 from autocrud.permission.composite import CompositePermissionChecker
 from autocrud.permission.rbac import (
-    RBACPermissionEntry,
     RBACPermissionChecker,
+    RBACPermissionEntry,
     RoleMembership,
+)
+from autocrud.resource_manager.basic import (
+    PermissionDeniedError,
+    ResourceAction,
+    ResourceIDNotFoundError,
 )
 from autocrud.resource_manager.core import ResourceManager, SimpleStorage
 from autocrud.resource_manager.meta_store.simple import MemoryMetaStore
 from autocrud.resource_manager.resource_store.simple import MemoryResourceStore
-from autocrud.resource_manager.basic import ResourceAction, ResourceIDNotFoundError
-from autocrud.resource_manager.basic import PermissionDeniedError
 from autocrud.resource_manager.storage_factory import MemoryStorageFactory
 
 
@@ -85,7 +86,7 @@ class MockPermissionChecker(IPermissionChecker):
             return PermissionResult.deny
 
         if context.action == ResourceAction.create and "sensitive" in str(
-            context.method_args
+            context.method_args,
         ):
             return PermissionResult.deny
 
@@ -168,7 +169,7 @@ class TestAdvancedPermissionChecking:
             {
                 "read": lambda _: PermissionResult.deny,
                 "create": lambda _: PermissionResult.allow,
-            }
+            },
         )
         self.resource_manager.permission_checker = checker
 
@@ -299,25 +300,25 @@ class TestRbacPermissionCheck:
                 RoleMembership(
                     subject="alice",
                     group="a**",
-                )
+                ),
             )
             checker.resource_manager.create(
                 RoleMembership(
                     subject="amy",
                     group="a**",
-                )
+                ),
             )
             checker.resource_manager.create(
                 RoleMembership(
                     subject="bob",
                     group="b**",
-                )
+                ),
             )
             checker.resource_manager.create(
                 RoleMembership(
                     subject="cat",
                     group="admin",
-                )
+                ),
             )
             checker.resource_manager.create(
                 RBACPermissionEntry(
@@ -325,7 +326,7 @@ class TestRbacPermissionCheck:
                     object="DataStruct2",
                     action=ResourceAction.full,
                     effect=PermissionResult.deny,
-                )
+                ),
             )
             checker.resource_manager.create(
                 RBACPermissionEntry(
@@ -333,7 +334,7 @@ class TestRbacPermissionCheck:
                     object="DataStruct",
                     action=ResourceAction.read | ResourceAction.create,
                     effect=PermissionResult.allow,
-                )
+                ),
             )
             checker.resource_manager.create(
                 RBACPermissionEntry(
@@ -341,7 +342,7 @@ class TestRbacPermissionCheck:
                     object="DataStruct",
                     action=ResourceAction.read,
                     effect=PermissionResult.allow,
-                )
+                ),
             )
             checker.resource_manager.create(
                 RBACPermissionEntry(
@@ -349,7 +350,7 @@ class TestRbacPermissionCheck:
                     object="DataStruct2",
                     action=ResourceAction.read | ResourceAction.create,
                     effect=PermissionResult.allow,
-                )
+                ),
             )
 
     def test_1xx(self):

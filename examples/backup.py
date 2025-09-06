@@ -1,5 +1,4 @@
-"""
-To see run test http methods, run
+"""To see run test http methods, run
 ```
 python schema_upgrade.py
 ```
@@ -11,7 +10,6 @@ Model type choices are
 
 import shutil
 import sys
-
 
 from autocrud.resource_manager.storage_factory import DiskStorageFactory
 
@@ -27,9 +25,10 @@ if mode not in (
 ):
     raise ValueError(f"Invalid mode: {mode}")
 
-from fastapi.testclient import TestClient
-from autocrud import AutoCRUD
 from fastapi import FastAPI
+from fastapi.testclient import TestClient
+
+from autocrud import AutoCRUD
 
 if mode == "msgspec":
     from msgspec import Struct

@@ -1,14 +1,14 @@
+import datetime as dt
 from collections.abc import Callable, Generator
 from contextlib import contextmanager
 from functools import cached_property, wraps
-from typing import IO, TypeVar, Generic, Any, get_origin, get_args, TYPE_CHECKING
-import datetime as dt
+from typing import IO, TYPE_CHECKING, Any, Generic, TypeVar, get_args, get_origin
 from uuid import uuid4
-from msgspec import UNSET, Struct, UnsetType
-from jsonpatch import JsonPatch
-import msgspec
-from xxhash import xxh3_128_hexdigest
 
+import msgspec
+from jsonpatch import JsonPatch
+from msgspec import UNSET, Struct, UnsetType
+from xxhash import xxh3_128_hexdigest
 
 if TYPE_CHECKING:
     from autocrud.permission.basic import IPermissionChecker
@@ -20,6 +20,7 @@ from autocrud.resource_manager.basic import (
     Encoding,
     IMetaStore,
     IMigration,
+    IndexableField,
     IResourceManager,
     IResourceStore,
     IStorage,
@@ -33,12 +34,10 @@ from autocrud.resource_manager.basic import (
     RevisionIDNotFoundError,
     RevisionInfo,
     RevisionStatus,
-    IndexableField,
     SpecialIndex,
 )
 from autocrud.resource_manager.data_converter import DataConverter
 from autocrud.util.naming import NameConverter, NamingFormat
-
 
 T = TypeVar("T")
 
@@ -73,7 +72,8 @@ class SimpleStorage(IStorage[T]):
 
     def revision_exists(self, resource_id: str, revision_id: str) -> bool:
         return self.exists(resource_id) and self._resource_store.exists(
-            resource_id, revision_id
+            resource_id,
+            revision_id,
         )
 
     def get_meta(self, resource_id: str) -> ResourceMeta:
@@ -89,7 +89,9 @@ class SimpleStorage(IStorage[T]):
         return self._resource_store.get(resource_id, revision_id)
 
     def get_resource_revision_info(
-        self, resource_id: str, revision_id: str
+        self,
+        resource_id: str,
+        revision_id: str,
     ) -> RevisionInfo:
         return self._resource_store.get_revision_info(resource_id, revision_id)
 
@@ -132,8 +134,7 @@ class _BuildResMetaUpdate(Struct):
 
 
 def smart_permission_check():
-    """
-    智能權限檢查裝飾器 - 支援新的上下文模式
+    """智能權限檢查裝飾器 - 支援新的上下文模式
 
     Args:
         action: 權限動作，如果為 None 則使用方法名
@@ -166,7 +167,7 @@ def smart_permission_check():
             if result != PermissionResult.allow:
                 raise PermissionDeniedError(
                     f"Permission denied for user '{context.user}' "
-                    f"to perform '{context.action}' on '{context.resource_name}'"
+                    f"to perform '{context.action}' on '{context.resource_name}'",
                 )
 
             return method(self, *method_args, **method_kwargs)
@@ -200,7 +201,7 @@ class ResourceManager(IResourceManager[T], Generic[T]):
 
         if isinstance(name, NamingFormat):
             self._resource_name = NameConverter(_get_type_name(resource_type)).to(
-                NamingFormat.SNAKE
+                NamingFormat.SNAKE,
             )
         else:
             self._resource_name = name
@@ -291,7 +292,11 @@ class ResourceManager(IResourceManager[T], Generic[T]):
 
     @contextmanager
     def meta_provide(
-        self, user: str, now: dt.datetime, *, resource_id: str | UnsetType = UNSET
+        self,
+        user: str,
+        now: dt.datetime,
+        *,
+        resource_id: str | UnsetType = UNSET,
     ):
         with (
             self.user_ctx.ctx(user),
@@ -301,7 +306,8 @@ class ResourceManager(IResourceManager[T], Generic[T]):
             yield
 
     def _res_meta(
-        self, mode: _BuildResMetaCreate | _BuildResMetaUpdate
+        self,
+        mode: _BuildResMetaCreate | _BuildResMetaUpdate,
     ) -> ResourceMeta:
         if isinstance(mode, _BuildResMetaCreate):
             current_revision_id = mode.rev_info.revision_id
@@ -341,7 +347,8 @@ class ResourceManager(IResourceManager[T], Generic[T]):
         return data_hash
 
     def _rev_info(
-        self, mode: _BuildRevMetaCreate | _BuildRevInfoUpdate
+        self,
+        mode: _BuildRevMetaCreate | _BuildRevInfoUpdate,
     ) -> RevisionInfo:
         uid = uuid4()
         if isinstance(mode, _BuildRevMetaCreate):
@@ -421,7 +428,8 @@ class ResourceManager(IResourceManager[T], Generic[T]):
     def update(self, resource_id: str, data: T) -> RevisionInfo:
         prev_res_meta = self.get_meta(resource_id)
         prev_info = self.storage.get_resource_revision_info(
-            resource_id, prev_res_meta.current_revision_id
+            resource_id,
+            prev_res_meta.current_revision_id,
         )
         cur_data_hash = self.get_data_hash(data)
         if prev_info.data_hash == cur_data_hash:
@@ -463,7 +471,7 @@ class ResourceManager(IResourceManager[T], Generic[T]):
         if self._indexed_fields:
             resource = self.storage.get_resource_revision(resource_id, revision_id)
             indexed_data = self._extract_indexed_values(resource.data)
-            meta.indexed_data = indexed_data if indexed_data else UNSET
+            meta.indexed_data = indexed_data or UNSET
 
         meta.updated_by = self.user_ctx.get()
         meta.updated_time = self.now_ctx.get()
@@ -503,7 +511,7 @@ class ResourceManager(IResourceManager[T], Generic[T]):
             self.storage.save_meta(self.meta_serializer.decode(bio.read()))
         elif key.startswith("data/"):
             self.storage.save_resource_revision(
-                self.resource_serializer.decode(bio.read())
+                self.resource_serializer.decode(bio.read()),
             )
 
     @cached_property
@@ -513,5 +521,6 @@ class ResourceManager(IResourceManager[T], Generic[T]):
     @cached_property
     def resource_serializer(self):
         return MsgspecSerializer(
-            encoding=Encoding.msgpack, resource_type=Resource[self.resource_type]
+            encoding=Encoding.msgpack,
+            resource_type=Resource[self.resource_type],
         )

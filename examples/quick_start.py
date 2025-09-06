@@ -1,5 +1,4 @@
-"""
-To start dev server, run
+"""To start dev server, run
 ```
 python -m fastapi dev quick_start.py
 ````
@@ -17,10 +16,10 @@ Model type choices are
 import sys
 from datetime import datetime, timedelta
 
-from fastapi.testclient import TestClient
-from autocrud import AutoCRUD
 from fastapi import FastAPI
+from fastapi.testclient import TestClient
 
+from autocrud import AutoCRUD
 
 if len(sys.argv) >= 2:
     mode = sys.argv[1]
@@ -102,7 +101,7 @@ def test():
                     "completed": False,
                     "due": (datetime.now() + timedelta(hours=1)).isoformat(),
                 },
-            }
+            },
         ],
     )
     print(resp.json())

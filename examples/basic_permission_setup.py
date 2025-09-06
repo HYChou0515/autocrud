@@ -1,6 +1,5 @@
 #!/usr/bin/env python3
-"""
-基本權限設定示例
+"""基本權限設定示例
 
 這個範例展示如何在 AutoCRUD 中設定基本的權限控制系統。
 包含完整的步驟說明和可執行的程式碼範例。
@@ -8,12 +7,13 @@
 
 import datetime as dt
 from dataclasses import dataclass
+
+from autocrud.permission.acl import ACLPermission, ACLPermissionChecker, Policy
+from autocrud.permission.basic import PermissionResult
+from autocrud.resource_manager.basic import ResourceAction
 from autocrud.resource_manager.core import ResourceManager, SimpleStorage
 from autocrud.resource_manager.meta_store.simple import MemoryMetaStore
 from autocrud.resource_manager.resource_store.simple import MemoryResourceStore
-from autocrud.permission.acl import ACLPermissionChecker, ACLPermission, Policy
-from autocrud.permission.basic import PermissionResult
-from autocrud.resource_manager.basic import ResourceAction
 
 
 # ===== 步驟 1: 定義資料結構 =====
@@ -33,7 +33,8 @@ def setup_storage():
     doc_meta_store = MemoryMetaStore()
     doc_resource_store = MemoryResourceStore(Document)
     doc_storage = SimpleStorage(
-        meta_store=doc_meta_store, resource_store=doc_resource_store
+        meta_store=doc_meta_store,
+        resource_store=doc_resource_store,
     )
 
     return doc_storage
@@ -100,7 +101,6 @@ def setup_permissions(permission_checker: ACLPermissionChecker):
 # ===== 步驟 5: 創建具備權限控制的 ResourceManager =====
 def create_document_manager(doc_storage, permission_checker):
     """創建文檔管理器並整合權限系統"""
-
     # 創建 ResourceManager 並傳入權限檢查器
     document_manager = ResourceManager(
         resource_type=Document,
@@ -131,7 +131,9 @@ def demo_permission_system():
     try:
         with document_manager.meta_provide("admin", current_time):
             doc = Document(
-                title="管理員文檔", content="這是管理員創建的文檔", category="admin"
+                title="管理員文檔",
+                content="這是管理員創建的文檔",
+                category="admin",
             )
             doc_info = document_manager.create(doc)
             print(f"✅ 成功創建文檔，ID: {doc_info.resource_id}")
@@ -143,7 +145,9 @@ def demo_permission_system():
     try:
         with document_manager.meta_provide("editor", current_time):
             doc = Document(
-                title="編輯者文檔", content="這是編輯者創建的文檔", category="content"
+                title="編輯者文檔",
+                content="這是編輯者創建的文檔",
+                category="content",
             )
             doc_info = document_manager.create(doc)
             print(f"✅ 成功創建文檔，ID: {doc_info.resource_id}")
@@ -175,7 +179,9 @@ def demo_permission_system():
     try:
         with document_manager.meta_provide("editor", current_time):
             updated_doc = Document(
-                title="更新後的編輯者文檔", content="內容已更新", category="content"
+                title="更新後的編輯者文檔",
+                content="內容已更新",
+                category="content",
             )
             document_manager.update(editor_doc_id, updated_doc)
             print("✅ 成功更新文檔")

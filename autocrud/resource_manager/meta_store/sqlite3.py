@@ -1,12 +1,13 @@
-from collections import defaultdict
-from collections.abc import Callable, Generator
 import functools
 import json
-from pathlib import Path
 import pickle
 import sqlite3
 import threading
+from collections import defaultdict
+from collections.abc import Callable, Generator
+from pathlib import Path
 from typing import TypeVar
+
 from msgspec import UNSET
 
 from autocrud.resource_manager.basic import (
@@ -30,7 +31,8 @@ class SqliteMetaStore(ISlowMetaStore):
         encoding: Encoding = Encoding.json,
     ):
         self._serializer = MsgspecSerializer(
-            encoding=encoding, resource_type=ResourceMeta
+            encoding=encoding,
+            resource_type=ResourceMeta,
         )
         self._get_conn = get_conn
         self._conns: dict[int, sqlite3.Connection] = defaultdict(self._get_conn)
@@ -88,7 +90,7 @@ class SqliteMetaStore(ISlowMetaStore):
             try:
                 data = pickle.loads(data_blob)
                 indexed_data = json.dumps(
-                    data.model_dump() if hasattr(data, "model_dump") else data
+                    data.model_dump() if hasattr(data, "model_dump") else data,
                 )
                 _conn.execute(
                     """
@@ -108,7 +110,8 @@ class SqliteMetaStore(ISlowMetaStore):
     def __getitem__(self, pk: str) -> ResourceMeta:
         _conn = self._conns[threading.get_ident()]
         cursor = _conn.execute(
-            "SELECT data FROM resource_meta WHERE resource_id = ?", (pk,)
+            "SELECT data FROM resource_meta WHERE resource_id = ?",
+            (pk,),
         )
         row = cursor.fetchone()
         if row is None:
@@ -291,23 +294,23 @@ class SqliteMetaStore(ISlowMetaStore):
 
         if operator == DataSearchOperator.equals:
             return f"{json_extract} = ?", [value]
-        elif operator == DataSearchOperator.not_equals:
+        if operator == DataSearchOperator.not_equals:
             return f"{json_extract} != ?", [value]
-        elif operator == DataSearchOperator.greater_than:
+        if operator == DataSearchOperator.greater_than:
             return f"CAST({json_extract} AS REAL) > ?", [value]
-        elif operator == DataSearchOperator.greater_than_or_equal:
+        if operator == DataSearchOperator.greater_than_or_equal:
             return f"CAST({json_extract} AS REAL) >= ?", [value]
-        elif operator == DataSearchOperator.less_than:
+        if operator == DataSearchOperator.less_than:
             return f"CAST({json_extract} AS REAL) < ?", [value]
-        elif operator == DataSearchOperator.less_than_or_equal:
+        if operator == DataSearchOperator.less_than_or_equal:
             return f"CAST({json_extract} AS REAL) <= ?", [value]
-        elif operator == DataSearchOperator.contains:
+        if operator == DataSearchOperator.contains:
             return f"{json_extract} LIKE ?", [f"%{value}%"]
-        elif operator == DataSearchOperator.starts_with:
+        if operator == DataSearchOperator.starts_with:
             return f"{json_extract} LIKE ?", [f"{value}%"]
-        elif operator == DataSearchOperator.ends_with:
+        if operator == DataSearchOperator.ends_with:
             return f"{json_extract} LIKE ?", [f"%{value}"]
-        elif operator == DataSearchOperator.in_list:
+        if operator == DataSearchOperator.in_list:
             if isinstance(value, (list, tuple, set)):
                 placeholders = ",".join("?" * len(value))
                 return f"{json_extract} IN ({placeholders})", list(value)

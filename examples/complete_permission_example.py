@@ -1,14 +1,13 @@
-"""
-完整的權限設定和使用示例
-"""
+"""完整的權限設定和使用示例"""
 
 import datetime as dt
 from dataclasses import dataclass
-from autocrud.permission.acl import ACLPermissionChecker, ACLPermission, Policy
+
+from autocrud.permission.acl import ACLPermission, ACLPermissionChecker, Policy
 from autocrud.permission.basic import (
+    IPermissionChecker,
     PermissionContext,
     PermissionResult,
-    IPermissionChecker,
 )
 from autocrud.permission.composite import (
     CompositePermissionChecker,
@@ -16,10 +15,10 @@ from autocrud.permission.composite import (
 )
 from autocrud.permission.data_based import FieldLevelPermissionChecker
 from autocrud.permission.meta_based import ResourceOwnershipChecker
+from autocrud.resource_manager.basic import ResourceAction
 from autocrud.resource_manager.core import ResourceManager, SimpleStorage
 from autocrud.resource_manager.meta_store.simple import MemoryMetaStore
 from autocrud.resource_manager.resource_store.simple import MemoryResourceStore
-from autocrud.resource_manager.basic import ResourceAction
 
 
 # 示例資料結構
@@ -36,7 +35,6 @@ class DocumentPermissionChecker(IPermissionChecker):
 
     def check_permission(self, context: PermissionContext) -> PermissionResult:
         """實現文檔特定的權限邏輯"""
-
         # 1. 草稿狀態的文檔只有作者可以查看
         if context.action == ResourceAction.get and context.resource_data:
             if hasattr(context.resource_data, "status"):
@@ -46,7 +44,7 @@ class DocumentPermissionChecker(IPermissionChecker):
 
         # 2. 只有編輯者可以發布文檔
         if context.action == ResourceAction.update and context.method_kwargs.get(
-            "data"
+            "data",
         ):
             data = context.method_kwargs["data"]
             if hasattr(data, "status") and data.status == "published":
@@ -67,12 +65,12 @@ class DocumentPermissionChecker(IPermissionChecker):
 
 def setup_document_permission_system():
     """設定文檔管理的權限系統"""
-
     # 1. 創建儲存
     doc_meta_store = MemoryMetaStore()
     doc_resource_store = MemoryResourceStore(Document)
     doc_storage = SimpleStorage(
-        meta_store=doc_meta_store, resource_store=doc_resource_store
+        meta_store=doc_meta_store,
+        resource_store=doc_resource_store,
     )
 
     # 2. 創建權限檢查器（不需要權限管理器）
@@ -99,7 +97,7 @@ def setup_document_permission_system():
                 "category",
             },  # 編輯者可以改狀態
             "david": {"title", "content", "status", "category"},  # 管理員全權限
-        }
+        },
     )
 
     # 4.2 資源所有權檢查
@@ -120,13 +118,13 @@ def setup_document_permission_system():
     conditional_checker.add_condition(
         lambda ctx: PermissionResult.deny
         if ctx.action == ResourceAction.delete and ctx.user != "david"
-        else PermissionResult.not_applicable
+        else PermissionResult.not_applicable,
     )
 
     # 週末不能發布文檔
     def no_weekend_publish(context):
         if context.action == ResourceAction.update and context.method_kwargs.get(
-            "data"
+            "data",
         ):
             data = context.method_kwargs["data"]
             if hasattr(data, "status") and data.status == "published":
@@ -147,7 +145,7 @@ def setup_document_permission_system():
             field_checker,  # 欄位權限
             ownership_checker,  # 所有權檢查
             permission_checker,  # 基本 ACL/RBAC
-        ]
+        ],
     )
 
     # 5. 將權限檢查器設定到文檔管理器
@@ -158,7 +156,6 @@ def setup_document_permission_system():
 
 def setup_initial_permissions(permission_checker: ACLPermissionChecker):
     """設定初始權限資料"""
-
     admin_user = "system"
     current_time = dt.datetime.now()
 
@@ -203,7 +200,6 @@ def setup_initial_permissions(permission_checker: ACLPermissionChecker):
 
 def demo_usage():
     """示範如何使用"""
-
     # 設定系統
     document_manager, permission_checker = setup_document_permission_system()
     setup_initial_permissions(permission_checker)
@@ -226,7 +222,9 @@ def demo_usage():
     try:
         with document_manager.meta_provide("alice", current_time):
             updated_doc = Document(
-                title="Alice 的更新文檔", content="更新的內容", status="draft"
+                title="Alice 的更新文檔",
+                content="更新的內容",
+                status="draft",
             )
             document_manager.update(doc_id, updated_doc)
             print("Alice 成功更新文檔")
@@ -237,7 +235,9 @@ def demo_usage():
     try:
         with document_manager.meta_provide("bob", current_time):
             updated_doc = Document(
-                title="Bob 嘗試修改", content="Bob 的修改", status="draft"
+                title="Bob 嘗試修改",
+                content="Bob 的修改",
+                status="draft",
             )
             document_manager.update(doc_id, updated_doc)
             print("Bob 成功更新文檔")  # 不應該到這裡

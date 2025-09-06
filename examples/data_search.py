@@ -1,13 +1,14 @@
 import datetime as dt
 from dataclasses import dataclass
+
+from msgspec import UNSET
+
 from autocrud.crud.core import AutoCRUD
 from autocrud.resource_manager.basic import (
     DataSearchCondition,
     DataSearchOperator,
     ResourceMetaSearchQuery,
 )
-from msgspec import UNSET
-
 from autocrud.resource_manager.core import ResourceManager
 
 
@@ -67,7 +68,7 @@ def test_basic_data_search():
             info = user_manager.create(user_data)
             created_resources.append(info)
             print(
-                f"Created user: {user_data.name} with resource_id: {info.resource_id}"
+                f"Created user: {user_data.name} with resource_id: {info.resource_id}",
             )
 
         # 測試 1: 搜尋特定部門的用戶
@@ -78,7 +79,7 @@ def test_basic_data_search():
                     field_path="department",
                     operator=DataSearchOperator.equals,
                     value="Engineering",
-                )
+                ),
             ],
             limit=10,
             offset=0,
@@ -88,7 +89,8 @@ def test_basic_data_search():
         print(f"Found {len(results)} Engineering users:")
         for meta in results:
             resource = user_manager.get_resource_revision(
-                meta.resource_id, meta.current_revision_id
+                meta.resource_id,
+                meta.current_revision_id,
             )
             print(f"  - {resource.data.name} ({resource.data.email})")
             # 驗證索引數據是否正確
@@ -103,7 +105,7 @@ def test_basic_data_search():
                     field_path="age",
                     operator=DataSearchOperator.greater_than_or_equal,
                     value=30,
-                )
+                ),
             ],
             limit=10,
             offset=0,
@@ -113,7 +115,8 @@ def test_basic_data_search():
         print(f"Found {len(results)} users aged 30 or older:")
         for meta in results:
             resource = user_manager.get_resource_revision(
-                meta.resource_id, meta.current_revision_id
+                meta.resource_id,
+                meta.current_revision_id,
             )
             print(f"  - {resource.data.name} (age: {resource.data.age})")
 
@@ -125,7 +128,7 @@ def test_basic_data_search():
                     field_path="email",
                     operator=DataSearchOperator.contains,
                     value="@company.com",
-                )
+                ),
             ],
             limit=10,
             offset=0,
@@ -135,7 +138,8 @@ def test_basic_data_search():
         print(f"Found {len(results)} users with @company.com email:")
         for meta in results:
             resource = user_manager.get_resource_revision(
-                meta.resource_id, meta.current_revision_id
+                meta.resource_id,
+                meta.current_revision_id,
             )
             print(f"  - {resource.data.name} ({resource.data.email})")
 
@@ -149,7 +153,9 @@ def test_basic_data_search():
                     value="Engineering",
                 ),
                 DataSearchCondition(
-                    field_path="age", operator=DataSearchOperator.less_than, value=35
+                    field_path="age",
+                    operator=DataSearchOperator.less_than,
+                    value=35,
                 ),
             ],
             limit=10,
@@ -160,10 +166,11 @@ def test_basic_data_search():
         print(f"Found {len(results)} Engineering users under 35:")
         for meta in results:
             resource = user_manager.get_resource_revision(
-                meta.resource_id, meta.current_revision_id
+                meta.resource_id,
+                meta.current_revision_id,
             )
             print(
-                f"  - {resource.data.name} (age: {resource.data.age}, dept: {resource.data.department})"
+                f"  - {resource.data.name} (age: {resource.data.age}, dept: {resource.data.department})",
             )
 
         # 測試 5: 更新用戶並驗證索引更新
@@ -172,7 +179,7 @@ def test_basic_data_search():
             first_resource_id = created_resources[0].resource_id
             original_user = user_manager.get(first_resource_id)
             print(
-                f"Original user: {original_user.data.name} - {original_user.data.department}"
+                f"Original user: {original_user.data.name} - {original_user.data.department}",
             )
 
             # 更新用戶部門
@@ -198,7 +205,7 @@ def test_basic_data_search():
                         field_path="department",
                         operator=DataSearchOperator.equals,
                         value="Engineering",
-                    )
+                    ),
                 ],
                 limit=10,
                 offset=0,
@@ -208,7 +215,8 @@ def test_basic_data_search():
             print(f"After update, found {len(results)} Engineering users:")
             for meta in results:
                 resource = user_manager.get_resource_revision(
-                    meta.resource_id, meta.current_revision_id
+                    meta.resource_id,
+                    meta.current_revision_id,
                 )
                 print(f"  - {resource.data.name}")
 

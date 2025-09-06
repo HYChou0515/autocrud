@@ -1,27 +1,29 @@
+import logging
 from enum import Flag, auto
-from autocrud.permission.simple import RootOnly
-from autocrud.resource_manager.core import ResourceManager
-from autocrud.resource_manager.storage_factory import MemoryStorageFactory
+
+from msgspec import UNSET, Struct, UnsetType
+
 from autocrud.permission.basic import (
     DEFAULT_ROOT_USER,
     IPermissionCheckerWithStore,
     PermissionContext,
     PermissionResult,
 )
+from autocrud.permission.simple import RootOnly
 from autocrud.resource_manager.basic import (
     DataSearchCondition,
     DataSearchOperator,
     IndexableField,
+    ResourceAction,
     ResourceDataSearchSort,
     ResourceMetaSearchQuery,
     ResourceMetaSortDirection,
 )
-import logging
-from msgspec import UNSET, UnsetType, Struct
-from autocrud.resource_manager.basic import (
-    ResourceAction,
+from autocrud.resource_manager.core import ResourceManager
+from autocrud.resource_manager.storage_factory import (
+    IStorageFactory,
+    MemoryStorageFactory,
 )
-from autocrud.resource_manager.storage_factory import IStorageFactory
 
 logger = logging.getLogger(__name__)
 
@@ -144,11 +146,10 @@ class ACLPermissionChecker(IPermissionCheckerWithStore[ACLPermission]):
         # 處理所有規則後仍無決定，使用預設策略
         if Policy.default_allow in self.policy:
             return PermissionResult.allow
-        elif Policy.default_deny in self.policy:
+        if Policy.default_deny in self.policy:
             return PermissionResult.deny
-        else:
-            # 如果沒有指定預設策略，使用最保守的拒絕
-            return PermissionResult.deny
+        # 如果沒有指定預設策略，使用最保守的拒絕
+        return PermissionResult.deny
 
     def _check_acl_permission(
         self,
@@ -215,7 +216,7 @@ class ACLPermissionChecker(IPermissionCheckerWithStore[ACLPermission]):
                             ResourceDataSearchSort(
                                 direction=ResourceMetaSortDirection.ascending,
                                 field_path="order",
-                            )
+                            ),
                         ],
                     )
 
@@ -241,7 +242,7 @@ class ACLPermissionChecker(IPermissionCheckerWithStore[ACLPermission]):
                                 return PermissionResult.allow
             except Exception:
                 logger.exception(
-                    "Error on searching ACL permissions, so ignore this part"
+                    "Error on searching ACL permissions, so ignore this part",
                 )
                 continue
 

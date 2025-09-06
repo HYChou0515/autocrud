@@ -1,11 +1,13 @@
-from msgspec import UNSET
 import logging
-from autocrud.permission.basic import PermissionResult
-from autocrud.permission.basic import PermissionContext
-from autocrud.permission.basic import IPermissionChecker
+
+from msgspec import UNSET
+
+from autocrud.permission.basic import (
+    IPermissionChecker,
+    PermissionContext,
+    PermissionResult,
+)
 from autocrud.resource_manager.basic import ResourceAction
-
-
 from autocrud.resource_manager.core import ResourceManager
 
 logger = logging.getLogger(__name__)
@@ -43,8 +45,7 @@ class ResourceOwnershipChecker(IPermissionChecker):
             # 檢查創建者
             if meta.created_by == context.user:
                 return PermissionResult.allow
-            else:
-                return PermissionResult.deny
+            return PermissionResult.deny
 
         except Exception:
             return PermissionResult.deny

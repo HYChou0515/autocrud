@@ -1,5 +1,6 @@
-from collections.abc import Generator
 import sys
+from collections.abc import Generator
+
 from msgspec import UNSET
 
 try:
@@ -21,7 +22,8 @@ from autocrud.resource_manager.basic import (
 class DFMemoryMetaStore(ISlowMetaStore):
     def __init__(self, encoding: Encoding = Encoding.json):
         self._serializer = MsgspecSerializer(
-            encoding=encoding, resource_type=ResourceMeta
+            encoding=encoding,
+            resource_type=ResourceMeta,
         )
         self._store: dict[str, bytes] = {}
         self._df = pd.DataFrame(
@@ -53,7 +55,7 @@ class DFMemoryMetaStore(ISlowMetaStore):
                     "created_by": b.created_by,
                     "updated_by": b.updated_by,
                     "is_deleted": b.is_deleted,
-                }
+                },
             )
         udf = pd.DataFrame(values).set_index("resource_id")
         news = udf.index.difference(self._df.index)

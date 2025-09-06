@@ -1,6 +1,7 @@
-from contextlib import suppress
 import datetime as dt
+import math
 import tempfile
+from contextlib import suppress
 from pathlib import Path
 from typing import IO
 from uuid import uuid4
@@ -96,10 +97,9 @@ class DataMigration(IMigration):
             )
 
             return migrated_data
-        else:
-            # For other versions, try to decode as current format
-            decoder = msgspec.json.Decoder(Data)
-            return decoder.decode(data_bytes)
+        # For other versions, try to decode as current format
+        decoder = msgspec.json.Decoder(Data)
+        return decoder.decode(data_bytes)
 
 
 def create_legacy_resource(resource_id: str, revision_id: str) -> Resource[LegacyData]:
@@ -107,7 +107,7 @@ def create_legacy_resource(resource_id: str, revision_id: str) -> Resource[Legac
     legacy_inner = LegacyInnerData(
         string="legacy_inner",
         number=42,
-        fp=3.14,
+        fp=math.pi,
         times=dt.datetime(2023, 6, 15, 10, 30),
     )
     legacy_data = LegacyData(string="legacy_string", number=100, data=legacy_inner)
@@ -130,7 +130,10 @@ def create_legacy_resource(resource_id: str, revision_id: str) -> Resource[Legac
 def create_current_resource(resource_id: str, revision_id: str) -> Resource[Data]:
     """Helper to create a current format resource"""
     inner = InnerData(
-        string="current_inner", number=99, fp=2.71, times=dt.datetime(2023, 12, 25)
+        string="current_inner",
+        number=99,
+        fp=math.e,
+        times=dt.datetime(2023, 12, 25),
     )
     data = Data(
         string="current_string",
@@ -180,26 +183,34 @@ class TestResourceStoreMigration:
                 s3.cleanup()
 
     def get_store_with_migration(
-        self, store_type: str, tmpdir: Path = None, memory_store_to_copy=None
+        self,
+        store_type: str,
+        tmpdir: Path = None,
+        memory_store_to_copy=None,
     ):
         """Create a resource store with migration enabled"""
         migration = DataMigration()
 
         if store_type == "memory":
             new_store = MemoryResourceStore(
-                Data, encoding=Encoding.json, migration=migration
+                Data,
+                encoding=Encoding.json,
+                migration=migration,
             )
             # Copy data from legacy store if provided
             if memory_store_to_copy is not None:
                 new_store._data_store = memory_store_to_copy._data_store.copy()
                 new_store._info_store = memory_store_to_copy._info_store.copy()
             return new_store
-        elif store_type == "disk":
+        if store_type == "disk":
             rootdir = tmpdir / "test_store"
             return DiskResourceStore(
-                Data, encoding=Encoding.json, rootdir=rootdir, migration=migration
+                Data,
+                encoding=Encoding.json,
+                rootdir=rootdir,
+                migration=migration,
             )
-        elif store_type == "s3":
+        if store_type == "s3":
             return S3ResourceStore(
                 Data,
                 encoding=Encoding.json,
@@ -212,12 +223,14 @@ class TestResourceStoreMigration:
         """Create a resource store without migration (for saving legacy data)"""
         if store_type == "memory":
             return MemoryResourceStore(LegacyData, encoding=Encoding.json)
-        elif store_type == "disk":
+        if store_type == "disk":
             rootdir = tmpdir / "test_store"
             return DiskResourceStore(
-                LegacyData, encoding=Encoding.json, rootdir=rootdir
+                LegacyData,
+                encoding=Encoding.json,
+                rootdir=rootdir,
             )
-        elif store_type == "s3":
+        if store_type == "s3":
             return S3ResourceStore(
                 LegacyData,
                 encoding=Encoding.json,
@@ -259,13 +272,19 @@ class TestResourceStoreMigration:
         assert migrated_data.number == 100
         assert migrated_data.fp == 0.0  # Default value for new field
         assert migrated_data.times == dt.datetime(
-            2023, 1, 1
+            2023,
+            1,
+            1,
         )  # Default value for new field
         assert migrated_data.data.string == "legacy_inner"
         assert migrated_data.data.number == 42
-        assert migrated_data.data.fp == 3.14  # From original legacy data
+        assert migrated_data.data.fp == math.pi  # From original legacy data
         assert migrated_data.data.times == dt.datetime(
-            2023, 6, 15, 10, 30
+            2023,
+            6,
+            15,
+            10,
+            30,
         )  # From original legacy data
         assert migrated_data.list_data == []  # New field with default
         assert migrated_data.dict_data == {}  # New field with default

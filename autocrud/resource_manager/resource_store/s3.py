@@ -1,5 +1,9 @@
+import io
 from collections.abc import Generator
 from typing import TypeVar
+
+import boto3
+from botocore.exceptions import ClientError
 
 from autocrud.resource_manager.basic import (
     Encoding,
@@ -9,9 +13,6 @@ from autocrud.resource_manager.basic import (
     Resource,
     RevisionInfo,
 )
-import io
-import boto3
-from botocore.exceptions import ClientError
 
 T = TypeVar("T")
 
@@ -39,10 +40,12 @@ class S3ResourceStore(IResourceStore[T]):
             region_name=region_name,
         )
         self._data_serializer = MsgspecSerializer(
-            encoding=encoding, resource_type=resource_type
+            encoding=encoding,
+            resource_type=resource_type,
         )
         self._info_serializer = MsgspecSerializer(
-            encoding=encoding, resource_type=RevisionInfo
+            encoding=encoding,
+            resource_type=RevisionInfo,
         )
         self.migration = migration
 
@@ -70,7 +73,9 @@ class S3ResourceStore(IResourceStore[T]):
         """列出所有資源 ID"""
         paginator = self.client.get_paginator("list_objects_v2")
         page_iterator = paginator.paginate(
-            Bucket=self.bucket, Prefix=self.prefix, Delimiter="/"
+            Bucket=self.bucket,
+            Prefix=self.prefix,
+            Delimiter="/",
         )
 
         for page in page_iterator:
@@ -111,8 +116,7 @@ class S3ResourceStore(IResourceStore[T]):
             error_code = e.response["Error"]["Code"]
             if error_code in ("NoSuchKey", "404"):
                 return False
-            else:
-                raise
+            raise
 
     def get(self, resource_id: str, revision_id: str) -> Resource[T]:
         """獲取指定的資源修訂版本"""
@@ -144,7 +148,9 @@ class S3ResourceStore(IResourceStore[T]):
 
                 migrated_data_bytes = self._data_serializer.encode(data)
                 self.client.put_object(
-                    Bucket=self.bucket, Key=data_key, Body=migrated_data_bytes
+                    Bucket=self.bucket,
+                    Key=data_key,
+                    Body=migrated_data_bytes,
                 )
 
             return Resource(
@@ -155,8 +161,7 @@ class S3ResourceStore(IResourceStore[T]):
             error_code = e.response["Error"]["Code"]
             if error_code in ("NoSuchKey", "404"):
                 raise KeyError(f"Resource data not found: {resource_id}/{revision_id}")
-            else:
-                raise
+            raise
 
     def get_revision_info(self, resource_id: str, revision_id: str) -> RevisionInfo:
         """獲取指定修訂版本的資訊"""
@@ -169,8 +174,7 @@ class S3ResourceStore(IResourceStore[T]):
             error_code = e.response["Error"]["Code"]
             if error_code in ("NoSuchKey", "404"):
                 raise KeyError(f"Revision info not found: {resource_id}/{revision_id}")
-            else:
-                raise
+            raise
 
     def save(self, data: Resource[T]) -> None:
         """保存資源修訂版本"""
@@ -208,5 +212,6 @@ class S3ResourceStore(IResourceStore[T]):
             for i in range(0, len(objects_to_delete), 1000):
                 batch = objects_to_delete[i : i + 1000]
                 self.client.delete_objects(
-                    Bucket=self.bucket, Delete={"Objects": batch}
+                    Bucket=self.bucket,
+                    Delete={"Objects": batch},
                 )

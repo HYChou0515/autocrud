@@ -7,10 +7,12 @@
 """
 
 import logging
-from autocrud.permission.basic import PermissionResult
-from autocrud.permission.basic import PermissionContext
-from autocrud.permission.basic import IPermissionChecker
 
+from autocrud.permission.basic import (
+    IPermissionChecker,
+    PermissionContext,
+    PermissionResult,
+)
 
 logger = logging.getLogger(__name__)
 

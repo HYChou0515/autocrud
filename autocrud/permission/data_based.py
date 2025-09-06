@@ -1,10 +1,12 @@
-from typing import Dict
 import logging
-from autocrud.permission.basic import PermissionResult
-from autocrud.permission.basic import PermissionContext
-from autocrud.permission.basic import IPermissionChecker
-from autocrud.resource_manager.basic import ResourceAction
+from typing import Dict
 
+from autocrud.permission.basic import (
+    IPermissionChecker,
+    PermissionContext,
+    PermissionResult,
+)
+from autocrud.resource_manager.basic import ResourceAction
 
 logger = logging.getLogger(__name__)
 
@@ -37,8 +39,7 @@ class FieldLevelPermissionChecker(IPermissionChecker):
         # 檢查是否所有修改的欄位都被允許
         if modified_fields.issubset(allowed_fields):
             return PermissionResult.allow
-        else:
-            return PermissionResult.deny
+        return PermissionResult.deny
 
     def _extract_modified_fields(self, context: PermissionContext) -> set[str]:
         """從上下文中提取要修改的欄位"""

@@ -1,20 +1,21 @@
 """測試 AutoCRUD 對不同數據類型的支持"""
 
-import pytest
-from dataclasses import dataclass, asdict, is_dataclass
+from dataclasses import asdict, dataclass, is_dataclass
 from typing import Optional, TypedDict
+
 import msgspec
-from fastapi import FastAPI, APIRouter
+import pytest
+from fastapi import APIRouter, FastAPI
 from fastapi.testclient import TestClient
 
 from autocrud.crud.core import (
     AutoCRUD,
-    CreateRouteTemplate,
-    ReadRouteTemplate,
-    UpdateRouteTemplate,
-    DeleteRouteTemplate,
-    ListRouteTemplate,
 )
+from autocrud.crud.route_templates.create import CreateRouteTemplate
+from autocrud.crud.route_templates.delete import DeleteRouteTemplate
+from autocrud.crud.route_templates.get import ReadRouteTemplate
+from autocrud.crud.route_templates.search import ListRouteTemplate
+from autocrud.crud.route_templates.update import UpdateRouteTemplate
 
 
 # 1. TypedDict 方式

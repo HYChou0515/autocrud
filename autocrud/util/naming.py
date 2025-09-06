@@ -1,5 +1,5 @@
-from enum import StrEnum
 import re
+from enum import StrEnum
 
 
 class NamingFormat(StrEnum):
@@ -55,16 +55,15 @@ class NameConverter:
 
         if self._current_format == NamingFormat.SNAKE:
             return name.lower()
-        elif self._current_format == NamingFormat.KEBAB:
+        if self._current_format == NamingFormat.KEBAB:
             return name.replace("-", "_").lower()
-        elif self._current_format in [NamingFormat.PASCAL, NamingFormat.CAMEL]:
+        if self._current_format in [NamingFormat.PASCAL, NamingFormat.CAMEL]:
             # PascalCase/camelCase -> snake_case
-            snake_case = re.sub("(.)([A-Z][a-z]+)", r"\1_\2", name)
-            snake_case = re.sub("([a-z0-9])([A-Z])", r"\1_\2", snake_case).lower()
+            snake_case = re.sub(r"(.)([A-Z][a-z]+)", r"\1_\2", name)
+            snake_case = re.sub(r"([a-z0-9])([A-Z])", r"\1_\2", snake_case).lower()
             return snake_case
-        else:
-            # unknown，直接轉為小寫
-            return name.lower()
+        # unknown，直接轉為小寫
+        return name.lower()
 
     def to(self, target_format: NamingFormat | str) -> str:
         """轉換為指定格式"""
@@ -79,12 +78,11 @@ class NameConverter:
 
         if target_format == NamingFormat.SNAKE:
             return snake_name
-        elif target_format == NamingFormat.KEBAB:
+        if target_format == NamingFormat.KEBAB:
             return snake_name.replace("_", "-")
-        elif target_format == NamingFormat.PASCAL:
+        if target_format == NamingFormat.PASCAL:
             return "".join(word.capitalize() for word in snake_name.split("_"))
-        elif target_format == NamingFormat.CAMEL:
+        if target_format == NamingFormat.CAMEL:
             components = snake_name.split("_")
             return components[0] + "".join(word.capitalize() for word in components[1:])
-        else:
-            return self.original_name
+        return self.original_name

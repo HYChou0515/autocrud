@@ -1,15 +1,13 @@
-"""
-測試 API 端點的 data filtering 功能
-"""
+"""測試 API 端點的 data filtering 功能"""
 
 import json
+
 import pytest
+from fastapi import FastAPI
+from fastapi.testclient import TestClient
 from msgspec import Struct, to_builtins
 
 from autocrud.crud.core import AutoCRUD
-from fastapi.testclient import TestClient
-from fastapi import FastAPI
-
 from autocrud.resource_manager.storage_factory import MemoryStorageFactory
 
 
@@ -48,7 +46,11 @@ def test_data():
             salary=85000.0,
         ),
         User(
-            name="Diana", email="diana@hr.com", age=28, department="HR", salary=55000.0
+            name="Diana",
+            email="diana@hr.com",
+            age=28,
+            department="HR",
+            salary=55000.0,
         ),
         User(
             name="Eve",
@@ -101,7 +103,7 @@ def test_data_filtering_equals(test_client: TestClient):
     """測試 equals 操作符"""
     # 測試部門等於 Engineering
     data_conditions = json.dumps(
-        [{"field_path": "department", "operator": "eq", "value": "Engineering"}]
+        [{"field_path": "department", "operator": "eq", "value": "Engineering"}],
     )
 
     response = test_client.get(f"/user/data?data_conditions={data_conditions}")
@@ -131,7 +133,7 @@ def test_data_filtering_contains(test_client: TestClient):
     """測試 contains 操作符"""
     # 測試 email 包含 engineering
     data_conditions = json.dumps(
-        [{"field_path": "email", "operator": "contains", "value": "engineering"}]
+        [{"field_path": "email", "operator": "contains", "value": "engineering"}],
     )
 
     response = test_client.get(f"/user/data?data_conditions={data_conditions}")
@@ -154,7 +156,7 @@ def test_data_filtering_multiple_conditions(test_client: TestClient):
                 "operator": "gte",
                 "value": 80000.0,
             },
-        ]
+        ],
     )
 
     response = test_client.get(f"/user/data?data_conditions={data_conditions}")
@@ -171,11 +173,11 @@ def test_data_filtering_with_metadata_filter(test_client: TestClient):
     """測試 data filtering 與 metadata filtering 結合"""
     # 測試部門是 Engineering 且 is_deleted=false
     data_conditions = json.dumps(
-        [{"field_path": "department", "operator": "eq", "value": "Engineering"}]
+        [{"field_path": "department", "operator": "eq", "value": "Engineering"}],
     )
 
     response = test_client.get(
-        f"/user/data?data_conditions={data_conditions}&is_deleted=false"
+        f"/user/data?data_conditions={data_conditions}&is_deleted=false",
     )
     assert response.status_code == 200
 
@@ -205,7 +207,7 @@ def test_data_filtering_revision_info_endpoint(test_client: TestClient):
     """測試 revision-info 端點的 data filtering"""
     # 測試部門是 HR
     data_conditions = json.dumps(
-        [{"field_path": "department", "operator": "eq", "value": "HR"}]
+        [{"field_path": "department", "operator": "eq", "value": "HR"}],
     )
 
     response = test_client.get(f"/user/revision-info?data_conditions={data_conditions}")
@@ -236,7 +238,7 @@ def test_data_filtering_full_endpoint(test_client: TestClient):
                 "operator": "lte",
                 "value": 75000.0,
             },
-        ]
+        ],
     )
 
     response = test_client.get(f"/user/full?data_conditions={data_conditions}")
@@ -272,8 +274,8 @@ def test_data_filtering_invalid_operator(test_client: TestClient):
                 "field_path": "department",
                 "operator": "invalid_operator",
                 "value": "Engineering",
-            }
-        ]
+            },
+        ],
     )
 
     response = test_client.get(f"/user/data?data_conditions={data_conditions}")
@@ -295,7 +297,7 @@ def test_data_filtering_with_pagination(test_client: TestClient):
     """測試 data filtering 與分頁結合"""
     # 測試部門是 Engineering，限制 2 個結果
     data_conditions = json.dumps(
-        [{"field_path": "department", "operator": "eq", "value": "Engineering"}]
+        [{"field_path": "department", "operator": "eq", "value": "Engineering"}],
     )
 
     response = test_client.get(f"/user/data?data_conditions={data_conditions}&limit=2")
@@ -311,7 +313,7 @@ def test_data_filtering_empty_result(test_client: TestClient):
     """測試沒有匹配結果的情況"""
     # 測試不存在的部門
     data_conditions = json.dumps(
-        [{"field_path": "department", "operator": "eq", "value": "NonExistentDept"}]
+        [{"field_path": "department", "operator": "eq", "value": "NonExistentDept"}],
     )
 
     response = test_client.get(f"/user/data?data_conditions={data_conditions}")

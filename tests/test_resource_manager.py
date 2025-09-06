@@ -1,18 +1,23 @@
+import datetime as dt
+import time
 from collections.abc import Generator
 from contextlib import contextmanager, suppress
 from pathlib import Path
 from uuid import uuid4
-from msgspec import UNSET, Struct
+
+import jsonpatch
 import msgspec
 import psycopg2
 import pytest
 import redis
+from faker import Faker
+from msgspec import UNSET, Struct
+
 from autocrud.resource_manager.basic import (
     ResourceMetaSearchSort,
     ResourceMetaSortDirection,
     ResourceMetaSortKey,
 )
-import time
 from autocrud.resource_manager.core import (
     IResourceStore,
     ResourceIDNotFoundError,
@@ -22,10 +27,6 @@ from autocrud.resource_manager.core import (
     ResourceMetaSearchQuery,
     SimpleStorage,
 )
-import datetime as dt
-from faker import Faker
-import jsonpatch
-
 from autocrud.resource_manager.meta_store.df import DFMemoryMetaStore
 from autocrud.resource_manager.meta_store.fast_slow import FastSlowMetaStore
 from autocrud.resource_manager.meta_store.postgres import PostgresMetaStore
@@ -110,35 +111,37 @@ def get_meta_store(store_type: str, tmpdir: Path):
     """Fixture to provide a fast store for testing."""
     if store_type == "memory":
         return MemoryMetaStore(encoding="msgpack")
-    elif store_type == "dfm":
+    if store_type == "dfm":
         return DFMemoryMetaStore(encoding="msgpack")
-    elif store_type == "sql3-mem":
+    if store_type == "sql3-mem":
         return MemorySqliteMetaStore(encoding="msgpack")
-    elif store_type == "memory-pg":
+    if store_type == "memory-pg":
         return FastSlowMetaStore(
             fast_store=MemoryMetaStore(encoding="msgpack"),
             slow_store=PostgresMetaStore(
-                pg_dsn=reset_and_get_pg_dsn(), encoding="msgpack"
+                pg_dsn=reset_and_get_pg_dsn(),
+                encoding="msgpack",
             ),
         )
-    elif store_type == "sql3-file":
+    if store_type == "sql3-file":
         return FileSqliteMetaStore(db_filepath=tmpdir / "meta.db", encoding="msgpack")
-    elif store_type == "disk-sql3file":
+    if store_type == "disk-sql3file":
         d = tmpdir / faker.pystr()
         d.mkdir()
         return FastSlowMetaStore(
             fast_store=DiskMetaStore(encoding="msgpack", rootdir=d),
             slow_store=FileSqliteMetaStore(
-                db_filepath=d / "meta.db", encoding="msgpack"
+                db_filepath=d / "meta.db",
+                encoding="msgpack",
             ),
         )
-    elif store_type == "redis":
+    if store_type == "redis":
         return RedisMetaStore(
             redis_url=reset_and_get_redis_url(),
             encoding="msgpack",
             prefix=str(tmpdir).rsplit("/", 1)[-1],
         )
-    elif store_type == "redis-pg":
+    if store_type == "redis-pg":
         return FastSlowMetaStore(
             fast_store=RedisMetaStore(
                 redis_url=reset_and_get_redis_url(),
@@ -146,13 +149,13 @@ def get_meta_store(store_type: str, tmpdir: Path):
                 prefix=str(tmpdir).rsplit("/", 1)[-1],
             ),
             slow_store=PostgresMetaStore(
-                pg_dsn=reset_and_get_pg_dsn(), encoding="msgpack"
+                pg_dsn=reset_and_get_pg_dsn(),
+                encoding="msgpack",
             ),
         )
-    else:
-        d = tmpdir / faker.pystr()
-        d.mkdir()
-        return DiskMetaStore(encoding="msgpack", rootdir=d)
+    d = tmpdir / faker.pystr()
+    d.mkdir()
+    return DiskMetaStore(encoding="msgpack", rootdir=d)
 
 
 @contextmanager
@@ -183,7 +186,8 @@ def get_resource_store(store_type: str, tmpdir: Path) -> Generator[IResourceStor
 
 @pytest.mark.flaky(retries=6, delay=1)
 @pytest.mark.parametrize(
-    "meta_store_type", ["memory", "sql3-mem", "sql3-file", "redis", "disk", "redis-pg"]
+    "meta_store_type",
+    ["memory", "sql3-mem", "sql3-file", "redis", "disk", "redis-pg"],
 )
 @pytest.mark.parametrize("res_store_type", ["memory", "disk", "s3"])
 class TestResourceManager:
@@ -443,7 +447,7 @@ class TestResourceManager:
 
         # 從 revision 2 進行 patch
         patch_operations = [
-            {"op": "replace", "path": "/string", "value": "patched_from_rev2"}
+            {"op": "replace", "path": "/string", "value": "patched_from_rev2"},
         ]
         patch = jsonpatch.JsonPatch(patch_operations)
 
@@ -553,7 +557,7 @@ class TestResourceManager:
 
         with pytest.raises(ResourceIsDeletedError):
             patch = jsonpatch.JsonPatch(
-                [{"op": "replace", "path": "/string", "value": "test"}]
+                [{"op": "replace", "path": "/string", "value": "test"}],
             )
             self.mgr.patch(meta1.resource_id, patch)
 
@@ -562,7 +566,6 @@ class TestResourceManager:
 
     def test_delete_already_deleted(self):
         """重點3: 刪除已刪除的東西是不可以的"""
-
         # 創建資源
         data = new_data()
         user, now, meta = self.create(data)
@@ -582,7 +585,6 @@ class TestResourceManager:
 
     def test_delete_nonexistent_resource(self):
         """重點3: 刪除不存在的東西是不可以的"""
-
         nonexistent_id = "nonexistent-resource-id"
 
         delete_user = faker.user_name()
@@ -594,7 +596,6 @@ class TestResourceManager:
 
     def test_restore(self):
         """測試還原功能"""
-
         # 創建初始版本
         data1 = new_data()
         user1, now1, meta1 = self.create(data1)
@@ -636,7 +637,7 @@ class TestResourceManager:
 
         # 驗證 restore 返回的 meta 與 get_meta 返回的一致
         assert restore_result == self.mgr._get_meta_no_check_is_deleted(
-            meta1.resource_id
+            meta1.resource_id,
         )
 
         # 驗證 CRUD 操作重新可用
@@ -654,7 +655,6 @@ class TestResourceManager:
 
     def test_restore_nonexistent_resource(self):
         """重點6: restore 不存在的東西是不可以的"""
-
         nonexistent_id = "nonexistent-resource-id"
 
         restore_user = faker.user_name()
@@ -688,7 +688,7 @@ class TestResourceManager:
 
         # 驗證 restore 返回的 meta 與 get_meta 返回的一致
         assert restore_result == self.mgr._get_meta_no_check_is_deleted(
-            meta.resource_id
+            meta.resource_id,
         )
 
     def test_search_resources_basic(self):
@@ -1067,9 +1067,9 @@ class TestMetaStore:
                         ResourceMetaSearchSort(
                             key=ResourceMetaSortKey.resource_id,
                             direction=ResourceMetaSortDirection.ascending,
-                        )
+                        ),
                     ],
-                )
+                ),
             )
         ]
         tt = dt.datetime.now() - st

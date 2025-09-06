@@ -1,10 +1,8 @@
+from abc import ABC, abstractmethod
 from pathlib import Path
 from typing import TypeVar
+
 from autocrud.resource_manager.basic import IMigration, IStorage
-
-
-from abc import ABC, abstractmethod
-
 from autocrud.resource_manager.core import SimpleStorage
 from autocrud.resource_manager.meta_store.simple import DiskMetaStore, MemoryMetaStore
 from autocrud.resource_manager.resource_store.simple import (
@@ -18,13 +16,21 @@ T = TypeVar("T")
 class IStorageFactory(ABC):
     @abstractmethod
     def build(
-        self, model: type[T], model_name: str, *, migration: IMigration | None = None
+        self,
+        model: type[T],
+        model_name: str,
+        *,
+        migration: IMigration | None = None,
     ) -> IStorage[T]: ...
 
 
 class MemoryStorageFactory(IStorageFactory):
     def build(
-        self, model: type[T], model_name: str, *, migration: IMigration | None = None
+        self,
+        model: type[T],
+        model_name: str,
+        *,
+        migration: IMigration | None = None,
     ) -> IStorage[T]:
         meta_store = MemoryMetaStore()
 
@@ -41,7 +47,11 @@ class DiskStorageFactory(IStorageFactory):
         self.rootdir = Path(rootdir)
 
     def build(
-        self, model: type[T], model_name: str, *, migration: IMigration | None = None
+        self,
+        model: type[T],
+        model_name: str,
+        *,
+        migration: IMigration | None = None,
     ) -> IStorage[T]:
         meta_store = DiskMetaStore(rootdir=self.rootdir / model_name / "meta")
 

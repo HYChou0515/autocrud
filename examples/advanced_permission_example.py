@@ -1,7 +1,8 @@
-"""
-權限檢查系統使用範例
+"""權限檢查系統使用範例
 展示如何使用新的權限上下文模式來實現靈活的權限檢查
 """
+
+import datetime as dt
 
 from autocrud.permission.basic import (
     IPermissionChecker,
@@ -10,7 +11,6 @@ from autocrud.permission.basic import (
 )
 from autocrud.permission.composite import CompositePermissionChecker
 from autocrud.permission.simple import AllowAll
-import datetime as dt
 
 
 class SimplePermissionManager:
@@ -38,8 +38,7 @@ class CustomResourceAccessChecker(IPermissionChecker):
         self.supported_actions = {"get", "update", "delete", "patch", "switch"}
 
     def check_permission(self, context: PermissionContext) -> PermissionResult:
-        """
-        實現自定義權限檢查邏輯
+        """實現自定義權限檢查邏輯
         - 對於 get 操作：檢查具體的 resource_id
         - 對於 update/delete：除了檢查 resource_id，還要檢查 data 內容
         """
@@ -54,7 +53,9 @@ class CustomResourceAccessChecker(IPermissionChecker):
 
         # 基本權限檢查
         is_allowed = self.permission_manager.check_permission(
-            context.user, context.action, resource_id
+            context.user,
+            context.action,
+            resource_id,
         )
 
         if not is_allowed:
@@ -68,7 +69,9 @@ class CustomResourceAccessChecker(IPermissionChecker):
             if hasattr(new_data, "sensitive_field"):
                 # 只有管理員可以修改敏感欄位
                 admin_check = self.permission_manager.check_permission(
-                    context.user, "admin", "system"
+                    context.user,
+                    "admin",
+                    "system",
                 )
                 if not admin_check:
                     return PermissionResult.deny
@@ -110,15 +113,13 @@ class TimeBasedChecker(IPermissionChecker):
 
 
 def setup_advanced_permission_checking() -> CompositePermissionChecker:
-    """
-    設定進階權限檢查系統
+    """設定進階權限檢查系統
 
     這個函數展示如何組合多個權限檢查器來實現複雜的權限邏輯
 
     Returns:
         CompositePermissionChecker: 組合的權限檢查器
     """
-
     # 創建簡單的 permission manager
     permission_manager = SimplePermissionManager()
 
@@ -130,7 +131,7 @@ def setup_advanced_permission_checking() -> CompositePermissionChecker:
             DataFilterChecker(),
             # 可以添加更多檢查器
             AllowAll(),  # 作為最後的備用（允許所有操作）
-        ]
+        ],
     )
 
     return composite_checker
@@ -141,7 +142,6 @@ def setup_advanced_permission_checking() -> CompositePermissionChecker:
 
 def example_usage():
     """展示如何使用新的權限檢查系統"""
-
     # 創建進階權限檢查器
     permission_checker = setup_advanced_permission_checking()
 

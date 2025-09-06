@@ -1,6 +1,5 @@
 #!/usr/bin/env python3
-"""
-簡化權限管理系統使用範例
+"""簡化權限管理系統使用範例
 
 這個範例展示如何使用簡化的 Permission model 來管理 ACL 和 RBAC 權限。
 設計特點：
@@ -10,18 +9,19 @@
 """
 
 import datetime as dt
+
+from autocrud.permission.acl import Policy
+from autocrud.permission.basic import PermissionContext, PermissionResult
+from autocrud.permission.rbac import (
+    RBACPermission,
+    RBACPermissionChecker,
+    RBACPermissionEntry,
+    RoleMembership,
+)
+from autocrud.resource_manager.basic import ResourceAction
 from autocrud.resource_manager.core import ResourceManager, SimpleStorage
 from autocrud.resource_manager.meta_store.simple import MemoryMetaStore
 from autocrud.resource_manager.resource_store.simple import MemoryResourceStore
-from autocrud.resource_manager.basic import ResourceAction
-from autocrud.permission.acl import Policy
-from autocrud.permission.rbac import (
-    RoleMembership,
-    RBACPermissionChecker,
-    RBACPermission,
-    RBACPermissionEntry,
-)
-from autocrud.permission.basic import PermissionContext, PermissionResult
 
 
 def setup_permission_manager():
@@ -34,7 +34,9 @@ def setup_permission_manager():
 
 
 def demo_acl_permissions(
-    pm: ResourceManager[RBACPermission], user: str, now: dt.datetime
+    pm: ResourceManager[RBACPermission],
+    user: str,
+    now: dt.datetime,
 ):
     """示範 RBAC 權限條目管理"""
     print("=== RBAC 權限條目管理示範 ===")
@@ -48,7 +50,7 @@ def demo_acl_permissions(
         )
         info1 = pm.create(acl1)
         print(
-            f"✓ 創建 RBAC 權限條目: {acl1.subject} 可以 {acl1.action} {acl1.object} (ID: {info1.resource_id})"
+            f"✓ 創建 RBAC 權限條目: {acl1.subject} 可以 {acl1.action} {acl1.object} (ID: {info1.resource_id})",
         )
 
         # 創建 RBAC 權限條目：用戶 bob 可以更新文件
@@ -59,7 +61,7 @@ def demo_acl_permissions(
         )
         info2 = pm.create(acl2)
         print(
-            f"✓ 創建 RBAC 權限條目: {acl2.subject} 可以 {acl2.action} {acl2.object} (ID: {info2.resource_id})"
+            f"✓ 創建 RBAC 權限條目: {acl2.subject} 可以 {acl2.action} {acl2.object} (ID: {info2.resource_id})",
         )
 
         # 創建 RBAC 權限條目：服務帳戶可以管理資料庫（使用完整權限）
@@ -70,12 +72,14 @@ def demo_acl_permissions(
         )
         info3 = pm.create(acl3)
         print(
-            f"✓ 創建 RBAC 權限條目: {acl3.subject} 可以 {acl3.action} {acl3.object} (ID: {info3.resource_id})"
+            f"✓ 創建 RBAC 權限條目: {acl3.subject} 可以 {acl3.action} {acl3.object} (ID: {info3.resource_id})",
         )
 
 
 def demo_rbac_permissions(
-    pm: ResourceManager[RBACPermission], user: str, now: dt.datetime
+    pm: ResourceManager[RBACPermission],
+    user: str,
+    now: dt.datetime,
 ):
     """示範 RBAC 權限管理"""
     print("\n=== RBAC 權限管理示範 ===")
@@ -85,55 +89,63 @@ def demo_rbac_permissions(
         admin_membership = RoleMembership(subject="user:alice", group="group:admin")
         info1 = pm.create(admin_membership)
         print(
-            f"✓ 創建角色成員關係: {admin_membership.subject} 加入群組 {admin_membership.group} (ID: {info1.resource_id})"
+            f"✓ 創建角色成員關係: {admin_membership.subject} 加入群組 {admin_membership.group} (ID: {info1.resource_id})",
         )
 
         editor_membership = RoleMembership(subject="user:bob", group="group:editor")
         info2 = pm.create(editor_membership)
         print(
-            f"✓ 創建角色成員關係: {editor_membership.subject} 加入群組 {editor_membership.group} (ID: {info2.resource_id})"
+            f"✓ 創建角色成員關係: {editor_membership.subject} 加入群組 {editor_membership.group} (ID: {info2.resource_id})",
         )
 
         # 2. 一個用戶可以屬於多個群組
         multigroup_membership = RoleMembership(
-            subject="user:charlie", group="group:editor"
+            subject="user:charlie",
+            group="group:editor",
         )
         info3 = pm.create(multigroup_membership)
         print(
-            f"✓ 創建角色成員關係: {multigroup_membership.subject} 加入群組 {multigroup_membership.group} (ID: {info3.resource_id})"
+            f"✓ 創建角色成員關係: {multigroup_membership.subject} 加入群組 {multigroup_membership.group} (ID: {info3.resource_id})",
         )
 
         multigroup_membership2 = RoleMembership(
-            subject="user:charlie", group="group:reviewer"
+            subject="user:charlie",
+            group="group:reviewer",
         )
         info4 = pm.create(multigroup_membership2)
         print(
-            f"✓ 創建角色成員關係: {multigroup_membership2.subject} 也加入群組 {multigroup_membership2.group} (ID: {info4.resource_id})"
+            f"✓ 創建角色成員關係: {multigroup_membership2.subject} 也加入群組 {multigroup_membership2.group} (ID: {info4.resource_id})",
         )
 
         # 3. 創建基於群組的權限：定義群組可以做什麼
         admin_group_perm = RBACPermissionEntry(
-            subject="group:admin", object="system:*", action=ResourceAction.full
+            subject="group:admin",
+            object="system:*",
+            action=ResourceAction.full,
         )
         info5 = pm.create(admin_group_perm)
         print(
-            f"✓ 創建群組權限: {admin_group_perm.subject} 對 {admin_group_perm.object} 有 {admin_group_perm.action} (ID: {info5.resource_id})"
+            f"✓ 創建群組權限: {admin_group_perm.subject} 對 {admin_group_perm.object} 有 {admin_group_perm.action} (ID: {info5.resource_id})",
         )
 
         editor_group_perm = RBACPermissionEntry(
-            subject="group:editor", object="content:*", action=ResourceAction.update
+            subject="group:editor",
+            object="content:*",
+            action=ResourceAction.update,
         )
         info6 = pm.create(editor_group_perm)
         print(
-            f"✓ 創建群組權限: {editor_group_perm.subject} 對 {editor_group_perm.object} 有 {editor_group_perm.action} (ID: {info6.resource_id})"
+            f"✓ 創建群組權限: {editor_group_perm.subject} 對 {editor_group_perm.object} 有 {editor_group_perm.action} (ID: {info6.resource_id})",
         )
 
         reviewer_group_perm = RBACPermissionEntry(
-            subject="group:reviewer", object="content:*", action=ResourceAction.get
+            subject="group:reviewer",
+            object="content:*",
+            action=ResourceAction.get,
         )
         info7 = pm.create(reviewer_group_perm)
         print(
-            f"✓ 創建群組權限: {reviewer_group_perm.subject} 對 {reviewer_group_perm.object} 有 {reviewer_group_perm.action} (ID: {info7.resource_id})"
+            f"✓ 創建群組權限: {reviewer_group_perm.subject} 對 {reviewer_group_perm.object} 有 {reviewer_group_perm.action} (ID: {info7.resource_id})",
         )
 
 
@@ -142,9 +154,9 @@ def demo_search_permissions(pm: ResourceManager[RBACPermission]):
     print("\n=== 權限搜尋示範 ===")
 
     from autocrud.resource_manager.basic import (
-        ResourceMetaSearchQuery,
         DataSearchCondition,
         DataSearchOperator,
+        ResourceMetaSearchQuery,
     )
 
     # 0. 先搜尋所有權限看看總數
@@ -159,7 +171,7 @@ def demo_search_permissions(pm: ResourceManager[RBACPermission]):
                 field_path="type",
                 operator=DataSearchOperator.equals,
                 value="RBACPermissionEntry",
-            )
+            ),
         ],
         limit=20,
     )
@@ -173,8 +185,8 @@ def demo_search_permissions(pm: ResourceManager[RBACPermission]):
                 field_path="subject",
                 operator=DataSearchOperator.equals,
                 value="user:alice",
-            )
-        ]
+            ),
+        ],
     )
     alice_results = pm.search_resources(alice_query)
     print(f"✓ 找到 Alice 的 {len(alice_results)} 個權限")
@@ -186,8 +198,8 @@ def demo_search_permissions(pm: ResourceManager[RBACPermission]):
                 field_path="type",
                 operator=DataSearchOperator.equals,
                 value="RoleMembership",
-            )
-        ]
+            ),
+        ],
     )
     role_membership_results = pm.search_resources(role_membership_query)
     print(f"✓ 找到 {len(role_membership_results)} 個角色成員關係")
@@ -205,7 +217,7 @@ def demo_search_permissions(pm: ResourceManager[RBACPermission]):
                 operator=DataSearchOperator.starts_with,
                 value="group:",
             ),
-        ]
+        ],
     )
     group_acl_results = pm.search_resources(group_acl_query)
     print(f"✓ 找到 {len(group_acl_results)} 個群組權限")
@@ -219,18 +231,20 @@ def demo_search_permissions(pm: ResourceManager[RBACPermission]):
                 data = resource.data
                 if isinstance(data, RBACPermissionEntry):
                     print(
-                        f"  {i + 1}. RBACPermissionEntry: {data.subject} -> {data.action} -> {data.object}"
+                        f"  {i + 1}. RBACPermissionEntry: {data.subject} -> {data.action} -> {data.object}",
                     )
                 elif isinstance(data, RoleMembership):
                     print(
-                        f"  {i + 1}. RoleMembership: {data.subject} 屬於群組 {data.group}"
+                        f"  {i + 1}. RoleMembership: {data.subject} 屬於群組 {data.group}",
                     )
             except Exception as e:
                 print(f"  {i + 1}. 讀取權限失敗: {e}")
 
 
 def demo_permission_lifecycle(
-    pm: ResourceManager[RBACPermission], user: str, now: dt.datetime
+    pm: ResourceManager[RBACPermission],
+    user: str,
+    now: dt.datetime,
 ):
     """示範權限生命週期管理"""
     print("\n=== 權限生命週期管理示範 ===")
@@ -240,7 +254,7 @@ def demo_permission_lifecycle(
         temp_membership = RoleMembership(subject="user:temp", group="group:temporary")
         info = pm.create(temp_membership)
         print(
-            f"✓ 創建角色成員關係: {temp_membership.subject} -> {temp_membership.group}"
+            f"✓ 創建角色成員關係: {temp_membership.subject} -> {temp_membership.group}",
         )
 
         # 讀取權限
@@ -274,7 +288,9 @@ def demo_permission_lifecycle(
 
 
 def demo_type_checking(
-    pm: ResourceManager[RBACPermission], user: str, now: dt.datetime
+    pm: ResourceManager[RBACPermission],
+    user: str,
+    now: dt.datetime,
 ):
     """示範類型檢查和處理"""
     print("\n=== 類型檢查示範 ===")
@@ -283,7 +299,9 @@ def demo_type_checking(
         # 創建不同類型的權限
         permissions = [
             RBACPermissionEntry(
-                subject="user:test1", object="file:test1.txt", action=ResourceAction.get
+                subject="user:test1",
+                object="file:test1.txt",
+                action=ResourceAction.get,
             ),
             RoleMembership(subject="user:test2", group="test_group_1"),
             RBACPermissionEntry(
@@ -309,11 +327,11 @@ def demo_type_checking(
                 if isinstance(data, RBACPermissionEntry):
                     if data.subject.startswith("group:"):
                         print(
-                            f"  - 群組權限: {data.subject} -> {data.action} -> {data.object}"
+                            f"  - 群組權限: {data.subject} -> {data.action} -> {data.object}",
                         )
                     else:
                         print(
-                            f"  - 用戶權限: {data.subject} -> {data.action} -> {data.object}"
+                            f"  - 用戶權限: {data.subject} -> {data.action} -> {data.object}",
                         )
                 elif isinstance(data, RoleMembership):
                     print(f"  - 角色成員關係: {data.subject} 屬於群組 {data.group}")
@@ -329,7 +347,8 @@ def demo_permission_checking(pm: ResourceManager[RBACPermission]):
 
     # 設置真正的權限檢查器
     permission_checker = RBACPermissionChecker(
-        policy=Policy.strict, root_user="system_admin"
+        policy=Policy.strict,
+        root_user="system_admin",
     )
 
     # 使用權限檢查器自己的資源管理器來創建權限
@@ -353,10 +372,14 @@ def demo_permission_checking(pm: ResourceManager[RBACPermission]):
             ),
             # 群組權限
             RBACPermissionEntry(
-                subject="group:editor", object="content:*", action=ResourceAction.update
+                subject="group:editor",
+                object="content:*",
+                action=ResourceAction.update,
             ),
             RBACPermissionEntry(
-                subject="group:reviewer", object="content:*", action=ResourceAction.get
+                subject="group:reviewer",
+                object="content:*",
+                action=ResourceAction.get,
             ),
             # 角色成員關係
             RoleMembership(subject="user:charlie", group="group:editor"),
@@ -432,7 +455,7 @@ def main():
     print("✓ 靈活動作：支援預定義動作和自定義字符串")
     print("✓ 角色成員關係：RoleMembership 記錄用戶屬於哪個群組")
     print(
-        "✓ 群組權限：RBACPermissionEntry 可以直接定義群組級別的權限（subject 為 group:xxx）"
+        "✓ 群組權限：RBACPermissionEntry 可以直接定義群組級別的權限（subject 為 group:xxx）",
     )
     print("✓ 遞歸角色：支援角色繼承（群組可以屬於其他群組）")
     print("✓ 版本控制：基於 ResourceManager 的完整版本管理")

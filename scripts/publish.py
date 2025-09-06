@@ -1,7 +1,5 @@
 #!/usr/bin/env python3
-"""
-PyPI 發布腳本
-"""
+"""PyPI 發布腳本"""
 
 import subprocess
 import sys
@@ -13,7 +11,9 @@ def run_command(command, description):
     print(f"\n🔄 {description}")
     print(f"執行: {command}")
 
-    result = subprocess.run(command, shell=True, capture_output=True, text=True)
+    result = subprocess.run(
+        command, check=False, shell=True, capture_output=True, text=True
+    )
 
     if result.returncode == 0:
         print(f"✅ {description} 成功")
@@ -95,7 +95,8 @@ def upload_to_testpypi():
     choice = input("\n是否現在上傳到 TestPyPI? (y/N): ").lower()
     if choice == "y":
         return run_command(
-            "twine upload --repository testpypi dist/*", "上傳到 TestPyPI"
+            "twine upload --repository testpypi dist/*",
+            "上傳到 TestPyPI",
         )
     return True
 

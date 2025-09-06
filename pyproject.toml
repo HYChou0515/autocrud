@@ -106,6 +106,8 @@ exclude_also = [
     "except ImportError:",
     "warnings.warn.*AutoCRUDWarning",
 ]
+[tool.ruff.format]
+docstring-code-format = true
 
 [tool.ruff.lint.pydocstyle]
 convention = "google"

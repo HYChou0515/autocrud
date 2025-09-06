@@ -1,5 +1,4 @@
-"""
-權限檢查系統使用示例
+"""權限檢查系統使用示例
 
 這個示例展示如何使用新的基於 Context 的權限檢查系統：
 1. 使用預設檢查器
@@ -8,11 +7,13 @@
 4. 處理複雜的業務邏輯
 """
 
+import datetime as dt
+
 from autocrud.permission.acl import ACLPermissionChecker
 from autocrud.permission.basic import (
+    IPermissionChecker,
     PermissionContext,
     PermissionResult,
-    IPermissionChecker,
 )
 from autocrud.permission.composite import (
     CompositePermissionChecker,
@@ -21,12 +22,12 @@ from autocrud.permission.composite import (
 from autocrud.permission.data_based import FieldLevelPermissionChecker
 from autocrud.permission.meta_based import ResourceOwnershipChecker
 from autocrud.resource_manager.basic import ResourceAction
-import datetime as dt
 
 
 # 示例 1: 基本使用 - 結合現有的 ACL/RBAC 系統
 def setup_basic_permission_checker(
-    permission_checker: ACLPermissionChecker, resource_manager
+    permission_checker: ACLPermissionChecker,
+    resource_manager,
 ) -> CompositePermissionChecker:
     """設置基本的權限檢查器"""
     return CompositePermissionChecker(
@@ -40,7 +41,7 @@ def setup_basic_permission_checker(
                     ResourceAction.patch,
                 },
             ),
-        ]
+        ],
     )
 
 
@@ -50,7 +51,6 @@ class BusinessLogicChecker(IPermissionChecker):
 
     def check_permission(self, context: PermissionContext) -> PermissionResult:
         """實現自定義業務邏輯"""
-
         # 示例：只允許在工作時間進行某些操作
         if (
             context.action in {ResourceAction.delete, ResourceAction.update}
@@ -151,10 +151,10 @@ def setup_conditional_checker() -> ConditionalPermissionChecker:
 
 # 示例 5: 完整的權限檢查器設置
 def setup_complete_permission_system(
-    permission_checker: ACLPermissionChecker, resource_manager
+    permission_checker: ACLPermissionChecker,
+    resource_manager,
 ) -> CompositePermissionChecker:
     """設置完整的權限檢查系統"""
-
     checkers = [
         # 1. 首先檢查基本的 ACL/RBAC 權限
         permission_checker,
@@ -210,7 +210,6 @@ class DynamicPermissionChecker(IPermissionChecker):
 # 使用示例
 def usage_example():
     """使用示例"""
-
     # 假設你已經有了 permission_checker 和 resource_manager
     permission_checker = ACLPermissionChecker()  # 你的 ACLPermissionChecker 實例
     resource_manager = None  # 你的 ResourceManager 實例
@@ -227,7 +226,7 @@ def usage_example():
             permission_checker,
             BusinessLogicChecker(),
             setup_conditional_checker(),
-        ]
+        ],
     )
 
     # 方法 3: 使用動態檢查器

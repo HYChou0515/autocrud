@@ -1,6 +1,5 @@
 #!/usr/bin/env python3
-"""
-完整的權限系統測試
+"""完整的權限系統測試
 
 測試基於我們完整權限系統的所有 ResourceManager 操作，包括：
 - 權限創建和管理
@@ -9,15 +8,17 @@
 - 錯誤情況處理
 """
 
-import pytest
 import datetime as dt
 from dataclasses import dataclass
+
+import pytest
+
+from autocrud.permission.acl import ACLPermission, ACLPermissionChecker, Policy
 from autocrud.permission.basic import PermissionContext, PermissionResult
+from autocrud.resource_manager.basic import PermissionDeniedError, ResourceAction
 from autocrud.resource_manager.core import ResourceManager, SimpleStorage
 from autocrud.resource_manager.meta_store.simple import MemoryMetaStore
-from autocrud.permission.acl import ACLPermission, ACLPermissionChecker, Policy
 from autocrud.resource_manager.resource_store.simple import MemoryResourceStore
-from autocrud.resource_manager.basic import PermissionDeniedError, ResourceAction
 from autocrud.resource_manager.storage_factory import MemoryStorageFactory
 
 
@@ -34,7 +35,8 @@ class TestCaseUtil:
         # 設定基本組件
         resource_store = MemoryResourceStore(TestDocument)
         storage = SimpleStorage(
-            meta_store=MemoryMetaStore(), resource_store=resource_store
+            meta_store=MemoryMetaStore(),
+            resource_store=resource_store,
         )
 
         # 設定權限管理器
@@ -45,7 +47,9 @@ class TestCaseUtil:
 
         # 建立 document manager
         document_manager = ResourceManager(
-            TestDocument, storage=storage, permission_checker=permission_checker
+            TestDocument,
+            storage=storage,
+            permission_checker=permission_checker,
         )
         self.pc = permission_checker
         self.permission_manager = self.pc.pm
@@ -102,7 +106,7 @@ class TestRootUserPermissions(TestCaseUtil):
                     now=self.current_time,
                     action=ResourceAction.create,
                     resource_name="test_document",
-                )
+                ),
             )
             is PermissionResult.allow
         )
@@ -113,7 +117,7 @@ class TestRootUserPermissions(TestCaseUtil):
                     now=self.current_time,
                     action=ResourceAction.read,
                     resource_name="test_document",
-                )
+                ),
             )
             is PermissionResult.allow
         )
@@ -124,7 +128,7 @@ class TestRootUserPermissions(TestCaseUtil):
                     now=self.current_time,
                     action=ResourceAction.update,
                     resource_name="test_document",
-                )
+                ),
             )
             is PermissionResult.allow
         )
@@ -135,7 +139,7 @@ class TestRootUserPermissions(TestCaseUtil):
                     now=self.current_time,
                     action=ResourceAction.delete,
                     resource_name="test_document",
-                )
+                ),
             )
             is PermissionResult.allow
         )
@@ -146,7 +150,7 @@ class TestRootUserPermissions(TestCaseUtil):
                     now=self.current_time,
                     action=ResourceAction.full,
                     resource_name="any_resource",
-                )
+                ),
             )
             is PermissionResult.allow
         )
@@ -265,7 +269,8 @@ class TestResourceManagerCRUDOperations(TestCaseUtil):
         with pytest.raises(PermissionDeniedError):
             with dm.meta_provide("bob", current_time):
                 updated_doc = TestDocument(
-                    title="Bob's Update", content="Bob's Content"
+                    title="Bob's Update",
+                    content="Bob's Content",
                 )
                 dm.update(doc_id, updated_doc)
 
@@ -273,7 +278,8 @@ class TestResourceManagerCRUDOperations(TestCaseUtil):
         with pytest.raises(PermissionDeniedError):
             with dm.meta_provide("charlie", current_time):
                 updated_doc = TestDocument(
-                    title="Charlie's Update", content="Charlie's Content"
+                    title="Charlie's Update",
+                    content="Charlie's Content",
                 )
                 dm.update(doc_id, updated_doc)
 
@@ -357,7 +363,8 @@ class TestRootUserOperations(TestCaseUtil):
 
             # Root 可以更新
             updated_doc = TestDocument(
-                title="Root's Updated Doc", content="Root's Updated Content"
+                title="Root's Updated Doc",
+                content="Root's Updated Content",
             )
             update_info = dm.update(doc_id, updated_doc)
             assert update_info.resource_id == doc_id
@@ -386,7 +393,8 @@ class TestPermissionDenialScenarios(TestCaseUtil):
         with pytest.raises(PermissionDeniedError):
             with dm.meta_provide("unauthorized", current_time):
                 doc = TestDocument(
-                    title="Unauthorized Doc", content="Unauthorized Content"
+                    title="Unauthorized Doc",
+                    content="Unauthorized Content",
                 )
                 dm.create(doc)
 

@@ -1,25 +1,24 @@
 """測試 RouteTemplate 功能"""
 
+# 測試用的模型
+import msgspec
 import pytest
-from fastapi import FastAPI, APIRouter
+from fastapi import APIRouter, FastAPI
 from fastapi.testclient import TestClient
 
 from autocrud.crud.core import (
     AutoCRUD,
-    CreateRouteTemplate,
-    ReadRouteTemplate,
-    UpdateRouteTemplate,
-    DeleteRouteTemplate,
-    ListRouteTemplate,
-    SwitchRevisionRouteTemplate,
-    RestoreRouteTemplate,
     NameConverter,
 )
-
-
-# 測試用的模型
-import msgspec
-
+from autocrud.crud.route_templates.create import CreateRouteTemplate
+from autocrud.crud.route_templates.delete import (
+    DeleteRouteTemplate,
+    RestoreRouteTemplate,
+)
+from autocrud.crud.route_templates.get import ReadRouteTemplate
+from autocrud.crud.route_templates.search import ListRouteTemplate
+from autocrud.crud.route_templates.switch import SwitchRevisionRouteTemplate
+from autocrud.crud.route_templates.update import UpdateRouteTemplate
 from autocrud.util.naming import NamingFormat
 
 
@@ -344,7 +343,7 @@ class TestRouteTemplates:
 
         # 測試獲取特定版本
         response = client.get(
-            f"/user/{resource_id}/{response_type}?revision_id={original_revision_id}"
+            f"/user/{resource_id}/{response_type}?revision_id={original_revision_id}",
         )
 
         assert response.status_code == 200
@@ -389,7 +388,7 @@ class TestRouteTemplates:
 
         # 測試獲取原始版本（指定 revision_id）
         response = client.get(
-            f"/user/{resource_id}/data?revision_id={original_revision_id}"
+            f"/user/{resource_id}/data?revision_id={original_revision_id}",
         )
         assert response.status_code == 200
         original_data = response.json()

@@ -6,13 +6,16 @@
 - DefaultPermissionChecker：預設實現，可以被繼承或組合
 """
 
-from collections.abc import Callable
-import logging
-from autocrud.permission.basic import PermissionResult
-from autocrud.permission.basic import PermissionContext
-from autocrud.permission.basic import IPermissionChecker
-from autocrud.resource_manager.basic import ResourceAction
 import itertools as it
+import logging
+from collections.abc import Callable
+
+from autocrud.permission.basic import (
+    IPermissionChecker,
+    PermissionContext,
+    PermissionResult,
+)
+from autocrud.resource_manager.basic import ResourceAction
 
 logger = logging.getLogger(__name__)
 
@@ -26,7 +29,9 @@ class ActionBasedPermissionChecker(IPermissionChecker):
         self._action_handlers: dict[ResourceAction | str, list[CheckFunc]] = {}
 
     def register_action_handler(
-        self, action: ResourceAction | str, handler: CheckFunc
+        self,
+        action: ResourceAction | str,
+        handler: CheckFunc,
     ) -> None:
         """註冊 action 處理器
 
@@ -42,7 +47,6 @@ class ActionBasedPermissionChecker(IPermissionChecker):
 
     def check_permission(self, context: PermissionContext) -> PermissionResult:
         """根據 action 分發到對應的處理器"""
-
         handlers = [h for a, h in self._action_handlers.items() if context.action in a]
         for handler in it.chain.from_iterable(handlers):
             result = handler(context)

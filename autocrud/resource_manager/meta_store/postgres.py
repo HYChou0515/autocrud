@@ -1,10 +1,10 @@
 from collections.abc import Generator, Iterable
-from contextlib import contextmanager
+from contextlib import contextmanager, suppress
+
 import psycopg2 as pg
 import psycopg2.pool
-from psycopg2.extras import execute_batch, DictCursor
-from contextlib import suppress
 from msgspec import UNSET
+from psycopg2.extras import DictCursor, execute_batch
 
 from autocrud.resource_manager.basic import (
     Encoding,
@@ -24,12 +24,15 @@ class PostgresMetaStore(ISlowMetaStore):
         encoding: Encoding = Encoding.json,
     ):
         self._serializer = MsgspecSerializer(
-            encoding=encoding, resource_type=ResourceMeta
+            encoding=encoding,
+            resource_type=ResourceMeta,
         )
 
         # 建立連線池
         self._conn_pool = psycopg2.pool.SimpleConnectionPool(
-            minconn=1, maxconn=10, dsn=pg_dsn
+            minconn=1,
+            maxconn=10,
+            dsn=pg_dsn,
         )
 
         # 初始化 PostgreSQL 表
@@ -82,7 +85,8 @@ class PostgresMetaStore(ISlowMetaStore):
         try:
             # 建立 server-side cursor (named cursor)
             with conn.cursor(
-                name="PostgresMetaStore", cursor_factory=DictCursor
+                name="PostgresMetaStore",
+                cursor_factory=DictCursor,
             ) as cur:
                 yield cur
             conn.commit()
@@ -118,23 +122,23 @@ class PostgresMetaStore(ISlowMetaStore):
 
             # 創建索引
             cur.execute(
-                "CREATE INDEX IF NOT EXISTS idx_created_time ON resource_meta(created_time)"
+                "CREATE INDEX IF NOT EXISTS idx_created_time ON resource_meta(created_time)",
             )
             cur.execute(
-                "CREATE INDEX IF NOT EXISTS idx_updated_time ON resource_meta(updated_time)"
+                "CREATE INDEX IF NOT EXISTS idx_updated_time ON resource_meta(updated_time)",
             )
             cur.execute(
-                "CREATE INDEX IF NOT EXISTS idx_created_by ON resource_meta(created_by)"
+                "CREATE INDEX IF NOT EXISTS idx_created_by ON resource_meta(created_by)",
             )
             cur.execute(
-                "CREATE INDEX IF NOT EXISTS idx_updated_by ON resource_meta(updated_by)"
+                "CREATE INDEX IF NOT EXISTS idx_updated_by ON resource_meta(updated_by)",
             )
             cur.execute(
-                "CREATE INDEX IF NOT EXISTS idx_is_deleted ON resource_meta(is_deleted)"
+                "CREATE INDEX IF NOT EXISTS idx_is_deleted ON resource_meta(is_deleted)",
             )
             # 為 JSONB 創建 GIN 索引以提高查詢效能
             cur.execute(
-                "CREATE INDEX IF NOT EXISTS idx_indexed_data_gin ON resource_meta USING GIN (indexed_data)"
+                "CREATE INDEX IF NOT EXISTS idx_indexed_data_gin ON resource_meta USING GIN (indexed_data)",
             )
 
             # 遷移已存在的記錄，填充 indexed_data
@@ -383,23 +387,23 @@ class PostgresMetaStore(ISlowMetaStore):
 
         if operator == DataSearchOperator.equals:
             return f"{jsonb_text_extract} = %s", [str(value)]
-        elif operator == DataSearchOperator.not_equals:
+        if operator == DataSearchOperator.not_equals:
             return f"{jsonb_text_extract} != %s", [str(value)]
-        elif operator == DataSearchOperator.greater_than:
+        if operator == DataSearchOperator.greater_than:
             return f"{jsonb_numeric_extract} > %s", [value]
-        elif operator == DataSearchOperator.greater_than_or_equal:
+        if operator == DataSearchOperator.greater_than_or_equal:
             return f"{jsonb_numeric_extract} >= %s", [value]
-        elif operator == DataSearchOperator.less_than:
+        if operator == DataSearchOperator.less_than:
             return f"{jsonb_numeric_extract} < %s", [value]
-        elif operator == DataSearchOperator.less_than_or_equal:
+        if operator == DataSearchOperator.less_than_or_equal:
             return f"{jsonb_numeric_extract} <= %s", [value]
-        elif operator == DataSearchOperator.contains:
+        if operator == DataSearchOperator.contains:
             return f"{jsonb_text_extract} LIKE %s", [f"%{value}%"]
-        elif operator == DataSearchOperator.starts_with:
+        if operator == DataSearchOperator.starts_with:
             return f"{jsonb_text_extract} LIKE %s", [f"{value}%"]
-        elif operator == DataSearchOperator.ends_with:
+        if operator == DataSearchOperator.ends_with:
             return f"{jsonb_text_extract} LIKE %s", [f"%{value}"]
-        elif operator == DataSearchOperator.in_list:
+        if operator == DataSearchOperator.in_list:
             if isinstance(value, (list, tuple, set)):
                 placeholders = ",".join(["%s"] * len(value))
                 return f"{jsonb_text_extract} IN ({placeholders})", [

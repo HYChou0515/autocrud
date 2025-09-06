@@ -1,6 +1,5 @@
 #!/usr/bin/env python3
-"""
-⚔️ RPG 遊戲 API 系統 - AutoCRUD + FastAPI 完整示範 🛡️
+"""⚔️ RPG 遊戲 API 系統 - AutoCRUD + FastAPI 完整示範 🛡️
 
 這個範例展示：
 - 完整的 AutoCRUD + FastAPI 集成
@@ -18,12 +17,13 @@
 """
 
 import datetime as dt
-import uvicorn
 from dataclasses import dataclass
-from typing import Optional
 from enum import Enum
+from typing import Optional
 
+import uvicorn
 from fastapi import FastAPI
+
 from autocrud import AutoCRUD
 
 

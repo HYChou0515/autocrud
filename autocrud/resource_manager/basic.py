@@ -1,15 +1,16 @@
+import datetime as dt
+import functools
+from abc import ABC, abstractmethod
 from collections.abc import Generator, Iterable, MutableMapping
 from contextlib import AbstractContextManager, contextmanager
 from contextvars import ContextVar
 from enum import Enum, Flag, StrEnum, auto
-import functools
-from typing import IO, TypeVar, Generic, Any
-import datetime as dt
+from typing import IO, Any, Generic, TypeVar
 from uuid import UUID
-from msgspec import UNSET, Struct, UnsetType
-from abc import ABC, abstractmethod
-from jsonpatch import JsonPatch
+
 import msgspec
+from jsonpatch import JsonPatch
+from msgspec import UNSET, Struct, UnsetType
 
 T = TypeVar("T")
 
@@ -151,7 +152,7 @@ class RevisionNotFoundError(ResourceNotFoundError):
 class RevisionIDNotFoundError(RevisionNotFoundError):
     def __init__(self, resource_id: str, revision_id: str):
         super().__init__(
-            f"Revision '{revision_id}' of Resource '{resource_id}' not found."
+            f"Revision '{revision_id}' of Resource '{resource_id}' not found.",
         )
         self.resource_id = resource_id
         self.revision_id = revision_id
@@ -192,7 +193,11 @@ class IResourceManager(ABC, Generic[T]):
 
     @abstractmethod
     def meta_provide(
-        self, user: str, now: dt.datetime, *, resource_id: str | UnsetType = UNSET
+        self,
+        user: str,
+        now: dt.datetime,
+        *,
+        resource_id: str | UnsetType = UNSET,
     ) -> AbstractContextManager: ...
 
     @abstractmethod
@@ -200,11 +205,9 @@ class IResourceManager(ABC, Generic[T]):
         """Create resource and return the metadata.
 
         Arguments:
-
             - data (T): the data to be created.
 
         Returns:
-
             - info (RevisionInfo): the metadata of the created data.
 
         """
@@ -214,15 +217,12 @@ class IResourceManager(ABC, Generic[T]):
         """Get the current revision of the resource.
 
         Arguments:
-
             - resource_id (str): the id of the resource to get.
 
         Returns:
-
             - resource (Resource[T]): the resource with its data and revision info.
 
         Raises:
-
             - ResourceIDNotFoundError: if resource id does not exist.
             - ResourceIsDeletedError: if resource is soft-deleted.
 
@@ -243,16 +243,13 @@ class IResourceManager(ABC, Generic[T]):
         """Get a specific revision of the resource.
 
         Arguments:
-
             - resource_id (str): the id of the resource.
             - revision_id (str): the id of the specific revision to retrieve.
 
         Returns:
-
             - resource (Resource[T]): the resource with its data and revision info for the specified revision.
 
         Raises:
-
             - ResourceIDNotFoundError: if resource id does not exist.
             - RevisionIDNotFoundError: if revision id does not exist for this resource.
 
@@ -275,15 +272,12 @@ class IResourceManager(ABC, Generic[T]):
         """Get a list of all revision IDs for the resource.
 
         Arguments:
-
             - resource_id (str): the id of the resource.
 
         Returns:
-
             - list[str]: list of revision IDs for the resource, typically ordered chronologically.
 
         Raises:
-
             - ResourceIDNotFoundError: if resource id does not exist.
 
         ---
@@ -307,15 +301,12 @@ class IResourceManager(ABC, Generic[T]):
         """Get the metadata of the resource.
 
         Arguments:
-
             - resource_id (str): the id of the resource to get metadata for.
 
         Returns:
-
             - meta (ResourceMeta): the metadata of the resource.
 
         Raises:
-
             - ResourceIDNotFoundError: if resource id does not exist.
             - ResourceIsDeletedError: if resource is soft-deleted.
 
@@ -331,11 +322,9 @@ class IResourceManager(ABC, Generic[T]):
         """Search for resources based on a query.
 
         Arguments:
-
             - query (ResourceMetaSearchQuery): the search criteria and options.
 
         Returns:
-
             - list[ResourceMeta]: list of resource metadata matching the query criteria.
 
         ---
@@ -358,16 +347,13 @@ class IResourceManager(ABC, Generic[T]):
         """Update the data of the resource by creating a new revision.
 
         Arguments:
-
             - resource_id (str): the id of the resource to update.
             - data (T): the data to replace the current one.
 
         Returns:
-
             - info (RevisionInfo): the metadata of the newly created revision.
 
         Raises:
-
             - ResourceIDNotFoundError: if resource id does not exist.
             - ResourceIsDeletedError: if resource is soft-deleted.
 
@@ -392,16 +378,13 @@ class IResourceManager(ABC, Generic[T]):
         """Apply RFC 6902 JSON Patch operations to the resource.
 
         Arguments:
-
             - resource_id (str): the id of the resource to patch.
             - patch_data (JsonPatch): RFC 6902 JSON Patch operations to apply.
 
         Returns:
-
             - info (RevisionInfo): the metadata of the newly created revision.
 
         Raises:
-
             - ResourceIDNotFoundError: if resource id does not exist.
             - ResourceIsDeletedError: if resource is soft-deleted.
 
@@ -425,16 +408,13 @@ class IResourceManager(ABC, Generic[T]):
         """Switch the current revision to a specific revision.
 
         Arguments:
-
             - resource_id (str): the id of the resource.
             - revision_id (str): the id of the revision to switch to.
 
         Returns:
-
             - meta (ResourceMeta): the metadata of the resource after switching.
 
         Raises:
-
             - ResourceIDNotFoundError: if resource id does not exist.
             - ResourceIsDeletedError: if resource is soft-deleted.
             - RevisionIDNotFoundError: if revision id does not exist.
@@ -460,15 +440,12 @@ class IResourceManager(ABC, Generic[T]):
         """Mark the resource as deleted (soft delete).
 
         Arguments:
-
             - resource_id (str): the id of the resource to delete.
 
         Returns:
-
             - meta (ResourceMeta): the updated metadata with is_deleted=True.
 
         Raises:
-
             - ResourceIDNotFoundError: if resource id does not exist.
             - ResourceIsDeletedError: if resource is already soft-deleted.
 
@@ -494,15 +471,12 @@ class IResourceManager(ABC, Generic[T]):
         """Restore a previously deleted resource (undo soft delete).
 
         Arguments:
-
             - resource_id (str): the id of the resource to restore.
 
         Returns:
-
             - meta (ResourceMeta): the updated metadata with is_deleted=False.
 
         Raises:
-
             - ResourceIDNotFoundError: if resource id does not exist.
 
         ---
@@ -532,7 +506,6 @@ class IResourceManager(ABC, Generic[T]):
         """Dump all resource data as a series of tar archive entries.
 
         Returns:
-
             - Generator[tuple[str, IO[bytes]]]: generator yielding (filename, fileobj) pairs for each resource.
 
         ---
@@ -564,7 +537,6 @@ class IResourceManager(ABC, Generic[T]):
         """Load resource data from a tar archive entry.
 
         Arguments:
-
             - key (str): the unique identifier for the resource being loaded.
             - bio (IO[bytes]): the tar archive containing the resource data.
 
@@ -629,7 +601,10 @@ class ResourceAction(Flag):
 class IPermissionResourceManager(IResourceManager):
     @abstractmethod
     def check_permission(
-        self, user: str, action: ResourceAction, resource: str
+        self,
+        user: str,
+        action: ResourceAction,
+        resource: str,
     ) -> bool: ...
 
 
@@ -702,24 +677,25 @@ def is_match_query(meta: ResourceMeta, query: ResourceMetaSearchQuery) -> bool:
 
 
 def _match_data_condition(
-    indexed_data: dict[str, Any], condition: DataSearchCondition
+    indexed_data: dict[str, Any],
+    condition: DataSearchCondition,
 ) -> bool:
     """檢查索引資料是否匹配 data 條件"""
     field_value = indexed_data.get(condition.field_path)
 
     if condition.operator == DataSearchOperator.equals:
         return field_value == condition.value
-    elif condition.operator == DataSearchOperator.not_equals:
+    if condition.operator == DataSearchOperator.not_equals:
         return field_value != condition.value
-    elif condition.operator == DataSearchOperator.greater_than:
+    if condition.operator == DataSearchOperator.greater_than:
         return field_value is not None and field_value > condition.value
-    elif condition.operator == DataSearchOperator.greater_than_or_equal:
+    if condition.operator == DataSearchOperator.greater_than_or_equal:
         return field_value is not None and field_value >= condition.value
-    elif condition.operator == DataSearchOperator.less_than:
+    if condition.operator == DataSearchOperator.less_than:
         return field_value is not None and field_value < condition.value
-    elif condition.operator == DataSearchOperator.less_than_or_equal:
+    if condition.operator == DataSearchOperator.less_than_or_equal:
         return field_value is not None and field_value <= condition.value
-    elif condition.operator == DataSearchOperator.contains:
+    if condition.operator == DataSearchOperator.contains:
         # 特殊處理：如果 field_value 是列表，檢查 condition.value 是否在列表中
         if isinstance(field_value, list):
             return condition.value in field_value
@@ -727,21 +703,21 @@ def _match_data_condition(
             return (condition.value.value & field_value) == condition.value.value
         # 標準字符串包含檢查
         return field_value is not None and str(condition.value) in str(field_value)
-    elif condition.operator == DataSearchOperator.starts_with:
+    if condition.operator == DataSearchOperator.starts_with:
         return field_value is not None and str(field_value).startswith(
-            str(condition.value)
+            str(condition.value),
         )
-    elif condition.operator == DataSearchOperator.ends_with:
+    if condition.operator == DataSearchOperator.ends_with:
         return field_value is not None and str(field_value).endswith(
-            str(condition.value)
+            str(condition.value),
         )
-    elif condition.operator == DataSearchOperator.in_list:
+    if condition.operator == DataSearchOperator.in_list:
         return (
             field_value in condition.value
             if isinstance(condition.value, (list, tuple, set))
             else False
         )
-    elif condition.operator == DataSearchOperator.not_in_list:
+    if condition.operator == DataSearchOperator.not_in_list:
         return (
             field_value not in condition.value
             if isinstance(condition.value, (list, tuple, set))
@@ -1354,7 +1330,9 @@ class IStorage(ABC, Generic[T]):
 
     @abstractmethod
     def get_resource_revision_info(
-        self, resource_id: str, revision_id: str
+        self,
+        resource_id: str,
+        revision_id: str,
     ) -> RevisionInfo:
         """Retrieve revision information without the resource data.
 

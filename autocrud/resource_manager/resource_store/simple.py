@@ -1,3 +1,4 @@
+import io
 from collections.abc import Generator
 from pathlib import Path
 from typing import TypeVar
@@ -10,7 +11,6 @@ from autocrud.resource_manager.basic import (
     Resource,
     RevisionInfo,
 )
-import io
 
 T = TypeVar("T")
 
@@ -25,10 +25,12 @@ class MemoryResourceStore(IResourceStore[T]):
         self._data_store: dict[str, dict[str, bytes]] = {}
         self._info_store: dict[str, dict[str, bytes]] = {}
         self._data_serializer = MsgspecSerializer(
-            encoding=encoding, resource_type=resource_type
+            encoding=encoding,
+            resource_type=resource_type,
         )
         self._info_serializer = MsgspecSerializer(
-            encoding=encoding, resource_type=RevisionInfo
+            encoding=encoding,
+            resource_type=RevisionInfo,
         )
         self.migration = migration
 
@@ -60,7 +62,7 @@ class MemoryResourceStore(IResourceStore[T]):
 
             # Update both info and data storage with migrated content
             self._info_store[resource_id][revision_id] = self._info_serializer.encode(
-                info
+                info,
             )
             migrated_data_bytes = self._data_serializer.encode(data)
             self._data_store[resource_id][revision_id] = migrated_data_bytes
@@ -82,7 +84,7 @@ class MemoryResourceStore(IResourceStore[T]):
         b = self._data_serializer.encode(data.data)
         self._data_store[resource_id][revision_id] = b
         self._info_store[resource_id][revision_id] = self._info_serializer.encode(
-            data.info
+            data.info,
         )
 
     def encode(self, data: T) -> bytes:
@@ -99,10 +101,12 @@ class DiskResourceStore(IResourceStore[T]):
         migration: IMigration | None = None,
     ):
         self._data_serializer = MsgspecSerializer(
-            encoding=encoding, resource_type=resource_type
+            encoding=encoding,
+            resource_type=resource_type,
         )
         self._info_serializer = MsgspecSerializer(
-            encoding=encoding, resource_type=RevisionInfo
+            encoding=encoding,
+            resource_type=RevisionInfo,
         )
         self._rootdir = Path(rootdir)
         self._rootdir.mkdir(parents=True, exist_ok=True)

@@ -2,6 +2,7 @@ from collections.abc import Generator, Iterable
 from contextlib import contextmanager, suppress
 from pathlib import Path
 from typing import TypeVar
+
 from msgspec import UNSET
 
 from autocrud.resource_manager.basic import (
@@ -20,7 +21,8 @@ T = TypeVar("T")
 class MemoryMetaStore(IFastMetaStore):
     def __init__(self, encoding: Encoding = Encoding.json):
         self._serializer = MsgspecSerializer(
-            encoding=encoding, resource_type=ResourceMeta
+            encoding=encoding,
+            resource_type=ResourceMeta,
         )
         self._store: dict[str, bytes] = {}
 
@@ -58,7 +60,8 @@ class MemoryMetaStore(IFastMetaStore):
 class DiskMetaStore(IFastMetaStore):
     def __init__(self, *, encoding: Encoding = Encoding.json, rootdir: Path | str):
         self._serializer = MsgspecSerializer(
-            encoding=encoding, resource_type=ResourceMeta
+            encoding=encoding,
+            resource_type=ResourceMeta,
         )
         self._rootdir = Path(rootdir)
         self._rootdir.mkdir(parents=True, exist_ok=True)

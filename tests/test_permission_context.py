@@ -1,6 +1,5 @@
 #!/usr/bin/env python3
-"""
-權限上下文系統測試
+"""權限上下文系統測試
 
 測試權限上下文（PermissionContext）和相關的權限檢查器，包括：
 - 權限上下文的建立和使用
@@ -9,10 +8,12 @@
 - 與實際 ResourceManager 的整合
 """
 
-import pytest
 import datetime as dt
 from dataclasses import dataclass
-from autocrud.permission.acl import ACLPermissionChecker
+
+import pytest
+
+from autocrud.permission.acl import ACLPermission, ACLPermissionChecker
 from autocrud.permission.action import ActionBasedPermissionChecker
 from autocrud.permission.basic import PermissionContext, PermissionResult
 from autocrud.permission.composite import (
@@ -21,11 +22,10 @@ from autocrud.permission.composite import (
 )
 from autocrud.permission.data_based import FieldLevelPermissionChecker
 from autocrud.permission.meta_based import ResourceOwnershipChecker
+from autocrud.resource_manager.basic import ResourceAction
 from autocrud.resource_manager.core import ResourceManager, SimpleStorage
 from autocrud.resource_manager.meta_store.simple import MemoryMetaStore
 from autocrud.resource_manager.resource_store.simple import MemoryResourceStore
-from autocrud.permission.acl import ACLPermission
-from autocrud.resource_manager.basic import ResourceAction
 
 
 @dataclass
@@ -42,7 +42,8 @@ class TestCaseUtil:
         # 設定基本組件
         resource_store = MemoryResourceStore(TestDocument)
         storage = SimpleStorage(
-            meta_store=MemoryMetaStore(), resource_store=resource_store
+            meta_store=MemoryMetaStore(),
+            resource_store=resource_store,
         )
 
         # 設定權限管理器
@@ -50,7 +51,9 @@ class TestCaseUtil:
 
         # 建立 document manager
         document_manager = ResourceManager(
-            TestDocument, storage=storage, permission_checker=permission_checker
+            TestDocument,
+            storage=storage,
+            permission_checker=permission_checker,
         )
         self.pc = permission_checker
         self.document_manager = document_manager
@@ -148,8 +151,8 @@ class TestActionBasedPermissionChecker(TestCaseUtil):
                         if ctx.user == "admin"
                         else PermissionResult.deny
                     ),
-                ]
-            }
+                ],
+            },
         )
 
         # 測試普通用戶
@@ -277,8 +280,7 @@ class TestConditionalPermissionChecker(TestCaseUtil):
                 current_hour = context.now.hour
                 if 9 <= current_hour <= 17:  # 9AM-5PM
                     return PermissionResult.not_applicable  # 繼續檢查
-                else:
-                    return PermissionResult.deny  # 非工作時間拒絕
+                return PermissionResult.deny  # 非工作時間拒絕
             return PermissionResult.not_applicable
 
         # 條件2：管理員例外
@@ -321,7 +323,7 @@ class TestCompositePermissionChecker(TestCaseUtil):
                 return PermissionResult.allow
 
         composite = CompositePermissionChecker(
-            [AlwaysDenyChecker(), AlwaysAllowChecker()]
+            [AlwaysDenyChecker(), AlwaysAllowChecker()],
         )
 
         context = PermissionContext(
@@ -371,10 +373,9 @@ class MockResourceManager:
         # 模擬資料：doc123 由 alice 創建，doc456 由 bob 創建
         if resource_id == "doc123":
             return MockMeta("alice")
-        elif resource_id == "doc456":
+        if resource_id == "doc456":
             return MockMeta("bob")
-        else:
-            raise Exception("Resource not found")
+        raise Exception("Resource not found")
 
 
 class TestResourceOwnershipChecker(TestCaseUtil):
@@ -420,7 +421,8 @@ class TestResourceOwnershipChecker(TestCaseUtil):
         """測試不適用的操作"""
         mock_rm = MockResourceManager()
         checker = ResourceOwnershipChecker(
-            mock_rm, allowed_actions={ResourceAction.update, ResourceAction.delete}
+            mock_rm,
+            allowed_actions={ResourceAction.update, ResourceAction.delete},
         )
 
         context = PermissionContext(
@@ -517,7 +519,9 @@ class TestIntegratedPermissionContextSystem(TestCaseUtil):
         # 創建文檔
         with dm.meta_provide("editor", current_time):
             doc = TestDocument(
-                title="API Test Doc", content="API Test Content", status="draft"
+                title="API Test Doc",
+                content="API Test Content",
+                status="draft",
             )
             doc_info = dm.create(doc)
             doc_id = doc_info.resource_id
@@ -527,7 +531,7 @@ class TestIntegratedPermissionContextSystem(TestCaseUtil):
             allowed_fields_by_user={
                 "editor": {"title", "content", "status"},
                 "user": set(),  # 普通用戶不能修改任何欄位
-            }
+            },
         )
 
         # 設置默認權限檢查
@@ -538,7 +542,7 @@ class TestIntegratedPermissionContextSystem(TestCaseUtil):
             [
                 field_checker,  # 先檢查欄位權限
                 default_checker,  # 再檢查基本權限
-            ]
+            ],
         )
 
         # 測試場景 1: Editor 更新文檔
@@ -581,7 +585,6 @@ class TestIntegratedPermissionContextSystem(TestCaseUtil):
 
     def test_complex_business_rules(self):
         """測試複雜的業務規則"""
-
         # 業務規則：
         # 1. 只有工作時間才能創建文檔
         # 2. 管理員例外

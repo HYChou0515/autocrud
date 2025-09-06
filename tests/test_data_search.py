@@ -1,16 +1,18 @@
 import datetime as dt
 from dataclasses import dataclass
+from pathlib import Path
+
 import pytest
+from msgspec import UNSET
+
 from autocrud.resource_manager.basic import (
     DataSearchCondition,
     DataSearchOperator,
     ResourceDataSearchSort,
-    ResourceMetaSearchQuery,
     ResourceMeta,
+    ResourceMetaSearchQuery,
     ResourceMetaSortDirection,
 )
-from msgspec import UNSET
-from pathlib import Path
 
 
 @dataclass
@@ -66,12 +68,13 @@ class TestMetaStoreIterSearch:
                     field_path="department",
                     operator=DataSearchOperator.equals,
                     value="Engineering",
-                )
+                ),
             ],
             sorts=[
                 ResourceDataSearchSort(
-                    field_path="age", direction=ResourceMetaSortDirection.ascending
-                )
+                    field_path="age",
+                    direction=ResourceMetaSortDirection.ascending,
+                ),
             ],
             limit=10,
             offset=0,
@@ -99,7 +102,7 @@ class TestMetaStoreIterSearch:
                     field_path="age",
                     operator=DataSearchOperator.greater_than_or_equal,
                     value=30,
-                )
+                ),
             ],
             limit=10,
             offset=0,
@@ -150,22 +153,24 @@ class TestMetaStoreIterSearch:
         """Get meta store instance."""
         from autocrud.resource_manager.meta_store.simple import MemoryMetaStore
         from autocrud.resource_manager.meta_store.sqlite3 import (
-            MemorySqliteMetaStore,
             FileSqliteMetaStore,
+            MemorySqliteMetaStore,
         )
 
         if store_type == "memory":
             return MemoryMetaStore(encoding="msgpack")
-        elif store_type == "sql3-mem":
+        if store_type == "sql3-mem":
             return MemorySqliteMetaStore(encoding="msgpack")
-        elif store_type == "sql3-file":
+        if store_type == "sql3-file":
             return FileSqliteMetaStore(
-                db_filepath=tmpdir / "test_data_search.db", encoding="msgpack"
+                db_filepath=tmpdir / "test_data_search.db",
+                encoding="msgpack",
             )
-        elif store_type == "memory-pg":
+        if store_type == "memory-pg":
+            import psycopg2
+
             from autocrud.resource_manager.meta_store.fast_slow import FastSlowMetaStore
             from autocrud.resource_manager.meta_store.postgres import PostgresMetaStore
-            import psycopg2
 
             # Setup PostgreSQL connection
             pg_dsn = (
@@ -186,8 +191,9 @@ class TestMetaStoreIterSearch:
             except Exception as e:
                 pytest.skip(f"PostgreSQL not available: {e}")
         elif store_type == "redis":
-            from autocrud.resource_manager.meta_store.redis import RedisMetaStore
             import redis
+
+            from autocrud.resource_manager.meta_store.redis import RedisMetaStore
 
             # Setup Redis connection
             redis_url = "redis://localhost:6379/0"
@@ -205,11 +211,12 @@ class TestMetaStoreIterSearch:
             except Exception as e:
                 pytest.skip(f"Redis not available: {e}")
         elif store_type == "redis-pg":
-            from autocrud.resource_manager.meta_store.fast_slow import FastSlowMetaStore
-            from autocrud.resource_manager.meta_store.redis import RedisMetaStore
-            from autocrud.resource_manager.meta_store.postgres import PostgresMetaStore
-            import redis
             import psycopg2
+            import redis
+
+            from autocrud.resource_manager.meta_store.fast_slow import FastSlowMetaStore
+            from autocrud.resource_manager.meta_store.postgres import PostgresMetaStore
+            from autocrud.resource_manager.meta_store.redis import RedisMetaStore
 
             # Setup Redis and PostgreSQL connections
             redis_url = "redis://localhost:6379/0"

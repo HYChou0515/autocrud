@@ -1,5 +1,4 @@
-"""
-To start dev server, run
+"""To start dev server, run
 ```
 python -m fastapi dev resource_crud.py
 ````
@@ -30,9 +29,10 @@ if mode not in (
 
 from datetime import datetime
 
-from fastapi.testclient import TestClient
-from autocrud import AutoCRUD
 from fastapi import FastAPI
+from fastapi.testclient import TestClient
+
+from autocrud import AutoCRUD
 
 if mode == "msgspec":
     from msgspec import Struct
@@ -111,7 +111,8 @@ def test():
 
     print_section("Search for products created within a range")
     resp = client.get(
-        "/product/full", params={"created_time_end": dt3, "created_time_start": dt2}
+        "/product/full",
+        params={"created_time_end": dt3, "created_time_start": dt2},
     )
     print_json(resp.text)
 
@@ -144,7 +145,7 @@ def test():
 
     print_section("Switch back to the previous revision.")
     client.post(
-        f"/product/{banana_resource_id}/switch/{banana.json()['current_revision_id']}"
+        f"/product/{banana_resource_id}/switch/{banana.json()['current_revision_id']}",
     )
     banana = client.get(f"/product/{banana_resource_id}/data")
     print_json(banana.text)
@@ -161,7 +162,8 @@ def test():
 
     print_section("Restore the deleted product")
     resp = client.post(
-        f"/product/{banana_resource_id}/restore", params={"is_deleted": True}
+        f"/product/{banana_resource_id}/restore",
+        params={"is_deleted": True},
     )
     print_json(resp.text)
     resp = client.get(f"/product/{banana_resource_id}/data")

@@ -31,7 +31,8 @@ class FastSlowMetaStore(IMetaStore):
         if self._sync_thread is None or not self._sync_thread.is_alive():
             self._stop_sync.clear()
             self._sync_thread = threading.Thread(
-                target=self._background_sync_worker, daemon=True
+                target=self._background_sync_worker,
+                daemon=True,
             )
             self._sync_thread.start()
 

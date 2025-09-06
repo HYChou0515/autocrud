@@ -1,5 +1,4 @@
-"""
-改進的權限設定測試示例
+"""改進的權限設定測試示例
 
 展示更安全、更語義化的權限設定方式
 """
@@ -7,12 +6,12 @@
 import datetime as dt
 from dataclasses import dataclass
 
-from autocrud.resource_manager.core import ResourceManager, SimpleStorage
-from autocrud.permission.acl import ACLPermissionChecker, ACLPermission
+from autocrud.permission.acl import ACLPermission, ACLPermissionChecker
 from autocrud.permission.basic import PermissionResult
 from autocrud.resource_manager.basic import ResourceAction
-from autocrud.resource_manager.resource_store.simple import MemoryResourceStore
+from autocrud.resource_manager.core import ResourceManager, SimpleStorage
 from autocrud.resource_manager.meta_store.simple import MemoryMetaStore
+from autocrud.resource_manager.resource_store.simple import MemoryResourceStore
 
 
 @dataclass
@@ -27,7 +26,9 @@ class PermissionBuilder:
 
     @staticmethod
     def allow_user_on_resource_type(
-        user: str, resource_type: str, action: str
+        user: str,
+        resource_type: str,
+        action: str,
     ) -> ACLPermission:
         """允許用戶對資源類型執行特定操作"""
         action_enum = getattr(ResourceAction, action, ResourceAction.get)
@@ -40,7 +41,9 @@ class PermissionBuilder:
 
     @staticmethod
     def allow_user_on_specific_resource(
-        user: str, resource_id: str, action: str
+        user: str,
+        resource_id: str,
+        action: str,
     ) -> ACLPermission:
         """允許用戶對特定資源執行操作"""
         action_enum = getattr(ResourceAction, action, ResourceAction.get)
@@ -53,7 +56,9 @@ class PermissionBuilder:
 
     @staticmethod
     def allow_group_on_resource_type(
-        group: str, resource_type: str, action: str
+        group: str,
+        resource_type: str,
+        action: str,
     ) -> ACLPermission:
         """允許群組對資源類型執行操作"""
         if action == "*":
@@ -95,13 +100,19 @@ class CommonPermissions:
         return [
             PermissionBuilder.allow_user_on_resource_type(user, resource_type, "get"),
             PermissionBuilder.allow_user_on_resource_type(
-                user, resource_type, "get_meta"
+                user,
+                resource_type,
+                "get_meta",
             ),
             PermissionBuilder.allow_user_on_resource_type(
-                user, resource_type, "get_resource_revision"
+                user,
+                resource_type,
+                "get_resource_revision",
             ),
             PermissionBuilder.allow_user_on_resource_type(
-                user, resource_type, "search_resources"
+                user,
+                resource_type,
+                "search_resources",
             ),
         ]
 
@@ -110,12 +121,9 @@ class CommonPermissions:
 class PermissionDeniedError(Exception):
     """權限拒絕錯誤"""
 
-    pass
-
 
 def test_improved_permission_setup():
     """測試改進的權限設定方式"""
-
     # 1. 設定基礎設施
     meta_store = MemoryMetaStore()
     resource_store = MemoryResourceStore(TestDocument)
@@ -123,7 +131,7 @@ def test_improved_permission_setup():
 
     # 創建權限檢查器
     permission_checker = ACLPermissionChecker(
-        root_user="system"  # 設定系統用戶為 root 用戶，擁有所有權限
+        root_user="system",  # 設定系統用戶為 root 用戶，擁有所有權限
     )
 
     document_manager = ResourceManager(
@@ -141,22 +149,34 @@ def test_improved_permission_setup():
         permissions = [
             # alice 可以對 test_document 資源類型執行基本操作
             PermissionBuilder.allow_user_on_resource_type(
-                "alice", "test_document", "create"
+                "alice",
+                "test_document",
+                "create",
             ),
             PermissionBuilder.allow_user_on_resource_type(
-                "alice", "test_document", "get"
+                "alice",
+                "test_document",
+                "get",
             ),
             PermissionBuilder.allow_user_on_resource_type(
-                "alice", "test_document", "get_meta"
+                "alice",
+                "test_document",
+                "get_meta",
             ),
             PermissionBuilder.allow_user_on_resource_type(
-                "alice", "test_document", "get_resource_revision"
+                "alice",
+                "test_document",
+                "get_resource_revision",
             ),
             PermissionBuilder.allow_user_on_resource_type(
-                "alice", "test_document", "search_resources"
+                "alice",
+                "test_document",
+                "search_resources",
             ),
             PermissionBuilder.allow_user_on_resource_type(
-                "alice", "test_document", "update"
+                "alice",
+                "test_document",
+                "update",
             ),
         ]
 
@@ -165,7 +185,8 @@ def test_improved_permission_setup():
 
         # 使用 CommonPermissions 設定 bob 的只讀權限
         read_only_permissions = CommonPermissions.read_only_for_user(
-            "bob", "test_document"
+            "bob",
+            "test_document",
         )
         for permission in read_only_permissions:
             permission_checker.resource_manager.create(permission)
@@ -208,14 +229,13 @@ def test_improved_permission_setup():
 
 def test_permission_hierarchy():
     """測試權限層次結構"""
-
     # 設定基礎設施
     meta_store = MemoryMetaStore()
     resource_store = MemoryResourceStore(TestDocument)
     storage = SimpleStorage(meta_store, resource_store)
 
     permission_checker = ACLPermissionChecker(
-        root_user="system"  # 設定系統用戶為 root 用戶
+        root_user="system",  # 設定系統用戶為 root 用戶
     )
 
     document_manager = ResourceManager(
@@ -238,33 +258,51 @@ def test_permission_hierarchy():
             permissions = [
                 # 1. alice: 對特定資源的權限
                 PermissionBuilder.allow_user_on_specific_resource(
-                    "alice", doc_info.resource_id, "get"
+                    "alice",
+                    doc_info.resource_id,
+                    "get",
                 ),
                 PermissionBuilder.allow_user_on_resource_type(
-                    "alice", "test_document", "get_meta"
+                    "alice",
+                    "test_document",
+                    "get_meta",
                 ),
                 PermissionBuilder.allow_user_on_resource_type(
-                    "alice", "test_document", "get_resource_revision"
+                    "alice",
+                    "test_document",
+                    "get_resource_revision",
                 ),
                 # 2. bob: 對資源類型的權限
                 PermissionBuilder.allow_user_on_resource_type(
-                    "bob", "test_document", "get"
+                    "bob",
+                    "test_document",
+                    "get",
                 ),
                 PermissionBuilder.allow_user_on_resource_type(
-                    "bob", "test_document", "get_meta"
+                    "bob",
+                    "test_document",
+                    "get_meta",
                 ),
                 PermissionBuilder.allow_user_on_resource_type(
-                    "bob", "test_document", "get_resource_revision"
+                    "bob",
+                    "test_document",
+                    "get_resource_revision",
                 ),
                 # 3. charlie: 同樣的資源類型權限
                 PermissionBuilder.allow_user_on_resource_type(
-                    "charlie", "test_document", "get"
+                    "charlie",
+                    "test_document",
+                    "get",
                 ),
                 PermissionBuilder.allow_user_on_resource_type(
-                    "charlie", "test_document", "get_meta"
+                    "charlie",
+                    "test_document",
+                    "get_meta",
                 ),
                 PermissionBuilder.allow_user_on_resource_type(
-                    "charlie", "test_document", "get_resource_revision"
+                    "charlie",
+                    "test_document",
+                    "get_resource_revision",
                 ),
             ]
 
@@ -282,7 +320,7 @@ def test_permission_hierarchy():
                 except Exception as e:
                     if user == "alice":
                         print(
-                            f"✅ {user} 無法讀取文檔（符合預期，只有特定資源權限）: {e}"
+                            f"✅ {user} 無法讀取文檔（符合預期，只有特定資源權限）: {e}",
                         )
                     else:
                         print(f"❌ {user} 無法讀取文檔: {e}")
@@ -297,26 +335,31 @@ def test_permission_hierarchy():
 
 def demonstrate_object_meanings():
     """示範 object 欄位的不同含義"""
-
     print("\n=== ACLPermission.object 欄位含義示範 ===")
 
     # 1. 特定資源 ID
     specific_resource_permission = PermissionBuilder.allow_user_on_specific_resource(
-        "alice", "document:123e4567-e89b-12d3-a456-426614174000", "get"
+        "alice",
+        "document:123e4567-e89b-12d3-a456-426614174000",
+        "get",
     )
     print(f"1. 特定資源權限: {specific_resource_permission.object}")
     print("   含義: 只對這個具體的文檔有權限")
 
     # 2. 資源類型
     resource_type_permission = PermissionBuilder.allow_user_on_resource_type(
-        "alice", "document", "create"
+        "alice",
+        "document",
+        "create",
     )
     print(f"2. 資源類型權限: {resource_type_permission.object}")
     print("   含義: 對所有 document 類型的資源有權限")
 
     # 3. 萬用權限
     universal_permission = PermissionBuilder.allow_group_on_resource_type(
-        "admin", "document", "get"
+        "admin",
+        "document",
+        "get",
     )
     print(f"3. 群組權限: {universal_permission.object}")
     print("   含義: 群組對所有 document 類型的資源有權限")

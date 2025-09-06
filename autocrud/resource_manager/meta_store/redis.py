@@ -1,5 +1,7 @@
 from collections.abc import Generator, Iterable
 from contextlib import contextmanager
+
+import redis
 from msgspec import UNSET
 
 from autocrud.resource_manager.basic import (
@@ -13,15 +15,16 @@ from autocrud.resource_manager.basic import (
 )
 
 
-import redis
-
-
 class RedisMetaStore(IFastMetaStore):
     def __init__(
-        self, redis_url: str, encoding: Encoding = Encoding.json, prefix: str = ""
+        self,
+        redis_url: str,
+        encoding: Encoding = Encoding.json,
+        prefix: str = "",
     ):
         self._serializer = MsgspecSerializer(
-            encoding=encoding, resource_type=ResourceMeta
+            encoding=encoding,
+            resource_type=ResourceMeta,
         )
         self._redis = redis.Redis.from_url(redis_url)
         self._key_prefix = f"{prefix}resource_meta:"

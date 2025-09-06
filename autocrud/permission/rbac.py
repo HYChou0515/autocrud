@@ -1,15 +1,16 @@
+import logging
 from copy import copy
 
+from msgspec import UNSET, Struct, UnsetType
+
 from autocrud.permission.acl import ACLPermission, ACLPermissionChecker, Policy
-from autocrud.permission.simple import RootOnly
-from autocrud.resource_manager.core import ResourceManager
-from autocrud.resource_manager.storage_factory import MemoryStorageFactory
 from autocrud.permission.basic import (
     DEFAULT_ROOT_USER,
     IPermissionCheckerWithStore,
     PermissionContext,
     PermissionResult,
 )
+from autocrud.permission.simple import RootOnly
 from autocrud.resource_manager.basic import (
     DataSearchCondition,
     DataSearchOperator,
@@ -22,10 +23,11 @@ from autocrud.resource_manager.basic import (
     ResourceMetaSortKey,
     SpecialIndex,
 )
-
-from msgspec import UNSET, UnsetType, Struct
-from autocrud.resource_manager.storage_factory import IStorageFactory
-import logging
+from autocrud.resource_manager.core import ResourceManager
+from autocrud.resource_manager.storage_factory import (
+    IStorageFactory,
+    MemoryStorageFactory,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -146,7 +148,7 @@ class RBACPermissionChecker(
                             ResourceDataSearchSort(
                                 direction=ResourceMetaSortDirection.ascending,
                                 field_path="order",
-                            )
+                            ),
                         ],
                     )
 
@@ -177,7 +179,7 @@ class RBACPermissionChecker(
                                 return PermissionResult.allow
             except Exception:
                 logger.exception(
-                    "Error on searching ACL permissions, so ignore this part"
+                    "Error on searching ACL permissions, so ignore this part",
                 )
                 continue
 
@@ -243,7 +245,7 @@ class RBACPermissionChecker(
                                 key=ResourceMetaSortKey.updated_time,
                             ),
                         ],
-                    )
+                    ),
                 )
                 for meta in role_metas:
                     role: Resource[RoleMembership] = self.pm.get(meta.resource_id)

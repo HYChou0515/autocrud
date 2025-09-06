@@ -1,5 +1,4 @@
-"""
-To see run test http methods, run
+"""To see run test http methods, run
 ```
 python schema_upgrade.py
 ```
@@ -15,8 +14,8 @@ from typing import IO
 
 from msgspec import UnsetType
 
-from autocrud.resource_manager.storage_factory import DiskStorageFactory
 from autocrud.resource_manager.basic import Encoding, IMigration, MsgspecSerializer
+from autocrud.resource_manager.storage_factory import DiskStorageFactory
 
 if len(sys.argv) >= 2:
     mode = sys.argv[1]
@@ -30,9 +29,10 @@ if mode not in (
 ):
     raise ValueError(f"Invalid mode: {mode}")
 
-from fastapi.testclient import TestClient
-from autocrud import AutoCRUD
 from fastapi import FastAPI
+from fastapi.testclient import TestClient
+
+from autocrud import AutoCRUD
 
 
 def get_after_user():
