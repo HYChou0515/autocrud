@@ -2,7 +2,8 @@ version = 1
 revision = 2
 requires-python = ">=3.11"
 resolution-markers = [
-    "python_full_version >= '3.12'",
+    "python_full_version >= '3.13'",
+    "python_full_version == '3.12.*'",
     "python_full_version < '3.12'",
 ]
 
@@ -77,6 +78,7 @@ dependencies = [
     { name = "msgpack" },
     { name = "msgspec" },
     { name = "pydantic" },
+    { name = "strawberry-graphql" },
     { name = "xxhash" },
 ]
 
@@ -97,6 +99,9 @@ docs = [
 ]
 s3 = [
     { name = "boto3" },
+]
+strawberry = [
+    { name = "strawberry-graphql", extra = ["fastapi"] },
 ]
 
 [package.dev-dependencies]
@@ -144,9 +149,11 @@ requires-dist = [
     { name = "sphinx", marker = "extra == 'docs'", specifier = ">=8.2.3" },
     { name = "sphinx-autodoc-typehints", marker = "extra == 'docs'", specifier = ">=3.2.0" },
     { name = "sphinx-design", marker = "extra == 'docs'", specifier = ">=0.6.1" },
+    { name = "strawberry-graphql", specifier = ">=0.281.0" },
+    { name = "strawberry-graphql", extras = ["fastapi"], marker = "extra == 'strawberry'", specifier = ">=0.281.0" },
     { name = "xxhash", specifier = ">=3.5.0" },
 ]
-provides-extras = ["dev", "docs", "s3"]
+provides-extras = ["dev", "docs", "s3", "strawberry"]
 
 [package.metadata.requires-dev]
 dev = [
@@ -630,6 +637,15 @@ wheels = [
 ]
 
 [[package]]
+name = "graphql-core"
+version = "3.2.6"
+source = { registry = "https://pypi.org/simple" }
+sdist = { url = "https://files.pythonhosted.org/packages/c4/16/7574029da84834349b60ed71614d66ca3afe46e9bf9c7b9562102acb7d4f/graphql_core-3.2.6.tar.gz", hash = "sha256:c08eec22f9e40f0bd61d805907e3b3b1b9a320bc606e23dc145eebca07c8fbab", size = 505353, upload-time = "2025-01-26T16:36:27.374Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/ae/4f/7297663840621022bc73c22d7d9d80dbc78b4db6297f764b545cd5dd462d/graphql_core-3.2.6-py3-none-any.whl", hash = "sha256:78b016718c161a6fb20a7d97bbf107f331cd1afe53e45566c59f776ed7f0b45f", size = 203416, upload-time = "2025-01-26T16:36:24.868Z" },
+]
+
+[[package]]
 name = "h11"
 version = "0.16.0"
 source = { registry = "https://pypi.org/simple" }
@@ -895,6 +911,18 @@ dependencies = [
 sdist = { url = "https://files.pythonhosted.org/packages/70/09/d904a6e96f76ff214be59e7aa6ef7190008f52a0ab6689760a98de0bf37d/keyring-25.6.0.tar.gz", hash = "sha256:0b39998aa941431eb3d9b0d4b2460bc773b9df6fed7621c2dfb291a7e0187a66", size = 62750, upload-time = "2024-12-25T15:26:45.782Z" }
 wheels = [
     { url = "https://files.pythonhosted.org/packages/d3/32/da7f44bcb1105d3e88a0b74ebdca50c59121d2ddf71c9e34ba47df7f3a56/keyring-25.6.0-py3-none-any.whl", hash = "sha256:552a3f7af126ece7ed5c89753650eec89c7eaae8617d0aa4d9ad2b75111266bd", size = 39085, upload-time = "2024-12-25T15:26:44.377Z" },
+]
+
+[[package]]
+name = "lia-web"
+version = "0.2.3"
+source = { registry = "https://pypi.org/simple" }
+dependencies = [
+    { name = "typing-extensions" },
+]
+sdist = { url = "https://files.pythonhosted.org/packages/1e/4e/847404ca9d36e3f5468c9e460aed565a02cbca0fdf81247da9f87fabc1b8/lia_web-0.2.3.tar.gz", hash = "sha256:ccc9d24cdc200806ea96a20b22fb68f4759e6becdb901bd36024df7921e848d7", size = 156761, upload-time = "2025-08-11T10:23:21.003Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/00/f2/c68a97c727c795119f1056ad2b7e716c23f26f004292517c435accf90b5c/lia_web-0.2.3-py3-none-any.whl", hash = "sha256:237c779c943cd4341527fc0adfcc3d8068f992ee051f4ef059b8474ee087f641", size = 13965, upload-time = "2025-08-11T10:23:20.215Z" },
 ]
 
 [[package]]
@@ -2030,6 +2058,28 @@ dependencies = [
 sdist = { url = "https://files.pythonhosted.org/packages/04/57/d062573f391d062710d4088fa1369428c38d51460ab6fedff920efef932e/starlette-0.47.2.tar.gz", hash = "sha256:6ae9aa5db235e4846decc1e7b79c4f346adf41e9777aebeb49dfd09bbd7023d8", size = 2583948, upload-time = "2025-07-20T17:31:58.522Z" }
 wheels = [
     { url = "https://files.pythonhosted.org/packages/f7/1f/b876b1f83aef204198a42dc101613fefccb32258e5428b5f9259677864b4/starlette-0.47.2-py3-none-any.whl", hash = "sha256:c5847e96134e5c5371ee9fac6fdf1a67336d5815e09eb2a01fdb57a351ef915b", size = 72984, upload-time = "2025-07-20T17:31:56.738Z" },
+]
+
+[[package]]
+name = "strawberry-graphql"
+version = "0.281.0"
+source = { registry = "https://pypi.org/simple" }
+dependencies = [
+    { name = "graphql-core" },
+    { name = "lia-web" },
+    { name = "packaging" },
+    { name = "python-dateutil" },
+    { name = "typing-extensions" },
+]
+sdist = { url = "https://files.pythonhosted.org/packages/b0/30/4fb179224a9e29507d1f742cdd10562a5bed60955a032bec1271b3837a35/strawberry_graphql-0.281.0.tar.gz", hash = "sha256:fc83c3d1482276969cef3693c58ab8d4c229a2b8a859f202a4ddaa93d74f645f", size = 212294, upload-time = "2025-08-26T16:08:24.034Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/6f/73/8428cf9e164af92427b481f11cd1a84070bfd122fc7e268269c6212ff341/strawberry_graphql-0.281.0-py3-none-any.whl", hash = "sha256:acd81bb22a111fca6cd753c329cdb6b46f10271dbd47c20c28b36d813f6df654", size = 309815, upload-time = "2025-08-26T16:08:21.702Z" },
+]
+
+[package.optional-dependencies]
+fastapi = [
+    { name = "fastapi" },
+    { name = "python-multipart" },
 ]
 
 [[package]]

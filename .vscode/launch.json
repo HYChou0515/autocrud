@@ -27,7 +27,7 @@
             "name": "Python Debugger: Fastapi Current File",
             "type": "debugpy",
             "request": "launch",
-            "program": "examples/rpg_game_api.py",
+            "program": "examples/graphql/gql.py",
             "console": "integratedTerminal",
             "justMyCode": false,
         },

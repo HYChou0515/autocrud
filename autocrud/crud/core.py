@@ -192,6 +192,9 @@ class AutoCRUD:
                 root_user=admin,
             )
 
+    def get_manager(self, t: type[T]) -> ResourceManager[T]:
+        return self.resource_managers.get(self._resource_name(t))
+
     def _resource_name(self, model: type[T]) -> str:
         """Convert model class name to resource name using the configured naming convention.
 

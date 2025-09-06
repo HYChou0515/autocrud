@@ -29,7 +29,7 @@ class DataSearchOperator(StrEnum):
     not_in_list = "not_in"
 
 
-class DataSearchCondition(Struct, kw_only=True):
+class DataSearchCondition(Struct):
     field_path: str
     operator: DataSearchOperator
     value: Any
