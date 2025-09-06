@@ -27,12 +27,9 @@
             "name": "Python Debugger: Fastapi Current File",
             "type": "debugpy",
             "request": "launch",
-            "module": "fastapi",
+            "program": "examples/rpg_game_api.py",
             "console": "integratedTerminal",
             "justMyCode": false,
-            "args": [
-                "dev", "${file}"
-            ]
         },
         {
             "name": "Debug: schema_upgrade.py",

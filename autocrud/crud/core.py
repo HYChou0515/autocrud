@@ -8,12 +8,13 @@ import io
 import json
 import tarfile
 import textwrap
-from typing import IO, Generic, Literal, TypeVar
+from typing import IO, Any, Generic, Literal, TypeVar
 import datetime as dt
+from fastapi.params import Body
 from msgspec import UNSET
 from fastapi.openapi.utils import get_openapi
 
-from fastapi import APIRouter, FastAPI, HTTPException, Request, Query, Depends, Response
+from fastapi import APIRouter, FastAPI, HTTPException, Query, Depends, Response
 import msgspec
 from typing import Optional
 
@@ -35,9 +36,6 @@ from autocrud.resource_manager.basic import (
     ResourceMetaSortKey,
 )
 from autocrud.resource_manager.core import ResourceManager
-from autocrud.resource_manager.data_converter import (
-    decode_json_to_data,
-)
 
 from autocrud.resource_manager.basic import ResourceMetaSearchQuery
 from autocrud.resource_manager.storage_factory import IStorageFactory
@@ -69,16 +67,18 @@ class RevisionListResponse(msgspec.Struct):
     revisions: list[RevisionInfo]
 
 
-def jsonschema_to_openapi(struct: msgspec.Struct) -> dict:
+def jsonschema_to_openapi(structs: list[msgspec.Struct]) -> dict:
     return msgspec.json.schema_components(
-        struct, ref_template="#/components/schemas/{name}"
+        structs, ref_template="#/components/schemas/{name}"
     )
 
 
+def jsonschema_to_json_schema_extra(struct: msgspec.Struct) -> dict:
+    return jsonschema_to_openapi([struct])[0][0]
+
+
 def struct_to_responses_type(struct: type[msgspec.Struct], status_code: int = 200):
-    schema = msgspec.json.schema_components(
-        [struct], ref_template="#/components/schemas/{name}"
-    )[0][0]
+    schema = jsonschema_to_json_schema_extra(struct)
     return {
         status_code: {
             "content": {"application/json": {"schema": schema}},
@@ -182,7 +182,6 @@ class CreateRouteTemplate(BaseRouteTemplate):
 
         @router.post(
             f"/{model_name}",
-            response_class=MsgspecResponse,
             responses=struct_to_responses_type(RevisionInfo),
             summary=f"Create {model_name}",
             tags=[f"{model_name}"],
@@ -209,15 +208,14 @@ class CreateRouteTemplate(BaseRouteTemplate):
             ),
         )
         async def create_resource(
-            request: Request,
+            body=Body(
+                json_schema_extra=jsonschema_to_json_schema_extra(resource_type),
+            ),
             current_user: str = Depends(self.deps.get_user),
             current_time: dt.datetime = Depends(self.deps.get_now),
         ):
             try:
-                # 直接接收原始 JSON bytes
-                json_bytes = await request.body()
-
-                data = decode_json_to_data(json_bytes, resource_type)
+                data = msgspec.convert(body, resource_type)
 
                 with resource_manager.meta_provide(current_user, current_time):
                     info = resource_manager.create(data)
@@ -259,7 +257,6 @@ class ReadRouteTemplate(BaseRouteTemplate, Generic[T]):
 
         @router.get(
             f"/{model_name}/{{resource_id}}/meta",
-            response_class=MsgspecResponse,
             responses=struct_to_responses_type(list[ResourceMeta]),
             summary=f"Get {model_name} Meta by ID",
             tags=[f"{model_name}"],
@@ -283,7 +280,6 @@ class ReadRouteTemplate(BaseRouteTemplate, Generic[T]):
 
         @router.get(
             f"/{model_name}/{{resource_id}}/revision-info",
-            response_class=MsgspecResponse,
             responses=struct_to_responses_type(RevisionInfo),
             summary=f"Get {model_name} Revision Info",
             tags=[f"{model_name}"],
@@ -347,7 +343,6 @@ class ReadRouteTemplate(BaseRouteTemplate, Generic[T]):
 
         @router.get(
             f"/{model_name}/{{resource_id}}/full",
-            response_class=MsgspecResponse,
             responses=struct_to_responses_type(FullResourceResponse[resource_type]),
             summary=f"Get Complete {model_name} Information",
             tags=[f"{model_name}"],
@@ -413,7 +408,6 @@ class ReadRouteTemplate(BaseRouteTemplate, Generic[T]):
 
         @router.get(
             f"/{model_name}/{{resource_id}}/revision-list",
-            response_class=MsgspecResponse,
             responses=struct_to_responses_type(RevisionListResponse),
             summary=f"Get {model_name} Revision History",
             tags=[f"{model_name}"],
@@ -484,7 +478,6 @@ class ReadRouteTemplate(BaseRouteTemplate, Generic[T]):
 
         @router.get(
             f"/{model_name}/{{resource_id}}/data",
-            response_class=MsgspecResponse,
             responses=struct_to_responses_type(resource_type),
             summary=f"Get {model_name} Data",
             tags=[f"{model_name}"],
@@ -559,7 +552,6 @@ class UpdateRouteTemplate(BaseRouteTemplate):
 
         @router.put(
             f"/{model_name}/{{resource_id}}",
-            response_class=MsgspecResponse,
             responses=struct_to_responses_type(RevisionInfo),
             summary=f"Update {model_name}",
             tags=[f"{model_name}"],
@@ -597,15 +589,14 @@ class UpdateRouteTemplate(BaseRouteTemplate):
         )
         async def update_resource(
             resource_id: str,
-            request: Request,
+            body=Body(
+                json_schema_extra=jsonschema_to_json_schema_extra(resource_type),
+            ),
             current_user: str = Depends(self.deps.get_user),
             current_time: dt.datetime = Depends(self.deps.get_now),
         ):
             try:
-                # 直接接收原始 JSON bytes
-                json_bytes = await request.body()
-
-                data = decode_json_to_data(json_bytes, resource_type)
+                data = msgspec.convert(body, resource_type)
 
                 with resource_manager.meta_provide(current_user, current_time):
                     info = resource_manager.update(resource_id, data)
@@ -627,7 +618,6 @@ class DeleteRouteTemplate(BaseRouteTemplate):
         # 動態創建響應模型
         @router.delete(
             f"/{model_name}/{{resource_id}}",
-            response_class=MsgspecResponse,
             responses=struct_to_responses_type(ResourceMeta),
             summary=f"Delete {model_name}",
             tags=[f"{model_name}"],
@@ -819,7 +809,6 @@ class ListRouteTemplate(BaseRouteTemplate):
     ) -> None:
         @router.get(
             f"/{model_name}/data",
-            response_class=MsgspecResponse,
             responses=struct_to_responses_type(list[resource_manager.resource_type]),
             summary=f"List {model_name} Data Only",
             tags=[f"{model_name}"],
@@ -901,7 +890,6 @@ class ListRouteTemplate(BaseRouteTemplate):
 
         @router.get(
             f"/{model_name}/meta",
-            response_class=MsgspecResponse,
             responses=struct_to_responses_type(list[ResourceMeta]),
             summary=f"List {model_name} Metadata Only",
             tags=[f"{model_name}"],
@@ -989,7 +977,6 @@ class ListRouteTemplate(BaseRouteTemplate):
 
         @router.get(
             f"/{model_name}/revision-info",
-            response_class=MsgspecResponse,
             responses=struct_to_responses_type(list[RevisionInfo]),
             summary=f"List {model_name} Current Revision Info",
             tags=[f"{model_name}"],
@@ -1071,7 +1058,6 @@ class ListRouteTemplate(BaseRouteTemplate):
 
         @router.get(
             f"/{model_name}/full",
-            response_class=MsgspecResponse,
             responses=struct_to_responses_type(
                 list[FullResourceResponse[resource_manager.resource_type]]
             ),
@@ -1163,16 +1149,54 @@ class ListRouteTemplate(BaseRouteTemplate):
                 raise HTTPException(status_code=400, detail=str(e))
 
 
+# 動態創建響應模型
+class RFC6902_Add(msgspec.Struct, tag_field="op", tag="add"):
+    path: str
+    value: Any
+
+
+class RFC6902_Remove(msgspec.Struct, tag_field="op", tag="remove"):
+    path: str
+
+
+class RFC6902_Replace(msgspec.Struct, tag_field="op", tag="replace"):
+    path: str
+    value: Any
+
+
+class RFC6902_Move(msgspec.Struct, tag_field="op", tag="move"):
+    from_: str = msgspec.field(name="from")
+    path: str
+
+
+class RFC6902_Test(msgspec.Struct, tag_field="op", tag="test"):
+    path: str
+    value: Any
+
+
+class RFC6902_Copy(msgspec.Struct, tag_field="op", tag="copy"):
+    from_: str = msgspec.field(name="from")
+    path: str
+
+
+RFC6902 = (
+    RFC6902_Add
+    | RFC6902_Remove
+    | RFC6902_Replace
+    | RFC6902_Move
+    | RFC6902_Test
+    | RFC6902_Copy
+)
+
+
 class PatchRouteTemplate(BaseRouteTemplate):
     """部分更新資源的路由模板"""
 
     def apply(
         self, model_name: str, resource_manager: IResourceManager[T], router: APIRouter
     ) -> None:
-        # 動態創建響應模型
         @router.patch(
             f"/{model_name}/{{resource_id}}",
-            response_class=MsgspecResponse,
             responses=struct_to_responses_type(RevisionInfo),
             summary=f"Partially update {model_name}",
             tags=[f"{model_name}"],
@@ -1218,7 +1242,10 @@ class PatchRouteTemplate(BaseRouteTemplate):
         )
         async def patch_resource(
             resource_id: str,
-            patch_data: list[dict],
+            body=Body(
+                title="RFC6902",
+                json_schema_extra=jsonschema_to_json_schema_extra(list[RFC6902]),
+            ),
             current_user: str = Depends(self.deps.get_user),
             current_time: dt.datetime = Depends(self.deps.get_now),
         ):
@@ -1226,7 +1253,7 @@ class PatchRouteTemplate(BaseRouteTemplate):
 
             try:
                 with resource_manager.meta_provide(current_user, current_time):
-                    patch = JsonPatch(patch_data)
+                    patch = JsonPatch(body)
                     info = resource_manager.patch(resource_id, patch)
                 return MsgspecResponse(info)
             except Exception as e:
@@ -1241,7 +1268,6 @@ class SwitchRevisionRouteTemplate(BaseRouteTemplate):
     ) -> None:
         @router.post(
             f"/{model_name}/{{resource_id}}/switch/{{revision_id}}",
-            response_class=MsgspecResponse,
             responses=struct_to_responses_type(ResourceMeta),
             summary=f"Switch {model_name} to specific revision",
             tags=[f"{model_name}"],
@@ -1303,7 +1329,6 @@ class RestoreRouteTemplate(BaseRouteTemplate):
     ) -> None:
         @router.post(
             f"/{model_name}/{{resource_id}}/restore",
-            response_class=MsgspecResponse,
             responses=struct_to_responses_type(ResourceMeta),
             summary=f"Restore deleted {model_name}",
             tags=[f"{model_name}"],
@@ -1690,6 +1715,13 @@ class AutoCRUD:
                     FullResourceResponse[rm.resource_type]
                     for rm in self.resource_managers.values()
                 ],
+                RFC6902_Add,
+                RFC6902_Remove,
+                RFC6902_Replace,
+                RFC6902_Move,
+                RFC6902_Test,
+                RFC6902_Copy,
+                RFC6902,
             ]
         )[1]
 
