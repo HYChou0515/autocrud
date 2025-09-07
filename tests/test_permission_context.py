@@ -71,16 +71,12 @@ class TestPermissionContext(TestCaseUtil):
             now=now,
             action=ResourceAction.get,
             resource_name="documents",
-            method_args=("doc123",),
-            method_kwargs={"include": "metadata"},
         )
 
         assert context.user == "alice"
         assert context.now == now
         assert context.action == ResourceAction.get
         assert context.resource_name == "documents"
-        assert context.method_args == ("doc123",)
-        assert context.method_kwargs == {"include": "metadata"}
 
     def test_permission_context_minimal(self):
         """測試最小的 PermissionContext 建立"""
@@ -96,8 +92,6 @@ class TestPermissionContext(TestCaseUtil):
         assert context.now == now
         assert context.action == ResourceAction.create
         assert context.resource_name == "documents"
-        assert context.method_args == ()
-        assert context.method_kwargs == {}
 
 
 class TestActionBasedPermissionChecker(TestCaseUtil):
@@ -195,7 +189,7 @@ class TestFieldLevelPermissionChecker(TestCaseUtil):
             now=dt.datetime.now(),
             action=ResourceAction.update,
             resource_name="documents",
-            method_kwargs={"data": {"title": "new title", "content": "new content"}},
+            resource_data={"title": "new title", "content": "new content"},
         )
 
         result = checker.check_permission(context)
@@ -207,7 +201,7 @@ class TestFieldLevelPermissionChecker(TestCaseUtil):
             now=dt.datetime.now(),
             action=ResourceAction.update,
             resource_name="documents",
-            method_kwargs={"data": {"status": "published"}},  # alice 不能修改 status
+            resource_data={"status": "published"},  # alice 不能修改 status
         )
 
         result = checker.check_permission(context)
@@ -222,7 +216,6 @@ class TestFieldLevelPermissionChecker(TestCaseUtil):
             now=dt.datetime.now(),
             action=ResourceAction.get,
             resource_name="documents",
-            method_args=("doc123",),
         )
 
         result = checker.check_permission(context)
@@ -250,7 +243,6 @@ class TestConditionalPermissionChecker(TestCaseUtil):
             now=dt.datetime.now(),
             action=ResourceAction.delete,
             resource_name="documents",
-            method_args=("doc123",),
         )
 
         result = checker.check_permission(context)
@@ -262,7 +254,6 @@ class TestConditionalPermissionChecker(TestCaseUtil):
             now=dt.datetime.now(),
             action=ResourceAction.get,
             resource_name="documents",
-            method_args=("doc123",),
         )
 
         result = checker.check_permission(context)
@@ -298,8 +289,6 @@ class TestConditionalPermissionChecker(TestCaseUtil):
             now=dt.datetime.now(),
             action=ResourceAction.update,
             resource_name="documents",
-            method_args=("doc123",),
-            method_kwargs={"data": {"title": "updated"}},
         )
 
         result = checker.check_permission(context)
@@ -392,8 +381,6 @@ class TestResourceOwnershipChecker(TestCaseUtil):
             action=ResourceAction.update,
             resource_id="doc123",
             resource_name="documents",
-            method_args=("doc123",),  # 由 alice 創建
-            method_kwargs={"data": {"title": "updated"}},
         )
 
         result = checker.check_permission(context)
@@ -410,8 +397,6 @@ class TestResourceOwnershipChecker(TestCaseUtil):
             action=ResourceAction.update,
             resource_id="doc456",
             resource_name="documents",
-            method_args=("doc456",),  # 由 bob 創建
-            method_kwargs={"data": {"title": "updated"}},
         )
 
         result = checker.check_permission(context)
@@ -430,7 +415,6 @@ class TestResourceOwnershipChecker(TestCaseUtil):
             now=dt.datetime.now(),
             action=ResourceAction.get,  # get 不在 allowed_actions 中
             resource_name="documents",
-            method_args=("doc123",),
         )
 
         result = checker.check_permission(context)
@@ -465,7 +449,6 @@ class TestDefaultPermissionChecker(TestCaseUtil):
             now=current_time,
             action=ResourceAction.get,
             resource_name="documents",
-            method_args=("doc123",),
         )
 
         result = checker.check_permission(context)
@@ -477,7 +460,6 @@ class TestDefaultPermissionChecker(TestCaseUtil):
             now=current_time,
             action=ResourceAction.delete,
             resource_name="documents",
-            method_args=("doc123",),
         )
 
         result = checker.check_permission(context)
@@ -551,8 +533,7 @@ class TestIntegratedPermissionContextSystem(TestCaseUtil):
             now=current_time,
             action=ResourceAction.update,
             resource_name="test_document",
-            method_args=(doc_id,),
-            method_kwargs={"data": {"title": "Updated Title", "status": "published"}},
+            resource_id=doc_id,
         )
 
         result = composite.check_permission(context)
@@ -564,8 +545,8 @@ class TestIntegratedPermissionContextSystem(TestCaseUtil):
             now=current_time,
             action=ResourceAction.update,
             resource_name="test_document",
-            method_args=(doc_id,),
-            method_kwargs={"data": {"title": "User's Update"}},
+            resource_id=doc_id,
+            resource_data={"title": "User's Update"},
         )
 
         result = composite.check_permission(context)
@@ -577,7 +558,7 @@ class TestIntegratedPermissionContextSystem(TestCaseUtil):
             now=current_time,
             action=ResourceAction.get,
             resource_name="test_document",
-            method_args=(doc_id,),
+            resource_id=doc_id,
         )
 
         result = composite.check_permission(context)
@@ -608,7 +589,7 @@ class TestIntegratedPermissionContextSystem(TestCaseUtil):
             now=non_work_time,
             action=ResourceAction.create,
             resource_name="documents",
-            method_kwargs={"data": {"title": "After Hours Doc"}},
+            resource_data={"title": "After Hours Doc"},
         )
 
         result = conditional_checker.check_permission(context)
@@ -620,7 +601,7 @@ class TestIntegratedPermissionContextSystem(TestCaseUtil):
             now=non_work_time,
             action=ResourceAction.create,
             resource_name="documents",
-            method_kwargs={"data": {"title": "Admin After Hours Doc"}},
+            resource_data={"title": "Admin After Hours Doc"},
         )
 
         result = conditional_checker.check_permission(context)

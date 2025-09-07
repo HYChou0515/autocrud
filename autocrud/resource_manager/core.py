@@ -1,8 +1,9 @@
+from abc import ABC, abstractmethod
 import copy
 import datetime as dt
 from collections.abc import Callable, Generator
-from contextlib import contextmanager
-from functools import cached_property, wraps
+from contextlib import contextmanager, suppress
+from functools import cached_property
 import traceback
 from typing import (
     IO,
@@ -20,6 +21,7 @@ import msgspec
 from jsonpatch import JsonPatch
 from msgspec import UNSET, Struct, UnsetType
 from xxhash import xxh3_128_hexdigest
+from autocrud.types import PermissionDeniedError
 
 from autocrud.types import (
     AfterCreate,
@@ -200,55 +202,37 @@ class _BuildResMetaUpdate(Struct):
     data: T
 
 
-def smart_permission_check():
-    """智能權限檢查裝飾器 - 支援新的上下文模式
-
-    Args:
-        action: 權限動作，如果為 None 則使用方法名
-        extract_resource_id: 是否從方法參數中提取 resource_id
-        **extra_context: 額外的上下文資料
-    """
-
-    def decorator(method):
-        action = ResourceAction[method.__name__]
-
-        @wraps(method)
-        def _permission_check(self: IResourceManager[T], *method_args, **method_kwargs):
-            from autocrud.types import (
-                PermissionContext,
-            )
-            from autocrud.types import PermissionDeniedError
-
-            user = self.user_or_unset
-            context = PermissionContext(
-                user=user,
-                now=self.now_or_unset,
-                action=action,
-                resource_name=self.resource_name,
-                method_args=method_args,
-                method_kwargs=method_kwargs,
-            )
-            # 執行權限檢查
-            result = self.permission_checker.check_permission(context)
-
-            if result != PermissionResult.allow:
-                raise PermissionDeniedError(
-                    f"Permission denied for user '{context.user}' "
-                    f"to perform '{context.action}' on '{context.resource_name}'",
-                )
-
-            return method(self, *method_args, **method_kwargs)
-
-        return _permission_check
-
-    return decorator
-
-
 class _Contexts(NamedTuple):
     before: EventContext
     after: EventContext
     on_success: EventContext
     on_failure: EventContext
+
+
+class IEventHandler(ABC):
+    @abstractmethod
+    def is_supported(self, context: EventContext) -> bool: ...
+
+    @abstractmethod
+    def handle_event(self, context: EventContext) -> None: ...
+
+
+class PermissionEventHandler(IEventHandler):
+    def __init__(self, permission_checker: "IPermissionChecker"):
+        self.permission_checker = permission_checker
+
+    def is_supported(self, context: EventContext) -> bool:
+        with suppress(AttributeError):
+            return context.action in ResourceAction and context.phase == "before"
+        return False
+
+    def handle_event(self, context: EventContext) -> None:
+        result = self.permission_checker.check_permission(context)
+        if result != PermissionResult.allow:
+            raise PermissionDeniedError(
+                f"Permission denied for user '{context.user}' "
+                f"to perform '{context.action}' on '{context.resource_name}'",
+            )
 
 
 class ResourceManager(IResourceManager[T], Generic[T]):
@@ -262,6 +246,7 @@ class ResourceManager(IResourceManager[T], Generic[T]):
         indexed_fields: list[IndexableField] | None = None,
         permission_checker: "IPermissionChecker | None" = None,
         name: str | NamingFormat = NamingFormat.SNAKE,
+        event_handlers: list[IEventHandler] | None = None,
     ):
         self.user_ctx = Ctx("user_ctx", strict_type=str)
         self.now_ctx = Ctx("now_ctx", strict_type=dt.datetime)
@@ -286,13 +271,12 @@ class ResourceManager(IResourceManager[T], Generic[T]):
         self.id_generator = (
             default_id_generator if id_generator is None else id_generator
         )
+        self.event_handlers: list[IEventHandler] = event_handlers or []
         # 設定權限檢查器
         if permission_checker is not None:
-            self.permission_checker = permission_checker
-        else:
-            from autocrud.permission.simple import AllowAll
-
-            self.permission_checker = AllowAll()
+            self.event_handlers.append(
+                PermissionEventHandler(permission_checker),
+            )
 
     @property
     def user(self) -> str:
@@ -456,8 +440,10 @@ class ResourceManager(IResourceManager[T], Generic[T]):
         )
         return info
 
-    def _handle_message(self, context: EventContext) -> None:
-        pass
+    def _handle_event(self, context: EventContext) -> None:
+        for eh in self.event_handlers:
+            if eh.is_supported(context):
+                eh.handle_event(context)
 
     def _get_meta_no_check_is_deleted(self, resource_id: str) -> ResourceMeta:
         if not self.storage.exists(resource_id):
@@ -492,15 +478,16 @@ class ResourceManager(IResourceManager[T], Generic[T]):
         base |= {
             "user": self.user_or_unset,
             "now": self.now_or_unset,
+            "resource_name": self.resource_name,
         }
-        self._handle_message(contexts.before(**base))
+        self._handle_event(contexts.before(**base))
         try:
             result = method(**inputs)
             built_result = _build_result(result)
-            self._handle_message(contexts.on_success(**base, **built_result))
+            self._handle_event(contexts.on_success(**base, **built_result))
             return result
         except Exception as e:
-            self._handle_message(
+            self._handle_event(
                 contexts.on_failure(
                     **base,
                     error=str(e),
@@ -509,9 +496,8 @@ class ResourceManager(IResourceManager[T], Generic[T]):
             )
             raise
         finally:
-            self._handle_message(contexts.after(**base))
+            self._handle_event(contexts.after(**base))
 
-    @smart_permission_check()
     def get_meta(self, resource_id: str) -> ResourceMeta:
         return self._execute_with_events(
             self._get_meta,
@@ -528,7 +514,6 @@ class ResourceManager(IResourceManager[T], Generic[T]):
     def _search_resources(self, query: ResourceMetaSearchQuery) -> list[ResourceMeta]:
         return self.storage.search(query)
 
-    @smart_permission_check()
     def search_resources(self, query: ResourceMetaSearchQuery) -> list[ResourceMeta]:
         return self._execute_with_events(
             self._search_resources,
@@ -552,7 +537,6 @@ class ResourceManager(IResourceManager[T], Generic[T]):
         self.storage.save_meta(self._res_meta(_BuildResMetaCreate(info, data)))
         return info
 
-    @smart_permission_check()
     def create(self, data: T) -> RevisionInfo:
         return self._execute_with_events(
             self._create,
@@ -565,7 +549,6 @@ class ResourceManager(IResourceManager[T], Generic[T]):
         meta = self.get_meta(resource_id)
         return self.get_resource_revision(resource_id, meta.current_revision_id)
 
-    @smart_permission_check()
     def get(self, resource_id: str) -> Resource[T]:
         return self._execute_with_events(
             self._get,
@@ -578,7 +561,6 @@ class ResourceManager(IResourceManager[T], Generic[T]):
         obj = self.storage.get_resource_revision(resource_id, revision_id)
         return obj
 
-    @smart_permission_check()
     def get_resource_revision(self, resource_id: str, revision_id: str) -> Resource[T]:
         return self._execute_with_events(
             self._get_resource_revision,
@@ -595,7 +577,6 @@ class ResourceManager(IResourceManager[T], Generic[T]):
     def _list_revisions(self, resource_id: str) -> list[str]:
         return self.storage.list_revisions(resource_id)
 
-    @smart_permission_check()
     def list_revisions(self, resource_id: str) -> list[str]:
         return self._execute_with_events(
             self._list_revisions,
@@ -628,7 +609,6 @@ class ResourceManager(IResourceManager[T], Generic[T]):
         self.storage.save_meta(res_meta)
         return rev_info
 
-    @smart_permission_check()
     def update(self, resource_id: str, data: T) -> RevisionInfo:
         return self._execute_with_events(
             self._update,
@@ -637,7 +617,6 @@ class ResourceManager(IResourceManager[T], Generic[T]):
             "revision_info",
         )
 
-    @smart_permission_check()
     def create_or_update(self, resource_id, data):
         try:
             return self.update(resource_id, data)
@@ -651,7 +630,6 @@ class ResourceManager(IResourceManager[T], Generic[T]):
         data = self.data_converter.builtins_to_data(d)
         return self.update(resource_id, data)
 
-    @smart_permission_check()
     def patch(self, resource_id: str, patch_data: JsonPatch) -> RevisionInfo:
         return self._execute_with_events(
             self._patch,
@@ -680,7 +658,6 @@ class ResourceManager(IResourceManager[T], Generic[T]):
         self.storage.save_meta(meta)
         return meta
 
-    @smart_permission_check()
     def switch(self, resource_id: str, revision_id: str) -> ResourceMeta:
         return self._execute_with_events(
             self._switch,
@@ -697,7 +674,6 @@ class ResourceManager(IResourceManager[T], Generic[T]):
         self.storage.save_meta(meta)
         return meta
 
-    @smart_permission_check()
     def delete(self, resource_id: str) -> ResourceMeta:
         return self._execute_with_events(
             self._delete,
@@ -715,7 +691,6 @@ class ResourceManager(IResourceManager[T], Generic[T]):
             self.storage.save_meta(meta)
         return meta
 
-    @smart_permission_check()
     def restore(self, resource_id: str) -> ResourceMeta:
         return self._execute_with_events(
             self._restore,
@@ -730,7 +705,6 @@ class ResourceManager(IResourceManager[T], Generic[T]):
         for resource in self.storage.dump_resource():
             yield f"data/{resource.info.uid}", self.resource_serializer.encode(resource)
 
-    @smart_permission_check()
     def dump(self) -> Generator[tuple[str, IO[bytes]]]:
         return self._execute_with_events(
             self._dump,
@@ -747,7 +721,6 @@ class ResourceManager(IResourceManager[T], Generic[T]):
                 self.resource_serializer.decode(bio.read()),
             )
 
-    @smart_permission_check()
     def load(self, key: str, bio: IO[bytes]) -> None:
         return self._execute_with_events(
             self._load,

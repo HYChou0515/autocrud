@@ -22,7 +22,11 @@ from autocrud.types import (
     PermissionContext,
     ResourceIDNotFoundError,
 )
-from autocrud.resource_manager.core import ResourceManager, SimpleStorage
+from autocrud.resource_manager.core import (
+    PermissionEventHandler,
+    ResourceManager,
+    SimpleStorage,
+)
 from autocrud.resource_manager.meta_store.simple import MemoryMetaStore
 from autocrud.resource_manager.resource_store.simple import MemoryResourceStore
 from autocrud.resource_manager.storage_factory import MemoryStorageFactory
@@ -84,11 +88,6 @@ class MockPermissionChecker(IPermissionChecker):
         if context.user == "blocked_user":
             return PermissionResult.deny
 
-        if context.action == ResourceAction.create and "sensitive" in str(
-            context.method_args,
-        ):
-            return PermissionResult.deny
-
         return PermissionResult.allow
 
 
@@ -146,7 +145,7 @@ class TestAdvancedPermissionChecking:
     def test_custom_permission_checker(self):
         """測試自定義權限檢查器"""
         checker = MockPermissionChecker()
-        self.resource_manager.permission_checker = checker
+        self.resource_manager.event_handlers.append(PermissionEventHandler(checker))
 
         with self.resource_manager.meta_provide("alice", dt.datetime.now()):
             try:
@@ -160,7 +159,6 @@ class TestAdvancedPermissionChecking:
         assert context.user == "alice"
         assert context.action == ResourceAction.get_meta  # 現在是 ResourceAction enum
         assert context.resource_name == "data_struct"
-        assert context.method_args[0] == "test:123"
 
     def test_custom_permission_checker_2(self):
         """測試自定義權限檢查器"""
@@ -170,7 +168,7 @@ class TestAdvancedPermissionChecking:
                 "create": lambda _: PermissionResult.allow,
             },
         )
-        self.resource_manager.permission_checker = checker
+        self.resource_manager.event_handlers.append(PermissionEventHandler(checker))
 
         with self.resource_manager.meta_provide("alice", dt.datetime.now()):
             with pytest.raises(PermissionDeniedError):
@@ -179,7 +177,7 @@ class TestAdvancedPermissionChecking:
     def test_permission_denied(self):
         """測試權限拒絕"""
         checker = MockPermissionChecker()
-        self.resource_manager.permission_checker = checker
+        self.resource_manager.event_handlers.append(PermissionEventHandler(checker))
 
         with self.resource_manager.meta_provide("blocked_user", dt.datetime.now()):
             with pytest.raises(PermissionDeniedError):
@@ -194,7 +192,7 @@ class TestAdvancedPermissionChecking:
         # 創建組合檢查器
         composite = CompositePermissionChecker([checker1, checker2])
 
-        self.resource_manager.permission_checker = composite
+        self.resource_manager.event_handlers.append(PermissionEventHandler(composite))
 
         with self.resource_manager.meta_provide("alice", dt.datetime.now()):
             with suppress(ResourceIDNotFoundError):
@@ -213,7 +211,7 @@ class TestAdvancedPermissionChecking:
         # 創建組合檢查器
         composite = CompositePermissionChecker([checker1, checker2])
 
-        self.resource_manager.permission_checker = composite
+        self.resource_manager.event_handlers.append(PermissionEventHandler(composite))
 
         with self.resource_manager.meta_provide("alice", dt.datetime.now()):
             with pytest.raises(PermissionDeniedError):
@@ -232,7 +230,7 @@ class TestAdvancedPermissionChecking:
         # 創建組合檢查器
         composite = CompositePermissionChecker([checker1, checker2])
 
-        self.resource_manager.permission_checker = composite
+        self.resource_manager.event_handlers.append(PermissionEventHandler(composite))
 
         with self.resource_manager.meta_provide("alice", dt.datetime.now()):
             with pytest.raises(PermissionDeniedError):
@@ -245,7 +243,7 @@ class TestAdvancedPermissionChecking:
     def test_permission_context_with_method_args(self):
         """測試權限上下文包含方法參數"""
         checker = MockPermissionChecker()
-        self.resource_manager.permission_checker = checker
+        self.resource_manager.event_handlers.append(PermissionEventHandler(checker))
 
         with self.resource_manager.meta_provide("alice", dt.datetime.now()):
             try:
@@ -264,9 +262,6 @@ class TestAdvancedPermissionChecking:
                 break
 
         assert update_context is not None
-        assert update_context.method_args[0] == "test:123"
-        assert isinstance(update_context.method_args[1], DataStruct)
-        assert update_context.method_args[1].name == "test"
 
 
 class TestRbacPermissionCheck:

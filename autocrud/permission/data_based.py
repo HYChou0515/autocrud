@@ -45,12 +45,11 @@ class FieldLevelPermissionChecker(IPermissionChecker):
         # 例如從 method_kwargs 中獲取 data 參數，然後分析要修改的欄位
         modified_fields = set()
 
-        if "data" in context.method_kwargs:
-            data = context.method_kwargs["data"]
-            if hasattr(data, "__dict__"):
-                modified_fields = set(data.__dict__.keys())
-            elif isinstance(data, dict):
-                modified_fields = set(data.keys())
+        data = context.resource_data
+        if hasattr(data, "__dict__"):
+            modified_fields = set(data.__dict__.keys())
+        elif isinstance(data, dict):
+            modified_fields = set(data.keys())
 
         return modified_fields
 

@@ -155,25 +155,26 @@ _type_setting = {
     "tag": True,
     "tag_field": "context_type",
 }
-_before_context = [
-    ("phase", Literal["before"], "before"),
+_base_context = [
     ("user", str | UnsetType),
     ("now", dt.datetime | UnsetType),
+    ("resource_name", str),
+]
+_before_context = [
+    ("phase", Literal["before"], "before"),
+    *_base_context,
 ]
 _after_context = [
     ("phase", Literal["after"], "after"),
-    ("user", str | UnsetType),
-    ("now", dt.datetime | UnsetType),
+    *_base_context,
 ]
 _on_success_context = [
     ("phase", Literal["on_success"], "on_success"),
-    ("user", str | UnsetType),
-    ("now", dt.datetime | UnsetType),
+    *_base_context,
 ]
 _on_failure_context = [
     ("phase", Literal["on_failure"], "on_failure"),
-    ("user", str | UnsetType),
-    ("now", dt.datetime | UnsetType),
+    *_base_context,
     ("error", str),
     ("stack_trace", str | None, None),
 ]
@@ -1305,10 +1306,6 @@ class PermissionContext(Struct, kw_only=True):
     now: dt.datetime
     action: ResourceAction
     resource_name: str
-
-    # 方法調用資訊
-    method_args: tuple = ()
-    method_kwargs: Dict[str, Any] = {}
 
     # 額外上下文資料
     resource_id: str | UnsetType = UNSET
