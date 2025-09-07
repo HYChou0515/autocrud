@@ -225,22 +225,28 @@ class OnFailureGet(BaseGetContext, BaseOnFailureContext):
 
 class BaseGetResourceRevisionContext(BaseContext):
     action: ResourceAction = ResourceAction.get_resource_revision
+    resource_id: str
+    revision_id: str
 
 
-class BeforeGetResourceRevision(BaseGetResourceRevisionContext, BaseBeforeContext): ...
+class BeforeGetResourceRevision(BaseGetResourceRevisionContext, BaseBeforeContext):
+    pass
 
 
-class AfterGetResourceRevision(BaseGetResourceRevisionContext, BaseAfterContext): ...
+class AfterGetResourceRevision(BaseGetResourceRevisionContext, BaseAfterContext):
+    pass
 
 
 class OnSuccessGetResourceRevision(
     BaseGetResourceRevisionContext, BaseOnSuccessContext
-): ...
+):
+    resource: Resource[T]
 
 
 class OnFailureGetResourceRevision(
     BaseGetResourceRevisionContext, BaseOnFailureContext
-): ...
+):
+    pass
 
 
 # ============================================================================
@@ -250,6 +256,7 @@ class OnFailureGetResourceRevision(
 
 class BaseListRevisionsContext(BaseContext):
     action: ResourceAction = ResourceAction.list_revisions
+    resource_id: str
 
 
 class BeforeListRevisions(BaseListRevisionsContext, BaseBeforeContext): ...
@@ -258,7 +265,8 @@ class BeforeListRevisions(BaseListRevisionsContext, BaseBeforeContext): ...
 class AfterListRevisions(BaseListRevisionsContext, BaseAfterContext): ...
 
 
-class OnSuccessListRevisions(BaseListRevisionsContext, BaseOnSuccessContext): ...
+class OnSuccessListRevisions(BaseListRevisionsContext, BaseOnSuccessContext):
+    revisions: list[str]
 
 
 class OnFailureListRevisions(BaseListRevisionsContext, BaseOnFailureContext): ...
@@ -320,18 +328,24 @@ class OnFailureSearchResources(BaseSearchResourcesContext, BaseOnFailureContext)
 
 class BaseUpdateContext(BaseContext):
     action: ResourceAction = ResourceAction.update
+    resource_id: str
+    data: T
 
 
-class BeforeUpdate(BaseUpdateContext, BaseBeforeContext): ...
+class BeforeUpdate(BaseUpdateContext, BaseBeforeContext):
+    pass
 
 
-class AfterUpdate(BaseUpdateContext, BaseAfterContext): ...
+class AfterUpdate(BaseUpdateContext, BaseAfterContext):
+    pass
 
 
-class OnSuccessUpdate(BaseUpdateContext, BaseOnSuccessContext): ...
+class OnSuccessUpdate(BaseUpdateContext, BaseOnSuccessContext):
+    revision_info: RevisionInfo
 
 
-class OnFailureUpdate(BaseUpdateContext, BaseOnFailureContext): ...
+class OnFailureUpdate(BaseUpdateContext, BaseOnFailureContext):
+    pass
 
 
 # ============================================================================
@@ -341,18 +355,24 @@ class OnFailureUpdate(BaseUpdateContext, BaseOnFailureContext): ...
 
 class BasePatchContext(BaseContext):
     action: ResourceAction = ResourceAction.patch
+    resource_id: str
+    patch_data: list[dict[str, Any]]  # JsonPatch.patch
 
 
-class BeforePatch(BasePatchContext, BaseBeforeContext): ...
+class BeforePatch(BasePatchContext, BaseBeforeContext):
+    pass
 
 
-class AfterPatch(BasePatchContext, BaseAfterContext): ...
+class AfterPatch(BasePatchContext, BaseAfterContext):
+    pass
 
 
-class OnSuccessPatch(BasePatchContext, BaseOnSuccessContext): ...
+class OnSuccessPatch(BasePatchContext, BaseOnSuccessContext):
+    revision_info: RevisionInfo
 
 
-class OnFailurePatch(BasePatchContext, BaseOnFailureContext): ...
+class OnFailurePatch(BasePatchContext, BaseOnFailureContext):
+    pass
 
 
 # ============================================================================
@@ -362,18 +382,24 @@ class OnFailurePatch(BasePatchContext, BaseOnFailureContext): ...
 
 class BaseSwitchContext(BaseContext):
     action: ResourceAction = ResourceAction.switch
+    resource_id: str
+    revision_id: str
 
 
-class BeforeSwitch(BaseSwitchContext, BaseBeforeContext): ...
+class BeforeSwitch(BaseSwitchContext, BaseBeforeContext):
+    pass
 
 
-class AfterSwitch(BaseSwitchContext, BaseAfterContext): ...
+class AfterSwitch(BaseSwitchContext, BaseAfterContext):
+    pass
 
 
-class OnSuccessSwitch(BaseSwitchContext, BaseOnSuccessContext): ...
+class OnSuccessSwitch(BaseSwitchContext, BaseOnSuccessContext):
+    meta: ResourceMeta
 
 
-class OnFailureSwitch(BaseSwitchContext, BaseOnFailureContext): ...
+class OnFailureSwitch(BaseSwitchContext, BaseOnFailureContext):
+    pass
 
 
 # ============================================================================
@@ -383,18 +409,23 @@ class OnFailureSwitch(BaseSwitchContext, BaseOnFailureContext): ...
 
 class BaseDeleteContext(BaseContext):
     action: ResourceAction = ResourceAction.delete
+    resource_id: str
 
 
-class BeforeDelete(BaseDeleteContext, BaseBeforeContext): ...
+class BeforeDelete(BaseDeleteContext, BaseBeforeContext):
+    pass
 
 
-class AfterDelete(BaseDeleteContext, BaseAfterContext): ...
+class AfterDelete(BaseDeleteContext, BaseAfterContext):
+    pass
 
 
-class OnSuccessDelete(BaseDeleteContext, BaseOnSuccessContext): ...
+class OnSuccessDelete(BaseDeleteContext, BaseOnSuccessContext):
+    meta: ResourceMeta
 
 
-class OnFailureDelete(BaseDeleteContext, BaseOnFailureContext): ...
+class OnFailureDelete(BaseDeleteContext, BaseOnFailureContext):
+    pass
 
 
 # ============================================================================
@@ -404,18 +435,23 @@ class OnFailureDelete(BaseDeleteContext, BaseOnFailureContext): ...
 
 class BaseRestoreContext(BaseContext):
     action: ResourceAction = ResourceAction.restore
+    resource_id: str
 
 
-class BeforeRestore(BaseRestoreContext, BaseBeforeContext): ...
+class BeforeRestore(BaseRestoreContext, BaseBeforeContext):
+    pass
 
 
-class AfterRestore(BaseRestoreContext, BaseAfterContext): ...
+class AfterRestore(BaseRestoreContext, BaseAfterContext):
+    pass
 
 
-class OnSuccessRestore(BaseRestoreContext, BaseOnSuccessContext): ...
+class OnSuccessRestore(BaseRestoreContext, BaseOnSuccessContext):
+    meta: ResourceMeta
 
 
-class OnFailureRestore(BaseRestoreContext, BaseOnFailureContext): ...
+class OnFailureRestore(BaseRestoreContext, BaseOnFailureContext):
+    pass
 
 
 # ============================================================================
@@ -427,16 +463,19 @@ class BaseDumpContext(BaseContext):
     action: ResourceAction = ResourceAction.dump
 
 
-class BeforeDump(BaseDumpContext, BaseBeforeContext): ...
+class BeforeDump(BaseDumpContext, BaseBeforeContext):
+    pass
 
 
-class AfterDump(BaseDumpContext, BaseAfterContext): ...
+class AfterDump(BaseDumpContext, BaseAfterContext):
+    pass
 
 
 class OnSuccessDump(BaseDumpContext, BaseOnSuccessContext): ...
 
 
-class OnFailureDump(BaseDumpContext, BaseOnFailureContext): ...
+class OnFailureDump(BaseDumpContext, BaseOnFailureContext):
+    pass
 
 
 # ============================================================================
@@ -446,15 +485,20 @@ class OnFailureDump(BaseDumpContext, BaseOnFailureContext): ...
 
 class BaseLoadContext(BaseContext):
     action: ResourceAction = ResourceAction.load
+    key: str
 
 
-class BeforeLoad(BaseLoadContext, BaseBeforeContext): ...
+class BeforeLoad(BaseLoadContext, BaseBeforeContext):
+    pass
 
 
-class AfterLoad(BaseLoadContext, BaseAfterContext): ...
+class AfterLoad(BaseLoadContext, BaseAfterContext):
+    pass
 
 
-class OnSuccessLoad(BaseLoadContext, BaseOnSuccessContext): ...
+class OnSuccessLoad(BaseLoadContext, BaseOnSuccessContext):
+    pass
 
 
-class OnFailureLoad(BaseLoadContext, BaseOnFailureContext): ...
+class OnFailureLoad(BaseLoadContext, BaseOnFailureContext):
+    pass
