@@ -1,9 +1,19 @@
+import copy
 import datetime as dt
 from collections.abc import Callable, Generator
 from contextlib import contextmanager
 from functools import cached_property, wraps
 import traceback
-from typing import IO, TYPE_CHECKING, Any, Generic, TypeVar, get_args, get_origin
+from typing import (
+    IO,
+    TYPE_CHECKING,
+    Any,
+    Generic,
+    NamedTuple,
+    TypeVar,
+    get_args,
+    get_origin,
+)
 from uuid import uuid4
 
 import msgspec
@@ -234,6 +244,13 @@ def smart_permission_check():
     return decorator
 
 
+class _Contexts(NamedTuple):
+    before: EventContext
+    after: EventContext
+    on_success: EventContext
+    on_failure: EventContext
+
+
 class ResourceManager(IResourceManager[T], Generic[T]):
     def __init__(
         self,
@@ -454,46 +471,76 @@ class ResourceManager(IResourceManager[T], Generic[T]):
             raise ResourceIsDeletedError(resource_id)
         return meta
 
-    @smart_permission_check()
-    def get_meta(self, resource_id: str) -> ResourceMeta:
-        self._handle_message(BeforeGetMeta(resource_id=resource_id))
+    def _execute_with_events(
+        self,
+        method: Callable,
+        inputs: dict[str, Any],
+        contexts: _Contexts,
+        build_result: Callable[[Any], dict[str, Any]] | str,
+        *,
+        base: dict[str, Any] | None = None,
+    ):
+        contexts = _Contexts(*contexts)
+        if isinstance(build_result, str):
+
+            def _build_result(x):
+                return {build_result: x}
+
+        else:
+            _build_result = build_result
+        base = base or copy.copy(inputs)
+        base |= {
+            "user": self.user_or_unset,
+            "now": self.now_or_unset,
+        }
+        self._handle_message(contexts.before(**base))
         try:
-            meta = self._get_meta(resource_id)
-            self._handle_message(OnSuccessGetMeta(resource_id=resource_id, meta=meta))
-            return meta
+            result = method(**inputs)
+            built_result = _build_result(result)
+            self._handle_message(contexts.on_success(**base, **built_result))
+            return result
         except Exception as e:
             self._handle_message(
-                OnFailureGetMeta(
-                    resource_id=resource_id,
+                contexts.on_failure(
+                    **base,
                     error=str(e),
                     stack_trace=traceback.format_exc(),
                 )
             )
             raise
         finally:
-            self._handle_message(AfterGetMeta(resource_id=resource_id))
+            self._handle_message(contexts.after(**base))
+
+    @smart_permission_check()
+    def get_meta(self, resource_id: str) -> ResourceMeta:
+        return self._execute_with_events(
+            self._get_meta,
+            {"resource_id": resource_id},
+            (
+                BeforeGetMeta,
+                AfterGetMeta,
+                OnSuccessGetMeta,
+                OnFailureGetMeta,
+            ),
+            "meta",
+        )
 
     def _search_resources(self, query: ResourceMetaSearchQuery) -> list[ResourceMeta]:
         return self.storage.search(query)
 
     @smart_permission_check()
     def search_resources(self, query: ResourceMetaSearchQuery) -> list[ResourceMeta]:
-        self._handle_message(BeforeSearchResources(query=query))
-        try:
-            results = self._search_resources(query)
-            self._handle_message(OnSuccessSearchResources(query=query, results=results))
-            return results
-        except Exception as e:
-            self._handle_message(
-                OnFailureSearchResources(
-                    query=query,
-                    error=str(e),
-                    stack_trace=traceback.format_exc(),
-                )
-            )
-            raise
-        finally:
-            self._handle_message(AfterSearchResources(query=query))
+        return self._execute_with_events(
+            self._search_resources,
+            {"query": query},
+            (
+                BeforeSearchResources,
+                AfterSearchResources,
+                OnSuccessSearchResources,
+                OnFailureSearchResources,
+            ),
+            "results",
+        )
 
     def _create(self, data: T) -> RevisionInfo:
         info = self._rev_info(_BuildRevMetaCreate(data))
@@ -507,22 +554,12 @@ class ResourceManager(IResourceManager[T], Generic[T]):
 
     @smart_permission_check()
     def create(self, data: T) -> RevisionInfo:
-        self._handle_message(BeforeCreate(data=data))
-        try:
-            info = self._create(data)
-            self._handle_message(OnSuccessCreate(data=data, info=info))
-            return info
-        except Exception as e:
-            self._handle_message(
-                OnFailureCreate(
-                    data=data,
-                    error=str(e),
-                    stack_trace=traceback.format_exc(),
-                )
-            )
-            raise
-        finally:
-            self._handle_message(AfterCreate(data=data))
+        return self._execute_with_events(
+            self._create,
+            {"data": data},
+            (BeforeCreate, AfterCreate, OnSuccessCreate, OnFailureCreate),
+            "info",
+        )
 
     def _get(self, resource_id: str) -> Resource[T]:
         meta = self.get_meta(resource_id)
@@ -530,24 +567,12 @@ class ResourceManager(IResourceManager[T], Generic[T]):
 
     @smart_permission_check()
     def get(self, resource_id: str) -> Resource[T]:
-        self._handle_message(BeforeGet(resource_id=resource_id))
-        try:
-            resource = self._get(resource_id)
-            self._handle_message(
-                OnSuccessGet(resource_id=resource_id, resource=resource)
-            )
-            return resource
-        except Exception as e:
-            self._handle_message(
-                OnFailureGet(
-                    resource_id=resource_id,
-                    error=str(e),
-                    stack_trace=traceback.format_exc(),
-                )
-            )
-            raise
-        finally:
-            self._handle_message(AfterGet(resource_id=resource_id))
+        return self._execute_with_events(
+            self._get,
+            {"resource_id": resource_id},
+            (BeforeGet, AfterGet, OnSuccessGet, OnFailureGet),
+            "resource",
+        )
 
     def _get_resource_revision(self, resource_id: str, revision_id: str) -> Resource[T]:
         obj = self.storage.get_resource_revision(resource_id, revision_id)
@@ -555,57 +580,34 @@ class ResourceManager(IResourceManager[T], Generic[T]):
 
     @smart_permission_check()
     def get_resource_revision(self, resource_id: str, revision_id: str) -> Resource[T]:
-        self._handle_message(
-            BeforeGetResourceRevision(resource_id=resource_id, revision_id=revision_id)
+        return self._execute_with_events(
+            self._get_resource_revision,
+            {"resource_id": resource_id, "revision_id": revision_id},
+            (
+                BeforeGetResourceRevision,
+                AfterGetResourceRevision,
+                OnSuccessGetResourceRevision,
+                OnFailureGetResourceRevision,
+            ),
+            "resource",
         )
-        try:
-            resource = self._get_resource_revision(resource_id, revision_id)
-            self._handle_message(
-                OnSuccessGetResourceRevision(
-                    resource_id=resource_id, revision_id=revision_id, resource=resource
-                )
-            )
-            return resource
-        except Exception as e:
-            self._handle_message(
-                OnFailureGetResourceRevision(
-                    resource_id=resource_id,
-                    revision_id=revision_id,
-                    error=str(e),
-                    stack_trace=traceback.format_exc(),
-                )
-            )
-            raise
-        finally:
-            self._handle_message(
-                AfterGetResourceRevision(
-                    resource_id=resource_id, revision_id=revision_id
-                )
-            )
 
     def _list_revisions(self, resource_id: str) -> list[str]:
         return self.storage.list_revisions(resource_id)
 
     @smart_permission_check()
     def list_revisions(self, resource_id: str) -> list[str]:
-        self._handle_message(BeforeListRevisions(resource_id=resource_id))
-        try:
-            revisions = self._list_revisions(resource_id)
-            self._handle_message(
-                OnSuccessListRevisions(resource_id=resource_id, revisions=revisions)
-            )
-            return revisions
-        except Exception as e:
-            self._handle_message(
-                OnFailureListRevisions(
-                    resource_id=resource_id,
-                    error=str(e),
-                    stack_trace=traceback.format_exc(),
-                )
-            )
-            raise
-        finally:
-            self._handle_message(AfterListRevisions(resource_id=resource_id))
+        return self._execute_with_events(
+            self._list_revisions,
+            {"resource_id": resource_id},
+            (
+                BeforeListRevisions,
+                AfterListRevisions,
+                OnSuccessListRevisions,
+                OnFailureListRevisions,
+            ),
+            "revisions",
+        )
 
     def _update(self, resource_id: str, data: T) -> RevisionInfo:
         prev_res_meta = self.get_meta(resource_id)
@@ -628,27 +630,12 @@ class ResourceManager(IResourceManager[T], Generic[T]):
 
     @smart_permission_check()
     def update(self, resource_id: str, data: T) -> RevisionInfo:
-        self._handle_message(BeforeUpdate(resource_id=resource_id, data=data))
-        try:
-            revision_info = self._update(resource_id, data)
-            self._handle_message(
-                OnSuccessUpdate(
-                    resource_id=resource_id, data=data, revision_info=revision_info
-                )
-            )
-            return revision_info
-        except Exception as e:
-            self._handle_message(
-                OnFailureUpdate(
-                    resource_id=resource_id,
-                    data=data,
-                    error=str(e),
-                    stack_trace=traceback.format_exc(),
-                )
-            )
-            raise
-        finally:
-            self._handle_message(AfterUpdate(resource_id=resource_id, data=data))
+        return self._execute_with_events(
+            self._update,
+            {"resource_id": resource_id, "data": data},
+            (BeforeUpdate, AfterUpdate, OnSuccessUpdate, OnFailureUpdate),
+            "revision_info",
+        )
 
     @smart_permission_check()
     def create_or_update(self, resource_id, data):
@@ -666,33 +653,13 @@ class ResourceManager(IResourceManager[T], Generic[T]):
 
     @smart_permission_check()
     def patch(self, resource_id: str, patch_data: JsonPatch) -> RevisionInfo:
-        self._handle_message(
-            BeforePatch(resource_id=resource_id, patch_data=patch_data.patch)
+        return self._execute_with_events(
+            self._patch,
+            {"resource_id": resource_id, "patch_data": patch_data},
+            (BeforePatch, AfterPatch, OnSuccessPatch, OnFailurePatch),
+            "revision_info",
+            base={"resource_id": resource_id, "patch_data": patch_data.patch},
         )
-        try:
-            revision_info = self._patch(resource_id, patch_data)
-            self._handle_message(
-                OnSuccessPatch(
-                    resource_id=resource_id,
-                    patch_data=patch_data.patch,
-                    revision_info=revision_info,
-                )
-            )
-            return revision_info
-        except Exception as e:
-            self._handle_message(
-                OnFailurePatch(
-                    resource_id=resource_id,
-                    patch_data=patch_data.patch,
-                    error=str(e),
-                    stack_trace=traceback.format_exc(),
-                )
-            )
-            raise
-        finally:
-            self._handle_message(
-                AfterPatch(resource_id=resource_id, patch_data=patch_data.patch)
-            )
 
     def _switch(self, resource_id: str, revision_id: str) -> ResourceMeta:
         meta = self.get_meta(resource_id)
@@ -715,31 +682,12 @@ class ResourceManager(IResourceManager[T], Generic[T]):
 
     @smart_permission_check()
     def switch(self, resource_id: str, revision_id: str) -> ResourceMeta:
-        self._handle_message(
-            BeforeSwitch(resource_id=resource_id, revision_id=revision_id)
+        return self._execute_with_events(
+            self._switch,
+            {"resource_id": resource_id, "revision_id": revision_id},
+            (BeforeSwitch, AfterSwitch, OnSuccessSwitch, OnFailureSwitch),
+            "meta",
         )
-        try:
-            meta = self._switch(resource_id, revision_id)
-            self._handle_message(
-                OnSuccessSwitch(
-                    resource_id=resource_id, revision_id=revision_id, meta=meta
-                )
-            )
-            return meta
-        except Exception as e:
-            self._handle_message(
-                OnFailureSwitch(
-                    resource_id=resource_id,
-                    revision_id=revision_id,
-                    error=str(e),
-                    stack_trace=traceback.format_exc(),
-                )
-            )
-            raise
-        finally:
-            self._handle_message(
-                AfterSwitch(resource_id=resource_id, revision_id=revision_id)
-            )
 
     def _delete(self, resource_id: str) -> ResourceMeta:
         meta = self.get_meta(resource_id)
@@ -751,22 +699,12 @@ class ResourceManager(IResourceManager[T], Generic[T]):
 
     @smart_permission_check()
     def delete(self, resource_id: str) -> ResourceMeta:
-        self._handle_message(BeforeDelete(resource_id=resource_id))
-        try:
-            meta = self._delete(resource_id)
-            self._handle_message(OnSuccessDelete(resource_id=resource_id, meta=meta))
-            return meta
-        except Exception as e:
-            self._handle_message(
-                OnFailureDelete(
-                    resource_id=resource_id,
-                    error=str(e),
-                    stack_trace=traceback.format_exc(),
-                )
-            )
-            raise
-        finally:
-            self._handle_message(AfterDelete(resource_id=resource_id))
+        return self._execute_with_events(
+            self._delete,
+            {"resource_id": resource_id},
+            (BeforeDelete, AfterDelete, OnSuccessDelete, OnFailureDelete),
+            "meta",
+        )
 
     def _restore(self, resource_id: str) -> ResourceMeta:
         meta = self._get_meta_no_check_is_deleted(resource_id)
@@ -779,22 +717,12 @@ class ResourceManager(IResourceManager[T], Generic[T]):
 
     @smart_permission_check()
     def restore(self, resource_id: str) -> ResourceMeta:
-        self._handle_message(BeforeRestore(resource_id=resource_id))
-        try:
-            meta = self._restore(resource_id)
-            self._handle_message(OnSuccessRestore(resource_id=resource_id, meta=meta))
-            return meta
-        except Exception as e:
-            self._handle_message(
-                OnFailureRestore(
-                    resource_id=resource_id,
-                    error=str(e),
-                    stack_trace=traceback.format_exc(),
-                )
-            )
-            raise
-        finally:
-            self._handle_message(AfterRestore(resource_id=resource_id))
+        return self._execute_with_events(
+            self._restore,
+            {"resource_id": resource_id},
+            (BeforeRestore, AfterRestore, OnSuccessRestore, OnFailureRestore),
+            "meta",
+        )
 
     def _dump(self) -> Generator[tuple[str, IO[bytes]]]:
         for meta in self.storage.dump_meta():
@@ -804,21 +732,12 @@ class ResourceManager(IResourceManager[T], Generic[T]):
 
     @smart_permission_check()
     def dump(self) -> Generator[tuple[str, IO[bytes]]]:
-        self._handle_message(BeforeDump())
-        try:
-            result = self._dump()
-            self._handle_message(OnSuccessDump())
-            return result
-        except Exception as e:
-            self._handle_message(
-                OnFailureDump(
-                    error=str(e),
-                    stack_trace=traceback.format_exc(),
-                )
-            )
-            raise
-        finally:
-            self._handle_message(AfterDump())
+        return self._execute_with_events(
+            self._dump,
+            {},
+            (BeforeDump, AfterDump, OnSuccessDump, OnFailureDump),
+            lambda _: {},
+        )
 
     def _load(self, key: str, bio: IO[bytes]) -> None:
         if key.startswith("meta/"):
@@ -830,22 +749,13 @@ class ResourceManager(IResourceManager[T], Generic[T]):
 
     @smart_permission_check()
     def load(self, key: str, bio: IO[bytes]) -> None:
-        self._handle_message(BeforeLoad(key=key))
-        try:
-            self._load(key, bio)
-            self._handle_message(OnSuccessLoad(key=key))
-        except Exception as e:
-            self._handle_message(
-                OnFailureLoad(
-                    key=key,
-                    bio=bio,
-                    error=str(e),
-                    stack_trace=traceback.format_exc(),
-                )
-            )
-            raise
-        finally:
-            self._handle_message(AfterLoad(key=key))
+        return self._execute_with_events(
+            self._load,
+            {"key": key, "bio": bio},
+            (BeforeLoad, AfterLoad, OnSuccessLoad, OnFailureLoad),
+            lambda _: {},
+            base={"key": key},
+        )
 
     @cached_property
     def meta_serializer(self):

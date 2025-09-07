@@ -4,6 +4,7 @@ from contextlib import AbstractContextManager
 import datetime as dt
 from enum import Enum, Flag, StrEnum, auto
 from typing import IO, Any, Dict, Generic, TypeVar
+from typing_extensions import Literal
 from uuid import UUID
 
 from jsonpatch import JsonPatch
@@ -155,16 +156,24 @@ _type_setting = {
     "tag_field": "context_type",
 }
 _before_context = [
-    ("phase", str, "before"),
+    ("phase", Literal["before"], "before"),
+    ("user", str | UnsetType),
+    ("now", dt.datetime | UnsetType),
 ]
 _after_context = [
-    ("phase", str, "after"),
+    ("phase", Literal["after"], "after"),
+    ("user", str | UnsetType),
+    ("now", dt.datetime | UnsetType),
 ]
 _on_success_context = [
-    ("phase", str, "on_success"),
+    ("phase", Literal["on_success"], "on_success"),
+    ("user", str | UnsetType),
+    ("now", dt.datetime | UnsetType),
 ]
 _on_failure_context = [
-    ("phase", str, "on_failure"),
+    ("phase", Literal["on_failure"], "on_failure"),
+    ("user", str | UnsetType),
+    ("now", dt.datetime | UnsetType),
     ("error", str),
     ("stack_trace", str | None, None),
 ]
@@ -743,7 +752,6 @@ OnFailureDump = defstruct(
 _load_context = [
     ("action", ResourceAction, ResourceAction.load),
     ("key", str),
-    ("bio", IO[bytes]),
 ]
 
 BeforeLoad = defstruct(
