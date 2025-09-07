@@ -10,9 +10,7 @@
 import datetime as dt
 
 from autocrud.permission.acl import ACLPermissionChecker
-from autocrud.permission.basic import (
-    IPermissionChecker,
-    PermissionContext,
+from autocrud.types import (
     PermissionResult,
 )
 from autocrud.permission.composite import (
@@ -21,7 +19,7 @@ from autocrud.permission.composite import (
 )
 from autocrud.permission.data_based import FieldLevelPermissionChecker
 from autocrud.permission.meta_based import ResourceOwnershipChecker
-from autocrud.types import ResourceAction
+from autocrud.types import IPermissionChecker, PermissionContext, ResourceAction
 
 
 # 示例 1: 基本使用 - 結合現有的 ACL/RBAC 系統

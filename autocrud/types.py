@@ -1,9 +1,14 @@
+from abc import ABC, abstractmethod
+from collections.abc import Generator
+from contextlib import AbstractContextManager
 import datetime as dt
-from enum import Flag, StrEnum, auto
-from typing import Any, Generic, TypeVar
+from enum import Enum, Flag, StrEnum, auto
+from typing import IO, Any, Dict, Generic, TypeVar
 from uuid import UUID
 
-from msgspec import UNSET, Struct, UnsetType
+from jsonpatch import JsonPatch
+from msgspec import UNSET, Struct, UnsetType, defstruct
+
 
 T = TypeVar("T")
 
@@ -144,361 +149,1197 @@ class ResourceMetaSearchQuery(Struct, kw_only=True):
 # Base Context Classes
 # ============================================================================
 
-
-class BaseContext(Struct, tag=True, tag_field="context_type"): ...
-
-
-class BaseBeforeContext(BaseContext):
-    phase: str = "before"
-
-
-class BaseAfterContext(BaseContext):
-    phase: str = "after"
-
-
-class BaseOnSuccessContext(BaseContext):
-    phase: str = "on_success"
-
-
-class BaseOnFailureContext(BaseContext):
-    phase: str = "on_failure"
-    error: str
-    stack_trace: str | None = None
-
+_type_setting = {
+    "kw_only": True,
+    "tag": True,
+    "tag_field": "context_type",
+}
+_before_context = [
+    ("phase", str, "before"),
+]
+_after_context = [
+    ("phase", str, "after"),
+]
+_on_success_context = [
+    ("phase", str, "on_success"),
+]
+_on_failure_context = [
+    ("phase", str, "on_failure"),
+    ("error", str),
+    ("stack_trace", str | None, None),
+]
 
 # ============================================================================
 # Create Context Classes
 # ============================================================================
 
+_create_context = [
+    ("action", ResourceAction, ResourceAction.create),
+    ("data", T),
+]
 
-class BaseCreateContext(BaseContext):
-    action: ResourceAction = ResourceAction.create
-    data: T
+BeforeCreate = defstruct(
+    "BeforeCreate",
+    [
+        *_before_context,
+        *_create_context,
+    ],
+    **_type_setting,
+)
 
+AfterCreate = defstruct(
+    "AfterCreate",
+    [
+        *_after_context,
+        *_create_context,
+    ],
+    **_type_setting,
+)
 
-class BeforeCreate(BaseCreateContext, BaseBeforeContext):
-    pass
+OnSuccessCreate = defstruct(
+    "OnSuccessCreate",
+    [
+        *_on_success_context,
+        *_create_context,
+        ("info", RevisionInfo),
+    ],
+    **_type_setting,
+)
 
-
-class AfterCreate(BaseCreateContext, BaseAfterContext):
-    pass
-
-
-class OnSuccessCreate(BaseCreateContext, BaseOnSuccessContext):
-    info: RevisionInfo
-
-
-class OnFailureCreate(BaseCreateContext, BaseOnFailureContext):
-    pass
+OnFailureCreate = defstruct(
+    "OnFailureCreate",
+    [
+        *_on_failure_context,
+        *_create_context,
+    ],
+    **_type_setting,
+)
 
 
 # ============================================================================
 # Get Context Classes
 # ============================================================================
 
+_get_context = [
+    ("action", ResourceAction, ResourceAction.get),
+    ("resource_id", str),
+]
 
-class BaseGetContext(BaseContext):
-    action: ResourceAction = ResourceAction.get
-    resource_id: str
+BeforeGet = defstruct(
+    "BeforeGet",
+    [
+        *_before_context,
+        *_get_context,
+    ],
+    **_type_setting,
+)
 
+AfterGet = defstruct(
+    "AfterGet",
+    [
+        *_after_context,
+        *_get_context,
+    ],
+    **_type_setting,
+)
 
-class BeforeGet(BaseGetContext, BaseBeforeContext):
-    pass
+OnSuccessGet = defstruct(
+    "OnSuccessGet",
+    [
+        *_on_success_context,
+        *_get_context,
+        ("resource", Resource[T]),
+    ],
+    **_type_setting,
+)
 
-
-class AfterGet(BaseGetContext, BaseAfterContext):
-    pass
-
-
-class OnSuccessGet(BaseGetContext, BaseOnSuccessContext):
-    resource: Resource[T]
-
-
-class OnFailureGet(BaseGetContext, BaseOnFailureContext):
-    pass
+OnFailureGet = defstruct(
+    "OnFailureGet",
+    [
+        *_on_failure_context,
+        *_get_context,
+    ],
+    **_type_setting,
+)
 
 
 # ============================================================================
 # Get Resource Revision Context Classes
 # ============================================================================
 
+_get_resource_revision_context = [
+    ("action", ResourceAction, ResourceAction.get_resource_revision),
+    ("resource_id", str),
+    ("revision_id", str),
+]
 
-class BaseGetResourceRevisionContext(BaseContext):
-    action: ResourceAction = ResourceAction.get_resource_revision
-    resource_id: str
-    revision_id: str
+BeforeGetResourceRevision = defstruct(
+    "BeforeGetResourceRevision",
+    [
+        *_before_context,
+        *_get_resource_revision_context,
+    ],
+    **_type_setting,
+)
 
+AfterGetResourceRevision = defstruct(
+    "AfterGetResourceRevision",
+    [
+        *_after_context,
+        *_get_resource_revision_context,
+    ],
+    **_type_setting,
+)
 
-class BeforeGetResourceRevision(BaseGetResourceRevisionContext, BaseBeforeContext):
-    pass
+OnSuccessGetResourceRevision = defstruct(
+    "OnSuccessGetResourceRevision",
+    [
+        *_on_success_context,
+        *_get_resource_revision_context,
+        ("resource", Resource[T]),
+    ],
+    **_type_setting,
+)
 
-
-class AfterGetResourceRevision(BaseGetResourceRevisionContext, BaseAfterContext):
-    pass
-
-
-class OnSuccessGetResourceRevision(
-    BaseGetResourceRevisionContext, BaseOnSuccessContext
-):
-    resource: Resource[T]
-
-
-class OnFailureGetResourceRevision(
-    BaseGetResourceRevisionContext, BaseOnFailureContext
-):
-    pass
+OnFailureGetResourceRevision = defstruct(
+    "OnFailureGetResourceRevision",
+    [
+        *_on_failure_context,
+        *_get_resource_revision_context,
+    ],
+    **_type_setting,
+)
 
 
 # ============================================================================
 # List Revisions Context Classes
 # ============================================================================
 
+_list_revisions_context = [
+    ("action", ResourceAction, ResourceAction.list_revisions),
+    ("resource_id", str),
+]
 
-class BaseListRevisionsContext(BaseContext):
-    action: ResourceAction = ResourceAction.list_revisions
-    resource_id: str
+BeforeListRevisions = defstruct(
+    "BeforeListRevisions",
+    [
+        *_before_context,
+        *_list_revisions_context,
+    ],
+    **_type_setting,
+)
 
+AfterListRevisions = defstruct(
+    "AfterListRevisions",
+    [
+        *_after_context,
+        *_list_revisions_context,
+    ],
+    **_type_setting,
+)
 
-class BeforeListRevisions(BaseListRevisionsContext, BaseBeforeContext): ...
+OnSuccessListRevisions = defstruct(
+    "OnSuccessListRevisions",
+    [
+        *_on_success_context,
+        *_list_revisions_context,
+        ("revisions", list[str]),
+    ],
+    **_type_setting,
+)
 
-
-class AfterListRevisions(BaseListRevisionsContext, BaseAfterContext): ...
-
-
-class OnSuccessListRevisions(BaseListRevisionsContext, BaseOnSuccessContext):
-    revisions: list[str]
-
-
-class OnFailureListRevisions(BaseListRevisionsContext, BaseOnFailureContext): ...
+OnFailureListRevisions = defstruct(
+    "OnFailureListRevisions",
+    [
+        *_on_failure_context,
+        *_list_revisions_context,
+    ],
+    **_type_setting,
+)
 
 
 # ============================================================================
 # Get Meta Context Classes
 # ============================================================================
 
+_get_meta_context = [
+    ("action", ResourceAction, ResourceAction.get_meta),
+    ("resource_id", str),
+]
 
-class BaseGetMetaContext(BaseContext):
-    action: ResourceAction = ResourceAction.get_meta
-    resource_id: str
+BeforeGetMeta = defstruct(
+    "BeforeGetMeta",
+    [
+        *_before_context,
+        *_get_meta_context,
+    ],
+    **_type_setting,
+)
 
+AfterGetMeta = defstruct(
+    "AfterGetMeta",
+    [
+        *_after_context,
+        *_get_meta_context,
+    ],
+    **_type_setting,
+)
 
-class BeforeGetMeta(BaseGetMetaContext, BaseBeforeContext): ...
+OnSuccessGetMeta = defstruct(
+    "OnSuccessGetMeta",
+    [
+        *_on_success_context,
+        *_get_meta_context,
+        ("meta", ResourceMeta),
+    ],
+    **_type_setting,
+)
 
-
-class AfterGetMeta(BeforeGetMeta, BaseAfterContext): ...
-
-
-class OnSuccessGetMeta(BeforeGetMeta, BaseOnSuccessContext):
-    meta: ResourceMeta
-
-
-class OnFailureGetMeta(BeforeGetMeta, BaseOnFailureContext): ...
+OnFailureGetMeta = defstruct(
+    "OnFailureGetMeta",
+    [
+        *_on_failure_context,
+        *_get_meta_context,
+    ],
+    **_type_setting,
+)
 
 
 # ============================================================================
 # Search Resources Context Classes
 # ============================================================================
 
+_search_resources_context = [
+    ("action", ResourceAction, ResourceAction.search_resources),
+    ("query", ResourceMetaSearchQuery),
+]
 
-class BaseSearchResourcesContext(BaseContext):
-    action: ResourceAction = ResourceAction.search_resources
-    query: "ResourceMetaSearchQuery"
+BeforeSearchResources = defstruct(
+    "BeforeSearchResources",
+    [
+        *_before_context,
+        *_search_resources_context,
+    ],
+    **_type_setting,
+)
 
+AfterSearchResources = defstruct(
+    "AfterSearchResources",
+    [
+        *_after_context,
+        *_search_resources_context,
+    ],
+    **_type_setting,
+)
 
-class BeforeSearchResources(BaseSearchResourcesContext, BaseBeforeContext):
-    pass
+OnSuccessSearchResources = defstruct(
+    "OnSuccessSearchResources",
+    [
+        *_on_success_context,
+        *_search_resources_context,
+        ("results", list[ResourceMeta]),
+    ],
+    **_type_setting,
+)
 
-
-class AfterSearchResources(BaseSearchResourcesContext, BaseAfterContext):
-    pass
-
-
-class OnSuccessSearchResources(BaseSearchResourcesContext, BaseOnSuccessContext):
-    results: list[ResourceMeta]
-
-
-class OnFailureSearchResources(BaseSearchResourcesContext, BaseOnFailureContext):
-    pass
+OnFailureSearchResources = defstruct(
+    "OnFailureSearchResources",
+    [
+        *_on_failure_context,
+        *_search_resources_context,
+    ],
+    **_type_setting,
+)
 
 
 # ============================================================================
 # Update Context Classes
 # ============================================================================
 
+_update_context = [
+    ("action", ResourceAction, ResourceAction.update),
+    ("resource_id", str),
+    ("data", T),
+]
 
-class BaseUpdateContext(BaseContext):
-    action: ResourceAction = ResourceAction.update
-    resource_id: str
-    data: T
+BeforeUpdate = defstruct(
+    "BeforeUpdate",
+    [
+        *_before_context,
+        *_update_context,
+    ],
+    **_type_setting,
+)
 
+AfterUpdate = defstruct(
+    "AfterUpdate",
+    [
+        *_after_context,
+        *_update_context,
+    ],
+    **_type_setting,
+)
 
-class BeforeUpdate(BaseUpdateContext, BaseBeforeContext):
-    pass
+OnSuccessUpdate = defstruct(
+    "OnSuccessUpdate",
+    [
+        *_on_success_context,
+        *_update_context,
+        ("revision_info", RevisionInfo),
+    ],
+    **_type_setting,
+)
 
-
-class AfterUpdate(BaseUpdateContext, BaseAfterContext):
-    pass
-
-
-class OnSuccessUpdate(BaseUpdateContext, BaseOnSuccessContext):
-    revision_info: RevisionInfo
-
-
-class OnFailureUpdate(BaseUpdateContext, BaseOnFailureContext):
-    pass
+OnFailureUpdate = defstruct(
+    "OnFailureUpdate",
+    [
+        *_on_failure_context,
+        *_update_context,
+    ],
+    **_type_setting,
+)
 
 
 # ============================================================================
 # Patch Context Classes
 # ============================================================================
 
+_patch_context = [
+    ("action", ResourceAction, ResourceAction.patch),
+    ("resource_id", str),
+    ("patch_data", JsonPatch),
+]
 
-class BasePatchContext(BaseContext):
-    action: ResourceAction = ResourceAction.patch
-    resource_id: str
-    patch_data: list[dict[str, Any]]  # JsonPatch.patch
+BeforePatch = defstruct(
+    "BeforePatch",
+    [
+        *_before_context,
+        *_patch_context,
+    ],
+    **_type_setting,
+)
 
+AfterPatch = defstruct(
+    "AfterPatch",
+    [
+        *_after_context,
+        *_patch_context,
+    ],
+    **_type_setting,
+)
 
-class BeforePatch(BasePatchContext, BaseBeforeContext):
-    pass
+OnSuccessPatch = defstruct(
+    "OnSuccessPatch",
+    [
+        *_on_success_context,
+        *_patch_context,
+        ("revision_info", RevisionInfo),
+    ],
+    **_type_setting,
+)
 
-
-class AfterPatch(BasePatchContext, BaseAfterContext):
-    pass
-
-
-class OnSuccessPatch(BasePatchContext, BaseOnSuccessContext):
-    revision_info: RevisionInfo
-
-
-class OnFailurePatch(BasePatchContext, BaseOnFailureContext):
-    pass
+OnFailurePatch = defstruct(
+    "OnFailurePatch",
+    [
+        *_on_failure_context,
+        *_patch_context,
+    ],
+    **_type_setting,
+)
 
 
 # ============================================================================
 # Switch Context Classes
 # ============================================================================
 
+_switch_context = [
+    ("action", ResourceAction, ResourceAction.switch),
+    ("resource_id", str),
+    ("revision_id", str),
+]
 
-class BaseSwitchContext(BaseContext):
-    action: ResourceAction = ResourceAction.switch
-    resource_id: str
-    revision_id: str
+BeforeSwitch = defstruct(
+    "BeforeSwitch",
+    [
+        *_before_context,
+        *_switch_context,
+    ],
+    **_type_setting,
+)
 
+AfterSwitch = defstruct(
+    "AfterSwitch",
+    [
+        *_after_context,
+        *_switch_context,
+    ],
+    **_type_setting,
+)
 
-class BeforeSwitch(BaseSwitchContext, BaseBeforeContext):
-    pass
+OnSuccessSwitch = defstruct(
+    "OnSuccessSwitch",
+    [
+        *_on_success_context,
+        *_switch_context,
+        ("meta", ResourceMeta),
+    ],
+    **_type_setting,
+)
 
-
-class AfterSwitch(BaseSwitchContext, BaseAfterContext):
-    pass
-
-
-class OnSuccessSwitch(BaseSwitchContext, BaseOnSuccessContext):
-    meta: ResourceMeta
-
-
-class OnFailureSwitch(BaseSwitchContext, BaseOnFailureContext):
-    pass
+OnFailureSwitch = defstruct(
+    "OnFailureSwitch",
+    [
+        *_on_failure_context,
+        *_switch_context,
+    ],
+    **_type_setting,
+)
 
 
 # ============================================================================
 # Delete Context Classes
 # ============================================================================
 
+_delete_context = [
+    ("action", ResourceAction, ResourceAction.delete),
+    ("resource_id", str),
+]
 
-class BaseDeleteContext(BaseContext):
-    action: ResourceAction = ResourceAction.delete
-    resource_id: str
+BeforeDelete = defstruct(
+    "BeforeDelete",
+    [
+        *_before_context,
+        *_delete_context,
+    ],
+    **_type_setting,
+)
 
+AfterDelete = defstruct(
+    "AfterDelete",
+    [
+        *_after_context,
+        *_delete_context,
+    ],
+    **_type_setting,
+)
 
-class BeforeDelete(BaseDeleteContext, BaseBeforeContext):
-    pass
+OnSuccessDelete = defstruct(
+    "OnSuccessDelete",
+    [
+        *_on_success_context,
+        *_delete_context,
+        ("meta", ResourceMeta),
+    ],
+    **_type_setting,
+)
 
-
-class AfterDelete(BaseDeleteContext, BaseAfterContext):
-    pass
-
-
-class OnSuccessDelete(BaseDeleteContext, BaseOnSuccessContext):
-    meta: ResourceMeta
-
-
-class OnFailureDelete(BaseDeleteContext, BaseOnFailureContext):
-    pass
+OnFailureDelete = defstruct(
+    "OnFailureDelete",
+    [
+        *_on_failure_context,
+        *_delete_context,
+    ],
+    **_type_setting,
+)
 
 
 # ============================================================================
 # Restore Context Classes
 # ============================================================================
 
+_restore_context = [
+    ("action", ResourceAction, ResourceAction.restore),
+    ("resource_id", str),
+]
 
-class BaseRestoreContext(BaseContext):
-    action: ResourceAction = ResourceAction.restore
-    resource_id: str
+BeforeRestore = defstruct(
+    "BeforeRestore",
+    [
+        *_before_context,
+        *_restore_context,
+    ],
+    **_type_setting,
+)
 
+AfterRestore = defstruct(
+    "AfterRestore",
+    [
+        *_after_context,
+        *_restore_context,
+    ],
+    **_type_setting,
+)
 
-class BeforeRestore(BaseRestoreContext, BaseBeforeContext):
-    pass
+OnSuccessRestore = defstruct(
+    "OnSuccessRestore",
+    [
+        *_on_success_context,
+        *_restore_context,
+        ("meta", ResourceMeta),
+    ],
+    **_type_setting,
+)
 
-
-class AfterRestore(BaseRestoreContext, BaseAfterContext):
-    pass
-
-
-class OnSuccessRestore(BaseRestoreContext, BaseOnSuccessContext):
-    meta: ResourceMeta
-
-
-class OnFailureRestore(BaseRestoreContext, BaseOnFailureContext):
-    pass
+OnFailureRestore = defstruct(
+    "OnFailureRestore",
+    [
+        *_on_failure_context,
+        *_restore_context,
+    ],
+    **_type_setting,
+)
 
 
 # ============================================================================
 # Dump Context Classes
 # ============================================================================
 
+_dump_context = [
+    ("action", ResourceAction, ResourceAction.dump),
+]
 
-class BaseDumpContext(BaseContext):
-    action: ResourceAction = ResourceAction.dump
+BeforeDump = defstruct(
+    "BeforeDump",
+    [
+        *_before_context,
+        *_dump_context,
+    ],
+    **_type_setting,
+)
 
+AfterDump = defstruct(
+    "AfterDump",
+    [
+        *_after_context,
+        *_dump_context,
+    ],
+    **_type_setting,
+)
 
-class BeforeDump(BaseDumpContext, BaseBeforeContext):
-    pass
+OnSuccessDump = defstruct(
+    "OnSuccessDump",
+    [
+        *_on_success_context,
+        *_dump_context,
+        ("result", Generator[tuple[str, IO[bytes]], None, None]),
+    ],
+    **_type_setting,
+)
 
-
-class AfterDump(BaseDumpContext, BaseAfterContext):
-    pass
-
-
-class OnSuccessDump(BaseDumpContext, BaseOnSuccessContext): ...
-
-
-class OnFailureDump(BaseDumpContext, BaseOnFailureContext):
-    pass
+OnFailureDump = defstruct(
+    "OnFailureDump",
+    [
+        *_on_failure_context,
+        *_dump_context,
+    ],
+    **_type_setting,
+)
 
 
 # ============================================================================
 # Load Context Classes
 # ============================================================================
 
+_load_context = [
+    ("action", ResourceAction, ResourceAction.load),
+    ("key", str),
+    ("bio", IO[bytes]),
+]
 
-class BaseLoadContext(BaseContext):
-    action: ResourceAction = ResourceAction.load
-    key: str
+BeforeLoad = defstruct(
+    "BeforeLoad",
+    [
+        *_before_context,
+        *_load_context,
+    ],
+    **_type_setting,
+)
+
+AfterLoad = defstruct(
+    "AfterLoad",
+    [
+        *_after_context,
+        *_load_context,
+    ],
+    **_type_setting,
+)
+
+OnSuccessLoad = defstruct(
+    "OnSuccessLoad",
+    [
+        *_on_success_context,
+        *_load_context,
+    ],
+    **_type_setting,
+)
+
+OnFailureLoad = defstruct(
+    "OnFailureLoad",
+    [
+        *_on_failure_context,
+        *_load_context,
+    ],
+    **_type_setting,
+)
+
+EventContext = (
+    BeforeCreate
+    | AfterCreate
+    | OnSuccessCreate
+    | OnFailureCreate
+    | BeforeGet
+    | AfterGet
+    | OnSuccessGet
+    | OnFailureGet
+    | BeforeGetResourceRevision
+    | AfterGetResourceRevision
+    | OnSuccessGetResourceRevision
+    | OnFailureGetResourceRevision
+    | BeforeListRevisions
+    | AfterListRevisions
+    | OnSuccessListRevisions
+    | OnFailureListRevisions
+    | BeforeGetMeta
+    | AfterGetMeta
+    | OnSuccessGetMeta
+    | OnFailureGetMeta
+    | BeforeSearchResources
+    | AfterSearchResources
+    | OnSuccessSearchResources
+    | OnFailureSearchResources
+    | BeforeUpdate
+    | AfterUpdate
+    | OnSuccessUpdate
+    | OnFailureUpdate
+    | BeforePatch
+    | AfterPatch
+    | OnSuccessPatch
+    | OnFailurePatch
+    | BeforeSwitch
+    | AfterSwitch
+    | OnSuccessSwitch
+    | OnFailureSwitch
+    | BeforeDelete
+    | AfterDelete
+    | OnSuccessDelete
+    | OnFailureDelete
+    | BeforeRestore
+    | AfterRestore
+    | OnSuccessRestore
+    | OnFailureRestore
+    | BeforeDump
+    | AfterDump
+    | OnSuccessDump
+    | OnFailureDump
+    | BeforeLoad
+    | AfterLoad
+    | OnSuccessLoad
+    | OnFailureLoad
+)
 
 
-class BeforeLoad(BaseLoadContext, BaseBeforeContext):
+class IResourceManager(ABC, Generic[T]):
+    @property
+    @abstractmethod
+    def user(self) -> str: ...
+    @property
+    @abstractmethod
+    def now(self) -> dt.datetime: ...
+    @property
+    @abstractmethod
+    def user_or_unset(self) -> str | UnsetType: ...
+    @property
+    @abstractmethod
+    def now_or_unset(self) -> dt.datetime | UnsetType: ...
+    @property
+    @abstractmethod
+    def resource_type(self) -> type[T]: ...
+
+    @property
+    @abstractmethod
+    def resource_name(self) -> str: ...
+
+    @abstractmethod
+    def meta_provide(
+        self,
+        user: str,
+        now: dt.datetime,
+        *,
+        resource_id: str | UnsetType = UNSET,
+    ) -> AbstractContextManager: ...
+
+    @abstractmethod
+    def create(self, data: T) -> RevisionInfo:
+        """Create resource and return the metadata.
+
+        Arguments:
+            - data (T): the data to be created.
+
+        Returns:
+            - info (RevisionInfo): the metadata of the created data.
+
+        """
+
+    @abstractmethod
+    def get(self, resource_id: str) -> Resource[T]:
+        """Get the current revision of the resource.
+
+        Arguments:
+            - resource_id (str): the id of the resource to get.
+
+        Returns:
+            - resource (Resource[T]): the resource with its data and revision info.
+
+        Raises:
+            - ResourceIDNotFoundError: if resource id does not exist.
+            - ResourceIsDeletedError: if resource is soft-deleted.
+
+        ---
+
+        Returns the current revision of the specified resource. The current revision
+        is determined by the `current_revision_id` field in ResourceMeta.
+
+        This method will raise different exceptions based on the resource state:
+        - ResourceIDNotFoundError: The resource ID does not exist in storage
+        - ResourceIsDeletedError: The resource exists but is marked as deleted (is_deleted=True)
+
+        For soft-deleted resources, use restore() first to make them accessible again.
+        """
+
+    @abstractmethod
+    def get_resource_revision(self, resource_id: str, revision_id: str) -> Resource[T]:
+        """Get a specific revision of the resource.
+
+        Arguments:
+            - resource_id (str): the id of the resource.
+            - revision_id (str): the id of the specific revision to retrieve.
+
+        Returns:
+            - resource (Resource[T]): the resource with its data and revision info for the specified revision.
+
+        Raises:
+            - ResourceIDNotFoundError: if resource id does not exist.
+            - RevisionIDNotFoundError: if revision id does not exist for this resource.
+
+        ---
+
+        Retrieves a specific historical revision of the resource identified by both
+        resource_id and revision_id. Unlike get() which returns the current revision,
+        this method allows access to any revision in the resource's history.
+
+        This method does NOT check the is_deleted status of the resource metadata,
+        allowing access to revisions of soft-deleted resources for audit and
+        recovery purposes.
+
+        The returned Resource contains both the data as it existed at that revision
+        and the RevisionInfo with metadata about that specific revision.
+        """
+
+    @abstractmethod
+    def list_revisions(self, resource_id: str) -> list[str]:
+        """Get a list of all revision IDs for the resource.
+
+        Arguments:
+            - resource_id (str): the id of the resource.
+
+        Returns:
+            - list[str]: list of revision IDs for the resource, typically ordered chronologically.
+
+        Raises:
+            - ResourceIDNotFoundError: if resource id does not exist.
+
+        ---
+
+        Returns all revision IDs that exist for the specified resource, providing
+        a complete history of all revisions. This is useful for:
+        - Browsing the complete revision history
+        - Selecting specific revisions for comparison
+        - Audit trails and compliance reporting
+        - Determining available restore points
+
+        The revision IDs are typically returned in chronological order (oldest to newest),
+        but the exact ordering may depend on the implementation.
+
+        This method does NOT check the is_deleted status of the resource, allowing
+        access to revision lists for soft-deleted resources.
+        """
+
+    @abstractmethod
+    def get_meta(self, resource_id: str) -> ResourceMeta:
+        """Get the metadata of the resource.
+
+        Arguments:
+            - resource_id (str): the id of the resource to get metadata for.
+
+        Returns:
+            - meta (ResourceMeta): the metadata of the resource.
+
+        Raises:
+            - ResourceIDNotFoundError: if resource id does not exist.
+            - ResourceIsDeletedError: if resource is soft-deleted.
+
+        ---
+
+        Returns the metadata of the specified resource, including its current revision,
+        total revision count, creation and update timestamps, and user information.
+        This method will raise exceptions similar to get() based on the resource state.
+        """
+
+    @abstractmethod
+    def search_resources(self, query: ResourceMetaSearchQuery) -> list[ResourceMeta]:
+        """Search for resources based on a query.
+
+        Arguments:
+            - query (ResourceMetaSearchQuery): the search criteria and options.
+
+        Returns:
+            - list[ResourceMeta]: list of resource metadata matching the query criteria.
+
+        ---
+
+        This method allows searching for resources based on various criteria defined
+        in the ResourceMetaSearchQuery. The query supports filtering by:
+        - Deletion status (is_deleted)
+        - Time ranges (created_time_start/end, updated_time_start/end)
+        - User filters (created_bys, updated_bys)
+        - Pagination (limit, offset)
+        - Sorting (sorts with direction and key)
+
+        The results are returned as a list of resource metadata that match the specified
+        criteria, ordered according to the sort parameters and limited by the
+        pagination settings.
+        """
+
+    @abstractmethod
+    def update(self, resource_id: str, data: T) -> RevisionInfo:
+        """Update the data of the resource by creating a new revision.
+
+        Arguments:
+            - resource_id (str): the id of the resource to update.
+            - data (T): the data to replace the current one.
+
+        Returns:
+            - info (RevisionInfo): the metadata of the newly created revision.
+
+        Raises:
+            - ResourceIDNotFoundError: if resource id does not exist.
+            - ResourceIsDeletedError: if resource is soft-deleted.
+
+        ---
+
+        Creates a new revision with the provided data and updates the resource's
+        current_revision_id to point to this new revision. The new revision's
+        parent_revision_id will be set to the previous current_revision_id.
+
+        This operation will fail if the resource is soft-deleted. Use restore()
+        first to make soft-deleted resources accessible for updates.
+
+        For partial updates, use patch() instead of update().
+        """
+
+    @abstractmethod
+    def create_or_update(self, resource_id: str, data: T) -> RevisionInfo:
+        pass
+
+    @abstractmethod
+    def patch(self, resource_id: str, patch_data: JsonPatch) -> RevisionInfo:
+        """Apply RFC 6902 JSON Patch operations to the resource.
+
+        Arguments:
+            - resource_id (str): the id of the resource to patch.
+            - patch_data (JsonPatch): RFC 6902 JSON Patch operations to apply.
+
+        Returns:
+            - info (RevisionInfo): the metadata of the newly created revision.
+
+        Raises:
+            - ResourceIDNotFoundError: if resource id does not exist.
+            - ResourceIsDeletedError: if resource is soft-deleted.
+
+        ---
+
+        Applies the provided JSON Patch operations to the current revision data
+        and creates a new revision with the modified data. The patch operations
+        follow RFC 6902 standard.
+
+        This method internally:
+        1. Gets the current revision data
+        2. Applies the patch operations in-place
+        3. Creates a new revision via update()
+
+        This operation will fail if the resource is soft-deleted. Use restore()
+        first to make soft-deleted resources accessible for patching.
+        """
+
+    @abstractmethod
+    def switch(self, resource_id: str, revision_id: str) -> ResourceMeta:
+        """Switch the current revision to a specific revision.
+
+        Arguments:
+            - resource_id (str): the id of the resource.
+            - revision_id (str): the id of the revision to switch to.
+
+        Returns:
+            - meta (ResourceMeta): the metadata of the resource after switching.
+
+        Raises:
+            - ResourceIDNotFoundError: if resource id does not exist.
+            - ResourceIsDeletedError: if resource is soft-deleted.
+            - RevisionIDNotFoundError: if revision id does not exist.
+
+        ---
+
+        Changes the current_revision_id in ResourceMeta to point to the specified
+        revision. This allows you to make any historical revision the current one
+        without deleting any revisions. All historical revisions remain accessible.
+
+        Behavior:
+        - If switching to the same revision (current_revision_id == revision_id),
+          returns the current metadata without any changes
+        - Otherwise, updates current_revision_id, updated_time, and updated_by
+        - Subsequent update/patch operations will use the new current revision as parent
+
+        This operation will fail if the resource is soft-deleted. The revision_id
+        must exist in the resource's revision history.
+        """
+
+    @abstractmethod
+    def delete(self, resource_id: str) -> ResourceMeta:
+        """Mark the resource as deleted (soft delete).
+
+        Arguments:
+            - resource_id (str): the id of the resource to delete.
+
+        Returns:
+            - meta (ResourceMeta): the updated metadata with is_deleted=True.
+
+        Raises:
+            - ResourceIDNotFoundError: if resource id does not exist.
+            - ResourceIsDeletedError: if resource is already soft-deleted.
+
+        ---
+
+        This operation performs a soft delete by setting the `is_deleted` flag to True
+        in the ResourceMeta. The resource and all its revisions remain in storage
+        and can be recovered later.
+
+        Behavior:
+        - Sets `is_deleted = True` in ResourceMeta
+        - Updates `updated_time` and `updated_by` to record the deletion
+        - All revision data and metadata are preserved
+        - Resource can be restored using restore()
+
+        This operation will fail if the resource is already soft-deleted.
+        This is a reversible operation that maintains data integrity while
+        marking the resource as logically deleted.
+        """
+
+    @abstractmethod
+    def restore(self, resource_id: str) -> ResourceMeta:
+        """Restore a previously deleted resource (undo soft delete).
+
+        Arguments:
+            - resource_id (str): the id of the resource to restore.
+
+        Returns:
+            - meta (ResourceMeta): the updated metadata with is_deleted=False.
+
+        Raises:
+            - ResourceIDNotFoundError: if resource id does not exist.
+
+        ---
+
+        This operation restores a previously soft-deleted resource by setting
+        the `is_deleted` flag back to False in the ResourceMeta. This undoes
+        the soft delete operation.
+
+        Behavior:
+        - If resource is deleted (is_deleted=True):
+          - Sets `is_deleted = False` in ResourceMeta
+          - Updates `updated_time` and `updated_by` to record the restoration
+          - Saves the updated metadata to storage
+        - If resource is not deleted (is_deleted=False):
+          - Returns the current metadata without any changes
+          - No timestamps are updated
+
+        All revision data and metadata remain unchanged. The resource becomes
+        accessible again through normal operations only if it was previously deleted.
+
+        Note: This method pairs with delete() to provide reversible
+        soft delete functionality.
+        """
+
+    @abstractmethod
+    def dump(self) -> Generator[tuple[str, IO[bytes]]]:
+        """Dump all resource data as a series of tar archive entries.
+
+        Returns:
+            - Generator[tuple[str, IO[bytes]]]: generator yielding (filename, fileobj) pairs for each resource.
+
+        ---
+
+        Exports all resources in the manager as a series of tar archive entries.
+        Each entry represents one resource and contains both its metadata and
+        all revision data in a structured format.
+
+        The generator yields tuples where:
+        - filename: A unique identifier for the resource (typically the resource_id)
+        - fileobj: An IO[bytes] object containing the tar archive data for that resource
+
+        This method is designed for:
+        - Complete data backup and export operations
+        - Migrating resources between different systems
+        - Creating portable resource archives
+        - Bulk data transfer scenarios
+
+        The tar archive format ensures that all resource information including
+        metadata, revision history, and data content is preserved in a
+        standardized, portable format.
+
+        Note: This method does not filter by deletion status, so both active
+        and soft-deleted resources will be included in the dump.
+        """
+
+    @abstractmethod
+    def load(self, key: str, bio: IO[bytes]) -> None:
+        """Load resource data from a tar archive entry.
+
+        Arguments:
+            - key (str): the unique identifier for the resource being loaded.
+            - bio (IO[bytes]): the tar archive containing the resource data.
+
+        ---
+
+        Imports a single resource from a tar archive entry, typically created
+        by the dump() method. The tar archive should contain both metadata
+        and all revision data for the resource.
+
+        The key parameter serves as the resource identifier and should match
+        the filename used when the resource was dumped. The bio parameter
+        contains the complete tar archive data for that specific resource.
+
+        This method handles:
+        - Extracting metadata and revision information from the archive
+        - Restoring all historical revisions with proper parent-child relationships
+        - Maintaining data integrity and revision ordering
+        - Preserving timestamps, user information, and other metadata
+
+        Use Cases:
+        - Restoring resources from backup archives
+        - Importing resources from external systems
+        - Migrating data between different AutoCRUD instances
+        - Bulk resource restoration operations
+
+        Behavior:
+        - If a resource with the same key already exists, the behavior depends on implementation
+        - All revision history and metadata from the archive will be restored
+        - The resource's deletion status and other flags are preserved as archived
+
+        Note: This method should be used in conjunction with dump() for
+        complete backup and restore workflows.
+        """
+
+
+class IMigration(ABC):
+    @abstractmethod
+    def migrate(self, data: IO[bytes], schema_version: str | None) -> T: ...
+    @property
+    @abstractmethod
+    def schema_version(self) -> str: ...
+
+
+class PermissionDeniedError(Exception):
     pass
 
 
-class AfterLoad(BaseLoadContext, BaseAfterContext):
+class ResourceNotFoundError(Exception):
     pass
 
 
-class OnSuccessLoad(BaseLoadContext, BaseOnSuccessContext):
+class RevisionNotFoundError(ResourceNotFoundError):
     pass
 
 
-class OnFailureLoad(BaseLoadContext, BaseOnFailureContext):
+class RevisionIDNotFoundError(RevisionNotFoundError):
+    def __init__(self, resource_id: str, revision_id: str):
+        super().__init__(
+            f"Revision '{revision_id}' of Resource '{resource_id}' not found.",
+        )
+        self.resource_id = resource_id
+        self.revision_id = revision_id
+
+
+class ResourceIsDeletedError(ResourceNotFoundError):
+    def __init__(self, resource_id: str):
+        super().__init__(f"Resource '{resource_id}' is deleted.")
+        self.resource_id = resource_id
+
+
+class ResourceIDNotFoundError(ResourceNotFoundError):
+    def __init__(self, resource_id: str):
+        super().__init__(f"Resource '{resource_id}' not found.")
+        self.resource_id = resource_id
+
+
+class ResourceConflictError(Exception):
     pass
+
+
+class SchemaConflictError(ResourceConflictError):
+    pass
+
+
+class PermissionContext(Struct, kw_only=True):
+    """權限檢查上下文 - 包含所有權限檢查所需的資訊"""
+
+    # 基本資訊
+    user: str
+    now: dt.datetime
+    action: ResourceAction
+    resource_name: str
+
+    # 方法調用資訊
+    method_args: tuple = ()
+    method_kwargs: Dict[str, Any] = {}
+
+    # 額外上下文資料
+    resource_id: str | UnsetType = UNSET
+    resource_meta: ResourceMeta | UnsetType = UNSET
+    resource_data: Any | UnsetType = UNSET
+    extra_data: Dict[str, Any] = {}
+
+
+class PermissionResult(StrEnum):
+    """權限檢查結果"""
+
+    allow = "allow"
+    deny = "deny"
+    not_applicable = "not_applicable"  # 這個檢查器不適用於此操作
+
+
+class IPermissionChecker(ABC):
+    """權限檢查器接口"""
+
+    @abstractmethod
+    def check_permission(self, context: PermissionContext) -> PermissionResult:
+        """檢查權限
+
+        Args:
+            context: 權限檢查上下文
+
+        Returns:
+            PermissionResult: 檢查結果
+        """
+
+
+class SpecialIndex(Enum):
+    msgspec_tag = "msgspec_tag"
+
+
+class IndexableField(Struct, kw_only=True):
+    """Defines a field that should be indexed for searching."""
+
+    field_path: str  # JSON path to the field, e.g., "name", "user.email"
+    field_type: (
+        type | SpecialIndex
+    )  # The type of the field (str, int, float, bool, datetime)

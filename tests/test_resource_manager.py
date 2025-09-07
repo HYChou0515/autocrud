@@ -14,12 +14,12 @@ from faker import Faker
 from msgspec import UNSET, Struct
 
 from autocrud.types import (
+    ResourceIDNotFoundError,
+    ResourceIsDeletedError,
     ResourceMetaSortKey,
 )
 from autocrud.resource_manager.core import (
     IResourceStore,
-    ResourceIDNotFoundError,
-    ResourceIsDeletedError,
     ResourceManager,
     SimpleStorage,
 )

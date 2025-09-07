@@ -12,14 +12,13 @@ from msgspec import UNSET, Struct
 
 from autocrud.resource_manager.basic import (
     Encoding,
-    IMigration,
 )
 from autocrud.resource_manager.resource_store.s3 import S3ResourceStore
 from autocrud.resource_manager.resource_store.simple import (
     DiskResourceStore,
     MemoryResourceStore,
 )
-from autocrud.types import Resource, RevisionInfo, RevisionStatus
+from autocrud.types import IMigration, Resource, RevisionInfo, RevisionStatus
 
 
 # Legacy data structures for migration testing

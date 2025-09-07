@@ -25,7 +25,6 @@ from autocrud.types import (
     AfterSearchResources,
     AfterSwitch,
     AfterUpdate,
-    BaseContext,
     BeforeCreate,
     BeforeDelete,
     BeforeDump,
@@ -39,6 +38,10 @@ from autocrud.types import (
     BeforeSearchResources,
     BeforeSwitch,
     BeforeUpdate,
+    EventContext,
+    IMigration,
+    IResourceManager,
+    IndexableField,
     OnFailureCreate,
     OnFailureDelete,
     OnFailureDump,
@@ -67,31 +70,28 @@ from autocrud.types import (
     OnSuccessUpdate,
     Resource,
     ResourceAction,
+    ResourceIDNotFoundError,
+    ResourceIsDeletedError,
     ResourceMeta,
     ResourceMetaSearchQuery,
+    RevisionIDNotFoundError,
     RevisionInfo,
     RevisionStatus,
+    SpecialIndex,
 )
 
 if TYPE_CHECKING:
-    from autocrud.permission.basic import IPermissionChecker
+    from autocrud.types import IPermissionChecker
 
 
-from autocrud.permission.basic import PermissionResult
+from autocrud.types import PermissionResult
 from autocrud.resource_manager.basic import (
     Ctx,
     Encoding,
     IMetaStore,
-    IMigration,
-    IndexableField,
-    IResourceManager,
     IResourceStore,
     IStorage,
     MsgspecSerializer,
-    ResourceIDNotFoundError,
-    ResourceIsDeletedError,
-    RevisionIDNotFoundError,
-    SpecialIndex,
 )
 from autocrud.resource_manager.data_converter import DataConverter
 from autocrud.util.naming import NameConverter, NamingFormat
@@ -204,10 +204,10 @@ def smart_permission_check():
 
         @wraps(method)
         def _permission_check(self: IResourceManager[T], *method_args, **method_kwargs):
-            from autocrud.permission.basic import (
+            from autocrud.types import (
                 PermissionContext,
             )
-            from autocrud.resource_manager.basic import PermissionDeniedError
+            from autocrud.types import PermissionDeniedError
 
             user = self.user_or_unset
             context = PermissionContext(
@@ -439,7 +439,7 @@ class ResourceManager(IResourceManager[T], Generic[T]):
         )
         return info
 
-    def _handle_message(self, context: BaseContext) -> None:
+    def _handle_message(self, context: EventContext) -> None:
         pass
 
     def _get_meta_no_check_is_deleted(self, resource_id: str) -> ResourceMeta:

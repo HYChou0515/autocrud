@@ -14,8 +14,8 @@ from dataclasses import dataclass
 import pytest
 
 from autocrud.permission.acl import ACLPermission, ACLPermissionChecker, Policy
-from autocrud.permission.basic import PermissionContext, PermissionResult
-from autocrud.resource_manager.basic import PermissionDeniedError
+from autocrud.types import PermissionResult
+from autocrud.types import PermissionContext, PermissionDeniedError
 from autocrud.resource_manager.core import ResourceManager, SimpleStorage
 from autocrud.resource_manager.meta_store.simple import MemoryMetaStore
 from autocrud.resource_manager.resource_store.simple import MemoryResourceStore

@@ -10,12 +10,10 @@ import itertools as it
 import logging
 from collections.abc import Callable
 
-from autocrud.permission.basic import (
-    IPermissionChecker,
-    PermissionContext,
+from autocrud.types import (
     PermissionResult,
 )
-from autocrud.types import ResourceAction
+from autocrud.types import IPermissionChecker, PermissionContext, ResourceAction
 
 logger = logging.getLogger(__name__)
 

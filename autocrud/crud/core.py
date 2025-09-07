@@ -37,9 +37,6 @@ from autocrud.crud.route_templates.update import UpdateRouteTemplate
 from autocrud.permission.rbac import RBACPermissionChecker
 from autocrud.permission.simple import AllowAll
 from autocrud.resource_manager.basic import (
-    IMigration,
-    IndexableField,
-    IResourceManager,
     IStorage,
 )
 from autocrud.resource_manager.core import ResourceManager
@@ -47,7 +44,13 @@ from autocrud.resource_manager.storage_factory import (
     IStorageFactory,
     MemoryStorageFactory,
 )
-from autocrud.types import ResourceMeta, RevisionInfo
+from autocrud.types import (
+    IMigration,
+    IResourceManager,
+    IndexableField,
+    ResourceMeta,
+    RevisionInfo,
+)
 from autocrud.util.naming import NameConverter
 
 T = TypeVar("T")

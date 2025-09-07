@@ -2,13 +2,14 @@ from abc import ABC, abstractmethod
 from pathlib import Path
 from typing import TypeVar
 
-from autocrud.resource_manager.basic import IMigration, IStorage
+from autocrud.resource_manager.basic import IStorage
 from autocrud.resource_manager.core import SimpleStorage
 from autocrud.resource_manager.meta_store.simple import DiskMetaStore, MemoryMetaStore
 from autocrud.resource_manager.resource_store.simple import (
     DiskResourceStore,
     MemoryResourceStore,
 )
+from autocrud.types import IMigration
 
 T = TypeVar("T")
 

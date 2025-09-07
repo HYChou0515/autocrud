@@ -14,8 +14,9 @@ from typing import IO
 
 from msgspec import UnsetType
 
-from autocrud.resource_manager.basic import Encoding, IMigration, MsgspecSerializer
+from autocrud.resource_manager.basic import Encoding, MsgspecSerializer
 from autocrud.resource_manager.storage_factory import DiskStorageFactory
+from autocrud.types import IMigration
 
 if len(sys.argv) >= 2:
     mode = sys.argv[1]

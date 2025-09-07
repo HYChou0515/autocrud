@@ -6,11 +6,9 @@ from msgspec import UNSET, Struct, UnsetType
 from autocrud.permission.basic import (
     DEFAULT_ROOT_USER,
     IPermissionCheckerWithStore,
-    PermissionContext,
-    PermissionResult,
 )
 from autocrud.permission.simple import RootOnly
-from autocrud.resource_manager.basic import (
+from autocrud.types import (
     IndexableField,
 )
 from autocrud.resource_manager.core import ResourceManager
@@ -21,6 +19,8 @@ from autocrud.resource_manager.storage_factory import (
 from autocrud.types import (
     DataSearchCondition,
     DataSearchOperator,
+    PermissionContext,
+    PermissionResult,
     ResourceAction,
     ResourceDataSearchSort,
     ResourceMetaSearchQuery,

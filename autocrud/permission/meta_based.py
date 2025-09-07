@@ -2,12 +2,10 @@ import logging
 
 from msgspec import UNSET
 
-from autocrud.permission.basic import (
-    IPermissionChecker,
-    PermissionContext,
+from autocrud.types import (
     PermissionResult,
 )
-from autocrud.types import ResourceAction
+from autocrud.types import IPermissionChecker, PermissionContext, ResourceAction
 from autocrud.resource_manager.core import ResourceManager
 
 logger = logging.getLogger(__name__)

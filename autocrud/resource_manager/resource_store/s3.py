@@ -7,11 +7,10 @@ from botocore.exceptions import ClientError
 
 from autocrud.resource_manager.basic import (
     Encoding,
-    IMigration,
     IResourceStore,
     MsgspecSerializer,
 )
-from autocrud.types import Resource, RevisionInfo
+from autocrud.types import IMigration, Resource, RevisionInfo
 
 T = TypeVar("T")
 

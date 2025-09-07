@@ -8,9 +8,7 @@ from msgspec import Struct
 
 from autocrud.permission.acl import ACLPermission, ACLPermissionChecker, Policy
 from autocrud.permission.action import ActionBasedPermissionChecker
-from autocrud.permission.basic import (
-    IPermissionChecker,
-    PermissionContext,
+from autocrud.types import (
     PermissionResult,
 )
 from autocrud.permission.composite import CompositePermissionChecker
@@ -19,15 +17,16 @@ from autocrud.permission.rbac import (
     RBACPermissionEntry,
     RoleMembership,
 )
-from autocrud.resource_manager.basic import (
-    PermissionDeniedError,
+from autocrud.types import (
+    IPermissionChecker,
+    PermissionContext,
     ResourceIDNotFoundError,
 )
 from autocrud.resource_manager.core import ResourceManager, SimpleStorage
 from autocrud.resource_manager.meta_store.simple import MemoryMetaStore
 from autocrud.resource_manager.resource_store.simple import MemoryResourceStore
 from autocrud.resource_manager.storage_factory import MemoryStorageFactory
-from autocrud.types import ResourceAction
+from autocrud.types import PermissionDeniedError, ResourceAction
 
 
 class DataStruct(Struct):

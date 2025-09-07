@@ -7,7 +7,7 @@ import datetime as dt
 from dataclasses import dataclass
 
 from autocrud.permission.acl import ACLPermission, ACLPermissionChecker
-from autocrud.permission.basic import PermissionResult
+from autocrud.types import PermissionResult
 from autocrud.types import ResourceAction
 from autocrud.resource_manager.core import ResourceManager, SimpleStorage
 from autocrud.resource_manager.meta_store.simple import MemoryMetaStore
