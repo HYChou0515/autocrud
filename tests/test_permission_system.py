@@ -323,7 +323,7 @@ class TestResourceManagerCRUDOperations(TestCaseUtil):
                 doc = TestDocument(title=f"Search Test Doc {i}", content=f"Content {i}")
                 dm.create(doc)
 
-        from autocrud.resource_manager.basic import ResourceMetaSearchQuery
+        from autocrud.types import ResourceMetaSearchQuery
 
         # Alice 可以搜索
         with dm.meta_provide("alice", current_time):
@@ -375,7 +375,7 @@ class TestRootUserOperations(TestCaseUtil):
             assert meta.resource_id == doc_id
 
             # Root 可以搜索
-            from autocrud.resource_manager.basic import ResourceMetaSearchQuery
+            from autocrud.types import ResourceMetaSearchQuery
 
             query = ResourceMetaSearchQuery(limit=10)
             results = dm.search_resources(query)

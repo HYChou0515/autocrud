@@ -1,5 +1,5 @@
 import datetime as dt
-from enum import Flag, auto
+from enum import Flag, StrEnum, auto
 from typing import Any
 
 from msgspec import UNSET, Struct, UnsetType
@@ -47,6 +47,67 @@ class ResourceAction(Flag):
     backup = dump | load
     full = read | read_list | write | lifecycle | backup
     owner = update | switch | restore | delete | patch
+
+
+class DataSearchOperator(StrEnum):
+    equals = "eq"
+    not_equals = "ne"
+    greater_than = "gt"
+    greater_than_or_equal = "gte"
+    less_than = "lt"
+    less_than_or_equal = "lte"
+    contains = "contains"  # For string fields
+    starts_with = "starts_with"  # For string fields
+    ends_with = "ends_with"  # For string fields
+    in_list = "in"
+    not_in_list = "not_in"
+
+
+class DataSearchCondition(Struct, kw_only=True):
+    field_path: str
+    operator: DataSearchOperator
+    value: Any
+
+
+class ResourceMetaSortDirection(StrEnum):
+    ascending = "+"
+    descending = "-"
+
+
+class ResourceDataSearchSort(Struct, kw_only=True):
+    direction: ResourceMetaSortDirection = ResourceMetaSortDirection.ascending
+    field_path: str
+
+
+class ResourceMetaSortKey(StrEnum):
+    created_time = "created_time"
+    updated_time = "updated_time"
+    resource_id = "resource_id"
+
+
+class ResourceMetaSearchSort(Struct, kw_only=True):
+    direction: ResourceMetaSortDirection = ResourceMetaSortDirection.ascending
+    key: ResourceMetaSortKey
+
+
+class ResourceMetaSearchQuery(Struct, kw_only=True):
+    is_deleted: bool | UnsetType = UNSET
+
+    created_time_start: dt.datetime | UnsetType = UNSET
+    created_time_end: dt.datetime | UnsetType = UNSET
+    updated_time_start: dt.datetime | UnsetType = UNSET
+    updated_time_end: dt.datetime | UnsetType = UNSET
+
+    created_bys: list[str] | UnsetType = UNSET
+    updated_bys: list[str] | UnsetType = UNSET
+
+    # 新增：data 欄位搜尋條件
+    data_conditions: list[DataSearchCondition] | UnsetType = UNSET
+
+    limit: int = 10
+    offset: int = 0
+
+    sorts: list[ResourceMetaSearchSort | ResourceDataSearchSort] | UnsetType = UNSET
 
 
 class BaseContext(Struct, tag=True, tag_field="context_type"): ...
@@ -158,18 +219,23 @@ class OnFailureGetMeta(BeforeGetMeta, BaseOnFailureContext): ...
 
 class BaseSearchResourcesContext(BaseContext):
     action: ResourceAction = ResourceAction.search_resources
+    query: "ResourceMetaSearchQuery"
 
 
-class BeforeSearchResources(BaseSearchResourcesContext, BaseBeforeContext): ...
+class BeforeSearchResources(BaseSearchResourcesContext, BaseBeforeContext):
+    pass
 
 
-class AfterSearchResources(BaseSearchResourcesContext, BaseAfterContext): ...
+class AfterSearchResources(BaseSearchResourcesContext, BaseAfterContext):
+    pass
 
 
-class OnSuccessSearchResources(BaseSearchResourcesContext, BaseOnSuccessContext): ...
+class OnSuccessSearchResources(BaseSearchResourcesContext, BaseOnSuccessContext):
+    results: list[ResourceMeta]
 
 
-class OnFailureSearchResources(BaseSearchResourcesContext, BaseOnFailureContext): ...
+class OnFailureSearchResources(BaseSearchResourcesContext, BaseOnFailureContext):
+    pass
 
 
 class BaseUpdateContext(BaseContext):

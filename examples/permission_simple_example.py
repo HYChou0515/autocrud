@@ -18,7 +18,7 @@ from autocrud.permission.rbac import (
     RBACPermissionEntry,
     RoleMembership,
 )
-from autocrud.types import ResourceAction
+from autocrud.types import DataSearchCondition, ResourceAction, ResourceMetaSearchQuery
 from autocrud.resource_manager.core import ResourceManager, SimpleStorage
 from autocrud.resource_manager.meta_store.simple import MemoryMetaStore
 from autocrud.resource_manager.resource_store.simple import MemoryResourceStore
@@ -153,10 +153,8 @@ def demo_search_permissions(pm: ResourceManager[RBACPermission]):
     """示範權限搜尋功能"""
     print("\n=== 權限搜尋示範 ===")
 
-    from autocrud.resource_manager.basic import (
-        DataSearchCondition,
+    from autocrud.types import (
         DataSearchOperator,
-        ResourceMetaSearchQuery,
     )
 
     # 0. 先搜尋所有權限看看總數

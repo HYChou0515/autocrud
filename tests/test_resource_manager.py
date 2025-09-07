@@ -13,9 +13,7 @@ import redis
 from faker import Faker
 from msgspec import UNSET, Struct
 
-from autocrud.resource_manager.basic import (
-    ResourceMetaSearchSort,
-    ResourceMetaSortDirection,
+from autocrud.types import (
     ResourceMetaSortKey,
 )
 from autocrud.resource_manager.core import (
@@ -23,7 +21,6 @@ from autocrud.resource_manager.core import (
     ResourceIDNotFoundError,
     ResourceIsDeletedError,
     ResourceManager,
-    ResourceMetaSearchQuery,
     SimpleStorage,
 )
 from autocrud.resource_manager.meta_store.df import DFMemoryMetaStore
@@ -42,7 +39,12 @@ from autocrud.resource_manager.resource_store.simple import (
     DiskResourceStore,
     MemoryResourceStore,
 )
-from autocrud.types import ResourceMeta
+from autocrud.types import (
+    ResourceMeta,
+    ResourceMetaSearchQuery,
+    ResourceMetaSearchSort,
+    ResourceMetaSortDirection,
+)
 
 
 class InnerData(Struct):

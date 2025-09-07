@@ -14,69 +14,15 @@ from msgspec import UNSET, Struct, UnsetType
 
 from autocrud.types import ResourceAction
 from autocrud.types import ResourceMeta
+from autocrud.types import ResourceMetaSearchQuery
+from autocrud.types import DataSearchCondition
+from autocrud.types import DataSearchOperator
+from autocrud.types import ResourceDataSearchSort
+from autocrud.types import ResourceMetaSearchSort
+from autocrud.types import ResourceMetaSortDirection
+from autocrud.types import ResourceMetaSortKey
 
 T = TypeVar("T")
-
-
-class DataSearchOperator(StrEnum):
-    equals = "eq"
-    not_equals = "ne"
-    greater_than = "gt"
-    greater_than_or_equal = "gte"
-    less_than = "lt"
-    less_than_or_equal = "lte"
-    contains = "contains"  # For string fields
-    starts_with = "starts_with"  # For string fields
-    ends_with = "ends_with"  # For string fields
-    in_list = "in"
-    not_in_list = "not_in"
-
-
-class DataSearchCondition(Struct, kw_only=True):
-    field_path: str
-    operator: DataSearchOperator
-    value: Any
-
-
-class ResourceMetaSortKey(StrEnum):
-    created_time = "created_time"
-    updated_time = "updated_time"
-    resource_id = "resource_id"
-
-
-class ResourceMetaSortDirection(StrEnum):
-    ascending = "+"
-    descending = "-"
-
-
-class ResourceMetaSearchSort(Struct, kw_only=True):
-    direction: ResourceMetaSortDirection = ResourceMetaSortDirection.ascending
-    key: ResourceMetaSortKey
-
-
-class ResourceDataSearchSort(Struct, kw_only=True):
-    direction: ResourceMetaSortDirection = ResourceMetaSortDirection.ascending
-    field_path: str
-
-
-class ResourceMetaSearchQuery(Struct, kw_only=True):
-    is_deleted: bool | UnsetType = UNSET
-
-    created_time_start: dt.datetime | UnsetType = UNSET
-    created_time_end: dt.datetime | UnsetType = UNSET
-    updated_time_start: dt.datetime | UnsetType = UNSET
-    updated_time_end: dt.datetime | UnsetType = UNSET
-
-    created_bys: list[str] | UnsetType = UNSET
-    updated_bys: list[str] | UnsetType = UNSET
-
-    # 新增：data 欄位搜尋條件
-    data_conditions: list[DataSearchCondition] | UnsetType = UNSET
-
-    limit: int = 10
-    offset: int = 0
-
-    sorts: list[ResourceMetaSearchSort | ResourceDataSearchSort] | UnsetType = UNSET
 
 
 class RevisionStatus(StrEnum):

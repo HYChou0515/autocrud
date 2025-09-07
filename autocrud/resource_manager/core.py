@@ -12,13 +12,22 @@ from msgspec import UNSET, Struct, UnsetType
 from xxhash import xxh3_128_hexdigest
 
 from autocrud.types import (
+    AfterCreate,
     AfterGetMeta,
+    AfterSearchResources,
     BaseContext,
+    BeforeCreate,
     BeforeGetMeta,
+    BeforeSearchResources,
+    OnFailureCreate,
     OnFailureGetMeta,
+    OnFailureSearchResources,
+    OnSuccessCreate,
     OnSuccessGetMeta,
+    OnSuccessSearchResources,
     ResourceAction,
     ResourceMeta,
+    ResourceMetaSearchQuery,
 )
 
 if TYPE_CHECKING:
@@ -39,7 +48,6 @@ from autocrud.resource_manager.basic import (
     Resource,
     ResourceIDNotFoundError,
     ResourceIsDeletedError,
-    ResourceMetaSearchQuery,
     RevisionIDNotFoundError,
     RevisionInfo,
     RevisionStatus,
@@ -425,12 +433,29 @@ class ResourceManager(IResourceManager[T], Generic[T]):
         finally:
             self._handle_message(AfterGetMeta(resource_id=resource_id))
 
-    @smart_permission_check()
-    def search_resources(self, query: ResourceMetaSearchQuery) -> list[ResourceMeta]:
+    def _search_resources(self, query: ResourceMetaSearchQuery) -> list[ResourceMeta]:
         return self.storage.search(query)
 
     @smart_permission_check()
-    def create(self, data: T) -> RevisionInfo:
+    def search_resources(self, query: ResourceMetaSearchQuery) -> list[ResourceMeta]:
+        self._handle_message(BeforeSearchResources(query=query))
+        try:
+            results = self._search_resources(query)
+            self._handle_message(OnSuccessSearchResources(query=query, results=results))
+            return results
+        except Exception as e:
+            self._handle_message(
+                OnFailureSearchResources(
+                    query=query,
+                    error=str(e),
+                    stack_trace=traceback.format_exc(),
+                )
+            )
+            raise
+        finally:
+            self._handle_message(AfterSearchResources(query=query))
+
+    def _create(self, data: T) -> RevisionInfo:
         info = self._rev_info(_BuildRevMetaCreate(data))
         resource = Resource(
             info=info,
@@ -439,6 +464,25 @@ class ResourceManager(IResourceManager[T], Generic[T]):
         self.storage.save_resource_revision(resource)
         self.storage.save_meta(self._res_meta(_BuildResMetaCreate(info, data)))
         return info
+
+    @smart_permission_check()
+    def create(self, data: T) -> RevisionInfo:
+        self._handle_message(BeforeCreate(data=data))
+        try:
+            info = self._create(data)
+            self._handle_message(OnSuccessCreate(data=data, info=info))
+            return info
+        except Exception as e:
+            self._handle_message(
+                OnFailureCreate(
+                    data=data,
+                    error=str(e),
+                    stack_trace=traceback.format_exc(),
+                )
+            )
+            raise
+        finally:
+            self._handle_message(AfterCreate(data=data))
 
     @smart_permission_check()
     def get(self, resource_id: str) -> Resource[T]:
