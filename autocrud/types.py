@@ -3,7 +3,7 @@ from collections.abc import Generator
 from contextlib import AbstractContextManager
 import datetime as dt
 from enum import Enum, Flag, StrEnum, auto
-from typing import IO, Any, Dict, Generic, TypeVar
+from typing import IO, Any, Generic, TypeVar
 from typing_extensions import Literal
 from uuid import UUID
 
@@ -82,7 +82,7 @@ class ResourceAction(Flag):
     lifecycle = switch | delete | restore
     backup = dump | load
     full = read | read_list | write | lifecycle | backup
-    owner = update | switch | restore | delete | patch
+    owner = read | patch | update | lifecycle
 
 
 class DataSearchOperator(StrEnum):
@@ -184,7 +184,7 @@ _on_failure_context = [
 # ============================================================================
 
 _create_context = [
-    ("action", ResourceAction, ResourceAction.create),
+    ("action", Literal[ResourceAction.create], ResourceAction.create),
     ("data", T),
 ]
 
@@ -231,7 +231,7 @@ OnFailureCreate = defstruct(
 # ============================================================================
 
 _get_context = [
-    ("action", ResourceAction, ResourceAction.get),
+    ("action", Literal[ResourceAction.get], ResourceAction.get),
     ("resource_id", str),
 ]
 
@@ -278,7 +278,11 @@ OnFailureGet = defstruct(
 # ============================================================================
 
 _get_resource_revision_context = [
-    ("action", ResourceAction, ResourceAction.get_resource_revision),
+    (
+        "action",
+        Literal[ResourceAction.get_resource_revision],
+        ResourceAction.get_resource_revision,
+    ),
     ("resource_id", str),
     ("revision_id", str),
 ]
@@ -326,7 +330,7 @@ OnFailureGetResourceRevision = defstruct(
 # ============================================================================
 
 _list_revisions_context = [
-    ("action", ResourceAction, ResourceAction.list_revisions),
+    ("action", Literal[ResourceAction.list_revisions], ResourceAction.list_revisions),
     ("resource_id", str),
 ]
 
@@ -373,7 +377,7 @@ OnFailureListRevisions = defstruct(
 # ============================================================================
 
 _get_meta_context = [
-    ("action", ResourceAction, ResourceAction.get_meta),
+    ("action", Literal[ResourceAction.get_meta], ResourceAction.get_meta),
     ("resource_id", str),
 ]
 
@@ -420,7 +424,11 @@ OnFailureGetMeta = defstruct(
 # ============================================================================
 
 _search_resources_context = [
-    ("action", ResourceAction, ResourceAction.search_resources),
+    (
+        "action",
+        Literal[ResourceAction.search_resources],
+        ResourceAction.search_resources,
+    ),
     ("query", ResourceMetaSearchQuery),
 ]
 
@@ -467,7 +475,7 @@ OnFailureSearchResources = defstruct(
 # ============================================================================
 
 _update_context = [
-    ("action", ResourceAction, ResourceAction.update),
+    ("action", Literal[ResourceAction.update], ResourceAction.update),
     ("resource_id", str),
     ("data", T),
 ]
@@ -515,7 +523,7 @@ OnFailureUpdate = defstruct(
 # ============================================================================
 
 _patch_context = [
-    ("action", ResourceAction, ResourceAction.patch),
+    ("action", Literal[ResourceAction.patch], ResourceAction.patch),
     ("resource_id", str),
     ("patch_data", JsonPatch),
 ]
@@ -563,7 +571,7 @@ OnFailurePatch = defstruct(
 # ============================================================================
 
 _switch_context = [
-    ("action", ResourceAction, ResourceAction.switch),
+    ("action", Literal[ResourceAction.switch], ResourceAction.switch),
     ("resource_id", str),
     ("revision_id", str),
 ]
@@ -611,7 +619,7 @@ OnFailureSwitch = defstruct(
 # ============================================================================
 
 _delete_context = [
-    ("action", ResourceAction, ResourceAction.delete),
+    ("action", Literal[ResourceAction.delete], ResourceAction.delete),
     ("resource_id", str),
 ]
 
@@ -658,7 +666,7 @@ OnFailureDelete = defstruct(
 # ============================================================================
 
 _restore_context = [
-    ("action", ResourceAction, ResourceAction.restore),
+    ("action", Literal[ResourceAction.restore], ResourceAction.restore),
     ("resource_id", str),
 ]
 
@@ -705,7 +713,7 @@ OnFailureRestore = defstruct(
 # ============================================================================
 
 _dump_context = [
-    ("action", ResourceAction, ResourceAction.dump),
+    ("action", Literal[ResourceAction.dump], ResourceAction.dump),
 ]
 
 BeforeDump = defstruct(
@@ -751,7 +759,7 @@ OnFailureDump = defstruct(
 # ============================================================================
 
 _load_context = [
-    ("action", ResourceAction, ResourceAction.load),
+    ("action", Literal[ResourceAction.load], ResourceAction.load),
     ("key", str),
 ]
 
@@ -1298,20 +1306,7 @@ class SchemaConflictError(ResourceConflictError):
     pass
 
 
-class PermissionContext(Struct, kw_only=True):
-    """權限檢查上下文 - 包含所有權限檢查所需的資訊"""
-
-    # 基本資訊
-    user: str
-    now: dt.datetime
-    action: ResourceAction
-    resource_name: str
-
-    # 額外上下文資料
-    resource_id: str | UnsetType = UNSET
-    resource_meta: ResourceMeta | UnsetType = UNSET
-    resource_data: Any | UnsetType = UNSET
-    extra_data: Dict[str, Any] = {}
+PermissionContext = EventContext
 
 
 class PermissionResult(StrEnum):

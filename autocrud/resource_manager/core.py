@@ -260,7 +260,11 @@ def execute_with_events(
             func_inputs = dict(bound_args.arguments)
             del func_inputs["self"]
 
-            inputs_ = func_inputs
+            inputs_ = func_inputs | {
+                "user": self.user_or_unset,
+                "now": self.now_or_unset,
+                "resource_name": self.resource_name,
+            }
             if inputs:
 
                 def get_from_path(d, path: str):
@@ -278,11 +282,6 @@ def execute_with_events(
                         del inputs_[k]
                     else:
                         inputs_[k] = get_from_path(func_inputs, v)
-            inputs_ |= {
-                "user": self.user_or_unset,
-                "now": self.now_or_unset,
-                "resource_name": self.resource_name,
-            }
             self._handle_event(contexts.before(**inputs_))
             try:
                 result = func(self, *args, **kwargs)

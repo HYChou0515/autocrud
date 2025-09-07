@@ -14,8 +14,14 @@ from dataclasses import dataclass
 import pytest
 
 from autocrud.permission.acl import ACLPermission, ACLPermissionChecker, Policy
-from autocrud.types import PermissionResult
-from autocrud.types import PermissionContext, PermissionDeniedError
+from autocrud.types import (
+    BeforeCreate,
+    BeforeDelete,
+    BeforeGet,
+    BeforeLoad,
+    PermissionResult,
+)
+from autocrud.types import PermissionDeniedError
 from autocrud.resource_manager.core import ResourceManager, SimpleStorage
 from autocrud.resource_manager.meta_store.simple import MemoryMetaStore
 from autocrud.resource_manager.resource_store.simple import MemoryResourceStore
@@ -102,55 +108,55 @@ class TestRootUserPermissions(TestCaseUtil):
         """測試 root 用戶擁有所有權限"""
         assert (
             self.pc.check_permission(
-                PermissionContext(
+                BeforeCreate(
                     user="root",
                     now=self.current_time,
-                    action=ResourceAction.create,
                     resource_name="test_document",
+                    data={"title": "Root's Doc", "content": "Content"},
                 ),
             )
             is PermissionResult.allow
         )
         assert (
             self.pc.check_permission(
-                PermissionContext(
+                BeforeGet(
                     user="root",
                     now=self.current_time,
-                    action=ResourceAction.read,
                     resource_name="test_document",
+                    resource_id="doc123",
                 ),
             )
             is PermissionResult.allow
         )
         assert (
             self.pc.check_permission(
-                PermissionContext(
+                BeforeCreate(
                     user="root",
                     now=self.current_time,
-                    action=ResourceAction.update,
                     resource_name="test_document",
+                    data={"title": "Root's Doc", "content": "Content"},
                 ),
             )
             is PermissionResult.allow
         )
         assert (
             self.pc.check_permission(
-                PermissionContext(
+                BeforeDelete(
                     user="root",
                     now=self.current_time,
-                    action=ResourceAction.delete,
                     resource_name="test_document",
+                    resource_id="doc123",
                 ),
             )
             is PermissionResult.allow
         )
         assert (
             self.pc.check_permission(
-                PermissionContext(
+                BeforeLoad(
                     user="root",
                     now=self.current_time,
-                    action=ResourceAction.full,
-                    resource_name="any_resource",
+                    resource_name="test_document",
+                    key="some_key",
                 ),
             )
             is PermissionResult.allow
@@ -508,22 +514,22 @@ class TestComplexPermissionScenarios(TestCaseUtil):
         # 檢查權限隔離
         assert (
             self.pc.check_permission(
-                PermissionContext(
+                BeforeCreate(
                     user="specialized_user",
                     now=current_time,
-                    action=ResourceAction.create,
                     resource_name="other_resource",
+                    data={"field": "value"},
                 ),
             )
             is PermissionResult.allow
         )
         assert (
             self.pc.check_permission(
-                PermissionContext(
+                BeforeGet(
                     user="specialized_user",
                     now=current_time,
-                    action=ResourceAction.read,
                     resource_name="other_resource",
+                    resource_id="doc123",
                 ),
             )
             is PermissionResult.allow
@@ -532,22 +538,22 @@ class TestComplexPermissionScenarios(TestCaseUtil):
         # 對 test_document 沒有權限
         assert (
             self.pc.check_permission(
-                PermissionContext(
+                BeforeCreate(
                     user="specialized_user",
                     now=current_time,
-                    action=ResourceAction.create,
                     resource_name="test_document",
+                    data={"field": "value"},
                 ),
             )
             is PermissionResult.deny
         )
         assert (
             self.pc.check_permission(
-                PermissionContext(
+                BeforeGet(
                     user="specialized_user",
                     now=current_time,
-                    action=ResourceAction.read,
                     resource_name="test_document",
+                    resource_id="doc123",
                 ),
             )
             is PermissionResult.deny

@@ -34,11 +34,7 @@ class ResourceOwnershipChecker(IPermissionChecker):
 
         try:
             # 獲取資源元資料
-            if context.resource_meta is UNSET:
-                meta = self.resource_manager.get_meta(context.resource_id)
-                context.resource_meta = meta
-            else:
-                meta = context.resource_meta
+            meta = self.resource_manager.get_meta(context.resource_id)
 
             # 檢查創建者
             if meta.created_by == context.user:

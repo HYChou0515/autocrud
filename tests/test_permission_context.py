@@ -15,7 +15,13 @@ import pytest
 
 from autocrud.permission.acl import ACLPermission, ACLPermissionChecker
 from autocrud.permission.action import ActionBasedPermissionChecker
-from autocrud.types import PermissionResult
+from autocrud.types import (
+    BeforeCreate,
+    BeforeDelete,
+    BeforeGet,
+    BeforeUpdate,
+    PermissionResult,
+)
 from autocrud.permission.composite import (
     CompositePermissionChecker,
     ConditionalPermissionChecker,
@@ -60,40 +66,6 @@ class TestCaseUtil:
         self.current_time = dt.datetime.now()
 
 
-class TestPermissionContext(TestCaseUtil):
-    """測試權限檢查上下文系統"""
-
-    def test_permission_context_creation(self):
-        """測試 PermissionContext 建立"""
-        now = dt.datetime.now()
-        context = PermissionContext(
-            user="alice",
-            now=now,
-            action=ResourceAction.get,
-            resource_name="documents",
-        )
-
-        assert context.user == "alice"
-        assert context.now == now
-        assert context.action == ResourceAction.get
-        assert context.resource_name == "documents"
-
-    def test_permission_context_minimal(self):
-        """測試最小的 PermissionContext 建立"""
-        now = dt.datetime.now()
-        context = PermissionContext(
-            user="alice",
-            now=now,
-            action=ResourceAction.create,
-            resource_name="documents",
-        )
-
-        assert context.user == "alice"
-        assert context.now == now
-        assert context.action == ResourceAction.create
-        assert context.resource_name == "documents"
-
-
 class TestActionBasedPermissionChecker(TestCaseUtil):
     """測試基於 Action 的權限檢查器"""
 
@@ -111,21 +83,21 @@ class TestActionBasedPermissionChecker(TestCaseUtil):
         checker.register_action_handler("create", create_handler)
 
         # 測試 admin 用戶
-        context = PermissionContext(
+        context = BeforeCreate(
             user="admin",
             now=dt.datetime.now(),
-            action=ResourceAction.create,
             resource_name="documents",
+            data={"title": "Test", "content": "Content"},
         )
         result = checker.check_permission(context)
         assert result == PermissionResult.allow
 
         # 測試普通用戶
-        context = PermissionContext(
+        context = BeforeCreate(
             user="alice",
             now=dt.datetime.now(),
-            action=ResourceAction.create,
             resource_name="documents",
+            data={"title": "Test", "content": "Content"},
         )
         result = checker.check_permission(context)
         assert result == PermissionResult.deny
@@ -150,11 +122,11 @@ class TestActionBasedPermissionChecker(TestCaseUtil):
         )
 
         # 測試普通用戶
-        context = PermissionContext(
+        context = BeforeCreate(
             user="alice",
             now=dt.datetime.now(),
-            action=ResourceAction.create,
             resource_name="documents",
+            data={"title": "Test", "content": "Content"},
         )
         result = checker.check_permission(context)
         assert result == PermissionResult.deny
@@ -163,11 +135,11 @@ class TestActionBasedPermissionChecker(TestCaseUtil):
         """測試未註冊的 action"""
         checker = ActionBasedPermissionChecker()
 
-        context = PermissionContext(
+        context = BeforeCreate(
             user="alice",
             now=dt.datetime.now(),
-            action=ResourceAction.get,  # 未註冊的動作
             resource_name="documents",
+            data={"title": "Test", "content": "Content"},
         )
 
         result = checker.check_permission(context)
@@ -184,24 +156,24 @@ class TestFieldLevelPermissionChecker(TestCaseUtil):
         checker = FieldLevelPermissionChecker(allowed_fields_by_user=field_permissions)
 
         # 測試 alice 修改允許的欄位
-        context = PermissionContext(
+        context = BeforeUpdate(
             user="alice",
             now=dt.datetime.now(),
-            action=ResourceAction.update,
             resource_name="documents",
-            resource_data={"title": "new title", "content": "new content"},
+            resource_id="doc123",
+            data={"title": "new title", "content": "new content"},
         )
 
         result = checker.check_permission(context)
         assert result == PermissionResult.allow
 
         # 測試 alice 修改不允許的欄位
-        context = PermissionContext(
+        context = BeforeUpdate(
             user="alice",
             now=dt.datetime.now(),
-            action=ResourceAction.update,
             resource_name="documents",
-            resource_data={"status": "published"},  # alice 不能修改 status
+            resource_id="doc123",
+            data={"status": "published"},  # alice 不能修改 status
         )
 
         result = checker.check_permission(context)
@@ -211,11 +183,11 @@ class TestFieldLevelPermissionChecker(TestCaseUtil):
         """測試非 update 操作"""
         checker = FieldLevelPermissionChecker()
 
-        context = PermissionContext(
+        context = BeforeGet(
             user="alice",
             now=dt.datetime.now(),
-            action=ResourceAction.get,
             resource_name="documents",
+            resource_id="doc123",
         )
 
         result = checker.check_permission(context)
@@ -238,22 +210,22 @@ class TestConditionalPermissionChecker(TestCaseUtil):
         checker.add_condition(no_delete)
 
         # 測試刪除操作
-        context = PermissionContext(
+        context = BeforeDelete(
             user="alice",
             now=dt.datetime.now(),
-            action=ResourceAction.delete,
             resource_name="documents",
+            resource_id="doc456",
         )
 
         result = checker.check_permission(context)
         assert result == PermissionResult.deny
 
         # 測試其他操作
-        context = PermissionContext(
+        context = BeforeGet(
             user="alice",
             now=dt.datetime.now(),
-            action=ResourceAction.get,
             resource_name="documents",
+            resource_id="doc456",
         )
 
         result = checker.check_permission(context)
@@ -284,11 +256,12 @@ class TestConditionalPermissionChecker(TestCaseUtil):
         checker.add_condition(work_hours_only)  # 再檢查工作時間
 
         # 測試管理員用戶（應該總是允許）
-        context = PermissionContext(
+        context = BeforeUpdate(
             user="admin",
             now=dt.datetime.now(),
-            action=ResourceAction.update,
             resource_name="documents",
+            resource_id="doc456",
+            data={"title": "Updated Title"},
         )
 
         result = checker.check_permission(context)
@@ -315,11 +288,11 @@ class TestCompositePermissionChecker(TestCaseUtil):
             [AlwaysDenyChecker(), AlwaysAllowChecker()],
         )
 
-        context = PermissionContext(
+        context = BeforeCreate(
             user="alice",
             now=dt.datetime.now(),
-            action=ResourceAction.get,
             resource_name="documents",
+            data={},
         )
 
         result = composite.check_permission(context)
@@ -338,11 +311,11 @@ class TestCompositePermissionChecker(TestCaseUtil):
 
         composite = CompositePermissionChecker([NotApplicableChecker(), AllowChecker()])
 
-        context = PermissionContext(
+        context = BeforeCreate(
             user="alice",
             now=dt.datetime.now(),
-            action=ResourceAction.get,
             resource_name="documents",
+            data={},
         )
 
         result = composite.check_permission(context)
@@ -375,10 +348,9 @@ class TestResourceOwnershipChecker(TestCaseUtil):
         mock_rm = MockResourceManager()
         checker = ResourceOwnershipChecker(mock_rm)
 
-        context = PermissionContext(
+        context = BeforeGet(
             user="alice",
             now=dt.datetime.now(),
-            action=ResourceAction.update,
             resource_id="doc123",
             resource_name="documents",
         )
@@ -391,10 +363,9 @@ class TestResourceOwnershipChecker(TestCaseUtil):
         mock_rm = MockResourceManager()
         checker = ResourceOwnershipChecker(mock_rm)
 
-        context = PermissionContext(
+        context = BeforeGet(
             user="alice",
             now=dt.datetime.now(),
-            action=ResourceAction.update,
             resource_id="doc456",
             resource_name="documents",
         )
@@ -410,11 +381,11 @@ class TestResourceOwnershipChecker(TestCaseUtil):
             allowed_actions={ResourceAction.update, ResourceAction.delete},
         )
 
-        context = PermissionContext(
+        context = BeforeCreate(
             user="alice",
             now=dt.datetime.now(),
-            action=ResourceAction.get,  # get 不在 allowed_actions 中
             resource_name="documents",
+            data={},
         )
 
         result = checker.check_permission(context)
@@ -444,22 +415,22 @@ class TestDefaultPermissionChecker(TestCaseUtil):
         checker = self.pc
 
         # 測試允許的操作
-        context = PermissionContext(
+        context = BeforeGet(
             user="alice",
             now=current_time,
-            action=ResourceAction.get,
             resource_name="documents",
+            resource_id="doc456",
         )
 
         result = checker.check_permission(context)
         assert result == PermissionResult.allow
 
         # 測試不允許的操作
-        context = PermissionContext(
+        context = BeforeCreate(
             user="alice",
             now=current_time,
-            action=ResourceAction.delete,
             resource_name="documents",
+            data={},
         )
 
         result = checker.check_permission(context)
@@ -528,35 +499,33 @@ class TestIntegratedPermissionContextSystem(TestCaseUtil):
         )
 
         # 測試場景 1: Editor 更新文檔
-        context = PermissionContext(
+        context = BeforeUpdate(
             user="editor",
             now=current_time,
-            action=ResourceAction.update,
             resource_name="test_document",
             resource_id=doc_id,
+            data={},
         )
 
         result = composite.check_permission(context)
         assert result == PermissionResult.allow
 
         # 測試場景 2: 普通用戶嘗試更新文檔（欄位權限拒絕）
-        context = PermissionContext(
+        context = BeforeUpdate(
             user="user",
             now=current_time,
-            action=ResourceAction.update,
             resource_name="test_document",
             resource_id=doc_id,
-            resource_data={"title": "User's Update"},
+            data={},
         )
 
         result = composite.check_permission(context)
         assert result == PermissionResult.deny  # 被欄位檢查器拒絕
 
         # 測試場景 3: 普通用戶讀取文檔（應該允許）
-        context = PermissionContext(
+        context = BeforeGet(
             user="user",
             now=current_time,
-            action=ResourceAction.get,
             resource_name="test_document",
             resource_id=doc_id,
         )
@@ -584,24 +553,22 @@ class TestIntegratedPermissionContextSystem(TestCaseUtil):
 
         # 測試非工作時間的創建
         non_work_time = dt.datetime.now().replace(hour=20)  # 晚上8點
-        context = PermissionContext(
+        context = BeforeCreate(
             user="alice",
             now=non_work_time,
-            action=ResourceAction.create,
             resource_name="documents",
-            resource_data={"title": "After Hours Doc"},
+            data={"title": "After Hours Doc"},
         )
 
         result = conditional_checker.check_permission(context)
         assert result == PermissionResult.deny
 
         # 測試管理員在非工作時間創建（應該允許）
-        context = PermissionContext(
+        context = BeforeCreate(
             user="admin",
             now=non_work_time,
-            action=ResourceAction.create,
             resource_name="documents",
-            resource_data={"title": "Admin After Hours Doc"},
+            data={"title": "Admin After Hours Doc"},
         )
 
         result = conditional_checker.check_permission(context)

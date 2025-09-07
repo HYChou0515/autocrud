@@ -151,8 +151,6 @@ def example_usage():
         action="get",
         resource_name="test_resource",
         resource_id="resource:123",
-        method_args=("resource:123",),
-        method_kwargs={},
     )
 
     result = permission_checker.check_permission(context)
@@ -165,8 +163,6 @@ def example_usage():
         action="update",
         resource_name="test_resource",
         resource_id="resource:123",
-        method_args=("resource:123", {"some": "data"}),
-        method_kwargs={},
         extra_data={"emergency": False},
     )
 
@@ -180,8 +176,6 @@ def example_usage():
         action="update",
         resource_name="test_resource",
         resource_id="resource:123",
-        method_args=("resource:123", {"some": "data"}),
-        method_kwargs={},
         extra_data={"emergency": True},
     )
 
