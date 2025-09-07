@@ -15,7 +15,7 @@ from autocrud.permission.basic import (
     PermissionContext,
     PermissionResult,
 )
-from autocrud.resource_manager.basic import ResourceAction
+from autocrud.types import ResourceAction
 
 logger = logging.getLogger(__name__)
 

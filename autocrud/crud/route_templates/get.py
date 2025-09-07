@@ -14,9 +14,9 @@ from autocrud.crud.route_templates.basic import (
 from autocrud.resource_manager.basic import (
     IResourceManager,
     Resource,
-    ResourceMeta,
     RevisionInfo,
 )
+from autocrud.types import ResourceMeta
 
 T = TypeVar("T")
 

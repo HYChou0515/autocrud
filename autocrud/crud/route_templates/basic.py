@@ -6,7 +6,8 @@ from typing import Generic, TypeVar
 import msgspec
 from fastapi import APIRouter, Response
 
-from autocrud.resource_manager.basic import IResourceManager, ResourceMeta, RevisionInfo
+from autocrud.resource_manager.basic import IResourceManager, RevisionInfo
+from autocrud.types import ResourceMeta
 
 T = TypeVar("T")
 

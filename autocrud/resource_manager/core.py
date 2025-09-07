@@ -2,6 +2,7 @@ import datetime as dt
 from collections.abc import Callable, Generator
 from contextlib import contextmanager
 from functools import cached_property, wraps
+import traceback
 from typing import IO, TYPE_CHECKING, Any, Generic, TypeVar, get_args, get_origin
 from uuid import uuid4
 
@@ -9,6 +10,16 @@ import msgspec
 from jsonpatch import JsonPatch
 from msgspec import UNSET, Struct, UnsetType
 from xxhash import xxh3_128_hexdigest
+
+from autocrud.types import (
+    AfterGetMeta,
+    BaseContext,
+    BeforeGetMeta,
+    OnFailureGetMeta,
+    OnSuccessGetMeta,
+    ResourceAction,
+    ResourceMeta,
+)
 
 if TYPE_CHECKING:
     from autocrud.permission.basic import IPermissionChecker
@@ -26,10 +37,8 @@ from autocrud.resource_manager.basic import (
     IStorage,
     MsgspecSerializer,
     Resource,
-    ResourceAction,
     ResourceIDNotFoundError,
     ResourceIsDeletedError,
-    ResourceMeta,
     ResourceMetaSearchQuery,
     RevisionIDNotFoundError,
     RevisionInfo,
@@ -382,18 +391,39 @@ class ResourceManager(IResourceManager[T], Generic[T]):
         )
         return info
 
+    def _handle_message(self, context: BaseContext) -> None:
+        pass
+
     def _get_meta_no_check_is_deleted(self, resource_id: str) -> ResourceMeta:
         if not self.storage.exists(resource_id):
             raise ResourceIDNotFoundError(resource_id)
         meta = self.storage.get_meta(resource_id)
         return meta
 
-    @smart_permission_check()
-    def get_meta(self, resource_id: str) -> ResourceMeta:
+    def _get_meta(self, resource_id: str) -> ResourceMeta:
         meta = self._get_meta_no_check_is_deleted(resource_id)
         if meta.is_deleted:
             raise ResourceIsDeletedError(resource_id)
         return meta
+
+    @smart_permission_check()
+    def get_meta(self, resource_id: str) -> ResourceMeta:
+        self._handle_message(BeforeGetMeta(resource_id=resource_id))
+        try:
+            meta = self._get_meta(resource_id)
+            self._handle_message(OnSuccessGetMeta(resource_id=resource_id, meta=meta))
+            return meta
+        except Exception as e:
+            self._handle_message(
+                OnFailureGetMeta(
+                    resource_id=resource_id,
+                    error=str(e),
+                    stack_trace=traceback.format_exc(),
+                )
+            )
+            raise
+        finally:
+            self._handle_message(AfterGetMeta(resource_id=resource_id))
 
     @smart_permission_check()
     def search_resources(self, query: ResourceMetaSearchQuery) -> list[ResourceMeta]:

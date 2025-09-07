@@ -41,7 +41,6 @@ from autocrud.resource_manager.basic import (
     IndexableField,
     IResourceManager,
     IStorage,
-    ResourceMeta,
     RevisionInfo,
 )
 from autocrud.resource_manager.core import ResourceManager
@@ -49,6 +48,7 @@ from autocrud.resource_manager.storage_factory import (
     IStorageFactory,
     MemoryStorageFactory,
 )
+from autocrud.types import ResourceMeta
 from autocrud.util.naming import NameConverter
 
 T = TypeVar("T")

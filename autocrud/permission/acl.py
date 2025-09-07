@@ -14,7 +14,6 @@ from autocrud.resource_manager.basic import (
     DataSearchCondition,
     DataSearchOperator,
     IndexableField,
-    ResourceAction,
     ResourceDataSearchSort,
     ResourceMetaSearchQuery,
     ResourceMetaSortDirection,
@@ -24,6 +23,7 @@ from autocrud.resource_manager.storage_factory import (
     IStorageFactory,
     MemoryStorageFactory,
 )
+from autocrud.types import ResourceAction
 
 logger = logging.getLogger(__name__)
 

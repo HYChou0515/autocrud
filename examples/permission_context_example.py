@@ -21,7 +21,7 @@ from autocrud.permission.composite import (
 )
 from autocrud.permission.data_based import FieldLevelPermissionChecker
 from autocrud.permission.meta_based import ResourceOwnershipChecker
-from autocrud.resource_manager.basic import ResourceAction
+from autocrud.types import ResourceAction
 
 
 # 示例 1: 基本使用 - 結合現有的 ACL/RBAC 系統

@@ -4,13 +4,16 @@ from abc import ABC, abstractmethod
 from collections.abc import Generator, Iterable, MutableMapping
 from contextlib import AbstractContextManager, contextmanager
 from contextvars import ContextVar
-from enum import Enum, Flag, StrEnum, auto
+from enum import Enum, Flag, StrEnum
 from typing import IO, Any, Generic, TypeVar
 from uuid import UUID
 
 import msgspec
 from jsonpatch import JsonPatch
 from msgspec import UNSET, Struct, UnsetType
+
+from autocrud.types import ResourceAction
+from autocrud.types import ResourceMeta
 
 T = TypeVar("T")
 
@@ -33,24 +36,6 @@ class DataSearchCondition(Struct, kw_only=True):
     field_path: str
     operator: DataSearchOperator
     value: Any
-
-
-class ResourceMeta(Struct, kw_only=True):
-    current_revision_id: str
-    resource_id: str
-    schema_version: str | UnsetType = UNSET
-
-    total_revision_count: int
-
-    created_time: dt.datetime
-    updated_time: dt.datetime
-    created_by: str
-    updated_by: str
-
-    is_deleted: bool = False
-
-    # 新增：存儲被索引的 data 欄位值
-    indexed_data: dict[str, Any] | UnsetType = UNSET
 
 
 class ResourceMetaSortKey(StrEnum):
@@ -570,32 +555,6 @@ class IResourceManager(ABC, Generic[T]):
         Note: This method should be used in conjunction with dump() for
         complete backup and restore workflows.
         """
-
-
-class ResourceAction(Flag):
-    create = auto()
-    get = auto()
-    get_resource_revision = auto()
-    list_revisions = auto()
-    get_meta = auto()
-    search_resources = auto()
-    update = auto()
-    patch = auto()
-    switch = auto()
-    delete = auto()
-    restore = auto()
-    dump = auto()
-    load = auto()
-
-    create_or_update = create | update
-
-    read = get | get_meta | get_resource_revision | list_revisions
-    read_list = search_resources
-    write = create | update | patch
-    lifecycle = switch | delete | restore
-    backup = dump | load
-    full = read | read_list | write | lifecycle | backup
-    owner = update | switch | restore | delete | patch
 
 
 class IPermissionResourceManager(IResourceManager):

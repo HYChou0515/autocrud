@@ -7,9 +7,8 @@ from msgspec import UNSET, Struct, UnsetType
 
 from autocrud.resource_manager.basic import (
     IResourceManager,
-    ResourceAction,
-    ResourceMeta,
 )
+from autocrud.types import ResourceAction, ResourceMeta
 
 T = TypeVar("T")
 

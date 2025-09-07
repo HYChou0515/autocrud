@@ -5,9 +5,9 @@ from autocrud.resource_manager.basic import (
     IFastMetaStore,
     IMetaStore,
     ISlowMetaStore,
-    ResourceMeta,
     ResourceMetaSearchQuery,
 )
+from autocrud.types import ResourceMeta
 
 
 class FastSlowMetaStore(IMetaStore):

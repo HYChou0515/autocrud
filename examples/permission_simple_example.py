@@ -18,7 +18,7 @@ from autocrud.permission.rbac import (
     RBACPermissionEntry,
     RoleMembership,
 )
-from autocrud.resource_manager.basic import ResourceAction
+from autocrud.types import ResourceAction
 from autocrud.resource_manager.core import ResourceManager, SimpleStorage
 from autocrud.resource_manager.meta_store.simple import MemoryMetaStore
 from autocrud.resource_manager.resource_store.simple import MemoryResourceStore

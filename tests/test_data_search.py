@@ -9,10 +9,10 @@ from autocrud.resource_manager.basic import (
     DataSearchCondition,
     DataSearchOperator,
     ResourceDataSearchSort,
-    ResourceMeta,
     ResourceMetaSearchQuery,
     ResourceMetaSortDirection,
 )
+from autocrud.types import ResourceMeta
 
 
 @dataclass

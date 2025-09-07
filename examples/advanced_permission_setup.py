@@ -11,7 +11,7 @@ from autocrud.permission.composite import (
 from autocrud.permission.data_based import FieldLevelPermissionChecker
 from autocrud.permission.meta_based import ResourceOwnershipChecker
 from autocrud.permission.simple import AllowAll
-from autocrud.resource_manager.basic import ResourceAction
+from autocrud.types import ResourceAction
 
 
 def setup_advanced_permissions(permission_manager=None, resource_manager=None):

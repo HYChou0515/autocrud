@@ -8,11 +8,11 @@ from autocrud.resource_manager.basic import (
     Encoding,
     IFastMetaStore,
     MsgspecSerializer,
-    ResourceMeta,
     ResourceMetaSearchQuery,
     get_sort_fn,
     is_match_query,
 )
+from autocrud.types import ResourceMeta
 
 
 class RedisMetaStore(IFastMetaStore):

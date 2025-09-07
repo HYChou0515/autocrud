@@ -23,7 +23,6 @@ from autocrud.resource_manager.core import (
     ResourceIDNotFoundError,
     ResourceIsDeletedError,
     ResourceManager,
-    ResourceMeta,
     ResourceMetaSearchQuery,
     SimpleStorage,
 )
@@ -43,6 +42,7 @@ from autocrud.resource_manager.resource_store.simple import (
     DiskResourceStore,
     MemoryResourceStore,
 )
+from autocrud.types import ResourceMeta
 
 
 class InnerData(Struct):

@@ -18,13 +18,13 @@ from autocrud.resource_manager.basic import (
     DataSearchOperator,
     IResourceManager,
     ResourceDataSearchSort,
-    ResourceMeta,
     ResourceMetaSearchQuery,
     ResourceMetaSearchSort,
     ResourceMetaSortDirection,
     ResourceMetaSortKey,
     RevisionInfo,
 )
+from autocrud.types import ResourceMeta
 
 T = TypeVar("T")
 

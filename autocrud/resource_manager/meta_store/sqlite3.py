@@ -14,11 +14,11 @@ from autocrud.resource_manager.basic import (
     Encoding,
     ISlowMetaStore,
     MsgspecSerializer,
-    ResourceMeta,
     ResourceMetaSearchQuery,
     ResourceMetaSearchSort,
     ResourceMetaSortDirection,
 )
+from autocrud.types import ResourceMeta
 
 T = TypeVar("T")
 
