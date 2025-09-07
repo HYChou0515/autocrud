@@ -13,21 +13,28 @@ from xxhash import xxh3_128_hexdigest
 
 from autocrud.types import (
     AfterCreate,
+    AfterGet,
     AfterGetMeta,
     AfterSearchResources,
     BaseContext,
     BeforeCreate,
+    BeforeGet,
     BeforeGetMeta,
     BeforeSearchResources,
     OnFailureCreate,
+    OnFailureGet,
     OnFailureGetMeta,
     OnFailureSearchResources,
     OnSuccessCreate,
+    OnSuccessGet,
     OnSuccessGetMeta,
     OnSuccessSearchResources,
+    Resource,
     ResourceAction,
     ResourceMeta,
     ResourceMetaSearchQuery,
+    RevisionInfo,
+    RevisionStatus,
 )
 
 if TYPE_CHECKING:
@@ -45,12 +52,9 @@ from autocrud.resource_manager.basic import (
     IResourceStore,
     IStorage,
     MsgspecSerializer,
-    Resource,
     ResourceIDNotFoundError,
     ResourceIsDeletedError,
     RevisionIDNotFoundError,
-    RevisionInfo,
-    RevisionStatus,
     SpecialIndex,
 )
 from autocrud.resource_manager.data_converter import DataConverter
@@ -484,10 +488,30 @@ class ResourceManager(IResourceManager[T], Generic[T]):
         finally:
             self._handle_message(AfterCreate(data=data))
 
-    @smart_permission_check()
-    def get(self, resource_id: str) -> Resource[T]:
+    def _get(self, resource_id: str) -> Resource[T]:
         meta = self.get_meta(resource_id)
         return self.get_resource_revision(resource_id, meta.current_revision_id)
+
+    @smart_permission_check()
+    def get(self, resource_id: str) -> Resource[T]:
+        self._handle_message(BeforeGet(resource_id=resource_id))
+        try:
+            resource = self._get(resource_id)
+            self._handle_message(
+                OnSuccessGet(resource_id=resource_id, resource=resource)
+            )
+            return resource
+        except Exception as e:
+            self._handle_message(
+                OnFailureGet(
+                    resource_id=resource_id,
+                    error=str(e),
+                    stack_trace=traceback.format_exc(),
+                )
+            )
+            raise
+        finally:
+            self._handle_message(AfterGet(resource_id=resource_id))
 
     @smart_permission_check()
     def get_resource_revision(self, resource_id: str, revision_id: str) -> Resource[T]:

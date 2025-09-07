@@ -15,7 +15,6 @@ from autocrud.crud.route_templates.basic import (
 )
 from autocrud.resource_manager.basic import (
     IResourceManager,
-    RevisionInfo,
 )
 from autocrud.types import (
     DataSearchCondition,
@@ -26,6 +25,7 @@ from autocrud.types import (
     ResourceMetaSearchSort,
     ResourceMetaSortDirection,
     ResourceMetaSortKey,
+    RevisionInfo,
 )
 
 T = TypeVar("T")

@@ -6,7 +6,6 @@ from contextlib import AbstractContextManager, contextmanager
 from contextvars import ContextVar
 from enum import Enum, Flag, StrEnum
 from typing import IO, Any, Generic, TypeVar
-from uuid import UUID
 
 import msgspec
 from jsonpatch import JsonPatch
@@ -21,35 +20,10 @@ from autocrud.types import ResourceDataSearchSort
 from autocrud.types import ResourceMetaSearchSort
 from autocrud.types import ResourceMetaSortDirection
 from autocrud.types import ResourceMetaSortKey
+from autocrud.types import RevisionInfo
+from autocrud.types import Resource
 
 T = TypeVar("T")
-
-
-class RevisionStatus(StrEnum):
-    draft = "draft"
-    stable = "stable"
-
-
-class RevisionInfo(Struct, kw_only=True):
-    uid: UUID
-    resource_id: str
-    revision_id: str
-
-    parent_revision_id: str | UnsetType = UNSET
-    schema_version: str | UnsetType = UNSET
-    data_hash: str | UnsetType = UNSET
-
-    status: RevisionStatus
-
-    created_time: dt.datetime
-    updated_time: dt.datetime
-    created_by: str
-    updated_by: str
-
-
-class Resource(Struct, Generic[T]):
-    info: RevisionInfo
-    data: T
 
 
 class ResourceConflictError(Exception):

@@ -1,8 +1,38 @@
 import datetime as dt
 from enum import Flag, StrEnum, auto
-from typing import Any
+from typing import Any, Generic, TypeVar
+from uuid import UUID
 
 from msgspec import UNSET, Struct, UnsetType
+
+T = TypeVar("T")
+
+
+class RevisionStatus(StrEnum):
+    draft = "draft"
+    stable = "stable"
+
+
+class RevisionInfo(Struct, kw_only=True):
+    uid: UUID
+    resource_id: str
+    revision_id: str
+
+    parent_revision_id: str | UnsetType = UNSET
+    schema_version: str | UnsetType = UNSET
+    data_hash: str | UnsetType = UNSET
+
+    status: RevisionStatus
+
+    created_time: dt.datetime
+    updated_time: dt.datetime
+    created_by: str
+    updated_by: str
+
+
+class Resource(Struct, Generic[T]):
+    info: RevisionInfo
+    data: T
 
 
 class ResourceMeta(Struct, kw_only=True):
@@ -110,6 +140,11 @@ class ResourceMetaSearchQuery(Struct, kw_only=True):
     sorts: list[ResourceMetaSearchSort | ResourceDataSearchSort] | UnsetType = UNSET
 
 
+# ============================================================================
+# Base Context Classes
+# ============================================================================
+
+
 class BaseContext(Struct, tag=True, tag_field="context_type"): ...
 
 
@@ -131,36 +166,61 @@ class BaseOnFailureContext(BaseContext):
     stack_trace: str | None = None
 
 
+# ============================================================================
+# Create Context Classes
+# ============================================================================
+
+
 class BaseCreateContext(BaseContext):
     action: ResourceAction = ResourceAction.create
+    data: T
 
 
-class BeforeCreate(BaseCreateContext, BaseBeforeContext): ...
+class BeforeCreate(BaseCreateContext, BaseBeforeContext):
+    pass
 
 
-class AfterCreate(BaseCreateContext, BaseAfterContext): ...
+class AfterCreate(BaseCreateContext, BaseAfterContext):
+    pass
 
 
-class OnSuccessCreate(BaseCreateContext, BaseOnSuccessContext): ...
+class OnSuccessCreate(BaseCreateContext, BaseOnSuccessContext):
+    info: RevisionInfo
 
 
-class OnFailureCreate(BaseCreateContext, BaseOnFailureContext): ...
+class OnFailureCreate(BaseCreateContext, BaseOnFailureContext):
+    pass
+
+
+# ============================================================================
+# Get Context Classes
+# ============================================================================
 
 
 class BaseGetContext(BaseContext):
     action: ResourceAction = ResourceAction.get
+    resource_id: str
 
 
-class BeforeGet(BaseGetContext, BaseBeforeContext): ...
+class BeforeGet(BaseGetContext, BaseBeforeContext):
+    pass
 
 
-class AfterGet(BaseGetContext, BaseAfterContext): ...
+class AfterGet(BaseGetContext, BaseAfterContext):
+    pass
 
 
-class OnSuccessGet(BaseGetContext, BaseOnSuccessContext): ...
+class OnSuccessGet(BaseGetContext, BaseOnSuccessContext):
+    resource: Resource[T]
 
 
-class OnFailureGet(BaseGetContext, BaseOnFailureContext): ...
+class OnFailureGet(BaseGetContext, BaseOnFailureContext):
+    pass
+
+
+# ============================================================================
+# Get Resource Revision Context Classes
+# ============================================================================
 
 
 class BaseGetResourceRevisionContext(BaseContext):
@@ -183,6 +243,11 @@ class OnFailureGetResourceRevision(
 ): ...
 
 
+# ============================================================================
+# List Revisions Context Classes
+# ============================================================================
+
+
 class BaseListRevisionsContext(BaseContext):
     action: ResourceAction = ResourceAction.list_revisions
 
@@ -199,12 +264,17 @@ class OnSuccessListRevisions(BaseListRevisionsContext, BaseOnSuccessContext): ..
 class OnFailureListRevisions(BaseListRevisionsContext, BaseOnFailureContext): ...
 
 
+# ============================================================================
+# Get Meta Context Classes
+# ============================================================================
+
+
 class BaseGetMetaContext(BaseContext):
     action: ResourceAction = ResourceAction.get_meta
-
-
-class BeforeGetMeta(BaseGetMetaContext, BaseBeforeContext):
     resource_id: str
+
+
+class BeforeGetMeta(BaseGetMetaContext, BaseBeforeContext): ...
 
 
 class AfterGetMeta(BeforeGetMeta, BaseAfterContext): ...
@@ -215,6 +285,11 @@ class OnSuccessGetMeta(BeforeGetMeta, BaseOnSuccessContext):
 
 
 class OnFailureGetMeta(BeforeGetMeta, BaseOnFailureContext): ...
+
+
+# ============================================================================
+# Search Resources Context Classes
+# ============================================================================
 
 
 class BaseSearchResourcesContext(BaseContext):
@@ -238,6 +313,11 @@ class OnFailureSearchResources(BaseSearchResourcesContext, BaseOnFailureContext)
     pass
 
 
+# ============================================================================
+# Update Context Classes
+# ============================================================================
+
+
 class BaseUpdateContext(BaseContext):
     action: ResourceAction = ResourceAction.update
 
@@ -252,6 +332,11 @@ class OnSuccessUpdate(BaseUpdateContext, BaseOnSuccessContext): ...
 
 
 class OnFailureUpdate(BaseUpdateContext, BaseOnFailureContext): ...
+
+
+# ============================================================================
+# Patch Context Classes
+# ============================================================================
 
 
 class BasePatchContext(BaseContext):
@@ -270,6 +355,11 @@ class OnSuccessPatch(BasePatchContext, BaseOnSuccessContext): ...
 class OnFailurePatch(BasePatchContext, BaseOnFailureContext): ...
 
 
+# ============================================================================
+# Switch Context Classes
+# ============================================================================
+
+
 class BaseSwitchContext(BaseContext):
     action: ResourceAction = ResourceAction.switch
 
@@ -284,6 +374,11 @@ class OnSuccessSwitch(BaseSwitchContext, BaseOnSuccessContext): ...
 
 
 class OnFailureSwitch(BaseSwitchContext, BaseOnFailureContext): ...
+
+
+# ============================================================================
+# Delete Context Classes
+# ============================================================================
 
 
 class BaseDeleteContext(BaseContext):
@@ -302,6 +397,11 @@ class OnSuccessDelete(BaseDeleteContext, BaseOnSuccessContext): ...
 class OnFailureDelete(BaseDeleteContext, BaseOnFailureContext): ...
 
 
+# ============================================================================
+# Restore Context Classes
+# ============================================================================
+
+
 class BaseRestoreContext(BaseContext):
     action: ResourceAction = ResourceAction.restore
 
@@ -318,6 +418,11 @@ class OnSuccessRestore(BaseRestoreContext, BaseOnSuccessContext): ...
 class OnFailureRestore(BaseRestoreContext, BaseOnFailureContext): ...
 
 
+# ============================================================================
+# Dump Context Classes
+# ============================================================================
+
+
 class BaseDumpContext(BaseContext):
     action: ResourceAction = ResourceAction.dump
 
@@ -332,6 +437,11 @@ class OnSuccessDump(BaseDumpContext, BaseOnSuccessContext): ...
 
 
 class OnFailureDump(BaseDumpContext, BaseOnFailureContext): ...
+
+
+# ============================================================================
+# Load Context Classes
+# ============================================================================
 
 
 class BaseLoadContext(BaseContext):

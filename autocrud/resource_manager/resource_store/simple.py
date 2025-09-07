@@ -8,9 +8,8 @@ from autocrud.resource_manager.basic import (
     IMigration,
     IResourceStore,
     MsgspecSerializer,
-    Resource,
-    RevisionInfo,
 )
+from autocrud.types import Resource, RevisionInfo
 
 T = TypeVar("T")
 

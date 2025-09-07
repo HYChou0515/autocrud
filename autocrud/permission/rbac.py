@@ -13,7 +13,6 @@ from autocrud.permission.basic import (
 from autocrud.permission.simple import RootOnly
 from autocrud.resource_manager.basic import (
     IndexableField,
-    Resource,
     SpecialIndex,
 )
 from autocrud.resource_manager.core import ResourceManager
@@ -24,6 +23,7 @@ from autocrud.resource_manager.storage_factory import (
 from autocrud.types import (
     DataSearchCondition,
     DataSearchOperator,
+    Resource,
     ResourceDataSearchSort,
     ResourceMetaSearchQuery,
     ResourceMetaSearchSort,
