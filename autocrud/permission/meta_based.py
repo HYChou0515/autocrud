@@ -2,12 +2,10 @@ import logging
 
 from msgspec import UNSET
 
-from autocrud.permission.basic import (
-    IPermissionChecker,
-    PermissionContext,
+from autocrud.types import (
     PermissionResult,
 )
-from autocrud.resource_manager.basic import ResourceAction
+from autocrud.types import IPermissionChecker, PermissionContext, ResourceAction
 from autocrud.resource_manager.core import ResourceManager
 
 logger = logging.getLogger(__name__)
@@ -36,11 +34,7 @@ class ResourceOwnershipChecker(IPermissionChecker):
 
         try:
             # 獲取資源元資料
-            if context.resource_meta is UNSET:
-                meta = self.resource_manager.get_meta(context.resource_id)
-                context.resource_meta = meta
-            else:
-                meta = context.resource_meta
+            meta = self.resource_manager.get_meta(context.resource_id)
 
             # 檢查創建者
             if meta.created_by == context.user:

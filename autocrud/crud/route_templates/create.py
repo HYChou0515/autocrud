@@ -12,7 +12,8 @@ from autocrud.crud.route_templates.basic import (
     jsonschema_to_json_schema_extra,
     struct_to_responses_type,
 )
-from autocrud.resource_manager.basic import IResourceManager, RevisionInfo
+from autocrud.types import IResourceManager
+from autocrud.types import RevisionInfo
 
 T = TypeVar("T")
 

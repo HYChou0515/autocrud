@@ -8,11 +8,10 @@
 
 import logging
 
-from autocrud.permission.basic import (
-    IPermissionChecker,
-    PermissionContext,
+from autocrud.types import (
     PermissionResult,
 )
+from autocrud.types import IPermissionChecker, PermissionContext
 
 logger = logging.getLogger(__name__)
 

@@ -5,13 +5,15 @@ from pathlib import Path
 import pytest
 from msgspec import UNSET
 
-from autocrud.resource_manager.basic import (
+from autocrud.types import (
+    ResourceMetaSortDirection,
+)
+from autocrud.types import (
     DataSearchCondition,
     DataSearchOperator,
     ResourceDataSearchSort,
     ResourceMeta,
     ResourceMetaSearchQuery,
-    ResourceMetaSortDirection,
 )
 
 

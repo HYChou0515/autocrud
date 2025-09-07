@@ -3,6 +3,8 @@ from collections.abc import Generator
 
 from msgspec import UNSET
 
+from autocrud.types import ResourceMeta, ResourceMetaSearchQuery
+
 try:
     import pandas as pd
 except ImportError:
@@ -13,8 +15,6 @@ from autocrud.resource_manager.basic import (
     Encoding,
     ISlowMetaStore,
     MsgspecSerializer,
-    ResourceMeta,
-    ResourceMetaSearchQuery,
     get_sort_fn,
 )
 

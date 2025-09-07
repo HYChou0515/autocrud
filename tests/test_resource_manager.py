@@ -13,18 +13,14 @@ import redis
 from faker import Faker
 from msgspec import UNSET, Struct
 
-from autocrud.resource_manager.basic import (
-    ResourceMetaSearchSort,
-    ResourceMetaSortDirection,
+from autocrud.types import (
+    ResourceIDNotFoundError,
+    ResourceIsDeletedError,
     ResourceMetaSortKey,
 )
 from autocrud.resource_manager.core import (
     IResourceStore,
-    ResourceIDNotFoundError,
-    ResourceIsDeletedError,
     ResourceManager,
-    ResourceMeta,
-    ResourceMetaSearchQuery,
     SimpleStorage,
 )
 from autocrud.resource_manager.meta_store.df import DFMemoryMetaStore
@@ -42,6 +38,12 @@ from autocrud.resource_manager.meta_store.sqlite3 import (
 from autocrud.resource_manager.resource_store.simple import (
     DiskResourceStore,
     MemoryResourceStore,
+)
+from autocrud.types import (
+    ResourceMeta,
+    ResourceMetaSearchQuery,
+    ResourceMetaSearchSort,
+    ResourceMetaSortDirection,
 )
 
 

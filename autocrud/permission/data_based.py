@@ -1,12 +1,10 @@
 import logging
 from typing import Dict
 
-from autocrud.permission.basic import (
-    IPermissionChecker,
-    PermissionContext,
+from autocrud.types import (
     PermissionResult,
 )
-from autocrud.resource_manager.basic import ResourceAction
+from autocrud.types import IPermissionChecker, PermissionContext, ResourceAction
 
 logger = logging.getLogger(__name__)
 
@@ -47,12 +45,11 @@ class FieldLevelPermissionChecker(IPermissionChecker):
         # 例如從 method_kwargs 中獲取 data 參數，然後分析要修改的欄位
         modified_fields = set()
 
-        if "data" in context.method_kwargs:
-            data = context.method_kwargs["data"]
-            if hasattr(data, "__dict__"):
-                modified_fields = set(data.__dict__.keys())
-            elif isinstance(data, dict):
-                modified_fields = set(data.keys())
+        data = context.data
+        if hasattr(data, "__dict__"):
+            modified_fields = set(data.__dict__.keys())
+        elif isinstance(data, dict):
+            modified_fields = set(data.keys())
 
         return modified_fields
 

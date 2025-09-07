@@ -5,12 +5,10 @@ from typing import TypeVar
 
 from autocrud.resource_manager.basic import (
     Encoding,
-    IMigration,
     IResourceStore,
     MsgspecSerializer,
-    Resource,
-    RevisionInfo,
 )
+from autocrud.types import IMigration, Resource, RevisionInfo
 
 T = TypeVar("T")
 

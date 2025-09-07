@@ -9,7 +9,8 @@ from autocrud.crud.route_templates.basic import (
     MsgspecResponse,
     struct_to_responses_type,
 )
-from autocrud.resource_manager.basic import IResourceManager, ResourceMeta
+from autocrud.types import IResourceManager
+from autocrud.types import ResourceMeta
 
 T = TypeVar("T")
 

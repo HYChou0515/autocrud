@@ -11,12 +11,10 @@ from autocrud.crud.route_templates.basic import (
     RevisionListResponse,
     struct_to_responses_type,
 )
-from autocrud.resource_manager.basic import (
+from autocrud.types import (
     IResourceManager,
-    Resource,
-    ResourceMeta,
-    RevisionInfo,
 )
+from autocrud.types import Resource, ResourceMeta, RevisionInfo
 
 T = TypeVar("T")
 

@@ -10,6 +10,8 @@ from autocrud.resource_manager.basic import (
     Encoding,
     ISlowMetaStore,
     MsgspecSerializer,
+)
+from autocrud.types import (
     ResourceMeta,
     ResourceMetaSearchQuery,
     ResourceMetaSearchSort,
@@ -374,7 +376,7 @@ class PostgresMetaStore(ISlowMetaStore):
 
     def _build_jsonb_condition(self, condition) -> tuple[str, list]:
         """構建 PostgreSQL JSONB 查詢條件"""
-        from autocrud.resource_manager.basic import DataSearchOperator
+        from autocrud.types import DataSearchOperator
 
         field_path = condition.field_path
         operator = condition.operator

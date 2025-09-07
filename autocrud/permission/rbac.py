@@ -7,26 +7,28 @@ from autocrud.permission.acl import ACLPermission, ACLPermissionChecker, Policy
 from autocrud.permission.basic import (
     DEFAULT_ROOT_USER,
     IPermissionCheckerWithStore,
-    PermissionContext,
-    PermissionResult,
 )
 from autocrud.permission.simple import RootOnly
-from autocrud.resource_manager.basic import (
-    DataSearchCondition,
-    DataSearchOperator,
-    IndexableField,
-    Resource,
-    ResourceDataSearchSort,
-    ResourceMetaSearchQuery,
-    ResourceMetaSearchSort,
-    ResourceMetaSortDirection,
-    ResourceMetaSortKey,
+from autocrud.types import (
     SpecialIndex,
 )
 from autocrud.resource_manager.core import ResourceManager
 from autocrud.resource_manager.storage_factory import (
     IStorageFactory,
     MemoryStorageFactory,
+)
+from autocrud.types import (
+    DataSearchCondition,
+    DataSearchOperator,
+    IndexableField,
+    PermissionContext,
+    PermissionResult,
+    Resource,
+    ResourceDataSearchSort,
+    ResourceMetaSearchQuery,
+    ResourceMetaSearchSort,
+    ResourceMetaSortDirection,
+    ResourceMetaSortKey,
 )
 
 logger = logging.getLogger(__name__)
