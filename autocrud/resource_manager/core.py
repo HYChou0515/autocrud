@@ -1,9 +1,8 @@
 from abc import ABC, abstractmethod
-import copy
 import datetime as dt
 from collections.abc import Callable, Generator
 from contextlib import contextmanager, suppress
-from functools import cached_property
+from functools import cached_property, wraps
 import traceback
 from typing import (
     IO,
@@ -16,7 +15,7 @@ from typing import (
     get_origin,
 )
 from uuid import uuid4
-
+import inspect
 import msgspec
 from jsonpatch import JsonPatch
 from msgspec import UNSET, Struct, UnsetType
@@ -235,6 +234,78 @@ class PermissionEventHandler(IEventHandler):
             )
 
 
+def execute_with_events(
+    contexts: _Contexts,
+    result: str | Callable[[Any], dict[str, Any]],
+    *,
+    inputs: dict[str, str | UnsetType] | None = None,
+):
+    contexts = _Contexts(*contexts)
+    if isinstance(result, str):
+
+        def _build_result(x):
+            return {result: x}
+
+    else:
+        _build_result = result
+
+    def wrapper(func):
+        sig = inspect.signature(func)
+
+        @wraps(func)
+        def wrapped(self: "ResourceManager", *args, **kwargs):
+            bound_args = sig.bind(self, *args, **kwargs)
+            bound_args.apply_defaults()  # 應用默認值
+
+            func_inputs = dict(bound_args.arguments)
+            del func_inputs["self"]
+
+            inputs_ = func_inputs
+            if inputs:
+
+                def get_from_path(d, path: str):
+                    parts = path.split(".")
+                    current = d
+                    for part in parts:
+                        if hasattr(current, part):
+                            current = getattr(current, part)
+                        else:
+                            current = current[part]
+                    return current
+
+                for k, v in inputs.items():
+                    if v is UNSET:
+                        del inputs_[k]
+                    else:
+                        inputs_[k] = get_from_path(func_inputs, v)
+            inputs_ |= {
+                "user": self.user_or_unset,
+                "now": self.now_or_unset,
+                "resource_name": self.resource_name,
+            }
+            self._handle_event(contexts.before(**inputs_))
+            try:
+                result = func(self, *args, **kwargs)
+                built_result = _build_result(result)
+                self._handle_event(contexts.on_success(**inputs_, **built_result))
+                return result
+            except Exception as e:
+                self._handle_event(
+                    contexts.on_failure(
+                        **inputs_,
+                        error=str(e),
+                        stack_trace=traceback.format_exc(),
+                    )
+                )
+                raise
+            finally:
+                self._handle_event(contexts.after(**inputs_))
+
+        return wrapped
+
+    return wrapper
+
+
 class ResourceManager(IResourceManager[T], Generic[T]):
     def __init__(
         self,
@@ -451,83 +522,38 @@ class ResourceManager(IResourceManager[T], Generic[T]):
         meta = self.storage.get_meta(resource_id)
         return meta
 
-    def _get_meta(self, resource_id: str) -> ResourceMeta:
+    @execute_with_events(
+        (
+            BeforeGetMeta,
+            AfterGetMeta,
+            OnSuccessGetMeta,
+            OnFailureGetMeta,
+        ),
+        "meta",
+    )
+    def get_meta(self, resource_id: str) -> ResourceMeta:
         meta = self._get_meta_no_check_is_deleted(resource_id)
         if meta.is_deleted:
             raise ResourceIsDeletedError(resource_id)
         return meta
 
-    def _execute_with_events(
-        self,
-        method: Callable,
-        inputs: dict[str, Any],
-        contexts: _Contexts,
-        build_result: Callable[[Any], dict[str, Any]] | str,
-        *,
-        base: dict[str, Any] | None = None,
-    ):
-        contexts = _Contexts(*contexts)
-        if isinstance(build_result, str):
-
-            def _build_result(x):
-                return {build_result: x}
-
-        else:
-            _build_result = build_result
-        base = base or copy.copy(inputs)
-        base |= {
-            "user": self.user_or_unset,
-            "now": self.now_or_unset,
-            "resource_name": self.resource_name,
-        }
-        self._handle_event(contexts.before(**base))
-        try:
-            result = method(**inputs)
-            built_result = _build_result(result)
-            self._handle_event(contexts.on_success(**base, **built_result))
-            return result
-        except Exception as e:
-            self._handle_event(
-                contexts.on_failure(
-                    **base,
-                    error=str(e),
-                    stack_trace=traceback.format_exc(),
-                )
-            )
-            raise
-        finally:
-            self._handle_event(contexts.after(**base))
-
-    def get_meta(self, resource_id: str) -> ResourceMeta:
-        return self._execute_with_events(
-            self._get_meta,
-            {"resource_id": resource_id},
-            (
-                BeforeGetMeta,
-                AfterGetMeta,
-                OnSuccessGetMeta,
-                OnFailureGetMeta,
-            ),
-            "meta",
-        )
-
-    def _search_resources(self, query: ResourceMetaSearchQuery) -> list[ResourceMeta]:
+    @execute_with_events(
+        (
+            BeforeSearchResources,
+            AfterSearchResources,
+            OnSuccessSearchResources,
+            OnFailureSearchResources,
+        ),
+        "results",
+    )
+    def search_resources(self, query: ResourceMetaSearchQuery) -> list[ResourceMeta]:
         return self.storage.search(query)
 
-    def search_resources(self, query: ResourceMetaSearchQuery) -> list[ResourceMeta]:
-        return self._execute_with_events(
-            self._search_resources,
-            {"query": query},
-            (
-                BeforeSearchResources,
-                AfterSearchResources,
-                OnSuccessSearchResources,
-                OnFailureSearchResources,
-            ),
-            "results",
-        )
-
-    def _create(self, data: T) -> RevisionInfo:
+    @execute_with_events(
+        (BeforeCreate, AfterCreate, OnSuccessCreate, OnFailureCreate),
+        "info",
+    )
+    def create(self, data: T) -> RevisionInfo:
         info = self._rev_info(_BuildRevMetaCreate(data))
         resource = Resource(
             info=info,
@@ -537,60 +563,44 @@ class ResourceManager(IResourceManager[T], Generic[T]):
         self.storage.save_meta(self._res_meta(_BuildResMetaCreate(info, data)))
         return info
 
-    def create(self, data: T) -> RevisionInfo:
-        return self._execute_with_events(
-            self._create,
-            {"data": data},
-            (BeforeCreate, AfterCreate, OnSuccessCreate, OnFailureCreate),
-            "info",
-        )
-
-    def _get(self, resource_id: str) -> Resource[T]:
+    @execute_with_events(
+        (BeforeGet, AfterGet, OnSuccessGet, OnFailureGet),
+        "resource",
+    )
+    def get(self, resource_id: str) -> Resource[T]:
         meta = self.get_meta(resource_id)
         return self.get_resource_revision(resource_id, meta.current_revision_id)
 
-    def get(self, resource_id: str) -> Resource[T]:
-        return self._execute_with_events(
-            self._get,
-            {"resource_id": resource_id},
-            (BeforeGet, AfterGet, OnSuccessGet, OnFailureGet),
-            "resource",
-        )
-
-    def _get_resource_revision(self, resource_id: str, revision_id: str) -> Resource[T]:
+    @execute_with_events(
+        (
+            BeforeGetResourceRevision,
+            AfterGetResourceRevision,
+            OnSuccessGetResourceRevision,
+            OnFailureGetResourceRevision,
+        ),
+        "resource",
+    )
+    def get_resource_revision(self, resource_id: str, revision_id: str) -> Resource[T]:
         obj = self.storage.get_resource_revision(resource_id, revision_id)
         return obj
 
-    def get_resource_revision(self, resource_id: str, revision_id: str) -> Resource[T]:
-        return self._execute_with_events(
-            self._get_resource_revision,
-            {"resource_id": resource_id, "revision_id": revision_id},
-            (
-                BeforeGetResourceRevision,
-                AfterGetResourceRevision,
-                OnSuccessGetResourceRevision,
-                OnFailureGetResourceRevision,
-            ),
-            "resource",
-        )
-
-    def _list_revisions(self, resource_id: str) -> list[str]:
+    @execute_with_events(
+        (
+            BeforeListRevisions,
+            AfterListRevisions,
+            OnSuccessListRevisions,
+            OnFailureListRevisions,
+        ),
+        "revisions",
+    )
+    def list_revisions(self, resource_id: str) -> list[str]:
         return self.storage.list_revisions(resource_id)
 
-    def list_revisions(self, resource_id: str) -> list[str]:
-        return self._execute_with_events(
-            self._list_revisions,
-            {"resource_id": resource_id},
-            (
-                BeforeListRevisions,
-                AfterListRevisions,
-                OnSuccessListRevisions,
-                OnFailureListRevisions,
-            ),
-            "revisions",
-        )
-
-    def _update(self, resource_id: str, data: T) -> RevisionInfo:
+    @execute_with_events(
+        (BeforeUpdate, AfterUpdate, OnSuccessUpdate, OnFailureUpdate),
+        "revision_info",
+    )
+    def update(self, resource_id: str, data: T) -> RevisionInfo:
         prev_res_meta = self.get_meta(resource_id)
         prev_info = self.storage.get_resource_revision_info(
             resource_id,
@@ -609,37 +619,29 @@ class ResourceManager(IResourceManager[T], Generic[T]):
         self.storage.save_meta(res_meta)
         return rev_info
 
-    def update(self, resource_id: str, data: T) -> RevisionInfo:
-        return self._execute_with_events(
-            self._update,
-            {"resource_id": resource_id, "data": data},
-            (BeforeUpdate, AfterUpdate, OnSuccessUpdate, OnFailureUpdate),
-            "revision_info",
-        )
-
     def create_or_update(self, resource_id, data):
         try:
             return self.update(resource_id, data)
         except ResourceIDNotFoundError:
             return self.create(data)
 
-    def _patch(self, resource_id: str, patch_data: JsonPatch) -> RevisionInfo:
+    @execute_with_events(
+        (BeforePatch, AfterPatch, OnSuccessPatch, OnFailurePatch),
+        "revision_info",
+        inputs={"patch_data": "patch_data.patch"},
+    )
+    def patch(self, resource_id: str, patch_data: JsonPatch) -> RevisionInfo:
         data = self.get(resource_id).data
         d = self.data_converter.data_to_builtins(data)
         patch_data.apply(d, in_place=True)
         data = self.data_converter.builtins_to_data(d)
         return self.update(resource_id, data)
 
-    def patch(self, resource_id: str, patch_data: JsonPatch) -> RevisionInfo:
-        return self._execute_with_events(
-            self._patch,
-            {"resource_id": resource_id, "patch_data": patch_data},
-            (BeforePatch, AfterPatch, OnSuccessPatch, OnFailurePatch),
-            "revision_info",
-            base={"resource_id": resource_id, "patch_data": patch_data.patch},
-        )
-
-    def _switch(self, resource_id: str, revision_id: str) -> ResourceMeta:
+    @execute_with_events(
+        (BeforeSwitch, AfterSwitch, OnSuccessSwitch, OnFailureSwitch),
+        "meta",
+    )
+    def switch(self, resource_id: str, revision_id: str) -> ResourceMeta:
         meta = self.get_meta(resource_id)
         if meta.current_revision_id == revision_id:
             return meta
@@ -658,15 +660,11 @@ class ResourceManager(IResourceManager[T], Generic[T]):
         self.storage.save_meta(meta)
         return meta
 
-    def switch(self, resource_id: str, revision_id: str) -> ResourceMeta:
-        return self._execute_with_events(
-            self._switch,
-            {"resource_id": resource_id, "revision_id": revision_id},
-            (BeforeSwitch, AfterSwitch, OnSuccessSwitch, OnFailureSwitch),
-            "meta",
-        )
-
-    def _delete(self, resource_id: str) -> ResourceMeta:
+    @execute_with_events(
+        (BeforeDelete, AfterDelete, OnSuccessDelete, OnFailureDelete),
+        "meta",
+    )
+    def delete(self, resource_id: str) -> ResourceMeta:
         meta = self.get_meta(resource_id)
         meta.is_deleted = True
         meta.updated_by = self.user_ctx.get()
@@ -674,15 +672,11 @@ class ResourceManager(IResourceManager[T], Generic[T]):
         self.storage.save_meta(meta)
         return meta
 
-    def delete(self, resource_id: str) -> ResourceMeta:
-        return self._execute_with_events(
-            self._delete,
-            {"resource_id": resource_id},
-            (BeforeDelete, AfterDelete, OnSuccessDelete, OnFailureDelete),
-            "meta",
-        )
-
-    def _restore(self, resource_id: str) -> ResourceMeta:
+    @execute_with_events(
+        (BeforeRestore, AfterRestore, OnSuccessRestore, OnFailureRestore),
+        "meta",
+    )
+    def restore(self, resource_id: str) -> ResourceMeta:
         meta = self._get_meta_no_check_is_deleted(resource_id)
         if meta.is_deleted:
             meta.is_deleted = False
@@ -691,44 +685,28 @@ class ResourceManager(IResourceManager[T], Generic[T]):
             self.storage.save_meta(meta)
         return meta
 
-    def restore(self, resource_id: str) -> ResourceMeta:
-        return self._execute_with_events(
-            self._restore,
-            {"resource_id": resource_id},
-            (BeforeRestore, AfterRestore, OnSuccessRestore, OnFailureRestore),
-            "meta",
-        )
-
-    def _dump(self) -> Generator[tuple[str, IO[bytes]]]:
+    @execute_with_events(
+        (BeforeDump, AfterDump, OnSuccessDump, OnFailureDump),
+        lambda _: {},
+    )
+    def dump(self) -> Generator[tuple[str, IO[bytes]]]:
         for meta in self.storage.dump_meta():
             yield f"meta/{meta.resource_id}", self.meta_serializer.encode(meta)
         for resource in self.storage.dump_resource():
             yield f"data/{resource.info.uid}", self.resource_serializer.encode(resource)
 
-    def dump(self) -> Generator[tuple[str, IO[bytes]]]:
-        return self._execute_with_events(
-            self._dump,
-            {},
-            (BeforeDump, AfterDump, OnSuccessDump, OnFailureDump),
-            lambda _: {},
-        )
-
-    def _load(self, key: str, bio: IO[bytes]) -> None:
+    @execute_with_events(
+        (BeforeLoad, AfterLoad, OnSuccessLoad, OnFailureLoad),
+        lambda _: {},
+        inputs={"bio": UNSET},
+    )
+    def load(self, key: str, bio: IO[bytes]) -> None:
         if key.startswith("meta/"):
             self.storage.save_meta(self.meta_serializer.decode(bio.read()))
         elif key.startswith("data/"):
             self.storage.save_resource_revision(
                 self.resource_serializer.decode(bio.read()),
             )
-
-    def load(self, key: str, bio: IO[bytes]) -> None:
-        return self._execute_with_events(
-            self._load,
-            {"key": key, "bio": bio},
-            (BeforeLoad, AfterLoad, OnSuccessLoad, OnFailureLoad),
-            lambda _: {},
-            base={"key": key},
-        )
 
     @cached_property
     def meta_serializer(self):
