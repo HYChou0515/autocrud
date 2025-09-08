@@ -1,6 +1,5 @@
-from abc import ABC, abstractmethod
 import datetime as dt
-from collections.abc import Callable, Generator
+from collections.abc import Callable, Generator, Sequence
 from contextlib import contextmanager, suppress
 from functools import cached_property, wraps
 import traceback
@@ -90,6 +89,7 @@ from autocrud.types import (
     RevisionStatus,
     SpecialIndex,
 )
+from autocrud.types import IEventHandler
 
 if TYPE_CHECKING:
     from autocrud.types import IPermissionChecker
@@ -208,14 +208,6 @@ class _Contexts(NamedTuple):
     on_failure: EventContext
 
 
-class IEventHandler(ABC):
-    @abstractmethod
-    def is_supported(self, context: EventContext) -> bool: ...
-
-    @abstractmethod
-    def handle_event(self, context: EventContext) -> None: ...
-
-
 class PermissionEventHandler(IEventHandler):
     def __init__(self, permission_checker: "IPermissionChecker"):
         self.permission_checker = permission_checker
@@ -316,7 +308,7 @@ class ResourceManager(IResourceManager[T], Generic[T]):
         indexed_fields: list[IndexableField] | None = None,
         permission_checker: "IPermissionChecker | None" = None,
         name: str | NamingFormat = NamingFormat.SNAKE,
-        event_handlers: list[IEventHandler] | None = None,
+        event_handlers: Sequence[IEventHandler] | None = None,
     ):
         self.user_ctx = Ctx("user_ctx", strict_type=str)
         self.now_ctx = Ctx("now_ctx", strict_type=dt.datetime)
@@ -341,7 +333,7 @@ class ResourceManager(IResourceManager[T], Generic[T]):
         self.id_generator = (
             default_id_generator if id_generator is None else id_generator
         )
-        self.event_handlers: list[IEventHandler] = event_handlers or []
+        self.event_handlers = list(event_handlers) if event_handlers else []
         # 設定權限檢查器
         if permission_checker is not None:
             self.event_handlers.append(
