@@ -27,15 +27,19 @@ class S3ResourceStore(IResourceStore[T]):
         endpoint_url: str | None = None,  # minio example:  "http://localhost:9000"
         bucket: str = "autocrud",
         prefix: str = "",
+        client_kwargs: dict | None = None,
     ):
         self.bucket = bucket
         self.prefix = f"{prefix}resources/"
+        if client_kwargs is None:
+            client_kwargs = {}
         self.client = boto3.client(
             "s3",
             endpoint_url=endpoint_url,
             aws_access_key_id=access_key_id,
             aws_secret_access_key=secret_access_key,
             region_name=region_name,
+            **client_kwargs,
         )
         self._data_serializer = MsgspecSerializer(
             encoding=encoding,
