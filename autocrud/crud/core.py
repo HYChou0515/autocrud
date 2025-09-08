@@ -10,6 +10,7 @@ from fastapi import APIRouter, FastAPI
 from fastapi.openapi.utils import get_openapi
 
 from autocrud.crud.route_templates.basic import (
+    DependencyProvider,
     FullResourceResponse,
     IRouteTemplate,
     RevisionListResponse,
@@ -164,6 +165,7 @@ class AutoCRUD:
         route_templates: list[IRouteTemplate] | None = None,
         storage_factory: IStorageFactory | None = None,
         admin: str | None = None,
+        dependency_provider: DependencyProvider | None = None,
     ):
         if storage_factory is None:
             self.storage_factory = MemoryStorageFactory()
@@ -173,14 +175,14 @@ class AutoCRUD:
         self.model_naming = model_naming
         self.route_templates: list[IRouteTemplate] = (
             [
-                CreateRouteTemplate(),
-                ListRouteTemplate(),
-                ReadRouteTemplate(),
-                UpdateRouteTemplate(),
-                PatchRouteTemplate(),
-                SwitchRevisionRouteTemplate(),
-                DeleteRouteTemplate(),
-                RestoreRouteTemplate(),
+                CreateRouteTemplate(dependency_provider=dependency_provider),
+                ListRouteTemplate(dependency_provider=dependency_provider),
+                ReadRouteTemplate(dependency_provider=dependency_provider),
+                UpdateRouteTemplate(dependency_provider=dependency_provider),
+                PatchRouteTemplate(dependency_provider=dependency_provider),
+                SwitchRevisionRouteTemplate(dependency_provider=dependency_provider),
+                DeleteRouteTemplate(dependency_provider=dependency_provider),
+                RestoreRouteTemplate(dependency_provider=dependency_provider),
             ]
             if route_templates is None
             else route_templates
