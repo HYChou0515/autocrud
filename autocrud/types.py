@@ -1343,3 +1343,11 @@ class IndexableField(Struct, kw_only=True):
     field_type: (
         type | SpecialIndex
     )  # The type of the field (str, int, float, bool, datetime)
+
+
+class IEventHandler(ABC):
+    @abstractmethod
+    def is_supported(self, context: EventContext) -> bool: ...
+
+    @abstractmethod
+    def handle_event(self, context: EventContext) -> None: ...
