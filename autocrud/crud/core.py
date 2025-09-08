@@ -3,7 +3,7 @@ from __future__ import annotations
 import io
 import tarfile
 from collections import OrderedDict
-from collections.abc import Callable
+from collections.abc import Callable, Sequence
 from typing import IO, Literal, TypeVar
 
 from fastapi import APIRouter, FastAPI
@@ -46,7 +46,9 @@ from autocrud.resource_manager.storage_factory import (
     MemoryStorageFactory,
 )
 from autocrud.types import (
+    IEventHandler,
     IMigration,
+    IPermissionChecker,
     IResourceManager,
     IndexableField,
     ResourceMeta,
@@ -165,7 +167,9 @@ class AutoCRUD:
         route_templates: list[IRouteTemplate] | None = None,
         storage_factory: IStorageFactory | None = None,
         admin: str | None = None,
+        permission_checker: IPermissionChecker | None = None,
         dependency_provider: DependencyProvider | None = None,
+        event_handlers: Sequence[IEventHandler] | None = None,
     ):
         if storage_factory is None:
             self.storage_factory = MemoryStorageFactory()
@@ -188,13 +192,18 @@ class AutoCRUD:
             else route_templates
         )
         self.route_templates.sort()
-        if not admin:
-            self.permission_checker = AllowAll()
+        if permission_checker is None:
+            if not admin:
+                self.permission_checker = AllowAll()
+            else:
+                self.permission_checker = RBACPermissionChecker(
+                    storage_factory=self.storage_factory,
+                    root_user=admin,
+                )
         else:
-            self.permission_checker = RBACPermissionChecker(
-                storage_factory=self.storage_factory,
-                root_user=admin,
-            )
+            self.permission_checker = permission_checker
+
+        self.event_handlers = event_handlers
 
     def _resource_name(self, model: type[T]) -> str:
         """Convert model class name to resource name using the configured naming convention.
@@ -267,6 +276,8 @@ class AutoCRUD:
         storage: IStorage | None = None,
         migration: IMigration | None = None,
         indexed_fields: list[tuple[str, type] | IndexableField] | None = None,
+        event_handlers: Sequence[IEventHandler] | None = None,
+        permission_checker: IPermissionChecker | None = None,
     ) -> None:
         """Add a data model to AutoCRUD and configure its API endpoints.
 
@@ -358,6 +369,8 @@ class AutoCRUD:
             id_generator=id_generator,
             migration=migration,
             indexed_fields=_indexed_fields,
+            event_handlers=self.event_handlers or event_handlers,
+            permission_checker=self.permission_checker or permission_checker,
         )
         self.resource_managers[model_name] = resource_manager
 
