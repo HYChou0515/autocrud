@@ -5,7 +5,7 @@ import tarfile
 from collections import OrderedDict
 from collections.abc import Callable, Sequence
 from typing import IO, Literal, TypeVar
-
+import logging
 from fastapi import APIRouter, FastAPI
 from fastapi.openapi.utils import get_openapi
 
@@ -56,6 +56,7 @@ from autocrud.types import (
 )
 from autocrud.util.naming import NameConverter
 
+logger = logging.getLogger(__name__)
 T = TypeVar("T")
 
 
@@ -176,6 +177,7 @@ class AutoCRUD:
         else:
             self.storage_factory = storage_factory
         self.resource_managers: OrderedDict[str, IResourceManager] = OrderedDict()
+        self.model_names: dict[type[T], str | None] = {}
         self.model_naming = model_naming
         self.route_templates: list[IRouteTemplate] = (
             [
@@ -204,6 +206,16 @@ class AutoCRUD:
             self.permission_checker = permission_checker
 
         self.event_handlers = event_handlers
+
+    def get_resource_manager(self, model: type[T] | str) -> IResourceManager[T]:
+        if isinstance(model, str):
+            return self.resource_managers[model]
+        model_name = self.model_names[model]
+        if model_name is None:
+            raise ValueError(
+                f"Model {model.__name__} is registered with multiple names."
+            )
+        return self.resource_managers[model_name]
 
     def _resource_name(self, model: type[T]) -> str:
         """Convert model class name to resource name using the configured naming convention.
@@ -361,6 +373,14 @@ class AutoCRUD:
                     "Invalid indexed field, should be IndexableField or tuple[field_name, field_type]",
                 )
         model_name = name or self._resource_name(model)
+        if model_name in self.resource_managers:
+            raise ValueError(f"Model name {model_name} already exists.")
+        if model in self.model_names:
+            self.model_names[model] = None
+            logger.warning(
+                f"Model {model.__name__} is already registered with a different name. "
+                f"This resource manager will not be accessible by its type.",
+            )
         if storage is None:
             storage = self.storage_factory.build(model, model_name, migration=migration)
         resource_manager = ResourceManager(
