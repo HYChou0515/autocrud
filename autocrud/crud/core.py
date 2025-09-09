@@ -381,6 +381,8 @@ class AutoCRUD:
                 f"Model {model.__name__} is already registered with a different name. "
                 f"This resource manager will not be accessible by its type.",
             )
+        else:
+            self.model_names[model] = model_name
         if storage is None:
             storage = self.storage_factory.build(model, model_name, migration=migration)
         resource_manager = ResourceManager(
