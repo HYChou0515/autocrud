@@ -320,8 +320,9 @@ class ResourceManager(IResourceManager[T], Generic[T]):
         self.storage = storage
         self.data_converter = DataConverter(self.resource_type)
         schema_version = migration.schema_version if migration else None
-        self.schema_version = UNSET if schema_version is None else schema_version
+        self._schema_version = UNSET if schema_version is None else schema_version
         self._indexed_fields = indexed_fields or []
+        self._migration = migration or UNSET
 
         if isinstance(name, NamingFormat):
             self._resource_name = NameConverter(_get_type_name(resource_type)).to(
@@ -368,6 +369,17 @@ class ResourceManager(IResourceManager[T], Generic[T]):
     @property
     def resource_type(self):
         return self._resource_type
+
+    @property
+    def schema_version(self) -> str:
+        if self._schema_version is UNSET:
+            raise ValueError("Schema version is not set for this resource manager")
+        return self._schema_version
+
+    def migrate(self, resource_id: str) -> ResourceMeta:
+        if self._migration is UNSET:
+            raise ValueError("Migration is not set for this resource manager")
+        raise NotImplementedError("Migration logic is not implemented yet")
 
     @property
     def resource_name(self):

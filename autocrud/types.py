@@ -855,6 +855,16 @@ EventContext = (
 )
 
 
+class IMigration(ABC, Generic[T]):
+    @abstractmethod
+    def migrate(self, data: IO[bytes], schema_version: str | UnsetType) -> T: ...
+    @abstractmethod
+    def migrate_meta(self, data: IO[bytes], schema_version: str | UnsetType) -> T: ...
+    @property
+    @abstractmethod
+    def schema_version(self) -> str: ...
+
+
 class IResourceManager(ABC, Generic[T]):
     @property
     @abstractmethod
@@ -871,7 +881,11 @@ class IResourceManager(ABC, Generic[T]):
     @property
     @abstractmethod
     def resource_type(self) -> type[T]: ...
-
+    @abstractmethod
+    def migrate(self, resource_id: str) -> ResourceMeta: ...
+    @property
+    @abstractmethod
+    def schema_version(self) -> str: ...
     @property
     @abstractmethod
     def resource_name(self) -> str: ...
@@ -1265,14 +1279,6 @@ class IResourceManager(ABC, Generic[T]):
         Note: This method should be used in conjunction with dump() for
         complete backup and restore workflows.
         """
-
-
-class IMigration(ABC):
-    @abstractmethod
-    def migrate(self, data: IO[bytes], schema_version: str | None) -> T: ...
-    @property
-    @abstractmethod
-    def schema_version(self) -> str: ...
 
 
 class PermissionDeniedError(Exception):
