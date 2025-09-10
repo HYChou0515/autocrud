@@ -788,6 +788,9 @@ class IStorage(ABC, Generic[T]):
         """
 
     @abstractmethod
+    def count(self, query: ResourceMetaSearchQuery) -> int: ...
+
+    @abstractmethod
     def search(self, query: ResourceMetaSearchQuery) -> list[ResourceMeta]:
         """Search for resources based on metadata and data criteria.
 

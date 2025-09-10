@@ -74,6 +74,7 @@ source = { editable = "." }
 dependencies = [
     { name = "fastapi" },
     { name = "jsonpatch" },
+    { name = "more-itertools" },
     { name = "msgpack" },
     { name = "msgspec" },
     { name = "pydantic" },
@@ -134,6 +135,7 @@ requires-dist = [
     { name = "furo", marker = "extra == 'docs'", specifier = ">=2025.7.19" },
     { name = "jsonpatch", specifier = ">=1.33" },
     { name = "linkify-it-py", marker = "extra == 'docs'", specifier = ">=2.0.3" },
+    { name = "more-itertools", specifier = ">=10.7.0" },
     { name = "msgpack", specifier = ">=1.1.1" },
     { name = "msgspec", specifier = ">=0.19.0" },
     { name = "myst-parser", marker = "extra == 'docs'", specifier = ">=4.0.1" },

@@ -1003,6 +1003,10 @@ class IResourceManager(ABC, Generic[T]):
         """
 
     @abstractmethod
+    def count_resources(self, query: ResourceMetaSearchQuery) -> int:
+        """"""
+
+    @abstractmethod
     def search_resources(self, query: ResourceMetaSearchQuery) -> list[ResourceMeta]:
         """Search for resources based on a query.
 

@@ -523,3 +523,75 @@ class ListRouteTemplate(BaseRouteTemplate):
                 return MsgspecResponse(resources_data)
             except Exception as e:
                 raise HTTPException(status_code=400, detail=str(e))
+
+        @router.get(
+            f"/{model_name}/count",
+            summary=f"List {model_name} Complete Information",
+            tags=[f"{model_name}"],
+            description=textwrap.dedent(
+                f"""
+                Retrieve a list of `{model_name}` resources with complete information including data, metadata, and revision info.
+
+                **Response Format:**
+                - Returns comprehensive information for each resource
+                - Includes data content, resource metadata, and current revision information
+                - Most complete but also largest response format
+
+                **Complete Information Includes:**
+                - `data`: The actual resource data content
+                - `meta`: Resource metadata (timestamps, user info, deletion status, etc.)
+                - `revision_info`: Current revision details (uid, revision_id, parent_revision, hash, status)
+
+                **Filtering Options:**
+                - `is_deleted`: Filter by deletion status (true/false)
+                - `created_time_start/end`: Filter by creation time range (ISO format)
+                - `updated_time_start/end`: Filter by update time range (ISO format)
+                - `created_bys`: Filter by resource creators (list of usernames)
+                - `updated_bys`: Filter by resource updaters (list of usernames)
+                - `data_conditions`: Filter by data content (JSON format)
+
+                **Data Filtering:**
+                - Use `data_conditions` parameter to filter resources by their data content
+                - Format: JSON array of condition objects
+                - Each condition has: `field_path`, `operator`, `value`
+                - Supported operators: `eq`, `ne`, `gt`, `lt`, `gte`, `lte`, `contains`, `starts_with`, `ends_with`, `in`, `not_in`
+                - Example: `[{{"field_path": "name", "operator": "contains", "value": "project"}}]`
+
+                **Pagination:**
+                - `limit`: Maximum number of results to return (default: 10)
+                - `offset`: Number of results to skip for pagination (default: 0)
+
+                **Use Cases:**
+                - Complete data export operations
+                - Comprehensive resource inspection
+                - Full context retrieval for complex operations
+                - Debugging and detailed analysis
+                - Administrative overview with all details
+
+                **Performance Considerations:**
+                - Largest response payload size
+                - May have slower response times for large datasets
+                - Consider using pagination with smaller limits
+
+                **Examples:**
+                - `GET /{model_name}/full` - Get complete info for first 10 resources
+                - `GET /{model_name}/full?limit=5` - Get complete info for first 5 resources (smaller payload)
+                - `GET /{model_name}/full?is_deleted=false&limit=20` - Get complete info for 20 active resources
+
+                **Error Responses:**
+                - `400`: Bad request - Invalid query parameters or search error""",
+            ),
+        )
+        async def get_resources_count(
+            query_params: ListRouteTemplate.QueryInputs = Query(...),
+            current_user: str = Depends(self.deps.get_user),
+            current_time: dt.datetime = Depends(self.deps.get_now),
+        ) -> int:
+            try:
+                # 構建查詢對象
+                query = self._build_query(query_params)
+                with resource_manager.meta_provide(current_user, current_time):
+                    count = resource_manager.count_resources(query)
+                return count
+            except Exception as e:
+                raise HTTPException(status_code=400, detail=str(e))

@@ -20,7 +20,7 @@ from jsonpatch import JsonPatch
 from msgspec import UNSET, Struct, UnsetType
 from xxhash import xxh3_128_hexdigest
 from autocrud.types import PermissionDeniedError
-
+import more_itertools as mit
 from autocrud.types import (
     AfterCreate,
     AfterDelete,
@@ -168,6 +168,9 @@ class SimpleStorage(IStorage[T]):
 
     def search(self, query: ResourceMetaSearchQuery) -> list[ResourceMeta]:
         return list(self._meta_store.iter_search(query))
+
+    def count(self, query: ResourceMetaSearchQuery) -> int:
+        return mit.ilen(self._meta_store.iter_search(query))
 
     def encode_data(self, data: T) -> bytes:
         return self._resource_store.encode(data)
@@ -527,6 +530,9 @@ class ResourceManager(IResourceManager[T], Generic[T]):
         if meta.is_deleted:
             raise ResourceIsDeletedError(resource_id)
         return meta
+
+    def count_resources(self, query: ResourceMetaSearchQuery) -> int:
+        return self.storage.count(query)
 
     @execute_with_events(
         (
