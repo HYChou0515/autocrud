@@ -516,6 +516,12 @@ class ResourceManager(IResourceManager[T], Generic[T]):
         meta = self.storage.get_meta(resource_id)
         return meta
 
+    def exists(self, resource_id: str) -> bool:
+        return self.storage.exists(resource_id)
+
+    def revision_exists(self, resource_id: str, revision_id: str) -> bool:
+        return self.storage.revision_exists(resource_id, revision_id)
+
     @execute_with_events(
         (
             BeforeGetMeta,

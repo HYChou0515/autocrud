@@ -898,6 +898,12 @@ class IResourceManager(ABC, Generic[T]):
         """
 
     @abstractmethod
+    def exists(self, resource_id: str) -> bool: ...
+
+    @abstractmethod
+    def revision_exists(self, resource_id: str, revision_id: str) -> bool: ...
+
+    @abstractmethod
     def get(self, resource_id: str) -> Resource[T]:
         """Get the current revision of the resource.
 
