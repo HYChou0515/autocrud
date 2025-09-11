@@ -1,6 +1,7 @@
 import datetime as dt
 from collections.abc import Callable, Generator, Sequence
 from contextlib import contextmanager, suppress
+from io import BytesIO
 from functools import cached_property, wraps
 import traceback
 from typing import (
@@ -379,7 +380,44 @@ class ResourceManager(IResourceManager[T], Generic[T]):
     def migrate(self, resource_id: str) -> ResourceMeta:
         if self._migration is UNSET:
             raise ValueError("Migration is not set for this resource manager")
-        raise NotImplementedError("Migration logic is not implemented yet")
+
+        # 獲取當前資源和元數據
+        resource = self.get(resource_id)
+        meta = self.get_meta(resource_id)
+
+        # 檢查是否需要遷移
+        if resource.info.schema_version == self._migration.schema_version:
+            # 如果已經是最新版本，直接返回當前元數據
+            return meta
+
+        # 保存原始 schema_version 用於 migrate_meta 調用
+        original_schema_version = resource.info.schema_version
+
+        # 執行數據遷移
+        # 序列化當前數據
+        data_bytes = self.storage.encode_data(resource.data)
+
+        data_io = BytesIO(data_bytes)
+
+        # 調用遷移器進行數據遷移
+        migrated_data = self._migration.migrate(data_io, resource.info.schema_version)
+
+        # 更新 resource info 的 schema_version
+        resource.info.schema_version = self._migration.schema_version
+
+        # 創建新的 resource 對象
+        migrated_resource = Resource(info=resource.info, data=migrated_data)
+
+        # 調用遷移器進行元數據遷移，傳入原始的 schema_version
+        migrated_meta = self._migration.migrate_meta(
+            meta, migrated_resource, original_schema_version
+        )
+
+        # 保存遷移後的資源和元數據
+        self.storage.save_resource_revision(migrated_resource)
+        self.storage.save_meta(migrated_meta)
+
+        return migrated_meta
 
     @property
     def resource_name(self):
