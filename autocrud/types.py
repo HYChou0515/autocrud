@@ -110,7 +110,7 @@ class ResourceMetaSortDirection(StrEnum):
     descending = "-"
 
 
-class ResourceDataSearchSort(Struct, kw_only=True):
+class ResourceDataSearchSort(Struct, kw_only=True, tag=True):
     direction: ResourceMetaSortDirection = ResourceMetaSortDirection.ascending
     field_path: str
 
@@ -121,7 +121,7 @@ class ResourceMetaSortKey(StrEnum):
     resource_id = "resource_id"
 
 
-class ResourceMetaSearchSort(Struct, kw_only=True):
+class ResourceMetaSearchSort(Struct, kw_only=True, tag=True):
     direction: ResourceMetaSortDirection = ResourceMetaSortDirection.ascending
     key: ResourceMetaSortKey
 
@@ -859,7 +859,9 @@ class IMigration(ABC, Generic[T]):
     @abstractmethod
     def migrate(self, data: IO[bytes], schema_version: str | UnsetType) -> T: ...
     @abstractmethod
-    def migrate_meta(self, data: IO[bytes], schema_version: str | UnsetType) -> T: ...
+    def migrate_meta(
+        self, meta: ResourceMeta, resource: Resource[T], schema_version: str | UnsetType
+    ) -> ResourceMeta: ...
     @property
     @abstractmethod
     def schema_version(self) -> str: ...

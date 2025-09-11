@@ -467,7 +467,7 @@ class ResourceManager(IResourceManager[T], Generic[T]):
         return ResourceMeta(
             current_revision_id=current_revision_id,
             resource_id=resource_id,
-            schema_version=self.schema_version,
+            schema_version=self._schema_version,
             total_revision_count=total_revision_count,
             created_time=created_time,
             updated_time=self.now_ctx.get(),
@@ -507,7 +507,7 @@ class ResourceManager(IResourceManager[T], Generic[T]):
             resource_id=resource_id,
             revision_id=revision_id,
             parent_revision_id=last_revision_id,
-            schema_version=self.schema_version,
+            schema_version=self._schema_version,
             data_hash=data_hash,
             status=RevisionStatus.stable,
             created_time=self.now_ctx.get(),

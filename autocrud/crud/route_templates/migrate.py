@@ -57,6 +57,7 @@ class MigrateRouteTemplate(BaseRouteTemplate):
         resource_id: str,
         current_user: str,
         current_time: dt.datetime,
+        *,
         write_back: bool = True,
     ) -> MigrateProgress:
         """遷移單一資源"""
@@ -64,13 +65,9 @@ class MigrateRouteTemplate(BaseRouteTemplate):
             with resource_manager.meta_provide(current_user, current_time):
                 # 檢查是否需要遷移
                 meta = resource_manager.get_meta(resource_id)
-                current_resource = resource_manager.get(resource_id)
 
                 # 假設有 migration 且 schema_version 不符才需要遷移
-                if (
-                    current_resource.info.schema_version
-                    != resource_manager.schema_version
-                ):
+                if meta.schema_version != resource_manager.schema_version:
                     if write_back:
                         # 執行遷移並寫回 storage
                         # 這裡需要實際的遷移邏輯
@@ -78,7 +75,7 @@ class MigrateRouteTemplate(BaseRouteTemplate):
                         return MigrateProgress(
                             resource_id=resource_id,
                             status="success",
-                            message=f"Migrated {migrated_resource.resource_id} from {current_resource.info.schema_version} to {resource_manager.schema_version}",
+                            message=f"Migrated {migrated_resource.resource_id} from {meta.schema_version} to {resource_manager.schema_version}",
                         )
                     else:
                         # 只在記憶體中遷移測試
@@ -126,7 +123,7 @@ class MigrateRouteTemplate(BaseRouteTemplate):
                         resource_id,
                         current_user,
                         current_time,
-                        write_back,
+                        write_back=write_back,
                     )
                     yield progress
 
@@ -341,6 +338,7 @@ class MigrateRouteTemplate(BaseRouteTemplate):
         )
         async def migrate_single_resource(
             resource_id: str,
+            *,
             write_back: bool = Query(
                 True, description="Whether to write migrated data back to storage"
             ),
@@ -353,7 +351,7 @@ class MigrateRouteTemplate(BaseRouteTemplate):
                     resource_id,
                     current_user,
                     current_time,
-                    write_back,
+                    write_back=write_back,
                 )
 
                 if progress.status == "failed":
