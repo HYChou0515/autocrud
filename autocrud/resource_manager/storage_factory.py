@@ -1,6 +1,5 @@
 from abc import ABC, abstractmethod
 from pathlib import Path
-from typing import TypeVar
 
 from autocrud.resource_manager.basic import IStorage
 from autocrud.resource_manager.core import SimpleStorage
@@ -9,33 +8,24 @@ from autocrud.resource_manager.resource_store.simple import (
     DiskResourceStore,
     MemoryResourceStore,
 )
-from autocrud.types import IMigration
-
-T = TypeVar("T")
 
 
 class IStorageFactory(ABC):
     @abstractmethod
     def build(
         self,
-        model: type[T],
         model_name: str,
-        *,
-        migration: IMigration | None = None,
-    ) -> IStorage[T]: ...
+    ) -> IStorage: ...
 
 
 class MemoryStorageFactory(IStorageFactory):
     def build(
         self,
-        model: type[T],
         model_name: str,
-        *,
-        migration: IMigration | None = None,
-    ) -> IStorage[T]:
+    ) -> IStorage:
         meta_store = MemoryMetaStore()
 
-        resource_store = MemoryResourceStore[T](resource_type=model)
+        resource_store = MemoryResourceStore()
 
         return SimpleStorage(meta_store, resource_store)
 
@@ -49,18 +39,13 @@ class DiskStorageFactory(IStorageFactory):
 
     def build(
         self,
-        model: type[T],
         model_name: str,
-        *,
-        migration: IMigration | None = None,
-    ) -> IStorage[T]:
+    ) -> IStorage:
         meta_store = DiskMetaStore(rootdir=self.rootdir / model_name / "meta")
 
         # 對於其他類型（msgspec.Struct, dataclass, TypedDict），使用原生支持
-        resource_store = DiskResourceStore[T](
-            resource_type=model,
+        resource_store = DiskResourceStore(
             rootdir=self.rootdir / model_name / "data",
-            migration=migration,
         )
 
         return SimpleStorage(meta_store, resource_store)

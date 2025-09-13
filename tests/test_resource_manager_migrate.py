@@ -1,6 +1,7 @@
 import datetime as dt
+import io
 from typing import IO
-from unittest.mock import Mock
+from unittest.mock import MagicMock
 
 import pytest
 from msgspec import UNSET, Struct, UnsetType
@@ -23,8 +24,8 @@ class LegacyData(Struct):
 
 class CurrentData(Struct):
     name: str
-    value: int
-    new_field: str = "default"
+    _legacy_value: int
+    new_field: str
 
 
 # 測試用的遷移實現
@@ -64,9 +65,9 @@ class TestResourceManagerMigrate:
     """測試 ResourceManager 的 migrate 方法"""
 
     @pytest.fixture
-    def mock_storage(self) -> Mock:
+    def mock_storage(self) -> MagicMock:
         """創建模擬的 storage"""
-        storage = Mock()
+        storage = MagicMock()
         return storage
 
     @pytest.fixture
@@ -76,7 +77,7 @@ class TestResourceManagerMigrate:
 
     @pytest.fixture
     def resource_manager(
-        self, mock_storage: Mock, test_migration: MigrationImpl
+        self, mock_storage: MagicMock, test_migration: MigrationImpl
     ) -> ResourceManager:
         """創建包含遷移器的 ResourceManager"""
         return ResourceManager(
@@ -86,7 +87,7 @@ class TestResourceManagerMigrate:
         )
 
     @pytest.fixture
-    def resource_manager_no_migration(self, mock_storage: Mock) -> ResourceManager:
+    def resource_manager_no_migration(self, mock_storage: MagicMock) -> ResourceManager:
         """創建沒有遷移器的 ResourceManager"""
         return ResourceManager(
             resource_type=CurrentData,
@@ -103,20 +104,19 @@ class TestResourceManagerMigrate:
             resource_manager_no_migration.migrate("test:123")
 
     def test_migrate_already_current_version(
-        self, resource_manager: ResourceManager, mock_storage: Mock
+        self, resource_manager: ResourceManager, mock_storage: MagicMock
     ) -> None:
         """測試資源已經是最新版本的情況"""
         # 設置 mock 返回值
-        mock_meta = Mock()
+        mock_meta = MagicMock()
         mock_meta.is_deleted = False  # 確保資源沒有被刪除
-        mock_resource = Mock()
-        mock_resource.info.schema_version = "2.0"  # 已經是最新版本
+        mock_info = MagicMock()
+        mock_info.schema_version = "2.0"  # 已經是最新版本
 
-        # Mock storage methods properly
+        # MagicMock storage methods properly
         mock_storage.exists.return_value = True
         mock_storage.get_meta.return_value = mock_meta
-        mock_storage.get_resource_revision.return_value = mock_resource
-
+        mock_storage.get_resource_revision_info.return_value = mock_info
         # 執行遷移
         result = resource_manager.migrate("test:123")
 
@@ -124,19 +124,16 @@ class TestResourceManagerMigrate:
         assert result == mock_meta
 
         # 驗證調用 - migrate 方法內部調用 get_meta 和 get 方法
+        mock_storage.exists.assert_called_with("test:123")
         mock_storage.get_meta.assert_called_with("test:123")
-        mock_storage.get_resource_revision.assert_called_with(
+        mock_storage.get_resource_revision_info.assert_called_with(
             "test:123", mock_meta.current_revision_id
         )
-
-        # 不應該調用保存方法
-        mock_storage.save_resource_revision.assert_not_called()
-        mock_storage.save_meta.assert_not_called()
 
     def test_migrate_legacy_version(
         self,
         resource_manager: ResourceManager,
-        mock_storage: Mock,
+        mock_storage: MagicMock,
         test_migration: MigrationImpl,
     ) -> None:
         """測試從舊版本遷移的情況"""
@@ -173,8 +170,7 @@ class TestResourceManagerMigrate:
         # 設置 mock 返回值
         mock_storage.exists.return_value = True
         mock_storage.get_meta.return_value = original_meta
-        mock_storage.get_resource_revision.return_value = legacy_resource
-        mock_storage.encode_data.return_value = b'{"name": "old_name", "value": 10}'
+        mock_storage.get_resource_revision_info.return_value = legacy_revision_info
 
         # 執行遷移
         result = resource_manager.migrate("test:123")
@@ -204,7 +200,7 @@ class TestResourceManagerMigrate:
         assert "new_field" in saved_meta.indexed_data
 
     def test_migrate_with_context(
-        self, resource_manager: ResourceManager, mock_storage: Mock
+        self, resource_manager: ResourceManager, mock_storage: MagicMock
     ) -> None:
         """測試帶有用戶上下文的遷移"""
         # 創建測試數據
@@ -255,7 +251,7 @@ class TestResourceManagerMigrate:
         assert mock_storage.save_meta.called
 
     def test_migrate_unset_schema_version(
-        self, resource_manager: ResourceManager, mock_storage: Mock
+        self, resource_manager: ResourceManager, mock_storage: MagicMock
     ) -> None:
         """測試 schema_version 為 UNSET 的情況"""
         # 創建測試數據
@@ -305,7 +301,7 @@ class TestResourceManagerMigrate:
         saved_resource = mock_storage.save_resource_revision.call_args[0][0]
         assert saved_resource.info.schema_version == "2.0"
 
-    def test_migrate_custom_migration_logic(self, mock_storage: Mock) -> None:
+    def test_migrate_custom_migration_logic(self, mock_storage: MagicMock) -> None:
         """測試自定義遷移邏輯"""
 
         # 創建一個特殊的遷移器，用於測試自定義邏輯

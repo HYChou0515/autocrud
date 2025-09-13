@@ -24,8 +24,9 @@ class RevisionInfo(Struct, kw_only=True):
     resource_id: str
     revision_id: str
 
-    parent_revision_id: str | UnsetType = UNSET
-    schema_version: str | UnsetType = UNSET
+    parent_revision_id: str | None = None
+    parent_schema_version: str | None = None
+    schema_version: str | None = None
     data_hash: str | UnsetType = UNSET
 
     status: RevisionStatus
@@ -49,9 +50,10 @@ class RawResource(Struct):
 class ResourceMeta(Struct, kw_only=True):
     current_revision_id: str
     resource_id: str
-    schema_version: str | UnsetType = UNSET
+    schema_version: str | None = None
 
     total_revision_count: int
+    schema_versions: list[str] = []
 
     created_time: dt.datetime
     updated_time: dt.datetime

@@ -63,7 +63,7 @@ class RBACPermissionChecker(
             self.storage_factory = MemoryStorageFactory()
         else:
             self.storage_factory = storage_factory
-        storage = self.storage_factory.build(RBACPermission, "RBACPermission")
+        storage = self.storage_factory.build("RBACPermission")
         self.pm = ResourceManager[RBACPermission](
             RBACPermission,
             storage=storage,

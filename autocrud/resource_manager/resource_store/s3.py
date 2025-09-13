@@ -1,7 +1,7 @@
 from contextlib import contextmanager
 import io
 from collections.abc import Generator
-from typing import IO, TypeVar
+from typing import IO
 
 import boto3
 from botocore.exceptions import ClientError
@@ -13,10 +13,8 @@ from autocrud.resource_manager.basic import (
 )
 from autocrud.types import RevisionInfo
 
-T = TypeVar("T")
 
-
-class S3ResourceStore(IResourceStore[T]):
+class S3ResourceStore(IResourceStore):
     def __init__(
         self,
         encoding: Encoding = Encoding.json,
@@ -143,14 +141,18 @@ class S3ResourceStore(IResourceStore[T]):
                 raise KeyError(f"Revision info not found: {resource_id}/{revision_id}")
             raise
 
-    def save_data_bytes(
+    def save(self, info: RevisionInfo, data: IO[bytes]) -> None:
+        self._save_data_bytes(info.resource_id, info.revision_id, data)
+        self._save_revision_info(info)
+
+    def _save_data_bytes(
         self, resource_id: str, revision_id: str, data: IO[bytes]
     ) -> None:
         """保存資源修訂版本的資料"""
         data_key = self._get_data_key(resource_id, revision_id)
         self.client.put_object(Bucket=self.bucket, Key=data_key, Body=data.read())
 
-    def save_revision_info(self, info: RevisionInfo) -> None:
+    def _save_revision_info(self, info: RevisionInfo) -> None:
         """保存資源修訂版本的資訊"""
         info_key = self._get_info_key(info.resource_id, info.revision_id)
         info_bytes = self._info_serializer.encode(info)

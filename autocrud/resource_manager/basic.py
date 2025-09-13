@@ -474,7 +474,7 @@ class IResourceStore(ABC):
         """
 
     @abstractmethod
-    def exists(self, resource_id: str, revision_id: str) -> bool:
+    def exists(self, resource_id: str, revision_id: str, schema_version: str | None) -> bool:
         """Check if a specific revision exists for a given resource.
 
         Arguments:
@@ -495,7 +495,7 @@ class IResourceStore(ABC):
 
     @abstractmethod
     def get_data_bytes(
-        self, resource_id: str, revision_id: str
+        self, resource_id: str, revision_id: str, schema_version: str | None
     ) -> AbstractContextManager[IO[bytes]]:
         """Retrieve raw data bytes for a specific revision.
 
@@ -520,7 +520,7 @@ class IResourceStore(ABC):
         """
 
     @abstractmethod
-    def get_revision_info(self, resource_id: str, revision_id: str) -> RevisionInfo:
+    def get_revision_info(self, resource_id: str, revision_id: str, schema_version: str | None) -> RevisionInfo:
         """Retrieve revision metadata without the resource data.
 
         Arguments:
@@ -549,42 +549,16 @@ class IResourceStore(ABC):
         """
 
     @abstractmethod
-    def save_data_bytes(
-        self, resource_id: str, revision_id: str, data: IO[bytes]
+    def save(
+        self, info: RevisionInfo, data: IO[bytes]
     ) -> None:
-        """Store raw data bytes for a resource revision.
-
-        Arguments:
-            resource_id (str): The unique identifier of the resource.
-            revision_id (str): The unique identifier of the revision.
-            data (IO[bytes]): A byte stream containing the encoded resource data.
-
-        ---
-        This method stores raw encoded bytes for a resource revision without
-        handling the decoding or interpretation of the data. This enables the
-        ResourceManager to handle encoding/decoding at a higher level while
-        keeping the storage layer focused on pure byte operations.
-
-        The implementation should read all data from the stream and store it
-        persistently. The stream position should be reset to the beginning
-        before reading if necessary.
-        """
+        """Save a new revision."""
 
     @abstractmethod
-    def save_revision_info(self, info: RevisionInfo) -> None:
-        """Store revision metadata separately from data.
-
-        Arguments:
-            resource_id (str): The unique identifier of the resource.
-            revision_id (str): The unique identifier of the revision.
-            info (RevisionInfo): The revision metadata to store.
-
-        ---
-        This method stores only the revision metadata without the resource data,
-        enabling separate management of metadata and data storage. This supports
-        scenarios where metadata needs to be updated independently or where
-        data and metadata have different storage requirements.
-        """
+    def get_schema_versions(
+        self, resource_id: str, revision_id: str
+    ) -> Iterable[RevisionInfo]:
+        """Retrieve a list of migrated revisions for a specific resource and revision."""
 
 
 class IStorage(ABC):
@@ -764,7 +738,7 @@ class IStorage(ABC):
         """
 
     @abstractmethod
-    def save(self, info: RevisionInfo, data: IO[bytes]) -> None:
+    def save_revision(self, info: RevisionInfo, data: IO[bytes]) -> None:
         """Store raw data bytes for a resource revision.
 
         Arguments:
@@ -782,6 +756,10 @@ class IStorage(ABC):
         persistently. The stream position should be reset to the beginning
         before reading if necessary.
         """
+
+    @abstractmethod
+    def migrate_revision(self, info: RevisionInfo, data: IO[bytes]) -> None:
+        ...
 
     @abstractmethod
     def count(self, query: ResourceMetaSearchQuery) -> int: ...

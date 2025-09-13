@@ -123,7 +123,7 @@ class ACLPermissionChecker(IPermissionCheckerWithStore[ACLPermission]):
             self.storage_factory = MemoryStorageFactory()
         else:
             self.storage_factory = storage_factory
-        storage = self.storage_factory.build(ACLPermission, "ACLPermission")
+        storage = self.storage_factory.build("ACLPermission")
         self.pm = ResourceManager(
             ACLPermission,
             storage=storage,

@@ -164,16 +164,15 @@ def get_meta_store(store_type: str, tmpdir: Path):
 def get_resource_store(store_type: str, tmpdir: Path) -> Generator[IResourceStore]:
     """Fixture to provide a fast store for testing."""
     if store_type == "memory":
-        yield MemoryResourceStore(Data, encoding="msgpack")
+        yield MemoryResourceStore(encoding="msgpack")
     elif store_type == "disk":
         d = tmpdir / faker.pystr()
         d.mkdir()
-        yield DiskResourceStore(Data, encoding="msgpack", rootdir=d)
+        yield DiskResourceStore(encoding="msgpack", rootdir=d)
     elif store_type == "s3":
         from autocrud.resource_manager.resource_store.s3 import S3ResourceStore
 
         s3 = S3ResourceStore(
-            Data,
             encoding="msgpack",
             endpoint_url="http://localhost:9000",
             prefix=str(tmpdir).rsplit("/", 1)[-1] + "/",

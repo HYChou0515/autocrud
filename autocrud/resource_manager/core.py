@@ -141,9 +141,11 @@ class SimpleStorage(IStorage):
         return resource_id in self._meta_store
 
     def revision_exists(self, resource_id: str, revision_id: str) -> bool:
+        meta = self.get_meta(resource_id)
         return self.exists(resource_id) and self._resource_store.exists(
             resource_id,
             revision_id,
+            meta.schema_version,
         )
 
     def get_meta(self, resource_id: str) -> ResourceMeta:
@@ -156,18 +158,19 @@ class SimpleStorage(IStorage):
         return list(self._resource_store.list_revisions(resource_id))
 
     def get_data_bytes(self, resource_id: str, revision_id: str) -> IO[bytes]:
-        return self._resource_store.get_data_bytes(resource_id, revision_id)
+        meta = self.get_meta(resource_id)
+        return self._resource_store.get_data_bytes(resource_id, revision_id, meta.schema_version)
 
     def get_resource_revision_info(
         self,
         resource_id: str,
         revision_id: str,
     ) -> RevisionInfo:
-        return self._resource_store.get_revision_info(resource_id, revision_id)
+        meta = self.get_meta(resource_id)
+        return self._resource_store.get_revision_info(resource_id, revision_id, meta.schema_version)
 
-    def save(self, info: RevisionInfo, data: IO[bytes]) -> None:
-        self._resource_store.save_data_bytes(info.resource_id, info.revision_id, data)
-        self._resource_store.save_revision_info(info)
+    def save_revision(self, info: RevisionInfo, data: IO[bytes]) -> None:
+        self._resource_store.save(info, data)
 
     def search(self, query: ResourceMetaSearchQuery) -> list[ResourceMeta]:
         return list(self._meta_store.iter_search(query))
@@ -310,7 +313,7 @@ class ResourceManager(IResourceManager[T], Generic[T]):
         *,
         storage: IStorage,
         id_generator: Callable[[], str] | None = None,
-        migration: IMigration | None = None,
+        migration: IMigration[T] | None = None,
         indexed_fields: list[IndexableField] | None = None,
         permission_checker: "IPermissionChecker | None" = None,
         name: str | NamingFormat = NamingFormat.SNAKE,
@@ -389,48 +392,35 @@ class ResourceManager(IResourceManager[T], Generic[T]):
         if self._schema_version is UNSET:
             raise ValueError("Schema version is not set for this resource manager")
         return self._schema_version
-
+            
     def migrate(self, resource_id: str) -> ResourceMeta:
         if self._migration is UNSET:
             raise ValueError("Migration is not set for this resource manager")
 
         # 獲取當前資源和元數據
-        resource = self.get(resource_id)
         meta = self.get_meta(resource_id)
+        info = self.storage.get_resource_revision_info(resource_id, meta.current_revision_id)
 
         # 檢查是否需要遷移
-        if resource.info.schema_version == self._migration.schema_version:
+        if info.schema_version == self._migration.schema_version:
             # 如果已經是最新版本，直接返回當前元數據
             return meta
 
-        # 保存原始 schema_version 用於 migrate_meta 調用
-        original_schema_version = resource.info.schema_version
-
         # 執行數據遷移
         # 序列化當前數據
-        data_bytes = self.storage.encode_data(resource.data)
-
-        data_io = BytesIO(data_bytes)
-
-        # 調用遷移器進行數據遷移
-        migrated_data = self._migration.migrate(data_io, resource.info.schema_version)
+        with self.storage.get_data_bytes(resource_id, meta.current_revision_id) as data_io:
+            migrated_data = self._migration.migrate(data_io, info.schema_version)
 
         # 更新 resource info 的 schema_version
-        resource.info.schema_version = self._migration.schema_version
+        info.parent_schema_version = info.schema_version
+        info.schema_version = self._migration.schema_version
+        meta.schema_version = self._migration.schema_version
+        meta.indexed_data = self._extract_indexed_values(migrated_data)
 
-        # 創建新的 resource 對象
-        migrated_resource = Resource(info=resource.info, data=migrated_data)
+        self.storage.save_meta(meta)
+        self.storage.save_revision(info, io.BytesIO(self.encode(migrated_data)))
 
-        # 調用遷移器進行元數據遷移，傳入原始的 schema_version
-        migrated_meta = self._migration.migrate_meta(
-            meta, migrated_resource, original_schema_version
-        )
-
-        # 保存遷移後的資源和元數據
-        self.storage.save_resource_revision(migrated_resource)
-        self.storage.save_meta(migrated_meta)
-
-        return migrated_meta
+        return meta
 
     @property
     def resource_name(self):
@@ -508,13 +498,6 @@ class ResourceManager(IResourceManager[T], Generic[T]):
             created_time = mode.prev_res_meta.created_time
             created_by = mode.prev_res_meta.created_by
 
-        # 提取索引數據
-        indexed_data = {}
-        if self._indexed_fields:
-            extracted = self._extract_indexed_values(mode.data)
-            if extracted:
-                indexed_data = extracted
-
         return ResourceMeta(
             current_revision_id=current_revision_id,
             resource_id=resource_id,
@@ -524,7 +507,7 @@ class ResourceManager(IResourceManager[T], Generic[T]):
             updated_time=self.now_ctx.get(),
             created_by=created_by,
             updated_by=self.user_ctx.get(),
-            indexed_data=indexed_data,
+            indexed_data=self._extract_indexed_values(mode.data),
         )
 
     def get_data_hash(self, data: T) -> str:
@@ -621,7 +604,7 @@ class ResourceManager(IResourceManager[T], Generic[T]):
     )
     def create(self, data: T) -> RevisionInfo:
         info = self._rev_info(_BuildRevMetaCreate(data))
-        self.storage.save(info, self.encode(data))
+        self.storage.save_revision(info, io.BytesIO(self.encode(data)))
         self.storage.save_meta(self._res_meta(_BuildResMetaCreate(info, data)))
         return info
 
@@ -675,7 +658,7 @@ class ResourceManager(IResourceManager[T], Generic[T]):
             return prev_info
         rev_info = self._rev_info(_BuildRevInfoUpdate(prev_res_meta, data))
         res_meta = self._res_meta(_BuildResMetaUpdate(prev_res_meta, rev_info, data))
-        self.storage.save(rev_info, io.BytesIO(data))
+        self.storage.save_revision(rev_info, io.BytesIO(self.encode(data)))
         self.storage.save_meta(res_meta)
         return rev_info
 
@@ -712,8 +695,7 @@ class ResourceManager(IResourceManager[T], Generic[T]):
         if self._indexed_fields:
             with self.storage.get_data_bytes(resource_id, revision_id) as dataio:
                 data = self.decode(dataio.read())
-            indexed_data = self._extract_indexed_values(data)
-            meta.indexed_data = indexed_data or UNSET
+            meta.indexed_data = self._extract_indexed_values(data)
 
         meta.updated_by = self.user_ctx.get()
         meta.updated_time = self.now_ctx.get()
@@ -773,7 +755,7 @@ class ResourceManager(IResourceManager[T], Generic[T]):
             self.storage.save_meta(self.meta_serializer.decode(bio.read()))
         elif key.startswith("data/"):
             raw_res = self.resource_serializer.decode(bio.read())
-            self.storage.save(raw_res.info, io.BytesIO(raw_res.raw_data))
+            self.storage.save_revision(raw_res.info, io.BytesIO(raw_res.raw_data))
 
     @cached_property
     def meta_serializer(self):
