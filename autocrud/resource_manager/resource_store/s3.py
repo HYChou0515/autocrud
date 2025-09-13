@@ -1,6 +1,7 @@
+from contextlib import contextmanager
 import io
 from collections.abc import Generator
-from typing import TypeVar
+from typing import IO, TypeVar
 
 import boto3
 from botocore.exceptions import ClientError
@@ -10,7 +11,7 @@ from autocrud.resource_manager.basic import (
     IResourceStore,
     MsgspecSerializer,
 )
-from autocrud.types import IMigration, Resource, RevisionInfo
+from autocrud.types import RevisionInfo
 
 T = TypeVar("T")
 
@@ -18,9 +19,7 @@ T = TypeVar("T")
 class S3ResourceStore(IResourceStore[T]):
     def __init__(
         self,
-        resource_type: type[T],
         encoding: Encoding = Encoding.json,
-        migration: IMigration[T] | None = None,
         access_key_id: str = "minioadmin",
         secret_access_key: str = "minioadmin",
         region_name: str = "us-east-1",
@@ -41,15 +40,10 @@ class S3ResourceStore(IResourceStore[T]):
             region_name=region_name,
             **client_kwargs,
         )
-        self._data_serializer = MsgspecSerializer(
-            encoding=encoding,
-            resource_type=resource_type,
-        )
         self._info_serializer = MsgspecSerializer(
             encoding=encoding,
             resource_type=RevisionInfo,
         )
-        self.migration = migration
 
         # 確保 bucket 存在
         try:
@@ -120,45 +114,16 @@ class S3ResourceStore(IResourceStore[T]):
                 return False
             raise
 
-    def get(self, resource_id: str, revision_id: str) -> Resource[T]:
-        """獲取指定的資源修訂版本"""
-        info = self.get_revision_info(resource_id, revision_id)
+    @contextmanager
+    def get_data_bytes(
+        self, resource_id: str, revision_id: str
+    ) -> Generator[IO[bytes]]:
+        """以位元組流的形式獲取指定資源修訂版本的資料"""
         data_key = self._get_data_key(resource_id, revision_id)
-
         try:
             response = self.client.get_object(Bucket=self.bucket, Key=data_key)
             data_bytes = response["Body"].read()
-
-            if (
-                self.migration is None
-                or info.schema_version == self.migration.schema_version
-            ):
-                data = self._data_serializer.decode(data_bytes)
-            else:
-                # 執行資料遷移
-                data_io = io.BytesIO(data_bytes)
-                data = self.migration.migrate(data_io, info.schema_version)
-                info.schema_version = self.migration.schema_version
-
-                # 更新 info 和 data 存儲
-                info_key = self._get_info_key(resource_id, revision_id)
-                self.client.put_object(
-                    Bucket=self.bucket,
-                    Key=info_key,
-                    Body=self._info_serializer.encode(info),
-                )
-
-                migrated_data_bytes = self._data_serializer.encode(data)
-                self.client.put_object(
-                    Bucket=self.bucket,
-                    Key=data_key,
-                    Body=migrated_data_bytes,
-                )
-
-            return Resource(
-                info=info,
-                data=data,
-            )
+            yield io.BytesIO(data_bytes)
         except ClientError as e:
             error_code = e.response["Error"]["Code"]
             if error_code in ("NoSuchKey", "404"):
@@ -178,24 +143,18 @@ class S3ResourceStore(IResourceStore[T]):
                 raise KeyError(f"Revision info not found: {resource_id}/{revision_id}")
             raise
 
-    def save(self, data: Resource[T]) -> None:
-        """保存資源修訂版本"""
-        resource_id = data.info.resource_id
-        revision_id = data.info.revision_id
-
-        # 保存資料
+    def save_data_bytes(
+        self, resource_id: str, revision_id: str, data: IO[bytes]
+    ) -> None:
+        """保存資源修訂版本的資料"""
         data_key = self._get_data_key(resource_id, revision_id)
-        data_bytes = self._data_serializer.encode(data.data)
-        self.client.put_object(Bucket=self.bucket, Key=data_key, Body=data_bytes)
+        self.client.put_object(Bucket=self.bucket, Key=data_key, Body=data.read())
 
-        # 保存資訊
-        info_key = self._get_info_key(resource_id, revision_id)
-        info_bytes = self._info_serializer.encode(data.info)
+    def save_revision_info(self, info: RevisionInfo) -> None:
+        """保存資源修訂版本的資訊"""
+        info_key = self._get_info_key(info.resource_id, info.revision_id)
+        info_bytes = self._info_serializer.encode(info)
         self.client.put_object(Bucket=self.bucket, Key=info_key, Body=info_bytes)
-
-    def encode(self, data: T) -> bytes:
-        """編碼資料為位元組"""
-        return self._data_serializer.encode(data)
 
     def cleanup(self) -> None:
         """清理所有以指定前綴開頭的 S3 物件"""
