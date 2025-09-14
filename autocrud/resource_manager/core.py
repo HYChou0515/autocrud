@@ -20,7 +20,14 @@ import msgspec
 from jsonpatch import JsonPatch
 from msgspec import UNSET, Raw, Struct, UnsetType
 from xxhash import xxh3_128_hexdigest
-from autocrud.types import PermissionDeniedError, RawResource
+from autocrud.types import (
+    AfterMigrate,
+    BeforeMigrate,
+    OnFailureMigrate,
+    OnSuccessMigrate,
+    PermissionDeniedError,
+    RawResource,
+)
 import more_itertools as mit
 from autocrud.types import (
     AfterCreate,
@@ -396,6 +403,15 @@ class ResourceManager(IResourceManager[T], Generic[T]):
             raise ValueError("Schema version is not set for this resource manager")
         return self._schema_version
 
+    @execute_with_events(
+        (
+            BeforeMigrate,
+            AfterMigrate,
+            OnSuccessMigrate,
+            OnFailureMigrate,
+        ),
+        "meta",
+    )
     def migrate(self, resource_id: str) -> ResourceMeta:
         if self._migration is None:
             raise ValueError("Migration is not set for this resource manager")
@@ -442,16 +458,16 @@ class ResourceManager(IResourceManager[T], Generic[T]):
         """從 data 中提取需要索引的值"""
         indexed_data = {}
         for field in self._indexed_fields:
-            try:
-                if field.field_type == SpecialIndex.msgspec_tag:
+            value = UNSET
+            if field.field_type == SpecialIndex.msgspec_tag:
+                with suppress(Exception):
                     value = msgspec.inspect.type_info(type(data)).tag
-                else:
-                    # 使用 JSON path 提取值
+            else:
+                # 使用 JSON path 提取值
+                with suppress(Exception):
                     value = self._extract_by_path(data, field.field_path)
+            if value is not UNSET:
                 indexed_data[field.field_path] = value
-            except Exception:
-                # 如果提取失敗，跳過該字段
-                continue
 
         return indexed_data
 
