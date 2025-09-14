@@ -8,7 +8,7 @@ from uuid import uuid4
 
 import msgspec
 import pytest
-from msgspec import UNSET, Struct, UnsetType
+from msgspec import Struct
 
 from autocrud.resource_manager.basic import (
     Encoding,
@@ -73,9 +73,9 @@ class DataMigration(IMigration[Data]):
         self,
         meta: ResourceMeta,
         resource: Resource[Data],
-        schema_version: str | UnsetType,
+        schema_version: str | None,
     ):
-        if schema_version == "1.0" or schema_version == UNSET:
+        if schema_version == "1.0" or schema_version is None:
             meta.schema_version = self._schema_version
             meta.indexed_data = {
                 "string": resource.data.string,
@@ -85,13 +85,13 @@ class DataMigration(IMigration[Data]):
             }
         return meta
 
-    def migrate(self, data: IO[bytes], schema_version: str | UnsetType) -> Data:
+    def migrate(self, data: IO[bytes], schema_version: str | None) -> Data:
         """Migrate from LegacyData to Data by adding missing fields"""
         data.seek(0)  # Ensure we're at the beginning
         data_bytes = data.read()
 
         # Handle both explicit "1.0" and UNSET/None as legacy version
-        if schema_version == "1.0" or schema_version == UNSET:
+        if schema_version == "1.0" or schema_version is None:
             # Decode as legacy format
             decoder = msgspec.json.Decoder(LegacyData)
             legacy_data = decoder.decode(data_bytes)
@@ -423,7 +423,6 @@ class TestResourceStoreMigration:
             uid=uuid4(),
             resource_id=resource_id,
             revision_id=revision_id,
-            schema_version=UNSET,  # No schema version set
             status=RevisionStatus.stable,
             created_time=dt.datetime.now(),
             updated_time=dt.datetime.now(),

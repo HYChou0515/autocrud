@@ -1,7 +1,6 @@
 import datetime as dt
 from collections.abc import Callable, Generator, Sequence
 from contextlib import contextmanager, suppress
-from io import BytesIO
 from functools import cached_property, wraps
 import io
 import traceback
@@ -159,7 +158,9 @@ class SimpleStorage(IStorage):
 
     def get_data_bytes(self, resource_id: str, revision_id: str) -> IO[bytes]:
         meta = self.get_meta(resource_id)
-        return self._resource_store.get_data_bytes(resource_id, revision_id, meta.schema_version)
+        return self._resource_store.get_data_bytes(
+            resource_id, revision_id, meta.schema_version
+        )
 
     def get_resource_revision_info(
         self,
@@ -167,7 +168,9 @@ class SimpleStorage(IStorage):
         revision_id: str,
     ) -> RevisionInfo:
         meta = self.get_meta(resource_id)
-        return self._resource_store.get_revision_info(resource_id, revision_id, meta.schema_version)
+        return self._resource_store.get_revision_info(
+            resource_id, revision_id, meta.schema_version
+        )
 
     def save_revision(self, info: RevisionInfo, data: IO[bytes]) -> None:
         self._resource_store.save(info, data)
@@ -327,9 +330,9 @@ class ResourceManager(IResourceManager[T], Generic[T]):
         self.storage = storage
         self.data_converter = DataConverter(self.resource_type)
         schema_version = migration.schema_version if migration else None
-        self._schema_version = UNSET if schema_version is None else schema_version
+        self._schema_version = schema_version
         self._indexed_fields = indexed_fields or []
-        self._migration = migration or UNSET
+        self._migration = migration
         self._data_serializer = MsgspecSerializer(
             encoding=encoding,
             resource_type=resource_type,
@@ -389,17 +392,19 @@ class ResourceManager(IResourceManager[T], Generic[T]):
 
     @property
     def schema_version(self) -> str:
-        if self._schema_version is UNSET:
+        if self._schema_version is None:
             raise ValueError("Schema version is not set for this resource manager")
         return self._schema_version
-            
+
     def migrate(self, resource_id: str) -> ResourceMeta:
-        if self._migration is UNSET:
+        if self._migration is None:
             raise ValueError("Migration is not set for this resource manager")
 
         # 獲取當前資源和元數據
         meta = self.get_meta(resource_id)
-        info = self.storage.get_resource_revision_info(resource_id, meta.current_revision_id)
+        info = self.storage.get_resource_revision_info(
+            resource_id, meta.current_revision_id
+        )
 
         # 檢查是否需要遷移
         if info.schema_version == self._migration.schema_version:
@@ -408,7 +413,9 @@ class ResourceManager(IResourceManager[T], Generic[T]):
 
         # 執行數據遷移
         # 序列化當前數據
-        with self.storage.get_data_bytes(resource_id, meta.current_revision_id) as data_io:
+        with self.storage.get_data_bytes(
+            resource_id, meta.current_revision_id
+        ) as data_io:
             migrated_data = self._migration.migrate(data_io, info.schema_version)
 
         # 更新 resource info 的 schema_version
@@ -527,7 +534,7 @@ class ResourceManager(IResourceManager[T], Generic[T]):
             else:
                 resource_id = _id
             revision_id = f"{resource_id}:1"
-            last_revision_id = UNSET
+            last_revision_id = None
         elif isinstance(mode, _BuildRevInfoUpdate):
             prev_res_meta = mode.prev_res_meta
             resource_id = prev_res_meta.resource_id

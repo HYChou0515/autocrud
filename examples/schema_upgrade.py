@@ -12,7 +12,6 @@ import shutil
 import sys
 from typing import IO
 
-from msgspec import UnsetType
 
 from autocrud.resource_manager.basic import Encoding, MsgspecSerializer
 from autocrud.resource_manager.storage_factory import DiskStorageFactory
@@ -100,7 +99,7 @@ def apply(before_after):
         def schema_version(self):
             return "v1"
 
-        def migrate(self, data: IO[bytes], schema_version: str | UnsetType):
+        def migrate(self, data: IO[bytes], schema_version: str | None):
             BeforeUser = get_before_user()
             s = MsgspecSerializer(encoding=Encoding.json, resource_type=BeforeUser)
             od = s.decode(data.read())

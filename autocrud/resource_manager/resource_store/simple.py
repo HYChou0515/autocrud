@@ -19,6 +19,7 @@ DataBytes = bytes
 InfoBytes = bytes
 DataIO = IO[bytes]
 
+
 class MemoryResourceStore(IResourceStore):
     def __init__(
         self,
@@ -26,7 +27,9 @@ class MemoryResourceStore(IResourceStore):
     ):
         self._raw_data_store: dict[UID, DataBytes] = {}
         self._raw_info_store: dict[UID, InfoBytes] = {}
-        self._store: dict[ResourceID, dict[RevisionID, dict[SchemaVersion | None, UID]]] = {}
+        self._store: dict[
+            ResourceID, dict[RevisionID, dict[SchemaVersion | None, UID]]
+        ] = {}
         self._info_serializer = MsgspecSerializer(
             encoding=encoding,
             resource_type=RevisionInfo,
@@ -38,7 +41,17 @@ class MemoryResourceStore(IResourceStore):
     def list_revisions(self, resource_id: ResourceID) -> Generator[RevisionID]:
         yield from self._store[resource_id].keys()
 
-    def exists(self, resource_id: ResourceID, revision_id: RevisionID, schema_version: str | None) -> bool:
+    def list_schema_versions(
+        self, resource_id: ResourceID, revision_id: RevisionID
+    ) -> Generator[SchemaVersion | None]:
+        yield from self._store[resource_id][revision_id].keys()
+
+    def exists(
+        self,
+        resource_id: ResourceID,
+        revision_id: RevisionID,
+        schema_version: SchemaVersion | None,
+    ) -> bool:
         return (
             resource_id in self._store
             and revision_id in self._store[resource_id]
@@ -47,17 +60,27 @@ class MemoryResourceStore(IResourceStore):
 
     @contextmanager
     def get_data_bytes(
-        self, resource_id: ResourceID, revision_id: RevisionID, schema_version: str | None
+        self,
+        resource_id: ResourceID,
+        revision_id: RevisionID,
+        schema_version: SchemaVersion | None,
     ) -> Generator[DataIO]:
         uid = self._store[resource_id][revision_id][schema_version]
         yield io.BytesIO(self._raw_data_store[uid])
 
-    def get_revision_info(self, resource_id: ResourceID, revision_id: RevisionID, schema_version: str | None) -> RevisionInfo:
+    def get_revision_info(
+        self,
+        resource_id: ResourceID,
+        revision_id: RevisionID,
+        schema_version: SchemaVersion | None,
+    ) -> RevisionInfo:
         uid = self._store[resource_id][revision_id][schema_version]
         return self._info_serializer.decode(self._raw_info_store[uid])
 
     def save(self, info: RevisionInfo, data: DataIO) -> None:
-        self._store.setdefault(info.resource_id, {}).setdefault(info.revision_id, {})[info.schema_version] = info.uid
+        self._store.setdefault(info.resource_id, {}).setdefault(info.revision_id, {})[
+            info.schema_version
+        ] = info.uid
         self._raw_data_store[info.uid] = data.read()
         self._raw_info_store[info.uid] = self._info_serializer.encode(info)
 
@@ -76,55 +99,96 @@ class DiskResourceStore(IResourceStore):
         self._rootdir = Path(rootdir)
         self._rootdir.mkdir(parents=True, exist_ok=True)
 
-    def _get_data_path(self, resource_id: ResourceID, revision_id: RevisionID) -> Path:
-        return self._rootdir / resource_id / f"{revision_id}.data"
+    def _get_uid_store_realdir(self, uid: UID) -> Path:
+        return self._rootdir / "store" / uid
 
-    def _get_info_path(self, resource_id: ResourceID, revision_id: RevisionID) -> Path:
-        return self._rootdir / resource_id / f"{revision_id}.info"
+    def _get_raw_data_path(self, uid: UID) -> Path:
+        return self._get_uid_store_realdir(uid) / "data"
+
+    def _get_raw_info_path(self, uid: UID) -> Path:
+        return self._get_uid_store_realdir(uid) / "info"
+
+    def _get_uid_store_symdir(
+        self,
+        resource_id: ResourceID,
+        revision_id: RevisionID,
+        schema_version: SchemaVersion | None,
+    ) -> Path:
+        if schema_version is None:
+            p_schema_version = "no_ver"
+        else:
+            p_schema_version = f"v_{schema_version}"
+        return self._rootdir / "resource" / resource_id / revision_id / p_schema_version
 
     def list_resources(self) -> Generator[ResourceID]:
-        for resource_dir in self._rootdir.iterdir():
-            if resource_dir.is_dir():
-                yield resource_dir.name
+        resource_dir = self._rootdir / "resource"
+        for d in resource_dir.iterdir():
+            if d.is_dir():
+                yield d.name
 
     def list_revisions(self, resource_id: ResourceID) -> Generator[RevisionID]:
-        resource_path = self._rootdir / resource_id
-        for file in resource_path.glob("*.info"):
-            yield file.stem
+        revision_dir = self._rootdir / "resource" / resource_id
+        for d in revision_dir.iterdir():
+            if d.is_dir():
+                yield d.name
 
-    def exists(self, resource_id: ResourceID, revision_id: RevisionID) -> bool:
-        path = self._get_info_path(resource_id, revision_id)
+    def list_schema_versions(
+        self, resource_id: ResourceID, revision_id: RevisionID
+    ) -> Generator[SchemaVersion | None]:
+        schema_dir = self._rootdir / "resource" / resource_id / revision_id
+        for d in schema_dir.iterdir():
+            if d.is_dir():
+                if d.name == "no_ver":
+                    yield None
+                elif d.name.startswith("v_"):
+                    yield d.name[2:]
+
+    def exists(
+        self,
+        resource_id: ResourceID,
+        revision_id: RevisionID,
+        schema_version: SchemaVersion | None,
+    ) -> bool:
+        path = self._get_uid_store_symdir(resource_id, revision_id, schema_version)
         return path.exists()
 
     @contextmanager
     def get_data_bytes(
-        self, resource_id: ResourceID, revision_id: RevisionID
+        self,
+        resource_id: ResourceID,
+        revision_id: RevisionID,
+        schema_version: SchemaVersion | None,
     ) -> Generator[DataIO]:
-        path = self._get_data_path(resource_id, revision_id)
-        with path.open("rb") as f:
+        data_path = (
+            self._get_uid_store_symdir(resource_id, revision_id, schema_version)
+            / "data"
+        )
+        with data_path.open("rb") as f:
             yield f
 
-    def get_revision_info(self, resource_id: ResourceID, revision_id: RevisionID) -> RevisionInfo:
-        info_path = self._get_info_path(resource_id, revision_id)
+    def get_revision_info(
+        self,
+        resource_id: ResourceID,
+        revision_id: RevisionID,
+        schema_version: SchemaVersion | None,
+    ) -> RevisionInfo:
+        info_path = (
+            self._get_uid_store_symdir(resource_id, revision_id, schema_version)
+            / "info"
+        )
         with info_path.open("rb") as f:
             return self._info_serializer.decode(f.read())
 
     def save(self, info: RevisionInfo, data: DataIO) -> None:
-        self._save_data_bytes(info.resource_id, info.revision_id, data)
-        self._save_revision_info(info)
-
-    def _save_data_bytes(
-        self, resource_id: ResourceID, revision_id: RevisionID, data: DataIO
-    ) -> None:
-        resource_path = self._rootdir / resource_id
-        resource_path.mkdir(parents=True, exist_ok=True)
-        path = self._get_data_path(resource_id, revision_id)
-        with path.open("wb") as out_f:
-            out_f.write(data.read())
-
-    def _save_revision_info(self, info: RevisionInfo) -> None:
-        resource_path = self._rootdir / info.resource_id
-        resource_path.mkdir(parents=True, exist_ok=True)
-        path = self._get_info_path(info.resource_id, info.revision_id)
-        with path.open("wb") as f:
+        symd = self._get_uid_store_symdir(
+            info.resource_id, info.revision_id, info.schema_version
+        )
+        reald = self._get_uid_store_realdir(str(info.uid))
+        if not reald.exists():
+            reald.mkdir(parents=True, exist_ok=True)
+        symd.parent.mkdir(parents=True, exist_ok=True)
+        symd.symlink_to(reald, target_is_directory=True)
+        with self._get_raw_data_path(str(info.uid)).open("wb") as f:
+            f.write(data.read())
+        with self._get_raw_info_path(str(info.uid)).open("wb") as f:
             f.write(self._info_serializer.encode(info))

@@ -1,10 +1,9 @@
 import datetime as dt
-import io
 from typing import IO
 from unittest.mock import MagicMock
 
 import pytest
-from msgspec import UNSET, Struct, UnsetType
+from msgspec import UNSET, Struct
 
 from autocrud.resource_manager.core import ResourceManager
 from autocrud.types import (
@@ -37,9 +36,9 @@ class MigrationImpl(IMigration[CurrentData]):
     def schema_version(self) -> str:
         return self._schema_version
 
-    def migrate(self, data: IO[bytes], schema_version: str | UnsetType) -> CurrentData:
+    def migrate(self, data: IO[bytes], schema_version: str | None) -> CurrentData:
         """遷移數據"""
-        if schema_version == "1.0" or schema_version == UNSET:
+        if schema_version == "1.0" or schema_version is None:
             # 模擬從舊版本遷移
             return CurrentData(name="migrated_name", value=42, new_field="migrated")
         return CurrentData(name="current_name", value=100, new_field="current")
@@ -48,10 +47,10 @@ class MigrationImpl(IMigration[CurrentData]):
         self,
         meta: ResourceMeta,
         resource: Resource[CurrentData],
-        schema_version: str | UnsetType,
+        schema_version: str | None,
     ) -> ResourceMeta:
         """遷移元數據"""
-        if schema_version == "1.0" or schema_version == UNSET:
+        if schema_version == "1.0" or schema_version is None:
             meta.schema_version = self._schema_version
             meta.indexed_data = {
                 "name": resource.data.name,
@@ -142,7 +141,6 @@ class TestResourceManagerMigrate:
             uid="test-uid",
             resource_id="test:123",
             revision_id="test:123:1",
-            parent_revision_id=UNSET,
             schema_version="1.0",  # 舊版本
             data_hash="old-hash",
             status=RevisionStatus.stable,
@@ -208,7 +206,6 @@ class TestResourceManagerMigrate:
             uid="test-uid",
             resource_id="test:123",
             revision_id="test:123:1",
-            parent_revision_id=UNSET,
             schema_version="1.0",
             data_hash="old-hash",
             status=RevisionStatus.stable,
@@ -259,7 +256,6 @@ class TestResourceManagerMigrate:
             uid="test-uid",
             resource_id="test:123",
             revision_id="test:123:1",
-            parent_revision_id=UNSET,
             schema_version=UNSET,  # UNSET 版本
             data_hash="old-hash",
             status=RevisionStatus.stable,
@@ -311,7 +307,7 @@ class TestResourceManagerMigrate:
                 return "3.0"
 
             def migrate(
-                self, data: IO[bytes], schema_version: str | UnsetType
+                self, data: IO[bytes], schema_version: str | None
             ) -> CurrentData:
                 return CurrentData(
                     name="custom_migrated", value=999, new_field="custom_field"
@@ -321,7 +317,7 @@ class TestResourceManagerMigrate:
                 self,
                 meta: ResourceMeta,
                 resource: Resource[CurrentData],
-                schema_version: str | UnsetType,
+                schema_version: str | None,
             ) -> ResourceMeta:
                 meta.schema_version = self.schema_version
                 meta.indexed_data = {"custom": "migration"}
@@ -339,7 +335,6 @@ class TestResourceManagerMigrate:
             uid="test-uid",
             resource_id="test:123",
             revision_id="test:123:1",
-            parent_revision_id=UNSET,
             schema_version="1.0",
             data_hash="old-hash",
             status=RevisionStatus.stable,

@@ -474,7 +474,15 @@ class IResourceStore(ABC):
         """
 
     @abstractmethod
-    def exists(self, resource_id: str, revision_id: str, schema_version: str | None) -> bool:
+    def list_schema_versions(
+        self, resource_id: str, revision_id: str
+    ) -> Generator[str | None]:
+        """Retrieve a list of migrated revisions for a specific resource and revision."""
+
+    @abstractmethod
+    def exists(
+        self, resource_id: str, revision_id: str, schema_version: str | None
+    ) -> bool:
         """Check if a specific revision exists for a given resource.
 
         Arguments:
@@ -520,7 +528,9 @@ class IResourceStore(ABC):
         """
 
     @abstractmethod
-    def get_revision_info(self, resource_id: str, revision_id: str, schema_version: str | None) -> RevisionInfo:
+    def get_revision_info(
+        self, resource_id: str, revision_id: str, schema_version: str | None
+    ) -> RevisionInfo:
         """Retrieve revision metadata without the resource data.
 
         Arguments:
@@ -549,16 +559,8 @@ class IResourceStore(ABC):
         """
 
     @abstractmethod
-    def save(
-        self, info: RevisionInfo, data: IO[bytes]
-    ) -> None:
+    def save(self, info: RevisionInfo, data: IO[bytes]) -> None:
         """Save a new revision."""
-
-    @abstractmethod
-    def get_schema_versions(
-        self, resource_id: str, revision_id: str
-    ) -> Iterable[RevisionInfo]:
-        """Retrieve a list of migrated revisions for a specific resource and revision."""
 
 
 class IStorage(ABC):
@@ -756,10 +758,6 @@ class IStorage(ABC):
         persistently. The stream position should be reset to the beginning
         before reading if necessary.
         """
-
-    @abstractmethod
-    def migrate_revision(self, info: RevisionInfo, data: IO[bytes]) -> None:
-        ...
 
     @abstractmethod
     def count(self, query: ResourceMetaSearchQuery) -> int: ...
