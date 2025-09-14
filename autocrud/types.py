@@ -110,7 +110,7 @@ class ResourceMetaSortDirection(StrEnum):
     descending = "-"
 
 
-class ResourceDataSearchSort(Struct, kw_only=True):
+class ResourceDataSearchSort(Struct, kw_only=True, tag=True):
     direction: ResourceMetaSortDirection = ResourceMetaSortDirection.ascending
     field_path: str
 
@@ -121,7 +121,7 @@ class ResourceMetaSortKey(StrEnum):
     resource_id = "resource_id"
 
 
-class ResourceMetaSearchSort(Struct, kw_only=True):
+class ResourceMetaSearchSort(Struct, kw_only=True, tag=True):
     direction: ResourceMetaSortDirection = ResourceMetaSortDirection.ascending
     key: ResourceMetaSortKey
 
@@ -855,6 +855,18 @@ EventContext = (
 )
 
 
+class IMigration(ABC, Generic[T]):
+    @abstractmethod
+    def migrate(self, data: IO[bytes], schema_version: str | UnsetType) -> T: ...
+    @abstractmethod
+    def migrate_meta(
+        self, meta: ResourceMeta, resource: Resource[T], schema_version: str | UnsetType
+    ) -> ResourceMeta: ...
+    @property
+    @abstractmethod
+    def schema_version(self) -> str: ...
+
+
 class IResourceManager(ABC, Generic[T]):
     @property
     @abstractmethod
@@ -871,7 +883,11 @@ class IResourceManager(ABC, Generic[T]):
     @property
     @abstractmethod
     def resource_type(self) -> type[T]: ...
-
+    @abstractmethod
+    def migrate(self, resource_id: str) -> ResourceMeta: ...
+    @property
+    @abstractmethod
+    def schema_version(self) -> str: ...
     @property
     @abstractmethod
     def resource_name(self) -> str: ...
@@ -1265,14 +1281,6 @@ class IResourceManager(ABC, Generic[T]):
         Note: This method should be used in conjunction with dump() for
         complete backup and restore workflows.
         """
-
-
-class IMigration(ABC):
-    @abstractmethod
-    def migrate(self, data: IO[bytes], schema_version: str | None) -> T: ...
-    @property
-    @abstractmethod
-    def schema_version(self) -> str: ...
 
 
 class PermissionDeniedError(Exception):

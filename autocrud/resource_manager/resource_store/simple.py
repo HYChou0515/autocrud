@@ -18,7 +18,7 @@ class MemoryResourceStore(IResourceStore[T]):
         self,
         resource_type: type[T],
         encoding: Encoding = Encoding.json,
-        migration: IMigration | None = None,
+        migration: IMigration[T] | None = None,
     ):
         self._data_store: dict[str, dict[str, bytes]] = {}
         self._info_store: dict[str, dict[str, bytes]] = {}
@@ -96,7 +96,7 @@ class DiskResourceStore(IResourceStore[T]):
         *,
         encoding: Encoding = Encoding.json,
         rootdir: Path | str,
-        migration: IMigration | None = None,
+        migration: IMigration[T] | None = None,
     ):
         self._data_serializer = MsgspecSerializer(
             encoding=encoding,

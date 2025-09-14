@@ -8,7 +8,7 @@ from uuid import uuid4
 
 import msgspec
 import pytest
-from msgspec import UNSET, Struct
+from msgspec import UNSET, Struct, UnsetType
 
 from autocrud.resource_manager.basic import (
     Encoding,
@@ -18,7 +18,13 @@ from autocrud.resource_manager.resource_store.simple import (
     DiskResourceStore,
     MemoryResourceStore,
 )
-from autocrud.types import IMigration, Resource, RevisionInfo, RevisionStatus
+from autocrud.types import (
+    IMigration,
+    Resource,
+    ResourceMeta,
+    RevisionInfo,
+    RevisionStatus,
+)
 
 
 # Legacy data structures for migration testing
@@ -55,7 +61,7 @@ class Data(Struct):
 
 
 # Migration implementation
-class DataMigration(IMigration):
+class DataMigration(IMigration[Data]):
     def __init__(self, target_schema_version: str = "2.0"):
         self._schema_version = target_schema_version
 
@@ -63,13 +69,29 @@ class DataMigration(IMigration):
     def schema_version(self) -> str:
         return self._schema_version
 
-    def migrate(self, data: IO[bytes], schema_version: str | None) -> Data:
+    def migrate_meta(
+        self,
+        meta: ResourceMeta,
+        resource: Resource[Data],
+        schema_version: str | UnsetType,
+    ):
+        if schema_version == "1.0" or schema_version == UNSET:
+            meta.schema_version = self._schema_version
+            meta.indexed_data = {
+                "string": resource.data.string,
+                "number": resource.data.number,
+                "fp": resource.data.fp,
+                "times": resource.data.times.isoformat(),
+            }
+        return meta
+
+    def migrate(self, data: IO[bytes], schema_version: str | UnsetType) -> Data:
         """Migrate from LegacyData to Data by adding missing fields"""
         data.seek(0)  # Ensure we're at the beginning
         data_bytes = data.read()
 
         # Handle both explicit "1.0" and UNSET/None as legacy version
-        if schema_version == "1.0" or schema_version is None or schema_version == UNSET:
+        if schema_version == "1.0" or schema_version == UNSET:
             # Decode as legacy format
             decoder = msgspec.json.Decoder(LegacyData)
             legacy_data = decoder.decode(data_bytes)

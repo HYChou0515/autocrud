@@ -20,7 +20,7 @@ class S3ResourceStore(IResourceStore[T]):
         self,
         resource_type: type[T],
         encoding: Encoding = Encoding.json,
-        migration: IMigration | None = None,
+        migration: IMigration[T] | None = None,
         access_key_id: str = "minioadmin",
         secret_access_key: str = "minioadmin",
         region_name: str = "us-east-1",
