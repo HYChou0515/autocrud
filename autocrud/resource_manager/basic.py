@@ -1,10 +1,10 @@
 import functools
 from abc import ABC, abstractmethod
 from collections.abc import Generator, Iterable, MutableMapping
-from contextlib import contextmanager
+from contextlib import AbstractContextManager, contextmanager
 from contextvars import ContextVar
 from enum import Flag, StrEnum
-from typing import Any, Generic, TypeVar
+from typing import IO, Any, Generic, TypeVar
 
 import msgspec
 from msgspec import UNSET, Struct, UnsetType
@@ -18,7 +18,6 @@ from autocrud.types import ResourceMetaSearchSort
 from autocrud.types import ResourceMetaSortDirection
 from autocrud.types import ResourceMetaSortKey
 from autocrud.types import RevisionInfo
-from autocrud.types import Resource
 
 T = TypeVar("T")
 
@@ -412,7 +411,7 @@ class ISlowMetaStore(IMetaStore):
         """
 
 
-class IResourceStore(ABC, Generic[T]):
+class IResourceStore(ABC):
     """Interface for storing and retrieving versioned resource data.
 
     This interface manages the storage of actual resource data and their revision
@@ -475,7 +474,15 @@ class IResourceStore(ABC, Generic[T]):
         """
 
     @abstractmethod
-    def exists(self, resource_id: str, revision_id: str) -> bool:
+    def list_schema_versions(
+        self, resource_id: str, revision_id: str
+    ) -> Generator[str | None]:
+        """Retrieve a list of migrated revisions for a specific resource and revision."""
+
+    @abstractmethod
+    def exists(
+        self, resource_id: str, revision_id: str, schema_version: str | None
+    ) -> bool:
         """Check if a specific revision exists for a given resource.
 
         Arguments:
@@ -495,32 +502,35 @@ class IResourceStore(ABC, Generic[T]):
         """
 
     @abstractmethod
-    def get(self, resource_id: str, revision_id: str) -> Resource[T]:
-        """Retrieve a specific revision of a resource.
+    def get_data_bytes(
+        self, resource_id: str, revision_id: str, schema_version: str | None
+    ) -> AbstractContextManager[IO[bytes]]:
+        """Retrieve raw data bytes for a specific revision.
 
         Arguments:
             resource_id (str): The unique identifier of the resource.
             revision_id (str): The unique identifier of the revision to retrieve.
 
         Returns:
-            Resource[T]: The complete resource object including both data and
-                revision information for the specified revision.
+            IO[bytes]: A byte stream containing the raw encoded resource data.
 
         Raises:
             ResourceIDNotFoundError: If the resource ID does not exist.
             RevisionIDNotFoundError: If the revision ID does not exist for the resource.
 
         ---
-        This method retrieves the complete resource data and metadata for a specific
-        revision. The returned Resource object contains both the data as it existed
-        at that revision and the RevisionInfo with metadata about that revision.
+        This method provides direct access to the raw encoded bytes of resource data
+        without automatic decoding. This enables migration scenarios where the
+        ResourceManager needs to handle decoding and transformation at a higher level.
 
-        This is the primary method for accessing historical data and enables
-        point-in-time recovery and data comparison between revisions.
+        The returned stream should be positioned at the beginning of the data and
+        remain valid until closed or the method is called again.
         """
 
     @abstractmethod
-    def get_revision_info(self, resource_id: str, revision_id: str) -> RevisionInfo:
+    def get_revision_info(
+        self, resource_id: str, revision_id: str, schema_version: str | None
+    ) -> RevisionInfo:
         """Retrieve revision metadata without the resource data.
 
         Arguments:
@@ -549,55 +559,11 @@ class IResourceStore(ABC, Generic[T]):
         """
 
     @abstractmethod
-    def save(self, data: Resource[T]) -> None:
-        """Store a complete resource revision.
-
-        Arguments:
-            data (Resource[T]): The complete resource object including both
-                data content and revision information to be stored.
-
-        ---
-        This method stores a complete resource revision, including both the data
-        content and all associated revision metadata. If a revision with the same
-        resource_id and revision_id already exists, it will be replaced.
-
-        The save operation should be atomic where possible, ensuring that both
-        the data and revision information are stored consistently. The method
-        should handle serialization of the data content according to the store's
-        encoding strategy.
-
-        Error handling should ensure that partial writes don't leave the store
-        in an inconsistent state, and appropriate exceptions should be raised
-        for storage failures or constraint violations.
-        """
-
-    @abstractmethod
-    def encode(self, data: T) -> bytes:
-        """Encode resource data into bytes for storage.
-
-        Arguments:
-            data (T): The resource data object to encode.
-
-        Returns:
-            bytes: The encoded representation of the data suitable for storage.
-
-        ---
-        This method handles the serialization of resource data into a byte format
-        suitable for storage in the underlying storage system. The encoding method
-        should be consistent and reversible, allowing the data to be accurately
-        reconstructed when retrieved.
-
-        The encoding strategy may vary depending on the store implementation:
-        - JSON encoding for text-based storage
-        - MessagePack for binary efficiency
-        - Custom encoding for specialized data types
-
-        The method should handle type-specific serialization requirements and
-        maintain data integrity during the encoding process.
-        """
+    def save(self, info: RevisionInfo, data: IO[bytes]) -> None:
+        """Save a new revision."""
 
 
-class IStorage(ABC, Generic[T]):
+class IStorage(ABC):
     """Interface for unified storage management combining metadata and resource data.
 
     This interface provides a high-level abstraction that combines both metadata
@@ -721,26 +687,29 @@ class IStorage(ABC, Generic[T]):
         """
 
     @abstractmethod
-    def get_resource_revision(self, resource_id: str, revision_id: str) -> Resource[T]:
-        """Retrieve a specific revision of a resource with complete data.
+    def get_data_bytes(
+        self, resource_id: str, revision_id: str
+    ) -> AbstractContextManager[IO[bytes]]:
+        """Retrieve raw data bytes for a specific resource revision.
 
         Arguments:
             resource_id (str): The unique identifier of the resource.
             revision_id (str): The unique identifier of the revision.
 
         Returns:
-            Resource[T]: The complete resource object including both data
-                and revision information.
+            IO[bytes]: A byte stream containing the raw encoded resource data.
 
         Raises:
             ResourceIDNotFoundError: If the resource does not exist.
             RevisionIDNotFoundError: If the revision does not exist.
 
         ---
-        This method retrieves the complete resource data and metadata for a
-        specific revision, providing access to the resource as it existed at
-        that point in time. This enables point-in-time recovery and historical
-        data analysis.
+        This method provides direct access to the raw encoded bytes of resource data
+        without automatic decoding. This enables migration scenarios where the
+        ResourceManager needs to handle decoding and transformation at a higher level.
+
+        The returned stream should be positioned at the beginning of the data and
+        remain valid until closed or the method is called again.
         """
 
     @abstractmethod
@@ -771,20 +740,23 @@ class IStorage(ABC, Generic[T]):
         """
 
     @abstractmethod
-    def save_resource_revision(self, resource: Resource[T]) -> None:
-        """Store a complete resource revision including data and metadata.
+    def save_revision(self, info: RevisionInfo, data: IO[bytes]) -> None:
+        """Store raw data bytes for a resource revision.
 
         Arguments:
-            resource (Resource[T]): The complete resource object to store.
+            resource_id (str): The unique identifier of the resource.
+            revision_id (str): The unique identifier of the revision.
+            data (IO[bytes]): A byte stream containing the encoded resource data.
 
         ---
-        This method stores a complete resource revision, coordinating the storage
-        of both the resource data and its revision information. The operation
-        should ensure consistency between the data and metadata components.
+        This method stores raw encoded bytes for a resource revision without
+        handling the decoding or interpretation of the data. This enables the
+        ResourceManager to handle encoding/decoding at a higher level while
+        keeping the storage layer focused on pure byte operations.
 
-        The method handles serialization of the resource data and proper indexing
-        for search operations while maintaining referential integrity between
-        revisions and their parent relationships.
+        The implementation should read all data from the stream and store it
+        persistently. The stream position should be reset to the beginning
+        before reading if necessary.
         """
 
     @abstractmethod
@@ -814,25 +786,6 @@ class IStorage(ABC, Generic[T]):
         """
 
     @abstractmethod
-    def encode_data(self, data: T) -> bytes:
-        """Encode resource data for storage.
-
-        Arguments:
-            data (T): The resource data to encode.
-
-        Returns:
-            bytes: The encoded data suitable for storage.
-
-        ---
-        This method handles the serialization of resource data into a format
-        suitable for storage. It coordinates with the underlying storage
-        systems to ensure consistent encoding strategies and data integrity.
-
-        The encoding method should be reversible and maintain data fidelity
-        across storage and retrieval operations.
-        """
-
-    @abstractmethod
     def dump_meta(self) -> Generator[ResourceMeta]:
         """Export all resource metadata for backup or migration.
 
@@ -851,7 +804,9 @@ class IStorage(ABC, Generic[T]):
         """
 
     @abstractmethod
-    def dump_resource(self) -> Generator[Resource[T]]:
+    def dump_resource(
+        self,
+    ) -> Generator[tuple[RevisionInfo, AbstractContextManager[IO[bytes]]]]:
         """Export all resource data including complete revision information.
 
         Returns:

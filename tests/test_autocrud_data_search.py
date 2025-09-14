@@ -7,6 +7,7 @@ from msgspec import UNSET
 from autocrud.crud.core import AutoCRUD
 from autocrud.types import (
     DataSearchOperator,
+    RevisionInfo,
 )
 from autocrud.resource_manager.core import ResourceManager
 from autocrud.resource_manager.storage_factory import MemoryStorageFactory
@@ -72,7 +73,7 @@ class TestAutoCRUDDataSearch:
             User(name="Eve", email="eve@company.com", age=32, department="Engineering"),
         ]
 
-        self.created_resources = []
+        self.created_resources: list[RevisionInfo] = []
         with self.user_manager.meta_provide(self.current_user, self.current_time):
             for user_data in self.users_data:
                 info = self.user_manager.create(user_data)

@@ -384,7 +384,7 @@ class AutoCRUD:
         else:
             self.model_names[model] = model_name
         if storage is None:
-            storage = self.storage_factory.build(model, model_name, migration=migration)
+            storage = self.storage_factory.build(model_name)
         resource_manager = ResourceManager(
             model,
             storage=storage,

@@ -272,13 +272,13 @@ class TestRbacPermissionCheck:
         self.rm1 = ResourceManager(
             resource_type=DataStruct,
             name="DataStruct",
-            storage=storage_factory.build(DataStruct, "DataStruct"),
+            storage=storage_factory.build("DataStruct"),
             permission_checker=checker,
         )
         self.rm2 = ResourceManager(
             resource_type=DataStruct,
             name="DataStruct2",
-            storage=storage_factory.build(DataStruct2, "DataStruct2"),
+            storage=storage_factory.build("DataStruct2"),
             permission_checker=checker,
         )
         with self.rm1.meta_provide("admin", dt.datetime.now()):

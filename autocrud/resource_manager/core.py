@@ -1,8 +1,8 @@
 import datetime as dt
 from collections.abc import Callable, Generator, Sequence
 from contextlib import contextmanager, suppress
-from io import BytesIO
 from functools import cached_property, wraps
+import io
 import traceback
 from typing import (
     IO,
@@ -18,9 +18,16 @@ from uuid import uuid4
 import inspect
 import msgspec
 from jsonpatch import JsonPatch
-from msgspec import UNSET, Struct, UnsetType
+from msgspec import UNSET, Raw, Struct, UnsetType
 from xxhash import xxh3_128_hexdigest
-from autocrud.types import PermissionDeniedError
+from autocrud.types import (
+    AfterMigrate,
+    BeforeMigrate,
+    OnFailureMigrate,
+    OnSuccessMigrate,
+    PermissionDeniedError,
+    RawResource,
+)
 import more_itertools as mit
 from autocrud.types import (
     AfterCreate,
@@ -131,8 +138,8 @@ def _get_type_name(resource_type) -> str:
     return str(resource_type).replace(" ", "").replace("|", "Or")
 
 
-class SimpleStorage(IStorage[T]):
-    def __init__(self, meta_store: IMetaStore, resource_store: IResourceStore[T]):
+class SimpleStorage(IStorage):
+    def __init__(self, meta_store: IMetaStore, resource_store: IResourceStore):
         self._meta_store = meta_store
         self._resource_store = resource_store
 
@@ -140,9 +147,11 @@ class SimpleStorage(IStorage[T]):
         return resource_id in self._meta_store
 
     def revision_exists(self, resource_id: str, revision_id: str) -> bool:
+        meta = self.get_meta(resource_id)
         return self.exists(resource_id) and self._resource_store.exists(
             resource_id,
             revision_id,
+            meta.schema_version,
         )
 
     def get_meta(self, resource_id: str) -> ResourceMeta:
@@ -154,18 +163,24 @@ class SimpleStorage(IStorage[T]):
     def list_revisions(self, resource_id: str) -> list[str]:
         return list(self._resource_store.list_revisions(resource_id))
 
-    def get_resource_revision(self, resource_id: str, revision_id: str) -> Resource[T]:
-        return self._resource_store.get(resource_id, revision_id)
+    def get_data_bytes(self, resource_id: str, revision_id: str) -> IO[bytes]:
+        meta = self.get_meta(resource_id)
+        return self._resource_store.get_data_bytes(
+            resource_id, revision_id, meta.schema_version
+        )
 
     def get_resource_revision_info(
         self,
         resource_id: str,
         revision_id: str,
     ) -> RevisionInfo:
-        return self._resource_store.get_revision_info(resource_id, revision_id)
+        meta = self.get_meta(resource_id)
+        return self._resource_store.get_revision_info(
+            resource_id, revision_id, meta.schema_version
+        )
 
-    def save_resource_revision(self, resource: Resource[T]) -> None:
-        self._resource_store.save(resource)
+    def save_revision(self, info: RevisionInfo, data: IO[bytes]) -> None:
+        self._resource_store.save(info, data)
 
     def search(self, query: ResourceMetaSearchQuery) -> list[ResourceMeta]:
         return list(self._meta_store.iter_search(query))
@@ -173,16 +188,16 @@ class SimpleStorage(IStorage[T]):
     def count(self, query: ResourceMetaSearchQuery) -> int:
         return mit.ilen(self._meta_store.iter_search(query))
 
-    def encode_data(self, data: T) -> bytes:
-        return self._resource_store.encode(data)
-
     def dump_meta(self) -> Generator[ResourceMeta]:
         yield from self._meta_store.values()
 
-    def dump_resource(self) -> Generator[Resource[T]]:
+    def dump_resource(self) -> Generator[IO[bytes]]:
         for resource_id in self._resource_store.list_resources():
             for revision_id in self._resource_store.list_revisions(resource_id):
-                yield self._resource_store.get(resource_id, revision_id)
+                with self._resource_store.get_data_bytes(
+                    resource_id, revision_id
+                ) as data:
+                    yield data
 
 
 class _BuildRevMetaCreate(Struct):
@@ -306,13 +321,14 @@ class ResourceManager(IResourceManager[T], Generic[T]):
         self,
         resource_type: type[T],
         *,
-        storage: IStorage[T],
+        storage: IStorage,
         id_generator: Callable[[], str] | None = None,
-        migration: IMigration | None = None,
+        migration: IMigration[T] | None = None,
         indexed_fields: list[IndexableField] | None = None,
         permission_checker: "IPermissionChecker | None" = None,
         name: str | NamingFormat = NamingFormat.SNAKE,
         event_handlers: Sequence[IEventHandler] | None = None,
+        encoding: Encoding = Encoding.json,
     ):
         self.user_ctx = Ctx("user_ctx", strict_type=str)
         self.now_ctx = Ctx("now_ctx", strict_type=dt.datetime)
@@ -321,9 +337,13 @@ class ResourceManager(IResourceManager[T], Generic[T]):
         self.storage = storage
         self.data_converter = DataConverter(self.resource_type)
         schema_version = migration.schema_version if migration else None
-        self._schema_version = UNSET if schema_version is None else schema_version
+        self._schema_version = schema_version
         self._indexed_fields = indexed_fields or []
-        self._migration = migration or UNSET
+        self._migration = migration
+        self._data_serializer = MsgspecSerializer(
+            encoding=encoding,
+            resource_type=resource_type,
+        )
 
         if isinstance(name, NamingFormat):
             self._resource_name = NameConverter(_get_type_name(resource_type)).to(
@@ -344,6 +364,12 @@ class ResourceManager(IResourceManager[T], Generic[T]):
             self.event_handlers.append(
                 PermissionEventHandler(permission_checker),
             )
+
+    def encode(self, data: T) -> bytes:
+        return self._data_serializer.encode(data)
+
+    def decode(self, data: bytes) -> T:
+        return self._data_serializer.decode(data)
 
     @property
     def user(self) -> str:
@@ -373,51 +399,51 @@ class ResourceManager(IResourceManager[T], Generic[T]):
 
     @property
     def schema_version(self) -> str:
-        if self._schema_version is UNSET:
+        if self._schema_version is None:
             raise ValueError("Schema version is not set for this resource manager")
         return self._schema_version
 
+    @execute_with_events(
+        (
+            BeforeMigrate,
+            AfterMigrate,
+            OnSuccessMigrate,
+            OnFailureMigrate,
+        ),
+        "meta",
+    )
     def migrate(self, resource_id: str) -> ResourceMeta:
-        if self._migration is UNSET:
+        if self._migration is None:
             raise ValueError("Migration is not set for this resource manager")
 
         # 獲取當前資源和元數據
-        resource = self.get(resource_id)
         meta = self.get_meta(resource_id)
+        info = self.storage.get_resource_revision_info(
+            resource_id, meta.current_revision_id
+        )
 
         # 檢查是否需要遷移
-        if resource.info.schema_version == self._migration.schema_version:
+        if info.schema_version == self._migration.schema_version:
             # 如果已經是最新版本，直接返回當前元數據
             return meta
 
-        # 保存原始 schema_version 用於 migrate_meta 調用
-        original_schema_version = resource.info.schema_version
-
         # 執行數據遷移
         # 序列化當前數據
-        data_bytes = self.storage.encode_data(resource.data)
-
-        data_io = BytesIO(data_bytes)
-
-        # 調用遷移器進行數據遷移
-        migrated_data = self._migration.migrate(data_io, resource.info.schema_version)
+        with self.storage.get_data_bytes(
+            resource_id, meta.current_revision_id
+        ) as data_io:
+            migrated_data = self._migration.migrate(data_io, info.schema_version)
 
         # 更新 resource info 的 schema_version
-        resource.info.schema_version = self._migration.schema_version
+        info.parent_schema_version = info.schema_version
+        info.schema_version = self._migration.schema_version
+        meta.schema_version = self._migration.schema_version
+        meta.indexed_data = self._extract_indexed_values(migrated_data)
 
-        # 創建新的 resource 對象
-        migrated_resource = Resource(info=resource.info, data=migrated_data)
+        self.storage.save_meta(meta)
+        self.storage.save_revision(info, io.BytesIO(self.encode(migrated_data)))
 
-        # 調用遷移器進行元數據遷移，傳入原始的 schema_version
-        migrated_meta = self._migration.migrate_meta(
-            meta, migrated_resource, original_schema_version
-        )
-
-        # 保存遷移後的資源和元數據
-        self.storage.save_resource_revision(migrated_resource)
-        self.storage.save_meta(migrated_meta)
-
-        return migrated_meta
+        return meta
 
     @property
     def resource_name(self):
@@ -432,16 +458,16 @@ class ResourceManager(IResourceManager[T], Generic[T]):
         """從 data 中提取需要索引的值"""
         indexed_data = {}
         for field in self._indexed_fields:
-            try:
-                if field.field_type == SpecialIndex.msgspec_tag:
+            value = UNSET
+            if field.field_type == SpecialIndex.msgspec_tag:
+                with suppress(Exception):
                     value = msgspec.inspect.type_info(type(data)).tag
-                else:
-                    # 使用 JSON path 提取值
+            else:
+                # 使用 JSON path 提取值
+                with suppress(Exception):
                     value = self._extract_by_path(data, field.field_path)
+            if value is not UNSET:
                 indexed_data[field.field_path] = value
-            except Exception:
-                # 如果提取失敗，跳過該字段
-                continue
 
         return indexed_data
 
@@ -495,13 +521,6 @@ class ResourceManager(IResourceManager[T], Generic[T]):
             created_time = mode.prev_res_meta.created_time
             created_by = mode.prev_res_meta.created_by
 
-        # 提取索引數據
-        indexed_data = {}
-        if self._indexed_fields:
-            extracted = self._extract_indexed_values(mode.data)
-            if extracted:
-                indexed_data = extracted
-
         return ResourceMeta(
             current_revision_id=current_revision_id,
             resource_id=resource_id,
@@ -511,11 +530,11 @@ class ResourceManager(IResourceManager[T], Generic[T]):
             updated_time=self.now_ctx.get(),
             created_by=created_by,
             updated_by=self.user_ctx.get(),
-            indexed_data=indexed_data,
+            indexed_data=self._extract_indexed_values(mode.data),
         )
 
     def get_data_hash(self, data: T) -> str:
-        b = self.storage.encode_data(data)
+        b = self.encode(data)
         data_hash = f"xxh3_128:{xxh3_128_hexdigest(b)}"
         return data_hash
 
@@ -531,7 +550,7 @@ class ResourceManager(IResourceManager[T], Generic[T]):
             else:
                 resource_id = _id
             revision_id = f"{resource_id}:1"
-            last_revision_id = UNSET
+            last_revision_id = None
         elif isinstance(mode, _BuildRevInfoUpdate):
             prev_res_meta = mode.prev_res_meta
             resource_id = prev_res_meta.resource_id
@@ -608,11 +627,7 @@ class ResourceManager(IResourceManager[T], Generic[T]):
     )
     def create(self, data: T) -> RevisionInfo:
         info = self._rev_info(_BuildRevMetaCreate(data))
-        resource = Resource(
-            info=info,
-            data=data,
-        )
-        self.storage.save_resource_revision(resource)
+        self.storage.save_revision(info, io.BytesIO(self.encode(data)))
         self.storage.save_meta(self._res_meta(_BuildResMetaCreate(info, data)))
         return info
 
@@ -634,8 +649,10 @@ class ResourceManager(IResourceManager[T], Generic[T]):
         "resource",
     )
     def get_resource_revision(self, resource_id: str, revision_id: str) -> Resource[T]:
-        obj = self.storage.get_resource_revision(resource_id, revision_id)
-        return obj
+        info = self.storage.get_resource_revision_info(resource_id, revision_id)
+        with self.storage.get_data_bytes(resource_id, revision_id) as data_io:
+            data = self.decode(data_io.read())
+        return Resource(info=info, data=data)
 
     @execute_with_events(
         (
@@ -664,11 +681,7 @@ class ResourceManager(IResourceManager[T], Generic[T]):
             return prev_info
         rev_info = self._rev_info(_BuildRevInfoUpdate(prev_res_meta, data))
         res_meta = self._res_meta(_BuildResMetaUpdate(prev_res_meta, rev_info, data))
-        resource = Resource(
-            info=rev_info,
-            data=data,
-        )
-        self.storage.save_resource_revision(resource)
+        self.storage.save_revision(rev_info, io.BytesIO(self.encode(data)))
         self.storage.save_meta(res_meta)
         return rev_info
 
@@ -703,9 +716,9 @@ class ResourceManager(IResourceManager[T], Generic[T]):
 
         # 切換到指定版本時，需要更新索引數據
         if self._indexed_fields:
-            resource = self.storage.get_resource_revision(resource_id, revision_id)
-            indexed_data = self._extract_indexed_values(resource.data)
-            meta.indexed_data = indexed_data or UNSET
+            with self.storage.get_data_bytes(resource_id, revision_id) as dataio:
+                data = self.decode(dataio.read())
+            meta.indexed_data = self._extract_indexed_values(data)
 
         meta.updated_by = self.user_ctx.get()
         meta.updated_time = self.now_ctx.get()
@@ -744,9 +757,16 @@ class ResourceManager(IResourceManager[T], Generic[T]):
     )
     def dump(self) -> Generator[tuple[str, IO[bytes]]]:
         for meta in self.storage.dump_meta():
-            yield f"meta/{meta.resource_id}", self.meta_serializer.encode(meta)
-        for resource in self.storage.dump_resource():
-            yield f"data/{resource.info.uid}", self.resource_serializer.encode(resource)
+            yield (
+                f"meta/{meta.resource_id}",
+                io.BytesIO(self.meta_serializer.encode(meta)),
+            )
+        for info, data in self.storage.dump_resource():
+            with data as data_io:
+                raw_res = self.resource_serializer.encode(
+                    RawResource(info=info, raw_data=Raw(data_io.read()))
+                )
+                yield f"data/{info.uid}", io.BytesIO(raw_res)
 
     @execute_with_events(
         (BeforeLoad, AfterLoad, OnSuccessLoad, OnFailureLoad),
@@ -757,9 +777,8 @@ class ResourceManager(IResourceManager[T], Generic[T]):
         if key.startswith("meta/"):
             self.storage.save_meta(self.meta_serializer.decode(bio.read()))
         elif key.startswith("data/"):
-            self.storage.save_resource_revision(
-                self.resource_serializer.decode(bio.read()),
-            )
+            raw_res = self.resource_serializer.decode(bio.read())
+            self.storage.save_revision(raw_res.info, io.BytesIO(raw_res.raw_data))
 
     @cached_property
     def meta_serializer(self):
@@ -769,5 +788,5 @@ class ResourceManager(IResourceManager[T], Generic[T]):
     def resource_serializer(self):
         return MsgspecSerializer(
             encoding=Encoding.msgpack,
-            resource_type=Resource[self.resource_type],
+            resource_type=RawResource,
         )

@@ -8,7 +8,7 @@ from typing_extensions import Literal
 from uuid import UUID
 
 from jsonpatch import JsonPatch
-from msgspec import UNSET, Struct, UnsetType, defstruct
+from msgspec import UNSET, Raw, Struct, UnsetType, defstruct
 
 
 T = TypeVar("T")
@@ -24,8 +24,9 @@ class RevisionInfo(Struct, kw_only=True):
     resource_id: str
     revision_id: str
 
-    parent_revision_id: str | UnsetType = UNSET
-    schema_version: str | UnsetType = UNSET
+    parent_revision_id: str | None = None
+    parent_schema_version: str | None = None
+    schema_version: str | None = None
     data_hash: str | UnsetType = UNSET
 
     status: RevisionStatus
@@ -41,10 +42,15 @@ class Resource(Struct, Generic[T]):
     data: T
 
 
+class RawResource(Struct):
+    info: RevisionInfo
+    raw_data: Raw
+
+
 class ResourceMeta(Struct, kw_only=True):
     current_revision_id: str
     resource_id: str
-    schema_version: str | UnsetType = UNSET
+    schema_version: str | None = None
 
     total_revision_count: int
 
@@ -73,6 +79,7 @@ class ResourceAction(Flag):
     restore = auto()
     dump = auto()
     load = auto()
+    migrate = auto()
 
     create_or_update = create | update
 
@@ -80,7 +87,7 @@ class ResourceAction(Flag):
     read_list = search_resources
     write = create | update | patch
     lifecycle = switch | delete | restore
-    backup = dump | load
+    backup = dump | load | migrate
     full = read | read_list | write | lifecycle | backup
     owner = read | patch | update | lifecycle
 
@@ -703,6 +710,52 @@ OnFailureRestore = defstruct(
     [
         *_on_failure_context,
         *_restore_context,
+    ],
+    **_type_setting,
+)
+
+# ============================================================================
+# Migrate Context Classes
+# ============================================================================
+
+_migrate_context = [
+    ("action", Literal[ResourceAction.migrate], ResourceAction.migrate),
+    ("resource_id", str),
+]
+
+BeforeMigrate = defstruct(
+    "BeforeMigrate",
+    [
+        *_before_context,
+        *_migrate_context,
+    ],
+    **_type_setting,
+)
+
+AfterMigrate = defstruct(
+    "AfterMigrate",
+    [
+        *_after_context,
+        *_migrate_context,
+    ],
+    **_type_setting,
+)
+
+OnSuccessMigrate = defstruct(
+    "OnSuccessMigrate",
+    [
+        *_on_success_context,
+        *_migrate_context,
+        ("meta", ResourceMeta),
+    ],
+    **_type_setting,
+)
+
+OnFailureMigrate = defstruct(
+    "OnFailureMigrate",
+    [
+        *_on_failure_context,
+        *_migrate_context,
     ],
     **_type_setting,
 )
@@ -1354,13 +1407,13 @@ class SpecialIndex(Enum):
     msgspec_tag = "msgspec_tag"
 
 
-class IndexableField(Struct, kw_only=True):
+class IndexableField(Struct):
     """Defines a field that should be indexed for searching."""
 
     field_path: str  # JSON path to the field, e.g., "name", "user.email"
-    field_type: (
-        type | SpecialIndex
-    )  # The type of the field (str, int, float, bool, datetime)
+    field_type: type | SpecialIndex | UnsetType = (
+        UNSET  # The type of the field (str, int, float, bool, datetime)
+    )
 
 
 class IEventHandler(ABC):

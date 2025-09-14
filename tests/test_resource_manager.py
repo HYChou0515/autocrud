@@ -11,7 +11,7 @@ import psycopg2
 import pytest
 import redis
 from faker import Faker
-from msgspec import UNSET, Struct
+from msgspec import Struct
 
 from autocrud.types import (
     ResourceIDNotFoundError,
@@ -164,16 +164,15 @@ def get_meta_store(store_type: str, tmpdir: Path):
 def get_resource_store(store_type: str, tmpdir: Path) -> Generator[IResourceStore]:
     """Fixture to provide a fast store for testing."""
     if store_type == "memory":
-        yield MemoryResourceStore(Data, encoding="msgpack")
+        yield MemoryResourceStore(encoding="msgpack")
     elif store_type == "disk":
         d = tmpdir / faker.pystr()
         d.mkdir()
-        yield DiskResourceStore(Data, encoding="msgpack", rootdir=d)
+        yield DiskResourceStore(encoding="msgpack", rootdir=d)
     elif store_type == "s3":
         from autocrud.resource_manager.resource_store.s3 import S3ResourceStore
 
         s3 = S3ResourceStore(
-            Data,
             encoding="msgpack",
             endpoint_url="http://localhost:9000",
             prefix=str(tmpdir).rsplit("/", 1)[-1] + "/",
@@ -232,8 +231,8 @@ class TestResourceManager:
         assert got.info.created_time == now
         assert got.info.updated_time == now
         assert got.info.status == "stable"
-        assert got.info.parent_revision_id is UNSET
-        assert got.info.schema_version is UNSET
+        assert got.info.parent_revision_id is None
+        assert got.info.schema_version is None
         self.assert_valid_datahash(got.info.data_hash)
         assert got.info.uid
         assert got.info.resource_id
@@ -245,7 +244,7 @@ class TestResourceManager:
         assert res_meta.created_by == user
         assert res_meta.updated_time == now
         assert res_meta.updated_by == user
-        assert res_meta.schema_version is UNSET
+        assert res_meta.schema_version is None
 
     def test_update(self):
         data = new_data()
@@ -259,7 +258,7 @@ class TestResourceManager:
         assert u_meta.resource_id == meta.resource_id
         assert u_meta.revision_id != meta.revision_id
         assert u_meta.parent_revision_id == meta.revision_id
-        assert u_meta.schema_version is UNSET
+        assert u_meta.schema_version is None
         self.assert_valid_datahash(u_meta.data_hash)
         assert u_meta.status == "stable"
         assert u_meta.created_time == u_now
@@ -332,7 +331,7 @@ class TestResourceManager:
         assert p_meta.resource_id == meta.resource_id
         assert p_meta.revision_id != meta.revision_id
         assert p_meta.parent_revision_id == meta.revision_id
-        assert p_meta.schema_version is UNSET
+        assert p_meta.schema_version is None
         self.assert_valid_datahash(p_meta.data_hash)
         assert p_meta.status == "stable"
         assert p_meta.created_time == p_now
