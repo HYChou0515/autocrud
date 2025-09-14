@@ -122,12 +122,16 @@ class DiskResourceStore(IResourceStore):
 
     def list_resources(self) -> Generator[ResourceID]:
         resource_dir = self._rootdir / "resource"
+        if not resource_dir.exists():
+            return
         for d in resource_dir.iterdir():
             if d.is_dir():
                 yield d.name
 
     def list_revisions(self, resource_id: ResourceID) -> Generator[RevisionID]:
         revision_dir = self._rootdir / "resource" / resource_id
+        if not revision_dir.exists():
+            return
         for d in revision_dir.iterdir():
             if d.is_dir():
                 yield d.name
@@ -136,6 +140,8 @@ class DiskResourceStore(IResourceStore):
         self, resource_id: ResourceID, revision_id: RevisionID
     ) -> Generator[SchemaVersion | None]:
         schema_dir = self._rootdir / "resource" / resource_id / revision_id
+        if not schema_dir.exists():
+            return
         for d in schema_dir.iterdir():
             if d.is_dir():
                 if d.name == "no_ver":
@@ -184,10 +190,20 @@ class DiskResourceStore(IResourceStore):
             info.resource_id, info.revision_id, info.schema_version
         )
         reald = self._get_uid_store_realdir(str(info.uid))
+
+        # Create real directory if it doesn't exist
         if not reald.exists():
             reald.mkdir(parents=True, exist_ok=True)
+
+        # Create symlink directory structure
         symd.parent.mkdir(parents=True, exist_ok=True)
+
+        # Remove existing symlink if it exists and create new one
+        if symd.exists():
+            symd.unlink()
         symd.symlink_to(reald, target_is_directory=True)
+
+        # Write data and info
         with self._get_raw_data_path(str(info.uid)).open("wb") as f:
             f.write(data.read())
         with self._get_raw_info_path(str(info.uid)).open("wb") as f:

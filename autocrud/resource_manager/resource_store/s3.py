@@ -97,7 +97,7 @@ class S3ResourceStore(IResourceStore):
 
     def list_revisions(self, resource_id: str) -> Generator[str]:
         """列出指定資源的所有修訂版本"""
-        prefix = f"{self._resource_prefix}/{resource_id}/"
+        prefix = f"{self._resource_prefix}{resource_id}/"
         paginator = self.client.get_paginator("list_objects_v2")
         page_iterator = paginator.paginate(
             Bucket=self.bucket,
@@ -118,7 +118,7 @@ class S3ResourceStore(IResourceStore):
         self, resource_id: str, revision_id: str
     ) -> Generator[str | None]:
         """列出指定資源修訂版本的所有 schema 版本"""
-        prefix = f"{self._resource_prefix}/{resource_id}/{revision_id}/"
+        prefix = f"{self._resource_prefix}{resource_id}/{revision_id}/"
         paginator = self.client.get_paginator("list_objects_v2")
         page_iterator = paginator.paginate(
             Bucket=self.bucket,
