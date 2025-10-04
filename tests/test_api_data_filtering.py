@@ -255,6 +255,40 @@ def test_data_filtering_full_endpoint(test_client: TestClient):
         assert 50000.0 <= resource["data"]["salary"] <= 75000.0
 
 
+def test_data_filtering_partial_endpoint(test_client: TestClient):
+    """測試 partial 端點的 data filtering"""
+    # 測試薪水範圍 50000-75000
+    data_conditions = json.dumps(
+        [
+            {
+                "field_path": "salary",
+                "operator": "gte",
+                "value": 50000.0,
+            },
+            {
+                "field_path": "salary",
+                "operator": "lte",
+                "value": 75000.0,
+            },
+        ],
+    )
+
+    response = test_client.get(
+        f"/user/full?data_conditions={data_conditions}&returns=data,meta,revision_info"
+    )
+    assert response.status_code == 200
+
+    results = response.json()
+    assert len(results) == 3  # Alice (75000), Bob (50000), Diana (55000)
+
+    # 驗證返回的是完整信息
+    for resource in results:
+        assert "data" in resource
+        assert "meta" in resource
+        assert "revision_info" in resource
+        assert 50000.0 <= resource["data"]["salary"] <= 75000.0
+
+
 def test_data_filtering_invalid_json(test_client: TestClient):
     """測試無效 JSON 格式"""
     # 提供無效的 JSON

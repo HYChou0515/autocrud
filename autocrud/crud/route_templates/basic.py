@@ -126,6 +126,6 @@ class RevisionListResponse(msgspec.Struct):
 
 
 class FullResourceResponse(msgspec.Struct, Generic[T]):
-    data: T
-    revision_info: RevisionInfo
-    meta: ResourceMeta
+    data: T | msgspec.UnsetType = msgspec.UNSET
+    revision_info: RevisionInfo | msgspec.UnsetType = msgspec.UNSET
+    meta: ResourceMeta | msgspec.UnsetType = msgspec.UNSET

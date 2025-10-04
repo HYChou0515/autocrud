@@ -3,6 +3,7 @@ import textwrap
 from typing import Generic, Optional, TypeVar
 
 from fastapi import APIRouter, Depends, HTTPException, Query
+from msgspec import UNSET
 
 from autocrud.crud.route_templates.basic import (
     BaseRouteTemplate,
@@ -180,6 +181,10 @@ class ReadRouteTemplate(BaseRouteTemplate, Generic[T]):
             ),
             current_user: str = Depends(self.deps.get_user),
             current_time: dt.datetime = Depends(self.deps.get_now),
+            returns: str = Query(
+                default="data,revision_info,meta",
+                description="Fields to return, comma-separated. Options: data, revision_info, meta",
+            ),
         ):
             # 獲取資源和元數據
             try:
@@ -196,10 +201,23 @@ class ReadRouteTemplate(BaseRouteTemplate, Generic[T]):
                 raise HTTPException(status_code=404, detail=str(e))
 
             # 根據響應類型處理數據
+            returns = [r.strip() for r in returns.split(",")]
+            if "data" in returns:
+                data = resource.data
+            else:
+                data = UNSET
+            if "revision_info" in returns:
+                revision_info = resource.info
+            else:
+                revision_info = UNSET
+            if "meta" in returns:
+                meta = meta
+            else:
+                meta = UNSET
             return MsgspecResponse(
                 FullResourceResponse(
-                    data=resource.data,
-                    revision_info=resource.info,
+                    data=data,
+                    revision_info=revision_info,
                     meta=meta,
                 ),
             )

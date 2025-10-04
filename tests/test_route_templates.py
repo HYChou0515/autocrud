@@ -5,6 +5,7 @@ import msgspec
 import pytest
 from fastapi import APIRouter, FastAPI
 from fastapi.testclient import TestClient
+import itertools as it
 
 from autocrud.crud.core import (
     AutoCRUD,
@@ -124,6 +125,21 @@ class TestRouteTemplates:
         assert data["data"]["name"] == "Jane Doe"
         assert data["data"]["email"] == "jane@example.com"
         assert data["data"]["age"] == 25
+
+        for returns in it.chain.from_iterable(
+            it.combinations(["data", "revision_info", "meta"], r=r) for r in range(0, 4)
+        ):
+            response = client.get(
+                f"/user/{resource_id}/full", params={"returns": ",".join(returns)}
+            )
+            assert response.status_code == 200
+
+            data2 = response.json()
+            for k in ["data", "revision_info", "meta"]:
+                if k in returns:
+                    assert data2[k] == data[k]
+                else:
+                    assert k not in data2
 
     def test_update_user(self, client: TestClient):
         """測試更新用戶"""
