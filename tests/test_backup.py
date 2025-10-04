@@ -23,7 +23,7 @@ def my_tmpdir():
         yield Path(d)
 
 
-class TestMetaStoreIterSearch:
+class TestAutocrudDumpLoad:
     """Test IMetaStore.iter_search method with different storage types."""
 
     @pytest.fixture(autouse=True)

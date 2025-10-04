@@ -38,6 +38,7 @@ from autocrud.crud.route_templates.update import UpdateRouteTemplate
 from autocrud.permission.rbac import RBACPermissionChecker
 from autocrud.permission.simple import AllowAll
 from autocrud.resource_manager.basic import (
+    Encoding,
     IStorage,
 )
 from autocrud.resource_manager.core import ResourceManager
@@ -171,6 +172,7 @@ class AutoCRUD:
         permission_checker: IPermissionChecker | None = None,
         dependency_provider: DependencyProvider | None = None,
         event_handlers: Sequence[IEventHandler] | None = None,
+        encoding: Encoding = Encoding.json,
     ):
         if storage_factory is None:
             self.storage_factory = MemoryStorageFactory()
@@ -206,6 +208,7 @@ class AutoCRUD:
             self.permission_checker = permission_checker
 
         self.event_handlers = event_handlers
+        self.default_encoding = encoding
 
     def get_resource_manager(self, model: type[T] | str) -> IResourceManager[T]:
         if isinstance(model, str):
@@ -290,6 +293,7 @@ class AutoCRUD:
         indexed_fields: list[tuple[str, type] | IndexableField] | None = None,
         event_handlers: Sequence[IEventHandler] | None = None,
         permission_checker: IPermissionChecker | None = None,
+        encoding: Encoding | None = None,
     ) -> None:
         """Add a data model to AutoCRUD and configure its API endpoints.
 
@@ -385,6 +389,8 @@ class AutoCRUD:
             self.model_names[model] = model_name
         if storage is None:
             storage = self.storage_factory.build(model_name)
+        if encoding is None:
+            encoding = self.default_encoding
         resource_manager = ResourceManager(
             model,
             storage=storage,
@@ -393,6 +399,7 @@ class AutoCRUD:
             indexed_fields=_indexed_fields,
             event_handlers=self.event_handlers or event_handlers,
             permission_checker=self.permission_checker or permission_checker,
+            encoding=encoding,
         )
         self.resource_managers[model_name] = resource_manager
 
