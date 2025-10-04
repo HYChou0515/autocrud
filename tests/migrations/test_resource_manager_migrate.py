@@ -11,7 +11,6 @@ from autocrud.resource_manager.core import ResourceManager
 from autocrud.types import (
     IMigration,
     IndexableField,
-    Resource,
     ResourceMeta,
     RevisionInfo,
     RevisionStatus,
@@ -48,22 +47,6 @@ class MigrationImpl(IMigration[CurrentData]):
                 name=obj.name, _legacy_value=obj.value, new_field="migrated"
             )
         raise ValueError(f"Unsupported schema version: {schema_version}")
-
-    def migrate_meta(
-        self,
-        meta: ResourceMeta,
-        resource: Resource[CurrentData],
-        schema_version: str | None,
-    ) -> ResourceMeta:
-        """遷移元數據"""
-        if schema_version == "1.0" or schema_version is None:
-            meta.schema_version = self._schema_version
-            meta.indexed_data = {
-                "name": resource.data.name,
-                "value": resource.data.value,
-                "new_field": resource.data.new_field,
-            }
-        return meta
 
 
 class TestResourceManagerMigrate:

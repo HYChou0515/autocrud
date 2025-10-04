@@ -911,13 +911,10 @@ EventContext = (
 class IMigration(ABC, Generic[T]):
     @abstractmethod
     def migrate(self, data: IO[bytes], schema_version: str | UnsetType) -> T: ...
-    @abstractmethod
-    def migrate_meta(
-        self, meta: ResourceMeta, resource: Resource[T], schema_version: str | UnsetType
-    ) -> ResourceMeta: ...
+
     @property
     @abstractmethod
-    def schema_version(self) -> str: ...
+    def schema_version(self) -> str | None: ...
 
 
 class IResourceManager(ABC, Generic[T]):
