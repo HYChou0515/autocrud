@@ -8,6 +8,7 @@ from msgspec import Struct
 from autocrud.crud.core import AutoCRUD
 from autocrud.resource_manager.storage_factory import DiskStorageFactory
 
+
 class User(Struct):
     name: str
     age: int
@@ -20,6 +21,7 @@ def my_tmpdir():
 
     with tempfile.TemporaryDirectory(dir="./") as d:
         yield Path(d)
+
 
 class TestMetaStoreIterSearch:
     """Test IMetaStore.iter_search method with different storage types."""

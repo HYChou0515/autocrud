@@ -8,7 +8,7 @@ from typing_extensions import Literal
 from uuid import UUID
 
 from jsonpatch import JsonPatch
-from msgspec import UNSET, Raw, Struct, UnsetType, defstruct
+from msgspec import UNSET, Struct, UnsetType, defstruct
 
 
 T = TypeVar("T")
@@ -25,7 +25,7 @@ class RevisionInfo(Struct, kw_only=True):
     revision_id: str
 
     parent_revision_id: str | None = None
-    parent_schema_version: str | None = None
+    parent_schema_version: str | None | UnsetType = UNSET
     schema_version: str | None = None
     data_hash: str | UnsetType = UNSET
 
@@ -44,7 +44,7 @@ class Resource(Struct, Generic[T]):
 
 class RawResource(Struct):
     info: RevisionInfo
-    raw_data: Raw
+    raw_data: bytes
 
 
 class ResourceMeta(Struct, kw_only=True):
