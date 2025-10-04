@@ -18,7 +18,7 @@ from uuid import uuid4
 import inspect
 import msgspec
 from jsonpatch import JsonPatch
-from msgspec import UNSET, Raw, Struct, UnsetType
+from msgspec import UNSET, Struct, UnsetType
 from xxhash import xxh3_128_hexdigest
 from autocrud.types import (
     AfterMigrate,
@@ -191,13 +191,19 @@ class SimpleStorage(IStorage):
     def dump_meta(self) -> Generator[ResourceMeta]:
         yield from self._meta_store.values()
 
-    def dump_resource(self) -> Generator[IO[bytes]]:
+    def dump_resource(self) -> Generator[tuple[RevisionInfo, IO[bytes]]]:
         for resource_id in self._resource_store.list_resources():
             for revision_id in self._resource_store.list_revisions(resource_id):
-                with self._resource_store.get_data_bytes(
+                for schema_version in self._resource_store.list_schema_versions(
                     resource_id, revision_id
-                ) as data:
-                    yield data
+                ):
+                    info = self._resource_store.get_revision_info(
+                        resource_id, revision_id, schema_version
+                    )
+                    with self._resource_store.get_data_bytes(
+                        resource_id, revision_id, schema_version
+                    ) as data:
+                        yield info, data
 
 
 class _BuildRevMetaCreate(Struct):
@@ -753,7 +759,7 @@ class ResourceManager(IResourceManager[T], Generic[T]):
 
     @execute_with_events(
         (BeforeDump, AfterDump, OnSuccessDump, OnFailureDump),
-        lambda _: {},
+        "result",
     )
     def dump(self) -> Generator[tuple[str, IO[bytes]]]:
         for meta in self.storage.dump_meta():
@@ -761,12 +767,11 @@ class ResourceManager(IResourceManager[T], Generic[T]):
                 f"meta/{meta.resource_id}",
                 io.BytesIO(self.meta_serializer.encode(meta)),
             )
-        for info, data in self.storage.dump_resource():
-            with data as data_io:
-                raw_res = self.resource_serializer.encode(
-                    RawResource(info=info, raw_data=Raw(data_io.read()))
-                )
-                yield f"data/{info.uid}", io.BytesIO(raw_res)
+        for info, data_io in self.storage.dump_resource():
+            raw_res = self.resource_serializer.encode(
+                RawResource(info=info, raw_data=data_io.read())
+            )
+            yield f"data/{info.uid}", io.BytesIO(raw_res)
 
     @execute_with_events(
         (BeforeLoad, AfterLoad, OnSuccessLoad, OnFailureLoad),

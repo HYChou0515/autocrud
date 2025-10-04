@@ -546,10 +546,14 @@ class AutoCRUD:
         with tarfile.open(fileobj=bio, mode="w|") as tar:
             for model_name, mgr in self.resource_managers.items():
                 for key, value in mgr.dump():
-                    data = io.BytesIO(value)
                     tarinfo = tarfile.TarInfo(name=f"{model_name}/{key}")
-                    tarinfo.size = len(value)
-                    tar.addfile(tarinfo, fileobj=data)
+                    if isinstance(value, io.BytesIO):
+                        tarinfo.size = value.getbuffer().nbytes
+                    else:
+                        value.seek(0, io.SEEK_END)
+                        tarinfo.size = value.tell()
+                        value.seek(0)
+                    tar.addfile(tarinfo, fileobj=value)
 
     def load(self, bio: IO[bytes]) -> None:
         """Import resources from a tar archive created by the dump() method.

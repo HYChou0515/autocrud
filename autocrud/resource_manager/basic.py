@@ -806,7 +806,7 @@ class IStorage(ABC):
     @abstractmethod
     def dump_resource(
         self,
-    ) -> Generator[tuple[RevisionInfo, AbstractContextManager[IO[bytes]]]]:
+    ) -> Generator[tuple[RevisionInfo, IO[bytes]]]:
         """Export all resource data including complete revision information.
 
         Returns:
