@@ -753,7 +753,7 @@ class ResourceManager(IResourceManager[T], Generic[T]):
 
     @execute_with_events(
         (BeforeDump, AfterDump, OnSuccessDump, OnFailureDump),
-        lambda _: {},
+        "result",
     )
     def dump(self) -> Generator[tuple[str, IO[bytes]]]:
         for meta in self.storage.dump_meta():
