@@ -6,6 +6,7 @@ import pytest
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
 from msgspec import Struct, to_builtins
+import itertools as it
 
 from autocrud.crud.core import AutoCRUD
 from autocrud.resource_manager.storage_factory import MemoryStorageFactory
@@ -242,6 +243,7 @@ def test_data_filtering_full_endpoint(test_client: TestClient):
     )
 
     response = test_client.get(f"/user/full?data_conditions={data_conditions}")
+    # response = test_client.get(f"/user/full", params={"data_conditions": data_conditions})
     assert response.status_code == 200
 
     results = response.json()
@@ -254,39 +256,22 @@ def test_data_filtering_full_endpoint(test_client: TestClient):
         assert "revision_info" in resource
         assert 50000.0 <= resource["data"]["salary"] <= 75000.0
 
-
-def test_data_filtering_partial_endpoint(test_client: TestClient):
-    """測試 partial 端點的 data filtering"""
-    # 測試薪水範圍 50000-75000
-    data_conditions = json.dumps(
-        [
-            {
-                "field_path": "salary",
-                "operator": "gte",
-                "value": 50000.0,
-            },
-            {
-                "field_path": "salary",
-                "operator": "lte",
-                "value": 75000.0,
-            },
-        ],
-    )
-
-    response = test_client.get(
-        f"/user/full?data_conditions={data_conditions}&returns=data,meta,revision_info"
-    )
-    assert response.status_code == 200
-
-    results = response.json()
-    assert len(results) == 3  # Alice (75000), Bob (50000), Diana (55000)
-
-    # 驗證返回的是完整信息
-    for resource in results:
-        assert "data" in resource
-        assert "meta" in resource
-        assert "revision_info" in resource
-        assert 50000.0 <= resource["data"]["salary"] <= 75000.0
+    for returns in it.chain.from_iterable(
+        it.combinations(["data", "revision_info", "meta"], r=r) for r in range(0, 4)
+    ):
+        response = test_client.get(
+            "/user/full",
+            params={"returns": ",".join(returns), "data_conditions": data_conditions},
+        )
+        assert response.status_code == 200
+        rs2 = response.json()
+        assert len(rs2) == len(results)
+        for r1, r2 in zip(results, rs2):
+            for k in ["data", "revision_info", "meta"]:
+                if k in returns:
+                    assert r1[k] == r2[k]
+                else:
+                    assert k not in r2
 
 
 def test_data_filtering_invalid_json(test_client: TestClient):

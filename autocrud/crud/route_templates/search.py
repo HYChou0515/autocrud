@@ -71,6 +71,12 @@ class ListRouteTemplate(BaseRouteTemplate):
         limit: int = Query(10, description="Maximum number of results")
         offset: int = Query(0, description="Number of results to skip")
 
+    class QueryInputsWithReturns(QueryInputs):
+        returns: str = Query(
+            default="data,revision_info,meta",
+            description="Fields to return, comma-separated. Options: data, revision_info, meta",
+        )
+
     def _build_query(self, q: QueryInputs) -> ResourceMetaSearchQuery:
         query_kwargs = {
             "limit": q.limit,
@@ -494,10 +500,11 @@ class ListRouteTemplate(BaseRouteTemplate):
             ),
         )
         async def list_resources_full(
-            query_params: ListRouteTemplate.QueryInputs = Query(...),
+            query_params: ListRouteTemplate.QueryInputsWithReturns = Query(...),
             current_user: str = Depends(self.deps.get_user),
             current_time: dt.datetime = Depends(self.deps.get_now),
         ):
+            returns = [r.strip() for r in query_params.returns.split(",")]
             try:
                 # 構建查詢對象
                 query = self._build_query(query_params)
@@ -509,10 +516,22 @@ class ListRouteTemplate(BaseRouteTemplate):
                     for meta in metas:
                         try:
                             resource = resource_manager.get(meta.resource_id)
+                            if "data" in returns:
+                                data = resource.data
+                            else:
+                                data = UNSET
+                            if "revision_info" in returns:
+                                revision_info = resource.info
+                            else:
+                                revision_info = UNSET
+                            if "meta" in returns:
+                                meta = meta
+                            else:
+                                meta = UNSET
                             resources_data.append(
                                 FullResourceResponse(
-                                    data=resource.data,
-                                    revision_info=resource.info,
+                                    data=data,
+                                    revision_info=revision_info,
                                     meta=meta,
                                 ),
                             )
