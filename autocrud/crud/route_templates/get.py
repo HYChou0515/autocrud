@@ -52,7 +52,7 @@ class ReadRouteTemplate(BaseRouteTemplate, Generic[T]):
 
         @router.get(
             f"/{model_name}/{{resource_id}}/meta",
-            responses=struct_to_responses_type(list[ResourceMeta]),
+            responses=struct_to_responses_type(ResourceMeta),
             summary=f"Get {model_name} Meta by ID",
             tags=[f"{model_name}"],
         )
