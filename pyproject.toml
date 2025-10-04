@@ -107,6 +107,10 @@ exclude_also = [
     "except ImportError:",
     "warnings.warn.*AutoCRUDWarning",
 ]
+[tool.coverage.run]
+omit = [
+    "tests/*",
+]
 [tool.ruff.format]
 docstring-code-format = true
 
