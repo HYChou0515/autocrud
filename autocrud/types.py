@@ -909,12 +909,39 @@ EventContext = (
 
 
 class IMigration(ABC, Generic[T]):
+    """Interface for handling data migration between different schema versions.
+
+    This interface defines the contract for migrating resource data when schema
+    versions change. Implementations should handle the transformation of data
+    from older schema versions to the current version.
+    """
+
     @abstractmethod
-    def migrate(self, data: IO[bytes], schema_version: str | UnsetType) -> T: ...
+    def migrate(self, data: IO[bytes], schema_version: str | UnsetType) -> T:
+        """Migrate resource data from an older schema version to the current version.
+
+        Args:
+            data: Binary stream containing the serialized resource data
+            schema_version: The schema version of the input data, or UNSET if unknown
+
+        Returns:
+            T: The migrated data object in the current schema format
+
+        Raises:
+            ValueError: If the schema version is not supported
+        """
+        ...
 
     @property
     @abstractmethod
-    def schema_version(self) -> str | None: ...
+    def schema_version(self) -> str | None:
+        """The target schema version for this migration.
+
+        Returns:
+            str | None: The schema version that this migration targets,
+            or None if no specific version is targeted.
+        """
+        ...
 
 
 class IResourceManager(ABC, Generic[T]):

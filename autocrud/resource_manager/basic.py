@@ -809,19 +809,19 @@ class IStorage(ABC):
     ) -> Generator[tuple[RevisionInfo, IO[bytes]]]:
         """Export all resource data including complete revision information.
 
+        This method yields tuples containing revision information and the corresponding
+        resource data as a binary stream. The returned IO[bytes] object contains the
+        serialized resource data and should be ready for reading.
+
         Returns:
-            Generator[Resource[T]]: A generator yielding all resource objects
-                with their complete data and revision information.
+            Generator[tuple[RevisionInfo, IO[bytes]]]: A generator that yields tuples
+            where each tuple contains:
+            - RevisionInfo: Complete revision metadata
+            - IO[bytes]: Binary stream containing the serialized resource data
 
-        ---
-        This method provides comprehensive data export capabilities, including
-        both resource data and revision metadata. It's designed for complete
-        system backups and data migration scenarios where full data fidelity
-        is required.
-
-        The export includes all revisions of all resources, providing complete
-        historical data preservation. The generator approach enables processing
-        of large datasets efficiently.
+        Note:
+            The IO[bytes] objects returned are ready for immediate reading and do not
+            require context manager handling.
         """
 
 
