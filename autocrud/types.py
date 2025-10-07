@@ -1162,6 +1162,21 @@ class IResourceManager(ABC, Generic[T]):
         pass
 
     @abstractmethod
+    def modify(self, resource_id: str, data: T) -> RevisionInfo:
+        """Modify the data of the resource by update the current revision.
+
+        Arguments:
+            - resource_id (str): the id of the resource to modify.
+            - data (T): the data to replace the current one.
+        Returns:
+            - info (RevisionInfo): the metadata of the modified revision.
+        Raises:
+            - ResourceIDNotFoundError: if resource id does not exist.
+            - ResourceIsDeletedError: if resource is soft-deleted.
+            - CannotModifyResourceError: if resource is not in draft status.
+        """
+
+    @abstractmethod
     def patch(self, resource_id: str, patch_data: JsonPatch) -> RevisionInfo:
         """Apply RFC 6902 JSON Patch operations to the resource.
 
@@ -1399,6 +1414,12 @@ class ResourceConflictError(Exception):
 
 class SchemaConflictError(ResourceConflictError):
     pass
+
+
+class CannotModifyResourceError(ResourceConflictError):
+    def __init__(self, resource_id: str):
+        super().__init__(f"Resource '{resource_id}' cannot be modified.")
+        self.resource_id = resource_id
 
 
 PermissionContext = EventContext
