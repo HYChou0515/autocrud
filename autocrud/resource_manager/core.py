@@ -222,7 +222,7 @@ class _BuildRevInfoModify(Struct):
     prev_res_meta: ResourceMeta
     prev_info: RevisionInfo
     data: T | UnsetType
-    status: RevisionStatus = RevisionStatus.stable
+    status: RevisionStatus | UnsetType = RevisionStatus.stable
 
 
 class _BuildResMetaCreate(Struct):
@@ -587,6 +587,7 @@ class ResourceManager(IResourceManager[T], Generic[T]):
             last_revision_id = None
             created_time = self.now_ctx.get()
             created_by = self.user_ctx.get()
+            status = mode.status
             data_hash = self.get_data_hash(mode.data)
 
         elif isinstance(mode, _BuildRevInfoUpdate):
@@ -596,6 +597,7 @@ class ResourceManager(IResourceManager[T], Generic[T]):
             last_revision_id = prev_res_meta.current_revision_id
             created_time = self.now_ctx.get()
             created_by = self.user_ctx.get()
+            status = mode.status
             data_hash = self.get_data_hash(mode.data)
 
         elif isinstance(mode, _BuildRevInfoModify):
@@ -606,6 +608,11 @@ class ResourceManager(IResourceManager[T], Generic[T]):
             created_time = prev_info.created_time
             last_revision_id = prev_info.parent_revision_id
             created_by = prev_info.created_by
+            status = mode.status
+            if mode.status is UNSET:
+                status = prev_info.status
+            else:
+                status = mode.status
             if mode.data is UNSET:
                 data_hash = prev_info.data_hash
             else:
@@ -618,7 +625,7 @@ class ResourceManager(IResourceManager[T], Generic[T]):
             parent_revision_id=last_revision_id,
             schema_version=self._schema_version,
             data_hash=data_hash,
-            status=mode.status,
+            status=status,
             created_time=created_time,
             updated_time=self.now_ctx.get(),
             created_by=created_by,
@@ -751,28 +758,39 @@ class ResourceManager(IResourceManager[T], Generic[T]):
         except ResourceIDNotFoundError:
             return self.create(data, status=status)
 
-    def modify(self, resource_id: str, data: T) -> RevisionInfo:
+    def modify(
+        self,
+        resource_id: str,
+        data: T | UnsetType = UNSET,
+        status: RevisionStatus | UnsetType = UNSET,
+    ) -> RevisionInfo:
         prev_res_meta = self.get_meta(resource_id)
         prev_info = self.storage.get_resource_revision_info(
             resource_id,
             prev_res_meta.current_revision_id,
         )
-        if prev_info.status != RevisionStatus.draft:
+        if data is UNSET and status is UNSET:
+            return prev_info
+        if data is UNSET:
+            assert status is not UNSET
+            return self._modify_status(resource_id, status)
+        if (
+            prev_info.status != RevisionStatus.draft
+            and status is not RevisionStatus.draft
+        ):
             raise CannotModifyResourceError(resource_id)
         cur_data_hash = self.get_data_hash(data)
         if prev_info.data_hash == cur_data_hash:
             return prev_info
         rev_info = self._rev_info(
-            _BuildRevInfoModify(
-                prev_res_meta, prev_info, data, status=RevisionStatus.draft
-            )
+            _BuildRevInfoModify(prev_res_meta, prev_info, data, status=status)
         )
         res_meta = self._res_meta(_BuildResMetaModify(prev_res_meta, rev_info, data))
         self.storage.save_revision(rev_info, io.BytesIO(self.encode(data)))
         self.storage.save_meta(res_meta)
         return rev_info
 
-    def modify_status(self, resource_id: str, status: RevisionStatus) -> RevisionInfo:
+    def _modify_status(self, resource_id: str, status: RevisionStatus) -> RevisionInfo:
         prev_res_meta = self.get_meta(resource_id)
         prev_info = self.storage.get_resource_revision_info(
             resource_id,

@@ -1166,7 +1166,12 @@ class IResourceManager(ABC, Generic[T]):
         pass
 
     @abstractmethod
-    def modify(self, resource_id: str, data: T) -> RevisionInfo:
+    def modify(
+        self,
+        resource_id: str,
+        data: T | UnsetType = UNSET,
+        status: RevisionStatus | UnsetType = UNSET,
+    ) -> RevisionInfo:
         """Modify the data of the resource by update the current revision.
 
         Arguments:
@@ -1178,18 +1183,6 @@ class IResourceManager(ABC, Generic[T]):
             - ResourceIDNotFoundError: if resource id does not exist.
             - ResourceIsDeletedError: if resource is soft-deleted.
             - CannotModifyResourceError: if resource is not in draft status.
-        """
-
-    @abstractmethod
-    def modify_status(self, resource_id: str, status: RevisionStatus) -> RevisionInfo:
-        """Modify the status of the current revision of the resource.
-
-        Arguments:
-            - resource_id (str): the id of the resource to modify.
-            - status (RevisionStatus): the new status to set (draft or stable).
-        Raises:
-            - ResourceIDNotFoundError: if resource id does not exist.
-            - ResourceIsDeletedError: if resource is soft-deleted.
         """
 
     @abstractmethod
