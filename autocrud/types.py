@@ -193,6 +193,7 @@ _on_failure_context = [
 _create_context = [
     ("action", Literal[ResourceAction.create], ResourceAction.create),
     ("data", T),
+    ("status", RevisionStatus | UnsetType, UNSET),
 ]
 
 BeforeCreate = defstruct(
@@ -485,6 +486,7 @@ _update_context = [
     ("action", Literal[ResourceAction.update], ResourceAction.update),
     ("resource_id", str),
     ("data", T),
+    ("status", RevisionStatus | UnsetType, UNSET),
 ]
 
 BeforeUpdate = defstruct(
@@ -979,7 +981,9 @@ class IResourceManager(ABC, Generic[T]):
     ) -> AbstractContextManager: ...
 
     @abstractmethod
-    def create(self, data: T) -> RevisionInfo:
+    def create(
+        self, data: T, *, status: RevisionStatus | UnsetType = UNSET
+    ) -> RevisionInfo:
         """Create resource and return the metadata.
 
         Arguments:
@@ -1174,6 +1178,18 @@ class IResourceManager(ABC, Generic[T]):
             - ResourceIDNotFoundError: if resource id does not exist.
             - ResourceIsDeletedError: if resource is soft-deleted.
             - CannotModifyResourceError: if resource is not in draft status.
+        """
+
+    @abstractmethod
+    def modify_status(self, resource_id: str, status: RevisionStatus) -> RevisionInfo:
+        """Modify the status of the current revision of the resource.
+        
+        Arguments:
+            - resource_id (str): the id of the resource to modify.
+            - status (RevisionStatus): the new status to set (draft or stable).
+        Raises:
+            - ResourceIDNotFoundError: if resource id does not exist.
+            - ResourceIsDeletedError: if resource is soft-deleted.
         """
 
     @abstractmethod

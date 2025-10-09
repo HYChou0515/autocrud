@@ -81,8 +81,8 @@ class MemoryResourceStore(IResourceStore):
         self._store.setdefault(info.resource_id, {}).setdefault(info.revision_id, {})[
             info.schema_version
         ] = info.uid
-        self._raw_data_store[str(info.uid)] = data.read()
-        self._raw_info_store[str(info.uid)] = self._info_serializer.encode(info)
+        self._raw_data_store[info.uid] = data.read()
+        self._raw_info_store[info.uid] = self._info_serializer.encode(info)
 
 
 class DiskResourceStore(IResourceStore):
