@@ -22,10 +22,14 @@ from msgspec import UNSET, Struct, UnsetType
 from xxhash import xxh3_128_hexdigest
 from autocrud.types import (
     AfterMigrate,
+    AfterModify,
     BeforeMigrate,
+    BeforeModify,
     CannotModifyResourceError,
     OnFailureMigrate,
+    OnFailureModify,
     OnSuccessMigrate,
+    OnSuccessModify,
     PermissionDeniedError,
     RawResource,
 )
@@ -758,12 +762,20 @@ class ResourceManager(IResourceManager[T], Generic[T]):
         except ResourceIDNotFoundError:
             return self.create(data, status=status)
 
+    @execute_with_events(
+        (BeforeModify, AfterModify, OnSuccessModify, OnFailureModify),
+        "revision_info",
+    )
     def modify(
         self,
         resource_id: str,
         data: T | UnsetType = UNSET,
         status: RevisionStatus | UnsetType = UNSET,
     ) -> RevisionInfo:
+        if data is UNSET and status is not UNSET:
+            assert status is not UNSET
+            return self._modify_status(resource_id, status)
+
         prev_res_meta = self.get_meta(resource_id)
         prev_info = self.storage.get_resource_revision_info(
             resource_id,
@@ -771,9 +783,6 @@ class ResourceManager(IResourceManager[T], Generic[T]):
         )
         if data is UNSET and status is UNSET:
             return prev_info
-        if data is UNSET:
-            assert status is not UNSET
-            return self._modify_status(resource_id, status)
         if (
             prev_info.status != RevisionStatus.draft
             and status is not RevisionStatus.draft
