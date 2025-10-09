@@ -355,6 +355,7 @@ class ResourceManager(IResourceManager[T], Generic[T]):
         name: str | NamingFormat = NamingFormat.SNAKE,
         event_handlers: Sequence[IEventHandler] | None = None,
         encoding: Encoding = Encoding.json,
+        default_status: RevisionStatus = RevisionStatus.stable,
     ):
         self.user_ctx = Ctx("user_ctx", strict_type=str)
         self.now_ctx = Ctx("now_ctx", strict_type=dt.datetime)
@@ -370,6 +371,7 @@ class ResourceManager(IResourceManager[T], Generic[T]):
             encoding=encoding,
             resource_type=resource_type,
         )
+        self.default_status = default_status
 
         if isinstance(name, NamingFormat):
             self._resource_name = NameConverter(_get_type_name(resource_type)).to(
@@ -691,7 +693,7 @@ class ResourceManager(IResourceManager[T], Generic[T]):
     def create(
         self, data: T, *, status: RevisionStatus | UnsetType = UNSET
     ) -> RevisionInfo:
-        status = RevisionStatus.stable if status is UNSET else status
+        status = self.default_status if status is UNSET else status
         info = self._rev_info(_BuildRevInfoCreate(data, status))
         self.storage.save_revision(info, io.BytesIO(self.encode(data)))
         self.storage.save_meta(self._res_meta(_BuildResMetaCreate(info, data)))
@@ -739,7 +741,7 @@ class ResourceManager(IResourceManager[T], Generic[T]):
     def update(
         self, resource_id: str, data: T, *, status: RevisionStatus | UnsetType = UNSET
     ) -> RevisionInfo:
-        status = RevisionStatus.stable if status is UNSET else status
+        status = self.default_status if status is UNSET else status
         prev_res_meta = self.get_meta(resource_id)
         prev_info = self.storage.get_resource_revision_info(
             resource_id,

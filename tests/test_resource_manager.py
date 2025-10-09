@@ -11,7 +11,7 @@ import psycopg2
 import pytest
 import redis
 from faker import Faker
-from msgspec import Struct
+from msgspec import UNSET, Struct, UnsetType
 
 from autocrud.types import (
     CannotModifyResourceError,
@@ -112,7 +112,7 @@ def reset_and_get_redis_url():
     return redis_url
 
 
-def get_meta_store(store_type: str, tmpdir: Path):
+def get_meta_store(store_type: str, tmpdir: Path = None):
     """Fixture to provide a fast store for testing."""
     if store_type == "memory":
         return MemoryMetaStore(encoding="msgpack")
@@ -164,7 +164,9 @@ def get_meta_store(store_type: str, tmpdir: Path):
 
 
 @contextmanager
-def get_resource_store(store_type: str, tmpdir: Path) -> Generator[IResourceStore]:
+def get_resource_store(
+    store_type: str, tmpdir: Path | None = None
+) -> Generator[IResourceStore]:
     """Fixture to provide a fast store for testing."""
     if store_type == "memory":
         yield MemoryResourceStore(encoding="msgpack")
@@ -188,17 +190,12 @@ def get_resource_store(store_type: str, tmpdir: Path) -> Generator[IResourceStor
             print(f"Error cleaning up S3 store: {e}")
 
 
-# @pytest.mark.flaky(retries=6, delay=1)
-# @pytest.mark.parametrize(
-#     "meta_store_type",
-#     ["memory", "sql3-mem", "sql3-file", "redis", "disk", "redis-pg"],
-# )
-# @pytest.mark.parametrize("res_store_type", ["memory", "disk", "s3"])
+@pytest.mark.flaky(retries=6, delay=1)
 @pytest.mark.parametrize(
     "meta_store_type",
-    ["memory"],
+    ["memory", "sql3-mem", "sql3-file", "redis", "disk", "redis-pg"],
 )
-@pytest.mark.parametrize("res_store_type", ["memory"])
+@pytest.mark.parametrize("res_store_type", ["memory", "disk", "s3"])
 class TestResourceManager:
     @pytest.fixture(autouse=True)
     def setup_method(
@@ -216,7 +213,7 @@ class TestResourceManager:
             self.mgr = ResourceManager(Data, storage=storage)
             yield
 
-    def create(self, data: Data, *, status: RevisionStatus = RevisionStatus.stable):
+    def create(self, data: Data, *, status: RevisionStatus | UnsetType = UNSET):
         user = faker.user_name()
         now = faker.date_time()
         with self.mgr.meta_provide(user, now):
@@ -278,7 +275,7 @@ class TestResourceManager:
         assert res_meta.updated_time == now
         assert res_meta.updated_by == user
 
-    def check_modified(
+    def check_modified_info(
         self,
         before: tuple[RevisionInfo, str, dt.datetime],
         after: tuple[RevisionInfo, str, dt.datetime, Data, str],
@@ -317,13 +314,15 @@ class TestResourceManager:
         u_now = faker.date_time()
         with self.mgr.meta_provide(u_user, u_now):
             u_meta = self.mgr.modify(meta.resource_id, u_data)
-        self.check_modified((meta, user, now), (u_meta, u_user, u_now, u_data, "draft"))
+        self.check_modified_info(
+            (meta, user, now), (u_meta, u_user, u_now, u_data, "draft")
+        )
 
         u2_user = faker.user_name()
         u2_now = faker.date_time()
         with self.mgr.meta_provide(u2_user, u2_now):
             u2_meta = self.mgr.modify(meta.resource_id, status=RevisionStatus.stable)
-        self.check_modified(
+        self.check_modified_info(
             (meta, user, now), (u2_meta, u2_user, u2_now, u_data, "stable")
         )
 
@@ -340,7 +339,7 @@ class TestResourceManager:
             u3_meta = self.mgr.modify(
                 meta.resource_id, u3_data, status=RevisionStatus.draft
             )
-        self.check_modified(
+        self.check_modified_info(
             (meta, user, now), (u3_meta, u3_user, u3_now, u3_data, "draft")
         )
 
@@ -353,7 +352,7 @@ class TestResourceManager:
             u4_meta = self.mgr.modify(
                 meta.resource_id, u4_data, status=RevisionStatus.stable
             )
-        self.check_modified(
+        self.check_modified_info(
             (meta, user, now), (u4_meta, u4_user, u4_now, u4_data, "stable")
         )
 
@@ -1039,6 +1038,51 @@ class TestResourceManager:
 
         assert len(results) == 0
         assert isinstance(results, list)
+
+
+@pytest.mark.parametrize("default_status", ["stable", "draft"])
+class TestDefaultStatus:
+    @pytest.fixture(autouse=True)
+    def setup_method(
+        self,
+        default_status: str,
+    ):
+        self.default_status = default_status
+        meta_store = get_meta_store("memory")
+        with get_resource_store("memory") as resource_store:
+            storage = SimpleStorage(
+                meta_store=meta_store,
+                resource_store=resource_store,
+            )
+            self.mgr = ResourceManager(
+                Data, storage=storage, default_status=default_status
+            )
+            yield
+
+    def create(self, data: Data, *, status: RevisionStatus | UnsetType = UNSET):
+        user = faker.user_name()
+        now = faker.date_time()
+        with self.mgr.meta_provide(user, now):
+            meta = self.mgr.create(data, status=status)
+        return user, now, meta
+
+    def test_create(self):
+        data = new_data()
+        user, now, meta = self.create(data)
+        got = self.mgr.get(meta.resource_id)
+        assert got.info.status == self.default_status
+
+    def test_update(self):
+        data = new_data()
+        user, now, meta = self.create(data, status="draft")
+        u_data = new_data()
+        u_user = faker.user_name()
+        u_now = faker.date_time()
+        with self.mgr.meta_provide(u_user, u_now):
+            u_meta = self.mgr.update(meta.resource_id, u_data)
+        got = self.mgr.get(meta.resource_id)
+        assert u_meta.status == self.default_status
+        assert got.info.status == self.default_status
 
 
 @pytest.fixture
