@@ -1183,7 +1183,7 @@ class IResourceManager(ABC, Generic[T]):
     @abstractmethod
     def modify_status(self, resource_id: str, status: RevisionStatus) -> RevisionInfo:
         """Modify the status of the current revision of the resource.
-        
+
         Arguments:
             - resource_id (str): the id of the resource to modify.
             - status (RevisionStatus): the new status to set (draft or stable).

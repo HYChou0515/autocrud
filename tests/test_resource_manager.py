@@ -188,19 +188,12 @@ def get_resource_store(store_type: str, tmpdir: Path) -> Generator[IResourceStor
             print(f"Error cleaning up S3 store: {e}")
 
 
-
-
 @pytest.mark.flaky(retries=6, delay=1)
-# @pytest.mark.parametrize(
-#     "meta_store_type",
-#     ["memory", "sql3-mem", "sql3-file", "redis", "disk", "redis-pg"],
-# )
-# @pytest.mark.parametrize("res_store_type", ["memory", "disk", "s3"])
 @pytest.mark.parametrize(
     "meta_store_type",
-    ["memory"],
+    ["memory", "sql3-mem", "sql3-file", "redis", "disk", "redis-pg"],
 )
-@pytest.mark.parametrize("res_store_type", ["memory"])
+@pytest.mark.parametrize("res_store_type", ["memory", "disk", "s3"])
 class TestResourceManager:
     @pytest.fixture(autouse=True)
     def setup_method(
@@ -281,7 +274,7 @@ class TestResourceManager:
         assert res_meta.updated_by == user
 
     def check_modified(
-        self, 
+        self,
         before: tuple[RevisionInfo, str, dt.datetime],
         after: tuple[RevisionInfo, str, dt.datetime, Data, str],
     ):
@@ -319,18 +312,39 @@ class TestResourceManager:
         u_now = faker.date_time()
         with self.mgr.meta_provide(u_user, u_now):
             u_meta = self.mgr.modify(meta.resource_id, u_data)
-        self.check_modified(
-            (meta, user, now),
-            (u_meta, u_user, u_now, u_data, "draft")
-        )
-        
+        self.check_modified((meta, user, now), (u_meta, u_user, u_now, u_data, "draft"))
+
         u2_user = faker.user_name()
         u2_now = faker.date_time()
         with self.mgr.meta_provide(u2_user, u2_now):
             u2_meta = self.mgr.modify_status(meta.resource_id, RevisionStatus.stable)
         self.check_modified(
-            (meta, user, now),
-            (u2_meta, u2_user, u2_now, u_data, "stable")
+            (meta, user, now), (u2_meta, u2_user, u2_now, u_data, "stable")
+        )
+
+        with (
+            pytest.raises(CannotModifyResourceError),
+            self.mgr.meta_provide(u_user, u_now),
+        ):
+            self.mgr.modify(meta.resource_id, u_data)
+
+        u3_user = faker.user_name()
+        u3_now = faker.date_time()
+        with self.mgr.meta_provide(u3_user, u3_now):
+            u3_meta = self.mgr.modify_status(meta.resource_id, RevisionStatus.draft)
+        self.check_modified(
+            (meta, user, now), (u3_meta, u3_user, u3_now, u_data, "draft")
+        )
+
+        u4_user = faker.user_name()
+        u4_now = faker.date_time()
+        u4_data = new_data()
+        with (
+            self.mgr.meta_provide(u4_user, u4_now),
+        ):
+            u4_meta = self.mgr.modify(meta.resource_id, u4_data)
+        self.check_modified(
+            (meta, user, now), (u4_meta, u4_user, u4_now, u4_data, "draft")
         )
 
     def test_update(self):

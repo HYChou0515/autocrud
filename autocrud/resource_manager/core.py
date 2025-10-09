@@ -221,7 +221,7 @@ class _BuildRevInfoUpdate(Struct):
 class _BuildRevInfoModify(Struct):
     prev_res_meta: ResourceMeta
     prev_info: RevisionInfo
-    data: T
+    data: T | UnsetType
     status: RevisionStatus = RevisionStatus.stable
 
 
@@ -239,7 +239,7 @@ class _BuildResMetaUpdate(Struct):
 class _BuildResMetaModify(Struct):
     prev_res_meta: ResourceMeta
     rev_info: RevisionInfo
-    data: T
+    data: T | UnsetType
 
 
 class _Contexts(NamedTuple):
@@ -536,18 +536,24 @@ class ResourceManager(IResourceManager[T], Generic[T]):
             total_revision_count = 1
             created_time = self.now_ctx.get()
             created_by = self.user_ctx.get()
+            indexed_data = self._extract_indexed_values(mode.data)
         elif isinstance(mode, _BuildResMetaUpdate):
             current_revision_id = mode.rev_info.revision_id
             resource_id = mode.prev_res_meta.resource_id
             total_revision_count = mode.prev_res_meta.total_revision_count + 1
             created_time = mode.prev_res_meta.created_time
             created_by = mode.prev_res_meta.created_by
+            indexed_data = self._extract_indexed_values(mode.data)
         elif isinstance(mode, _BuildResMetaModify):
             current_revision_id = mode.rev_info.revision_id
             resource_id = mode.prev_res_meta.resource_id
             total_revision_count = mode.prev_res_meta.total_revision_count
             created_time = mode.prev_res_meta.created_time
             created_by = mode.prev_res_meta.created_by
+            if mode.data is UNSET:
+                indexed_data = mode.prev_res_meta.indexed_data
+            else:
+                indexed_data = self._extract_indexed_values(mode.data)
 
         return ResourceMeta(
             current_revision_id=current_revision_id,
@@ -558,7 +564,7 @@ class ResourceManager(IResourceManager[T], Generic[T]):
             updated_time=self.now_ctx.get(),
             created_by=created_by,
             updated_by=self.user_ctx.get(),
-            indexed_data=self._extract_indexed_values(mode.data),
+            indexed_data=indexed_data,
         )
 
     def get_data_hash(self, data: T) -> str:
@@ -581,6 +587,8 @@ class ResourceManager(IResourceManager[T], Generic[T]):
             last_revision_id = None
             created_time = self.now_ctx.get()
             created_by = self.user_ctx.get()
+            data_hash = self.get_data_hash(mode.data)
+
         elif isinstance(mode, _BuildRevInfoUpdate):
             prev_res_meta = mode.prev_res_meta
             resource_id = prev_res_meta.resource_id
@@ -588,6 +596,8 @@ class ResourceManager(IResourceManager[T], Generic[T]):
             last_revision_id = prev_res_meta.current_revision_id
             created_time = self.now_ctx.get()
             created_by = self.user_ctx.get()
+            data_hash = self.get_data_hash(mode.data)
+
         elif isinstance(mode, _BuildRevInfoModify):
             prev_info = mode.prev_info
             prev_res_meta = mode.prev_res_meta
@@ -596,8 +606,10 @@ class ResourceManager(IResourceManager[T], Generic[T]):
             created_time = prev_info.created_time
             last_revision_id = prev_info.parent_revision_id
             created_by = prev_info.created_by
-
-        data_hash = self.get_data_hash(mode.data)
+            if mode.data is UNSET:
+                data_hash = prev_info.data_hash
+            else:
+                data_hash = self.get_data_hash(mode.data)
 
         info = RevisionInfo(
             uid=uid,
@@ -757,6 +769,25 @@ class ResourceManager(IResourceManager[T], Generic[T]):
         )
         res_meta = self._res_meta(_BuildResMetaModify(prev_res_meta, rev_info, data))
         self.storage.save_revision(rev_info, io.BytesIO(self.encode(data)))
+        self.storage.save_meta(res_meta)
+        return rev_info
+
+    def modify_status(self, resource_id: str, status: RevisionStatus) -> RevisionInfo:
+        prev_res_meta = self.get_meta(resource_id)
+        prev_info = self.storage.get_resource_revision_info(
+            resource_id,
+            prev_res_meta.current_revision_id,
+        )
+        if prev_info.status == status:
+            return prev_info
+        rev_info = self._rev_info(
+            _BuildRevInfoModify(prev_res_meta, prev_info, UNSET, status=status)
+        )
+        res_meta = self._res_meta(_BuildResMetaModify(prev_res_meta, rev_info, UNSET))
+        with self.storage.get_data_bytes(
+            resource_id, prev_res_meta.current_revision_id
+        ) as data_io:
+            self.storage.save_revision(rev_info, data_io)
         self.storage.save_meta(res_meta)
         return rev_info
 
