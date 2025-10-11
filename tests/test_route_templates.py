@@ -171,6 +171,53 @@ class TestRouteTemplates:
         assert get_data["data"]["email"] == "bob.johnson@example.com"
         assert get_data["data"]["age"] == 36
 
+        # 更新用戶
+        updated_data = {
+            "name": "Bob Johnson",
+            "email": "bob.johnson@example.com",
+            "age": 37,
+        }
+
+        response = client.put(
+            f"/user/{resource_id}", params={"mode": "modify"}, json=updated_data
+        )
+        assert response.status_code == 400
+
+        response = client.put(
+            f"/user/{resource_id}",
+            params={
+                "mode": "modify",
+                "change_status": "draft",
+            },
+            json=updated_data,
+        )
+        assert response.status_code == 200
+
+        udata = response.json()
+        assert udata["resource_id"] == data["resource_id"]
+        assert udata["revision_id"] == data["revision_id"]
+        assert udata["uid"] != data["uid"]
+
+        # to stable
+        response = client.put(
+            f"/user/{resource_id}",
+            params={
+                "mode": "modify",
+                "change_status": "stable",
+            },
+        )
+        assert response.status_code == 200
+
+        u2data = response.json()
+        assert u2data["resource_id"] == udata["resource_id"]
+        assert u2data["revision_id"] == udata["revision_id"]
+        assert u2data["uid"] != udata["uid"]
+
+        response = client.put(
+            f"/user/{resource_id}", params={"mode": "modify"}, json=updated_data
+        )
+        assert response.status_code == 400
+
     def test_delete_user(self, client: TestClient):
         """測試刪除用戶"""
         # 先創建一個用戶

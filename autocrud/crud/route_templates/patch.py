@@ -1,6 +1,6 @@
 import datetime as dt
 import textwrap
-from typing import Any, TypeVar
+from typing import Any, Literal, TypeVar
 
 import msgspec
 from fastapi import APIRouter, Depends, HTTPException
@@ -12,7 +12,7 @@ from autocrud.crud.route_templates.basic import (
     jsonschema_to_json_schema_extra,
     struct_to_responses_type,
 )
-from autocrud.types import IResourceManager
+from autocrud.types import IResourceManager, RevisionStatus
 from autocrud.types import RevisionInfo
 
 T = TypeVar("T")
@@ -119,6 +119,8 @@ class PatchRouteTemplate(BaseRouteTemplate):
             ),
             current_user: str = Depends(self.deps.get_user),
             current_time: dt.datetime = Depends(self.deps.get_now),
+            change_status: RevisionStatus | None = None,
+            mode: Literal["update", "modify"] = "update",
         ):
             from jsonpatch import JsonPatch
 
