@@ -141,6 +141,57 @@ class TestRouteTemplates:
                 else:
                     assert k not in data2
 
+    def test_patch_user(self, client: TestClient):
+        # 先創建一個用戶
+        user_data = {"name": "Bob Smith", "email": "bob@example.com", "age": 35}
+
+        create_response = client.post("/user", json=user_data)
+        create_data = create_response.json()
+        resource_id = create_data["resource_id"]
+
+        patch_data = [
+            {"op": "replace", "path": "/name", "value": "Robert Smith"},
+            {"op": "replace", "path": "/age", "value": 36},
+        ]
+        response = client.patch(f"/user/{resource_id}", json=patch_data)
+        assert response.status_code == 200
+
+        data = response.json()
+        assert data["resource_id"] == resource_id
+        assert "revision_id" in data
+
+        # 驗證更新
+        get_response = client.get(f"/user/{resource_id}/full")
+        get_data = get_response.json()
+        assert get_data["data"]["name"] == "Robert Smith"
+        assert get_data["data"]["email"] == "bob@example.com"
+        assert get_data["data"]["age"] == 36
+
+        p2_data = [
+            {"op": "replace", "path": "/age", "value": 38},
+        ]
+        response = client.patch(
+            f"/user/{resource_id}",
+            json=p2_data,
+            params={
+                "mode": "modify",
+                "change_status": "draft",
+            },
+        )
+        assert response.status_code == 200
+        get_response = client.get(f"/user/{resource_id}/full")
+        get_data = get_response.json()
+        assert get_data["data"]["age"] == 38
+
+        response = client.patch(
+            f"/user/{resource_id}",
+            json=[],
+            params={
+                "change_status": "draft",
+            },
+        )
+        assert response.status_code == 400
+
     def test_update_user(self, client: TestClient):
         """測試更新用戶"""
         # 先創建一個用戶

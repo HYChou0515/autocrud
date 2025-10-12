@@ -124,10 +124,24 @@ class PatchRouteTemplate(BaseRouteTemplate):
         ):
             from jsonpatch import JsonPatch
 
+            if mode != "modify" and change_status is not None:
+                raise HTTPException(
+                    status_code=400,
+                    detail="change_status can only be used with mode 'modify'",
+                )
             try:
                 with resource_manager.meta_provide(current_user, current_time):
                     patch = JsonPatch(body)
-                    info = resource_manager.patch(resource_id, patch)
+                    if mode == "update":
+                        info = resource_manager.patch(resource_id, patch)
+                    else:  # mode == "modify"
+                        info = resource_manager.modify(
+                            resource_id,
+                            patch,
+                            status=msgspec.UNSET
+                            if change_status is None
+                            else change_status,
+                        )
                 return MsgspecResponse(info)
             except Exception as e:
                 raise HTTPException(status_code=400, detail=str(e))
