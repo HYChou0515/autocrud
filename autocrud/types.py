@@ -80,16 +80,17 @@ class ResourceAction(Flag):
     dump = auto()
     load = auto()
     migrate = auto()
+    modify = auto()
 
-    create_or_update = create | update
+    create_or_update = create | update | modify
 
     read = get | get_meta | get_resource_revision | list_revisions
     read_list = search_resources
-    write = create | update | patch
+    write = create | update | modify | patch
     lifecycle = switch | delete | restore
     backup = dump | load | migrate
     full = read | read_list | write | lifecycle | backup
-    owner = read | patch | update | lifecycle
+    owner = read | patch | update | modify | lifecycle
 
 
 class DataSearchOperator(StrEnum):
@@ -193,6 +194,7 @@ _on_failure_context = [
 _create_context = [
     ("action", Literal[ResourceAction.create], ResourceAction.create),
     ("data", T),
+    ("status", RevisionStatus | UnsetType, UNSET),
 ]
 
 BeforeCreate = defstruct(
@@ -485,6 +487,7 @@ _update_context = [
     ("action", Literal[ResourceAction.update], ResourceAction.update),
     ("resource_id", str),
     ("data", T),
+    ("status", RevisionStatus | UnsetType, UNSET),
 ]
 
 BeforeUpdate = defstruct(
@@ -520,6 +523,55 @@ OnFailureUpdate = defstruct(
     [
         *_on_failure_context,
         *_update_context,
+    ],
+    **_type_setting,
+)
+
+
+# ============================================================================
+# Modify Context Classes
+# ============================================================================
+
+_modify_context = [
+    ("action", Literal[ResourceAction.modify], ResourceAction.modify),
+    ("resource_id", str),
+    ("data", T | UnsetType, UNSET),
+    ("status", RevisionStatus | UnsetType, UNSET),
+]
+
+BeforeModify = defstruct(
+    "BeforeModify",
+    [
+        *_before_context,
+        *_modify_context,
+    ],
+    **_type_setting,
+)
+
+AfterModify = defstruct(
+    "AfterModify",
+    [
+        *_after_context,
+        *_modify_context,
+    ],
+    **_type_setting,
+)
+
+OnSuccessModify = defstruct(
+    "OnSuccessModify",
+    [
+        *_on_success_context,
+        *_modify_context,
+        ("revision_info", RevisionInfo),
+    ],
+    **_type_setting,
+)
+
+OnFailureModify = defstruct(
+    "OnFailureModify",
+    [
+        *_on_failure_context,
+        *_modify_context,
     ],
     **_type_setting,
 )
@@ -979,7 +1031,9 @@ class IResourceManager(ABC, Generic[T]):
     ) -> AbstractContextManager: ...
 
     @abstractmethod
-    def create(self, data: T) -> RevisionInfo:
+    def create(
+        self, data: T, *, status: RevisionStatus | UnsetType = UNSET
+    ) -> RevisionInfo:
         """Create resource and return the metadata.
 
         Arguments:
@@ -1160,6 +1214,26 @@ class IResourceManager(ABC, Generic[T]):
     @abstractmethod
     def create_or_update(self, resource_id: str, data: T) -> RevisionInfo:
         pass
+
+    @abstractmethod
+    def modify(
+        self,
+        resource_id: str,
+        data: T | JsonPatch | UnsetType = UNSET,
+        status: RevisionStatus | UnsetType = UNSET,
+    ) -> RevisionInfo:
+        """Modify the data of the resource by update the current revision.
+
+        Arguments:
+            - resource_id (str): the id of the resource to modify.
+            - data (T): the data to replace the current one.
+        Returns:
+            - info (RevisionInfo): the metadata of the modified revision.
+        Raises:
+            - ResourceIDNotFoundError: if resource id does not exist.
+            - ResourceIsDeletedError: if resource is soft-deleted.
+            - CannotModifyResourceError: if resource is not in draft status.
+        """
 
     @abstractmethod
     def patch(self, resource_id: str, patch_data: JsonPatch) -> RevisionInfo:
@@ -1399,6 +1473,12 @@ class ResourceConflictError(Exception):
 
 class SchemaConflictError(ResourceConflictError):
     pass
+
+
+class CannotModifyResourceError(ResourceConflictError):
+    def __init__(self, resource_id: str):
+        super().__init__(f"Resource '{resource_id}' cannot be modified.")
+        self.resource_id = resource_id
 
 
 PermissionContext = EventContext

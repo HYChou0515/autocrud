@@ -1,6 +1,6 @@
 import datetime as dt
 import textwrap
-from typing import Any, TypeVar
+from typing import Any, Literal, TypeVar
 
 import msgspec
 from fastapi import APIRouter, Depends, HTTPException
@@ -12,7 +12,7 @@ from autocrud.crud.route_templates.basic import (
     jsonschema_to_json_schema_extra,
     struct_to_responses_type,
 )
-from autocrud.types import IResourceManager
+from autocrud.types import IResourceManager, RevisionStatus
 from autocrud.types import RevisionInfo
 
 T = TypeVar("T")
@@ -119,13 +119,29 @@ class PatchRouteTemplate(BaseRouteTemplate):
             ),
             current_user: str = Depends(self.deps.get_user),
             current_time: dt.datetime = Depends(self.deps.get_now),
+            change_status: RevisionStatus | None = None,
+            mode: Literal["update", "modify"] = "update",
         ):
             from jsonpatch import JsonPatch
 
+            if mode != "modify" and change_status is not None:
+                raise HTTPException(
+                    status_code=400,
+                    detail="change_status can only be used with mode 'modify'",
+                )
             try:
                 with resource_manager.meta_provide(current_user, current_time):
                     patch = JsonPatch(body)
-                    info = resource_manager.patch(resource_id, patch)
+                    if mode == "update":
+                        info = resource_manager.patch(resource_id, patch)
+                    else:  # mode == "modify"
+                        info = resource_manager.modify(
+                            resource_id,
+                            patch,
+                            status=msgspec.UNSET
+                            if change_status is None
+                            else change_status,
+                        )
                 return MsgspecResponse(info)
             except Exception as e:
                 raise HTTPException(status_code=400, detail=str(e))

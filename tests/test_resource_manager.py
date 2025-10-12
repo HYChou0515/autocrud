@@ -11,12 +11,15 @@ import psycopg2
 import pytest
 import redis
 from faker import Faker
-from msgspec import Struct
+from msgspec import UNSET, Struct, UnsetType
 
 from autocrud.types import (
+    CannotModifyResourceError,
     ResourceIDNotFoundError,
     ResourceIsDeletedError,
     ResourceMetaSortKey,
+    RevisionInfo,
+    RevisionStatus,
 )
 from autocrud.resource_manager.core import (
     IResourceStore,
@@ -109,7 +112,7 @@ def reset_and_get_redis_url():
     return redis_url
 
 
-def get_meta_store(store_type: str, tmpdir: Path):
+def get_meta_store(store_type: str, tmpdir: Path = None):
     """Fixture to provide a fast store for testing."""
     if store_type == "memory":
         return MemoryMetaStore(encoding="msgpack")
@@ -161,7 +164,9 @@ def get_meta_store(store_type: str, tmpdir: Path):
 
 
 @contextmanager
-def get_resource_store(store_type: str, tmpdir: Path) -> Generator[IResourceStore]:
+def get_resource_store(
+    store_type: str, tmpdir: Path | None = None
+) -> Generator[IResourceStore]:
     """Fixture to provide a fast store for testing."""
     if store_type == "memory":
         yield MemoryResourceStore(encoding="msgpack")
@@ -208,11 +213,11 @@ class TestResourceManager:
             self.mgr = ResourceManager(Data, storage=storage)
             yield
 
-    def create(self, data: Data):
+    def create(self, data: Data, *, status: RevisionStatus | UnsetType = UNSET):
         user = faker.user_name()
         now = faker.date_time()
         with self.mgr.meta_provide(user, now):
-            meta = self.mgr.create(data)
+            meta = self.mgr.create(data, status=status)
         return user, now, meta
 
     def assert_valid_datahash(self, data_hash: str):
@@ -245,6 +250,127 @@ class TestResourceManager:
         assert res_meta.updated_time == now
         assert res_meta.updated_by == user
         assert res_meta.schema_version is None
+
+    def test_modify_stable_raises(self):
+        data = new_data()
+        user, now, meta = self.create(data)
+        assert meta.status == "stable"
+        u_data = new_data()
+        u_user = faker.user_name()
+        u_now = faker.date_time()
+        with (
+            pytest.raises(CannotModifyResourceError),
+            self.mgr.meta_provide(u_user, u_now),
+        ):
+            self.mgr.modify(meta.resource_id, u_data)
+        got = self.mgr.get(meta.resource_id)
+        assert got.info == meta
+        assert got.data == data
+        res_meta = self.mgr._get_meta_no_check_is_deleted(meta.resource_id)
+        assert res_meta.current_revision_id == meta.revision_id
+        assert res_meta.resource_id == meta.resource_id
+        assert res_meta.total_revision_count == 1
+        assert res_meta.created_time == now
+        assert res_meta.created_by == user
+        assert res_meta.updated_time == now
+        assert res_meta.updated_by == user
+
+    def check_modified_info(
+        self,
+        before: tuple[RevisionInfo, str, dt.datetime],
+        after: tuple[RevisionInfo, str, dt.datetime, Data, str],
+    ):
+        info, user, now = before
+        u_info, u_user, u_now, u_data, u_status = after
+        assert u_info.uid != info.uid
+        assert u_info.resource_id == info.resource_id
+        assert u_info.revision_id == info.revision_id
+        assert u_info.parent_revision_id == info.parent_revision_id
+        assert u_info.schema_version is None
+        self.assert_valid_datahash(u_info.data_hash)
+        assert u_info.status == u_status
+        assert u_info.created_time == now
+        assert u_info.updated_time == u_now
+        assert u_info.created_by == user
+        assert u_info.updated_by == u_user
+        got = self.mgr.get(info.resource_id)
+        assert got.info == u_info
+        assert got.data == u_data
+        res_meta = self.mgr._get_meta_no_check_is_deleted(info.resource_id)
+        assert res_meta.current_revision_id == u_info.revision_id
+        assert res_meta.resource_id == u_info.resource_id
+        assert res_meta.total_revision_count == 1
+        assert res_meta.created_time == now
+        assert res_meta.created_by == user
+        assert res_meta.updated_time == u_now
+        assert res_meta.updated_by == u_user
+
+    def test_modify(self):
+        data = new_data()
+        user, now, meta = self.create(data, status=RevisionStatus.draft)
+        assert meta.status == "draft"
+        u_data = new_data()
+        u_user = faker.user_name()
+        u_now = faker.date_time()
+        with self.mgr.meta_provide(u_user, u_now):
+            u_meta = self.mgr.modify(meta.resource_id, u_data)
+        self.check_modified_info(
+            (meta, user, now), (u_meta, u_user, u_now, u_data, "draft")
+        )
+
+        u2_user = faker.user_name()
+        u2_now = faker.date_time()
+        with self.mgr.meta_provide(u2_user, u2_now):
+            u2_meta = self.mgr.modify(meta.resource_id, status=RevisionStatus.stable)
+        self.check_modified_info(
+            (meta, user, now), (u2_meta, u2_user, u2_now, u_data, "stable")
+        )
+
+        with (
+            pytest.raises(CannotModifyResourceError),
+            self.mgr.meta_provide(u_user, u_now),
+        ):
+            self.mgr.modify(meta.resource_id, u_data)
+
+        u3_user = faker.user_name()
+        u3_now = faker.date_time()
+        u3_data = new_data()
+        with self.mgr.meta_provide(u3_user, u3_now):
+            u3_meta = self.mgr.modify(
+                meta.resource_id, u3_data, status=RevisionStatus.draft
+            )
+        self.check_modified_info(
+            (meta, user, now), (u3_meta, u3_user, u3_now, u3_data, "draft")
+        )
+
+        # modify with patch
+        p_user = faker.user_name()
+        p_now = faker.date_time()
+        p_data = new_data()
+        p_patch = jsonpatch.make_patch(
+            msgspec.to_builtins(u3_data), msgspec.to_builtins(p_data)
+        )
+        with self.mgr.meta_provide(p_user, p_now):
+            u3_meta = self.mgr.modify(
+                meta.resource_id, p_patch, status=RevisionStatus.draft
+            )
+        self.check_modified_info(
+            (meta, user, now), (u3_meta, p_user, p_now, p_data, "draft")
+        )
+
+        # modify status to stable
+        u4_user = faker.user_name()
+        u4_now = faker.date_time()
+        u4_data = new_data()
+        with (
+            self.mgr.meta_provide(u4_user, u4_now),
+        ):
+            u4_meta = self.mgr.modify(
+                meta.resource_id, u4_data, status=RevisionStatus.stable
+            )
+        self.check_modified_info(
+            (meta, user, now), (u4_meta, u4_user, u4_now, u4_data, "stable")
+        )
 
     def test_update(self):
         data = new_data()
@@ -928,6 +1054,51 @@ class TestResourceManager:
 
         assert len(results) == 0
         assert isinstance(results, list)
+
+
+@pytest.mark.parametrize("default_status", ["stable", "draft"])
+class TestDefaultStatus:
+    @pytest.fixture(autouse=True)
+    def setup_method(
+        self,
+        default_status: str,
+    ):
+        self.default_status = default_status
+        meta_store = get_meta_store("memory")
+        with get_resource_store("memory") as resource_store:
+            storage = SimpleStorage(
+                meta_store=meta_store,
+                resource_store=resource_store,
+            )
+            self.mgr = ResourceManager(
+                Data, storage=storage, default_status=default_status
+            )
+            yield
+
+    def create(self, data: Data, *, status: RevisionStatus | UnsetType = UNSET):
+        user = faker.user_name()
+        now = faker.date_time()
+        with self.mgr.meta_provide(user, now):
+            meta = self.mgr.create(data, status=status)
+        return user, now, meta
+
+    def test_create(self):
+        data = new_data()
+        user, now, meta = self.create(data)
+        got = self.mgr.get(meta.resource_id)
+        assert got.info.status == self.default_status
+
+    def test_update(self):
+        data = new_data()
+        user, now, meta = self.create(data, status="draft")
+        u_data = new_data()
+        u_user = faker.user_name()
+        u_now = faker.date_time()
+        with self.mgr.meta_provide(u_user, u_now):
+            u_meta = self.mgr.update(meta.resource_id, u_data)
+        got = self.mgr.get(meta.resource_id)
+        assert u_meta.status == self.default_status
+        assert got.info.status == self.default_status
 
 
 @pytest.fixture

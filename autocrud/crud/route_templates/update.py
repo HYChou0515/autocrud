@@ -1,6 +1,6 @@
 import datetime as dt
 import textwrap
-from typing import TypeVar
+from typing import TypeVar, Literal
 
 import msgspec
 from fastapi import APIRouter, Depends, HTTPException
@@ -12,7 +12,7 @@ from autocrud.crud.route_templates.basic import (
     jsonschema_to_json_schema_extra,
     struct_to_responses_type,
 )
-from autocrud.types import IResourceManager
+from autocrud.types import IResourceManager, RevisionStatus
 from autocrud.types import RevisionInfo
 
 T = TypeVar("T")
@@ -69,16 +69,36 @@ class UpdateRouteTemplate(BaseRouteTemplate):
         async def update_resource(
             resource_id: str,
             body=Body(
+                None,
                 json_schema_extra=jsonschema_to_json_schema_extra(resource_type),
             ),
             current_user: str = Depends(self.deps.get_user),
             current_time: dt.datetime = Depends(self.deps.get_now),
+            change_status: RevisionStatus | None = None,
+            mode: Literal["update", "modify"] = "update",
         ):
+            if mode != "modify" and change_status is not None:
+                raise HTTPException(
+                    status_code=400,
+                    detail="change_status can only be used with mode 'modify'",
+                )
             try:
-                data = msgspec.convert(body, resource_type)
-
-                with resource_manager.meta_provide(current_user, current_time):
-                    info = resource_manager.update(resource_id, data)
+                if body is None:
+                    data = msgspec.UNSET
+                else:
+                    data = msgspec.convert(body, resource_type)
+                if mode == "update":
+                    with resource_manager.meta_provide(current_user, current_time):
+                        info = resource_manager.update(resource_id, data)
+                else:  # mode == "modify"
+                    with resource_manager.meta_provide(current_user, current_time):
+                        info = resource_manager.modify(
+                            resource_id,
+                            data,
+                            status=msgspec.UNSET
+                            if change_status is None
+                            else change_status,
+                        )
                 return MsgspecResponse(info)
             except msgspec.ValidationError as e:
                 # 數據驗證錯誤，返回 422

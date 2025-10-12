@@ -22,9 +22,14 @@ from msgspec import UNSET, Struct, UnsetType
 from xxhash import xxh3_128_hexdigest
 from autocrud.types import (
     AfterMigrate,
+    AfterModify,
     BeforeMigrate,
+    BeforeModify,
+    CannotModifyResourceError,
     OnFailureMigrate,
+    OnFailureModify,
     OnSuccessMigrate,
+    OnSuccessModify,
     PermissionDeniedError,
     RawResource,
 )
@@ -206,13 +211,22 @@ class SimpleStorage(IStorage):
                         yield info, data
 
 
-class _BuildRevMetaCreate(Struct):
+class _BuildRevInfoCreate(Struct):
     data: T
+    status: RevisionStatus = RevisionStatus.stable
 
 
 class _BuildRevInfoUpdate(Struct):
     prev_res_meta: ResourceMeta
     data: T
+    status: RevisionStatus = RevisionStatus.stable
+
+
+class _BuildRevInfoModify(Struct):
+    prev_res_meta: ResourceMeta
+    prev_info: RevisionInfo
+    data: T | UnsetType
+    status: RevisionStatus | UnsetType = RevisionStatus.stable
 
 
 class _BuildResMetaCreate(Struct):
@@ -224,6 +238,12 @@ class _BuildResMetaUpdate(Struct):
     prev_res_meta: ResourceMeta
     rev_info: RevisionInfo
     data: T
+
+
+class _BuildResMetaModify(Struct):
+    prev_res_meta: ResourceMeta
+    rev_info: RevisionInfo
+    data: T | UnsetType
 
 
 class _Contexts(NamedTuple):
@@ -335,6 +355,7 @@ class ResourceManager(IResourceManager[T], Generic[T]):
         name: str | NamingFormat = NamingFormat.SNAKE,
         event_handlers: Sequence[IEventHandler] | None = None,
         encoding: Encoding = Encoding.json,
+        default_status: RevisionStatus = RevisionStatus.stable,
     ):
         self.user_ctx = Ctx("user_ctx", strict_type=str)
         self.now_ctx = Ctx("now_ctx", strict_type=dt.datetime)
@@ -350,6 +371,7 @@ class ResourceManager(IResourceManager[T], Generic[T]):
             encoding=encoding,
             resource_type=resource_type,
         )
+        self.default_status = default_status
 
         if isinstance(name, NamingFormat):
             self._resource_name = NameConverter(_get_type_name(resource_type)).to(
@@ -512,7 +534,7 @@ class ResourceManager(IResourceManager[T], Generic[T]):
 
     def _res_meta(
         self,
-        mode: _BuildResMetaCreate | _BuildResMetaUpdate,
+        mode: _BuildResMetaCreate | _BuildResMetaUpdate | _BuildResMetaModify,
     ) -> ResourceMeta:
         if isinstance(mode, _BuildResMetaCreate):
             current_revision_id = mode.rev_info.revision_id
@@ -520,12 +542,24 @@ class ResourceManager(IResourceManager[T], Generic[T]):
             total_revision_count = 1
             created_time = self.now_ctx.get()
             created_by = self.user_ctx.get()
+            indexed_data = self._extract_indexed_values(mode.data)
         elif isinstance(mode, _BuildResMetaUpdate):
             current_revision_id = mode.rev_info.revision_id
             resource_id = mode.prev_res_meta.resource_id
             total_revision_count = mode.prev_res_meta.total_revision_count + 1
             created_time = mode.prev_res_meta.created_time
             created_by = mode.prev_res_meta.created_by
+            indexed_data = self._extract_indexed_values(mode.data)
+        elif isinstance(mode, _BuildResMetaModify):
+            current_revision_id = mode.rev_info.revision_id
+            resource_id = mode.prev_res_meta.resource_id
+            total_revision_count = mode.prev_res_meta.total_revision_count
+            created_time = mode.prev_res_meta.created_time
+            created_by = mode.prev_res_meta.created_by
+            if mode.data is UNSET:
+                indexed_data = mode.prev_res_meta.indexed_data
+            else:
+                indexed_data = self._extract_indexed_values(mode.data)
 
         return ResourceMeta(
             current_revision_id=current_revision_id,
@@ -536,7 +570,7 @@ class ResourceManager(IResourceManager[T], Generic[T]):
             updated_time=self.now_ctx.get(),
             created_by=created_by,
             updated_by=self.user_ctx.get(),
-            indexed_data=self._extract_indexed_values(mode.data),
+            indexed_data=indexed_data,
         )
 
     def get_data_hash(self, data: T) -> str:
@@ -546,10 +580,10 @@ class ResourceManager(IResourceManager[T], Generic[T]):
 
     def _rev_info(
         self,
-        mode: _BuildRevMetaCreate | _BuildRevInfoUpdate,
+        mode: _BuildRevInfoCreate | _BuildRevInfoUpdate | _BuildRevInfoModify,
     ) -> RevisionInfo:
         uid = uuid4()
-        if isinstance(mode, _BuildRevMetaCreate):
+        if isinstance(mode, _BuildRevInfoCreate):
             _id = self.id_ctx.get()
             if _id is UNSET:
                 resource_id = self.id_generator()
@@ -557,13 +591,38 @@ class ResourceManager(IResourceManager[T], Generic[T]):
                 resource_id = _id
             revision_id = f"{resource_id}:1"
             last_revision_id = None
+            created_time = self.now_ctx.get()
+            created_by = self.user_ctx.get()
+            status = mode.status
+            data_hash = self.get_data_hash(mode.data)
+
         elif isinstance(mode, _BuildRevInfoUpdate):
             prev_res_meta = mode.prev_res_meta
             resource_id = prev_res_meta.resource_id
             revision_id = f"{resource_id}:{prev_res_meta.total_revision_count + 1}"
             last_revision_id = prev_res_meta.current_revision_id
+            created_time = self.now_ctx.get()
+            created_by = self.user_ctx.get()
+            status = mode.status
+            data_hash = self.get_data_hash(mode.data)
 
-        data_hash = self.get_data_hash(mode.data)
+        elif isinstance(mode, _BuildRevInfoModify):
+            prev_info = mode.prev_info
+            prev_res_meta = mode.prev_res_meta
+            resource_id = prev_res_meta.resource_id
+            revision_id = prev_res_meta.current_revision_id
+            created_time = prev_info.created_time
+            last_revision_id = prev_info.parent_revision_id
+            created_by = prev_info.created_by
+            status = mode.status
+            if mode.status is UNSET:
+                status = prev_info.status
+            else:
+                status = mode.status
+            if mode.data is UNSET:
+                data_hash = prev_info.data_hash
+            else:
+                data_hash = self.get_data_hash(mode.data)
 
         info = RevisionInfo(
             uid=uid,
@@ -572,10 +631,10 @@ class ResourceManager(IResourceManager[T], Generic[T]):
             parent_revision_id=last_revision_id,
             schema_version=self._schema_version,
             data_hash=data_hash,
-            status=RevisionStatus.stable,
-            created_time=self.now_ctx.get(),
+            status=status,
+            created_time=created_time,
             updated_time=self.now_ctx.get(),
-            created_by=self.user_ctx.get(),
+            created_by=created_by,
             updated_by=self.user_ctx.get(),
         )
         return info
@@ -631,8 +690,11 @@ class ResourceManager(IResourceManager[T], Generic[T]):
         (BeforeCreate, AfterCreate, OnSuccessCreate, OnFailureCreate),
         "info",
     )
-    def create(self, data: T) -> RevisionInfo:
-        info = self._rev_info(_BuildRevMetaCreate(data))
+    def create(
+        self, data: T, *, status: RevisionStatus | UnsetType = UNSET
+    ) -> RevisionInfo:
+        status = self.default_status if status is UNSET else status
+        info = self._rev_info(_BuildRevInfoCreate(data, status))
         self.storage.save_revision(info, io.BytesIO(self.encode(data)))
         self.storage.save_meta(self._res_meta(_BuildResMetaCreate(info, data)))
         return info
@@ -676,7 +738,10 @@ class ResourceManager(IResourceManager[T], Generic[T]):
         (BeforeUpdate, AfterUpdate, OnSuccessUpdate, OnFailureUpdate),
         "revision_info",
     )
-    def update(self, resource_id: str, data: T) -> RevisionInfo:
+    def update(
+        self, resource_id: str, data: T, *, status: RevisionStatus | UnsetType = UNSET
+    ) -> RevisionInfo:
+        status = self.default_status if status is UNSET else status
         prev_res_meta = self.get_meta(resource_id)
         prev_info = self.storage.get_resource_revision_info(
             resource_id,
@@ -685,17 +750,77 @@ class ResourceManager(IResourceManager[T], Generic[T]):
         cur_data_hash = self.get_data_hash(data)
         if prev_info.data_hash == cur_data_hash:
             return prev_info
-        rev_info = self._rev_info(_BuildRevInfoUpdate(prev_res_meta, data))
+        rev_info = self._rev_info(_BuildRevInfoUpdate(prev_res_meta, data, status))
         res_meta = self._res_meta(_BuildResMetaUpdate(prev_res_meta, rev_info, data))
         self.storage.save_revision(rev_info, io.BytesIO(self.encode(data)))
         self.storage.save_meta(res_meta)
         return rev_info
 
-    def create_or_update(self, resource_id, data):
+    def create_or_update(
+        self, resource_id, data, *, status: RevisionStatus | UnsetType = UNSET
+    ):
         try:
-            return self.update(resource_id, data)
+            return self.update(resource_id, data, status=status)
         except ResourceIDNotFoundError:
-            return self.create(data)
+            return self.create(data, status=status)
+
+    @execute_with_events(
+        (BeforeModify, AfterModify, OnSuccessModify, OnFailureModify),
+        "revision_info",
+    )
+    def modify(
+        self,
+        resource_id: str,
+        data: T | JsonPatch | UnsetType = UNSET,
+        status: RevisionStatus | UnsetType = UNSET,
+    ) -> RevisionInfo:
+        if data is UNSET and status is not UNSET:
+            return self._modify_status(resource_id, status)
+
+        prev_res_meta = self.get_meta(resource_id)
+        prev_info = self.storage.get_resource_revision_info(
+            resource_id,
+            prev_res_meta.current_revision_id,
+        )
+        if data is UNSET and status is UNSET:
+            return prev_info
+        if (
+            prev_info.status != RevisionStatus.draft
+            and status is not RevisionStatus.draft
+        ):
+            raise CannotModifyResourceError(resource_id)
+        if type(data) is JsonPatch:
+            data = self._apply_patch(resource_id, data)
+
+        cur_data_hash = self.get_data_hash(data)
+        if prev_info.data_hash == cur_data_hash:
+            return prev_info
+        rev_info = self._rev_info(
+            _BuildRevInfoModify(prev_res_meta, prev_info, data, status=status)
+        )
+        res_meta = self._res_meta(_BuildResMetaModify(prev_res_meta, rev_info, data))
+        self.storage.save_revision(rev_info, io.BytesIO(self.encode(data)))
+        self.storage.save_meta(res_meta)
+        return rev_info
+
+    def _modify_status(self, resource_id: str, status: RevisionStatus) -> RevisionInfo:
+        prev_res_meta = self.get_meta(resource_id)
+        prev_info = self.storage.get_resource_revision_info(
+            resource_id,
+            prev_res_meta.current_revision_id,
+        )
+        if prev_info.status == status:
+            return prev_info
+        rev_info = self._rev_info(
+            _BuildRevInfoModify(prev_res_meta, prev_info, UNSET, status=status)
+        )
+        res_meta = self._res_meta(_BuildResMetaModify(prev_res_meta, rev_info, UNSET))
+        with self.storage.get_data_bytes(
+            resource_id, prev_res_meta.current_revision_id
+        ) as data_io:
+            self.storage.save_revision(rev_info, data_io)
+        self.storage.save_meta(res_meta)
+        return rev_info
 
     @execute_with_events(
         (BeforePatch, AfterPatch, OnSuccessPatch, OnFailurePatch),
@@ -703,11 +828,14 @@ class ResourceManager(IResourceManager[T], Generic[T]):
         inputs={"patch_data": "patch_data.patch"},
     )
     def patch(self, resource_id: str, patch_data: JsonPatch) -> RevisionInfo:
+        data = self._apply_patch(resource_id, patch_data)
+        return self.update(resource_id, data)
+
+    def _apply_patch(self, resource_id: str, patch_data: JsonPatch) -> T:
         data = self.get(resource_id).data
         d = self.data_converter.data_to_builtins(data)
         patch_data.apply(d, in_place=True)
-        data = self.data_converter.builtins_to_data(d)
-        return self.update(resource_id, data)
+        return self.data_converter.builtins_to_data(d)
 
     @execute_with_events(
         (BeforeSwitch, AfterSwitch, OnSuccessSwitch, OnFailureSwitch),
