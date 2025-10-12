@@ -343,6 +343,22 @@ class TestResourceManager:
             (meta, user, now), (u3_meta, u3_user, u3_now, u3_data, "draft")
         )
 
+        # modify with patch
+        p_user = faker.user_name()
+        p_now = faker.date_time()
+        p_data = new_data()
+        p_patch = jsonpatch.make_patch(
+            msgspec.to_builtins(u3_data), msgspec.to_builtins(p_data)
+        )
+        with self.mgr.meta_provide(p_user, p_now):
+            u3_meta = self.mgr.modify(
+                meta.resource_id, p_patch, status=RevisionStatus.draft
+            )
+        self.check_modified_info(
+            (meta, user, now), (u3_meta, p_user, p_now, p_data, "draft")
+        )
+
+        # modify status to stable
         u4_user = faker.user_name()
         u4_now = faker.date_time()
         u4_data = new_data()

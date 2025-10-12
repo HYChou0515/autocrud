@@ -771,11 +771,10 @@ class ResourceManager(IResourceManager[T], Generic[T]):
     def modify(
         self,
         resource_id: str,
-        data: T | UnsetType = UNSET,
+        data: T | JsonPatch | UnsetType = UNSET,
         status: RevisionStatus | UnsetType = UNSET,
     ) -> RevisionInfo:
         if data is UNSET and status is not UNSET:
-            assert status is not UNSET
             return self._modify_status(resource_id, status)
 
         prev_res_meta = self.get_meta(resource_id)
@@ -790,6 +789,9 @@ class ResourceManager(IResourceManager[T], Generic[T]):
             and status is not RevisionStatus.draft
         ):
             raise CannotModifyResourceError(resource_id)
+        if type(data) is JsonPatch:
+            data = self._apply_patch(resource_id, data)
+
         cur_data_hash = self.get_data_hash(data)
         if prev_info.data_hash == cur_data_hash:
             return prev_info
@@ -826,11 +828,14 @@ class ResourceManager(IResourceManager[T], Generic[T]):
         inputs={"patch_data": "patch_data.patch"},
     )
     def patch(self, resource_id: str, patch_data: JsonPatch) -> RevisionInfo:
+        data = self._apply_patch(resource_id, patch_data)
+        return self.update(resource_id, data)
+
+    def _apply_patch(self, resource_id: str, patch_data: JsonPatch) -> T:
         data = self.get(resource_id).data
         d = self.data_converter.data_to_builtins(data)
         patch_data.apply(d, in_place=True)
-        data = self.data_converter.builtins_to_data(d)
-        return self.update(resource_id, data)
+        return self.data_converter.builtins_to_data(d)
 
     @execute_with_events(
         (BeforeSwitch, AfterSwitch, OnSuccessSwitch, OnFailureSwitch),

@@ -1219,7 +1219,7 @@ class IResourceManager(ABC, Generic[T]):
     def modify(
         self,
         resource_id: str,
-        data: T | UnsetType = UNSET,
+        data: T | JsonPatch | UnsetType = UNSET,
         status: RevisionStatus | UnsetType = UNSET,
     ) -> RevisionInfo:
         """Modify the data of the resource by update the current revision.
