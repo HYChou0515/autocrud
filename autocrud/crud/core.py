@@ -195,7 +195,6 @@ class AutoCRUD:
             if route_templates is None
             else route_templates
         )
-        self.route_templates.sort()
         if permission_checker is None:
             if not admin:
                 self.permission_checker = AllowAll()
@@ -489,6 +488,7 @@ class AutoCRUD:
             - Routes are generated dynamically based on model structure
             - This method is idempotent - calling it multiple times is safe
         """
+        self.route_templates.sort()
         for model_name, resource_manager in self.resource_managers.items():
             for route_template in self.route_templates:
                 try:

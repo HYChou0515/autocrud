@@ -1,6 +1,8 @@
+from unittest.mock import Mock
 from msgspec import Struct
 
 from autocrud.crud.core import AutoCRUD
+from autocrud.crud.route_templates.get import ReadRouteTemplate
 from autocrud.resource_manager.basic import Encoding
 import datetime as dt
 
@@ -55,3 +57,22 @@ class TestAutocrud:
         crud.add_model(User, indexed_fields=[("wage", int | None)])
         crud.add_model(User, name="u2", indexed_fields=[("books", list[str])])
         # no error raised
+
+    def test_apply_router_templates_order(self):
+        applied = []
+
+        class MockRouteTemplate(ReadRouteTemplate):
+            def apply(self, *args, **kwargs):
+                applied.append(self.order)
+
+        templates = [
+            MockRouteTemplate(order=1),
+            MockRouteTemplate(order=2),
+            MockRouteTemplate(order=5),
+        ]
+        crud = AutoCRUD(route_templates=templates.copy())
+        crud.add_model(User)
+        crud.apply(Mock())
+        crud.add_route_template(MockRouteTemplate(order=4))
+        crud.apply(Mock())
+        assert applied == [1, 2, 5, 1, 2, 4, 5]
