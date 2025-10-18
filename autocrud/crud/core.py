@@ -400,6 +400,7 @@ class AutoCRUD:
             event_handlers=self.event_handlers or event_handlers,
             permission_checker=self.permission_checker or permission_checker,
             encoding=encoding,
+            name=model_name,
         )
         self.resource_managers[model_name] = resource_manager
 
