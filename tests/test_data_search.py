@@ -1,6 +1,7 @@
 import datetime as dt
 from dataclasses import dataclass
 from pathlib import Path
+from zoneinfo import ZoneInfo
 
 import pytest
 from msgspec import UNSET
@@ -252,11 +253,32 @@ class TestMetaStoreIterSearch:
         else:
             raise ValueError(f"Unsupported store_type: {store_type}")
 
+    def test_search_create_time_timezone(self):
+        """Test using IMetaStore.iter_search for created_time filtering."""
+        # Search for users created after a specific time
+        specific_time = dt.datetime(2023, 1, 1, 4, 0, 0, tzinfo=dt.timezone.utc)
+
+        query = ResourceMetaSearchQuery(
+            created_time_start=specific_time,
+            created_time_end=specific_time,
+            limit=10,
+            offset=0,
+        )
+
+        results = list(self.meta_store.iter_search(query))
+
+        # Should find 2 users (Diana and Eve)
+        assert len(results) == 1
+        names = []
+        for meta in results:
+            names.append(meta.indexed_data["name"])
+        assert sorted(names) == ["Alice"]
+
     def _create_sample_resource_metas(self, meta_store):
         """Create sample ResourceMeta objects for testing."""
         import uuid
 
-        base_time = dt.datetime(2023, 1, 1, 12, 0, 0)
+        base_time = dt.datetime(2023, 1, 1, 12, 0, 0, tzinfo=ZoneInfo("Asia/Taipei"))
 
         sample_metas = [
             ResourceMeta(

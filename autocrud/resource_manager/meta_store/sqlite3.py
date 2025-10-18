@@ -43,8 +43,8 @@ class SqliteMetaStore(ISlowMetaStore):
             CREATE TABLE IF NOT EXISTS resource_meta (
                 resource_id TEXT PRIMARY KEY,
                 data BLOB NOT NULL,
-                created_time TEXT NOT NULL,
-                updated_time TEXT NOT NULL,
+                created_time REAL NOT NULL,
+                updated_time REAL NOT NULL,
                 created_by TEXT NOT NULL,
                 updated_by TEXT NOT NULL,
                 is_deleted INTEGER NOT NULL,
@@ -140,8 +140,8 @@ class SqliteMetaStore(ISlowMetaStore):
             (
                 pk,
                 data,
-                meta.created_time.isoformat(),
-                meta.updated_time.isoformat(),
+                meta.created_time.timestamp(),
+                meta.updated_time.timestamp(),
                 meta.created_by,
                 meta.updated_by,
                 1 if meta.is_deleted else 0,
@@ -170,8 +170,8 @@ class SqliteMetaStore(ISlowMetaStore):
                     (
                         meta.resource_id,
                         self._serializer.encode(meta),
-                        meta.created_time.isoformat(),
-                        meta.updated_time.isoformat(),
+                        meta.created_time.timestamp(),
+                        meta.updated_time.timestamp(),
                         meta.created_by,
                         meta.updated_by,
                         1 if meta.is_deleted else 0,
@@ -213,19 +213,19 @@ class SqliteMetaStore(ISlowMetaStore):
 
         if query.created_time_start is not UNSET:
             conditions.append("created_time >= ?")
-            params.append(query.created_time_start.isoformat())
+            params.append(query.created_time_start.timestamp())
 
         if query.created_time_end is not UNSET:
             conditions.append("created_time <= ?")
-            params.append(query.created_time_end.isoformat())
+            params.append(query.created_time_end.timestamp())
 
         if query.updated_time_start is not UNSET:
             conditions.append("updated_time >= ?")
-            params.append(query.updated_time_start.isoformat())
+            params.append(query.updated_time_start.timestamp())
 
         if query.updated_time_end is not UNSET:
             conditions.append("updated_time <= ?")
-            params.append(query.updated_time_end.isoformat())
+            params.append(query.updated_time_end.timestamp())
 
         if query.created_bys is not UNSET:
             placeholders = ",".join("?" * len(query.created_bys))
