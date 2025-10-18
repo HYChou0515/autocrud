@@ -575,6 +575,7 @@ class ResourceManager(IResourceManager[T], Generic[T]):
 
     def get_data_hash(self, data: T) -> str:
         b = self.encode(data)
+        self.decode(b)  # 確保可解碼
         data_hash = f"xxh3_128:{xxh3_128_hexdigest(b)}"
         return data_hash
 
@@ -747,10 +748,9 @@ class ResourceManager(IResourceManager[T], Generic[T]):
             resource_id,
             prev_res_meta.current_revision_id,
         )
-        cur_data_hash = self.get_data_hash(data)
-        if prev_info.data_hash == cur_data_hash:
-            return prev_info
         rev_info = self._rev_info(_BuildRevInfoUpdate(prev_res_meta, data, status))
+        if prev_info.data_hash == rev_info.data_hash:
+            return prev_info
         res_meta = self._res_meta(_BuildResMetaUpdate(prev_res_meta, rev_info, data))
         self.storage.save_revision(rev_info, io.BytesIO(self.encode(data)))
         self.storage.save_meta(res_meta)
@@ -792,12 +792,11 @@ class ResourceManager(IResourceManager[T], Generic[T]):
         if type(data) is JsonPatch:
             data = self._apply_patch(resource_id, data)
 
-        cur_data_hash = self.get_data_hash(data)
-        if prev_info.data_hash == cur_data_hash:
-            return prev_info
         rev_info = self._rev_info(
             _BuildRevInfoModify(prev_res_meta, prev_info, data, status=status)
         )
+        if prev_info.data_hash == rev_info.data_hash:
+            return prev_info
         res_meta = self._res_meta(_BuildResMetaModify(prev_res_meta, rev_info, data))
         self.storage.save_revision(rev_info, io.BytesIO(self.encode(data)))
         self.storage.save_meta(res_meta)

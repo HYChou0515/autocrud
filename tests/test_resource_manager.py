@@ -251,6 +251,21 @@ class TestResourceManager:
         assert res_meta.updated_by == user
         assert res_meta.schema_version is None
 
+    def test_create_invalid_data(self):
+        invalid_data = Data(
+            string=123,  # 應為 str
+            number="not_a_number",  # 應為 int
+            fp="not_a_float",  # 應為 float
+            times="not_a_datetime",  # 應為 datetime
+            data="not_an_inner_data",  # 應為 InnerData
+            list_data="not_a_list",  # 應為 list[InnerData]
+            dict_data="not_a_dict",  # 應為 dict[str, InnerData]
+        )
+        user = faker.user_name()
+        now = faker.date_time()
+        with self.mgr.meta_provide(user, now), pytest.raises(msgspec.ValidationError):
+            self.mgr.create(invalid_data)
+
     def test_modify_stable_raises(self):
         data = new_data()
         user, now, meta = self.create(data)
