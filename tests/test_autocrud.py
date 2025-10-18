@@ -8,6 +8,8 @@ import datetime as dt
 class User(Struct):
     name: str
     age: int
+    wage: int | None = None
+    books: list[str] = []
 
 
 class TestAutocrud:
@@ -47,3 +49,9 @@ class TestAutocrud:
         with mgr.meta_provide("user", dt.datetime.now()):
             info = mgr.create({"name": "Alice", "age": 30})
         assert info.resource_id.startswith("xx:")
+
+    def test_add_model_with_index_fields(self):
+        crud = AutoCRUD()
+        crud.add_model(User, indexed_fields=[("wage", int | None)])
+        crud.add_model(User, name="u2", indexed_fields=[("books", list[str])])
+        # no error raised

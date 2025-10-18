@@ -368,7 +368,6 @@ class AutoCRUD:
                 isinstance(field, tuple)
                 and len(field) == 2
                 and isinstance(field[0], str)
-                and isinstance(field[1], type)
             ):
                 field = IndexableField(field_path=field[0], field_type=field[1])
                 _indexed_fields.append(field)
