@@ -3,7 +3,7 @@ from collections.abc import Generator
 from contextlib import AbstractContextManager
 import datetime as dt
 from enum import Enum, Flag, StrEnum, auto
-from typing import IO, Any, Generic, TypeVar
+from typing import IO, Any, Generic, Self, TypeVar
 from typing_extensions import Literal
 from uuid import UUID
 
@@ -1028,7 +1028,7 @@ class IResourceManager(ABC, Generic[T]):
         now: dt.datetime,
         *,
         resource_id: str | UnsetType = UNSET,
-    ) -> AbstractContextManager: ...
+    ) -> AbstractContextManager[Self]: ...
 
     @abstractmethod
     def create(

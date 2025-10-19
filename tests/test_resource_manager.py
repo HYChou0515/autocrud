@@ -13,6 +13,12 @@ import redis
 from faker import Faker
 from msgspec import UNSET, Struct, UnsetType
 
+from autocrud.resource_manager.file_manager import (
+    Content,
+    ContentPointer,
+    FileResourceManager,
+    FileResource,
+)
 from autocrud.types import (
     CannotModifyResourceError,
     ResourceIDNotFoundError,
@@ -1069,6 +1075,71 @@ class TestResourceManager:
 
         assert len(results) == 0
         assert isinstance(results, list)
+
+
+class TestFileResourceManager:
+    @pytest.fixture(autouse=True)
+    def setup_method(self):
+        meta_store = get_meta_store("memory")
+        with get_resource_store("memory") as resource_store:
+            storage = SimpleStorage(
+                meta_store=meta_store,
+                resource_store=resource_store,
+            )
+            cnt_mgr = ResourceManager(
+                Content,
+                storage=storage,
+            )
+            self.mgr = FileResourceManager(
+                FileResource,
+                storage=storage,
+                content_manager=cnt_mgr,
+            )
+            yield
+
+    def test_create_file_resource(self):
+        file_content = b"Hello, this is a test file."
+        file_name = "test_file.txt"
+        user = faker.user_name()
+        now = faker.date_time()
+        with self.mgr.meta_provide(user, now):
+            meta = self.mgr.create_file(file_name, file_content)
+
+        got = self.mgr.get(meta.resource_id)
+        assert isinstance(got.data, FileResource)
+        assert file_name == got.data.filename
+        assert isinstance(got.data.content, Content)
+        assert got.data.content.data == file_content
+        assert got.data.content.size == len(file_content)
+        assert got.data.content.mime == "text/plain"
+
+    def test_create_file_resource_large(self):
+        file_content = b"Hello, this is a test file." * 2048
+        file_name = "test_file"
+        user = faker.user_name()
+        now = faker.date_time()
+        with self.mgr.meta_provide(user, now):
+            meta = self.mgr.create_file(file_name, file_content)
+
+        got = self.mgr.get(meta.resource_id)
+        assert isinstance(got.data, FileResource)
+        assert file_name == got.data.filename
+        assert isinstance(got.data.content, ContentPointer)
+        content = self.mgr.get_content(got.data.content)
+        assert content.data == file_content
+        assert content.size == len(file_content)
+        assert content.mime == "text/plain"
+
+        user2 = faker.user_name()
+        now2 = faker.date_time()
+        file_name2 = "test_file2"
+        with self.mgr.meta_provide(user2, now2):
+            meta2 = self.mgr.create_file(file_name2, file_content)
+        got2 = self.mgr.get(meta2.resource_id)
+        assert isinstance(got2.data, FileResource)
+        assert got2.data.content.content_id == got.data.content.content_id, (
+            "same content should deduplicate"
+        )
 
 
 @pytest.mark.parametrize("default_status", ["stable", "draft"])

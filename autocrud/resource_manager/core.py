@@ -10,6 +10,7 @@ from typing import (
     Any,
     Generic,
     NamedTuple,
+    Self,
     TypeVar,
     get_args,
     get_origin,
@@ -524,13 +525,13 @@ class ResourceManager(IResourceManager[T], Generic[T]):
         now: dt.datetime,
         *,
         resource_id: str | UnsetType = UNSET,
-    ):
+    ) -> Generator[Self]:
         with (
             self.user_ctx.ctx(user),
             self.now_ctx.ctx(now),
             self.id_ctx.ctx(resource_id),
         ):
-            yield
+            yield self
 
     def _res_meta(
         self,
