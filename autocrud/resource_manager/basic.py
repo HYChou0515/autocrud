@@ -7,7 +7,7 @@ from enum import Flag, StrEnum
 from typing import IO, Any, Generic, TypeVar
 
 import msgspec
-from msgspec import UNSET, Struct, UnsetType
+from msgspec import UNSET, UnsetType
 
 from autocrud.types import ResourceMeta
 from autocrud.types import ResourceMetaSearchQuery
@@ -823,29 +823,3 @@ class IStorage(ABC):
             The IO[bytes] objects returned are ready for immediate reading and do not
             require context manager handling.
         """
-
-
-# Data Search Related Classes
-
-
-class UnifiedSortKey(StrEnum):
-    # Meta 欄位
-    created_time = "created_time"
-    updated_time = "updated_time"
-    resource_id = "resource_id"
-
-    # Data 欄位（用前綴區分）
-    data_prefix = "data."  # 實際使用時會是 "data.name", "data.user.email" 等
-
-
-class UnifiedSearchSort(Struct, kw_only=True):
-    direction: ResourceMetaSortDirection = ResourceMetaSortDirection.ascending
-    key: str  # 可以是 meta 欄位名或 "data.field_path"
-
-
-class IndexEntry(Struct, kw_only=True):
-    resource_id: str
-    revision_id: str
-    field_path: str
-    field_value: Any
-    field_type: str  # Store type name as string

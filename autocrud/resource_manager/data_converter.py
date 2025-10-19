@@ -27,15 +27,3 @@ class DataConverter:
 
     def builtins_to_data(self, obj: Any) -> msgspec.Raw | T:
         return msgspec.convert(obj, self.resource_type)
-
-
-def decode_json_to_data(json_bytes: bytes, resource_type: type):
-    return DataConverter(resource_type).decode_json_to_data(json_bytes)
-
-
-def data_to_builtins(data: msgspec.Raw | T) -> Any:
-    return DataConverter.data_to_builtins(data)
-
-
-def builtins_to_data(resource_type: type[T], obj: Any) -> msgspec.Raw | T:
-    return DataConverter(resource_type).builtins_to_data(obj)
