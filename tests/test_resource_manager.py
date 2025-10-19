@@ -1114,6 +1114,18 @@ class TestFileResourceManager:
         assert got.data.content.mime == "text/plain"
 
     def test_create_file_resource_large(self):
+        cnt = 0
+
+        def count(func):
+            def wrapper(*args, **kwargs):
+                nonlocal cnt
+                cnt += 1
+                return func(*args, **kwargs)
+
+            return wrapper
+
+        self.mgr.content_manager.create = count(self.mgr.content_manager.create)
+
         file_content = b"Hello, this is a test file." * 2048
         file_name = "test_file"
         user = faker.user_name()
@@ -1139,6 +1151,9 @@ class TestFileResourceManager:
         assert isinstance(got2.data, FileResource)
         assert got2.data.content.content_id == got.data.content.content_id, (
             "same content should deduplicate"
+        )
+        assert cnt == 1, (
+            "content manager create should be called only once due to deduplication"
         )
 
 

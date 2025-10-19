@@ -101,11 +101,12 @@ class FileResourceManager(IFileResourceManager):
         )
         if content.size > self.large_file_threshold:
             with self.content_manager.meta_provide(
-                self.user, self.now, resource_id=self.calc_content_id(file_obj)
+                self.user, self.now, resource_id=(cid := self.calc_content_id(file_obj))
             ) as mgr:
-                info = mgr.create(content)
+                if not mgr.exists(cid):
+                    mgr.create(content)
             content = ContentPointer(
-                content_id=info.resource_id,
+                content_id=cid,
                 content_hash=content.hash,
             )
         r = FileResource(
