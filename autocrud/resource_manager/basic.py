@@ -20,6 +20,8 @@ from autocrud.types import ResourceMetaSortKey
 from autocrud.types import RevisionInfo
 
 T = TypeVar("T")
+M = TypeVar("M")
+Q = TypeVar("Q")
 
 
 class Ctx(Generic[T]):
@@ -201,41 +203,41 @@ class MsgspecSerializer(Generic[T]):
         return self.decoder.decode(b)
 
 
-class IMetaStore(MutableMapping[str, ResourceMeta]):
+class AbstractMetaStore(Generic[M, Q], MutableMapping[str, M]):
     """Interface for a metadata store that manages resource metadata.
 
     This interface provides a dictionary-like interface for storing and retrieving
     resource metadata, with additional search capabilities. It serves as the primary
-    storage mechanism for ResourceMeta objects in the AutoCRUD system.
+    storage mechanism for ResourceMeta(M) objects in the AutoCRUD system.
 
     The store can be used like a standard Python dictionary, with resource IDs as keys
-    and ResourceMeta objects as values. It extends the MutableMapping interface with
+    and ResourceMeta(M) objects as values. It extends the MutableMapping interface with
     search functionality to support complex queries.
 
     See: https://docs.python.org/3/library/collections.abc.html#collections.abc.MutableMapping
     """
 
     @abstractmethod
-    def __getitem__(self, pk: str) -> ResourceMeta:
+    def __getitem__(self, pk: str) -> M:
         """Get resource metadata by resource ID.
 
         Arguments:
             pk (str): The resource ID (primary key) to retrieve metadata for.
 
         Returns:
-            ResourceMeta: The metadata object for the specified resource.
+            M: The metadata object for the specified resource.
 
         Raises:
             KeyError: If the resource ID does not exist in the store.
         """
 
     @abstractmethod
-    def __setitem__(self, pk: str, b: ResourceMeta) -> None:
+    def __setitem__(self, pk: str, b: M) -> None:
         """Store resource metadata by resource ID.
 
         Arguments:
             pk (str): The resource ID (primary key) to store metadata under.
-            b (ResourceMeta): The metadata object to store.
+            b (M): The metadata object to store.
 
         ---
         This method stores or updates the metadata for a resource. If the resource ID
@@ -284,15 +286,15 @@ class IMetaStore(MutableMapping[str, ResourceMeta]):
         """
 
     @abstractmethod
-    def iter_search(self, query: ResourceMetaSearchQuery) -> Generator[ResourceMeta]:
+    def iter_search(self, query: Q) -> Generator[M]:
         """Search for resource metadata based on query criteria.
 
         Arguments:
-            query (ResourceMetaSearchQuery): The search criteria including filters,
+            query (Q): The search criteria including filters,
                 sorting, and pagination options.
 
         Returns:
-            Generator[ResourceMeta]: A generator yielding ResourceMeta objects that
+            Generator[M]: A generator yielding M objects that
                 match the query criteria.
 
         ---
@@ -308,7 +310,7 @@ class IMetaStore(MutableMapping[str, ResourceMeta]):
         """
 
 
-class IFastMetaStore(IMetaStore):
+class AbstractFastMetaStore(Generic[M, Q], AbstractMetaStore[M, Q]):
     """Interface for a fast, temporary metadata store with bulk operations.
 
     This interface extends IMetaStore with additional capabilities for high-performance
@@ -325,12 +327,12 @@ class IFastMetaStore(IMetaStore):
 
     @abstractmethod
     @contextmanager
-    def get_then_delete(self) -> Generator[Iterable[ResourceMeta]]:
+    def get_then_delete(self) -> Generator[Iterable[M]]:
         """Atomically retrieve all metadata and mark it for deletion.
 
         Returns:
-            Generator[Iterable[ResourceMeta]]: A context manager that yields an
-                iterable of all ResourceMeta objects currently in the store.
+            Generator[Iterable[M]]: A context manager that yields an
+                iterable of all M objects currently in the store.
 
         ---
         This method provides an atomic operation that:
@@ -358,7 +360,10 @@ class IFastMetaStore(IMetaStore):
         """
 
 
-class ISlowMetaStore(IMetaStore):
+class AbstractSlowMetaStore(
+    Generic[M, Q],
+    AbstractMetaStore[M, Q],
+):
     """Interface for a persistent, durable metadata store with batch operations.
 
     This interface extends IMetaStore with capabilities optimized for persistent
@@ -375,11 +380,11 @@ class ISlowMetaStore(IMetaStore):
     """
 
     @abstractmethod
-    def save_many(self, metas: Iterable[ResourceMeta]) -> None:
+    def save_many(self, metas: Iterable[M]) -> None:
         """Bulk save operation for multiple resource metadata objects.
 
         Arguments:
-            metas (Iterable[ResourceMeta]): An iterable of ResourceMeta objects
+            metas (Iterable[M]): An iterable of M objects
                 to be saved to persistent storage.
 
         ---
@@ -409,6 +414,18 @@ class ISlowMetaStore(IMetaStore):
         and implementations should provide appropriate error handling and rollback
         mechanisms where supported by the underlying storage system.
         """
+
+
+class IMetaStore(AbstractMetaStore[ResourceMeta, ResourceMetaSearchQuery]):
+    pass
+
+
+class IFastMetaStore(AbstractFastMetaStore[ResourceMeta, ResourceMetaSearchQuery]):
+    pass
+
+
+class ISlowMetaStore(AbstractSlowMetaStore[ResourceMeta, ResourceMetaSearchQuery]):
+    pass
 
 
 class IResourceStore(ABC):

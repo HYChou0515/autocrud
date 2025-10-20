@@ -1,14 +1,16 @@
+from abc import abstractmethod
 from collections.abc import Generator, Iterable
 from contextlib import contextmanager, suppress
+from typing import TypeVar
 
 import psycopg2 as pg
 import psycopg2.pool
-from msgspec import UNSET
+from msgspec import UNSET, Struct
 from psycopg2.extras import DictCursor, execute_batch
 
 from autocrud.resource_manager.basic import (
+    AbstractSlowMetaStore,
     Encoding,
-    ISlowMetaStore,
     MsgspecSerializer,
 )
 from autocrud.types import (
@@ -19,17 +21,44 @@ from autocrud.types import (
 )
 
 
-class PostgresMetaStore(ISlowMetaStore):
+class _BasicMeta(Struct):
+    resource_id: str
+
+
+M = TypeVar("M", bound=_BasicMeta)
+Q = TypeVar("Q")
+
+
+class AbstractPostgresMetaStore(AbstractSlowMetaStore[M, Q]):
+    @property
+    @abstractmethod
+    def serializer(self) -> MsgspecSerializer[M]:
+        pass
+
+    @abstractmethod
+    def _init_postgres_table(self):
+        """初始化 PostgreSQL 表結構
+        表須含有以下欄位：
+            - resource_id: TEXT PRIMARY KEY
+            - data: BYTEA NOT NULL
+        """
+
+    @abstractmethod
+    def save_many(self, metas: Iterable[M]) -> None:
+        """批量保存元数据到 PostgreSQL（ISlowMetaStore 接口方法）"""
+
+    @abstractmethod
+    def __setitem__(self, pk: str, meta: M) -> None:
+        """直接寫入 PostgreSQL"""
+
+    @abstractmethod
+    def iter_search(self, query: Q) -> Generator[M]:
+        pass
+
     def __init__(
         self,
         pg_dsn: str,
-        encoding: Encoding = Encoding.json,
     ):
-        self._serializer = MsgspecSerializer(
-            encoding=encoding,
-            resource_type=ResourceMeta,
-        )
-
         # 建立連線池
         self._conn_pool = psycopg2.pool.SimpleConnectionPool(
             minconn=1,
@@ -98,6 +127,54 @@ class PostgresMetaStore(ISlowMetaStore):
         finally:
             self.put_conn(conn)
 
+    def __getitem__(self, pk: str) -> M:
+        # 直接從 PostgreSQL 查詢
+        with self.stream_cursor() as cur:
+            cur.execute("SELECT data FROM resource_meta WHERE resource_id = %s", (pk,))
+            row = cur.fetchone()
+            if row is None:
+                raise KeyError(pk)
+            return self.serializer.decode(row["data"])
+
+    def __delitem__(self, pk: str) -> None:
+        # 從 PostgreSQL 刪除
+        with self.transaction() as cur:
+            cur.execute("DELETE FROM resource_meta WHERE resource_id = %s", (pk,))
+            if cur.rowcount == 0:
+                raise KeyError(pk)
+
+    def __iter__(self) -> Generator[str]:
+        # 從 PostgreSQL 查询所有 resource_id
+        with self.stream_cursor() as cur:
+            cur.execute("SELECT resource_id FROM resource_meta")
+            for row in cur:
+                yield row["resource_id"]
+
+    def __len__(self) -> int:
+        # 從 PostgreSQL 计算总数
+        with self.stream_cursor() as cur:
+            cur.execute("SELECT COUNT(*) FROM resource_meta")
+            return cur.fetchone()[0]
+
+
+class PostgresMetaStore(
+    AbstractPostgresMetaStore[ResourceMeta, ResourceMetaSearchQuery]
+):
+    def __init__(
+        self,
+        pg_dsn: str,
+        encoding: Encoding = Encoding.json,
+    ):
+        self._serializer = MsgspecSerializer(
+            encoding=encoding,
+            resource_type=ResourceMeta,
+        )
+        super().__init__(pg_dsn=pg_dsn)
+
+    @property
+    def serializer(self) -> MsgspecSerializer[M]:
+        return self._serializer
+
     def _init_postgres_table(self):
         """初始化 PostgreSQL 表結構"""
         with self.transaction() as cur:
@@ -157,7 +234,7 @@ class PostgresMetaStore(ISlowMetaStore):
 
         for resource_id, data_blob in cur.fetchall():
             try:
-                data = self._serializer.decode(data_blob)
+                data = self.serializer.decode(data_blob)
                 indexed_data_json = (
                     json.dumps(data.indexed_data, ensure_ascii=False)
                     if data.indexed_data is not UNSET
@@ -206,7 +283,7 @@ class PostgresMetaStore(ISlowMetaStore):
                 [
                     (
                         meta.resource_id,
-                        self._serializer.encode(meta),
+                        self.serializer.encode(meta),
                         meta.created_time,
                         meta.updated_time,
                         meta.created_by,
@@ -221,15 +298,6 @@ class PostgresMetaStore(ISlowMetaStore):
                     for meta in metas_list
                 ],
             )
-
-    def __getitem__(self, pk: str) -> ResourceMeta:
-        # 直接從 PostgreSQL 查詢
-        with self.stream_cursor() as cur:
-            cur.execute("SELECT data FROM resource_meta WHERE resource_id = %s", (pk,))
-            row = cur.fetchone()
-            if row is None:
-                raise KeyError(pk)
-            return self._serializer.decode(row["data"])
 
     def __setitem__(self, pk: str, meta: ResourceMeta) -> None:
         # 直接寫入 PostgreSQL
@@ -259,7 +327,7 @@ class PostgresMetaStore(ISlowMetaStore):
                 sql,
                 (
                     pk,
-                    self._serializer.encode(meta),
+                    self.serializer.encode(meta),
                     meta.created_time,
                     meta.updated_time,
                     meta.created_by,
@@ -268,26 +336,6 @@ class PostgresMetaStore(ISlowMetaStore):
                     indexed_data_json,
                 ),
             )
-
-    def __delitem__(self, pk: str) -> None:
-        # 從 PostgreSQL 刪除
-        with self.transaction() as cur:
-            cur.execute("DELETE FROM resource_meta WHERE resource_id = %s", (pk,))
-            if cur.rowcount == 0:
-                raise KeyError(pk)
-
-    def __iter__(self) -> Generator[str]:
-        # 從 PostgreSQL 查询所有 resource_id
-        with self.stream_cursor() as cur:
-            cur.execute("SELECT resource_id FROM resource_meta")
-            for row in cur:
-                yield row["resource_id"]
-
-    def __len__(self) -> int:
-        # 從 PostgreSQL 计算总数
-        with self.stream_cursor() as cur:
-            cur.execute("SELECT COUNT(*) FROM resource_meta")
-            return cur.fetchone()[0]
 
     def iter_search(self, query: ResourceMetaSearchQuery) -> Generator[ResourceMeta]:
         # 直接从 PostgreSQL 查询
@@ -372,7 +420,7 @@ class PostgresMetaStore(ISlowMetaStore):
         with self.stream_cursor() as cur:
             cur.execute(sql, params)
             for row in cur:
-                yield self._serializer.decode(row["data"])
+                yield self.serializer.decode(row["data"])
 
     def _build_jsonb_condition(self, condition) -> tuple[str, list]:
         """構建 PostgreSQL JSONB 查詢條件"""

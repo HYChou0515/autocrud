@@ -2,18 +2,21 @@ import threading
 from collections.abc import Generator
 
 from autocrud.resource_manager.basic import (
-    IFastMetaStore,
-    IMetaStore,
-    ISlowMetaStore,
+    AbstractFastMetaStore,
+    AbstractMetaStore,
+    AbstractSlowMetaStore,
 )
-from autocrud.types import ResourceMeta, ResourceMetaSearchQuery
+from typing import TypeVar
+
+M = TypeVar("M")
+Q = TypeVar("Q")
 
 
-class FastSlowMetaStore(IMetaStore):
+class FastSlowMetaStore(AbstractMetaStore[M, Q]):
     def __init__(
         self,
-        fast_store: IFastMetaStore,
-        slow_store: ISlowMetaStore,
+        fast_store: AbstractFastMetaStore[M, Q],
+        slow_store: AbstractSlowMetaStore[M, Q],
         sync_interval: int = 1,
     ):
         self._fast_store = fast_store
@@ -55,7 +58,7 @@ class FastSlowMetaStore(IMetaStore):
         """手动触发同步，主要用于测试"""
         self._sync_fast_to_slow()
 
-    def __getitem__(self, pk: str) -> ResourceMeta:
+    def __getitem__(self, pk: str) -> M:
         # 先檢查 Fast 存儲
         try:
             return self._fast_store[pk]
@@ -63,7 +66,7 @@ class FastSlowMetaStore(IMetaStore):
             # 如果 Fast 存儲 中沒有，從慢速存儲查詢
             return self._slow_store[pk]
 
-    def __setitem__(self, pk: str, meta: ResourceMeta) -> None:
+    def __setitem__(self, pk: str, meta: M) -> None:
         # 只寫入 Fast 存儲
         self._fast_store[pk] = meta
 
@@ -85,6 +88,6 @@ class FastSlowMetaStore(IMetaStore):
         # 直接从 slow 存储获取长度
         return len(self._slow_store)
 
-    def iter_search(self, query: ResourceMetaSearchQuery) -> Generator[ResourceMeta]:
+    def iter_search(self, query: Q) -> Generator[M]:
         self._sync_fast_to_slow()
         return self._slow_store.iter_search(query)
