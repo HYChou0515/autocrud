@@ -5,7 +5,7 @@ from typing import TypeVar
 
 import psycopg2 as pg
 import psycopg2.pool
-from msgspec import UNSET, Struct
+from msgspec import UNSET
 from psycopg2.extras import DictCursor, execute_batch
 
 from autocrud.resource_manager.basic import (
@@ -14,6 +14,7 @@ from autocrud.resource_manager.basic import (
     MsgspecSerializer,
 )
 from autocrud.types import (
+    DataSearchCondition,
     ResourceMeta,
     ResourceMetaSearchQuery,
     ResourceMetaSearchSort,
@@ -21,11 +22,7 @@ from autocrud.types import (
 )
 
 
-class _BasicMeta(Struct):
-    resource_id: str
-
-
-M = TypeVar("M", bound=_BasicMeta)
+M = TypeVar("M")
 Q = TypeVar("Q")
 
 
@@ -223,7 +220,7 @@ class PostgresMetaStore(
             # 遷移已存在的記錄，填充 indexed_data
             self._migrate_existing_data(cur)
 
-    def _migrate_existing_data(self, cur):
+    def _migrate_existing_data(self, cur: DictCursor):
         """為已存在但沒有 indexed_data 的記錄填充索引數據"""
         import json
 
@@ -422,7 +419,9 @@ class PostgresMetaStore(
             for row in cur:
                 yield self.serializer.decode(row["data"])
 
-    def _build_jsonb_condition(self, condition) -> tuple[str, list]:
+    def _build_jsonb_condition(
+        self, condition: DataSearchCondition
+    ) -> tuple[str, list]:
         """構建 PostgreSQL JSONB 查詢條件"""
         from autocrud.types import DataSearchOperator
 
