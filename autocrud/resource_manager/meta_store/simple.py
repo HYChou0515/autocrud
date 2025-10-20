@@ -1,3 +1,4 @@
+from abc import abstractmethod
 from collections.abc import Generator, Iterable
 from contextlib import contextmanager, suppress
 from pathlib import Path
@@ -6,6 +7,7 @@ from typing import TypeVar
 from msgspec import UNSET
 
 from autocrud.resource_manager.basic import (
+    AbstractFastMetaStore,
     Encoding,
     IFastMetaStore,
     MsgspecSerializer,
@@ -16,20 +18,28 @@ from autocrud.types import ResourceMeta, ResourceMetaSearchQuery
 
 T = TypeVar("T")
 
+M = TypeVar("M")
+Q = TypeVar("Q")
 
-class MemoryMetaStore(IFastMetaStore):
-    def __init__(self, encoding: Encoding = Encoding.json):
-        self._serializer = MsgspecSerializer(
-            encoding=encoding,
-            resource_type=ResourceMeta,
-        )
+
+class AbstractMemoryMetaStore(AbstractFastMetaStore[M, Q]):
+    @property
+    @abstractmethod
+    def serializer(self) -> MsgspecSerializer[M]:
+        pass
+
+    @abstractmethod
+    def iter_search(self, query: Q) -> Generator[M]:
+        pass
+
+    def __init__(self):
         self._store: dict[str, bytes] = {}
 
-    def __getitem__(self, pk: str) -> ResourceMeta:
-        return self._serializer.decode(self._store[pk])
+    def __getitem__(self, pk: str) -> M:
+        return self.serializer.decode(self._store[pk])
 
-    def __setitem__(self, pk: str, b: ResourceMeta) -> None:
-        self._store[pk] = self._serializer.encode(b)
+    def __setitem__(self, pk: str, b: M) -> None:
+        self._store[pk] = self.serializer.encode(b)
 
     def __delitem__(self, pk: str) -> None:
         del self._store[pk]
@@ -40,6 +50,25 @@ class MemoryMetaStore(IFastMetaStore):
     def __len__(self) -> int:
         return len(self._store)
 
+    @contextmanager
+    def get_then_delete(self) -> Generator[Iterable[M]]:
+        """获取所有元数据然后删除，用于快速存储的批量同步"""
+        yield (self.serializer.decode(v) for v in self._store.values())
+        self._store.clear()
+
+
+class MemoryMetaStore(AbstractMemoryMetaStore[ResourceMeta, ResourceMetaSearchQuery]):
+    def __init__(self, encoding: Encoding = Encoding.json):
+        self._serializer = MsgspecSerializer(
+            encoding=encoding,
+            resource_type=ResourceMeta,
+        )
+        super().__init__()
+
+    @property
+    def serializer(self) -> MsgspecSerializer[M]:
+        return self._serializer
+
     def iter_search(self, query: ResourceMetaSearchQuery) -> Generator[ResourceMeta]:
         results: list[ResourceMeta] = []
         for meta_b in self._store.values():
@@ -48,12 +77,6 @@ class MemoryMetaStore(IFastMetaStore):
                 results.append(meta)
         results.sort(key=get_sort_fn([] if query.sorts is UNSET else query.sorts))
         yield from results[query.offset : query.offset + query.limit]
-
-    @contextmanager
-    def get_then_delete(self) -> Generator[Iterable[ResourceMeta]]:
-        """获取所有元数据然后删除，用于快速存储的批量同步"""
-        yield (self._serializer.decode(v) for v in self._store.values())
-        self._store.clear()
 
 
 class DiskMetaStore(IFastMetaStore):
