@@ -172,7 +172,7 @@ class PostgresMetaStore(
         super().__init__(pg_dsn=pg_dsn)
 
     @property
-    def serializer(self) -> MsgspecSerializer[M]:
+    def serializer(self) -> MsgspecSerializer[ResourceMeta]:
         return self._serializer
 
     def _init_postgres_table(self):

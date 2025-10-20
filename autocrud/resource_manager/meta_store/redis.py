@@ -1,46 +1,51 @@
+from abc import abstractmethod
 from collections.abc import Generator, Iterable
 from contextlib import contextmanager
+from typing import TypeVar
 
 import redis
 from msgspec import UNSET
 
 from autocrud.resource_manager.basic import (
+    AbstractFastMetaStore,
     Encoding,
-    IFastMetaStore,
     MsgspecSerializer,
     get_sort_fn,
     is_match_query,
 )
 from autocrud.types import ResourceMeta, ResourceMetaSearchQuery
 
+M = TypeVar("M")
+Q = TypeVar("Q")
 
-class RedisMetaStore(IFastMetaStore):
+
+class AbstractRedisMetaStore(AbstractFastMetaStore[M, Q]):
+    @property
+    @abstractmethod
+    def serializer(self) -> MsgspecSerializer[M]:
+        pass
+
     def __init__(
         self,
         redis_url: str,
-        encoding: Encoding = Encoding.json,
         prefix: str = "",
     ):
-        self._serializer = MsgspecSerializer(
-            encoding=encoding,
-            resource_type=ResourceMeta,
-        )
         self._redis = redis.Redis.from_url(redis_url)
         self._key_prefix = f"{prefix}resource_meta:"
 
     def _get_key(self, pk: str) -> str:
         return f"{self._key_prefix}{pk}"
 
-    def __getitem__(self, pk: str) -> ResourceMeta:
+    def __getitem__(self, pk: str) -> M:
         key = self._get_key(pk)
         data = self._redis.get(key)
         if data is None:
             raise KeyError(pk)
-        return self._serializer.decode(data)
+        return self.serializer.decode(data)
 
-    def __setitem__(self, pk: str, meta: ResourceMeta) -> None:
+    def __setitem__(self, pk: str, meta: M) -> None:
         key = self._get_key(pk)
-        data = self._serializer.encode(meta)
+        data = self.serializer.encode(meta)
         self._redis.set(key, data)
 
     def __delitem__(self, pk: str) -> None:
@@ -60,7 +65,7 @@ class RedisMetaStore(IFastMetaStore):
         return len(list(self._redis.scan_iter(match=pattern)))
 
     @contextmanager
-    def get_then_delete(self) -> Generator[Iterable[ResourceMeta]]:
+    def get_then_delete(self) -> Generator[Iterable[M]]:
         """获取所有元数据然后删除，用于快速存储的批量同步"""
         metas = []
         pattern = f"{self._key_prefix}*"
@@ -69,7 +74,7 @@ class RedisMetaStore(IFastMetaStore):
         for key in self._redis.scan_iter(match=pattern):
             data = self._redis.get(key)
             if data:
-                meta = self._serializer.decode(data)
+                meta = self.serializer.decode(data)
                 metas.append(meta)
 
         try:
@@ -82,6 +87,28 @@ class RedisMetaStore(IFastMetaStore):
         except Exception:
             # 如果出现异常，不删除数据
             raise
+
+    @abstractmethod
+    def iter_search(self, query: Q) -> Generator[M]:
+        pass
+
+
+class RedisMetaStore(AbstractRedisMetaStore[ResourceMeta, ResourceMetaSearchQuery]):
+    def __init__(
+        self,
+        redis_url: str,
+        prefix: str = "",
+        encoding: Encoding = Encoding.json,
+    ):
+        self._serializer = MsgspecSerializer(
+            encoding=encoding,
+            resource_type=ResourceMeta,
+        )
+        super().__init__(redis_url=redis_url, prefix=prefix)
+
+    @property
+    def serializer(self) -> MsgspecSerializer[ResourceMeta]:
+        return self._serializer
 
     def iter_search(self, query: ResourceMetaSearchQuery) -> Generator[ResourceMeta]:
         results: list[ResourceMeta] = []
