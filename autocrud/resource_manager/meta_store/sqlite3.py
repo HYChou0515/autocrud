@@ -1,21 +1,22 @@
-import functools
+from abc import abstractmethod
 import json
 import pickle
 import sqlite3
 import threading
 from collections import defaultdict
-from collections.abc import Callable, Generator
+from collections.abc import Generator
 from pathlib import Path
 from typing import TypeVar
 
 from msgspec import UNSET
 
 from autocrud.resource_manager.basic import (
+    AbstractSlowMetaStore,
     Encoding,
-    ISlowMetaStore,
     MsgspecSerializer,
 )
 from autocrud.types import (
+    DataSearchCondition,
     ResourceMeta,
     ResourceMetaSearchQuery,
     ResourceMetaSearchSort,
@@ -24,20 +25,102 @@ from autocrud.types import (
 
 T = TypeVar("T")
 
+M = TypeVar("M")
+Q = TypeVar("Q")
 
-class SqliteMetaStore(ISlowMetaStore):
+
+class AbstractSqliteMetaStore(AbstractSlowMetaStore[M, Q]):
+    @property
+    @abstractmethod
+    def serializer(self) -> MsgspecSerializer[M]:
+        pass
+
+    @abstractmethod
+    def _setup_table(self) -> None:
+        pass
+
+    @abstractmethod
+    def save_many(self, metas: list[M]) -> None:
+        pass
+
+    @abstractmethod
+    def __setitem__(self, pk: str, meta: M) -> None:
+        pass
+
+    @abstractmethod
+    def iter_search(self, query: Q) -> Generator[M]:
+        pass
+
+    @abstractmethod
+    def get_conn(self) -> sqlite3.Connection:
+        pass
+
+    def __init__(self, *args, **kwargs):
+        self._conns: dict[int, sqlite3.Connection] = defaultdict(self.get_conn)
+        self._setup_table()
+
+    def __getitem__(self, pk: str) -> M:
+        _conn = self._conns[threading.get_ident()]
+        cursor = _conn.execute(
+            "SELECT data FROM resource_meta WHERE resource_id = ?",
+            (pk,),
+        )
+        row = cursor.fetchone()
+        if row is None:
+            raise KeyError(pk)
+        return self.serializer.decode(row[0])
+
+    def __delitem__(self, pk: str) -> None:
+        _conn = self._conns[threading.get_ident()]
+        cursor = _conn.execute("DELETE FROM resource_meta WHERE resource_id = ?", (pk,))
+        if cursor.rowcount == 0:
+            raise KeyError(pk)
+        _conn.commit()
+
+    def __iter__(self) -> Generator[str]:
+        _conn = self._conns[threading.get_ident()]
+        cursor = _conn.execute("SELECT resource_id FROM resource_meta")
+        for row in cursor:
+            yield row[0]
+
+    def __len__(self) -> int:
+        _conn = self._conns[threading.get_ident()]
+        cursor = _conn.execute("SELECT COUNT(*) FROM resource_meta")
+        return cursor.fetchone()[0]
+
+
+class AbstractFileSqliteMetaStore(AbstractSqliteMetaStore):
+    def __init__(self, *args, db_filepath: Path, **kwargs):
+        self.db_filepath = db_filepath
+        super().__init__()
+
+    def get_conn(self) -> sqlite3.Connection:
+        return sqlite3.connect(self.db_filepath)
+
+
+class AbstractMemorySqliteMetaStore(AbstractSqliteMetaStore):
+    def get_conn(self) -> sqlite3.Connection:
+        return sqlite3.connect(":memory:")
+
+
+class SqliteMetaStore(AbstractSqliteMetaStore[ResourceMeta, ResourceMetaSearchQuery]):
     def __init__(
         self,
-        *,
-        get_conn: Callable[[], sqlite3.Connection],
+        *args,
         encoding: Encoding = Encoding.json,
+        **kwargs,
     ):
         self._serializer = MsgspecSerializer(
             encoding=encoding,
             resource_type=ResourceMeta,
         )
-        self._get_conn = get_conn
-        self._conns: dict[int, sqlite3.Connection] = defaultdict(self._get_conn)
+        super().__init__()
+
+    @property
+    def serializer(self) -> MsgspecSerializer[M]:
+        return self._serializer
+
+    def _setup_table(self) -> None:
         _conn = self._conns[threading.get_ident()]
         _conn.execute("""
             CREATE TABLE IF NOT EXISTS resource_meta (
@@ -91,9 +174,7 @@ class SqliteMetaStore(ISlowMetaStore):
         for resource_id, data_blob in cursor.fetchall():
             try:
                 data = pickle.loads(data_blob)
-                indexed_data = json.dumps(
-                    data.model_dump() if hasattr(data, "model_dump") else data,
-                )
+                indexed_data = json.dumps(data)
                 _conn.execute(
                     """
                     UPDATE resource_meta SET indexed_data = ? WHERE resource_id = ?
@@ -108,17 +189,6 @@ class SqliteMetaStore(ISlowMetaStore):
                 """,
                     (resource_id,),
                 )
-
-    def __getitem__(self, pk: str) -> ResourceMeta:
-        _conn = self._conns[threading.get_ident()]
-        cursor = _conn.execute(
-            "SELECT data FROM resource_meta WHERE resource_id = ?",
-            (pk,),
-        )
-        row = cursor.fetchone()
-        if row is None:
-            raise KeyError(pk)
-        return self._serializer.decode(row[0])
 
     def __setitem__(self, pk: str, meta: ResourceMeta) -> None:
         import json
@@ -150,7 +220,7 @@ class SqliteMetaStore(ISlowMetaStore):
         )
         _conn.commit()
 
-    def save_many(self, metas):
+    def save_many(self, metas: list[ResourceMeta]) -> None:
         """批量保存元数据到 SQLite（ISlowMetaStore 接口方法）"""
         import json
 
@@ -184,24 +254,6 @@ class SqliteMetaStore(ISlowMetaStore):
                     for meta in metas
                 ],
             )
-
-    def __delitem__(self, pk: str) -> None:
-        _conn = self._conns[threading.get_ident()]
-        cursor = _conn.execute("DELETE FROM resource_meta WHERE resource_id = ?", (pk,))
-        if cursor.rowcount == 0:
-            raise KeyError(pk)
-        _conn.commit()
-
-    def __iter__(self) -> Generator[str]:
-        _conn = self._conns[threading.get_ident()]
-        cursor = _conn.execute("SELECT resource_id FROM resource_meta")
-        for row in cursor:
-            yield row[0]
-
-    def __len__(self) -> int:
-        _conn = self._conns[threading.get_ident()]
-        cursor = _conn.execute("SELECT COUNT(*) FROM resource_meta")
-        return cursor.fetchone()[0]
 
     def iter_search(self, query: ResourceMetaSearchQuery) -> Generator[ResourceMeta]:
         conditions = []
@@ -283,7 +335,7 @@ class SqliteMetaStore(ISlowMetaStore):
         for row in cursor:
             yield self._serializer.decode(row[0])
 
-    def _build_json_condition(self, condition) -> tuple[str, list]:
+    def _build_json_condition(self, condition: DataSearchCondition) -> tuple[str, list]:
         """構建 SQLite JSON 查詢條件"""
         from autocrud.types import DataSearchOperator
 
@@ -325,13 +377,9 @@ class SqliteMetaStore(ISlowMetaStore):
         return "", []
 
 
-class FileSqliteMetaStore(SqliteMetaStore):
-    def __init__(self, *, db_filepath: Path, encoding=Encoding.json):
-        get_conn = functools.partial(sqlite3.connect, db_filepath)
-        super().__init__(get_conn=get_conn, encoding=encoding)
+class FileSqliteMetaStore(AbstractFileSqliteMetaStore, SqliteMetaStore):
+    pass
 
 
-class MemorySqliteMetaStore(SqliteMetaStore):
-    def __init__(self, *, encoding=Encoding.json):
-        get_conn = functools.partial(sqlite3.connect, ":memory:")
-        super().__init__(get_conn=get_conn, encoding=encoding)
+class MemorySqliteMetaStore(AbstractMemorySqliteMetaStore, SqliteMetaStore):
+    pass
