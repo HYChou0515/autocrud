@@ -54,6 +54,7 @@ from autocrud.types import (
     IndexableField,
     ResourceMeta,
     RevisionInfo,
+    RevisionStatus,
 )
 from autocrud.util.naming import NameConverter
 
@@ -293,6 +294,7 @@ class AutoCRUD:
         event_handlers: Sequence[IEventHandler] | None = None,
         permission_checker: IPermissionChecker | None = None,
         encoding: Encoding | None = None,
+        default_status: RevisionStatus | None = None,
     ) -> None:
         """Add a data model to AutoCRUD and configure its API endpoints.
 
@@ -389,6 +391,9 @@ class AutoCRUD:
             storage = self.storage_factory.build(model_name)
         if encoding is None:
             encoding = self.default_encoding
+        other_options = {}
+        if default_status is not None:
+            other_options["default_status"] = default_status
         resource_manager = ResourceManager(
             model,
             storage=storage,
@@ -399,6 +404,7 @@ class AutoCRUD:
             permission_checker=self.permission_checker or permission_checker,
             encoding=encoding,
             name=model_name,
+            **other_options,
         )
         self.resource_managers[model_name] = resource_manager
 

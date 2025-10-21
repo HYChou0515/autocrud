@@ -1,5 +1,6 @@
 from unittest.mock import Mock
 from msgspec import Struct
+import pytest
 
 from autocrud.crud.core import AutoCRUD
 from autocrud.crud.route_templates.get import ReadRouteTemplate
@@ -76,3 +77,12 @@ class TestAutocrud:
         crud.add_route_template(MockRouteTemplate(order=4))
         crud.apply(Mock())
         assert applied == [1, 2, 5, 1, 2, 4, 5]
+
+    @pytest.mark.parametrize("default_status", ["stable", "draft", None])
+    def test_add_model_with_default_status(self, default_status: str | None):
+        crud = AutoCRUD()
+        crud.add_model(User, default_status=default_status)
+        mgr = crud.get_resource_manager(User)
+        with mgr.meta_provide("user", dt.datetime.now()):
+            info = mgr.create({"name": "Alice", "age": 30})
+        assert info.status == (default_status or "stable")
