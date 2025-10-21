@@ -9,7 +9,12 @@ from typing import IO, Any, Generic, TypeVar
 import msgspec
 from msgspec import UNSET, UnsetType
 
-from autocrud.types import ResourceMeta
+from autocrud.types import (
+    ContentMeta,
+    ContentMetaSearchQuery,
+    ContentMetaSearchSort,
+    ResourceMeta,
+)
 from autocrud.types import ResourceMetaSearchQuery
 from autocrud.types import DataSearchCondition
 from autocrud.types import DataSearchOperator
@@ -18,6 +23,7 @@ from autocrud.types import ResourceMetaSearchSort
 from autocrud.types import ResourceMetaSortDirection
 from autocrud.types import ResourceMetaSortKey
 from autocrud.types import RevisionInfo
+from autocrud.types import ContentMetaSortKey, SortDirection
 
 T = TypeVar("T")
 M = TypeVar("M")
@@ -51,7 +57,9 @@ class Encoding(StrEnum):
     msgpack = "msgpack"
 
 
-def is_match_query(meta: ResourceMeta, query: ResourceMetaSearchQuery) -> bool:
+def _is_match_query_resource_meta(
+    meta: ResourceMeta, query: ResourceMetaSearchQuery
+) -> bool:
     if query.is_deleted is not UNSET and meta.is_deleted != query.is_deleted:
         return False
 
@@ -90,6 +98,57 @@ def is_match_query(meta: ResourceMeta, query: ResourceMetaSearchQuery) -> bool:
         return False
 
     return True
+
+
+def _is_match_query_content_meta(
+    meta: ContentMeta, query: ContentMetaSearchQuery
+) -> bool:
+    if (
+        query.created_time_start is not UNSET
+        and meta.created_time < query.created_time_start
+    ):
+        return False
+    if (
+        query.created_time_end is not UNSET
+        and meta.created_time > query.created_time_end
+    ):
+        return False
+    if (
+        query.accessed_time_start is not UNSET
+        and meta.accessed_time < query.accessed_time_start
+    ):
+        return False
+    if (
+        query.accessed_time_end is not UNSET
+        and meta.accessed_time > query.accessed_time_end
+    ):
+        return False
+
+    if query.min_size is not UNSET and meta.size < query.min_size:
+        return False
+    if query.max_size is not UNSET and meta.size > query.max_size:
+        return False
+
+    if query.mimes is not UNSET and meta.mime not in query.mimes:
+        return False
+
+    if query.created_bys is not UNSET and meta.created_by not in query.created_bys:
+        return False
+    if query.accessed_bys is not UNSET and meta.accessed_by not in query.accessed_bys:
+        return False
+
+    return True
+
+
+def is_match_query(
+    meta: ResourceMeta | ContentMeta,
+    query: ResourceMetaSearchQuery | ContentMetaSearchQuery,
+) -> bool:
+    if isinstance(meta, ResourceMeta) and isinstance(query, ResourceMetaSearchQuery):
+        return _is_match_query_resource_meta(meta, query)
+    if isinstance(meta, ContentMeta) and isinstance(query, ContentMetaSearchQuery):
+        return _is_match_query_content_meta(meta, query)
+    raise TypeError("Mismatched types for meta and query")
 
 
 def _match_data_condition(
@@ -180,6 +239,34 @@ def get_sort_fn(qsorts: list[ResourceMetaSearchSort | ResourceDataSearchSort]):
                         1
                         if sort.direction == ResourceMetaSortDirection.ascending
                         else -1
+                    )
+        return 0
+
+    return functools.cmp_to_key(compare)
+
+
+def get_sort_fn_content_meta(qsorts: list[ContentMetaSearchSort]):
+    def compare(meta1: ContentMeta, meta2: ContentMeta) -> int:
+        for sort in qsorts:
+            if sort.key == ContentMetaSortKey.created_time:
+                if meta1.created_time != meta2.created_time:
+                    return bool_to_sign(meta1.created_time > meta2.created_time) * (
+                        1 if sort.direction == SortDirection.ascending else -1
+                    )
+            elif sort.key == ContentMetaSortKey.accessed_time:
+                if meta1.accessed_time != meta2.accessed_time:
+                    return bool_to_sign(meta1.accessed_time > meta2.accessed_time) * (
+                        1 if sort.direction == SortDirection.ascending else -1
+                    )
+            elif sort.key == ContentMetaSortKey.resource_id:
+                if meta1.resource_id != meta2.resource_id:
+                    return bool_to_sign(meta1.resource_id > meta2.resource_id) * (
+                        1 if sort.direction == SortDirection.ascending else -1
+                    )
+            elif sort.key == ContentMetaSortKey.size:
+                if meta1.size != meta2.size:
+                    return bool_to_sign(meta1.size > meta2.size) * (
+                        1 if sort.direction == SortDirection.ascending else -1
                     )
         return 0
 

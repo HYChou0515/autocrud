@@ -65,6 +65,17 @@ class ResourceMeta(Struct, kw_only=True):
     indexed_data: dict[str, Any] | UnsetType = UNSET
 
 
+class ContentMeta(Struct, kw_only=True):
+    resource_id: str
+    created_time: dt.datetime
+    created_by: str
+    accessed_time: dt.datetime
+    accessed_by: str
+    mime: str
+    size: int
+    hash: str | UnsetType = UNSET
+
+
 class ResourceAction(Flag):
     create = auto()
     get = auto()
@@ -113,9 +124,42 @@ class DataSearchCondition(Struct, kw_only=True):
     value: Any
 
 
-class ResourceMetaSortDirection(StrEnum):
+class SortDirection(StrEnum):
     ascending = "+"
     descending = "-"
+
+
+class ContentMetaSortKey(StrEnum):
+    created_time = "created_time"
+    accessed_time = "accessed_time"
+    resource_id = "resource_id"
+    size = "size"
+
+
+class ContentMetaSearchSort(Struct, kw_only=True, tag=True):
+    direction: SortDirection = SortDirection.ascending
+    key: ContentMetaSortKey
+
+
+class ContentMetaSearchQuery(Struct, kw_only=True):
+    created_time_start: dt.datetime | UnsetType = UNSET
+    created_time_end: dt.datetime | UnsetType = UNSET
+    accessed_time_start: dt.datetime | UnsetType = UNSET
+    accessed_time_end: dt.datetime | UnsetType = UNSET
+
+    min_size: int | UnsetType = UNSET
+    max_size: int | UnsetType = UNSET
+    mimes: list[str] | UnsetType = UNSET
+    created_bys: list[str] | UnsetType = UNSET
+    accessed_bys: list[str] | UnsetType = UNSET
+
+    limit: int = 10
+    offset: int = 0
+
+    sorts: list[ContentMetaSearchSort] | UnsetType = UNSET
+
+
+ResourceMetaSortDirection = SortDirection
 
 
 class ResourceDataSearchSort(Struct, kw_only=True, tag=True):

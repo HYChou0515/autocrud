@@ -11,9 +11,15 @@ from autocrud.resource_manager.basic import (
     Encoding,
     MsgspecSerializer,
     get_sort_fn,
+    get_sort_fn_content_meta,
     is_match_query,
 )
-from autocrud.types import ResourceMeta, ResourceMetaSearchQuery
+from autocrud.types import (
+    ContentMeta,
+    ContentMetaSearchQuery,
+    ResourceMeta,
+    ResourceMetaSearchQuery,
+)
 
 T = TypeVar("T")
 
@@ -54,6 +60,32 @@ class AbstractMemoryMetaStore(AbstractFastMetaStore[M, Q]):
         """获取所有元数据然后删除，用于快速存储的批量同步"""
         yield (self.serializer.decode(v) for v in self._store.values())
         self._store.clear()
+
+
+class MemoryContentMetaStore(
+    AbstractMemoryMetaStore[ContentMeta, ContentMetaSearchQuery]
+):
+    def __init__(self, encoding: Encoding = Encoding.json):
+        self._serializer = MsgspecSerializer(
+            encoding=encoding,
+            resource_type=ContentMeta,
+        )
+        super().__init__()
+
+    @property
+    def serializer(self) -> MsgspecSerializer[M]:
+        return self._serializer
+
+    def iter_search(self, query: ContentMetaSearchQuery) -> Generator[ContentMeta]:
+        results: list[ContentMeta] = []
+        for meta_b in self._store.values():
+            meta = self._serializer.decode(meta_b)
+            if is_match_query(meta, query):
+                results.append(meta)
+        results.sort(
+            key=get_sort_fn_content_meta([] if query.sorts is UNSET else query.sorts)
+        )
+        yield from results[query.offset : query.offset + query.limit]
 
 
 class MemoryMetaStore(AbstractMemoryMetaStore[ResourceMeta, ResourceMetaSearchQuery]):
