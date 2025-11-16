@@ -16,7 +16,7 @@ from rich.prompt import Prompt
 import fstui
 import httpx
 from autocrud.cli import config
-from autocrud.types import ResourceMeta, RevisionInfo
+from autocrud.types import ResourceMeta, ResourceMetaSortKey, RevisionInfo
 from rich.table import Table
 from rich.text import Text
 
@@ -43,9 +43,9 @@ def build_from_config():
         cmd = Typer()
 
         cmd.command(name="create")(ui.create)
-        cmd.command(name="update")(ui.update)
-        cmd.command(name="delete")(ui.delete)
-        cmd.command(name="list")(ui.list_objects)
+        cmd.command(name="update")(ui.ui_paged(ui.update))
+        cmd.command(name="delete")(ui.ui_paged(ui.delete))
+        cmd.command(name="list")(ui.ui_paged(ui.list_objects))
         cmd.callback(invoke_without_command=True)(ui.callback)
 
         app.add_typer(cmd, name=name)
@@ -192,8 +192,9 @@ def print_object(obj: dict | Struct):
 
 
 class PageOptions(Struct):
-    page_size: int
-    page_index: int
+    page_size: int = 5
+    page_index: int = 0
+    sort_by: tuple[str] = ("-updated_time",)
     show_type: Literal["meta", "data"] = "data"
     mode: Literal["view", "select"] = "view"
 
@@ -209,6 +210,19 @@ class ResourceUI:
             wait=wait_fixed(2),
             stop=stop_after_attempt(5),
         )
+
+    @staticmethod
+    def ui_paged(func):
+        def wrapper(
+            page_size: Annotated[int, typer.Option("-p", help="Page size")] = 5,
+            sort_by: Annotated[list[str], typer.Option("-s", help="Sort by field")] = [
+                "-updated_time"
+            ],
+        ):
+            page = PageOptions(page_size=page_size, sort_by=sort_by)
+            return func(page)
+
+        return wrapper
 
     def create(self):
         obj = fstui.create(
@@ -228,24 +242,23 @@ class ResourceUI:
         resp.raise_for_status()
         print_object(resp.json())
 
-    def select_object(self, page_size: int):
-        page = PageOptions(page_size=page_size, page_index=0)
+    def select_object(self, page: PageOptions):
         while True:
             obj = self.page_objects(page)
             if obj is None:
                 break
             yield obj
 
-    def select_one_object(self, page_size: int):
+    def select_one_object(self, page: PageOptions):
         obj = None
-        for obj in self.select_object(page_size):
+        for obj in self.select_object(page):
             break
         if not obj:
             raise typer.Exit("No object selected.")
         return obj
 
-    def update(self):
-        obj = self.select_one_object(5)
+    def update(self, page: PageOptions):
+        obj = self.select_one_object(page)
         new_data = fstui.create(
             self.model, title=f"Update {self.name}", default_values=obj.data
         )
@@ -260,14 +273,25 @@ class ResourceUI:
         self,
         page: PageOptions,
     ) -> ReturnType | None:
+        sorts = []
+        for sort_field in page.sort_by:
+            direction = "+"
+            key = sort_field
+            if sort_field.startswith("-"):
+                direction = "-"
+                key = sort_field[1:]
+            elif sort_field.startswith("+"):
+                key = sort_field[1:]
+            if key in ResourceMetaSortKey:
+                sorts.append(dict(type="meta", key=key, direction=direction))
+            else:
+                sorts.append(dict(type="data", field_path=key, direction=direction))
         resp = self.retry(httpx.get)(
             f"{self.user_config.autocrud_url}/{self.name}/full",
             params={
                 "limit": page.page_size + 1,
                 "offset": page.page_index * page.page_size,
-                "sorts": msgspec.json.encode(
-                    [dict(type="meta", key="updated_time", direction="-")]
-                ).decode("utf-8"),
+                "sorts": msgspec.json.encode(sorts).decode("utf-8"),
             },
         )
         resp.raise_for_status()
@@ -340,14 +364,12 @@ class ResourceUI:
             return selected_obj
         return self.page_objects(page)
 
-    def list_objects(
-        self, page_size: Annotated[int, typer.Option("-p", help="Page size")] = 5
-    ):
-        for obj in self.select_object(page_size):
+    def list_objects(self, page: PageOptions):
+        for obj in self.select_object(page):
             print_object(obj)
 
-    def delete(self):
-        obj = self.select_one_object(5)
+    def delete(self, page: PageOptions):
+        obj = self.select_one_object(page)
         print_object(obj)
 
         ans = Prompt.ask(
@@ -375,4 +397,4 @@ class ResourceUI:
         ctx: typer.Context,
     ):
         if ctx.invoked_subcommand is None:
-            return self.list_objects()
+            return self.list_objects(PageOptions())

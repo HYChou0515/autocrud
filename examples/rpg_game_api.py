@@ -303,7 +303,7 @@ def get_crud():
     crud = AutoCRUD()
 
     # 註冊模型
-    crud.add_model(Character)
+    crud.add_model(Character, indexed_fields=[("level", int)])
     crud.add_model(Guild)
     crud.add_model(Equipment)
 
