@@ -1,4 +1,5 @@
 from msgspec import UNSET, Struct, UnsetType, convert, to_builtins
+import msgspec
 from pydantic import BaseModel
 import sys
 from datetime import datetime
@@ -43,6 +44,7 @@ def build_from_config():
 
         cmd.command(name="create")(ui.create)
         cmd.command(name="update")(ui.update)
+        cmd.command(name="delete")(ui.delete)
         cmd.command(name="list")(ui.list_objects)
         cmd.callback(invoke_without_command=True)(ui.callback)
 
@@ -203,7 +205,7 @@ class ResourceUI:
         self.user_config = user_config
         self.model = model
         self.name = name
-        self.retry_get = retry(
+        self.retry = retry(
             wait=wait_fixed(2),
             stop=stop_after_attempt(5),
         )
@@ -220,7 +222,7 @@ class ResourceUI:
         )
         resp.raise_for_status()
         resource_id = resp.json()["resource_id"]
-        resp = self.retry_get(httpx.get)(
+        resp = self.retry(httpx.get)(
             f"{self.user_config.autocrud_url}/{self.name}/{resource_id}/full",
         )
         resp.raise_for_status()
@@ -234,12 +236,16 @@ class ResourceUI:
                 break
             yield obj
 
-    def update(self):
+    def select_one_object(self, page_size: int):
         obj = None
-        for obj in self.select_object(5):
+        for obj in self.select_object(page_size):
             break
         if not obj:
-            return
+            raise typer.Exit("No object selected.")
+        return obj
+
+    def update(self):
+        obj = self.select_one_object(5)
         new_data = fstui.create(
             self.model, title=f"Update {self.name}", default_values=obj.data
         )
@@ -254,13 +260,17 @@ class ResourceUI:
         self,
         page: PageOptions,
     ) -> ReturnType | None:
-        resp = self.retry_get(httpx.get)(
+        resp = self.retry(httpx.get)(
             f"{self.user_config.autocrud_url}/{self.name}/full",
             params={
                 "limit": page.page_size + 1,
                 "offset": page.page_index * page.page_size,
+                "sorts": msgspec.json.encode(
+                    [dict(type="meta", key="updated_time", direction="-")]
+                ).decode("utf-8"),
             },
         )
+        resp.raise_for_status()
         objs = resp.json()
         has_prev = page.page_index > 0
         has_next = len(objs) == page.page_size + 1
@@ -335,6 +345,30 @@ class ResourceUI:
     ):
         for obj in self.select_object(page_size):
             print_object(obj)
+
+    def delete(self):
+        obj = self.select_one_object(5)
+        print_object(obj)
+
+        ans = Prompt.ask(
+            f"Are you sure to delete {self.name} {obj.meta.resource_id}? Type 'yes' to confirm",
+            default="no",
+            choices=["yes", "no"],
+        )
+        if ans.lower() != "yes":
+            raise typer.Exit("Deletion cancelled.")
+
+        ans = Prompt.ask(
+            "This action is irreversible. Type the revision ID to confirm",
+        )
+        if ans != obj.revision_info.revision_id:
+            raise typer.Exit("Revision ID not matched. Deletion cancelled.")
+
+        resp = self.retry(httpx.delete)(
+            f"{self.user_config.autocrud_url}/{self.name}/{obj.meta.resource_id}",
+        )
+        print_object(resp.json())
+        print(f"[red]Deleted {self.name} {obj.meta.resource_id}[/red]")
 
     def callback(
         self,
