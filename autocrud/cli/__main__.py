@@ -1,13 +1,11 @@
-
 from autocrud.cli.build import build_from_config
 
 import typer
 from pathlib import Path
-
-
+from autocrud.cli import config
 
 if __name__ == "__main__":
     app_dir = Path(typer.get_app_dir("autocrud"))
     if not app_dir.exists():
-        raise typer.Abort("請先使用 `autocrud-install <OPENAPI_URL>` 命令安裝資源模型。")
+        config.app()
     build_from_config()

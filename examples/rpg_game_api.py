@@ -297,6 +297,7 @@ def create_sample_data(crud: AutoCRUD):
             except Exception as e:
                 print(f"❌ 裝備創建失敗: {e}")
 
+
 def get_crud():
     """創建並返回 AutoCRUD 實例"""
     crud = AutoCRUD()
@@ -307,6 +308,7 @@ def get_crud():
     crud.add_model(Equipment)
 
     return crud
+
 
 def main():
     """主程序"""
