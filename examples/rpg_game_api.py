@@ -298,6 +298,18 @@ def create_sample_data(crud: AutoCRUD):
                 print(f"❌ 裝備創建失敗: {e}")
 
 
+def get_crud():
+    """創建並返回 AutoCRUD 實例"""
+    crud = AutoCRUD()
+
+    # 註冊模型
+    crud.add_model(Character, indexed_fields=[("level", int)])
+    crud.add_model(Guild)
+    crud.add_model(Equipment)
+
+    return crud
+
+
 def main():
     """主程序"""
     print("🎮 === RPG 遊戲 API 系統啟動 === ⚔️")
@@ -329,12 +341,7 @@ def main():
     )
 
     # 創建 AutoCRUD 實例
-    crud = AutoCRUD()
-
-    # 註冊模型
-    crud.add_model(Character)
-    crud.add_model(Guild)
-    crud.add_model(Equipment)
+    crud = get_crud()
 
     # 應用到 FastAPI
     crud.apply(app)

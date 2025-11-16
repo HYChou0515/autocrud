@@ -24,7 +24,7 @@
             ]
         },
         {
-            "name": "Python Debugger: Fastapi Current File",
+            "name": "rpg_game_api",
             "type": "debugpy",
             "request": "launch",
             "program": "examples/rpg_game_api.py",

@@ -50,6 +50,13 @@ dev = [
 s3 = [
     "boto3>=1.40.21",
 ]
+cli = [
+    "datamodel-code-generator[http]>=0.35.0",
+    "httpx>=0.28.1",
+    "tenacity>=9.1.2",
+    "textual>=6.6.0",
+    "typer>=0.16.0",
+]
 
 [project.urls]
 Homepage = "https://github.com/HYChou0515/autocrud"
