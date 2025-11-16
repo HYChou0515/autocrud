@@ -93,6 +93,7 @@ dependencies = [
 [package.optional-dependencies]
 cli = [
     { name = "datamodel-code-generator", extra = ["http"] },
+    { name = "fstui" },
     { name = "httpx" },
     { name = "tenacity" },
     { name = "textual" },
@@ -149,6 +150,7 @@ requires-dist = [
     { name = "coverage", marker = "extra == 'dev'", specifier = ">=7.9.2" },
     { name = "datamodel-code-generator", extras = ["http"], marker = "extra == 'cli'", specifier = ">=0.35.0" },
     { name = "fastapi", specifier = ">=0.116.1" },
+    { name = "fstui", marker = "extra == 'cli'", specifier = ">=0.1.1" },
     { name = "furo", marker = "extra == 'docs'", specifier = ">=2025.7.19" },
     { name = "httpx", marker = "extra == 'cli'", specifier = ">=0.28.1" },
     { name = "jsonpatch", specifier = ">=1.33" },
@@ -165,8 +167,8 @@ requires-dist = [
     { name = "sphinx-autodoc-typehints", marker = "extra == 'docs'", specifier = ">=3.2.0" },
     { name = "sphinx-design", marker = "extra == 'docs'", specifier = ">=0.6.1" },
     { name = "tenacity", marker = "extra == 'cli'", specifier = ">=9.1.2" },
-    { name = "textual", marker = "extra == 'cli'", specifier = ">=6.6.0" },
-    { name = "typer", marker = "extra == 'cli'", specifier = ">=0.16.0" },
+    { name = "textual", marker = "extra == 'cli'", specifier = ">=6.3.0" },
+    { name = "typer", marker = "extra == 'cli'", specifier = ">=0.20.0" },
     { name = "xxhash", specifier = ">=3.5.0" },
 ]
 provides-extras = ["cli", "dev", "docs", "s3"]
@@ -689,6 +691,21 @@ dependencies = [
 sdist = { url = "https://files.pythonhosted.org/packages/a9/2e/3b6e5016affc310e5109bc580f760586eabecea0c8a7ab067611cd849ac0/fastapi_cloud_cli-0.1.5.tar.gz", hash = "sha256:341ee585eb731a6d3c3656cb91ad38e5f39809bf1a16d41de1333e38635a7937", size = 22710, upload-time = "2025-07-28T13:30:48.216Z" }
 wheels = [
     { url = "https://files.pythonhosted.org/packages/e5/a6/5aa862489a2918a096166fd98d9fe86b7fd53c607678b3fa9d8c432d88d5/fastapi_cloud_cli-0.1.5-py3-none-any.whl", hash = "sha256:d80525fb9c0e8af122370891f9fa83cf5d496e4ad47a8dd26c0496a6c85a012a", size = 18992, upload-time = "2025-07-28T13:30:47.427Z" },
+]
+
+[[package]]
+name = "fstui"
+version = "0.1.1"
+source = { registry = "https://pypi.org/simple" }
+dependencies = [
+    { name = "pydantic" },
+    { name = "rich" },
+    { name = "textual" },
+    { name = "typer" },
+]
+sdist = { url = "https://files.pythonhosted.org/packages/1e/1c/ab0a98600127939a5a1bb147e09e014b9167c774719ead812a1f3f6e76d2/fstui-0.1.1.tar.gz", hash = "sha256:01be531545b708b837b1b3f31891a976b27b1d02d6bb8328e6f5ffd6dee6123f", size = 80745, upload-time = "2025-11-16T10:45:59.776Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/d8/1d/b6c53585c765acaf25ddbb7f7441e4505481c3177f57c2cd14a3f81ebfc8/fstui-0.1.1-py3-none-any.whl", hash = "sha256:75750f538b744717a05f2a119d379df05e3808025ccd362a90cb0d460028a876", size = 18685, upload-time = "2025-11-16T10:45:58.035Z" },
 ]
 
 [[package]]
@@ -2300,7 +2317,7 @@ wheels = [
 
 [[package]]
 name = "typer"
-version = "0.16.0"
+version = "0.20.0"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "click" },
@@ -2308,9 +2325,9 @@ dependencies = [
     { name = "shellingham" },
     { name = "typing-extensions" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/c5/8c/7d682431efca5fd290017663ea4588bf6f2c6aad085c7f108c5dbc316e70/typer-0.16.0.tar.gz", hash = "sha256:af377ffaee1dbe37ae9440cb4e8f11686ea5ce4e9bae01b84ae7c63b87f1dd3b", size = 102625, upload-time = "2025-05-26T14:30:31.824Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/8f/28/7c85c8032b91dbe79725b6f17d2fffc595dff06a35c7a30a37bef73a1ab4/typer-0.20.0.tar.gz", hash = "sha256:1aaf6494031793e4876fb0bacfa6a912b551cf43c1e63c800df8b1a866720c37", size = 106492, upload-time = "2025-10-20T17:03:49.445Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/76/42/3efaf858001d2c2913de7f354563e3a3a2f0decae3efe98427125a8f441e/typer-0.16.0-py3-none-any.whl", hash = "sha256:1f79bed11d4d02d4310e3c1b7ba594183bcedb0ac73b27a9e5f28f6fb5b98855", size = 46317, upload-time = "2025-05-26T14:30:30.523Z" },
+    { url = "https://files.pythonhosted.org/packages/78/64/7713ffe4b5983314e9d436a90d5bd4f63b6054e2aca783a3cfc44cb95bbf/typer-0.20.0-py3-none-any.whl", hash = "sha256:5b463df6793ec1dca6213a3cf4c0f03bc6e322ac5e16e13ddd622a889489784a", size = 47028, upload-time = "2025-10-20T17:03:47.617Z" },
 ]
 
 [[package]]
