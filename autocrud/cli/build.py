@@ -1,5 +1,4 @@
-from msgspec import UNSET, Struct, UnsetType, convert
-import msgspec
+from msgspec import UNSET, Struct, UnsetType, convert, to_builtins
 from pydantic import BaseModel
 import sys
 from datetime import datetime
@@ -11,14 +10,13 @@ from pathlib import Path
 import importlib.util
 import typing
 from typing import Annotated, Literal
-from rich import print_json, print
+from rich import print
 from rich.prompt import Prompt
 import fstui
 import httpx
 from autocrud.cli import config
 from autocrud.types import ResourceMeta, RevisionInfo
 from rich.table import Table
-from rich.console import Console
 from rich.text import Text
 
 
@@ -44,7 +42,10 @@ def build_from_config():
         cmd = Typer()
 
         cmd.command(name="create")(ui.create)
+        cmd.command(name="update")(ui.update)
         cmd.command(name="list")(ui.list_objects)
+        cmd.callback(invoke_without_command=True)(ui.callback)
+
         app.add_typer(cmd, name=name)
     app()
 
@@ -119,13 +120,23 @@ def format_time(dt: datetime) -> str:
     return dt.strftime("%Y-%m-%d %H:%M:%S")
 
 
+class EmptyCell:
+    pass
+
+
+EMPTY_CELL = EmptyCell()
+
+
 def format_table_cell(value: typing.Any) -> Text:
+    if isinstance(value, Text):
+        return value
+    if value is EMPTY_CELL:
+        return Text("")
     if isinstance(value, datetime):
         return Text(format_time(value))
     if value is None:
         text = Text("<null>")
         text.stylize("grey39 italic")
-        print(text)
         return text
     if isinstance(value, int):
         text = Text(str(value))
@@ -139,14 +150,50 @@ def format_table_cell(value: typing.Any) -> Text:
     return Text(value)
 
 
-def print_table(title: str, columns: list[str], rows: list[list[typing.Any]]):
-    table = Table(title=title)
-    for col in columns:
-        table.add_column(col)
+def print_table(
+    title: str | None,
+    columns: list[str] | None,
+    rows: list[list[typing.Any] | EmptyCell],
+):
+    table = Table(title=title, show_header=columns is not None)
+    if columns is not None:
+        for col in columns:
+            table.add_column(col)
     for row in rows:
-        table.add_row(*[format_table_cell(item) for item in row])
-    console = Console()
-    console.print(table)
+        if row is EMPTY_CELL:
+            table.add_section()
+        else:
+            table.add_row(*[format_table_cell(item) for item in row])
+    print(table)
+
+
+def print_object(obj: dict | Struct):
+    rows = []
+
+    def to_rows(obj: dict | Struct, indent: int):
+        if isinstance(obj, Struct):
+            obj = to_builtins(obj)
+        for k in obj.keys():
+            if isinstance(obj[k], (dict, Struct)):
+                rows.append([EMPTY_CELL] * indent + [k, EMPTY_CELL])
+                to_rows(obj[k], indent + 1)
+                rows.append(EMPTY_CELL)
+            else:
+                rows.append([EMPTY_CELL] * indent + [k, format_table_cell(obj[k])])
+
+    to_rows(obj, 0)
+    print_table(
+        title=None,
+        columns=None,
+        rows=rows,
+    )
+
+
+class PageOptions(Struct):
+    page_size: int
+    page_index: int
+    show_type: Literal["meta", "data"] = "data"
+    mode: Literal["view", "select"] = "view"
 
 
 class ResourceUI:
@@ -167,35 +214,64 @@ class ResourceUI:
         )
         if obj is None:
             raise typer.Exit("Creation cancelled.")
-        print_json(obj.model_dump_json(indent=2))
         resp = httpx.post(
             f"{self.user_config.autocrud_url}/{self.name}",
             json=json.loads(obj.model_dump_json()),
         )
         resp.raise_for_status()
-        print_json(resp.text)
+        resource_id = resp.json()["resource_id"]
+        resp = self.retry_get(httpx.get)(
+            f"{self.user_config.autocrud_url}/{self.name}/{resource_id}/full",
+        )
+        resp.raise_for_status()
+        print_object(resp.json())
+
+    def select_object(self, page_size: int):
+        page = PageOptions(page_size=page_size, page_index=0)
+        while True:
+            obj = self.page_objects(page)
+            if obj is None:
+                break
+            yield obj
+
+    def update(self):
+        obj = None
+        for obj in self.select_object(5):
+            break
+        if not obj:
+            return
+        new_data = fstui.create(
+            self.model, title=f"Update {self.name}", default_values=obj.data
+        )
+        resp = httpx.put(
+            f"{self.user_config.autocrud_url}/{self.name}/{obj.meta.resource_id}",
+            json=json.loads(new_data.model_dump_json()),
+        )
+        resp.raise_for_status()
+        print_object(resp.json())
 
     def page_objects(
         self,
-        page_size: int,
-        page_index: int,
-        show_type: Literal["meta", "data"] = "data",
-    ) -> None:
+        page: PageOptions,
+    ) -> ReturnType | None:
         resp = self.retry_get(httpx.get)(
             f"{self.user_config.autocrud_url}/{self.name}/full",
-            params={"limit": page_size + 1, "offset": page_index * page_size},
+            params={
+                "limit": page.page_size + 1,
+                "offset": page.page_index * page.page_size,
+            },
         )
         objs = resp.json()
-        has_prev = page_index > 0
-        has_next = len(objs) == page_size + 1
-        objs = convert(objs[:page_size], typing.List[ReturnType])
+        has_prev = page.page_index > 0
+        has_next = len(objs) == page.page_size + 1
+        objs = convert(objs[: page.page_size], typing.List[ReturnType])
 
-        if show_type == "data":
+        if page.show_type == "data":
             print_table(
                 title=f"{self.name}",
                 columns=["Index"] + list(self.model.model_fields.keys()),
                 rows=[
-                    [i + 1 + page_size * page_index]
+                    [i + 1 + page.page_size * page.page_index]
                     + [obj.data.get(field) for field in self.model.model_fields.keys()]
                     for i, obj in enumerate(objs)
                 ],
@@ -213,7 +289,7 @@ class ResourceUI:
                 ],
                 rows=[
                     [
-                        i + 1 + page_size * page_index,
+                        i + 1 + page.page_size * page.page_index,
                         obj.revision_info.resource_id,
                         obj.revision_info.revision_id,
                         obj.revision_info.schema_version,
@@ -224,10 +300,10 @@ class ResourceUI:
                 ],
             )
         choices = [
-            IntChoice(i + 1 + page_size * page_index, group_name="Show")
+            IntChoice(i + 1 + page.page_size * page.page_index, group_name="Show")
             for i in range(len(objs))
         ]
-        if show_type == "data":
+        if page.show_type == "data":
             choices.append(BasicChoice("meta", label="[M]eta View", abbr="m"))
         else:
             choices.append(BasicChoice("data", label="[D]ata View", abbr="d"))
@@ -239,21 +315,30 @@ class ResourceUI:
         choices.append(BasicChoice("quit", label="[Q]uit", abbr="q"))
         action = ui_choice(choices)
         if action.value == "quit":
-            return
-        if action.value == "prev":
-            return self.page_objects(page_size, page_index - 1, show_type=show_type)
-        if action.value == "next":
-            return self.page_objects(page_size, page_index + 1, show_type=show_type)
-        if action.value == "data":
-            return self.page_objects(page_size, page_index, show_type="data")
-        if action.value == "meta":
-            return self.page_objects(page_size, page_index, show_type="meta")
-        show_index = (int(action.value) - 1) % page_size
-        selected_obj = objs[show_index]
-        print_json(msgspec.json.encode(selected_obj).decode("utf-8"))
-        return self.page_objects(page_size, page_index, show_type=show_type)
+            return None
+        elif action.value == "prev":
+            page.page_index -= 1
+        elif action.value == "next":
+            page.page_index += 1
+        elif action.value == "data":
+            page.show_type = "data"
+        elif action.value == "meta":
+            page.show_type = "meta"
+        else:
+            show_index = (int(action.value) - 1) % page.page_size
+            selected_obj = objs[show_index]
+            return selected_obj
+        return self.page_objects(page)
 
     def list_objects(
         self, page_size: Annotated[int, typer.Option("-p", help="Page size")] = 5
     ):
-        self.page_objects(page_size, 0)
+        for obj in self.select_object(page_size):
+            print_object(obj)
+
+    def callback(
+        self,
+        ctx: typer.Context,
+    ):
+        if ctx.invoked_subcommand is None:
+            return self.list_objects()
