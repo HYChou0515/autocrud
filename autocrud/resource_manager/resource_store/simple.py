@@ -201,7 +201,9 @@ class DiskResourceStore(IResourceStore):
         # Remove existing symlink if it exists and create new one
         if symd.exists():
             symd.unlink()
-        symd.symlink_to(reald, target_is_directory=True)
+        symd.symlink_to(
+            reald.relative_to(symd.parent, walk_up=True), target_is_directory=True
+        )
 
         # Write data and info
         with self._get_raw_data_path(str(info.uid)).open("wb") as f:

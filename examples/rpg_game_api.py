@@ -25,6 +25,7 @@ import uvicorn
 from fastapi import FastAPI
 
 from autocrud import AutoCRUD
+from autocrud.resource_manager.storage_factory import DiskStorageFactory
 
 
 class CharacterClass(Enum):
@@ -300,7 +301,15 @@ def create_sample_data(crud: AutoCRUD):
 
 def get_crud():
     """創建並返回 AutoCRUD 實例"""
-    crud = AutoCRUD()
+    storage_type = input("使用memory or disk storage？ [[M]emory/(D)isk]: ")
+
+    if storage_type.lower() in ("d", "disk"):
+        storage_path = (
+            input("請輸入磁盤存儲路徑（預設: ./rpg_game_data）: ") or "./rpg_game_data"
+        )
+        crud = AutoCRUD(storage_factory=DiskStorageFactory(rootdir=storage_path))
+    else:
+        crud = AutoCRUD()
 
     # 註冊模型
     crud.add_model(Character, indexed_fields=[("level", int)])
@@ -348,7 +357,9 @@ def main():
     crud.openapi(app)
 
     # 創建示範數據
-    create_sample_data(crud)
+    ans = input("需要創建示範數據嗎？[y/N]: ")
+    if ans.lower() == "y":
+        create_sample_data(crud)
 
     print("\n🚀 === 服務器啟動成功 === 🚀")
     print("📖 OpenAPI 文檔: http://localhost:8000/docs")
