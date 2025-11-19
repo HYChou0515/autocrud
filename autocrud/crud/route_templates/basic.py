@@ -1,13 +1,27 @@
 import datetime as dt
 from abc import ABC, abstractmethod
 from collections.abc import Callable
-from typing import Generic, TypeVar
+import json
+from typing import Generic, Optional, TypeVar
 
 import msgspec
-from fastapi import APIRouter, Response
+from fastapi import APIRouter, Response, HTTPException, Query
+from pydantic import BaseModel
 
-from autocrud.types import IResourceManager
+from autocrud.types import (
+    DataSearchCondition,
+    DataSearchOperator,
+    IResourceManager,
+    ResourceMetaSearchQuery,
+)
 from autocrud.types import ResourceMeta, RevisionInfo
+
+from autocrud.types import (
+    ResourceDataSearchSort,
+    ResourceMetaSearchSort,
+    ResourceMetaSortDirection,
+    ResourceMetaSortKey,
+)
 
 T = TypeVar("T")
 
@@ -129,3 +143,153 @@ class FullResourceResponse(msgspec.Struct, Generic[T]):
     data: T | msgspec.UnsetType = msgspec.UNSET
     revision_info: RevisionInfo | msgspec.UnsetType = msgspec.UNSET
     meta: ResourceMeta | msgspec.UnsetType = msgspec.UNSET
+
+
+class QueryInputs(BaseModel):
+    # ResourceMetaSearchQuery 的查詢參數
+    is_deleted: Optional[bool] = Query(
+        None,
+        description="Filter by deletion status",
+    )
+    created_time_start: Optional[str] = Query(
+        None,
+        description="Filter by created time start (ISO format)",
+    )
+    created_time_end: Optional[str] = Query(
+        None,
+        description="Filter by created time end (ISO format)",
+    )
+    updated_time_start: Optional[str] = Query(
+        None,
+        description="Filter by updated time start (ISO format)",
+    )
+    updated_time_end: Optional[str] = Query(
+        None,
+        description="Filter by updated time end (ISO format)",
+    )
+    created_bys: Optional[list[str]] = Query(None, description="Filter by creators")
+    updated_bys: Optional[list[str]] = Query(None, description="Filter by updaters")
+    data_conditions: Optional[str] = Query(
+        None,
+        description='Data filter conditions in JSON format. Example: \'[{"field_path": "department", "operator": "eq", "value": "Engineering"}]\'',
+    )
+    sorts: Optional[str] = Query(
+        None,
+        description='Sort conditions in JSON format. Example: \'[{"type": "meta", "key": "created_time", "direction": "+"}, {"type": "data", "field_path": "name", "direction": "-"}]\'',
+    )
+    limit: int = Query(10, description="Maximum number of results")
+    offset: int = Query(0, description="Number of results to skip")
+
+
+class QueryInputsWithReturns(QueryInputs):
+    returns: str = Query(
+        default="data,revision_info,meta",
+        description="Fields to return, comma-separated. Options: data, revision_info, meta",
+    )
+
+
+def build_query(q: QueryInputs) -> ResourceMetaSearchQuery:
+    query_kwargs = {
+        "limit": q.limit,
+        "offset": q.offset,
+    }
+
+    if q.is_deleted is not None:
+        query_kwargs["is_deleted"] = q.is_deleted
+    else:
+        query_kwargs["is_deleted"] = msgspec.UNSET
+
+    if q.created_time_start:
+        query_kwargs["created_time_start"] = dt.datetime.fromisoformat(
+            q.created_time_start,
+        )
+    else:
+        query_kwargs["created_time_start"] = msgspec.UNSET
+
+    if q.created_time_end:
+        query_kwargs["created_time_end"] = dt.datetime.fromisoformat(
+            q.created_time_end,
+        )
+    else:
+        query_kwargs["created_time_end"] = msgspec.UNSET
+
+    if q.updated_time_start:
+        query_kwargs["updated_time_start"] = dt.datetime.fromisoformat(
+            q.updated_time_start,
+        )
+    else:
+        query_kwargs["updated_time_start"] = msgspec.UNSET
+
+    if q.updated_time_end:
+        query_kwargs["updated_time_end"] = dt.datetime.fromisoformat(
+            q.updated_time_end,
+        )
+    else:
+        query_kwargs["updated_time_end"] = msgspec.UNSET
+
+    if q.created_bys:
+        query_kwargs["created_bys"] = q.created_bys
+    else:
+        query_kwargs["created_bys"] = msgspec.UNSET
+
+    if q.updated_bys:
+        query_kwargs["updated_bys"] = q.updated_bys
+    else:
+        query_kwargs["updated_bys"] = msgspec.UNSET
+
+    # 處理 data_conditions
+    if q.data_conditions:
+        try:
+            # 解析 JSON 字符串
+            conditions_data = json.loads(q.data_conditions)
+            # 轉換為 DataSearchCondition 對象列表
+            data_conditions = []
+            for condition_dict in conditions_data:
+                condition = DataSearchCondition(
+                    field_path=condition_dict["field_path"],
+                    operator=DataSearchOperator(condition_dict["operator"]),
+                    value=condition_dict["value"],
+                )
+                data_conditions.append(condition)
+            query_kwargs["data_conditions"] = data_conditions
+        except (json.JSONDecodeError, KeyError, ValueError) as e:
+            raise HTTPException(
+                status_code=400,
+                detail=f"Invalid data_conditions format: {e!s}",
+            )
+    else:
+        query_kwargs["data_conditions"] = msgspec.UNSET
+
+    # 處理 sorts
+    if q.sorts:
+        try:
+            # 解析 JSON 字符串
+            sorts_data = json.loads(q.sorts)
+            # 轉換為排序對象列表
+            sorts = []
+            for sort_dict in sorts_data:
+                if sort_dict["type"] == "meta":
+                    # ResourceMetaSearchSort
+                    sort = ResourceMetaSearchSort(
+                        key=ResourceMetaSortKey(sort_dict["key"]),
+                        direction=ResourceMetaSortDirection(sort_dict["direction"]),
+                    )
+                elif sort_dict["type"] == "data":
+                    # ResourceDataSearchSort
+                    sort = ResourceDataSearchSort(
+                        field_path=sort_dict["field_path"],
+                        direction=ResourceMetaSortDirection(sort_dict["direction"]),
+                    )
+                else:
+                    raise ValueError(f"Invalid sort type: {sort_dict['type']}")
+                sorts.append(sort)
+            query_kwargs["sorts"] = sorts
+        except (json.JSONDecodeError, KeyError, ValueError) as e:
+            raise HTTPException(
+                status_code=400,
+                detail=f"Invalid sorts format: {e!s}",
+            )
+    else:
+        query_kwargs["sorts"] = msgspec.UNSET
+
+    return ResourceMetaSearchQuery(**query_kwargs)
