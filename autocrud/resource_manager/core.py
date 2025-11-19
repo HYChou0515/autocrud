@@ -445,7 +445,7 @@ class ResourceManager(IResourceManager[T], Generic[T]):
             raise ValueError("Migration is not set for this resource manager")
 
         # 獲取當前資源和元數據
-        meta = self.get_meta(resource_id)
+        meta = self._get_meta_no_check_is_deleted(resource_id)
         info = self.storage.get_resource_revision_info(
             resource_id, meta.current_revision_id
         )

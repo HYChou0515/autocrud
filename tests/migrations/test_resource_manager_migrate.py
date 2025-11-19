@@ -92,13 +92,18 @@ class TestResourceManagerMigrate:
         ):
             resource_manager_no_migration.migrate("test:123")
 
+    @pytest.mark.parametrize("is_deleted", (True, False))
     def test_migrate_already_current_version(
-        self, resource_manager: ResourceManager, mock_storage: MagicMock
+        self,
+        resource_manager: ResourceManager,
+        mock_storage: MagicMock,
+        *,
+        is_deleted: bool,
     ) -> None:
         """測試資源已經是最新版本的情況"""
         # 設置 mock 返回值
         mock_meta = MagicMock()
-        mock_meta.is_deleted = False  # 確保資源沒有被刪除
+        mock_meta.is_deleted = is_deleted
         mock_info = MagicMock()
         mock_info.schema_version = "2.0"  # 已經是最新版本
 
