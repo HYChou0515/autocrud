@@ -10,11 +10,13 @@ from fastapi import (
     WebSocket,
     WebSocketDisconnect,
 )
-from fastapi.websockets import WebSocketState
+from fastapi.responses import StreamingResponse
 
 from autocrud.crud.route_templates.basic import (
     BaseRouteTemplate,
     MsgspecResponse,
+    QueryInputs,
+    build_query,
     struct_to_responses_type,
 )
 from autocrud.types import (
@@ -43,6 +45,13 @@ class MigrateResult(msgspec.Struct):
     failed: int
     skipped: int
     errors: list[dict] = msgspec.field(default_factory=list)
+
+
+def build_msg(obj: msgspec.Struct) -> bytes:
+    return (
+        msgspec.json.encode(msgspec.to_builtins(obj) | {"timestamp": dt.datetime.now()})
+        + b"\n"
+    )
 
 
 class MigrateRouteTemplate(BaseRouteTemplate):
@@ -134,6 +143,41 @@ class MigrateRouteTemplate(BaseRouteTemplate):
                 error=f"Migration process failed: {str(e)}",
             )
 
+    async def _migrate_with_message(
+        self, migrate_coroutine: AsyncGenerator[MigrateProgress, None]
+    ) -> AsyncGenerator[bytes, None]:
+        """遷移並產生訊息的生成器"""
+        result = MigrateResult(total=0, success=0, failed=0, skipped=0)
+        try:
+            async for progress in migrate_coroutine:
+                yield build_msg(progress)
+
+                # 更新統計
+                result.total += 1
+                if progress.status == "success":
+                    result.success += 1
+                elif progress.status == "failed":
+                    result.failed += 1
+                    result.errors.append(
+                        {
+                            "resource_id": progress.resource_id,
+                            "error": progress.error,
+                        }
+                    )
+                elif progress.status == "skipped":
+                    result.skipped += 1
+            yield build_msg(result)
+        except WebSocketDisconnect:
+            pass
+        except Exception as e:
+            error_progress = MigrateProgress(
+                resource_id="",
+                status="failed",
+                error=f"Migration test process error: {str(e)}",
+            )
+            yield build_msg(error_progress)
+            yield build_msg(result)
+
     def apply(
         self,
         model_name: str,
@@ -141,7 +185,7 @@ class MigrateRouteTemplate(BaseRouteTemplate):
         router: APIRouter,
     ) -> None:
         @router.websocket(f"/{model_name}/migrate/test")
-        async def test_migrate_resources(
+        async def test_migrate_resources_ws(
             websocket: WebSocket,
             current_user: str = Depends(self.deps.get_user),
             current_time: dt.datetime = Depends(self.deps.get_now),
@@ -165,67 +209,28 @@ class MigrateRouteTemplate(BaseRouteTemplate):
             - Safe to run on production data
             """
             await websocket.accept()
+            # 等待前端發送查詢條件
+            data = await websocket.receive_json()
+            query = None
+            if data and "query" in data:
+                query = msgspec.convert(data["query"], ResourceMetaSearchQuery)
 
-            try:
-                # 等待前端發送查詢條件
-                data = await websocket.receive_json()
-                query = None
-                if data and "query" in data:
-                    query = msgspec.convert(data["query"], ResourceMetaSearchQuery)
-
-                result = MigrateResult(total=0, success=0, failed=0, skipped=0)
-
-                # 開始測試遷移並發送進度
-                async for progress in self._migrate_resources_generator(
+            # 開始測試遷移並發送進度
+            async for msg in self._migrate_with_message(
+                self._migrate_resources_generator(
                     resource_manager,
                     query,
                     current_user,
                     current_time,
                     write_back=False,
-                ):
-                    # 發送單個資源的測試進度
-                    if websocket.client_state == WebSocketState.CONNECTED:
-                        await websocket.send_text(
-                            msgspec.json.encode(progress).decode()
-                        )
-
-                    # 更新統計
-                    result.total += 1
-                    if progress.status == "success":
-                        result.success += 1
-                    elif progress.status == "failed":
-                        result.failed += 1
-                        result.errors.append(
-                            {
-                                "resource_id": progress.resource_id,
-                                "error": progress.error,
-                            }
-                        )
-                    elif progress.status == "skipped":
-                        result.skipped += 1
-
-                # 發送最終測試結果
-                if websocket.client_state == WebSocketState.CONNECTED:
-                    await websocket.send_text(msgspec.json.encode(result).decode())
-
-            except WebSocketDisconnect:
-                pass
-            except Exception as e:
-                if websocket.client_state == WebSocketState.CONNECTED:
-                    error_progress = MigrateProgress(
-                        resource_id="",
-                        status="failed",
-                        error=f"Migration test process error: {str(e)}",
-                    )
-                    await websocket.send_text(
-                        msgspec.json.encode(error_progress).decode()
-                    )
-            finally:
-                if websocket.client_state == WebSocketState.CONNECTED:
-                    await websocket.close()
+                )
+            ):
+                # 發送單個資源的測試進度
+                await websocket.send_text(msg.decode())
+            await websocket.close()
 
         @router.websocket(f"/{model_name}/migrate/execute")
-        async def execute_migrate_resources(
+        async def execute_migrate_resources_ws(
             websocket: WebSocket,
             current_user: str = Depends(self.deps.get_user),
             current_time: dt.datetime = Depends(self.deps.get_now),
@@ -243,60 +248,73 @@ class MigrateRouteTemplate(BaseRouteTemplate):
             - Result: {"total": 100, "success": 95, "failed": 3, "skipped": 2, "errors": [...]}
             """
             await websocket.accept()
+            # 等待前端發送查詢條件
+            data = await websocket.receive_json()
+            query = None
+            if data and "query" in data:
+                query = msgspec.convert(data["query"], ResourceMetaSearchQuery)
 
-            try:
-                # 等待前端發送查詢條件
-                data = await websocket.receive_json()
-                query = None
-                if data and "query" in data:
-                    query = msgspec.convert(data["query"], ResourceMetaSearchQuery)
+            # 開始測試遷移並發送進度
+            async for msg in self._migrate_with_message(
+                self._migrate_resources_generator(
+                    resource_manager,
+                    query,
+                    current_user,
+                    current_time,
+                    write_back=True,
+                )
+            ):
+                # 發送單個資源的測試進度
+                await websocket.send_text(msg.decode())
 
-                result = MigrateResult(total=0, success=0, failed=0, skipped=0)
+        @router.post(f"/{model_name}/migrate/test")
+        async def test_migrate_resources(
+            query_params: QueryInputs = Query(...),
+            current_user: str = Depends(self.deps.get_user),
+            current_time: dt.datetime = Depends(self.deps.get_now),
+        ):
+            """
+            Test migration for resources with real-time progress updates via http streaming.
+            No data will be written back to storage - memory-only testing.
+            """
+            query = build_query(query_params)
 
-                # 開始遷移並發送進度
-                async for progress in self._migrate_resources_generator(
-                    resource_manager, query, current_user, current_time, write_back=True
-                ):
-                    # 發送單個資源的遷移進度
-                    if websocket.client_state == WebSocketState.CONNECTED:
-                        await websocket.send_text(
-                            msgspec.json.encode(progress).decode()
-                        )
-
-                    # 更新統計
-                    result.total += 1
-                    if progress.status == "success":
-                        result.success += 1
-                    elif progress.status == "failed":
-                        result.failed += 1
-                        result.errors.append(
-                            {
-                                "resource_id": progress.resource_id,
-                                "error": progress.error,
-                            }
-                        )
-                    elif progress.status == "skipped":
-                        result.skipped += 1
-
-                # 發送最終結果
-                if websocket.client_state == WebSocketState.CONNECTED:
-                    await websocket.send_text(msgspec.json.encode(result).decode())
-
-            except WebSocketDisconnect:
-                pass
-            except Exception as e:
-                if websocket.client_state == WebSocketState.CONNECTED:
-                    error_progress = MigrateProgress(
-                        resource_id="",
-                        status="failed",
-                        error=f"Migration process error: {str(e)}",
+            return StreamingResponse(
+                self._migrate_with_message(
+                    self._migrate_resources_generator(
+                        resource_manager,
+                        query,
+                        current_user,
+                        current_time,
+                        write_back=False,
                     )
-                    await websocket.send_text(
-                        msgspec.json.encode(error_progress).decode()
+                ),
+                media_type="application/jsonl+json",
+            )
+
+        @router.post(f"/{model_name}/migrate/execute")
+        async def execute_migrate_resources(
+            query_params: QueryInputs = Query(...),
+            current_user: str = Depends(self.deps.get_user),
+            current_time: dt.datetime = Depends(self.deps.get_now),
+        ):
+            """
+            Execute migration for resources with real-time progress updates via http streaming.
+            """
+            query = build_query(query_params)
+
+            return StreamingResponse(
+                self._migrate_with_message(
+                    self._migrate_resources_generator(
+                        resource_manager,
+                        query,
+                        current_user,
+                        current_time,
+                        write_back=True,
                     )
-            finally:
-                if websocket.client_state == WebSocketState.CONNECTED:
-                    await websocket.close()
+                ),
+                media_type="application/jsonl+json",
+            )
 
         @router.post(
             f"/{model_name}/migrate/single/{{resource_id}}",

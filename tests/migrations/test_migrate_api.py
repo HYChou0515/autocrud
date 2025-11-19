@@ -1,5 +1,6 @@
 """測試 migrate route template 功能"""
 
+from collections.abc import Callable
 import datetime as dt
 import json
 from typing import Any, AsyncGenerator, Dict, List
@@ -480,34 +481,165 @@ class TestMigrateSingleResourceAPI:
             assert "Resource not found" in response.json()["detail"]
 
 
-class TestWebSocketMigration:
+def mock_generator_and_assert_func1(expected_write_back: bool):
+    # Mock the generator to return test results
+    async def mock_generator(
+        manager: Mock, query: Any, user: str, time: dt.datetime, write_back: bool
+    ) -> AsyncGenerator[MigrateProgress, None]:
+        # 確認這是測試模式
+        assert write_back is expected_write_back
+        yield MigrateProgress(
+            resource_id="user:1", status="success", message="Test success"
+        )
+        yield MigrateProgress(
+            resource_id="user:2", status="skipped", message="Already migrated"
+        )
+        yield MigrateProgress(resource_id="user:3", status="failed", error="Test error")
+
+    def assert_messages(messages: List[Dict[str, Any]]) -> None:
+        assert len(messages) == 4  # 3 個進度 + 1 個結果
+
+        # 檢查進度訊息
+        progress_messages = messages[:3]
+        for i, progress in enumerate(progress_messages):
+            assert "resource_id" in progress
+            assert "status" in progress
+            assert progress["resource_id"] == f"user:{i + 1}"
+
+        # 檢查最終結果
+        result = messages[3]
+        assert "total" in result
+        assert result["total"] == 3
+        assert result["success"] == 1
+        assert result["failed"] == 1
+        assert result["skipped"] == 1
+        assert len(result["errors"]) == 1
+
+    return mock_generator, assert_messages
+
+
+def mock_generator_and_assert_func2(expected_write_back: bool):
+    # Mock the generator to return execution results
+    async def mock_generator(
+        manager: Mock, query: Any, user: str, time: dt.datetime, write_back: bool
+    ) -> AsyncGenerator[MigrateProgress, None]:
+        # 確認這是執行模式
+        assert write_back is expected_write_back
+        yield MigrateProgress(
+            resource_id="user:1", status="success", message="Migrated successfully"
+        )
+        yield MigrateProgress(
+            resource_id="user:2", status="success", message="Migrated successfully"
+        )
+
+    def assert_messages(messages: List[Dict[str, Any]]) -> None:
+        assert len(messages) == 3  # 2 個進度 + 1 個結果
+
+        # 檢查最終結果
+        result = messages[2]
+        assert result["total"] == 2
+        assert result["success"] == 2
+        assert result["failed"] == 0
+        assert result["skipped"] == 0
+
+    return mock_generator, assert_messages
+
+
+def mock_generator_and_assert_func3(expected_write_back: bool):
+    # Mock the generator to return execution results
+    async def mock_generator(
+        manager: Mock, query: Any, user: str, time: dt.datetime, write_back: bool
+    ) -> AsyncGenerator[MigrateProgress, None]:
+        # 確認這是執行模式
+        assert write_back is expected_write_back
+        yield MigrateProgress(
+            resource_id="user:1", status="success", message="Migrated successfully"
+        )
+        yield MigrateProgress(
+            resource_id="user:2", status="failed", message="Migrated fail"
+        )
+        yield MigrateProgress(
+            resource_id="user:3", status="skipped", message="Migrated skipped"
+        )
+
+    def assert_messages(messages: List[Dict[str, Any]]) -> None:
+        assert len(messages) == 4  # 3 個進度 + 1 個結果
+
+        # 檢查最終結果
+        result = messages[3]
+        assert result["total"] == 3
+        assert result["success"] == 1
+        assert result["failed"] == 1
+        assert result["skipped"] == 1
+
+    return mock_generator, assert_messages
+
+
+def mock_generator_and_assert_func4(expected_write_back: bool):
+    # Mock the generator to return execution results
+    async def mock_generator(
+        manager: Mock, query: Any, user: str, time: dt.datetime, write_back: bool
+    ) -> AsyncGenerator[MigrateProgress, None]:
+        # 確認這是執行模式
+        assert write_back is expected_write_back
+        yield MigrateProgress(
+            resource_id="user:1", status="success", message="Migrated successfully"
+        )
+        yield MigrateProgress(
+            resource_id="user:2", status="failed", message="Migrated fail"
+        )
+        raise Exception("Unexpected error during migration")
+
+    def assert_messages(messages: List[Dict[str, Any]]) -> None:
+        assert len(messages) == 4
+
+        # 檢查最終結果
+        err = messages[2]
+        assert err["status"] == "failed"
+        assert "Unexpected error during migration" in err["error"]
+        result = messages[3]
+        assert result["total"] == 2
+        assert result["success"] == 1
+        assert result["failed"] == 1
+        assert result["skipped"] == 0
+
+    return mock_generator, assert_messages
+
+
+@pytest.mark.parametrize(
+    "mock_assert",
+    [
+        mock_generator_and_assert_func1,
+        mock_generator_and_assert_func2,
+        mock_generator_and_assert_func3,
+        mock_generator_and_assert_func4,
+    ],
+)
+@pytest.mark.parametrize(
+    "write_back",
+    [False, True],
+)
+class TestApiMigration:
     """測試 WebSocket 遷移功能"""
 
-    def test_websocket_test_migration_success(self, client: TestClient) -> None:
+    def test_websocket_test_migration(
+        self,
+        client: TestClient,
+        mock_assert: Callable[
+            ..., tuple[AsyncGenerator[MigrateProgress, None], List[Dict[str, Any]]]
+        ],
+        write_back: bool,
+    ) -> None:
         """測試 WebSocket 測試遷移成功"""
 
-        # Mock the generator to return test results
-        async def mock_generator(
-            manager: Mock, query: Any, user: str, time: dt.datetime, write_back: bool
-        ) -> AsyncGenerator[MigrateProgress, None]:
-            # 確認這是測試模式
-            assert write_back is False
-            yield MigrateProgress(
-                resource_id="user:1", status="success", message="Test success"
-            )
-            yield MigrateProgress(
-                resource_id="user:2", status="skipped", message="Already migrated"
-            )
-            yield MigrateProgress(
-                resource_id="user:3", status="failed", error="Test error"
-            )
-
+        mock_generator, assert_messages = mock_assert(write_back)
+        path = "/user/migrate/execute" if write_back else "/user/migrate/test"
         with patch.object(
             MigrateRouteTemplate,
             "_migrate_resources_generator",
             side_effect=mock_generator,
         ):
-            with client.websocket_connect("/user/migrate/test") as websocket:
+            with client.websocket_connect(path) as websocket:
                 # 發送查詢條件
                 websocket.send_json({"query": {"limit": 10, "offset": 0}})
 
@@ -524,73 +656,33 @@ class TestWebSocketMigration:
                             break
                     except Exception:
                         break
+                assert_messages(messages)
 
-                # 驗證訊息結構
-                assert len(messages) == 4  # 3 個進度 + 1 個結果
+    def test_http_test_migration(
+        self,
+        client: TestClient,
+        mock_assert: Callable[
+            ..., tuple[AsyncGenerator[MigrateProgress, None], List[Dict[str, Any]]]
+        ],
+        write_back: bool,
+    ) -> None:
+        """測試 WebSocket 測試遷移成功"""
 
-                # 檢查進度訊息
-                progress_messages = messages[:3]
-                for i, progress in enumerate(progress_messages):
-                    assert "resource_id" in progress
-                    assert "status" in progress
-                    assert progress["resource_id"] == f"user:{i + 1}"
-
-                # 檢查最終結果
-                result = messages[3]
-                assert "total" in result
-                assert result["total"] == 3
-                assert result["success"] == 1
-                assert result["failed"] == 1
-                assert result["skipped"] == 1
-                assert len(result["errors"]) == 1
-
-    def test_websocket_execute_migration_success(self, client: TestClient) -> None:
-        """測試 WebSocket 執行遷移成功"""
-
-        # Mock the generator to return execution results
-        async def mock_generator(
-            manager: Mock, query: Any, user: str, time: dt.datetime, write_back: bool
-        ) -> AsyncGenerator[MigrateProgress, None]:
-            # 確認這是執行模式
-            assert write_back is True
-            yield MigrateProgress(
-                resource_id="user:1", status="success", message="Migrated successfully"
-            )
-            yield MigrateProgress(
-                resource_id="user:2", status="success", message="Migrated successfully"
-            )
+        mock_generator, assert_messages = mock_assert(write_back)
+        path = "/user/migrate/execute" if write_back else "/user/migrate/test"
 
         with patch.object(
             MigrateRouteTemplate,
             "_migrate_resources_generator",
             side_effect=mock_generator,
         ):
-            with client.websocket_connect("/user/migrate/execute") as websocket:
-                # 發送空查詢（遷移所有資源）
-                websocket.send_json({})
-
-                # 接收訊息
-                messages: List[Dict[str, Any]] = []
-                while True:
-                    try:
-                        message = websocket.receive_text()
-                        data = json.loads(message)
-                        messages.append(data)
-                        # 如果收到最終結果就停止
-                        if "total" in data:
-                            break
-                    except Exception:
-                        break
-
-                # 驗證結果
-                assert len(messages) == 3  # 2 個進度 + 1 個結果
-
-                # 檢查最終結果
-                result = messages[2]
-                assert result["total"] == 2
-                assert result["success"] == 2
-                assert result["failed"] == 0
-                assert result["skipped"] == 0
+            resp = client.post(path, json={"query": {"limit": 10, "offset": 0}})
+            resp.raise_for_status()
+            messages: List[Dict[str, Any]] = []
+            for r in resp.iter_lines():
+                data = json.loads(r)
+                messages.append(data)
+            assert_messages(messages)
 
 
 class TestMigrateRouteTemplate:
@@ -616,7 +708,7 @@ class TestMigrateRouteTemplate:
         template.apply("user", mock_resource_manager, router)
 
         # 檢查路由數量
-        assert len(router.routes) == 3
+        assert len(router.routes) == 5
 
         # 檢查路由類型和路徑
         route_info: List[Dict[str, Any]] = []
@@ -635,12 +727,29 @@ class TestMigrateRouteTemplate:
         ws_routes = [r for r in route_info if r["type"] == "websocket"]
 
         # 應該有 1 個 HTTP 路由和 2 個 WebSocket 路由
-        assert len(http_routes) == 1
+        assert len(http_routes) == 3
         assert len(ws_routes) == 2
 
         # 檢查 HTTP 路由
-        assert http_routes[0]["path"] == "/user/migrate/single/{resource_id}"
-        assert "POST" in http_routes[0]["methods"]
+        http_paths = [(r["methods"], r["path"]) for r in http_routes]
+        assert (
+            {
+                "POST",
+            },
+            "/user/migrate/single/{resource_id}",
+        ) in http_paths
+        assert (
+            {
+                "POST",
+            },
+            "/user/migrate/test",
+        ) in http_paths
+        assert (
+            {
+                "POST",
+            },
+            "/user/migrate/execute",
+        ) in http_paths
 
         # 檢查 WebSocket 路由
         ws_paths = [r["path"] for r in ws_routes]
