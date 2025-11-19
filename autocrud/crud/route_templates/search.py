@@ -1,8 +1,7 @@
 import datetime as dt
-import json
 import textwrap
 from contextlib import suppress
-from typing import Optional, TypeVar
+from typing import TypeVar
 
 from fastapi import APIRouter, Depends, HTTPException, Query
 from msgspec import UNSET
@@ -11,20 +10,16 @@ from autocrud.crud.route_templates.basic import (
     BaseRouteTemplate,
     FullResourceResponse,
     MsgspecResponse,
+    QueryInputs,
+    QueryInputsWithReturns,
+    build_query,
     struct_to_responses_type,
 )
 from autocrud.types import (
     IResourceManager,
 )
 from autocrud.types import (
-    DataSearchCondition,
-    DataSearchOperator,
-    ResourceDataSearchSort,
     ResourceMeta,
-    ResourceMetaSearchQuery,
-    ResourceMetaSearchSort,
-    ResourceMetaSortDirection,
-    ResourceMetaSortKey,
     RevisionInfo,
 )
 
@@ -33,155 +28,6 @@ T = TypeVar("T")
 
 class ListRouteTemplate(BaseRouteTemplate):
     """列出所有資源的路由模板"""
-
-    from pydantic import BaseModel
-
-    class QueryInputs(BaseModel):
-        # ResourceMetaSearchQuery 的查詢參數
-        is_deleted: Optional[bool] = Query(
-            None,
-            description="Filter by deletion status",
-        )
-        created_time_start: Optional[str] = Query(
-            None,
-            description="Filter by created time start (ISO format)",
-        )
-        created_time_end: Optional[str] = Query(
-            None,
-            description="Filter by created time end (ISO format)",
-        )
-        updated_time_start: Optional[str] = Query(
-            None,
-            description="Filter by updated time start (ISO format)",
-        )
-        updated_time_end: Optional[str] = Query(
-            None,
-            description="Filter by updated time end (ISO format)",
-        )
-        created_bys: Optional[list[str]] = Query(None, description="Filter by creators")
-        updated_bys: Optional[list[str]] = Query(None, description="Filter by updaters")
-        data_conditions: Optional[str] = Query(
-            None,
-            description='Data filter conditions in JSON format. Example: \'[{"field_path": "department", "operator": "eq", "value": "Engineering"}]\'',
-        )
-        sorts: Optional[str] = Query(
-            None,
-            description='Sort conditions in JSON format. Example: \'[{"type": "meta", "key": "created_time", "direction": "+"}, {"type": "data", "field_path": "name", "direction": "-"}]\'',
-        )
-        limit: int = Query(10, description="Maximum number of results")
-        offset: int = Query(0, description="Number of results to skip")
-
-    class QueryInputsWithReturns(QueryInputs):
-        returns: str = Query(
-            default="data,revision_info,meta",
-            description="Fields to return, comma-separated. Options: data, revision_info, meta",
-        )
-
-    def _build_query(self, q: QueryInputs) -> ResourceMetaSearchQuery:
-        query_kwargs = {
-            "limit": q.limit,
-            "offset": q.offset,
-        }
-
-        if q.is_deleted is not None:
-            query_kwargs["is_deleted"] = q.is_deleted
-        else:
-            query_kwargs["is_deleted"] = UNSET
-
-        if q.created_time_start:
-            query_kwargs["created_time_start"] = dt.datetime.fromisoformat(
-                q.created_time_start,
-            )
-        else:
-            query_kwargs["created_time_start"] = UNSET
-
-        if q.created_time_end:
-            query_kwargs["created_time_end"] = dt.datetime.fromisoformat(
-                q.created_time_end,
-            )
-        else:
-            query_kwargs["created_time_end"] = UNSET
-
-        if q.updated_time_start:
-            query_kwargs["updated_time_start"] = dt.datetime.fromisoformat(
-                q.updated_time_start,
-            )
-        else:
-            query_kwargs["updated_time_start"] = UNSET
-
-        if q.updated_time_end:
-            query_kwargs["updated_time_end"] = dt.datetime.fromisoformat(
-                q.updated_time_end,
-            )
-        else:
-            query_kwargs["updated_time_end"] = UNSET
-
-        if q.created_bys:
-            query_kwargs["created_bys"] = q.created_bys
-        else:
-            query_kwargs["created_bys"] = UNSET
-
-        if q.updated_bys:
-            query_kwargs["updated_bys"] = q.updated_bys
-        else:
-            query_kwargs["updated_bys"] = UNSET
-
-        # 處理 data_conditions
-        if q.data_conditions:
-            try:
-                # 解析 JSON 字符串
-                conditions_data = json.loads(q.data_conditions)
-                # 轉換為 DataSearchCondition 對象列表
-                data_conditions = []
-                for condition_dict in conditions_data:
-                    condition = DataSearchCondition(
-                        field_path=condition_dict["field_path"],
-                        operator=DataSearchOperator(condition_dict["operator"]),
-                        value=condition_dict["value"],
-                    )
-                    data_conditions.append(condition)
-                query_kwargs["data_conditions"] = data_conditions
-            except (json.JSONDecodeError, KeyError, ValueError) as e:
-                raise HTTPException(
-                    status_code=400,
-                    detail=f"Invalid data_conditions format: {e!s}",
-                )
-        else:
-            query_kwargs["data_conditions"] = UNSET
-
-        # 處理 sorts
-        if q.sorts:
-            try:
-                # 解析 JSON 字符串
-                sorts_data = json.loads(q.sorts)
-                # 轉換為排序對象列表
-                sorts = []
-                for sort_dict in sorts_data:
-                    if sort_dict["type"] == "meta":
-                        # ResourceMetaSearchSort
-                        sort = ResourceMetaSearchSort(
-                            key=ResourceMetaSortKey(sort_dict["key"]),
-                            direction=ResourceMetaSortDirection(sort_dict["direction"]),
-                        )
-                    elif sort_dict["type"] == "data":
-                        # ResourceDataSearchSort
-                        sort = ResourceDataSearchSort(
-                            field_path=sort_dict["field_path"],
-                            direction=ResourceMetaSortDirection(sort_dict["direction"]),
-                        )
-                    else:
-                        raise ValueError(f"Invalid sort type: {sort_dict['type']}")
-                    sorts.append(sort)
-                query_kwargs["sorts"] = sorts
-            except (json.JSONDecodeError, KeyError, ValueError) as e:
-                raise HTTPException(
-                    status_code=400,
-                    detail=f"Invalid sorts format: {e!s}",
-                )
-        else:
-            query_kwargs["sorts"] = UNSET
-
-        return ResourceMetaSearchQuery(**query_kwargs)
 
     def apply(
         self,
@@ -247,13 +93,13 @@ class ListRouteTemplate(BaseRouteTemplate):
             ),
         )
         async def list_resources_data(
-            query_params: ListRouteTemplate.QueryInputs = Query(...),
+            query_params: QueryInputs = Query(...),
             current_user: str = Depends(self.deps.get_user),
             current_time: dt.datetime = Depends(self.deps.get_now),
         ) -> list[T]:
             try:
                 # 構建查詢對象
-                query = self._build_query(query_params)
+                query = build_query(query_params)
                 with resource_manager.meta_provide(current_user, current_time):
                     resources_data: list[T] = []
                     metas = resource_manager.search_resources(query)
@@ -337,13 +183,13 @@ class ListRouteTemplate(BaseRouteTemplate):
             ),
         )
         async def list_resources_meta(
-            query_params: ListRouteTemplate.QueryInputs = Query(...),
+            query_params: QueryInputs = Query(...),
             current_user: str = Depends(self.deps.get_user),
             current_time: dt.datetime = Depends(self.deps.get_now),
         ):
             try:
                 # 構建查詢對象
-                query = self._build_query(query_params)
+                query = build_query(query_params)
                 with resource_manager.meta_provide(current_user, current_time):
                     metas = resource_manager.search_resources(query)
 
@@ -415,13 +261,13 @@ class ListRouteTemplate(BaseRouteTemplate):
             ),
         )
         async def list_resources_revision_info(
-            query_params: ListRouteTemplate.QueryInputs = Query(...),
+            query_params: QueryInputs = Query(...),
             current_user: str = Depends(self.deps.get_user),
             current_time: dt.datetime = Depends(self.deps.get_now),
         ):
             try:
                 # 構建查詢對象
-                query = self._build_query(query_params)
+                query = build_query(query_params)
                 with resource_manager.meta_provide(current_user, current_time):
                     metas = resource_manager.search_resources(query)
 
@@ -500,14 +346,14 @@ class ListRouteTemplate(BaseRouteTemplate):
             ),
         )
         async def list_resources_full(
-            query_params: ListRouteTemplate.QueryInputsWithReturns = Query(...),
+            query_params: QueryInputsWithReturns = Query(...),
             current_user: str = Depends(self.deps.get_user),
             current_time: dt.datetime = Depends(self.deps.get_now),
         ):
             returns = [r.strip() for r in query_params.returns.split(",")]
             try:
                 # 構建查詢對象
-                query = self._build_query(query_params)
+                query = build_query(query_params)
                 with resource_manager.meta_provide(current_user, current_time):
                     metas = resource_manager.search_resources(query)
 
@@ -602,13 +448,13 @@ class ListRouteTemplate(BaseRouteTemplate):
             ),
         )
         async def get_resources_count(
-            query_params: ListRouteTemplate.QueryInputs = Query(...),
+            query_params: QueryInputs = Query(...),
             current_user: str = Depends(self.deps.get_user),
             current_time: dt.datetime = Depends(self.deps.get_now),
         ) -> int:
             try:
                 # 構建查詢對象
-                query = self._build_query(query_params)
+                query = build_query(query_params)
                 with resource_manager.meta_provide(current_user, current_time):
                     count = resource_manager.count_resources(query)
                 return count
