@@ -408,8 +408,9 @@ class AutoCRUD:
         )
         self.resource_managers[model_name] = resource_manager
 
-    def openapi(self, app: FastAPI):
+    def openapi(self, app: FastAPI, structs: list[type] = None) -> None:
         # Handle root_path by setting servers if not already set
+        structs = structs or []
         servers = app.servers
         if app.root_path and not servers:
             servers = [{"url": app.root_path}]
@@ -446,6 +447,7 @@ class AutoCRUD:
                 RFC6902_Test,
                 RFC6902_Copy,
                 RFC6902,
+                *structs,
             ],
         )[1]
 
