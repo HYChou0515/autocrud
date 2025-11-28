@@ -2,7 +2,7 @@ import datetime as dt
 from abc import ABC, abstractmethod
 from collections.abc import Callable
 import json
-from typing import Generic, Optional, TypeVar
+from typing import Any, Generic, Optional, TypeVar
 
 import msgspec
 from fastapi import APIRouter, Response, HTTPException, Query
@@ -114,18 +114,20 @@ class MsgspecResponse(Response):
         return msgspec.json.encode(content)
 
 
-def jsonschema_to_openapi(structs: list[msgspec.Struct]) -> dict:
+def jsonschema_to_openapi(structs: list[msgspec.Struct | Any]) -> dict:
     return msgspec.json.schema_components(
         structs,
         ref_template="#/components/schemas/{name}",
     )
 
 
-def jsonschema_to_json_schema_extra(struct: msgspec.Struct) -> dict:
+def jsonschema_to_json_schema_extra(struct: msgspec.Struct | Any) -> dict:
     return jsonschema_to_openapi([struct])[0][0]
 
 
-def struct_to_responses_type(struct: type[msgspec.Struct], status_code: int = 200):
+def struct_to_responses_type(
+    struct: type[msgspec.Struct | Any], status_code: int = 200
+):
     schema = jsonschema_to_json_schema_extra(struct)
     return {
         status_code: {
