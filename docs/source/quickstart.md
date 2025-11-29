@@ -47,26 +47,26 @@ uvicorn.run(app, host="0.0.0.0", port=8000, log_level="info")
 - `GET /todo-list/data` - 列表, 支援搜尋
 
 
-## ResourceManager 簡介
+## 透過 ResourceManager 操作資源
 
-ResourceManager 是 AutoCRUD 的核心類別，負責管理資源的 CRUD、版本、索引、權限等操作。你可以透過 AutoCRUD 取得 ResourceManager 來進行進階操作。
+ResourceManager 是 AutoCRUD 的資源操作入口，負責管理資源的建立、查詢、更新、版本等常見操作。你可以透過 AutoCRUD 取得 ResourceManager 來直接操作資料。
 
 詳細說明請參考：[ResourceManager 使用說明](resource_manager.md)
 
-### 簡單使用範例
+### 基本使用範例
 ```python
 from autocrud import AutoCRUD
-from autocrud.storage import LocalStorage
 
 autocrud = AutoCRUD()
-autocrud.add_model(TodoItem, storage=LocalStorage())
+autocrud.add_model(TodoItem)
 manager = autocrud.get_resource_manager(TodoItem)
 
-# 建立資源
-info = manager.create(TodoItem(title="test", completed=False, due=datetime.now()))
-
-# 取得最新版本
-resource = manager.get(info.resource_id)
+# 為manager提供是誰/何時在操作resource
+with manager.meta_provide(user, now):
+    # 建立資源
+    info = manager.create(TodoItem(title="test", completed=False, due=datetime.now()))
+    # 取得最新版本
+    resource = manager.get(info.resource_id)
 print(resource.data)
 ```
 

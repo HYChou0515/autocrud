@@ -68,8 +68,8 @@ manager = autocrud.get_resource_manager(TodoItem)
 | `get(resource_id)` | 取得資源最新版本 |
 | `get_resource_revision(resource_id, revision_id)` | 取得指定版本 |
 | `update(resource_id, data, status=...)` | 全量更新資源，會產生新的 revision id（進板） |
+| `patch(resource_id, patch_data)` | 套用 JSON Patch，會產生新 revision id（進板） |
 | `modify(resource_id, data/patch, status=...)` | 全量或局部更新，不會產生新 revision id（不進板），僅限資源狀態為 draft，狀態為 stable 時會失敗 |
-| `patch(resource_id, patch_data)` | 套用 JSON Patch，預設會產生新 revision id（進板），可選用 modify mode（不進板） |
 | `delete(resource_id)` | 軟刪除資源 |
 | `restore(resource_id)` | 還原已刪除資源 |
 | `switch(resource_id, revision_id)` | 切換到指定版本 |
