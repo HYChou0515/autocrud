@@ -40,6 +40,7 @@ docs = [
     "sphinx>=8.2.3",
     "sphinx-autodoc-typehints>=3.2.0",
     "sphinx-design>=0.6.1",
+    "sphinx-termynal>=0.2.1",
 ]
 dev = [
     "coverage>=7.9.2",

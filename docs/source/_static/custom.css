@@ -13,9 +13,15 @@
 /* 代碼塊美化 */
 .highlight pre {
   border-radius: 8px;
-  border-left: 4px solid var(--autocrud-primary);
 }
-
+.highlight .hll {
+    background-color: #2563eb33 !important; /* 你想要的顏色 */
+    border-left: 4px solid var(--autocrud-primary);
+}
+.termy {
+  padding-top: 2.5rem;
+  padding-bottom: 0.5rem;
+}
 /* 提示框樣式 */
 .admonition {
   border-radius: 8px;

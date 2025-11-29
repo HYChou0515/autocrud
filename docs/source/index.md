@@ -1,16 +1,78 @@
 # AutoCRUD
 
-🚀 **自動生成 CRUD API 的 Python 庫** - 支持多種數據類型，零配置快速構建 REST API
+[![FastAPI](https://img.shields.io/badge/FastAPI-Automation-009688)](https://fastapi.tiangolo.com)
+[![msgspec](https://img.shields.io/badge/msgspec-Supported-5e60ce)](https://github.com/jcrist/msgspec)
+[![Versioning](https://img.shields.io/badge/Versioning-Built--in-blue)]()
+
+<div style="padding:12px;border:1px solid #add3ff99;border-radius:8px;background: #add3ff33;">
+  <strong>AutoCRUD 是模型驅動的自動化FastAPI：</strong>內建版本控制、權限與搜尋，聚焦業務邏輯快速上線。
+</div>
 
 ## ✨ 特色
 
-- 🎯 **多數據類型**: msgspec.Struct, Pydantic, dataclass, TypedDict
-- ⚡ **零配置**: 一行代碼生成完整 CRUD API  
-- 📚 **自動文檔**: 集成 OpenAPI/Swagger
-- 🔧 **高度可定制**: 靈活的路由和命名
-- 🏎️ **高性能**: 基於 FastAPI 和 msgspec
+- 🧠 **只需關心業務與模型**：開發者只需專注 business logic 與 domain model schema；metadata、索引、事件、權限等基礎能力由框架自動處理
+- ⚙️ **自動 FastAPI**：一行代碼套用模型，自動生成 CRUD 路由與 OpenAPI/Swagger，零樣板、零手工綁定
+- 🗂️ **版本控制**：原生支援完整版本歷史、草稿不進版編輯、版本切換與還原，適合審計/回溯/草稿流程
+- 🔧 **高度可定制**：靈活的路由命名、索引欄位、事件處理器與權限檢查
+- 🏎️ **高性能**：基於 FastAPI + msgspec，低延遲高吞吐
+
+## 安裝
+
+```{termynal}
+    $ pip install autocrud
+    -->
+```
+
+## 第一個 API
+
+```python
+from datetime import datetime, timedelta
+from fastapi import FastAPI
+from fastapi.testclient import TestClient
+from autocrud import AutoCRUD
+from msgspec import Struct
+
+class TodoItem(Struct):
+    title: str
+    completed: bool
+    due: datetime
+
+class TodoList(Struct):
+    items: list[TodoItem]
+    notes: str
+
+# 創建 AutoCRUD
+crud = AutoCRUD()
+crud.add_model(TodoItem)
+crud.add_model(TodoList)
+
+app = FastAPI()
+crud.apply(app)
+
+uvicorn.run(app, host="0.0.0.0", port=8000, log_level="info")
+```
+## 自動生成的端點
+
+- `POST /todo-item` - 創建
+- `GET /todo-item/{id}/data` - 讀取
+- `PATCH /todo-item/{id}` - JSON Patch 更新
+- `DELETE /todo-item/{id}` - 軟刪除
+- `GET /todo-list/data` - 列表, 支援搜尋
+- *其他十多種auto endpoints*
+
+➡️ *[自動路由說明](auto_routes.md)*
+
+## 透過 ResourceManager 操作資源
+
+ResourceManager 是 AutoCRUD 的資源操作入口，負責管理資源的建立、查詢、更新、刪除、版本等操作。
+
+其核心是「版本控制」：每次 `create/update/patch` 都會產生新的 `revision_id`（進版），完整保留歷史；草稿（`draft`）可用 `modify` 不進版反覆編輯，確認後切換為 `stable`。你也可以列出所有版本、讀取任意版本、`switch` 切換目前版本，或在軟刪除後 `restore` 還原。索引查詢支援依 metadata 與資料欄位（indexed fields）進行篩選、排序與分頁，適合審計、回溯與大量資料的檢索。
+
+➡️ *[ResourceManager 使用說明](resource_manager.md)*
+
 
 ## 🚀 快速開始
+
 
 ```python
 from datetime import datetime, timedelta
@@ -65,38 +127,16 @@ python -m fastapi dev main.py
 
 訪問 http://localhost:8000/docs 查看自動生成的 API 文檔。
 
-## 📚 完整文檔導航
+## 文檔導覽
 
 ```{toctree}
-:maxdepth: 2
-:caption: 目錄
+:maxdepth: 1
 
-quickstart
-examples  
-user_guide
-installation
-api_reference
-```
-
-## 🔗 快速連結
-
-- {doc}`quickstart` - 5分鐘入門
-- {doc}`examples` - **完整程式碼範例**
-- {doc}`api_reference` - **完整原始碼**
-- {doc}`user_guide` - 進階功能
-```bash
-python -m fastapi dev your_file.py
-```
-
-## 📚 文檔
-
-```{toctree}
-:maxdepth: 2
-
-quickstart
+auto_routes
+resource_manager
 examples
-user_guide
-installation
-api_reference
-contributing
+
+permission_quick_start
+permission_setup_guide
+permission_system_guide
 ```

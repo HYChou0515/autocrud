@@ -827,6 +827,20 @@ class ResourceManager(IResourceManager[T], Generic[T]):
         inputs={"patch_data": "patch_data.patch"},
     )
     def patch(self, resource_id: str, patch_data: JsonPatch) -> RevisionInfo:
+        """
+        Apply RFC 6902 JSON Patch operations to the resource.
+
+        Arguments:
+            - resource_id (str): the id of the resource to patch.
+            - patch_data (JsonPatch): RFC 6902 JSON Patch operations to apply.
+
+        Returns:
+            - info (RevisionInfo): the metadata of the newly created revision.
+
+        Raises:
+            - ResourceIDNotFoundError: if resource id does not exist.
+            - ResourceIsDeletedError: if resource is soft-deleted.
+        """
         data = self._apply_patch(resource_id, patch_data)
         return self.update(resource_id, data)
 

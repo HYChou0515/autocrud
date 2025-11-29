@@ -2,7 +2,7 @@ name: 文檔構建和部署
 
 on:
   push:
-    branches: [ master ]
+    branches: [ master, docs ]
   workflow_dispatch:
 
 permissions:
@@ -35,7 +35,7 @@ jobs:
       
     - name: 安裝依賴
       run: |
-        uv sync --dev
+        uv sync --dev --extra docs
         
     - name: 構建文檔
       run: |

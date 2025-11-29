@@ -112,6 +112,7 @@ docs = [
     { name = "sphinx" },
     { name = "sphinx-autodoc-typehints" },
     { name = "sphinx-design" },
+    { name = "sphinx-termynal" },
 ]
 s3 = [
     { name = "boto3" },
@@ -166,6 +167,7 @@ requires-dist = [
     { name = "sphinx", marker = "extra == 'docs'", specifier = ">=8.2.3" },
     { name = "sphinx-autodoc-typehints", marker = "extra == 'docs'", specifier = ">=3.2.0" },
     { name = "sphinx-design", marker = "extra == 'docs'", specifier = ">=0.6.1" },
+    { name = "sphinx-termynal", marker = "extra == 'docs'", specifier = ">=0.2.1" },
     { name = "tenacity", marker = "extra == 'cli'", specifier = ">=9.1.2" },
     { name = "textual", marker = "extra == 'cli'", specifier = ">=6.3.0" },
     { name = "typer", marker = "extra == 'cli'", specifier = ">=0.20.0" },
@@ -2116,6 +2118,18 @@ dependencies = [
 sdist = { url = "https://files.pythonhosted.org/packages/2b/69/b34e0cb5336f09c6866d53b4a19d76c227cdec1bbc7ac4de63ca7d58c9c7/sphinx_design-0.6.1.tar.gz", hash = "sha256:b44eea3719386d04d765c1a8257caca2b3e6f8421d7b3a5e742c0fd45f84e632", size = 2193689, upload-time = "2024-08-02T13:48:44.277Z" }
 wheels = [
     { url = "https://files.pythonhosted.org/packages/c6/43/65c0acbd8cc6f50195a3a1fc195c404988b15c67090e73c7a41a9f57d6bd/sphinx_design-0.6.1-py3-none-any.whl", hash = "sha256:b11f37db1a802a183d61b159d9a202314d4d2fe29c163437001324fe2f19549c", size = 2215338, upload-time = "2024-08-02T13:48:42.106Z" },
+]
+
+[[package]]
+name = "sphinx-termynal"
+version = "0.2.1"
+source = { registry = "https://pypi.org/simple" }
+dependencies = [
+    { name = "sphinx" },
+]
+sdist = { url = "https://files.pythonhosted.org/packages/a3/d4/db7a6591297ae62f8684fe6b2e371590e0aa8ecf6e03e07cc7901e47a29a/sphinx_termynal-0.2.1.tar.gz", hash = "sha256:78a851543380523ed55c7a6ac286726138a8809bbcbcd14dfdd145f5823343ad", size = 218164, upload-time = "2025-05-15T13:11:34.097Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/58/46/bf4897d0b36f22bb2c73d1038ce801b32d3420a0d8a622dfd2385f48eab6/sphinx_termynal-0.2.1-py3-none-any.whl", hash = "sha256:2145797098888bd2c5c9e28ef39cb778643d69617528b5893eea8b5bae4376e6", size = 8279, upload-time = "2025-05-15T13:11:32.461Z" },
 ]
 
 [[package]]
