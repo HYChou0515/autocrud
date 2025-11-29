@@ -33,9 +33,45 @@ crud.add_model(TodoList)
 
 app = FastAPI()
 crud.apply(app)
+
+uvicorn.run(app, host="0.0.0.0", port=8000, log_level="info")
+```
+## 自動生成的端點
+
+更多自動路由細節請參考 [自動路由說明](auto_routes.md)
+
+- `POST /todo-item` - 創建
+- `GET /todo-item/{id}/data` - 讀取
+- `PATCH /todo-item/{id}` - JSON Patch 更新
+- `DELETE /todo-item/{id}` - 軟刪除
+- `GET /todo-list/data` - 列表, 支援搜尋
+
+
+## ResourceManager 簡介
+
+ResourceManager 是 AutoCRUD 的核心類別，負責管理資源的 CRUD、版本、索引、權限等操作。你可以透過 AutoCRUD 取得 ResourceManager 來進行進階操作。
+
+詳細說明請參考：[ResourceManager 使用說明](resource_manager.md)
+
+### 簡單使用範例
+```python
+from autocrud import AutoCRUD
+from autocrud.storage import LocalStorage
+
+autocrud = AutoCRUD()
+autocrud.add_model(TodoItem, storage=LocalStorage())
+manager = autocrud.get_resource_manager(TodoItem)
+
+# 建立資源
+info = manager.create(TodoItem(title="test", completed=False, due=datetime.now()))
+
+# 取得最新版本
+resource = manager.get(info.resource_id)
+print(resource.data)
 ```
 
-## 測試 API
+
+## python example
 
 ```python
 def test():
@@ -99,7 +135,9 @@ class User(TypedDict):
     age: int
 ```
 
-## 運行
+## Quick Start範例
+
+此處使用`examples/quick_start.py`
 
 ```bash
 # 默認 msgspec
@@ -112,11 +150,4 @@ python quick_start.py typeddict
 # 開發服務器
 python -m fastapi dev quick_start.py
 ```
-
-## 自動生成的端點
-
-- `POST /todo-item` - 創建
-- `GET /todo-item/{id}/data` - 讀取
-- `PATCH /todo-item/{id}` - JSON Patch 更新
-- `DELETE /todo-item/{id}` - 軟刪除
-- `GET /todo-list/full` - 列表(含元數據)
+---
