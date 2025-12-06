@@ -7,8 +7,9 @@ from collections.abc import Callable, Sequence
 from typing import IO, Literal, TypeVar
 import logging
 from fastapi import APIRouter, FastAPI
+import datetime as dt
 from fastapi.openapi.utils import get_openapi
-from msgspec import UNSET
+from msgspec import UNSET, UnsetType
 
 from autocrud.crud.route_templates.basic import (
     DependencyProvider,
@@ -175,6 +176,8 @@ class AutoCRUD:
         dependency_provider: DependencyProvider | None = None,
         event_handlers: Sequence[IEventHandler] | None = None,
         encoding: Encoding = Encoding.json,
+        default_user: str | UnsetType = UNSET,
+        default_now: Callable[[], dt.datetime] | UnsetType = UNSET,
     ):
         if storage_factory is None:
             self.storage_factory = MemoryStorageFactory()
@@ -210,6 +213,8 @@ class AutoCRUD:
 
         self.event_handlers = event_handlers
         self.default_encoding = encoding
+        self.default_user = default_user
+        self.default_now = default_now
 
     def get_resource_manager(self, model: type[T] | str) -> IResourceManager[T]:
         if isinstance(model, str):
@@ -296,6 +301,8 @@ class AutoCRUD:
         permission_checker: IPermissionChecker | None = None,
         encoding: Encoding | None = None,
         default_status: RevisionStatus | None = None,
+        default_user: str | UnsetType = UNSET,
+        default_now: Callable[[], dt.datetime] | UnsetType = UNSET,
     ) -> None:
         """Add a data model to AutoCRUD and configure its API endpoints.
 
@@ -398,6 +405,14 @@ class AutoCRUD:
         other_options = {}
         if default_status is not None:
             other_options["default_status"] = default_status
+        if default_user is not UNSET:
+            other_options["default_user"] = default_user
+        elif self.default_user is not UNSET:
+            other_options["default_user"] = self.default_user
+        if default_now is not UNSET:
+            other_options["default_now"] = default_now
+        elif self.default_now is not UNSET:
+            other_options["default_now"] = self.default_now
         resource_manager = ResourceManager(
             model,
             storage=storage,

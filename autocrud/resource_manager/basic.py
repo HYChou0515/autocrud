@@ -1,8 +1,8 @@
 import functools
 from abc import ABC, abstractmethod
-from collections.abc import Generator, Iterable, MutableMapping
+from collections.abc import Callable, Generator, Iterable, MutableMapping
 from contextlib import AbstractContextManager, contextmanager
-from contextvars import ContextVar
+from contextvars import ContextVar, Token
 from enum import Flag, StrEnum
 from typing import IO, Any, Generic, TypeVar
 
@@ -22,26 +22,45 @@ from autocrud.types import RevisionInfo
 T = TypeVar("T")
 
 
+class NoDefaultType:
+    pass
+
+
+NO_DEFAULT = NoDefaultType()
+
+
 class Ctx(Generic[T]):
-    def __init__(self, name: str, *, strict_type: type[T] | UnsetType = UNSET):
+    def __init__(
+        self,
+        name: str,
+        *,
+        strict_type: type[T] | UnsetType = UNSET,
+        default: T | NoDefaultType = NO_DEFAULT,
+        default_factory: Callable[[], T] | NoDefaultType = NO_DEFAULT,
+    ):
         self.strict_type = strict_type
         self.v = ContextVar[T](name)
-        self.tok = None
+        self.tok: list[Token[T]] = []
+        self.default = default
+        self.default_factory = default_factory
 
     @contextmanager
-    def ctx(self, value: T):
+    def ctx(self, value: T | UnsetType):
         if self.strict_type is not UNSET and not isinstance(value, self.strict_type):
             raise TypeError(f"Context value must be of type {self.strict_type}")
-        self.tok = self.v.set(value)
+        self.tok.append(self.v.set(value))
         try:
             yield
         finally:
-            if self.tok is not None:
-                self.v.reset(self.tok)
-                self.tok = None
+            if self.tok:
+                self.v.reset(self.tok.pop())
 
     def get(self) -> T:
-        return self.v.get()
+        if self.default is NO_DEFAULT and self.default_factory is NO_DEFAULT:
+            return self.v.get()
+        if self.default_factory is not NO_DEFAULT:
+            return self.v.get(self.default_factory())
+        return self.v.get(self.default)
 
 
 class Encoding(StrEnum):
