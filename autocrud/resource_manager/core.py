@@ -356,10 +356,20 @@ class ResourceManager(IResourceManager[T], Generic[T]):
         event_handlers: Sequence[IEventHandler] | None = None,
         encoding: Encoding = Encoding.json,
         default_status: RevisionStatus = RevisionStatus.stable,
+        default_user: str | UnsetType = UNSET,
+        default_now: Callable[[], dt.datetime] | UnsetType = UNSET,
     ):
-        self.user_ctx = Ctx("user_ctx", strict_type=str)
-        self.now_ctx = Ctx("now_ctx", strict_type=dt.datetime)
-        self.id_ctx = Ctx[str | UnsetType]("id_ctx")
+        if default_user is UNSET:
+            self.user_ctx = Ctx("user_ctx", strict_type=str)
+        else:
+            self.user_ctx = Ctx("user_ctx", strict_type=str, default=default_user)
+        if default_now is UNSET:
+            self.now_ctx = Ctx("now_ctx", strict_type=dt.datetime)
+        else:
+            self.now_ctx = Ctx(
+                "now_ctx", strict_type=dt.datetime, default_factory=default_now
+            )
+        self.id_ctx = Ctx[str | UnsetType]("id_ctx", default=UNSET)
         self._resource_type = resource_type
         self.storage = storage
         self.data_converter = DataConverter(self.resource_type)
@@ -520,15 +530,15 @@ class ResourceManager(IResourceManager[T], Generic[T]):
     @contextmanager
     def meta_provide(
         self,
-        user: str,
-        now: dt.datetime,
+        user: str | UnsetType = UNSET,
+        now: dt.datetime | UnsetType = UNSET,
         *,
         resource_id: str | UnsetType = UNSET,
     ):
         with (
-            self.user_ctx.ctx(user),
-            self.now_ctx.ctx(now),
-            self.id_ctx.ctx(resource_id),
+            self.user_ctx.ctx(user) if user is not UNSET else suppress(),
+            self.now_ctx.ctx(now) if now is not UNSET else suppress(),
+            self.id_ctx.ctx(resource_id) if resource_id is not UNSET else suppress(),
         ):
             yield
 

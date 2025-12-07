@@ -1035,7 +1035,7 @@ class IMigration(ABC, Generic[T]):
     """
 
     @abstractmethod
-    def migrate(self, data: IO[bytes], schema_version: str | UnsetType) -> T:
+    def migrate(self, data: IO[bytes], schema_version: str | None) -> T:
         """Migrate resource data from an older schema version to the current version.
 
         Args:
@@ -1090,8 +1090,8 @@ class IResourceManager(ABC, Generic[T]):
     @abstractmethod
     def meta_provide(
         self,
-        user: str,
-        now: dt.datetime,
+        user: str | UnsetType = UNSET,
+        now: dt.datetime | UnsetType = UNSET,
         *,
         resource_id: str | UnsetType = UNSET,
     ) -> AbstractContextManager: ...

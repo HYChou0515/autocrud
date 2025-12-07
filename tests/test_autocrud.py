@@ -86,3 +86,53 @@ class TestAutocrud:
         with mgr.meta_provide("user", dt.datetime.now()):
             info = mgr.create({"name": "Alice", "age": 30})
         assert info.status == (default_status or "stable")
+
+    @pytest.mark.parametrize("level", ["crud", "model"])
+    def test_add_model_with_default_user(self, level: str):
+        if level == "crud":
+            crud = AutoCRUD(default_user="system")
+            crud.add_model(User)
+        else:
+            crud = AutoCRUD(default_user="foo")
+            crud.add_model(User, default_user="system")
+        mgr = crud.get_resource_manager(User)
+        with mgr.meta_provide(now=dt.datetime.now()):
+            info = mgr.create({"name": "Alice", "age": 30})
+        assert info.created_by == "system"
+
+    def test_add_model_without_default_user(self):
+        crud = AutoCRUD()
+        crud.add_model(User)
+        mgr = crud.get_resource_manager(User)
+        with pytest.raises(LookupError):
+            with mgr.meta_provide(now=dt.datetime.now()):
+                mgr.create({"name": "Alice", "age": 30})
+
+    @pytest.mark.parametrize("level", ["crud", "model"])
+    def test_add_model_with_default_now(self, level: str):
+        if level == "crud":
+            crud = AutoCRUD(default_now=lambda: dt.datetime(2023, 1, 1))
+            crud.add_model(User)
+        else:
+            crud = AutoCRUD(default_now=lambda: dt.datetime(2024, 1, 1))
+            crud.add_model(User, default_now=lambda: dt.datetime(2023, 1, 1))
+        mgr = crud.get_resource_manager(User)
+        with mgr.meta_provide("system"):
+            info = mgr.create({"name": "Alice", "age": 30})
+        assert info.created_time == dt.datetime(2023, 1, 1)
+
+    def test_add_model_without_default_now(self):
+        crud = AutoCRUD()
+        crud.add_model(User)
+        mgr = crud.get_resource_manager(User)
+        with pytest.raises(LookupError):
+            with mgr.meta_provide("system"):
+                mgr.create({"name": "Alice", "age": 30})
+
+    def test_add_model_with_default_user_and_now(self):
+        crud = AutoCRUD()
+        crud.add_model(User, default_user="system", default_now=dt.datetime.now)
+        mgr = crud.get_resource_manager(User)
+        info = mgr.create({"name": "Alice", "age": 30})
+        assert info.created_time - dt.datetime.now() < dt.timedelta(seconds=1)
+        assert info.created_by == "system"
