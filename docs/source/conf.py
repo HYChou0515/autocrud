@@ -75,11 +75,11 @@ extensions = [
     "sphinx_autodoc_typehints",
     "myst_parser",
     "sphinx_design",  # 添加網格和卡片支持
+    "sphinx_termynal",
 ]
 
 templates_path = ["_templates"]
 exclude_patterns = []
-
 language = "zh_TW"
 
 # -- Options for HTML output -------------------------------------------------

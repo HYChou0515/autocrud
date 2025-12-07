@@ -20,21 +20,59 @@ class RevisionStatus(StrEnum):
 
 
 class RevisionInfo(Struct, kw_only=True):
+    """Metadata about a specific revision of a resource.
+
+    This class contains essential information about a particular revision,
+    """
+
     uid: UUID
+    """The unique identifier for this revision.
+    
+    This is a UUID that uniquely identifies this specific revision of the resource.
+    You don't need this value for most operations; use `resource_id` and `revision_id` instead.
+    """
     resource_id: str
+    """The ID of this revision of the resource."""
     revision_id: str
+    """The unique identifier for the resource."""
 
     parent_revision_id: str | None = None
+    """The ID of the parent revision, if any."""
     parent_schema_version: str | None | UnsetType = UNSET
+    """The schema version of the parent revision, if any.
+    
+    This field is UNSET if the parent revision does not exist.
+    """
     schema_version: str | None = None
+    """The schema version of this revision.
+    
+    None is a valid schema version, indicating the default version.
+    """
     data_hash: str | UnsetType = UNSET
+    """The hash of the data for this revision.
+    
+    If UNSET, the hash has not been computed.
+    """
 
     status: RevisionStatus
+    """The status of this revision."""
 
     created_time: dt.datetime
+    """The time when this revision was created."""
     updated_time: dt.datetime
+    """The time when this revision was last updated.
+    
+    Note that this may only be different from created_time if the revision was 
+    modified without creating a new revision (e.g., patching a draft).
+    """
     created_by: str
+    """The user who created this revision."""
     updated_by: str
+    """The user who last updated this revision.
+    
+    Note that this may only be different from created_by if the revision was 
+    modified without creating a new revision (e.g., patching a draft).
+    """
 
 
 class Resource(Struct, Generic[T]):
@@ -48,21 +86,39 @@ class RawResource(Struct):
 
 
 class ResourceMeta(Struct, kw_only=True):
+    """Metadata about a resource, including its current revision and status.
+
+    This class provides essential information about a resource without including
+    the full data content.
+    """
+
     current_revision_id: str
+    """The ID of the current revision of the resource."""
     resource_id: str
+    """The unique identifier for the resource."""
     schema_version: str | None = None
+    """The schema version of the resource.
+    
+    This indicates the version of the data schema that the resource conforms to.
+    """
 
     total_revision_count: int
+    """The total number of revisions for the resource."""
 
     created_time: dt.datetime
+    """The time when the resource was created."""
     updated_time: dt.datetime
+    """The time when the resource was last updated."""
     created_by: str
+    """The user who created the resource."""
     updated_by: str
+    """The user who last updated the resource."""
 
     is_deleted: bool = False
+    """Indicates whether the resource has been deleted."""
 
-    # 新增：存儲被索引的 data 欄位值
     indexed_data: dict[str, Any] | UnsetType = UNSET
+    """A dictionary of indexed fields for the resource, used for searching and sorting."""
 
 
 class ResourceAction(Flag):
@@ -136,22 +192,32 @@ class ResourceMetaSearchSort(Struct, kw_only=True, tag=True):
 
 class ResourceMetaSearchQuery(Struct, kw_only=True):
     is_deleted: bool | UnsetType = UNSET
+    """Filter by deletion status of the resource."""
 
     created_time_start: dt.datetime | UnsetType = UNSET
+    """Filter resources created >= this time."""
     created_time_end: dt.datetime | UnsetType = UNSET
+    """Filter resources created <= this time."""
     updated_time_start: dt.datetime | UnsetType = UNSET
+    """Filter resources updated >= this time."""
     updated_time_end: dt.datetime | UnsetType = UNSET
+    """Filter resources updated <= this time."""
 
     created_bys: list[str] | UnsetType = UNSET
+    """Filter resources created by these users."""
     updated_bys: list[str] | UnsetType = UNSET
+    """Filter resources updated by these users."""
 
-    # 新增：data 欄位搜尋條件
     data_conditions: list[DataSearchCondition] | UnsetType = UNSET
+    """Conditions to filter resources based on their indexed data fields."""
 
     limit: int = 10
+    """Maximum number of results to return."""
     offset: int = 0
+    """Number of results to skip before starting to collect the result set."""
 
     sorts: list[ResourceMetaSearchSort | ResourceDataSearchSort] | UnsetType = UNSET
+    """Sorting criteria for the search results."""
 
 
 # ============================================================================

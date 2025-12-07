@@ -177,8 +177,8 @@ clean-docs:
 # 啟動本地服務器
 .PHONY: serve
 serve: html
-	@echo "啟動文檔服務器於 http://localhost:8080"
-	@cd "$(BUILDDIR)/html" && python -m http.server 8080
+	@echo "啟動文檔服務器於 http://localhost:8089"
+	@cd "$(BUILDDIR)/html" && python -m http.server 8089
 
 # 檢查連結
 .PHONY: linkcheck

@@ -8,6 +8,7 @@ from typing import IO, Literal, TypeVar
 import logging
 from fastapi import APIRouter, FastAPI
 from fastapi.openapi.utils import get_openapi
+from msgspec import UNSET
 
 from autocrud.crud.route_templates.basic import (
     DependencyProvider,
@@ -290,7 +291,7 @@ class AutoCRUD:
         id_generator: Callable[[], str] | None = None,
         storage: IStorage | None = None,
         migration: IMigration | None = None,
-        indexed_fields: list[tuple[str, type] | IndexableField] | None = None,
+        indexed_fields: list[str | tuple[str, type] | IndexableField] | None = None,
         event_handlers: Sequence[IEventHandler] | None = None,
         permission_checker: IPermissionChecker | None = None,
         encoding: Encoding | None = None,
@@ -371,6 +372,9 @@ class AutoCRUD:
                 and isinstance(field[0], str)
             ):
                 field = IndexableField(field_path=field[0], field_type=field[1])
+                _indexed_fields.append(field)
+            elif isinstance(field, str):
+                field = IndexableField(field_path=field, field_type=UNSET)
                 _indexed_fields.append(field)
             else:
                 raise TypeError(
