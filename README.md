@@ -52,10 +52,11 @@ crud.add_model(TodoList)
 
 app = FastAPI()
 crud.apply(app)
+crud.openapi(app)
 
 uvicorn.run(app, host="0.0.0.0", port=8000, log_level="info")
 ```
-## 自動生成的端點
+## 自動生成的CRUD端點
 
 - `POST /todo-item` - 創建
 - `GET /todo-item/{id}/data` - 讀取
@@ -64,7 +65,7 @@ uvicorn.run(app, host="0.0.0.0", port=8000, log_level="info")
 - `GET /todo-list/data` - 列表, 支援搜尋
 - *其他十多種auto endpoints*
 
-➡️ *[自動路由說明](https://hychou0515.github.io/autocrud/auto_routes)*
+➡️ *[AutoCRUD 使用指南](https://hychou0515.github.io/autocrud/auto_routes)*
 
 ## 透過 ResourceManager 操作資源
 

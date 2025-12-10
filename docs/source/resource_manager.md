@@ -20,7 +20,7 @@ ResourceManager 是 AutoCRUD 的核心類別，負責管理各類型資源的 CR
 
     metadata與本體分開儲存: metadata可使用RDMBS以便快速查找任意index欄位,
     本體使用S3或Disk, 以便快速以key-value方式讀取  
-    ➡️ *[Storage](#storage)*
+    ➡️ *[Storage](auto_routes.md#storage)*
 
 - **彈性的結構變更**：schema 版本控管，支援自訂搬遷邏輯  
 
@@ -73,20 +73,18 @@ ResourceManager 是 AutoCRUD 的核心類別，負責管理各類型資源的 CR
 
 ---
 
+## 註冊資源
 
-## 建構方式
-
-通常不直接初始化 ResourceManager，而是透過 AutoCRUD 來註冊模型並取得 ResourceManager 實例：
+透過 AutoCRUD 來註冊模型並取得 ResourceManager 實例：
 
 ```{code-block} python
-:emphasize-lines: 10
+:emphasize-lines: 9
 from autocrud import AutoCRUD
 from msgspec import Struct
 
 class TodoItem(Struct):
     title: str
     completed: bool
-    due: datetime
 
 autocrud = AutoCRUD(default_user="user", default_now=datetime.now)
 autocrud.add_model(TodoItem)
@@ -94,6 +92,15 @@ manager = autocrud.get_resource_manager(TodoItem)
 ```
 
 你可以在 add_model 時指定 storage、migration、indexed_fields 等參數，AutoCRUD 會自動建立並管理 ResourceManager。
+
+```{code-block} python
+:emphasize-lines: 3
+autocrud.add_model(
+    TodoItem,
+    indexed_fields=["completed"],
+)
+```
+
 
 ---
 
@@ -106,36 +113,214 @@ manager = autocrud.get_resource_manager(TodoItem)
 | `revision_id` | 資源版本的唯一識別碼，每次資源內容變更（如更新、修改）都會產生新的 revision_id（進版）。像是 Git 的 commit hash，每次 commit 都會產生一個新的 hash，並且紀錄誰更新, 何時更新。| `todo-item:1fff687d5e8f:1` |
 | `resource_name` | 資源類別名稱, 從autocrud取得manager時或是自動生成的CRUD API endpoint用到。| todo-item |
 | `revision_status` | 資源目前版本的狀態，常見有 stable（穩定）、draft（草稿）等，影響可執行的操作。當狀態為 stable 時，無法執行不進版的修改（modify），僅 draft 狀態可用。| stable/draft |
-| `indexed_field` | 被索引的欄位，用於快速查找，排序資源。| title/completed/due  |
+| `indexed_field` | 被索引的欄位，用於快速查找，排序資源。| title/completed  |
 | `schema_version` | 資源的 schema 版本。| None/v1 |
 
 ---
 
-## 主要方法
+## 資源操作方法
 
 | 方法 | 說明 |
 |------|------|
-| ＃建立|
+| [＃建立](#create)|
 | [`create(data, status=...)`](#autocrud.resource_manager.core.ResourceManager.create)                                       | 建立新資源 |
-| ＃讀取|
+| [＃讀取](#read)|
 | [`get(resource_id)`](#autocrud.resource_manager.core.ResourceManager.get)                                                  | 取得資源最新版本 |
 | [`get_resource_revision(resource_id, revision_id)`](#autocrud.resource_manager.core.ResourceManager.get_resource_revision) | 取得指定版本 |
 | [`search_resources(query)`](#autocrud.resource_manager.core.ResourceManager.search_resources)                              | 查詢資源（支援索引, 分頁, 排序）|
 | [`count_resources(query)`](#autocrud.resource_manager.core.ResourceManager.count_resources)                                | 計算資源數量 |
 | [`list_revisions(resource_id)`](#autocrud.resource_manager.core.ResourceManager.list_revisions)                            | 列出所有版本 |
-| ＃更新|
+| [＃更新](#update)|
 | [`update(resource_id, data, status=...)`](#autocrud.resource_manager.core.ResourceManager.update)                          | 全量更新資源，會產生新的 revision id（進版） |
 | [`patch(resource_id, patch_data)`](#autocrud.resource_manager.core.ResourceManager.patch)                                  | 套用 JSON Patch，會產生新 revision id（進版） |
 | [`modify(resource_id, data/patch, status=...)`](#autocrud.resource_manager.core.ResourceManager.modify)                    | 全量或局部更新，不會產生新 revision id（不進版），僅限資源狀態為 draft，狀態為 stable 時會失敗 |
 | [`switch(resource_id, revision_id)`](#autocrud.resource_manager.core.ResourceManager.switch)                               | 切換到指定版本 |
-| ＃刪除|
+| [＃刪除](#delete) |
 | [`delete(resource_id)`](#autocrud.resource_manager.core.ResourceManager.delete)                                            | 軟刪除資源 |
 | [`restore(resource_id)`](#autocrud.resource_manager.core.ResourceManager.restore)                                          | 還原已刪除資源 |
-| ＃管理|
+| [＃管理](#management)|
 | [`migrate(resource_id)`](#autocrud.resource_manager.core.ResourceManager.migrate)                                          | 執行 schema 遷移 |
 | [`dump()`](#autocrud.resource_manager.core.ResourceManager.dump)                                                           | 備份所有資源資料 |
 | [`load(key, bio)`](#autocrud.resource_manager.core.ResourceManager.load)                                                   | 還原資料 |
 
+### Create
+
+建立新資源，會產生獨立的 resource_id 與第一個 revision。  
+常用於新增資料，支援指定初始狀態（如 draft/stable）。
+
+- [`create(data, status=...)`](#autocrud.resource_manager.core.ResourceManager.create)：建立新資源，回傳`ResourceMeta`。
+
+```python
+manager: ResourceManager[TodoItem]
+# 建立一個新的 TodoItem 資源
+info: ResourceMeta = manager.create(TodoItem(title="買牛奶", completed=False), status="draft")
+print(info.resource_id)  # 取得新資源的 resource_id
+```
+
+---
+
+### Read
+
+取得資源最新版本或指定版本，支援查詢、分頁、排序、計數、版本列表。
+
+- [`get(resource_id)`](#autocrud.resource_manager.core.ResourceManager.get)：取得資源最新版本。
+
+```python
+# 取得指定 resource_id 的當前版本
+resource = manager.get(resource_id)
+print(resource.data)  # resource data
+print(resource.info)  # resource info
+```
+
+- [`get_resource_revision(resource_id, revision_id)`](#autocrud.resource_manager.core.ResourceManager.get_resource_revision)：取得指定版本內容。
+
+```python
+# 取得指定 resource_id 與 revision_id 的版本內容
+resource = manager.get_resource_revision(resource_id, revision_id)
+print(resource.data)  # resource data
+print(resource.info)  # resource info
+```
+
+- [`search_resources(query)`](#autocrud.resource_manager.core.ResourceManager.search_resources)：依條件查詢資源（支援索引、分頁、排序）。
+
+```{important}
+使用data_conditions必須先建立該field的index, 參考[這裡](#data-attribute-index)獲得更多資訊。
+```
+```{seealso}
+[Resource Searching](#resource-searching)
+```
+
+```python
+from autocrud.types import ResourceMetaSearchQuery, DataSearchCondition
+
+# 查詢已完成的 TodoItem
+query = ResourceMetaSearchQuery(
+    # 使用data_conditions必須先建立該field的index
+    data_conditions=[
+        DataSearchCondition(field_path="completed", operator="eq", value=True)
+    ]
+)
+metas = manager.search_resources(query)
+for meta in metas:
+    print(meta.resource_id, meta.indexed_data)
+```
+
+- [`count_resources(query)`](#autocrud.resource_manager.core.ResourceManager.count_resources)：計算符合條件的資源數量。
+
+```python
+# 計算已完成的 TodoItem 數量
+count = manager.count_resources(query)
+print("已完成數量:", count)
+```
+
+- [`list_revisions(resource_id)`](#autocrud.resource_manager.core.ResourceManager.list_revisions)：列出所有版本資訊。
+
+```python
+# 列出指定 resource_id 的所有版本資訊
+revisions = manager.list_revisions(resource_id)
+for rev in revisions:
+    print(rev.revision_id, rev.status, rev.created_time)
+```
+
+---
+
+### Update
+
+更新資源內容，分為進版（產生新 revision）與不進版（僅限 draft 狀態）。
+```{seealso}
+[版本管理](#version-control)
+```  
+
+- [`update(resource_id, data, status=...)`](#autocrud.resource_manager.core.ResourceManager.update)：全量更新，進版。
+
+```python
+# 全量更新資源內容，並進版
+manager.update(resource_id, TodoItem(title="新標題", completed=True), status="stable")
+```
+
+- [`patch(resource_id, patch_data)`](#autocrud.resource_manager.core.ResourceManager.patch)：套用 JSON Patch，進版。
+
+```python
+from jsonpatch import JsonPatch
+
+# 局部更新（JSON Patch），並進版
+patch = JsonPatch([{"op": "replace", "path": "/completed", "value": True}])
+manager.patch(resource_id, patch)
+```
+
+```{seealso}
+JSON Patch 定義了一種 JSON 文件結構，用來描述一連串要套用在JSON上的操作序列；這種格式適合用於 HTTP PATCH 方法。  
+
+- [Python `jsonpatch`官方文檔](https://python-json-patch.readthedocs.io/en/latest/tutorial.html#creating-a-patch)
+- [JSON Patch (RFC6902) 官方文檔](https://datatracker.ietf.org/doc/html/rfc6902)
+```
+
+- [`modify(resource_id, data/patch, status=...)`](#autocrud.resource_manager.core.ResourceManager.modify)：不進版更新（僅 draft 可用）。
+
+```python
+# 草稿狀態下直接修改內容（不進版）
+manager.modify(resource_id, TodoItem(title="draft修改", completed=False))
+# 或用 patch
+manager.modify(resource_id, JsonPatch([{"op": "replace", "path": "/title", "value": "draft again"}]))
+```
+
+- [`switch(resource_id, revision_id)`](#autocrud.resource_manager.core.ResourceManager.switch)：切換到指定版本。
+
+```python
+# 切換到指定 revision_id 的版本
+manager.switch(resource_id, revision_id)
+```
+
+---
+
+### Delete
+
+軟刪除資源，保留所有版本，可隨時還原。
+
+- [`delete(resource_id)`](#autocrud.resource_manager.core.ResourceManager.delete)：軟刪除資源。
+
+```python
+# 軟刪除指定資源
+manager.delete(resource_id)
+```
+
+- [`restore(resource_id)`](#autocrud.resource_manager.core.ResourceManager.restore)：還原已刪除資源。
+
+```python
+# 還原已刪除的資源
+manager.restore(resource_id)
+```
+
+---
+
+### Management
+
+進行 schema 遷移、資料備份與還原。
+
+- [`migrate(resource_id)`](#autocrud.resource_manager.core.ResourceManager.migrate)：執行 schema migration。  
+```{seealso}
+[Schema Migration](#schema-migration)
+```  
+
+```python
+# 執行 schema migration
+manager.migrate(resource_id)
+```
+
+- [`dump()`](#autocrud.resource_manager.core.ResourceManager.dump)：備份所有資源資料。
+
+```python
+# 備份所有資源資料
+backup = manager.dump()
+```
+
+- [`load(key, bio)`](#autocrud.resource_manager.core.ResourceManager.load)：還原資料。
+
+```python
+# 還原資料
+with open("backup_file", "rb") as bio:
+    manager.load(key, bio)
+```
 
 ---
 
@@ -373,95 +558,6 @@ manager.restore(info.resource_id)
 
 ---
 
-## Storage
-
-AutoCRUD 的 Storage 層分為兩大部分，分別針對資源的 metadata 與資料本體進行管理：
-
-- **Meta Store（元資料儲存）**  
-  Meta Store 負責管理資源的 metadata，包括 resource_id、建立/更新時間、狀態、schema 版本、索引欄位等。這些資料主要用於查詢、排序、分頁、權限檢查等操作。Meta Store 通常採用高效查詢的儲存技術，例如 RDBMS（PostgreSQL、SQLite）、Redis 等，能夠根據複雜條件快速搜尋資源，並支援多欄位索引。  
-  典型用途：  
-  - 快速查找、篩選、排序資源  
-  - 分頁查詢  
-  - 權限與審計記錄  
-  - 資源狀態控管（如刪除、草稿、正式）
-
-- **Resource Store（資源本體儲存）**  
-  Resource Store 負責儲存資源的實際資料本體及所有版本（revision），每次進版都會產生一份新的資料快照。這部分通常採用物件儲存（如 S3）、本地磁碟（Disk）、分散式檔案系統等，適合以 key-value 方式管理大量資料，並支援版本回溯、還原。  
-  典型用途：  
-  - 儲存每個資源的所有版本資料  
-  - 支援資料回溯、還原、比對  
-  - 大型檔案或二進位資料管理  
-  - 資料備份與搬遷
-
-**設計理念**  
-Meta Store 與 Resource Store 分離設計，讓 metadata 可以被高效查詢與索引，而資料本體則可安全儲存並支援版本回溯。AutoCRUD 會自動協調兩者，確保每次操作都能正確同步 metadata 與資料本體。  
-例如，建立新資源時，Meta Store 會記錄索引與狀態，Resource Store 則儲存資料內容與版本資訊。查詢時只需讀取 metadata，取得內容時再存取本體。
-
-**技術選型**  
-你可以自訂 Storage 實作，或使用內建的 LocalStorage（本地）、PostgresMetaStore（PostgreSQL）、S3ResourceStore（S3）等組合，根據需求選擇最適合的儲存方案。
-
-### Meta Store
-
-Meta Store 主要負責資源的索引、查詢、狀態控管。  
-常見技術：PostgreSQL、SQLite、Redis  
-支援：多欄位索引、複雜查詢、分頁、排序、權限審計
-
-AutoCRUD 目前支援以下五種 Meta Store 實作：
-
-- **MemoryMetaStore**  
-  - 完全以 Python dict 實作，資料存於記憶體，序列化採用 msgspec。  
-  - 適合測試、單機快取、暫存用途，速度極快但資料不持久。
-  - 支援基本 CRUD 與搜尋、排序，重啟後資料會消失。
-
-- **DiskMetaStore**  
-  - 每筆 metadata 以獨立檔案儲存於指定目錄，序列化採用 msgspec。  
-  - 適合小型專案或本地持久化，無需資料庫安裝，易於備份與搬移。
-  - 檔案命名以 resource_id 為主，支援基本搜尋與批次同步。
-
-- **RedisMetaStore**  
-  - 以 Redis 為後端，所有 metadata 以 key-value 方式儲存，序列化採用 msgspec。  
-  - 適合高併發、分散式快取場景，支援批次同步（get_then_delete）與快速查詢。
-  - 資料持久性依賴 Redis 設定，適合暫存或同步到慢速存儲。
-
-- **SqliteMetaStore**  
-  - 以 SQLite 資料庫儲存，metadata 以 BLOB 欄位存放，並額外記錄索引欄位（indexed_data）。  
-  - 支援 SQL 層級複雜查詢、排序、分頁，適合單機或嵌入式應用。
-  - 支援批次寫入（save_many），資料持久且易於備份。
-
-- **FastSlowMetaStore**  
-  - 結合快取型（如 Redis/Memory）與持久型（如 SQLite/PostgreSQL）Meta Store，支援自動同步。  
-  - 寫入先進快取層，後台定時批次同步到慢速層，兼顧效能與持久性。
-  - 適合高併發寫入、需持久保存的場景，支援 force_sync 手動同步。
-
-每種 Meta Store 都實作了統一的介面（IMetaStore/IFastMetaStore/ISlowMetaStore），可根據需求靈活替換或組合使用。
-
-### Resource Store
-
-Resource Store 主要負責資源本體的儲存與版本管理。  
-常見技術：S3、Disk、本地檔案系統  
-支援：多版本資料、回溯、還原、大型檔案管理
-
-AutoCRUD 目前支援以下三種 Resource Store 實作：
-
-- **MemoryResourceStore**  
-  - 完全以 Python dict 實作，所有資料與版本都存於記憶體。  
-  - 適合測試、單機快取、暫存用途，速度極快但資料不持久。
-  - 支援多版本、即時回溯，重啟後資料會消失。
-
-- **DiskResourceStore**  
-  - 每個資源版本以獨立檔案儲存於本地目錄，結構化目錄管理所有版本。  
-  - 適合小型專案、本地持久化，易於備份與搬移。
-  - 支援多版本、回溯、還原，檔案命名與目錄結構依照 resource_id/revision_id/schema_version 分類。
-
-- **S3ResourceStore**  
-  - 以 S3 或 MinIO 為後端，所有版本資料與資訊分別存於 S3 物件，並以 UID 索引。  
-  - 適合雲端、大型資料、分散式儲存，支援高可用性與備份。
-  - 支援多版本、回溯、還原，索引結構設計可快速查找任意版本。
-
-每種 Resource Store 都實作了統一的介面（IResourceStore），可根據需求靈活替換或組合使用。
-
----
-
 ## Schema Migration
 
 你只需要提供必要的schema升級邏輯，其他的雜事都由AutoCRUD處理。
@@ -477,7 +573,6 @@ AutoCRUD 目前支援以下三種 Resource Store 實作：
 class TodoItem(Struct):
     title: str
     completed: bool
-    due: datetime
 
 autocrud = AutoCRUD(default_user="user", default_now=datetime.now)
 autocrud.add_model(TodoItem)
@@ -490,13 +585,12 @@ res: Resource[TodoItem] = manager.get(old_res_id)
 寫一個`Migration`注入model即可使用`migrate API`做schema migration。
 
 ```{code-block} python
-:emphasize-lines: 8-18,21
+:emphasize-lines: 7-18,21
 
 # 新版TodoItem schema
 class TodoItem(Struct):
     title: str
     completed: bool
-    due: datetime
     category: str
 
 class TodoItemMigration(IMigration):
@@ -505,7 +599,8 @@ class TodoItemMigration(IMigration):
             obj = msgspec.json.decode(data.read())  # JSON is the default serialization
             obj["category"] = "uncategorized"  # add default category for old data
             return msgspec.convert(obj, TodoItem)  # return new TodoItem object
-        raise ValueError(f"{schema_version=} is not supported")  # do not support unexpected schema version.
+        # do not support unexpected schema version.
+        raise ValueError(f"{schema_version=} is not supported")
 
     @property
     def schema_version(self) -> str|None:

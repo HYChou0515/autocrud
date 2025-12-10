@@ -41,6 +41,7 @@ docs = [
     "sphinx-autodoc-typehints>=3.2.0",
     "sphinx-design>=0.6.1",
     "sphinx-termynal>=0.2.1",
+    "autocrud[s3]",
 ]
 dev = [
     "coverage>=7.9.2",

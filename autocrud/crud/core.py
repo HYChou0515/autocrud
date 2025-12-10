@@ -217,6 +217,34 @@ class AutoCRUD:
         self.default_now = default_now
 
     def get_resource_manager(self, model: type[T] | str) -> IResourceManager[T]:
+        """Get the resource manager for a registered model.
+
+        This method allows you to access the underlying ResourceManager for a specific model.
+        The ResourceManager provides low-level access to storage, events, and other
+        internal components for that model.
+
+        Args:
+            model: The model class or its registered resource name.
+
+        Returns:
+            The IResourceManager instance associated with the model.
+
+        Raises:
+            KeyError: If the model is not registered.
+            ValueError: If the model class is registered with multiple names (ambiguous).
+
+        Example:
+            ```python
+            # Get by model class
+            manager = autocrud.get_resource_manager(User)
+
+            # Get by resource name
+            manager = autocrud.get_resource_manager("users")
+
+            # Access underlying storage
+            storage = manager.storage
+            ```
+        """
         if isinstance(model, str):
             return self.resource_managers[model]
         model_name = self.model_names[model]
@@ -428,6 +456,23 @@ class AutoCRUD:
         self.resource_managers[model_name] = resource_manager
 
     def openapi(self, app: FastAPI, structs: list[type] = None) -> None:
+        """Generate and register the OpenAPI schema for the FastAPI application.
+
+        This method customizes the OpenAPI schema generation to include all the
+        AutoCRUD-specific types, models, and response schemas. It ensures that
+        the generated API documentation (Swagger UI / ReDoc) correctly reflects
+        the structure of your resources and their endpoints.
+
+        Args:
+            app: The FastAPI application instance.
+            structs: Optional list of additional msgspec Structs to include in the schema.
+
+        Note:
+            This method is automatically called when you use `autocrud.apply(app)` if
+            you haven't disabled it. You typically don't need to call this manually
+            unless you are doing advanced customization of the OpenAPI schema.
+        """
+
         # Handle root_path by setting servers if not already set
         structs = structs or []
         servers = app.servers

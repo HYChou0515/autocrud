@@ -106,6 +106,7 @@ dev = [
     { name = "ruff" },
 ]
 docs = [
+    { name = "boto3" },
     { name = "furo" },
     { name = "linkify-it-py" },
     { name = "myst-parser" },
@@ -147,6 +148,7 @@ dev = [
 
 [package.metadata]
 requires-dist = [
+    { name = "boto3", marker = "extra == 'docs'", specifier = ">=1.40.21" },
     { name = "boto3", marker = "extra == 's3'", specifier = ">=1.40.21" },
     { name = "coverage", marker = "extra == 'dev'", specifier = ">=7.9.2" },
     { name = "datamodel-code-generator", extras = ["http"], marker = "extra == 'cli'", specifier = ">=0.35.0" },
