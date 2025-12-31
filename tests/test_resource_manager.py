@@ -95,7 +95,7 @@ def new_data() -> Data:
 
 
 def reset_and_get_pg_dsn():
-    pg_dsn = "postgresql://postgres:mysecretpassword@localhost:5432/your_database"
+    pg_dsn = "postgresql://admin:password@localhost:5432/your_database"
     pg_conn = psycopg2.connect(pg_dsn)
     with pg_conn.cursor() as cur:
         cur.execute("DROP TABLE IF EXISTS resource_meta;")

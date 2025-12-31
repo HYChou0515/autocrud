@@ -176,9 +176,7 @@ class TestMetaStoreIterSearch:
             from autocrud.resource_manager.meta_store.postgres import PostgresMetaStore
 
             # Setup PostgreSQL connection
-            pg_dsn = (
-                "postgresql://postgres:mysecretpassword@localhost:5432/your_database"
-            )
+            pg_dsn = "postgresql://admin:password@localhost:5432/your_database"
             try:
                 # Reset the test database
                 pg_conn = psycopg2.connect(pg_dsn)
@@ -223,9 +221,7 @@ class TestMetaStoreIterSearch:
 
             # Setup Redis and PostgreSQL connections
             redis_url = "redis://localhost:6379/0"
-            pg_dsn = (
-                "postgresql://postgres:mysecretpassword@localhost:5432/your_database"
-            )
+            pg_dsn = "postgresql://admin:password@localhost:5432/your_database"
 
             try:
                 # Reset the test Redis database

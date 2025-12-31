@@ -1,5 +1,6 @@
 from collections.abc import Generator, Iterable
 from contextlib import contextmanager, suppress
+import time
 
 import psycopg2 as pg
 import psycopg2.pool
@@ -24,6 +25,8 @@ class PostgresMetaStore(ISlowMetaStore):
         self,
         pg_dsn: str,
         encoding: Encoding = Encoding.json,
+        *,
+        table_name: str = "resource_meta",
     ):
         self._serializer = MsgspecSerializer(
             encoding=encoding,
@@ -36,6 +39,7 @@ class PostgresMetaStore(ISlowMetaStore):
             maxconn=10,
             dsn=pg_dsn,
         )
+        self.table_name = table_name
 
         # 初始化 PostgreSQL 表
         self._init_postgres_table()
@@ -61,15 +65,29 @@ class PostgresMetaStore(ISlowMetaStore):
             self._conn_pool.closeall()
 
     def get_conn(self) -> pg.extensions.connection:
-        return self._conn_pool.getconn()
+        retry = 5
+        for _ in range(retry):
+            conn = self._conn_pool.getconn()
+            conn.autocommit = False
+            if self.test_query(conn):
+                return conn
+            time.sleep(1)
+        raise ConnectionError("Failed to get a valid PostgreSQL connection.")
 
     def put_conn(self, conn):
         self._conn_pool.putconn(conn)
 
+    def test_query(self, conn) -> bool:
+        try:
+            with conn.cursor() as cur:
+                cur.execute("SELECT 1")
+                return cur.fetchone()[0] == 1
+        except Exception:
+            return False
+
     @contextmanager
     def transaction(self):
         conn = self.get_conn()
-        conn.autocommit = False
         try:
             with conn.cursor() as cur:
                 yield cur
@@ -83,7 +101,6 @@ class PostgresMetaStore(ISlowMetaStore):
     @contextmanager
     def stream_cursor(self):
         conn = self.get_conn()
-        conn.autocommit = False
         try:
             # 建立 server-side cursor (named cursor)
             with conn.cursor(
@@ -101,8 +118,8 @@ class PostgresMetaStore(ISlowMetaStore):
     def _init_postgres_table(self):
         """初始化 PostgreSQL 表結構"""
         with self.transaction() as cur:
-            cur.execute("""
-                CREATE TABLE IF NOT EXISTS resource_meta (
+            cur.execute(f"""
+                CREATE TABLE IF NOT EXISTS "{self.table_name}" (
                     resource_id TEXT PRIMARY KEY,
                     data BYTEA NOT NULL,
                     created_time TIMESTAMP NOT NULL,
@@ -115,32 +132,34 @@ class PostgresMetaStore(ISlowMetaStore):
             """)
 
             # 檢查是否需要添加 indexed_data 欄位（用於向後兼容）
-            cur.execute("""
+            cur.execute(f"""
                 SELECT column_name FROM information_schema.columns 
-                WHERE table_name = 'resource_meta' AND column_name = 'indexed_data'
+                WHERE table_name = '{self.table_name}' AND column_name = 'indexed_data'
             """)
             if not cur.fetchone():
-                cur.execute("ALTER TABLE resource_meta ADD COLUMN indexed_data JSONB")
+                cur.execute(
+                    f'ALTER TABLE "{self.table_name}" ADD COLUMN indexed_data JSONB'
+                )
 
             # 創建索引
             cur.execute(
-                "CREATE INDEX IF NOT EXISTS idx_created_time ON resource_meta(created_time)",
+                f'CREATE INDEX IF NOT EXISTS idx_created_time ON "{self.table_name}"(created_time)',
             )
             cur.execute(
-                "CREATE INDEX IF NOT EXISTS idx_updated_time ON resource_meta(updated_time)",
+                f'CREATE INDEX IF NOT EXISTS idx_updated_time ON "{self.table_name}"(updated_time)',
             )
             cur.execute(
-                "CREATE INDEX IF NOT EXISTS idx_created_by ON resource_meta(created_by)",
+                f'CREATE INDEX IF NOT EXISTS idx_created_by ON "{self.table_name}"(created_by)',
             )
             cur.execute(
-                "CREATE INDEX IF NOT EXISTS idx_updated_by ON resource_meta(updated_by)",
+                f'CREATE INDEX IF NOT EXISTS idx_updated_by ON "{self.table_name}"(updated_by)',
             )
             cur.execute(
-                "CREATE INDEX IF NOT EXISTS idx_is_deleted ON resource_meta(is_deleted)",
+                f'CREATE INDEX IF NOT EXISTS idx_is_deleted ON "{self.table_name}"(is_deleted)',
             )
             # 為 JSONB 創建 GIN 索引以提高查詢效能
             cur.execute(
-                "CREATE INDEX IF NOT EXISTS idx_indexed_data_gin ON resource_meta USING GIN (indexed_data)",
+                f'CREATE INDEX IF NOT EXISTS idx_indexed_data_gin ON "{self.table_name}" USING GIN (indexed_data)',
             )
 
             # 遷移已存在的記錄，填充 indexed_data
@@ -150,8 +169,8 @@ class PostgresMetaStore(ISlowMetaStore):
         """為已存在但沒有 indexed_data 的記錄填充索引數據"""
         import json
 
-        cur.execute("""
-            SELECT resource_id, data FROM resource_meta 
+        cur.execute(f"""
+            SELECT resource_id, data FROM "{self.table_name}" 
             WHERE indexed_data IS NULL
         """)
 
@@ -164,16 +183,16 @@ class PostgresMetaStore(ISlowMetaStore):
                     else None
                 )
                 cur.execute(
-                    """
-                    UPDATE resource_meta SET indexed_data = %s WHERE resource_id = %s
+                    f"""
+                    UPDATE "{self.table_name}" SET indexed_data = %s WHERE resource_id = %s
                 """,
                     (indexed_data_json, resource_id),
                 )
             except Exception:
                 # 如果解析失敗，設置為空 JSON 對象
                 cur.execute(
-                    """
-                    UPDATE resource_meta SET indexed_data = %s WHERE resource_id = %s
+                    f"""
+                    UPDATE "{self.table_name}" SET indexed_data = %s WHERE resource_id = %s
                 """,
                     ("{}", resource_id),
                 )
@@ -186,8 +205,8 @@ class PostgresMetaStore(ISlowMetaStore):
         if not metas_list:
             return
 
-        sql = """
-        INSERT INTO resource_meta (resource_id, data, created_time, updated_time, created_by, updated_by, is_deleted, indexed_data)
+        sql = f"""
+        INSERT INTO "{self.table_name}" (resource_id, data, created_time, updated_time, created_by, updated_by, is_deleted, indexed_data)
         VALUES (%s, %s, %s, %s, %s, %s, %s, %s)
         ON CONFLICT (resource_id) DO UPDATE SET
             data = EXCLUDED.data,
@@ -225,7 +244,9 @@ class PostgresMetaStore(ISlowMetaStore):
     def __getitem__(self, pk: str) -> ResourceMeta:
         # 直接從 PostgreSQL 查詢
         with self.stream_cursor() as cur:
-            cur.execute("SELECT data FROM resource_meta WHERE resource_id = %s", (pk,))
+            cur.execute(
+                f'SELECT data FROM "{self.table_name}" WHERE resource_id = %s', (pk,)
+            )
             row = cur.fetchone()
             if row is None:
                 raise KeyError(pk)
@@ -235,8 +256,8 @@ class PostgresMetaStore(ISlowMetaStore):
         # 直接寫入 PostgreSQL
         import json
 
-        sql = """
-        INSERT INTO resource_meta (resource_id, data, created_time, updated_time, created_by, updated_by, is_deleted, indexed_data)
+        sql = f"""
+        INSERT INTO "{self.table_name}" (resource_id, data, created_time, updated_time, created_by, updated_by, is_deleted, indexed_data)
         VALUES (%s, %s, %s, %s, %s, %s, %s, %s)
         ON CONFLICT (resource_id) DO UPDATE SET
             data = EXCLUDED.data,
@@ -272,21 +293,23 @@ class PostgresMetaStore(ISlowMetaStore):
     def __delitem__(self, pk: str) -> None:
         # 從 PostgreSQL 刪除
         with self.transaction() as cur:
-            cur.execute("DELETE FROM resource_meta WHERE resource_id = %s", (pk,))
+            cur.execute(
+                f'DELETE FROM "{self.table_name}" WHERE resource_id = %s', (pk,)
+            )
             if cur.rowcount == 0:
                 raise KeyError(pk)
 
     def __iter__(self) -> Generator[str]:
         # 從 PostgreSQL 查询所有 resource_id
         with self.stream_cursor() as cur:
-            cur.execute("SELECT resource_id FROM resource_meta")
+            cur.execute(f'SELECT resource_id FROM "{self.table_name}"')
             for row in cur:
                 yield row["resource_id"]
 
     def __len__(self) -> int:
         # 從 PostgreSQL 计算总数
         with self.stream_cursor() as cur:
-            cur.execute("SELECT COUNT(*) FROM resource_meta")
+            cur.execute(f'SELECT COUNT(*) FROM "{self.table_name}"')
             return cur.fetchone()[0]
 
     def iter_search(self, query: ResourceMetaSearchQuery) -> Generator[ResourceMeta]:
@@ -365,7 +388,7 @@ class PostgresMetaStore(ISlowMetaStore):
                     order_parts.append(f"{jsonb_extract} {direction}")
             order_clause = "ORDER BY " + ", ".join(order_parts)
 
-        sql = f"SELECT data FROM resource_meta {where_clause} {order_clause} LIMIT %s OFFSET %s"
+        sql = f'SELECT data FROM "{self.table_name}" {where_clause} {order_clause} LIMIT %s OFFSET %s'
         params.append(query.limit)
         params.append(query.offset)
 
