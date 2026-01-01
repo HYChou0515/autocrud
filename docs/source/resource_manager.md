@@ -413,7 +413,7 @@ Resource Meta 負責資源的整體狀態與索引，Revision Info 負責每個�
 - `created_by` / `updated_by`：建立者與最後更新者
 
 
-### Partial Read
+## Partial Read
 
 ```{versionadded} 0.6.8
 ```
