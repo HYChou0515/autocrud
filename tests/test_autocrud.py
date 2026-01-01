@@ -1,6 +1,7 @@
 from unittest.mock import Mock
-from msgspec import Struct
+from msgspec import Struct, to_builtins
 import pytest
+from jsonpointer import JsonPointer
 
 from autocrud.crud.core import AutoCRUD
 from autocrud.crud.route_templates.get import ReadRouteTemplate
@@ -138,15 +139,44 @@ class TestAutocrud:
         assert info.created_by == "system"
 
 
+class Manager(User):
+    slaves: list['Manager'] = []
+    boss: User | None = None
+
 class TestAutocrudGetPartial:
     @pytest.fixture(autouse=True)
     def setup_method(self):
         self.crud = AutoCRUD()
-        self.crud.add_model(User, default_user="system", default_now=dt.datetime.now)
+        self.crud.add_model(Manager, default_user="system", default_now=dt.datetime.now)
 
     def test_get_with_revision_id(self):
-        mgr = self.crud.get_resource_manager(User)
+        mgr = self.crud.get_resource_manager(Manager)
         info = mgr.create({"name": "Alice", "age": 30})
         assert mgr.get(info.resource_id) == mgr.get(
             info.resource_id, revision_id=info.revision_id
         )
+
+    def test_get_partial(self):
+        mgr = self.crud.get_resource_manager(Manager)
+        info = mgr.create({"name": "Alice", "age": 30, "slaves":[
+            {"name": "Bob", "age": 25},
+            {"name": "Charlie", "age": 28}
+        ], "boss": {"name": "Diana", "age": 40}})
+        d = mgr.get_partial(
+            info.resource_id, 
+            info.revision_id, 
+            partial={
+                JsonPointer("/name"): JsonPointer("/name"),
+            }
+        )
+        assert to_builtins(d) == {"name": "Alice"}
+
+        d = mgr.get_partial(
+            info.resource_id, 
+            info.revision_id, 
+            partial=["name", "boss"]
+        )
+        assert to_builtins(d) == {
+            "name": "Alice",
+            "boss": {"name": "Diana", "age": 40},
+        }

@@ -83,6 +83,7 @@ source = { editable = "." }
 dependencies = [
     { name = "fastapi" },
     { name = "jsonpatch" },
+    { name = "jsonpointer" },
     { name = "more-itertools" },
     { name = "msgpack" },
     { name = "msgspec" },
@@ -157,6 +158,7 @@ requires-dist = [
     { name = "furo", marker = "extra == 'docs'", specifier = ">=2025.7.19" },
     { name = "httpx", marker = "extra == 'cli'", specifier = ">=0.28.1" },
     { name = "jsonpatch", specifier = ">=1.33" },
+    { name = "jsonpointer", specifier = ">=3.0.0" },
     { name = "linkify-it-py", marker = "extra == 'docs'", specifier = ">=2.0.3" },
     { name = "more-itertools", specifier = ">=10.7.0" },
     { name = "msgpack", specifier = ">=1.1.1" },

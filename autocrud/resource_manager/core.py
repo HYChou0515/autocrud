@@ -1,5 +1,6 @@
 import datetime as dt
-from collections.abc import Callable, Generator, Sequence
+from collections.abc import Callable, Generator, Iterable, Sequence
+from jsonpointer import JsonPointer
 from contextlib import contextmanager, suppress
 from functools import cached_property, wraps
 import io
@@ -18,7 +19,7 @@ from uuid import uuid4
 import inspect
 import msgspec
 from jsonpatch import JsonPatch
-from msgspec import UNSET, Struct, UnsetType
+from msgspec import UNSET, Struct, UnsetType, defstruct
 from xxhash import xxh3_128_hexdigest
 from autocrud.types import (
     AfterMigrate,
@@ -377,6 +378,7 @@ class ResourceManager(IResourceManager[T], Generic[T]):
         self._schema_version = schema_version
         self._indexed_fields = indexed_fields or []
         self._migration = migration
+        self._encoding = encoding
         self._data_serializer = MsgspecSerializer(
             encoding=encoding,
             resource_type=resource_type,
@@ -721,7 +723,23 @@ class ResourceManager(IResourceManager[T], Generic[T]):
             meta = self.get_meta(resource_id)
             revision_id = meta.current_revision_id
         return self.get_resource_revision(resource_id, revision_id)
-
+    
+    def get_partial(
+        self, resource_id: str, revision_id: str, partial: dict[JsonPointer, JsonPointer]
+    ) -> Struct:
+        with self.storage.get_data_bytes(resource_id, revision_id) as data_io:
+            name = "_".join([f"Partial_{self._resource_name}", *[n.replace(".", "_") for n in partial]])
+            A = defstruct(name, [(f.name, f.type, msgspec.field(
+                default=f.default,
+                default_factory=f.default_factory,
+                name=f.name,
+            )) for f in msgspec.structs.fields(self._resource_type) if f.name in partial])
+            s = MsgspecSerializer(
+                encoding=self._encoding,
+                resource_type=A,
+            )
+            return s.decode(data_io.read())
+    
     @execute_with_events(
         (
             BeforeGetResourceRevision,
