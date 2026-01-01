@@ -255,26 +255,29 @@ class GraphQLRouteTemplate(BaseRouteTemplate, Generic[T]):
 
         for model_name, resource_manager in self.resources.items():
             try:
+                # Sanitize model_name for GraphQL (replace - with _)
+                safe_model_name = model_name.replace("-", "_")
+
                 # 1. Create dynamic types
                 resource_type = resource_manager.resource_type
 
                 # Try to convert the resource type to a strawberry type
                 try:
                     GraphQLData = _convert_msgspec_to_strawberry(
-                        resource_type, model_name
+                        resource_type, safe_model_name
                     )
                 except Exception:
                     # Fallback to JSON if conversion fails
                     GraphQLData = JSON
 
-                @strawberry.type(name=f"{model_name}Resource")
+                @strawberry.type(name=f"{safe_model_name}Resource")
                 class Resource:
                     info: GraphQLRevisionInfo
                     meta: GraphQLResourceMeta
                     data: GraphQLData  # type: ignore
 
                 # Rename class to avoid confusion
-                Resource.__name__ = f"{model_name}Resource"
+                Resource.__name__ = f"{safe_model_name}Resource"
 
                 # 2. Define Resolvers
                 def make_resolvers(rm: IResourceManager, gql_data: type):
@@ -534,15 +537,11 @@ class GraphQLRouteTemplate(BaseRouteTemplate, Generic[T]):
                                             data_obj = resource.data
                                             info_obj = resource.info
                                         elif partial_fields:
-                                            print(
-                                                f"DEBUG: partial_fields={partial_fields}"
-                                            )
                                             data_obj = rm.get_partial(
                                                 meta.resource_id,
                                                 meta.current_revision_id,
                                                 partial_fields,
                                             )
-                                            print(f"DEBUG: data_obj={data_obj}")
 
                                         if fetch_info and info_obj is None:
                                             info_obj = rm.get_revision_info(
@@ -581,17 +580,17 @@ class GraphQLRouteTemplate(BaseRouteTemplate, Generic[T]):
                 )
 
                 f1 = strawberry.field(
-                    name=model_name,
+                    name=safe_model_name,
                     resolver=resolve_get_resource,
                 )
-                f1.python_name = model_name
+                f1.python_name = safe_model_name
                 fields.append(f1)
 
                 f2 = strawberry.field(
-                    name=f"{model_name}_list",
+                    name=f"{safe_model_name}_list",
                     resolver=resolve_list_resources,
                 )
-                f2.python_name = f"{model_name}_list"
+                f2.python_name = f"{safe_model_name}_list"
                 fields.append(f2)
 
             except Exception:
