@@ -447,6 +447,17 @@ class TestRouteTemplates:
         data = response.json()
         assert data == {"name": "Partial User", "age": 40}
 
+        # 測試使用 partial[] (axios 風格)
+        # 注意：TestClient 的 params 參數如果傳入 list，預設行為是 key=v1&key=v2
+        # 要模擬 key[]=v1&key[]=v2，我們需要手動構造或者使用特定的 key
+        response = client.get(
+            f"/user/{resource_id}/data",
+            params={"partial[]": ["name", "age"]},
+        )
+        assert response.status_code == 200
+        data = response.json()
+        assert data == {"name": "Partial User", "age": 40}
+
 
     @pytest.mark.parametrize(
         "response_type,expected_name",

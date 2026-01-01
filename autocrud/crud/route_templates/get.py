@@ -346,19 +346,26 @@ class ReadRouteTemplate(BaseRouteTemplate, Generic[T]):
                 None,
                 description="List of fields to retrieve (e.g. 'field1', 'nested.field2')",
             ),
+            partial_brackets: Optional[list[str]] = Query(
+                None,
+                alias="partial[]",
+                description="List of fields to retrieve (e.g. 'field1', 'nested.field2') - for axios support",
+                include_in_schema=False,
+            ),
             current_user: str = Depends(self.deps.get_user),
             current_time: dt.datetime = Depends(self.deps.get_now),
         ):
             # 獲取資源和元數據
             try:
                 with resource_manager.meta_provide(current_user, current_time):
-                    if partial:
+                    fields = partial or partial_brackets
+                    if fields:
                         if not revision_id:
                             meta = resource_manager.get_meta(resource_id)
                             revision_id = meta.current_revision_id
                         return MsgspecResponse(
                             resource_manager.get_partial(
-                                resource_id, revision_id, partial
+                                resource_id, revision_id, fields
                             )
                         )
 
