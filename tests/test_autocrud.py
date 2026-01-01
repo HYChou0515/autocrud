@@ -140,14 +140,16 @@ class TestAutocrud:
 
 
 class Manager(User):
-    slaves: list['Manager'] = []
+    slaves: list["Manager"] = []
     boss: User | None = None
+
 
 class TestAutocrudGetPartial:
     @pytest.fixture(autouse=True)
     def setup_method(self):
         self.crud = AutoCRUD()
         self.crud.add_model(Manager, default_user="system", default_now=dt.datetime.now)
+        self.crud.add_model(User, default_user="system", default_now=dt.datetime.now)
 
     def test_get_with_revision_id(self):
         mgr = self.crud.get_resource_manager(Manager)
@@ -158,25 +160,232 @@ class TestAutocrudGetPartial:
 
     def test_get_partial(self):
         mgr = self.crud.get_resource_manager(Manager)
-        info = mgr.create({"name": "Alice", "age": 30, "slaves":[
-            {"name": "Bob", "age": 25},
-            {"name": "Charlie", "age": 28}
-        ], "boss": {"name": "Diana", "age": 40}})
-        d = mgr.get_partial(
-            info.resource_id, 
-            info.revision_id, 
-            partial={
-                JsonPointer("/name"): JsonPointer("/name"),
+        info = mgr.create(
+            {
+                "name": "Alice",
+                "age": 30,
+                "slaves": [{"name": "Bob", "age": 25}, {"name": "Charlie", "age": 28}],
+                "boss": {"name": "Diana", "age": 40},
             }
         )
-        assert to_builtins(d) == {"name": "Alice"}
+        d = mgr.get_partial(
+            info.resource_id,
+            info.revision_id,
+            partial=[
+                JsonPointer("/name"),
+                JsonPointer("/slaves/0/age"),
+            ],
+        )
+        assert to_builtins(d) == {"name": "Alice", "slaves": [{"age": 25}]}
 
         d = mgr.get_partial(
-            info.resource_id, 
-            info.revision_id, 
-            partial=["name", "boss"]
+            info.resource_id,
+            info.revision_id,
+            partial=["name", "boss", "slaves/-/name"],
         )
         assert to_builtins(d) == {
             "name": "Alice",
-            "boss": {"name": "Diana", "age": 40},
+            "boss": {"name": "Diana", "age": 40, "wage": None, "books": []},
+            "slaves": [{"name": "Bob"}, {"name": "Charlie"}],
         }
+
+        d = mgr.get_partial(
+            info.resource_id,
+            info.revision_id,
+            partial=["slaves"],
+        )
+        assert to_builtins(d) == {
+            "slaves": [
+                {
+                    "age": 25,
+                    "name": "Bob",
+                    "wage": None,
+                    "books": [],
+                    "slaves": [],
+                    "boss": None,
+                },
+                {
+                    "age": 28,
+                    "name": "Charlie",
+                    "wage": None,
+                    "books": [],
+                    "slaves": [],
+                    "boss": None,
+                },
+            ]
+        }
+
+    def test_get_partial_slicing11(self):
+        mgr = self.crud.get_resource_manager(Manager)
+        slaves = [
+            {"name": "Bob", "age": 25},
+            {"name": "Charlie", "age": 28},
+            {"name": "Dave", "age": 30},
+            {"name": "Eve", "age": 22},
+        ]
+        slaves[1]["slaves"] = [
+            {"name": "Bob Jr.", "age": 5},
+            {"name": "Bob III", "age": 3},
+        ]
+        info = mgr.create({"name": "Alice", "age": 30, "slaves": slaves})
+        d = mgr.get_partial(
+            info.resource_id,
+            info.revision_id,
+            partial=["slaves/:2/name", "slaves/1:2/slaves/-/name", "slaves/1:/age"],
+        )
+        assert to_builtins(d) == {
+            "slaves": [
+                {"name": "Bob"},
+                {
+                    "name": "Charlie",
+                    "age": 28,
+                    "slaves": [{"name": "Bob Jr."}, {"name": "Bob III"}],
+                },
+                {"age": 30},
+                {"age": 22},
+            ]
+        }
+
+    def test_get_partial_slicing1(self):
+        mgr = self.crud.get_resource_manager(Manager)
+        slaves = [
+            {"name": "Bob", "age": 25},
+            {"name": "Charlie", "age": 28},
+            {"name": "Dave", "age": 30},
+            {"name": "Eve", "age": 22},
+        ]
+        slaves[0]["slaves"] = [
+            {"name": "Bob Jr.", "age": 5},
+            {"name": "Bob III", "age": 3},
+        ]
+        slaves[0]["boss"] = {"name": "Bob Sr.", "age": 55}
+        slaves[1]["boss"] = {"name": "Charlie Sr.", "age": 50}
+        info = mgr.create({"name": "Alice", "age": 30, "slaves": slaves})
+        d = mgr.get_partial(
+            info.resource_id,
+            info.revision_id,
+            partial=["slaves/:2/slaves/1:/age", "slaves/1:/boss/age"],
+        )
+        assert to_builtins(d) == {
+            "slaves": [
+                {"slaves": [{"age": 3}]},
+                {"boss": {"age": 50}, "slaves": []},
+                {"boss": None},
+                {"boss": None},
+            ]
+        }
+
+    def test_get_partial_slicing(self):
+        mgr = self.crud.get_resource_manager(Manager)
+        info = mgr.create(
+            {
+                "name": "Alice",
+                "age": 30,
+                "slaves": [
+                    {"name": "Bob", "age": 25},
+                    {"name": "Charlie", "age": 28},
+                    {"name": "Dave", "age": 30},
+                    {"name": "Eve", "age": 22},
+                ],
+            }
+        )
+
+        # Test slicing :2 (first 2)
+        d = mgr.get_partial(
+            info.resource_id,
+            info.revision_id,
+            partial=["slaves/:2/name"],
+        )
+        assert to_builtins(d) == {"slaves": [{"name": "Bob"}, {"name": "Charlie"}]}
+
+        # Test slicing 1:3 (middle 2)
+        d = mgr.get_partial(
+            info.resource_id,
+            info.revision_id,
+            partial=["slaves/1:3/name"],
+        )
+        assert to_builtins(d) == {"slaves": [{"name": "Charlie"}, {"name": "Dave"}]}
+
+        # Test slicing ::2 (every second)
+        d = mgr.get_partial(
+            info.resource_id,
+            info.revision_id,
+            partial=["slaves/::2/name"],
+        )
+        assert to_builtins(d) == {"slaves": [{"name": "Bob"}, {"name": "Dave"}]}
+
+        # Test mixed slicing and specific index
+        d = mgr.get_partial(
+            info.resource_id,
+            info.revision_id,
+            partial=["slaves/0/name", "slaves/3/age"],
+        )
+        assert to_builtins(d) == {"slaves": [{"name": "Bob"}, {"age": 22}]}
+        d = mgr.get_partial(
+            info.resource_id,
+            info.revision_id,
+            partial=["slaves/-/age"],
+        )
+        assert to_builtins(d) == {
+            "slaves": [{"age": 25}, {"age": 28}, {"age": 30}, {"age": 22}]
+        }
+        d = mgr.get_partial(
+            info.resource_id,
+            info.revision_id,
+            partial=["slaves/:/age"],
+        )
+        assert to_builtins(d) == {
+            "slaves": [{"age": 25}, {"age": 28}, {"age": 30}, {"age": 22}]
+        }
+
+        d = mgr.get_partial(
+            info.resource_id,
+            info.revision_id,
+            partial=["slaves/1::2/age"],
+        )
+        assert to_builtins(d) == {"slaves": [{"age": 28}, {"age": 22}]}
+
+        d = mgr.get_partial(
+            info.resource_id,
+            info.revision_id,
+            partial=["slaves/1:3:2/age"],
+        )
+        assert to_builtins(d) == {"slaves": [{"age": 28}]}
+
+        d = mgr.get_partial(
+            info.resource_id,
+            info.revision_id,
+            partial=["slaves/:/age", "slaves/:/name"],
+        )
+        assert to_builtins(d) == {
+            "slaves": [
+                {"age": 25, "name": "Bob"},
+                {"age": 28, "name": "Charlie"},
+                {"age": 30, "name": "Dave"},
+                {"age": 22, "name": "Eve"},
+            ]
+        }
+
+        d = mgr.get_partial(
+            info.resource_id,
+            info.revision_id,
+            partial=["slaves/:/age", "slaves/:/name", "slaves/1::2/wage"],
+        )
+        assert to_builtins(d) == {
+            "slaves": [
+                {"age": 25, "name": "Bob"},
+                {"age": 28, "name": "Charlie", "wage": None},
+                {"age": 30, "name": "Dave"},
+                {"age": 22, "name": "Eve", "wage": None},
+            ]
+        }
+
+    def test_get_needs_pruning(self):
+        from autocrud.resource_manager.partial import _needs_pruning
+
+        assert not _needs_pruning([["name"], ["age"]])
+        assert _needs_pruning([["slaves", "0", "name"]])
+        assert not _needs_pruning([["slaves", ":", "name"]])
+        assert _needs_pruning([["slaves", "1:3", "name"]])
+        assert _needs_pruning([["slaves", "::2", "name"]])
+        assert not _needs_pruning([["slaves", "-", "name"]])
