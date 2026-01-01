@@ -150,7 +150,7 @@ class FullResourceResponse(msgspec.Struct, Generic[T]):
 class QueryInputs(BaseModel):
     # ResourceMetaSearchQuery 的查詢參數
     is_deleted: Optional[bool] = Query(
-        None,
+        False,
         description="Filter by deletion status",
     )
     created_time_start: Optional[str] = Query(
