@@ -714,9 +714,13 @@ class ResourceManager(IResourceManager[T], Generic[T]):
         (BeforeGet, AfterGet, OnSuccessGet, OnFailureGet),
         "resource",
     )
-    def get(self, resource_id: str) -> Resource[T]:
-        meta = self.get_meta(resource_id)
-        return self.get_resource_revision(resource_id, meta.current_revision_id)
+    def get(
+        self, resource_id: str, *, revision_id: str | UnsetType = UNSET
+    ) -> Resource[T]:
+        if revision_id is UNSET:
+            meta = self.get_meta(resource_id)
+            revision_id = meta.current_revision_id
+        return self.get_resource_revision(resource_id, revision_id)
 
     @execute_with_events(
         (

@@ -308,6 +308,7 @@ OnFailureCreate = defstruct(
 _get_context = [
     ("action", Literal[ResourceAction.get], ResourceAction.get),
     ("resource_id", str),
+    ("revision_id", str | UnsetType, UNSET),
 ]
 
 BeforeGet = defstruct(
@@ -1117,12 +1118,15 @@ class IResourceManager(ABC, Generic[T]):
     def revision_exists(self, resource_id: str, revision_id: str) -> bool: ...
 
     @abstractmethod
-    def get(self, resource_id: str) -> Resource[T]:
+    def get(
+        self, resource_id: str, *, revision_id: str | UnsetType = UNSET
+    ) -> Resource[T]:
         """Get the current revision of the resource.
 
         Arguments:
             - resource_id (str): the id of the resource to get.
-
+            - revision_id (str | UnsetType): the id of a specific revision to get.
+              If UNSET, the current revision is returned.
         Returns:
             - resource (Resource[T]): the resource with its data and revision info.
 

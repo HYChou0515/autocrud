@@ -136,3 +136,17 @@ class TestAutocrud:
         info = mgr.create({"name": "Alice", "age": 30})
         assert info.created_time - dt.datetime.now() < dt.timedelta(seconds=1)
         assert info.created_by == "system"
+
+
+class TestAutocrudGetPartial:
+    @pytest.fixture(autouse=True)
+    def setup_method(self):
+        self.crud = AutoCRUD()
+        self.crud.add_model(User, default_user="system", default_now=dt.datetime.now)
+
+    def test_get_with_revision_id(self):
+        mgr = self.crud.get_resource_manager(User)
+        info = mgr.create({"name": "Alice", "age": 30})
+        assert mgr.get(info.resource_id) == mgr.get(
+            info.resource_id, revision_id=info.revision_id
+        )
