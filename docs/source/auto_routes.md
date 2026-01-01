@@ -864,6 +864,9 @@ autocrud.openapi(app, structs=[ErrorResponse])
 
 ## ⚛️ GraphQL
 
+```{versionadded} 0.6.8
+```
+
 AutoCRUD 支援自動生成 GraphQL API，讓你能夠靈活地查詢所需的資料欄位，避免 Over-fetching。
 
 ### 啟用 GraphQL

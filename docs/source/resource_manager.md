@@ -185,6 +185,9 @@ print(resource.info)  # resource info
 
 - [`get_partial(resource_id, revision_id: str|UnsetType=UNSET, partial: list[str|JsonPointer])`](#autocrud.resource_manager.core.ResourceManager.get_partial)：取得資源的部分內容，支援巢狀欄位與 List Slicing。
 
+```{versionadded} 0.6.8
+```
+
 When `revision_id` is not set, use the latest revision.
 
 ```python
@@ -411,6 +414,9 @@ Resource Meta 負責資源的整體狀態與索引，Revision Info 負責每個�
 
 
 ### Partial Read
+
+```{versionadded} 0.6.8
+```
 
 `get_partial` 允許你僅讀取資源的部分欄位，這在處理大型物件或僅需少量資訊時非常有用。
 
