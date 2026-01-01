@@ -77,6 +77,10 @@ class ListRouteTemplate(BaseRouteTemplate):
                 - `limit`: Maximum number of results to return (default: 10)
                 - `offset`: Number of results to skip for pagination (default: 0)
 
+                **Partial Response:**
+                - `partial`: List of fields to retrieve (e.g. '/field1', '/nested/field2')
+                - Useful for reducing payload size when only specific fields are needed
+
                 **Performance Benefits:**
                 - Minimal response payload size
                 - Faster response times
@@ -87,6 +91,7 @@ class ListRouteTemplate(BaseRouteTemplate):
                 - `GET /{model_name}/data` - Get first 10 resources (data only)
                 - `GET /{model_name}/data?limit=20&offset=40` - Get resources 41-60 (data only)
                 - `GET /{model_name}/data?is_deleted=false&limit=5` - Get 5 non-deleted resources (data only)
+                - `GET /{model_name}/data?partial=/name&partial=/email` - Get specific fields for all resources
 
                 **Error Responses:**
                 - `400`: Bad request - Invalid query parameters or search error""",
@@ -100,14 +105,22 @@ class ListRouteTemplate(BaseRouteTemplate):
             try:
                 # 構建查詢對象
                 query = build_query(query_params)
+                fields = query_params.partial or query_params.partial_brackets
+
                 with resource_manager.meta_provide(current_user, current_time):
                     resources_data: list[T] = []
                     metas = resource_manager.search_resources(query)
                     # 根據響應類型處理資源數據
                     for meta in metas:
                         try:
-                            resource = resource_manager.get(meta.resource_id)
-                            resources_data.append(resource.data)
+                            if fields:
+                                data = resource_manager.get_partial(
+                                    meta.resource_id, meta.current_revision_id, fields
+                                )
+                                resources_data.append(data)
+                            else:
+                                resource = resource_manager.get(meta.resource_id)
+                                resources_data.append(resource.data)
                         except Exception:
                             # 如果無法獲取資源數據，跳過
                             continue
@@ -324,12 +337,17 @@ class ListRouteTemplate(BaseRouteTemplate):
                 - `limit`: Maximum number of results to return (default: 10)
                 - `offset`: Number of results to skip for pagination (default: 0)
 
+                **Partial Response:**
+                - `partial`: List of fields to retrieve (e.g. '/field1', '/nested/field2')
+                - Useful for reducing payload size when only specific fields are needed
+
                 **Use Cases:**
                 - Complete data export operations
                 - Comprehensive resource inspection
                 - Full context retrieval for complex operations
                 - Debugging and detailed analysis
                 - Administrative overview with all details
+                - Fetching only necessary data fields while keeping metadata (using partial)
 
                 **Performance Considerations:**
                 - Largest response payload size
@@ -340,6 +358,7 @@ class ListRouteTemplate(BaseRouteTemplate):
                 - `GET /{model_name}/full` - Get complete info for first 10 resources
                 - `GET /{model_name}/full?limit=5` - Get complete info for first 5 resources (smaller payload)
                 - `GET /{model_name}/full?is_deleted=false&limit=20` - Get complete info for 20 active resources
+                - `GET /{model_name}/full?partial=/name&partial=/email` - Get specific fields for all resources
 
                 **Error Responses:**
                 - `400`: Bad request - Invalid query parameters or search error""",
@@ -354,6 +373,8 @@ class ListRouteTemplate(BaseRouteTemplate):
             try:
                 # 構建查詢對象
                 query = build_query(query_params)
+                fields = query_params.partial or query_params.partial_brackets
+
                 with resource_manager.meta_provide(current_user, current_time):
                     metas = resource_manager.search_resources(query)
 
@@ -361,24 +382,38 @@ class ListRouteTemplate(BaseRouteTemplate):
                     resources_data: list[FullResourceResponse[T]] = []
                     for meta in metas:
                         try:
-                            resource = resource_manager.get(meta.resource_id)
+                            data = UNSET
+                            revision_info = UNSET
+
                             if "data" in returns:
-                                data = resource.data
-                            else:
-                                data = UNSET
-                            if "revision_info" in returns:
-                                revision_info = resource.info
-                            else:
-                                revision_info = UNSET
+                                if fields:
+                                    data = resource_manager.get_partial(
+                                        meta.resource_id,
+                                        meta.current_revision_id,
+                                        fields,
+                                    )
+                                else:
+                                    resource = resource_manager.get(meta.resource_id)
+                                    data = resource.data
+                                    if "revision_info" in returns:
+                                        revision_info = resource.info
+
+                            if "revision_info" in returns and revision_info is UNSET:
+                                revision_info = resource_manager.get_revision_info(
+                                    meta.resource_id,
+                                    meta.current_revision_id,
+                                )
+
                             if "meta" in returns:
-                                meta = meta
+                                meta_out = meta
                             else:
-                                meta = UNSET
+                                meta_out = UNSET
+
                             resources_data.append(
                                 FullResourceResponse(
                                     data=data,
                                     revision_info=revision_info,
-                                    meta=meta,
+                                    meta=meta_out,
                                 ),
                             )
                         except Exception:

@@ -1162,7 +1162,7 @@ class IResourceManager(ABC, Generic[T]):
         Raises:
             - ResourceIDNotFoundError: if resource id does not exist.
             - RevisionIDNotFoundError: if revision id does not exist for this resource.
-        ---
+
         Retrieves a subset of the resource's data for the specified revision,
         based on the provided list of field paths. This allows clients to fetch
         only the data they need, reducing bandwidth and processing overhead.
@@ -1171,6 +1171,28 @@ class IResourceManager(ABC, Generic[T]):
         recovery purposes.
         The returned Struct contains only the fields specified in the `partial`
         argument, preserving the original data structure for those fields.
+        """
+
+    @abstractmethod
+    def get_revision_info(
+        self, resource_id: str, revision_id: str | UnsetType = UNSET
+    ) -> RevisionInfo:
+        """Get the RevisionInfo for a specific revision of the resource.
+
+        Arguments:
+            - resource_id (str): the id of the resource.
+            - revision_id (str | UnsetType): the id of the specific revision to retrieve.
+              If UNSET, the current revision is returned.
+        Returns:
+            - info (RevisionInfo): the metadata of the specified revision.
+        Raises:
+            - ResourceIDNotFoundError: if resource id does not exist.
+            - RevisionIDNotFoundError: if revision id does not exist for this resource.
+
+        Retrieves the RevisionInfo metadata for a specific revision of the resource.
+        If revision_id is UNSET, the current revision's info is returned. This method does NOT
+        check the is_deleted status of the resource metadata, allowing access to revisions of
+        soft-deleted resources for audit and recovery purposes.
         """
 
     @abstractmethod

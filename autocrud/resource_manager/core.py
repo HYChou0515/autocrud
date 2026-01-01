@@ -737,6 +737,15 @@ class ResourceManager(IResourceManager[T], Generic[T]):
             decoded = s.decode(data_io.read())
             return prune_object(decoded, partial)
 
+    def get_revision_info(
+        self, resource_id: str, revision_id: str | UnsetType = UNSET
+    ) -> RevisionInfo:
+        if revision_id is UNSET:
+            meta = self.get_meta(resource_id)
+            revision_id = meta.current_revision_id
+
+        return self.storage.get_resource_revision_info(resource_id, revision_id)
+
     @execute_with_events(
         (
             BeforeGetResourceRevision,
