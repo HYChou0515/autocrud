@@ -8,6 +8,8 @@ from autocrud.crud.route_templates.get import ReadRouteTemplate
 from autocrud.resource_manager.basic import Encoding
 import datetime as dt
 
+from autocrud.types import IResourceManager, RevisionInfo
+
 
 class User(Struct):
     name: str
@@ -151,7 +153,13 @@ class TestAutocrudGetPartial:
         self.crud.add_model(Manager, default_user="system", default_now=dt.datetime.now)
         self.crud.add_model(User, default_user="system", default_now=dt.datetime.now)
 
-    def _check(self, mgr, info, partial, expected):
+    def _check(
+        self,
+        mgr: IResourceManager,
+        info: RevisionInfo,
+        partial: list[JsonPointer],
+        expected: dict,
+    ):
         d = mgr.get_partial(
             info.resource_id,
             info.revision_id,

@@ -726,7 +726,7 @@ class ResourceManager(IResourceManager[T], Generic[T]):
         return self.get_resource_revision(resource_id, revision_id)
 
     def get_partial(
-        self, resource_id: str, revision_id: str, partial: Iterable[JsonPointer]
+        self, resource_id: str, revision_id: str, partial: Iterable[str | JsonPointer]
     ) -> Struct:
         with self.storage.get_data_bytes(resource_id, revision_id) as data_io:
             PartialType = create_partial_type(self._resource_type, partial)

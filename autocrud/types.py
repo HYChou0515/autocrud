@@ -1,6 +1,7 @@
 from abc import ABC, abstractmethod
-from collections.abc import Generator
+from collections.abc import Generator, Iterable
 from contextlib import AbstractContextManager
+from jsonpointer import JsonPointer
 import datetime as dt
 from enum import Enum, Flag, StrEnum, auto
 from typing import IO, Any, Generic, TypeVar
@@ -1144,6 +1145,32 @@ class IResourceManager(ABC, Generic[T]):
         - ResourceIsDeletedError: The resource exists but is marked as deleted (is_deleted=True)
 
         For soft-deleted resources, use restore() first to make them accessible again.
+        """
+
+    @abstractmethod
+    def get_partial(
+        self, resource_id: str, revision_id: str, partial: Iterable[str | JsonPointer]
+    ) -> Struct:
+        """Get a partial view of the resource data for a specific revision.
+
+        Arguments:
+            - resource_id (str): the id of the resource.
+            - revision_id (str): the id of the specific revision to retrieve.
+            - partial (Iterable[str | JsonPointer]): list of field paths to include in the result.
+        Returns:
+            - partial_data (Struct): a Struct containing only the requested fields.
+        Raises:
+            - ResourceIDNotFoundError: if resource id does not exist.
+            - RevisionIDNotFoundError: if revision id does not exist for this resource.
+        ---
+        Retrieves a subset of the resource's data for the specified revision,
+        based on the provided list of field paths. This allows clients to fetch
+        only the data they need, reducing bandwidth and processing overhead.
+        This method does NOT check the is_deleted status of the resource metadata,
+        allowing access to revisions of soft-deleted resources for audit and
+        recovery purposes.
+        The returned Struct contains only the fields specified in the `partial`
+        argument, preserving the original data structure for those fields.
         """
 
     @abstractmethod
