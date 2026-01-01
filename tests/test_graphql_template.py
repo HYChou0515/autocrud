@@ -60,7 +60,7 @@ def test_graphql_flow(client: TestClient):
     """
 
     response = client.post(
-        "/user/graphql", json={"query": query, "variables": {"resourceId": resource_id}}
+        "/graphql", json={"query": query, "variables": {"resourceId": resource_id}}
     )
 
     assert response.status_code == 200
@@ -81,7 +81,7 @@ def test_graphql_list(client: TestClient):
     # 2. List via GraphQL
     query = """
     query ListUsers {
-        userList(query: {limit: 10}) {
+        user_list(query: {limit: 10}) {
             data {
                 name
             }
@@ -89,12 +89,12 @@ def test_graphql_list(client: TestClient):
     }
     """
 
-    response = client.post("/user/graphql", json={"query": query})
+    response = client.post("/graphql", json={"query": query})
 
     assert response.status_code == 200
     data = response.json()
     assert "errors" not in data
-    users = data["data"]["userList"]
+    users = data["data"]["user_list"]
     assert len(users) >= 2
     names = [u["data"]["name"] for u in users]
     assert "Bob" in names
@@ -108,7 +108,7 @@ def test_graphql_search(client: TestClient):
     # 2. Search via GraphQL
     query = """
     query SearchUsers {
-        userList(query: {
+        user_list(query: {
             dataConditions: [
                 {fieldPath: "name", operator: equals, value: "Dave"}
             ]
@@ -120,11 +120,11 @@ def test_graphql_search(client: TestClient):
     }
     """
 
-    response = client.post("/user/graphql", json={"query": query})
+    response = client.post("/graphql", json={"query": query})
 
     assert response.status_code == 200
     data = response.json()
     assert "errors" not in data
-    users = data["data"]["userList"]
+    users = data["data"]["user_list"]
     assert len(users) == 1
     assert users[0]["data"]["name"] == "Dave"

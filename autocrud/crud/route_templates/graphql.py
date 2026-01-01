@@ -5,12 +5,13 @@ from typing import Any, Generic, Optional, TypeVar, get_args, get_origin
 
 import msgspec
 import strawberry
+from strawberry.tools import create_type
 from fastapi import APIRouter, Depends
 from strawberry.fastapi import GraphQLRouter
 from strawberry.scalars import JSON
 from strawberry.types import Info
 
-from autocrud.crud.route_templates.basic import BaseRouteTemplate
+from autocrud.crud.route_templates.basic import BaseRouteTemplate, DependencyProvider
 from autocrud.types import (
     DataSearchCondition,
     DataSearchOperator,
@@ -190,307 +191,91 @@ def _convert_msgspec_to_strawberry(type_: Any, name_prefix: str = "") -> Any:
 class GraphQLRouteTemplate(BaseRouteTemplate, Generic[T]):
     """GraphQL 路由模板"""
 
+    def __init__(self, dependency_provider: DependencyProvider = None):
+        super().__init__(dependency_provider)
+        self.resources: dict[str, IResourceManager] = {}
+        self.graphql_router: Optional[GraphQLRouter] = None
+        self.mounted = False
+
     def apply(
         self,
         model_name: str,
         resource_manager: IResourceManager[T],
         router: APIRouter,
     ) -> None:
-        try:
-            # 1. Create dynamic types
-            resource_type = resource_manager.resource_type
+        self.resources[model_name] = resource_manager
 
-            # Try to convert the resource type to a strawberry type
-            try:
-                GraphQLData = _convert_msgspec_to_strawberry(resource_type, model_name)
-            except Exception:
-                # Fallback to JSON if conversion fails
-                GraphQLData = JSON
+        # Build/Update Schema
+        schema = self._build_schema()
 
-            @strawberry.type(name=f"{model_name}Resource")
-            class GraphQLResource:
-                info: GraphQLRevisionInfo
-                meta: GraphQLResourceMeta
-                data: GraphQLData  # type: ignore
-
-            # 2. Define Resolvers
-            async def resolve_get_resource(
-                resource_id: str,
-                revision_id: Optional[str] = None,
-                info: Info = None,
-            ) -> Optional[GraphQLResource]:
-                context = info.context
-                user = context["user"]
-                now = context["now"]
-
-                try:
-                    with resource_manager.meta_provide(user, now):
-                        # Fetch meta first
-                        meta = resource_manager.get_meta(resource_id)
-
-                        target_revision_id = revision_id or meta.current_revision_id
-
-                        # Check if we can use partial
-                        # For now, we fetch full resource.
-                        # Optimization: Inspect info.selected_fields to see if we only need data or info or meta
-
-                        resource = resource_manager.get_resource_revision(
-                            resource_id, target_revision_id
-                        )
-
-                        return GraphQLResource(
-                            info=GraphQLRevisionInfo(
-                                **msgspec.structs.asdict(resource.info)
-                            ),
-                            meta=GraphQLResourceMeta(**msgspec.structs.asdict(meta)),
-                            data=resource.data
-                            if GraphQLData is not JSON
-                            else msgspec.to_builtins(
-                                resource.data, builtin_types=(enum.Enum,)
-                            ),
-                        )
-                except Exception:
-                    return None
-
-            async def resolve_list_resources(
-                query: Optional[SearchQueryInput] = None,
-                info: Info = None,
-            ) -> list[GraphQLResource]:
-                context = info.context
-                user = context["user"]
-                now = context["now"]
-
-                search_query = ResourceMetaSearchQuery()
-                if query:
-                    if query.is_deleted is not None:
-                        search_query.is_deleted = query.is_deleted
-                    if query.created_time_start:
-                        search_query.created_time_start = query.created_time_start
-                    if query.created_time_end:
-                        search_query.created_time_end = query.created_time_end
-                    if query.updated_time_start:
-                        search_query.updated_time_start = query.updated_time_start
-                    if query.updated_time_end:
-                        search_query.updated_time_end = query.updated_time_end
-                    if query.created_bys:
-                        search_query.created_bys = query.created_bys
-                    if query.updated_bys:
-                        search_query.updated_bys = query.updated_bys
-                    if query.limit:
-                        search_query.limit = query.limit
-                    if query.offset:
-                        search_query.offset = query.offset
-
-                    if query.data_conditions:
-                        conditions = []
-                        for cond in query.data_conditions:
-                            conditions.append(
-                                DataSearchCondition(
-                                    field_path=cond.field_path,
-                                    operator=DataSearchOperator(cond.operator.value),
-                                    value=cond.value,
-                                )
-                            )
-                        search_query.data_conditions = conditions
-
-                    if query.sorts:
-                        sorts = []
-                        for sort in query.sorts:
-                            direction = ResourceMetaSortDirection(sort.direction.value)
-                            if sort.type == GraphQLSortType.meta and sort.key:
-                                sorts.append(
-                                    ResourceMetaSearchSort(
-                                        direction=direction,
-                                        key=ResourceMetaSortKey(sort.key.value),
-                                    )
-                                )
-                            elif sort.type == GraphQLSortType.data and sort.field_path:
-                                sorts.append(
-                                    ResourceDataSearchSort(
-                                        direction=direction, field_path=sort.field_path
-                                    )
-                                )
-                        search_query.sorts = sorts
-
-                try:
-                    with resource_manager.meta_provide(user, now):
-                        metas = resource_manager.search_resources(search_query)
-                        results = []
-                        for meta in metas:
-                            try:
-                                resource = resource_manager.get_resource_revision(
-                                    meta.resource_id, meta.current_revision_id
-                                )
-                                results.append(
-                                    GraphQLResource(
-                                        info=GraphQLRevisionInfo(
-                                            **msgspec.structs.asdict(resource.info)
-                                        ),
-                                        meta=GraphQLResourceMeta(
-                                            **msgspec.structs.asdict(meta)
-                                        ),
-                                        data=resource.data
-                                        if GraphQLData is not JSON
-                                        else msgspec.to_builtins(
-                                            resource.data, builtin_types=(enum.Enum,)
-                                        ),
-                                    )
-                                )
-                            except Exception:
-                                continue
-                        return results
-                except Exception:
-                    return []
-
-            # 3. Create Query
-            query_annotations = {
-                model_name: Optional[GraphQLResource],
-                f"{model_name}_list": list[GraphQLResource],
-            }
-
-            query_methods = {
-                model_name: strawberry.field(resolver=resolve_get_resource),
-                f"{model_name}_list": strawberry.field(resolver=resolve_list_resources),
-            }
-
-            Query = type(
-                "Query", (), {"__annotations__": query_annotations, **query_methods}
-            )
-
-            Query = strawberry.type(name="Query")(Query)
-
-            # 4. Create Schema and Router
-            schema = strawberry.Schema(query=Query)
-
+        if not self.mounted:
+            # First time: create router and mount it
             async def get_context(
                 user: str = Depends(self.deps.get_user),
                 now: dt.datetime = Depends(self.deps.get_now),
             ):
                 return {"user": user, "now": now}
 
-            graphql_app = GraphQLRouter(schema, context_getter=get_context)
-
-            # Mount at /{model_name}/graphql
+            self.graphql_router = GraphQLRouter(schema, context_getter=get_context)
             router.include_router(
-                graphql_app,
-                prefix=f"/{model_name}/graphql",
-                tags=[f"{model_name} GraphQL"],
+                self.graphql_router, prefix="/graphql", tags=["GraphQL"]
             )
-        except Exception:
-            # Log error or re-raise depending on policy.
-            # Since AutoCRUD swallows exceptions, we might want to log it if we had a logger.
-            # For now, just re-raise so it can be caught by AutoCRUD loop (which swallows it)
-            # or seen if called manually.
-            raise
+            self.mounted = True
+        else:
+            # Update schema on existing router
+            self.graphql_router.schema = schema
 
-        # 2. Define Resolvers
-        async def resolve_get_resource(
-            resource_id: str,
-            revision_id: Optional[str] = None,
-            info: Info = None,
-        ) -> Optional[GraphQLResource]:
-            context = info.context
-            user = context["user"]
-            now = context["now"]
+    def _build_schema(self) -> strawberry.Schema:
+        fields = []
 
+        for model_name, resource_manager in self.resources.items():
             try:
-                with resource_manager.meta_provide(user, now):
-                    # Fetch meta first
-                    meta = resource_manager.get_meta(resource_id)
+                # 1. Create dynamic types
+                resource_type = resource_manager.resource_type
 
-                    target_revision_id = revision_id or meta.current_revision_id
-
-                    # Check if we can use partial
-                    # For now, we fetch full resource.
-                    # Optimization: Inspect info.selected_fields to see if we only need data or info or meta
-
-                    resource = resource_manager.get_resource_revision(
-                        resource_id, target_revision_id
+                # Try to convert the resource type to a strawberry type
+                try:
+                    GraphQLData = _convert_msgspec_to_strawberry(
+                        resource_type, model_name
                     )
+                except Exception:
+                    # Fallback to JSON if conversion fails
+                    GraphQLData = JSON
 
-                    return GraphQLResource(
-                        info=GraphQLRevisionInfo(
-                            **msgspec.structs.asdict(resource.info)
-                        ),
-                        meta=GraphQLResourceMeta(**msgspec.structs.asdict(meta)),
-                        data=resource.data
-                        if GraphQLData is not JSON
-                        else msgspec.to_builtins(resource.data),
-                    )
-            except Exception:
-                return None
+                @strawberry.type(name=f"{model_name}Resource")
+                class Resource:
+                    info: GraphQLRevisionInfo
+                    meta: GraphQLResourceMeta
+                    data: GraphQLData  # type: ignore
 
-        async def resolve_list_resources(
-            query: Optional[SearchQueryInput] = None,
-            info: Info = None,
-        ) -> list[GraphQLResource]:
-            context = info.context
-            user = context["user"]
-            now = context["now"]
+                # Rename class to avoid confusion
+                Resource.__name__ = f"{model_name}Resource"
 
-            search_query = ResourceMetaSearchQuery()
-            if query:
-                if query.is_deleted is not None:
-                    search_query.is_deleted = query.is_deleted
-                if query.created_time_start:
-                    search_query.created_time_start = query.created_time_start
-                if query.created_time_end:
-                    search_query.created_time_end = query.created_time_end
-                if query.updated_time_start:
-                    search_query.updated_time_start = query.updated_time_start
-                if query.updated_time_end:
-                    search_query.updated_time_end = query.updated_time_end
-                if query.created_bys:
-                    search_query.created_bys = query.created_bys
-                if query.updated_bys:
-                    search_query.updated_bys = query.updated_bys
-                if query.limit:
-                    search_query.limit = query.limit
-                if query.offset:
-                    search_query.offset = query.offset
+                # 2. Define Resolvers
+                def make_resolvers(rm: IResourceManager, gql_data: type):
+                    async def resolve_get_resource(
+                        resource_id: str,
+                        revision_id: Optional[str] = None,
+                        info: Info = None,
+                    ) -> Optional[Resource]:
+                        context = info.context
+                        user = context["user"]
+                        now = context["now"]
 
-                if query.data_conditions:
-                    conditions = []
-                    for cond in query.data_conditions:
-                        conditions.append(
-                            DataSearchCondition(
-                                field_path=cond.field_path,
-                                operator=DataSearchOperator(cond.operator.value),
-                                value=cond.value,
-                            )
-                        )
-                    search_query.data_conditions = conditions
-
-                if query.sorts:
-                    sorts = []
-                    for sort in query.sorts:
-                        direction = ResourceMetaSortDirection(sort.direction.value)
-                        if sort.type == GraphQLSortType.meta and sort.key:
-                            sorts.append(
-                                ResourceMetaSearchSort(
-                                    direction=direction,
-                                    key=ResourceMetaSortKey(sort.key.value),
-                                )
-                            )
-                        elif sort.type == GraphQLSortType.data and sort.field_path:
-                            sorts.append(
-                                ResourceDataSearchSort(
-                                    direction=direction, field_path=sort.field_path
-                                )
-                            )
-                    search_query.sorts = sorts
-
-            try:
-                with resource_manager.meta_provide(user, now):
-                    metas = resource_manager.search_resources(search_query)
-                    results = []
-                    for meta in metas:
                         try:
-                            resource = resource_manager.get_resource_revision(
-                                meta.resource_id, meta.current_revision_id
-                            )
-                            results.append(
-                                GraphQLResource(
+                            with rm.meta_provide(user, now):
+                                # Fetch meta first
+                                meta = rm.get_meta(resource_id)
+
+                                target_revision_id = (
+                                    revision_id or meta.current_revision_id
+                                )
+
+                                resource = rm.get_resource_revision(
+                                    resource_id, target_revision_id
+                                )
+
+                                return Resource(
                                     info=GraphQLRevisionInfo(
                                         **msgspec.structs.asdict(resource.info)
                                     ),
@@ -498,41 +283,151 @@ class GraphQLRouteTemplate(BaseRouteTemplate, Generic[T]):
                                         **msgspec.structs.asdict(meta)
                                     ),
                                     data=resource.data
-                                    if GraphQLData is not JSON
-                                    else msgspec.to_builtins(resource.data),
+                                    if gql_data is not JSON
+                                    else msgspec.to_builtins(
+                                        resource.data, builtin_types=(enum.Enum,)
+                                    ),
                                 )
-                            )
                         except Exception:
-                            continue
-                    return results
+                            return None
+
+                    async def resolve_list_resources(
+                        query: Optional[SearchQueryInput] = None,
+                        info: Info = None,
+                    ) -> list[Resource]:
+                        context = info.context
+                        user = context["user"]
+                        now = context["now"]
+
+                        search_query = ResourceMetaSearchQuery()
+                        if query:
+                            if query.is_deleted is not None:
+                                search_query.is_deleted = query.is_deleted
+                            if query.created_time_start:
+                                search_query.created_time_start = (
+                                    query.created_time_start
+                                )
+                            if query.created_time_end:
+                                search_query.created_time_end = query.created_time_end
+                            if query.updated_time_start:
+                                search_query.updated_time_start = (
+                                    query.updated_time_start
+                                )
+                            if query.updated_time_end:
+                                search_query.updated_time_end = query.updated_time_end
+                            if query.created_bys:
+                                search_query.created_bys = query.created_bys
+                            if query.updated_bys:
+                                search_query.updated_bys = query.updated_bys
+                            if query.limit:
+                                search_query.limit = query.limit
+                            if query.offset:
+                                search_query.offset = query.offset
+
+                            if query.data_conditions:
+                                conditions = []
+                                for cond in query.data_conditions:
+                                    conditions.append(
+                                        DataSearchCondition(
+                                            field_path=cond.field_path,
+                                            operator=DataSearchOperator(
+                                                cond.operator.value
+                                            ),
+                                            value=cond.value,
+                                        )
+                                    )
+                                search_query.data_conditions = conditions
+
+                            if query.sorts:
+                                sorts = []
+                                for sort in query.sorts:
+                                    direction = ResourceMetaSortDirection(
+                                        sort.direction.value
+                                    )
+                                    if sort.type == GraphQLSortType.meta and sort.key:
+                                        sorts.append(
+                                            ResourceMetaSearchSort(
+                                                direction=direction,
+                                                key=ResourceMetaSortKey(sort.key.value),
+                                            )
+                                        )
+                                    elif (
+                                        sort.type == GraphQLSortType.data
+                                        and sort.field_path
+                                    ):
+                                        sorts.append(
+                                            ResourceDataSearchSort(
+                                                direction=direction,
+                                                field_path=sort.field_path,
+                                            )
+                                        )
+                                search_query.sorts = sorts
+
+                        try:
+                            with rm.meta_provide(user, now):
+                                metas = rm.search_resources(search_query)
+                                results = []
+                                for meta in metas:
+                                    try:
+                                        resource = rm.get_resource_revision(
+                                            meta.resource_id, meta.current_revision_id
+                                        )
+                                        results.append(
+                                            Resource(
+                                                info=GraphQLRevisionInfo(
+                                                    **msgspec.structs.asdict(
+                                                        resource.info
+                                                    )
+                                                ),
+                                                meta=GraphQLResourceMeta(
+                                                    **msgspec.structs.asdict(meta)
+                                                ),
+                                                data=resource.data
+                                                if gql_data is not JSON
+                                                else msgspec.to_builtins(
+                                                    resource.data,
+                                                    builtin_types=(enum.Enum,),
+                                                ),
+                                            )
+                                        )
+                                    except Exception:
+                                        continue
+                                return results
+                        except Exception:
+                            return []
+
+                    return resolve_get_resource, resolve_list_resources
+
+                resolve_get_resource, resolve_list_resources = make_resolvers(
+                    resource_manager, GraphQLData
+                )
+
+                f1 = strawberry.field(
+                    name=model_name,
+                    resolver=resolve_get_resource,
+                )
+                f1.python_name = model_name
+                fields.append(f1)
+
+                f2 = strawberry.field(
+                    name=f"{model_name}_list",
+                    resolver=resolve_list_resources,
+                )
+                f2.python_name = f"{model_name}_list"
+                fields.append(f2)
+
             except Exception:
-                return []
+                continue
 
-        # 3. Create Query
-        @strawberry.type
-        class Query:
-            pass
+        if not fields:
+            # Create a dummy query if no fields to avoid crash
+            @strawberry.type
+            class Query:
+                @strawberry.field
+                def hello(self) -> str:
+                    return "world"
 
-        # Dynamically add fields to Query
-        setattr(Query, model_name, strawberry.field(resolver=resolve_get_resource))
-        setattr(
-            Query,
-            f"{model_name}_list",
-            strawberry.field(resolver=resolve_list_resources),
-        )
+            return strawberry.Schema(query=Query)
 
-        # 4. Create Schema and Router
-        schema = strawberry.Schema(query=Query)
-
-        async def get_context(
-            user: str = Depends(self.deps.get_user),
-            now: dt.datetime = Depends(self.deps.get_now),
-        ):
-            return {"user": user, "now": now}
-
-        graphql_app = GraphQLRouter(schema, context_getter=get_context)
-
-        # Mount at /{model_name}/graphql
-        router.include_router(
-            graphql_app, prefix=f"/{model_name}/graphql", tags=[f"{model_name} GraphQL"]
-        )
+        Query = create_type(name="Query", fields=fields)
+        return strawberry.Schema(query=Query)

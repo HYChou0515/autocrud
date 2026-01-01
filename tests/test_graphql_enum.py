@@ -60,7 +60,7 @@ def test_graphql_enum(client: TestClient):
     """
 
     response = client.post(
-        "/user/graphql", json={"query": query, "variables": {"resourceId": resource_id}}
+        "/graphql", json={"query": query, "variables": {"resourceId": resource_id}}
     )
 
     assert response.status_code == 200
