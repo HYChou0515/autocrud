@@ -188,6 +188,31 @@ def _convert_msgspec_to_strawberry(type_: Any, name_prefix: str = "") -> Any:
     return JSON
 
 
+def _extract_selections(selections, parent_path="") -> list[str]:
+    fields = []
+    for selection in selections:
+        if selection.name == "__typename":
+            continue
+
+        current_path = (
+            f"{parent_path}/{selection.name}" if parent_path else selection.name
+        )
+
+        if selection.selections:
+            fields.extend(_extract_selections(selection.selections, current_path))
+        else:
+            fields.append(current_path)
+    return fields
+
+
+def _get_list_depth(type_: Any) -> int:
+    depth = 0
+    while get_origin(type_) is list or get_origin(type_) is list:
+        depth += 1
+        type_ = get_args(type_)[0]
+    return depth
+
+
 class GraphQLRouteTemplate(BaseRouteTemplate, Generic[T]):
     """GraphQL 路由模板"""
 
@@ -271,21 +296,94 @@ class GraphQLRouteTemplate(BaseRouteTemplate, Generic[T]):
                                     revision_id or meta.current_revision_id
                                 )
 
-                                resource = rm.get_resource_revision(
-                                    resource_id, target_revision_id
+                                data_obj = None
+                                info_obj = None
+
+                                # Check data selection
+                                current_field = next(
+                                    (
+                                        f
+                                        for f in info.selected_fields
+                                        if f.name == info.field_name
+                                    ),
+                                    None,
                                 )
+
+                                data_field = None
+                                info_field = None
+
+                                if current_field:
+                                    data_field = next(
+                                        (
+                                            f
+                                            for f in current_field.selections
+                                            if f.name == "data"
+                                        ),
+                                        None,
+                                    )
+                                    info_field = next(
+                                        (
+                                            f
+                                            for f in current_field.selections
+                                            if f.name == "info"
+                                        ),
+                                        None,
+                                    )
+
+                                if data_field:
+                                    if data_field.selections:
+                                        partial_fields = _extract_selections(
+                                            data_field.selections
+                                        )
+                                        if partial_fields:
+                                            # Handle list types
+                                            depth = _get_list_depth(rm.resource_type)
+                                            if depth > 0:
+                                                prefix = "/".join(["*"] * depth)
+                                                partial_fields = [
+                                                    f"{prefix}/{f}"
+                                                    for f in partial_fields
+                                                ]
+
+                                            data_obj = rm.get_partial(
+                                                resource_id,
+                                                target_revision_id,
+                                                partial_fields,
+                                            )
+                                        else:
+                                            # Should not happen for object types with selections
+                                            resource = rm.get_resource_revision(
+                                                resource_id, target_revision_id
+                                            )
+                                            data_obj = resource.data
+                                            info_obj = resource.info
+                                    else:
+                                        # Scalar (JSON) or no sub-selections
+                                        resource = rm.get_resource_revision(
+                                            resource_id, target_revision_id
+                                        )
+                                        data_obj = resource.data
+                                        info_obj = resource.info
+
+                                # Check info selection
+                                if info_field and info_obj is None:
+                                    info_obj = rm.get_revision_info(
+                                        resource_id, target_revision_id
+                                    )
 
                                 return Resource(
                                     info=GraphQLRevisionInfo(
-                                        **msgspec.structs.asdict(resource.info)
-                                    ),
+                                        **msgspec.structs.asdict(info_obj)
+                                    )
+                                    if info_obj
+                                    else None,
                                     meta=GraphQLResourceMeta(
                                         **msgspec.structs.asdict(meta)
                                     ),
-                                    data=resource.data
+                                    data=data_obj
                                     if gql_data is not JSON
                                     else msgspec.to_builtins(
-                                        resource.data, builtin_types=(enum.Enum,)
+                                        data_obj, builtin_types=(enum.Enum,)
                                     ),
                                 )
                         except Exception:
@@ -367,25 +465,105 @@ class GraphQLRouteTemplate(BaseRouteTemplate, Generic[T]):
                             with rm.meta_provide(user, now):
                                 metas = rm.search_resources(search_query)
                                 results = []
+
+                                # Determine what to fetch based on info
+                                current_field = next(
+                                    (
+                                        f
+                                        for f in info.selected_fields
+                                        if f.name == info.field_name
+                                    ),
+                                    None,
+                                )
+
+                                data_field = None
+                                info_field = None
+
+                                if current_field:
+                                    data_field = next(
+                                        (
+                                            f
+                                            for f in current_field.selections
+                                            if f.name == "data"
+                                        ),
+                                        None,
+                                    )
+                                    info_field = next(
+                                        (
+                                            f
+                                            for f in current_field.selections
+                                            if f.name == "info"
+                                        ),
+                                        None,
+                                    )
+
+                                fetch_full_data = False
+                                partial_fields = None
+
+                                if data_field:
+                                    if data_field.selections:
+                                        partial_fields = _extract_selections(
+                                            data_field.selections
+                                        )
+                                        if not partial_fields:
+                                            fetch_full_data = True
+                                        else:
+                                            # Handle list types
+                                            depth = _get_list_depth(rm.resource_type)
+                                            if depth > 0:
+                                                prefix = "/".join(["*"] * depth)
+                                                partial_fields = [
+                                                    f"{prefix}/{f}"
+                                                    for f in partial_fields
+                                                ]
+                                    else:
+                                        fetch_full_data = True
+
+                                fetch_info = bool(info_field)
+
                                 for meta in metas:
                                     try:
-                                        resource = rm.get_resource_revision(
-                                            meta.resource_id, meta.current_revision_id
-                                        )
+                                        data_obj = None
+                                        info_obj = None
+
+                                        if fetch_full_data:
+                                            resource = rm.get_resource_revision(
+                                                meta.resource_id,
+                                                meta.current_revision_id,
+                                            )
+                                            data_obj = resource.data
+                                            info_obj = resource.info
+                                        elif partial_fields:
+                                            print(
+                                                f"DEBUG: partial_fields={partial_fields}"
+                                            )
+                                            data_obj = rm.get_partial(
+                                                meta.resource_id,
+                                                meta.current_revision_id,
+                                                partial_fields,
+                                            )
+                                            print(f"DEBUG: data_obj={data_obj}")
+
+                                        if fetch_info and info_obj is None:
+                                            info_obj = rm.get_revision_info(
+                                                meta.resource_id,
+                                                meta.current_revision_id,
+                                            )
+
                                         results.append(
                                             Resource(
                                                 info=GraphQLRevisionInfo(
-                                                    **msgspec.structs.asdict(
-                                                        resource.info
-                                                    )
-                                                ),
+                                                    **msgspec.structs.asdict(info_obj)
+                                                )
+                                                if info_obj
+                                                else None,
                                                 meta=GraphQLResourceMeta(
                                                     **msgspec.structs.asdict(meta)
                                                 ),
-                                                data=resource.data
+                                                data=data_obj
                                                 if gql_data is not JSON
                                                 else msgspec.to_builtins(
-                                                    resource.data,
+                                                    data_obj,
                                                     builtin_types=(enum.Enum,),
                                                 ),
                                             )
