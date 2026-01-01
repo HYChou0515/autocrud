@@ -25,6 +25,7 @@ import uvicorn
 from fastapi import FastAPI
 
 from autocrud import AutoCRUD
+from autocrud.crud.route_templates.graphql import GraphQLRouteTemplate
 from autocrud.resource_manager.storage_factory import DiskStorageFactory
 
 
@@ -52,6 +53,7 @@ class Character(Struct):
 
     name: str
     character_class: CharacterClass
+    valueAD__x: int = 12
     level: int = 1
     hp: int = 100
     mp: int = 50
@@ -307,6 +309,7 @@ def get_crud():
         crud = AutoCRUD(storage_factory=DiskStorageFactory(rootdir=storage_path))
     else:
         crud = AutoCRUD()
+    crud.add_route_template(GraphQLRouteTemplate())
 
     # 註冊模型
     crud.add_model(Character, indexed_fields=[("level", int)])

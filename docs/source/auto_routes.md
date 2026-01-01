@@ -862,6 +862,91 @@ autocrud.openapi(app, structs=[ErrorResponse])
 
 你只需提供 resource 結構，AutoCRUD 會自動處理資料的 CRUD、版本、還原等操作，讓 API 開發更簡單。
 
+## ⚛️ GraphQL
+
+```{versionadded} 0.6.8
+```
+
+AutoCRUD 支援自動生成 GraphQL API，讓你能夠靈活地查詢所需的資料欄位，避免 Over-fetching。
+
+### 啟用 GraphQL
+
+要啟用 GraphQL 支援，你需要註冊 `GraphQLRouteTemplate`：
+
+```{code-block} python
+from autocrud.crud.route_templates.graphql import GraphQLRouteTemplate
+
+# 註冊 GraphQL 模板
+crud.add_route_template(GraphQLRouteTemplate())
+```
+
+啟用後，你可以訪問 `/graphql` 端點來使用 GraphQL Playground。
+
+### 查詢範例
+
+假設你有一個 `User` 資源，AutoCRUD 會自動生成以下查詢：
+
+1. **取得單一資源 (`user`)**
+2. **搜尋資源列表 (`user_list`)**
+
+#### 1. 基本查詢與欄位選擇 (Partial Fetching)
+
+只取得需要的欄位（例如 `name` 和 `email`），系統會自動優化後端查詢。
+
+```graphql
+query {
+  user(resource_id: "user_123") {
+    data {
+      name
+      email
+    }
+    meta {
+      created_time
+      updated_time
+    }
+  }
+}
+```
+
+#### 2. 列表搜尋與過濾
+
+支援多種過濾條件與排序。
+
+```graphql
+query {
+  user_list(
+    query: {
+      limit: 10,
+      offset: 0,
+      # 資料欄位過濾
+      data_conditions: [
+        { field_path: "age", operator: greater_than, value: 18 },
+        { field_path: "role", operator: equals, value: "admin" }
+      ],
+      # 排序
+      sorts: [
+        { type: meta, key: created_time, direction: descending }
+      ]
+    }
+  ) {
+    data {
+      name
+      age
+    }
+  }
+}
+```
+
+### 支援的功能
+
+- **Partial Fetching**: 僅從後端讀取請求的欄位，大幅提升效能。
+- **Filtering**: 支援 `eq`, `ne`, `gt`, `gte`, `lt`, `lte`, `contains`, `in`, `not_in` 等運算子。
+- **Sorting**: 支援依據 Meta 欄位（如建立時間）或 Data 欄位排序。
+- **Pagination**: 支援 `limit` 與 `offset` 分頁。
+- **Revision Control**: 可以指定 `revision_id` 查詢特定歷史版本。
+
+
+
 ---
 
 ## 原始碼

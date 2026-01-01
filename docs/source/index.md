@@ -1,6 +1,9 @@
 # AutoCRUD
 
+[![GitHub](https://img.shields.io/badge/GitHub-Repo-181717?logo=github)](https://github.com/HYChou0515/autocrud)
+[![PyPI](https://img.shields.io/pypi/v/autocrud)](https://pypi.org/project/autocrud/)
 [![FastAPI](https://img.shields.io/badge/FastAPI-Automation-009688)](https://fastapi.tiangolo.com)
+[![GraphQL](https://img.shields.io/badge/GraphQL-Supported-E10098?logo=graphql)](https://graphql.org/)
 [![msgspec](https://img.shields.io/badge/msgspec-Supported-5e60ce)](https://github.com/jcrist/msgspec)
 [![Versioning](https://img.shields.io/badge/Versioning-Built--in-blue)]()
 
