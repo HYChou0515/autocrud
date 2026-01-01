@@ -414,6 +414,57 @@ Resource Meta 負責資源的整體狀態與索引，Revision Info 負責每個�
 
 `get_partial` 允許你僅讀取資源的部分欄位，這在處理大型物件或僅需少量資訊時非常有用。
 
+### Why would you care
+
+使用 `get_partial` 可以顯著提升讀取效能，特別是在處理大型物件時。
+
+想像一個情境：您的資源物件中包含大量的資料（例如 `artifacts` 列表），但此次操作僅需讀取部分欄位（例如 `name`）。若完整解碼整個物件，將會造成不必要的效能浪費。
+
+為了驗證 `get_partial` 的效益，我們設計了一個基準測試（Benchmark）。在此實驗中，我們建立包含 1,000 個 `artifacts` 的使用者物件，其中每個 `artifact` 的 `type` 欄位皆為 200 至 20,000 字元的隨機字串。
+
+我們比較了以下幾種處理方式的效能差異：
+
+| | Partial Read | Full Read |
+| :--- | :--- | :--- |
+| | 完整解析整個 JSON/Msgpack 物件| 僅解析並讀取部分欄位，略過不必要的資料以提升效能 |
+| **msgspec (msgpack)** | ✅ (最快) | ✅ |
+| **msgspec (json)** | ✅ | ✅ |
+| **pydantic (json)** | ✅ | ✅ |
+
+使用的資料結構如下(json)
+```json
+{
+  "name": "Hero",
+  "artifacts": [
+    {
+      "id": "artifact_0",
+      "type": "...",
+      "power": 123
+    },
+    ...
+  ],
+  "level": 10
+}
+```
+
+以下是效能測試結果：
+
+Benchmark Results (ms):
+
+| Method | Time (ms) | Factor | Runs |
+| :--- | :--- | :--- | :--- |
+| msgspec+msgpack+partial | 0.0274 | 1.00x | 37007 |
+| msgspec+msgpack | 0.8671 | 31.63x | 1101 |
+| msgspec+json+partial | 2.0374 | 74.31x | 490 |
+| msgspec+json | 2.3715 | 86.50x | 421 |
+| pydantic+partial | 2.4517 | 89.42x | 409 |
+| pydantic | 3.6218 | 132.10x | 267 |
+
+![Benchmark Plot](_static/benchmark_plot.png)
+
+
+完整測試腳本請參考 `examples/benchmark_partial.py`。
+
 #### Partial Schema 與生成物件
 
 當你呼叫 `get_partial` 時，AutoCRUD 會根據你提供的 `partial` 路徑動態生成一個新的 `Struct` 型別。這個新生成的型別會盡可能保留原始 Schema 的結構，但僅包含你請求的欄位。
