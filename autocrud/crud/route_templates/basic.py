@@ -181,6 +181,16 @@ class QueryInputs(BaseModel):
     )
     limit: int = Query(10, description="Maximum number of results")
     offset: int = Query(0, description="Number of results to skip")
+    partial: Optional[list[str]] = Query(
+        None,
+        description="List of fields to retrieve (e.g. '/field1', '/nested/field2')",
+    )
+    partial_brackets: Optional[list[str]] = Query(
+        None,
+        alias="partial[]",
+        description="List of fields to retrieve (e.g. '/field1', '/nested/field2') - for axios support",
+        include_in_schema=False,
+    )
 
 
 class QueryInputsWithReturns(QueryInputs):

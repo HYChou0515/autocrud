@@ -18,8 +18,9 @@ from typing import (
 from uuid import uuid4
 import inspect
 import msgspec
+from autocrud.resource_manager.partial import create_partial_type, prune_object
 from jsonpatch import JsonPatch
-from msgspec import UNSET, Struct, UnsetType, defstruct
+from msgspec import UNSET, Struct, UnsetType
 from xxhash import xxh3_128_hexdigest
 from autocrud.types import (
     AfterMigrate,
@@ -723,23 +724,28 @@ class ResourceManager(IResourceManager[T], Generic[T]):
             meta = self.get_meta(resource_id)
             revision_id = meta.current_revision_id
         return self.get_resource_revision(resource_id, revision_id)
-    
+
     def get_partial(
-        self, resource_id: str, revision_id: str, partial: dict[JsonPointer, JsonPointer]
+        self, resource_id: str, revision_id: str, partial: Iterable[str | JsonPointer]
     ) -> Struct:
         with self.storage.get_data_bytes(resource_id, revision_id) as data_io:
-            name = "_".join([f"Partial_{self._resource_name}", *[n.replace(".", "_") for n in partial]])
-            A = defstruct(name, [(f.name, f.type, msgspec.field(
-                default=f.default,
-                default_factory=f.default_factory,
-                name=f.name,
-            )) for f in msgspec.structs.fields(self._resource_type) if f.name in partial])
+            PartialType = create_partial_type(self._resource_type, partial)
             s = MsgspecSerializer(
                 encoding=self._encoding,
-                resource_type=A,
+                resource_type=PartialType,
             )
-            return s.decode(data_io.read())
-    
+            decoded = s.decode(data_io.read())
+            return prune_object(decoded, partial)
+
+    def get_revision_info(
+        self, resource_id: str, revision_id: str | UnsetType = UNSET
+    ) -> RevisionInfo:
+        if revision_id is UNSET:
+            meta = self.get_meta(resource_id)
+            revision_id = meta.current_revision_id
+
+        return self.storage.get_resource_revision_info(resource_id, revision_id)
+
     @execute_with_events(
         (
             BeforeGetResourceRevision,

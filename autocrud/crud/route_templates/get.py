@@ -124,19 +124,16 @@ class ReadRouteTemplate(BaseRouteTemplate, Generic[T]):
             # 獲取資源和元數據
             try:
                 with resource_manager.meta_provide(current_user, current_time):
-                    if revision_id:
-                        resource = resource_manager.get_resource_revision(
-                            resource_id,
-                            revision_id,
-                        )
-                    else:
-                        resource = resource_manager.get(resource_id)
+                    info = resource_manager.get_revision_info(
+                        resource_id,
+                        revision_id or UNSET,
+                    )
             except HTTPException:
                 raise
             except Exception as e:
                 raise HTTPException(status_code=404, detail=str(e))
 
-            return MsgspecResponse(resource.info)
+            return MsgspecResponse(info)
 
         @router.get(
             f"/{model_name}/{{resource_id}}/full",
@@ -152,6 +149,7 @@ class ReadRouteTemplate(BaseRouteTemplate, Generic[T]):
 
                 **Query Parameters:**
                 - `revision_id` (optional): Specific revision ID to retrieve. If not provided, returns the current revision
+                - `partial` (optional): List of fields to retrieve (e.g. '/field1', '/nested/field2')
 
                 **Response:**
                 - Returns comprehensive resource information including:
@@ -164,10 +162,12 @@ class ReadRouteTemplate(BaseRouteTemplate, Generic[T]):
                 - Complete resource inspection for debugging or auditing
                 - Comprehensive data export including all metadata
                 - Full context retrieval for complex operations
+                - Fetching only necessary data fields while keeping metadata (using partial)
 
                 **Examples:**
                 - `GET /{model_name}/123/full` - Get complete current resource information
                 - `GET /{model_name}/123/full?revision_id=rev456` - Get complete information for specific revision
+                - `GET /{model_name}/123/full?partial=/name&partial=/email` - Get specific fields in data
 
                 **Error Responses:**
                 - `404`: Resource or revision not found""",
@@ -179,6 +179,16 @@ class ReadRouteTemplate(BaseRouteTemplate, Generic[T]):
                 None,
                 description="Specific revision ID to retrieve. If not provided, returns the current revision",
             ),
+            partial: Optional[list[str]] = Query(
+                None,
+                description="List of fields to retrieve (e.g. '/field1', '/nested/field2')",
+            ),
+            partial_brackets: Optional[list[str]] = Query(
+                None,
+                alias="partial[]",
+                description="List of fields to retrieve (e.g. '/field1', '/nested/field2') - for axios support",
+                include_in_schema=False,
+            ),
             current_user: str = Depends(self.deps.get_user),
             current_time: dt.datetime = Depends(self.deps.get_now),
             returns: str = Query(
@@ -188,32 +198,45 @@ class ReadRouteTemplate(BaseRouteTemplate, Generic[T]):
         ):
             # 獲取資源和元數據
             try:
-                resource, meta = self._get_resource_and_meta(
-                    resource_manager,
-                    resource_id,
-                    revision_id,
-                    current_user,
-                    current_time,
-                )
+                fields = partial or partial_brackets
+                returns_list = [r.strip() for r in returns.split(",")]
+
+                with resource_manager.meta_provide(current_user, current_time):
+                    meta = resource_manager.get_meta(resource_id)
+                    target_revision_id = revision_id or meta.current_revision_id
+
+                    data = UNSET
+                    revision_info = UNSET
+
+                    # 1. Get Data
+                    if "data" in returns_list:
+                        if fields:
+                            data = resource_manager.get_partial(
+                                resource_id, target_revision_id, fields
+                            )
+                        else:
+                            resource = resource_manager.get_resource_revision(
+                                resource_id, target_revision_id
+                            )
+                            data = resource.data
+                            # Optimization: if we fetched full resource, we have info too
+                            if "revision_info" in returns_list:
+                                revision_info = resource.info
+
+                    # 2. Get Revision Info (if needed and not yet fetched)
+                    if "revision_info" in returns_list and revision_info is UNSET:
+                        revision_info = resource_manager.get_revision_info(
+                            resource_id, target_revision_id
+                        )
+
             except HTTPException:
                 raise
             except Exception as e:
                 raise HTTPException(status_code=404, detail=str(e))
 
-            # 根據響應類型處理數據
-            returns = [r.strip() for r in returns.split(",")]
-            if "data" in returns:
-                data = resource.data
-            else:
-                data = UNSET
-            if "revision_info" in returns:
-                revision_info = resource.info
-            else:
-                revision_info = UNSET
-            if "meta" in returns:
-                meta = meta
-            else:
+            if "meta" not in returns_list:
                 meta = UNSET
+
             return MsgspecResponse(
                 FullResourceResponse(
                     data=data,
@@ -273,11 +296,11 @@ class ReadRouteTemplate(BaseRouteTemplate, Generic[T]):
                     revision_infos: list[RevisionInfo] = []
                     for rev_id in revision_ids:
                         try:
-                            rev_resource = resource_manager.get_resource_revision(
+                            info = resource_manager.get_revision_info(
                                 resource_id,
                                 rev_id,
                             )
-                            revision_infos.append(rev_resource.info)
+                            revision_infos.append(info)
                         except Exception:
                             # 如果無法獲取某個版本，跳過
                             continue
@@ -307,6 +330,7 @@ class ReadRouteTemplate(BaseRouteTemplate, Generic[T]):
 
                 **Query Parameters:**
                 - `revision_id` (optional): Specific revision ID to retrieve. If not provided, returns the current revision
+                - `partial` (optional): List of fields to retrieve (e.g. '/field1', '/nested/field2')
 
                 **Response:**
                 - Returns only the resource data without metadata or revision information
@@ -318,6 +342,7 @@ class ReadRouteTemplate(BaseRouteTemplate, Generic[T]):
                 - Efficient resource content access
                 - Integration with external systems that only need the data
                 - Lightweight API calls to minimize response size
+                - Fetching only necessary data for UI components (using partial)
 
                 **Performance Benefits:**
                 - Minimal response payload
@@ -328,6 +353,7 @@ class ReadRouteTemplate(BaseRouteTemplate, Generic[T]):
                 **Examples:**
                 - `GET /{model_name}/123/data` - Get current resource data only
                 - `GET /{model_name}/123/data?revision_id=rev456` - Get specific revision data only
+                - `GET /{model_name}/123/data?partial=/name&partial=/email` - Get specific fields
 
                 **Error Responses:**
                 - `404`: Resource or revision not found""",
@@ -339,12 +365,33 @@ class ReadRouteTemplate(BaseRouteTemplate, Generic[T]):
                 None,
                 description="Specific revision ID to retrieve. If not provided, returns the current revision",
             ),
+            partial: Optional[list[str]] = Query(
+                None,
+                description="List of fields to retrieve (e.g. '/field1', '/nested/field2')",
+            ),
+            partial_brackets: Optional[list[str]] = Query(
+                None,
+                alias="partial[]",
+                description="List of fields to retrieve (e.g. '/field1', '/nested/field2') - for axios support",
+                include_in_schema=False,
+            ),
             current_user: str = Depends(self.deps.get_user),
             current_time: dt.datetime = Depends(self.deps.get_now),
         ):
             # 獲取資源和元數據
             try:
                 with resource_manager.meta_provide(current_user, current_time):
+                    fields = partial or partial_brackets
+                    if fields:
+                        if not revision_id:
+                            meta = resource_manager.get_meta(resource_id)
+                            revision_id = meta.current_revision_id
+                        return MsgspecResponse(
+                            resource_manager.get_partial(
+                                resource_id, revision_id, fields
+                            )
+                        )
+
                     if revision_id:
                         resource = resource_manager.get_resource_revision(
                             resource_id,

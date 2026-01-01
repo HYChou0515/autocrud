@@ -426,6 +426,121 @@ class TestRouteTemplates:
         elif response_type == "full":
             assert data["data"]["name"] == "Test User"
 
+    def test_read_partial(self, client: TestClient):
+        """測試讀取部分資源數據"""
+        # 創建一個用戶
+        user_data = {"name": "Partial User", "email": "partial@example.com", "age": 40}
+        create_response = client.post("/user", json=user_data)
+        resource_id = create_response.json()["resource_id"]
+
+        # 測試只獲取 name
+        response = client.get(f"/user/{resource_id}/data", params={"partial": "name"})
+        assert response.status_code == 200
+        data = response.json()
+        assert data == {"name": "Partial User"}
+
+        # 測試獲取 name 和 age
+        response = client.get(
+            f"/user/{resource_id}/data", params={"partial": ["name", "age"]}
+        )
+        assert response.status_code == 200
+        data = response.json()
+        assert data == {"name": "Partial User", "age": 40}
+
+        # 測試使用 partial[] (axios 風格)
+        # 注意：TestClient 的 params 參數如果傳入 list，預設行為是 key=v1&key=v2
+        # 要模擬 key[]=v1&key[]=v2，我們需要手動構造或者使用特定的 key
+        response = client.get(
+            f"/user/{resource_id}/data",
+            params={"partial[]": ["name", "age"]},
+        )
+        assert response.status_code == 200
+        data = response.json()
+        assert data == {"name": "Partial User", "age": 40}
+
+    def test_read_full_partial(self, client: TestClient):
+        """測試讀取完整資源的部分數據"""
+        # 創建一個用戶
+        user_data = {
+            "name": "Full Partial User",
+            "email": "full_partial@example.com",
+            "age": 45,
+        }
+        create_response = client.post("/user", json=user_data)
+        resource_id = create_response.json()["resource_id"]
+
+        # 測試只獲取 name
+        response = client.get(f"/user/{resource_id}/full", params={"partial": "name"})
+        assert response.status_code == 200
+        data = response.json()
+        assert data["data"] == {"name": "Full Partial User"}
+        assert "revision_info" in data
+        assert "meta" in data
+
+        # 測試獲取 name 和 age
+        response = client.get(
+            f"/user/{resource_id}/full", params={"partial": ["name", "age"]}
+        )
+        assert response.status_code == 200
+        data = response.json()
+        assert data["data"] == {"name": "Full Partial User", "age": 45}
+
+        # 測試 partial[]
+        response = client.get(
+            f"/user/{resource_id}/full", params={"partial[]": ["name", "age"]}
+        )
+        assert response.status_code == 200
+        data = response.json()
+        assert data["data"] == {"name": "Full Partial User", "age": 45}
+
+    def test_search_partial(self, client: TestClient):
+        """測試搜索資源的部分數據"""
+        # 創建幾個用戶
+        users = [
+            {"name": "Search User 1", "email": "s1@example.com", "age": 20},
+            {"name": "Search User 2", "email": "s2@example.com", "age": 25},
+        ]
+        for user in users:
+            client.post("/user", json=user)
+
+        # 測試 list data partial
+        response = client.get(
+            "/user/data",
+            params={
+                "partial": ["name"],
+            },
+        )
+        assert response.status_code == 200
+        data = response.json()
+        # 應該至少有上面創建的 2 個用戶，加上之前測試可能殘留的用戶
+        assert len(data) >= 2
+        for item in data:
+            assert "name" in item
+            # 如果 partial 生效，其他欄位不應該存在
+            # 但要注意，如果之前的測試創建了不符合 schema 的數據（不太可能），或者 partial 沒生效
+            if "email" in item:
+                print(f"DEBUG: email found in item: {item}")
+            assert "email" not in item
+            assert "age" not in item
+
+        # 測試 list full partial
+        response = client.get(
+            "/user/full",
+            params={
+                "partial[]": ["name", "age"],
+            },
+        )
+        assert response.status_code == 200
+        data = response.json()
+        assert len(data) >= 2
+        for item in data:
+            assert "data" in item
+            assert "meta" in item
+            assert "revision_info" in item
+            assert "name" in item["data"]
+            assert "age" in item["data"]
+            assert "email" not in item["data"]
+
     @pytest.mark.parametrize(
         "response_type,expected_name",
         [
