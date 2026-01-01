@@ -53,6 +53,7 @@ class Character(Struct):
 
     name: str
     character_class: CharacterClass
+    valueAD__x: int = 12
     level: int = 1
     hp: int = 100
     mp: int = 50

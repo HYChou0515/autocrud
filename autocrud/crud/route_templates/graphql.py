@@ -6,6 +6,7 @@ from typing import Any, Generic, Optional, TypeVar, get_args, get_origin
 import msgspec
 import strawberry
 from strawberry.tools import create_type
+from strawberry.utils.str_converters import to_snake_case, to_camel_case
 from fastapi import APIRouter, Depends
 from strawberry.fastapi import GraphQLRouter
 from strawberry.scalars import JSON
@@ -168,7 +169,9 @@ def _convert_msgspec_to_strawberry(type_: Any, name_prefix: str = "") -> Any:
             return strawberry.enum(type_, name=f"{name_prefix}{type_.__name__}Enum")
         if issubclass(type_, msgspec.Struct):
             # Create dynamic strawberry type
-            fields = {}
+            annotations = {}
+            attributes = {}
+            field_map = {}
             for field in msgspec.structs.fields(type_):
                 field_type = _convert_msgspec_to_strawberry(
                     field.type, f"{name_prefix}{type_.__name__}"
@@ -180,26 +183,73 @@ def _convert_msgspec_to_strawberry(type_: Any, name_prefix: str = "") -> Any:
                     ):  # Check if not already optional
                         field_type = Optional[field_type]
 
-                fields[field.name] = field_type
+                # Calculate GraphQL name and store mapping
+                graphql_name = to_camel_case(field.name)
+                field_map[graphql_name] = field.name
+
+                annotations[field.name] = field_type
+                attributes[field.name] = strawberry.field(name=graphql_name)
 
             type_name = f"{name_prefix}{type_.__name__}GraphQL"
-            return strawberry.type(type(type_name, (), {"__annotations__": fields}))
+            cls = type(type_name, (), {**attributes, "__annotations__": annotations})
+            cls._field_map = field_map
+            return strawberry.type(cls)
 
     return JSON
 
 
-def _extract_selections(selections, parent_path="") -> list[str]:
+def _unwrap_type(type_):
+    origin = get_origin(type_)
+    args = get_args(type_)
+
+    if origin is list or origin is list:
+        return _unwrap_type(args[0])
+    if origin is Optional:
+        return _unwrap_type(args[0])
+    # Handle Union[T, None] which is Optional
+    if origin is not None and type(None) in args:
+        non_none = [a for a in args if a is not type(None)]
+        if len(non_none) == 1:
+            return _unwrap_type(non_none[0])
+
+    return type_
+
+
+def _extract_selections(selections, type_: Any = None, parent_path="") -> list[str]:
     fields = []
+
+    # Get field map if available
+    field_map = getattr(type_, "_field_map", {})
+    # Get type definition for looking up field types
+    type_def = getattr(type_, "__strawberry_definition__", None)
+
     for selection in selections:
         if selection.name == "__typename":
             continue
 
-        current_path = (
-            f"{parent_path}/{selection.name}" if parent_path else selection.name
-        )
+        # Resolve python name
+        if field_map:
+            snake_name = field_map.get(selection.name)
+            if not snake_name:
+                snake_name = to_snake_case(selection.name)
+        else:
+            snake_name = to_snake_case(selection.name)
+
+        current_path = f"{parent_path}/{snake_name}" if parent_path else snake_name
 
         if selection.selections:
-            fields.extend(_extract_selections(selection.selections, current_path))
+            next_type = None
+            if type_def:
+                # Find field definition (internal name matches snake_name)
+                field_def = next(
+                    (f for f in type_def.fields if f.name == snake_name), None
+                )
+                if field_def:
+                    next_type = _unwrap_type(field_def.type)
+
+            fields.extend(
+                _extract_selections(selection.selections, next_type, current_path)
+            )
         else:
             fields.append(current_path)
     return fields
@@ -336,7 +386,7 @@ class GraphQLRouteTemplate(BaseRouteTemplate, Generic[T]):
                                 if data_field:
                                     if data_field.selections:
                                         partial_fields = _extract_selections(
-                                            data_field.selections
+                                            data_field.selections, gql_data
                                         )
                                         if partial_fields:
                                             # Handle list types
@@ -506,7 +556,7 @@ class GraphQLRouteTemplate(BaseRouteTemplate, Generic[T]):
                                 if data_field:
                                     if data_field.selections:
                                         partial_fields = _extract_selections(
-                                            data_field.selections
+                                            data_field.selections, gql_data
                                         )
                                         if not partial_fields:
                                             fetch_full_data = True
