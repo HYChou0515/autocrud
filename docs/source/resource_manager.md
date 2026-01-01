@@ -163,7 +163,9 @@ print(info.resource_id)  # 取得新資源的 resource_id
 
 取得資源最新版本或指定版本，支援查詢、分頁、排序、計數、版本列表。
 
-- [`get(resource_id)`](#autocrud.resource_manager.core.ResourceManager.get)：取得資源最新版本。
+- [`get(resource_id, revision_id: str|UnsetType=UNSET)](#autocrud.resource_manager.core.ResourceManager.get)：取得資源最新版本。
+
+When `revision_id` is not set, use the latest revision.
 
 ```python
 # 取得指定 resource_id 的當前版本
@@ -179,6 +181,32 @@ print(resource.info)  # resource info
 resource = manager.get_resource_revision(resource_id, revision_id)
 print(resource.data)  # resource data
 print(resource.info)  # resource info
+```
+
+- [`get_partial(resource_id, revision_id: str|UnsetType=UNSET, partial: list[str|JsonPointer])`](#autocrud.resource_manager.core.ResourceManager.get_partial)：取得資源的部分內容，支援巢狀欄位與 List Slicing。
+
+When `revision_id` is not set, use the latest revision.
+
+```python
+# 取得部分欄位
+data = manager.get_partial(
+    resource_id,
+    partial=["title", "completed"]
+)
+
+# 支援巢狀欄位與 List Slicing
+# 例如：取得 sub_items 前兩筆的 title，以及所有 sub_items 的 completed
+data = manager.get_partial(
+    resource_id,
+    partial=[
+        "sub_items/:2/title",     # 前兩筆 sub_items 的 title
+        "sub_items/-/completed"   # 所有 sub_items 的 completed
+    ]
+)
+```
+
+```{seealso}
+[Partial Read](#partial-read)
 ```
 
 - [`search_resources(query)`](#autocrud.resource_manager.core.ResourceManager.search_resources)：依條件查詢資源（支援索引、分頁、排序）。
@@ -381,6 +409,144 @@ Resource Meta 負責資源的整體狀態與索引，Revision Info 負責每個�
 - `created_time` / `updated_time`：建立與更新時間
 - `created_by` / `updated_by`：建立者與最後更新者
 
+
+### Partial Read
+
+`get_partial` 允許你僅讀取資源的部分欄位，這在處理大型物件或僅需少量資訊時非常有用。
+
+#### Partial Schema 與生成物件
+
+當你呼叫 `get_partial` 時，AutoCRUD 會根據你提供的 `partial` 路徑動態生成一個新的 `Struct` 型別。這個新生成的型別會盡可能保留原始 Schema 的結構，但僅包含你請求的欄位。
+
+- **欄位保留**：請求的欄位會保留其原始型別。
+- **未請求欄位**：未被請求的欄位將不會出現在生成的物件中（或被標記為 `Unset`）。
+- **結構一致性**：生成的物件結構與原始物件結構一致，這意味著你可以像操作原始物件一樣操作 Partial 物件，只是可用的欄位變少了。
+
+例如，若原始 `TodoItem` 結構如下：
+
+```python
+class TodoItem(Struct):
+    title: str
+    completed: bool
+    sub_items: list[SubItem]
+```
+
+當你請求 `partial=["title"]` 時，回傳的物件型別將類似於：
+
+```python
+class Partial_TodoItem(Struct):
+    title: str
+    # completed 與 sub_items 不存在
+```
+
+這確保了型別安全與序列化的效率。
+
+#### Path Syntax (路徑語法)
+
+`partial` 參數接受一組路徑字串或 `JsonPointer`。
+
+```{note}
+此語法為 **JsonPointer 的超集 (Superset)**。
+除了標準 JsonPointer 規範外，我們額外擴充了：
+1. **非強制開頭斜線**：例如 `"boss/name"` 等同於 `"/boss/name"`。
+2. **列表切片 (Slicing)**：支援使用 `:` 進行 Python 風格的切片操作。
+```
+
+支援豐富的語法來精確選取資料：
+
+- **巢狀欄位**：使用 `/` 分隔層級。
+    - `"boss/name"`：選取 `boss` 物件內的 `name`。
+
+- **列表索引 (Index)**：指定特定索引。
+    - `"items/0/name"`：選取 `items` 列表第 1 筆的 `name`。
+
+- **列表通配符 (Wildcard)**：使用 `-` 代表全部。
+    - `"items/-/name"`：選取 `items` 列表所有項目的 `name`。
+
+- **列表切片 (Slicing)**：支援 Python 風格的切片語法。
+    - `"items/:2/name"`：前 2 筆 (`[:2]`)。
+    - `"items/1:3/name"`：第 2 到 3 筆 (`[1:3]`)。
+    - `"items/::2/name"`：每間隔 2 筆 (`[::2]`)。
+
+**範例：**
+
+假設原始資源資料如下：
+
+```python
+data = {
+    "title": "Project A",
+    "priority": "High",
+    "assignee": {
+        "name": "Alice",
+        "email": "alice@example.com"
+    },
+    "sub_items": [
+        {"title": "Task 1", "completed": True},
+        {"title": "Task 2", "completed": False},
+        {"title": "Task 3", "completed": False},
+        {"title": "Task 4", "completed": True}
+    ]
+}
+```
+
+**1. 基本欄位與巢狀物件**
+
+```python
+partial = ["title", "assignee/name"]
+# 結果：
+{
+    "title": "Project A",
+    "assignee": {
+        "name": "Alice"
+    }
+}
+```
+
+**2. 列表通配符 (Wildcard)**
+
+```python
+partial = ["sub_items/-/title"]
+# 結果：
+{
+    "sub_items": [
+        {"title": "Task 1"},
+        {"title": "Task 2"},
+        {"title": "Task 3"},
+        {"title": "Task 4"}
+    ]
+}
+```
+
+**3. 列表切片 (Slicing)**
+
+取得前兩筆 sub_items 的 title：
+
+```python
+partial = ["sub_items/:2/title"]
+# 結果：
+{
+    "sub_items": [
+        {"title": "Task 1"},
+        {"title": "Task 2"}
+    ]
+}
+```
+
+**4. 複雜組合**
+
+取得 title 以及每間隔 2 筆 sub_items 的 completed 狀態：
+
+```python
+partial = ["title", "sub_items/::2/completed"]
+# 結果：
+{
+    "title": "Project A",
+    "sub_items": [
+        {"completed": True},  # Task 1
+        {"completed": False}  # Task 3
+    ]
+}
+```
 
 ### Resource Searching
 
