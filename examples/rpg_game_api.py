@@ -17,7 +17,7 @@
 """
 
 import datetime as dt
-from dataclasses import dataclass
+from msgspec import Struct
 from enum import Enum
 from typing import Optional
 
@@ -47,8 +47,7 @@ class ItemRarity(Enum):
     AUTOCRUD = "🚀 AutoCRUD 神器"  # 特殊等級
 
 
-@dataclass
-class Character:
+class Character(Struct):
     """遊戲角色"""
 
     name: str
@@ -65,8 +64,7 @@ class Character:
     created_at: dt.datetime = dt.datetime.now()
 
 
-@dataclass
-class Guild:
+class Guild(Struct):
     """遊戲公會"""
 
     name: str
@@ -78,8 +76,7 @@ class Guild:
     founded_at: dt.datetime = dt.datetime.now()
 
 
-@dataclass
-class Equipment:
+class Equipment(Struct):
     """遊戲裝備"""
 
     name: str
