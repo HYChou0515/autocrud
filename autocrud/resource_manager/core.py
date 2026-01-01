@@ -1,3 +1,5 @@
+import sys
+import types
 import datetime as dt
 from collections.abc import Callable, Generator, Iterable, Sequence
 from jsonpointer import JsonPointer
@@ -12,6 +14,7 @@ from typing import (
     Generic,
     NamedTuple,
     TypeVar,
+    Union,
     get_args,
     get_origin,
 )
@@ -341,6 +344,129 @@ def execute_with_events(
         return wrapped
 
     return wrapper
+
+
+
+def _resolve_type(root_type, path_parts):
+    current_type = root_type
+    for part in path_parts:
+        origin = get_origin(current_type)
+        if origin is Union or (sys.version_info >= (3, 10) and origin is types.UnionType):
+            args = get_args(current_type)
+            found = False
+            for arg in args:
+                if arg is type(None): continue
+                if (isinstance(arg, type) and issubclass(arg, Struct)) or get_origin(arg) in (list, Sequence, Iterable):
+                    current_type = arg
+                    found = True
+                    break
+            if not found:
+                 current_type = next((a for a in args if a is not type(None)), Any)
+        
+        if isinstance(current_type, type) and issubclass(current_type, Struct):
+            fields = {f.name: f for f in msgspec.structs.fields(current_type)}
+            if part in fields:
+                current_type = fields[part].type
+            else:
+                raise ValueError(f"Field {part} not found in {current_type}")
+        elif get_origin(current_type) in (list, Sequence, Iterable):
+            args = get_args(current_type)
+            if args:
+                current_type = args[0]
+            else:
+                current_type = Any
+        elif get_origin(current_type) is dict:
+            args = get_args(current_type)
+            if len(args) == 2:
+                current_type = args[1]
+            else:
+                current_type = Any
+    return current_type
+
+def _build_target_struct(name, partial, root_type):
+    tree = {}
+    for target_ptr, source_ptr in partial.items():
+        parts = target_ptr.parts
+        node = tree
+        for part in parts[:-1]:
+            node = node.setdefault(part, {})
+        node[parts[-1]] = source_ptr
+
+    def _build(node_name, node):
+        fields = []
+        for key, value in node.items():
+            if isinstance(value, JsonPointer):
+                field_type = _resolve_type(root_type, value.parts)
+                fields.append((key, field_type))
+            else:
+                sub_struct = _build(f"{node_name}_{key}", value)
+                fields.append((key, sub_struct))
+        return defstruct(node_name, fields)
+
+    return _build(name, tree)
+
+def _build_source_subset_struct(name, partial, root_type):
+    req_tree = {}
+    
+    def add_req(node, parts):
+        if not parts:
+            return
+        head, *tail = parts
+        if head not in node:
+            node[head] = {}
+        add_req(node[head], tail)
+
+    for source_ptr in partial.values():
+        add_req(req_tree, source_ptr.parts)
+
+    def _build(node_name, req_node, current_type):
+        origin = get_origin(current_type)
+        if origin is Union or (sys.version_info >= (3, 10) and origin is types.UnionType):
+             args = get_args(current_type)
+             for arg in args:
+                 if isinstance(arg, type) and issubclass(arg, Struct):
+                     current_type = arg
+                     break
+                 if get_origin(arg) in (list, Sequence, Iterable):
+                     current_type = arg
+                     break
+
+        if isinstance(current_type, type) and issubclass(current_type, Struct):
+            fields = []
+            type_fields = {f.name: f for f in msgspec.structs.fields(current_type)}
+            for key, sub_req in req_node.items():
+                if key in type_fields:
+                    f = type_fields[key]
+                    if not sub_req:
+                        field_type = f.type
+                    else:
+                        field_type = _build(f"{node_name}_{key}", sub_req, f.type)
+                    fields.append((key, field_type))
+            return defstruct(node_name, fields)
+        
+        elif get_origin(current_type) in (list, Sequence, Iterable):
+            merged_req = {}
+            for key, sub_req in req_node.items():
+                def merge(d1, d2):
+                    for k, v in d2.items():
+                        if k in d1:
+                            merge(d1[k], v)
+                        else:
+                            d1[k] = v
+                merge(merged_req, sub_req)
+            
+            args = get_args(current_type)
+            elem_type = args[0] if args else Any
+            
+            if not merged_req:
+                return list[elem_type]
+            
+            new_elem_type = _build(f"{node_name}_Item", merged_req, elem_type)
+            return list[new_elem_type]
+            
+        return current_type
+
+    return _build(name, req_tree, root_type)
 
 
 class ResourceManager(IResourceManager[T], Generic[T]):
@@ -725,20 +851,57 @@ class ResourceManager(IResourceManager[T], Generic[T]):
         return self.get_resource_revision(resource_id, revision_id)
     
     def get_partial(
-        self, resource_id: str, revision_id: str, partial: dict[JsonPointer, JsonPointer]
+        self, resource_id: str, revision_id: str, partial: dict[JsonPointer, JsonPointer] | list[str]
     ) -> Struct:
+        if isinstance(partial, list):
+            new_partial = {}
+            for p in partial:
+                if isinstance(p, str):
+                    if not p.startswith("/"):
+                        ptr = JsonPointer(f"/{p}")
+                    else:
+                        ptr = JsonPointer(p)
+                    new_partial[ptr] = ptr
+                elif isinstance(p, JsonPointer):
+                    new_partial[p] = p
+            partial = new_partial
+
+        # Build Target Struct
+        target_struct_name = f"Partial_{self._resource_name}"
+        TargetStruct = _build_target_struct(target_struct_name, partial, self._resource_type)
+        
+        # Build Source Subset Struct
+        source_struct_name = f"Source_{self._resource_name}"
+        SourceStruct = _build_source_subset_struct(source_struct_name, partial, self._resource_type)
+        
         with self.storage.get_data_bytes(resource_id, revision_id) as data_io:
-            name = "_".join([f"Partial_{self._resource_name}", *[n.replace(".", "_") for n in partial]])
-            A = defstruct(name, [(f.name, f.type, msgspec.field(
-                default=f.default,
-                default_factory=f.default_factory,
-                name=f.name,
-            )) for f in msgspec.structs.fields(self._resource_type) if f.name in partial])
+            # Decode using Source Subset Struct
             s = MsgspecSerializer(
                 encoding=self._encoding,
-                resource_type=A,
+                resource_type=SourceStruct,
             )
-            return s.decode(data_io.read())
+            source_obj = s.decode(data_io.read())
+            
+            # Map to Target Struct
+            source_dict = msgspec.to_builtins(source_obj)
+            target_dict = {}
+            
+            for target_ptr, source_ptr in partial.items():
+                try:
+                    val = source_ptr.resolve(source_dict)
+                    
+                    # Set value in target_dict
+                    parts = target_ptr.parts
+                    current = target_dict
+                    for part in parts[:-1]:
+                        if part not in current:
+                            current[part] = {}
+                        current = current[part]
+                    current[parts[-1]] = val
+                except Exception:
+                    pass
+                
+            return msgspec.convert(target_dict, TargetStruct)
     
     @execute_with_events(
         (

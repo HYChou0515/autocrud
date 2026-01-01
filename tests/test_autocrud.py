@@ -178,5 +178,5 @@ class TestAutocrudGetPartial:
         )
         assert to_builtins(d) == {
             "name": "Alice",
-            "boss": {"name": "Diana", "age": 40},
+            "boss": {"name": "Diana", "age": 40, "wage": None, "books": []},
         }
