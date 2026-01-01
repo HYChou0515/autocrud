@@ -426,6 +426,28 @@ class TestRouteTemplates:
         elif response_type == "full":
             assert data["data"]["name"] == "Test User"
 
+    def test_read_partial(self, client: TestClient):
+        """測試讀取部分資源數據"""
+        # 創建一個用戶
+        user_data = {"name": "Partial User", "email": "partial@example.com", "age": 40}
+        create_response = client.post("/user", json=user_data)
+        resource_id = create_response.json()["resource_id"]
+
+        # 測試只獲取 name
+        response = client.get(f"/user/{resource_id}/data", params={"partial": "name"})
+        assert response.status_code == 200
+        data = response.json()
+        assert data == {"name": "Partial User"}
+
+        # 測試獲取 name 和 age
+        response = client.get(
+            f"/user/{resource_id}/data", params={"partial": ["name", "age"]}
+        )
+        assert response.status_code == 200
+        data = response.json()
+        assert data == {"name": "Partial User", "age": 40}
+
+
     @pytest.mark.parametrize(
         "response_type,expected_name",
         [

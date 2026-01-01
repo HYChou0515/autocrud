@@ -307,6 +307,7 @@ class ReadRouteTemplate(BaseRouteTemplate, Generic[T]):
 
                 **Query Parameters:**
                 - `revision_id` (optional): Specific revision ID to retrieve. If not provided, returns the current revision
+                - `partial` (optional): List of fields to retrieve (e.g. 'field1', 'nested.field2')
 
                 **Response:**
                 - Returns only the resource data without metadata or revision information
@@ -318,6 +319,7 @@ class ReadRouteTemplate(BaseRouteTemplate, Generic[T]):
                 - Efficient resource content access
                 - Integration with external systems that only need the data
                 - Lightweight API calls to minimize response size
+                - Fetching only necessary data for UI components (using partial)
 
                 **Performance Benefits:**
                 - Minimal response payload
@@ -328,6 +330,7 @@ class ReadRouteTemplate(BaseRouteTemplate, Generic[T]):
                 **Examples:**
                 - `GET /{model_name}/123/data` - Get current resource data only
                 - `GET /{model_name}/123/data?revision_id=rev456` - Get specific revision data only
+                - `GET /{model_name}/123/data?partial=name&partial=email` - Get specific fields
 
                 **Error Responses:**
                 - `404`: Resource or revision not found""",
@@ -339,12 +342,26 @@ class ReadRouteTemplate(BaseRouteTemplate, Generic[T]):
                 None,
                 description="Specific revision ID to retrieve. If not provided, returns the current revision",
             ),
+            partial: Optional[list[str]] = Query(
+                None,
+                description="List of fields to retrieve (e.g. 'field1', 'nested.field2')",
+            ),
             current_user: str = Depends(self.deps.get_user),
             current_time: dt.datetime = Depends(self.deps.get_now),
         ):
             # 獲取資源和元數據
             try:
                 with resource_manager.meta_provide(current_user, current_time):
+                    if partial:
+                        if not revision_id:
+                            meta = resource_manager.get_meta(resource_id)
+                            revision_id = meta.current_revision_id
+                        return MsgspecResponse(
+                            resource_manager.get_partial(
+                                resource_id, revision_id, partial
+                            )
+                        )
+
                     if revision_id:
                         resource = resource_manager.get_resource_revision(
                             resource_id,
