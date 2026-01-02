@@ -182,6 +182,16 @@ def _match_data_condition(
             return field_value is None
         else:
             return field_value is not None
+    if condition.operator == DataSearchOperator.exists:
+        has_key = condition.field_path in indexed_data
+        return has_key if condition.value else not has_key
+    if condition.operator == DataSearchOperator.isna:
+        # isna = not exist or is null
+        # Since field_value is None if key is missing, this is same as is_null
+        if condition.value:
+            return field_value is None
+        else:
+            return field_value is not None
 
     return False
 

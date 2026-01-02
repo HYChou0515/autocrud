@@ -163,6 +163,8 @@ class DataSearchOperator(StrEnum):
     in_list = "in"
     not_in_list = "not_in"
     is_null = "is_null"
+    exists = "exists"
+    isna = "isna"
 
 
 class DataSearchCondition(Struct, kw_only=True, tag=True):

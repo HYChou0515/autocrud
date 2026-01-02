@@ -609,3 +609,92 @@ class TestComprehensiveDataSearch:
                 )
             ]
         )
+
+    def test_exists_and_isna(self):
+        # Add a record with null values and missing keys
+        data_6 = {
+            "id": "6",
+            "present_val": "value",
+            "present_null": None,
+            # "missing_key" is missing
+        }
+        meta = ResourceMeta(
+            current_revision_id="rev_6",
+            resource_id=str(uuid.uuid4()),
+            total_revision_count=1,
+            created_time=dt.datetime.now(dt.timezone.utc),
+            updated_time=dt.datetime.now(dt.timezone.utc),
+            created_by="test_user",
+            updated_by="test_user",
+            is_deleted=False,
+            indexed_data=data_6,
+        )
+        self.meta_store[meta.resource_id] = meta
+        self.sample_data.append(meta)
+
+        # 1. Test exists = True
+        # Should match "present_val" (id=6) and "present_null" (id=6)
+        self._assert_search_results(
+            [
+                DataSearchCondition(
+                    field_path="present_val",
+                    operator=DataSearchOperator.exists,
+                    value=True,
+                )
+            ]
+        )
+        self._assert_search_results(
+            [
+                DataSearchCondition(
+                    field_path="present_null",
+                    operator=DataSearchOperator.exists,
+                    value=True,
+                )
+            ]
+        )
+
+        # 2. Test exists = False
+        # Should match id=6 for "missing_key"
+        self._assert_search_results(
+            [
+                DataSearchCondition(
+                    field_path="missing_key",
+                    operator=DataSearchOperator.exists,
+                    value=False,
+                )
+            ]
+        )
+
+        # 3. Test isna = True (missing or null)
+        # Should match id=6 for "present_null" (is null)
+        # Should match id=6 for "missing_key" (missing)
+        self._assert_search_results(
+            [
+                DataSearchCondition(
+                    field_path="present_null",
+                    operator=DataSearchOperator.isna,
+                    value=True,
+                )
+            ]
+        )
+        self._assert_search_results(
+            [
+                DataSearchCondition(
+                    field_path="missing_key",
+                    operator=DataSearchOperator.isna,
+                    value=True,
+                )
+            ]
+        )
+
+        # 4. Test isna = False (exists and not null)
+        # Should match id=6 for "present_val"
+        self._assert_search_results(
+            [
+                DataSearchCondition(
+                    field_path="present_val",
+                    operator=DataSearchOperator.isna,
+                    value=False,
+                )
+            ]
+        )

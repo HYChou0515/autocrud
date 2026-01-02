@@ -474,6 +474,16 @@ class PostgresMetaStore(ISlowMetaStore):
                 return f"{jsonb_text_extract} IS NULL", []
             else:
                 return f"{jsonb_text_extract} IS NOT NULL", []
+        if operator == DataSearchOperator.exists:
+            if value:
+                return "indexed_data ? %s", [field_path]
+            else:
+                return "NOT (indexed_data ? %s)", [field_path]
+        if operator == DataSearchOperator.isna:
+            if value:
+                return f"{jsonb_text_extract} IS NULL", []
+            else:
+                return f"{jsonb_text_extract} IS NOT NULL", []
 
         # 如果不支持的操作，返回空條件
         return "", []

@@ -349,6 +349,17 @@ class SqliteMetaStore(ISlowMetaStore):
                 return f"{json_extract} IS NULL", []
             else:
                 return f"{json_extract} IS NOT NULL", []
+        if operator == DataSearchOperator.exists:
+            # json_type returns NULL if key missing, 'null' if value is null
+            if value:
+                return f"json_type(indexed_data, '$.{field_path}') IS NOT NULL", []
+            else:
+                return f"json_type(indexed_data, '$.{field_path}') IS NULL", []
+        if operator == DataSearchOperator.isna:
+            if value:
+                return f"{json_extract} IS NULL", []
+            else:
+                return f"{json_extract} IS NOT NULL", []
 
         # 如果不支持的操作，返回空條件
         return "", []
