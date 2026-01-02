@@ -1,6 +1,7 @@
 import functools
 import json
 import pickle
+import re
 import sqlite3
 import threading
 from collections import defaultdict
@@ -36,7 +37,22 @@ class SqliteMetaStore(ISlowMetaStore):
             encoding=encoding,
             resource_type=ResourceMeta,
         )
-        self._get_conn = get_conn
+
+        def _get_conn_wrapper():
+            conn = get_conn()
+
+            def regexp(expr, item):
+                if item is None:
+                    return False
+                try:
+                    return re.search(expr, str(item)) is not None
+                except Exception:
+                    return False
+
+            conn.create_function("REGEXP", 2, regexp)
+            return conn
+
+        self._get_conn = _get_conn_wrapper
         self._conns: dict[int, sqlite3.Connection] = defaultdict(self._get_conn)
         _conn = self._conns[threading.get_ident()]
         _conn.execute("""
@@ -336,6 +352,8 @@ class SqliteMetaStore(ISlowMetaStore):
             return f"{json_extract} LIKE ?", [f"{value}%"]
         if operator == DataSearchOperator.ends_with:
             return f"{json_extract} LIKE ?", [f"%{value}"]
+        if operator == DataSearchOperator.regex:
+            return f"{json_extract} REGEXP ?", [value]
         if operator == DataSearchOperator.in_list:
             if isinstance(value, (list, tuple, set)):
                 placeholders = ",".join("?" * len(value))

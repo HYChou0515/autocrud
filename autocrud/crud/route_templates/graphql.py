@@ -40,6 +40,7 @@ class GraphQLDataSearchOperator(str, enum.Enum):
     contains = "contains"
     starts_with = "starts_with"
     ends_with = "ends_with"
+    regex = "regex"
     in_list = "in"
     not_in_list = "not_in"
 

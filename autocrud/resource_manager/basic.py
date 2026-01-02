@@ -1,4 +1,5 @@
 import functools
+import re
 from abc import ABC, abstractmethod
 from collections.abc import Callable, Generator, Iterable, MutableMapping
 from contextlib import AbstractContextManager, contextmanager
@@ -222,6 +223,8 @@ def _evaluate_trivalent(
         return str(field_value).endswith(
             str(condition.value),
         )
+    if condition.operator == DataSearchOperator.regex:
+        return re.search(str(condition.value), str(field_value)) is not None
     if condition.operator == DataSearchOperator.in_list:
         return (
             field_value in condition.value

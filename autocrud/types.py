@@ -165,6 +165,7 @@ class DataSearchOperator(StrEnum):
     is_null = "is_null"
     exists = "exists"
     isna = "isna"
+    regex = "regex"
 
 
 class DataSearchCondition(Struct, kw_only=True, tag=True):
