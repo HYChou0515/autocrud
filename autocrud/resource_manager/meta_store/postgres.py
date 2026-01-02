@@ -411,8 +411,12 @@ class PostgresMetaStore(ISlowMetaStore):
         jsonb_numeric_extract = f"(indexed_data->>'{field_path}')::numeric"
 
         if operator == DataSearchOperator.equals:
+            if isinstance(value, bool):
+                return f"{jsonb_text_extract} = %s", ["true" if value else "false"]
             return f"{jsonb_text_extract} = %s", [str(value)]
         if operator == DataSearchOperator.not_equals:
+            if isinstance(value, bool):
+                return f"{jsonb_text_extract} != %s", ["true" if value else "false"]
             return f"{jsonb_text_extract} != %s", [str(value)]
         if operator == DataSearchOperator.greater_than:
             return f"{jsonb_numeric_extract} > %s", [value]
