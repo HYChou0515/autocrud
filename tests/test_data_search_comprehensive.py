@@ -553,3 +553,59 @@ class TestComprehensiveDataSearch:
                 ),
             ]
         )
+
+    def test_is_null(self):
+        # Add a record with null values and missing keys
+        null_data = {
+            "id": "5",
+            "str": None,
+            # "int" is missing
+            "float": 5.5,
+            "bool": None,
+        }
+        meta = ResourceMeta(
+            current_revision_id="rev_5",
+            resource_id=str(uuid.uuid4()),
+            total_revision_count=1,
+            created_time=dt.datetime.now(dt.timezone.utc),
+            updated_time=dt.datetime.now(dt.timezone.utc),
+            created_by="test_user",
+            updated_by="test_user",
+            is_deleted=False,
+            indexed_data=null_data,
+        )
+        self.meta_store[meta.resource_id] = meta
+        self.sample_data.append(meta)
+
+        # Test is_null = True (should match id=5 for "str")
+        self._assert_search_results(
+            [
+                DataSearchCondition(
+                    field_path="str",
+                    operator=DataSearchOperator.is_null,
+                    value=True,
+                )
+            ]
+        )
+
+        # Test is_null = True (should match id=5 for missing "int")
+        self._assert_search_results(
+            [
+                DataSearchCondition(
+                    field_path="int",
+                    operator=DataSearchOperator.is_null,
+                    value=True,
+                )
+            ]
+        )
+
+        # Test is_null = False (should match id=1,2,3,4 for "str")
+        self._assert_search_results(
+            [
+                DataSearchCondition(
+                    field_path="str",
+                    operator=DataSearchOperator.is_null,
+                    value=False,
+                )
+            ]
+        )

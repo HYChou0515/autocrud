@@ -177,6 +177,11 @@ def _match_data_condition(
             if isinstance(condition.value, (list, tuple, set))
             else True
         )
+    if condition.operator == DataSearchOperator.is_null:
+        if condition.value:
+            return field_value is None
+        else:
+            return field_value is not None
 
     return False
 

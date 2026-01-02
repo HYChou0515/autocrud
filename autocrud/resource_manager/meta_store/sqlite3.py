@@ -344,6 +344,11 @@ class SqliteMetaStore(ISlowMetaStore):
             if isinstance(value, (list, tuple, set)):
                 placeholders = ",".join("?" * len(value))
                 return f"{json_extract} NOT IN ({placeholders})", list(value)
+        if operator == DataSearchOperator.is_null:
+            if value:
+                return f"{json_extract} IS NULL", []
+            else:
+                return f"{json_extract} IS NOT NULL", []
 
         # 如果不支持的操作，返回空條件
         return "", []
