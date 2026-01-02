@@ -312,7 +312,7 @@ def get_crud():
     crud.add_route_template(GraphQLRouteTemplate())
 
     # 註冊模型
-    crud.add_model(Character, indexed_fields=[("level", int)])
+    crud.add_model(Character, indexed_fields=[("level", int), ("name", str)])
     crud.add_model(Guild)
     crud.add_model(Equipment)
 
