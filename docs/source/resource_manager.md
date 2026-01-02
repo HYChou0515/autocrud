@@ -628,7 +628,7 @@ assert len(metas) == count
 | [`updated_time_end`](#autocrud.types.ResourceMetaSearchQuery.updated_time_end)      |在這之前修改（含）                   | datetime                      |
 | [`created_bys`](#autocrud.types.ResourceMetaSearchQuery.created_bys)                |誰建立                         | list[str]                          |
 | [`updated_bys`](#autocrud.types.ResourceMetaSearchQuery.updated_bys)                |誰更新                         | list[str]                          |
-| [`data_conditions`](#autocrud.types.ResourceMetaSearchQuery.data_conditions)        |使用data的indexed fields搜尋 (see [data attribute index](#data-attribute-index))  | list[DataSearchCondition]                     |
+| [`data_conditions`](#autocrud.types.ResourceMetaSearchQuery.data_conditions)        |使用data的indexed fields搜尋 (see [Data Search Filter](#data-search-filter) and [data attribute index](#data-attribute-index))  | list[DataSearchCondition or DataSearchGroup]                     |
 | [`sorts`](#autocrud.types.ResourceMetaSearchQuery.sorts)                            |sort fields (see [sorting](#sorting))                    | list[ResourceMetaSearchSort or ResourceDataSearchSort] |
 | [`limit`](#autocrud.types.ResourceMetaSearchQuery.limit)                            |pagination limit (see [pagination](#pagination))               | int = 10                                            |
 | [`offset`](#autocrud.types.ResourceMetaSearchQuery.offset)                          |pagination offset (see [pagination](#pagination))              | int = 0                                            |
@@ -665,7 +665,107 @@ metas = manager.search_resources(ResourceMetaSearchQuery(
 ))
 ```
 
-`DataSearchCondition`可以提供基本的搜尋功能，詳細使用方式可以參考[DataSearchCondition](#autocrud.types.DataSearchCondition)
+`DataSearchCondition`與`DataSearchGroup`可以提供基本的搜尋功能，詳細使用方式可以參考[DataSearchCondition](#autocrud.types.DataSearchCondition)與[DataSearchGroup](#autocrud.types.DataSearchGroup)
+
+#### Data Search Filter
+
+`data_conditions` 支援更複雜的邏輯組合，包括 `AND`、`OR`、`NOT` 以及巢狀條件。
+這是一個遞迴定義的結構，由 `DataSearchCondition` (基本條件) 與 `DataSearchGroup` (邏輯群組) 組成。
+
+**DataSearchCondition (基本條件)**
+
+這是搜尋過濾的最基本單位，用於對單一欄位進行判斷。
+
+- **field_path** (`str`): 目標欄位的路徑 (必須是已建立索引的欄位)。
+- **value** (`Any`): 用於比對的值。
+- **operator** (`DataSearchOperator`): 比對運算子，支援以下操作：
+
+    | Operator | Code | 說明 |
+    | :--- | :--- | :--- |
+    | **Equality** | | |
+    | `equals` | `"eq"` | 等於 (`==`) |
+    | `not_equals` | `"ne"` | 不等於 (`!=`) |
+    | **Existence** | | |
+    | `is_null` | `"is_null"` | 值為 Null |
+    | `exists` | `"exists"` | 欄位存在 |
+    | `isna` | `"isna"` | 值為 Null 或 不存在 (類似 JS `== null`) |
+    | **Comparison** | | |
+    | `greater_than` | `"gt"` | 大於 (`>`) |
+    | `greater_than_or_equal` | `"gte"` | 大於等於 (`>=`) |
+    | `less_than` | `"lt"` | 小於 (`<`) |
+    | `less_than_or_equal` | `"lte"` | 小於等於 (`<=`) |
+    | **String** | | |
+    | `contains` | `"contains"` | 字串包含 |
+    | `starts_with` | `"starts_with"` | 字串開頭為 |
+    | `ends_with` | `"ends_with"` | 字串結尾為 |
+    | **List** | | |
+    | `in_list` | `"in"` | 值在列表中 |
+    | `not_in_list` | `"not_in"` | 值不在列表中 |
+
+```python
+from autocrud.types import DataSearchCondition, DataSearchOperator
+
+# 範例：搜尋 completed 等於 True
+condition = DataSearchCondition(
+    field_path="completed",
+    operator=DataSearchOperator.equals, # 或直接用字串 "eq"
+    value=True
+)
+```
+
+**DataSearchGroup (邏輯群組)**
+
+```{versionadded} 0.6.8
+```
+
+用於組合多個 `DataSearchCondition` 或其他的 `DataSearchGroup`，實現複雜的邏輯運算。
+
+- **conditions** (`list[DataSearchCondition | DataSearchGroup]`): 包含的條件列表。
+- **operator** (`DataSearchLogicOperator`): 邏輯運算子，決定如何組合列表中的條件。
+
+    | Operator | Code | 說明 |
+    | :--- | :--- | :--- |
+    | `and_op` | `"and"` | 所有條件皆須符合 (AND) |
+    | `or_op` | `"or"` | 任一條件符合即可 (OR) |
+    | `not_op` | `"not"` | 反轉條件結果 (NOT) |
+
+```python
+from autocrud.types import DataSearchGroup, DataSearchLogicOperator
+
+# 範例：搜尋 (age < 20) OR (age > 60)
+group = DataSearchGroup(
+    operator=DataSearchLogicOperator.or_op, # 或直接用字串 "or"
+    conditions=[
+        DataSearchCondition(field_path="age", operator="lt", value=20),
+        DataSearchCondition(field_path="age", operator="gt", value=60),
+    ]
+)
+```
+
+**巢狀組合範例 (Nested Logic)**
+
+你可以自由巢狀組合 Group 與 Condition 來表達任意複雜度的查詢邏輯。
+
+```python
+# 範例：搜尋 (status == 'active') AND ((age < 20) OR (age > 60))
+complex_filter = DataSearchGroup(
+    operator="and",
+    conditions=[
+        DataSearchCondition(field_path="status", operator="eq", value="active"),
+        DataSearchGroup(
+            operator="or",
+            conditions=[
+                DataSearchCondition(field_path="age", operator="lt", value=20),
+                DataSearchCondition(field_path="age", operator="gt", value=60),
+            ]
+        )
+    ]
+)
+
+manager.search_resources(ResourceMetaSearchQuery(
+    data_conditions=[complex_filter]
+))
+```
 
 #### Sorting
 
@@ -881,6 +981,10 @@ assert res.category == "uncategorized"
 
 ```{eval-rst}
 .. autoclass:: autocrud.types.DataSearchCondition
+   :members:
+.. autoclass:: autocrud.types.DataSearchGroup
+   :members:
+.. autoclass:: autocrud.types.DataSearchLogicOperator
    :members:
 .. autoclass:: autocrud.types.DataSearchOperator
    :members:
