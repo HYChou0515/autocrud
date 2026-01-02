@@ -457,6 +457,8 @@ class PostgresMetaStore(ISlowMetaStore):
             return f"{jsonb_text_extract} LIKE %s", [f"{value}%"]
         if operator == DataSearchOperator.ends_with:
             return f"{jsonb_text_extract} LIKE %s", [f"%{value}"]
+        if operator == DataSearchOperator.regex:
+            return f"{jsonb_text_extract} ~ %s", [value]
         if operator == DataSearchOperator.in_list:
             if isinstance(value, (list, tuple, set)):
                 placeholders = ",".join(["%s"] * len(value))

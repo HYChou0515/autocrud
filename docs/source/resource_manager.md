@@ -698,6 +698,7 @@ metas = manager.search_resources(ResourceMetaSearchQuery(
     | `contains` | `"contains"` | 字串包含 |
     | `starts_with` | `"starts_with"` | 字串開頭為 |
     | `ends_with` | `"ends_with"` | 字串結尾為 |
+    | `regex` | `"regex"` | 正規表達式匹配 |
     | **List** | | |
     | `in_list` | `"in"` | 值在列表中 |
     | `not_in_list` | `"not_in"` | 值不在列表中 |
