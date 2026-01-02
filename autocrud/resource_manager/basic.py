@@ -114,41 +114,98 @@ def _match_data_condition(
     condition: DataSearchCondition | DataSearchGroup,
 ) -> bool:
     """檢查索引資料是否匹配 data 條件"""
+    result = _evaluate_trivalent(indexed_data, condition)
+    return result is True
+
+
+def _evaluate_trivalent(
+    indexed_data: dict[str, Any],
+    condition: DataSearchCondition | DataSearchGroup,
+) -> bool | None:
+    """
+    Evaluate condition using SQL-like trivalent logic (True, False, Unknown/None).
+    Unknown is returned for operations on missing keys or NULL values (except is_null/exists/isna).
+    """
     if isinstance(condition, DataSearchGroup):
+        results = [
+            _evaluate_trivalent(indexed_data, sub_cond)
+            for sub_cond in condition.conditions
+        ]
+
         if condition.operator == DataSearchLogicOperator.and_op:
-            return all(
-                _match_data_condition(indexed_data, sub_cond)
-                for sub_cond in condition.conditions
-            )
+            # AND: False if any False. Unknown if any Unknown (and no False). True if all True.
+            if any(r is False for r in results):
+                return False
+            if any(r is None for r in results):
+                return None
+            return True
+
         if condition.operator == DataSearchLogicOperator.or_op:
-            return any(
-                _match_data_condition(indexed_data, sub_cond)
-                for sub_cond in condition.conditions
-            )
+            # OR: True if any True. Unknown if any Unknown (and no True). False if all False.
+            if any(r is True for r in results):
+                return True
+            if any(r is None for r in results):
+                return None
+            return False
+
         if condition.operator == DataSearchLogicOperator.not_op:
-            # NOT operator should have exactly one condition or treat list as AND then NOT
-            # Usually NOT applies to a single condition or a group.
-            # If multiple conditions are provided, we can treat it as NOT (AND(conditions))
-            return not all(
-                _match_data_condition(indexed_data, sub_cond)
-                for sub_cond in condition.conditions
-            )
-        return False
+            # NOT: True->False, False->True, Unknown->Unknown
+            # Implicitly ANDs the conditions if multiple
+            if any(r is False for r in results):
+                return True
+            if any(r is None for r in results):
+                return None
+            return False
+
+        return None
+
+    # Leaf Condition
+
+    # 1. Handle operators that work on missing keys or don't care about value
+    if condition.operator == DataSearchOperator.exists:
+        has_key = condition.field_path in indexed_data
+        return has_key if condition.value else not has_key
+
+    if condition.operator == DataSearchOperator.isna:
+        # isna = not exist or is null
+        if condition.field_path not in indexed_data:
+            return condition.value  # True if checking isna=True
+        val = indexed_data.get(condition.field_path)
+        is_na = val is None
+        return is_na == condition.value
+
+    # 2. Handle missing keys for other operators -> Unknown
+    if condition.field_path not in indexed_data:
+        return None
 
     field_value = indexed_data.get(condition.field_path)
+
+    # 3. Handle NULL values for other operators
+    if field_value is None:
+        # is_null is the only operator that handles NULL value gracefully (besides exists/isna)
+        if condition.operator == DataSearchOperator.is_null:
+            return condition.value  # True if checking is_null=True
+
+        # All other comparisons with NULL return Unknown
+        return None
+
+    # 4. Handle standard operators on present, non-null values
+    if condition.operator == DataSearchOperator.is_null:
+        # Value is not None, so is_null is False
+        return not condition.value
 
     if condition.operator == DataSearchOperator.equals:
         return field_value == condition.value
     if condition.operator == DataSearchOperator.not_equals:
         return field_value != condition.value
     if condition.operator == DataSearchOperator.greater_than:
-        return field_value is not None and field_value > condition.value
+        return field_value > condition.value
     if condition.operator == DataSearchOperator.greater_than_or_equal:
-        return field_value is not None and field_value >= condition.value
+        return field_value >= condition.value
     if condition.operator == DataSearchOperator.less_than:
-        return field_value is not None and field_value < condition.value
+        return field_value < condition.value
     if condition.operator == DataSearchOperator.less_than_or_equal:
-        return field_value is not None and field_value <= condition.value
+        return field_value <= condition.value
     if condition.operator == DataSearchOperator.contains:
         # 特殊處理：如果 field_value 是列表，檢查 condition.value 是否在列表中
         if isinstance(field_value, list):
@@ -156,13 +213,13 @@ def _match_data_condition(
         if isinstance(condition.value, Flag) and isinstance(field_value, int):
             return (condition.value.value & field_value) == condition.value.value
         # 標準字符串包含檢查
-        return field_value is not None and str(condition.value) in str(field_value)
+        return str(condition.value) in str(field_value)
     if condition.operator == DataSearchOperator.starts_with:
-        return field_value is not None and str(field_value).startswith(
+        return str(field_value).startswith(
             str(condition.value),
         )
     if condition.operator == DataSearchOperator.ends_with:
-        return field_value is not None and str(field_value).endswith(
+        return str(field_value).endswith(
             str(condition.value),
         )
     if condition.operator == DataSearchOperator.in_list:
@@ -177,23 +234,8 @@ def _match_data_condition(
             if isinstance(condition.value, (list, tuple, set))
             else True
         )
-    if condition.operator == DataSearchOperator.is_null:
-        if condition.value:
-            return field_value is None
-        else:
-            return field_value is not None
-    if condition.operator == DataSearchOperator.exists:
-        has_key = condition.field_path in indexed_data
-        return has_key if condition.value else not has_key
-    if condition.operator == DataSearchOperator.isna:
-        # isna = not exist or is null
-        # Since field_value is None if key is missing, this is same as is_null
-        if condition.value:
-            return field_value is None
-        else:
-            return field_value is not None
 
-    return False
+    return None
 
 
 def bool_to_sign(b: bool) -> int:

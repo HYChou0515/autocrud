@@ -209,7 +209,7 @@ class TestComprehensiveDataSearch:
 
         return metas
 
-    def _assert_search_results(self, conditions):
+    def _assert_search_results(self, conditions, allow_empty=False):
         """Run search and verify results against in-memory filtering."""
         query = ResourceMetaSearchQuery(
             data_conditions=conditions,
@@ -228,7 +228,10 @@ class TestComprehensiveDataSearch:
                 expected_ids.append(meta.indexed_data["id"])
         expected_ids.sort()
 
-        assert result_ids, "Result set is empty"
+        if not allow_empty:
+            assert result_ids, (
+                "Result set is empty, indicating this is a bad test case."
+            )
         assert result_ids == expected_ids, f"Failed for conditions: {conditions}"
 
     # --- Equals ---
@@ -588,7 +591,11 @@ class TestComprehensiveDataSearch:
             ]
         )
 
-        # Test is_null = True (should match id=5 for missing "int")
+        # Test is_null = True (should NOT match id=5 for missing "int" because strict mode)
+        # "int" is missing in id=5. Strict is_null requires existence.
+        # So this should match nothing (or other records where int is explicitly null, but we don't have any)
+        # Wait, do we have other records? id=1,2,3,4 have int values.
+        # So this should return empty list.
         self._assert_search_results(
             [
                 DataSearchCondition(
@@ -596,10 +603,13 @@ class TestComprehensiveDataSearch:
                     operator=DataSearchOperator.is_null,
                     value=True,
                 )
-            ]
+            ],
+            allow_empty=True,
         )
 
         # Test is_null = False (should match id=1,2,3,4 for "str")
+        # id=5 has str=None. So is_null(False) should not match id=5.
+        # id=1,2,3,4 have str="apple", "banana", etc. So they match.
         self._assert_search_results(
             [
                 DataSearchCondition(
@@ -697,4 +707,68 @@ class TestComprehensiveDataSearch:
                     value=False,
                 )
             ]
+        )
+
+    def test_strict_missing_behavior(self):
+        # Verify that value comparisons on missing keys return False
+        data_7 = {
+            "id": "7",
+            # "missing_val" is missing
+        }
+        meta = ResourceMeta(
+            current_revision_id="rev_7",
+            resource_id=str(uuid.uuid4()),
+            total_revision_count=1,
+            created_time=dt.datetime.now(dt.timezone.utc),
+            updated_time=dt.datetime.now(dt.timezone.utc),
+            created_by="test_user",
+            updated_by="test_user",
+            is_deleted=False,
+            indexed_data=data_7,
+        )
+        self.meta_store[meta.resource_id] = meta
+        self.sample_data.append(meta)
+
+        # 1. Not Equals
+        # missing != "some_val" should be False
+        # If it were True, id=7 would match.
+        # We expect id=7 NOT to match.
+        # Other IDs might match if they have "missing_val" != "some_val".
+        # But "missing_val" is missing in all sample data (id=1..6 don't have it either).
+        # So result should be empty.
+        self._assert_search_results(
+            [
+                DataSearchCondition(
+                    field_path="missing_val",
+                    operator=DataSearchOperator.not_equals,
+                    value="some_val",
+                )
+            ],
+            allow_empty=True,
+        )
+
+        # 2. Not In List
+        # missing not in ["a", "b"] should be False
+        self._assert_search_results(
+            [
+                DataSearchCondition(
+                    field_path="missing_val",
+                    operator=DataSearchOperator.not_in_list,
+                    value=["a", "b"],
+                )
+            ],
+            allow_empty=True,
+        )
+
+        # 3. Greater Than (just to be sure)
+        # missing > 10 should be False
+        self._assert_search_results(
+            [
+                DataSearchCondition(
+                    field_path="missing_val",
+                    operator=DataSearchOperator.greater_than,
+                    value=10,
+                )
+            ],
+            allow_empty=True,
         )

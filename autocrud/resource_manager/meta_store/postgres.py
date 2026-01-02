@@ -471,9 +471,24 @@ class PostgresMetaStore(ISlowMetaStore):
                 ]
         if operator == DataSearchOperator.is_null:
             if value:
-                return f"{jsonb_text_extract} IS NULL", []
+                # Strict is_null: Must exist AND be null
+                return f"(indexed_data ? %s) AND ({jsonb_text_extract} IS NULL)", [
+                    field_path
+                ]
             else:
-                return f"{jsonb_text_extract} IS NOT NULL", []
+                # Strict is_null=False: Must exist AND be NOT null
+                # (If it doesn't exist, it's False. If it exists and is null, it's False.)
+                # Wait, if is_null=False, we want "Not (Exists and Null)".
+                # But user said "if field_path does not exist... return false".
+                # So if missing, is_null=False should return False?
+                # "is_null(False)" means "is NOT null".
+                # If missing, is it "not null"? Yes.
+                # But user said "all value related comparisons should return false".
+                # If is_null is a value comparison, then is_null(False) on missing should be False.
+                # This means "It must exist AND NOT be null".
+                return f"(indexed_data ? %s) AND ({jsonb_text_extract} IS NOT NULL)", [
+                    field_path
+                ]
         if operator == DataSearchOperator.exists:
             if value:
                 return "indexed_data ? %s", [field_path]
