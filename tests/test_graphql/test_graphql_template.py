@@ -20,7 +20,7 @@ def autocrud():
     crud = AutoCRUD(model_naming="kebab")
     crud.add_route_template(CreateRouteTemplate())
     crud.add_route_template(GraphQLRouteTemplate())
-    crud.add_model(User, indexed_fields=["name"])
+    crud.add_model(User, indexed_fields=["name", "age"])
     return crud
 
 
@@ -110,7 +110,7 @@ def test_graphql_search(client: TestClient):
     query SearchUsers {
         user_list(query: {
             dataConditions: [
-                {fieldPath: "name", operator: equals, value: "Dave"}
+                {condition: {fieldPath: "name", operator: equals, value: "Dave"}}
             ]
         }) {
             data {
@@ -128,3 +128,63 @@ def test_graphql_search(client: TestClient):
     users = data["data"]["user_list"]
     assert len(users) == 1
     assert users[0]["data"]["name"] == "Dave"
+
+
+def test_graphql_nested_filter(client: TestClient):
+    # Create users
+    client.post(
+        "/user", json={"name": "Alice", "email": "alice@example.com", "age": 20}
+    )
+    client.post("/user", json={"name": "Bob", "email": "bob@example.com", "age": 30})
+    client.post(
+        "/user", json={"name": "Charlie", "email": "charlie@example.com", "age": 40}
+    )
+
+    # Query: (age < 25) OR (age > 35) -> Alice and Charlie
+    query = """
+    query ListUsers {
+        user_list(query: {
+            dataConditions: [
+                {
+                    group: {
+                        operator: or_op,
+                        conditions: [
+                            {
+                                condition: {
+                                    fieldPath: "age",
+                                    operator: less_than,
+                                    value: 25
+                                }
+                            },
+                            {
+                                condition: {
+                                    fieldPath: "age",
+                                    operator: greater_than,
+                                    value: 35
+                                }
+                            }
+                        ]
+                    }
+                }
+            ]
+        }) {
+            data {
+                name
+            }
+        }
+    }
+    """
+
+    response = client.post("/graphql", json={"query": query})
+
+    assert response.status_code == 200
+    data = response.json()
+    if "errors" in data:
+        print(data["errors"])
+    assert "errors" not in data
+    users = data["data"]["user_list"]
+    assert len(users) == 2
+    names = {u["data"]["name"] for u in users}
+    assert "Alice" in names
+    assert "Charlie" in names
+    assert "Bob" not in names

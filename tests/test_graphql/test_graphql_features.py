@@ -158,7 +158,7 @@ def test_filtering_and_sorting(autocrud_complex, client_complex):
     # Test data conditions
     query_condition = """
     query {
-        complex_model_list(query: {dataConditions: [{fieldPath: "name", operator: equals, value: "B"}]}) {
+        complex_model_list(query: {dataConditions: [{condition: {fieldPath: "name", operator: equals, value: "B"}}]}) {
             data {
                 name
             }
