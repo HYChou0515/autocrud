@@ -16,6 +16,8 @@ from autocrud.crud.route_templates.basic import BaseRouteTemplate, DependencyPro
 from autocrud.types import (
     DataSearchCondition,
     DataSearchOperator,
+    DataSearchGroup,
+    DataSearchLogicOperator,
     IResourceManager,
     ResourceMetaSearchQuery,
     ResourceMetaSearchSort,
@@ -42,11 +44,30 @@ class GraphQLDataSearchOperator(str, enum.Enum):
     not_in_list = "not_in"
 
 
+@strawberry.enum
+class GraphQLDataSearchLogicOperator(str, enum.Enum):
+    and_op = "and"
+    or_op = "or"
+    not_op = "not"
+
+
 @strawberry.input
 class DataSearchConditionInput:
     field_path: str
     operator: GraphQLDataSearchOperator
     value: JSON
+
+
+@strawberry.input
+class DataSearchGroupInput:
+    operator: GraphQLDataSearchLogicOperator
+    conditions: list["DataSearchFilterInput"]
+
+
+@strawberry.input
+class DataSearchFilterInput:
+    condition: Optional[DataSearchConditionInput] = None
+    group: Optional[DataSearchGroupInput] = None
 
 
 @strawberry.enum
@@ -85,7 +106,7 @@ class SearchQueryInput:
     updated_time_end: Optional[dt.datetime] = None
     created_bys: Optional[list[str]] = None
     updated_bys: Optional[list[str]] = None
-    data_conditions: Optional[list[DataSearchConditionInput]] = None
+    data_conditions: Optional[list[DataSearchFilterInput]] = None
     limit: int = 10
     offset: int = 0
     sorts: Optional[list[SortInput]] = None
@@ -261,6 +282,37 @@ def _get_list_depth(type_: Any) -> int:
         depth += 1
         type_ = get_args(type_)[0]
     return depth
+
+
+def _convert_filter_input(
+    input_filter: DataSearchFilterInput,
+) -> DataSearchCondition | DataSearchGroup | None:
+    if input_filter.group:
+        # It's a group
+        if not input_filter.group.conditions:
+            return None
+
+        conditions = []
+        for f in input_filter.group.conditions:
+            c = _convert_filter_input(f)
+            if c:
+                conditions.append(c)
+
+        if not conditions:
+            return None
+
+        return DataSearchGroup(
+            operator=DataSearchLogicOperator(input_filter.group.operator.value),
+            conditions=conditions,
+        )
+    elif input_filter.condition:
+        # It's a condition
+        return DataSearchCondition(
+            field_path=input_filter.condition.field_path,
+            operator=DataSearchOperator(input_filter.condition.operator.value),
+            value=input_filter.condition.value,
+        )
+    return None
 
 
 class GraphQLRouteTemplate(BaseRouteTemplate, Generic[T]):
@@ -478,15 +530,9 @@ class GraphQLRouteTemplate(BaseRouteTemplate, Generic[T]):
                             if query.data_conditions:
                                 conditions = []
                                 for cond in query.data_conditions:
-                                    conditions.append(
-                                        DataSearchCondition(
-                                            field_path=cond.field_path,
-                                            operator=DataSearchOperator(
-                                                cond.operator.value
-                                            ),
-                                            value=cond.value,
-                                        )
-                                    )
+                                    c = _convert_filter_input(cond)
+                                    if c:
+                                        conditions.append(c)
                                 search_query.data_conditions = conditions
 
                             if query.sorts:

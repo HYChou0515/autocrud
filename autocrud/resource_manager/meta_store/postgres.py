@@ -399,7 +399,32 @@ class PostgresMetaStore(ISlowMetaStore):
 
     def _build_jsonb_condition(self, condition) -> tuple[str, list]:
         """構建 PostgreSQL JSONB 查詢條件"""
-        from autocrud.types import DataSearchOperator
+        from autocrud.types import (
+            DataSearchGroup,
+            DataSearchLogicOperator,
+            DataSearchOperator,
+        )
+
+        if isinstance(condition, DataSearchGroup):
+            sub_conditions = []
+            sub_params = []
+            for sub_cond in condition.conditions:
+                c_str, c_params = self._build_jsonb_condition(sub_cond)
+                if c_str:
+                    sub_conditions.append(c_str)
+                    sub_params.extend(c_params)
+
+            if not sub_conditions:
+                return "", []
+
+            if condition.operator == DataSearchLogicOperator.and_op:
+                return f"({' AND '.join(sub_conditions)})", sub_params
+            if condition.operator == DataSearchLogicOperator.or_op:
+                return f"({' OR '.join(sub_conditions)})", sub_params
+            if condition.operator == DataSearchLogicOperator.not_op:
+                # NOT (AND(conditions))
+                return f"NOT ({' AND '.join(sub_conditions)})", sub_params
+            return "", []
 
         field_path = condition.field_path
         operator = condition.operator
@@ -411,8 +436,12 @@ class PostgresMetaStore(ISlowMetaStore):
         jsonb_numeric_extract = f"(indexed_data->>'{field_path}')::numeric"
 
         if operator == DataSearchOperator.equals:
+            if isinstance(value, bool):
+                return f"{jsonb_text_extract} = %s", ["true" if value else "false"]
             return f"{jsonb_text_extract} = %s", [str(value)]
         if operator == DataSearchOperator.not_equals:
+            if isinstance(value, bool):
+                return f"{jsonb_text_extract} != %s", ["true" if value else "false"]
             return f"{jsonb_text_extract} != %s", [str(value)]
         if operator == DataSearchOperator.greater_than:
             return f"{jsonb_numeric_extract} > %s", [value]
@@ -440,6 +469,36 @@ class PostgresMetaStore(ISlowMetaStore):
                 return f"{jsonb_text_extract} NOT IN ({placeholders})", [
                     str(v) for v in value
                 ]
+        if operator == DataSearchOperator.is_null:
+            if value:
+                # Strict is_null: Must exist AND be null
+                return f"(indexed_data ? %s) AND ({jsonb_text_extract} IS NULL)", [
+                    field_path
+                ]
+            else:
+                # Strict is_null=False: Must exist AND be NOT null
+                # (If it doesn't exist, it's False. If it exists and is null, it's False.)
+                # Wait, if is_null=False, we want "Not (Exists and Null)".
+                # But user said "if field_path does not exist... return false".
+                # So if missing, is_null=False should return False?
+                # "is_null(False)" means "is NOT null".
+                # If missing, is it "not null"? Yes.
+                # But user said "all value related comparisons should return false".
+                # If is_null is a value comparison, then is_null(False) on missing should be False.
+                # This means "It must exist AND NOT be null".
+                return f"(indexed_data ? %s) AND ({jsonb_text_extract} IS NOT NULL)", [
+                    field_path
+                ]
+        if operator == DataSearchOperator.exists:
+            if value:
+                return "indexed_data ? %s", [field_path]
+            else:
+                return "NOT (indexed_data ? %s)", [field_path]
+        if operator == DataSearchOperator.isna:
+            if value:
+                return f"{jsonb_text_extract} IS NULL", []
+            else:
+                return f"{jsonb_text_extract} IS NOT NULL", []
 
         # 如果不支持的操作，返回空條件
         return "", []

@@ -285,7 +285,31 @@ class SqliteMetaStore(ISlowMetaStore):
 
     def _build_json_condition(self, condition) -> tuple[str, list]:
         """構建 SQLite JSON 查詢條件"""
-        from autocrud.types import DataSearchOperator
+        from autocrud.types import (
+            DataSearchGroup,
+            DataSearchLogicOperator,
+            DataSearchOperator,
+        )
+
+        if isinstance(condition, DataSearchGroup):
+            sub_conditions = []
+            sub_params = []
+            for sub_cond in condition.conditions:
+                c_str, c_params = self._build_json_condition(sub_cond)
+                if c_str:
+                    sub_conditions.append(c_str)
+                    sub_params.extend(c_params)
+
+            if not sub_conditions:
+                return "", []
+
+            if condition.operator == DataSearchLogicOperator.and_op:
+                return f"({' AND '.join(sub_conditions)})", sub_params
+            if condition.operator == DataSearchLogicOperator.or_op:
+                return f"({' OR '.join(sub_conditions)})", sub_params
+            if condition.operator == DataSearchLogicOperator.not_op:
+                return f"NOT ({' AND '.join(sub_conditions)})", sub_params
+            return "", []
 
         field_path = condition.field_path
         operator = condition.operator
@@ -320,6 +344,30 @@ class SqliteMetaStore(ISlowMetaStore):
             if isinstance(value, (list, tuple, set)):
                 placeholders = ",".join("?" * len(value))
                 return f"{json_extract} NOT IN ({placeholders})", list(value)
+        if operator == DataSearchOperator.is_null:
+            if value:
+                # Strict is_null: Must exist AND be null
+                # json_type returns 'null' if value is null, NULL if missing.
+                return f"json_type(indexed_data, '$.{field_path}') = 'null'", []
+            else:
+                # Strict is_null=False: Must exist AND be NOT null
+                # json_type returns type string if exists and not null.
+                # So json_type IS NOT NULL AND json_type != 'null'
+                return (
+                    f"json_type(indexed_data, '$.{field_path}') IS NOT NULL AND json_type(indexed_data, '$.{field_path}') != 'null'",
+                    [],
+                )
+        if operator == DataSearchOperator.exists:
+            # json_type returns NULL if key missing, 'null' if value is null
+            if value:
+                return f"json_type(indexed_data, '$.{field_path}') IS NOT NULL", []
+            else:
+                return f"json_type(indexed_data, '$.{field_path}') IS NULL", []
+        if operator == DataSearchOperator.isna:
+            if value:
+                return f"{json_extract} IS NULL", []
+            else:
+                return f"{json_extract} IS NOT NULL", []
 
         # 如果不支持的操作，返回空條件
         return "", []
