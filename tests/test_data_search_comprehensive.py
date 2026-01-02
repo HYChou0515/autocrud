@@ -8,6 +8,8 @@ import pytest
 from autocrud.resource_manager.basic import is_match_query
 from autocrud.types import (
     DataSearchCondition,
+    DataSearchGroup,
+    DataSearchLogicOperator,
     DataSearchOperator,
     ResourceMeta,
     ResourceMetaSearchQuery,
@@ -445,5 +447,109 @@ class TestComprehensiveDataSearch:
                     operator=DataSearchOperator.not_in_list,
                     value=["apple", "date"],
                 )
+            ]
+        )
+
+    # --- Logic Operators ---
+
+    def test_logic_and(self):
+        # (int > 10) AND (bool == True)
+        # 1: int=10 (False), bool=True
+        # 2: int=20 (True), bool=False
+        # 3: int=30 (True), bool=True -> Match
+        # 4: int=40 (True), bool=False
+        self._assert_search_results(
+            [
+                DataSearchGroup(
+                    operator=DataSearchLogicOperator.and_op,
+                    conditions=[
+                        DataSearchCondition(
+                            field_path="int",
+                            operator=DataSearchOperator.greater_than,
+                            value=10,
+                        ),
+                        DataSearchCondition(
+                            field_path="bool",
+                            operator=DataSearchOperator.equals,
+                            value=True,
+                        ),
+                    ],
+                )
+            ]
+        )
+
+    def test_logic_or(self):
+        # (str == "apple") OR (str == "date")
+        # 1: apple -> Match
+        # 4: date -> Match
+        self._assert_search_results(
+            [
+                DataSearchGroup(
+                    operator=DataSearchLogicOperator.or_op,
+                    conditions=[
+                        DataSearchCondition(
+                            field_path="str",
+                            operator=DataSearchOperator.equals,
+                            value="apple",
+                        ),
+                        DataSearchCondition(
+                            field_path="str",
+                            operator=DataSearchOperator.equals,
+                            value="date",
+                        ),
+                    ],
+                )
+            ]
+        )
+
+    def test_logic_not(self):
+        # NOT (int > 20)
+        # 1: 10 -> Match
+        # 2: 20 -> Match
+        # 3: 30 -> False
+        # 4: 40 -> False
+        self._assert_search_results(
+            [
+                DataSearchGroup(
+                    operator=DataSearchLogicOperator.not_op,
+                    conditions=[
+                        DataSearchCondition(
+                            field_path="int",
+                            operator=DataSearchOperator.greater_than,
+                            value=20,
+                        )
+                    ],
+                )
+            ]
+        )
+
+    def test_nested_logic(self):
+        # (int > 10) AND ((str == "banana") OR (str == "cherry"))
+        # 1: int=10 -> False
+        # 2: int=20, str=banana -> Match
+        # 3: int=30, str=cherry -> Match
+        # 4: int=40, str=date -> False
+        self._assert_search_results(
+            [
+                DataSearchCondition(
+                    field_path="int",
+                    operator=DataSearchOperator.greater_than,
+                    value=10,
+                ),
+                DataSearchGroup(
+                    operator=DataSearchLogicOperator.or_op,
+                    conditions=[
+                        DataSearchCondition(
+                            field_path="str",
+                            operator=DataSearchOperator.equals,
+                            value="banana",
+                        ),
+                        DataSearchCondition(
+                            field_path="str",
+                            operator=DataSearchOperator.equals,
+                            value="cherry",
+                        ),
+                    ],
+                ),
             ]
         )

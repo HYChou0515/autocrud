@@ -285,7 +285,31 @@ class SqliteMetaStore(ISlowMetaStore):
 
     def _build_json_condition(self, condition) -> tuple[str, list]:
         """構建 SQLite JSON 查詢條件"""
-        from autocrud.types import DataSearchOperator
+        from autocrud.types import (
+            DataSearchGroup,
+            DataSearchLogicOperator,
+            DataSearchOperator,
+        )
+
+        if isinstance(condition, DataSearchGroup):
+            sub_conditions = []
+            sub_params = []
+            for sub_cond in condition.conditions:
+                c_str, c_params = self._build_json_condition(sub_cond)
+                if c_str:
+                    sub_conditions.append(c_str)
+                    sub_params.extend(c_params)
+
+            if not sub_conditions:
+                return "", []
+
+            if condition.operator == DataSearchLogicOperator.and_op:
+                return f"({' AND '.join(sub_conditions)})", sub_params
+            if condition.operator == DataSearchLogicOperator.or_op:
+                return f"({' OR '.join(sub_conditions)})", sub_params
+            if condition.operator == DataSearchLogicOperator.not_op:
+                return f"NOT ({' AND '.join(sub_conditions)})", sub_params
+            return "", []
 
         field_path = condition.field_path
         operator = condition.operator

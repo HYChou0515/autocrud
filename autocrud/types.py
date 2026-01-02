@@ -164,10 +164,24 @@ class DataSearchOperator(StrEnum):
     not_in_list = "not_in"
 
 
-class DataSearchCondition(Struct, kw_only=True):
+class DataSearchCondition(Struct, kw_only=True, tag=True):
     field_path: str
     operator: DataSearchOperator
     value: Any
+
+
+class DataSearchLogicOperator(StrEnum):
+    and_op = "and"
+    or_op = "or"
+    not_op = "not"
+
+
+class DataSearchGroup(Struct, kw_only=True, tag=True):
+    operator: DataSearchLogicOperator
+    conditions: list["DataSearchCondition | DataSearchGroup"]
+
+
+DataSearchFilter = DataSearchCondition | DataSearchGroup
 
 
 class ResourceMetaSortDirection(StrEnum):
@@ -209,7 +223,7 @@ class ResourceMetaSearchQuery(Struct, kw_only=True):
     updated_bys: list[str] | UnsetType = UNSET
     """Filter resources updated by these users."""
 
-    data_conditions: list[DataSearchCondition] | UnsetType = UNSET
+    data_conditions: list[DataSearchFilter] | UnsetType = UNSET
     """Conditions to filter resources based on their indexed data fields."""
 
     limit: int = 10

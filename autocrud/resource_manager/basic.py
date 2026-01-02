@@ -11,7 +11,7 @@ from msgspec import UNSET, Struct, UnsetType
 
 from autocrud.types import ResourceMeta
 from autocrud.types import ResourceMetaSearchQuery
-from autocrud.types import DataSearchCondition
+from autocrud.types import DataSearchCondition, DataSearchGroup, DataSearchLogicOperator
 from autocrud.types import DataSearchOperator
 from autocrud.types import ResourceDataSearchSort
 from autocrud.types import ResourceMetaSearchSort
@@ -111,9 +111,30 @@ def is_match_query(meta: ResourceMeta, query: ResourceMetaSearchQuery) -> bool:
 
 def _match_data_condition(
     indexed_data: dict[str, Any],
-    condition: DataSearchCondition,
+    condition: DataSearchCondition | DataSearchGroup,
 ) -> bool:
     """檢查索引資料是否匹配 data 條件"""
+    if isinstance(condition, DataSearchGroup):
+        if condition.operator == DataSearchLogicOperator.and_op:
+            return all(
+                _match_data_condition(indexed_data, sub_cond)
+                for sub_cond in condition.conditions
+            )
+        if condition.operator == DataSearchLogicOperator.or_op:
+            return any(
+                _match_data_condition(indexed_data, sub_cond)
+                for sub_cond in condition.conditions
+            )
+        if condition.operator == DataSearchLogicOperator.not_op:
+            # NOT operator should have exactly one condition or treat list as AND then NOT
+            # Usually NOT applies to a single condition or a group.
+            # If multiple conditions are provided, we can treat it as NOT (AND(conditions))
+            return not all(
+                _match_data_condition(indexed_data, sub_cond)
+                for sub_cond in condition.conditions
+            )
+        return False
+
     field_value = indexed_data.get(condition.field_path)
 
     if condition.operator == DataSearchOperator.equals:
