@@ -99,6 +99,11 @@ def is_match_query(meta: ResourceMeta, query: ResourceMetaSearchQuery) -> bool:
     if query.updated_bys is not UNSET and meta.updated_by not in query.updated_bys:
         return False
 
+    if query.conditions is not UNSET:
+        for condition in query.conditions:
+            if not _match_condition(meta, condition):
+                return False
+
     if query.data_conditions is not UNSET and meta.indexed_data is not UNSET:
         for condition in query.data_conditions:
             if not _match_data_condition(meta.indexed_data, condition):
@@ -108,6 +113,15 @@ def is_match_query(meta: ResourceMeta, query: ResourceMetaSearchQuery) -> bool:
         return False
 
     return True
+
+
+def _match_condition(
+    meta: ResourceMeta,
+    condition: DataSearchCondition | DataSearchGroup,
+) -> bool:
+    """檢查 meta 是否匹配條件"""
+    result = _evaluate_trivalent(meta, condition)
+    return result is True
 
 
 def _match_data_condition(
@@ -120,7 +134,7 @@ def _match_data_condition(
 
 
 def _evaluate_trivalent(
-    indexed_data: dict[str, Any],
+    data: dict[str, Any] | ResourceMeta,
     condition: DataSearchCondition | DataSearchGroup,
 ) -> bool | None:
     """
@@ -129,8 +143,7 @@ def _evaluate_trivalent(
     """
     if isinstance(condition, DataSearchGroup):
         results = [
-            _evaluate_trivalent(indexed_data, sub_cond)
-            for sub_cond in condition.conditions
+            _evaluate_trivalent(data, sub_cond) for sub_cond in condition.conditions
         ]
 
         if condition.operator == DataSearchLogicOperator.and_op:
@@ -162,24 +175,43 @@ def _evaluate_trivalent(
 
     # Leaf Condition
 
+    # Helper to check existence and get value
+    val = UNSET
+    has_key = False
+
+    if isinstance(data, dict):
+        if condition.field_path in data:
+            has_key = True
+            val = data[condition.field_path]
+    elif isinstance(data, ResourceMeta):
+        if (
+            hasattr(data, condition.field_path)
+            and condition.field_path != "indexed_data"
+        ):
+            has_key = True
+            val = getattr(data, condition.field_path)
+        elif (
+            data.indexed_data is not UNSET and condition.field_path in data.indexed_data
+        ):
+            has_key = True
+            val = data.indexed_data[condition.field_path]
+
     # 1. Handle operators that work on missing keys or don't care about value
     if condition.operator == DataSearchOperator.exists:
-        has_key = condition.field_path in indexed_data
         return has_key if condition.value else not has_key
 
     if condition.operator == DataSearchOperator.isna:
         # isna = not exist or is null
-        if condition.field_path not in indexed_data:
+        if not has_key:
             return condition.value  # True if checking isna=True
-        val = indexed_data.get(condition.field_path)
         is_na = val is None
         return is_na == condition.value
 
     # 2. Handle missing keys for other operators -> Unknown
-    if condition.field_path not in indexed_data:
+    if not has_key:
         return None
 
-    field_value = indexed_data.get(condition.field_path)
+    field_value = val
 
     # 3. Handle NULL values for other operators
     if field_value is None:

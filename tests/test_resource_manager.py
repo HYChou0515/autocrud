@@ -158,6 +158,11 @@ def get_meta_store(store_type: str, tmpdir: Path = None):
                 encoding="msgpack",
             ),
         )
+    if store_type == "postgres":
+        return PostgresMetaStore(
+            pg_dsn=reset_and_get_pg_dsn(),
+            encoding="msgpack",
+        )
     d = tmpdir / faker.pystr()
     d.mkdir()
     return DiskMetaStore(encoding="msgpack", rootdir=d)
@@ -193,7 +198,7 @@ def get_resource_store(
 @pytest.mark.flaky(retries=6, delay=1)
 @pytest.mark.parametrize(
     "meta_store_type",
-    ["memory", "sql3-mem", "sql3-file", "redis", "disk", "redis-pg"],
+    ["memory", "sql3-mem", "sql3-file", "redis", "disk", "redis-pg", "postgres"],
 )
 @pytest.mark.parametrize("res_store_type", ["memory", "disk", "s3"])
 class TestResourceManager:

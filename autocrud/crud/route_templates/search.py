@@ -140,6 +140,14 @@ class ListRouteTemplate(BaseRouteTemplate):
                 - `created_bys`: Filter by resource creators (list of usernames)
                 - `updated_bys`: Filter by resource updaters (list of usernames)
                 - `data_conditions`: Filter by data content (JSON format)
+                - `conditions`: Filter by meta fields or data content (JSON format)
+
+                **General Filtering:**
+                - Use `conditions` parameter to filter by metadata fields or data content
+                - Format: JSON array of condition objects
+                - Attributes: `field_path`, `operator`, `value`
+                - Meta fields: `resource_id`, `is_deleted`, `created_time`, `updated_time`, `created_by`, `updated_by`
+                - Example: `[{{"field_path": "resource_id", "operator": "starts_with", "value": "user-"}}]`
 
                 **Data Filtering:**
                 - Use `data_conditions` parameter to filter resources by their data content
@@ -249,6 +257,14 @@ class ListRouteTemplate(BaseRouteTemplate):
                 - `created_bys`: Filter by resource creators (list of usernames)
                 - `updated_bys`: Filter by resource updaters (list of usernames)
                 - `data_conditions`: Filter by data content (JSON format)
+                - `conditions`: Filter by meta fields or data content (JSON format)
+
+                **General Filtering:**
+                - Use `conditions` parameter to filter by metadata fields or data content
+                - Format: JSON array of condition objects
+                - Attributes: `field_path`, `operator`, `value`
+                - Meta fields: `resource_id`, `is_deleted`, `created_time`, `updated_time`, `created_by`, `updated_by`
+                - Example: `[{{"field_path": "resource_id", "operator": "starts_with", "value": "user-"}}]`
 
                 **Data Filtering:**
                 - Use `data_conditions` parameter to filter resources by their data content
@@ -336,6 +352,14 @@ class ListRouteTemplate(BaseRouteTemplate):
                 - `created_bys`: Filter by resource creators (list of usernames)
                 - `updated_bys`: Filter by resource updaters (list of usernames)
                 - `data_conditions`: Filter by data content (JSON format)
+                - `conditions`: Filter by meta fields or data content (JSON format)
+
+                **General Filtering:**
+                - Use `conditions` parameter to filter by metadata fields or data content
+                - Format: JSON array of condition objects
+                - Attributes: `field_path`, `operator`, `value`
+                - Meta fields: `resource_id`, `is_deleted`, `created_time`, `updated_time`, `created_by`, `updated_by`
+                - Example: `[{{"field_path": "resource_id", "operator": "starts_with", "value": "user-"}}]`
 
                 **Data Filtering:**
                 - Use `data_conditions` parameter to filter resources by their data content
@@ -427,6 +451,14 @@ class ListRouteTemplate(BaseRouteTemplate):
                 - `created_bys`: Filter by resource creators (list of usernames)
                 - `updated_bys`: Filter by resource updaters (list of usernames)
                 - `data_conditions`: Filter by data content (JSON format)
+                - `conditions`: Filter by meta fields or data content (JSON format)
+
+                **General Filtering:**
+                - Use `conditions` parameter to filter by metadata fields or data content
+                - Format: JSON array of condition objects
+                - Attributes: `field_path`, `operator`, `value`
+                - Meta fields: `resource_id`, `is_deleted`, `created_time`, `updated_time`, `created_by`, `updated_by`
+                - Example: `[{{"field_path": "resource_id", "operator": "starts_with", "value": "user-"}}]`
 
                 **Data Filtering:**
                 - Use `data_conditions` parameter to filter resources by their data content
@@ -506,21 +538,14 @@ class ListRouteTemplate(BaseRouteTemplate):
 
         @router.get(
             f"/{model_name}/count",
-            summary=f"List {model_name} Complete Information",
+            summary=f"Count {model_name} Resources",
             tags=[f"{model_name}"],
             description=textwrap.dedent(
                 f"""
-                Retrieve a list of `{model_name}` resources with complete information including data, metadata, and revision info.
+                Retrieve the count of `{model_name}` resources matching the search criteria.
 
                 **Response Format:**
-                - Returns comprehensive information for each resource
-                - Includes data content, resource metadata, and current revision information
-                - Most complete but also largest response format
-
-                **Complete Information Includes:**
-                - `data`: The actual resource data content
-                - `meta`: Resource metadata (timestamps, user info, deletion status, etc.)
-                - `revision_info`: Current revision details (uid, revision_id, parent_revision, hash, status)
+                - Returns a single integer representing the count of matching resources.
 
                 **Filtering Options:**
                 - `is_deleted`: Filter by deletion status (true/false)
@@ -529,6 +554,14 @@ class ListRouteTemplate(BaseRouteTemplate):
                 - `created_bys`: Filter by resource creators (list of usernames)
                 - `updated_bys`: Filter by resource updaters (list of usernames)
                 - `data_conditions`: Filter by data content (JSON format)
+                - `conditions`: Filter by meta fields or data content (JSON format)
+
+                **General Filtering:**
+                - Use `conditions` parameter to filter by metadata fields or data content
+                - Format: JSON array of condition objects
+                - Attributes: `field_path`, `operator`, `value`
+                - Meta fields: `resource_id`, `is_deleted`, `created_time`, `updated_time`, `created_by`, `updated_by`
+                - Example: `[{{"field_path": "resource_id", "operator": "starts_with", "value": "user-"}}]`
 
                 **Data Filtering:**
                 - Use `data_conditions` parameter to filter resources by their data content
@@ -537,26 +570,14 @@ class ListRouteTemplate(BaseRouteTemplate):
                 - Supported operators: `eq`, `ne`, `gt`, `lt`, `gte`, `lte`, `contains`, `starts_with`, `ends_with`, `in`, `not_in`
                 - Example: `[{{"field_path": "name", "operator": "contains", "value": "project"}}]`
 
-                **Pagination:**
-                - `limit`: Maximum number of results to return (default: 10)
-                - `offset`: Number of results to skip for pagination (default: 0)
-
                 **Use Cases:**
-                - Complete data export operations
-                - Comprehensive resource inspection
-                - Full context retrieval for complex operations
-                - Debugging and detailed analysis
-                - Administrative overview with all details
-
-                **Performance Considerations:**
-                - Largest response payload size
-                - May have slower response times for large datasets
-                - Consider using pagination with smaller limits
+                - Getting total number of resources for pagination calculations
+                - Statistical analysis
+                - Checking existence of resources matching criteria
 
                 **Examples:**
-                - `GET /{model_name}/full` - Get complete info for first 10 resources
-                - `GET /{model_name}/full?limit=5` - Get complete info for first 5 resources (smaller payload)
-                - `GET /{model_name}/full?is_deleted=false&limit=20` - Get complete info for 20 active resources
+                - `GET /{model_name}/count` - Get total count of all resources
+                - `GET /{model_name}/count?is_deleted=false` - Get count of active resources
 
                 **Error Responses:**
                 - `400`: Bad request - Invalid query parameters or search error""",

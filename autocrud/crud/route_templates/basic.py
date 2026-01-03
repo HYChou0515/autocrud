@@ -182,6 +182,10 @@ class QueryInputs(BaseModel):
         None,
         description='Data filter conditions in JSON format. Example: \'[{"field_path": "department", "operator": "eq", "value": "Engineering"}]\'',
     )
+    conditions: Optional[str] = Query(
+        None,
+        description='General filter conditions in JSON format for meta fields or data. Example: \'[{"field_path": "resource_id", "operator": "starts_with", "value": "user-"}]\'',
+    )
     sorts: Optional[str] = Query(
         None,
         description='Sort conditions in JSON format. Example: \'[{"type": "meta", "key": "created_time", "direction": "+"}, {"type": "data", "field_path": "name", "direction": "-"}]\'',
@@ -278,6 +282,29 @@ def build_query(q: QueryInputs) -> ResourceMetaSearchQuery:
             )
     else:
         query_kwargs["data_conditions"] = msgspec.UNSET
+
+    # 處理 conditions
+    if q.conditions:
+        try:
+            # 解析 JSON 字符串
+            conditions_data = json.loads(q.conditions)
+            # 轉換為 DataSearchCondition 對象列表
+            conditions = []
+            for condition_dict in conditions_data:
+                condition = DataSearchCondition(
+                    field_path=condition_dict["field_path"],
+                    operator=DataSearchOperator(condition_dict["operator"]),
+                    value=condition_dict["value"],
+                )
+                conditions.append(condition)
+            query_kwargs["conditions"] = conditions
+        except (json.JSONDecodeError, KeyError, ValueError) as e:
+            raise HTTPException(
+                status_code=400,
+                detail=f"Invalid conditions format: {e!s}",
+            )
+    else:
+        query_kwargs["conditions"] = msgspec.UNSET
 
     # 處理 sorts
     if q.sorts:
