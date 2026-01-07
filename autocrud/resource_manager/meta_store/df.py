@@ -1,5 +1,5 @@
 import sys
-from collections.abc import Generator
+from collections.abc import Generator, Iterable
 
 from msgspec import UNSET
 
@@ -37,6 +37,10 @@ class DFMemoryMetaStore(ISlowMetaStore):
             index=pd.Index([], dtype="object", name="resource_id"),
         )
         self._updated: set[str] = set()
+
+    def save_many(self, metas: Iterable[ResourceMeta]) -> None:
+        for m in metas:
+            self[m.resource_id] = m
 
     def __getitem__(self, pk: str) -> ResourceMeta:
         return self._serializer.decode(self._store[pk])
@@ -101,9 +105,18 @@ class DFMemoryMetaStore(ISlowMetaStore):
             exps.append("created_by.isin(@query.created_bys)")
         if query.updated_bys is not UNSET:
             exps.append("updated_by.isin(@query.updated_bys)")
-        query_str = " and ".join(exps) if exps else "True"
+
+        if not exps:
+            # No standard filters, inspect all rows (then filtered by data_conditions if implemented, or just return all)
+            # Note: data_conditions are not implemented in DF store yet, so search results might be incorrect (returning all)
+            # preventing crash by avoiding query("True")
+            candidate_pks = self._df.index
+        else:
+            query_str = " and ".join(exps)
+            candidate_pks = self._df.query(query_str).index
+
         results: list[ResourceMeta] = []
-        for pk in self._df.query(query_str).index:
+        for pk in candidate_pks:
             meta_b = self._store[pk]
             meta = self._serializer.decode(meta_b)
             results.append(meta)
