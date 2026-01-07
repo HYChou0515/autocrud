@@ -439,19 +439,10 @@ def run_benchmark():
         norm_scores = pd.DataFrame(index=pivot_qps.index, columns=pivot_qps.columns)
 
         for col in pivot_qps.columns:
-            # Find max among non-memory stores
-            non_mem_indices = [
-                idx
-                for idx in pivot_qps.index
-                if "mem" not in str(idx).lower() and str(idx).lower() != "dfm"
-            ]
-            if non_mem_indices:
-                max_val = pivot_qps.loc[non_mem_indices, col].max()
-            else:
-                max_val = pivot_qps[col].max()
-
-            if max_val > 0:
-                norm_scores[col] = pivot_qps[col] / max_val
+            start_max_val = pivot_qps[col].max()
+            
+            if start_max_val > 0:
+                norm_scores[col] = pivot_qps[col] / start_max_val
             else:
                 norm_scores[col] = 0
 
@@ -469,29 +460,12 @@ def run_benchmark():
         harmonic_means = norm_scores.apply(calc_hm, axis=1)
 
         # 4. Partition and Sort
-        non_mem_stores = []
-        mem_stores = []
-        all_store_types = sorted(list(set(df["Store Type"])))
+        store_types_sorted = sorted(list(set(df["Store Type"])), key=lambda s: harmonic_means.get(s, 0), reverse=True)
 
-        for store in all_store_types:
-            s_low = str(store).lower()
-            if "mem" in s_low or s_low == "dfm":
-                mem_stores.append(store)
-            else:
-                non_mem_stores.append(store)
-
-        # Sort Non-Mem by Harmonic Mean Descending (Higher is better)
-        non_mem_stores.sort(key=lambda s: harmonic_means.get(s, 0), reverse=True)
-        # Sort Mem by Harmonic Mean Descending
-        mem_stores.sort(key=lambda s: harmonic_means.get(s, 0), reverse=True)
-
-        # Combine: Non-Mem first, then Mem (Ref) at the bottom
-        store_types_sorted = non_mem_stores + mem_stores
-
-        print("Harmonic Means (Non-Mem, Strict Balance):")
-        for s in non_mem_stores:
+        print("Harmonic Means (Strict Balance):")
+        for s in store_types_sorted:
             print(f"  {s}: {harmonic_means.get(s, 0):.4f}")
-        print(f"Sorting Order (Harmonic Mean + Ref Bottom): {store_types_sorted}")
+        print(f"Sorting Order (Harmonic Mean): {store_types_sorted}")
 
         for i, q_type in enumerate(query_types):
             ax = axes[i]
@@ -504,12 +478,8 @@ def run_benchmark():
             # Reindex to ensure consistent row order across subplots
             heatmap_data = heatmap_data.reindex(store_types_sorted)
 
-            # Create plot data: Mask memory stores (NaN) so they don't affect color scale
+            # Create plot data: No masking, all stores participate in color scale
             plot_data = heatmap_data.copy()
-            for idx in plot_data.index:
-                s_low = str(idx).lower()
-                if "mem" in s_low or s_low == "dfm":
-                    plot_data.loc[idx] = float("nan")
 
             if not heatmap_data.empty:
                 # Handle case where all data is masked
@@ -537,17 +507,10 @@ def run_benchmark():
                     cbar=False,
                 )
 
-                # Find max QPS per size considering only non-memory (for annotations)
+                # Find max QPS per size considering ALL stores
                 max_qps_per_col = {}
                 for col in heatmap_data.columns:
-                    non_mem_vals = [
-                        heatmap_data.loc[idx, col]
-                        for idx in heatmap_data.index
-                        if ("mem" not in str(idx).lower() and str(idx).lower() != "dfm")
-                    ]
-                    max_qps_per_col[col] = (
-                        max(non_mem_vals) if non_mem_vals else heatmap_data[col].max()
-                    )
+                    max_qps_per_col[col] = heatmap_data[col].max()
 
                 from math import log
 
@@ -558,30 +521,24 @@ def run_benchmark():
                         if pd.isna(val):
                             continue
 
-                        s_low = str(store_idx).lower()
-                        is_mem = "mem" in s_low or s_low == "dfm"
                         max_val = max_qps_per_col.get(size_col, val)
 
                         # Text Content
                         text_str = ""
                         if val > 0:
-                            if is_mem:
-                                text_str = f"{val:.0f}\n(Ref)"
+                            ratio = val / max_val
+                            pct = ratio * 100
+                            if ratio >= 0.99:
+                                text_str = f"{val:.0f}\n(100%)"
                             else:
-                                ratio = val / max_val
-                                pct = ratio * 100
-                                if ratio >= 0.99:
-                                    text_str = f"{val:.0f}\n(100%)"
-                                else:
-                                    text_str = f"{val:.0f}\n({pct:.0f}%)"
+                                text_str = f"{val:.0f}\n({pct:.0f}%)"
                         else:
                             text_str = "0"
 
                         # Text Color Logic
                         # High value (dark bg) -> White, Low value (light bg) -> Black
-                        # Memory stores -> White bg -> Black
                         text_color = "black"
-                        if not is_mem and val > 0 and vmax > vmin:
+                        if val > 0 and vmax > vmin:
                             try:
                                 # Simple log interpolation to guess brightness
                                 # YlGnBu gets dark quickly
@@ -637,17 +594,8 @@ def run_benchmark():
 
             data_subset = df[df["Query Type"] == q_type]
 
-            # Calculate max QPS per size group from NON-MEMORY stores only
-            mask_mem = data_subset["Store Type"].str.contains(
-                "mem", case=False, regex=False
-            ) | (data_subset["Store Type"].str.lower() == "dfm")
-            non_mem_df = data_subset[~mask_mem]
-            if non_mem_df.empty:
-                max_qps_by_size = data_subset.groupby("Total Size")[
-                    "QPS"
-                ].max()  # Fallback
-            else:
-                max_qps_by_size = non_mem_df.groupby("Total Size")["QPS"].max()
+            # Calculate max QPS per size group from ALL stores
+            max_qps_by_size = data_subset.groupby("Total Size")["QPS"].max()
 
             subset_sorted = data_subset.sort_values(
                 by=["Total Size", "QPS"], ascending=[True, False]
@@ -657,21 +605,17 @@ def run_benchmark():
                 size = row["Total Size"]
                 qps = row["QPS"]
                 store_type = row["Store Type"]
-                is_mem = "mem" in store_type.lower() or store_type.lower() == "dfm"
-
-                if is_mem:
-                    factor_str = "(Ref)"
-                else:
-                    best = max_qps_by_size.get(size, qps)
-                    if best > 0:
-                        ratio = qps / best
-                        pct = ratio * 100
-                        if ratio >= 0.99:
-                            factor_str = "100% (Best)"
-                        else:
-                            factor_str = f"{pct:.1f}%"
+                
+                best = max_qps_by_size.get(size, qps)
+                if best > 0:
+                    ratio = qps / best
+                    pct = ratio * 100
+                    if ratio >= 0.99:
+                        factor_str = "100% (Best)"
                     else:
-                        factor_str = "0%"
+                        factor_str = f"{pct:.1f}%"
+                else:
+                    factor_str = "0%"
 
                 md_lines.append(
                     f"| {row['Store Type']} | {row['Total Size']} | {row['Read Size']} | {row['Time (ms)']:.2f} | {row['QPS']:.2f} | {factor_str} |"
