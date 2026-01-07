@@ -1208,13 +1208,13 @@ class TestMetaStore:
             },
             "redis": {
                 "size": 100000,
-                "create_time": dt.timedelta(seconds=8),
-                "search_time": dt.timedelta(milliseconds=6800),
+                "create_time": dt.timedelta(seconds=9),
+                "search_time": dt.timedelta(milliseconds=10000),
                 "search_wait": dt.timedelta(seconds=0),
             },
             "redis-pg": {
                 "size": 100000,
-                "create_time": dt.timedelta(seconds=12),
+                "create_time": dt.timedelta(seconds=13),
                 "search_time": dt.timedelta(milliseconds=4.2),
                 "search_wait": dt.timedelta(seconds=2),
             },
