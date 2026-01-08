@@ -788,7 +788,10 @@ class IStorage(ABC):
 
     @abstractmethod
     def get_data_bytes(
-        self, resource_id: str, revision_id: str
+        self,
+        resource_id: str,
+        revision_id: str,
+        schema_version: str | None | UnsetType = UNSET,
     ) -> AbstractContextManager[IO[bytes]]:
         """Retrieve raw data bytes for a specific resource revision.
 
@@ -817,6 +820,7 @@ class IStorage(ABC):
         self,
         resource_id: str,
         revision_id: str,
+        schema_version: str | None | UnsetType = UNSET,
     ) -> RevisionInfo:
         """Retrieve revision information without the resource data.
 

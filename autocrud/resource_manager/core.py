@@ -170,20 +170,30 @@ class SimpleStorage(IStorage):
     def list_revisions(self, resource_id: str) -> list[str]:
         return list(self._resource_store.list_revisions(resource_id))
 
-    def get_data_bytes(self, resource_id: str, revision_id: str) -> IO[bytes]:
-        meta = self.get_meta(resource_id)
+    def get_data_bytes(
+        self,
+        resource_id: str,
+        revision_id: str,
+        schema_version: str | None | UnsetType = UNSET,
+    ) -> IO[bytes]:
+        if schema_version is UNSET:
+            meta = self.get_meta(resource_id)
+            schema_version = meta.schema_version
         return self._resource_store.get_data_bytes(
-            resource_id, revision_id, meta.schema_version
+            resource_id, revision_id, schema_version
         )
 
     def get_resource_revision_info(
         self,
         resource_id: str,
         revision_id: str,
+        schema_version: str | None | UnsetType = UNSET,
     ) -> RevisionInfo:
-        meta = self.get_meta(resource_id)
+        if schema_version is UNSET:
+            meta = self.get_meta(resource_id)
+            schema_version = meta.schema_version
         return self._resource_store.get_revision_info(
-            resource_id, revision_id, meta.schema_version
+            resource_id, revision_id, schema_version
         )
 
     def save_revision(self, info: RevisionInfo, data: IO[bytes]) -> None:
@@ -718,17 +728,33 @@ class ResourceManager(IResourceManager[T], Generic[T]):
         "resource",
     )
     def get(
-        self, resource_id: str, *, revision_id: str | UnsetType = UNSET
+        self,
+        resource_id: str,
+        *,
+        revision_id: str | UnsetType = UNSET,
+        schema_version: str | None | UnsetType = UNSET,
     ) -> Resource[T]:
-        if revision_id is UNSET:
+        if revision_id is UNSET or schema_version is UNSET:
             meta = self.get_meta(resource_id)
-            revision_id = meta.current_revision_id
-        return self.get_resource_revision(resource_id, revision_id)
+            if revision_id is UNSET:
+                revision_id = meta.current_revision_id
+            if schema_version is UNSET:
+                schema_version = meta.schema_version
+        return self.get_resource_revision(
+            resource_id, revision_id, schema_version=schema_version
+        )
 
     def get_partial(
-        self, resource_id: str, revision_id: str, partial: Iterable[str | JsonPointer]
+        self,
+        resource_id: str,
+        revision_id: str,
+        partial: Iterable[str | JsonPointer],
+        *,
+        schema_version: str | None | UnsetType = UNSET,
     ) -> Struct:
-        with self.storage.get_data_bytes(resource_id, revision_id) as data_io:
+        with self.storage.get_data_bytes(
+            resource_id, revision_id, schema_version=schema_version
+        ) as data_io:
             PartialType = create_partial_type(self._resource_type, partial)
             s = MsgspecSerializer(
                 encoding=self._encoding,
@@ -738,13 +764,21 @@ class ResourceManager(IResourceManager[T], Generic[T]):
             return prune_object(decoded, partial)
 
     def get_revision_info(
-        self, resource_id: str, revision_id: str | UnsetType = UNSET
+        self,
+        resource_id: str,
+        revision_id: str | UnsetType = UNSET,
+        *,
+        schema_version: str | None | UnsetType = UNSET,
     ) -> RevisionInfo:
         if revision_id is UNSET:
             meta = self.get_meta(resource_id)
             revision_id = meta.current_revision_id
+            if schema_version is UNSET:
+                schema_version = meta.schema_version
 
-        return self.storage.get_resource_revision_info(resource_id, revision_id)
+        return self.storage.get_resource_revision_info(
+            resource_id, revision_id, schema_version=schema_version
+        )
 
     @execute_with_events(
         (
@@ -755,9 +789,18 @@ class ResourceManager(IResourceManager[T], Generic[T]):
         ),
         "resource",
     )
-    def get_resource_revision(self, resource_id: str, revision_id: str) -> Resource[T]:
-        info = self.storage.get_resource_revision_info(resource_id, revision_id)
-        with self.storage.get_data_bytes(resource_id, revision_id) as data_io:
+    def get_resource_revision(
+        self,
+        resource_id: str,
+        revision_id: str,
+        schema_version: str | None | UnsetType = UNSET,
+    ) -> Resource[T]:
+        info = self.storage.get_resource_revision_info(
+            resource_id, revision_id, schema_version
+        )
+        with self.storage.get_data_bytes(
+            resource_id, revision_id, schema_version
+        ) as data_io:
             data = self.decode(data_io.read())
         return Resource(info=info, data=data)
 

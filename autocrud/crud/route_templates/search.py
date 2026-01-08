@@ -115,11 +115,18 @@ class ListRouteTemplate(BaseRouteTemplate):
                         try:
                             if fields:
                                 data = resource_manager.get_partial(
-                                    meta.resource_id, meta.current_revision_id, fields
+                                    meta.resource_id,
+                                    meta.current_revision_id,
+                                    fields,
+                                    schema_version=meta.schema_version,
                                 )
                                 resources_data.append(data)
                             else:
-                                resource = resource_manager.get(meta.resource_id)
+                                resource = resource_manager.get(
+                                    meta.resource_id,
+                                    revision_id=meta.current_revision_id,
+                                    schema_version=meta.schema_version,
+                                )
                                 resources_data.append(resource.data)
                         except Exception:
                             # 如果無法獲取資源數據，跳過
@@ -288,8 +295,12 @@ class ListRouteTemplate(BaseRouteTemplate):
                     resources_data: list[RevisionInfo] = []
                     for meta in metas:
                         try:
-                            resource = resource_manager.get(meta.resource_id)
-                            resources_data.append(resource.info)
+                            info = resource_manager.get_revision_info(
+                                meta.resource_id,
+                                meta.current_revision_id,
+                                schema_version=meta.schema_version,
+                            )
+                            resources_data.append(info)
                         except Exception:
                             # 如果無法獲取資源數據，跳過
                             continue
@@ -391,9 +402,14 @@ class ListRouteTemplate(BaseRouteTemplate):
                                         meta.resource_id,
                                         meta.current_revision_id,
                                         fields,
+                                        schema_version=meta.schema_version,
                                     )
                                 else:
-                                    resource = resource_manager.get(meta.resource_id)
+                                    resource = resource_manager.get(
+                                        meta.resource_id,
+                                        revision_id=meta.current_revision_id,
+                                        schema_version=meta.schema_version,
+                                    )
                                     data = resource.data
                                     if "revision_info" in returns:
                                         revision_info = resource.info
@@ -402,6 +418,7 @@ class ListRouteTemplate(BaseRouteTemplate):
                                 revision_info = resource_manager.get_revision_info(
                                     meta.resource_id,
                                     meta.current_revision_id,
+                                    schema_version=meta.schema_version,
                                 )
 
                             if "meta" in returns:
