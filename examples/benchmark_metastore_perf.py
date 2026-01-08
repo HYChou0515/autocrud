@@ -96,6 +96,17 @@ def get_meta_store(store_type: str, tmpdir: Path):
     if store_type == "sql3-file":
         return FileSqliteMetaStore(db_filepath=tmpdir / "meta.db", encoding="msgpack")
 
+    if store_type == "nfs-sql3-file":
+        nfs_base = Path("/home/hychou/Disk/K/test")
+        # Use the tmpdir name (e.g. nfs-sql3-file_1000) to separate runs
+        nfs_run_dir = nfs_base / tmpdir.name
+        # if nfs_run_dir.exists():
+        #     shutil.rmtree(nfs_run_dir)
+        # nfs_run_dir.mkdir(parents=True, exist_ok=True)
+        return FileSqliteMetaStore(
+            db_filepath=nfs_run_dir / "meta.db", encoding="msgpack"
+        )
+
     if store_type == "disk-sql3file":
         d = tmpdir / "disk_sql3_data"
         d.mkdir(exist_ok=True)
@@ -233,6 +244,7 @@ def run_benchmark():
             "disk",
             "redis-pg",
             "pg",
+            "nfs-sql3-file",
         ]
 
         # Scenarios: (Total Data Size, Search Result Size)
@@ -271,11 +283,14 @@ def run_benchmark():
                     start_dt = dt.datetime(2023, 1, 1)
                     metas = generate_metas(total_size, start_dt)
 
-                    # Write Data (Pre-fill & Benchmark)
-                    st_write = time.perf_counter()
-                    for meta in metas:
-                        store[meta.resource_id] = meta
-                    ed_write = time.perf_counter()
+                    if store_type == "nfs-sql3-file":
+                        ...
+                    else:
+                        # Write Data (Pre-fill & Benchmark)
+                        st_write = time.perf_counter()
+                        for meta in metas:
+                            store[meta.resource_id] = meta
+                        ed_write = time.perf_counter()
 
                     write_time = ed_write - st_write
                     write_time_ms = write_time * 1000
@@ -369,6 +384,12 @@ def run_benchmark():
                         iterations = 5
                         times = []
                         result_count = 0
+                        import subprocess as sp
+                        if store_type == "nfs-sql3-file":
+                            sp.run("sudo umount -f -l /mnt/nfs/marbles/kingston500", shell=True)
+                            time.sleep(2)
+                            sp.run("sudo mount -a", shell=True)
+                            time.sleep(2)
                         for _ in range(iterations):
                             st = time.perf_counter()
                             res = list(store.iter_search(query))
