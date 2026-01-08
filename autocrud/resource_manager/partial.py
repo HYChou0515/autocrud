@@ -111,7 +111,20 @@ def _build_type(current_type: Any, paths: list[list[str]], prefix: str) -> Any:
                 )
 
         type_name = f"{prefix}_{current_type.__name__}"
-        return defstruct(type_name, new_fields, kw_only=True)
+
+        # Keep tag info
+        tag = None
+        tag_field = None
+        try:
+            info = msgspec.inspect.type_info(current_type)
+            tag = info.tag
+            tag_field = info.tag_field
+        except Exception:
+            pass
+
+        return defstruct(
+            type_name, new_fields, kw_only=True, tag=tag, tag_field=tag_field
+        )
 
     return current_type
 
