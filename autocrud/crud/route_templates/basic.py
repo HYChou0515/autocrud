@@ -107,6 +107,13 @@ class BaseRouteTemplate(IRouteTemplate):
         return self.order <= other.order
 
 
+class JsonListResponse(Response):
+    media_type = "application/json"
+
+    def render(self, content: list[bytes]) -> bytes:
+        return b"[" + b",".join(content) + b"]"
+
+
 class MsgspecResponse(Response):
     media_type = "application/json"
 
