@@ -920,6 +920,47 @@ autocrud.openapi(app, structs=[ErrorResponse])
 | POST   | /[resource]/{resource_id}/switch/{revision_id} | 切換到指定版本 |
 | POST   | /[resource]/{resource_id}/restore  | 還原指定 [resource] |
 
+### 列表搜尋與過濾 (Search & Filtering)
+
+針對列表類型的端點 (如 `GET /[resource]/data`, `GET /[resource]/meta`, `GET /[resource]/count` 等)，支援下列查詢參數來進行搜尋與分頁：
+
+* **`limit`**: (Query, int) 限制回傳筆數，預設 100。
+* **`offset`**: (Query, int) 分頁偏移量，預設 0。
+* **`conditions`**: (Query, JSON String) **通用過濾條件**，可用於篩選 Metadata (如建立時間) 或 Data 欄位。
+* **`sorts`**: (Query, JSON String) 排序條件。
+
+#### 使用 `conditions` 進行過濾
+
+`conditions` 參數接受一個 URL-encoded 的 JSON Array 字串，定義一個或多個過濾條件。
+
+**條件物件結構**:
+```json
+{
+  "field_path": "欄位名稱",   // Metadata 欄位 (如 created_time) 或 Data 欄位
+  "operator": "運算子",       // 比較方式
+  "value": "值"              // 比對值
+}
+```
+
+**支援的 Metadata 欄位**:
+* `resource_id`, `revision_id`
+* `created_time`, `updated_time`
+* `created_by`, `updated_by`
+* `is_deleted`
+
+**支援的運算子 (Operator)**:
+* `equals`, `not_equals`
+* `greater_than`, `greater_than_or_equal`, `less_than`, `less_than_or_equal`
+* `contains`, `starts_with`, `ends_with`
+* `in_list`, `not_in_list`
+
+**範例**: 
+查詢建立時間是 `2024` 年之後，且 `resource_id` 開頭為 `usr-` 的資源：
+
+```
+?conditions=[{"field_path":"created_time","operator":"greater_than","value":"2024-01-01T00:00:00"},{"field_path":"resource_id","operator":"starts_with","value":"usr-"}]
+```
+
 ### 使用範例
 
 假設你註冊的 resource 是 `todo-item`，則會自動生成如下路由：

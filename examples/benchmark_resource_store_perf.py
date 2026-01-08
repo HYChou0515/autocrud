@@ -3,15 +3,12 @@ import time
 import shutil
 from pathlib import Path
 from uuid import uuid4
-import statistics
 import io
 import os
-import random
 import traceback
 
 try:
     import matplotlib.pyplot as plt
-    from matplotlib.colors import LogNorm
     import pandas as pd
     import seaborn as sns
 
@@ -36,6 +33,7 @@ try:
     from autocrud.resource_manager.resource_store.cache import MemoryCache
     import boto3
     from botocore.exceptions import ClientError
+
     S3_IMP_AVAILABLE = True
 except ImportError:
     S3_IMP_AVAILABLE = False
@@ -59,14 +57,16 @@ def get_resource_store(store_type: str, tmpdir: Path):
         endpoint = os.environ.get("S3_ENDPOINT", "http://localhost:9000")
         bucket = os.environ.get("S3_BUCKET", "benchmark-autocrud")
         prefix = f"bench_{tmpdir.name}/"
-        
+
         # Check connection
         try:
             s3 = boto3.client(
                 "s3",
                 endpoint_url=endpoint,
                 aws_access_key_id=os.environ.get("AWS_ACCESS_KEY_ID", "minioadmin"),
-                aws_secret_access_key=os.environ.get("AWS_SECRET_ACCESS_KEY", "minioadmin"),
+                aws_secret_access_key=os.environ.get(
+                    "AWS_SECRET_ACCESS_KEY", "minioadmin"
+                ),
             )
             # Create bucket if not exists
             try:
@@ -74,7 +74,9 @@ def get_resource_store(store_type: str, tmpdir: Path):
             except ClientError:
                 s3.create_bucket(Bucket=bucket)
         except Exception as e:
-            print(f"Skipping S3 store: Could not connect to S3/MinIO at {endpoint}: {e}")
+            print(
+                f"Skipping S3 store: Could not connect to S3/MinIO at {endpoint}: {e}"
+            )
             return None
 
         return S3ResourceStore(
@@ -90,21 +92,25 @@ def get_resource_store(store_type: str, tmpdir: Path):
         endpoint = os.environ.get("S3_ENDPOINT", "http://localhost:9000")
         bucket = os.environ.get("S3_BUCKET", "benchmark-autocrud")
         prefix = f"bench_cached_{tmpdir.name}/"
-        
+
         # Check connection (reuse logic or trust S3 Store check)
         try:
             s3 = boto3.client(
                 "s3",
                 endpoint_url=endpoint,
                 aws_access_key_id=os.environ.get("AWS_ACCESS_KEY_ID", "minioadmin"),
-                aws_secret_access_key=os.environ.get("AWS_SECRET_ACCESS_KEY", "minioadmin"),
+                aws_secret_access_key=os.environ.get(
+                    "AWS_SECRET_ACCESS_KEY", "minioadmin"
+                ),
             )
             try:
                 s3.head_bucket(Bucket=bucket)
             except ClientError:
                 s3.create_bucket(Bucket=bucket)
         except Exception as e:
-            print(f"Skipping Cached S3 store: Could not connect to S3/MinIO at {endpoint}: {e}")
+            print(
+                f"Skipping Cached S3 store: Could not connect to S3/MinIO at {endpoint}: {e}"
+            )
             return None
 
         return CachedS3ResourceStore(
@@ -125,7 +131,7 @@ def run_benchmark():
     results = []
 
     # Clean previous results if desired, or load them to append?
-    # For now, let's overwrite for clean run each time or append. 
+    # For now, let's overwrite for clean run each time or append.
     # The reference script loads existing. I'll do the same.
     if data_file.exists():
         print(f"Loading existing benchmark data from {data_file}...")
@@ -139,7 +145,7 @@ def run_benchmark():
     # If results are empty, or we want to force re-run, we define stores
     # Here we just re-run if we want. We'll simply append new runs.
     # To avoid duplicates, maybe clear results for this run session.
-    results = [] 
+    results = []
 
     store_types = [
         "memory",
@@ -150,10 +156,10 @@ def run_benchmark():
 
     # Scenarios: (Number of Items, Data Size in Bytes)
     scenarios = [
-        (100, 1024),        # 100 items, 1KB each
-        (1000, 1024),       # 1000 items, 1KB each
+        (100, 1024),  # 100 items, 1KB each
+        (1000, 1024),  # 1000 items, 1KB each
         (50, 1024 * 1024),  # 50 items, 1MB each
-        (100, 1024 * 1024), # 100 items, 1MB each
+        (100, 1024 * 1024),  # 100 items, 1MB each
     ]
 
     base_tmp_dir = Path("./benchmark_rs_tmp")
@@ -175,7 +181,7 @@ def run_benchmark():
                 store = get_resource_store(store_type, run_dir)
                 if store is None:
                     continue
-                
+
                 # Cleanup S3 if possible? No easy way unless we list and delete.
                 # using unique prefix per run handles collision.
 
@@ -197,7 +203,7 @@ def run_benchmark():
                         created_by="bench",
                         updated_by="bench",
                         parent_revision_id=None,
-                        data_hash="fake_hash"
+                        data_hash="fake_hash",
                     )
                     items.append(info)
 
@@ -216,22 +222,26 @@ def run_benchmark():
                     f"{store_type:<15} | {'Write':<15} | {count:<10} | {size:<10} | {write_time_ms:<10.2f} | {write_qps:<10.2f}"
                 )
 
-                results.append({
-                    "Store Type": store_type,
-                    "Op Type": "Write",
-                    "Count": count,
-                    "Data Size": size,
-                    "Time (ms)": write_time_ms,
-                    "QPS": write_qps
-                })
-                
+                results.append(
+                    {
+                        "Store Type": store_type,
+                        "Op Type": "Write",
+                        "Count": count,
+                        "Data Size": size,
+                        "Time (ms)": write_time_ms,
+                        "QPS": write_qps,
+                    }
+                )
+
                 # Sleep to allow async flushes or consistency settling if any
                 time.sleep(0.5)
 
                 # 2. Exists Benchmark
                 start_time = time.perf_counter()
                 for info in items:
-                    store.exists(info.resource_id, info.revision_id, info.schema_version)
+                    store.exists(
+                        info.resource_id, info.revision_id, info.schema_version
+                    )
                 end_time = time.perf_counter()
 
                 exists_time = end_time - start_time
@@ -242,20 +252,24 @@ def run_benchmark():
                     f"{store_type:<15} | {'Exists':<15} | {count:<10} | {size:<10} | {exists_time_ms:<10.2f} | {exists_qps:<10.2f}"
                 )
 
-                results.append({
-                    "Store Type": store_type,
-                    "Op Type": "Exists",
-                    "Count": count,
-                    "Data Size": size,
-                    "Time (ms)": exists_time_ms,
-                    "QPS": exists_qps
-                })
+                results.append(
+                    {
+                        "Store Type": store_type,
+                        "Op Type": "Exists",
+                        "Count": count,
+                        "Data Size": size,
+                        "Time (ms)": exists_time_ms,
+                        "QPS": exists_qps,
+                    }
+                )
 
                 # 3. Read Benchmark (First Pass / Cold if applicable)
                 # For Disk/Memory it's same. For CachedS3, first read fetches from S3 and populates cache.
                 start_time = time.perf_counter()
                 for info in items:
-                    with store.get_data_bytes(info.resource_id, info.revision_id, info.schema_version) as f:
+                    with store.get_data_bytes(
+                        info.resource_id, info.revision_id, info.schema_version
+                    ) as f:
                         _ = f.read()
                 end_time = time.perf_counter()
 
@@ -267,19 +281,23 @@ def run_benchmark():
                     f"{store_type:<15} | {'Read (1st)':<15} | {count:<10} | {size:<10} | {read_time_ms:<10.2f} | {read_qps:<10.2f}"
                 )
 
-                results.append({
-                    "Store Type": store_type,
-                    "Op Type": "Read (1st)",
-                    "Count": count,
-                    "Data Size": size,
-                    "Time (ms)": read_time_ms,
-                    "QPS": read_qps
-                })
+                results.append(
+                    {
+                        "Store Type": store_type,
+                        "Op Type": "Read (1st)",
+                        "Count": count,
+                        "Data Size": size,
+                        "Time (ms)": read_time_ms,
+                        "QPS": read_qps,
+                    }
+                )
 
                 # 4. Read Benchmark (Second Pass / Warm)
                 start_time = time.perf_counter()
                 for info in items:
-                    with store.get_data_bytes(info.resource_id, info.revision_id, info.schema_version) as f:
+                    with store.get_data_bytes(
+                        info.resource_id, info.revision_id, info.schema_version
+                    ) as f:
                         _ = f.read()
                 end_time = time.perf_counter()
 
@@ -291,14 +309,16 @@ def run_benchmark():
                     f"{store_type:<15} | {'Read (2nd)':<15} | {count:<10} | {size:<10} | {read2_time_ms:<10.2f} | {read2_qps:<10.2f}"
                 )
 
-                results.append({
-                    "Store Type": store_type,
-                    "Op Type": "Read (2nd)",
-                    "Count": count,
-                    "Data Size": size,
-                    "Time (ms)": read2_time_ms,
-                    "QPS": read2_qps
-                })
+                results.append(
+                    {
+                        "Store Type": store_type,
+                        "Op Type": "Read (2nd)",
+                        "Count": count,
+                        "Data Size": size,
+                        "Time (ms)": read2_time_ms,
+                        "QPS": read2_qps,
+                    }
+                )
 
                 # Cleanup manual if needed (store.cleanup() is custom in some tests)
                 if hasattr(store, "cleanup"):
@@ -329,29 +349,33 @@ def run_benchmark():
 
     if HAS_PLOT_DEPS and results:
         df = pd.DataFrame(results)
-        df["Scenario"] = df["Count"].astype(str) + " x " + df["Data Size"].astype(str) + "B"
+        df["Scenario"] = (
+            df["Count"].astype(str) + " x " + df["Data Size"].astype(str) + "B"
+        )
 
         sns.set_theme(style="whitegrid")
-        
+
         op_types = df["Op Type"].unique()
         print("\nGenerating charts...")
 
         # One bar chart per Op Type
-        fig, axes = plt.subplots(len(op_types), 1, figsize=(10, 5 * len(op_types)), constrained_layout=True)
+        fig, axes = plt.subplots(
+            len(op_types), 1, figsize=(10, 5 * len(op_types)), constrained_layout=True
+        )
         if len(op_types) == 1:
             axes = [axes]
 
         for i, op_type in enumerate(op_types):
             ax = axes[i]
             data_subset = df[df["Op Type"] == op_type]
-            
+
             sns.barplot(
                 data=data_subset,
                 x="Scenario",
                 y="QPS",
                 hue="Store Type",
                 ax=ax,
-                palette="viridis"
+                palette="viridis",
             )
             ax.set_title(f"QPS - {op_type}")
             ax.set_ylabel("QPS (Higher is better)")
@@ -373,8 +397,10 @@ def run_benchmark():
             )
             md_lines.append("|---|---|---|---|---|---|")
 
-            data_subset = df[df["Op Type"] == op_type].sort_values(by=["Data Size", "QPS"], ascending=[True, False])
-            
+            data_subset = df[df["Op Type"] == op_type].sort_values(
+                by=["Data Size", "QPS"], ascending=[True, False]
+            )
+
             for _, row in data_subset.iterrows():
                 md_lines.append(
                     f"| {row['Store Type']} | {row['Scenario']} | {row['Count']} | {row['Data Size']} | {row['Time (ms)']:.2f} | {row['QPS']:.2f} |"
@@ -382,9 +408,7 @@ def run_benchmark():
 
     else:
         # Fallback table
-        md_lines.append(
-            "| Store Type | Op Type | Count | Size | Time (ms) | QPS |"
-        )
+        md_lines.append("| Store Type | Op Type | Count | Size | Time (ms) | QPS |")
         md_lines.append("|---|---|---|---|---|---|")
         for r in results:
             md_lines.append(

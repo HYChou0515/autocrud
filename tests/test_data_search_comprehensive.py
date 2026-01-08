@@ -13,6 +13,10 @@ from autocrud.types import (
     DataSearchOperator,
     ResourceMeta,
     ResourceMetaSearchQuery,
+    ResourceMetaSearchSort,
+    ResourceMetaSortDirection,
+    ResourceDataSearchSort,
+    ResourceMetaSortKey,
 )
 
 
@@ -34,6 +38,8 @@ def my_tmpdir():
         "memory-pg",
         "redis",
         "redis-pg",
+        "postgres",
+        "df",
     ],
 )
 class TestComprehensiveDataSearch:
@@ -61,6 +67,14 @@ class TestComprehensiveDataSearch:
                 db_filepath=tmpdir / "test_data_search_comp.db",
                 encoding="msgpack",
             )
+        if store_type == "df":
+            try:
+                from autocrud.resource_manager.meta_store.df import DFMemoryMetaStore
+
+                return DFMemoryMetaStore(encoding="msgpack")
+            except ImportError as e:
+                pytest.skip(f"Pandas not available: {e}")
+
         if store_type == "memory-pg":
             import psycopg2
 
@@ -81,6 +95,24 @@ class TestComprehensiveDataSearch:
                     fast_store=MemoryMetaStore(encoding="msgpack"),
                     slow_store=PostgresMetaStore(pg_dsn=pg_dsn, encoding="msgpack"),
                 )
+            except Exception as e:
+                pytest.skip(f"PostgreSQL not available: {e}")
+        elif store_type == "postgres":
+            import psycopg2
+
+            from autocrud.resource_manager.meta_store.postgres import PostgresMetaStore
+
+            # Setup PostgreSQL connection
+            pg_dsn = "postgresql://admin:password@localhost:5432/your_database"
+            try:
+                # Reset the test database
+                pg_conn = psycopg2.connect(pg_dsn)
+                with pg_conn.cursor() as cur:
+                    cur.execute("DROP TABLE IF EXISTS resource_meta;")
+                    pg_conn.commit()
+                pg_conn.close()
+
+                return PostgresMetaStore(pg_dsn=pg_dsn, encoding="msgpack")
             except Exception as e:
                 pytest.skip(f"PostgreSQL not available: {e}")
         elif store_type == "redis":
@@ -212,7 +244,7 @@ class TestComprehensiveDataSearch:
     def _assert_search_results(self, conditions, allow_empty=False):
         """Run search and verify results against in-memory filtering."""
         query = ResourceMetaSearchQuery(
-            data_conditions=conditions,
+            conditions=conditions,
             limit=100,
             offset=0,
         )
@@ -580,6 +612,25 @@ class TestComprehensiveDataSearch:
         self.meta_store[meta.resource_id] = meta
         self.sample_data.append(meta)
 
+        # Add another record where int is Explicitly None
+        explicit_null_data = {
+            "id": "5_explicit",
+            "int": None,
+        }
+        meta_explicit = ResourceMeta(
+            current_revision_id="rev_5_explicit",
+            resource_id=str(uuid.uuid4()),
+            total_revision_count=1,
+            created_time=dt.datetime.now(dt.timezone.utc),
+            updated_time=dt.datetime.now(dt.timezone.utc),
+            created_by="test_user",
+            updated_by="test_user",
+            is_deleted=False,
+            indexed_data=explicit_null_data,
+        )
+        self.meta_store[meta_explicit.resource_id] = meta_explicit
+        self.sample_data.append(meta_explicit)
+
         # Test is_null = True (should match id=5 for "str")
         self._assert_search_results(
             [
@@ -591,11 +642,10 @@ class TestComprehensiveDataSearch:
             ]
         )
 
-        # Test is_null = True (should NOT match id=5 for missing "int" because strict mode)
+        # Test is_null = True
         # "int" is missing in id=5. Strict is_null requires existence.
-        # So this should match nothing (or other records where int is explicitly null, but we don't have any)
-        # Wait, do we have other records? id=1,2,3,4 have int values.
-        # So this should return empty list.
+        # "int" is None in id=5_explicit.
+        # So this should match ONLY id=5_explicit.
         self._assert_search_results(
             [
                 DataSearchCondition(
@@ -603,12 +653,12 @@ class TestComprehensiveDataSearch:
                     operator=DataSearchOperator.is_null,
                     value=True,
                 )
-            ],
-            allow_empty=True,
+            ]
         )
 
         # Test is_null = False (should match id=1,2,3,4 for "str")
         # id=5 has str=None. So is_null(False) should not match id=5.
+        # id=5_explicit missing str. Strict is_null(False) requires existence. So it won't match 5_explicit.
         # id=1,2,3,4 have str="apple", "banana", etc. So they match.
         self._assert_search_results(
             [
@@ -711,12 +761,15 @@ class TestComprehensiveDataSearch:
 
     def test_strict_missing_behavior(self):
         # Verify that value comparisons on missing keys return False
-        data_7 = {
-            "id": "7",
-            # "missing_val" is missing
+        # We need to verify that missing keys DO NOT match, while present keys DO match.
+
+        # 1. Record with missing key
+        data_missing = {
+            "id": "7_missing",
+            # "target_val" is missing
         }
-        meta = ResourceMeta(
-            current_revision_id="rev_7",
+        meta_missing = ResourceMeta(
+            current_revision_id="rev_7_missing",
             resource_id=str(uuid.uuid4()),
             total_revision_count=1,
             created_time=dt.datetime.now(dt.timezone.utc),
@@ -724,51 +777,699 @@ class TestComprehensiveDataSearch:
             created_by="test_user",
             updated_by="test_user",
             is_deleted=False,
-            indexed_data=data_7,
+            indexed_data=data_missing,
+        )
+        self.meta_store[meta_missing.resource_id] = meta_missing
+        self.sample_data.append(meta_missing)
+
+        # 2. Record with key present
+        data_present = {
+            "id": "7_present",
+            "target_val": 20,  # int
+        }
+        meta_present = ResourceMeta(
+            current_revision_id="rev_7_present",
+            resource_id=str(uuid.uuid4()),
+            total_revision_count=1,
+            created_time=dt.datetime.now(dt.timezone.utc),
+            updated_time=dt.datetime.now(dt.timezone.utc),
+            created_by="test_user",
+            updated_by="test_user",
+            is_deleted=False,
+            indexed_data=data_present,
+        )
+        self.meta_store[meta_present.resource_id] = meta_present
+        self.sample_data.append(meta_present)
+
+        # 1. Not Equals
+        # target_val != 999
+        # "missing" should be False (strict).
+        # "present" (20) != 999 is True.
+        # Should match ONLY "7_present".
+        self._assert_search_results(
+            [
+                DataSearchCondition(
+                    field_path="target_val",
+                    operator=DataSearchOperator.not_equals,
+                    value=999,
+                )
+            ]
+        )
+
+        # 2. Not In List
+        # target_val not in [1, 2]
+        # "missing" -> False
+        # "present" (20) -> True
+        # Should match ONLY "7_present".
+        self._assert_search_results(
+            [
+                DataSearchCondition(
+                    field_path="target_val",
+                    operator=DataSearchOperator.not_in_list,
+                    value=[1, 2],
+                )
+            ]
+        )
+
+        # 3. Greater Than
+        # target_val > 10
+        # "missing" -> False
+        # "present" (20) -> True
+        # Should match ONLY "7_present".
+        self._assert_search_results(
+            [
+                DataSearchCondition(
+                    field_path="target_val",
+                    operator=DataSearchOperator.greater_than,
+                    value=10,
+                )
+            ]
+        )
+
+    def test_conditions_meta_fields(self):
+        """Test searching meta fields using the new `conditions` field."""
+        # All sample data has created_by="test_user"
+        query = ResourceMetaSearchQuery(
+            conditions=[
+                DataSearchCondition(
+                    field_path="created_by",
+                    operator=DataSearchOperator.equals,
+                    value="test_user",
+                )
+            ],
+            limit=100,
+        )
+        results = list(self.meta_store.iter_search(query))
+        assert len(results) >= 4
+        for meta in results:
+            assert meta.created_by == "test_user"
+
+        # Test non-matching
+        query_none = ResourceMetaSearchQuery(
+            conditions=[
+                DataSearchCondition(
+                    field_path="created_by",
+                    operator=DataSearchOperator.equals,
+                    value="non_existent_user",
+                )
+            ],
+            limit=100,
+        )
+        results_none = list(self.meta_store.iter_search(query_none))
+        assert len(results_none) == 0
+
+        # Test starts_with on meta field
+        query_starts = ResourceMetaSearchQuery(
+            conditions=[
+                DataSearchCondition(
+                    field_path="created_by",
+                    operator=DataSearchOperator.starts_with,
+                    value="test",
+                )
+            ],
+            limit=100,
+        )
+        results_starts = list(self.meta_store.iter_search(query_starts))
+        assert len(results_starts) >= 4
+
+    def test_conditions_mixed_fields(self):
+        """Test searching both meta and data fields using `conditions`."""
+        # created_by="test_user" AND str="apple"
+        query = ResourceMetaSearchQuery(
+            conditions=[
+                DataSearchCondition(
+                    field_path="created_by",
+                    operator=DataSearchOperator.equals,
+                    value="test_user",
+                ),
+                DataSearchCondition(
+                    field_path="str",
+                    operator=DataSearchOperator.equals,
+                    value="apple",
+                ),
+            ],
+            limit=100,
+        )
+        results = list(self.meta_store.iter_search(query))
+        assert len(results) == 1
+        assert results[0].indexed_data["str"] == "apple"
+        assert results[0].created_by == "test_user"
+
+    def test_conditions_data_fields_replacement(self):
+        """Test that `conditions` works as a replacement for `data_conditions`."""
+        # Same as test_equals_string but using conditions
+        query = ResourceMetaSearchQuery(
+            conditions=[
+                DataSearchCondition(
+                    field_path="str",
+                    operator=DataSearchOperator.equals,
+                    value="banana",
+                )
+            ],
+            limit=100,
+        )
+        results = list(self.meta_store.iter_search(query))
+        assert len(results) == 1
+        assert results[0].indexed_data["str"] == "banana"
+
+    # --- Sorting ---
+
+    def test_sort_int_asc(self):
+        query = ResourceMetaSearchQuery(
+            sorts=[
+                ResourceDataSearchSort(
+                    field_path="int",
+                    direction=ResourceMetaSortDirection.ascending,
+                )
+            ],
+            limit=100,
+        )
+        results = list(self.meta_store.iter_search(query))
+        ids = [m.indexed_data["id"] for m in results]
+        # 10, 20, 30, 40 -> id 1, 2, 3, 4
+        assert ids == ["1", "2", "3", "4"]
+
+    def test_sort_int_desc(self):
+        query = ResourceMetaSearchQuery(
+            sorts=[
+                ResourceDataSearchSort(
+                    field_path="int",
+                    direction=ResourceMetaSortDirection.descending,
+                )
+            ],
+            limit=100,
+        )
+        results = list(self.meta_store.iter_search(query))
+        ids = [m.indexed_data["id"] for m in results]
+        # 40, 30, 20, 10 -> id 4, 3, 2, 1
+        assert ids == ["4", "3", "2", "1"]
+
+    def test_sort_meta_field_desc(self):
+        # created_time is set to base_time + i minutes.
+        # i=0(id1), i=1(id2), i=2(id3), i=3(id4)
+        # DESC -> 4, 3, 2, 1
+        query = ResourceMetaSearchQuery(
+            sorts=[
+                ResourceMetaSearchSort(
+                    key=ResourceMetaSortKey.created_time,
+                    direction=ResourceMetaSortDirection.descending,
+                )
+            ],
+            limit=100,
+        )
+        results = list(self.meta_store.iter_search(query))
+        ids = [m.indexed_data["id"] for m in results]
+        assert ids == ["4", "3", "2", "1"]
+
+    # --- Pagination ---
+
+    def test_pagination_limit(self):
+        query = ResourceMetaSearchQuery(
+            sorts=[
+                ResourceDataSearchSort(
+                    field_path="int",
+                    direction=ResourceMetaSortDirection.ascending,
+                )
+            ],
+            limit=2,
+            offset=0,
+        )
+        results = list(self.meta_store.iter_search(query))
+        ids = [m.indexed_data["id"] for m in results]
+        assert ids == ["1", "2"]
+
+    def test_pagination_offset(self):
+        query = ResourceMetaSearchQuery(
+            sorts=[
+                ResourceDataSearchSort(
+                    field_path="int",
+                    direction=ResourceMetaSortDirection.ascending,
+                )
+            ],
+            limit=2,
+            offset=2,
+        )
+        results = list(self.meta_store.iter_search(query))
+        ids = [m.indexed_data["id"] for m in results]
+        assert ids == ["3", "4"]
+
+    # --- Regex ---
+
+    def test_regex_match(self):
+        # Only strings support regex
+        # "banana" matches "^ban.*"
+        self._assert_search_results(
+            [
+                DataSearchCondition(
+                    field_path="str",
+                    operator=DataSearchOperator.regex,
+                    value="^ban.*",
+                )
+            ]
+        )
+
+    def test_regex_other_match(self):
+        # Add a record that matches a different regex
+        data_xyz = {
+            "id": "xyz_1",
+            "str": "xyz_start",
+        }
+        meta_xyz = ResourceMeta(
+            current_revision_id="rev_xyz",
+            resource_id=str(uuid.uuid4()),
+            total_revision_count=1,
+            created_time=dt.datetime.now(dt.timezone.utc),
+            updated_time=dt.datetime.now(dt.timezone.utc),
+            created_by="test_user",
+            updated_by="test_user",
+            is_deleted=False,
+            indexed_data=data_xyz,
+        )
+        self.meta_store[meta_xyz.resource_id] = meta_xyz
+        self.sample_data.append(meta_xyz)
+
+        self._assert_search_results(
+            [
+                DataSearchCondition(
+                    field_path="str",
+                    operator=DataSearchOperator.regex,
+                    value="^xyz.*",
+                )
+            ]
+        )
+
+    # --- Meta Fields via conditions ---
+
+    def test_meta_created_time_gt(self):
+        """Test filtering by created_time using generic conditions."""
+        # created_time is base_time + i minutes.
+        # base = 12:00.
+        # id=1: 12:00, id=2: 12:01, id=3: 12:02, id=4: 12:03
+        # > 12:01 -> id 3, 4
+        limit_time = self.sample_data[1].created_time
+
+        query = ResourceMetaSearchQuery(
+            conditions=[
+                DataSearchCondition(
+                    field_path="created_time",
+                    operator=DataSearchOperator.greater_than,
+                    value=limit_time,
+                )
+            ],
+            limit=100,
+        )
+        # We cannot use _assert_search_results here directly if it doesn't support
+        # overriding the query, but wait, _assert_search_results creates the query internally.
+        # _assert_search_results accepts 'conditions'.
+        # Let's use _assert_search_results directly which is cleaner and tests the comparison logic too.
+
+        self._assert_search_results(
+            [
+                DataSearchCondition(
+                    field_path="created_time",
+                    operator=DataSearchOperator.greater_than,
+                    value=limit_time,
+                )
+            ]
+        )
+
+    def test_meta_resource_id_in_list(self):
+        """Test filtering resource_id using in_list."""
+        target_ids = [self.sample_data[0].resource_id, self.sample_data[3].resource_id]
+
+        self._assert_search_results(
+            [
+                DataSearchCondition(
+                    field_path="resource_id",
+                    operator=DataSearchOperator.in_list,
+                    value=target_ids,
+                )
+            ]
+        )
+
+    def test_meta_is_deleted_eq(self):
+        """Test filtering is_deleted."""
+        # By default all are False.
+        self._assert_search_results(
+            [
+                DataSearchCondition(
+                    field_path="is_deleted",
+                    operator=DataSearchOperator.equals,
+                    value=False,
+                )
+            ]
+        )
+
+    # --- Special Characters ---
+
+    def test_special_characters_string(self):
+        """Test strings with quotes, spaces, special chars."""
+        special_str = "foo ' bar \" baz % ; --"
+        data_special = {"id": "special_1", "str": special_str, "int": 999}
+        meta = ResourceMeta(
+            current_revision_id="rev_special_1",
+            resource_id=str(uuid.uuid4()),
+            total_revision_count=1,
+            created_time=dt.datetime.now(dt.timezone.utc),
+            updated_time=dt.datetime.now(dt.timezone.utc),
+            created_by="special_user",
+            updated_by="special_user",
+            is_deleted=False,
+            indexed_data=data_special,
         )
         self.meta_store[meta.resource_id] = meta
         self.sample_data.append(meta)
 
-        # 1. Not Equals
-        # missing != "some_val" should be False
-        # If it were True, id=7 would match.
-        # We expect id=7 NOT to match.
-        # Other IDs might match if they have "missing_val" != "some_val".
-        # But "missing_val" is missing in all sample data (id=1..6 don't have it either).
-        # So result should be empty.
+        # 1. Exact match
         self._assert_search_results(
             [
                 DataSearchCondition(
-                    field_path="missing_val",
+                    field_path="str",
+                    operator=DataSearchOperator.equals,
+                    value=special_str,
+                )
+            ]
+        )
+
+        # 2. Contains with quote
+        self._assert_search_results(
+            [
+                DataSearchCondition(
+                    field_path="str",
+                    operator=DataSearchOperator.contains,
+                    value="' bar",
+                )
+            ]
+        )
+
+    # --- Complex Mixed Logic ---
+
+    def test_complex_mixed_logic_and_nested_or(self):
+        """
+        (created_by = 'test_user') AND (
+            (int >= 30) OR (str starts_with 'app')
+        )
+        """
+        # test_user is true for all original 4
+        # int >= 30: id 3 (30), id 4 (40)
+        # str starts_with 'app': id 1 (apple)
+        # expected: 1, 3, 4
+
+        self._assert_search_results(
+            [
+                DataSearchCondition(
+                    field_path="created_by",
+                    operator=DataSearchOperator.equals,
+                    value="test_user",
+                ),
+                DataSearchGroup(
+                    operator=DataSearchLogicOperator.or_op,
+                    conditions=[
+                        DataSearchCondition(
+                            field_path="int",
+                            operator=DataSearchOperator.greater_than_or_equal,
+                            value=30,
+                        ),
+                        DataSearchCondition(
+                            field_path="str",
+                            operator=DataSearchOperator.starts_with,
+                            value="app",
+                        ),
+                    ],
+                ),
+            ]
+        )
+
+    # --- Additional Meta Field Tests ---
+
+    def test_meta_updated_time_ops(self):
+        """Test comparisons on updated_time."""
+        # updated_time is same as created_time in sample data: base + i minutes
+        # id=1 (base+0), id=2 (base+1), id=3 (base+2), id=4 (base+3)
+        target_time = self.sample_data[2].updated_time  # id=3
+
+        # 1. Less Than Strict
+        # < id=3 => id=1, 2
+        self._assert_search_results(
+            [
+                DataSearchCondition(
+                    field_path="updated_time",
+                    operator=DataSearchOperator.less_than,
+                    value=target_time,
+                )
+            ]
+        )
+
+        # 2. Less Than Or Equal
+        # <= id=3 => id=1, 2, 3
+        self._assert_search_results(
+            [
+                DataSearchCondition(
+                    field_path="updated_time",
+                    operator=DataSearchOperator.less_than_or_equal,
+                    value=target_time,
+                )
+            ]
+        )
+
+        # 3. Greater Than Or Equal
+        # >= id=3 => id=3, 4
+        self._assert_search_results(
+            [
+                DataSearchCondition(
+                    field_path="updated_time",
+                    operator=DataSearchOperator.greater_than_or_equal,
+                    value=target_time,
+                )
+            ]
+        )
+
+        # 4. Not Equals
+        # != id=3 => id=1, 2, 4
+        self._assert_search_results(
+            [
+                DataSearchCondition(
+                    field_path="updated_time",
                     operator=DataSearchOperator.not_equals,
-                    value="some_val",
+                    value=target_time,
                 )
-            ],
-            allow_empty=True,
+            ]
         )
 
-        # 2. Not In List
-        # missing not in ["a", "b"] should be False
+    def test_meta_updated_by_ops(self):
+        """Test operators on updated_by."""
+        # Current sample data all have "test_user".
+        # Let's add a record with diff updated_by.
+
+        meta = ResourceMeta(
+            current_revision_id="rev_diff_user",
+            resource_id=str(uuid.uuid4()),
+            total_revision_count=1,
+            created_time=dt.datetime.now(dt.timezone.utc),
+            updated_time=dt.datetime.now(dt.timezone.utc),
+            created_by="admin",
+            updated_by="admin_user",
+            is_deleted=False,
+            indexed_data={"id": "diff_user", "val": 100},
+        )
+        self.meta_store[meta.resource_id] = meta
+        self.sample_data.append(meta)
+
+        # 1. Contains
+        # "admin_user" contains "min"
         self._assert_search_results(
             [
                 DataSearchCondition(
-                    field_path="missing_val",
+                    field_path="updated_by",
+                    operator=DataSearchOperator.contains,
+                    value="min",
+                )
+            ]
+        )
+
+        # 2. Ends With
+        # "admin_user" ends with "user"
+        # "test_user" ends with "user"
+        # So it should match all 5 records.
+        self._assert_search_results(
+            [
+                DataSearchCondition(
+                    field_path="updated_by",
+                    operator=DataSearchOperator.ends_with,
+                    value="user",
+                )
+            ]
+        )
+
+        # 3. Regex
+        # starts with admin
+        self._assert_search_results(
+            [
+                DataSearchCondition(
+                    field_path="updated_by",
+                    operator=DataSearchOperator.regex,
+                    value="^admin.*",
+                )
+            ]
+        )
+
+        # 4. Not In List
+        # not in ["test_user"] => match "admin_user"
+        self._assert_search_results(
+            [
+                DataSearchCondition(
+                    field_path="updated_by",
                     operator=DataSearchOperator.not_in_list,
-                    value=["a", "b"],
+                    value=["test_user"],
                 )
-            ],
-            allow_empty=True,
+            ]
         )
 
-        # 3. Greater Than (just to be sure)
-        # missing > 10 should be False
+    def test_meta_null_checks(self):
+        """Test is_null, exists, isna on meta fields."""
+        # schema_version is None by default in sample data.
+        # Let's add one with schema_version set.
+
+        meta_ver = ResourceMeta(
+            current_revision_id="rev_ver",
+            resource_id=str(uuid.uuid4()),
+            total_revision_count=1,
+            created_time=dt.datetime.now(dt.timezone.utc),
+            updated_time=dt.datetime.now(dt.timezone.utc),
+            created_by="test_user",
+            updated_by="test_user",
+            is_deleted=False,
+            schema_version="v1.0",
+            indexed_data={"id": "ver_1"},
+        )
+        self.meta_store[meta_ver.resource_id] = meta_ver
+        self.sample_data.append(meta_ver)
+
+        # 1. is_null = True (should match the default ones, i.e. 4 records)
         self._assert_search_results(
             [
                 DataSearchCondition(
-                    field_path="missing_val",
-                    operator=DataSearchOperator.greater_than,
-                    value=10,
+                    field_path="schema_version",
+                    operator=DataSearchOperator.is_null,
+                    value=True,
                 )
-            ],
-            allow_empty=True,
+            ]
         )
+
+        # 2. is_null = False (should match id="ver_1")
+        self._assert_search_results(
+            [
+                DataSearchCondition(
+                    field_path="schema_version",
+                    operator=DataSearchOperator.is_null,
+                    value=False,
+                )
+            ]
+        )
+
+        # 3. exists = True
+        # Meta fields always exist as attributes, but we check if logic holds.
+        self._assert_search_results(
+            [
+                DataSearchCondition(
+                    field_path="updated_by",
+                    operator=DataSearchOperator.exists,
+                    value=True,
+                )
+            ]
+        )
+
+        # 4. isna = True (None or Missing)
+        # schema_version is None for 4 records.
+        self._assert_search_results(
+            [
+                DataSearchCondition(
+                    field_path="schema_version",
+                    operator=DataSearchOperator.isna,
+                    value=True,
+                )
+            ]
+        )
+
+    def test_logic_not_sub_conditions(self):
+        """Test NOT operator with a Group (sub-conditions)."""
+        # NOT ( int > 20 AND str startswith 'ch' )
+        # id=3: int=30, str=cherry. (30>20 AND cherry starts ch) is TRUE. NOT->FALSE.
+        # others: FALSE. NOT->TRUE.
+        # So we expect id 1, 2, 4.
+
+        self._assert_search_results(
+            [
+                DataSearchGroup(
+                    operator=DataSearchLogicOperator.not_op,
+                    conditions=[
+                        DataSearchGroup(  # Nested AND
+                            operator=DataSearchLogicOperator.and_op,
+                            conditions=[
+                                DataSearchCondition(
+                                    field_path="int",
+                                    operator=DataSearchOperator.greater_than,
+                                    value=20,
+                                ),
+                                DataSearchCondition(
+                                    field_path="str",
+                                    operator=DataSearchOperator.starts_with,
+                                    value="ch",
+                                ),
+                            ],
+                        )
+                    ],
+                )
+            ]
+        )
+
+    def test_search_legacy_fields(self):
+        """Test search using legacy fields directly on ResourceMetaSearchQuery."""
+        # 1. is_deleted
+        # All sample data has is_deleted=False
+        q = ResourceMetaSearchQuery(is_deleted=True, limit=100)
+        results = list(self.meta_store.iter_search(q))
+        assert len(results) == 0
+
+        q = ResourceMetaSearchQuery(is_deleted=False, limit=100)
+        results = list(self.meta_store.iter_search(q))
+        assert len(results) == len(self.sample_data)
+
+        # 2. created_time range
+        # sample_data created times are separated by 1 minute
+        base_time = self.sample_data[0].created_time
+        # Select first 2 items
+        end_time = base_time + dt.timedelta(minutes=1, seconds=30)
+        q = ResourceMetaSearchQuery(
+            created_time_start=base_time - dt.timedelta(seconds=1),
+            created_time_end=end_time,
+            limit=100,
+        )
+        results = list(self.meta_store.iter_search(q))
+        # Should match item 0 and 1
+        ids = sorted([r.indexed_data["id"] for r in results])
+        assert ids == ["1", "2"]
+
+        # 3. created_bys
+        q = ResourceMetaSearchQuery(created_bys=["test_user"], limit=100)
+        results = list(self.meta_store.iter_search(q))
+        assert len(results) == len(self.sample_data)
+
+        q = ResourceMetaSearchQuery(created_bys=["non_existent"], limit=100)
+        results = list(self.meta_store.iter_search(q))
+        assert len(results) == 0
+
+        # 4. updated_time range
+        q = ResourceMetaSearchQuery(
+            updated_time_start=base_time - dt.timedelta(seconds=1),
+            updated_time_end=end_time,
+            limit=100,
+        )
+        results = list(self.meta_store.iter_search(q))
+        ids = sorted([r.indexed_data["id"] for r in results])
+        assert ids == ["1", "2"]
+
+        # 5. updated_bys
+        q = ResourceMetaSearchQuery(updated_bys=["test_user"], limit=100)
+        results = list(self.meta_store.iter_search(q))
+        assert len(results) == len(self.sample_data)

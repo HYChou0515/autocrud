@@ -228,7 +228,10 @@ class ResourceMetaSearchQuery(Struct, kw_only=True):
     """Filter resources updated by these users."""
 
     data_conditions: list[DataSearchFilter] | UnsetType = UNSET
-    """Conditions to filter resources based on their indexed data fields."""
+    """Deprecated. Use `conditions` instead. Conditions to filter resources based on their indexed data fields."""
+
+    conditions: list[DataSearchFilter] | UnsetType = UNSET
+    """Conditions to filter resources based on their metadata or indexed data fields."""
 
     limit: int = 10
     """Maximum number of results to return."""

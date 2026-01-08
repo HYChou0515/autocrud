@@ -628,7 +628,8 @@ assert len(metas) == count
 | [`updated_time_end`](#autocrud.types.ResourceMetaSearchQuery.updated_time_end)      |在這之前修改（含）                   | datetime                      |
 | [`created_bys`](#autocrud.types.ResourceMetaSearchQuery.created_bys)                |誰建立                         | list[str]                          |
 | [`updated_bys`](#autocrud.types.ResourceMetaSearchQuery.updated_bys)                |誰更新                         | list[str]                          |
-| [`data_conditions`](#autocrud.types.ResourceMetaSearchQuery.data_conditions)        |使用data的indexed fields搜尋 (see [Data Search Filter](#data-search-filter) and [data attribute index](#data-attribute-index))  | list[DataSearchCondition or DataSearchGroup]                     |
+| [`conditions`](#autocrud.types.ResourceMetaSearchQuery.conditions)                  |使用meta欄位或data的indexed fields搜尋 (see [General Filtering](#general-filtering-meta-data)) (**New in 0.6.9**) | list[DataSearchCondition or DataSearchGroup]                     |
+| [`data_conditions`](#autocrud.types.ResourceMetaSearchQuery.data_conditions)        |(Deprecated) 使用data的indexed fields搜尋 (see [Data Search Filter](#data-search-filter) and [data attribute index](#data-attribute-index))  | list[DataSearchCondition or DataSearchGroup]                     |
 | [`sorts`](#autocrud.types.ResourceMetaSearchQuery.sorts)                            |sort fields (see [sorting](#sorting))                    | list[ResourceMetaSearchSort or ResourceDataSearchSort] |
 | [`limit`](#autocrud.types.ResourceMetaSearchQuery.limit)                            |pagination limit (see [pagination](#pagination))               | int = 10                                            |
 | [`offset`](#autocrud.types.ResourceMetaSearchQuery.offset)                          |pagination offset (see [pagination](#pagination))              | int = 0                                            |
@@ -667,9 +668,30 @@ metas = manager.search_resources(ResourceMetaSearchQuery(
 
 `DataSearchCondition`與`DataSearchGroup`可以提供基本的搜尋功能，詳細使用方式可以參考[DataSearchCondition](#autocrud.types.DataSearchCondition)與[DataSearchGroup](#autocrud.types.DataSearchGroup)
 
-#### Data Search Filter
+#### General Filtering (Meta & Data)
 
-`data_conditions` 支援更複雜的邏輯組合，包括 `AND`、`OR`、`NOT` 以及巢狀條件。
+```{versionadded} 0.6.9
+```
+
+`conditions` 提供了統一的搜尋介面，可用於篩選 **Metadata** (如 `resource_id`, `created_time`) 與 **Index Data** 欄位。這比舊有的 `data_conditions` 更具彈性。
+
+**支援的 Metadata 欄位**:
+- `resource_id`, `revision_id`
+- `created_time`, `updated_time`
+- `created_by`, `updated_by`
+- `is_deleted`
+
+```python
+# 同時過濾 Metadata (created_time) 與 Data (completed)
+query = ResourceMetaSearchQuery(
+    conditions=[
+        DataSearchCondition(field_path="created_time", operator="gt", value=datetime(2023, 1, 1)),
+        DataSearchCondition(field_path="completed", operator="eq", value=True)
+    ]
+)
+```
+
+`conditions` (與舊的 `data_conditions`) 支援複雜的邏輯組合，包括 `AND`、`OR`、`NOT` 以及巢狀條件。
 這是一個遞迴定義的結構，由 `DataSearchCondition` (基本條件) 與 `DataSearchGroup` (邏輯群組) 組成。
 
 **DataSearchCondition (基本條件)**
@@ -764,9 +786,14 @@ complex_filter = DataSearchGroup(
 )
 
 manager.search_resources(ResourceMetaSearchQuery(
-    data_conditions=[complex_filter]
+    # 使用 conditions
+    conditions=[complex_filter]
 ))
 ```
+
+#### Data Search Filter (Legacy)
+
+**Deprecated**. `data_conditions` 參數已棄用，請使用上面的 `conditions` (General Filtering)。用法完全相同，差別僅在於 `conditions` 額外支援 metadata 欄位。
 
 #### Sorting
 

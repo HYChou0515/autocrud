@@ -388,8 +388,12 @@ def run_benchmark():
                         times = []
                         result_count = 0
                         import subprocess as sp
+
                         if store_type == "nfs-sql3-file":
-                            sp.run("sudo umount -f -l /mnt/nfs/marbles/kingston500", shell=True)
+                            sp.run(
+                                "sudo umount -f -l /mnt/nfs/marbles/kingston500",
+                                shell=True,
+                            )
                             time.sleep(2)
                             sp.run("sudo mount -a", shell=True)
                             time.sleep(2)
@@ -464,7 +468,7 @@ def run_benchmark():
 
         for col in pivot_qps.columns:
             start_max_val = pivot_qps[col].max()
-            
+
             if start_max_val > 0:
                 norm_scores[col] = pivot_qps[col] / start_max_val
             else:
@@ -484,7 +488,11 @@ def run_benchmark():
         harmonic_means = norm_scores.apply(calc_hm, axis=1)
 
         # 4. Partition and Sort
-        store_types_sorted = sorted(list(set(df["Store Type"])), key=lambda s: harmonic_means.get(s, 0), reverse=True)
+        store_types_sorted = sorted(
+            list(set(df["Store Type"])),
+            key=lambda s: harmonic_means.get(s, 0),
+            reverse=True,
+        )
 
         print("Harmonic Means (Strict Balance):")
         for s in store_types_sorted:
@@ -629,7 +637,7 @@ def run_benchmark():
                 size = row["Total Size"]
                 qps = row["QPS"]
                 store_type = row["Store Type"]
-                
+
                 best = max_qps_by_size.get(size, qps)
                 if best > 0:
                     ratio = qps / best

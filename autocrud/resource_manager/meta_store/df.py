@@ -1,5 +1,5 @@
 import sys
-from collections.abc import Generator
+from collections.abc import Generator, Iterable
 
 from msgspec import UNSET
 
@@ -16,6 +16,7 @@ from autocrud.resource_manager.basic import (
     ISlowMetaStore,
     MsgspecSerializer,
     get_sort_fn,
+    is_match_query,
 )
 
 
@@ -78,6 +79,10 @@ class DFMemoryMetaStore(ISlowMetaStore):
         self._df.drop(index=pk, errors="ignore", inplace=True)
         del self._store[pk]
 
+    def save_many(self, metas: Iterable[ResourceMeta]) -> None:
+        for m in metas:
+            self[m.resource_id] = m
+
     def __iter__(self) -> Generator[str]:
         yield from self._store.keys()
 
@@ -101,11 +106,13 @@ class DFMemoryMetaStore(ISlowMetaStore):
             exps.append("created_by.isin(@query.created_bys)")
         if query.updated_bys is not UNSET:
             exps.append("updated_by.isin(@query.updated_bys)")
-        query_str = " and ".join(exps) if exps else "True"
+        query_str = " and ".join(exps)
+        candidates_index = self._df.query(query_str).index if exps else self._df.index
         results: list[ResourceMeta] = []
-        for pk in self._df.query(query_str).index:
+        for pk in candidates_index:
             meta_b = self._store[pk]
             meta = self._serializer.decode(meta_b)
-            results.append(meta)
+            if is_match_query(meta, query):
+                results.append(meta)
         results.sort(key=get_sort_fn([] if query.sorts is UNSET else query.sorts))
         yield from results[query.offset : query.offset + query.limit]

@@ -4,6 +4,7 @@ import pickle
 import re
 import sqlite3
 import threading
+import datetime as dt
 from collections import defaultdict
 from collections.abc import Callable, Generator
 from pathlib import Path
@@ -64,6 +65,7 @@ class SqliteMetaStore(ISlowMetaStore):
                 created_by TEXT NOT NULL,
                 updated_by TEXT NOT NULL,
                 is_deleted INTEGER NOT NULL,
+                schema_version TEXT,
                 indexed_data TEXT  -- JSON 格式的索引數據
             )
         """)
@@ -73,6 +75,9 @@ class SqliteMetaStore(ISlowMetaStore):
         columns = [column[1] for column in cursor.fetchall()]
         if "indexed_data" not in columns:
             _conn.execute("ALTER TABLE resource_meta ADD COLUMN indexed_data TEXT")
+            _conn.commit()
+        if "schema_version" not in columns:
+            _conn.execute("ALTER TABLE resource_meta ADD COLUMN schema_version TEXT")
             _conn.commit()
 
         _conn.execute("""
@@ -150,8 +155,8 @@ class SqliteMetaStore(ISlowMetaStore):
         _conn.execute(
             """
             INSERT OR REPLACE INTO resource_meta 
-            (resource_id, data, created_time, updated_time, created_by, updated_by, is_deleted, indexed_data)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+            (resource_id, data, created_time, updated_time, created_by, updated_by, is_deleted, schema_version, indexed_data)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
         """,
             (
                 pk,
@@ -161,6 +166,7 @@ class SqliteMetaStore(ISlowMetaStore):
                 meta.created_by,
                 meta.updated_by,
                 1 if meta.is_deleted else 0,
+                meta.schema_version,
                 indexed_data_json,
             ),
         )
@@ -175,8 +181,8 @@ class SqliteMetaStore(ISlowMetaStore):
 
         sql = """
         INSERT OR REPLACE INTO resource_meta 
-        (resource_id, data, created_time, updated_time, created_by, updated_by, is_deleted, indexed_data)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+        (resource_id, data, created_time, updated_time, created_by, updated_by, is_deleted, schema_version, indexed_data)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
         """
         _conn = self._conns[threading.get_ident()]
         with _conn:
@@ -191,6 +197,7 @@ class SqliteMetaStore(ISlowMetaStore):
                         meta.created_by,
                         meta.updated_by,
                         1 if meta.is_deleted else 0,
+                        meta.schema_version,
                         (
                             json.dumps(meta.indexed_data, ensure_ascii=False)
                             if meta.indexed_data is not UNSET
@@ -256,7 +263,15 @@ class SqliteMetaStore(ISlowMetaStore):
         # 處理 data_conditions - 在 SQL 層面過濾
         if query.data_conditions is not UNSET:
             for condition in query.data_conditions:
-                json_condition, json_params = self._build_json_condition(condition)
+                json_condition, json_params = self._build_condition(condition)
+                if json_condition:
+                    conditions.append(json_condition)
+                    params.extend(json_params)
+
+        # 處理 conditions - 在 SQL 層面過濾
+        if query.conditions is not UNSET:
+            for condition in query.conditions:
+                json_condition, json_params = self._build_condition(condition)
                 if json_condition:
                     conditions.append(json_condition)
                     params.extend(json_params)
@@ -299,8 +314,8 @@ class SqliteMetaStore(ISlowMetaStore):
         for row in cursor:
             yield self._serializer.decode(row[0])
 
-    def _build_json_condition(self, condition) -> tuple[str, list]:
-        """構建 SQLite JSON 查詢條件"""
+    def _build_condition(self, condition) -> tuple[str, list]:
+        """構建 SQLite 查詢條件 (支援 Meta 欄位與 JSON 欄位)"""
         from autocrud.types import (
             DataSearchGroup,
             DataSearchLogicOperator,
@@ -311,7 +326,7 @@ class SqliteMetaStore(ISlowMetaStore):
             sub_conditions = []
             sub_params = []
             for sub_cond in condition.conditions:
-                c_str, c_params = self._build_json_condition(sub_cond)
+                c_str, c_params = self._build_condition(sub_cond)
                 if c_str:
                     sub_conditions.append(c_str)
                     sub_params.extend(c_params)
@@ -330,6 +345,80 @@ class SqliteMetaStore(ISlowMetaStore):
         field_path = condition.field_path
         operator = condition.operator
         value = condition.value
+
+        # 判斷是否為 Meta 欄位
+        meta_fields = {
+            "resource_id",
+            "created_time",
+            "updated_time",
+            "created_by",
+            "updated_by",
+            "is_deleted",
+            "schema_version",
+        }
+
+        if field_path in meta_fields:
+            # Handle datetime conversion for time fields which are stored as REAL (timestamp)
+            if field_path in ("created_time", "updated_time"):
+                if isinstance(value, dt.datetime):
+                    value = value.timestamp()
+                elif isinstance(value, (list, tuple, set)):
+                    value = [
+                        v.timestamp() if isinstance(v, dt.datetime) else v
+                        for v in value
+                    ]
+
+            # 直接使用欄位名稱
+            column_name = field_path
+
+            if operator == DataSearchOperator.equals:
+                return f"{column_name} = ?", [value]
+            if operator == DataSearchOperator.not_equals:
+                return f"{column_name} != ?", [value]
+            if operator == DataSearchOperator.greater_than:
+                return f"{column_name} > ?", [value]
+            if operator == DataSearchOperator.greater_than_or_equal:
+                return f"{column_name} >= ?", [value]
+            if operator == DataSearchOperator.less_than:
+                return f"{column_name} < ?", [value]
+            if operator == DataSearchOperator.less_than_or_equal:
+                return f"{column_name} <= ?", [value]
+            if operator == DataSearchOperator.contains:
+                return f"{column_name} LIKE ?", [f"%{value}%"]
+            if operator == DataSearchOperator.starts_with:
+                return f"{column_name} LIKE ?", [f"{value}%"]
+            if operator == DataSearchOperator.ends_with:
+                return f"{column_name} LIKE ?", [f"%{value}"]
+            if operator == DataSearchOperator.regex:
+                return f"{column_name} REGEXP ?", [value]
+            if operator == DataSearchOperator.in_list:
+                if isinstance(value, (list, tuple, set)):
+                    placeholders = ",".join("?" * len(value))
+                    return f"{column_name} IN ({placeholders})", list(value)
+            elif operator == DataSearchOperator.not_in_list:
+                if isinstance(value, (list, tuple, set)):
+                    placeholders = ",".join("?" * len(value))
+                    return f"{column_name} NOT IN ({placeholders})", list(value)
+            if operator == DataSearchOperator.is_null:
+                if value:
+                    return f"{column_name} IS NULL", []
+                else:
+                    return f"{column_name} IS NOT NULL", []
+            # Meta fields always exist, so exists=True is always True, exists=False is always False
+            if operator == DataSearchOperator.exists:
+                if value:
+                    return "1=1", []
+                else:
+                    return "1=0", []
+            # isna for meta fields is same as is_null
+            if operator == DataSearchOperator.isna:
+                if value:
+                    return f"{column_name} IS NULL", []
+                else:
+                    return f"{column_name} IS NOT NULL", []
+
+            # Fallback or unsupported operator for meta fields
+            return "", []
 
         # SQLite JSON 提取語法: json_extract(indexed_data, '$.field_path')
         json_extract = f"json_extract(indexed_data, '$.{field_path}')"

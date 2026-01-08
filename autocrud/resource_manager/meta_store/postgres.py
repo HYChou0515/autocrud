@@ -127,6 +127,7 @@ class PostgresMetaStore(ISlowMetaStore):
                     created_by TEXT NOT NULL,
                     updated_by TEXT NOT NULL,
                     is_deleted BOOLEAN NOT NULL,
+                    schema_version TEXT,
                     indexed_data JSONB  -- JSON 格式的索引數據
                 )
             """)
@@ -139,6 +140,16 @@ class PostgresMetaStore(ISlowMetaStore):
             if not cur.fetchone():
                 cur.execute(
                     f'ALTER TABLE "{self.table_name}" ADD COLUMN indexed_data JSONB'
+                )
+
+            # 檢查是否需要添加 schema_version 欄位（用於向後兼容）
+            cur.execute(f"""
+                SELECT column_name FROM information_schema.columns 
+                WHERE table_name = '{self.table_name}' AND column_name = 'schema_version'
+            """)
+            if not cur.fetchone():
+                cur.execute(
+                    f'ALTER TABLE "{self.table_name}" ADD COLUMN schema_version TEXT'
                 )
 
             # 創建索引
@@ -206,8 +217,8 @@ class PostgresMetaStore(ISlowMetaStore):
             return
 
         sql = f"""
-        INSERT INTO "{self.table_name}" (resource_id, data, created_time, updated_time, created_by, updated_by, is_deleted, indexed_data)
-        VALUES (%s, %s, %s, %s, %s, %s, %s, %s)
+        INSERT INTO "{self.table_name}" (resource_id, data, created_time, updated_time, created_by, updated_by, is_deleted, schema_version, indexed_data)
+        VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s)
         ON CONFLICT (resource_id) DO UPDATE SET
             data = EXCLUDED.data,
             created_time = EXCLUDED.created_time,
@@ -215,6 +226,7 @@ class PostgresMetaStore(ISlowMetaStore):
             created_by = EXCLUDED.created_by,
             updated_by = EXCLUDED.updated_by,
             is_deleted = EXCLUDED.is_deleted,
+            schema_version = EXCLUDED.schema_version,
             indexed_data = EXCLUDED.indexed_data
         """
 
@@ -231,6 +243,7 @@ class PostgresMetaStore(ISlowMetaStore):
                         meta.created_by,
                         meta.updated_by,
                         meta.is_deleted,
+                        meta.schema_version,
                         (
                             json.dumps(meta.indexed_data, ensure_ascii=False)
                             if meta.indexed_data is not UNSET
@@ -257,8 +270,8 @@ class PostgresMetaStore(ISlowMetaStore):
         import json
 
         sql = f"""
-        INSERT INTO "{self.table_name}" (resource_id, data, created_time, updated_time, created_by, updated_by, is_deleted, indexed_data)
-        VALUES (%s, %s, %s, %s, %s, %s, %s, %s)
+        INSERT INTO "{self.table_name}" (resource_id, data, created_time, updated_time, created_by, updated_by, is_deleted, schema_version, indexed_data)
+        VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s)
         ON CONFLICT (resource_id) DO UPDATE SET
             data = EXCLUDED.data,
             created_time = EXCLUDED.created_time,
@@ -266,6 +279,7 @@ class PostgresMetaStore(ISlowMetaStore):
             created_by = EXCLUDED.created_by,
             updated_by = EXCLUDED.updated_by,
             is_deleted = EXCLUDED.is_deleted,
+            schema_version = EXCLUDED.schema_version,
             indexed_data = EXCLUDED.indexed_data
         """
 
@@ -286,6 +300,7 @@ class PostgresMetaStore(ISlowMetaStore):
                     meta.created_by,
                     meta.updated_by,
                     meta.is_deleted,
+                    meta.schema_version,
                     indexed_data_json,
                 ),
             )
@@ -352,7 +367,15 @@ class PostgresMetaStore(ISlowMetaStore):
         # 處理 data_conditions - 在 PostgreSQL 層面過濾
         if query.data_conditions is not UNSET:
             for condition in query.data_conditions:
-                json_condition, json_params = self._build_jsonb_condition(condition)
+                json_condition, json_params = self._build_condition(condition)
+                if json_condition:
+                    conditions.append(json_condition)
+                    params.extend(json_params)
+
+        # 處理 conditions - 在 PostgreSQL 層面過濾
+        if query.conditions is not UNSET:
+            for condition in query.conditions:
+                json_condition, json_params = self._build_condition(condition)
                 if json_condition:
                     conditions.append(json_condition)
                     params.extend(json_params)
@@ -397,8 +420,8 @@ class PostgresMetaStore(ISlowMetaStore):
             for row in cur:
                 yield self._serializer.decode(row["data"])
 
-    def _build_jsonb_condition(self, condition) -> tuple[str, list]:
-        """構建 PostgreSQL JSONB 查詢條件"""
+    def _build_condition(self, condition) -> tuple[str, list]:
+        """構建 PostgreSQL 查詢條件 (支援 Meta 欄位與 JSONB 欄位)"""
         from autocrud.types import (
             DataSearchGroup,
             DataSearchLogicOperator,
@@ -409,7 +432,7 @@ class PostgresMetaStore(ISlowMetaStore):
             sub_conditions = []
             sub_params = []
             for sub_cond in condition.conditions:
-                c_str, c_params = self._build_jsonb_condition(sub_cond)
+                c_str, c_params = self._build_condition(sub_cond)
                 if c_str:
                     sub_conditions.append(c_str)
                     sub_params.extend(c_params)
@@ -429,6 +452,66 @@ class PostgresMetaStore(ISlowMetaStore):
         field_path = condition.field_path
         operator = condition.operator
         value = condition.value
+
+        # 判斷是否為 Meta 欄位
+        meta_fields = {
+            "resource_id",
+            "created_time",
+            "updated_time",
+            "created_by",
+            "updated_by",
+            "is_deleted",
+            "schema_version",
+        }
+
+        if field_path in meta_fields:
+            column_name = field_path
+
+            if operator == DataSearchOperator.equals:
+                return f"{column_name} = %s", [value]
+            if operator == DataSearchOperator.not_equals:
+                return f"{column_name} != %s", [value]
+            if operator == DataSearchOperator.greater_than:
+                return f"{column_name} > %s", [value]
+            if operator == DataSearchOperator.greater_than_or_equal:
+                return f"{column_name} >= %s", [value]
+            if operator == DataSearchOperator.less_than:
+                return f"{column_name} < %s", [value]
+            if operator == DataSearchOperator.less_than_or_equal:
+                return f"{column_name} <= %s", [value]
+            if operator == DataSearchOperator.contains:
+                return f"{column_name} LIKE %s", [f"%{value}%"]
+            if operator == DataSearchOperator.starts_with:
+                return f"{column_name} LIKE %s", [f"{value}%"]
+            if operator == DataSearchOperator.ends_with:
+                return f"{column_name} LIKE %s", [f"%{value}"]
+            if operator == DataSearchOperator.regex:
+                return f"{column_name} ~ %s", [value]
+            if operator == DataSearchOperator.in_list:
+                if isinstance(value, (list, tuple, set)):
+                    placeholders = ",".join(["%s"] * len(value))
+                    return f"{column_name} IN ({placeholders})", list(value)
+            elif operator == DataSearchOperator.not_in_list:
+                if isinstance(value, (list, tuple, set)):
+                    placeholders = ",".join(["%s"] * len(value))
+                    return f"{column_name} NOT IN ({placeholders})", list(value)
+            if operator == DataSearchOperator.is_null:
+                if value:
+                    return f"{column_name} IS NULL", []
+                else:
+                    return f"{column_name} IS NOT NULL", []
+            if operator == DataSearchOperator.exists:
+                if value:
+                    return "TRUE", []
+                else:
+                    return "FALSE", []
+            if operator == DataSearchOperator.isna:
+                if value:
+                    return f"{column_name} IS NULL", []
+                else:
+                    return f"{column_name} IS NOT NULL", []
+
+            return "", []
 
         # PostgreSQL JSONB 提取語法: indexed_data->>'field_path'
         # 對於數字比較，使用 (indexed_data->>'field_path')::numeric
