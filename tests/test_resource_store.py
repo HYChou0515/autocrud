@@ -14,6 +14,8 @@ from autocrud.types import RevisionInfo, RevisionStatus
 # Try to import S3ResourceStore, but make it optional
 try:
     from autocrud.resource_manager.resource_store.s3 import S3ResourceStore
+    from autocrud.resource_manager.resource_store.cached_s3 import CachedS3ResourceStore
+    from autocrud.resource_manager.resource_store.cache import MemoryCache
 
     S3_AVAILABLE = True
 except ImportError:
@@ -23,7 +25,9 @@ except ImportError:
 class TestIResourceStore:
     """Test suite for IResourceStore interface implementations."""
 
-    @pytest.fixture(params=["memory", "disk"] + (["s3"] if S3_AVAILABLE else []))
+    @pytest.fixture(
+        params=["memory", "disk"] + (["s3", "cached_s3"] if S3_AVAILABLE else [])
+    )
     def resource_store(self, request, tmp_path):
         """Parametrized fixture that creates different resource store implementations."""
         if request.param == "memory":
@@ -38,6 +42,29 @@ class TestIResourceStore:
                 endpoint_url="http://localhost:9000",
                 bucket="test-autocrud",
                 prefix=prefix,
+            )
+            # Clean up before and after
+            try:
+                store.cleanup()
+            except Exception:
+                pass
+            yield store
+            try:
+                store.cleanup()
+            except Exception:
+                pass
+        elif request.param == "cached_s3" and S3_AVAILABLE:
+            # Use tmp_path for unique prefix to avoid conflicts between tests
+            prefix = f"test-cached-{tmp_path.name}/"
+            caches = [MemoryCache()]
+            store = CachedS3ResourceStore(
+                caches=caches,
+                encoding=Encoding.json,
+                endpoint_url="http://localhost:9000",
+                bucket="test-autocrud",
+                prefix=prefix,
+                ttl_draft=5,
+                ttl_stable=60,
             )
             # Clean up before and after
             try:
