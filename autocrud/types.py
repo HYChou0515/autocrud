@@ -328,6 +328,7 @@ _get_context = [
     ("action", Literal[ResourceAction.get], ResourceAction.get),
     ("resource_id", str),
     ("revision_id", str | UnsetType, UNSET),
+    ("schema_version", str | None | UnsetType, UNSET),
 ]
 
 BeforeGet = defstruct(
@@ -380,6 +381,7 @@ _get_resource_revision_context = [
     ),
     ("resource_id", str),
     ("revision_id", str),
+    ("schema_version", str | None | UnsetType, UNSET),
 ]
 
 BeforeGetResourceRevision = defstruct(
@@ -1138,7 +1140,11 @@ class IResourceManager(ABC, Generic[T]):
 
     @abstractmethod
     def get(
-        self, resource_id: str, *, revision_id: str | UnsetType = UNSET
+        self,
+        resource_id: str,
+        *,
+        revision_id: str | UnsetType = UNSET,
+        schema_version: str | None | UnsetType = UNSET,
     ) -> Resource[T]:
         """Get the current revision of the resource.
 
@@ -1214,7 +1220,12 @@ class IResourceManager(ABC, Generic[T]):
         """
 
     @abstractmethod
-    def get_resource_revision(self, resource_id: str, revision_id: str) -> Resource[T]:
+    def get_resource_revision(
+        self,
+        resource_id: str,
+        revision_id: str,
+        schema_version: str | None | UnsetType = UNSET,
+    ) -> Resource[T]:
         """Get a specific revision of the resource.
 
         Arguments:

@@ -38,9 +38,14 @@ class ReadRouteTemplate(BaseRouteTemplate, Generic[T]):
                 resource = resource_manager.get_resource_revision(
                     resource_id,
                     revision_id,
+                    schema_version=meta.schema_version,
                 )
             else:
-                resource = resource_manager.get(resource_id)
+                resource = resource_manager.get(
+                    resource_id,
+                    revision_id=meta.current_revision_id,
+                    schema_version=meta.schema_version,
+                )
         return resource, meta
 
     def apply(
@@ -212,11 +217,16 @@ class ReadRouteTemplate(BaseRouteTemplate, Generic[T]):
                     if "data" in returns_list:
                         if fields:
                             data = resource_manager.get_partial(
-                                resource_id, target_revision_id, fields
+                                resource_id,
+                                target_revision_id,
+                                fields,
+                                schema_version=meta.schema_version,
                             )
                         else:
                             resource = resource_manager.get_resource_revision(
-                                resource_id, target_revision_id
+                                resource_id,
+                                target_revision_id,
+                                schema_version=meta.schema_version,
                             )
                             data = resource.data
                             # Optimization: if we fetched full resource, we have info too
@@ -226,7 +236,9 @@ class ReadRouteTemplate(BaseRouteTemplate, Generic[T]):
                     # 2. Get Revision Info (if needed and not yet fetched)
                     if "revision_info" in returns_list and revision_info is UNSET:
                         revision_info = resource_manager.get_revision_info(
-                            resource_id, target_revision_id
+                            resource_id,
+                            target_revision_id,
+                            schema_version=meta.schema_version,
                         )
 
             except HTTPException:
@@ -299,6 +311,7 @@ class ReadRouteTemplate(BaseRouteTemplate, Generic[T]):
                             info = resource_manager.get_revision_info(
                                 resource_id,
                                 rev_id,
+                                schema_version=meta.schema_version,
                             )
                             revision_infos.append(info)
                         except Exception:
@@ -382,23 +395,29 @@ class ReadRouteTemplate(BaseRouteTemplate, Generic[T]):
             try:
                 with resource_manager.meta_provide(current_user, current_time):
                     fields = partial or partial_brackets
+                    schema_version = UNSET
+
                     if fields:
                         if not revision_id:
                             meta = resource_manager.get_meta(resource_id)
                             revision_id = meta.current_revision_id
+                            schema_version = meta.schema_version
                         return MsgspecResponse(
                             resource_manager.get_partial(
-                                resource_id, revision_id, fields
+                                resource_id,
+                                revision_id,
+                                fields,
+                                schema_version=schema_version,
                             )
                         )
+                    if not revision_id:
+                        meta = resource_manager.get_meta(resource_id)
+                        schema_version = meta.schema_version
+                        revision_id = meta.current_revision_id
 
-                    if revision_id:
-                        resource = resource_manager.get_resource_revision(
-                            resource_id,
-                            revision_id,
-                        )
-                    else:
-                        resource = resource_manager.get(resource_id)
+                    resource = resource_manager.get_resource_revision(
+                        resource_id, revision_id, schema_version=schema_version
+                    )
             except HTTPException:
                 raise
             except Exception as e:
