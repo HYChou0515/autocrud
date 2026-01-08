@@ -113,18 +113,17 @@ def _build_type(current_type: Any, paths: list[list[str]], prefix: str) -> Any:
         type_name = f"{prefix}_{current_type.__name__}"
 
         # Keep tag info
-        tag = None
-        tag_field = None
+        kwargs = {}
         try:
             info = msgspec.inspect.type_info(current_type)
-            tag = info.tag
-            tag_field = info.tag_field
+            kwargs["tag"] = info.tag
+            kwargs["tag_field"] = info.tag_field
+            kwargs["array_like"] = info.array_like
+            kwargs["forbid_unknown_fields"] = info.forbid_unknown_fields
         except Exception:
             pass
 
-        return defstruct(
-            type_name, new_fields, kw_only=True, tag=tag, tag_field=tag_field
-        )
+        return defstruct(type_name, new_fields, kw_only=True, **kwargs)
 
     return current_type
 
