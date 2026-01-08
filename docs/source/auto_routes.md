@@ -774,55 +774,14 @@ AutoCRUD 目前支援以下 Resource Store 實作：
 [`autocrud.resource_manager.resource_store.cached_s3.CachedS3ResourceStore`](#autocrud.resource_manager.resource_store.cached_s3.CachedS3ResourceStore)
 ```
 
-## 📊 Performance Benchmark
+### 📊 Performance Benchmark
 
-以下針對不同的 Resource Store 進行效能基準測試，比較在不同負載下的讀寫表現。
+```{include} benchmarks/resource_store.md
+```
 
-### 測試環境
-- **Memory**: 純記憶體操作
-- **Disk**: 本地 SSD 磁碟 (Ext4)
-- **S3**: 本地 MinIO 容器
-- **CachedS3**: Memory Cache + MinIO
+```{include} benchmarks/metastore.md
+```
 
-### 測試場景
-- **Small File**: 1000 items x 1KB
-- **Large File**: 100 items x 1MB
-
-### 效能圖表 (Log Scale)
-
-:::{figure} _static/benchmark_resource_store_chart.png
-:alt: Benchmark QPS Results
-:align: center
-:width: 800px
-
-不同 Store Type 在 Write / Read / Exists 操作下的 QPS 比較（數值越高越好）。
-:::
-
-### 詳細數據 (Scenario: 1000 items x 1KB)
-
-#### Write
-| Store Type | Time (ms) | QPS |
-|---|---|---|
-| **memory** | 1.07 | 937,801 |
-| **disk** | 204.08 | 4,900 |
-| **cached_s3** | 9,752.29 | 102 |
-| **s3** | 9,962.28 | 100 |
-
-#### Read
-| Store Type | Time (ms) | QPS |
-|---|---|---|
-| **cached_s3** | 1.43 | 701,112 |
-| **memory** | 2.01 | 497,479 |
-| **disk** | 17.59 | 56,858 |
-| **s3** | 4,214.76 | 237 |
-
-### 重點觀察
-1. **CachedS3 vs S3**: 在讀取操作（Read）上，`CachedS3` 因命中快取，效能可達純 `S3` 的 **1000倍以上**，接近 `Memory` Store 的水準。
-2. **寫入成本**: `S3` 與 `CachedS3` 的寫入受限於網路 I/O，QPS 約在 100 左右，遠低於本地 `Disk` 與 `Memory`。
-3. **選擇建議**: 若應用場景為**讀多寫少**且資料量大，強烈建議使用 `CachedS3ResourceStore`。
-
-
----
 
 ## 🔒 進階功能
 

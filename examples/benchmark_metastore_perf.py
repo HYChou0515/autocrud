@@ -232,17 +232,17 @@ def run_benchmark():
     if not results:
         # Run Benchmark Logic if no data loaded
         store_types = [
-            # "memory",
-            # "memory-pg",
-            # "memory-sql3file",
-            # "sql3-mem",
-            # "sql3-file",
-            # "redis-sql3file",
-            # "disk-sql3file",
-            # "redis",
+            "memory",
+            "memory-pg",
+            "memory-sql3file",
+            "sql3-mem",
+            "sql3-file",
+            "redis-sql3file",
+            "disk-sql3file",
+            "redis",
             # "dfm",
-            # "disk",
-            # "redis-pg",
+            "disk",
+            "redis-pg",
             "pg",
             # "nfs-sql3-file",
         ]
@@ -602,7 +602,7 @@ def run_benchmark():
                 ax.set_ylabel("")
 
         plt.suptitle(
-            "Benchmark QPS Heatmap (Log Color Scale) - Lower Factor is Better",
+            "Benchmark QPS Heatmap (Log Color Scale) - Higher is Better",
             fontsize=20,
             y=1.02,
         )
