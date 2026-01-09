@@ -267,7 +267,7 @@ class MigrateRouteTemplate(BaseRouteTemplate):
                 # 發送單個資源的測試進度
                 await websocket.send_text(msg.decode())
 
-        @router.post(f"/{model_name}/migrate/test")
+        @router.post(f"/{model_name}/migrate/test", tags=[f"{model_name}"])
         async def test_migrate_resources(
             query_params: QueryInputs = Query(...),
             current_user: str = Depends(self.deps.get_user),
@@ -292,7 +292,7 @@ class MigrateRouteTemplate(BaseRouteTemplate):
                 media_type="application/jsonl+json",
             )
 
-        @router.post(f"/{model_name}/migrate/execute")
+        @router.post(f"/{model_name}/migrate/execute", tags=[f"{model_name}"])
         async def execute_migrate_resources(
             query_params: QueryInputs = Query(...),
             current_user: str = Depends(self.deps.get_user),

@@ -26,6 +26,7 @@ from fastapi import FastAPI
 
 from autocrud import AutoCRUD
 from autocrud.crud.route_templates.graphql import GraphQLRouteTemplate
+from autocrud.crud.route_templates.migrate import MigrateRouteTemplate
 from autocrud.resource_manager.storage_factory import DiskStorageFactory
 
 
@@ -310,6 +311,7 @@ def get_crud():
     else:
         crud = AutoCRUD()
     crud.add_route_template(GraphQLRouteTemplate())
+    crud.add_route_template(MigrateRouteTemplate())
 
     # 註冊模型
     crud.add_model(Character, indexed_fields=[("level", int), ("name", str)])
