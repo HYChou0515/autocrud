@@ -93,6 +93,7 @@ from autocrud.types import (
     OnSuccessSearchResources,
     OnSuccessSwitch,
     OnSuccessUpdate,
+    Binary,
     Resource,
     ResourceAction,
     ResourceIDNotFoundError,
@@ -116,6 +117,7 @@ from autocrud.resource_manager.basic import (
     Encoding,
     IMetaStore,
     IResourceStore,
+    IBlobStore,
     IStorage,
     MsgspecSerializer,
 )
@@ -360,6 +362,7 @@ class ResourceManager(IResourceManager[T], Generic[T]):
         resource_type: type[T],
         *,
         storage: IStorage,
+        blob_store: IBlobStore | None = None,
         id_generator: Callable[[], str] | None = None,
         migration: IMigration[T] | None = None,
         indexed_fields: list[IndexableField] | None = None,
@@ -384,6 +387,7 @@ class ResourceManager(IResourceManager[T], Generic[T]):
         self.id_ctx = Ctx[str | UnsetType]("id_ctx", default=UNSET)
         self._resource_type = resource_type
         self.storage = storage
+        self.blob_store = blob_store
         self.data_converter = DataConverter(self.resource_type)
         schema_version = migration.schema_version if migration else None
         self._schema_version = schema_version
@@ -602,6 +606,46 @@ class ResourceManager(IResourceManager[T], Generic[T]):
         data_hash = f"xxh3_128:{xxh3_128_hexdigest(b)}"
         return data_hash
 
+    def _process_binary_fields(self, data: Any) -> Any:
+        if self.blob_store is None:
+            return data
+
+        if isinstance(data, Binary):
+            if data.data is not None:
+                file_id = self.blob_store.put(data.data)
+                return msgspec.structs.replace(
+                    data,
+                    file_id=file_id,
+                    hash=file_id,
+                    size=len(data.data),
+                    data=None,
+                )
+            return data
+
+        if isinstance(data, Struct):
+            changes = {}
+            for field in msgspec.structs.fields(data):
+                val = getattr(data, field.name)
+                new_val = self._process_binary_fields(val)
+                if new_val is not val:
+                    changes[field.name] = new_val
+            if changes:
+                return msgspec.structs.replace(data, **changes)
+            return data
+
+        if isinstance(data, list):
+            new_list = [self._process_binary_fields(item) for item in data]
+            if any(n is not o for n, o in zip(new_list, data)):
+                return new_list
+            return data
+
+        if isinstance(data, dict):
+            new_dict = {k: self._process_binary_fields(v) for k, v in data.items()}
+            if any(new_dict[k] is not data[k] for k in data):
+                return new_dict
+
+        return data
+
     def _rev_info(
         self,
         mode: _BuildRevInfoCreate | _BuildRevInfoUpdate | _BuildRevInfoModify,
@@ -695,6 +739,11 @@ class ResourceManager(IResourceManager[T], Generic[T]):
             raise ResourceIsDeletedError(resource_id)
         return meta
 
+    def get_blob(self, file_id: str) -> bytes:
+        if self.blob_store is None:
+            raise NotImplementedError("Blob store is not configured")
+        return self.blob_store.get(file_id)
+
     def count_resources(self, query: ResourceMetaSearchQuery) -> int:
         return self.storage.count(query)
 
@@ -718,6 +767,7 @@ class ResourceManager(IResourceManager[T], Generic[T]):
         self, data: T, *, status: RevisionStatus | UnsetType = UNSET
     ) -> RevisionInfo:
         status = self.default_status if status is UNSET else status
+        data = self._process_binary_fields(data)
         info = self._rev_info(_BuildRevInfoCreate(data, status))
         self.storage.save_revision(info, io.BytesIO(self.encode(data)))
         self.storage.save_meta(self._res_meta(_BuildResMetaCreate(info, data)))
@@ -824,6 +874,7 @@ class ResourceManager(IResourceManager[T], Generic[T]):
         self, resource_id: str, data: T, *, status: RevisionStatus | UnsetType = UNSET
     ) -> RevisionInfo:
         status = self.default_status if status is UNSET else status
+        data = self._process_binary_fields(data)
         prev_res_meta = self.get_meta(resource_id)
         prev_info = self.storage.get_resource_revision_info(
             resource_id,
@@ -872,6 +923,9 @@ class ResourceManager(IResourceManager[T], Generic[T]):
             raise CannotModifyResourceError(resource_id)
         if type(data) is JsonPatch:
             data = self._apply_patch(resource_id, data)
+
+        if data is not UNSET:
+            data = self._process_binary_fields(data)
 
         rev_info = self._rev_info(
             _BuildRevInfoModify(prev_res_meta, prev_info, data, status=status)

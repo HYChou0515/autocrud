@@ -543,6 +543,23 @@ class ISlowMetaStore(IMetaStore):
         """
 
 
+class IBlobStore(ABC):
+    @abstractmethod
+    def put(self, data: bytes) -> str:
+        """Store data and return its ID (usually hash)."""
+        pass
+
+    @abstractmethod
+    def get(self, file_id: str) -> bytes:
+        """Retrieve data by ID."""
+        pass
+
+    @abstractmethod
+    def exists(self, file_id: str) -> bool:
+        """Check if blob exists."""
+        pass
+
+
 class IResourceStore(ABC):
     """Interface for storing and retrieving versioned resource data.
 

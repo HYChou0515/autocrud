@@ -37,6 +37,7 @@ from autocrud.crud.route_templates.patch import (
 from autocrud.crud.route_templates.search import ListRouteTemplate
 from autocrud.crud.route_templates.switch import SwitchRevisionRouteTemplate
 from autocrud.crud.route_templates.update import UpdateRouteTemplate
+from autocrud.crud.route_templates.blob import BlobRouteTemplate
 from autocrud.permission.rbac import RBACPermissionChecker
 from autocrud.permission.simple import AllowAll
 from autocrud.resource_manager.basic import (
@@ -44,9 +45,11 @@ from autocrud.resource_manager.basic import (
     IStorage,
 )
 from autocrud.resource_manager.core import ResourceManager
+from autocrud.resource_manager.blob_store import SimpleBlobStore, MemoryBlobStore
 from autocrud.resource_manager.storage_factory import (
     IStorageFactory,
     MemoryStorageFactory,
+    DiskStorageFactory,
 )
 from autocrud.types import (
     IEventHandler,
@@ -183,6 +186,13 @@ class AutoCRUD:
             self.storage_factory = MemoryStorageFactory()
         else:
             self.storage_factory = storage_factory
+
+        self.blob_store = None
+        if isinstance(self.storage_factory, DiskStorageFactory):
+            self.blob_store = SimpleBlobStore(self.storage_factory.rootdir / "_blobs")
+        else:
+            self.blob_store = MemoryBlobStore()
+
         self.resource_managers: OrderedDict[str, IResourceManager] = OrderedDict()
         self.model_names: dict[type[T], str | None] = {}
         self.model_naming = model_naming
@@ -196,6 +206,7 @@ class AutoCRUD:
                 SwitchRevisionRouteTemplate(dependency_provider=dependency_provider),
                 DeleteRouteTemplate(dependency_provider=dependency_provider),
                 RestoreRouteTemplate(dependency_provider=dependency_provider),
+                BlobRouteTemplate(dependency_provider=dependency_provider),
             ]
             if route_templates is None
             else route_templates
@@ -444,6 +455,7 @@ class AutoCRUD:
         resource_manager = ResourceManager(
             model,
             storage=storage,
+            blob_store=self.blob_store,
             id_generator=id_generator,
             migration=migration,
             indexed_fields=_indexed_fields,

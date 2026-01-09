@@ -81,6 +81,31 @@ class Resource(Struct, Generic[T]):
     data: T
 
 
+class Binary(Struct):
+    """A wrapper for binary data that handles storage optimization.
+
+    When creating a resource, you can populate the `data` field with bytes.
+    The system will automatically extract it, store it in the blob store,
+    and populate `file_id`, `hash`, and `size`. The `data` field will be cleared
+    in the stored resource.
+    """
+
+    file_id: str | None = None
+    """The unique identifier of the stored blob."""
+
+    hash: str | None = None
+    """The hash of the binary content (used for deduplication)."""
+
+    size: int = 0
+    """Size of the binary content in bytes."""
+
+    content_type: str | None = None
+    """MIME type of the content."""
+
+    data: bytes | None = None
+    """Binary content. Used for input or specific retrieval, usually None in storage."""
+
+
 class RawResource(Struct):
     info: RevisionInfo
     raw_data: bytes
