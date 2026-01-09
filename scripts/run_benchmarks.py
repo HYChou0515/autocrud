@@ -21,11 +21,11 @@ def run_benchmarks():
 
     print("--- Cleaning up old benchmark data ---")
     # Clean up old data files to ensure fresh run
-    for f in ["benchmark_data.json", "benchmark_resource_store_data.json"]:
-        p = Path(f)
-        if p.exists():
-            print(f"Removing {p}")
-            p.unlink()
+    # for f in ["benchmark_data.json", "benchmark_resource_store_data.json"]:
+    #     p = Path(f)
+    #     if p.exists():
+    #         print(f"Removing {p}")
+    #         p.unlink()
 
     print("\n--- Running Resource Store Benchmark ---")
     benchmark_resource_store_perf.run_benchmark()
@@ -43,8 +43,10 @@ def update_docs():
     meta_img = Path("benchmark_heatmap_combined.png")
     
     # Destination for images
-    static_dir = project_root / "docs" / "source" / "_static" / "benchmark"
-    static_dir.mkdir(parents=True, exist_ok=True)
+    # Using 'images' folder instead of '_static' to ensure Sphinx picks them up correctly
+    # and processes them as content images.
+    images_dir = project_root / "docs" / "source" / "images" / "benchmark"
+    images_dir.mkdir(parents=True, exist_ok=True)
     
     # Destination for standalone MD files
     benchmarks_dir = project_root / "docs" / "source" / "benchmarks"
@@ -61,11 +63,13 @@ def update_docs():
         
         # Move image
         if res_img.exists():
-            shutil.move(str(res_img), str(static_dir / res_img.name))
-            # Update Link: ./filename.png -> ../_static/benchmark/filename.png
-            # The MD file will live in docs/source/benchmarks/, 
-            # so we go up one level (..) then into _static/benchmark/
-            text = text.replace(f"./{res_img.name}", f"../_static/benchmark/{res_img.name}")
+            shutil.move(str(res_img), str(images_dir / res_img.name))
+            # Update Link: ./filename.png -> /images/benchmark/filename.png
+            # The MD file will live in docs/source/benchmarks/
+            # Image is in docs/source/images/benchmark/
+            # We use absolute path from source root (/) so it works both when included in auto_routes.md (root)
+            # and when viewed standalone in benchmarks/subdir.
+            text = text.replace(f"./{res_img.name}", f"/images/benchmark/{res_img.name}")
         
         # Header Adjustments for "Resource Store"
         # Original: # Resource Store Benchmark Results -> #### Resource Store
@@ -85,8 +89,8 @@ def update_docs():
         
         # Move image
         if meta_img.exists():
-            shutil.move(str(meta_img), str(static_dir / meta_img.name))
-            text = text.replace(f"./{meta_img.name}", f"../_static/benchmark/{meta_img.name}")
+            shutil.move(str(meta_img), str(images_dir / meta_img.name))
+            text = text.replace(f"./{meta_img.name}", f"/images/benchmark/{meta_img.name}")
             
         # Header Adjustments for "Meta Store"
         # Original: # MetaStore Benchmark Results -> #### Meta Store
