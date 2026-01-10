@@ -1,6 +1,7 @@
 from typing import List, Optional, Dict, Any
 from msgspec import Struct
 import pytest
+import datetime as dt
 from autocrud.resource_manager.core import ResourceManager, SimpleStorage
 from autocrud.types import Binary
 from autocrud.resource_manager.resource_store.simple import MemoryResourceStore
@@ -196,3 +197,55 @@ def test_binary_generic_coverage(storage):
     s_wrapper = LooseStruct(payload=simple)
     res_s = manager._binary_processor(s_wrapper, tracker_store)
     assert res_s.payload is s_wrapper.payload
+
+
+def test_public_api_binary_handling(storage):
+    tracker_store = MockBlobStore()
+    manager = ResourceManager(
+        resource_type=UserWithBinary, storage=storage, blob_store=tracker_store
+    )
+
+    raw_content = b"public_api_content"
+
+    # Test Create
+    input_struct = UserWithBinary(
+        id="create_test",
+        avatar=BinaryData(content=Binary(data=raw_content), name="avatar.png"),
+        files=[],
+        metadata={},
+    )
+
+    # Should trigger binary processing via public create()
+    # Need to provide meta context (user, now)
+    with manager.meta_provide(user="test_user", now=dt.datetime.now(dt.timezone.utc)):
+        info = manager.create(input_struct)
+
+        # 1. Check side effect: blob stored
+        assert len(tracker_store.puts) == 1, "Blob should be stored upon create"
+        assert tracker_store.puts[0] == raw_content
+
+        # 2. Check stored data via get() - file_id should be set, data should be None
+        resource = manager.get(info.resource_id)
+        saved_data = resource.data
+
+        assert saved_data.avatar.content.file_id == "mock_file_id"
+        assert saved_data.avatar.content.data is None
+
+        # Test Update
+        new_content = b"updated_content"
+        input_struct_update = UserWithBinary(
+            id="create_test",
+            avatar=BinaryData(content=Binary(data=new_content), name="avatar_v2.png"),
+            files=[],
+            metadata={},
+        )
+
+        manager.update(info.resource_id, input_struct_update)
+
+        assert len(tracker_store.puts) == 2, "Blob should be stored upon update"
+        assert tracker_store.puts[1] == new_content
+
+        resource_updated = manager.get(info.resource_id)
+        assert resource_updated.data.avatar.content.file_id == "mock_file_id"
+        assert resource_updated.data.avatar.content.data is None
+        assert resource_updated.data.avatar.name == "avatar_v2.png"

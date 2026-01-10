@@ -45,7 +45,7 @@ from autocrud.resource_manager.basic import (
     IStorage,
 )
 from autocrud.resource_manager.core import ResourceManager
-from autocrud.resource_manager.blob_store import SimpleBlobStore, MemoryBlobStore
+from autocrud.resource_manager.blob_store.simple import DiskBlobStore, MemoryBlobStore
 from autocrud.resource_manager.storage_factory import (
     IStorageFactory,
     MemoryStorageFactory,
@@ -189,7 +189,7 @@ class AutoCRUD:
 
         self.blob_store = None
         if isinstance(self.storage_factory, DiskStorageFactory):
-            self.blob_store = SimpleBlobStore(self.storage_factory.rootdir / "_blobs")
+            self.blob_store = DiskBlobStore(self.storage_factory.rootdir / "_blobs")
         else:
             self.blob_store = MemoryBlobStore()
 

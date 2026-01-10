@@ -3,7 +3,25 @@ from autocrud.resource_manager.basic import IBlobStore
 from xxhash import xxh3_128_hexdigest
 
 
-class SimpleBlobStore(IBlobStore):
+class MemoryBlobStore(IBlobStore):
+    def __init__(self):
+        self._store = {}
+
+    def put(self, data: bytes) -> str:
+        file_id = xxh3_128_hexdigest(data)
+        self._store[file_id] = data
+        return file_id
+
+    def get(self, file_id: str) -> bytes:
+        if file_id not in self._store:
+            raise FileNotFoundError(f"Blob {file_id} not found")
+        return self._store[file_id]
+
+    def exists(self, file_id: str) -> bool:
+        return file_id in self._store
+
+
+class DiskBlobStore(IBlobStore):
     def __init__(self, root_path: str | Path):
         self.root_path = Path(root_path)
         self.root_path.mkdir(parents=True, exist_ok=True)
@@ -25,21 +43,3 @@ class SimpleBlobStore(IBlobStore):
 
     def exists(self, file_id: str) -> bool:
         return (self.root_path / file_id).exists()
-
-
-class MemoryBlobStore(IBlobStore):
-    def __init__(self):
-        self._store = {}
-
-    def put(self, data: bytes) -> str:
-        file_id = xxh3_128_hexdigest(data)
-        self._store[file_id] = data
-        return file_id
-
-    def get(self, file_id: str) -> bytes:
-        if file_id not in self._store:
-            raise FileNotFoundError(f"Blob {file_id} not found")
-        return self._store[file_id]
-
-    def exists(self, file_id: str) -> bool:
-        return file_id in self._store
