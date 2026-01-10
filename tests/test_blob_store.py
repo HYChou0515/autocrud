@@ -1,3 +1,4 @@
+from collections.abc import Generator
 import pytest
 from autocrud.resource_manager.basic import IBlobStore
 from autocrud.resource_manager.blob_store.simple import DiskBlobStore, MemoryBlobStore
@@ -8,16 +9,26 @@ from xxhash import xxh3_128_hexdigest
 # -----------------------------------------------------------------------------
 
 
-@pytest.fixture(params=["memory", "simple"])
+@pytest.fixture(params=["memory", "simple", "s3"])
 def blob_store(
     request: pytest.FixtureRequest, tmp_path: pytest.TempPathFactory
-) -> IBlobStore:
+) -> Generator[IBlobStore]:
     """Fixture ensuring tests run against all `IBlobStore` implementations."""
     if request.param == "memory":
-        return MemoryBlobStore()
+        yield MemoryBlobStore()
     elif request.param == "simple":
-        return DiskBlobStore(tmp_path / "blobs_behavior")
-    raise ValueError(f"Unknown blob store type: {request.param}")
+        yield DiskBlobStore(tmp_path / "blobs_behavior")
+    elif request.param == "s3":
+        from autocrud.resource_manager.blob_store.s3 import S3BlobStore
+
+        prefix = f"{tmp_path.name}/"
+        store = S3BlobStore(
+            endpoint_url="http://localhost:9000",
+            prefix=prefix,
+        )
+        yield store
+    else:
+        raise ValueError(f"Unknown blob store type: {request.param}")
 
 
 class TestIBlobStoreBehavior:
