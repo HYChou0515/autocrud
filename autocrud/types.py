@@ -86,15 +86,12 @@ class Binary(Struct):
 
     When creating a resource, you can populate the `data` field with bytes.
     The system will automatically extract it, store it in the blob store,
-    and populate `file_id`, `hash`, and `size`. The `data` field will be cleared
-    in the stored resource.
+    and populate `file_id` (which is the hash of the content) and `size`.
+    The `data` field will be cleared in the stored resource.
     """
 
     file_id: str | UnsetType = UNSET
-    """The unique identifier of the stored blob."""
-
-    hash: str | UnsetType = UNSET
-    """The hash of the binary content (used for deduplication)."""
+    """The unique identifier of the stored blob (hash of the content)."""
 
     size: int | UnsetType = UNSET
     """Size of the binary content in bytes."""

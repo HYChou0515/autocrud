@@ -2,6 +2,7 @@ from collections.abc import Generator
 import pytest
 from autocrud.resource_manager.basic import IBlobStore
 from autocrud.resource_manager.blob_store.simple import DiskBlobStore, MemoryBlobStore
+from autocrud.types import Binary
 from xxhash import xxh3_128_hexdigest
 
 # -----------------------------------------------------------------------------
@@ -48,8 +49,10 @@ class TestIBlobStoreBehavior:
 
         # 2. Get
         retrieved = self.blob_store.get(file_id)
-        assert retrieved == data
-        assert isinstance(retrieved, bytes)
+        assert retrieved.data == data
+        assert isinstance(retrieved, Binary)
+        assert retrieved.file_id == file_id
+        assert retrieved.size == len(data)
 
     def test_exists(self):
         data = b"check_existence"
@@ -72,7 +75,7 @@ class TestIBlobStoreBehavior:
 
         assert file_id_1 == file_id_2
         # Ensure data is stillretrievable
-        assert self.blob_store.get(file_id_1) == data
+        assert self.blob_store.get(file_id_1).data == data
 
     def test_get_not_found(self):
         with pytest.raises(FileNotFoundError):
@@ -86,5 +89,5 @@ class TestIBlobStoreBehavior:
         id2 = self.blob_store.put(data2)
 
         assert id1 != id2
-        assert self.blob_store.get(id1) == data1
-        assert self.blob_store.get(id2) == data2
+        assert self.blob_store.get(id1).data == data1
+        assert self.blob_store.get(id2).data == data2

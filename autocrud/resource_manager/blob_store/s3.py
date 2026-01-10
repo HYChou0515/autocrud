@@ -5,6 +5,7 @@ from botocore.exceptions import ClientError
 from xxhash import xxh3_128_hexdigest
 
 from autocrud.resource_manager.basic import IBlobStore
+from autocrud.types import Binary
 
 
 class S3BlobStore(IBlobStore):
@@ -51,11 +52,12 @@ class S3BlobStore(IBlobStore):
         )
         return file_id
 
-    def get(self, file_id: str) -> bytes:
+    def get(self, file_id: str) -> Binary:
         key = f"{self.prefix}{file_id}"
         try:
             response = self.client.get_object(Bucket=self.bucket, Key=key)
-            return response["Body"].read()
+            content = response["Body"].read()
+            return Binary(file_id=file_id, size=len(content), data=content)
         except ClientError as e:
             error_code = e.response.get("Error", {}).get("Code")
             if error_code == "NoSuchKey":

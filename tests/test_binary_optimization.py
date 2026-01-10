@@ -35,8 +35,8 @@ class MockBlobStore:
         self.puts.append(data)
         return "mock_file_id"
 
-    def get(self, file_id: str) -> bytes:
-        return b""
+    def get(self, file_id: str) -> Binary:
+        return Binary(data=b"")
 
 
 @pytest.fixture

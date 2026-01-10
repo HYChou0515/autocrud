@@ -19,6 +19,7 @@ from autocrud.types import ResourceMetaSearchSort
 from autocrud.types import ResourceMetaSortDirection
 from autocrud.types import ResourceMetaSortKey
 from autocrud.types import RevisionInfo
+from autocrud.types import Binary
 
 T = TypeVar("T")
 
@@ -546,12 +547,12 @@ class ISlowMetaStore(IMetaStore):
 class IBlobStore(ABC):
     @abstractmethod
     def put(self, data: bytes) -> str:
-        """Store data and return its ID (usually hash)."""
+        """Store binary data and return its ID (hash)."""
         pass
 
     @abstractmethod
-    def get(self, file_id: str) -> bytes:
-        """Retrieve data by ID."""
+    def get(self, file_id: str) -> Binary:
+        """Retrieve binary data by ID."""
         pass
 
     @abstractmethod

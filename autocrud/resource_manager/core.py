@@ -762,7 +762,6 @@ class ResourceManager(IResourceManager[T], Generic[T]):
                 return msgspec.structs.replace(
                     data,
                     file_id=file_id,
-                    hash=file_id,
                     size=len(data.data),
                     data=UNSET,
                 )
@@ -894,7 +893,10 @@ class ResourceManager(IResourceManager[T], Generic[T]):
     def get_blob(self, file_id: str) -> bytes:
         if self.blob_store is None:
             raise NotImplementedError("Blob store is not configured")
-        return self.blob_store.get(file_id)
+        binary = self.blob_store.get(file_id)
+        if binary.data is UNSET:
+            raise ValueError(f"Blob {file_id} has no data")
+        return binary.data
 
     def count_resources(self, query: ResourceMetaSearchQuery) -> int:
         return self.storage.count(query)
