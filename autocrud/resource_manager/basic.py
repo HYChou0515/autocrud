@@ -19,6 +19,7 @@ from autocrud.types import ResourceMetaSearchSort
 from autocrud.types import ResourceMetaSortDirection
 from autocrud.types import ResourceMetaSortKey
 from autocrud.types import RevisionInfo
+from autocrud.types import Binary
 
 T = TypeVar("T")
 
@@ -541,6 +542,30 @@ class ISlowMetaStore(IMetaStore):
         and implementations should provide appropriate error handling and rollback
         mechanisms where supported by the underlying storage system.
         """
+
+
+class IBlobStore(ABC):
+    @abstractmethod
+    def put(self, data: bytes, *, content_type: str | UnsetType = UNSET) -> Binary:
+        """Store binary data and return its ID (hash)."""
+        pass
+
+    @abstractmethod
+    def get(self, file_id: str) -> Binary:
+        """Retrieve binary data by ID."""
+        pass
+
+    @abstractmethod
+    def exists(self, file_id: str) -> bool:
+        """Check if blob exists."""
+        pass
+
+    def get_url(self, file_id: str) -> str | None:
+        """
+        Get a direct download URL for the blob if supported.
+        Returns None if not supported (e.g. local storage without a public server).
+        """
+        return None
 
 
 class IResourceStore(ABC):

@@ -26,6 +26,28 @@
     -->
 ```
 
+**Optional Dependencies**
+
+若需要 **S3** 儲存支援：
+
+```{termynal}
+    $ pip install "autocrud[s3]"
+    -->
+```
+
+若需要 **BlobStore 自動偵測 Content-Type**：
+
+```{termynal}
+    $ pip install "autocrud[magic]"
+    -->
+```
+
+```{note}
+`autocrud[magic]` 依賴 `python-magic`。
+- **Linux**: 需確認環境已安裝 `libmagic` (例如 Ubuntu 下執行 `sudo apt-get install libmagic1`)。
+- **其他 OS**: 請參考 [python-magic 安裝說明](https://github.com/ahupp/python-magic#installation)。
+```
+
 ## 第一個 API
 
 ```python

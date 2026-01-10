@@ -44,9 +44,11 @@ from autocrud.resource_manager.basic import (
     IStorage,
 )
 from autocrud.resource_manager.core import ResourceManager
+from autocrud.resource_manager.blob_store.simple import DiskBlobStore, MemoryBlobStore
 from autocrud.resource_manager.storage_factory import (
     IStorageFactory,
     MemoryStorageFactory,
+    DiskStorageFactory,
 )
 from autocrud.types import (
     IEventHandler,
@@ -183,6 +185,13 @@ class AutoCRUD:
             self.storage_factory = MemoryStorageFactory()
         else:
             self.storage_factory = storage_factory
+
+        self.blob_store = None
+        if isinstance(self.storage_factory, DiskStorageFactory):
+            self.blob_store = DiskBlobStore(self.storage_factory.rootdir / "_blobs")
+        else:
+            self.blob_store = MemoryBlobStore()
+
         self.resource_managers: OrderedDict[str, IResourceManager] = OrderedDict()
         self.model_names: dict[type[T], str | None] = {}
         self.model_naming = model_naming
@@ -444,6 +453,7 @@ class AutoCRUD:
         resource_manager = ResourceManager(
             model,
             storage=storage,
+            blob_store=self.blob_store,
             id_generator=id_generator,
             migration=migration,
             indexed_fields=_indexed_fields,

@@ -81,6 +81,28 @@ class Resource(Struct, Generic[T]):
     data: T
 
 
+class Binary(Struct):
+    """A wrapper for binary data that handles storage optimization.
+
+    When creating a resource, you can populate the `data` field with bytes.
+    The system will automatically extract it, store it in the blob store,
+    and populate `file_id` (which is the hash of the content) and `size`.
+    The `data` field will be cleared in the stored resource.
+    """
+
+    file_id: str | UnsetType = UNSET
+    """The unique identifier of the stored blob (hash of the content)."""
+
+    size: int | UnsetType = UNSET
+    """Size of the binary content in bytes."""
+
+    content_type: str | UnsetType = UNSET
+    """MIME type of the content."""
+
+    data: bytes | UnsetType = UNSET
+    """Binary content. Used for input or specific retrieval, usually None in storage."""
+
+
 class RawResource(Struct):
     info: RevisionInfo
     raw_data: bytes
@@ -1307,6 +1329,16 @@ class IResourceManager(ABC, Generic[T]):
         """
 
     @abstractmethod
+    def get_blob(self, file_id: str) -> Binary:
+        """Get the binary content of a blob by its file ID."""
+        pass
+
+    @abstractmethod
+    def get_blob_url(self, file_id: str) -> str | None:
+        """Get the direct download URL for a blob by its file ID, if available."""
+        pass
+
+    @abstractmethod
     def count_resources(self, query: ResourceMetaSearchQuery) -> int:
         """"""
 
@@ -1582,6 +1614,13 @@ class IResourceManager(ABC, Generic[T]):
 
         Note: This method should be used in conjunction with dump() for
         complete backup and restore workflows.
+        """
+
+    @abstractmethod
+    def restore_binary(self, data: T) -> T:
+        """
+        還原 data 中的 binary.data (如果是從 blob store 讀取).
+        這對於需要讀取 Binary 原始資料時很有用.
         """
 
 

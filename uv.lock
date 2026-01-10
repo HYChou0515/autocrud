@@ -118,6 +118,9 @@ docs = [
     { name = "sphinx-design" },
     { name = "sphinx-termynal" },
 ]
+magic = [
+    { name = "python-magic" },
+]
 s3 = [
     { name = "boto3" },
 ]
@@ -169,6 +172,7 @@ requires-dist = [
     { name = "pydantic", specifier = ">=2.11.7" },
     { name = "pytest", marker = "extra == 'dev'", specifier = ">=8.4.1" },
     { name = "pytest-asyncio", marker = "extra == 'dev'", specifier = ">=1.1.0" },
+    { name = "python-magic", marker = "extra == 'magic'", specifier = ">=0.4.27" },
     { name = "qqabc", specifier = ">=0.2.1" },
     { name = "ruff", marker = "extra == 'dev'", specifier = ">=0.12.4" },
     { name = "sphinx", marker = "extra == 'docs'", specifier = ">=8.2.3" },
@@ -181,7 +185,7 @@ requires-dist = [
     { name = "typer", marker = "extra == 'cli'", specifier = ">=0.20.0" },
     { name = "xxhash", specifier = ">=3.5.0" },
 ]
-provides-extras = ["cli", "dev", "docs", "s3"]
+provides-extras = ["cli", "dev", "docs", "magic", "s3"]
 
 [package.metadata.requires-dev]
 dev = [
@@ -1765,6 +1769,15 @@ source = { registry = "https://pypi.org/simple" }
 sdist = { url = "https://files.pythonhosted.org/packages/f6/b0/4bc07ccd3572a2f9df7e6782f52b0c6c90dcbb803ac4a167702d7d0dfe1e/python_dotenv-1.1.1.tar.gz", hash = "sha256:a8a6399716257f45be6a007360200409fce5cda2661e3dec71d23dc15f6189ab", size = 41978, upload-time = "2025-06-24T04:21:07.341Z" }
 wheels = [
     { url = "https://files.pythonhosted.org/packages/5f/ed/539768cf28c661b5b068d66d96a2f155c4971a5d55684a514c1a0e0dec2f/python_dotenv-1.1.1-py3-none-any.whl", hash = "sha256:31f23644fe2602f88ff55e1f5c79ba497e01224ee7737937930c448e4d0e24dc", size = 20556, upload-time = "2025-06-24T04:21:06.073Z" },
+]
+
+[[package]]
+name = "python-magic"
+version = "0.4.27"
+source = { registry = "https://pypi.org/simple" }
+sdist = { url = "https://files.pythonhosted.org/packages/da/db/0b3e28ac047452d079d375ec6798bf76a036a08182dbb39ed38116a49130/python-magic-0.4.27.tar.gz", hash = "sha256:c1ba14b08e4a5f5c31a302b7721239695b2f0f058d125bd5ce1ee36b9d9d3c3b", size = 14677, upload-time = "2022-06-07T20:16:59.508Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/6c/73/9f872cb81fc5c3bb48f7227872c28975f998f3e7c2b1c16e95e6432bbb90/python_magic-0.4.27-py2.py3-none-any.whl", hash = "sha256:c212960ad306f700aa0d01e5d7a325d20548ff97eb9920dcd29513174f0294d3", size = 13840, upload-time = "2022-06-07T20:16:57.763Z" },
 ]
 
 [[package]]

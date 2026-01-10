@@ -22,6 +22,24 @@
 pip install autocrud
 ```
 
+**Optional Dependencies**
+
+若需要 **S3** 儲存支援：
+
+```
+pip install "autocrud[s3]"
+```
+
+若需要 **BlobStore 自動偵測 Content-Type**：
+
+```
+pip install "autocrud[magic]"
+```
+
+`autocrud[magic]` 依賴 `python-magic`。
+- **Linux**: 需確認環境已安裝 `libmagic` (例如 Ubuntu 下執行 `sudo apt-get install libmagic1`)。
+- **其他 OS**: 請參考 [python-magic 安裝說明](https://github.com/ahupp/python-magic#installation)。
+
 ## 文檔
 
 https://hychou0515.github.io/autocrud/

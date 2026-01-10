@@ -25,6 +25,8 @@ import uvicorn
 from fastapi import FastAPI
 
 from autocrud import AutoCRUD
+from autocrud.crud.route_templates.blob import BlobRouteTemplate
+from autocrud.types import Binary
 from autocrud.crud.route_templates.graphql import GraphQLRouteTemplate
 from autocrud.crud.route_templates.migrate import MigrateRouteTemplate
 from autocrud.resource_manager.storage_factory import DiskStorageFactory
@@ -89,6 +91,14 @@ class Equipment(Struct):
     defense_bonus: int = 0
     special_effect: Optional[str] = None
     price: int = 100
+    icon: Optional[Binary] = None  # Binary 類型欄位
+
+
+def get_random_image():
+    import httpx
+
+    r = httpx.get("https://picsum.photos/200", follow_redirects=True)
+    return r.content
 
 
 def create_sample_data(crud: AutoCRUD):
@@ -244,6 +254,8 @@ def create_sample_data(crud: AutoCRUD):
                 print(f"❌ 角色創建失敗: {e}")
 
     # 🗡️ 創建裝備
+    # 創建一個簡單的 1x1 PNG圖片 作為圖標
+
     equipment_list = [
         Equipment(
             name="AutoCRUD 神劍",
@@ -253,6 +265,7 @@ def create_sample_data(crud: AutoCRUD):
             defense_bonus=50,
             special_effect="🚀 自動生成 CRUD 操作",
             price=1000000,
+            icon=Binary(data=get_random_image()),
         ),
         Equipment(
             name="數據庫守護盾",
@@ -262,6 +275,7 @@ def create_sample_data(crud: AutoCRUD):
             defense_bonus=150,
             special_effect="🛡️ 防止 SQL 注入攻擊",
             price=500000,
+            icon=Binary(data=get_random_image()),
         ),
         Equipment(
             name="API 魔法杖",
@@ -271,6 +285,7 @@ def create_sample_data(crud: AutoCRUD):
             defense_bonus=30,
             special_effect="✨ 法術冷卻時間減少 50%",
             price=250000,
+            icon=Binary(data=get_random_image()),
         ),
         Equipment(
             name="精準查詢弓",
@@ -279,6 +294,7 @@ def create_sample_data(crud: AutoCRUD):
             attack_bonus=80,
             special_effect="🎯 100% 命中率",
             price=150000,
+            icon=Binary(data=get_random_image()),
         ),
         Equipment(
             name="新手村木劍",
@@ -286,6 +302,7 @@ def create_sample_data(crud: AutoCRUD):
             attack_bonus=5,
             special_effect="🌱 經驗值獲得 +10%",
             price=50,
+            icon=Binary(data=get_random_image()),
         ),
     ]
 
@@ -311,6 +328,7 @@ def get_crud():
     else:
         crud = AutoCRUD()
     crud.add_route_template(GraphQLRouteTemplate())
+    crud.add_route_template(BlobRouteTemplate())
     crud.add_route_template(MigrateRouteTemplate())
 
     # 註冊模型

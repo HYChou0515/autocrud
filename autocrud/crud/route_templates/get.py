@@ -2,7 +2,7 @@ import datetime as dt
 import textwrap
 from typing import Generic, Optional, TypeVar
 
-from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi import APIRouter, Depends, HTTPException, Path, Query, Response
 from msgspec import UNSET
 
 from autocrud.crud.route_templates.basic import (
@@ -424,3 +424,39 @@ class ReadRouteTemplate(BaseRouteTemplate, Generic[T]):
                 raise HTTPException(status_code=404, detail=str(e))
 
             return MsgspecResponse(resource.data)
+
+        @router.get(
+            f"/{model_name}/{{resource_id}}/blobs/{{file_id}}",
+            response_class=Response,
+            summary="Get blob content",
+            tags=[f"{model_name}"],
+        )
+        async def get_blob(
+            resource_id: str = Path(..., description="Resource ID"),
+            file_id: str = Path(..., description="File ID of the blob"),
+            user: str = Depends(self.deps.get_user),
+        ):
+            try:
+                # Permission check through get()
+                with resource_manager.meta_provide(user=user):
+                    resource_manager.get(resource_id)
+            except Exception:
+                raise HTTPException(
+                    status_code=403,
+                    detail="Permission denied or Resource not found",
+                )
+
+            try:
+                content = resource_manager.get_blob(file_id)
+                if content.data is UNSET:
+                    raise HTTPException(status_code=500, detail="Blob data missing")
+
+                media_type = "application/octet-stream"
+                if content.content_type is not UNSET:
+                    media_type = content.content_type
+
+                return Response(content=content.data, media_type=media_type)
+            except FileNotFoundError:
+                raise HTTPException(status_code=404, detail="Blob not found")
+            except NotImplementedError:
+                raise HTTPException(status_code=400, detail="Blob store not configured")
