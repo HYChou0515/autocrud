@@ -612,6 +612,13 @@ class ResourceManager(IResourceManager[T], Generic[T]):
     def _process_binary_fields(self, data: Any) -> Any:
         return self._binary_processor.process(data, self.blob_store)
 
+    def restore_binary(self, data: T) -> T:
+        """
+        還原 data 中的 binary.data (如果是從 blob store 讀取).
+        這對於需要讀取 Binary 原始資料時很有用.
+        """
+        return self._binary_processor.restore(data, self.blob_store)
+
     def _rev_info(
         self,
         mode: _BuildRevInfoCreate | _BuildRevInfoUpdate | _BuildRevInfoModify,

@@ -249,3 +249,94 @@ def test_public_api_binary_handling(storage):
         assert resource_updated.data.avatar.content.file_id == "mock_file_id"
         assert resource_updated.data.avatar.content.data is UNSET
         assert resource_updated.data.avatar.name == "avatar_v2.png"
+
+
+def test_binary_restore(storage):
+    class InMemoryBlobStore:
+        def __init__(self):
+            self.blobs = {}
+
+        def put(self, data: bytes, *, content_type: Any = UNSET) -> Binary:
+            file_id = f"hash-{len(self.blobs)}"
+            self.blobs[file_id] = Binary(
+                file_id=file_id, size=len(data), data=data, content_type=content_type
+            )
+            return Binary(file_id=file_id, size=len(data), content_type=content_type)
+
+        def get(self, file_id: str) -> Binary:
+            return self.blobs[file_id]
+
+        def exists(self, file_id: str) -> bool:
+            return file_id in self.blobs
+
+    blob_store = InMemoryBlobStore()
+    manager = ResourceManager(
+        resource_type=UserWithBinary, storage=storage, blob_store=blob_store
+    )
+
+    raw_content = b"testdata-restore"
+
+    # create object
+    input_struct = UserWithBinary(
+        id="restore-test",
+        avatar=BinaryData(content=Binary(data=raw_content), name="avatar.png"),
+        files=[],
+        metadata={},
+    )
+
+    # Process converts data to file_id reference
+    processed = manager._binary_processor.process(input_struct, blob_store)
+
+    # Check it is processed (data is UNSET, file_id is set)
+    assert isinstance(processed.avatar.content.data, type(UNSET))
+    assert processed.avatar.content.file_id is not UNSET
+
+    # Now restore
+    restored = manager.restore_binary(processed)
+
+    # Check it is restored
+    assert restored.avatar.content.data == raw_content
+    assert restored.avatar.content.file_id == processed.avatar.content.file_id
+
+
+def test_binary_generic_restore(storage):
+    # Tests _restore_generic by using LooseStruct where payload is Any
+    class InMemoryBlobStore:
+        def __init__(self):
+            self.blobs = {}
+            # Pre-populate a blob
+            self.blobs["generic-id"] = Binary(
+                file_id="generic-id", data=b"generic-restored"
+            )
+
+        def put(self, data: bytes, *, content_type: Any = UNSET) -> Binary:
+            pass
+
+        def get(self, file_id: str) -> Binary:
+            return self.blobs[file_id]
+
+    blob_store = InMemoryBlobStore()
+    manager = ResourceManager(
+        resource_type=LooseStruct, storage=storage, blob_store=blob_store
+    )
+
+    # 1. Test Generic List restore
+    # Payload is a list containing a Binary with only file_id
+    stored_binary = Binary(file_id="generic-id", data=UNSET)
+    data_list = LooseStruct(payload=[stored_binary])
+
+    restored_list = manager.restore_binary(data_list)
+    assert restored_list.payload[0].data == b"generic-restored"
+
+    # 2. Test Generic Dict restore
+    data_dict = LooseStruct(payload={"key": stored_binary})
+    restored_dict = manager.restore_binary(data_dict)
+    assert restored_dict.payload["key"].data == b"generic-restored"
+
+    # 3. Test Generic Struct restore (nested inside Any)
+    # Since it's inside 'Any', compiled processor uses _restore_generic which checks isinstance(data, Struct)
+    struct_data = BinaryData(content=stored_binary, name="test")
+    data_struct_wrapper = LooseStruct(payload=struct_data)
+
+    restored_struct = manager.restore_binary(data_struct_wrapper)
+    assert restored_struct.payload.content.data == b"generic-restored"

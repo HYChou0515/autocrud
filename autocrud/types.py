@@ -1621,6 +1621,13 @@ class IResourceManager(ABC, Generic[T]):
             - NotImplementedError: if blob storage is not configured.
         """
 
+    @abstractmethod
+    def restore_binary(self, data: T) -> T:
+        """
+        還原 data 中的 binary.data (如果是從 blob store 讀取).
+        這對於需要讀取 Binary 原始資料時很有用.
+        """
+
 
 class PermissionDeniedError(Exception):
     pass
