@@ -91,3 +91,11 @@ class TestIBlobStoreBehavior:
         assert id1 != id2
         assert self.blob_store.get(id1).data == data1
         assert self.blob_store.get(id2).data == data2
+
+    def test_get_url_contract(self):
+        """Ensure get_url returns str or None (and no error)."""
+        data = b"url_check_data"
+        file_id = self.blob_store.put(data).file_id
+
+        url = self.blob_store.get_url(file_id)
+        assert url is None or isinstance(url, str)

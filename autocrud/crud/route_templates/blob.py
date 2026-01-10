@@ -1,4 +1,5 @@
 from fastapi import APIRouter, HTTPException, Path, Response
+from fastapi.responses import RedirectResponse
 from msgspec import UNSET
 
 from autocrud.crud.route_templates.basic import BaseRouteTemplate
@@ -43,6 +44,10 @@ class BlobRouteTemplate(BaseRouteTemplate):
                     )
 
                 try:
+                    # Try to get redirect URL first
+                    if (url := self._blob_getter_rm.get_blob_url(file_id)) is not None:
+                        return RedirectResponse(url=url)
+
                     content = self._blob_getter_rm.get_blob(file_id)
                     if content.data is UNSET:
                         raise HTTPException(status_code=500, detail="Blob data missing")

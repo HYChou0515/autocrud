@@ -560,6 +560,13 @@ class IBlobStore(ABC):
         """Check if blob exists."""
         pass
 
+    def get_url(self, file_id: str) -> str | None:
+        """
+        Get a direct download URL for the blob if supported.
+        Returns None if not supported (e.g. local storage without a public server).
+        """
+        return None
+
 
 class IResourceStore(ABC):
     """Interface for storing and retrieving versioned resource data.

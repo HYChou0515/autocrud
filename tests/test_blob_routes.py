@@ -126,9 +126,13 @@ def test_blob_route_not_implemented_error():
 
     from autocrud.resource_manager.core import ResourceManager
 
+    class MockBlobStore:
+        def get_url(self, file_id):
+            return None
+
     class MockManager(ResourceManager):
         def __init__(self):
-            self.blob_store = True  # Not None to pass check in apply
+            self.blob_store = MockBlobStore()  # Not None to pass check in apply
 
         def get(self, resource_id):
             return "ok"
@@ -175,3 +179,50 @@ def test_blob_route_skip_non_resource_manager():
     template.apply("test-model", manager, router)
 
     assert len(router.routes) == 0
+
+
+def test_blob_redirect():
+    """Test that blob route redirects if blob store provides a URL"""
+    from autocrud.resource_manager.core import ResourceManager
+
+    class MockRedirectBlobStore:
+        def get_url(self, file_id):
+            return f"https://example.com/blobs/{file_id}"
+
+        def put(self, *args, **kwargs):
+            pass
+
+        def get(self, *args, **kwargs):
+            pass
+
+        def exists(self, *args, **kwargs):
+            return True
+
+    class MockManager(ResourceManager):
+        def __init__(self):
+            self.blob_store = MockRedirectBlobStore()
+
+        def get(self, resource_id):
+            return "ok"  # dummy
+
+        @contextmanager
+        def meta_provide(self, **kwargs):
+            yield
+
+    manager = MockManager()
+
+    from autocrud.crud.route_templates.blob import BlobRouteTemplate
+    from fastapi import APIRouter
+
+    template = BlobRouteTemplate()
+    router = APIRouter()
+    template.apply("test-model", manager, router)
+
+    app = FastAPI()
+    app.include_router(router)
+    # Don't follow redirects to assert 307
+    client = TestClient(app)
+
+    response = client.get("/blobs/my-file-id", follow_redirects=False)
+    assert response.status_code == 307
+    assert response.headers["location"] == "https://example.com/blobs/my-file-id"

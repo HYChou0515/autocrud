@@ -94,3 +94,22 @@ class S3BlobStore(BasicBlobStore):
             if error_code == "404" or error_code == "NoSuchKey":
                 return False
             raise
+
+    def get_url(self, file_id: str) -> str | None:
+        key = f"{self.prefix}{file_id}"
+        try:
+            # Check if exists first? Or just generate the URL?
+            # Usually presigned URL generation is offline operation (doesn't check existence).
+            # But the route template will handle 404 if the client tries to use the URL.
+            # However, if we want strict consistency, we might check exists.
+            # But 'get_url' is usually expected to be fast.
+            # If the file doesn't exist, the redirect will lead to a 404 from S3, which is fine.
+
+            url = self.client.generate_presigned_url(
+                ClientMethod="get_object",
+                Params={"Bucket": self.bucket, "Key": key},
+                ExpiresIn=3600,
+            )
+            return url
+        except ClientError:
+            return None

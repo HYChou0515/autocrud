@@ -1329,6 +1329,16 @@ class IResourceManager(ABC, Generic[T]):
         """
 
     @abstractmethod
+    def get_blob(self, file_id: str) -> Binary:
+        """Get the binary content of a blob by its file ID."""
+        pass
+
+    @abstractmethod
+    def get_blob_url(self, file_id: str) -> str | None:
+        """Get the direct download URL for a blob by its file ID, if available."""
+        pass
+
+    @abstractmethod
     def count_resources(self, query: ResourceMetaSearchQuery) -> int:
         """"""
 
@@ -1604,21 +1614,6 @@ class IResourceManager(ABC, Generic[T]):
 
         Note: This method should be used in conjunction with dump() for
         complete backup and restore workflows.
-        """
-
-    @abstractmethod
-    def get_blob(self, file_id: str) -> Binary:
-        """Get the binary content of a blob.
-
-        Arguments:
-            - file_id (str): the unique identifier of the blob.
-
-        Returns:
-            - Binary: the binary content of the blob.
-
-        Raises:
-            - FileNotFoundError: if the blob does not exist.
-            - NotImplementedError: if blob storage is not configured.
         """
 
     @abstractmethod

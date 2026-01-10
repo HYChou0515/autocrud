@@ -717,6 +717,11 @@ class ResourceManager(IResourceManager[T], Generic[T]):
             raise NotImplementedError("Blob store is not configured")
         return self.blob_store.get(file_id)
 
+    def get_blob_url(self, file_id: str) -> str | None:
+        if self.blob_store is None:
+            raise NotImplementedError("Blob store is not configured")
+        return self.blob_store.get_url(file_id)
+
     def count_resources(self, query: ResourceMetaSearchQuery) -> int:
         return self.storage.count(query)
 
