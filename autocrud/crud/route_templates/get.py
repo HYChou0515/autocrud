@@ -448,7 +448,14 @@ class ReadRouteTemplate(BaseRouteTemplate, Generic[T]):
 
             try:
                 content = resource_manager.get_blob(file_id)
-                return Response(content=content, media_type="application/octet-stream")
+                if content.data is UNSET:
+                    raise HTTPException(status_code=500, detail="Blob data missing")
+
+                media_type = "application/octet-stream"
+                if content.content_type is not UNSET:
+                    media_type = content.content_type
+
+                return Response(content=content.data, media_type=media_type)
             except FileNotFoundError:
                 raise HTTPException(status_code=404, detail="Blob not found")
             except NotImplementedError:

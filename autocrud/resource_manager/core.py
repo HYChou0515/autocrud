@@ -758,7 +758,7 @@ class ResourceManager(IResourceManager[T], Generic[T]):
     def _process_binary_leaf(self, data: Any, store: IBlobStore) -> Any:
         if isinstance(data, Binary):
             if data.data is not UNSET:
-                file_id = store.put(data.data)
+                file_id = store.put(data.data, content_type=data.content_type)
                 return msgspec.structs.replace(
                     data,
                     file_id=file_id,
@@ -890,13 +890,10 @@ class ResourceManager(IResourceManager[T], Generic[T]):
             raise ResourceIsDeletedError(resource_id)
         return meta
 
-    def get_blob(self, file_id: str) -> bytes:
+    def get_blob(self, file_id: str) -> Binary:
         if self.blob_store is None:
             raise NotImplementedError("Blob store is not configured")
-        binary = self.blob_store.get(file_id)
-        if binary.data is UNSET:
-            raise ValueError(f"Blob {file_id} has no data")
-        return binary.data
+        return self.blob_store.get(file_id)
 
     def count_resources(self, query: ResourceMetaSearchQuery) -> int:
         return self.storage.count(query)

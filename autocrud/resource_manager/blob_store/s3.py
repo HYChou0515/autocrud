@@ -2,6 +2,7 @@ from typing import Any
 
 import boto3
 from botocore.exceptions import ClientError
+from msgspec import UNSET, UnsetType
 from xxhash import xxh3_128_hexdigest
 
 from autocrud.resource_manager.basic import IBlobStore
@@ -42,14 +43,19 @@ class S3BlobStore(IBlobStore):
             else:
                 raise
 
-    def put(self, data: bytes) -> str:
+    def put(self, data: bytes, *, content_type: str | UnsetType = UNSET) -> str:
         file_id = xxh3_128_hexdigest(data)
         key = f"{self.prefix}{file_id}"
-        self.client.put_object(
-            Bucket=self.bucket,
-            Key=key,
-            Body=data,
-        )
+
+        kwargs = {
+            "Bucket": self.bucket,
+            "Key": key,
+            "Body": data,
+        }
+        if content_type is not UNSET:
+            kwargs["ContentType"] = content_type
+
+        self.client.put_object(**kwargs)
         return file_id
 
     def get(self, file_id: str) -> Binary:
@@ -57,7 +63,15 @@ class S3BlobStore(IBlobStore):
         try:
             response = self.client.get_object(Bucket=self.bucket, Key=key)
             content = response["Body"].read()
-            return Binary(file_id=file_id, size=len(content), data=content)
+            content_type = response.get("ContentType")
+            if content_type is None:
+                content_type = UNSET
+            return Binary(
+                file_id=file_id,
+                size=len(content),
+                data=content,
+                content_type=content_type,
+            )
         except ClientError as e:
             error_code = e.response.get("Error", {}).get("Code")
             if error_code == "NoSuchKey":

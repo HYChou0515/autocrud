@@ -1607,14 +1607,14 @@ class IResourceManager(ABC, Generic[T]):
         """
 
     @abstractmethod
-    def get_blob(self, file_id: str) -> bytes:
+    def get_blob(self, file_id: str) -> Binary:
         """Get the binary content of a blob.
 
         Arguments:
             - file_id (str): the unique identifier of the blob.
 
         Returns:
-            - bytes: the binary content of the blob.
+            - Binary: the binary content of the blob.
 
         Raises:
             - FileNotFoundError: if the blob does not exist.

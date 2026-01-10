@@ -94,6 +94,13 @@ class Equipment(Struct):
     icon: Optional[Binary] = None  # Binary 類型欄位
 
 
+def get_random_image():
+    import httpx
+
+    r = httpx.get("https://picsum.photos/200", follow_redirects=True)
+    return r.content
+
+
 def create_sample_data(crud: AutoCRUD):
     """創建示範數據"""
     print("🎮 創建示範遊戲數據...")
@@ -248,8 +255,6 @@ def create_sample_data(crud: AutoCRUD):
 
     # 🗡️ 創建裝備
     # 創建一個簡單的 1x1 PNG圖片 作為圖標
-    png_header = b"\x89PNG\r\n\x1a\n\x00\x00\x00\rIHDR\x00\x00\x00\x01\x00\x00\x00\x01\x08\x06\x00\x00\x00\x1f\x15\xc4\x89"
-    icon_binary = Binary(data=png_header, content_type="image/png")
 
     equipment_list = [
         Equipment(
@@ -260,7 +265,7 @@ def create_sample_data(crud: AutoCRUD):
             defense_bonus=50,
             special_effect="🚀 自動生成 CRUD 操作",
             price=1000000,
-            icon=icon_binary,
+            icon=Binary(data=get_random_image(), content_type="image/png"),
         ),
         Equipment(
             name="數據庫守護盾",
@@ -270,6 +275,7 @@ def create_sample_data(crud: AutoCRUD):
             defense_bonus=150,
             special_effect="🛡️ 防止 SQL 注入攻擊",
             price=500000,
+            icon=Binary(data=get_random_image(), content_type="image/png"),
         ),
         Equipment(
             name="API 魔法杖",
@@ -279,6 +285,7 @@ def create_sample_data(crud: AutoCRUD):
             defense_bonus=30,
             special_effect="✨ 法術冷卻時間減少 50%",
             price=250000,
+            icon=Binary(data=get_random_image(), content_type="image/png"),
         ),
         Equipment(
             name="精準查詢弓",
@@ -287,6 +294,7 @@ def create_sample_data(crud: AutoCRUD):
             attack_bonus=80,
             special_effect="🎯 100% 命中率",
             price=150000,
+            icon=Binary(data=get_random_image(), content_type="image/png"),
         ),
         Equipment(
             name="新手村木劍",
@@ -294,6 +302,7 @@ def create_sample_data(crud: AutoCRUD):
             attack_bonus=5,
             special_effect="🌱 經驗值獲得 +10%",
             price=50,
+            icon=Binary(data=get_random_image(), content_type="image/png"),
         ),
     ]
 
