@@ -978,6 +978,88 @@ assert res.category == "uncategorized"
 
 ---
 
+## Binary Data Handling
+
+```{versionadded} 0.7.0
+```
+
+AutoCRUD 提供了 `Binary` 類型來優化二進位資料（如圖片、文件）的處理。透過將大型二進位資料從主要的 JSON/Msgpack 結構中分離並儲存至專門的 `BlobStore`（如 S3 或 Disk），可以保持資源 metadata 的輕量與高效。
+
+### Why use Binary type
+
+- **效能優化**：主資料庫（MetaStore）僅儲存輕量的 JSON/Msgpack 結構，大型檔案儲存在專門的儲存服務（BlobStore）。
+- **自動去重**：若多個資源使用相同的二進位資料（內容雜湊相同），系統僅會儲存一份實體檔案 (Content Addressing)。
+- **自動管理**：ResourceManager 自動處理上傳、雜湊計算與存儲邏輯。
+
+### 如何使用
+
+**1. 定義模型**
+
+在資源模型中使用 `autocrud.types.Binary` 型別。
+
+```{code-block} python
+:emphasize-lines: 5
+from autocrud.types import Binary
+from msgspec import Struct
+
+class UserProfile(Struct):
+    username: str
+    avatar: Binary  # 定義二進位欄位
+```
+
+**2. 建立資源 (Create/Update)**
+
+在建立或更新時，傳入包含 `data` (bytes) 的 `Binary` 物件。
+
+```{code-block} python
+# 讀取圖片資料
+with open("avatar.png", "rb") as f:
+    image_data = f.read()
+
+# 建立資源
+user = UserProfile(
+    username="alice",
+    # 建立 Binary 物件，傳入原始資料與 Content-Type
+    avatar=Binary(
+        data=image_data,
+        content_type="image/png"
+    )
+)
+
+# ResourceManager 會自動將 data 上傳至 BlobStore，
+# 並將 file_id (hash) 填入資源中，data 欄位則會被清除。
+manager.create(user)
+```
+
+**3. 讀取資源 (Read)**
+
+當您讀取資源（`get` 或 `search`）時，`Binary` 欄位中的 `data` 會是 `UNSET`，以避免不必要的資料傳輸。您可以使用 `file_id` 從 `blob_store` 取得原始資料。
+
+```{code-block} python
+resource = manager.get(resource_id)
+avatar = resource.data.avatar
+
+print(f"File ID: {avatar.file_id}")
+print(f"Size: {avatar.size} bytes")
+print(f"Type: {avatar.content_type}")
+
+# 若需要讀取原始二進位資料
+if manager.blob_store and avatar.file_id:
+    # 直接從 blob store 讀取
+    # binary_obj 是一個包含 metadata 與 data 的 Binary 物件
+    binary_obj = manager.blob_store.get(avatar.file_id)
+    raw_data = binary_obj.data
+    
+    # 處理 raw_data (bytes)...
+```
+
+```{note}
+使用 Binary 功能需在初始化 `ResourceManager` 時提供 `blob_store`。
+若未提供 `blob_store`，`Binary` 欄位將不會被特殊處理（資料仍會留在結構中，失去優化效果）。
+```
+
+---
+
 ## 原始碼
 
 ```{eval-rst}
