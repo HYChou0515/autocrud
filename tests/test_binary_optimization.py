@@ -1,5 +1,5 @@
 from typing import List, Optional, Dict, Any
-from msgspec import Struct
+from msgspec import Struct, UNSET
 import pytest
 import datetime as dt
 from autocrud.resource_manager.core import ResourceManager, SimpleStorage
@@ -156,7 +156,7 @@ def test_binary_generic_coverage(storage):
 
     assert len(tracker_store.puts) == 2
     assert processed_list.payload[0].file_id == "mock_file_id"
-    assert processed_list.payload[0].data is None
+    assert processed_list.payload[0].data is UNSET
 
     # 2. Test Generic Dict (hits _process_binary_generic dict branch)
     tracker_store.puts = []
@@ -229,7 +229,7 @@ def test_public_api_binary_handling(storage):
         saved_data = resource.data
 
         assert saved_data.avatar.content.file_id == "mock_file_id"
-        assert saved_data.avatar.content.data is None
+        assert saved_data.avatar.content.data is UNSET
 
         # Test Update
         new_content = b"updated_content"
@@ -247,5 +247,5 @@ def test_public_api_binary_handling(storage):
 
         resource_updated = manager.get(info.resource_id)
         assert resource_updated.data.avatar.content.file_id == "mock_file_id"
-        assert resource_updated.data.avatar.content.data is None
+        assert resource_updated.data.avatar.content.data is UNSET
         assert resource_updated.data.avatar.name == "avatar_v2.png"

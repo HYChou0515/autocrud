@@ -46,7 +46,7 @@ def test_blob_lifecycle(client):
     user_data = response.json()
 
     # Verify binary processing happened
-    assert user_data["avatar"]["data"] is None
+    assert "data" not in user_data["avatar"]
     file_id = user_data["avatar"]["file_id"]
     assert file_id is not None
     assert user_data["avatar"]["size"] == len(raw_content)
@@ -115,7 +115,7 @@ def test_blob_store_not_configured():
     client = TestClient(app)
 
     # Route shouldn't exist
-    response = client.get("/user-with-avatar/123/blobs/456")
+    response = client.get("/blobs/456")
     assert response.status_code == 404  # Not Found because route not registered
 
 
@@ -154,7 +154,7 @@ def test_blob_route_not_implemented_error():
     app.include_router(router)
     client = TestClient(app)
 
-    response = client.get("/test-model/123/blobs/456")
+    response = client.get("/blobs/456")
     assert response.status_code == 501
     assert response.json()["detail"] == "Blob store not configured"
 

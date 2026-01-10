@@ -25,6 +25,8 @@ import uvicorn
 from fastapi import FastAPI
 
 from autocrud import AutoCRUD
+from autocrud.crud.route_templates.blob import BlobRouteTemplate
+from autocrud.types import Binary
 from autocrud.crud.route_templates.graphql import GraphQLRouteTemplate
 from autocrud.crud.route_templates.migrate import MigrateRouteTemplate
 from autocrud.resource_manager.storage_factory import DiskStorageFactory
@@ -89,6 +91,7 @@ class Equipment(Struct):
     defense_bonus: int = 0
     special_effect: Optional[str] = None
     price: int = 100
+    icon: Optional[Binary] = None  # Binary 類型欄位
 
 
 def create_sample_data(crud: AutoCRUD):
@@ -244,6 +247,10 @@ def create_sample_data(crud: AutoCRUD):
                 print(f"❌ 角色創建失敗: {e}")
 
     # 🗡️ 創建裝備
+    # 創建一個簡單的 1x1 PNG圖片 作為圖標
+    png_header = b"\x89PNG\r\n\x1a\n\x00\x00\x00\rIHDR\x00\x00\x00\x01\x00\x00\x00\x01\x08\x06\x00\x00\x00\x1f\x15\xc4\x89"
+    icon_binary = Binary(data=png_header, content_type="image/png")
+
     equipment_list = [
         Equipment(
             name="AutoCRUD 神劍",
@@ -253,6 +260,7 @@ def create_sample_data(crud: AutoCRUD):
             defense_bonus=50,
             special_effect="🚀 自動生成 CRUD 操作",
             price=1000000,
+            icon=icon_binary,
         ),
         Equipment(
             name="數據庫守護盾",
@@ -311,6 +319,7 @@ def get_crud():
     else:
         crud = AutoCRUD()
     crud.add_route_template(GraphQLRouteTemplate())
+    crud.add_route_template(BlobRouteTemplate())
     crud.add_route_template(MigrateRouteTemplate())
 
     # 註冊模型

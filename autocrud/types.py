@@ -90,19 +90,19 @@ class Binary(Struct):
     in the stored resource.
     """
 
-    file_id: str | None = None
+    file_id: str | UnsetType = UNSET
     """The unique identifier of the stored blob."""
 
-    hash: str | None = None
+    hash: str | UnsetType = UNSET
     """The hash of the binary content (used for deduplication)."""
 
-    size: int = 0
+    size: int | UnsetType = UNSET
     """Size of the binary content in bytes."""
 
-    content_type: str | None = None
+    content_type: str | UnsetType = UNSET
     """MIME type of the content."""
 
-    data: bytes | None = None
+    data: bytes | UnsetType = UNSET
     """Binary content. Used for input or specific retrieval, usually None in storage."""
 
 
@@ -1607,6 +1607,21 @@ class IResourceManager(ABC, Generic[T]):
 
         Note: This method should be used in conjunction with dump() for
         complete backup and restore workflows.
+        """
+
+    @abstractmethod
+    def get_blob(self, file_id: str) -> bytes:
+        """Get the binary content of a blob.
+
+        Arguments:
+            - file_id (str): the unique identifier of the blob.
+
+        Returns:
+            - bytes: the binary content of the blob.
+
+        Raises:
+            - FileNotFoundError: if the blob does not exist.
+            - NotImplementedError: if blob storage is not configured.
         """
 
 

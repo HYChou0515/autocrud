@@ -1,4 +1,4 @@
-from fastapi import APIRouter, Depends, HTTPException, Path, Response
+from fastapi import APIRouter, HTTPException, Path, Response
 
 from autocrud.crud.route_templates.basic import BaseRouteTemplate
 from autocrud.types import IResourceManager
@@ -6,6 +6,11 @@ from autocrud.resource_manager.core import ResourceManager
 
 
 class BlobRouteTemplate(BaseRouteTemplate):
+    def __init__(self, dependency_provider=None):
+        super().__init__(dependency_provider)
+        self.mounted = False
+        self._blob_getter_rm: IResourceManager | None = None
+
     def apply(
         self, model_name: str, resource_manager: IResourceManager, router: APIRouter
     ) -> None:
@@ -15,30 +20,35 @@ class BlobRouteTemplate(BaseRouteTemplate):
         if resource_manager.blob_store is None:
             return
 
-        @router.get(
-            f"/{model_name}/{{resource_id}}/blobs/{{file_id}}",
-            response_class=Response,
-            summary="Get blob content",
-            tags=[model_name],
-        )
-        async def get_blob(
-            resource_id: str = Path(..., description="Resource ID"),
-            file_id: str = Path(..., description="File ID of the blob"),
-            user: str = Depends(self.deps.get_user),
-        ):
-            try:
-                # Permission check through get()
-                with resource_manager.meta_provide(user=user):
-                    resource_manager.get(resource_id)
-            except Exception:
-                raise HTTPException(
-                    status_code=403, detail="Permission denied or Resource not found"
-                )
+        # Handle unified route mounting
+        if not self.mounted:
+            self.mounted = True
+            # Store the RM to use for fetching blobs (assuming shared blob store)
+            self._blob_getter_rm = resource_manager
 
-            try:
-                content = resource_manager.get_blob(file_id)
-                return Response(content=content, media_type="application/octet-stream")
-            except FileNotFoundError:
-                raise HTTPException(status_code=404, detail="Blob not found")
-            except NotImplementedError:
-                raise HTTPException(status_code=501, detail="Blob store not configured")
+            @router.get(
+                "/blobs/{file_id}",
+                response_class=Response,
+                summary="Get blob content directly",
+                tags=["Blobs"],
+            )
+            async def get_blob_direct(
+                file_id: str = Path(..., description="File ID of the blob"),
+            ):
+                if self._blob_getter_rm is None:
+                    # This shouldn't be possible if we are in this block, but for safety
+                    raise HTTPException(
+                        status_code=501, detail="Blob store not configured"
+                    )
+
+                try:
+                    content = self._blob_getter_rm.get_blob(file_id)
+                    return Response(
+                        content=content, media_type="application/octet-stream"
+                    )
+                except FileNotFoundError:
+                    raise HTTPException(status_code=404, detail="Blob not found")
+                except NotImplementedError:
+                    raise HTTPException(
+                        status_code=501, detail="Blob store not configured"
+                    )

@@ -37,7 +37,6 @@ from autocrud.crud.route_templates.patch import (
 from autocrud.crud.route_templates.search import ListRouteTemplate
 from autocrud.crud.route_templates.switch import SwitchRevisionRouteTemplate
 from autocrud.crud.route_templates.update import UpdateRouteTemplate
-from autocrud.crud.route_templates.blob import BlobRouteTemplate
 from autocrud.permission.rbac import RBACPermissionChecker
 from autocrud.permission.simple import AllowAll
 from autocrud.resource_manager.basic import (
@@ -206,7 +205,6 @@ class AutoCRUD:
                 SwitchRevisionRouteTemplate(dependency_provider=dependency_provider),
                 DeleteRouteTemplate(dependency_provider=dependency_provider),
                 RestoreRouteTemplate(dependency_provider=dependency_provider),
-                BlobRouteTemplate(dependency_provider=dependency_provider),
             ]
             if route_templates is None
             else route_templates

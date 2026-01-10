@@ -757,14 +757,14 @@ class ResourceManager(IResourceManager[T], Generic[T]):
 
     def _process_binary_leaf(self, data: Any, store: IBlobStore) -> Any:
         if isinstance(data, Binary):
-            if data.data is not None:
+            if data.data is not UNSET:
                 file_id = store.put(data.data)
                 return msgspec.structs.replace(
                     data,
                     file_id=file_id,
                     hash=file_id,
                     size=len(data.data),
-                    data=None,
+                    data=UNSET,
                 )
         return data
 
