@@ -1,0 +1,198 @@
+from typing import List, Optional, Dict, Any
+from msgspec import Struct
+import pytest
+from autocrud.resource_manager.core import ResourceManager, SimpleStorage
+from autocrud.types import Binary
+from autocrud.resource_manager.resource_store.simple import MemoryResourceStore
+from autocrud.resource_manager.meta_store.simple import MemoryMetaStore
+
+
+class BinaryData(Struct):
+    content: Binary
+    name: str
+
+
+class Menu(Struct):
+    name: str
+    icon: Optional[Binary] = None
+    sub_menus: List["Menu"] = []
+
+
+class UserWithBinary(Struct):
+    id: str
+    avatar: BinaryData
+    files: List[BinaryData]
+    metadata: Dict[str, BinaryData]
+    optional_binary: Optional[BinaryData] = None
+
+
+class MockBlobStore:
+    def __init__(self):
+        self.puts = []
+
+    def put(self, data: bytes) -> str:
+        self.puts.append(data)
+        return "mock_file_id"
+
+    def get(self, file_id: str) -> bytes:
+        return b""
+
+
+@pytest.fixture
+def storage():
+    resource_store = MemoryResourceStore(encoding="json")
+    meta_store = MemoryMetaStore()
+    return SimpleStorage(resource_store=resource_store, meta_store=meta_store)
+
+
+def test_binary_traversal_optimization(storage):
+    tracker_store = MockBlobStore()
+    manager = ResourceManager(
+        resource_type=UserWithBinary, storage=storage, blob_store=tracker_store
+    )
+
+    assert manager._binary_processor is not None, "Processor should be compiled"
+
+    raw_content = b"testdata"
+
+    # Test Dict Input
+    input_dict = {
+        "id": "1",
+        "avatar": {"content": Binary(data=raw_content), "name": "avatar.png"},
+        "files": [
+            {"content": Binary(data=raw_content), "name": "file1.txt"},
+            {"content": Binary(data=raw_content), "name": "file2.txt"},
+        ],
+        "metadata": {
+            "key1": {"content": Binary(data=raw_content), "name": "meta1.dat"}
+        },
+    }
+
+    manager._binary_processor(input_dict, tracker_store)
+    assert len(tracker_store.puts) == 4
+
+    # Test Struct Input
+    tracker_store.puts = []
+    input_struct = UserWithBinary(
+        id="2",
+        avatar=BinaryData(content=Binary(data=raw_content), name="avatar.png"),
+        files=[
+            BinaryData(content=Binary(data=raw_content), name="file1.txt"),
+            BinaryData(content=Binary(data=raw_content), name="file2.txt"),
+        ],
+        metadata={
+            "key1": BinaryData(content=Binary(data=raw_content), name="meta1.dat")
+        },
+    )
+
+    manager._binary_processor(input_struct, tracker_store)
+    assert len(tracker_store.puts) == 4
+
+
+def test_recursive_struct_compilation(storage):
+    tracker_store = MockBlobStore()
+    # This should not raise RecursionError during init
+    try:
+        manager = ResourceManager(
+            resource_type=Menu, storage=storage, blob_store=tracker_store
+        )
+    except RecursionError:
+        pytest.fail(
+            "ResourceManager init validation hit recursion error on recursive type"
+        )
+
+    assert manager._binary_processor is not None
+
+    raw_content = b"icon"
+
+    # Test recursive processing
+    menu = Menu(
+        name="root",
+        icon=Binary(data=raw_content),
+        sub_menus=[Menu(name="child", icon=Binary(data=raw_content))],
+    )
+
+    manager._binary_processor(menu, tracker_store)
+    assert len(tracker_store.puts) == 2
+
+
+def test_recursion_broken_structure(storage):
+    # Test that we can handle recursive dicts without infinite loop if they are finite
+    tracker_store = MockBlobStore()
+    manager = ResourceManager(
+        resource_type=Menu, storage=storage, blob_store=tracker_store
+    )
+
+    raw_content = b"icon"
+
+    # Dict structure simulating recursive menu
+    menu_dict = {
+        "name": "root",
+        "icon": Binary(data=raw_content),
+        "sub_menus": [
+            {"name": "child", "icon": Binary(data=raw_content), "sub_menus": []}
+        ],
+    }
+
+    manager._binary_processor(menu_dict, tracker_store)
+    assert len(tracker_store.puts) == 2
+
+
+class LooseStruct(Struct):
+    payload: Any
+
+
+def test_binary_generic_coverage(storage):
+    tracker_store = MockBlobStore()
+    manager = ResourceManager(
+        resource_type=LooseStruct, storage=storage, blob_store=tracker_store
+    )
+
+    # 1. Test Generic List (hits _process_binary_generic list branch)
+    tracker_store.puts = []
+    data_list = LooseStruct(payload=[Binary(data=b"1"), Binary(data=b"2")])
+    processed_list = manager._binary_processor(data_list, tracker_store)
+
+    assert len(tracker_store.puts) == 2
+    assert processed_list.payload[0].file_id == "mock_file_id"
+    assert processed_list.payload[0].data is None
+
+    # 2. Test Generic Dict (hits _process_binary_generic dict branch)
+    tracker_store.puts = []
+    data_dict = LooseStruct(payload={"k1": Binary(data=b"3"), "k2": Binary(data=b"4")})
+    processed_dict = manager._binary_processor(data_dict, tracker_store)
+
+    assert len(tracker_store.puts) == 2
+    assert processed_dict.payload["k1"].file_id == "mock_file_id"
+
+    # 3. Test Generic Struct (hits _process_binary_generic Struct branch)
+    tracker_store.puts = []
+    d = BinaryData(content=Binary(data=b"5"), name="n")
+    data_struct = LooseStruct(payload=d)
+    processed_struct = manager._binary_processor(data_struct, tracker_store)
+
+    assert len(tracker_store.puts) == 1
+    assert processed_struct.payload.content.file_id == "mock_file_id"
+
+    # 4. Test No Changes (coverage for 'return data' paths)
+    tracker_store.puts = []
+
+    # List no change
+    l_no_change = LooseStruct(payload=["a", "b"])
+    res_l = manager._binary_processor(l_no_change, tracker_store)
+    # Checks that original object is returned when no changes
+    assert res_l.payload is l_no_change.payload
+
+    # Dict no change
+    d_no_change = LooseStruct(payload={"k": "v"})
+    res_d = manager._binary_processor(d_no_change, tracker_store)
+    assert res_d.payload is d_no_change.payload
+
+    # Struct no change
+    class Simple(Struct):
+        x: int
+
+    simple = Simple(x=1)
+    s_wrapper = LooseStruct(payload=simple)
+    res_s = manager._binary_processor(s_wrapper, tracker_store)
+    assert res_s.payload is s_wrapper.payload
