@@ -69,6 +69,7 @@ extensions = [
     "sphinx.ext.coverage",
     "sphinx.ext.imgmath",
     "sphinx.ext.mathjax",
+    "sphinxcontrib.mermaid",
     "sphinx.ext.ifconfig",
     "sphinx.ext.githubpages",
     "sphinx.ext.napoleon",
@@ -110,7 +111,13 @@ html_favicon = None  # 可以添加 favicon 路徑
 
 # 添加自定義 CSS 和 JS
 html_css_files = ["custom.css"]
-# html_js_files = ["custom.js"]
+html_js_files = [
+    "https://unpkg.com/mermaid@10.9.0/dist/mermaid.min.js",
+    "mermaid-init.js",
+]
+
+# Mermaid configuration
+mermaid_init_js = ""  # Disable default initialization to use custom script
 
 # -- Autodoc configuration ---------------------------------------------------
 autodoc_default_options = {
@@ -140,7 +147,7 @@ myst_enable_extensions = [
     "tasklist",
 ]
 
-myst_heading_anchors = 3
+myst_heading_anchors = 1  # 減少 "On this page" 顯示深度，從 H2 降到只顯示 H1
 myst_fence_as_directive = ["mermaid"]
 
 # -- Napoleon configuration --------------------------------------------------
@@ -182,6 +189,7 @@ html_context.update(
 html_theme_options.update(
     {
         "announcement": None,  # 可以添加公告
+        "navigation_depth": 1,
     },
 )
 

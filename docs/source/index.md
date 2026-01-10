@@ -19,6 +19,9 @@
 - 🔧 **高度可定制**：靈活的路由命名、索引欄位、事件處理器與權限檢查
 - 🏎️ **高性能**：基於 FastAPI + msgspec，低延遲高吞吐
 
+```{include} functions.md
+```
+
 ## 安裝
 
 ```{termynal}
@@ -159,6 +162,7 @@ python -m fastapi dev main.py
 :maxdepth: 1
 
 auto_routes
+architecture
 resource_manager
 examples
 

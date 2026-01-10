@@ -45,6 +45,7 @@ docs = [
     "sphinx-design>=0.6.1",
     "sphinx-termynal>=0.2.1",
     "autocrud[s3]",
+    "sphinxcontrib-mermaid>=1.2.3",
 ]
 dev = [
     "coverage>=7.9.2",
@@ -66,7 +67,6 @@ cli = [
 magic = [
     "python-magic>=0.4.27",
 ]
-
 [project.urls]
 Homepage = "https://github.com/HYChou0515/autocrud"
 Documentation = "https://HYChou0515.github.io/autocrud/"

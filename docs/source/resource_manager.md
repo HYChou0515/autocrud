@@ -9,6 +9,8 @@ ResourceManager 是 AutoCRUD 的核心類別，負責管理各類型資源的 CR
 - **專注業務邏輯**：metadata 自動管理，業務只需定義資料本體  
 
     所有資源的 metadata（如 id、建立者、時間、schema 版本等）與本體分離，減少重複設計，支援自動生成、查詢、排序、索引。  
+    開發者不再需要為每個資源重複定義 `id`、`created/updated by/time` 或 `hash` 等基礎欄位。這免除了每次建立資源時都要面臨的瑣碎決策：應該用 `int id` 還是 `str id`？是否 auto-increment？時區該如何處理？AutoCRUD 統一標準化了這些與業務無關但必要的技術架構。
+
     ➡️ *[Resource Meta 與 Revision Info](#resource-meta-revision-info)*
 
 - **完整版本控管**：所有操作均可回溯、復原  
@@ -457,19 +459,82 @@ Resource Meta 負責資源的整體狀態與索引，Revision Info 負責每個�
 
 Benchmark Results (ms):
 
-| Method | Time (ms) | Factor | Runs |
-| :--- | :--- | :--- | :--- |
-| msgspec+msgpack+partial | 0.0274 | 1.00x | 37007 |
-| msgspec+msgpack | 0.8671 | 31.63x | 1101 |
-| msgspec+json+partial | 2.0374 | 74.31x | 490 |
-| msgspec+json | 2.3715 | 86.50x | 421 |
-| pydantic+partial | 2.4517 | 89.42x | 409 |
-| pydantic | 3.6218 | 132.10x | 267 |
+| Method | Time (ms) | vs Fastest | Partial Speedup | Runs |
+| :--- | :--- | :--- | :--- | :--- |
+| msgspec+msgpack+partial | 0.0274 | 1.00x | **🚀 31.6x** (vs Full) | 37007 |
+| msgspec+msgpack | 0.8671 | 31.63x | - | 1101 |
+| msgspec+json+partial | 2.0374 | 74.31x | ⚡ 1.16x (vs Full) | 490 |
+| msgspec+json | 2.3715 | 86.50x | - | 421 |
+| pydantic+partial | 2.4517 | 89.42x | ⚡ 1.48x (vs Full) | 409 |
+| pydantic | 3.6218 | 132.10x | - | 267 |
+
+> **觀察重點**：Msgpack 在開啟 Partial Read 後，效能提升了 **31.6 倍**；而 JSON 僅提升約 **1.16 倍**。這驗證了 Msgpack 的「長度標頭型跳過」遠比 JSON 的「循序掃描」更適合局部讀取。
 
 ![Benchmark Plot](_static/benchmark_plot.png)
 
 
 完整測試腳本請參考 `examples/benchmark_partial.py`。
+
+#### 為什麼我們推薦使用 Msgpack 進行 Partial Read？
+
+Msgpack 是一種二進位序列化格式，它比 JSON 更適合「局部讀取」的核心原因在於其 **「可預測的跳過機制 (Efficient Skipping)」**：
+
+1.  **自帶長度標頭 (Length-Prefixed)**：
+    *   在 Msgpack 中，字串、陣列或地圖 (Map) 的開頭都會包含該資料的 **長度資訊**。
+    *   **優勢**：當 `msgspec` 的解碼器遇到一個不需要的欄位時，它只需讀取標頭中的長度，就能直接計算出下一個欄位的記憶體偏移量 (Offset) 並直接「跳過」該段位元組，完全不需要讀取內容。
+
+```mermaid
+block-beta
+    columns 5
+    H1["Type: Str <br/> len=100"]:1
+    D1["Char...(96 more)"]:2
+    H2["Type: Int"]:1
+    D2["(Val)"]:1
+
+    columns 5
+    P1(("👀")):1
+    JUMP["── JUMP (Skip 100 Bytes) ──>"]:2
+    P2(("🎯")):1
+    space:1
+
+    style H1 fill:#fee2e2,stroke:#ef4444
+    style H2 fill:#fee2e2,stroke:#ef4444
+```
+
+2.  **JSON 的侷限性**：
+    *   JSON 是一種文字格式，必須透過 **循序掃描 (Sequential Scanning)** 來尋找結束符號（如引號 `"`、大括號 `}`）。
+    *   **劣勢**：即使解碼器不需要某個大字串欄位，它仍必須讀取該欄位的每一個字元來確認哪裡才是結尾（並處理轉義字元 `\`），這會消耗大量的 CPU 週期。
+
+```mermaid
+block-beta
+    columns 8
+    Q1["''"]:1
+    C1["C"]:1
+    C2["h"]:1
+    C3["a"]:1
+    C4["r"]:1
+    C5["96 more..."]:1
+    Q2["''"]:1
+    COMMA[","]:1
+
+    columns 8
+    P1(("👀")):1
+    S1["→"]:1
+    S2["→"]:1
+    S3["→"]:1
+    S4["→"]:1
+    S5["→ 96 ..."]:1
+    P2(("🎯")):1
+    space:1
+
+    style Q1 fill:#fee2e2,stroke:#ef4444
+    style Q2 fill:#fee2e2,stroke:#ef4444
+```
+
+3.  **極致的 CPU 優化**：
+    *   結合 `msgspec` 預編譯的解碼器，Msgpack 的跳過操作幾乎等同於一次簡單的記憶體指標運算。這也是為什麼在基準測試中，Msgpack 的 Partial Read 效能可以達到 JSON 的數倍甚至數十倍。
+
+**總結：** 如果您的資源包含大型二進位資料、長文本或深層巢狀結構，切換至 Msgpack 將能最大化 Partial Read 的效能收益。
 
 #### Partial Schema 與生成物件
 
