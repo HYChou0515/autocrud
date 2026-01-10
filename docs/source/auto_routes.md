@@ -878,6 +878,7 @@ autocrud.openapi(app, structs=[ErrorResponse])
 | DELETE | /[resource]/{resource_id}          | 刪除指定 [resource]（軟刪除）|
 | POST   | /[resource]/{resource_id}/switch/{revision_id} | 切換到指定版本 |
 | POST   | /[resource]/{resource_id}/restore  | 還原指定 [resource] |
+| GET    | /blobs/{file_id}                   | 取得 Blob 檔案內容 (Binary Data) |
 
 ### 列表搜尋與過濾 (Search & Filtering)
 
@@ -931,6 +932,38 @@ autocrud.openapi(app, structs=[ErrorResponse])
 - ...等
 
 你只需提供 resource 結構，AutoCRUD 會自動處理資料的 CRUD、版本、還原等操作，讓 API 開發更簡單。
+
+### Binary Data 下載與讀取
+
+```{versionadded} 0.7.0
+```
+
+若資源包含 `Binary` 類型的欄位（如圖片、文件），在一般的 GET 路由中（如 GET `/[resource]/{id}/data`），為了避免傳輸大量非必要的資料，`Binary` 欄位中的 `data` 屬性預設為 **UNSET** (不會包含在回應中)，僅回傳 Metadata（如 `file_id`, `size`, `content_type`）。
+
+若要取得原始檔案內容，請使用 `/blobs/{file_id}` 路由。
+
+- **路徑**: `GET /blobs/{file_id}`
+- **功能**: 下載二進位檔案。
+- **行為**:
+    1. **Redirect**: 若後端儲存（如 S3）支援產生公開或簽名 URL，此端點會回傳 `307 Temporary Redirect`，將客戶端導向至該 URL 下載，以減輕 API Server 負擔。
+    2. **Streaming**: 若不支援 Redirect（如 Local Disk），則會直接輸出檔案內容（Stream Response）。
+
+**回應範例 (GET Resource)**:
+
+```json
+{
+  "name": "My Document",
+  "attachment": {
+    "file_id": "blob-123456...",
+    "content_type": "application/pdf",
+    "size": 5242880
+    // "data" 欄位被省略 (UNSET)
+  }
+}
+```
+
+**下載檔案**:
+請求 `GET /blobs/blob-123456...` 即可取得原始 PDF 檔案。
 
 ## ⚛️ GraphQL
 
