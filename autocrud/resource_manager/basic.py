@@ -546,7 +546,7 @@ class ISlowMetaStore(IMetaStore):
 
 class IBlobStore(ABC):
     @abstractmethod
-    def put(self, data: bytes, *, content_type: str | UnsetType = UNSET) -> str:
+    def put(self, data: bytes, *, content_type: str | UnsetType = UNSET) -> Binary:
         """Store binary data and return its ID (hash)."""
         pass
 

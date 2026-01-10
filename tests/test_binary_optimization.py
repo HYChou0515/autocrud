@@ -31,9 +31,9 @@ class MockBlobStore:
     def __init__(self):
         self.puts = []
 
-    def put(self, data: bytes, *, content_type: Any = UNSET) -> str:
+    def put(self, data: bytes, *, content_type: Any = UNSET) -> Binary:
         self.puts.append(data)
-        return "mock_file_id"
+        return Binary(file_id="mock_file_id", size=len(data), content_type=content_type)
 
     def get(self, file_id: str) -> Binary:
         return Binary(data=b"")

@@ -63,6 +63,9 @@ cli = [
     "textual>=6.3.0",
     "typer>=0.20.0",
 ]
+magic = [
+    "python-magic>=0.4.27",
+]
 
 [project.urls]
 Homepage = "https://github.com/HYChou0515/autocrud"

@@ -56,7 +56,7 @@ def test_blob_lifecycle(client):
     assert response.status_code == 200
     assert response.content == raw_content
     # Depending on implementation, media type might be specific or generic
-    assert response.headers["content-type"] == "application/octet-stream"
+    assert response.headers["content-type"] == "text/plain; charset=utf-8"
 
 
 def test_blob_resource_not_found(client):

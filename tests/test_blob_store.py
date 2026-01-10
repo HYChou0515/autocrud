@@ -44,7 +44,7 @@ class TestIBlobStoreBehavior:
         expected_hash = xxh3_128_hexdigest(data)
 
         # 1. Put
-        file_id = self.blob_store.put(data)
+        file_id = self.blob_store.put(data).file_id
         assert file_id == expected_hash
 
         # 2. Get
@@ -56,7 +56,7 @@ class TestIBlobStoreBehavior:
 
     def test_exists(self):
         data = b"check_existence"
-        file_id = self.blob_store.put(data)
+        file_id = self.blob_store.put(data).file_id
 
         # True for existing
         assert self.blob_store.exists(file_id) is True
@@ -68,10 +68,10 @@ class TestIBlobStoreBehavior:
         data = b"idempotent_data"
 
         # First write
-        file_id_1 = self.blob_store.put(data)
+        file_id_1 = self.blob_store.put(data).file_id
 
         # Second write
-        file_id_2 = self.blob_store.put(data)
+        file_id_2 = self.blob_store.put(data).file_id
 
         assert file_id_1 == file_id_2
         # Ensure data is stillretrievable
@@ -85,8 +85,8 @@ class TestIBlobStoreBehavior:
         data1 = b"file_1"
         data2 = b"file_2"
 
-        id1 = self.blob_store.put(data1)
-        id2 = self.blob_store.put(data2)
+        id1 = self.blob_store.put(data1).file_id
+        id2 = self.blob_store.put(data2).file_id
 
         assert id1 != id2
         assert self.blob_store.get(id1).data == data1

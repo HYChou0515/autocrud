@@ -5,11 +5,11 @@ from botocore.exceptions import ClientError
 from msgspec import UNSET, UnsetType
 from xxhash import xxh3_128_hexdigest
 
-from autocrud.resource_manager.basic import IBlobStore
+from autocrud.resource_manager.blob_store.simple import BasicBlobStore
 from autocrud.types import Binary
 
 
-class S3BlobStore(IBlobStore):
+class S3BlobStore(BasicBlobStore):
     def __init__(
         self,
         access_key_id: str = "minioadmin",
@@ -43,7 +43,7 @@ class S3BlobStore(IBlobStore):
             else:
                 raise
 
-    def put(self, data: bytes, *, content_type: str | UnsetType = UNSET) -> str:
+    def put(self, data: bytes, *, content_type: str | UnsetType = UNSET) -> Binary:
         file_id = xxh3_128_hexdigest(data)
         key = f"{self.prefix}{file_id}"
 
@@ -52,11 +52,17 @@ class S3BlobStore(IBlobStore):
             "Key": key,
             "Body": data,
         }
-        if content_type is not UNSET:
-            kwargs["ContentType"] = content_type
+        content_type_ = self.guess_content_type(data, content_type)
+        if content_type_:
+            kwargs["ContentType"] = content_type_
 
         self.client.put_object(**kwargs)
-        return file_id
+        return Binary(
+            file_id=file_id,
+            size=len(data),
+            data=data,
+            content_type=content_type_ if content_type_ else UNSET,
+        )
 
     def get(self, file_id: str) -> Binary:
         key = f"{self.prefix}{file_id}"

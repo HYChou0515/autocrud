@@ -265,7 +265,7 @@ def create_sample_data(crud: AutoCRUD):
             defense_bonus=50,
             special_effect="🚀 自動生成 CRUD 操作",
             price=1000000,
-            icon=Binary(data=get_random_image(), content_type="image/png"),
+            icon=Binary(data=get_random_image()),
         ),
         Equipment(
             name="數據庫守護盾",
@@ -275,7 +275,7 @@ def create_sample_data(crud: AutoCRUD):
             defense_bonus=150,
             special_effect="🛡️ 防止 SQL 注入攻擊",
             price=500000,
-            icon=Binary(data=get_random_image(), content_type="image/png"),
+            icon=Binary(data=get_random_image()),
         ),
         Equipment(
             name="API 魔法杖",
@@ -285,7 +285,7 @@ def create_sample_data(crud: AutoCRUD):
             defense_bonus=30,
             special_effect="✨ 法術冷卻時間減少 50%",
             price=250000,
-            icon=Binary(data=get_random_image(), content_type="image/png"),
+            icon=Binary(data=get_random_image()),
         ),
         Equipment(
             name="精準查詢弓",
@@ -294,7 +294,7 @@ def create_sample_data(crud: AutoCRUD):
             attack_bonus=80,
             special_effect="🎯 100% 命中率",
             price=150000,
-            icon=Binary(data=get_random_image(), content_type="image/png"),
+            icon=Binary(data=get_random_image()),
         ),
         Equipment(
             name="新手村木劍",
@@ -302,7 +302,7 @@ def create_sample_data(crud: AutoCRUD):
             attack_bonus=5,
             special_effect="🌱 經驗值獲得 +10%",
             price=50,
-            icon=Binary(data=get_random_image(), content_type="image/png"),
+            icon=Binary(data=get_random_image()),
         ),
     ]
 
