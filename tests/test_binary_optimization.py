@@ -69,7 +69,7 @@ def test_binary_traversal_optimization(storage):
         },
     }
 
-    manager._binary_processor(input_dict, tracker_store)
+    manager._binary_processor.process(input_dict, tracker_store)
     assert len(tracker_store.puts) == 4
 
     # Test Struct Input
@@ -86,7 +86,7 @@ def test_binary_traversal_optimization(storage):
         },
     )
 
-    manager._binary_processor(input_struct, tracker_store)
+    manager._binary_processor.process(input_struct, tracker_store)
     assert len(tracker_store.puts) == 4
 
 
@@ -113,7 +113,7 @@ def test_recursive_struct_compilation(storage):
         sub_menus=[Menu(name="child", icon=Binary(data=raw_content))],
     )
 
-    manager._binary_processor(menu, tracker_store)
+    manager._binary_processor.process(menu, tracker_store)
     assert len(tracker_store.puts) == 2
 
 
@@ -135,7 +135,7 @@ def test_recursion_broken_structure(storage):
         ],
     }
 
-    manager._binary_processor(menu_dict, tracker_store)
+    manager._binary_processor.process(menu_dict, tracker_store)
     assert len(tracker_store.puts) == 2
 
 
@@ -152,7 +152,7 @@ def test_binary_generic_coverage(storage):
     # 1. Test Generic List (hits _process_binary_generic list branch)
     tracker_store.puts = []
     data_list = LooseStruct(payload=[Binary(data=b"1"), Binary(data=b"2")])
-    processed_list = manager._binary_processor(data_list, tracker_store)
+    processed_list = manager._binary_processor.process(data_list, tracker_store)
 
     assert len(tracker_store.puts) == 2
     assert processed_list.payload[0].file_id == "mock_file_id"
@@ -161,7 +161,7 @@ def test_binary_generic_coverage(storage):
     # 2. Test Generic Dict (hits _process_binary_generic dict branch)
     tracker_store.puts = []
     data_dict = LooseStruct(payload={"k1": Binary(data=b"3"), "k2": Binary(data=b"4")})
-    processed_dict = manager._binary_processor(data_dict, tracker_store)
+    processed_dict = manager._binary_processor.process(data_dict, tracker_store)
 
     assert len(tracker_store.puts) == 2
     assert processed_dict.payload["k1"].file_id == "mock_file_id"
@@ -170,7 +170,7 @@ def test_binary_generic_coverage(storage):
     tracker_store.puts = []
     d = BinaryData(content=Binary(data=b"5"), name="n")
     data_struct = LooseStruct(payload=d)
-    processed_struct = manager._binary_processor(data_struct, tracker_store)
+    processed_struct = manager._binary_processor.process(data_struct, tracker_store)
 
     assert len(tracker_store.puts) == 1
     assert processed_struct.payload.content.file_id == "mock_file_id"
@@ -180,13 +180,13 @@ def test_binary_generic_coverage(storage):
 
     # List no change
     l_no_change = LooseStruct(payload=["a", "b"])
-    res_l = manager._binary_processor(l_no_change, tracker_store)
+    res_l = manager._binary_processor.process(l_no_change, tracker_store)
     # Checks that original object is returned when no changes
     assert res_l.payload is l_no_change.payload
 
     # Dict no change
     d_no_change = LooseStruct(payload={"k": "v"})
-    res_d = manager._binary_processor(d_no_change, tracker_store)
+    res_d = manager._binary_processor.process(d_no_change, tracker_store)
     assert res_d.payload is d_no_change.payload
 
     # Struct no change
@@ -195,7 +195,7 @@ def test_binary_generic_coverage(storage):
 
     simple = Simple(x=1)
     s_wrapper = LooseStruct(payload=simple)
-    res_s = manager._binary_processor(s_wrapper, tracker_store)
+    res_s = manager._binary_processor.process(s_wrapper, tracker_store)
     assert res_s.payload is s_wrapper.payload
 
 

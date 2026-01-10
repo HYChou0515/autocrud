@@ -14,9 +14,6 @@ from typing import (
     TypeVar,
     get_args,
     get_origin,
-    Union,
-    List,
-    Dict,
 )
 from uuid import uuid4
 import inspect
@@ -124,6 +121,7 @@ from autocrud.resource_manager.basic import (
     IStorage,
     MsgspecSerializer,
 )
+from autocrud.resource_manager.binary_processor import BinaryProcessor
 from autocrud.resource_manager.data_converter import DataConverter
 from autocrud.util.naming import NameConverter, NamingFormat
 
@@ -423,7 +421,7 @@ class ResourceManager(IResourceManager[T], Generic[T]):
                 PermissionEventHandler(permission_checker),
             )
 
-        self._binary_processor = self._compile_binary_processor(resource_type)
+        self._binary_processor = BinaryProcessor(resource_type)
 
     def encode(self, data: T) -> bytes:
         return self._data_serializer.encode(data)
@@ -612,188 +610,7 @@ class ResourceManager(IResourceManager[T], Generic[T]):
         return data_hash
 
     def _process_binary_fields(self, data: Any) -> Any:
-        if self.blob_store is None:
-            return data
-
-        if self._binary_processor:
-            return self._binary_processor(data, self.blob_store)
-
-        return data
-
-    def _compile_binary_processor(
-        self, type_hint: Any, cache: dict[Any, Any] | None = None
-    ) -> Callable[[Any, IBlobStore], Any] | None:
-        if cache is None:
-            cache = {}
-
-        if type_hint in cache:
-            return cache[type_hint]
-
-        # Pre-register a generic fallback for recursion loops during compilation
-        # We use a mutable container to update the processor later
-        container = [None]
-
-        def deferred_processor(data, store):
-            if container[0]:
-                return container[0](data, store)
-            return data
-
-        cache[type_hint] = deferred_processor
-
-        # Compile the actual processor
-        actual_processor = self._compile_binary_processor_impl(type_hint, cache)
-
-        if actual_processor:
-            container[0] = actual_processor
-            return deferred_processor
-
-        # If no processor needed, we prefer returning None for optimization,
-        # but if we are in a recursion loop, previous callers got 'deferred_processor'.
-        # Since 'container[0]' is None, deferred_processor acts as identity.
-        # So it is safe.
-        return None
-
-    def _compile_binary_processor_impl(
-        self, type_hint: Any, cache: dict[Any, Any]
-    ) -> Callable[[Any, IBlobStore], Any] | None:
-        if type_hint is Binary:
-            return self._process_binary_leaf
-
-        origin = get_origin(type_hint)
-
-        if origin is Union:
-            args = get_args(type_hint)
-            non_none_args = [a for a in args if a is not type(None)]
-            if len(non_none_args) == 1:
-                inner_proc = self._compile_binary_processor(non_none_args[0], cache)
-                if inner_proc:
-
-                    def optional_wrapper(data, store):
-                        if data is None:
-                            return None
-                        return inner_proc(data, store)
-
-                    return optional_wrapper
-            return self._process_binary_generic
-
-        if origin is list or origin is List:
-            args = get_args(type_hint)
-            if args:
-                item_proc = self._compile_binary_processor(args[0], cache)
-                if item_proc:
-
-                    def list_processor(data, store):
-                        if not data:
-                            return data
-                        new_list = [item_proc(item, store) for item in data]
-                        if any(n is not o for n, o in zip(new_list, data)):
-                            return new_list
-                        return data
-
-                    return list_processor
-            return self._process_binary_generic
-
-        if origin is dict or origin is Dict:
-            args = get_args(type_hint)
-            if args and len(args) == 2:
-                val_proc = self._compile_binary_processor(args[1], cache)
-                if val_proc:
-
-                    def dict_processor(data, store):
-                        if not data:
-                            return data
-                        new_dict = {k: val_proc(v, store) for k, v in data.items()}
-                        if any(new_dict[k] is not data[k] for k in data):
-                            return new_dict
-                        return data
-
-                    return dict_processor
-            return self._process_binary_generic
-
-        if (
-            isinstance(type_hint, type)
-            and issubclass(type_hint, Struct)
-            and type_hint is not Binary
-        ):
-            field_processors = {}
-            for field in msgspec.structs.fields(type_hint):
-                proc = self._compile_binary_processor(field.type, cache)
-                if proc:
-                    field_processors[field.name] = proc
-
-            if field_processors:
-
-                def struct_processor(data, store):
-                    changes = {}
-
-                    if isinstance(data, dict):
-                        for fname, proc in field_processors.items():
-                            if fname in data:
-                                val = data[fname]
-                                new_val = proc(val, store)
-                                if new_val is not val:
-                                    changes[fname] = new_val
-                        if changes:
-                            return data | changes
-                        return data
-
-                    # Assume Struct
-                    for fname, proc in field_processors.items():
-                        val = getattr(data, fname)
-                        new_val = proc(val, store)
-                        if new_val is not val:
-                            changes[fname] = new_val
-                    if changes:
-                        return msgspec.structs.replace(data, **changes)
-                    return data
-
-                return struct_processor
-            return None
-
-        if type_hint is Any:
-            return self._process_binary_generic
-
-        return None
-
-    def _process_binary_leaf(self, data: Any, store: IBlobStore) -> Any:
-        if isinstance(data, Binary):
-            if data.data is not UNSET:
-                stored_bin = store.put(data.data, content_type=data.content_type)
-                return msgspec.structs.replace(
-                    stored_bin,
-                    data=UNSET,
-                )
-        return data
-
-    def _process_binary_generic(self, data: Any, store: IBlobStore) -> Any:
-        if isinstance(data, Binary):
-            return self._process_binary_leaf(data, store)
-
-        if isinstance(data, Struct):
-            changes = {}
-            for field in msgspec.structs.fields(data):
-                val = getattr(data, field.name)
-                new_val = self._process_binary_generic(val, store)
-                if new_val is not val:
-                    changes[field.name] = new_val
-            if changes:
-                return msgspec.structs.replace(data, **changes)
-            return data
-
-        if isinstance(data, list):
-            new_list = [self._process_binary_generic(item, store) for item in data]
-            if any(n is not o for n, o in zip(new_list, data)):
-                return new_list
-            return data
-
-        if isinstance(data, dict):
-            new_dict = {
-                k: self._process_binary_generic(v, store) for k, v in data.items()
-            }
-            if any(new_dict[k] is not data[k] for k in data):
-                return new_dict
-
-        return data
+        return self._binary_processor.process(data, self.blob_store)
 
     def _rev_info(
         self,
