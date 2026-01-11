@@ -1166,7 +1166,7 @@ failed_jobs = manager.search_data(
 )
 
 for res in failed_jobs:
-    print(f"Job {res.id} failed: {res.data.result}") # result 欄位儲存錯誤訊息
+    print(f"Job {res.id} failed: {res.data.errmsg}") # errmsg 欄位儲存錯誤訊息
 ```
 
 ---

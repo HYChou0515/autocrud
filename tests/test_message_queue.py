@@ -129,7 +129,7 @@ class TestMessageQueueUnified:
             # 4. Complete
             completed = queue.complete(job1.info.resource_id, result="done")
             assert completed.data.status == TaskStatus.COMPLETED
-            assert completed.data.result == "done"
+            assert completed.data.errmsg == "done"
 
             # 5. Pop next
             job2 = queue.pop()
@@ -139,7 +139,7 @@ class TestMessageQueueUnified:
             # 6. Fail
             failed = queue.fail(job2.info.resource_id, error="oops")
             assert failed.data.status == TaskStatus.FAILED
-            assert failed.data.result == "oops"
+            assert failed.data.errmsg == "oops"
 
             # 7. Empty
             assert queue.pop() is None
@@ -231,7 +231,7 @@ class TestMessageQueueUnified:
             assert statuses.get("fail_job") == TaskStatus.FAILED
 
     def test_error_message_recorded_on_failure(self):
-        """Test that error message is recorded in Job.result when task fails."""
+        """Test that error message is recorded in Job.errmsg when task fails."""
         queue, rm = self.queue, self.rm
         user = "test_user"
         now = dt.datetime.now(dt.timezone.utc)
@@ -254,11 +254,11 @@ class TestMessageQueueUnified:
 
             # Verify error is recorded
             assert failed_job.data.status == TaskStatus.FAILED
-            assert failed_job.data.result == error_msg
+            assert failed_job.data.errmsg == error_msg
 
             # Also verify we can retrieve it
             retrieved = rm.get(resource_id)
-            assert retrieved.data.result == error_msg
+            assert retrieved.data.errmsg == error_msg
 
     def test_error_overwrites_in_consume_loop(self):
         """Test that error messages are updated correctly in consume loop."""
@@ -328,7 +328,7 @@ class TestMessageQueueUnified:
                 res = rm.get(meta.resource_id)
                 if res.data.payload.task_name == "error_test_job":
                     assert res.data.status == TaskStatus.FAILED
-                    assert "Specific processing error" in res.data.result
+                    assert "Specific processing error" in res.data.errmsg
                     assert res.data.retries >= 1
 
     def test_retry_count_increments_on_failure(self):
@@ -539,7 +539,7 @@ class TestRabbitMQRetryMechanism:
         ]
         assert len(update_calls) >= 1
         updated_job = update_calls[-1][0][1]
-        assert updated_job.result == "Test error"
+        assert updated_job.errmsg == "Test error"
         assert updated_job.retries == 1
 
         # Verify message was published to retry queue
@@ -686,8 +686,8 @@ class TestRabbitMQRetryMechanism:
             if len(c[0]) > 1 and c[0][1].status == TaskStatus.FAILED
         ]
         updated_job = update_calls[0][0][1]
-        assert updated_job.result == long_error
-        assert len(updated_job.result) == 1000
+        assert updated_job.errmsg == long_error
+        assert len(updated_job.errmsg) == 1000
 
     def test_job_error_overwrites_previous_error(self, mock_rabbitmq_queue):
         """Test that new error message overwrites previous one in Job."""
@@ -698,7 +698,7 @@ class TestRabbitMQRetryMechanism:
             data=Job(
                 payload="test-payload",
                 status=TaskStatus.PENDING,
-                result="Old error message",
+                errmsg="Old error message",
                 retries=1,
             ),
         )
@@ -716,7 +716,7 @@ class TestRabbitMQRetryMechanism:
         ]
         assert len(update_calls) >= 1
         updated_job = update_calls[-1][0][1]
-        assert updated_job.result == "New error message"
+        assert updated_job.errmsg == "New error message"
         assert updated_job.retries == 2
 
     def test_critical_error_when_resource_not_found(self, mock_rabbitmq_queue):
@@ -778,8 +778,8 @@ class TestRabbitMQRetryMechanism:
         ]
         assert len(update_calls) >= 1
         updated_job = update_calls[-1][0][1]
-        assert "Critical error" in updated_job.result
-        assert "Initial fetch failed" in updated_job.result
+        assert "Critical error" in updated_job.errmsg
+        assert "Initial fetch failed" in updated_job.errmsg
         assert updated_job.retries == 1
 
         # Message should be sent to retry queue

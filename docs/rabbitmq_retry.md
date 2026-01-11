@@ -4,7 +4,7 @@
 
 RabbitMQ 消息隊列現在支持自動重試機制，當消息處理失敗時會自動重試，並在超過最大重試次數後將消息發送到 dead letter queue。
 
-**注意**：SimpleMessageQueue 也支持錯誤信息記錄功能，會自動將錯誤信息寫入 Job 的 `result` 字段並遞增 `retries` 計數器。
+**注意**：SimpleMessageQueue 也支持錯誤信息記錄功能，會自動將錯誤信息寫入 Job 的 `errmsg` 字段並遞增 `retries` 計數器。
 
 ## 功能特性
 
@@ -109,7 +109,7 @@ queue = RabbitMQMessageQueue(
 
 由於 AutoCRUD 使用 revision-based 的資源管理系統，每次更新會創建新的 revision。這意味著：
 
-1. **最新的錯誤**：`job.result` 總是包含最新的錯誤信息
+1. **最新的錯誤**：`job.errmsg` 總是包含最新的錯誤信息
 2. **歷史追蹤**：可以通過查看舊的 revision 來查看之前的錯誤
 3. **無需額外存儲**：不需要維護錯誤歷史列表，revision 系統自動處理
 
@@ -118,7 +118,7 @@ queue = RabbitMQMessageQueue(
 history = resource_manager.list_revisions(job_resource_id)
 for rev in history:
     job = resource_manager.get(job_resource_id, revision_id=rev.revision_id)
-    print(f"Retry {job.data.retries}: {job.data.result}")
+    print(f"Retry {job.data.retries}: {job.data.errmsg}")
 ```
 
 ## 配置參數

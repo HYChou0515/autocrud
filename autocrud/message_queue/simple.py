@@ -123,7 +123,7 @@ class SimpleMessageQueue(BasicMessageQueue[T], Generic[T]):
                     error_msg = str(e)
                     updated_job = job.data
                     updated_job.status = TaskStatus.FAILED
-                    updated_job.result = error_msg
+                    updated_job.errmsg = error_msg
                     updated_job.retries += 1
 
                     try:

@@ -46,8 +46,8 @@ async def main():
         print(f"\n處理任務: {task.task_id}")
         print(f"  數據: {task.data}")
         print(f"  重試次數: {job.retries}")
-        if job.result:
-            print(f"  上次錯誤: {job.result}")
+        if job.errmsg:
+            print(f"  上次錯誤: {job.errmsg}")
 
         if task.should_fail:
             # 模擬任務失敗

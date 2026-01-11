@@ -236,7 +236,7 @@ class RabbitMQMessageQueue(BasicMessageQueue[T], Generic[T]):
 
                         # Update Job with error message and retry count
                         job.status = TaskStatus.FAILED
-                        job.result = error_msg  # Store error message in result field
+                        job.errmsg = error_msg  # Store error message in result field
                         job.retries = retry_count + 1  # Increment retry count
                         with self._rm_meta_provide(resource.info.created_by):
                             self.rm.create_or_update(resource_id, job)
@@ -258,7 +258,7 @@ class RabbitMQMessageQueue(BasicMessageQueue[T], Generic[T]):
                         resource = self.rm.get(resource_id)
                         job = resource.data
                         job.status = TaskStatus.FAILED
-                        job.result = error_msg
+                        job.errmsg = error_msg
                         job.retries = retry_count + 1
                         with self._rm_meta_provide(resource.info.created_by):
                             self.rm.create_or_update(resource_id, job)

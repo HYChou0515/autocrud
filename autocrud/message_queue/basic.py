@@ -52,7 +52,7 @@ class BasicMessageQueue(IMessageQueue[T], Generic[T]):
         resource = self.rm.get(resource_id)
         job = resource.data
         job.status = TaskStatus.COMPLETED
-        job.result = result
+        job.errmsg = result
 
         with self._rm_meta_provide(resource.info.created_by):
             self.rm.create_or_update(resource_id, job)
@@ -70,7 +70,7 @@ class BasicMessageQueue(IMessageQueue[T], Generic[T]):
         resource = self.rm.get(resource_id)
         job = resource.data
         job.status = TaskStatus.FAILED
-        job.result = error
+        job.errmsg = error
 
         with self._rm_meta_provide(resource.info.created_by):
             self.rm.create_or_update(resource_id, job)

@@ -1742,7 +1742,7 @@ class Job(Struct, Generic[T]):
     status: TaskStatus = TaskStatus.PENDING
     """Current status of the job."""
 
-    result: str | None = None
+    errmsg: str | None = None
     """Result or error message after processing."""
 
     retries: int = 0
