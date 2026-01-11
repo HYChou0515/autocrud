@@ -114,7 +114,20 @@ class SimpleMessageQueue(BasicMessageQueue[T], Generic[T]):
                     do(job)
                     self.complete(job.info.resource_id)
                 except Exception as e:
-                    self.fail(job.info.resource_id, str(e))
+                    # Update Job with error message and retry count
+                    error_msg = str(e)
+                    updated_job = job.data
+                    updated_job.status = TaskStatus.FAILED
+                    updated_job.result = error_msg
+                    updated_job.retries += 1
+
+                    try:
+                        self.rm.create_or_update(job.info.resource_id, updated_job)
+                    except Exception:
+                        # If update fails, still mark as failed via fail()
+                        pass
+
+                    self.fail(job.info.resource_id, error_msg)
             else:
                 time.sleep(0.1)
 

@@ -69,11 +69,14 @@ async def main():
 
         print(f"\n處理任務: {task.task_id}")
         print(f"  數據: {task.data}")
-        print(f"  重試次數: {task.retry_count}")
+        print(f"  重試次數: {job.retries}")
+        if job.result:
+            print(f"  上次錯誤: {job.result}")
 
         if task.should_fail:
             # 模擬任務失敗
             # 這會觸發重試機制
+            # 錯誤信息會被記錄到 job.result
             raise Exception(f"任務 {task.task_id} 處理失敗！")
 
         print("  ✓ 任務成功完成")

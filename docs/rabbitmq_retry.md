@@ -4,6 +4,8 @@
 
 RabbitMQ 消息隊列現在支持自動重試機制，當消息處理失敗時會自動重試，並在超過最大重試次數後將消息發送到 dead letter queue。
 
+**注意**：SimpleMessageQueue 也支持錯誤信息記錄功能，會自動將錯誤信息寫入 Job 的 `result` 字段並遞增 `retries` 計數器。
+
 ## 功能特性
 
 - ✅ **自動重試**：失敗的任務會自動重新入隊並延遲執行
@@ -11,6 +13,7 @@ RabbitMQ 消息隊列現在支持自動重試機制，當消息處理失敗時�
 - ✅ **最大重試次數**：可設定最大重試次數（默認 3 次）
 - ✅ **Dead Letter Queue**：超過重試次數的任務會進入 dead queue，不會再自動重試
 - ✅ **錯誤追蹤**：每個消息會記錄重試次數和最後的錯誤信息
+- ✅ **Revision-based 錯誤記錄**：利用 AutoCRUD 的版本管理系統，每次重試時錯誤信息會更新到 Job 的 `result` 字段，歷史錯誤會保留在舊的 revision 中
 
 ## 快速開始
 
@@ -95,6 +98,28 @@ queue = RabbitMQMessageQueue(
 
 - `x-retry-count`: 當前重試次數（從 1 開始）
 - `x-last-error`: 最後一次失敗的錯誤信息（截斷到 500 字符）
+
+### Job 錯誤記錄
+
+每次任務失敗時，Job 資源會被更新：
+
+- `job.result`: 儲存完整的錯誤信息（不截斷）
+- `job.retries`: 記錄當前的重試次數
+- `job.status`: 設置為 `FAILED`
+
+由於 AutoCRUD 使用 revision-based 的資源管理系統，每次更新會創建新的 revision。這意味著：
+
+1. **最新的錯誤**：`job.result` 總是包含最新的錯誤信息
+2. **歷史追蹤**：可以通過查看舊的 revision 來查看之前的錯誤
+3. **無需額外存儲**：不需要維護錯誤歷史列表，revision 系統自動處理
+
+```python
+# 獲取 Job 的所有 revision 來查看錯誤歷史
+history = resource_manager.list_revisions(job_resource_id)
+for rev in history:
+    job = resource_manager.get(job_resource_id, revision_id=rev.revision_id)
+    print(f"Retry {job.data.retries}: {job.data.result}")
+```
 
 ## 配置參數
 

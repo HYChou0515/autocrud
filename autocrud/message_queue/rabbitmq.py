@@ -200,9 +200,14 @@ class RabbitMQMessageQueue(BasicMessageQueue[T], Generic[T]):
                     self.complete(resource_id)
                     ch.basic_ack(delivery_tag=method.delivery_tag)
                 except Exception as e:
-                    # 4. Callback failed - retry or send to dead letter queue
+                    # 4. Callback failed - update Job with error and retry info
                     error_msg = str(e)
-                    self.fail(resource_id, error_msg)
+
+                    # Update Job with error message and retry count
+                    job.status = TaskStatus.FAILED
+                    job.result = error_msg  # Store error message in result field
+                    job.retries = retry_count + 1  # Increment retry count
+                    self.rm.create_or_update(resource_id, job)
 
                     # Send to retry or dead letter queue
                     self._send_to_retry_or_dead(ch, resource_id, retry_count, error_msg)
@@ -212,8 +217,21 @@ class RabbitMQMessageQueue(BasicMessageQueue[T], Generic[T]):
 
             except Exception as e:
                 # Resource fetch failure, RM update failure, or critical error
-                # Send to retry or dead letter queue
                 error_msg = f"Critical error: {str(e)}"
+
+                # Try to update Job if we have it
+                try:
+                    resource = self.rm.get(resource_id)
+                    job = resource.data
+                    job.status = TaskStatus.FAILED
+                    job.result = error_msg
+                    job.retries = retry_count + 1
+                    self.rm.create_or_update(resource_id, job)
+                except Exception:
+                    # If we can't update, just log and continue
+                    pass
+
+                # Send to retry or dead letter queue
                 self._send_to_retry_or_dead(ch, resource_id, retry_count, error_msg)
                 ch.basic_ack(delivery_tag=method.delivery_tag)
 

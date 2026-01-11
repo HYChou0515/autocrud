@@ -201,6 +201,17 @@ def test_callback_failure_sends_to_retry_queue(mock_rabbitmq_queue):
     # Verify callback was called
     callback.assert_called_once()
 
+    # Verify Job was updated with error info (check the last update with FAILED status)
+    update_calls = [
+        call
+        for call in mock_rm.create_or_update.call_args_list
+        if len(call[0]) > 1 and call[0][1].status == TaskStatus.FAILED
+    ]
+    assert len(update_calls) >= 1
+    updated_job = update_calls[-1][0][1]  # Get the last FAILED update
+    assert updated_job.result == "Test error"
+    assert updated_job.retries == 1
+
     # Verify message was published to retry queue
     publish_calls = [
         call
@@ -376,7 +387,7 @@ def test_error_message_truncation(mock_rabbitmq_queue):
     # Simulate message
     mock_channel.simulate_message(b"test-id", retry_count=0)
 
-    # Verify error message was truncated to 500 characters
+    # Verify error message was truncated to 500 characters in headers
     publish_calls = [
         call
         for call in mock_channel.basic_publish.call_args_list
@@ -384,3 +395,50 @@ def test_error_message_truncation(mock_rabbitmq_queue):
     ]
     props = publish_calls[0][1]["properties"]
     assert len(props["headers"]["x-last-error"]) == 500
+
+    # But the full error message should be stored in Job.result
+    update_calls = [
+        call
+        for call in mock_rm.create_or_update.call_args_list
+        if len(call[0]) > 1 and call[0][1].status == TaskStatus.FAILED
+    ]
+    updated_job = update_calls[0][0][1]
+    assert updated_job.result == long_error  # Full error message
+    assert len(updated_job.result) == 1000
+
+
+def test_job_error_overwrites_previous_error(mock_rabbitmq_queue):
+    """Test that new error message overwrites previous one in Job."""
+    queue, mock_channel, mock_rm = mock_rabbitmq_queue
+
+    # Setup mock resource with previous error
+    resource = Resource(
+        info=create_test_revision_info(),
+        data=Job(
+            payload="test-payload",
+            status=TaskStatus.PENDING,
+            result="Old error message",
+            retries=1,
+        ),
+    )
+    mock_rm.get.return_value = resource
+
+    # Setup failing callback with new error
+    callback = MagicMock(side_effect=Exception("New error message"))
+
+    # Start consuming
+    queue.start_consume(callback)
+
+    # Simulate message with retry_count=1
+    mock_channel.simulate_message(b"test-id", retry_count=1)
+
+    # Verify Job was updated with new error (old one is overwritten)
+    update_calls = [
+        call
+        for call in mock_rm.create_or_update.call_args_list
+        if len(call[0]) > 1 and call[0][1].status == TaskStatus.FAILED
+    ]
+    assert len(update_calls) >= 1
+    updated_job = update_calls[-1][0][1]  # Get the last FAILED update
+    assert updated_job.result == "New error message"  # New error overwrites old
+    assert updated_job.retries == 2  # Incremented from 1 to 2
