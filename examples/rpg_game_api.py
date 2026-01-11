@@ -6,6 +6,7 @@
 - Schema 演化和版本控制
 - 預填遊戲數據
 - 可直接使用的 OpenAPI 文檔
+- Message Queue 異步任務處理（遊戲事件系統）
 
 運行方式：
     python rpg_system.py
@@ -14,22 +15,27 @@
     http://localhost:8000/docs - OpenAPI 文檔
     http://localhost:8000/character - 角色 API
     http://localhost:8000/guild - 公會 API
+    http://localhost:8000/game-event - 遊戲事件任務 API
 """
 
 import datetime as dt
 from msgspec import Struct
 from enum import Enum
 from typing import Optional
+import time
+import random
 
 import uvicorn
 from fastapi import FastAPI
 
 from autocrud import AutoCRUD
 from autocrud.crud.route_templates.blob import BlobRouteTemplate
-from autocrud.types import Binary
+from autocrud.types import Binary, Job, Resource
 from autocrud.crud.route_templates.graphql import GraphQLRouteTemplate
 from autocrud.crud.route_templates.migrate import MigrateRouteTemplate
 from autocrud.resource_manager.storage_factory import DiskStorageFactory
+from autocrud.message_queue.simple import SimpleMessageQueueFactory
+from autocrud.message_queue.rabbitmq import RabbitMQMessageQueueFactory
 
 
 class CharacterClass(Enum):
@@ -92,6 +98,36 @@ class Equipment(Struct):
     special_effect: Optional[str] = None
     price: int = 100
     icon: Optional[Binary] = None  # Binary 類型欄位
+
+
+# ===== Message Queue 使用範例：遊戲事件系統 =====
+
+
+class GameEventType(Enum):
+    """遊戲事件類型"""
+
+    LEVEL_UP = "level_up"  # 角色升級
+    GUILD_REWARD = "guild_reward"  # 公會獎勵
+    DAILY_LOGIN = "daily_login"  # 每日登入獎勵
+    QUEST_COMPLETE = "quest_complete"  # 任務完成
+    EQUIPMENT_ENHANCE = "equipment_enhance"  # 裝備強化
+
+
+class GameEventPayload(Struct):
+    """遊戲事件載荷數據"""
+
+    event_type: GameEventType
+    character_name: str
+    description: str
+    reward_gold: int = 0
+    reward_exp: int = 0
+    extra_data: dict = {}
+
+
+class GameEvent(Job[GameEventPayload]):
+    """遊戲事件任務（使用 Message Queue 處理）"""
+
+    pass
 
 
 def get_random_image():
@@ -316,27 +352,162 @@ def create_sample_data(crud: AutoCRUD):
                 print(f"❌ 裝備創建失敗: {e}")
 
 
+_crud = None
+
+
 def get_crud():
     """創建並返回 AutoCRUD 實例"""
-    storage_type = input("使用memory or disk storage？ [[M]emory/(D)isk]: ")
+    global _crud
+    if _crud is None:
+        storage_type = input("使用memory or disk storage？ [[M]emory/(D)isk]: ")
 
-    if storage_type.lower() in ("d", "disk"):
-        storage_path = (
-            input("請輸入磁盤存儲路徑（預設: ./rpg_game_data）: ") or "./rpg_game_data"
+        if storage_type.lower() in ("d", "disk"):
+            storage_path = (
+                input("請輸入磁盤存儲路徑（預設: ./rpg_game_data）: ")
+                or "./rpg_game_data"
+            )
+            storage_factory = DiskStorageFactory(rootdir=storage_path)
+        else:
+            storage_factory = None
+
+        mq_type = input("使用rabbit mq嗎？ [y/N]: ")
+        if mq_type.lower() == "y":
+            mq_factory = RabbitMQMessageQueueFactory()
+        else:
+            mq_factory = SimpleMessageQueueFactory()
+        _crud = AutoCRUD(
+            storage_factory=storage_factory, message_queue_factory=mq_factory
         )
-        crud = AutoCRUD(storage_factory=DiskStorageFactory(rootdir=storage_path))
-    else:
-        crud = AutoCRUD()
-    crud.add_route_template(GraphQLRouteTemplate())
-    crud.add_route_template(BlobRouteTemplate())
-    crud.add_route_template(MigrateRouteTemplate())
+    _crud.add_route_template(GraphQLRouteTemplate())
+    _crud.add_route_template(BlobRouteTemplate())
+    _crud.add_route_template(MigrateRouteTemplate())
 
     # 註冊模型
-    crud.add_model(Character, indexed_fields=[("level", int), ("name", str)])
-    crud.add_model(Guild)
-    crud.add_model(Equipment)
+    _crud.add_model(Character, indexed_fields=[("level", int), ("name", str)])
+    _crud.add_model(Guild)
+    _crud.add_model(Equipment)
 
-    return crud
+    # 註冊遊戲事件任務模型（使用 Message Queue）
+    # 注意：需要提供 job_handler 才會啟用 message queue
+    # 這裡先用一個簡單的佔位函數，實際處理會在背景執行緒中進行
+    _crud.add_model(
+        GameEvent,
+        indexed_fields=[("status", str)],
+        job_handler=process_game_event,
+    )
+
+    return _crud
+
+
+def process_game_event(event_resource: Resource[GameEvent]):
+    """
+    處理遊戲事件的背景工作函數
+
+    這個函數會在背景執行緒中運行，從 message queue 取出事件並處理
+    """
+    global _crud
+    event = event_resource.data
+    payload = event.payload
+
+    print(f"\n🎮 處理遊戲事件: {payload.event_type.value}")
+    print(f"   角色: {payload.character_name}")
+    print(f"   描述: {payload.description}")
+
+    # 模擬異步處理
+    time.sleep(random.uniform(0.5, 2.0))
+
+    # 根據事件類型處理
+    if payload.event_type == GameEventType.LEVEL_UP:
+        # 處理角色升級
+        print(f"   ⬆️ 角色升級！獎勵經驗值: {payload.reward_exp}")
+
+    elif payload.event_type == GameEventType.GUILD_REWARD:
+        # 處理公會獎勵
+        print(f"   💰 公會獎勵發放！金幣: {payload.reward_gold}")
+
+    elif payload.event_type == GameEventType.DAILY_LOGIN:
+        # 處理每日登入
+        print(
+            f"   📅 每日登入獎勵！經驗: {payload.reward_exp}, 金幣: {payload.reward_gold}"
+        )
+
+    elif payload.event_type == GameEventType.QUEST_COMPLETE:
+        # 處理任務完成
+        print(
+            f"   ✅ 任務完成！獎勵: 經驗 {payload.reward_exp}, 金幣 {payload.reward_gold}"
+        )
+
+    elif payload.event_type == GameEventType.EQUIPMENT_ENHANCE:
+        # 處理裝備強化
+        equipment_name = payload.extra_data.get("equipment_name", "未知裝備")
+        print(f"   🔨 裝備強化！{equipment_name} 強化成功")
+
+    result_msg = f"✅ 事件處理成功: {payload.description}"
+    print(f"   {result_msg}")
+
+
+def create_sample_events(crud: AutoCRUD):
+    """創建一些示範遊戲事件"""
+    print("\n🎮 創建示範遊戲事件...")
+
+    event_manager = crud.resource_managers.get("game-event")
+    if not event_manager:
+        print("❌ 遊戲事件管理器未找到")
+        return
+
+    current_time = dt.datetime.now()
+
+    # 創建各種遊戲事件
+    sample_events = [
+        GameEventPayload(
+            event_type=GameEventType.LEVEL_UP,
+            character_name="新手小白",
+            description="角色升級到 6 級",
+            reward_exp=500,
+            reward_gold=100,
+        ),
+        GameEventPayload(
+            event_type=GameEventType.GUILD_REWARD,
+            character_name="AutoCRUD 大神",
+            description="公會活動獎勵發放",
+            reward_gold=5000,
+        ),
+        GameEventPayload(
+            event_type=GameEventType.DAILY_LOGIN,
+            character_name="API 魔法師",
+            description="每日登入獎勵",
+            reward_exp=200,
+            reward_gold=50,
+        ),
+        GameEventPayload(
+            event_type=GameEventType.QUEST_COMPLETE,
+            character_name="RESTful 劍聖",
+            description="完成任務：擊敗 SQL 注入怪獸",
+            reward_exp=1000,
+            reward_gold=500,
+        ),
+        GameEventPayload(
+            event_type=GameEventType.EQUIPMENT_ENHANCE,
+            character_name="Schema 設計師",
+            description="裝備強化成功",
+            reward_gold=0,
+            extra_data={"equipment_name": "精準查詢弓", "enhance_level": 5},
+        ),
+    ]
+
+    with event_manager.meta_provide(user="game_admin", now=current_time):
+        for event_payload in sample_events:
+            try:
+                # 使用 message queue 的 put 方法加入事件
+                event_manager.create(GameEvent(payload=event_payload))
+                print(
+                    f"✅ 創建事件: {event_payload.event_type.value} - {event_payload.description}"
+                )
+            except Exception as e:
+                print(f"❌ 事件創建失敗: {e}")
+
+    print(f"\n📊 已加入 {len(sample_events)} 個遊戲事件到處理隊列")
+    print("   背景工作執行緒將會自動處理這些事件\n")
 
 
 def main():
@@ -353,6 +524,7 @@ def main():
         - ⚔️ **角色管理**: 創建、查詢、升級遊戲角色
         - 🏰 **公會系統**: 管理遊戲公會和成員
         - 🗡️ **裝備系統**: 武器裝備的完整管理
+        - 🎯 **遊戲事件系統**: 使用 Message Queue 處理異步遊戲事件
         - 🚀 **AutoCRUD 驅動**: 自動生成的完整 CRUD API
         - 📊 **數據搜尋**: 強大的查詢和篩選功能
         - 📖 **版本控制**: 追蹤所有數據變更歷史
@@ -362,9 +534,10 @@ def main():
         2. 創建新角色: `POST /character`  
         3. 查看公會列表: `GET /guild/data`
         4. 瀏覽裝備: `GET /equipment/data`
-        5. 查看完整資訊: `GET /character/full`
+        5. 查看遊戲事件: `GET /game-event/data`
+        6. 觸發遊戲事件: `POST /game-event`
         """,
-        version="2.0.0",
+        version="2.1.0",
         docs_url="/docs",
         redoc_url="/redoc",
     )
@@ -375,11 +548,20 @@ def main():
     # 應用到 FastAPI
     crud.apply(app)
     crud.openapi(app)
+    crud.get_resource_manager(GameEvent).start_consume(block=False)
 
     # 創建示範數據
     ans = input("需要創建示範數據嗎？[y/N]: ")
     if ans.lower() == "y":
         create_sample_data(crud)
+
+    # 啟動遊戲事件處理背景工作執行緒
+    print("\n🔄 啟動遊戲事件處理系統...")
+
+    # 創建示範遊戲事件
+    ans = input("需要創建示範遊戲事件嗎？[y/N]: ")
+    if ans.lower() == "y":
+        create_sample_events(crud)
 
     print("\n🚀 === 服務器啟動成功 === 🚀")
     print("📖 OpenAPI 文檔: http://localhost:8000/docs")
@@ -387,7 +569,12 @@ def main():
     print("⚔️ 角色 API: http://localhost:8000/character/data")
     print("🏰 公會 API: http://localhost:8000/guild/data")
     print("🗡️ 裝備 API: http://localhost:8000/equipment/data")
+    print("🎯 遊戲事件 API: http://localhost:8000/game-event/data")
     print("📊 完整資訊: http://localhost:8000/character/full")
+    print("\n💡 Message Queue 使用範例:")
+    print("   - 遊戲事件會在背景自動處理")
+    print("   - 可透過 API 查看事件狀態: GET /game-event/data")
+    print("   - 可手動觸發新事件: POST /game-event")
     print("\n🎮 開始你的 RPG 冒險吧！")
 
     # 啟動服務器

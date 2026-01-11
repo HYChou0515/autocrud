@@ -905,6 +905,29 @@ flowchart TD
 *   **豐富的搜尋能力**: 自動生成的 GraphQL Query 支援完整的過濾條件 (DataSearchOperator)，如 `eq`, `gt`, `contains` 原生對應。
 *   **統一邏輯**: GraphQL Resolver 底層同樣呼叫 `Resource Manager`，因此所有的權限檢查、事件 Hook 與版本控制邏輯完全一致。
 
+### 10. 訊息佇列與非同步任務 (Message Queue & Async Tasks)
+```{versionadded} 0.7.0
+```
+AutoCRUD 將「任務 (Job)」視為一種標準資源，透過 `IMessageQueue` 介面實現與核心架構的無縫整合。這讓非同步處理不再是架構外的孤島，而是系統的一流公民。
+
+```mermaid
+flowchart LR
+    APP(["🚀 Application"]) --> |"Enqueue"| MQ{{"📨 Message Queue"}}
+    MQ --> |"Create Job Resource"| RM{{"🧠 Resource Manager"}}
+    
+    subgraph Worker ["Async Worker"]
+        direction TB
+        W(["⚙️ Consumer"]) --> |"ack/nack"| Q_BACKEND[("RabbitMQ / Memory")]
+        W --> |"Update Status"| RM
+    end
+
+    RM <--> |"Persist State"| DB[("Storage")]
+```
+
+*   **Job as Resource**: 所有的非同步任務（如發送郵件、生成報表）都被封裝為 `Job` 資源。這意味著任務本身也享有 **版本控制**、**權限管理** 與 **生命週期事件**。管理者可以像查詢普通資料一樣，查詢任務的執行歷史與狀態。
+*   **狀態可觀測**: 任務狀態（Pending, Processing, Completed, Failed）的變遷由 `ResourceManager` 嚴格控管。配合 Event Hooks，可以在任務失敗時自動觸發告警。
+*   **後端中立**: 支援 `Memory` (開發用) 與 `RabbitMQ` (生產用) 等不同後端，並提供自動重試 (Retry) 機制，確保在高並發下的一致性。
+
 
 ## 結語 (Conclusion)
 

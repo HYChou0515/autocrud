@@ -4,7 +4,7 @@ from contextlib import AbstractContextManager
 from jsonpointer import JsonPointer
 import datetime as dt
 from enum import Enum, Flag, StrEnum, auto
-from typing import IO, Any, Generic, TypeVar
+from typing import IO, Any, Callable, Generic, TypeVar
 from typing_extensions import Literal
 from uuid import UUID
 
@@ -1623,6 +1623,16 @@ class IResourceManager(ABC, Generic[T]):
         這對於需要讀取 Binary 原始資料時很有用.
         """
 
+    @abstractmethod
+    def start_consume(self, *, block: bool = True) -> None:
+        """Start consuming jobs from the message queue.
+
+        Uses the callback function that was configured when the message queue was created.
+
+        Raises:
+            - NotImplementedError: if message queue is not configured.
+        """
+
 
 class PermissionDeniedError(Exception):
     pass
@@ -1716,3 +1726,87 @@ class IEventHandler(ABC):
 
     @abstractmethod
     def handle_event(self, context: EventContext) -> None: ...
+
+
+class TaskStatus(StrEnum):
+    PENDING = "pending"
+    PROCESSING = "processing"
+    COMPLETED = "completed"
+    FAILED = "failed"
+
+
+class Job(Struct, Generic[T]):
+    payload: T
+    """The actual job data/resource."""
+
+    status: TaskStatus = TaskStatus.PENDING
+    """Current status of the job."""
+
+    errmsg: str | None = None
+    """Result or error message after processing."""
+
+    retries: int = 0
+    """Number of times the job has been retried."""
+
+
+class IMessageQueue(ABC, Generic[T]):
+    """Interface for a message queue that manages jobs as resources."""
+
+    @abstractmethod
+    def put(self, resource_id: str) -> Resource[Job[T]]:
+        """Enqueue a job that has already been created.
+
+        Args:
+            resource_id: The ID of the job resource that was already created.
+
+        Returns:
+            The job resource.
+        """
+        ...
+
+    @abstractmethod
+    def pop(self) -> Resource[Job[T]] | None:
+        """Dequeue the next pending job."""
+        ...
+
+    @abstractmethod
+    def complete(self, resource_id: str, result: str | None = None) -> Resource[Job[T]]:
+        """Mark a job as completed."""
+        ...
+
+    @abstractmethod
+    def fail(self, resource_id: str, error: str) -> Resource[Job[T]]:
+        """Mark a job as failed."""
+        ...
+
+    @abstractmethod
+    def start_consume(self) -> None:
+        """Start consuming jobs from the queue.
+
+        Uses the callback function that was provided during construction.
+        """
+        ...
+
+    @abstractmethod
+    def stop_consuming(self) -> None:
+        """Stop consuming jobs from the queue."""
+        ...
+
+
+class IMessageQueueFactory(ABC):
+    """Factory interface for creating message queues."""
+
+    @abstractmethod
+    def build(
+        self, do: "Callable[[Resource[Job[T]]], None]"
+    ) -> "Callable[[IResourceManager[Job[T]]], IMessageQueue[T]]":
+        """Build a message queue factory function.
+
+        Args:
+            do: Callback function to process each job.
+
+        Returns:
+            A callable that accepts an IResourceManager and returns an IMessageQueue instance.
+            The ResourceManager will inject itself when calling this function.
+        """
+        ...

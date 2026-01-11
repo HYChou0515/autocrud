@@ -68,6 +68,9 @@ cli = [
 magic = [
     "python-magic>=0.4.27",
 ]
+mq = [
+    "pika>=1.3.2",
+]
 [project.urls]
 Homepage = "https://github.com/HYChou0515/autocrud"
 Documentation = "https://HYChou0515.github.io/autocrud/"
