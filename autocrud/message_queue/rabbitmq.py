@@ -15,6 +15,11 @@ class RabbitMQMessageQueue(BasicMessageQueue[T], Generic[T]):
 
     This implementation uses RabbitMQ for the queuing mechanism (ordering, distribution)
     and AutoCRUD ResourceManager for payload storage and status persistence.
+
+    Features:
+    - Automatic retry on failure with configurable delay
+    - Dead letter queue for messages exceeding max retries
+    - Configurable retry delay and max retry count
     """
 
     def __init__(
@@ -22,6 +27,8 @@ class RabbitMQMessageQueue(BasicMessageQueue[T], Generic[T]):
         resource_manager: IResourceManager[Job[T]],
         amqp_url: str = "amqp://guest:guest@localhost:5672/",
         queue_name: str = "autocrud_jobs",
+        max_retries: int = 3,
+        retry_delay_seconds: int = 10,
     ):
         if pika is None:
             raise ImportError(
@@ -31,6 +38,10 @@ class RabbitMQMessageQueue(BasicMessageQueue[T], Generic[T]):
         self._rm = resource_manager
         self.amqp_url = amqp_url
         self.queue_name = queue_name
+        self.retry_queue_name = f"{queue_name}_retry"
+        self.dead_queue_name = f"{queue_name}_dead"
+        self.max_retries = max_retries
+        self.retry_delay_seconds = retry_delay_seconds
         self._connection = None
         self._channel = None
         self._ensure_connection()
@@ -46,7 +57,25 @@ class RabbitMQMessageQueue(BasicMessageQueue[T], Generic[T]):
             params = pika.URLParameters(self.amqp_url)
             self._connection = pika.BlockingConnection(params)
             self._channel = self._connection.channel()
+
+            # Declare main queue
             self._channel.queue_declare(queue=self.queue_name, durable=True)
+
+            # Declare dead letter queue (no automatic retry)
+            self._channel.queue_declare(queue=self.dead_queue_name, durable=True)
+
+            # Declare retry queue with TTL and dead letter exchange
+            # After TTL expires, messages are routed back to main queue
+            self._channel.queue_declare(
+                queue=self.retry_queue_name,
+                durable=True,
+                arguments={
+                    "x-message-ttl": self.retry_delay_seconds
+                    * 1000,  # Convert to milliseconds
+                    "x-dead-letter-exchange": "",  # Default exchange
+                    "x-dead-letter-routing-key": self.queue_name,  # Route back to main queue
+                },
+            )
 
     def put(self, payload: T) -> Resource[Job[T]]:
         """
@@ -103,16 +132,58 @@ class RabbitMQMessageQueue(BasicMessageQueue[T], Generic[T]):
 
         return None
 
+    def _send_to_retry_or_dead(
+        self, ch, resource_id: str, retry_count: int, error_message: str
+    ) -> None:
+        """
+        Send a failed message to retry queue or dead letter queue based on retry count.
+
+        Args:
+            ch: RabbitMQ channel
+            resource_id: The resource identifier
+            retry_count: Current retry count
+            error_message: Error message from the failure
+        """
+        if retry_count < self.max_retries:
+            # Send to retry queue (will auto-route back to main queue after TTL)
+            target_queue = self.retry_queue_name
+            new_retry_count = retry_count + 1
+        else:
+            # Max retries exceeded, send to dead letter queue
+            target_queue = self.dead_queue_name
+            new_retry_count = retry_count
+
+        ch.basic_publish(
+            exchange="",
+            routing_key=target_queue,
+            body=resource_id.encode("utf-8"),
+            properties=pika.BasicProperties(
+                delivery_mode=pika.DeliveryMode.Persistent,
+                headers={
+                    "x-retry-count": new_retry_count,
+                    "x-last-error": error_message[:500],  # Limit error message length
+                },
+            ),
+        )
+
     def start_consume(self, do: Callable[[Resource[Job[T]]], None]) -> None:
         """
         Start consuming jobs from the queue with the provided callback.
 
-        This method blocks and processes jobs as they arrive.
+        This method blocks and processes jobs as they arrive. Failed jobs are
+        automatically retried based on the configured retry policy. Jobs exceeding
+        max retries are sent to the dead letter queue.
         """
         self._ensure_connection()
 
         def callback(ch, method, properties, body):
             resource_id = body.decode("utf-8")
+
+            # Get retry count from message headers
+            retry_count = 0
+            if properties.headers and "x-retry-count" in properties.headers:
+                retry_count = properties.headers["x-retry-count"]
+
             try:
                 # 1. Fetch & Update status to PROCESSING
                 # If this fails (e.g. resource deleted), we fall to outer except
@@ -129,15 +200,22 @@ class RabbitMQMessageQueue(BasicMessageQueue[T], Generic[T]):
                     self.complete(resource_id)
                     ch.basic_ack(delivery_tag=method.delivery_tag)
                 except Exception as e:
-                    # 4. Fail (Update RM) & Nack (RabbitMQ)
-                    # If fail() raises (e.g. DB error), we fall to outer except
-                    self.fail(resource_id, str(e))
-                    ch.basic_nack(delivery_tag=method.delivery_tag, requeue=False)
+                    # 4. Callback failed - retry or send to dead letter queue
+                    error_msg = str(e)
+                    self.fail(resource_id, error_msg)
 
-            except Exception:
+                    # Send to retry or dead letter queue
+                    self._send_to_retry_or_dead(ch, resource_id, retry_count, error_msg)
+
+                    # Ack the original message (it's now in retry/dead queue)
+                    ch.basic_ack(delivery_tag=method.delivery_tag)
+
+            except Exception as e:
                 # Resource fetch failure, RM update failure, or critical error
-                # We cannot process this message. Remove from queue (dead letter or drop).
-                ch.basic_nack(delivery_tag=method.delivery_tag, requeue=False)
+                # Send to retry or dead letter queue
+                error_msg = f"Critical error: {str(e)}"
+                self._send_to_retry_or_dead(ch, resource_id, retry_count, error_msg)
+                ch.basic_ack(delivery_tag=method.delivery_tag)
 
         self._channel.basic_qos(prefetch_count=1)
         self._channel.basic_consume(queue=self.queue_name, on_message_callback=callback)
