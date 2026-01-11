@@ -673,3 +673,107 @@ class TestRabbitMQRetryMechanism:
         updated_job = update_calls[-1][0][1]
         assert updated_job.result == "New error message"
         assert updated_job.retries == 2
+
+    def test_critical_error_when_resource_not_found(self, mock_rabbitmq_queue):
+        """Test critical error handling when resource cannot be fetched."""
+        queue, mock_channel, mock_rm = mock_rabbitmq_queue
+
+        # First call to get() fails (resource not found)
+        mock_rm.get.side_effect = Exception("Resource not found")
+
+        callback = MagicMock()
+        queue.start_consume(callback)
+        mock_channel.simulate_message(b"missing-id", retry_count=0)
+
+        # Callback should not be called because resource fetch failed
+        callback.assert_not_called()
+
+        # Message should be sent to retry queue
+        publish_calls = [
+            c
+            for c in mock_channel.basic_publish.call_args_list
+            if c[1]["routing_key"] == "test_queue_retry"
+        ]
+        assert len(publish_calls) == 1
+
+        props = publish_calls[0][1]["properties"]
+        assert "Critical error" in props["headers"]["x-last-error"]
+        assert "Resource not found" in props["headers"]["x-last-error"]
+
+        # Message should be acked
+        mock_channel.basic_ack.assert_called_once()
+
+    def test_critical_error_with_recovery_attempt(self, mock_rabbitmq_queue):
+        """Test critical error handling attempts to update Job if possible."""
+        queue, mock_channel, mock_rm = mock_rabbitmq_queue
+
+        resource = Resource(
+            info=self.create_test_revision_info(),
+            data=Job(payload="test-payload", status=TaskStatus.PENDING),
+        )
+
+        # First call to get() fails, but second call (in recovery) succeeds
+        mock_rm.get.side_effect = [
+            Exception("Initial fetch failed"),
+            resource,  # Recovery get() succeeds
+        ]
+
+        callback = MagicMock()
+        queue.start_consume(callback)
+        mock_channel.simulate_message(b"test-id", retry_count=0)
+
+        # Callback should not be called because initial fetch failed
+        callback.assert_not_called()
+
+        # Verify Job was updated with critical error info in recovery attempt
+        update_calls = [
+            c
+            for c in mock_rm.create_or_update.call_args_list
+            if len(c[0]) > 1 and c[0][1].status == TaskStatus.FAILED
+        ]
+        assert len(update_calls) >= 1
+        updated_job = update_calls[-1][0][1]
+        assert "Critical error" in updated_job.result
+        assert "Initial fetch failed" in updated_job.result
+        assert updated_job.retries == 1
+
+        # Message should be sent to retry queue
+        publish_calls = [
+            c
+            for c in mock_channel.basic_publish.call_args_list
+            if c[1]["routing_key"] == "test_queue_retry"
+        ]
+        assert len(publish_calls) == 1
+
+        # Message should be acked
+        mock_channel.basic_ack.assert_called_once()
+
+    def test_critical_error_when_both_fetch_and_recovery_fail(
+        self, mock_rabbitmq_queue
+    ):
+        """Test critical error handling when both initial fetch and recovery fail."""
+        queue, mock_channel, mock_rm = mock_rabbitmq_queue
+
+        # Both get() calls fail
+        mock_rm.get.side_effect = Exception("Persistent error")
+
+        callback = MagicMock()
+        queue.start_consume(callback)
+        mock_channel.simulate_message(b"test-id", retry_count=0)
+
+        # Callback should not be called
+        callback.assert_not_called()
+
+        # Message should still be sent to retry queue despite recovery failure
+        publish_calls = [
+            c
+            for c in mock_channel.basic_publish.call_args_list
+            if c[1]["routing_key"] == "test_queue_retry"
+        ]
+        assert len(publish_calls) == 1
+
+        props = publish_calls[0][1]["properties"]
+        assert "Critical error" in props["headers"]["x-last-error"]
+
+        # Message should be acked
+        mock_channel.basic_ack.assert_called_once()
