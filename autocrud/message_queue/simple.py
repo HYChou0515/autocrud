@@ -76,7 +76,8 @@ class SimpleMessageQueue(BasicMessageQueue[T], Generic[T]):
                 # Optimistic locking via revision check could be implemented here
                 # if ResourceManager supported atomic find-and-update.
                 # For now, we fetch, check status, and update.
-                resource = self.rm.get(meta.resource_id)
+                with self._rm_meta_provide(meta.created_by):
+                    resource = self.rm.get(meta.resource_id)
 
                 if resource.data.status != TaskStatus.PENDING:
                     continue
@@ -86,7 +87,8 @@ class SimpleMessageQueue(BasicMessageQueue[T], Generic[T]):
                 updated_job.status = TaskStatus.PROCESSING
 
                 # Update revision
-                self.rm.create_or_update(resource.info.resource_id, updated_job)
+                with self._rm_meta_provide(meta.created_by):
+                    self.rm.create_or_update(resource.info.resource_id, updated_job)
 
                 # Return the updated resource
                 resource.data = updated_job
@@ -117,7 +119,8 @@ class SimpleMessageQueue(BasicMessageQueue[T], Generic[T]):
                     updated_job.retries += 1
 
                     try:
-                        self.rm.create_or_update(job.info.resource_id, updated_job)
+                        with self._rm_meta_provide(job.info.created_by):
+                            self.rm.create_or_update(job.info.resource_id, updated_job)
                     except Exception:
                         # If update fails, still mark as failed via fail()
                         pass

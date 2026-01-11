@@ -1,5 +1,6 @@
 from autocrud.message_queue.basic import BasicMessageQueue
-from autocrud.types import Job, Resource, TaskStatus
+from autocrud.types import Job, Resource, TaskStatus, IResourceManager
+from autocrud.util.naming import NameConverter, NamingFormat
 from typing import Callable, Generic, TypeVar
 
 
@@ -26,7 +27,7 @@ class RabbitMQMessageQueue(BasicMessageQueue[T], Generic[T]):
         self,
         do: Callable[[Resource[Job[T]]], None],
         amqp_url: str = "amqp://guest:guest@localhost:5672/",
-        queue_name: str = "autocrud_jobs",
+        queue_prefix: str = "autocrud:",
         max_retries: int = 3,
         retry_delay_seconds: int = 10,
     ):
@@ -37,17 +38,38 @@ class RabbitMQMessageQueue(BasicMessageQueue[T], Generic[T]):
 
         super().__init__(do)
         self.amqp_url = amqp_url
-        self.queue_name = queue_name
-        self.retry_queue_name = f"{queue_name}_retry"
-        self.dead_queue_name = f"{queue_name}_dead"
+        self.queue_prefix = queue_prefix
+        self.queue_name: str | None = None
+        self.retry_queue_name: str | None = None
+        self.dead_queue_name: str | None = None
         self.max_retries = max_retries
         self.retry_delay_seconds = retry_delay_seconds
         self._connection = None
         self._channel = None
+
+    def set_resource_manager(self, resource_manager: IResourceManager[Job[T]]) -> None:
+        """Set the resource manager and configure queue names based on resource type."""
+        super().set_resource_manager(resource_manager)
+
+        # Get resource name and convert to snake_case
+        resource_name = resource_manager.resource_name
+        snake_name = NameConverter(resource_name).to(NamingFormat.SNAKE)
+
+        # Set queue names with prefix
+        self.queue_name = f"{self.queue_prefix}{snake_name}"
+        self.retry_queue_name = f"{self.queue_name}:retry"
+        self.dead_queue_name = f"{self.queue_name}:dead"
+
+        # Now we can establish connection and declare queues
         self._ensure_connection()
 
     def _ensure_connection(self):
         """Ensure that the AMQP connection and channel are open."""
+        if self.queue_name is None:
+            raise RuntimeError(
+                "Queue names not configured. Call set_resource_manager() first."
+            )
+
         if self._connection is None or self._connection.is_closed:
             params = pika.URLParameters(self.amqp_url)
             self._connection = pika.BlockingConnection(params)
@@ -112,7 +134,8 @@ class RabbitMQMessageQueue(BasicMessageQueue[T], Generic[T]):
                 # Note: We update RM first. If update fails, we don't Ack.
                 updated_job = resource.data
                 updated_job.status = TaskStatus.PROCESSING
-                self.rm.create_or_update(resource_id, updated_job)
+                with self._rm_meta_provide(resource.info.created_by):
+                    self.rm.create_or_update(resource_id, updated_job)
 
                 # 3. Ack message
                 self._channel.basic_ack(method_frame.delivery_tag)  # type: ignore
@@ -185,7 +208,8 @@ class RabbitMQMessageQueue(BasicMessageQueue[T], Generic[T]):
                 resource = self.rm.get(resource_id)
                 job = resource.data
                 job.status = TaskStatus.PROCESSING
-                self.rm.create_or_update(resource_id, job)
+                with self._rm_meta_provide(resource.info.created_by):
+                    self.rm.create_or_update(resource_id, job)
                 resource.data = job
 
                 # 2. Execute user callback
@@ -202,7 +226,8 @@ class RabbitMQMessageQueue(BasicMessageQueue[T], Generic[T]):
                     job.status = TaskStatus.FAILED
                     job.result = error_msg  # Store error message in result field
                     job.retries = retry_count + 1  # Increment retry count
-                    self.rm.create_or_update(resource_id, job)
+                    with self._rm_meta_provide(resource.info.created_by):
+                        self.rm.create_or_update(resource_id, job)
 
                     # Send to retry or dead letter queue
                     self._send_to_retry_or_dead(ch, resource_id, retry_count, error_msg)
@@ -221,7 +246,8 @@ class RabbitMQMessageQueue(BasicMessageQueue[T], Generic[T]):
                     job.status = TaskStatus.FAILED
                     job.result = error_msg
                     job.retries = retry_count + 1
-                    self.rm.create_or_update(resource_id, job)
+                    with self._rm_meta_provide(resource.info.created_by):
+                        self.rm.create_or_update(resource_id, job)
                 except Exception:
                     # If we can't update, just log and continue
                     pass
@@ -243,3 +269,45 @@ class RabbitMQMessageQueue(BasicMessageQueue[T], Generic[T]):
 
         if self._connection and self._connection.is_open:
             self._connection.add_callback_threadsafe(stop)
+
+
+class RabbitMQMessageQueueFactory:
+    """Factory for creating RabbitMQMessageQueue instances."""
+
+    def __init__(
+        self,
+        amqp_url: str = "amqp://guest:guest@localhost:5672/",
+        queue_prefix: str = "autocrud:",
+        max_retries: int = 3,
+        retry_delay_seconds: int = 10,
+    ):
+        """Initialize the RabbitMQ message queue factory.
+
+        Args:
+            amqp_url: AMQP connection URL (default: local RabbitMQ)
+            queue_prefix: Prefix for queue names (default: "autocrud:")
+            max_retries: Maximum number of retries for failed jobs (default: 3)
+            retry_delay_seconds: Delay in seconds before retrying a failed job (default: 10)
+        """
+        self.amqp_url = amqp_url
+        self.queue_prefix = queue_prefix
+        self.max_retries = max_retries
+        self.retry_delay_seconds = retry_delay_seconds
+
+    def build(self, do: Callable[[Resource[Job[T]]], None]) -> RabbitMQMessageQueue[T]:
+        """Build a RabbitMQMessageQueue instance with a job handler.
+
+        Args:
+            do: Callback function to process each job.
+
+        Returns:
+            A RabbitMQMessageQueue instance. The resource manager should be
+            injected later via set_resource_manager().
+        """
+        return RabbitMQMessageQueue(
+            do=do,
+            amqp_url=self.amqp_url,
+            queue_prefix=self.queue_prefix,
+            max_retries=self.max_retries,
+            retry_delay_seconds=self.retry_delay_seconds,
+        )

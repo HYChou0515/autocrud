@@ -1623,6 +1623,7 @@ class IResourceManager(ABC, Generic[T]):
         這對於需要讀取 Binary 原始資料時很有用.
         """
 
+    @abstractmethod
     def put_job(self, payload: T) -> "Resource[Job[T]]":
         """Put a job into the message queue.
 
@@ -1636,7 +1637,8 @@ class IResourceManager(ABC, Generic[T]):
             - NotImplementedError: if message queue is not configured.
         """
 
-    def start_consume(self) -> None:
+    @abstractmethod
+    def start_consume(self, *, block: bool = True) -> None:
         """Start consuming jobs from the message queue.
 
         Uses the callback function that was configured when the message queue was created.

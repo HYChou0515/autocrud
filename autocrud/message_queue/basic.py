@@ -1,6 +1,6 @@
 from typing import Callable, Generic, TypeVar
 
-
+import datetime as dt
 from autocrud.types import (
     IMessageQueue,
     IResourceManager,
@@ -34,6 +34,13 @@ class BasicMessageQueue(IMessageQueue[T], Generic[T]):
             )
         return self._rm
 
+    def _rm_meta_provide(self, user: str):
+        """Helper to provide meta context for ResourceManager operations."""
+        return self.rm.meta_provide(
+            now=self.rm.now_or_unset or dt.datetime.now(),
+            user=self.rm.user_or_unset or user,
+        )
+
     def set_resource_manager(self, resource_manager: IResourceManager[Job[T]]) -> None:
         """Set the resource manager for this message queue."""
         self._rm = resource_manager
@@ -51,7 +58,8 @@ class BasicMessageQueue(IMessageQueue[T], Generic[T]):
         job.status = TaskStatus.COMPLETED
         job.result = result
 
-        self.rm.create_or_update(resource_id, job)
+        with self._rm_meta_provide(resource.info.created_by):
+            self.rm.create_or_update(resource_id, job)
         resource.data = job
         return resource
 
@@ -68,7 +76,8 @@ class BasicMessageQueue(IMessageQueue[T], Generic[T]):
         job.status = TaskStatus.FAILED
         job.result = error
 
-        self.rm.create_or_update(resource_id, job)
+        with self._rm_meta_provide(resource.info.created_by):
+            self.rm.create_or_update(resource_id, job)
         resource.data = job
         return resource
 

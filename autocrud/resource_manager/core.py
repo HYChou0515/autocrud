@@ -1,5 +1,6 @@
 import datetime as dt
 from collections.abc import Callable, Generator, Iterable, Sequence
+import threading
 from jsonpointer import JsonPointer
 from contextlib import contextmanager, suppress
 from functools import cached_property, wraps
@@ -733,10 +734,16 @@ class ResourceManager(IResourceManager[T], Generic[T]):
             raise NotImplementedError("Message queue is not configured")
         return self.message_queue.put(payload)
 
-    def start_consume(self) -> None:
+    def start_consume(self, *, block: bool = True) -> None:
         if self.message_queue is None:
             raise NotImplementedError("Message queue is not configured")
-        return self.message_queue.start_consume()
+        worker_thread = threading.Thread(
+            target=self.message_queue.start_consume, daemon=True
+        )
+        worker_thread.start()
+        if block:
+            worker_thread.join()
+        return worker_thread
 
     def count_resources(self, query: ResourceMetaSearchQuery) -> int:
         return self.storage.count(query)
