@@ -8,6 +8,7 @@ from autocrud.types import (
     IMessageQueueFactory,
     Job,
     Resource,
+    ResourceDataSearchSort,
     ResourceMetaSearchQuery,
     ResourceMetaSearchSort,
     ResourceMetaSortDirection,
@@ -59,7 +60,7 @@ class SimpleMessageQueue(BasicMessageQueue[T], Generic[T]):
         Returns:
             The job resource if one is available, None otherwise.
         """
-        # Find next pending job, ordered by creation time (FIFO)
+        # Find next pending job, ordered by retries (fewer first), then creation time (FIFO)
         query = ResourceMetaSearchQuery(
             conditions=[
                 DataSearchCondition(
@@ -69,10 +70,14 @@ class SimpleMessageQueue(BasicMessageQueue[T], Generic[T]):
                 )
             ],
             sorts=[
+                ResourceDataSearchSort(
+                    field_path="retries",
+                    direction=ResourceMetaSortDirection.ascending,
+                ),
                 ResourceMetaSearchSort(
                     key=ResourceMetaSortKey.created_time,
                     direction=ResourceMetaSortDirection.ascending,
-                )
+                ),
             ],
             limit=1,
         )

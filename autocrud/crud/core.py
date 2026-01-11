@@ -523,6 +523,12 @@ class AutoCRUD:
                         IndexableField(field_path="status", field_type=TaskStatus)
                     )
 
+                # Check if retries is already in indexed fields
+                if not any(field.field_path == "retries" for field in _indexed_fields):
+                    _indexed_fields.append(
+                        IndexableField(field_path="retries", field_type=int)
+                    )
+
         resource_manager = ResourceManager(
             model,
             storage=storage,
