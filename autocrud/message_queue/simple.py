@@ -5,6 +5,7 @@ from autocrud.message_queue.basic import BasicMessageQueue
 from autocrud.types import (
     DataSearchCondition,
     DataSearchOperator,
+    IMessageQueueFactory,
     IResourceManager,
     Job,
     Resource,
@@ -134,3 +135,20 @@ class SimpleMessageQueue(BasicMessageQueue[T], Generic[T]):
     def stop_consuming(self):
         """Stop the consumption loop."""
         self._running = False
+
+
+class SimpleMessageQueueFactory(IMessageQueueFactory):
+    """Factory for creating SimpleMessageQueue instances."""
+
+    def build(
+        self, resource_manager: IResourceManager[Job[T]]
+    ) -> SimpleMessageQueue[T]:
+        """Build a SimpleMessageQueue for the given resource manager.
+
+        Args:
+            resource_manager: The resource manager for Job[T] resources.
+
+        Returns:
+            A SimpleMessageQueue instance for managing jobs.
+        """
+        return SimpleMessageQueue(resource_manager)

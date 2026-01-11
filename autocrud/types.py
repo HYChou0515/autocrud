@@ -1783,3 +1783,19 @@ class IMessageQueue(ABC, Generic[T]):
 
     def dequeue(self) -> Resource[Job[T]] | None:
         return self.pop()
+
+
+class IMessageQueueFactory(ABC):
+    """Factory interface for creating message queues."""
+
+    @abstractmethod
+    def build(self, resource_manager: IResourceManager[Job[T]]) -> IMessageQueue[T]:
+        """Build a message queue for the given resource manager.
+
+        Args:
+            resource_manager: The resource manager for Job[T] resources.
+
+        Returns:
+            An IMessageQueue instance for managing jobs.
+        """
+        ...
