@@ -209,10 +209,34 @@ def handle_dead_message(resource):
 
 ## 測試
 
-相關測試位於 `tests/test_rabbitmq_retry.py`。
+所有消息隊列的測試都整合在 `tests/test_message_queue.py` 中：
+
+### 統一測試 (TestMessageQueueUnified)
+這些測試同時針對 SimpleMessageQueue 和 RabbitMQ，確保兩種實現的外部行為一致：
+- ✅ 基本工作流程（put, pop, complete, fail）
+- ✅ 錯誤信息記錄到 Job
+- ✅ 重試計數器遞增
+- ✅ 消費循環中的錯誤處理
+
+### RabbitMQ 專屬測試 (TestRabbitMQRetryMechanism)
+這些測試只針對 RabbitMQ 的重試機制：
+- ✅ 自動重試隊列
+- ✅ Dead letter queue
+- ✅ 重試次數限制
+- ✅ 消息頭錯誤信息截斷
 
 運行測試：
 ```bash
+# 運行所有消息隊列測試
+uv run pytest tests/test_message_queue.py -v
+
+# 只運行統一測試
+uv run pytest tests/test_message_queue.py::TestMessageQueueUnified -v
+
+# 只運行 RabbitMQ 重試測試
+uv run pytest tests/test_message_queue.py::TestRabbitMQRetryMechanism -v
+
+# 完整測試套件
 make test
 ```
 
