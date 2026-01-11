@@ -4,7 +4,7 @@ from contextlib import AbstractContextManager
 from jsonpointer import JsonPointer
 import datetime as dt
 from enum import Enum, Flag, StrEnum, auto
-from typing import IO, Any, Generic, TypeVar
+from typing import IO, Any, Callable, Generic, TypeVar
 from typing_extensions import Literal
 from uuid import UUID
 
@@ -1716,3 +1716,70 @@ class IEventHandler(ABC):
 
     @abstractmethod
     def handle_event(self, context: EventContext) -> None: ...
+
+
+class TaskStatus(StrEnum):
+    PENDING = "pending"
+    PROCESSING = "processing"
+    COMPLETED = "completed"
+    FAILED = "failed"
+
+
+class Job(Struct, Generic[T]):
+    payload: T
+    """The actual job data/resource."""
+
+    status: TaskStatus = TaskStatus.PENDING
+    """Current status of the job."""
+
+    result: str | None = None
+    """Result or error message after processing."""
+
+    retries: int = 0
+    """Number of times the job has been retried."""
+
+
+class IMessageQueue(ABC, Generic[T]):
+    """Interface for a message queue that manages jobs as resources."""
+
+    @abstractmethod
+    def put(self, payload: T) -> Resource[Job[T]]:
+        """Enqueue a new job."""
+        ...
+
+    @abstractmethod
+    def pop(self) -> Resource[Job[T]] | None:
+        """Dequeue the next pending job."""
+        ...
+
+    @abstractmethod
+    def complete(self, resource_id: str, result: str | None = None) -> Resource[Job[T]]:
+        """Mark a job as completed."""
+        ...
+
+    @abstractmethod
+    def fail(self, resource_id: str, error: str) -> Resource[Job[T]]:
+        """Mark a job as failed."""
+        ...
+
+    @abstractmethod
+    def start_consume(self, do: Callable[[Resource[Job[T]]], None]) -> None:
+        """Start consuming jobs from the queue."""
+        ...
+
+    @abstractmethod
+    def stop_consuming(self) -> None:
+        """Stop consuming jobs from the queue."""
+        ...
+
+    def add_task(self, payload: T) -> Resource[Job[T]]:
+        return self.put(payload)
+
+    def enqueue(self, payload: T) -> Resource[Job[T]]:
+        return self.put(payload)
+
+    def next_task(self) -> Resource[Job[T]] | None:
+        return self.pop()
+
+    def dequeue(self) -> Resource[Job[T]] | None:
+        return self.pop()
