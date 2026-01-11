@@ -6,6 +6,11 @@ from autocrud.types import Binary
 from xxhash import xxh3_128_hexdigest
 
 
+def _fallback_content_type_guesser(data: bytes) -> UnsetType:
+    # Fallback: use generic binary type
+    return UNSET
+
+
 def get_content_type_guesser():
     try:
         import magic
@@ -15,18 +20,13 @@ def get_content_type_guesser():
 
         return guess_content_type
     except ImportError:
-
-        def guess_content_type(data: bytes) -> None:
-            # Fallback: use generic binary type
-            return None
-
-        return guess_content_type
+        return _fallback_content_type_guesser
 
 
 class BasicBlobStore(IBlobStore):
     def guess_content_type(
         self, data: bytes, content_type: str | UnsetType
-    ) -> str | None:
+    ) -> str | UnsetType:
         """Guess content type using the content type guesser."""
         if content_type:
             return content_type

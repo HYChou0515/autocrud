@@ -52,6 +52,7 @@ dev = [
     "pytest>=8.4.1",
     "ruff>=0.12.4",
     "pytest-asyncio>=1.1.0",
+    "autocrud[s3,magic,docs]",
 ]
 s3 = [
     "boto3>=1.40.21",

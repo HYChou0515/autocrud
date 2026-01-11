@@ -1,4 +1,5 @@
 from collections.abc import Generator
+from msgspec import UNSET
 import pytest
 from autocrud.resource_manager.basic import IBlobStore
 from autocrud.resource_manager.blob_store.simple import DiskBlobStore, MemoryBlobStore
@@ -8,6 +9,17 @@ from xxhash import xxh3_128_hexdigest
 # -----------------------------------------------------------------------------
 # Behavior / Contract Tests
 # -----------------------------------------------------------------------------
+
+
+def test_fallback_content_type_guesser():
+    """Test that the fallback content type guesser returns UNSET."""
+    from autocrud.resource_manager.blob_store.simple import (
+        _fallback_content_type_guesser,
+    )
+
+    data = b"some binary data"
+    content_type = _fallback_content_type_guesser(data)
+    assert content_type is UNSET
 
 
 @pytest.fixture(params=["memory", "simple", "s3"])
