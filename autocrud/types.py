@@ -1623,6 +1623,28 @@ class IResourceManager(ABC, Generic[T]):
         這對於需要讀取 Binary 原始資料時很有用.
         """
 
+    def put_job(self, payload: T) -> "Resource[Job[T]]":
+        """Put a job into the message queue.
+
+        Arguments:
+            - payload (T): the job payload.
+
+        Returns:
+            - resource (Resource[Job[T]]): the created job resource.
+
+        Raises:
+            - NotImplementedError: if message queue is not configured.
+        """
+
+    def start_consume(self) -> None:
+        """Start consuming jobs from the message queue.
+
+        Uses the callback function that was configured when the message queue was created.
+
+        Raises:
+            - NotImplementedError: if message queue is not configured.
+        """
+
 
 class PermissionDeniedError(Exception):
     pass
@@ -1743,6 +1765,19 @@ class IMessageQueue(ABC, Generic[T]):
     """Interface for a message queue that manages jobs as resources."""
 
     @abstractmethod
+    def set_resource_manager(self, resource_manager: IResourceManager[Job[T]]) -> None:
+        """Set the resource manager for this message queue.
+
+        This method allows late injection of the resource manager after the
+        message queue has been created. This is useful when the message queue
+        needs to be created before the resource manager exists.
+
+        Args:
+            resource_manager: The resource manager to use for managing jobs.
+        """
+        ...
+
+    @abstractmethod
     def put(self, payload: T) -> Resource[Job[T]]:
         """Enqueue a new job."""
         ...
@@ -1763,8 +1798,11 @@ class IMessageQueue(ABC, Generic[T]):
         ...
 
     @abstractmethod
-    def start_consume(self, do: Callable[[Resource[Job[T]]], None]) -> None:
-        """Start consuming jobs from the queue."""
+    def start_consume(self) -> None:
+        """Start consuming jobs from the queue.
+
+        Uses the callback function that was provided during construction.
+        """
         ...
 
     @abstractmethod
@@ -1789,13 +1827,14 @@ class IMessageQueueFactory(ABC):
     """Factory interface for creating message queues."""
 
     @abstractmethod
-    def build(self, resource_manager: IResourceManager[Job[T]]) -> IMessageQueue[T]:
-        """Build a message queue for the given resource manager.
+    def build(self, do: "Callable[[Resource[Job[T]]], None]") -> IMessageQueue[T]:
+        """Build a message queue instance with a job handler.
 
         Args:
-            resource_manager: The resource manager for Job[T] resources.
+            do: Callback function to process each job.
 
         Returns:
-            An IMessageQueue instance for managing jobs.
+            An IMessageQueue instance. The resource manager should be
+            injected later via set_resource_manager().
         """
         ...

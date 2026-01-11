@@ -1,5 +1,5 @@
 from autocrud.message_queue.basic import BasicMessageQueue
-from autocrud.types import IResourceManager, Job, Resource, TaskStatus
+from autocrud.types import Job, Resource, TaskStatus
 from typing import Callable, Generic, TypeVar
 
 
@@ -24,7 +24,7 @@ class RabbitMQMessageQueue(BasicMessageQueue[T], Generic[T]):
 
     def __init__(
         self,
-        resource_manager: IResourceManager[Job[T]],
+        do: Callable[[Resource[Job[T]]], None],
         amqp_url: str = "amqp://guest:guest@localhost:5672/",
         queue_name: str = "autocrud_jobs",
         max_retries: int = 3,
@@ -35,7 +35,7 @@ class RabbitMQMessageQueue(BasicMessageQueue[T], Generic[T]):
                 "The 'pika' package is required for RabbitMQMessageQueue. Install it via 'pip install pika'"
             )
 
-        self._rm = resource_manager
+        super().__init__(do)
         self.amqp_url = amqp_url
         self.queue_name = queue_name
         self.retry_queue_name = f"{queue_name}_retry"
@@ -45,11 +45,6 @@ class RabbitMQMessageQueue(BasicMessageQueue[T], Generic[T]):
         self._connection = None
         self._channel = None
         self._ensure_connection()
-
-    @property
-    def rm(self) -> IResourceManager[Job[T]]:
-        """The associated ResourceManager."""
-        return self._rm
 
     def _ensure_connection(self):
         """Ensure that the AMQP connection and channel are open."""
@@ -166,9 +161,9 @@ class RabbitMQMessageQueue(BasicMessageQueue[T], Generic[T]):
             ),
         )
 
-    def start_consume(self, do: Callable[[Resource[Job[T]]], None]) -> None:
+    def start_consume(self) -> None:
         """
-        Start consuming jobs from the queue with the provided callback.
+        Start consuming jobs from the queue with the configured callback.
 
         This method blocks and processes jobs as they arrive. Failed jobs are
         automatically retried based on the configured retry policy. Jobs exceeding
@@ -195,7 +190,7 @@ class RabbitMQMessageQueue(BasicMessageQueue[T], Generic[T]):
 
                 # 2. Execute user callback
                 try:
-                    do(resource)
+                    self._do(resource)
                     # 3. Complete (Update RM) & Ack (RabbitMQ)
                     self.complete(resource_id)
                     ch.basic_ack(delivery_tag=method.delivery_tag)

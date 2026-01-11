@@ -26,12 +26,21 @@ class Payload(Struct):
 
 
 def get_simple_queue(rm):
-    return SimpleMessageQueue(rm)
+    def handler(job):
+        pass
+
+    mq = SimpleMessageQueue(handler)
+    mq.set_resource_manager(rm)
+    return mq
 
 
 def get_rabbitmq_queue(rm):
+    def handler(job):
+        pass
+
     queue_name = "test_autocrud_jobs_unified"
-    mq = RabbitMQMessageQueue(rm, queue_name=queue_name)
+    mq = RabbitMQMessageQueue(handler, queue_name=queue_name)
+    mq.set_resource_manager(rm)
     # Purge to ensure a clean state for each test
     mq._channel.queue_purge(queue_name)
     return mq
@@ -164,20 +173,15 @@ class TestMessageQueueUnified:
 
         def run_queue():
             nonlocal consumer_queue_ref
-            # Create a consumer instance for this thread
-            if isinstance(queue_producer, RabbitMQMessageQueue):
-                queue_consumer = RabbitMQMessageQueue(
-                    rm, queue_name=queue_producer.queue_name
-                )
-            else:
-                queue_consumer = queue_producer  # SimpleMQ is mostly thread safe for this or relies on RM safety
-
+            # Reuse the same queue instance and override callback for the worker
+            queue_consumer = queue_producer
+            queue_consumer._do = worker_logic
             consumer_queue_ref = queue_consumer
 
             # Setup context for the consumer thread
             with rm.meta_provide(user="consumer", now=dt.datetime.now(dt.timezone.utc)):
                 try:
-                    queue_consumer.start_consume(worker_logic)
+                    queue_consumer.start_consume()
                 except Exception:
                     # Ignore errors during stop/shutdown
                     pass
@@ -265,30 +269,28 @@ class TestMessageQueueUnified:
         def run_queue():
             if isinstance(queue_producer, RabbitMQMessageQueue):
                 queue_consumer = RabbitMQMessageQueue(
-                    rm, queue_name=queue_producer.queue_name
+                    worker_logic, queue_name=queue_producer.queue_name
                 )
+                queue_consumer.set_resource_manager(rm)
             else:
                 queue_consumer = queue_producer
+                queue_consumer._do = worker_logic
 
             with rm.meta_provide(user="consumer", now=dt.datetime.now(dt.timezone.utc)):
                 try:
-                    queue_consumer.start_consume(worker_logic)
+                    queue_consumer.start_consume()
                 except Exception:
                     pass
 
         consumer_queue_ref = [None]
 
         def run_queue_with_ref():
-            if isinstance(queue_producer, RabbitMQMessageQueue):
-                consumer = RabbitMQMessageQueue(
-                    rm, queue_name=queue_producer.queue_name
-                )
-            else:
-                consumer = queue_producer
+            consumer = queue_producer
+            consumer._do = worker_logic
             consumer_queue_ref[0] = consumer
             with rm.meta_provide(user="consumer", now=dt.datetime.now(dt.timezone.utc)):
                 try:
-                    consumer.start_consume(worker_logic)
+                    consumer.start_consume()
                 except Exception:
                     pass
 
@@ -435,13 +437,17 @@ class TestRabbitMQRetryMechanism:
             mock_pika.BasicProperties = mock_basic_properties
             mock_pika.DeliveryMode.Persistent = 2
 
+            def mock_worker(job):
+                pass
+
             queue = RabbitMQMessageQueue(
-                resource_manager=mock_resource_manager,
+                mock_worker,
                 amqp_url="amqp://test",
                 queue_name="test_queue",
                 max_retries=3,
                 retry_delay_seconds=10,
             )
+            queue.set_resource_manager(mock_resource_manager)
             queue._channel = mock_channel
             queue._connection = mock_connection
 
@@ -457,13 +463,17 @@ class TestRabbitMQRetryMechanism:
             mock_pika.BlockingConnection = MagicMock(return_value=mock_connection)
             mock_pika.DeliveryMode.Persistent = 2
 
+            def worker_logic(job):
+                pass
+
             rm = MagicMock()
             queue = RabbitMQMessageQueue(
-                resource_manager=rm,
+                worker_logic,
                 queue_name="test_queue",
                 max_retries=5,
                 retry_delay_seconds=15,
             )
+            queue.set_resource_manager(rm)
 
             assert mock_channel.queue_declare.call_count == 3
             calls = mock_channel.queue_declare.call_args_list
@@ -490,7 +500,8 @@ class TestRabbitMQRetryMechanism:
         mock_rm.get.return_value = resource
 
         callback = MagicMock(side_effect=Exception("Test error"))
-        queue.start_consume(callback)
+        queue._do = callback
+        queue.start_consume()
         mock_channel.simulate_message(b"test-id", retry_count=0)
 
         callback.assert_called_once()
@@ -531,7 +542,8 @@ class TestRabbitMQRetryMechanism:
         mock_rm.get.return_value = resource
 
         callback = MagicMock(side_effect=Exception("Test error"))
-        queue.start_consume(callback)
+        queue._do = callback
+        queue.start_consume()
 
         # Simulate message with retry_count = max_retries (3)
         mock_channel.simulate_message(b"test-id", retry_count=3)
@@ -558,7 +570,8 @@ class TestRabbitMQRetryMechanism:
         mock_rm.get.return_value = resource
 
         callback = MagicMock(side_effect=Exception("Test error"))
-        queue.start_consume(callback)
+        queue._do = callback
+        queue.start_consume()
 
         # Test retry count progression: 0 -> 1 -> 2 -> 3 -> dead
         for retry_count in range(4):
@@ -594,13 +607,17 @@ class TestRabbitMQRetryMechanism:
             mock_pika.BlockingConnection = MagicMock(return_value=mock_connection)
             mock_pika.DeliveryMode.Persistent = 2
 
+            def worker_logic(job):
+                pass
+
             rm = MagicMock()
             queue = RabbitMQMessageQueue(
-                resource_manager=rm,
+                worker_logic,
                 queue_name="custom_queue",
                 max_retries=5,
                 retry_delay_seconds=30,
             )
+            queue.set_resource_manager(rm)
 
             assert queue.max_retries == 5
             assert queue.retry_delay_seconds == 30
@@ -623,7 +640,8 @@ class TestRabbitMQRetryMechanism:
 
         long_error = "x" * 1000
         callback = MagicMock(side_effect=Exception(long_error))
-        queue.start_consume(callback)
+        queue._do = callback
+        queue.start_consume()
         mock_channel.simulate_message(b"test-id", retry_count=0)
 
         # Verify error message was truncated to 500 characters in headers
@@ -661,7 +679,8 @@ class TestRabbitMQRetryMechanism:
         mock_rm.get.return_value = resource
 
         callback = MagicMock(side_effect=Exception("New error message"))
-        queue.start_consume(callback)
+        queue._do = callback
+        queue.start_consume()
         mock_channel.simulate_message(b"test-id", retry_count=1)
 
         update_calls = [
@@ -682,7 +701,7 @@ class TestRabbitMQRetryMechanism:
         mock_rm.get.side_effect = Exception("Resource not found")
 
         callback = MagicMock()
-        queue.start_consume(callback)
+        queue.start_consume()
         mock_channel.simulate_message(b"missing-id", retry_count=0)
 
         # Callback should not be called because resource fetch failed
@@ -719,7 +738,7 @@ class TestRabbitMQRetryMechanism:
         ]
 
         callback = MagicMock()
-        queue.start_consume(callback)
+        queue.start_consume()
         mock_channel.simulate_message(b"test-id", retry_count=0)
 
         # Callback should not be called because initial fetch failed
@@ -758,7 +777,7 @@ class TestRabbitMQRetryMechanism:
         mock_rm.get.side_effect = Exception("Persistent error")
 
         callback = MagicMock()
-        queue.start_consume(callback)
+        queue.start_consume()
         mock_channel.simulate_message(b"test-id", retry_count=0)
 
         # Callback should not be called

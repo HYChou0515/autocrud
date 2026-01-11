@@ -53,12 +53,14 @@ from autocrud.resource_manager.storage_factory import (
 from autocrud.types import (
     IEventHandler,
     IMigration,
+    TaskStatus,
     IMessageQueue,
     IMessageQueueFactory,
     IPermissionChecker,
     IResourceManager,
     IndexableField,
     Job,
+    Resource,
     ResourceMeta,
     RevisionInfo,
     RevisionStatus,
@@ -276,42 +278,6 @@ class AutoCRUD:
             )
         return self.resource_managers[model_name]
 
-    def get_message_queue(self, model: type[T] | str) -> IMessageQueue[T]:
-        """Get the message queue for a registered Job model.
-
-        This method allows you to access the message queue for a specific Job model.
-
-        Args:
-            model: The Job model class or its registered resource name.
-
-        Returns:
-            The IMessageQueue instance associated with the model.
-
-        Raises:
-            KeyError: If the model is not registered or doesn't have a message queue.
-            ValueError: If the model class is registered with multiple names (ambiguous).
-
-        Example:
-            ```python
-            # Get by model class
-            mq = autocrud.get_message_queue(MyJob)
-
-            # Get by resource name
-            mq = autocrud.get_message_queue("my-jobs")
-
-            # Enqueue a job
-            job = mq.put(MyJobPayload(...))
-            ```
-        """
-        if isinstance(model, str):
-            return self.message_queues[model]
-        model_name = self.model_names[model]
-        if model_name is None:
-            raise ValueError(
-                f"Model {model.__name__} is registered with multiple names."
-            )
-        return self.message_queues[model_name]
-
     def _is_job_subclass(self, model: type) -> bool:
         """Check if a model is a subclass of Job.
 
@@ -425,6 +391,7 @@ class AutoCRUD:
         default_user: str | UnsetType = UNSET,
         default_now: Callable[[], dt.datetime] | UnsetType = UNSET,
         message_queue_factory: IMessageQueueFactory | None | UnsetType = UNSET,
+        job_handler: Callable[[Resource[Job[T]]], None] | None = None,
     ) -> None:
         """Add a data model to AutoCRUD and configure its API endpoints.
 
@@ -491,7 +458,7 @@ class AutoCRUD:
             Models should be added during application startup before handling requests.
             The order of adding models doesn't affect the generated APIs.
         """
-        _indexed_fields = []
+        _indexed_fields: list[IndexableField] = []
         for field in indexed_fields or []:
             if isinstance(field, IndexableField):
                 _indexed_fields.append(field)
@@ -509,6 +476,7 @@ class AutoCRUD:
                 raise TypeError(
                     "Invalid indexed field, should be IndexableField or tuple[field_name, field_type]",
                 )
+
         model_name = name or self._resource_name(model)
         if model_name in self.resource_managers:
             raise ValueError(f"Model name {model_name} already exists.")
@@ -535,6 +503,26 @@ class AutoCRUD:
             other_options["default_now"] = default_now
         elif self.default_now is not UNSET:
             other_options["default_now"] = self.default_now
+        # Auto-detect Job subclass and create message queue
+        if self._is_job_subclass(model) and job_handler is not None:
+            # Determine which factory to use
+            if message_queue_factory is UNSET:
+                mq_factory = self.message_queue_factory
+            elif message_queue_factory is None:
+                mq_factory = None  # Explicitly disabled
+            else:
+                mq_factory = message_queue_factory
+
+            if mq_factory is not None:
+                # Create message queue with job handler
+                other_options["message_queue"] = mq_factory.build(job_handler)
+
+                # Check if status is already in indexed fields
+                if not any(field.field_path == "status" for field in _indexed_fields):
+                    _indexed_fields.append(
+                        IndexableField(field_path="status", field_type=TaskStatus)
+                    )
+
         resource_manager = ResourceManager(
             model,
             storage=storage,
@@ -549,20 +537,6 @@ class AutoCRUD:
             **other_options,
         )
         self.resource_managers[model_name] = resource_manager
-
-        # Auto-detect Job subclass and create message queue
-        if self._is_job_subclass(model):
-            # Determine which factory to use
-            if message_queue_factory is UNSET:
-                mq_factory = self.message_queue_factory
-            elif message_queue_factory is None:
-                mq_factory = None  # Explicitly disabled
-            else:
-                mq_factory = message_queue_factory
-
-            if mq_factory is not None:
-                message_queue = mq_factory.build(resource_manager)
-                self.message_queues[model_name] = message_queue
 
     def openapi(self, app: FastAPI, structs: list[type] = None) -> None:
         """Generate and register the OpenAPI schema for the FastAPI application.

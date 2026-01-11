@@ -6,7 +6,6 @@ from autocrud.types import (
     DataSearchCondition,
     DataSearchOperator,
     IMessageQueueFactory,
-    IResourceManager,
     Job,
     Resource,
     ResourceMetaSearchQuery,
@@ -27,14 +26,9 @@ class SimpleMessageQueue(BasicMessageQueue[T], Generic[T]):
     provided by AutoCRUD's ResourceManager.
     """
 
-    def __init__(self, resource_manager: IResourceManager[Job[T]]):
-        self._rm = resource_manager
+    def __init__(self, do: Callable[[Resource[Job[T]]], None]):
+        super().__init__(do)
         self._running = False
-
-    @property
-    def rm(self) -> IResourceManager[Job[T]]:
-        """The associated ResourceManager."""
-        return self._rm
 
     def put(self, payload: T) -> Resource[Job[T]]:
         """
@@ -103,7 +97,7 @@ class SimpleMessageQueue(BasicMessageQueue[T], Generic[T]):
 
         return None
 
-    def start_consume(self, do: Callable[[Resource[Job[T]]], None]) -> None:
+    def start_consume(self) -> None:
         """Start consuming jobs from the queue."""
         import time
 
@@ -112,7 +106,7 @@ class SimpleMessageQueue(BasicMessageQueue[T], Generic[T]):
             job = self.pop()
             if job:
                 try:
-                    do(job)
+                    self._do(job)
                     self.complete(job.info.resource_id)
                 except Exception as e:
                     # Update Job with error message and retry count
@@ -140,15 +134,14 @@ class SimpleMessageQueue(BasicMessageQueue[T], Generic[T]):
 class SimpleMessageQueueFactory(IMessageQueueFactory):
     """Factory for creating SimpleMessageQueue instances."""
 
-    def build(
-        self, resource_manager: IResourceManager[Job[T]]
-    ) -> SimpleMessageQueue[T]:
-        """Build a SimpleMessageQueue for the given resource manager.
+    def build(self, do: Callable[[Resource[Job[T]]], None]) -> SimpleMessageQueue[T]:
+        """Build a SimpleMessageQueue instance with a job handler.
 
         Args:
-            resource_manager: The resource manager for Job[T] resources.
+            do: Callback function to process each job.
 
         Returns:
-            A SimpleMessageQueue instance for managing jobs.
+            A SimpleMessageQueue instance. The resource manager should be
+            injected later via set_resource_manager().
         """
-        return SimpleMessageQueue(resource_manager)
+        return SimpleMessageQueue(do)

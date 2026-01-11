@@ -28,6 +28,8 @@ from autocrud.types import (
     BeforeMigrate,
     BeforeModify,
     CannotModifyResourceError,
+    IMessageQueue,
+    Job,
     OnFailureMigrate,
     OnFailureModify,
     OnSuccessMigrate,
@@ -364,6 +366,7 @@ class ResourceManager(IResourceManager[T], Generic[T]):
         *,
         storage: IStorage,
         blob_store: IBlobStore | None = None,
+        message_queue: IMessageQueue | None = None,
         id_generator: Callable[[], str] | None = None,
         migration: IMigration[T] | None = None,
         indexed_fields: list[IndexableField] | None = None,
@@ -389,6 +392,9 @@ class ResourceManager(IResourceManager[T], Generic[T]):
         self._resource_type = resource_type
         self.storage = storage
         self.blob_store = blob_store
+        self.message_queue = message_queue
+        if self.message_queue is not None:
+            self.message_queue.set_resource_manager(self)
         self.data_converter = DataConverter(self.resource_type)
         schema_version = migration.schema_version if migration else None
         self._schema_version = schema_version
@@ -721,6 +727,16 @@ class ResourceManager(IResourceManager[T], Generic[T]):
         if self.blob_store is None:
             raise NotImplementedError("Blob store is not configured")
         return self.blob_store.get_url(file_id)
+
+    def put_job(self, payload: T) -> Resource[Job[T]]:
+        if self.message_queue is None:
+            raise NotImplementedError("Message queue is not configured")
+        return self.message_queue.put(payload)
+
+    def start_consume(self) -> None:
+        if self.message_queue is None:
+            raise NotImplementedError("Message queue is not configured")
+        return self.message_queue.start_consume()
 
     def count_resources(self, query: ResourceMetaSearchQuery) -> int:
         return self.storage.count(query)

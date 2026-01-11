@@ -34,12 +34,12 @@ async def main():
 
     # 2. 創建 RabbitMQ 消息隊列，配置重試參數
     queue = RabbitMQMessageQueue(
-        resource_manager=rm,
         amqp_url="amqp://guest:guest@localhost:5672/",
         queue_name="my_task_queue",
         max_retries=3,  # 最多重試 3 次
         retry_delay_seconds=10,  # 每次重試延遲 10 秒
     )
+    queue.set_resource_manager(rm)
 
     # 3. 添加一些任務到隊列
     print("添加任務到隊列...")
