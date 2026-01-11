@@ -3,7 +3,11 @@ import pytest
 from msgspec import Struct
 from unittest.mock import MagicMock, patch, call
 from uuid import uuid4
-from autocrud.message_queue.rabbitmq import RabbitMQMessageQueue
+from autocrud.message_queue.rabbitmq import (
+    RabbitMQMessageQueue,
+    RabbitMQMessageQueueFactory,
+)
+from autocrud.message_queue.simple import SimpleMessageQueueFactory
 from autocrud.resource_manager.core import ResourceManager, SimpleStorage
 from autocrud.resource_manager.meta_store.simple import MemoryMetaStore
 from autocrud.resource_manager.resource_store.simple import MemoryResourceStore
@@ -26,14 +30,23 @@ class Payload(Struct):
 
 
 def get_simple_queue(rm):
-    return SimpleMessageQueue(rm)
+    def handler(job):
+        pass
+
+    mq = SimpleMessageQueue(handler, rm)
+    return mq
 
 
 def get_rabbitmq_queue(rm):
-    queue_name = "test_autocrud_jobs_unified"
-    mq = RabbitMQMessageQueue(rm, queue_name=queue_name)
+    def handler(job):
+        pass
+
+    queue_prefix = "test:"
+    mq = RabbitMQMessageQueue(handler, rm, queue_prefix=queue_prefix)
     # Purge to ensure a clean state for each test
-    mq._channel.queue_purge(queue_name)
+    if mq.queue_name:
+        with mq._get_connection() as (_, channel):
+            channel.queue_purge(mq.queue_name)
     return mq
 
 
@@ -43,16 +56,32 @@ def mq_context(request: pytest.FixtureRequest):
     meta_store = MemoryMetaStore()
     resource_store = MemoryResourceStore()
     storage = SimpleStorage(meta_store, resource_store)
-    rm = ResourceManager(
-        Job[Payload],
-        storage=storage,
-        indexed_fields=[IndexableField(field_path="status", field_type=str)],
-    )
+
+    def handler(job):
+        pass
 
     if request.param == "simple":
-        queue = get_simple_queue(rm)
+        mq_factory = SimpleMessageQueueFactory()
+        rm = ResourceManager(
+            Job[Payload],
+            storage=storage,
+            message_queue=mq_factory.build(handler),
+            indexed_fields=[IndexableField(field_path="status", field_type=str)],
+        )
+        queue = rm.message_queue
     else:
-        queue = get_rabbitmq_queue(rm)
+        mq_factory = RabbitMQMessageQueueFactory(queue_prefix="test:")
+        rm = ResourceManager(
+            Job[Payload],
+            storage=storage,
+            message_queue=mq_factory.build(handler),
+            indexed_fields=[IndexableField(field_path="status", field_type=str)],
+        )
+        queue = rm.message_queue
+        # Purge to ensure a clean state for each test
+        if queue.queue_name:
+            with queue._get_connection() as (_, channel):
+                channel.queue_purge(queue.queue_name)
 
     return queue, rm
 
@@ -77,7 +106,8 @@ class TestMessageQueueUnified:
         with rm.meta_provide(user=user, now=now):
             # 1. Enqueue
             payload1 = Payload(task_name="task1", priority=1)
-            res1 = queue.put(payload1)
+            info1 = rm.create(Job(payload=payload1))
+            res1 = rm.get(info1.resource_id)
             assert res1.data.status == TaskStatus.PENDING
             assert res1.data.payload == payload1
 
@@ -85,7 +115,8 @@ class TestMessageQueueUnified:
             now2 = now + dt.timedelta(seconds=1)
             with rm.meta_provide(user=user, now=now2):
                 payload2 = Payload(task_name="task2", priority=2)
-                res2 = queue.put(payload2)
+                info2 = rm.create(Job(payload=payload2))
+                res2 = rm.get(info2.resource_id)
 
         # 3. Pop (FIFO) - should get task1
         now3 = now + dt.timedelta(seconds=2)
@@ -98,7 +129,7 @@ class TestMessageQueueUnified:
             # 4. Complete
             completed = queue.complete(job1.info.resource_id, result="done")
             assert completed.data.status == TaskStatus.COMPLETED
-            assert completed.data.result == "done"
+            assert completed.data.errmsg == "done"
 
             # 5. Pop next
             job2 = queue.pop()
@@ -108,21 +139,10 @@ class TestMessageQueueUnified:
             # 6. Fail
             failed = queue.fail(job2.info.resource_id, error="oops")
             assert failed.data.status == TaskStatus.FAILED
-            assert failed.data.result == "oops"
+            assert failed.data.errmsg == "oops"
 
             # 7. Empty
             assert queue.pop() is None
-
-    def test_aliases(self):
-        queue, rm = self.queue, self.rm
-        user = "test_user"
-        now = dt.datetime.now(dt.timezone.utc)
-        with rm.meta_provide(user=user, now=now):
-            queue.add_task(Payload(task_name="t1", priority=0))
-            queue.enqueue(Payload(task_name="t2", priority=0))
-
-            assert queue.dequeue() is not None
-            assert queue.next_task() is not None
 
     def test_missing_resource_resilience(self):
         """Tests that the queue handles cases where the resource is deleted out-of-band."""
@@ -130,7 +150,8 @@ class TestMessageQueueUnified:
         payload = Payload(task_name="ghost_task", priority=0)
 
         with rm.meta_provide(user="ghost", now=dt.datetime.now(dt.timezone.utc)):
-            res_put = queue.put(payload)
+            info = rm.create(Job(payload=payload))
+            res_put = rm.get(info.resource_id)
             # Delete direct from RM
             rm.delete(res_put.info.resource_id)
 
@@ -149,9 +170,9 @@ class TestMessageQueueUnified:
         now = dt.datetime.now(dt.timezone.utc)
         with rm.meta_provide(user=user, now=now):
             # Job 1: Success
-            queue_producer.put(Payload(task_name="success_job", priority=1))
+            rm.create(Job(payload=Payload(task_name="success_job", priority=1)))
             # Job 2: Fail logic
-            queue_producer.put(Payload(task_name="fail_job", priority=2))
+            rm.create(Job(payload=Payload(task_name="fail_job", priority=2)))
 
         results = []
         consumer_queue_ref: IMessageQueue[Payload] = None
@@ -164,20 +185,15 @@ class TestMessageQueueUnified:
 
         def run_queue():
             nonlocal consumer_queue_ref
-            # Create a consumer instance for this thread
-            if isinstance(queue_producer, RabbitMQMessageQueue):
-                queue_consumer = RabbitMQMessageQueue(
-                    rm, queue_name=queue_producer.queue_name
-                )
-            else:
-                queue_consumer = queue_producer  # SimpleMQ is mostly thread safe for this or relies on RM safety
-
+            # Reuse the same queue instance and override callback for the worker
+            queue_consumer = queue_producer
+            queue_consumer._do = worker_logic
             consumer_queue_ref = queue_consumer
 
             # Setup context for the consumer thread
             with rm.meta_provide(user="consumer", now=dt.datetime.now(dt.timezone.utc)):
                 try:
-                    queue_consumer.start_consume(worker_logic)
+                    queue_consumer.start_consume()
                 except Exception:
                     # Ignore errors during stop/shutdown
                     pass
@@ -215,7 +231,7 @@ class TestMessageQueueUnified:
             assert statuses.get("fail_job") == TaskStatus.FAILED
 
     def test_error_message_recorded_on_failure(self):
-        """Test that error message is recorded in Job.result when task fails."""
+        """Test that error message is recorded in Job.errmsg when task fails."""
         queue, rm = self.queue, self.rm
         user = "test_user"
         now = dt.datetime.now(dt.timezone.utc)
@@ -223,7 +239,8 @@ class TestMessageQueueUnified:
         # Create a job
         with rm.meta_provide(user=user, now=now):
             payload = Payload(task_name="will_fail", priority=1)
-            res = queue.put(payload)
+            info = rm.create(Job(payload=payload))
+            res = rm.get(info.resource_id)
             resource_id = res.info.resource_id
 
         # Pop and fail it manually
@@ -237,11 +254,11 @@ class TestMessageQueueUnified:
 
             # Verify error is recorded
             assert failed_job.data.status == TaskStatus.FAILED
-            assert failed_job.data.result == error_msg
+            assert failed_job.data.errmsg == error_msg
 
             # Also verify we can retrieve it
             retrieved = rm.get(resource_id)
-            assert retrieved.data.result == error_msg
+            assert retrieved.data.errmsg == error_msg
 
     def test_error_overwrites_in_consume_loop(self):
         """Test that error messages are updated correctly in consume loop."""
@@ -254,7 +271,7 @@ class TestMessageQueueUnified:
 
         # Create a job that will fail
         with rm.meta_provide(user=user, now=now):
-            queue_producer.put(Payload(task_name="error_test_job", priority=1))
+            rm.create(Job(payload=Payload(task_name="error_test_job", priority=1)))
 
         error_messages = []
 
@@ -265,30 +282,27 @@ class TestMessageQueueUnified:
         def run_queue():
             if isinstance(queue_producer, RabbitMQMessageQueue):
                 queue_consumer = RabbitMQMessageQueue(
-                    rm, queue_name=queue_producer.queue_name
+                    worker_logic, rm, queue_prefix=queue_producer.queue_prefix
                 )
             else:
                 queue_consumer = queue_producer
+                queue_consumer._do = worker_logic
 
             with rm.meta_provide(user="consumer", now=dt.datetime.now(dt.timezone.utc)):
                 try:
-                    queue_consumer.start_consume(worker_logic)
+                    queue_consumer.start_consume()
                 except Exception:
                     pass
 
         consumer_queue_ref = [None]
 
         def run_queue_with_ref():
-            if isinstance(queue_producer, RabbitMQMessageQueue):
-                consumer = RabbitMQMessageQueue(
-                    rm, queue_name=queue_producer.queue_name
-                )
-            else:
-                consumer = queue_producer
+            consumer = queue_producer
+            consumer._do = worker_logic
             consumer_queue_ref[0] = consumer
             with rm.meta_provide(user="consumer", now=dt.datetime.now(dt.timezone.utc)):
                 try:
-                    consumer.start_consume(worker_logic)
+                    consumer.start_consume()
                 except Exception:
                     pass
 
@@ -314,7 +328,7 @@ class TestMessageQueueUnified:
                 res = rm.get(meta.resource_id)
                 if res.data.payload.task_name == "error_test_job":
                     assert res.data.status == TaskStatus.FAILED
-                    assert "Specific processing error" in res.data.result
+                    assert "Specific processing error" in res.data.errmsg
                     assert res.data.retries >= 1
 
     def test_retry_count_increments_on_failure(self):
@@ -326,7 +340,8 @@ class TestMessageQueueUnified:
         # Create a job
         with rm.meta_provide(user=user, now=now):
             payload = Payload(task_name="retry_test", priority=1)
-            res = queue.put(payload)
+            info = rm.create(Job(payload=payload))
+            res = rm.get(info.resource_id)
             resource_id = res.info.resource_id
 
             # Initial retries should be 0
@@ -407,9 +422,14 @@ class TestRabbitMQRetryMechanism:
         def __init__(self, channel):
             self.channel_obj = channel
             self.is_closed = False
+            self.is_open = True
 
         def channel(self):
             return self.channel_obj
+
+        def close(self):
+            self.is_open = False
+            self.is_closed = True
 
         def add_callback_threadsafe(self, callback):
             callback()
@@ -423,11 +443,15 @@ class TestRabbitMQRetryMechanism:
     def mock_rabbitmq_queue(self, mock_resource_manager):
         """Create a RabbitMQ queue with mocked connection."""
         mock_channel = self.MockChannel()
-        mock_connection = self.MockConnection(mock_channel)
 
         with patch("autocrud.message_queue.rabbitmq.pika") as mock_pika:
             mock_pika.URLParameters = MagicMock()
-            mock_pika.BlockingConnection = MagicMock(return_value=mock_connection)
+
+            # Create a factory function that returns new connections with the same channel
+            def create_connection(*args, **kwargs):
+                return self.MockConnection(mock_channel)
+
+            mock_pika.BlockingConnection = create_connection
 
             def mock_basic_properties(**kwargs):
                 return kwargs
@@ -435,17 +459,21 @@ class TestRabbitMQRetryMechanism:
             mock_pika.BasicProperties = mock_basic_properties
             mock_pika.DeliveryMode.Persistent = 2
 
+            def mock_worker(job):
+                pass
+
+            rm = MagicMock()
+            rm.resource_name = "TestJob"
             queue = RabbitMQMessageQueue(
-                resource_manager=mock_resource_manager,
+                mock_worker,
+                rm,
                 amqp_url="amqp://test",
-                queue_name="test_queue",
+                queue_prefix="test:",
                 max_retries=3,
                 retry_delay_seconds=10,
             )
-            queue._channel = mock_channel
-            queue._connection = mock_connection
 
-            yield queue, mock_channel, mock_resource_manager
+            yield queue, mock_channel, rm
 
     def test_init_declares_all_queues(self):
         """Test that initialization declares main, retry, and dead letter queues."""
@@ -457,10 +485,15 @@ class TestRabbitMQRetryMechanism:
             mock_pika.BlockingConnection = MagicMock(return_value=mock_connection)
             mock_pika.DeliveryMode.Persistent = 2
 
+            def worker_logic(job):
+                pass
+
             rm = MagicMock()
+            rm.resource_name = "TestJob"
             queue = RabbitMQMessageQueue(
-                resource_manager=rm,
-                queue_name="test_queue",
+                worker_logic,
+                rm,
+                queue_prefix="test:",
                 max_retries=5,
                 retry_delay_seconds=15,
             )
@@ -468,16 +501,18 @@ class TestRabbitMQRetryMechanism:
             assert mock_channel.queue_declare.call_count == 3
             calls = mock_channel.queue_declare.call_args_list
 
-            # Main queue
-            assert calls[0] == call(queue="test_queue", durable=True)
+            # Main queue (prefix_resource_name)
+            assert calls[0] == call(queue="test:test_job", durable=True)
             # Dead letter queue
-            assert calls[1] == call(queue="test_queue_dead", durable=True)
+            assert calls[1] == call(queue="test:test_job:dead", durable=True)
             # Retry queue with TTL and DLX
-            assert calls[2][1]["queue"] == "test_queue_retry"
+            assert calls[2][1]["queue"] == "test:test_job:retry"
             assert calls[2][1]["durable"] is True
             assert calls[2][1]["arguments"]["x-message-ttl"] == 15000
             assert calls[2][1]["arguments"]["x-dead-letter-exchange"] == ""
-            assert calls[2][1]["arguments"]["x-dead-letter-routing-key"] == "test_queue"
+            assert (
+                calls[2][1]["arguments"]["x-dead-letter-routing-key"] == "test:test_job"
+            )
 
     def test_callback_failure_sends_to_retry_queue(self, mock_rabbitmq_queue):
         """Test that failed callback sends message to retry queue."""
@@ -490,7 +525,8 @@ class TestRabbitMQRetryMechanism:
         mock_rm.get.return_value = resource
 
         callback = MagicMock(side_effect=Exception("Test error"))
-        queue.start_consume(callback)
+        queue._do = callback
+        queue.start_consume()
         mock_channel.simulate_message(b"test-id", retry_count=0)
 
         callback.assert_called_once()
@@ -503,14 +539,14 @@ class TestRabbitMQRetryMechanism:
         ]
         assert len(update_calls) >= 1
         updated_job = update_calls[-1][0][1]
-        assert updated_job.result == "Test error"
+        assert updated_job.errmsg == "Test error"
         assert updated_job.retries == 1
 
         # Verify message was published to retry queue
         publish_calls = [
             c
             for c in mock_channel.basic_publish.call_args_list
-            if c[1]["routing_key"] == "test_queue_retry"
+            if c[1]["routing_key"] == "test:test_job:retry"
         ]
         assert len(publish_calls) == 1
 
@@ -531,7 +567,8 @@ class TestRabbitMQRetryMechanism:
         mock_rm.get.return_value = resource
 
         callback = MagicMock(side_effect=Exception("Test error"))
-        queue.start_consume(callback)
+        queue._do = callback
+        queue.start_consume()
 
         # Simulate message with retry_count = max_retries (3)
         mock_channel.simulate_message(b"test-id", retry_count=3)
@@ -540,7 +577,7 @@ class TestRabbitMQRetryMechanism:
         publish_calls = [
             c
             for c in mock_channel.basic_publish.call_args_list
-            if c[1]["routing_key"] == "test_queue_dead"
+            if c[1]["routing_key"] == "test:test_job:dead"
         ]
         assert len(publish_calls) == 1
 
@@ -558,7 +595,8 @@ class TestRabbitMQRetryMechanism:
         mock_rm.get.return_value = resource
 
         callback = MagicMock(side_effect=Exception("Test error"))
-        queue.start_consume(callback)
+        queue._do = callback
+        queue.start_consume()
 
         # Test retry count progression: 0 -> 1 -> 2 -> 3 -> dead
         for retry_count in range(4):
@@ -570,7 +608,7 @@ class TestRabbitMQRetryMechanism:
                 publish_calls = [
                     c
                     for c in mock_channel.basic_publish.call_args_list
-                    if c[1]["routing_key"] == "test_queue_retry"
+                    if c[1]["routing_key"] == "test:test_job:retry"
                 ]
                 assert len(publish_calls) == 1
                 props = publish_calls[0][1]["properties"]
@@ -580,7 +618,7 @@ class TestRabbitMQRetryMechanism:
                 publish_calls = [
                     c
                     for c in mock_channel.basic_publish.call_args_list
-                    if c[1]["routing_key"] == "test_queue_dead"
+                    if c[1]["routing_key"] == "test:test_job:dead"
                 ]
                 assert len(publish_calls) == 1
 
@@ -594,10 +632,15 @@ class TestRabbitMQRetryMechanism:
             mock_pika.BlockingConnection = MagicMock(return_value=mock_connection)
             mock_pika.DeliveryMode.Persistent = 2
 
+            def worker_logic(job):
+                pass
+
             rm = MagicMock()
+            rm.resource_name = "CustomQueue"
             queue = RabbitMQMessageQueue(
-                resource_manager=rm,
-                queue_name="custom_queue",
+                worker_logic,
+                rm,
+                queue_prefix="custom:",
                 max_retries=5,
                 retry_delay_seconds=30,
             )
@@ -607,7 +650,7 @@ class TestRabbitMQRetryMechanism:
 
             calls = mock_channel.queue_declare.call_args_list
             retry_queue_call = [
-                c for c in calls if c[1]["queue"] == "custom_queue_retry"
+                c for c in calls if c[1]["queue"] == "custom:custom_queue:retry"
             ][0]
             assert retry_queue_call[1]["arguments"]["x-message-ttl"] == 30000
 
@@ -623,14 +666,15 @@ class TestRabbitMQRetryMechanism:
 
         long_error = "x" * 1000
         callback = MagicMock(side_effect=Exception(long_error))
-        queue.start_consume(callback)
+        queue._do = callback
+        queue.start_consume()
         mock_channel.simulate_message(b"test-id", retry_count=0)
 
         # Verify error message was truncated to 500 characters in headers
         publish_calls = [
             c
             for c in mock_channel.basic_publish.call_args_list
-            if c[1]["routing_key"] == "test_queue_retry"
+            if c[1]["routing_key"] == "test:test_job:retry"
         ]
         props = publish_calls[0][1]["properties"]
         assert len(props["headers"]["x-last-error"]) == 500
@@ -642,8 +686,8 @@ class TestRabbitMQRetryMechanism:
             if len(c[0]) > 1 and c[0][1].status == TaskStatus.FAILED
         ]
         updated_job = update_calls[0][0][1]
-        assert updated_job.result == long_error
-        assert len(updated_job.result) == 1000
+        assert updated_job.errmsg == long_error
+        assert len(updated_job.errmsg) == 1000
 
     def test_job_error_overwrites_previous_error(self, mock_rabbitmq_queue):
         """Test that new error message overwrites previous one in Job."""
@@ -654,14 +698,15 @@ class TestRabbitMQRetryMechanism:
             data=Job(
                 payload="test-payload",
                 status=TaskStatus.PENDING,
-                result="Old error message",
+                errmsg="Old error message",
                 retries=1,
             ),
         )
         mock_rm.get.return_value = resource
 
         callback = MagicMock(side_effect=Exception("New error message"))
-        queue.start_consume(callback)
+        queue._do = callback
+        queue.start_consume()
         mock_channel.simulate_message(b"test-id", retry_count=1)
 
         update_calls = [
@@ -671,7 +716,7 @@ class TestRabbitMQRetryMechanism:
         ]
         assert len(update_calls) >= 1
         updated_job = update_calls[-1][0][1]
-        assert updated_job.result == "New error message"
+        assert updated_job.errmsg == "New error message"
         assert updated_job.retries == 2
 
     def test_critical_error_when_resource_not_found(self, mock_rabbitmq_queue):
@@ -682,7 +727,7 @@ class TestRabbitMQRetryMechanism:
         mock_rm.get.side_effect = Exception("Resource not found")
 
         callback = MagicMock()
-        queue.start_consume(callback)
+        queue.start_consume()
         mock_channel.simulate_message(b"missing-id", retry_count=0)
 
         # Callback should not be called because resource fetch failed
@@ -692,7 +737,7 @@ class TestRabbitMQRetryMechanism:
         publish_calls = [
             c
             for c in mock_channel.basic_publish.call_args_list
-            if c[1]["routing_key"] == "test_queue_retry"
+            if c[1]["routing_key"] == "test:test_job:retry"
         ]
         assert len(publish_calls) == 1
 
@@ -719,7 +764,7 @@ class TestRabbitMQRetryMechanism:
         ]
 
         callback = MagicMock()
-        queue.start_consume(callback)
+        queue.start_consume()
         mock_channel.simulate_message(b"test-id", retry_count=0)
 
         # Callback should not be called because initial fetch failed
@@ -733,15 +778,15 @@ class TestRabbitMQRetryMechanism:
         ]
         assert len(update_calls) >= 1
         updated_job = update_calls[-1][0][1]
-        assert "Critical error" in updated_job.result
-        assert "Initial fetch failed" in updated_job.result
+        assert "Critical error" in updated_job.errmsg
+        assert "Initial fetch failed" in updated_job.errmsg
         assert updated_job.retries == 1
 
         # Message should be sent to retry queue
         publish_calls = [
             c
             for c in mock_channel.basic_publish.call_args_list
-            if c[1]["routing_key"] == "test_queue_retry"
+            if c[1]["routing_key"] == "test:test_job:retry"
         ]
         assert len(publish_calls) == 1
 
@@ -758,7 +803,7 @@ class TestRabbitMQRetryMechanism:
         mock_rm.get.side_effect = Exception("Persistent error")
 
         callback = MagicMock()
-        queue.start_consume(callback)
+        queue.start_consume()
         mock_channel.simulate_message(b"test-id", retry_count=0)
 
         # Callback should not be called
@@ -768,7 +813,7 @@ class TestRabbitMQRetryMechanism:
         publish_calls = [
             c
             for c in mock_channel.basic_publish.call_args_list
-            if c[1]["routing_key"] == "test_queue_retry"
+            if c[1]["routing_key"] == "test:test_job:retry"
         ]
         assert len(publish_calls) == 1
 
@@ -777,3 +822,109 @@ class TestRabbitMQRetryMechanism:
 
         # Message should be acked
         mock_channel.basic_ack.assert_called_once()
+
+
+class TestMessageQueueFactories:
+    """Tests for message queue factory implementations."""
+
+    def test_simple_message_queue_factory(self):
+        """Test SimpleMessageQueueFactory builds correct instances."""
+        factory = SimpleMessageQueueFactory()
+
+        def dummy_handler(job):
+            pass
+
+        # Create a mock resource manager
+        rm = MagicMock()
+        rm.resource_name = "TestJob"
+
+        queue_builder = factory.build(dummy_handler)
+        queue = queue_builder(rm)
+
+        assert isinstance(queue, SimpleMessageQueue)
+        assert queue._do == dummy_handler
+
+    def test_rabbitmq_message_queue_factory_default_params(self):
+        """Test RabbitMQMessageQueueFactory with default parameters."""
+        factory = RabbitMQMessageQueueFactory()
+
+        def dummy_handler(job):
+            pass
+
+        # Create a mock resource manager
+        rm = MagicMock()
+        rm.resource_name = "TestJob"
+
+        queue_builder = factory.build(dummy_handler)
+        queue = queue_builder(rm)
+
+        assert isinstance(queue, RabbitMQMessageQueue)
+        assert queue._do == dummy_handler
+        assert queue.amqp_url == "amqp://guest:guest@localhost:5672/"
+        assert queue.queue_prefix == "autocrud:"
+        assert queue.queue_name is not None  # Now set during construction
+        assert queue.max_retries == 3
+        assert queue.retry_delay_seconds == 10
+
+    def test_rabbitmq_message_queue_factory_custom_params(self):
+        """Test RabbitMQMessageQueueFactory with custom parameters."""
+        custom_url = "amqp://user:pass@rabbitmq.example.com:5672/vhost"
+        custom_prefix = "custom"
+        custom_retries = 5
+        custom_delay = 15
+
+        factory = RabbitMQMessageQueueFactory(
+            amqp_url=custom_url,
+            queue_prefix=custom_prefix,
+            max_retries=custom_retries,
+            retry_delay_seconds=custom_delay,
+        )
+
+        def dummy_handler(job):
+            pass
+
+        # Create a mock resource manager
+        rm = MagicMock()
+        rm.resource_name = "TestJob"
+
+        # Mock the connection to avoid actual RabbitMQ connection
+        with patch("pika.BlockingConnection"):
+            queue_builder = factory.build(dummy_handler)
+            queue = queue_builder(rm)
+
+            assert isinstance(queue, RabbitMQMessageQueue)
+            assert queue._do == dummy_handler
+            assert queue.amqp_url == custom_url
+            assert queue.queue_prefix == custom_prefix
+            assert queue.queue_name is not None  # Now set during construction
+            assert queue.max_retries == custom_retries
+            assert queue.retry_delay_seconds == custom_delay
+
+    def test_factory_builds_multiple_instances(self):
+        """Test that factory can build multiple queue instances."""
+        factory = RabbitMQMessageQueueFactory(queue_prefix="test:")
+
+        def handler1(job):
+            pass
+
+        def handler2(job):
+            pass
+
+        # Create a mock resource manager
+        rm = MagicMock()
+        rm.resource_name = "TestJob"
+
+        # Mock the connection to avoid actual RabbitMQ connection
+        with patch("pika.BlockingConnection"):
+            queue_builder1 = factory.build(handler1)
+            queue_builder2 = factory.build(handler2)
+            queue1 = queue_builder1(rm)
+            queue2 = queue_builder2(rm)
+
+            # Should be different instances
+            assert queue1 is not queue2
+            # But with same configuration
+            assert queue1.queue_prefix == queue2.queue_prefix == "test:"
+            # And different handlers
+            assert queue1._do == handler1
+            assert queue2._do == handler2

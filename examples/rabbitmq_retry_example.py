@@ -32,16 +32,42 @@ async def main():
         storage_factory=storage_factory,
     )
 
-    # 2. 創建 RabbitMQ 消息隊列，配置重試參數
+    # 2. 定義處理函數
+    def process_task(resource: Resource[Job[ProcessingTask]]) -> None:
+        """
+        處理任務的回調函數
+
+        如果任務失敗，會自動重試（最多 max_retries 次）
+        超過重試次數後，任務會被移到 dead letter queue
+        """
+        job = resource.data
+        task = job.payload
+
+        print(f"\n處理任務: {task.task_id}")
+        print(f"  數據: {task.data}")
+        print(f"  重試次數: {job.retries}")
+        if job.errmsg:
+            print(f"  上次錯誤: {job.errmsg}")
+
+        if task.should_fail:
+            # 模擬任務失敗
+            # 這會觸發重試機制
+            # 錯誤信息會被記錄到 job.result
+            raise Exception(f"任務 {task.task_id} 處理失敗！")
+
+        print("  ✓ 任務成功完成")
+
+    # 3. 創建 RabbitMQ 消息隊列，配置重試參數
     queue = RabbitMQMessageQueue(
-        resource_manager=rm,
+        process_task,
+        rm,
         amqp_url="amqp://guest:guest@localhost:5672/",
-        queue_name="my_task_queue",
+        queue_prefix="my_task:",
         max_retries=3,  # 最多重試 3 次
         retry_delay_seconds=10,  # 每次重試延遲 10 秒
     )
 
-    # 3. 添加一些任務到隊列
+    # 4. 添加一些任務到隊列
     print("添加任務到隊列...")
 
     # 這個任務會成功
@@ -56,31 +82,6 @@ async def main():
     )
     queue.put(task2)
 
-    # 4. 定義處理函數
-    def process_task(resource: Resource[Job[ProcessingTask]]) -> None:
-        """
-        處理任務的回調函數
-
-        如果任務失敗，會自動重試（最多 max_retries 次）
-        超過重試次數後，任務會被移到 dead letter queue
-        """
-        job = resource.data
-        task = job.payload
-
-        print(f"\n處理任務: {task.task_id}")
-        print(f"  數據: {task.data}")
-        print(f"  重試次數: {job.retries}")
-        if job.result:
-            print(f"  上次錯誤: {job.result}")
-
-        if task.should_fail:
-            # 模擬任務失敗
-            # 這會觸發重試機制
-            # 錯誤信息會被記錄到 job.result
-            raise Exception(f"任務 {task.task_id} 處理失敗！")
-
-        print("  ✓ 任務成功完成")
-
     # 5. 開始消費隊列
     # 注意：在實際應用中，這個函數會阻塞
     # 你可能想在單獨的進程或線程中運行它
@@ -88,7 +89,7 @@ async def main():
     print("按 Ctrl+C 停止\n")
 
     try:
-        queue.start_consume(process_task)
+        queue.start_consume()
     except KeyboardInterrupt:
         print("\n停止消費")
         queue.stop_consuming()

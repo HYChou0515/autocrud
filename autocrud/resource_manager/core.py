@@ -1,5 +1,6 @@
 import datetime as dt
 from collections.abc import Callable, Generator, Iterable, Sequence
+import threading
 from jsonpointer import JsonPointer
 from contextlib import contextmanager, suppress
 from functools import cached_property, wraps
@@ -28,6 +29,7 @@ from autocrud.types import (
     BeforeMigrate,
     BeforeModify,
     CannotModifyResourceError,
+    IMessageQueue,
     OnFailureMigrate,
     OnFailureModify,
     OnSuccessMigrate,
@@ -364,6 +366,7 @@ class ResourceManager(IResourceManager[T], Generic[T]):
         *,
         storage: IStorage,
         blob_store: IBlobStore | None = None,
+        message_queue: Callable[["IResourceManager[T]"], IMessageQueue] | None = None,
         id_generator: Callable[[], str] | None = None,
         migration: IMigration[T] | None = None,
         indexed_fields: list[IndexableField] | None = None,
@@ -389,6 +392,15 @@ class ResourceManager(IResourceManager[T], Generic[T]):
         self._resource_type = resource_type
         self.storage = storage
         self.blob_store = blob_store
+
+        # Set resource_name early because message_queue initialization may need it
+        if isinstance(name, NamingFormat):
+            self._resource_name = NameConverter(_get_type_name(resource_type)).to(
+                NamingFormat.SNAKE,
+            )
+        else:
+            self._resource_name = name
+
         self.data_converter = DataConverter(self.resource_type)
         schema_version = migration.schema_version if migration else None
         self._schema_version = schema_version
@@ -400,13 +412,6 @@ class ResourceManager(IResourceManager[T], Generic[T]):
             resource_type=resource_type,
         )
         self.default_status = default_status
-
-        if isinstance(name, NamingFormat):
-            self._resource_name = NameConverter(_get_type_name(resource_type)).to(
-                NamingFormat.SNAKE,
-            )
-        else:
-            self._resource_name = name
 
         def default_id_generator():
             return f"{self._resource_name}:{uuid4()}"
@@ -422,6 +427,12 @@ class ResourceManager(IResourceManager[T], Generic[T]):
             )
 
         self._binary_processor = BinaryProcessor(resource_type)
+
+        # Message queue is provided as a factory callable
+        if message_queue is not None:
+            self.message_queue = message_queue(self)
+        else:
+            self.message_queue = None
 
     def encode(self, data: T) -> bytes:
         return self._data_serializer.encode(data)
@@ -722,6 +733,17 @@ class ResourceManager(IResourceManager[T], Generic[T]):
             raise NotImplementedError("Blob store is not configured")
         return self.blob_store.get_url(file_id)
 
+    def start_consume(self, *, block: bool = True) -> None:
+        if self.message_queue is None:
+            raise NotImplementedError("Message queue is not configured")
+        worker_thread = threading.Thread(
+            target=self.message_queue.start_consume, daemon=True
+        )
+        worker_thread.start()
+        if block:
+            worker_thread.join()
+        return worker_thread
+
     def count_resources(self, query: ResourceMetaSearchQuery) -> int:
         return self.storage.count(query)
 
@@ -749,6 +771,8 @@ class ResourceManager(IResourceManager[T], Generic[T]):
         info = self._rev_info(_BuildRevInfoCreate(data, status))
         self.storage.save_revision(info, io.BytesIO(self.encode(data)))
         self.storage.save_meta(self._res_meta(_BuildResMetaCreate(info, data)))
+        if self.message_queue is not None:
+            self.message_queue.put(info.resource_id)
         return info
 
     @execute_with_events(

@@ -1,19 +1,23 @@
-from typing import Callable, Generic, TypeVar
+from typing import TYPE_CHECKING, Callable, Generic, TypeVar
 
 
 from autocrud.message_queue.basic import BasicMessageQueue
 from autocrud.types import (
     DataSearchCondition,
     DataSearchOperator,
-    IResourceManager,
+    IMessageQueueFactory,
     Job,
     Resource,
+    ResourceDataSearchSort,
     ResourceMetaSearchQuery,
     ResourceMetaSearchSort,
     ResourceMetaSortDirection,
     ResourceMetaSortKey,
     TaskStatus,
 )
+
+if TYPE_CHECKING:
+    from autocrud.types import IResourceManager
 
 T = TypeVar("T")
 
@@ -26,28 +30,28 @@ class SimpleMessageQueue(BasicMessageQueue[T], Generic[T]):
     provided by AutoCRUD's ResourceManager.
     """
 
-    def __init__(self, resource_manager: IResourceManager[Job[T]]):
+    def __init__(
+        self,
+        do: Callable[[Resource[Job[T]]], None],
+        resource_manager: "IResourceManager[Job[T]]",
+    ):
+        super().__init__(do)
         self._rm = resource_manager
         self._running = False
 
-    @property
-    def rm(self) -> IResourceManager[Job[T]]:
-        """The associated ResourceManager."""
-        return self._rm
-
-    def put(self, payload: T) -> Resource[Job[T]]:
+    def put(self, resource_id: str) -> Resource[Job[T]]:
         """
-        Enqueue a new job.
+        Enqueue a job that has already been created.
 
         Args:
-            payload: The job data/resource to be processed.
+            resource_id: The ID of the job resource that was already created.
 
         Returns:
-            The created job resource.
+            The job resource.
         """
-        job = Job(payload=payload)
-        info = self.rm.create(job)
-        return self.rm.get(info.resource_id)
+        # The job resource is already created by rm.create()
+        # Just return it for confirmation
+        return self.rm.get(resource_id)
 
     def pop(self) -> Resource[Job[T]] | None:
         """
@@ -56,7 +60,7 @@ class SimpleMessageQueue(BasicMessageQueue[T], Generic[T]):
         Returns:
             The job resource if one is available, None otherwise.
         """
-        # Find next pending job, ordered by creation time (FIFO)
+        # Find next pending job, ordered by retries (fewer first), then creation time (FIFO)
         query = ResourceMetaSearchQuery(
             conditions=[
                 DataSearchCondition(
@@ -66,10 +70,14 @@ class SimpleMessageQueue(BasicMessageQueue[T], Generic[T]):
                 )
             ],
             sorts=[
+                ResourceDataSearchSort(
+                    field_path="retries",
+                    direction=ResourceMetaSortDirection.ascending,
+                ),
                 ResourceMetaSearchSort(
                     key=ResourceMetaSortKey.created_time,
                     direction=ResourceMetaSortDirection.ascending,
-                )
+                ),
             ],
             limit=1,
         )
@@ -81,7 +89,8 @@ class SimpleMessageQueue(BasicMessageQueue[T], Generic[T]):
                 # Optimistic locking via revision check could be implemented here
                 # if ResourceManager supported atomic find-and-update.
                 # For now, we fetch, check status, and update.
-                resource = self.rm.get(meta.resource_id)
+                with self._rm_meta_provide(meta.created_by):
+                    resource = self.rm.get(meta.resource_id)
 
                 if resource.data.status != TaskStatus.PENDING:
                     continue
@@ -91,7 +100,8 @@ class SimpleMessageQueue(BasicMessageQueue[T], Generic[T]):
                 updated_job.status = TaskStatus.PROCESSING
 
                 # Update revision
-                self.rm.create_or_update(resource.info.resource_id, updated_job)
+                with self._rm_meta_provide(meta.created_by):
+                    self.rm.create_or_update(resource.info.resource_id, updated_job)
 
                 # Return the updated resource
                 resource.data = updated_job
@@ -102,7 +112,7 @@ class SimpleMessageQueue(BasicMessageQueue[T], Generic[T]):
 
         return None
 
-    def start_consume(self, do: Callable[[Resource[Job[T]]], None]) -> None:
+    def start_consume(self) -> None:
         """Start consuming jobs from the queue."""
         import time
 
@@ -111,18 +121,19 @@ class SimpleMessageQueue(BasicMessageQueue[T], Generic[T]):
             job = self.pop()
             if job:
                 try:
-                    do(job)
+                    self._do(job)
                     self.complete(job.info.resource_id)
                 except Exception as e:
                     # Update Job with error message and retry count
                     error_msg = str(e)
                     updated_job = job.data
                     updated_job.status = TaskStatus.FAILED
-                    updated_job.result = error_msg
+                    updated_job.errmsg = error_msg
                     updated_job.retries += 1
 
                     try:
-                        self.rm.create_or_update(job.info.resource_id, updated_job)
+                        with self._rm_meta_provide(job.info.created_by):
+                            self.rm.create_or_update(job.info.resource_id, updated_job)
                     except Exception:
                         # If update fails, still mark as failed via fail()
                         pass
@@ -134,3 +145,26 @@ class SimpleMessageQueue(BasicMessageQueue[T], Generic[T]):
     def stop_consuming(self):
         """Stop the consumption loop."""
         self._running = False
+
+
+class SimpleMessageQueueFactory(IMessageQueueFactory):
+    """Factory for creating SimpleMessageQueue instances."""
+
+    def build(
+        self, do: Callable[[Resource[Job[T]]], None]
+    ) -> Callable[["IResourceManager[Job[T]]"], SimpleMessageQueue[T]]:
+        """Build a SimpleMessageQueue factory function.
+
+        Args:
+            do: Callback function to process each job.
+
+        Returns:
+            A callable that accepts an IResourceManager and returns a SimpleMessageQueue instance.
+        """
+
+        def create_queue(
+            resource_manager: "IResourceManager[Job[T]]",
+        ) -> SimpleMessageQueue[T]:
+            return SimpleMessageQueue(do, resource_manager)
+
+        return create_queue

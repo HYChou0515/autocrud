@@ -53,9 +53,14 @@ from autocrud.resource_manager.storage_factory import (
 from autocrud.types import (
     IEventHandler,
     IMigration,
+    TaskStatus,
+    IMessageQueue,
+    IMessageQueueFactory,
     IPermissionChecker,
     IResourceManager,
     IndexableField,
+    Job,
+    Resource,
     ResourceMeta,
     RevisionInfo,
     RevisionStatus,
@@ -173,6 +178,7 @@ class AutoCRUD:
         | Callable[[type], str] = "kebab",
         route_templates: list[IRouteTemplate] | None = None,
         storage_factory: IStorageFactory | None = None,
+        message_queue_factory: IMessageQueueFactory | None = None,
         admin: str | None = None,
         permission_checker: IPermissionChecker | None = None,
         dependency_provider: DependencyProvider | None = None,
@@ -193,8 +199,17 @@ class AutoCRUD:
             self.blob_store = MemoryBlobStore()
 
         self.resource_managers: OrderedDict[str, IResourceManager] = OrderedDict()
+        self.message_queues: OrderedDict[str, IMessageQueue] = OrderedDict()
         self.model_names: dict[type[T], str | None] = {}
         self.model_naming = model_naming
+
+        # Set default message queue factory
+        if message_queue_factory is None:
+            from autocrud.message_queue.simple import SimpleMessageQueueFactory
+
+            self.message_queue_factory = SimpleMessageQueueFactory()
+        else:
+            self.message_queue_factory = message_queue_factory
         self.route_templates: list[IRouteTemplate] = (
             [
                 CreateRouteTemplate(dependency_provider=dependency_provider),
@@ -262,6 +277,41 @@ class AutoCRUD:
                 f"Model {model.__name__} is registered with multiple names."
             )
         return self.resource_managers[model_name]
+
+    def _is_job_subclass(self, model: type) -> bool:
+        """Check if a model is a subclass of Job.
+
+        Args:
+            model: The model class to check.
+
+        Returns:
+            True if the model is a Job subclass, False otherwise.
+        """
+        try:
+            from typing import get_origin
+
+            # First check if model itself is a generic Job type like Job[T]
+            origin = get_origin(model)
+            if origin is Job:
+                return True
+
+            # Check if model has __mro__ (method resolution order)
+            if not hasattr(model, "__mro__"):
+                return False
+
+            # Walk through the MRO to find Job
+            for base in model.__mro__:
+                base_origin = get_origin(base)
+                if base_origin is not None:
+                    # This is a generic type, check if origin is Job
+                    if base_origin is Job:
+                        return True
+                elif base is Job:
+                    return True
+
+            return False
+        except (AttributeError, TypeError):
+            return False
 
     def _resource_name(self, model: type[T]) -> str:
         """Convert model class name to resource name using the configured naming convention.
@@ -340,6 +390,8 @@ class AutoCRUD:
         default_status: RevisionStatus | None = None,
         default_user: str | UnsetType = UNSET,
         default_now: Callable[[], dt.datetime] | UnsetType = UNSET,
+        message_queue_factory: IMessageQueueFactory | None | UnsetType = UNSET,
+        job_handler: Callable[[Resource[Job[T]]], None] | None = None,
     ) -> None:
         """Add a data model to AutoCRUD and configure its API endpoints.
 
@@ -406,7 +458,7 @@ class AutoCRUD:
             Models should be added during application startup before handling requests.
             The order of adding models doesn't affect the generated APIs.
         """
-        _indexed_fields = []
+        _indexed_fields: list[IndexableField] = []
         for field in indexed_fields or []:
             if isinstance(field, IndexableField):
                 _indexed_fields.append(field)
@@ -424,6 +476,7 @@ class AutoCRUD:
                 raise TypeError(
                     "Invalid indexed field, should be IndexableField or tuple[field_name, field_type]",
                 )
+
         model_name = name or self._resource_name(model)
         if model_name in self.resource_managers:
             raise ValueError(f"Model name {model_name} already exists.")
@@ -450,6 +503,32 @@ class AutoCRUD:
             other_options["default_now"] = default_now
         elif self.default_now is not UNSET:
             other_options["default_now"] = self.default_now
+        # Auto-detect Job subclass and create message queue
+        if self._is_job_subclass(model) and job_handler is not None:
+            # Determine which factory to use
+            if message_queue_factory is UNSET:
+                mq_factory = self.message_queue_factory
+            elif message_queue_factory is None:
+                mq_factory = None  # Explicitly disabled
+            else:
+                mq_factory = message_queue_factory
+
+            if mq_factory is not None:
+                # Create message queue with job handler
+                other_options["message_queue"] = mq_factory.build(job_handler)
+
+                # Check if status is already in indexed fields
+                if not any(field.field_path == "status" for field in _indexed_fields):
+                    _indexed_fields.append(
+                        IndexableField(field_path="status", field_type=TaskStatus)
+                    )
+
+                # Check if retries is already in indexed fields
+                if not any(field.field_path == "retries" for field in _indexed_fields):
+                    _indexed_fields.append(
+                        IndexableField(field_path="retries", field_type=int)
+                    )
+
         resource_manager = ResourceManager(
             model,
             storage=storage,
