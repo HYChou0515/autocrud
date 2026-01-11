@@ -1,4 +1,4 @@
-from typing import Callable, Generic, TypeVar
+from typing import TYPE_CHECKING, Callable, Generic, TypeVar
 
 
 from autocrud.message_queue.basic import BasicMessageQueue
@@ -15,6 +15,9 @@ from autocrud.types import (
     TaskStatus,
 )
 
+if TYPE_CHECKING:
+    from autocrud.types import IResourceManager
+
 T = TypeVar("T")
 
 
@@ -26,23 +29,28 @@ class SimpleMessageQueue(BasicMessageQueue[T], Generic[T]):
     provided by AutoCRUD's ResourceManager.
     """
 
-    def __init__(self, do: Callable[[Resource[Job[T]]], None]):
+    def __init__(
+        self,
+        do: Callable[[Resource[Job[T]]], None],
+        resource_manager: "IResourceManager[Job[T]]",
+    ):
         super().__init__(do)
+        self._rm = resource_manager
         self._running = False
 
-    def put(self, payload: T) -> Resource[Job[T]]:
+    def put(self, resource_id: str) -> Resource[Job[T]]:
         """
-        Enqueue a new job.
+        Enqueue a job that has already been created.
 
         Args:
-            payload: The job data/resource to be processed.
+            resource_id: The ID of the job resource that was already created.
 
         Returns:
-            The created job resource.
+            The job resource.
         """
-        job = Job(payload=payload)
-        info = self.rm.create(job)
-        return self.rm.get(info.resource_id)
+        # The job resource is already created by rm.create()
+        # Just return it for confirmation
+        return self.rm.get(resource_id)
 
     def pop(self) -> Resource[Job[T]] | None:
         """
@@ -137,14 +145,21 @@ class SimpleMessageQueue(BasicMessageQueue[T], Generic[T]):
 class SimpleMessageQueueFactory(IMessageQueueFactory):
     """Factory for creating SimpleMessageQueue instances."""
 
-    def build(self, do: Callable[[Resource[Job[T]]], None]) -> SimpleMessageQueue[T]:
-        """Build a SimpleMessageQueue instance with a job handler.
+    def build(
+        self, do: Callable[[Resource[Job[T]]], None]
+    ) -> Callable[["IResourceManager[Job[T]]"], SimpleMessageQueue[T]]:
+        """Build a SimpleMessageQueue factory function.
 
         Args:
             do: Callback function to process each job.
 
         Returns:
-            A SimpleMessageQueue instance. The resource manager should be
-            injected later via set_resource_manager().
+            A callable that accepts an IResourceManager and returns a SimpleMessageQueue instance.
         """
-        return SimpleMessageQueue(do)
+
+        def create_queue(
+            resource_manager: "IResourceManager[Job[T]]",
+        ) -> SimpleMessageQueue[T]:
+            return SimpleMessageQueue(do, resource_manager)
+
+        return create_queue

@@ -1624,20 +1624,6 @@ class IResourceManager(ABC, Generic[T]):
         """
 
     @abstractmethod
-    def put_job(self, payload: T) -> "Resource[Job[T]]":
-        """Put a job into the message queue.
-
-        Arguments:
-            - payload (T): the job payload.
-
-        Returns:
-            - resource (Resource[Job[T]]): the created job resource.
-
-        Raises:
-            - NotImplementedError: if message queue is not configured.
-        """
-
-    @abstractmethod
     def start_consume(self, *, block: bool = True) -> None:
         """Start consuming jobs from the message queue.
 
@@ -1767,21 +1753,15 @@ class IMessageQueue(ABC, Generic[T]):
     """Interface for a message queue that manages jobs as resources."""
 
     @abstractmethod
-    def set_resource_manager(self, resource_manager: IResourceManager[Job[T]]) -> None:
-        """Set the resource manager for this message queue.
-
-        This method allows late injection of the resource manager after the
-        message queue has been created. This is useful when the message queue
-        needs to be created before the resource manager exists.
+    def put(self, resource_id: str) -> Resource[Job[T]]:
+        """Enqueue a job that has already been created.
 
         Args:
-            resource_manager: The resource manager to use for managing jobs.
-        """
-        ...
+            resource_id: The ID of the job resource that was already created.
 
-    @abstractmethod
-    def put(self, payload: T) -> Resource[Job[T]]:
-        """Enqueue a new job."""
+        Returns:
+            The job resource.
+        """
         ...
 
     @abstractmethod
@@ -1812,31 +1792,21 @@ class IMessageQueue(ABC, Generic[T]):
         """Stop consuming jobs from the queue."""
         ...
 
-    def add_task(self, payload: T) -> Resource[Job[T]]:
-        return self.put(payload)
-
-    def enqueue(self, payload: T) -> Resource[Job[T]]:
-        return self.put(payload)
-
-    def next_task(self) -> Resource[Job[T]] | None:
-        return self.pop()
-
-    def dequeue(self) -> Resource[Job[T]] | None:
-        return self.pop()
-
 
 class IMessageQueueFactory(ABC):
     """Factory interface for creating message queues."""
 
     @abstractmethod
-    def build(self, do: "Callable[[Resource[Job[T]]], None]") -> IMessageQueue[T]:
-        """Build a message queue instance with a job handler.
+    def build(
+        self, do: "Callable[[Resource[Job[T]]], None]"
+    ) -> "Callable[[IResourceManager[Job[T]]], IMessageQueue[T]]":
+        """Build a message queue factory function.
 
         Args:
             do: Callback function to process each job.
 
         Returns:
-            An IMessageQueue instance. The resource manager should be
-            injected later via set_resource_manager().
+            A callable that accepts an IResourceManager and returns an IMessageQueue instance.
+            The ResourceManager will inject itself when calling this function.
         """
         ...

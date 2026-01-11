@@ -393,7 +393,6 @@ def get_crud():
     _crud.add_model(
         GameEvent,
         indexed_fields=[("status", str)],
-        message_queue_factory=SimpleMessageQueueFactory(),
         job_handler=process_game_event,
     )
 
@@ -456,7 +455,6 @@ def create_sample_events(crud: AutoCRUD):
         print("❌ 遊戲事件管理器未找到")
         return
 
-    mq = event_manager.message_queue
     current_time = dt.datetime.now()
 
     # 創建各種遊戲事件
@@ -501,7 +499,7 @@ def create_sample_events(crud: AutoCRUD):
         for event_payload in sample_events:
             try:
                 # 使用 message queue 的 put 方法加入事件
-                event_resource = mq.put(event_payload)
+                event_manager.create(GameEvent(payload=event_payload))
                 print(
                     f"✅ 創建事件: {event_payload.event_type.value} - {event_payload.description}"
                 )

@@ -32,31 +32,7 @@ async def main():
         storage_factory=storage_factory,
     )
 
-    # 2. 創建 RabbitMQ 消息隊列，配置重試參數
-    queue = RabbitMQMessageQueue(
-        amqp_url="amqp://guest:guest@localhost:5672/",
-        queue_name="my_task_queue",
-        max_retries=3,  # 最多重試 3 次
-        retry_delay_seconds=10,  # 每次重試延遲 10 秒
-    )
-    queue.set_resource_manager(rm)
-
-    # 3. 添加一些任務到隊列
-    print("添加任務到隊列...")
-
-    # 這個任務會成功
-    task1 = ProcessingTask(
-        task_id="task-1", data="This will succeed", should_fail=False
-    )
-    queue.put(task1)
-
-    # 這個任務會失敗並重試
-    task2 = ProcessingTask(
-        task_id="task-2", data="This will fail and retry", should_fail=True
-    )
-    queue.put(task2)
-
-    # 4. 定義處理函數
+    # 2. 定義處理函數
     def process_task(resource: Resource[Job[ProcessingTask]]) -> None:
         """
         處理任務的回調函數
@@ -81,6 +57,31 @@ async def main():
 
         print("  ✓ 任務成功完成")
 
+    # 3. 創建 RabbitMQ 消息隊列，配置重試參數
+    queue = RabbitMQMessageQueue(
+        process_task,
+        rm,
+        amqp_url="amqp://guest:guest@localhost:5672/",
+        queue_prefix="my_task:",
+        max_retries=3,  # 最多重試 3 次
+        retry_delay_seconds=10,  # 每次重試延遲 10 秒
+    )
+
+    # 4. 添加一些任務到隊列
+    print("添加任務到隊列...")
+
+    # 這個任務會成功
+    task1 = ProcessingTask(
+        task_id="task-1", data="This will succeed", should_fail=False
+    )
+    queue.put(task1)
+
+    # 這個任務會失敗並重試
+    task2 = ProcessingTask(
+        task_id="task-2", data="This will fail and retry", should_fail=True
+    )
+    queue.put(task2)
+
     # 5. 開始消費隊列
     # 注意：在實際應用中，這個函數會阻塞
     # 你可能想在單獨的進程或線程中運行它
@@ -88,7 +89,7 @@ async def main():
     print("按 Ctrl+C 停止\n")
 
     try:
-        queue.start_consume(process_task)
+        queue.start_consume()
     except KeyboardInterrupt:
         print("\n停止消費")
         queue.stop_consuming()

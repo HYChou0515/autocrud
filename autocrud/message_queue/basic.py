@@ -41,10 +41,6 @@ class BasicMessageQueue(IMessageQueue[T], Generic[T]):
             user=self.rm.user_or_unset or user,
         )
 
-    def set_resource_manager(self, resource_manager: IResourceManager[Job[T]]) -> None:
-        """Set the resource manager for this message queue."""
-        self._rm = resource_manager
-
     def complete(self, resource_id: str, result: str | None = None) -> Resource[Job[T]]:
         """
         Mark a job as completed.

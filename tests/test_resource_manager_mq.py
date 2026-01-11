@@ -46,19 +46,16 @@ def test_resource_manager_has_message_queue():
     # Verify it has message queue methods that work
     with rm.meta_provide(user="test", now=dt.datetime.now()):
         payload = EmailPayload(to="test@example.com", subject="Test", body="Test")
-        job = rm.put_job(payload)
+        info = rm.create(EmailJob(payload=payload))
+        job = rm.get(info.resource_id)
         assert job is not None
 
     # Add a regular model - should raise NotImplementedError
     crud.add_model(NotAJob, name="regular-model")
     rm_regular = crud.get_resource_manager("regular-model")
 
-    try:
-        with rm_regular.meta_provide(user="test", now=dt.datetime.now()):
-            rm_regular.put_job({"name": "test", "value": 1})
-        assert False, "Should have raised NotImplementedError"
-    except NotImplementedError as e:
-        assert "Message queue is not configured" in str(e)
+    # For regular (non-Job) models, there's no message queue
+    assert rm_regular.message_queue is None
 
 
 def test_resource_manager_start_consume():
@@ -84,12 +81,13 @@ def test_resource_manager_start_consume():
     # Get the resource manager
     rm = crud.get_resource_manager("email-jobs")
 
-    # Use put_job
+    # Create a job
     with rm.meta_provide(user="test-user", now=dt.datetime.now()):
         payload = EmailPayload(
             to="user@example.com", subject="Test Email", body="This is a test"
         )
-        job_resource = rm.put_job(payload)
+        info = rm.create(EmailJob(payload=payload))
+        job_resource = rm.get(info.resource_id)
 
     # Verify job was created
     assert job_resource.data.payload.to == "user@example.com"
@@ -112,19 +110,14 @@ def test_resource_manager_start_consume():
 
 
 def test_resource_manager_message_queue_none_for_non_job():
-    """Test that ResourceManager raises NotImplementedError for non-Job types."""
+    """Test that ResourceManager has no message queue for non-Job types."""
     crud = AutoCRUD(storage_factory=MemoryStorageFactory())
     crud.add_model(NotAJob, name="regular-model")
 
     rm = crud.get_resource_manager("regular-model")
 
-    # Should raise NotImplementedError
-    try:
-        with rm.meta_provide(user="test", now=dt.datetime.now()):
-            rm.put_job({"name": "test", "value": 1})
-        assert False, "Should have raised NotImplementedError"
-    except NotImplementedError as e:
-        assert "Message queue is not configured" in str(e)
+    # Should have no message queue
+    assert rm.message_queue is None
 
 
 def test_resource_manager_disabled_message_queue():
@@ -136,13 +129,8 @@ def test_resource_manager_disabled_message_queue():
 
     rm = crud.get_resource_manager("email-jobs")
 
-    # Should raise NotImplementedError
-    try:
-        with rm.meta_provide(user="test", now=dt.datetime.now()):
-            rm.put_job(EmailPayload(to="test@example.com", subject="Test", body="Test"))
-        assert False, "Should have raised NotImplementedError"
-    except NotImplementedError as e:
-        assert "Message queue is not configured" in str(e)
+    # Should have no message queue
+    assert rm.message_queue is None
 
 
 def test_resource_manager_message_queue_workflow():
@@ -169,12 +157,22 @@ def test_resource_manager_message_queue_workflow():
 
     # Enqueue multiple jobs
     with rm.meta_provide(user="producer", now=dt.datetime.now()):
-        job1 = rm.put_job(
-            EmailPayload(to="user1@example.com", subject="Job 1", body="Body 1")
+        info1 = rm.create(
+            EmailJob(
+                payload=EmailPayload(
+                    to="user1@example.com", subject="Job 1", body="Body 1"
+                )
+            )
         )
-        job2 = rm.put_job(
-            EmailPayload(to="user2@example.com", subject="Job 2", body="Body 2")
+        job1 = rm.get(info1.resource_id)
+        info2 = rm.create(
+            EmailJob(
+                payload=EmailPayload(
+                    to="user2@example.com", subject="Job 2", body="Body 2"
+                )
+            )
         )
+        job2 = rm.get(info2.resource_id)
 
     # Override to stop after processing 2 jobs
     original_process = process_job
@@ -212,5 +210,6 @@ def test_resource_manager_custom_mq_factory():
     # Should work with custom factory
     with rm.meta_provide(user="test", now=dt.datetime.now()):
         payload = EmailPayload(to="test@example.com", subject="Test", body="Test")
-        job = rm.put_job(payload)
+        info = rm.create(EmailJob(payload=payload))
+        job = rm.get(info.resource_id)
         assert job is not None

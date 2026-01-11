@@ -33,8 +33,7 @@ def get_simple_queue(rm):
     def handler(job):
         pass
 
-    mq = SimpleMessageQueue(handler)
-    mq.set_resource_manager(rm)
+    mq = SimpleMessageQueue(handler, rm)
     return mq
 
 
@@ -43,11 +42,11 @@ def get_rabbitmq_queue(rm):
         pass
 
     queue_prefix = "test:"
-    mq = RabbitMQMessageQueue(handler, queue_prefix=queue_prefix)
-    mq.set_resource_manager(rm)
+    mq = RabbitMQMessageQueue(handler, rm, queue_prefix=queue_prefix)
     # Purge to ensure a clean state for each test
     if mq.queue_name:
-        mq._channel.queue_purge(mq.queue_name)
+        with mq._get_connection() as (_, channel):
+            channel.queue_purge(mq.queue_name)
     return mq
 
 
@@ -57,16 +56,32 @@ def mq_context(request: pytest.FixtureRequest):
     meta_store = MemoryMetaStore()
     resource_store = MemoryResourceStore()
     storage = SimpleStorage(meta_store, resource_store)
-    rm = ResourceManager(
-        Job[Payload],
-        storage=storage,
-        indexed_fields=[IndexableField(field_path="status", field_type=str)],
-    )
+
+    def handler(job):
+        pass
 
     if request.param == "simple":
-        queue = get_simple_queue(rm)
+        mq_factory = SimpleMessageQueueFactory()
+        rm = ResourceManager(
+            Job[Payload],
+            storage=storage,
+            message_queue=mq_factory.build(handler),
+            indexed_fields=[IndexableField(field_path="status", field_type=str)],
+        )
+        queue = rm.message_queue
     else:
-        queue = get_rabbitmq_queue(rm)
+        mq_factory = RabbitMQMessageQueueFactory(queue_prefix="test:")
+        rm = ResourceManager(
+            Job[Payload],
+            storage=storage,
+            message_queue=mq_factory.build(handler),
+            indexed_fields=[IndexableField(field_path="status", field_type=str)],
+        )
+        queue = rm.message_queue
+        # Purge to ensure a clean state for each test
+        if queue.queue_name:
+            with queue._get_connection() as (_, channel):
+                channel.queue_purge(queue.queue_name)
 
     return queue, rm
 
@@ -91,7 +106,8 @@ class TestMessageQueueUnified:
         with rm.meta_provide(user=user, now=now):
             # 1. Enqueue
             payload1 = Payload(task_name="task1", priority=1)
-            res1 = queue.put(payload1)
+            info1 = rm.create(Job(payload=payload1))
+            res1 = rm.get(info1.resource_id)
             assert res1.data.status == TaskStatus.PENDING
             assert res1.data.payload == payload1
 
@@ -99,7 +115,8 @@ class TestMessageQueueUnified:
             now2 = now + dt.timedelta(seconds=1)
             with rm.meta_provide(user=user, now=now2):
                 payload2 = Payload(task_name="task2", priority=2)
-                res2 = queue.put(payload2)
+                info2 = rm.create(Job(payload=payload2))
+                res2 = rm.get(info2.resource_id)
 
         # 3. Pop (FIFO) - should get task1
         now3 = now + dt.timedelta(seconds=2)
@@ -127,24 +144,14 @@ class TestMessageQueueUnified:
             # 7. Empty
             assert queue.pop() is None
 
-    def test_aliases(self):
-        queue, rm = self.queue, self.rm
-        user = "test_user"
-        now = dt.datetime.now(dt.timezone.utc)
-        with rm.meta_provide(user=user, now=now):
-            queue.add_task(Payload(task_name="t1", priority=0))
-            queue.enqueue(Payload(task_name="t2", priority=0))
-
-            assert queue.dequeue() is not None
-            assert queue.next_task() is not None
-
     def test_missing_resource_resilience(self):
         """Tests that the queue handles cases where the resource is deleted out-of-band."""
         queue, rm = self.queue, self.rm
         payload = Payload(task_name="ghost_task", priority=0)
 
         with rm.meta_provide(user="ghost", now=dt.datetime.now(dt.timezone.utc)):
-            res_put = queue.put(payload)
+            info = rm.create(Job(payload=payload))
+            res_put = rm.get(info.resource_id)
             # Delete direct from RM
             rm.delete(res_put.info.resource_id)
 
@@ -163,9 +170,9 @@ class TestMessageQueueUnified:
         now = dt.datetime.now(dt.timezone.utc)
         with rm.meta_provide(user=user, now=now):
             # Job 1: Success
-            queue_producer.put(Payload(task_name="success_job", priority=1))
+            rm.create(Job(payload=Payload(task_name="success_job", priority=1)))
             # Job 2: Fail logic
-            queue_producer.put(Payload(task_name="fail_job", priority=2))
+            rm.create(Job(payload=Payload(task_name="fail_job", priority=2)))
 
         results = []
         consumer_queue_ref: IMessageQueue[Payload] = None
@@ -232,7 +239,8 @@ class TestMessageQueueUnified:
         # Create a job
         with rm.meta_provide(user=user, now=now):
             payload = Payload(task_name="will_fail", priority=1)
-            res = queue.put(payload)
+            info = rm.create(Job(payload=payload))
+            res = rm.get(info.resource_id)
             resource_id = res.info.resource_id
 
         # Pop and fail it manually
@@ -263,7 +271,7 @@ class TestMessageQueueUnified:
 
         # Create a job that will fail
         with rm.meta_provide(user=user, now=now):
-            queue_producer.put(Payload(task_name="error_test_job", priority=1))
+            rm.create(Job(payload=Payload(task_name="error_test_job", priority=1)))
 
         error_messages = []
 
@@ -274,9 +282,8 @@ class TestMessageQueueUnified:
         def run_queue():
             if isinstance(queue_producer, RabbitMQMessageQueue):
                 queue_consumer = RabbitMQMessageQueue(
-                    worker_logic, queue_prefix=queue_producer.queue_prefix
+                    worker_logic, rm, queue_prefix=queue_producer.queue_prefix
                 )
-                queue_consumer.set_resource_manager(rm)
             else:
                 queue_consumer = queue_producer
                 queue_consumer._do = worker_logic
@@ -333,7 +340,8 @@ class TestMessageQueueUnified:
         # Create a job
         with rm.meta_provide(user=user, now=now):
             payload = Payload(task_name="retry_test", priority=1)
-            res = queue.put(payload)
+            info = rm.create(Job(payload=payload))
+            res = rm.get(info.resource_id)
             resource_id = res.info.resource_id
 
             # Initial retries should be 0
@@ -414,9 +422,14 @@ class TestRabbitMQRetryMechanism:
         def __init__(self, channel):
             self.channel_obj = channel
             self.is_closed = False
+            self.is_open = True
 
         def channel(self):
             return self.channel_obj
+
+        def close(self):
+            self.is_open = False
+            self.is_closed = True
 
         def add_callback_threadsafe(self, callback):
             callback()
@@ -430,11 +443,15 @@ class TestRabbitMQRetryMechanism:
     def mock_rabbitmq_queue(self, mock_resource_manager):
         """Create a RabbitMQ queue with mocked connection."""
         mock_channel = self.MockChannel()
-        mock_connection = self.MockConnection(mock_channel)
 
         with patch("autocrud.message_queue.rabbitmq.pika") as mock_pika:
             mock_pika.URLParameters = MagicMock()
-            mock_pika.BlockingConnection = MagicMock(return_value=mock_connection)
+
+            # Create a factory function that returns new connections with the same channel
+            def create_connection(*args, **kwargs):
+                return self.MockConnection(mock_channel)
+
+            mock_pika.BlockingConnection = create_connection
 
             def mock_basic_properties(**kwargs):
                 return kwargs
@@ -449,14 +466,12 @@ class TestRabbitMQRetryMechanism:
             rm.resource_name = "TestJob"
             queue = RabbitMQMessageQueue(
                 mock_worker,
+                rm,
                 amqp_url="amqp://test",
                 queue_prefix="test:",
                 max_retries=3,
                 retry_delay_seconds=10,
             )
-            queue.set_resource_manager(rm)
-            queue._channel = mock_channel
-            queue._connection = mock_connection
 
             yield queue, mock_channel, rm
 
@@ -477,11 +492,11 @@ class TestRabbitMQRetryMechanism:
             rm.resource_name = "TestJob"
             queue = RabbitMQMessageQueue(
                 worker_logic,
+                rm,
                 queue_prefix="test:",
                 max_retries=5,
                 retry_delay_seconds=15,
             )
-            queue.set_resource_manager(rm)
 
             assert mock_channel.queue_declare.call_count == 3
             calls = mock_channel.queue_declare.call_args_list
@@ -624,11 +639,11 @@ class TestRabbitMQRetryMechanism:
             rm.resource_name = "CustomQueue"
             queue = RabbitMQMessageQueue(
                 worker_logic,
+                rm,
                 queue_prefix="custom:",
                 max_retries=5,
                 retry_delay_seconds=30,
             )
-            queue.set_resource_manager(rm)
 
             assert queue.max_retries == 5
             assert queue.retry_delay_seconds == 30
@@ -819,7 +834,12 @@ class TestMessageQueueFactories:
         def dummy_handler(job):
             pass
 
-        queue = factory.build(dummy_handler)
+        # Create a mock resource manager
+        rm = MagicMock()
+        rm.resource_name = "TestJob"
+
+        queue_builder = factory.build(dummy_handler)
+        queue = queue_builder(rm)
 
         assert isinstance(queue, SimpleMessageQueue)
         assert queue._do == dummy_handler
@@ -831,13 +851,18 @@ class TestMessageQueueFactories:
         def dummy_handler(job):
             pass
 
-        queue = factory.build(dummy_handler)
+        # Create a mock resource manager
+        rm = MagicMock()
+        rm.resource_name = "TestJob"
+
+        queue_builder = factory.build(dummy_handler)
+        queue = queue_builder(rm)
 
         assert isinstance(queue, RabbitMQMessageQueue)
         assert queue._do == dummy_handler
         assert queue.amqp_url == "amqp://guest:guest@localhost:5672/"
         assert queue.queue_prefix == "autocrud:"
-        assert queue.queue_name is None  # Not set until set_resource_manager
+        assert queue.queue_name is not None  # Now set during construction
         assert queue.max_retries == 3
         assert queue.retry_delay_seconds == 10
 
@@ -858,15 +883,20 @@ class TestMessageQueueFactories:
         def dummy_handler(job):
             pass
 
+        # Create a mock resource manager
+        rm = MagicMock()
+        rm.resource_name = "TestJob"
+
         # Mock the connection to avoid actual RabbitMQ connection
         with patch("pika.BlockingConnection"):
-            queue = factory.build(dummy_handler)
+            queue_builder = factory.build(dummy_handler)
+            queue = queue_builder(rm)
 
             assert isinstance(queue, RabbitMQMessageQueue)
             assert queue._do == dummy_handler
             assert queue.amqp_url == custom_url
             assert queue.queue_prefix == custom_prefix
-            assert queue.queue_name is None  # Not set until set_resource_manager
+            assert queue.queue_name is not None  # Now set during construction
             assert queue.max_retries == custom_retries
             assert queue.retry_delay_seconds == custom_delay
 
@@ -880,10 +910,16 @@ class TestMessageQueueFactories:
         def handler2(job):
             pass
 
+        # Create a mock resource manager
+        rm = MagicMock()
+        rm.resource_name = "TestJob"
+
         # Mock the connection to avoid actual RabbitMQ connection
         with patch("pika.BlockingConnection"):
-            queue1 = factory.build(handler1)
-            queue2 = factory.build(handler2)
+            queue_builder1 = factory.build(handler1)
+            queue_builder2 = factory.build(handler2)
+            queue1 = queue_builder1(rm)
+            queue2 = queue_builder2(rm)
 
             # Should be different instances
             assert queue1 is not queue2
