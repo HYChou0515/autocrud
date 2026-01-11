@@ -17,3 +17,4 @@
 | ✅ Route Templates | 標準 CRUD 與plug-in自定義端點 |
 | ✅ 搜尋與索引 (Search / Index) | Meta Store 提供高效篩選、排序、分頁與複雜查詢 |
 | ✅ 審計 / 日誌 (Audit / Logging) | 支援事件後的審計紀錄與審查流程 |
+| ✅ 訊息佇列 (Message Queue) | 內建非同步任務處理，將 Job 視為資源進行版本與狀態管理 |

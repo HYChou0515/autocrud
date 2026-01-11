@@ -24,6 +24,12 @@ ResourceManager 是 AutoCRUD 的核心類別，負責管理各類型資源的 CR
     本體使用S3或Disk, 以便快速以key-value方式讀取  
     ➡️ *[Storage](auto_routes.md#storage)*
 
+- **事件驅動架構 (Event Driven)**: 支援 Sync 與 Async 處理
+
+    - **Sync (同步)**: 直接介入 Request 週期 (Before/After)，適合驗證、交易一致性更新。
+    - **Async (非同步)**: 透過整合 Message Queue 或 Background Tasks 處理耗時任務，不阻塞 API 回應。
+    ➡️ *[Event Handling](#event-handling)*
+
 - **彈性的結構變更**：schema 版本控管，支援自訂搬遷邏輯  
 
     當需要不相容的結構更新時，僅須定義最小化/僅業務的搬遷邏輯，即可支援自動升級與資料遷移。  
@@ -1039,7 +1045,129 @@ assert res.category == "uncategorized"
 ## 進階功能（Advance Usage）
 
 - 權限檢查：可注入 `IPermissionChecker` 實現細緻權限控管
-- 事件處理：支援自訂事件處理器，擴展行為
+- 事件處理：支援自訂事件處理器，擴展行為（詳見下方專章）
+
+---
+
+## 事件處理 (Event Handling)
+
+AutoCRUD 提供了一套強大的事件掛鉤機制，讓您能在資源生命週期的各個階段介入。
+
+### 事件階段 (Phases)
+
+- `before`: 動作執行前。若拋出異常可中斷流程。適合資料驗證、權限檢查。
+- `after`: 動作執行後（執行完畢，尚未回傳）。
+- `on_success`: 僅在動作成功後觸發。適合觸發後續流程、審計日誌。
+- `on_failure`: 僅在動作失敗時觸發。適合錯誤告警。
+
+最常見的使用方式，直接在 API 請求線程中執行 (Blocking)。使用 `autocrud.resource_manager.events.do` 建構鏈式處理器。
+
+```{code-block} python
+from autocrud.resource_manager.events import do
+from autocrud.types import ResourceAction, EventContext
+
+def validate_category(ctx: EventContext):
+    # ctx.data contains the payload
+    if ctx.data.category == "forbidden":
+        raise ValueError("Forbidden category")
+
+def audit_log(ctx: EventContext):
+    print(f"User {ctx.user} created {ctx.resource_name}")
+
+# 定義 Handler Chain
+handlers = (
+    do(validate_category).before(ResourceAction.create)
+    .do(audit_log).on_success(ResourceAction.create)
+)
+
+autocrud.add_model(MyModel, event_handlers=handlers)
+```
+
+---
+
+## 訊息佇列整合 (Message Queue Integration)
+```{versionadded} 0.7.0
+```
+AutoCRUD 將「任務 (Job)」視為一種標準資源，這意味著您可以使用 ResourceManager 的強大功能（版本控制、權限檢查、搜尋）來管理後台任務。
+
+### 基本設定
+
+使用 `add_model` 並配合 `job_handler` 參數，即可自動啟用 Message Queue 功能。
+
+1.  **定義任務 Payload 與 Job 模型**
+    須繼承 `autocrud.types.Job`。
+
+    ```{code-block} python
+    from autocrud.types import Job, Resource
+    from msgspec import Struct
+    
+    # 定義任務內容
+    class EmailPayload(Struct):
+        to: str
+        subject: str
+    
+    # 定義 Job 模型 (繼承 Job[Payload])
+    class EmailJob(Job[EmailPayload]):
+        pass
+    ```
+
+2.  **實作處理邏輯 (Worker)**
+
+    ```{code-block} python
+    def send_email_worker(resource: Resource[EmailJob]):
+        job = resource.data  # EmailJob
+        # payload = job.payload # (視 Job 定義而定，通常 Job 繼承 msgspec.Struct，欄位直接在 Job 上)
+        # 若使用 Job[T], 則 T 的欄位會被 flatten 還是作為 payload? 
+        # 查看 Job[T] 定義: class Job(Struct, Generic[T]): payload: T, status: ...
+        payload = job.payload
+        
+        print(f"Sending email to {payload.to}")
+        # 模擬發送...
+    ```
+
+3.  **註冊與使用**
+
+    在 `AutoCRUD` 初始化時指定 `message_queue_factory`，並在 `add_model` 時傳入 `job_handler`。
+
+    ```{code-block} python
+    from autocrud import AutoCRUD
+    from autocrud.message_queue.simple import SimpleMessageQueueFactory
+
+    # 使用 SimpleMQ (開發用) 或 RabbitMQMessageQueueFactory (生產用)
+    mq_factory = SimpleMessageQueueFactory() 
+
+    crud = AutoCRUD(message_queue_factory=mq_factory)
+    
+    # 註冊 Job 模型並綁定處理器
+    # 系統會自動將 status 欄位加入索引
+    crud.add_model(EmailJob, job_handler=send_email_worker)
+
+    # 取得 Manager
+    manager = crud.get_resource_manager(EmailJob)
+
+    # 發布任務
+    # 1. 建立 Job 資料
+    job_data = EmailJob(payload=EmailPayload(to="user@example.com", subject="Hi"))
+    
+    # 2. 透過 manager 建立資源 -> 自動 Enqueue
+    manager.create(job_data)
+    ```
+
+### 任務狀態查詢
+
+由於 Job 也是資源，您可以直接使用 `search_data` 來監控任務狀態。
+
+```{code-block} python
+from autocrud.types import DataSearchCondition, TaskStatus
+
+# 尋找所有失敗的任務
+failed_jobs = manager.search_data(
+    DataSearchCondition("status", "eq", TaskStatus.FAILED)
+)
+
+for res in failed_jobs:
+    print(f"Job {res.id} failed: {res.data.result}") # result 欄位儲存錯誤訊息
+```
 
 ---
 
