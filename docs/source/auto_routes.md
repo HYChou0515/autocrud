@@ -753,25 +753,163 @@ AutoCRUD 目前支援以下 Resource Store 實作：
 ```
 
 #### **CachedS3ResourceStore**
+```{versionadded} 0.6.9
+```
   - **架構**: `S3ResourceStore` 的增強版，結合了本地快取（如 Memory Cache）。
   - **讀取策略**: 優先從快取讀取，若快取未命中則從 S3 下載並回填快取。
   - **寫入策略**: 雙重寫入（Dual-Write），同時寫入快取與 S3，確保一致性。
+  - **TTL 控制**: 根據資源狀態設定不同的 TTL（draft: 60秒, stable: 3600秒）。
   - **效能優勢**: 大幅降低 S3 讀取延遲與費用，特別適合讀多寫少的場景。
+
+  **讀取流程**:
+  ```{mermaid}
+  flowchart TD
+    A[讀取請求] --> B{檢查 Cache}
+    B -->|命中| C[返回 Cached Data]
+    B -->|未命中| D[從 S3 下載]
+    D --> E[寫入 Cache<br/>設定 TTL]
+    E --> F[返回 Data]
+  ```
+
+  **寫入流程**:
+  ```{mermaid}
+  flowchart TD
+    A[寫入請求] --> B[同時寫入 Cache]
+    A --> C[同時寫入 S3]
+    B --> D[完成]
+    C --> D
+  ```
 
   ```python
   from autocrud.resource_manager.resource_store.cached_s3 import CachedS3ResourceStore
   from autocrud.resource_manager.resource_store.cache import MemoryCache
 
   res_store = CachedS3ResourceStore(
-      caches=[MemoryCache(ttl=300)],  # 使用記憶體快取，TTL 300秒
+      caches=[MemoryCache()],
+      ttl_draft=60,      # Draft 狀態的 TTL（秒）
+      ttl_stable=3600,   # Stable 狀態的 TTL（秒）
       endpoint_url="http://minio:9000",
       bucket="my-bucket",
       prefix="resources/",
-      encoding="msgpack"
+      access_key_id="minioadmin",
+      secret_access_key="minioadmin"
   )
   ```
 ```{seealso}
 [`autocrud.resource_manager.resource_store.cached_s3.CachedS3ResourceStore`](#autocrud.resource_manager.resource_store.cached_s3.CachedS3ResourceStore)
+```
+
+#### **ETagCachedS3ResourceStore**
+```{versionadded} 0.7.2
+```
+  - **架構**: 進階的 `CachedS3ResourceStore`，使用 HTTP ETag 機制進行 cache validation。
+  - **驗證策略**: 讀取前先用 HEAD 請求檢查 S3 的 ETag，只在變更時重新下載。
+  - **效能優勢**: HEAD 請求成本遠低於 GET，大幅減少不必要的資料傳輸。
+  - **適用場景**: 資料變更頻率低但需確保即時性的場景。
+
+  **ETag 驗證流程**:
+  ```{mermaid}
+  flowchart TD
+    A[讀取請求] --> B{檢查 Cache}
+    B -->|未命中| G[從 S3 下載]
+    B -->|命中| C[HEAD 請求<br/>獲取 S3 ETag]
+    C --> D{ETag 比對}
+    D -->|相同| E[返回 Cached Data<br/>節省傳輸]
+    D -->|不同| F[Invalidate Cache]
+    F --> G
+    G --> H[保存 Data + ETag]
+    H --> I[返回 Data]
+  ```
+
+  ```python
+  from autocrud.resource_manager.resource_store.etag_cached_s3 import ETagCachedS3ResourceStore
+  from autocrud.resource_manager.resource_store.cache import MemoryCache
+
+  res_store = ETagCachedS3ResourceStore(
+      caches=[MemoryCache()],
+      ttl_draft=60,
+      ttl_stable=3600,
+      endpoint_url="http://minio:9000",
+      bucket="my-bucket",
+      prefix="resources/",
+      access_key_id="minioadmin",
+      secret_access_key="minioadmin"
+  )
+  ```
+```{seealso}
+[`autocrud.resource_manager.resource_store.etag_cached_s3.ETagCachedS3ResourceStore`](#autocrud.resource_manager.resource_store.etag_cached_s3.ETagCachedS3ResourceStore)
+```
+
+#### **MQCachedS3ResourceStore**
+```{versionadded} 0.7.2
+```
+  - **架構**: 使用 RabbitMQ 進行跨 instance cache invalidation 的 `CachedS3ResourceStore`。
+  - **同步機制**: 寫入時發送 invalidation message 至 RabbitMQ，所有 instance 接收後自動清除本地 cache。
+  - **訂閱模式**: 內建 background thread 訂閱 invalidation queue，自動處理 cache 同步。
+  - **效能優勢**: 無需每次讀取時檢查 S3，效率最高，適合多 instance 部署。
+  - **適用場景**: 分散式系統、多 instance 部署、需要強一致性的場景。
+
+  **讀取流程**:
+  ```{mermaid}
+  flowchart TD
+    A[讀取請求] --> B{檢查 Cache}
+    B -->|命中| C[返回 Cached Data]
+    B -->|未命中| D[從 S3 下載]
+    D --> E[寫入 Cache]
+    E --> F[返回 Data]
+  ```
+
+  **跨 Instance 同步流程**:
+  ```{mermaid}
+  flowchart TD
+    subgraph Instance A
+      A1[寫入資源] --> A2[更新 S3]
+      A2 --> A3[發送 Invalidation<br/>至 RabbitMQ]
+      A3 --> A4[更新本地 Cache]
+    end
+    
+    subgraph RabbitMQ
+      MQ[Invalidation Queue]
+    end
+    
+    subgraph Instance B
+      B1[Background Thread<br/>訂閱 Queue] --> B2[收到 Message]
+      B2 --> B3[Invalidate<br/>本地 Cache]
+    end
+    
+    subgraph Instance C
+      C1[Background Thread<br/>訂閱 Queue] --> C2[收到 Message]
+      C2 --> C3[Invalidate<br/>本地 Cache]
+    end
+    
+    A3 -.->|Publish| MQ
+    MQ -.->|Subscribe| B1
+    MQ -.->|Subscribe| C1
+    
+    style A1 fill:#e1f5ff
+    style B3 fill:#ffe1e1
+    style C3 fill:#ffe1e1
+  ```
+
+  ```python
+  from autocrud.resource_manager.resource_store.mq_cached_s3 import MQCachedS3ResourceStore
+  from autocrud.resource_manager.resource_store.cache import MemoryCache
+
+  res_store = MQCachedS3ResourceStore(
+      caches=[MemoryCache()],
+      amqp_url="amqp://guest:guest@localhost:5672/",
+      queue_prefix="autocrud:",
+      ttl_draft=60,
+      ttl_stable=3600,
+      endpoint_url="http://minio:9000",
+      bucket="my-bucket",
+      prefix="resources/",
+      access_key_id="minioadmin",
+      secret_access_key="minioadmin"
+  )
+  ```
+```{seealso}
+[`autocrud.resource_manager.resource_store.mq_cached_s3.MQCachedS3ResourceStore`](#autocrud.resource_manager.resource_store.mq_cached_s3.MQCachedS3ResourceStore)
 ```
 
 ### 📊 Performance Benchmark
@@ -1099,5 +1237,20 @@ query {
 
 ```{eval-rst}
 .. autoclass:: autocrud.resource_manager.resource_store.s3.S3ResourceStore
+   :members:
+```
+
+```{eval-rst}
+.. automodule:: autocrud.resource_manager.resource_store.cached_s3
+   :members:
+```
+
+```{eval-rst}
+.. automodule:: autocrud.resource_manager.resource_store.etag_cached_s3
+   :members:
+```
+
+```{eval-rst}
+.. automodule:: autocrud.resource_manager.resource_store.mq_cached_s3
    :members:
 ```
