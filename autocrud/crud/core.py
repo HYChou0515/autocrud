@@ -4,7 +4,7 @@ import io
 import tarfile
 from collections import OrderedDict
 from collections.abc import Callable, Sequence
-from typing import IO, Literal, TypeVar
+from typing import IO, Any, Literal, TypeVar
 import logging
 from fastapi import APIRouter, FastAPI
 import datetime as dt
@@ -132,7 +132,8 @@ class AutoCRUD:
         model_naming: Controls how model names are converted to URL paths.
                      Options: "same", "pascal", "camel", "snake", "kebab" (default)
                      or a custom function that takes a type and returns a string.
-        route_templates: Custom list of route templates to use instead of defaults.
+        route_templates: Custom list of route templates to use instead of defaults,
+                        or a dictionary of template classes to kwargs for configuring defaults.
                         If None, uses the standard CRUD route templates.
 
     Example with Advanced Features:
@@ -176,7 +177,9 @@ class AutoCRUD:
         *,
         model_naming: Literal["same", "pascal", "camel", "snake", "kebab"]
         | Callable[[type], str] = "kebab",
-        route_templates: list[IRouteTemplate] | None = None,
+        route_templates: list[IRouteTemplate]
+        | dict[type, dict[str, Any]]
+        | None = None,
         storage_factory: IStorageFactory | None = None,
         message_queue_factory: IMessageQueueFactory | None = None,
         admin: str | None = None,
@@ -210,20 +213,24 @@ class AutoCRUD:
             self.message_queue_factory = SimpleMessageQueueFactory()
         else:
             self.message_queue_factory = message_queue_factory
-        self.route_templates: list[IRouteTemplate] = (
-            [
-                CreateRouteTemplate(dependency_provider=dependency_provider),
-                ListRouteTemplate(dependency_provider=dependency_provider),
-                ReadRouteTemplate(dependency_provider=dependency_provider),
-                UpdateRouteTemplate(dependency_provider=dependency_provider),
-                PatchRouteTemplate(dependency_provider=dependency_provider),
-                SwitchRevisionRouteTemplate(dependency_provider=dependency_provider),
-                DeleteRouteTemplate(dependency_provider=dependency_provider),
-                RestoreRouteTemplate(dependency_provider=dependency_provider),
-            ]
-            if route_templates is None
-            else route_templates
-        )
+        self.route_templates: list[IRouteTemplate] = []
+        if route_templates is None or isinstance(route_templates, dict):
+            route_templates = route_templates or {}
+            for rt in [
+                CreateRouteTemplate,
+                ListRouteTemplate,
+                ReadRouteTemplate,
+                UpdateRouteTemplate,
+                PatchRouteTemplate,
+                SwitchRevisionRouteTemplate,
+                DeleteRouteTemplate,
+                RestoreRouteTemplate,
+            ]:
+                more_kwargs = route_templates.get(rt, {})
+                more_kwargs.setdefault("dependency_provider", dependency_provider)
+                self.route_templates.append(rt(**more_kwargs))
+        else:
+            self.route_templates = route_templates
         if permission_checker is None:
             if not admin:
                 self.permission_checker = AllowAll()
