@@ -1,3 +1,4 @@
+from collections.abc import Callable
 import datetime as dt
 import io
 import textwrap
@@ -47,58 +48,62 @@ class Worker(IWorker):
         self.worker_id = worker_id
         yield self
 
-    def resolve(self, indata: InData) -> OutData:
-        meta = self.resource_manager.get_meta(indata.url)
-        try:
-            data = UNSET
-            revision_info = UNSET
+    def get_resource(self, meta: ResourceMeta) -> bytes:
+        data = UNSET
+        revision_info = UNSET
 
-            if "data" in self.returns:
-                if self.fields:
-                    data = self.resource_manager.get_partial(
-                        meta.resource_id,
-                        meta.current_revision_id,
-                        self.fields,
-                        schema_version=meta.schema_version,
-                    )
-                else:
-                    resource = self.resource_manager.get(
-                        meta.resource_id,
-                        revision_id=meta.current_revision_id,
-                        schema_version=meta.schema_version,
-                    )
-                    data = resource.data
-                    if "revision_info" in self.returns:
-                        revision_info = resource.info
-
-            if "revision_info" in self.returns and revision_info is UNSET:
-                revision_info = self.resource_manager.get_revision_info(
+        if "data" in self.returns:
+            if self.fields:
+                data = self.resource_manager.get_partial(
                     meta.resource_id,
                     meta.current_revision_id,
+                    self.fields,
                     schema_version=meta.schema_version,
                 )
-
-            if "meta" in self.returns:
-                meta_out = meta
             else:
-                meta_out = UNSET
+                resource = self.resource_manager.get(
+                    meta.resource_id,
+                    revision_id=meta.current_revision_id,
+                    schema_version=meta.schema_version,
+                )
+                data = resource.data
+                if "revision_info" in self.returns:
+                    revision_info = resource.info
 
-            if isinstance(self.returns, str):
-                if self.returns == "data":
-                    b = msgspec.json.encode(data)
-                elif self.returns == "meta":
-                    b = msgspec.json.encode(meta_out)
-                elif self.returns == "revision_info":
-                    b = msgspec.json.encode(revision_info)
-                else:
-                    raise ValueError(f"Unknown return type: {self.returns}")
+        if "revision_info" in self.returns and revision_info is UNSET:
+            revision_info = self.resource_manager.get_revision_info(
+                meta.resource_id,
+                meta.current_revision_id,
+                schema_version=meta.schema_version,
+            )
+
+        if "meta" in self.returns:
+            meta_out = meta
+        else:
+            meta_out = UNSET
+
+        if isinstance(self.returns, str):
+            if self.returns == "data":
+                return msgspec.json.encode(data)
+            elif self.returns == "meta":
+                return msgspec.json.encode(meta_out)
+            elif self.returns == "revision_info":
+                return msgspec.json.encode(revision_info)
             else:
-                r = FullResourceResponse(
+                raise ValueError(f"Unknown return type: {self.returns}")
+        else:
+            return msgspec.json.encode(
+                FullResourceResponse(
                     data=data,
                     revision_info=revision_info,
                     meta=meta_out,
                 )
-                b = msgspec.json.encode(r)
+            )
+
+    def resolve(self, indata: InData) -> OutData:
+        meta = self.resource_manager.get_meta(indata.url)
+        try:
+            b = self.get_resource(meta)
         except Exception:
             # 如果無法獲取資源數據，跳過
             b = b""
@@ -110,8 +115,50 @@ class CustomGrammar(IUrlGrammar):
         return fp.read().decode("utf-8")
 
 
+def default_worker_num(nr_work: int) -> int:
+    if nr_work <= 10:
+        return 1
+    return max(1, min(16, nr_work // 3))
+
+
 class ListRouteTemplate(BaseRouteTemplate):
     """列出所有資源的路由模板"""
+
+    def __init__(
+        self,
+        *args,
+        worker_num_calc: Callable[[int], int] | None = None,
+        **kwargs,
+    ):
+        super().__init__(*args, **kwargs)
+        self.worker_num_calc = worker_num_calc or default_worker_num
+
+    def fetch_resources_data(
+        self, metas: list[ResourceMeta], get_worker: Callable[[], Worker]
+    ) -> list[bytes]:
+        resources_data: list[bytes] = []
+        worker_num = self.worker_num_calc(len(metas))
+        if worker_num <= 1:
+            for meta in metas:
+                resource = get_worker().get_resource(meta)
+                resources_data.append(resource)
+        else:
+            with resolve(
+                num_workers=worker_num,
+                worker=get_worker,
+                job_chance=1,
+                grammars=[CustomGrammar()],
+            ) as resolver:
+                # 根據響應類型處理資源數據
+                tasks = []
+                for meta in metas:
+                    tasks.append(resolver.add(str(meta.resource_id)))
+
+                for task in tasks:
+                    outd = resolver.wait(task)
+                    if b := outd.data.read():
+                        resources_data.append(b)
+        return resources_data
 
     def apply(
         self,
@@ -199,30 +246,18 @@ class ListRouteTemplate(BaseRouteTemplate):
                 query = build_query(query_params)
                 fields = query_params.partial or query_params.partial_brackets
 
-                with (
-                    resource_manager.meta_provide(current_user, current_time),
-                    resolve(
-                        worker=lambda: Worker(
-                            resource_manager,
-                            fields,
-                            "data",
-                        ),
-                        job_chance=1,
-                        grammars=[CustomGrammar()],
-                    ) as resolver,
-                ):
-                    metas = resource_manager.search_resources(query)
+                def get_worker():
+                    return Worker(
+                        resource_manager,
+                        fields,
+                        "data",
+                    )
 
-                    # 根據響應類型處理資源數據
-                    resources_data: list[T] = []
-                    tasks = []
-                    for meta in metas:
-                        tasks.append(resolver.add(str(meta.resource_id)))
-
-                    for task in tasks:
-                        outd = resolver.wait(task)
-                        if b := outd.data.read():
-                            resources_data.append(b)
+                with resource_manager.meta_provide(current_user, current_time):
+                    resources_data = self.fetch_resources_data(
+                        resource_manager.search_resources(query),
+                        get_worker,
+                    )
                 return JsonListResponse(resources_data)
             except Exception as e:
                 raise HTTPException(status_code=400, detail=str(e))
@@ -395,30 +430,19 @@ class ListRouteTemplate(BaseRouteTemplate):
             try:
                 # 構建查詢對象
                 query = build_query(query_params)
-                with (
-                    resource_manager.meta_provide(current_user, current_time),
-                    resolve(
-                        worker=lambda: Worker(
-                            resource_manager,
-                            None,
-                            "revision_info",
-                        ),
-                        job_chance=1,
-                        grammars=[CustomGrammar()],
-                    ) as resolver,
-                ):
-                    metas = resource_manager.search_resources(query)
 
-                    # 根據響應類型處理資源數據
-                    resources_data: list[RevisionInfo] = []
-                    tasks = []
-                    for meta in metas:
-                        tasks.append(resolver.add(str(meta.resource_id)))
+                def get_worker():
+                    return Worker(
+                        resource_manager,
+                        None,
+                        "revision_info",
+                    )
 
-                    for task in tasks:
-                        outd = resolver.wait(task)
-                        if b := outd.data.read():
-                            resources_data.append(b)
+                with resource_manager.meta_provide(current_user, current_time):
+                    resources_data = self.fetch_resources_data(
+                        resource_manager.search_resources(query),
+                        get_worker,
+                    )
                 return JsonListResponse(resources_data)
             except Exception as e:
                 raise HTTPException(status_code=400, detail=str(e))
@@ -509,30 +533,19 @@ class ListRouteTemplate(BaseRouteTemplate):
                 query = build_query(query_params)
                 fields = query_params.partial or query_params.partial_brackets
 
-                with (
-                    resource_manager.meta_provide(current_user, current_time),
-                    resolve(
-                        worker=lambda: Worker(
-                            resource_manager,
-                            fields,
-                            returns,
-                        ),
-                        job_chance=1,
-                        grammars=[CustomGrammar()],
-                    ) as resolver,
-                ):
-                    metas = resource_manager.search_resources(query)
+                def get_worker():
+                    return Worker(
+                        resource_manager,
+                        fields,
+                        returns,
+                    )
 
-                    # 根據響應類型處理資源數據
-                    resp_jsons: list[bytes] = []
-                    tasks = []
-                    for meta in metas:
-                        tasks.append(resolver.add(str(meta.resource_id)))
-                    for task in tasks:
-                        outd = resolver.wait(task)
-                        if b := outd.data.read():
-                            resp_jsons.append(b)
-                return JsonListResponse(resp_jsons)
+                with resource_manager.meta_provide(current_user, current_time):
+                    resources_data = self.fetch_resources_data(
+                        resource_manager.search_resources(query),
+                        get_worker,
+                    )
+                return JsonListResponse(resources_data)
             except Exception as e:
                 raise HTTPException(status_code=400, detail=str(e))
 
