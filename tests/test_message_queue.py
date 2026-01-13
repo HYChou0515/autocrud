@@ -1,4 +1,6 @@
 import datetime as dt
+import threading
+import time
 import pytest
 from msgspec import Struct
 from unittest.mock import MagicMock, patch, call
@@ -8,6 +10,7 @@ from autocrud.message_queue.rabbitmq import (
     RabbitMQMessageQueueFactory,
 )
 from autocrud.message_queue.simple import SimpleMessageQueueFactory
+from autocrud.message_queue.basic import NoRetry
 from autocrud.resource_manager.core import ResourceManager, SimpleStorage
 from autocrud.resource_manager.meta_store.simple import MemoryMetaStore
 from autocrud.resource_manager.resource_store.simple import MemoryResourceStore
@@ -98,6 +101,151 @@ class TestMessageQueueUnified:
     ):
         self.queue, self.rm = mq_context
 
+    def run_consumer_in_thread(
+        self,
+        queue: IMessageQueue[Payload],
+        rm: ResourceManager[Job[Payload]],
+        worker_logic: callable,
+        process_timeout: float = 1.0,
+        track_published_messages: bool = False,
+    ) -> tuple[IMessageQueue[Payload], list[dict]]:
+        """輔助方法：在獨立線程中運行消費者。
+
+        Args:
+            queue: 消息隊列實例
+            rm: ResourceManager 實例
+            worker_logic: 處理任務的回調函數
+            process_timeout: 等待處理完成的時間（秒）
+            track_published_messages: 是否追蹤 RabbitMQ 發布的訊息（僅對 RabbitMQ 有效）
+
+        Returns:
+            (消費者隊列引用, 發布的訊息列表)
+            如果 track_published_messages=False，訊息列表為空
+        """
+        published_messages = []
+        consumer_ref = [None]
+
+        def run_queue():
+            consumer = queue
+            consumer._do = worker_logic
+            consumer_ref[0] = consumer
+
+            # 如果需要追蹤訊息且是 RabbitMQ，則 patch start_consume
+            if track_published_messages and isinstance(queue, RabbitMQMessageQueue):
+
+                def mock_publish(exchange, routing_key, body, properties):
+                    published_messages.append(
+                        {
+                            "routing_key": routing_key,
+                            "body": body,
+                            "headers": properties.headers
+                            if properties and hasattr(properties, "headers")
+                            else None,
+                        }
+                    )
+
+                def patched_consume():
+                    with consumer._get_connection() as (connection, channel):
+                        consumer._consuming_connection = connection
+                        consumer._consuming_channel = channel
+
+                        original_publish = channel.basic_publish
+                        channel.basic_publish = lambda **kwargs: (
+                            mock_publish(**kwargs),
+                            original_publish(**kwargs),
+                        )[1]
+
+                        def callback(ch, method, properties, body):
+                            resource_id = body.decode("utf-8")
+                            retry_count = 0
+                            if (
+                                properties.headers
+                                and "x-retry-count" in properties.headers
+                            ):
+                                retry_count = properties.headers["x-retry-count"]
+
+                            try:
+                                resource = consumer.rm.get(resource_id)
+                                job = resource.data
+                                job.status = TaskStatus.PROCESSING
+                                with consumer._rm_meta_provide(
+                                    resource.info.created_by
+                                ):
+                                    consumer.rm.create_or_update(resource_id, job)
+                                resource.data = job
+
+                                try:
+                                    consumer._do(resource)
+                                    consumer.complete(resource_id)
+                                    ch.basic_ack(delivery_tag=method.delivery_tag)
+                                except Exception as e:
+                                    error_msg = str(e)
+                                    job.status = TaskStatus.FAILED
+                                    job.errmsg = error_msg
+                                    job.retries = retry_count + 1
+                                    with consumer._rm_meta_provide(
+                                        resource.info.created_by
+                                    ):
+                                        consumer.rm.create_or_update(resource_id, job)
+                                    consumer._send_to_retry_or_dead(
+                                        ch, resource_id, retry_count, e
+                                    )
+                                    ch.basic_ack(delivery_tag=method.delivery_tag)
+                            except Exception as e:
+                                try:
+                                    resource = consumer.rm.get(resource_id)
+                                    job = resource.data
+                                    job.status = TaskStatus.FAILED
+                                    job.errmsg = str(e)
+                                    job.retries = retry_count + 1
+                                    with consumer._rm_meta_provide(
+                                        resource.info.created_by
+                                    ):
+                                        consumer.rm.create_or_update(resource_id, job)
+                                except Exception:
+                                    pass
+                                consumer._send_to_retry_or_dead(
+                                    ch, resource_id, retry_count, e
+                                )
+                                ch.basic_ack(delivery_tag=method.delivery_tag)
+
+                        channel.basic_qos(prefetch_count=1)
+                        channel.basic_consume(
+                            queue=consumer.queue_name, on_message_callback=callback
+                        )
+
+                        try:
+                            channel.start_consuming()
+                        finally:
+                            consumer._consuming_connection = None
+                            consumer._consuming_channel = None
+
+                consumer.start_consume = patched_consume
+
+            with rm.meta_provide(user="consumer", now=dt.datetime.now(dt.timezone.utc)):
+                try:
+                    consumer.start_consume()
+                except Exception:
+                    pass
+
+        t = threading.Thread(target=run_queue, daemon=True)
+        t.start()
+
+        # 等待消費者初始化
+        start_wait = time.time()
+        while consumer_ref[0] is None and time.time() - start_wait < 5:
+            time.sleep(0.1)
+
+        # 等待處理
+        time.sleep(process_timeout)
+
+        # 停止並清理
+        if consumer_ref[0]:
+            consumer_ref[0].stop_consuming()
+        t.join(timeout=2)
+
+        return consumer_ref[0], published_messages
+
     def test_workflow(self):
         queue, rm = self.queue, self.rm
         user = "test_user"
@@ -160,9 +308,6 @@ class TestMessageQueueUnified:
             assert res_pop is None
 
     def test_consume_loop(self):
-        import time
-        import threading
-
         queue_producer, rm = self.queue, self.rm
 
         # Prepare Data
@@ -175,7 +320,6 @@ class TestMessageQueueUnified:
             rm.create(Job(payload=Payload(task_name="fail_job", priority=2)))
 
         results = []
-        consumer_queue_ref: IMessageQueue[Payload] = None
 
         def worker_logic(resource: Resource[Job[Payload]]):
             name = resource.data.payload.task_name
@@ -183,36 +327,8 @@ class TestMessageQueueUnified:
                 raise ValueError("Intentional Fail")
             results.append(name)
 
-        def run_queue():
-            nonlocal consumer_queue_ref
-            # Reuse the same queue instance and override callback for the worker
-            queue_consumer = queue_producer
-            queue_consumer._do = worker_logic
-            consumer_queue_ref = queue_consumer
-
-            # Setup context for the consumer thread
-            with rm.meta_provide(user="consumer", now=dt.datetime.now(dt.timezone.utc)):
-                try:
-                    queue_consumer.start_consume()
-                except Exception:
-                    # Ignore errors during stop/shutdown
-                    pass
-
-        t = threading.Thread(target=run_queue)
-        t.start()
-
-        # Wait for consumer to initialize
-        start_wait = time.time()
-        while consumer_queue_ref is None and time.time() - start_wait < 5:
-            time.sleep(0.1)
-
-        # Wait for processing
-        time.sleep(1.0)
-
-        # Stop
-        if consumer_queue_ref:
-            consumer_queue_ref.stop_consuming()
-        t.join(timeout=2)
+        # 使用輔助方法運行消費者
+        self.run_consumer_in_thread(queue_producer, rm, worker_logic)
 
         # Verify
         assert "success_job" in results
@@ -262,8 +378,6 @@ class TestMessageQueueUnified:
 
     def test_error_overwrites_in_consume_loop(self):
         """Test that error messages are updated correctly in consume loop."""
-        import time
-        import threading
 
         queue_producer, rm = self.queue, self.rm
         user = "producer"
@@ -273,53 +387,12 @@ class TestMessageQueueUnified:
         with rm.meta_provide(user=user, now=now):
             rm.create(Job(payload=Payload(task_name="error_test_job", priority=1)))
 
-        error_messages = []
-
         def worker_logic(resource: Resource[Job[Payload]]):
             # Fail with specific error
             raise ValueError("Specific processing error")
 
-        def run_queue():
-            if isinstance(queue_producer, RabbitMQMessageQueue):
-                queue_consumer = RabbitMQMessageQueue(
-                    worker_logic, rm, queue_prefix=queue_producer.queue_prefix
-                )
-            else:
-                queue_consumer = queue_producer
-                queue_consumer._do = worker_logic
-
-            with rm.meta_provide(user="consumer", now=dt.datetime.now(dt.timezone.utc)):
-                try:
-                    queue_consumer.start_consume()
-                except Exception:
-                    pass
-
-        consumer_queue_ref = [None]
-
-        def run_queue_with_ref():
-            consumer = queue_producer
-            consumer._do = worker_logic
-            consumer_queue_ref[0] = consumer
-            with rm.meta_provide(user="consumer", now=dt.datetime.now(dt.timezone.utc)):
-                try:
-                    consumer.start_consume()
-                except Exception:
-                    pass
-
-        t = threading.Thread(target=run_queue_with_ref)
-        t.start()
-
-        # Wait for processing
-        start_wait = time.time()
-        while consumer_queue_ref[0] is None and time.time() - start_wait < 5:
-            time.sleep(0.1)
-
-        time.sleep(1.0)
-
-        # Stop
-        if consumer_queue_ref[0]:
-            consumer_queue_ref[0].stop_consuming()
-        t.join(timeout=2)
+        # 使用輔助方法運行消費者
+        self.run_consumer_in_thread(queue_producer, rm, worker_logic)
 
         # Verify error was recorded in Job
         with rm.meta_provide(user="checker", now=dt.datetime.now(dt.timezone.utc)):
@@ -358,12 +431,59 @@ class TestMessageQueueUnified:
             # So we check it's at least 0 (unchanged) or 1 (incremented)
             assert updated.data.retries >= 0
 
+    def test_noretry_exception_skips_retry(self):
+        """測試當拋出 NoRetry 異常時，任務應直接失敗而不重試。
 
-class TestRabbitMQRetryMechanism:
-    """
-    Tests specific to RabbitMQ retry mechanism.
-    SimpleMessageQueue doesn't have automatic retry, so these only apply to RabbitMQ.
-    """
+        - SimpleMessageQueue: 任務應標記為 FAILED 且 retries=1 (不會重新設為 PENDING)
+        - RabbitMQ: 訊息應直接送到 dead letter queue 而非 retry queue
+        """
+        queue_producer, rm = self.queue, self.rm
+
+        user = "producer"
+        now = dt.datetime.now(dt.timezone.utc)
+
+        # 創建一個會拋出 NoRetry 的任務
+        with rm.meta_provide(user=user, now=now):
+            info = rm.create(Job(payload=Payload(task_name="noretry_job", priority=1)))
+            resource_id = info.resource_id
+
+        def worker_logic(resource: Resource[Job[Payload]]):
+            # 拋出 NoRetry 異常
+            raise NoRetry("This should not be retried")
+
+        # 使用輔助方法運行消費者並追蹤訊息
+        _, published_messages = self.run_consumer_in_thread(
+            queue_producer, rm, worker_logic, track_published_messages=True
+        )
+
+        # 驗證任務狀態
+        with rm.meta_provide(user="checker", now=dt.datetime.now(dt.timezone.utc)):
+            res = rm.get(resource_id)
+            assert res.data.status == TaskStatus.FAILED
+            assert "This should not be retried" in res.data.errmsg
+            # NoRetry 應該導致任務直接失敗，retries=1
+            assert res.data.retries == 1
+
+        # 對於 RabbitMQ，額外驗證訊息路由
+        if isinstance(queue_producer, RabbitMQMessageQueue):
+            dead_queue_messages = [
+                m
+                for m in published_messages
+                if m["routing_key"] == queue_producer.dead_queue_name
+            ]
+            retry_queue_messages = [
+                m
+                for m in published_messages
+                if m["routing_key"] == queue_producer.retry_queue_name
+            ]
+
+            # NoRetry 應該直接送到 dead letter queue
+            assert len(dead_queue_messages) == 1, (
+                f"應該有 1 個訊息在 dead queue，但有 {len(dead_queue_messages)}"
+            )
+            assert len(retry_queue_messages) == 0, (
+                f"不應該有訊息在 retry queue，但有 {len(retry_queue_messages)}"
+            )
 
     def create_test_revision_info(
         self, resource_id: str = "test-id", revision_id: str = "rev-1"
@@ -742,7 +862,6 @@ class TestRabbitMQRetryMechanism:
         assert len(publish_calls) == 1
 
         props = publish_calls[0][1]["properties"]
-        assert "Critical error" in props["headers"]["x-last-error"]
         assert "Resource not found" in props["headers"]["x-last-error"]
 
         # Message should be acked
@@ -778,7 +897,6 @@ class TestRabbitMQRetryMechanism:
         ]
         assert len(update_calls) >= 1
         updated_job = update_calls[-1][0][1]
-        assert "Critical error" in updated_job.errmsg
         assert "Initial fetch failed" in updated_job.errmsg
         assert updated_job.retries == 1
 
@@ -818,7 +936,7 @@ class TestRabbitMQRetryMechanism:
         assert len(publish_calls) == 1
 
         props = publish_calls[0][1]["properties"]
-        assert "Critical error" in props["headers"]["x-last-error"]
+        assert "Persistent error" in props["headers"]["x-last-error"]
 
         # Message should be acked
         mock_channel.basic_ack.assert_called_once()

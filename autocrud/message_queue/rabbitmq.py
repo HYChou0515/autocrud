@@ -1,4 +1,4 @@
-from autocrud.message_queue.basic import BasicMessageQueue
+from autocrud.message_queue.basic import BasicMessageQueue, NoRetry
 from autocrud.types import Job, Resource, TaskStatus
 from autocrud.util.naming import NameConverter, NamingFormat
 from typing import TYPE_CHECKING, Callable, Generic, TypeVar
@@ -156,7 +156,7 @@ class RabbitMQMessageQueue(BasicMessageQueue[T], Generic[T]):
         return None
 
     def _send_to_retry_or_dead(
-        self, ch, resource_id: str, retry_count: int, error_message: str
+        self, ch, resource_id: str, retry_count: int, err: Exception
     ) -> None:
         """
         Send a failed message to retry queue or dead letter queue based on retry count.
@@ -165,10 +165,10 @@ class RabbitMQMessageQueue(BasicMessageQueue[T], Generic[T]):
             ch: RabbitMQ channel
             resource_id: The resource identifier
             retry_count: Current retry count
-            error_message: Error message from the failure
+            err: Exception from the failure
         """
-        if retry_count < self.max_retries:
-            # Send to retry queue (will auto-route back to main queue after TTL)
+        error_msg = str(err)
+        if not isinstance(err, NoRetry) and retry_count < self.max_retries:
             target_queue = self.retry_queue_name
             new_retry_count = retry_count + 1
         else:
@@ -184,7 +184,7 @@ class RabbitMQMessageQueue(BasicMessageQueue[T], Generic[T]):
                 delivery_mode=pika.DeliveryMode.Persistent,
                 headers={
                     "x-retry-count": new_retry_count,
-                    "x-last-error": error_message[:500],  # Limit error message length
+                    "x-last-error": error_msg[:500],  # Limit error message length
                 },
             ),
         )
@@ -242,23 +242,19 @@ class RabbitMQMessageQueue(BasicMessageQueue[T], Generic[T]):
                             self.rm.create_or_update(resource_id, job)
 
                         # Send to retry or dead letter queue
-                        self._send_to_retry_or_dead(
-                            ch, resource_id, retry_count, error_msg
-                        )
+                        self._send_to_retry_or_dead(ch, resource_id, retry_count, e)
 
                         # Ack the original message (it's now in retry/dead queue)
                         ch.basic_ack(delivery_tag=method.delivery_tag)
 
                 except Exception as e:
                     # Resource fetch failure, RM update failure, or critical error
-                    error_msg = f"Critical error: {str(e)}"
-
                     # Try to update Job if we have it
                     try:
                         resource = self.rm.get(resource_id)
                         job = resource.data
                         job.status = TaskStatus.FAILED
-                        job.errmsg = error_msg
+                        job.errmsg = str(e)
                         job.retries = retry_count + 1
                         with self._rm_meta_provide(resource.info.created_by):
                             self.rm.create_or_update(resource_id, job)
@@ -267,7 +263,7 @@ class RabbitMQMessageQueue(BasicMessageQueue[T], Generic[T]):
                         pass
 
                     # Send to retry or dead letter queue
-                    self._send_to_retry_or_dead(ch, resource_id, retry_count, error_msg)
+                    self._send_to_retry_or_dead(ch, resource_id, retry_count, e)
                     ch.basic_ack(delivery_tag=method.delivery_tag)
 
             channel.basic_qos(prefetch_count=1)

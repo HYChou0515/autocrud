@@ -1,7 +1,7 @@
 from typing import TYPE_CHECKING, Callable, Generic, TypeVar
 
 
-from autocrud.message_queue.basic import BasicMessageQueue
+from autocrud.message_queue.basic import BasicMessageQueue, NoRetry
 from autocrud.types import (
     DataSearchCondition,
     DataSearchOperator,
@@ -28,16 +28,23 @@ class SimpleMessageQueue(BasicMessageQueue[T], Generic[T]):
 
     This allows jobs to have full versioning, permissions, and lifecycle management
     provided by AutoCRUD's ResourceManager.
+
+    Features:
+    - Automatic retry on failure
+    - Configurable max retry count
+    - NoRetry exception support to skip retries
     """
 
     def __init__(
         self,
         do: Callable[[Resource[Job[T]]], None],
         resource_manager: "IResourceManager[Job[T]]",
+        max_retries: int = 3,
     ):
         super().__init__(do)
         self._rm = resource_manager
         self._running = False
+        self.max_retries = max_retries
 
     def put(self, resource_id: str) -> Resource[Job[T]]:
         """
@@ -127,9 +134,21 @@ class SimpleMessageQueue(BasicMessageQueue[T], Generic[T]):
                     # Update Job with error message and retry count
                     error_msg = str(e)
                     updated_job = job.data
-                    updated_job.status = TaskStatus.FAILED
                     updated_job.errmsg = error_msg
                     updated_job.retries += 1
+
+                    # Check if we should retry or fail permanently
+                    should_retry = (
+                        not isinstance(e, NoRetry)
+                        and updated_job.retries <= self.max_retries
+                    )
+
+                    if should_retry:
+                        # Retry: set status back to PENDING
+                        updated_job.status = TaskStatus.PENDING
+                    else:
+                        # No retry: mark as permanently FAILED
+                        updated_job.status = TaskStatus.FAILED
 
                     try:
                         with self._rm_meta_provide(job.info.created_by):
@@ -138,7 +157,9 @@ class SimpleMessageQueue(BasicMessageQueue[T], Generic[T]):
                         # If update fails, still mark as failed via fail()
                         pass
 
-                    self.fail(job.info.resource_id, error_msg)
+                    # If not retrying, also call fail() to ensure consistent state
+                    if not should_retry:
+                        self.fail(job.info.resource_id, error_msg)
             else:
                 time.sleep(0.1)
 
@@ -149,6 +170,15 @@ class SimpleMessageQueue(BasicMessageQueue[T], Generic[T]):
 
 class SimpleMessageQueueFactory(IMessageQueueFactory):
     """Factory for creating SimpleMessageQueue instances."""
+
+    def __init__(self, max_retries: int = 3):
+        """
+        Initialize the factory.
+
+        Args:
+            max_retries: Maximum number of retries for failed jobs.
+        """
+        self.max_retries = max_retries
 
     def build(
         self, do: Callable[[Resource[Job[T]]], None]
@@ -165,6 +195,8 @@ class SimpleMessageQueueFactory(IMessageQueueFactory):
         def create_queue(
             resource_manager: "IResourceManager[Job[T]]",
         ) -> SimpleMessageQueue[T]:
-            return SimpleMessageQueue(do, resource_manager)
+            return SimpleMessageQueue(
+                do, resource_manager, max_retries=self.max_retries
+            )
 
         return create_queue
