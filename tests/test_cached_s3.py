@@ -1,5 +1,6 @@
 import os
 import io
+from pathlib import Path
 import time
 from unittest.mock import MagicMock, patch
 from uuid import uuid4
@@ -26,30 +27,29 @@ def create_info(rid="r1", rev="rev1", sv=None, status=RevisionStatus.draft):
     )
 
 
-@pytest.fixture
-def patched_s3_init():
-    with patch(
-        "autocrud.resource_manager.resource_store.s3.boto3.client"
-    ) as mock_client:
-        yield mock_client
-
-
-@pytest.fixture
-def cached_store(patched_s3_init, tmp_path):
-    # Create caches
+def get_cached_store(
+    tmp_path: Path,
+    ttl_draft=1,  # short ttl for test
+    ttl_stable=1,
+):
     mem_cache = MemoryCache()
     disk_cache = DiskCache(cache_dir=str(tmp_path / "cache"))
 
     store = CachedS3ResourceStore(
         caches=[mem_cache, disk_cache],
-        access_key_id="fake",
-        secret_access_key="fake",
-        ttl_draft=1,  # short ttl for test
-        ttl_stable=3600,
+        ttl_draft=ttl_draft,
+        ttl_stable=ttl_stable,
+        endpoint_url="http://localhost:9000",
+        bucket="test-autocrud",
+        prefix=f"test-{tmp_path.name}/",
     )
-    # Mock the internal methods to simulate S3 behavior or avoid checking
-    store.client.head_bucket = MagicMock()
     return store
+
+
+@pytest.fixture
+def cached_store(tmp_path: Path):
+    # Create caches
+    return get_cached_store(tmp_path, 1, 3600)
 
 
 # ... existing tests ... (retyping them to keep context, or just appending new tests if I could, but I need a full file content)
@@ -538,3 +538,161 @@ def test_force_refresh_without_cache(tmp_path):
         force_refresh=True,
     ) as stream:
         assert stream.read() == data
+
+
+@pytest.mark.parametrize("wait_ttl", [False, "draft", "stable"])
+def test_stale_cache_after_external_data_update(tmp_path: Path, wait_ttl):
+    """
+    測試場景1: 當S3資料被外部更新後，cache仍然返回舊資料
+
+    關鍵測試邏輯：
+    1. 用cached_store.save()寫入v1 → cache和S3都有v1
+    2. 用S3ResourceStore.save()直接寫S3底層v2 → S3有v2，但cached_store的cache還是v1
+    3. 立即用cached_store讀取（不用force_refresh）→ 讀到cache的v1（stale data）❌
+    4. 用force_refresh=True讀取 → 清除cache，讀到S3的v2 ✓
+    """
+    from autocrud.resource_manager.resource_store.s3 import S3ResourceStore
+
+    cached_store = get_cached_store(
+        tmp_path,
+        ttl_draft=1 if wait_ttl == "draft" else 3600,
+        ttl_stable=1 if wait_ttl == "stable" else 3600,
+    )
+    # 使用stable status讓cache不會自動過期（TTL=3600秒）
+    info = create_info(
+        rid="r1",
+        rev="rev1",
+        status=RevisionStatus.stable if wait_ttl != "draft" else RevisionStatus.draft,
+    )
+    data_v1 = b"original data"
+    data_v2 = b"updated data externally"
+
+    # Step 1: 用cached_store寫入v1（會同時寫入S3和cache）
+    cached_store.save(info, io.BytesIO(data_v1))
+
+    # 驗證cache有v1
+    with cached_store.get_data_bytes(
+        info.resource_id, info.revision_id, info.schema_version
+    ) as stream:
+        assert stream.read() == data_v1
+
+    # Step 2: 模擬"其他instance"直接寫入S3底層（繞過cached_store的cache）
+    # 這會更新S3的資料，但不會觸發cached_store的cache更新
+    S3ResourceStore.save(cached_store, info, io.BytesIO(data_v2))
+    # Step 3: 立即用cached_store讀取（cache還沒過期）→ 應該讀到cache的舊資料v1
+    if wait_ttl:
+        time.sleep(1)
+    with cached_store.get_data_bytes(
+        info.resource_id, info.revision_id, info.schema_version, force_refresh=False
+    ) as stream:
+        cached_data = stream.read()
+
+    # ❌ 這個應該fail，證明cache返回stale data
+    # 期望：讀到S3的新資料v2
+    # 實際：讀到cache的舊資料v1
+
+    # wait_ttl為False時應該讀到舊資料v1，為"draft"或"stable"時應該讀到新資料v2
+    if wait_ttl:
+        assert cached_data == data_v2, (
+            f"After TTL expired, expected fresh data: {data_v2!r}, but got: {cached_data!r}"
+        )
+    else:
+        assert cached_data == data_v1, (
+            f"Before TTL expired, expected stale cached data: {data_v1!r}, but got: {cached_data!r}"
+        )
+
+    # Step 4: 使用force_refresh=True應該可以繞過cache，讀到S3的新資料v2
+    with cached_store.get_data_bytes(
+        info.resource_id, info.revision_id, info.schema_version, force_refresh=True
+    ) as stream:
+        refreshed_data = stream.read()
+
+    assert refreshed_data == data_v2, (
+        f"force_refresh should return fresh data from S3: {data_v2!r}, got: {refreshed_data!r}"
+    )
+
+
+@pytest.mark.parametrize("wait_ttl", [False, "draft", "stable"])
+def test_stale_cache_after_external_data_deletion(tmp_path: Path, wait_ttl):
+    """
+    測試場景2: 當S3資料被外部刪除後，cache仍然返回已刪除的資料
+
+    關鍵測試邏輯：
+    1. 用cached_store.save()寫入資料 → cache和S3都有資料
+    2. 用S3ResourceStore直接刪除S3底層資料（繞過cached_store的cache）
+    3. 立即用cached_store讀取（不用force_refresh）→ 讀到cache的資料（已刪除但仍在cache）❌
+    4. 等待TTL過期後讀取 → cache過期，訪問S3應該拋出異常 ✓
+    5. 用force_refresh=True讀取 → 清除cache，訪問S3拋出異常 ✓
+    """
+    from botocore.exceptions import ClientError
+
+    # 根據wait_ttl設置不同的status和TTL
+    status = RevisionStatus.draft if wait_ttl == "draft" else RevisionStatus.stable
+    info = create_info(rid="r2", rev="rev2", status=status)
+    data = b"data to be deleted"
+
+    # Step 1: 用cached_store寫入資料（會同時寫入S3和cache）
+    cached_store = get_cached_store(
+        tmp_path,
+        ttl_draft=1 if wait_ttl == "draft" else 3600,
+        ttl_stable=1 if wait_ttl == "stable" else 3600,
+    )
+    cached_store.save(info, io.BytesIO(data))
+
+    # 驗證cache有資料
+    with cached_store.get_data_bytes(
+        info.resource_id, info.revision_id, info.schema_version
+    ) as stream:
+        assert stream.read() == data
+
+    # Step 2: 模擬"其他instance"直接從S3底層刪除資料（繞過cached_store的cache）
+    # 先獲取uid，然後刪除S3上的實際文件
+    uid = str(info.uid)
+    data_key = f"{cached_store.prefix}store/{uid}/data"
+    info_key = f"{cached_store.prefix}store/{uid}/info"
+    resource_key = cached_store._get_resource_key(
+        info.resource_id, info.revision_id, info.schema_version
+    )
+
+    # 刪除S3上的文件（模擬外部刪除）
+    cached_store.client.delete_object(Bucket=cached_store.bucket, Key=data_key)
+    cached_store.client.delete_object(Bucket=cached_store.bucket, Key=info_key)
+    cached_store.client.delete_object(Bucket=cached_store.bucket, Key=resource_key)
+
+    # Step 3: 立即讀取或等待TTL過期後讀取
+    if wait_ttl:
+        time.sleep(1.2)  # 等待cache過期
+
+    # 嘗試讀取
+    try:
+        with cached_store.get_data_bytes(
+            info.resource_id, info.revision_id, info.schema_version, force_refresh=False
+        ) as stream:
+            cached_data = stream.read()
+
+        # 如果沒等TTL過期，應該還能讀到cache的資料（stale cache）
+        # 如果等了TTL過期，應該拋出異常（因為S3已經沒資料了）
+        if wait_ttl:
+            # 不應該執行到這裡
+            assert False, (
+                f"Expected exception when TTL expired and S3 data deleted, but got: {cached_data!r}"
+            )
+        else:
+            # 應該讀到cache的資料
+            assert cached_data == data, (
+                f"Expected cached data when TTL not expired: {data!r}, but got: {cached_data!r}"
+            )
+    except (FileNotFoundError, ClientError, KeyError) as e:
+        # 如果等了TTL過期，這是預期的行為
+        # 如果沒等，這說明cache沒起作用（不應該發生）
+        if not wait_ttl:
+            assert False, (
+                f"Expected cached data when TTL not expired, but got exception: {e}"
+            )
+
+    # Step 4: 使用force_refresh=True應該繞過cache，訪問S3時拋出異常
+    with pytest.raises((FileNotFoundError, ClientError, KeyError)):
+        with cached_store.get_data_bytes(
+            info.resource_id, info.revision_id, info.schema_version, force_refresh=True
+        ) as stream:
+            stream.read()
