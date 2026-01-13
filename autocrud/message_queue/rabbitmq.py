@@ -169,7 +169,6 @@ class RabbitMQMessageQueue(BasicMessageQueue[T], Generic[T]):
         """
         error_msg = str(err)
         if not isinstance(err, NoRetry) and retry_count < self.max_retries:
-            # Send to retry queue (will auto-route back to main queue after TTL)
             target_queue = self.retry_queue_name
             new_retry_count = retry_count + 1
         else:
