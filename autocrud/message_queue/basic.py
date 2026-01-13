@@ -12,6 +12,12 @@ from autocrud.types import (
 T = TypeVar("T")
 
 
+class NoRetry(Exception):
+    """Indicates that a job should not be retried."""
+
+    pass
+
+
 class BasicMessageQueue(IMessageQueue[T], Generic[T]):
     """
     A dedicated message queue that manages jobs as resources via ResourceManager.
