@@ -29,7 +29,10 @@ class CachedS3ResourceStore(S3ResourceStore):
         return None
 
     def get_revision_info(
-        self, resource_id: str, revision_id: str, schema_version: str | None
+        self,
+        resource_id: str,
+        revision_id: str,
+        schema_version: str | None,
     ) -> RevisionInfo:
         # Check caches
         for cache in self.caches:
@@ -49,7 +52,10 @@ class CachedS3ResourceStore(S3ResourceStore):
 
     @contextmanager
     def get_data_bytes(
-        self, resource_id: str, revision_id: str, schema_version: str | None
+        self,
+        resource_id: str,
+        revision_id: str,
+        schema_version: str | None,
     ) -> Generator[IO[bytes], None, None]:
         # Check caches
         for cache in self.caches:
