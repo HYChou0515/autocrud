@@ -5,12 +5,15 @@ Message Queue based CachedS3ResourceStore
 """
 
 import json
+import logging
 import threading
 from typing import IO
 
 from autocrud.resource_manager.resource_store.cache import ICache
 from autocrud.resource_manager.resource_store.cached_s3 import CachedS3ResourceStore
 from autocrud.types import RevisionInfo
+
+logger = logging.getLogger(__name__)
 
 
 class MQCachedS3ResourceStore(CachedS3ResourceStore):
@@ -105,17 +108,20 @@ class MQCachedS3ResourceStore(CachedS3ResourceStore):
             )
             self._channel = self._connection.channel()
             self._channel.queue_declare(queue=self.queue_name, durable=True)
-        except Exception:
-            # 如果RabbitMQ不可用，靜默失敗
-            # Cache仍然可以工作，只是沒有跨instance invalidation
-            pass
+        except Exception as e:
+            # 如果RabbitMQ不可用，記錄警告但不影響cache功能
+            logger.warning(
+                f"Failed to initialize RabbitMQ: {e}. Cache will work without cross-instance invalidation."
+            )
+            self._channel = None
+            self._connection = None
 
     def _subscribe_invalidation(self):
         """訂閱invalidation消息，收到後清除本地cache"""
         try:
             import pika
-        except ImportError:
-            # pika未安裝，無法使用MQ功能
+        except ImportError as e:
+            logger.warning(f"pika not installed: {e}. MQ cache invalidation disabled.")
             return
 
         def on_message(ch, method, properties, body):
@@ -131,9 +137,9 @@ class MQCachedS3ResourceStore(CachedS3ResourceStore):
 
                 # 確認消息處理完成
                 ch.basic_ack(delivery_tag=method.delivery_tag)
-            except Exception:
-                # 靜默處理錯誤，避免影響訂閱線程
-                # 拒絕消息但不重新入隊
+            except Exception as e:
+                # 處理錯誤但不影響訂閱線程
+                logger.error(f"Failed to process invalidation message: {e}")
                 ch.basic_nack(delivery_tag=method.delivery_tag, requeue=False)
 
         # 持續訂閱直到stop signal
@@ -159,15 +165,16 @@ class MQCachedS3ResourceStore(CachedS3ResourceStore):
                 # 開始blocking消費（會在stop時被中斷）
                 self._subscriber_channel.start_consuming()
 
-            except Exception:
+            except Exception as e:
                 # 如果訂閱失敗，清理連接並短暫等待後重試
+                logger.warning(f"Subscription failed, will retry: {e}")
                 try:
                     if self._subscriber_channel:
                         self._subscriber_channel.close()
                     if self._subscriber_connection:
                         self._subscriber_connection.close()
-                except Exception:
-                    pass
+                except Exception as cleanup_error:
+                    logger.debug(f"Error during cleanup: {cleanup_error}")
 
                 self._stop_subscriber.wait(1.0)
 
@@ -195,14 +202,15 @@ class MQCachedS3ResourceStore(CachedS3ResourceStore):
                     delivery_mode=2,  # 持久化消息
                 ),
             )
-        except Exception:
+        except Exception as e:
             # 發送失敗不應該影響主邏輯
+            logger.warning(f"Failed to publish invalidation message: {e}")
             # 最壞情況下其他instance的cache會在TTL後過期
             # 嘗試重新初始化連接
             try:
                 self._init_rabbitmq()
-            except Exception:
-                pass
+            except Exception as reinit_error:
+                logger.debug(f"Failed to reinitialize RabbitMQ: {reinit_error}")
 
     def save(self, info: RevisionInfo, data: IO[bytes]) -> None:
         """保存資源，並發送invalidation消息到RabbitMQ"""
@@ -224,8 +232,8 @@ class MQCachedS3ResourceStore(CachedS3ResourceStore):
         try:
             if self._subscriber_channel:
                 self._subscriber_channel.stop_consuming()
-        except Exception:
-            pass
+        except Exception as e:
+            logger.debug(f"Error stopping consumer: {e}")
 
         # 等待訂閱線程結束
         if self._subscriber_thread.is_alive():
@@ -241,12 +249,13 @@ class MQCachedS3ResourceStore(CachedS3ResourceStore):
                 self._channel.close()
             if self._connection:
                 self._connection.close()
-        except Exception:
-            pass
+        except Exception as e:
+            logger.debug(f"Error closing connections: {e}")
 
     def __del__(self):
         """析構時確保資源清理"""
         try:
             self.close()
-        except Exception:
-            pass
+        except Exception as e:
+            # 析構時的錯誤只記錄debug級別，避免干擾正常日誌
+            logger.debug(f"Error during cleanup in __del__: {e}")

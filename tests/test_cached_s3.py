@@ -405,12 +405,11 @@ def test_cached_s3_get_revision_info_miss_populates_cache(cached_store):
 
         # Verify we got the info
         assert result == info
-        # Verify super was called (with force_refresh parameter)
+        # Verify super was called
         mock_super_call.assert_called_once_with(
             info.resource_id,
             info.revision_id,
             info.schema_version,
-            force_refresh=False,
         )
 
         # Verify cache was populated
@@ -429,189 +428,6 @@ def test_cached_s3_get_revision_info_miss_populates_cache(cached_store):
         assert entry.expires_at > time.time() + 3500
 
 
-def test_force_refresh_get_revision_info(cached_store):
-    """Test that force_refresh=True bypasses cache and invalidates it"""
-    info_v1 = create_info(rid="r1", rev="rev1", sv="1.0", status=RevisionStatus.stable)
-    info_v2 = create_info(rid="r1", rev="rev1", sv="1.0", status=RevisionStatus.stable)
-    # Simulate different data for v2 (e.g., updated_time changed)
-    info_v2 = RevisionInfo(
-        uid=info_v2.uid,
-        resource_id=info_v2.resource_id,
-        revision_id=info_v2.revision_id,
-        schema_version=info_v2.schema_version,
-        created_by="user_v2",  # Changed field
-        created_time=info_v2.created_time,
-        updated_by="user_v2",
-        updated_time=info_v2.updated_time,
-        status=info_v2.status,
-    )
-
-    # Populate cache with v1
-    mem_cache = cached_store.caches[0]
-    mem_cache.put_revision_info(info_v1)
-
-    # Verify cache has v1
-    cached = mem_cache.get_revision_info("r1", "rev1", "1.0")
-    assert cached == info_v1
-    assert cached.created_by == "user"
-
-    # Mock S3 to return v2
-    with patch(
-        "autocrud.resource_manager.resource_store.s3.S3ResourceStore.get_revision_info",
-        return_value=info_v2,
-    ):
-        # Call with force_refresh=True
-        result = cached_store.get_revision_info("r1", "rev1", "1.0", force_refresh=True)
-
-        # Should get v2 from S3
-        assert result == info_v2
-        assert result.created_by == "user_v2"
-
-        # Cache should now have v2
-        cached_after = mem_cache.get_revision_info("r1", "rev1", "1.0")
-        assert cached_after == info_v2
-        assert cached_after.created_by == "user_v2"
-
-
-def test_force_refresh_get_data_bytes(cached_store):
-    """Test that force_refresh=True bypasses cache and invalidates it for data"""
-    info = create_info(rid="r2", rev="rev1", sv="1.0", status=RevisionStatus.stable)
-    data_v1 = b"old data"
-    data_v2 = b"new data"
-
-    # Populate cache with v1
-    mem_cache = cached_store.caches[0]
-    mem_cache.put_revision_info(info)
-    mem_cache.put_data("r2", "rev1", "1.0", data_v1)
-
-    # Verify cache has v1
-    cached_stream = mem_cache.get_data("r2", "rev1", "1.0")
-    assert cached_stream.read() == data_v1
-
-    # Mock S3 to return v2
-    with patch(
-        "autocrud.resource_manager.resource_store.s3.S3ResourceStore.get_data_bytes"
-    ) as mock_super:
-        mock_super.return_value.__enter__ = MagicMock(return_value=io.BytesIO(data_v2))
-        mock_super.return_value.__exit__ = MagicMock(return_value=False)
-
-        # Also need to mock get_revision_info for TTL calculation
-        with patch(
-            "autocrud.resource_manager.resource_store.s3.S3ResourceStore.get_revision_info",
-            return_value=info,
-        ):
-            # Call with force_refresh=True
-            with cached_store.get_data_bytes(
-                "r2", "rev1", "1.0", force_refresh=True
-            ) as stream:
-                result = stream.read()
-
-            # Should get v2 from S3
-            assert result == data_v2
-
-            # Cache should now have v2
-            cached_stream_after = mem_cache.get_data("r2", "rev1", "1.0")
-            assert cached_stream_after.read() == data_v2
-
-
-def test_force_refresh_without_cache(tmp_path):
-    """Test that force_refresh works on non-cached stores (MemoryResourceStore)"""
-    from autocrud.resource_manager.resource_store.simple import MemoryResourceStore
-
-    store = MemoryResourceStore()
-    info = create_info()
-    data = b"test data"
-
-    # Save data
-    store.save(info, io.BytesIO(data))
-
-    # Get with force_refresh should still work
-    result = store.get_revision_info(
-        info.resource_id, info.revision_id, info.schema_version, force_refresh=True
-    )
-    assert result.uid == info.uid
-
-    with store.get_data_bytes(
-        info.resource_id,
-        info.revision_id,
-        info.schema_version,
-        force_refresh=True,
-    ) as stream:
-        assert stream.read() == data
-
-
-@pytest.mark.parametrize("wait_ttl", [False, "draft", "stable"])
-def test_stale_cache_after_external_data_update(tmp_path: Path, wait_ttl):
-    """
-    測試場景1: 當S3資料被外部更新後，cache仍然返回舊資料
-
-    關鍵測試邏輯：
-    1. 用cached_store.save()寫入v1 → cache和S3都有v1
-    2. 用S3ResourceStore.save()直接寫S3底層v2 → S3有v2，但cached_store的cache還是v1
-    3. 立即用cached_store讀取（不用force_refresh）→ 讀到cache的v1（stale data）❌
-    4. 用force_refresh=True讀取 → 清除cache，讀到S3的v2 ✓
-    """
-    from autocrud.resource_manager.resource_store.s3 import S3ResourceStore
-
-    cached_store = get_cached_store(
-        tmp_path,
-        ttl_draft=1 if wait_ttl == "draft" else 3600,
-        ttl_stable=1 if wait_ttl == "stable" else 3600,
-    )
-    # 使用stable status讓cache不會自動過期（TTL=3600秒）
-    info = create_info(
-        rid="r1",
-        rev="rev1",
-        status=RevisionStatus.stable if wait_ttl != "draft" else RevisionStatus.draft,
-    )
-    data_v1 = b"original data"
-    data_v2 = b"updated data externally"
-
-    # Step 1: 用cached_store寫入v1（會同時寫入S3和cache）
-    cached_store.save(info, io.BytesIO(data_v1))
-
-    # 驗證cache有v1
-    with cached_store.get_data_bytes(
-        info.resource_id, info.revision_id, info.schema_version
-    ) as stream:
-        assert stream.read() == data_v1
-
-    # Step 2: 模擬"其他instance"直接寫入S3底層（繞過cached_store的cache）
-    # 這會更新S3的資料，但不會觸發cached_store的cache更新
-    S3ResourceStore.save(cached_store, info, io.BytesIO(data_v2))
-    # Step 3: 立即用cached_store讀取（cache還沒過期）→ 應該讀到cache的舊資料v1
-    if wait_ttl:
-        time.sleep(1)
-    with cached_store.get_data_bytes(
-        info.resource_id, info.revision_id, info.schema_version, force_refresh=False
-    ) as stream:
-        cached_data = stream.read()
-
-    # ❌ 這個應該fail，證明cache返回stale data
-    # 期望：讀到S3的新資料v2
-    # 實際：讀到cache的舊資料v1
-
-    # wait_ttl為False時應該讀到舊資料v1，為"draft"或"stable"時應該讀到新資料v2
-    if wait_ttl:
-        assert cached_data == data_v2, (
-            f"After TTL expired, expected fresh data: {data_v2!r}, but got: {cached_data!r}"
-        )
-    else:
-        assert cached_data == data_v1, (
-            f"Before TTL expired, expected stale cached data: {data_v1!r}, but got: {cached_data!r}"
-        )
-
-    # Step 4: 使用force_refresh=True應該可以繞過cache，讀到S3的新資料v2
-    with cached_store.get_data_bytes(
-        info.resource_id, info.revision_id, info.schema_version, force_refresh=True
-    ) as stream:
-        refreshed_data = stream.read()
-
-    assert refreshed_data == data_v2, (
-        f"force_refresh should return fresh data from S3: {data_v2!r}, got: {refreshed_data!r}"
-    )
-
-
 @pytest.mark.parametrize("wait_ttl", [False, "draft", "stable"])
 def test_stale_cache_after_external_data_deletion(tmp_path: Path, wait_ttl):
     """
@@ -620,9 +436,8 @@ def test_stale_cache_after_external_data_deletion(tmp_path: Path, wait_ttl):
     關鍵測試邏輯：
     1. 用cached_store.save()寫入資料 → cache和S3都有資料
     2. 用S3ResourceStore直接刪除S3底層資料（繞過cached_store的cache）
-    3. 立即用cached_store讀取（不用force_refresh）→ 讀到cache的資料（已刪除但仍在cache）❌
+    3. 立即用cached_store讀取 → 讀到cache的資料（已刪除但仍在cache）❌
     4. 等待TTL過期後讀取 → cache過期，訪問S3應該拋出異常 ✓
-    5. 用force_refresh=True讀取 → 清除cache，訪問S3拋出異常 ✓
     """
     from botocore.exceptions import ClientError
 
@@ -666,7 +481,7 @@ def test_stale_cache_after_external_data_deletion(tmp_path: Path, wait_ttl):
     # 嘗試讀取
     try:
         with cached_store.get_data_bytes(
-            info.resource_id, info.revision_id, info.schema_version, force_refresh=False
+            info.resource_id, info.revision_id, info.schema_version
         ) as stream:
             cached_data = stream.read()
 
@@ -689,10 +504,3 @@ def test_stale_cache_after_external_data_deletion(tmp_path: Path, wait_ttl):
             assert False, (
                 f"Expected cached data when TTL not expired, but got exception: {e}"
             )
-
-    # Step 4: 使用force_refresh=True應該繞過cache，訪問S3時拋出異常
-    with pytest.raises((FileNotFoundError, ClientError, KeyError)):
-        with cached_store.get_data_bytes(
-            info.resource_id, info.revision_id, info.schema_version, force_refresh=True
-        ) as stream:
-            stream.read()

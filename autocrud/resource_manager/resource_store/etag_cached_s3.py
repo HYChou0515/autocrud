@@ -185,54 +185,44 @@ class ETagCachedS3ResourceStore(CachedS3ResourceStore):
         resource_id: str,
         revision_id: str,
         schema_version: str | None,
-        *,
-        force_refresh: bool = False,
     ) -> Generator[IO[bytes], None, None]:
         """
         獲取資源資料，使用ETag進行cache validation
 
         流程：
-        1. 如果force_refresh=True，跳過cache直接從S3讀取
-        2. 嘗試從cache讀取
-        3. 如果cache hit，用HEAD檢查ETag是否有效
-        4. ETag有效 → 返回cached data
-        5. ETag無效 → invalidate cache並從S3重新讀取
+        1. 嘗試從cache讀取
+        2. 如果cache hit，用HEAD檢查ETag是否有效
+        3. ETag有效 → 返回cached data
+        4. ETag無效 → invalidate cache並從S3重新讀取
         """
-        if not force_refresh:
-            # 先嘗試從cache讀取
-            for cache in self.caches:
-                stream = cache.get_data(resource_id, revision_id, schema_version)
-                if stream is not None:
-                    # Cache hit！檢查ETag是否有效
-                    if self._check_etag_validity(
-                        resource_id, revision_id, schema_version
-                    ):
-                        # ETag有效，返回cached data
-                        try:
-                            yield stream
-                        finally:
-                            stream.close()
-                        return
-                    else:
-                        # ETag無效，清除cache並繼續從S3讀取
+        # 先嘗試從cache讀取
+        for cache in self.caches:
+            stream = cache.get_data(resource_id, revision_id, schema_version)
+            if stream is not None:
+                # Cache hit！檢查ETag是否有效
+                if self._check_etag_validity(resource_id, revision_id, schema_version):
+                    # ETag有效，返回cached data
+                    try:
+                        yield stream
+                    finally:
                         stream.close()
-                        self.invalidate(resource_id, revision_id, schema_version)
-                        break
+                    return
+                else:
+                    # ETag無效，清除cache並繼續從S3讀取
+                    stream.close()
+                    self.invalidate(resource_id, revision_id, schema_version)
+                    break
 
-        # Cache miss或force_refresh或ETag無效，從S3讀取
+        # Cache miss或ETag無效，從S3讀取
         # 獲取TTL
         try:
-            info = self.get_revision_info(
-                resource_id, revision_id, schema_version, force_refresh=force_refresh
-            )
+            info = self.get_revision_info(resource_id, revision_id, schema_version)
             ttl = self._get_ttl(info)
         except Exception:
             # If we fail to get info, default to draft TTL (safety first)
             ttl = self.ttl_draft
 
-        with super().get_data_bytes(
-            resource_id, revision_id, schema_version, force_refresh=True
-        ) as stream:
+        with super().get_data_bytes(resource_id, revision_id, schema_version) as stream:
             # 讀取資料
             data = stream.read()
 

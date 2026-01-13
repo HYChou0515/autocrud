@@ -307,3 +307,93 @@ def test_mq_cached_auto_subscriber(tmp_path: Path, require_rabbitmq):
             store.close()
         except Exception:
             pass
+
+
+def test_mq_cached_rabbitmq_unavailable(tmp_path: Path):
+    """
+    測試當RabbitMQ不可用時，store仍能正常工作
+    """
+    from autocrud.resource_manager.resource_store.mq_cached_s3 import (
+        MQCachedS3ResourceStore,
+    )
+
+    # 使用無效的 RabbitMQ URL
+    store = MQCachedS3ResourceStore(
+        caches=[MemoryCache()],
+        amqp_url="amqp://invalid:invalid@invalid-host:9999/",
+        queue_prefix=f"test_invalid_{uuid4().hex[:8]}_",
+        ttl_draft=3600,
+        ttl_stable=3600,
+        endpoint_url="http://localhost:9000",
+        bucket="autocrud-test",
+        access_key_id="minioadmin",
+        secret_access_key="minioadmin",
+    )
+
+    try:
+        # 確認初始化失敗但store仍可用
+        assert store._channel is None
+        assert store._connection is None
+
+        # 基本cache功能應該仍然正常
+        info = create_info("fallback_test", "v1")
+        data = b"test data without mq"
+
+        # 寫入應該成功（即使無法發送MQ消息）
+        store.save(info, io.BytesIO(data))
+
+        # 讀取應該成功
+        with store.get_data_bytes(
+            info.resource_id, info.revision_id, info.schema_version
+        ) as stream:
+            result = stream.read()
+        assert result == data
+
+        # 嘗試發送invalidation（應該靜默失敗）
+        store._publish_invalidation(
+            info.resource_id,
+            info.revision_id,
+            info.schema_version,
+        )  # 不應該crash
+
+    finally:
+        try:
+            store.close()
+        except Exception:
+            pass
+
+
+def test_mq_cached_close_idempotent(tmp_path: Path, require_rabbitmq):
+    """
+    測試多次調用close()是安全的
+    """
+    from autocrud.resource_manager.resource_store.mq_cached_s3 import (
+        MQCachedS3ResourceStore,
+    )
+
+    store = MQCachedS3ResourceStore(
+        caches=[MemoryCache()],
+        amqp_url="amqp://guest:guest@localhost:5672",
+        queue_prefix=f"test_close_{uuid4().hex[:8]}_",
+        ttl_draft=3600,
+        ttl_stable=3600,
+        endpoint_url="http://localhost:9000",
+        bucket="autocrud-test",
+        access_key_id="minioadmin",
+        secret_access_key="minioadmin",
+    )
+
+    try:
+        # 多次調用close()應該是安全的
+        store.close()
+        store.close()  # 第二次調用不應該crash
+        store.close()  # 第三次也不應該crash
+
+        # 確認線程已停止
+        assert not store._subscriber_thread.is_alive()
+
+    finally:
+        try:
+            store.close()
+        except Exception:
+            pass
