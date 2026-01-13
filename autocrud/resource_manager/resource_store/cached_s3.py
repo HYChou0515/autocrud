@@ -29,16 +29,27 @@ class CachedS3ResourceStore(S3ResourceStore):
         return None
 
     def get_revision_info(
-        self, resource_id: str, revision_id: str, schema_version: str | None
+        self,
+        resource_id: str,
+        revision_id: str,
+        schema_version: str | None,
+        *,
+        force_refresh: bool = False,
     ) -> RevisionInfo:
-        # Check caches
+        # Force refresh: invalidate cache first
+        if force_refresh:
+            self.invalidate(resource_id, revision_id, schema_version)
+
+        # Check caches (will miss if force_refresh was True)
         for cache in self.caches:
             info = cache.get_revision_info(resource_id, revision_id, schema_version)
             if info:
                 return info
 
         # Cache miss
-        info = super().get_revision_info(resource_id, revision_id, schema_version)
+        info = super().get_revision_info(
+            resource_id, revision_id, schema_version, force_refresh=force_refresh
+        )
 
         # Populate caches
         ttl = self._get_ttl(info)
@@ -49,9 +60,18 @@ class CachedS3ResourceStore(S3ResourceStore):
 
     @contextmanager
     def get_data_bytes(
-        self, resource_id: str, revision_id: str, schema_version: str | None
+        self,
+        resource_id: str,
+        revision_id: str,
+        schema_version: str | None,
+        *,
+        force_refresh: bool = False,
     ) -> Generator[IO[bytes], None, None]:
-        # Check caches
+        # Force refresh: invalidate cache first
+        if force_refresh:
+            self.invalidate(resource_id, revision_id, schema_version)
+
+        # Check caches (will miss if force_refresh was True)
         for cache in self.caches:
             stream = cache.get_data(resource_id, revision_id, schema_version)
             if stream:
@@ -71,13 +91,17 @@ class CachedS3ResourceStore(S3ResourceStore):
         # Let's try to get info from cache or store.
 
         try:
-            info = self.get_revision_info(resource_id, revision_id, schema_version)
+            info = self.get_revision_info(
+                resource_id, revision_id, schema_version, force_refresh=force_refresh
+            )
             ttl = self._get_ttl(info)
         except Exception:
             # If we fail to get info, default to draft TTL (safety first)
             ttl = self.ttl_draft
 
-        with super().get_data_bytes(resource_id, revision_id, schema_version) as stream:
+        with super().get_data_bytes(
+            resource_id, revision_id, schema_version, force_refresh=force_refresh
+        ) as stream:
             data = stream.read()
 
             # Populate caches

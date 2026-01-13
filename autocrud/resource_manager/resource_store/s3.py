@@ -155,7 +155,12 @@ class S3ResourceStore(IResourceStore):
 
     @contextmanager
     def get_data_bytes(
-        self, resource_id: str, revision_id: str, schema_version: str | None
+        self,
+        resource_id: str,
+        revision_id: str,
+        schema_version: str | None,
+        *,
+        force_refresh: bool = False,
     ) -> Generator[IO[bytes]]:
         """以位元組流的形式獲取指定資源修訂版本的資料"""
         # 先獲取 UID
@@ -185,7 +190,12 @@ class S3ResourceStore(IResourceStore):
             raise
 
     def get_revision_info(
-        self, resource_id: str, revision_id: str, schema_version: str | None
+        self,
+        resource_id: str,
+        revision_id: str,
+        schema_version: str | None,
+        *,
+        force_refresh: bool = False,
     ) -> RevisionInfo:
         """獲取指定修訂版本的資訊"""
         # 先獲取 UID

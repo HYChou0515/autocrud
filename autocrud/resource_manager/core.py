@@ -180,12 +180,14 @@ class SimpleStorage(IStorage):
         resource_id: str,
         revision_id: str,
         schema_version: str | None | UnsetType = UNSET,
+        *,
+        force_refresh: bool = False,
     ) -> IO[bytes]:
         if schema_version is UNSET:
             meta = self.get_meta(resource_id)
             schema_version = meta.schema_version
         return self._resource_store.get_data_bytes(
-            resource_id, revision_id, schema_version
+            resource_id, revision_id, schema_version, force_refresh=force_refresh
         )
 
     def get_resource_revision_info(
@@ -193,12 +195,14 @@ class SimpleStorage(IStorage):
         resource_id: str,
         revision_id: str,
         schema_version: str | None | UnsetType = UNSET,
+        *,
+        force_refresh: bool = False,
     ) -> RevisionInfo:
         if schema_version is UNSET:
             meta = self.get_meta(resource_id)
             schema_version = meta.schema_version
         return self._resource_store.get_revision_info(
-            resource_id, revision_id, schema_version
+            resource_id, revision_id, schema_version, force_refresh=force_refresh
         )
 
     def save_revision(self, info: RevisionInfo, data: IO[bytes]) -> None:
