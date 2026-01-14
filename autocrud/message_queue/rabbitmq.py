@@ -100,6 +100,8 @@ class RabbitMQMessageQueue(BasicMessageQueue[T], Generic[T]):
                 },
             )
 
+            # Note: Periodic delay queue is created dynamically per-job with specific TTL
+
     def put(self, resource_id: str) -> Resource[Job[T]]:
         """
         Enqueue a job that has already been created via RabbitMQ.
@@ -192,6 +194,45 @@ class RabbitMQMessageQueue(BasicMessageQueue[T], Generic[T]):
             ),
         )
 
+    def _enqueue_periodic_job(
+        self, ch, resource_id: str, interval_seconds: int
+    ) -> None:
+        """
+        Enqueue a periodic job to a delay queue for re-execution.
+
+        Uses a delay queue with TTL equal to the periodic interval.
+        After TTL expires, the job is automatically routed back to the main queue.
+
+        Args:
+            ch: RabbitMQ channel
+            resource_id: The resource identifier
+            interval_seconds: Delay before re-execution in seconds
+        """
+        # Create a unique delay queue for this interval if it doesn't exist
+        # This allows multiple jobs with different intervals
+        delay_queue_name = f"{self.queue_name}:periodic:{interval_seconds}s"
+
+        # Declare delay queue with TTL and dead letter routing
+        ch.queue_declare(
+            queue=delay_queue_name,
+            durable=True,
+            arguments={
+                "x-message-ttl": interval_seconds * 1000,  # Convert to milliseconds
+                "x-dead-letter-exchange": "",  # Default exchange
+                "x-dead-letter-routing-key": self.queue_name,  # Route back to main queue
+            },
+        )
+
+        # Publish to delay queue
+        ch.basic_publish(
+            exchange="",
+            routing_key=delay_queue_name,
+            body=resource_id.encode("utf-8"),
+            properties=pika.BasicProperties(
+                delivery_mode=pika.DeliveryMode.Persistent,
+            ),
+        )
+
     def start_consume(self) -> None:
         """
         Start consuming jobs from the queue with the configured callback.
@@ -231,8 +272,44 @@ class RabbitMQMessageQueue(BasicMessageQueue[T], Generic[T]):
                     try:
                         self._do(resource)
                         # 3. Complete (Update RM) & Ack (RabbitMQ)
-                        self.complete(resource_id)
+                        completed_resource = self.complete(resource_id)
                         ch.basic_ack(delivery_tag=method.delivery_tag)
+
+                        # 4. Check if this is a periodic job
+                        job = completed_resource.data
+                        if (
+                            job.periodic_interval_seconds is not None
+                            and job.periodic_interval_seconds > 0
+                        ):
+                            # Increment run count first
+                            job.periodic_runs += 1
+
+                            # Check if we should continue running (after incrementing)
+                            should_continue = (
+                                job.periodic_max_runs is None
+                                or job.periodic_runs < job.periodic_max_runs
+                            )
+
+                            if should_continue:
+                                # Reset retry count for next run, but keep status as COMPLETED
+                                # The delay queue will automatically re-enqueue to main queue
+                                job.retries = 0
+                                with self._rm_meta_provide(
+                                    completed_resource.info.created_by
+                                ):
+                                    self.rm.create_or_update(resource_id, job)
+
+                                # Enqueue to periodic delay queue
+                                # When TTL expires, it will be routed back to main queue
+                                self._enqueue_periodic_job(
+                                    ch, resource_id, job.periodic_interval_seconds
+                                )
+                            else:
+                                # Reached max runs, just update the periodic_runs count
+                                with self._rm_meta_provide(
+                                    completed_resource.info.created_by
+                                ):
+                                    self.rm.create_or_update(resource_id, job)
                     except Exception as e:
                         # 4. Callback failed - update Job with error and retry info
                         error_msg = str(e)

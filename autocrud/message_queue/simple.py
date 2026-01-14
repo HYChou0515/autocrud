@@ -1,4 +1,5 @@
 from typing import TYPE_CHECKING, Callable, Generic, TypeVar
+import datetime as dt
 
 from autocrud.message_queue.basic import BasicMessageQueue, NoRetry
 from autocrud.types import (
@@ -44,6 +45,8 @@ class SimpleMessageQueue(BasicMessageQueue[T], Generic[T]):
         self._rm = resource_manager
         self._running = False
         self.max_retries = max_retries
+        # Track periodic jobs: {resource_id: next_run_time}
+        self._periodic_schedule: dict[str, dt.datetime] = {}
 
     def put(self, resource_id: str) -> Resource[Job[T]]:
         """
@@ -118,17 +121,89 @@ class SimpleMessageQueue(BasicMessageQueue[T], Generic[T]):
 
         return None
 
+    def _schedule_periodic_job(self, resource_id: str, interval_seconds: int) -> None:
+        """
+        Schedule a periodic job for re-execution.
+
+        Args:
+            resource_id: The resource identifier
+            interval_seconds: Delay before re-execution in seconds
+        """
+        next_run_time = dt.datetime.now() + dt.timedelta(seconds=interval_seconds)
+        self._periodic_schedule[resource_id] = next_run_time
+
+    def _check_periodic_jobs(self) -> None:
+        """
+        Check for periodic jobs that are ready to run and re-enqueue them.
+        """
+        now = dt.datetime.now()
+        ready_jobs = [
+            resource_id
+            for resource_id, next_run_time in self._periodic_schedule.items()
+            if next_run_time <= now
+        ]
+
+        for resource_id in ready_jobs:
+            # Remove from schedule
+            del self._periodic_schedule[resource_id]
+
+            # Update job status to PENDING so it gets picked up
+            try:
+                resource = self.rm.get(resource_id)
+                job = resource.data
+                job.status = TaskStatus.PENDING
+                with self._rm_meta_provide(resource.info.created_by):
+                    self.rm.create_or_update(resource_id, job)
+            except Exception:
+                # If update fails, just skip this job
+                pass
+
     def start_consume(self) -> None:
         """Start consuming jobs from the queue."""
         import time
 
         self._running = True
         while self._running:
+            # Check for periodic jobs ready to run
+            self._check_periodic_jobs()
+
             job = self.pop()
             if job:
                 try:
                     self._do(job)
-                    self.complete(job.info.resource_id)
+                    completed_job = self.complete(job.info.resource_id)
+
+                    # Check if this is a periodic job
+                    job_data = completed_job.data
+                    if (
+                        job_data.periodic_interval_seconds is not None
+                        and job_data.periodic_interval_seconds > 0
+                    ):
+                        # Increment run count first
+                        job_data.periodic_runs += 1
+
+                        # Check if we should continue running (after incrementing)
+                        should_continue = (
+                            job_data.periodic_max_runs is None
+                            or job_data.periodic_runs < job_data.periodic_max_runs
+                        )
+
+                        if should_continue:
+                            # Reset retry count for next run, but keep status as COMPLETED
+                            # _check_periodic_jobs will set it to PENDING when ready
+                            job_data.retries = 0
+                            with self._rm_meta_provide(completed_job.info.created_by):
+                                self.rm.create_or_update(job.info.resource_id, job_data)
+
+                            # Schedule next run (will be picked up by _check_periodic_jobs)
+                            self._schedule_periodic_job(
+                                job.info.resource_id, job_data.periodic_interval_seconds
+                            )
+                        else:
+                            # Reached max runs, just update the periodic_runs count
+                            with self._rm_meta_provide(completed_job.info.created_by):
+                                self.rm.create_or_update(job.info.resource_id, job_data)
+
                 except Exception as e:
                     # Update Job with error message and retry count
                     error_msg = str(e)

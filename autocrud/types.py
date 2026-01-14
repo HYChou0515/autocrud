@@ -1858,6 +1858,15 @@ class Job(Struct, Generic[T]):
     retries: int = 0
     """Number of times the job has been retried."""
 
+    periodic_interval_seconds: int | None = None
+    """If set, the job will be re-enqueued every N seconds after completion."""
+
+    periodic_max_runs: int | None = None
+    """Maximum number of times to run the periodic job. None means run indefinitely."""
+
+    periodic_runs: int = 0
+    """Number of times this periodic job has been executed."""
+
 
 class IMessageQueue(ABC, Generic[T]):
     """Interface for a message queue that manages jobs as resources."""
