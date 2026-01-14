@@ -113,18 +113,33 @@ class RabbitMQMessageQueue(BasicMessageQueue[T], Generic[T]):
             The job resource.
         """
         # The job resource is already created by rm.create()
-        # Publish Resource ID to RabbitMQ
-        with self._get_connection() as (_, channel):
-            channel.basic_publish(
-                exchange="",
-                routing_key=self.queue_name,
-                body=resource_id.encode("utf-8"),
-                properties=pika.BasicProperties(
-                    delivery_mode=pika.DeliveryMode.Persistent
-                ),
-            )
+        resource = self.rm.get(resource_id)
+        job = resource.data
 
-        return self.rm.get(resource_id)
+        # Check if job has initial delay configured
+        if (
+            job.periodic_initial_delay_seconds is not None
+            and job.periodic_initial_delay_seconds > 0
+            and job.periodic_runs == 0  # Only apply initial delay for first run
+        ):
+            # Use periodic delay queue mechanism for initial delay
+            with self._get_connection() as (_, channel):
+                self._enqueue_periodic_job(
+                    channel, resource_id, job.periodic_initial_delay_seconds
+                )
+        else:
+            # Publish Resource ID to RabbitMQ immediately
+            with self._get_connection() as (_, channel):
+                channel.basic_publish(
+                    exchange="",
+                    routing_key=self.queue_name,
+                    body=resource_id.encode("utf-8"),
+                    properties=pika.BasicProperties(
+                        delivery_mode=pika.DeliveryMode.Persistent
+                    ),
+                )
+
+        return resource
 
     def pop(self) -> Resource[Job[T]] | None:
         """
@@ -270,7 +285,10 @@ class RabbitMQMessageQueue(BasicMessageQueue[T], Generic[T]):
 
                     # 2. Execute user callback
                     try:
-                        self._do(resource)
+                        result = self._do(resource)
+                        # Check if callback explicitly requested to stop periodic execution
+                        user_requested_stop = result is False
+
                         # 3. Complete (Update RM) & Ack (RabbitMQ)
                         completed_resource = self.complete(resource_id)
                         ch.basic_ack(delivery_tag=method.delivery_tag)
@@ -281,11 +299,12 @@ class RabbitMQMessageQueue(BasicMessageQueue[T], Generic[T]):
                             job.periodic_interval_seconds is not None
                             and job.periodic_interval_seconds > 0
                         ):
-                            # Increment run count first
+                            # Increment run count first (always, even if user requested stop)
                             job.periodic_runs += 1
 
                             # Check if we should continue running (after incrementing)
-                            should_continue = (
+                            # Stop if: user requested stop OR reached max runs
+                            should_continue = not user_requested_stop and (
                                 job.periodic_max_runs is None
                                 or job.periodic_runs < job.periodic_max_runs
                             )

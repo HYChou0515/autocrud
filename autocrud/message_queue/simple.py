@@ -59,8 +59,26 @@ class SimpleMessageQueue(BasicMessageQueue[T], Generic[T]):
             The job resource.
         """
         # The job resource is already created by rm.create()
-        # Just return it for confirmation
-        return self.rm.get(resource_id)
+        resource = self.rm.get(resource_id)
+        job = resource.data
+
+        # Check if job has initial delay configured
+        if (
+            job.periodic_initial_delay_seconds is not None
+            and job.periodic_initial_delay_seconds > 0
+            and job.periodic_runs == 0  # Only apply initial delay for first run
+        ):
+            # Set status to COMPLETED so pop() won't pick it up immediately
+            # _check_periodic_jobs will set it back to PENDING when ready
+            job.status = TaskStatus.COMPLETED
+            with self._rm_meta_provide(resource.info.created_by):
+                self.rm.create_or_update(resource_id, job)
+
+            # Schedule for delayed execution
+            self._schedule_periodic_job(resource_id, job.periodic_initial_delay_seconds)
+        # else: job remains PENDING and will be picked up by pop() immediately
+
+        return resource
 
     def pop(self) -> Resource[Job[T]] | None:
         """
@@ -170,7 +188,10 @@ class SimpleMessageQueue(BasicMessageQueue[T], Generic[T]):
             job = self.pop()
             if job:
                 try:
-                    self._do(job)
+                    result = self._do(job)
+                    # Check if callback explicitly requested to stop periodic execution
+                    user_requested_stop = result is False
+
                     completed_job = self.complete(job.info.resource_id)
 
                     # Check if this is a periodic job
@@ -179,11 +200,12 @@ class SimpleMessageQueue(BasicMessageQueue[T], Generic[T]):
                         job_data.periodic_interval_seconds is not None
                         and job_data.periodic_interval_seconds > 0
                     ):
-                        # Increment run count first
+                        # Increment run count first (always, even if user requested stop)
                         job_data.periodic_runs += 1
 
                         # Check if we should continue running (after incrementing)
-                        should_continue = (
+                        # Stop if: user requested stop OR reached max runs
+                        should_continue = not user_requested_stop and (
                             job_data.periodic_max_runs is None
                             or job_data.periodic_runs < job_data.periodic_max_runs
                         )

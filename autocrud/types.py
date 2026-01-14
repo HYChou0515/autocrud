@@ -1867,6 +1867,9 @@ class Job(Struct, Generic[T]):
     periodic_runs: int = 0
     """Number of times this periodic job has been executed."""
 
+    periodic_initial_delay_seconds: int | None = None
+    """Delay in seconds before the first execution. If None, executes immediately."""
+
 
 class IMessageQueue(ABC, Generic[T]):
     """Interface for a message queue that manages jobs as resources."""
