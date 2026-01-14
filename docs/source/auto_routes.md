@@ -800,7 +800,7 @@ AutoCRUD 目前支援以下 Resource Store 實作：
 ```
 
 #### **ETagCachedS3ResourceStore**
-```{versionadded} 0.7.2
+```{versionadded} 0.7.3
 ```
   - **架構**: 進階的 `CachedS3ResourceStore`，使用 HTTP ETag 機制進行 cache validation。
   - **驗證策略**: 讀取前先用 HEAD 請求檢查 S3 的 ETag，只在變更時重新下載。
@@ -841,7 +841,7 @@ AutoCRUD 目前支援以下 Resource Store 實作：
 ```
 
 #### **MQCachedS3ResourceStore**
-```{versionadded} 0.7.2
+```{versionadded} 0.7.3
 ```
   - **架構**: 使用 RabbitMQ 進行跨 instance cache invalidation 的 `CachedS3ResourceStore`。
   - **同步機制**: 寫入時發送 invalidation message 至 RabbitMQ，所有 instance 接收後自動清除本地 cache。
