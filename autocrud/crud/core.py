@@ -187,7 +187,7 @@ class AutoCRUD:
         dependency_provider: DependencyProvider | None = None,
         event_handlers: Sequence[IEventHandler] | None = None,
         encoding: Encoding = Encoding.json,
-        default_user: str | UnsetType = UNSET,
+        default_user: str | Callable[[], str] | UnsetType = UNSET,
         default_now: Callable[[], dt.datetime] | UnsetType = UNSET,
     ):
         if storage_factory is None:
@@ -395,7 +395,7 @@ class AutoCRUD:
         permission_checker: IPermissionChecker | None = None,
         encoding: Encoding | None = None,
         default_status: RevisionStatus | None = None,
-        default_user: str | UnsetType = UNSET,
+        default_user: str | Callable[[], str] | UnsetType = UNSET,
         default_now: Callable[[], dt.datetime] | UnsetType = UNSET,
         message_queue_factory: IMessageQueueFactory | None | UnsetType = UNSET,
         job_handler: Callable[[Resource[Job[T]]], None] | None = None,

@@ -375,11 +375,15 @@ class ResourceManager(IResourceManager[T], Generic[T]):
         event_handlers: Sequence[IEventHandler] | None = None,
         encoding: Encoding = Encoding.json,
         default_status: RevisionStatus = RevisionStatus.stable,
-        default_user: str | UnsetType = UNSET,
+        default_user: str | Callable[[], str] | UnsetType = UNSET,
         default_now: Callable[[], dt.datetime] | UnsetType = UNSET,
     ):
         if default_user is UNSET:
             self.user_ctx = Ctx("user_ctx", strict_type=str)
+        elif callable(default_user):
+            self.user_ctx = Ctx(
+                "user_ctx", strict_type=str, default_factory=default_user
+            )
         else:
             self.user_ctx = Ctx("user_ctx", strict_type=str, default=default_user)
         if default_now is UNSET:
