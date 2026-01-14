@@ -214,10 +214,12 @@ class MQCachedS3ResourceStore(CachedS3ResourceStore):
 
     def save(self, info: RevisionInfo, data: IO[bytes]) -> None:
         """保存資源，並發送invalidation消息到RabbitMQ"""
-        # 調用父類的save（會寫入S3和更新本地cache）
+        # 先寫入S3和更新本地cache
+        # 必須先寫入，確保S3上有最新數據
         super().save(info, data)
 
-        # 發送invalidation消息，通知其他instance
+        # 再發送invalidation消息，通知其他instance清除cache
+        # 其他instance清除cache後，下次讀取會從S3獲得最新數據
         self._publish_invalidation(
             info.resource_id,
             info.revision_id,
