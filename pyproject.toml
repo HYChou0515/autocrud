@@ -88,6 +88,7 @@ dev = [
     "httpx>=0.28.1",
     "ipython>=9.4.0",
     "linkify-it-py>=2.0.3",
+    "mypy>=1.15.0",
     "myst-parser>=4.0.1",
     "pandas>=2.3.1",
     "pika-stubs>=0.1.3",
@@ -112,6 +113,17 @@ build-backend = "hatchling.build"
 
 [tool.hatch.version]
 path = "autocrud/__init__.py"
+
+[tool.hatch.build.targets.wheel]
+packages = ["autocrud"]
+
+[tool.hatch.build.targets.sdist]
+include = [
+    "/autocrud",
+    "/tests",
+    "/examples",
+    "/docs",
+]
 
 [tool.coverage.report]
 exclude_also = [
@@ -154,3 +166,58 @@ convention = "google"
     # magic value comparison is allowed in tests
     "PLR2004", # Magic value used in comparison, consider replacing `11` with a constant variable
 ]
+
+[tool.mypy]
+python_version = "3.11"
+warn_return_any = true
+warn_unused_configs = true
+# Gradually enable these
+disallow_untyped_defs = false
+disallow_incomplete_defs = true
+disallow_any_unimported = false
+no_implicit_optional = true
+warn_redundant_casts = true
+warn_unused_ignores = true
+warn_no_return = true
+check_untyped_defs = true
+strict_equality = true
+show_error_codes = true
+pretty = true
+plugins = []
+# Allow dynamic typing for msgspec defstruct
+allow_redefinition = true
+implicit_reexport = true
+
+[[tool.mypy.overrides]]
+module = [
+    "msgpack.*",
+    "jsonpatch.*",
+    "jsonpointer.*",
+    "xxhash.*",
+    "more_itertools.*",
+    "qqabc.*",
+    "strawberry.*",
+    "pika.*",
+    "boto3.*",
+    "botocore.*",
+    "magic.*",
+]
+ignore_missing_imports = true
+
+[[tool.mypy.overrides]]
+module = "tests.*"
+disallow_untyped_defs = false
+
+[[tool.mypy.overrides]]
+module = "examples.*"
+disallow_untyped_defs = false
+disallow_incomplete_defs = false
+
+# Allow more flexibility for msgspec's dynamic features
+[[tool.mypy.overrides]]
+module = [
+    "autocrud.types",
+    "autocrud.resource_manager.partial",
+    "autocrud.resource_manager.data_converter",
+]
+disable_error_code = ["valid-type", "attr-defined", "arg-type", "list-item"]

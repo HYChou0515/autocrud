@@ -19,6 +19,7 @@ help:
 	@echo "  cov-html     生成 HTML 覆蓋率報告"
 	@echo "  style        格式化程式碼並修復程式碼風格問題 (ruff format + ruff check --fix)"
 	@echo "  check        檢查程式碼品質 (ruff check)"
+	@echo "  typecheck    執行 mypy 類型檢查"
 	@echo "  format       格式化程式碼 (ruff format)"
 	@echo "  lint         執行 lint 檢查"
 	@echo "  install      安裝專案依賴"
@@ -100,6 +101,12 @@ check:
 	uv run ruff check .
 	uv run ruff format --check
 
+# 類型檢查
+.PHONY: typecheck
+typecheck:
+	@echo "執行 mypy 類型檢查..."
+	uv run mypy autocrud
+
 # 格式化程式碼
 .PHONY: format
 format:
@@ -147,7 +154,7 @@ publish: build test
 
 # 完整的程式碼品質檢查
 .PHONY: quality
-quality: style check test
+quality: style check typecheck test
 	@echo "程式碼品質檢查完成"
 
 # 快速開發循環
@@ -157,7 +164,7 @@ dev: style test
 
 # CI/CD 流程
 .PHONY: ci
-ci: check test coverage
+ci: check typecheck test coverage
 	@echo "CI 流程完成"
 
 # 完整檢查（發布前）

@@ -6,6 +6,8 @@
 [![GraphQL](https://img.shields.io/badge/GraphQL-Supported-E10098?logo=graphql)](https://graphql.org/)
 [![msgspec](https://img.shields.io/badge/msgspec-Supported-5e60ce)](https://github.com/jcrist/msgspec)
 [![Versioning](https://img.shields.io/badge/Versioning-Built--in-blue)]()
+[![mypy](https://img.shields.io/badge/mypy-checked-2A6DB2.svg)](http://mypy-lang.org/)
+[![Type Hints](https://img.shields.io/badge/Type%20Hints-PEP%20561-blue)](https://www.python.org/dev/peps/pep-0561/)
 
 <div style="padding:12px;border:1px solid #add3ff99;border-radius:8px;background: #add3ff33;">
   <strong>AutoCRUD 是模型驅動的自動化FastAPI：</strong>內建版本控制、權限與搜尋，聚焦業務邏輯快速上線。
