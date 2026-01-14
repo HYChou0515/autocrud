@@ -64,8 +64,6 @@ class MemoryResourceStore(IResourceStore):
         resource_id: ResourceID,
         revision_id: RevisionID,
         schema_version: SchemaVersion | None,
-        *,
-        force_refresh: bool = False,
     ) -> Generator[DataIO]:
         uid = self._store[resource_id][revision_id][schema_version]
         yield io.BytesIO(self._raw_data_store[uid])
@@ -75,8 +73,6 @@ class MemoryResourceStore(IResourceStore):
         resource_id: ResourceID,
         revision_id: RevisionID,
         schema_version: SchemaVersion | None,
-        *,
-        force_refresh: bool = False,
     ) -> RevisionInfo:
         uid = self._store[resource_id][revision_id][schema_version]
         return self._info_serializer.decode(self._raw_info_store[uid])
@@ -168,8 +164,6 @@ class DiskResourceStore(IResourceStore):
         resource_id: ResourceID,
         revision_id: RevisionID,
         schema_version: SchemaVersion | None,
-        *,
-        force_refresh: bool = False,
     ) -> Generator[DataIO]:
         data_path = (
             self._get_uid_store_symdir(resource_id, revision_id, schema_version)
@@ -183,8 +177,6 @@ class DiskResourceStore(IResourceStore):
         resource_id: ResourceID,
         revision_id: RevisionID,
         schema_version: SchemaVersion | None,
-        *,
-        force_refresh: bool = False,
     ) -> RevisionInfo:
         info_path = (
             self._get_uid_store_symdir(resource_id, revision_id, schema_version)
