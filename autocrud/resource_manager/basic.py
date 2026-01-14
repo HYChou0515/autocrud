@@ -664,16 +664,12 @@ class IResourceStore(ABC):
         resource_id: str,
         revision_id: str,
         schema_version: str | None,
-        *,
-        force_refresh: bool = False,
     ) -> AbstractContextManager[IO[bytes]]:
         """Retrieve raw data bytes for a specific revision.
 
         Arguments:
             resource_id (str): The unique identifier of the resource.
             revision_id (str): The unique identifier of the revision to retrieve.
-            force_refresh (bool): If True, bypass cache and fetch from underlying storage.
-                Defaults to False.
 
         Returns:
             IO[bytes]: A byte stream containing the raw encoded resource data.
@@ -689,9 +685,6 @@ class IResourceStore(ABC):
 
         The returned stream should be positioned at the beginning of the data and
         remain valid until closed or the method is called again.
-
-        When force_refresh is True, cached stores will invalidate their cache entries
-        and fetch fresh data from the underlying storage backend.
         """
 
     @abstractmethod
@@ -700,16 +693,12 @@ class IResourceStore(ABC):
         resource_id: str,
         revision_id: str,
         schema_version: str | None,
-        *,
-        force_refresh: bool = False,
     ) -> RevisionInfo:
         """Retrieve revision metadata without the resource data.
 
         Arguments:
             resource_id (str): The unique identifier of the resource.
             revision_id (str): The unique identifier of the revision.
-            force_refresh (bool): If True, bypass cache and fetch from underlying storage.
-                Defaults to False.
 
         Returns:
             RevisionInfo: The revision metadata including timestamps, user info,
@@ -730,9 +719,6 @@ class IResourceStore(ABC):
         - Parent revision relationships
         - Revision status and schema version
         - Data integrity hashes
-
-        When force_refresh is True, cached stores will invalidate their cache entries
-        and fetch fresh data from the underlying storage backend.
         """
 
     @abstractmethod
@@ -869,16 +855,12 @@ class IStorage(ABC):
         resource_id: str,
         revision_id: str,
         schema_version: str | None | UnsetType = UNSET,
-        *,
-        force_refresh: bool = False,
     ) -> AbstractContextManager[IO[bytes]]:
         """Retrieve raw data bytes for a specific resource revision.
 
         Arguments:
             resource_id (str): The unique identifier of the resource.
             revision_id (str): The unique identifier of the revision.
-            force_refresh (bool): If True, bypass cache and fetch from underlying storage.
-                Defaults to False.
 
         Returns:
             IO[bytes]: A byte stream containing the raw encoded resource data.
@@ -894,9 +876,6 @@ class IStorage(ABC):
 
         The returned stream should be positioned at the beginning of the data and
         remain valid until closed or the method is called again.
-
-        When force_refresh is True, cached stores will invalidate their cache entries
-        and fetch fresh data from the underlying storage backend.
         """
 
     @abstractmethod
@@ -905,16 +884,12 @@ class IStorage(ABC):
         resource_id: str,
         revision_id: str,
         schema_version: str | None | UnsetType = UNSET,
-        *,
-        force_refresh: bool = False,
     ) -> RevisionInfo:
         """Retrieve revision information without the resource data.
 
         Arguments:
             resource_id (str): The unique identifier of the resource.
             revision_id (str): The unique identifier of the revision.
-            force_refresh (bool): If True, bypass cache and fetch from underlying storage.
-                Defaults to False.
 
         Returns:
             RevisionInfo: The revision metadata including creation info,
@@ -929,9 +904,6 @@ class IStorage(ABC):
         potentially large resource data. It's optimized for operations that
         only need revision information such as audit trails, version browsing,
         and revision relationship analysis.
-
-        When force_refresh is True, cached stores will invalidate their cache entries
-        and fetch fresh data from the underlying storage backend.
         """
 
     @abstractmethod
