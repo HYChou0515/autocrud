@@ -52,6 +52,7 @@ def my_tmpdir():
         "memory-pg",
         "redis",
         "redis-pg",  # FastSlowMetaStore with Redis + PostgreSQL
+        "postgres",
     ],
 )
 class TestMetaStoreIterSearch:
@@ -152,6 +153,41 @@ class TestMetaStoreIterSearch:
             assert meta.indexed_data["age"] < 35
         assert engineering_under_35 == {"Alice", "Eve"}
 
+    def test_iter_search_dotted_field(self):
+        """Test search using a field with dots in its name."""
+        import uuid
+
+        now = dt.datetime.now(ZoneInfo("UTC"))
+
+        # Add a record with a dotted index key
+        meta = ResourceMeta(
+            resource_id=str(uuid.uuid4()),
+            current_revision_id="rev_dot",
+            total_revision_count=1,
+            created_time=now,
+            updated_time=now,
+            created_by="test_user",
+            updated_by="test_user",
+            is_deleted=False,
+            indexed_data={"user.name": "DottedUser", "other": "value"},
+        )
+        self.meta_store[meta.resource_id] = meta
+
+        # Search using the dotted field
+        query = ResourceMetaSearchQuery(
+            data_conditions=[
+                DataSearchCondition(
+                    field_path="user.name",
+                    operator=DataSearchOperator.equals,
+                    value="DottedUser",
+                ),
+            ],
+        )
+
+        results = list(self.meta_store.iter_search(query))
+        assert len(results) == 1
+        assert results[0].indexed_data["user.name"] == "DottedUser"
+
     def _get_meta_store(self, store_type: str, tmpdir):
         """Get meta store instance."""
         from autocrud.resource_manager.meta_store.simple import MemoryMetaStore
@@ -246,6 +282,24 @@ class TestMetaStoreIterSearch:
                 )
             except Exception as e:
                 pytest.skip(f"Redis or PostgreSQL not available: {e}")
+        elif store_type == "postgres":
+            import psycopg2
+
+            from autocrud.resource_manager.meta_store.postgres import PostgresMetaStore
+
+            # Setup PostgreSQL connection
+            pg_dsn = "postgresql://admin:password@localhost:5432/your_database"
+            try:
+                # Reset the test database
+                pg_conn = psycopg2.connect(pg_dsn)
+                with pg_conn.cursor() as cur:
+                    cur.execute("DROP TABLE IF EXISTS resource_meta;")
+                    pg_conn.commit()
+                pg_conn.close()
+
+                return PostgresMetaStore(pg_dsn=pg_dsn, encoding="msgpack")
+            except Exception as e:
+                pytest.skip(f"PostgreSQL not available: {e}")
         else:
             raise ValueError(f"Unsupported store_type: {store_type}")
 
