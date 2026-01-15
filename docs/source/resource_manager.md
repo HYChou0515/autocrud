@@ -676,7 +676,7 @@ partial = ["title", "sub_items/::2/completed"]
 }
 ```
 
-### Resource Searching
+## Resource Searching
 
 ```{code-block} python
 :emphasize-lines: 3-6
@@ -705,8 +705,43 @@ assert len(metas) == count
 | [`limit`](#autocrud.types.ResourceMetaSearchQuery.limit)                            |pagination limit (see [pagination](#pagination))               | int = 10                                            |
 | [`offset`](#autocrud.types.ResourceMetaSearchQuery.offset)                          |pagination offset (see [pagination](#pagination))              | int = 0                                            |
 
+### Query Builder (進階查詢語法)
 
-#### Data Attribute Index
+```{versionadded} 0.6.9
+```
+
+AutoCRUD 提供了強大的 **Query Builder (QB)** 語法，讓你能使用 Pythonic 的方式建構複雜的搜尋條件，包括：
+
+- **比較運算符**：`==`, `!=`, `>`, `>=`, `<`, `<=`
+- **邏輯運算**：`&` (AND), `|` (OR), `~` (NOT)
+- **字串查詢**：`.contains()`, `.startswith()`, `.endswith()`, `.regex()`
+- **欄位轉換**：`.length()` 或 `len()` 語法糖
+- **布林方法**：`.is_true()`, `.is_false()`, `.is_null()`, `.exists()`
+- **日期時間查詢**：`.between()`, `.in_list()`, `.not_in_list()`
+
+**快速範例：**
+
+```python
+from autocrud.query import QB, len
+
+# 使用 QB 建構查詢條件
+query = ResourceMetaSearchQuery(
+    conditions=[
+        # 名稱包含 "Alice" 且年齡大於 18
+        (QB["name"].contains("Alice")) & (QB["age"] > 18),
+        # 或者 email 不為空且標籤長度大於 0
+        QB["email"].exists() & (len(QB["tags"]) > 0)
+    ]
+)
+
+metas = manager.search_resources(query)
+```
+
+```{seealso}
+完整的 Query Builder 使用教學與 API 參考，請見 [Query Builder 完整指南](query_builder_guide.md)
+```
+
+### Data Attribute Index
 
 你可以在`AutoCrud.add_model`時指定需要index的attributes有哪些, 
 ResourceMeta會根據設定負責紀錄需要作為索引的attributes。
@@ -739,7 +774,7 @@ metas = manager.search_resources(ResourceMetaSearchQuery(
 
 `DataSearchCondition`與`DataSearchGroup`可以提供基本的搜尋功能，詳細使用方式可以參考[DataSearchCondition](#autocrud.types.DataSearchCondition)與[DataSearchGroup](#autocrud.types.DataSearchGroup)
 
-#### General Filtering (Meta & Data)
+### General Filtering (Meta & Data)
 
 ```{versionadded} 0.6.9
 ```
@@ -862,11 +897,11 @@ manager.search_resources(ResourceMetaSearchQuery(
 ))
 ```
 
-#### Data Search Filter (Legacy)
+### Data Search Filter (Legacy)
 
 **Deprecated**. `data_conditions` 參數已棄用，請使用上面的 `conditions` (General Filtering)。用法完全相同，差別僅在於 `conditions` 額外支援 metadata 欄位。
 
-#### Sorting
+### Sorting
 
 可以使用內建的key來排序，也可以使用[data attribute index](#data-attribute-index)。
 
@@ -883,7 +918,7 @@ query = ResourceMetaSearchQuery(
 ```
 詳細使用方式可以參考[ResourceDataSearchSort](#autocrud.types.ResourceDataSearchSort)與[ResourceMetaSearchSort](#autocrud.types.ResourceMetaSearchSort)
 
-#### Pagination
+### Pagination
 
 這個function示範如何用 limit/offset 參數分批取得查詢結果：
 
