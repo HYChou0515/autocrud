@@ -33,9 +33,68 @@ class Query:
         self._offset = offset
         return self
 
-    def sort(self, *sorts: ResourceMetaSearchSort | ResourceDataSearchSort) -> Self:
-        self._sorts.extend(sorts)
+    def sort(
+        self, *sorts: ResourceMetaSearchSort | ResourceDataSearchSort | str
+    ) -> Self:
+        """Add sorting criteria.
+
+        Args:
+            *sorts: Sort objects or field name strings.
+                   Strings can be prefixed with '+' (ascending) or '-' (descending).
+                   If no prefix, defaults to ascending.
+
+        Returns:
+            Self for chaining
+
+        Example:
+            query.sort(QB.created_time().desc())
+            query.sort("-created_time", "+name")  # created_time desc, name asc
+            query.sort("age")  # age ascending (default)
+        """
+        for s in sorts:
+            if isinstance(s, str):
+                # Parse string format: "+field" or "-field" or "field"
+                if s.startswith("-"):
+                    field_name = s[1:]
+                    direction = ResourceMetaSortDirection.descending
+                elif s.startswith("+"):
+                    field_name = s[1:]
+                    direction = ResourceMetaSortDirection.ascending
+                else:
+                    field_name = s
+                    direction = ResourceMetaSortDirection.ascending
+
+                # Check if it's a meta field
+                if field_name in ResourceMetaSortKey.__members__:
+                    sort_obj = ResourceMetaSearchSort(
+                        direction=direction, key=ResourceMetaSortKey(field_name)
+                    )
+                else:
+                    sort_obj = ResourceDataSearchSort(
+                        direction=direction, field_path=field_name
+                    )
+                self._sorts.append(sort_obj)
+            else:
+                self._sorts.append(s)
         return self
+
+    def order_by(
+        self, *sorts: ResourceMetaSearchSort | ResourceDataSearchSort | str
+    ) -> Self:
+        """Alias for sort(). Add sorting criteria.
+
+        Args:
+            *sorts: Sort objects or field name strings.
+                   Strings can be prefixed with '+' (ascending) or '-' (descending).
+
+        Returns:
+            Self for chaining
+
+        Example:
+            query.order_by("-created_time", "+name")
+            query.order_by(QB.age().desc())
+        """
+        return self.sort(*sorts)
 
     def page(self, page: int, size: int = 20) -> Self:
         """Set pagination parameters.
@@ -365,6 +424,21 @@ class Field:
 
     def regex(self, value: str) -> ConditionBuilder:
         return self._cond(DataSearchOperator.regex, value)
+
+    def match(self, value: str) -> ConditionBuilder:
+        """Alias for regex(). Match field value against a regular expression pattern.
+
+        Args:
+            value: Regular expression pattern
+
+        Returns:
+            ConditionBuilder
+
+        Example:
+            QB["email"].match(r".*@gmail\.com$")
+            QB["code"].match(r"^[A-Z]{3}-\d{4}$")
+        """
+        return self.regex(value)
 
     # Aliases and convenience methods
     def one_of(self, value: list[Any]) -> ConditionBuilder:
@@ -766,51 +840,144 @@ class Field:
             direction=ResourceMetaSortDirection.descending, field_path=self.name
         )
 
-    def __getattr__(self, name: str) -> "Field":
-        # Support nested fields: QB.user.email -> Field("user.email")
-        if name.startswith("__"):
-            raise AttributeError(name)
-        return Field(f"{self.name}.{name}")
-
 
 class QueryBuilderMeta(type):
-    def __getattr__(cls, name: str) -> Field:
-        return Field(name)
-
     def __getitem__(cls, name: str) -> Field:
-        """Support QB["field"] syntax as alias for QB.field("field").
+        """Access data fields using bracket notation.
 
         Args:
-            name: The field name
+            name: The field name (supports nested paths with dots)
 
         Returns:
             Field instance
 
         Example:
-            QB["class"]  # Same as QB.field("class")
-            QB["field-name"]  # Same as QB.field("field-name")
-            QB["foo.bar"]  # Same as QB.field("foo.bar")
+            QB["name"]  # Data field "name"
+            QB["user.email"]  # Nested data field "user.email"
+            QB["class"]  # Field name with reserved keyword
+            QB["field-name"]  # Field name with special characters
         """
         return Field(name)
 
 
 class QB(metaclass=QueryBuilderMeta):
+    # Meta Attributes - Resource metadata fields with type hints and IDE support
     @staticmethod
-    def field(name: str) -> Field:
-        """Create a Field with the given name. Useful for field names that conflict with Python keywords or contain special characters.
-
-        Args:
-            name: The field name
+    def resource_id() -> Field:
+        """Resource unique identifier.
 
         Returns:
-            Field instance
+            Field for resource_id
 
         Example:
-            QB.field("class")  # for reserved keywords
-            QB.field("field-name")  # for special characters
+            QB.resource_id().eq("abc-123")
+            QB.resource_id() << ["id1", "id2", "id3"]
         """
-        return Field(name)
+        return Field("resource_id")
 
+    @staticmethod
+    def revision_id() -> Field:
+        """Current revision identifier.
+
+        Returns:
+            Field for current_revision_id
+
+        Example:
+            QB.revision_id().eq("rev-456")
+        """
+        return Field("current_revision_id")
+
+    @staticmethod
+    def created_time() -> Field:
+        """Resource creation timestamp.
+
+        Returns:
+            Field for created_time
+
+        Example:
+            QB.created_time() >= datetime(2024, 1, 1)
+            QB.created_time().today()
+            QB.created_time().last_n_days(7)
+        """
+        return Field("created_time")
+
+    @staticmethod
+    def updated_time() -> Field:
+        """Resource last update timestamp.
+
+        Returns:
+            Field for updated_time
+
+        Example:
+            QB.updated_time().this_week()
+            QB.updated_time() >= datetime(2024, 1, 1)
+        """
+        return Field("updated_time")
+
+    @staticmethod
+    def created_by() -> Field:
+        """User who created the resource.
+
+        Returns:
+            Field for created_by
+
+        Example:
+            QB.created_by().eq("admin")
+            QB.created_by() << ["user1", "user2"]
+        """
+        return Field("created_by")
+
+    @staticmethod
+    def updated_by() -> Field:
+        """User who last updated the resource.
+
+        Returns:
+            Field for updated_by
+
+        Example:
+            QB.updated_by().eq("system")
+            QB.updated_by().ne("guest")
+        """
+        return Field("updated_by")
+
+    @staticmethod
+    def is_deleted() -> Field:
+        """Resource deletion status.
+
+        Returns:
+            Field for is_deleted
+
+        Example:
+            QB.is_deleted().eq(False)
+            QB.is_deleted() == False
+        """
+        return Field("is_deleted")
+
+    @staticmethod
+    def schema_version() -> Field:
+        """Resource schema version.
+
+        Returns:
+            Field for schema_version
+
+        Example:
+            QB.schema_version().eq("v2")
+        """
+        return Field("schema_version")
+
+    @staticmethod
+    def total_revision_count() -> Field:
+        """Total number of revisions for the resource.
+
+        Returns:
+            Field for total_revision_count
+
+        Example:
+            QB.total_revision_count() > 5
+        """
+        return Field("total_revision_count")
+
+    # Combinators
     @staticmethod
     def all(*conditions: ConditionBuilder) -> ConditionBuilder:
         """Combine multiple conditions with AND logic.
