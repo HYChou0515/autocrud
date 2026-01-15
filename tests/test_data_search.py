@@ -188,6 +188,160 @@ class TestMetaStoreIterSearch:
         assert len(results) == 1
         assert results[0].indexed_data["user.name"] == "DottedUser"
 
+    def test_length_transform_on_string_field(self):
+        """Test using length() transform on string fields (name field)."""
+        from autocrud.query import QB
+
+        # Create condition: name.length() > 5 (should match "Charlie")
+        condition = QB["name"].length() > 5
+
+        query = ResourceMetaSearchQuery(
+            data_conditions=[condition._condition],
+            limit=10,
+            offset=0,
+        )
+
+        results = list(self.meta_store.iter_search(query))
+
+        # Should find Charlie (7 chars), exclude Alice (5), Bob (3), Diana (5), Eve (3)
+        assert len(results) == 1
+        assert results[0].indexed_data["name"] == "Charlie"
+
+    def test_length_transform_on_email_field(self):
+        """Test using length() transform with different operators."""
+        from autocrud.query import QB
+
+        # Find emails with length >= 20
+        condition = QB["email"].length() >= 20
+
+        query = ResourceMetaSearchQuery(
+            data_conditions=[condition._condition],
+            limit=10,
+            offset=0,
+        )
+
+        results = list(self.meta_store.iter_search(query))
+
+        # charlie@external.org = 21 chars
+        # alice@company.com = 17 chars
+        # Should only find Charlie
+        assert len(results) == 1
+        assert results[0].indexed_data["email"] == "charlie@external.org"
+
+    def test_length_transform_equals(self):
+        """Test using length() with exact equality."""
+        from autocrud.query import QB
+
+        # Find names with exactly 3 characters
+        condition = QB["name"].length().eq(3)
+
+        query = ResourceMetaSearchQuery(
+            data_conditions=[condition._condition],
+            limit=10,
+            offset=0,
+        )
+
+        results = list(self.meta_store.iter_search(query))
+
+        # Bob (3) and Eve (3)
+        assert len(results) == 2
+        names = sorted([r.indexed_data["name"] for r in results])
+        assert names == ["Bob", "Eve"]
+
+    def test_length_transform_with_list_field(self):
+        """Test using length() transform on list/array fields."""
+        import uuid
+
+        from autocrud.query import QB
+
+        now = dt.datetime.now(ZoneInfo("UTC"))
+
+        # Add resources with tags (list field)
+        metas_with_tags = [
+            ResourceMeta(
+                resource_id=str(uuid.uuid4()),
+                current_revision_id="rev_tags_1",
+                total_revision_count=1,
+                created_time=now,
+                updated_time=now,
+                created_by="test_user",
+                updated_by="test_user",
+                is_deleted=False,
+                indexed_data={
+                    "name": "Product1",
+                    "tags": ["python", "fastapi", "autocrud"],
+                },
+            ),
+            ResourceMeta(
+                resource_id=str(uuid.uuid4()),
+                current_revision_id="rev_tags_2",
+                total_revision_count=1,
+                created_time=now,
+                updated_time=now,
+                created_by="test_user",
+                updated_by="test_user",
+                is_deleted=False,
+                indexed_data={
+                    "name": "Product2",
+                    "tags": ["react"],
+                },
+            ),
+            ResourceMeta(
+                resource_id=str(uuid.uuid4()),
+                current_revision_id="rev_tags_3",
+                total_revision_count=1,
+                created_time=now,
+                updated_time=now,
+                created_by="test_user",
+                updated_by="test_user",
+                is_deleted=False,
+                indexed_data={
+                    "name": "Product3",
+                    "tags": [],
+                },
+            ),
+        ]
+
+        for meta in metas_with_tags:
+            self.meta_store[meta.resource_id] = meta
+
+        # Find resources with more than 1 tag
+        condition = QB["tags"].length() > 1
+
+        query = ResourceMetaSearchQuery(
+            data_conditions=[condition._condition],
+            limit=10,
+            offset=0,
+        )
+
+        results = list(self.meta_store.iter_search(query))
+
+        # Should find Product1 (3 tags)
+        assert len(results) == 1
+        assert results[0].indexed_data["name"] == "Product1"
+        assert len(results[0].indexed_data["tags"]) == 3
+
+    def test_length_transform_with_combined_conditions(self):
+        """Test length() combined with other conditions."""
+        from autocrud.query import QB
+
+        # Find Engineering users with name length > 4
+        condition = (QB["department"].eq("Engineering")) & (QB["name"].length() > 4)
+
+        query = ResourceMetaSearchQuery(
+            data_conditions=[condition._condition],
+            limit=10,
+            offset=0,
+        )
+
+        results = list(self.meta_store.iter_search(query))
+
+        # Engineering: Alice (5), Charlie (7), Eve (3)
+        # name.length() > 4: Alice (5), Charlie (7)
+        assert len(results) == 2
+        names = sorted([r.indexed_data["name"] for r in results])
+        assert names == ["Alice", "Charlie"]
+
     def _get_meta_store(self, store_type: str, tmpdir):
         """Get meta store instance."""
         from autocrud.resource_manager.meta_store.simple import MemoryMetaStore

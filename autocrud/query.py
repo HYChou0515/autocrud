@@ -8,6 +8,7 @@ from autocrud.types import (
     DataSearchGroup,
     DataSearchLogicOperator,
     DataSearchOperator,
+    FieldTransform,
     ResourceDataSearchSort,
     ResourceMetaSearchQuery,
     ResourceMetaSearchSort,
@@ -332,12 +333,20 @@ class ConditionBuilder(Query):
 
 
 class Field:
-    def __init__(self, name: str):
+    def __init__(self, name: str, transform: FieldTransform | None = None):
         self.name = name
+        self.transform = transform
 
-    def _cond(self, op: DataSearchOperator, val: Any) -> ConditionBuilder:
+    def _cond(
+        self, op: DataSearchOperator, val: Any, transform: FieldTransform | None = None
+    ) -> ConditionBuilder:
         return ConditionBuilder(
-            DataSearchCondition(field_path=self.name, operator=op, value=val)
+            DataSearchCondition(
+                field_path=self.name,
+                operator=op,
+                value=val,
+                transform=transform if transform is not None else self.transform,
+            )
         )
 
     def eq(self, value: Any) -> ConditionBuilder:
@@ -424,11 +433,13 @@ class Field:
                         field_path=self.name,
                         operator=DataSearchOperator.greater_than_or_equal,
                         value=min_val,
+                        transform=self.transform,
                     ),
                     DataSearchCondition(
                         field_path=self.name,
                         operator=DataSearchOperator.less_than_or_equal,
                         value=max_val,
+                        transform=self.transform,
                     ),
                 ],
             )
@@ -1104,6 +1115,30 @@ class Field:
         )
 
         return self.between(start_of_year, end_of_year)
+
+    # Field transformation methods
+    def length(self) -> "Field":
+        """Get a virtual field representing the length of this field's value.
+
+        This creates a field reference that can be used to query the length of:
+        - Strings: character count
+        - Lists/Arrays: number of elements
+        - Dicts/Objects: number of keys
+
+        Returns:
+            Field instance with length transform applied
+
+        Example:
+            QB["tags"].length() > 3           # More than 3 tags
+            QB["name"].length().between(5, 20) # Name length 5-20 chars
+            QB["items"].length() == 0          # Empty list
+            QB["description"].length() >= 100  # At least 100 characters
+
+        Note:
+            The actual length calculation is performed by the storage backend
+            when executing the query using the FieldTransform.length transform.
+        """
+        return Field(self.name, transform=FieldTransform.length)
 
     # Sorting
     def asc(self) -> ResourceDataSearchSort | ResourceMetaSearchSort:

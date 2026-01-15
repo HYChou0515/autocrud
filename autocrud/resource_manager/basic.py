@@ -179,23 +179,35 @@ def _evaluate_trivalent(
     # Helper to check existence and get value
     val = UNSET
     has_key = False
+    actual_field_path = condition.field_path
 
     if isinstance(data, dict):
-        if condition.field_path in data:
+        if actual_field_path in data:
             has_key = True
-            val = data[condition.field_path]
+            val = data[actual_field_path]
     elif isinstance(data, ResourceMeta):
-        if (
-            hasattr(data, condition.field_path)
-            and condition.field_path != "indexed_data"
-        ):
+        if hasattr(data, actual_field_path) and actual_field_path != "indexed_data":
             has_key = True
-            val = getattr(data, condition.field_path)
-        elif (
-            data.indexed_data is not UNSET and condition.field_path in data.indexed_data
-        ):
+            val = getattr(data, actual_field_path)
+        elif data.indexed_data is not UNSET and actual_field_path in data.indexed_data:
             has_key = True
-            val = data.indexed_data[condition.field_path]
+            val = data.indexed_data[actual_field_path]
+
+    # Apply field transformation if specified
+    field_value = val
+    if has_key and val is not None and condition.transform is not None:
+        from autocrud.types import FieldTransform
+
+        if condition.transform == FieldTransform.length:
+            try:
+                field_value = len(val)
+            except TypeError:
+                # Value doesn't support len(), treat as Unknown
+                return None
+    elif has_key:
+        field_value = val
+    else:
+        field_value = UNSET
 
     # 1. Handle operators that work on missing keys or don't care about value
     if condition.operator == DataSearchOperator.exists:
@@ -211,8 +223,6 @@ def _evaluate_trivalent(
     # 2. Handle missing keys for other operators -> Unknown
     if not has_key:
         return None
-
-    field_value = val
 
     # 3. Handle NULL values for other operators
     if field_value is None:

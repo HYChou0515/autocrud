@@ -13,10 +13,12 @@ from autocrud.resource_manager.basic import (
     MsgspecSerializer,
 )
 from autocrud.types import (
+    DataSearchFilter,
     ResourceMeta,
     ResourceMetaSearchQuery,
     ResourceMetaSearchSort,
     ResourceMetaSortDirection,
+    FieldTransform,
 )
 
 
@@ -420,7 +422,7 @@ class PostgresMetaStore(ISlowMetaStore):
             for row in cur:
                 yield self._serializer.decode(row["data"])
 
-    def _build_condition(self, condition) -> tuple[str, list]:
+    def _build_condition(self, condition: DataSearchFilter) -> tuple[str, list]:
         """構建 PostgreSQL 查詢條件 (支援 Meta 欄位與 JSONB 欄位)"""
         from autocrud.types import (
             DataSearchGroup,
@@ -517,6 +519,21 @@ class PostgresMetaStore(ISlowMetaStore):
         # 對於數字比較，使用 (indexed_data->>'field_path')::numeric
         jsonb_text_extract = f"indexed_data->>'{field_path}'"
         jsonb_numeric_extract = f"(indexed_data->>'{field_path}')::numeric"
+
+        # Apply field transformation if specified
+        if condition.transform is not None:
+            if condition.transform == FieldTransform.length:
+                # Get length of JSONB value
+                # For arrays: jsonb_array_length()
+                # For strings: length(text_value)
+                # Use jsonb_typeof to determine type
+                jsonb_type = f"jsonb_typeof(indexed_data->'{field_path}')"
+                jsonb_text_extract = f"""CASE 
+                    WHEN {jsonb_type} = 'array' THEN jsonb_array_length(indexed_data->'{field_path}')
+                    WHEN {jsonb_type} = 'string' THEN length(indexed_data->>'{field_path}')
+                    ELSE NULL
+                END"""
+                jsonb_numeric_extract = jsonb_text_extract  # Use same for both
 
         if operator == DataSearchOperator.equals:
             if isinstance(value, bool):

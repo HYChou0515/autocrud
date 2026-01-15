@@ -2112,3 +2112,161 @@ class TestResourceManagerWithQB:
         assert root.operator == DataSearchLogicOperator.or_op
         values = [c.value for c in root.conditions]
         assert [] in values
+
+    def test_length_method(self):
+        """Test length() method for querying field length."""
+        from autocrud.types import FieldTransform
+
+        # String length
+        q = QB["name"].length() > 10
+        query = q.build()
+        cond = query.conditions[0]
+
+        assert cond.field_path == "name"  # Field path unchanged
+        assert cond.transform == FieldTransform.length  # Transform applied
+        assert cond.operator == DataSearchOperator.greater_than
+        assert cond.value == 10
+
+    def test_length_with_different_operators(self):
+        """Test length() with various comparison operators."""
+        from autocrud.types import FieldTransform
+
+        # Exact length
+        q1 = QB["tags"].length() == 3
+        cond1 = q1.build().conditions[0]
+        assert cond1.field_path == "tags"
+        assert cond1.transform == FieldTransform.length
+        assert cond1.operator == DataSearchOperator.equals
+
+        # Length range
+        q2 = QB["description"].length().between(50, 200)
+        query2 = q2.build()
+        group = query2.conditions[0]
+        assert isinstance(group, DataSearchGroup)
+        assert group.operator == DataSearchLogicOperator.and_op
+        assert group.conditions[0].field_path == "description"
+        assert group.conditions[0].transform == FieldTransform.length
+        assert group.conditions[1].field_path == "description"
+        assert group.conditions[1].transform == FieldTransform.length
+
+        # Less than
+        q3 = QB["items"].length() < 5
+        cond3 = q3.build().conditions[0]
+        assert cond3.field_path == "items"
+        assert cond3.transform == FieldTransform.length
+        assert cond3.operator == DataSearchOperator.less_than
+
+    def test_length_empty_check(self):
+        """Test length() for checking empty collections."""
+        from autocrud.types import FieldTransform
+
+        # Empty list
+        q1 = QB["tags"].length() == 0
+        cond1 = q1.build().conditions[0]
+        assert cond1.field_path == "tags"
+        assert cond1.transform == FieldTransform.length
+        assert cond1.value == 0
+
+        # Non-empty
+        q2 = QB["items"].length() > 0
+        cond2 = q2.build().conditions[0]
+        assert cond2.field_path == "items"
+        assert cond2.transform == FieldTransform.length
+        assert cond2.operator == DataSearchOperator.greater_than
+        assert cond2.value == 0
+
+    def test_length_combined_with_other_conditions(self):
+        """Test combining length() with other query conditions."""
+        from autocrud.types import FieldTransform
+
+        q = (QB["tags"].length() >= 3) & (QB["status"] == "active")
+        query = q.build()
+        group = query.conditions[0]
+
+        assert group.operator == DataSearchLogicOperator.and_op
+        assert len(group.conditions) == 2
+        assert group.conditions[0].field_path == "tags"
+        assert group.conditions[0].transform == FieldTransform.length
+        assert group.conditions[1].field_path == "status"
+        assert group.conditions[1].transform is None  # No transform
+
+    def test_length_on_nested_fields(self):
+        """Test length() on nested field paths."""
+        from autocrud.types import FieldTransform
+
+        q = QB["user.tags"].length() > 5
+        cond = q.build().conditions[0]
+
+        assert cond.field_path == "user.tags"
+        assert cond.transform == FieldTransform.length
+        assert cond.operator == DataSearchOperator.greater_than
+        assert cond.value == 5
+
+    def test_length_with_resource_manager(self, resource_manager):
+        """Test length() integration with actual resource search."""
+        # Search for resources where name length > 5
+        query = QB["name"].length() > 5
+        results = resource_manager.search_resources(query)
+
+        # Charlie (7 chars) should match
+        assert len(results) == 1
+        assert results[0].indexed_data["name"] == "Charlie"
+
+    def test_length_with_list_field(self, resource_manager):
+        """Test length() on list fields using a new indexed field."""
+        import datetime as dt
+        from zoneinfo import ZoneInfo
+
+        # Add a resource with tags
+        now = dt.datetime.now(ZoneInfo("UTC"))
+        meta_with_tags = ResourceMeta(
+            resource_id="5",
+            current_revision_id="5:1",
+            total_revision_count=1,
+            created_time=now,
+            updated_time=now,
+            created_by="user5",
+            updated_by="user5",
+            indexed_data={
+                "name": "Eve",
+                "age": 28,
+                "dept": "IT",
+                "tags": ["python", "docker", "k8s"],
+            },
+        )
+        resource_manager.storage._meta_store["5"] = meta_with_tags
+
+        # Search for resources with more than 2 tags
+        query = QB["tags"].length() > 2
+        results = resource_manager.search_resources(query)
+
+        assert len(results) == 1
+        assert results[0].indexed_data["name"] == "Eve"
+        assert len(results[0].indexed_data["tags"]) == 3
+
+    def test_length_equals_zero(self, resource_manager):
+        """Test length() == 0 for empty collections."""
+        import datetime as dt
+        from zoneinfo import ZoneInfo
+
+        # Add a resource with empty tags
+        now = dt.datetime.now(ZoneInfo("UTC"))
+        meta_empty = ResourceMeta(
+            resource_id="6",
+            current_revision_id="6:1",
+            total_revision_count=1,
+            created_time=now,
+            updated_time=now,
+            created_by="user6",
+            updated_by="user6",
+            indexed_data={"name": "Frank", "age": 45, "dept": "HR", "tags": []},
+        )
+        resource_manager.storage._meta_store["6"] = meta_empty
+
+        # Search for resources with no tags
+        query = QB["tags"].length() == 0
+        results = resource_manager.search_resources(query)
+
+        # Only Frank should match
+        names = [r.indexed_data["name"] for r in results]
+        assert "Frank" in names
