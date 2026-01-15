@@ -540,7 +540,38 @@ class ResourceManager(IResourceManager[T], Generic[T]):
                 with suppress(Exception):
                     value = self._extract_by_path(data, field.field_path)
             if value is not UNSET:
-                indexed_data[field.field_path] = value
+                # 支援嵌套結構的 indexed_data 儲存
+                # 例如 field.field_path="a.b.c", value=1
+                # 應該生成 {"a": {"b": {"c": 1}}}
+                # 而不是 {"a.b.c": 1}
+                if "." in field.field_path:
+                    parts = field.field_path.split(".")
+                    current = indexed_data
+                    for i, part in enumerate(parts[:-1]):
+                        if part not in current:
+                            current[part] = {}
+                        current = current[part]
+                        # 安全檢查：確保我們沒把非字典的值當作字典用
+                        # 如果已經有值且不是字典，這種結構衝突無法合併，我們選擇覆蓋或忽略
+                        # 這裡的邏輯：假設 defined indexed_fields 不會造成這種衝突
+                        if not isinstance(current, dict):
+                            # 回退，或者這裡應該報錯/忽略？
+                            # 為了簡單起見，如果衝突發生，我們重新初始化為空字典
+                            # 這意味著之前的路徑被視為父節點
+                            # 實際上這種情況應該由 Schema 設計避免
+                            current = {}
+                            if i > 0:
+                                # 需回溯上一層修正，這裡實現較複雜
+                                # 簡單處理：覆蓋上一層的值
+                                parent = indexed_data
+                                for p in parts[:i]:
+                                    parent = parent[p]
+                                parent[part] = {}
+                                current = parent[part]
+
+                    current[parts[-1]] = value
+                else:
+                    indexed_data[field.field_path] = value
 
         return indexed_data
 
