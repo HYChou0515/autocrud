@@ -301,7 +301,9 @@ class SqliteMetaStore(ISlowMetaStore):
                         else "DESC"
                     )
                     # 使用 JSON 提取語法對 indexed_data 中的欄位進行排序
-                    json_extract = f"json_extract(indexed_data, '$.{sort.field_path}')"
+                    json_extract = (
+                        f"json_extract(indexed_data, '$.\"{sort.field_path}\"')"
+                    )
                     order_parts.append(f"{json_extract} {direction}")
             order_clause = "ORDER BY " + ", ".join(order_parts)
 
@@ -421,7 +423,7 @@ class SqliteMetaStore(ISlowMetaStore):
             return "", []
 
         # SQLite JSON 提取語法: json_extract(indexed_data, '$.field_path')
-        json_extract = f"json_extract(indexed_data, '$.{field_path}')"
+        json_extract = f"json_extract(indexed_data, '$.\"{field_path}\"')"
 
         if operator == DataSearchOperator.equals:
             return f"{json_extract} = ?", [value]
@@ -455,21 +457,21 @@ class SqliteMetaStore(ISlowMetaStore):
             if value:
                 # Strict is_null: Must exist AND be null
                 # json_type returns 'null' if value is null, NULL if missing.
-                return f"json_type(indexed_data, '$.{field_path}') = 'null'", []
+                return f"json_type(indexed_data, '$.\"{field_path}\"') = 'null'", []
             else:
                 # Strict is_null=False: Must exist AND be NOT null
                 # json_type returns type string if exists and not null.
                 # So json_type IS NOT NULL AND json_type != 'null'
                 return (
-                    f"json_type(indexed_data, '$.{field_path}') IS NOT NULL AND json_type(indexed_data, '$.{field_path}') != 'null'",
+                    f"json_type(indexed_data, '$.\"{field_path}\"') IS NOT NULL AND json_type(indexed_data, '$.\"{field_path}\"') != 'null'",
                     [],
                 )
         if operator == DataSearchOperator.exists:
             # json_type returns NULL if key missing, 'null' if value is null
             if value:
-                return f"json_type(indexed_data, '$.{field_path}') IS NOT NULL", []
+                return f"json_type(indexed_data, '$.\"{field_path}\"') IS NOT NULL", []
             else:
-                return f"json_type(indexed_data, '$.{field_path}') IS NULL", []
+                return f"json_type(indexed_data, '$.\"{field_path}\"') IS NULL", []
         if operator == DataSearchOperator.isna:
             if value:
                 return f"{json_extract} IS NULL", []
