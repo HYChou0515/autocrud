@@ -513,10 +513,12 @@ class PostgresMetaStore(ISlowMetaStore):
 
             return "", []
 
-        # PostgreSQL JSONB 提取語法: indexed_data->>'field_path'
-        # 對於數字比較，使用 (indexed_data->>'field_path')::numeric
-        jsonb_text_extract = f"indexed_data->>'{field_path}'"
-        jsonb_numeric_extract = f"(indexed_data->>'{field_path}')::numeric"
+        # PostgreSQL JSONB 嵌套提取語法: indexed_data #>> '{path,to,field}'
+        parts = field_path.split(".")
+        pg_path = "{" + ",".join(parts) + "}"
+        jsonb_text_extract = f"indexed_data #>> '{pg_path}'"
+        jsonb_numeric_extract = f"(indexed_data #>> '{pg_path}')::numeric"
+        jsonb_object_extract = f"indexed_data #> '{pg_path}'"
 
         if operator == DataSearchOperator.equals:
             if isinstance(value, bool):
@@ -557,28 +559,15 @@ class PostgresMetaStore(ISlowMetaStore):
         if operator == DataSearchOperator.is_null:
             if value:
                 # Strict is_null: Must exist AND be null
-                return f"(indexed_data ? %s) AND ({jsonb_text_extract} IS NULL)", [
-                    field_path
-                ]
+                return f"({jsonb_object_extract} = 'null'::jsonb)", []
             else:
                 # Strict is_null=False: Must exist AND be NOT null
-                # (If it doesn't exist, it's False. If it exists and is null, it's False.)
-                # Wait, if is_null=False, we want "Not (Exists and Null)".
-                # But user said "if field_path does not exist... return false".
-                # So if missing, is_null=False should return False?
-                # "is_null(False)" means "is NOT null".
-                # If missing, is it "not null"? Yes.
-                # But user said "all value related comparisons should return false".
-                # If is_null is a value comparison, then is_null(False) on missing should be False.
-                # This means "It must exist AND NOT be null".
-                return f"(indexed_data ? %s) AND ({jsonb_text_extract} IS NOT NULL)", [
-                    field_path
-                ]
+                return f"({jsonb_text_extract} IS NOT NULL)", []
         if operator == DataSearchOperator.exists:
             if value:
-                return "indexed_data ? %s", [field_path]
+                return f"({jsonb_object_extract} IS NOT NULL)", []
             else:
-                return "NOT (indexed_data ? %s)", [field_path]
+                return f"({jsonb_object_extract} IS NULL)", []
         if operator == DataSearchOperator.isna:
             if value:
                 return f"{jsonb_text_extract} IS NULL", []

@@ -52,6 +52,7 @@ def my_tmpdir():
         "memory-pg",
         "redis",
         "redis-pg",  # FastSlowMetaStore with Redis + PostgreSQL
+        "postgres",
     ],
 )
 class TestMetaStoreIterSearch:
@@ -246,6 +247,24 @@ class TestMetaStoreIterSearch:
                 )
             except Exception as e:
                 pytest.skip(f"Redis or PostgreSQL not available: {e}")
+        elif store_type == "postgres":
+            import psycopg2
+
+            from autocrud.resource_manager.meta_store.postgres import PostgresMetaStore
+
+            # Setup PostgreSQL connection
+            pg_dsn = "postgresql://admin:password@localhost:5432/your_database"
+            try:
+                # Reset the test database
+                pg_conn = psycopg2.connect(pg_dsn)
+                with pg_conn.cursor() as cur:
+                    cur.execute("DROP TABLE IF EXISTS resource_meta;")
+                    pg_conn.commit()
+                pg_conn.close()
+
+                return PostgresMetaStore(pg_dsn=pg_dsn, encoding="msgpack")
+            except Exception as e:
+                pytest.skip(f"PostgreSQL not available: {e}")
         else:
             raise ValueError(f"Unsupported store_type: {store_type}")
 
@@ -269,6 +288,56 @@ class TestMetaStoreIterSearch:
         for meta in results:
             names.append(meta.indexed_data["name"])
         assert sorted(names) == ["Alice"]
+
+    def test_iter_search_nested_fields(self):
+        """Test using IMetaStore.iter_search with nested fields."""
+        import uuid
+
+        # Add a resource with nested indexed_data
+        base_time = dt.datetime(2023, 1, 1, 12, 0, 0, tzinfo=ZoneInfo("Asia/Taipei"))
+        nested_meta = ResourceMeta(
+            current_revision_id="rev_nested",
+            resource_id=str(uuid.uuid4()),
+            total_revision_count=1,
+            created_time=base_time,
+            updated_time=base_time,
+            created_by="test_user",
+            updated_by="test_user",
+            is_deleted=False,
+            indexed_data={
+                "name": "NestedUser",
+                "details": {
+                    "position": {
+                        "level": 5,
+                        "title": "Senior",
+                    },
+                    "location": "Remote",
+                },
+            },
+        )
+        self.meta_store[nested_meta.resource_id] = nested_meta
+
+        # Search using dot notation for nested field
+        query = ResourceMetaSearchQuery(
+            data_conditions=[
+                DataSearchCondition(
+                    field_path="details.position.level",
+                    operator=DataSearchOperator.equals,
+                    value=5,
+                ),
+            ],
+            limit=10,
+            offset=0,
+        )
+
+        results = list(self.meta_store.iter_search(query))
+
+        # Should find nested_meta
+        assert len(results) == 1
+        found_meta = results[0]
+        assert found_meta.indexed_data["name"] == "NestedUser"
+        # Ensure deep structure is preserved
+        assert found_meta.indexed_data["details"]["position"]["level"] == 5
 
     def _create_sample_resource_metas(self, meta_store):
         """Create sample ResourceMeta objects for testing."""

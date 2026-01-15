@@ -134,6 +134,22 @@ def _match_data_condition(
     return result is True
 
 
+def _get_value_from_path(data: dict[str, Any], path: str) -> tuple[bool, Any]:
+    """Helper to get nested value from dict using dot notation."""
+    if not isinstance(data, dict):
+        return False, UNSET
+
+    keys = path.split(".")
+    current = data
+    for key in keys:
+        if isinstance(current, dict) and key in current:
+            current = current[key]
+        else:
+            return False, UNSET
+
+    return True, current
+
+
 def _evaluate_trivalent(
     data: dict[str, Any] | ResourceMeta,
     condition: DataSearchCondition | DataSearchGroup,
@@ -181,9 +197,7 @@ def _evaluate_trivalent(
     has_key = False
 
     if isinstance(data, dict):
-        if condition.field_path in data:
-            has_key = True
-            val = data[condition.field_path]
+        has_key, val = _get_value_from_path(data, condition.field_path)
     elif isinstance(data, ResourceMeta):
         if (
             hasattr(data, condition.field_path)
@@ -191,11 +205,8 @@ def _evaluate_trivalent(
         ):
             has_key = True
             val = getattr(data, condition.field_path)
-        elif (
-            data.indexed_data is not UNSET and condition.field_path in data.indexed_data
-        ):
-            has_key = True
-            val = data.indexed_data[condition.field_path]
+        elif data.indexed_data is not UNSET:
+            has_key, val = _get_value_from_path(data.indexed_data, condition.field_path)
 
     # 1. Handle operators that work on missing keys or don't care about value
     if condition.operator == DataSearchOperator.exists:
