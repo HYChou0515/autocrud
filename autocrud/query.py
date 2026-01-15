@@ -204,6 +204,42 @@ class ConditionBuilder(Query):
     def or_(self, other) -> "ConditionBuilder":
         return self | other
 
+    def filter(self, *conditions: "ConditionBuilder") -> "ConditionBuilder":
+        """Add AND conditions to the query. More readable than using &.
+
+        Args:
+            *conditions: Additional conditions to AND with current condition
+
+        Returns:
+            ConditionBuilder with combined conditions
+
+        Example:
+            QB["age"].gt(18).filter(QB["status"].eq("active"), QB["verified"].eq(True))
+            # Equivalent to: (QB["age"] > 18) & (QB["status"] == "active") & (QB["verified"] == True)
+        """
+        result = self
+        for cond in conditions:
+            result = result & cond
+        return result
+
+    def exclude(self, *conditions: "ConditionBuilder") -> "ConditionBuilder":
+        """Add NOT conditions to the query. More readable than using ~.
+
+        Args:
+            *conditions: Conditions to exclude (will be negated and ANDed)
+
+        Returns:
+            ConditionBuilder with excluded conditions
+
+        Example:
+            QB["status"].eq("active").exclude(QB["role"].eq("guest"), QB["deleted"].eq(True))
+            # Equivalent to: (status == "active") & ~(role == "guest") & ~(deleted == True)
+        """
+        result = self
+        for cond in conditions:
+            result = result & (~cond)
+        return result
+
     # Dunder methods for chained comparisons
     # These allow: 3 <= QB.field <= 5, QB.foo == QB.bar == 2
     def __eq__(self, value: Any) -> "ConditionBuilder":
@@ -376,9 +412,9 @@ class Field:
             ConditionBuilder with AND condition
 
         Example:
-            QB.age.between(18, 65)
-            QB.price.between(100, 500)
-            QB.created_time.between(start_date, end_date)
+            QB["age"].between(18, 65)
+            QB["price"].between(100, 500)
+            QB.created_time().between(start_date, end_date)
         """
         return ConditionBuilder(
             DataSearchGroup(
@@ -398,6 +434,22 @@ class Field:
             )
         )
 
+    def in_range(self, min_val: Any, max_val: Any) -> ConditionBuilder:
+        """Alias for between(). Check if field value is within a range.
+
+        Args:
+            min_val: Minimum value (inclusive)
+            max_val: Maximum value (inclusive)
+
+        Returns:
+            ConditionBuilder with range condition
+
+        Example:
+            QB["age"].in_range(18, 65)
+            QB["price"].in_range(100, 500)
+        """
+        return self.between(min_val, max_val)
+
     def contains(self, value: Any) -> ConditionBuilder:
         return self._cond(DataSearchOperator.contains, value)
 
@@ -416,6 +468,144 @@ class Field:
     def is_null(self, value: bool = True) -> ConditionBuilder:
         return self._cond(DataSearchOperator.is_null, value)
 
+    def is_not_null(self) -> ConditionBuilder:
+        """Check if field is not null.
+
+        Returns:
+            ConditionBuilder with is_null(False) condition
+
+        Example:
+            QB["email"].is_not_null()
+            QB["optional_field"].is_not_null()
+        """
+        return self._cond(DataSearchOperator.is_null, False)
+
+    def has_value(self) -> ConditionBuilder:
+        """Alias for is_not_null(). Check if field has a value (not null).
+
+        Returns:
+            ConditionBuilder with is_null(False) condition
+
+        Example:
+            QB["email"].has_value()
+            QB["description"].has_value()
+        """
+        return self.is_not_null()
+
+    def is_true(self) -> ConditionBuilder:
+        """Check if field value is True.
+
+        Returns:
+            ConditionBuilder with equals(True) condition
+
+        Example:
+            QB["verified"].is_true()
+            QB["active"].is_true()
+        """
+        return self.eq(True)
+
+    def is_false(self) -> ConditionBuilder:
+        """Check if field value is False.
+
+        Returns:
+            ConditionBuilder with equals(False) condition
+
+        Example:
+            QB["deleted"].is_false()
+            QB["disabled"].is_false()
+        """
+        return self.eq(False)
+
+    def is_truthy(self) -> ConditionBuilder:
+        """Check if field has a truthy value (not null, not empty, not false, not 0).
+
+        Returns:
+            ConditionBuilder for: value != None AND value != False AND value != 0 AND value != "" AND value != []
+
+        Example:
+            QB["status"].is_truthy()  # Has meaningful value
+            QB["count"].is_truthy()   # Not 0
+            QB["tags"].is_truthy()    # Not empty list
+        """
+        # Truthy: not null, not false, not 0, not empty string, not empty list
+        return ConditionBuilder(
+            DataSearchGroup(
+                operator=DataSearchLogicOperator.and_op,
+                conditions=[
+                    DataSearchCondition(
+                        field_path=self.name,
+                        operator=DataSearchOperator.is_null,
+                        value=False,
+                    ),
+                    DataSearchCondition(
+                        field_path=self.name,
+                        operator=DataSearchOperator.not_equals,
+                        value=False,
+                    ),
+                    DataSearchCondition(
+                        field_path=self.name,
+                        operator=DataSearchOperator.not_equals,
+                        value=0,
+                    ),
+                    DataSearchCondition(
+                        field_path=self.name,
+                        operator=DataSearchOperator.not_equals,
+                        value="",
+                    ),
+                    DataSearchCondition(
+                        field_path=self.name,
+                        operator=DataSearchOperator.not_equals,
+                        value=[],
+                    ),
+                ],
+            )
+        )
+
+    def is_falsy(self) -> ConditionBuilder:
+        """Check if field has a falsy value (null, empty, false, or 0).
+
+        Returns:
+            ConditionBuilder for: value == None OR value == False OR value == 0 OR value == "" OR value == []
+
+        Example:
+            QB["optional_field"].is_falsy()  # Empty or unset
+            QB["count"].is_falsy()           # Zero or null
+            QB["tags"].is_falsy()            # Empty list or null
+        """
+        # Falsy: null, false, 0, empty string, or empty list
+        return ConditionBuilder(
+            DataSearchGroup(
+                operator=DataSearchLogicOperator.or_op,
+                conditions=[
+                    DataSearchCondition(
+                        field_path=self.name,
+                        operator=DataSearchOperator.is_null,
+                        value=True,
+                    ),
+                    DataSearchCondition(
+                        field_path=self.name,
+                        operator=DataSearchOperator.equals,
+                        value=False,
+                    ),
+                    DataSearchCondition(
+                        field_path=self.name,
+                        operator=DataSearchOperator.equals,
+                        value=0,
+                    ),
+                    DataSearchCondition(
+                        field_path=self.name,
+                        operator=DataSearchOperator.equals,
+                        value="",
+                    ),
+                    DataSearchCondition(
+                        field_path=self.name,
+                        operator=DataSearchOperator.equals,
+                        value=[],
+                    ),
+                ],
+            )
+        )
+
     def exists(self, value: bool = True) -> ConditionBuilder:
         return self._cond(DataSearchOperator.exists, value)
 
@@ -426,7 +616,7 @@ class Field:
         return self._cond(DataSearchOperator.regex, value)
 
     def match(self, value: str) -> ConditionBuilder:
-        """Alias for regex(). Match field value against a regular expression pattern.
+        r"""Alias for regex(). Match field value against a regular expression pattern.
 
         Args:
             value: Regular expression pattern
@@ -798,10 +988,10 @@ class Field:
             ConditionBuilder with gte condition for N days ago
 
         Example:
-            QB.created_time.last_n_days(7)  # Last 7 days in local timezone
-            QB.created_time.last_n_days(30, 8)  # Last 30 days in UTC+8
-            QB.created_time.last_n_days(30, "+8")  # Last 30 days in UTC+8
-            QB.created_time.last_n_days(30, ZoneInfo("UTC"))  # Last 30 days in UTC
+            QB.created_time().last_n_days(7)  # Last 7 days in local timezone
+            QB.created_time().last_n_days(30, 8)  # Last 30 days in UTC+8
+            QB.created_time().last_n_days(30, "+8")  # Last 30 days in UTC+8
+            QB.created_time().last_n_days(30, ZoneInfo("UTC"))  # Last 30 days in UTC
         """
         import datetime as dt
 
@@ -818,6 +1008,102 @@ class Field:
         )
 
         return self.gte(n_days_ago)
+
+    def yesterday(self, tz: Any = None) -> ConditionBuilder:
+        """Match values from yesterday (00:00:00 to 23:59:59.999999).
+
+        Args:
+            tz: Timezone parameter (None, int, str, or tzinfo)
+
+        Returns:
+            ConditionBuilder with between condition for yesterday's date range
+
+        Example:
+            QB.created_time().yesterday()
+            QB.created_time().yesterday(8)  # Yesterday in UTC+8
+        """
+        import datetime as dt
+
+        tz = self._parse_timezone(tz)
+
+        if tz is None:
+            now = dt.datetime.now().astimezone()
+        else:
+            now = dt.datetime.now(tz)
+
+        yesterday = now - dt.timedelta(days=1)
+        start = yesterday.replace(hour=0, minute=0, second=0, microsecond=0)
+        end = yesterday.replace(hour=23, minute=59, second=59, microsecond=999999)
+
+        return self.between(start, end)
+
+    def this_month(self, tz: Any = None) -> ConditionBuilder:
+        """Match values within this month (1st to last day).
+
+        Args:
+            tz: Timezone parameter (None, int, str, or tzinfo)
+
+        Returns:
+            ConditionBuilder with between condition for this month's date range
+
+        Example:
+            QB.created_time().this_month()
+            QB.created_time().this_month("+8")
+        """
+        import datetime as dt
+
+        tz = self._parse_timezone(tz)
+
+        if tz is None:
+            now = dt.datetime.now().astimezone()
+        else:
+            now = dt.datetime.now(tz)
+
+        # First day of month at 00:00:00
+        start_of_month = now.replace(day=1, hour=0, minute=0, second=0, microsecond=0)
+
+        # Last day of month at 23:59:59.999999
+        if now.month == 12:
+            next_month = now.replace(year=now.year + 1, month=1, day=1)
+        else:
+            next_month = now.replace(month=now.month + 1, day=1)
+        end_of_month = next_month - dt.timedelta(microseconds=1)
+
+        return self.between(start_of_month, end_of_month)
+
+    def this_year(self, tz: Any = None) -> ConditionBuilder:
+        """Match values within this year (Jan 1 to Dec 31).
+
+        Args:
+            tz: Timezone parameter (None, int, str, or tzinfo)
+
+        Returns:
+            ConditionBuilder with between condition for this year's date range
+
+        Example:
+            QB.created_time().this_year()
+            QB.created_time().this_year(ZoneInfo("UTC"))
+        """
+        import datetime as dt
+
+        tz = self._parse_timezone(tz)
+
+        if tz is None:
+            now = dt.datetime.now().astimezone()
+        else:
+            now = dt.datetime.now(tz)
+
+        # Jan 1 at 00:00:00
+        start_of_year = now.replace(
+            month=1, day=1, hour=0, minute=0, second=0, microsecond=0
+        )
+
+        # Dec 31 at 23:59:59.999999
+        end_of_year = now.replace(
+            month=12, day=31, hour=23, minute=59, second=59, microsecond=999999
+        )
+
+        return self.between(start_of_year, end_of_year)
 
     # Sorting
     def asc(self) -> ResourceDataSearchSort | ResourceMetaSearchSort:

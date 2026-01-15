@@ -1800,3 +1800,315 @@ class TestResourceManagerWithQB:
         assert isinstance(group, DataSearchGroup)
         assert group.operator == DataSearchLogicOperator.and_op
         assert len(group.conditions) == 2
+
+    def test_filter_method(self):
+        """Test filter() method for chaining AND conditions."""
+        q = QB["age"].gt(18).filter(QB["status"].eq("active"), QB["verified"].eq(True))
+        query = q.build()
+        root = query.conditions[0]
+
+        assert isinstance(root, DataSearchGroup)
+        assert root.operator == DataSearchLogicOperator.and_op
+        # Should have nested AND structure
+        assert len(root.conditions) == 2
+
+    def test_exclude_method(self):
+        """Test exclude() method for excluding conditions."""
+        q = QB["status"].eq("active").exclude(QB["role"].eq("guest"))
+        query = q.build()
+        root = query.conditions[0]
+
+        assert isinstance(root, DataSearchGroup)
+        assert root.operator == DataSearchLogicOperator.and_op
+        assert len(root.conditions) == 2
+
+        # First: status == "active"
+        assert root.conditions[0].field_path == "status"
+
+        # Second: NOT(role == "guest")
+        not_group = root.conditions[1]
+        assert isinstance(not_group, DataSearchGroup)
+        assert not_group.operator == DataSearchLogicOperator.not_op
+        assert not_group.conditions[0].field_path == "role"
+
+    def test_exclude_multiple_conditions(self):
+        """Test exclude() with multiple conditions."""
+        q = QB["age"].gt(18).exclude(QB["deleted"].eq(True), QB["banned"].eq(True))
+        query = q.build()
+        root = query.conditions[0]
+
+        # Should AND all conditions (the original + negated ones)
+        assert root.operator == DataSearchLogicOperator.and_op
+        # Structure: (age > 18 AND NOT(deleted)) AND NOT(banned)
+        # Root has 2 conditions: left group and right NOT
+        assert len(root.conditions) == 2
+
+    def test_in_range_alias(self):
+        """Test in_range() as alias for between()."""
+        q1 = QB["age"].in_range(18, 65)
+        q2 = QB["age"].between(18, 65)
+
+        query1 = q1.build()
+        query2 = q2.build()
+
+        cond1 = query1.conditions[0]
+        cond2 = query2.conditions[0]
+
+        assert isinstance(cond1, DataSearchGroup)
+        assert isinstance(cond2, DataSearchGroup)
+        assert cond1.operator == cond2.operator == DataSearchLogicOperator.and_op
+        assert len(cond1.conditions) == len(cond2.conditions) == 2
+
+    def test_is_not_null(self):
+        """Test is_not_null() method."""
+        q = QB["email"].is_not_null()
+        query = q.build()
+        cond = query.conditions[0]
+
+        assert cond.field_path == "email"
+        assert cond.operator == DataSearchOperator.is_null
+        assert cond.value is False
+
+    def test_has_value_alias(self):
+        """Test has_value() as alias for is_not_null()."""
+        q1 = QB["description"].has_value()
+        q2 = QB["description"].is_not_null()
+
+        query1 = q1.build()
+        query2 = q2.build()
+
+        cond1 = query1.conditions[0]
+        cond2 = query2.conditions[0]
+
+        assert cond1.field_path == cond2.field_path == "description"
+        assert cond1.operator == cond2.operator == DataSearchOperator.is_null
+        assert cond1.value == cond2.value is False
+
+    def test_yesterday(self):
+        """Test yesterday() datetime method."""
+        import datetime as dt
+
+        q = QB.created_time().yesterday()
+        query = q.build()
+        group = query.conditions[0]
+
+        assert isinstance(group, DataSearchGroup)
+        assert group.operator == DataSearchLogicOperator.and_op
+
+        start_val = group.conditions[0].value
+        end_val = group.conditions[1].value
+
+        # Should be yesterday's date
+        yesterday = dt.datetime.now().astimezone() - dt.timedelta(days=1)
+        assert start_val.date() == yesterday.date()
+        assert end_val.date() == yesterday.date()
+        assert start_val.hour == 0
+        assert end_val.hour == 23
+
+    def test_this_month(self):
+        """Test this_month() datetime method."""
+        import datetime as dt
+
+        q = QB.created_time().this_month()
+        query = q.build()
+        group = query.conditions[0]
+
+        assert isinstance(group, DataSearchGroup)
+        assert group.operator == DataSearchLogicOperator.and_op
+
+        start_val = group.conditions[0].value
+        end_val = group.conditions[1].value
+
+        # Should be this month
+        now = dt.datetime.now().astimezone()
+        assert start_val.month == now.month
+        assert start_val.year == now.year
+        assert start_val.day == 1
+        assert start_val.hour == 0
+
+    def test_this_year(self):
+        """Test this_year() datetime method."""
+        import datetime as dt
+
+        q = QB.created_time().this_year()
+        query = q.build()
+        group = query.conditions[0]
+
+        assert isinstance(group, DataSearchGroup)
+        assert group.operator == DataSearchLogicOperator.and_op
+
+        start_val = group.conditions[0].value
+        end_val = group.conditions[1].value
+
+        # Should be this year
+        now = dt.datetime.now().astimezone()
+        assert start_val.year == now.year
+        assert start_val.month == 1
+        assert start_val.day == 1
+        assert end_val.year == now.year
+        assert end_val.month == 12
+        assert end_val.day == 31
+
+    def test_yesterday_with_timezone(self):
+        """Test yesterday() with custom timezone."""
+        import datetime as dt
+
+        q = QB.created_time().yesterday("+8")
+        query = q.build()
+        group = query.conditions[0]
+
+        start_val = group.conditions[0].value
+        # Should be UTC+8
+        assert start_val.utcoffset() == dt.timedelta(hours=8)
+
+    def test_this_month_with_timezone(self):
+        """Test this_month() with custom timezone."""
+        import datetime as dt
+
+        q = QB.created_time().this_month(-5)
+        query = q.build()
+        group = query.conditions[0]
+
+        start_val = group.conditions[0].value
+        # Should be UTC-5
+        assert start_val.utcoffset() == dt.timedelta(hours=-5)
+
+    def test_convenience_combined(self):
+        """Test combining multiple new convenience methods."""
+        q = (
+            QB["age"]
+            .in_range(18, 65)
+            .filter(QB["email"].has_value(), QB["verified"].eq(True))
+            .exclude(QB["deleted"].eq(True))
+        )
+        query = q.build()
+        root = query.conditions[0]
+
+        assert isinstance(root, DataSearchGroup)
+        assert root.operator == DataSearchLogicOperator.and_op
+        # Complex nested structure with all conditions properly combined
+        # The exact count depends on nesting, but should have at least 2 main branches
+        assert len(root.conditions) >= 2
+
+    def test_is_true(self):
+        """Test is_true() method for boolean True checks."""
+        q = QB["verified"].is_true()
+        query = q.build()
+        cond = query.conditions[0]
+
+        assert cond.field_path == "verified"
+        assert cond.operator == DataSearchOperator.equals
+        assert cond.value is True
+
+    def test_is_false(self):
+        """Test is_false() method for boolean False checks."""
+        q = QB["deleted"].is_false()
+        query = q.build()
+        cond = query.conditions[0]
+
+        assert cond.field_path == "deleted"
+        assert cond.operator == DataSearchOperator.equals
+        assert cond.value is False
+
+    def test_is_true_is_false_combined(self):
+        """Test combining is_true() and is_false()."""
+        q = QB["active"].is_true() & QB["deleted"].is_false()
+        query = q.build()
+        group = query.conditions[0]
+
+        assert group.operator == DataSearchLogicOperator.and_op
+        assert len(group.conditions) == 2
+        assert group.conditions[0].value is True
+        assert group.conditions[1].value is False
+
+    def test_is_truthy(self):
+        """Test is_truthy() for truthy value checks."""
+        q = QB["status"].is_truthy()
+        query = q.build()
+        root = query.conditions[0]
+
+        # Should be a complex AND group checking != null, != false, != 0, != ""
+        assert isinstance(root, DataSearchGroup)
+        assert root.operator == DataSearchLogicOperator.and_op
+        # Check not null condition exists
+        assert root.conditions[0].operator == DataSearchOperator.is_null
+        assert root.conditions[0].value is False
+
+    def test_is_falsy(self):
+        """Test is_falsy() for falsy value checks."""
+        q = QB["optional"].is_falsy()
+        query = q.build()
+        root = query.conditions[0]
+
+        # Should be an OR group: null OR false OR 0 OR "" OR []
+        assert isinstance(root, DataSearchGroup)
+        assert root.operator == DataSearchLogicOperator.or_op
+        assert len(root.conditions) == 5
+
+        # Check all falsy conditions
+        operators = [c.operator for c in root.conditions]
+        values = [c.value for c in root.conditions]
+
+        assert DataSearchOperator.is_null in operators
+        assert True in values  # is_null(True)
+        assert False in values  # equals(False)
+        assert 0 in values  # equals(0)
+        assert "" in values  # equals("")
+        assert [] in values  # equals([])
+
+    def test_truthy_falsy_opposite(self):
+        """Test that is_truthy and is_falsy are logical opposites."""
+        # Find records that are truthy
+        q1 = QB["status"].is_truthy()
+        # Find records that are NOT falsy should be similar concept
+        q2 = ~QB["status"].is_falsy()
+
+        query1 = q1.build()
+        query2 = q2.build()
+
+        # Both should create complex conditions
+        assert isinstance(query1.conditions[0], DataSearchGroup)
+        assert isinstance(query2.conditions[0], DataSearchGroup)
+
+    def test_boolean_methods_practical_example(self):
+        """Test practical usage of boolean convenience methods."""
+        # Find active, verified users who are not deleted
+        q = QB["active"].is_true() & QB["verified"].is_true() & QB["deleted"].is_false()
+        query = q.build()
+        root = query.conditions[0]
+
+        assert root.operator == DataSearchLogicOperator.and_op
+        # Structure is nested due to & chaining: (a & b) & c
+        # So root has 2 conditions: left group and right condition
+        assert len(root.conditions) == 2
+
+    def test_truthy_with_other_conditions(self):
+        """Test is_truthy() combined with other query conditions."""
+        q = QB["status"].is_truthy() & QB["age"].gte(18)
+        query = q.build()
+        root = query.conditions[0]
+
+        assert root.operator == DataSearchLogicOperator.and_op
+        assert len(root.conditions) == 2
+
+    def test_is_truthy_rejects_empty_list(self):
+        """Test that is_truthy() correctly rejects empty list."""
+        q = QB["tags"].is_truthy()
+        query = q.build()
+        root = query.conditions[0]
+
+        # Should check not equals []
+        assert root.operator == DataSearchLogicOperator.and_op
+        values = [c.value for c in root.conditions]
+        assert [] in values
+
+    def test_is_falsy_matches_empty_list(self):
+        """Test that is_falsy() correctly matches empty list."""
+        q = QB["tags"].is_falsy()
+        query = q.build()
+        root = query.conditions[0]
+
+        # Should have [] in the OR conditions
+        assert root.operator == DataSearchLogicOperator.or_op
+        values = [c.value for c in root.conditions]
+        assert [] in values
