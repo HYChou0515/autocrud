@@ -71,6 +71,17 @@ logger = logging.getLogger(__name__)
 T = TypeVar("T")
 
 
+class LazyJobHandler:
+    def __init__(self, factory):
+        self._factory = factory
+        self._handler = None
+
+    def __call__(self, resource):
+        if self._handler is None:
+            self._handler = self._factory()
+        return self._handler(resource)
+
+
 class AutoCRUD:
     """AutoCRUD - Automatic CRUD API Generator for FastAPI
 
@@ -399,6 +410,8 @@ class AutoCRUD:
         default_now: Callable[[], dt.datetime] | UnsetType = UNSET,
         message_queue_factory: IMessageQueueFactory | None | UnsetType = UNSET,
         job_handler: Callable[[Resource[Job[T]]], None] | None = None,
+        job_handler_factory: Callable[[], Callable[[Resource[Job[T]]], None]]
+        | None = None,
     ) -> None:
         """Add a data model to AutoCRUD and configure its API endpoints.
 
@@ -511,7 +524,9 @@ class AutoCRUD:
         elif self.default_now is not UNSET:
             other_options["default_now"] = self.default_now
         # Auto-detect Job subclass and create message queue
-        if self._is_job_subclass(model) and job_handler is not None:
+        if self._is_job_subclass(model) and (
+            job_handler is not None or job_handler_factory is not None
+        ):
             # Determine which factory to use
             if message_queue_factory is UNSET:
                 mq_factory = self.message_queue_factory
@@ -521,8 +536,12 @@ class AutoCRUD:
                 mq_factory = message_queue_factory
 
             if mq_factory is not None:
+                real_handler = job_handler
+                if job_handler_factory is not None:
+                    real_handler = LazyJobHandler(job_handler_factory)
+
                 # Create message queue with job handler
-                other_options["message_queue"] = mq_factory.build(job_handler)
+                other_options["message_queue"] = mq_factory.build(real_handler)
 
                 # Check if status is already in indexed fields
                 if not any(field.field_path == "status" for field in _indexed_fields):
