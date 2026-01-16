@@ -1537,7 +1537,7 @@ class TestResourceManagerWithQB:
             ],
         )
 
-    def test_search_resources_qb(self, resource_manager):
+    def test_search_resources_qb(self, resource_manager: ResourceManager):
         # Search for Eng dept
         query = QB["dept"].eq("Eng")
         results = resource_manager.search_resources(query)
@@ -1545,7 +1545,7 @@ class TestResourceManagerWithQB:
         names = sorted([r.indexed_data["name"] for r in results])
         assert names == ["Alice", "Charlie"]
 
-    def test_search_resources_qb_complex(self, resource_manager):
+    def test_search_resources_qb_complex(self, resource_manager: ResourceManager):
         # Search for (Eng AND age > 30) OR (HR AND age >= 30)
         # Charlie (Eng, 35) -> Match
         # Alice (Eng, 25) -> No match
@@ -1560,7 +1560,7 @@ class TestResourceManagerWithQB:
         names = sorted([r.indexed_data["name"] for r in results])
         assert names == ["Bob", "Charlie"]
 
-    def test_search_resources_qb_sort_limit(self, resource_manager):
+    def test_search_resources_qb_sort_limit(self, resource_manager: ResourceManager):
         # Search all, sort by age desc, limit 2
         q = QB["age"].gt(0).sort(QB["age"].desc()).limit(2)
         results = resource_manager.search_resources(q)
@@ -2442,7 +2442,7 @@ class TestResourceManagerWithQB:
         assert cond.operator == DataSearchOperator.greater_than
         assert cond.value == 5
 
-    def test_length_with_resource_manager(self, resource_manager):
+    def test_length_with_resource_manager(self, resource_manager: ResourceManager):
         """Test length() integration with actual resource search."""
         # Search for resources where name length > 5
         query = QB["name"].length() > 5
@@ -2452,7 +2452,7 @@ class TestResourceManagerWithQB:
         assert len(results) == 1
         assert results[0].indexed_data["name"] == "Charlie"
 
-    def test_length_with_list_field(self, resource_manager):
+    def test_length_with_list_field(self, resource_manager: ResourceManager):
         """Test length() on list fields using a new indexed field."""
         import datetime as dt
         from zoneinfo import ZoneInfo
@@ -2484,7 +2484,7 @@ class TestResourceManagerWithQB:
         assert results[0].indexed_data["name"] == "Eve"
         assert len(results[0].indexed_data["tags"]) == 3
 
-    def test_length_equals_zero(self, resource_manager):
+    def test_length_equals_zero(self, resource_manager: ResourceManager):
         """Test length() == 0 for empty collections."""
         import datetime as dt
         from zoneinfo import ZoneInfo

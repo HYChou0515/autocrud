@@ -29,6 +29,7 @@ import uvicorn
 from fastapi import FastAPI
 
 from autocrud import AutoCRUD
+from autocrud.query import QB  # QueryBuilder for advanced queries
 from autocrud.crud.route_templates.blob import BlobRouteTemplate
 from autocrud.types import Binary, Job, Resource
 from autocrud.crud.route_templates.graphql import GraphQLRouteTemplate
@@ -352,6 +353,158 @@ def create_sample_data(crud: AutoCRUD):
                 print(f"❌ 裝備創建失敗: {e}")
 
 
+def demonstrate_qb_queries(crud: AutoCRUD):
+    """展示 QueryBuilder (QB) 的使用範例"""
+    print("\n🔍 === QueryBuilder (QB) 使用範例 ===")
+
+    character_manager = crud.get_resource_manager(Character)
+    if not character_manager:
+        print("❌ 角色管理器未找到")
+        return
+
+    print("\n📊 範例 1: 基本查詢 - 搜尋高等級角色 (level >= 50)")
+    query1 = QB["level"].gte(50).limit(10)
+    metas1 = character_manager.search_resources(query1)
+    print(f"   找到 {len(metas1)} 個高等級角色:")
+    for meta in metas1:
+        resource = character_manager.get(meta.resource_id)
+        print(f"   - {resource.data.name}: Lv.{resource.data.level}")
+
+    print(
+        "\n📊 範例 2: 複雜條件 - 中等級且有公會的角色 (20 <= level <= 80 AND guild_name)"
+    )
+    query2 = (QB["level"].between(20, 80) & QB["guild_name"].is_not_null()).limit(5)
+    metas2 = character_manager.search_resources(query2)
+    print(f"   找到 {len(metas2)} 個符合條件的角色:")
+    for meta in metas2:
+        resource = character_manager.get(meta.resource_id)
+        print(
+            f"   - {resource.data.name}: Lv.{resource.data.level}, 公會: {resource.data.guild_name}"
+        )
+
+    print(
+        "\n📊 範例 3: 使用 filter - 富有的戰士 (gold > 100000 AND character_class == WARRIOR)"
+    )
+    query3 = (
+        QB["gold"]
+        .gt(100000)
+        .filter(
+            QB["character_class"].eq(CharacterClass.WARRIOR),
+        )
+        .limit(5)
+    )
+    metas3 = character_manager.search_resources(query3)
+    print(f"   找到 {len(metas3)} 個富有的戰士:")
+    for meta in metas3:
+        resource = character_manager.get(meta.resource_id)
+        print(
+            f"   - {resource.data.name}: 金幣 {resource.data.gold}, {resource.data.character_class.value}"
+        )
+
+    print("\n📊 範例 4: OR 查詢 - 高等級或高金幣 (level >= 80 OR gold >= 500000)")
+    query4 = (QB["level"].gte(80) | QB["gold"].gte(500000)).limit(5)
+    metas4 = character_manager.search_resources(query4)
+    print(f"   找到 {len(metas4)} 個角色:")
+    for meta in metas4:
+        resource = character_manager.get(meta.resource_id)
+        print(
+            f"   - {resource.data.name}: Lv.{resource.data.level}, 金幣 {resource.data.gold}"
+        )
+
+    print("\n📊 範例 5: 排序 - 按等級降序，取前3名")
+    query5 = QB["level"].gte(1).sort("-level").limit(3)  # 字串排序：-表示降序
+    metas5 = character_manager.search_resources(query5)
+    print("   🏆 等級排行榜 TOP 3:")
+    for i, meta in enumerate(metas5, 1):
+        resource = character_manager.get(meta.resource_id)
+        print(
+            f"   {i}. {resource.data.name}: Lv.{resource.data.level} - {resource.data.special_ability}"
+        )
+
+    print("\n📊 範例 6: 使用 QB 內建方法排序 - 按金幣降序")
+    query6 = QB["gold"].gte(1).sort(QB["gold"].desc()).limit(3)
+    metas6 = character_manager.search_resources(query6)
+    print("   💰 財富排行榜 TOP 3:")
+    for i, meta in enumerate(metas6, 1):
+        resource = character_manager.get(meta.resource_id)
+        print(f"   {i}. {resource.data.name}: {resource.data.gold} 金幣")
+
+    print("\n📊 範例 7: 分頁查詢 - 第1頁，每頁2個")
+    query7 = QB["level"].gte(1).sort("-created_at").page(1, 2)  # 第1頁，每頁2個
+    metas7 = character_manager.search_resources(query7)
+    print(f"   第1頁結果 (共 {len(metas7)} 個):")
+    for meta in metas7:
+        resource = character_manager.get(meta.resource_id)
+        print(f"   - {resource.data.name}")
+
+    print("\n📊 範例 8: 字串包含查詢 - 名字包含 '大' 的角色")
+    query8 = QB["name"].contains("大").limit(5)
+    metas8 = character_manager.search_resources(query8)
+    print(f"   找到 {len(metas8)} 個角色:")
+    for meta in metas8:
+        resource = character_manager.get(meta.resource_id)
+        print(f"   - {resource.data.name}")
+
+    print("\n📊 範例 9: IN 查詢 - 特定公會的成員")
+    target_guilds = ["AutoCRUD 開發者聯盟", "API 法師學院"]
+    query9 = QB["guild_name"].in_(target_guilds).limit(10)
+    metas9 = character_manager.search_resources(query9)
+    print(f"   找到 {len(metas9)} 個目標公會成員:")
+    for meta in metas9:
+        resource = character_manager.get(meta.resource_id)
+        print(f"   - {resource.data.name} ({resource.data.guild_name})")
+
+    print("\n📊 範例 10: 使用元數據查詢 - 最近創建的角色")
+    query10 = (
+        QB.created_time()
+        .gte(dt.datetime.now() - dt.timedelta(hours=1))
+        .sort(QB.created_time().desc())
+        .limit(3)
+    )
+    metas10 = character_manager.search_resources(query10)
+    print(f"   最近1小時內創建的角色 ({len(metas10)} 個):")
+    for meta in metas10:
+        resource = character_manager.get(meta.resource_id)
+        print(
+            f"   - {resource.data.name}, 創建時間: {meta.created_time.strftime('%Y-%m-%d %H:%M:%S')}"
+        )
+
+    print("\n📊 範例 11: exclude 使用 - 排除新手村的角色")
+    query11 = (
+        QB["level"]
+        .gte(1)
+        .exclude(QB["guild_name"].eq("新手村互助會"))
+        .sort("-level")
+        .limit(5)
+    )
+    metas11 = character_manager.search_resources(query11)
+    print(f"   找到 {len(metas11)} 個非新手村角色:")
+    for meta in metas11:
+        resource = character_manager.get(meta.resource_id)
+        print(f"   - {resource.data.name}: {resource.data.guild_name or '無公會'}")
+
+    print("\n📊 範例 12: first() 使用 - 取得等級最高的角色")
+    query12 = QB["level"].gte(1).sort("-level").first()
+    metas12 = character_manager.search_resources(query12)
+    if metas12:
+        top_meta = metas12[0]
+        top = character_manager.get(top_meta.resource_id)
+        print(f"   🏆 最強角色: {top.data.name} (Lv.{top.data.level})")
+        print(
+            f"   屬性: HP={top.data.hp}, 攻擊={top.data.attack}, 防禦={top.data.defense}"
+        )
+        print(f"   特殊能力: {top.data.special_ability}")
+
+    print("\n✅ QueryBuilder 範例演示完成！")
+    print("\n💡 提示: QB 提供了強大且直觀的查詢接口：")
+    print("   - 使用 QB['field'] 或 QB.field() 存取欄位")
+    print("   - 支援 Python 運算符: ==, !=, >, >=, <, <=, &, |, ~")
+    print("   - 提供豐富的方法: contains, in_, between, is_null 等")
+    print("   - 支援排序: sort(), order_by(), asc(), desc()")
+    print("   - 支援分頁: limit(), offset(), page(), first()")
+    print("   - 提供元數據查詢: QB.created_time(), QB.status() 等\n")
+
+
 _crud = None
 
 
@@ -383,7 +536,17 @@ def get_crud():
     _crud.add_route_template(MigrateRouteTemplate())
 
     # 註冊模型
-    _crud.add_model(Character, indexed_fields=[("level", int), ("name", str)])
+    # 注意：使用 QB 查詢的欄位必須建立索引
+    _crud.add_model(
+        Character,
+        indexed_fields=[
+            ("level", int),  # 用於等級查詢、排序
+            ("name", str),  # 用於名稱搜尋、字串包含查詢
+            ("gold", int),  # 用於金幣查詢、排序
+            ("guild_name", str | None),  # 用於公會查詢、is_not_null 檢查
+            ("character_class", CharacterClass),  # 用於職業篩選
+        ],
+    )
     _crud.add_model(Guild)
     _crud.add_model(Equipment)
 
@@ -562,6 +725,11 @@ def main():
     ans = input("需要創建示範遊戲事件嗎？[y/N]: ")
     if ans.lower() == "y":
         create_sample_events(crud)
+
+    # 展示 QueryBuilder 使用範例
+    ans = input("需要展示 QueryBuilder (QB) 使用範例嗎？[y/N]: ")
+    if ans.lower() == "y":
+        demonstrate_qb_queries(crud)
 
     print("\n🚀 === 服務器啟動成功 === 🚀")
     print("📖 OpenAPI 文檔: http://localhost:8000/docs")
