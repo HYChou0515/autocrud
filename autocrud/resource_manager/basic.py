@@ -238,46 +238,59 @@ def _evaluate_trivalent(
         # Value is not None, so is_null is False
         return not condition.value
 
+    # Normalize Enum to value for comparison (indexed data stores Enum as value string/int)
+    from enum import Enum as EnumType
+
+    if isinstance(condition.value, EnumType):
+        compare_value = condition.value.value
+    elif isinstance(condition.value, (list, tuple, set)):
+        # Handle Enum in lists (for in_list/not_in_list operators)
+        compare_value = type(condition.value)(
+            v.value if isinstance(v, EnumType) else v for v in condition.value
+        )
+    else:
+        compare_value = condition.value
+
     if condition.operator == DataSearchOperator.equals:
-        return field_value == condition.value
+        return field_value == compare_value
     if condition.operator == DataSearchOperator.not_equals:
-        return field_value != condition.value
+        return field_value != compare_value
     if condition.operator == DataSearchOperator.greater_than:
-        return field_value > condition.value
+        return field_value > compare_value
     if condition.operator == DataSearchOperator.greater_than_or_equal:
-        return field_value >= condition.value
+        return field_value >= compare_value
     if condition.operator == DataSearchOperator.less_than:
-        return field_value < condition.value
+        return field_value < compare_value
     if condition.operator == DataSearchOperator.less_than_or_equal:
-        return field_value <= condition.value
+        return field_value <= compare_value
     if condition.operator == DataSearchOperator.contains:
         # 特殊處理：如果 field_value 是列表，檢查 condition.value 是否在列表中
         if isinstance(field_value, list):
-            return condition.value in field_value
+            return compare_value in field_value
         if isinstance(condition.value, Flag) and isinstance(field_value, int):
             return (condition.value.value & field_value) == condition.value.value
         # 標準字符串包含檢查
-        return str(condition.value) in str(field_value)
+        return str(compare_value) in str(field_value)
     if condition.operator == DataSearchOperator.starts_with:
         return str(field_value).startswith(
-            str(condition.value),
+            str(compare_value),
         )
     if condition.operator == DataSearchOperator.ends_with:
         return str(field_value).endswith(
-            str(condition.value),
+            str(compare_value),
         )
     if condition.operator == DataSearchOperator.regex:
-        return re.search(str(condition.value), str(field_value)) is not None
+        return re.search(str(compare_value), str(field_value)) is not None
     if condition.operator == DataSearchOperator.in_list:
         return (
-            field_value in condition.value
-            if isinstance(condition.value, (list, tuple, set))
+            field_value in compare_value
+            if isinstance(compare_value, (list, tuple, set))
             else False
         )
     if condition.operator == DataSearchOperator.not_in_list:
         return (
-            field_value not in condition.value
-            if isinstance(condition.value, (list, tuple, set))
+            field_value not in compare_value
+            if isinstance(compare_value, (list, tuple, set))
             else True
         )
 

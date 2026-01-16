@@ -1,4 +1,5 @@
 import datetime as dt
+import os
 import time
 from collections.abc import Generator
 from contextlib import contextmanager, suppress
@@ -1156,6 +1157,9 @@ class TestMetaStore:
 
     @pytest.mark.benchmark
     @pytest.mark.slow
+    @pytest.mark.skipif(
+        os.getenv("BENCHMARK") != "1", reason="Skip performance test on CI"
+    )
     def test_large_size_behavior(self):
         def get_fake_meta():
             return ResourceMeta(

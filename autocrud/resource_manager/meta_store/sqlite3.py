@@ -349,6 +349,15 @@ class SqliteMetaStore(ISlowMetaStore):
         operator = condition.operator
         value = condition.value
 
+        # Normalize Enum to value (indexed data stores Enum as value string)
+        from enum import Enum as EnumType
+
+        if isinstance(value, EnumType):
+            value = value.value
+        elif isinstance(value, (list, tuple, set)):
+            # Handle Enum in lists (for in_list/not_in_list operators)
+            value = [v.value if isinstance(v, EnumType) else v for v in value]
+
         # 判斷是否為 Meta 欄位
         meta_fields = {
             "resource_id",

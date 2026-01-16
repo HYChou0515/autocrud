@@ -7,6 +7,13 @@ import psycopg2.pool
 from msgspec import UNSET
 from psycopg2.extras import DictCursor, execute_batch
 
+from autocrud.types import (
+    DataSearchGroup,
+    DataSearchLogicOperator,
+    DataSearchOperator,
+)
+
+from enum import Enum as EnumType
 from autocrud.resource_manager.basic import (
     Encoding,
     ISlowMetaStore,
@@ -424,12 +431,6 @@ class PostgresMetaStore(ISlowMetaStore):
 
     def _build_condition(self, condition: DataSearchFilter) -> tuple[str, list]:
         """構建 PostgreSQL 查詢條件 (支援 Meta 欄位與 JSONB 欄位)"""
-        from autocrud.types import (
-            DataSearchGroup,
-            DataSearchLogicOperator,
-            DataSearchOperator,
-        )
-
         if isinstance(condition, DataSearchGroup):
             sub_conditions = []
             sub_params = []
@@ -454,6 +455,13 @@ class PostgresMetaStore(ISlowMetaStore):
         field_path = condition.field_path
         operator = condition.operator
         value = condition.value
+
+        # Normalize Enum to value (indexed data stores Enum as value string)
+        if isinstance(value, EnumType):
+            value = value.value
+        elif isinstance(value, (list, tuple, set)):
+            # Handle Enum in lists (for in_list/not_in_list operators)
+            value = [v.value if isinstance(v, EnumType) else v for v in value]
 
         # 判斷是否為 Meta 欄位
         meta_fields = {

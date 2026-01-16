@@ -2590,3 +2590,44 @@ class TestQueryBuilderEdgeCases:
         assert isinstance(cond, DataSearchCondition)
         assert cond.field_path == "status"
         assert cond.operator == DataSearchOperator.equals
+
+    def test_filter_with_enum_value(self):
+        """Test filter() method with Enum value - RPG game example."""
+        from autocrud.query import QB
+        from enum import Enum
+
+        class CharacterClass(Enum):
+            WARRIOR = "⚔️ 戰士"
+            MAGE = "🔮 法師"
+
+        # This is the pattern from rpg_game_api.py line 388-395
+        # Should work: gold > 100000 AND character_class == WARRIOR
+        query = (
+            QB["gold"]
+            .gt(100000)
+            .filter(QB["character_class"].eq(CharacterClass.WARRIOR))
+        )
+
+        built_query = query.build()
+        assert built_query.conditions is not UNSET
+        assert len(built_query.conditions) == 1
+
+        # Should be an AND group
+        root = built_query.conditions[0]
+        assert isinstance(root, DataSearchGroup)
+        assert root.operator == DataSearchLogicOperator.and_op
+        assert len(root.conditions) == 2
+
+        # First: gold > 100000
+        first = root.conditions[0]
+        assert isinstance(first, DataSearchCondition)
+        assert first.field_path == "gold"
+        assert first.operator == DataSearchOperator.greater_than
+        assert first.value == 100000
+
+        # Second: character_class == WARRIOR
+        second = root.conditions[1]
+        assert isinstance(second, DataSearchCondition)
+        assert second.field_path == "character_class"
+        assert second.operator == DataSearchOperator.equals
+        assert second.value == CharacterClass.WARRIOR

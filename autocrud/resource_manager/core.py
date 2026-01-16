@@ -151,6 +151,49 @@ def _get_type_name(resource_type) -> str:
     return str(resource_type).replace(" ", "").replace("|", "Or")
 
 
+class IndexedValueExtractor:
+    """從資源資料中提取需要索引的欄位值（Enum 會在序列化時自動轉換為 value）"""
+
+    def __init__(self, indexed_fields: list[IndexableField]):
+        self.indexed_fields = indexed_fields
+
+    def extract_indexed_values(self, data: Any) -> dict[str, Any]:
+        """從 data 中提取需要索引的值（保留原始類型，Enum 會在 msgspec 序列化時轉為 value）"""
+        indexed_data = {}
+        for field in self.indexed_fields:
+            value = UNSET
+            if field.field_type == SpecialIndex.msgspec_tag:
+                with suppress(Exception):
+                    value = msgspec.inspect.type_info(type(data)).tag
+            else:
+                # 使用 JSON path 提取值
+                with suppress(Exception):
+                    value = self._extract_by_path(data, field.field_path)
+
+            if value is not UNSET:
+                indexed_data[field.field_path] = value
+
+        return indexed_data
+
+    def _extract_by_path(self, data: Any, field_path: str) -> Any:
+        """使用 JSON path 從 data 中提取值"""
+        # 簡單的點分隔路徑解析 (e.g., "user.email")
+        parts = field_path.split(".")
+        current = data
+
+        for part in parts:
+            if hasattr(current, part):
+                current = getattr(current, part)
+            elif isinstance(current, dict) and part in current:
+                current = current[part]
+            else:
+                return None
+
+        if current is UNSET:
+            return None
+        return current
+
+
 class SimpleStorage(IStorage):
     def __init__(self, meta_store: IMetaStore, resource_store: IResourceStore):
         self._meta_store = meta_store
@@ -410,6 +453,7 @@ class ResourceManager(IResourceManager[T], Generic[T]):
         schema_version = migration.schema_version if migration else None
         self._schema_version = schema_version
         self._indexed_fields = indexed_fields or []
+        self._indexed_value_extractor = IndexedValueExtractor(self._indexed_fields)
         self._migration = migration
         self._encoding = encoding
         self._data_serializer = MsgspecSerializer(
@@ -529,39 +573,8 @@ class ResourceManager(IResourceManager[T], Generic[T]):
         return self._indexed_fields
 
     def _extract_indexed_values(self, data: T) -> dict[str, Any]:
-        """從 data 中提取需要索引的值"""
-        indexed_data = {}
-        for field in self._indexed_fields:
-            value = UNSET
-            if field.field_type == SpecialIndex.msgspec_tag:
-                with suppress(Exception):
-                    value = msgspec.inspect.type_info(type(data)).tag
-            else:
-                # 使用 JSON path 提取值
-                with suppress(Exception):
-                    value = self._extract_by_path(data, field.field_path)
-            if value is not UNSET:
-                indexed_data[field.field_path] = value
-
-        return indexed_data
-
-    def _extract_by_path(self, data: T, field_path: str) -> Any:
-        """使用 JSON path 從 data 中提取值"""
-        # 簡單的點分隔路徑解析 (e.g., "user.email")
-        parts = field_path.split(".")
-        current = data
-
-        for part in parts:
-            if hasattr(current, part):
-                current = getattr(current, part)
-            elif isinstance(current, dict) and part in current:
-                current = current[part]
-            else:
-                return None
-
-        if current is UNSET:
-            return None
-        return current
+        """從 data 中提取需要索引的值（保留原始類型，Enum 會在序列化時轉換）"""
+        return self._indexed_value_extractor.extract_indexed_values(data)
 
     @contextmanager
     def meta_provide(
