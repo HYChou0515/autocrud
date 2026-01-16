@@ -146,7 +146,7 @@ class Query:
 class ConditionBuilder(Query):
     """Wraps a DataSearchFilter and allows combining with other conditions."""
 
-    def __init__(self, condition: DataSearchFilter):
+    def __init__(self, condition: DataSearchFilter | None):
         super().__init__(condition)
 
     def __and__(
@@ -332,10 +332,46 @@ class ConditionBuilder(Query):
         )
 
 
-class Field:
+class Field(ConditionBuilder):
     def __init__(self, name: str, transform: FieldTransform | None = None):
         self.name = name
         self.transform = transform
+        # Default behavior: Field acts as is_truthy() condition
+        # This allows QB["foo"] to be used directly in logical operations
+        super().__init__(self._create_truthy_condition())
+
+    def _create_truthy_condition(self) -> DataSearchGroup:
+        """Create truthy condition: not null, not false, not 0, not empty string, not empty list."""
+        return DataSearchGroup(
+            operator=DataSearchLogicOperator.and_op,
+            conditions=[
+                DataSearchCondition(
+                    field_path=self.name,
+                    operator=DataSearchOperator.is_null,
+                    value=False,
+                ),
+                DataSearchCondition(
+                    field_path=self.name,
+                    operator=DataSearchOperator.not_equals,
+                    value=False,
+                ),
+                DataSearchCondition(
+                    field_path=self.name,
+                    operator=DataSearchOperator.not_equals,
+                    value=0,
+                ),
+                DataSearchCondition(
+                    field_path=self.name,
+                    operator=DataSearchOperator.not_equals,
+                    value="",
+                ),
+                DataSearchCondition(
+                    field_path=self.name,
+                    operator=DataSearchOperator.not_equals,
+                    value=[],
+                ),
+            ],
+        )
 
     def _cond(
         self, op: DataSearchOperator, val: Any, transform: FieldTransform | None = None
@@ -405,8 +441,21 @@ class Field:
         return self.contains(value)
 
     def __invert__(self) -> ConditionBuilder:
-        """Support ~field syntax for isna(True)."""
-        return self.isna(True)
+        """Support ~field syntax for is_falsy().
+
+        Override parent's NOT logic to directly return is_falsy() condition.
+        This is more intuitive: ~field means "field is falsy", not "NOT (field is truthy)".
+
+        Note: While logically equivalent, this returns the OR group directly
+        instead of wrapping the truthy condition in a NOT group.
+
+        Checks if field value is falsy (None, False, 0, "", []).
+
+        Example:
+            ~QB["comment"]  # Falsy values
+            # Equivalent to: QB["comment"].is_falsy()
+        """
+        return self.is_falsy()
 
     def between(self, min_val: Any, max_val: Any) -> ConditionBuilder:
         """Support range query: field.between(min, max).
@@ -538,82 +587,24 @@ class Field:
             QB["count"].is_truthy()   # Not 0
             QB["tags"].is_truthy()    # Not empty list
         """
-        # Truthy: not null, not false, not 0, not empty string, not empty list
-        return ConditionBuilder(
-            DataSearchGroup(
-                operator=DataSearchLogicOperator.and_op,
-                conditions=[
-                    DataSearchCondition(
-                        field_path=self.name,
-                        operator=DataSearchOperator.is_null,
-                        value=False,
-                    ),
-                    DataSearchCondition(
-                        field_path=self.name,
-                        operator=DataSearchOperator.not_equals,
-                        value=False,
-                    ),
-                    DataSearchCondition(
-                        field_path=self.name,
-                        operator=DataSearchOperator.not_equals,
-                        value=0,
-                    ),
-                    DataSearchCondition(
-                        field_path=self.name,
-                        operator=DataSearchOperator.not_equals,
-                        value="",
-                    ),
-                    DataSearchCondition(
-                        field_path=self.name,
-                        operator=DataSearchOperator.not_equals,
-                        value=[],
-                    ),
-                ],
-            )
-        )
+        return ConditionBuilder(self._create_truthy_condition())
 
     def is_falsy(self) -> ConditionBuilder:
         """Check if field has a falsy value (null, empty, false, or 0).
 
         Returns:
-            ConditionBuilder for: value == None OR value == False OR value == 0 OR value == "" OR value == []
+            ConditionBuilder for NOT(is_truthy): negation of truthy condition
 
         Example:
             QB["optional_field"].is_falsy()  # Empty or unset
             QB["count"].is_falsy()           # Zero or null
             QB["tags"].is_falsy()            # Empty list or null
         """
-        # Falsy: null, false, 0, empty string, or empty list
+        # Falsy is the logical negation of truthy
         return ConditionBuilder(
             DataSearchGroup(
-                operator=DataSearchLogicOperator.or_op,
-                conditions=[
-                    DataSearchCondition(
-                        field_path=self.name,
-                        operator=DataSearchOperator.is_null,
-                        value=True,
-                    ),
-                    DataSearchCondition(
-                        field_path=self.name,
-                        operator=DataSearchOperator.equals,
-                        value=False,
-                    ),
-                    DataSearchCondition(
-                        field_path=self.name,
-                        operator=DataSearchOperator.equals,
-                        value=0,
-                    ),
-                    DataSearchCondition(
-                        field_path=self.name,
-                        operator=DataSearchOperator.equals,
-                        value="",
-                    ),
-                    DataSearchCondition(
-                        field_path=self.name,
-                        operator=DataSearchOperator.equals,
-                        value=[],
-                    ),
-                ],
+                operator=DataSearchLogicOperator.not_op,
+                conditions=[self._create_truthy_condition()],
             )
         )
 
@@ -1137,6 +1128,7 @@ class Field:
         Note:
             The actual length calculation is performed by the storage backend
             when executing the query using the FieldTransform.length transform.
+            The returned Field also acts as is_truthy() by default.
         """
         return Field(self.name, transform=FieldTransform.length)
 
@@ -1304,17 +1296,21 @@ class QB(metaclass=QueryBuilderMeta):
         """Combine multiple conditions with AND logic.
 
         Args:
-            *conditions: Variable number of ConditionBuilder instances
+            *conditions: Variable number of ConditionBuilder instances.
+                        If empty, returns a query with no conditions (matches all resources).
 
         Returns:
-            ConditionBuilder with AND group
+            ConditionBuilder with AND group, or no conditions if empty
 
         Example:
-            all(QB.age > 18, QB.status == "active", QB.score >= 80)
-            # Equivalent to: (QB.age > 18) & (QB.status == "active") & (QB.score >= 80)
+            QB.all(QB["age"] > 18, QB["status"] == "active", QB["score"] >= 80)
+            # Equivalent to: (QB["age"] > 18) & (QB["status"] == "active") & (QB["score"] >= 80)
+
+            QB.all()  # No conditions - matches all resources
         """
         if not conditions:
-            raise ValueError("all() requires at least one condition")
+            # No conditions - return empty query (matches all)
+            return ConditionBuilder(None)
         if len(conditions) == 1:
             return conditions[0]
 

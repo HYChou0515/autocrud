@@ -280,14 +280,22 @@ class TestQueryBuilder:
 
     def test_invert_dual_usage(self):
         """Test ~ operator has different meanings for Field vs ConditionBuilder."""
-        # Case 1: ~Field -> isna(True)
-        q1 = ~QB["deleted_at"]
+        # Case 1: ~Field -> is_falsy() which is NOT(is_truthy)
+        q1 = ~QB["comment"]
         cond1 = q1.build().conditions[0]
-        assert cond1.field_path == "deleted_at"
-        assert cond1.operator == DataSearchOperator.isna
-        assert cond1.value is True
+        assert isinstance(cond1, DataSearchGroup)
+        assert cond1.operator == DataSearchLogicOperator.not_op
+        assert len(cond1.conditions) == 1
 
-        # Case 2: ~(condition) -> NOT condition
+        # Inside NOT is the truthy condition (AND group)
+        inner_truthy = cond1.conditions[0]
+        assert isinstance(inner_truthy, DataSearchGroup)
+        assert inner_truthy.operator == DataSearchLogicOperator.and_op
+        assert (
+            len(inner_truthy.conditions) == 5
+        )  # not null, not false, not 0, not "", not []
+
+        # Case 2: ~(condition) -> NOT condition (logical negation)
         q2 = ~(QB["age"] > 18)
         query2 = q2.build()
         group = query2.conditions[0]
@@ -310,7 +318,7 @@ class TestQueryBuilder:
         inner_group = root.conditions[0]
         assert inner_group.operator == DataSearchLogicOperator.and_op
 
-        # Case 4: ~~Field -> NOT (isna(True)) 等價於 isna(False)
+        # Case 4: ~~Field -> NOT(NOT(is_truthy())) 雙重否定
         q4 = ~~QB["optional_field"]
         query4 = q4.build()
         double_not = query4.conditions[0]
@@ -318,11 +326,19 @@ class TestQueryBuilder:
         assert double_not.operator == DataSearchLogicOperator.not_op
         assert len(double_not.conditions) == 1
 
-        # Inside the NOT is isna(True)
-        inner_isna = double_not.conditions[0]
-        assert inner_isna.field_path == "optional_field"
-        assert inner_isna.operator == DataSearchOperator.isna
-        assert inner_isna.value is True
+        # Inside the first NOT is another NOT (is_falsy which is NOT(is_truthy))
+        inner_not = double_not.conditions[0]
+        assert isinstance(inner_not, DataSearchGroup)
+        assert inner_not.operator == DataSearchLogicOperator.not_op
+        assert len(inner_not.conditions) == 1
+
+        # Inside the second NOT is is_truthy (AND group)
+        inner_truthy = inner_not.conditions[0]
+        assert isinstance(inner_truthy, DataSearchGroup)
+        assert inner_truthy.operator == DataSearchLogicOperator.and_op
+        assert (
+            len(inner_truthy.conditions) == 5
+        )  # not null, not false, not 0, not "", not []
 
     def test_between_range_query(self):
         """Test between() method for range queries."""
@@ -990,12 +1006,18 @@ class TestQueryBuilder:
         assert cond.operator == DataSearchOperator.contains
         assert cond.value == "important"
 
-        # Test ~ for isna
-        q = ~QB["deleted_at"]
+        # Test ~ for is_falsy (NOT of is_truthy)
+        q = ~QB["comment"]
         cond = q.build().conditions[0]
-        assert cond.field_path == "deleted_at"
-        assert cond.operator == DataSearchOperator.isna
-        assert cond.value is True
+        assert isinstance(cond, DataSearchGroup)
+        assert cond.operator == DataSearchLogicOperator.not_op
+        assert len(cond.conditions) == 1
+
+        # Inside NOT is is_truthy (AND group)
+        inner = cond.conditions[0]
+        assert isinstance(inner, DataSearchGroup)
+        assert inner.operator == DataSearchLogicOperator.and_op
+        assert len(inner.conditions) == 5  # not null, not false, not 0, not "", not []
 
     def test_field_advanced_dunder_methods_equivalence(self):
         """Verify advanced dunder methods produce same results as named methods."""
@@ -1014,11 +1036,20 @@ class TestQueryBuilder:
         q2 = QB["text"].contains("substring")
         assert q1.build().conditions[0].operator == q2.build().conditions[0].operator
 
-        # ~ vs isna()
+        # ~ vs is_falsy()
         q1 = ~QB["field1"]
-        q2 = QB["field1"].isna()
-        assert q1.build().conditions[0].operator == q2.build().conditions[0].operator
-        assert q1.build().conditions[0].value == q2.build().conditions[0].value
+        q2 = QB["field1"].is_falsy()
+        # Both should produce NOT groups
+        cond1 = q1.build().conditions[0]
+        cond2 = q2.build().conditions[0]
+        assert isinstance(cond1, DataSearchGroup)
+        assert isinstance(cond2, DataSearchGroup)
+        assert cond1.operator == cond2.operator == DataSearchLogicOperator.not_op
+        assert len(cond1.conditions) == len(cond2.conditions) == 1
+
+        # Inside NOT should be is_truthy (AND group with 5 conditions)
+        assert cond1.conditions[0].operator == DataSearchLogicOperator.and_op
+        assert len(cond1.conditions[0].conditions) == 5
 
     def test_field_advanced_dunder_methods_in_complex_query(self):
         """Test advanced dunder methods in complex queries."""
@@ -1056,10 +1087,13 @@ class TestQueryBuilder:
         assert cond.field_path == "full-name"
         assert cond.operator == DataSearchOperator.contains
 
-        q = ~QB["deleted-at"]
+        q = ~QB["comment"]
         cond = q.build().conditions[0]
-        assert cond.field_path == "deleted-at"
-        assert cond.operator == DataSearchOperator.isna
+        assert isinstance(cond, DataSearchGroup)
+        assert cond.operator == DataSearchLogicOperator.not_op
+        assert len(cond.conditions) == 1
+        # Inside NOT is is_truthy (AND group)
+        assert cond.conditions[0].operator == DataSearchLogicOperator.and_op
 
     def test_field_all_dunder_methods_combined(self):
         """Test combining all dunder methods in a complex real-world query."""
@@ -1333,6 +1367,108 @@ class TestQueryBuilder:
         cond = q.build().conditions[0]
         # [ and ] should be escaped
         assert r"\[" in cond.value or "\\[" in cond.value
+
+    def test_invert_operator_practical_examples(self):
+        """Test ~ operator in practical use cases."""
+        # Case 1: Find records with empty optional fields
+        q = (QB["status"] == "active") & ~QB["comment"]
+        query = q.build()
+        root = query.conditions[0]
+        assert root.operator == DataSearchLogicOperator.and_op
+
+        # Right side should be is_falsy (NOT group)
+        falsy_group = root.conditions[1]
+        assert isinstance(falsy_group, DataSearchGroup)
+        assert falsy_group.operator == DataSearchLogicOperator.not_op
+        assert len(falsy_group.conditions) == 1
+        # Inside NOT is is_truthy (AND group)
+        assert falsy_group.conditions[0].operator == DataSearchLogicOperator.and_op
+
+        # Case 2: Complex query with multiple falsy checks
+        q = QB.all(
+            QB["status"] == "published",
+            QB["score"] > 50,
+            ~QB["archived"],  # Not archived (falsy)
+            ~QB["deleted"],  # Not deleted (falsy)
+        )
+        query = q.build()
+        root = query.conditions[0]
+        assert root.operator == DataSearchLogicOperator.and_op
+        assert len(root.conditions) == 4
+
+    def test_field_as_truthy_condition(self):
+        """Test that Field can be used directly as is_truthy() condition."""
+        # Case 1: Single field acts as is_truthy()
+        q = QB["verified"]
+        cond = q.build().conditions[0]
+        assert isinstance(cond, DataSearchGroup)
+        assert cond.operator == DataSearchLogicOperator.and_op
+        assert len(cond.conditions) == 5  # not null, not false, not 0, not "", not []
+
+        # Case 2: Field in AND operation
+        q = QB["verified"] & (QB["status"] == "active")
+        query = q.build()
+        root = query.conditions[0]
+        assert root.operator == DataSearchLogicOperator.and_op
+        assert len(root.conditions) == 2
+
+        # First should be verified (is_truthy)
+        verified_cond = root.conditions[0]
+        assert isinstance(verified_cond, DataSearchGroup)
+        assert verified_cond.operator == DataSearchLogicOperator.and_op
+
+        # Second should be status == "active"
+        status_cond = root.conditions[1]
+        assert status_cond.field_path == "status"
+        assert status_cond.operator == DataSearchOperator.equals
+
+    def test_field_as_truthy_with_negation(self):
+        """Test ~Field produces is_falsy() as expected."""
+        # ~Field should give is_falsy() which is NOT(is_truthy)
+        q = ~QB["optional"]
+        cond = q.build().conditions[0]
+        assert isinstance(cond, DataSearchGroup)
+        assert cond.operator == DataSearchLogicOperator.not_op
+        assert len(cond.conditions) == 1
+
+        # Inside NOT is is_truthy (AND group with 5 conditions)
+        inner = cond.conditions[0]
+        assert isinstance(inner, DataSearchGroup)
+        assert inner.operator == DataSearchLogicOperator.and_op
+        assert len(inner.conditions) == 5  # not null, not false, not 0, not "", not []
+
+    def test_field_truthy_equivalence(self):
+        """Test Field is equivalent to Field.is_truthy()."""
+        # QB["foo"] should be same as QB["foo"].is_truthy()
+        q1 = QB["name"]
+        q2 = QB["name"].is_truthy()
+
+        cond1 = q1.build().conditions[0]
+        cond2 = q2.build().conditions[0]
+
+        assert isinstance(cond1, DataSearchGroup)
+        assert isinstance(cond2, DataSearchGroup)
+        assert cond1.operator == cond2.operator == DataSearchLogicOperator.and_op
+        assert len(cond1.conditions) == len(cond2.conditions) == 5
+
+    def test_field_in_complex_logic(self):
+        """Test Field as truthy in complex queries."""
+        # (verified AND email) OR (admin AND active)
+        # All four fields act as is_truthy()
+        q = (QB["verified"] & QB["email"]) | (QB["admin"] & QB["active"])
+        query = q.build()
+        root = query.conditions[0]
+
+        assert root.operator == DataSearchLogicOperator.or_op
+        assert len(root.conditions) == 2
+
+        # Left: verified AND email
+        left = root.conditions[0]
+        assert left.operator == DataSearchLogicOperator.and_op
+
+        # Right: admin AND active
+        right = root.conditions[1]
+        assert right.operator == DataSearchLogicOperator.and_op
 
 
 class TestResourceManagerWithQB:
@@ -2040,21 +2176,27 @@ class TestResourceManagerWithQB:
         query = q.build()
         root = query.conditions[0]
 
-        # Should be an OR group: null OR false OR 0 OR "" OR []
+        # Should be NOT(is_truthy()), i.e., NOT group with inner AND group
         assert isinstance(root, DataSearchGroup)
-        assert root.operator == DataSearchLogicOperator.or_op
-        assert len(root.conditions) == 5
+        assert root.operator == DataSearchLogicOperator.not_op
+        assert len(root.conditions) == 1
 
-        # Check all falsy conditions
-        operators = [c.operator for c in root.conditions]
-        values = [c.value for c in root.conditions]
+        # Inner condition should be the is_truthy AND group
+        inner = root.conditions[0]
+        assert isinstance(inner, DataSearchGroup)
+        assert inner.operator == DataSearchLogicOperator.and_op
+        assert len(inner.conditions) == 5
+
+        # Check all truthy conditions (negated)
+        operators = [c.operator for c in inner.conditions]
+        values = [c.value for c in inner.conditions]
 
         assert DataSearchOperator.is_null in operators
-        assert True in values  # is_null(True)
-        assert False in values  # equals(False)
-        assert 0 in values  # equals(0)
-        assert "" in values  # equals("")
-        assert [] in values  # equals([])
+        assert False in values  # is_null(False)
+        assert False in values  # not_equals(False)
+        assert 0 in values  # not_equals(0)
+        assert "" in values  # not_equals("")
+        assert [] in values  # not_equals([])
 
     def test_truthy_falsy_opposite(self):
         """Test that is_truthy and is_falsy are logical opposites."""
@@ -2108,10 +2250,108 @@ class TestResourceManagerWithQB:
         query = q.build()
         root = query.conditions[0]
 
-        # Should have [] in the OR conditions
-        assert root.operator == DataSearchLogicOperator.or_op
-        values = [c.value for c in root.conditions]
+        # Should be NOT(is_truthy()), with inner AND group having [] in conditions
+        assert root.operator == DataSearchLogicOperator.not_op
+        inner = root.conditions[0]
+        assert isinstance(inner, DataSearchGroup)
+        assert inner.operator == DataSearchLogicOperator.and_op
+        values = [c.value for c in inner.conditions]
         assert [] in values
+
+    def test_invert_operator_is_falsy(self):
+        """Test that ~field syntax produces is_falsy() condition."""
+        q1 = ~QB["comment"]
+        q2 = QB["comment"].is_falsy()
+
+        query1 = q1.build()
+        query2 = q2.build()
+
+        # Both should produce identical conditions
+        assert isinstance(query1.conditions[0], DataSearchGroup)
+        assert isinstance(query2.conditions[0], DataSearchGroup)
+
+        root1 = query1.conditions[0]
+        root2 = query2.conditions[0]
+
+        # Should be NOT groups
+        assert root1.operator == DataSearchLogicOperator.not_op
+        assert root2.operator == DataSearchLogicOperator.not_op
+
+        # Should have 1 inner condition (the is_truthy AND group)
+        assert len(root1.conditions) == 1
+        assert len(root2.conditions) == 1
+
+        # Check inner AND groups match
+        inner1 = root1.conditions[0]
+        inner2 = root2.conditions[0]
+
+        assert isinstance(inner1, DataSearchGroup)
+        assert isinstance(inner2, DataSearchGroup)
+        assert inner1.operator == DataSearchLogicOperator.and_op
+        assert inner2.operator == DataSearchLogicOperator.and_op
+        assert len(inner1.conditions) == 5
+        assert len(inner2.conditions) == 5
+
+        # Check values match
+        values1 = [c.value for c in inner1.conditions]
+        values2 = [c.value for c in inner2.conditions]
+
+        # Convert to comparable form (use tuple for lists)
+        def normalize_value(v):
+            return tuple(v) if isinstance(v, list) else v
+
+        normalized1 = set(normalize_value(v) for v in values1)
+        normalized2 = set(normalize_value(v) for v in values2)
+
+        assert normalized1 == normalized2
+        assert False in values1  # is_null(False)
+        assert False in values1  # not_equals(False)
+        assert 0 in values1  # not_equals(0)
+        assert "" in values1  # not_equals("")
+        assert [] in values1  # not_equals([])
+
+    def test_invert_operator_combined_with_other_conditions(self):
+        """Test ~field syntax in complex queries."""
+        # Active tasks without comments
+        q = (QB["status"] == "active") & ~QB["comment"]
+        query = q.build()
+        root = query.conditions[0]
+
+        assert isinstance(root, DataSearchGroup)
+        assert root.operator == DataSearchLogicOperator.and_op
+        assert len(root.conditions) == 2
+
+        # First condition: status == "active"
+        assert root.conditions[0].field_path == "status"
+        assert root.conditions[0].operator == DataSearchOperator.equals
+
+        # Second condition: is_falsy() group (NOT with inner AND)
+        falsy_group = root.conditions[1]
+        assert isinstance(falsy_group, DataSearchGroup)
+        assert falsy_group.operator == DataSearchLogicOperator.not_op
+        assert len(falsy_group.conditions) == 1
+        # Inner is_truthy AND group
+        inner = falsy_group.conditions[0]
+        assert isinstance(inner, DataSearchGroup)
+        assert inner.operator == DataSearchLogicOperator.and_op
+        assert len(inner.conditions) == 5
+
+    def test_invert_operator_practical_examples(self):
+        """Test practical use cases for ~ operator."""
+        # Find items without tags
+        q1 = ~QB["tags"]
+        query1 = q1.build()
+        assert isinstance(query1.conditions[0], DataSearchGroup)
+
+        # Find items without descriptions (empty or null)
+        q2 = ~QB["description"]
+        query2 = q2.build()
+        assert isinstance(query2.conditions[0], DataSearchGroup)
+
+        # Find inactive items (status is falsy)
+        q3 = ~QB["status"]
+        query3 = q3.build()
+        assert isinstance(query3.conditions[0], DataSearchGroup)
 
     def test_length_method(self):
         """Test length() method for querying field length."""
@@ -2270,3 +2510,83 @@ class TestResourceManagerWithQB:
         # Only Frank should match
         names = [r.indexed_data["name"] for r in results]
         assert "Frank" in names
+
+
+class TestQueryBuilderEdgeCases:
+    """Test edge cases and error conditions for Query Builder."""
+
+    def test_all_empty_conditions_returns_no_filter(self):
+        """Test QB.all() with no conditions returns query matching all resources."""
+        from autocrud.query import QB
+
+        q = QB.all()
+        query = q.build()
+
+        # Should have no conditions (UNSET)
+        assert query.conditions is UNSET
+        # Should still support chaining
+        assert query.limit == 10  # default limit
+
+    def test_all_empty_with_chaining(self):
+        """Test QB.all() with no conditions supports method chaining."""
+        from autocrud.query import QB
+
+        q = QB.all().sort("-created_time").limit(20)
+        query = q.build()
+
+        # No conditions
+        assert query.conditions is UNSET
+        # Chaining works
+        assert query.limit == 20
+        assert len(query.sorts) == 1
+
+    def test_all_empty_with_and_operator(self):
+        """Test QB.all() with no conditions can be combined with & operator."""
+        from autocrud.query import QB
+
+        q = QB.all() & (QB["age"] > 18)
+        query = q.build()
+
+        # Should have just the age condition
+        assert len(query.conditions) == 1
+        cond = query.conditions[0]
+        assert isinstance(cond, DataSearchCondition)
+        assert cond.field_path == "age"
+        assert cond.operator == DataSearchOperator.greater_than
+
+    def test_any_empty_conditions_raises_error(self):
+        """Test QB.any() with no conditions raises ValueError."""
+        from autocrud.query import QB
+
+        with pytest.raises(
+            ValueError, match="any\\(\\) requires at least one condition"
+        ):
+            QB.any()
+
+    def test_all_single_condition_unwraps(self):
+        """Test QB.all() with single condition returns unwrapped condition."""
+        from autocrud.query import QB
+
+        q = QB.all(QB["age"] > 18)
+        query = q.build()
+
+        # Should be a single condition, not wrapped in a group
+        assert len(query.conditions) == 1
+        cond = query.conditions[0]
+        assert isinstance(cond, DataSearchCondition)
+        assert cond.field_path == "age"
+        assert cond.operator == DataSearchOperator.greater_than
+
+    def test_any_single_condition_unwraps(self):
+        """Test QB.any() with single condition returns unwrapped condition."""
+        from autocrud.query import QB
+
+        q = QB.any(QB["status"] == "active")
+        query = q.build()
+
+        # Should be a single condition, not wrapped in a group
+        assert len(query.conditions) == 1
+        cond = query.conditions[0]
+        assert isinstance(cond, DataSearchCondition)
+        assert cond.field_path == "status"
+        assert cond.operator == DataSearchOperator.equals

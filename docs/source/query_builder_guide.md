@@ -53,6 +53,11 @@ special_field = QB["field-with-dashes"]
 ```python
 field = QB["age"]
 condition = field.gt(18)  # 大於 18
+
+# Field 可以直接使用，等同於 is_truthy()
+QB["verified"]  # 檢查 verified 有真值
+QB["email"] & QB["verified"]  # 有 email 且已驗證
+~QB["deleted"]  # 檢查 deleted 是空值或假值
 ```
 
 ### ConditionBuilder
@@ -74,13 +79,112 @@ combined = cond1 & cond2  # AND 組合
 ```python
 # 使用方括號
 QB["field_name"]
-
-# 使用 field() 方法（相同效果）
-QB.field("field_name")
 ```
+---
+
+## API 參考快查
+
+### [比較運算符](#comparison-operators)
+
+| 方法 | 運算符 | 說明 |
+|------|--------|------|
+| `eq(value)` | `==` | 等於 |
+| `ne(value)` | `!=` | 不等於 |
+| `gt(value)` | `>` | 大於 |
+| `gte(value)` | `>=` | 大於等於 |
+| `lt(value)` | `<` | 小於 |
+| `lte(value)` | `<=` | 小於等於 |
+| `in_(values)` <br> `one_of(values)` | `<<` | 包含於列表 |
+| `not_in(values)` | - | 不包含於列表 |
+| `between(min, max)` <br> `in_range(min, max)` | - | 介於範圍 |
+
+### [字串方法](#string-queries)
+
+| 方法 | 運算符 | 說明 |
+|------|--------|------|
+| `contains(s)` | `>>` | 包含子字串 |
+| `icontains(s)` | - | 包含子字串（不分大小寫） |
+| `starts_with(s)` | - | 開始於 |
+| `istarts_with(s)` | - | 開始於（不分大小寫） |
+| `ends_with(s)` | - | 結束於 |
+| `iends_with(s)` | - | 結束於（不分大小寫） |
+| `not_contains(s)` | - | 不包含 |
+| `not_starts_with(s)` | - | 不開始於 |
+| `not_ends_with(s)` | - | 不結束於 |
+| `regex(pattern)` <br> `match(pattern)` | - | 正則匹配 |
+| `like(pattern)` | - | SQL LIKE 模式 |
+| `is_empty()` | - | 空字串或 NULL |
+| `is_blank()` | - | 空白（含空白字元） |
+
+### [布林方法](#boolean-queries)
+
+| 方法 | 運算符 | 說明 |
+|------|--------|------|
+| `is_true()` | - | 等於 True |
+| `is_false()` | - | 等於 False |
+| `is_truthy()` | 直接使用 | 有意義的值（非 None/False/0/""/[]） |
+| `is_falsy()` | `~` | 空值或假值 |
+
+### [NULL 處理](#null-handling)
+
+| 方法 | 運算符 | 說明 |
+|------|--------|------|
+| `is_null(True)` | - | 是 NULL |
+| `is_null(False)` <br> `is_not_null()` <br> `has_value()` | - | 不是 NULL |
+| `exists(True)` | - | 欄位存在 |
+| `exists(False)` | - | 欄位不存在 |
+| `isna(True)` | - | 不可用（不存在或 NULL） |
+| `isna(False)` | - | 可用 |
+
+### [日期時間方法](#datetime-queries)
+
+| 方法 | 說明 |
+|------|------|
+| `today(tz=None)` | 今天 |
+| `yesterday(tz=None)` | 昨天 |
+| `this_week(start_day=0, tz=None)` | 本週 |
+| `this_month(tz=None)` | 本月 |
+| `this_year(tz=None)` | 今年 |
+| `last_n_days(n, tz=None)` | 最近 N 天 |
+
+### [轉換方法](#field-transforms)
+
+| 方法 | 說明 |
+|------|------|
+| `length()` | 取得長度（字串或陣列） |
+
+### [排序方法](#sorting)
+
+| 方法 | 說明 |
+|------|------|
+| `sort(*sorts)` <br> `order_by(*sorts)` | 排序 |
+| `asc()` | 升序 |
+| `desc()` | 降序 |
+
+### [分頁方法](#pagination)
+
+| 方法 | 說明 |
+|------|------|
+| `limit(n)` | 限制數量 |
+| `offset(n)` | 偏移量 |
+| `page(n, size=10)` | 頁碼分頁 |
+| `first()` | 第一筆 |
+
+### [邏輯組合](#logical-operations)
+
+| 方法/運算符 | 說明 |
+|-------------|------|
+| `&` | AND 運算 |
+| `\|` | OR 運算 |
+| `~` | NOT 運算 |
+| `QB.all(*conds)` | 所有條件 AND |
+| `QB.any(*conds)` | 任一條件 OR |
+| `filter(*conds)` | 篩選（AND） |
+| `exclude(*conds)` | 排除（NOT OR） |
 
 ---
 
+<a id="comparison-operators"></a>
 ## 比較運算符
 
 ### 等於 / 不等於
@@ -151,6 +255,7 @@ valid_users = manager.search_resources(
 
 ---
 
+<a id="logical-operations"></a>
 ## 邏輯運算
 
 ### AND 運算
@@ -180,6 +285,9 @@ active_engineers = manager.search_resources(
     )
 )
 
+# QB.all() 無參數 - 查詢所有資源
+all_resources = manager.search_resources(QB.all())
+
 # 使用 filter() 方法
 query = QB.filter(
     QB["age"] > 18,
@@ -204,6 +312,7 @@ query = QB.any(
     QB["department"] == "Sales",
     QB["department"] == "Marketing"
 )
+# 注意：QB.any() 必須至少提供一個條件，空參數會拋出 ValueError
 
 # 範例：多部門篩選
 multi_dept = manager.search_resources(
@@ -244,6 +353,7 @@ query = (
 
 ---
 
+<a id="string-queries"></a>
 ## 字串查詢
 
 ### 包含 / 開始 / 結束
@@ -373,6 +483,7 @@ QB["discount"] <= 0.5
 
 ---
 
+<a id="datetime-queries"></a>
 ## 日期時間查詢
 
 ### 今天
@@ -457,6 +568,7 @@ query = QB.created_time.last_n_days(7) | QB.updated_time.today()
 
 ---
 
+<a id="boolean-queries"></a>
 ## 布林值查詢
 
 ### True / False
@@ -477,17 +589,38 @@ QB["is_deleted"] == False
 # Truthy（有意義的值）
 # 排除: None, False, 0, "", []
 QB["status"].is_truthy()
+QB["status"]  # 直接使用 Field 等同於 is_truthy()
+
+# 範例：查詢有狀態值的資源
+with_status = manager.search_resources(QB["status"])  # 簡潔寫法！
 
 # Falsy（空值或假值）
 # 匹配: None, False, 0, "", []
 QB["comment"].is_falsy()
+~QB["comment"]  # ~ 運算符別名
+
+# 範例：查詢沒有備註的任務
+no_comment = manager.search_resources(~QB["comment"])
+
+# 範例：查詢空標籤或無標籤的文章
+empty_tags = manager.search_resources(~QB["tags"])
+
+# 組合使用
+query = QB["verified"] & QB["email"]  # 已驗證且有 email
+query = (QB["status"] == "active") & ~QB["comment"]  # 活躍且沒有備註
 ```
 
-### 實際應用
+### 範例
 
 ```python
-# 活躍且有標籤的用戶
-query = QB["is_active"].is_true() & QB["tags"].is_truthy()
+# 活躍且有標籤的用戶（使用運算符）
+query = (QB["is_active"] == True) & QB["tags"]  # tags.is_truthy()
+
+# 沒有備註的活躍任務
+query = (QB["status"] == "active") & ~QB["comment"]
+
+# 已驗證、有 email、未刪除的用戶
+query = QB["verified"] & QB["email"] & ~QB["deleted_at"]
 
 # 已刪除或被封禁的用戶
 query = QB["is_deleted"].is_true() | QB["is_banned"].is_true()
@@ -495,6 +628,7 @@ query = QB["is_deleted"].is_true() | QB["is_banned"].is_true()
 
 ---
 
+<a id="field-transforms"></a>
 ## 欄位轉換
 
 ### 長度查詢
@@ -564,6 +698,7 @@ query = (QB["description"].length() == 0) | (QB["description"].length() < 10)
 
 ---
 
+<a id="null-handling"></a>
 ## NULL 與空值處理
 
 ### NULL 檢查
@@ -602,10 +737,6 @@ QB["optional_field"].exists(False)
 # 不可用（不存在或為 NULL）
 QB["archived_at"].isna()
 QB["archived_at"].isna(True)
-~QB["archived_at"]  # ~ 運算符別名（檢查不可用）
-
-# 範例：查詢未歸檔的資源
-unarchived = manager.search_resources(~QB["archived_at"])
 
 # 範例：查詢沒有備註的任務
 no_comment = manager.search_resources(QB["comment"].isna())
@@ -632,6 +763,7 @@ QB["field"].isna(True)      # field NOT exists OR field = NULL
 
 ---
 
+<a id="sorting"></a>
 ## 排序
 
 ### 基本排序
@@ -688,6 +820,7 @@ query.sort(
 
 ---
 
+<a id="pagination"></a>
 ## 分頁
 
 ### Limit 和 Offset
@@ -762,12 +895,16 @@ query = QB.all(
     QB["is_verified"] == True
 )
 
+# QB.all() 無參數 - 查詢所有資源（無條件）
+query = QB.all()  # 等同於不加任何條件
+
 # QB.any() - 任一條件滿足即可
 query = QB.any(
     QB["role"] == "admin",
     QB["role"] == "moderator",
     QB["role"] == "manager"
 )
+# 注意：QB.any() 必須至少提供一個條件，否則會拋出 ValueError
 ```
 
 ### Filter 和 Exclude
@@ -880,7 +1017,7 @@ if department:
 if conditions:
     query = QB.all(*conditions)
 else:
-    query = QB.all()  # 無條件查詢
+    query = QB.all()  # 無條件查詢（匹配所有資源）
 ```
 
 ### 查詢重用
@@ -1065,112 +1202,6 @@ results = order_manager.search_resources(query)
 
 ---
 
-## API 參考快查
-
-### 比較運算符
-
-| 方法 | 運算符 | 說明 |
-|------|--------|------|
-| `eq(value)` | `==` | 等於 |
-| `ne(value)` | `!=` | 不等於 |
-| `gt(value)` | `>` | 大於 |
-| `gte(value)` | `>=` | 大於等於 |
-| `lt(value)` | `<` | 小於 |
-| `lte(value)` | `<=` | 小於等於 |
-| `in_(values)` | `<<` | 包含於列表 |
-| `not_in(values)` | - | 不包含於列表 |
-| `between(min, max)` | - | 介於範圍 |
-
-### 字串方法
-
-| 方法 | 運算符 | 說明 |
-|------|--------|------|
-| `contains(s)` | `>>` | 包含子字串 |
-| `icontains(s)` | - | 包含子字串（不分大小寫） |
-| `starts_with(s)` | - | 開始於 |
-| `istarts_with(s)` | - | 開始於（不分大小寫） |
-| `ends_with(s)` | - | 結束於 |
-| `iends_with(s)` | - | 結束於（不分大小寫） |
-| `not_contains(s)` | - | 不包含 |
-| `not_starts_with(s)` | - | 不開始於 |
-| `not_ends_with(s)` | - | 不結束於 |
-| `regex(pattern)` | - | 正則匹配 |
-| `match(pattern)` | - | 正則匹配（別名） |
-| `like(pattern)` | - | SQL LIKE 模式 |
-| `is_empty()` | - | 空字串或 NULL |
-| `is_blank()` | - | 空白（含空白字元） |
-
-### 布林方法
-
-| 方法 | 說明 |
-|------|------|
-| `is_true()` | 等於 True |
-| `is_false()` | 等於 False |
-| `is_truthy()` | 有意義的值（非 None/False/0/""/[]） |
-| `is_falsy()` | 空值或假值 |
-
-### NULL 處理
-
-| 方法 | 運算符 | 說明 |
-|------|--------|------|
-| `is_null(True)` | - | 是 NULL |
-| `is_null(False)` | - | 不是 NULL |
-| `is_not_null()` | - | 不是 NULL（別名） |
-| `has_value()` | - | 有值（別名） |
-| `exists(True)` | - | 欄位存在 |
-| `exists(False)` | - | 欄位不存在 |
-| `isna(True)` | `~` | 不可用（不存在或 NULL） |
-| `isna(False)` | - | 可用 |
-
-### 日期時間方法
-
-| 方法 | 說明 |
-|------|------|
-| `today(tz=None)` | 今天 |
-| `yesterday(tz=None)` | 昨天 |
-| `this_week(start_day=0, tz=None)` | 本週 |
-| `this_month(tz=None)` | 本月 |
-| `this_year(tz=None)` | 今年 |
-| `last_n_days(n, tz=None)` | 最近 N 天 |
-
-### 轉換方法
-
-| 方法 | 說明 |
-|------|------|
-| `length()` | 取得長度（字串或陣列） |
-
-### 排序方法
-
-| 方法 | 說明 |
-|------|------|
-| `sort(*sorts)` | 添加排序 |
-| `order_by(*sorts)` | 排序（別名） |
-| `asc()` | 升序 |
-| `desc()` | 降序 |
-
-### 分頁方法
-
-| 方法 | 說明 |
-|------|------|
-| `limit(n)` | 限制數量 |
-| `offset(n)` | 偏移量 |
-| `page(n, size=10)` | 頁碼分頁 |
-| `first()` | 第一筆 |
-
-### 邏輯組合
-
-| 方法/運算符 | 說明 |
-|-------------|------|
-| `&` | AND 運算 |
-| `\|` | OR 運算 |
-| `~` | NOT 運算 |
-| `QB.all(*conds)` | 所有條件 AND |
-| `QB.any(*conds)` | 任一條件 OR |
-| `filter(*conds)` | 篩選（AND） |
-| `exclude(*conds)` | 排除（NOT OR） |
-
----
-
 ## 常見問題
 
 ### Q: 如何查詢嵌套欄位？
@@ -1204,6 +1235,9 @@ if status_filter:
     conditions.append(QB["status"] == status_filter)
 
 query = QB.all(*conditions) if conditions else QB.all()
+
+# 簡化寫法（推薦）
+query = QB.all(*conditions)  # 空 list 時自動匹配所有資源
 ```
 
 ### Q: 查詢效能如何優化？
@@ -1239,34 +1273,7 @@ QB["status"] << ["active", "pending"]
 QB["name"] >> "王"
 # 等同於：QB["name"].contains("王")
 
-# ~ 代表 isna（欄位不可用）
-~QB["deleted_at"]
-# 等同於：QB["deleted_at"].isna()
+# ~ 代表 is_falsy（空值或假值）
+~QB["comment"]
+# 等同於：QB["comment"].is_falsy()
 ```
-
----
-
-## 更新日誌
-
-### 最新功能
-
-- ✨ 新增運算符別名：`<<` (in_), `>>` (contains), `~` (isna)
-- ✨ 新增 `is_truthy()` 和 `is_falsy()` 布林值檢查
-- ✨ 新增 `filter()` 和 `exclude()` 便捷方法
-- ✨ 支援所有 metastore 的 length 轉換（Memory、SQLite、PostgreSQL、Redis）
-- 🔧 改進日期時間查詢的時區處理
-- 📝 為所有語法添加實用範例
-
----
-
-## 參考資源
-
-- [AutoCRUD 主文檔](../README.md)
-- [ResourceManager API](./resource_manager_api.md)
-- [權限系統指南](./permission_system_guide.md)
-- [部署指南](./DEPLOYMENT.md)
-
----
-
-**最後更新：** 2026-01-16  
-**版本：** 1.0.0
