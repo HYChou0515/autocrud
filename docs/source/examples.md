@@ -104,17 +104,19 @@ python main.py
 
 ### Character API
 - `POST /character` - 創建角色
-- `GET /character/{id}/data` - 讀取角色數據
-- `GET /character/data` - 列出所有角色（支援搜尋）
+- `GET /character/{id}/full` - 完整資訊（含數據與元數據）
+- `GET /character/{id}/meta` - 僅元數據
+- `GET /character/{id}/revision-info` - 版本資訊
+- `GET /character/data` - 列出所有角色數據（支援搜尋與過濾）
+- `GET /character/full` - 列出所有完整資訊
+- `GET /character/meta` - 列出所有元數據
 - `PATCH /character/{id}` - JSON Patch 更新
 - `DELETE /character/{id}` - 軟刪除
-- `GET /character/{id}/full` - 完整資訊（含元數據）
-- `GET /character/{id}/history` - 版本歷史
 
 ### Guild API
 - `POST /guild` - 創建公會
-- `GET /guild/{id}/data` - 讀取公會數據
-- `GET /guild/data` - 列出所有公會
+- `GET /guild/{id}/full` - 完整資訊
+- `GET /guild/data` - 列出所有公會數據
 - `PATCH /guild/{id}` - 更新公會
 - `DELETE /guild/{id}` - 刪除公會
 
@@ -150,14 +152,18 @@ curl -X POST "http://localhost:8000/character" \
 ### 查詢角色
 
 ```bash
-# 取得角色數據
-curl "http://localhost:8000/character/chr_abc123/data"
+# 取得角色完整資訊
+curl "http://localhost:8000/character/chr_abc123/full"
 
-# 搜尋高等級角色
-curl "http://localhost:8000/character/data?level__gte=50"
+# 使用 QB (Query Builder) 搜尋高等級角色
+curl -G "http://localhost:8000/character/data" \
+  --data-urlencode "qb=QB['level'].gte(50)"
 
-# 搜尋特定職業
-curl "http://localhost:8000/character/data?character_class=⚔️ 戰士"
+# 使用 data_conditions 搜尋（JSON 格式）
+curl "http://localhost:8000/character/data?data_conditions=[{\"field_path\":\"level\",\"operator\":\"gte\",\"value\":50}]"
+
+# 列出所有角色
+curl "http://localhost:8000/character/data"
 ```
 
 ### 更新角色（JSON Patch）
@@ -214,13 +220,27 @@ crud.add_model(
 )
 ```
 
-#### HTTP API 查詢操作符
+#### QB 查詢語法
 
-URL 查詢參數支援：
-- `?level__gte=50` - 大於等於
-- `?level__lte=100` - 小於等於
-- `?name__contains=大神` - 包含
-- `?gold__gt=1000` - 大於
+AutoCRUD 支援強大的 QB (Query Builder) 表達式，讓你能以直覺的方式建立查詢條件：
+
+```bash
+# 基本查詢
+curl -G "http://localhost:8000/character/data" \
+  --data-urlencode "qb=QB['level'].gte(50)"
+
+# 複雜條件 (AND)
+curl -G "http://localhost:8000/character/data" \
+  --data-urlencode "qb=QB['level'].gte(50) & QB['character_class'].eq('⚔️ 戰士')"
+
+# 排序與分頁
+curl -G "http://localhost:8000/character/data" \
+  --data-urlencode "qb=QB['level'].gte(1).sort('-level').limit(10)"
+
+# 字串搜尋
+curl -G "http://localhost:8000/character/data" \
+  --data-urlencode "qb=QB['name'].contains('大神')"
+```
 
 #### QueryBuilder (QB) 進階查詢
 
