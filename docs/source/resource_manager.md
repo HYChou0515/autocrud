@@ -707,7 +707,7 @@ assert len(metas) == count
 
 ### Query Builder (進階查詢語法)
 
-```{versionadded} 0.6.9
+```{versionadded} 0.7.5
 ```
 
 AutoCRUD 提供了強大的 **Query Builder (QB)** 語法，讓你能使用 Pythonic 的方式建構複雜的搜尋條件，包括：

@@ -3,6 +3,8 @@
 ---
 
 ## 簡介
+```{versionadded} 0.7.5
+```
 
 AutoCRUD Query Builder 提供了一個 Pythonic 的 API 來建構資源查詢條件。它支援：
 

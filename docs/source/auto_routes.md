@@ -1036,7 +1036,7 @@ autocrud.openapi(app, structs=[ErrorResponse])
 
 #### 方法一：使用 QB 表達式（推薦）
 
-```{versionadded} 0.8.0
+```{versionadded} 0.7.5
 ```
 
 QB (Query Builder) 提供了 Python 風格的查詢語法，讓你能夠以直覺且類型安全的方式建立複雜查詢。
