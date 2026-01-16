@@ -126,6 +126,7 @@ from autocrud.resource_manager.basic import (
 from autocrud.resource_manager.binary_processor import BinaryProcessor
 from autocrud.resource_manager.data_converter import DataConverter
 from autocrud.util.naming import NameConverter, NamingFormat
+from autocrud.query import Query
 
 T = TypeVar("T")
 
@@ -748,7 +749,9 @@ class ResourceManager(IResourceManager[T], Generic[T]):
             worker_thread.join()
         return worker_thread
 
-    def count_resources(self, query: ResourceMetaSearchQuery) -> int:
+    def count_resources(self, query: ResourceMetaSearchQuery | Query) -> int:
+        if isinstance(query, Query):
+            query = query.build()
         return self.storage.count(query)
 
     @execute_with_events(
@@ -760,7 +763,11 @@ class ResourceManager(IResourceManager[T], Generic[T]):
         ),
         "results",
     )
-    def search_resources(self, query: ResourceMetaSearchQuery) -> list[ResourceMeta]:
+    def search_resources(
+        self, query: ResourceMetaSearchQuery | Query
+    ) -> list[ResourceMeta]:
+        if isinstance(query, Query):
+            query = query.build()
         return self.storage.search(query)
 
     @execute_with_events(

@@ -190,10 +190,17 @@ class DataSearchOperator(StrEnum):
     regex = "regex"
 
 
+class FieldTransform(StrEnum):
+    """Field transformation functions that can be applied before comparison."""
+
+    length = "len"  # Get length of string, list, dict, etc.
+
+
 class DataSearchCondition(Struct, kw_only=True, tag=True):
     field_path: str
     operator: DataSearchOperator
     value: Any
+    transform: FieldTransform | None = None  # Optional field transformation
 
 
 class DataSearchLogicOperator(StrEnum):

@@ -18,6 +18,7 @@ from autocrud.resource_manager.basic import (
     MsgspecSerializer,
 )
 from autocrud.types import (
+    DataSearchFilter,
     ResourceMeta,
     ResourceMetaSearchQuery,
     ResourceMetaSearchSort,
@@ -316,7 +317,7 @@ class SqliteMetaStore(ISlowMetaStore):
         for row in cursor:
             yield self._serializer.decode(row[0])
 
-    def _build_condition(self, condition) -> tuple[str, list]:
+    def _build_condition(self, condition: DataSearchFilter) -> tuple[str, list]:
         """構建 SQLite 查詢條件 (支援 Meta 欄位與 JSON 欄位)"""
         from autocrud.types import (
             DataSearchGroup,
@@ -424,6 +425,24 @@ class SqliteMetaStore(ISlowMetaStore):
 
         # SQLite JSON 提取語法: json_extract(indexed_data, '$.field_path')
         json_extract = f"json_extract(indexed_data, '$.\"{field_path}\"')"
+
+        # Apply field transformation if specified
+        if condition.transform is not None:
+            from autocrud.types import FieldTransform
+
+            if condition.transform == FieldTransform.length:
+                # Get length of JSON value (works for strings and arrays)
+                # Use json_array_length for arrays, length() for strings
+                # SQLite's length() returns NULL for non-string types, so we need type checking
+                json_type = f"json_type(indexed_data, '$.\"{field_path}\"')"
+                # For arrays: use json_array_length
+                # For strings: use length()
+                # For others: return NULL
+                json_extract = f"""CASE 
+                    WHEN {json_type} = 'array' THEN json_array_length(indexed_data, '$.\"{field_path}\"')
+                    WHEN {json_type} = 'text' THEN length({json_extract})
+                    ELSE NULL
+                END"""
 
         if operator == DataSearchOperator.equals:
             return f"{json_extract} = ?", [value]
