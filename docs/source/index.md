@@ -165,8 +165,5 @@ auto_routes
 architecture
 resource_manager
 examples
-
-permission_quick_start
-permission_setup_guide
-permission_system_guide
+query_builder_guide
 ```

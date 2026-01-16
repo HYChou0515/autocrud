@@ -156,6 +156,10 @@ class FullResourceResponse(msgspec.Struct, Generic[T]):
 
 class QueryInputs(BaseModel):
     # ResourceMetaSearchQuery 的查詢參數
+    qb: Optional[str] = Query(
+        None,
+        description="Query Builder expression. Example: \"QB['foo'] == 123\" or \"QB['age'].gt(18) & QB['status'].eq('active')\"",
+    )
     is_deleted: Optional[bool] = Query(
         False,
         description="Filter by deletion status",
@@ -212,6 +216,43 @@ class QueryInputsWithReturns(QueryInputs):
 
 
 def build_query(q: QueryInputs) -> ResourceMetaSearchQuery:
+    # 如果提供了 QB 表達式，檢查是否與其他參數衝突
+    if q.qb:
+        # 檢查是否同時提供了其他查詢參數
+        conflicting_params = []
+        if q.data_conditions:
+            conflicting_params.append("data_conditions")
+        if q.conditions:
+            conflicting_params.append("conditions")
+        if q.sorts:
+            conflicting_params.append("sorts")
+
+        if conflicting_params:
+            raise HTTPException(
+                status_code=422,
+                detail=f"Cannot use 'qb' parameter together with: {', '.join(conflicting_params)}. Please use either 'qb' or the individual query parameters.",
+            )
+
+        try:
+            from autocrud.crud.qb_parser import parse_qb_expression
+
+            # 使用 AST parser 解析 QB 表達式（比 eval 更安全）
+            qb_result = parse_qb_expression(q.qb)
+
+            # 構建查詢對象，並套用 URL 參數中的 limit 和 offset
+            query = qb_result.build()
+
+            # 覆寫 limit 和 offset（如果 QB 表達式中有設置，URL 參數會覆蓋它）
+            if q.limit != 10 or q.offset != 0:  # 檢查是否有設置非默認值
+                query = msgspec.structs.replace(query, limit=q.limit, offset=q.offset)
+
+            return query
+        except Exception as e:
+            raise HTTPException(
+                status_code=400,
+                detail=f"Invalid QB expression: {e!s}",
+            )
+
     query_kwargs = {
         "limit": q.limit,
         "offset": q.offset,
