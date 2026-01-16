@@ -1022,12 +1022,207 @@ autocrud.openapi(app, structs=[ErrorResponse])
 
 針對列表類型的端點 (如 `GET /[resource]/data`, `GET /[resource]/meta`, `GET /[resource]/count` 等)，支援下列查詢參數來進行搜尋與分頁：
 
-* **`limit`**: (Query, int) 限制回傳筆數，預設 100。
+* **`limit`**: (Query, int) 限制回傳筆數，預設 10。
 * **`offset`**: (Query, int) 分頁偏移量，預設 0。
+* **`qb`**: (Query, string) **Query Builder 表達式**，提供簡潔、類型安全的查詢語法（推薦）。
 * **`conditions`**: (Query, JSON String) **通用過濾條件**，可用於篩選 Metadata (如建立時間) 或 Data 欄位。
+* **`data_conditions`**: (Query, JSON String) **資料欄位過濾條件**，專門用於篩選 Data 欄位。
 * **`sorts`**: (Query, JSON String) 排序條件。
+* **`partial`**: (Query, list[string]) 指定要回傳的欄位（JSON Pointer 格式）。
 
-#### 使用 `conditions` 進行過濾
+```{note}
+`qb` 參數與 `conditions`/`data_conditions`/`sorts` 互斥，請擇一使用。若同時提供會回傳 422 錯誤。
+```
+
+#### 方法一：使用 QB 表達式（推薦）
+
+```{versionadded} 0.8.0
+```
+
+QB (Query Builder) 提供了 Python 風格的查詢語法，讓你能夠以直覺且類型安全的方式建立複雜查詢。
+
+**基本語法**：
+
+```python
+# 簡單相等條件
+QB['field'] == value
+
+# 使用方法
+QB['field'].gt(value)      # 大於
+QB['field'].gte(value)     # 大於等於
+QB['field'].lt(value)      # 小於
+QB['field'].lte(value)     # 小於等於
+QB['field'].eq(value)      # 等於
+QB['field'].ne(value)      # 不等於
+
+# 邏輯組合
+QB['age'].gt(18) & QB['status'].eq('active')    # AND
+QB['age'].lt(18) | QB['age'].gt(65)             # OR
+~QB['is_deleted'].eq(True)                       # NOT
+
+# 字串操作
+QB['name'].contains('John')                      # 包含
+QB['email'].starts_with('admin')                 # 開頭
+QB['filename'].ends_with('.pdf')                 # 結尾
+QB['email'].icontains('ADMIN')                   # 不區分大小寫包含
+
+# 列表操作
+QB['status'].in_(['active', 'pending'])          # 在列表中
+QB['role'].not_in(['guest', 'banned'])           # 不在列表中
+
+# 範圍查詢
+QB['age'].between(18, 65)                        # 介於範圍
+
+# Null 檢查
+QB['optional_field'].is_null()                   # 是 null
+QB['required_field'].is_not_null()               # 不是 null
+
+# 布林檢查
+QB['verified'].is_true()                         # 是 true
+QB['deleted'].is_false()                         # 是 false
+QB['field'].is_truthy()                          # 真值檢查
+QB['field'].is_falsy()                           # 假值檢查
+
+# 排序與分頁
+QB['age'].gt(18).sort('-created_time')           # 降序排序
+QB['age'].gt(18).order_by('+name', '-age')       # 多欄位排序
+QB['status'].eq('active').limit(20).offset(10)   # 分頁
+QB['status'].eq('active').page(2, 20)            # 第 2 頁，每頁 20 筆
+QB['status'].eq('active').first()                # 只取第一筆
+
+# Meta 欄位查詢
+QB.resource_id().starts_with('user-')            # 資源 ID
+QB.created_time().today()                        # 今天建立
+QB.created_time().this_week()                    # 本週建立
+QB.created_time().last_n_days(7)                 # 最近 7 天
+QB.updated_by().eq('admin')                      # 更新者
+
+# 進階組合
+QB.all(                                          # 全部符合
+    QB['age'].gt(18), 
+    QB['status'].eq('active'),
+    QB['verified'].eq(True)
+)
+QB.any(                                          # 任一符合
+    QB['role'].eq('admin'),
+    QB['role'].eq('moderator')
+)
+```
+
+**URL 查詢範例**：
+
+```{note}
+以下範例為了可讀性顯示未編碼的 URL。實際使用時，HTTP 客戶端會自動處理 URL 編碼。
+```
+
+```bash
+# 基本查詢（未編碼，易讀版）
+GET /user/data?qb=QB['department'].eq('Engineering')
+
+# 複雜條件（未編碼，易讀版）
+GET /user/data?qb=QB['age'].gt(18) & QB['status'].eq('active')
+```
+
+**實際 HTTP 請求範例**：
+
+```bash
+# 使用 curl（自動編碼）
+curl -G "http://localhost:8000/user/data" \
+  --data-urlencode "qb=QB['age'].gt(18) & QB['status'].eq('active')"
+
+# 實際 URL（已編碼）
+# http://localhost:8000/user/data?qb=QB%5B%27age%27%5D.gt%2818%29%20%26%20QB%5B%27status%27%5D.eq%28%27active%27%29
+```
+
+```python
+# Python requests（自動編碼）
+import requests
+
+response = requests.get('http://localhost:8000/user/data', params={
+    'qb': "QB['age'].gt(18) & QB['status'].eq('active')"
+})
+
+# JavaScript/axios（自動編碼）
+// axios.get('/user/data', {
+//   params: { qb: "QB['age'].gt(18) & QB['status'].eq('active')" }
+// })
+```
+
+**更多 QB 查詢範例**：
+
+```bash
+# 排序與分頁
+GET /user/data?qb=QB['age'].gt(18).sort('-created_time').limit(20)
+
+# Meta 欄位查詢
+GET /user/data?qb=QB.created_time().today() & QB['status'].eq('active')
+
+# 字串搜尋
+GET /user/data?qb=QB['email'].contains('@example.com')
+
+# 列表過濾
+GET /user/data?qb=QB['status'].in_(['active', 'pending', 'approved'])
+```
+
+**在 Python 中使用**：
+
+```python
+from autocrud.query import QB
+
+# 建立查詢
+query = (
+    QB['age'].gt(18) 
+    & QB['status'].eq('active')
+    .sort('-created_time')
+    .limit(20)
+)
+
+# 執行查詢
+result = manager.search(query.build())
+```
+
+**支援的運算子快捷方式**：
+
+```python
+QB['age'] == 25        # 等同於 QB['age'].eq(25)
+QB['age'] != 25        # 等同於 QB['age'].ne(25)
+QB['age'] > 18         # 等同於 QB['age'].gt(18)
+QB['age'] >= 18        # 等同於 QB['age'].gte(18)
+QB['age'] < 65         # 等同於 QB['age'].lt(65)
+QB['age'] <= 65        # 等同於 QB['age'].lte(65)
+QB['status'] << ['a']  # 等同於 QB['status'].in_(['a', 'b'])
+QB['tags'] >> 'python' # 等同於 QB['tags'].contains('python')
+QB['code'] % r'^[A-Z]' # 等同於 QB['code'].regex(r'^[A-Z]')
+```
+
+**安全性**：
+
+QB 表達式使用 AST (Abstract Syntax Tree) 解析器，而非 `eval()`，確保安全性：
+
+- ✅ 僅允許白名單中的方法和運算子
+- ✅ 禁止任意函數調用
+- ✅ 禁止檔案 I/O 或系統調用
+- ✅ 支援 datetime 模組用於時間查詢
+
+**datetime 支援**：
+
+```python
+# 使用 datetime 構造時間條件
+QB.created_time().gt(datetime.datetime(2024, 1, 1))
+QB.created_time().between(
+    datetime.datetime(2024, 1, 1), 
+    datetime.datetime(2024, 12, 31)
+)
+
+# 相對時間
+QB.created_time().gt(datetime.datetime.now() - datetime.timedelta(days=7))
+```
+
+```{seealso}
+完整的 Query Builder 語法、進階用法與範例，請參考 [Query Builder 完整指南](query_builder_guide.md)。
+```
+
+#### 方法二：使用 `conditions` 進行過濾
 
 `conditions` 參數接受一個 URL-encoded 的 JSON Array 字串，定義一個或多個過濾條件。
 
