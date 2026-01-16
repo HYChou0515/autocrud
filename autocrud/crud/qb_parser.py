@@ -9,6 +9,12 @@ import ast
 import datetime as dt
 from typing import Any
 
+# 為了避免循環導入，在類型檢查時才導入
+from typing import TYPE_CHECKING
+
+if TYPE_CHECKING:
+    from autocrud.query import ConditionBuilder
+
 
 class QBParseError(Exception):
     """QB 表達式解析錯誤"""
@@ -117,7 +123,7 @@ class SafeQBParser:
     def __init__(self):
         self.namespace = {}
 
-    def parse(self, expression: str) -> Any:
+    def parse(self, expression: str) -> "ConditionBuilder":
         """
         解析 QB 表達式字符串
 
@@ -125,7 +131,9 @@ class SafeQBParser:
             expression: QB 表達式字符串
 
         Returns:
-            解析後的 QueryBuilder 對象
+            ConditionBuilder: 查詢條件構建器（Field 也繼承自 ConditionBuilder）
+            注意：雖然技術上可能返回其他類型（datetime、字面值等），
+            但在實際使用中（search API）只會使用有 .build() 方法的類型。
 
         Raises:
             QBParseError: 解析錯誤
@@ -334,7 +342,7 @@ class SafeQBParser:
 _parser = SafeQBParser()
 
 
-def parse_qb_expression(expression: str) -> Any:
+def parse_qb_expression(expression: str) -> "ConditionBuilder":
     """
     解析 QB 表達式字符串的便捷函數
 
@@ -342,7 +350,7 @@ def parse_qb_expression(expression: str) -> Any:
         expression: QB 表達式字符串
 
     Returns:
-        解析後的 QueryBuilder 對象
+        ConditionBuilder: 查詢條件構建器
 
     Example:
         qb = parse_qb_expression("QB['age'].gt(18)")

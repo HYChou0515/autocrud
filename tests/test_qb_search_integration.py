@@ -6,6 +6,7 @@ import pytest
 from fastapi.testclient import TestClient
 from fastapi import FastAPI, APIRouter
 from msgspec import Struct
+from typing import Any
 
 from autocrud import AutoCRUD
 
@@ -18,11 +19,11 @@ class User(Struct):
 
 
 @pytest.fixture
-def client():
+def client() -> TestClient:
     """創建測試客戶端"""
-    app = FastAPI()
-    router = APIRouter()
-    crud = AutoCRUD()
+    app: FastAPI = FastAPI()
+    router: APIRouter = APIRouter()
+    crud: AutoCRUD = AutoCRUD()
     crud.add_model(
         User,
         indexed_fields=[
@@ -38,9 +39,9 @@ def client():
 
 
 @pytest.fixture
-def sample_users(client):
+def sample_users(client: TestClient) -> list[str]:
     """創建測試數據"""
-    users = [
+    users: list[dict[str, Any]] = [
         {"name": "Alice", "age": 25, "department": "Engineering", "active": True},
         {"name": "Bob", "age": 30, "department": "Marketing", "active": True},
         {"name": "Charlie", "age": 35, "department": "Engineering", "active": False},
@@ -57,7 +58,7 @@ def sample_users(client):
     return created_ids
 
 
-def test_qb_simple_equality(client, sample_users):
+def test_qb_simple_equality(client: TestClient, sample_users: list[str]) -> None:
     """測試簡單的相等條件"""
     response = client.get(
         "/user/data", params={"qb": "QB['department'] == 'Engineering'"}
@@ -68,7 +69,7 @@ def test_qb_simple_equality(client, sample_users):
     assert all(u["department"] == "Engineering" for u in data)
 
 
-def test_qb_greater_than(client, sample_users):
+def test_qb_greater_than(client: TestClient, sample_users: list[str]) -> None:
     """測試大於條件"""
     response = client.get("/user/data", params={"qb": "QB['age'].gt(30)"})
     assert response.status_code == 200
@@ -77,7 +78,7 @@ def test_qb_greater_than(client, sample_users):
     assert all(u["age"] > 30 for u in data)
 
 
-def test_qb_and_condition(client, sample_users):
+def test_qb_and_condition(client: TestClient, sample_users: list[str]) -> None:
     """測試 AND 條件"""
     response = client.get(
         "/user/data",
@@ -89,7 +90,7 @@ def test_qb_and_condition(client, sample_users):
     assert all(u["age"] > 25 and u["department"] == "Engineering" for u in data)
 
 
-def test_qb_or_condition(client, sample_users):
+def test_qb_or_condition(client: TestClient, sample_users: list[str]) -> None:
     """測試 OR 條件"""
     response = client.get(
         "/user/data", params={"qb": "QB['age'].lt(26) | QB['age'].gt(33)"}
@@ -100,7 +101,7 @@ def test_qb_or_condition(client, sample_users):
     assert all(u["age"] < 26 or u["age"] > 33 for u in data)
 
 
-def test_qb_not_condition(client, sample_users):
+def test_qb_not_condition(client: TestClient, sample_users: list[str]) -> None:
     """測試 NOT 條件"""
     response = client.get("/user/data", params={"qb": "~QB['active'].eq(True)"})
     assert response.status_code == 200
@@ -109,7 +110,7 @@ def test_qb_not_condition(client, sample_users):
     assert all(not u["active"] for u in data)
 
 
-def test_qb_with_limit_and_offset(client, sample_users):
+def test_qb_with_limit_and_offset(client: TestClient, sample_users: list[str]) -> None:
     """測試分頁參數與 QB 表達式結合"""
     # 首先確認總共有3筆 Engineering
     response = client.get(
@@ -128,7 +129,7 @@ def test_qb_with_limit_and_offset(client, sample_users):
     assert len(data) == 2
 
 
-def test_qb_with_sorting(client, sample_users):
+def test_qb_with_sorting(client: TestClient, sample_users: list[str]) -> None:
     """測試排序與 QB 表達式結合"""
     response = client.get(
         "/user/data", params={"qb": "QB['department'].eq('Engineering').sort('-age')"}
@@ -141,7 +142,7 @@ def test_qb_with_sorting(client, sample_users):
     assert ages == sorted(ages, reverse=True)
 
 
-def test_qb_bracket_syntax(client, sample_users):
+def test_qb_bracket_syntax(client: TestClient, sample_users: list[str]) -> None:
     """測試方括號語法"""
     # 使用 indexed field 來搜尋
     response = client.get("/user/data", params={"qb": "QB['age'] == 25"})
@@ -152,7 +153,9 @@ def test_qb_bracket_syntax(client, sample_users):
     assert data[0]["name"] == "Alice"
 
 
-def test_qb_conflict_with_data_conditions(client, sample_users):
+def test_qb_conflict_with_data_conditions(
+    client: TestClient, sample_users: list[str]
+) -> None:
     """測試 qb 與 data_conditions 衝突時應返回錯誤"""
     response = client.get(
         "/user/data",
@@ -167,7 +170,9 @@ def test_qb_conflict_with_data_conditions(client, sample_users):
     assert "data_conditions" in detail
 
 
-def test_qb_conflict_with_conditions(client, sample_users):
+def test_qb_conflict_with_conditions(
+    client: TestClient, sample_users: list[str]
+) -> None:
     """測試 qb 與 conditions 衝突時應返回錯誤"""
     response = client.get(
         "/user/data",
@@ -181,7 +186,7 @@ def test_qb_conflict_with_conditions(client, sample_users):
     assert "conditions" in detail
 
 
-def test_qb_conflict_with_sorts(client, sample_users):
+def test_qb_conflict_with_sorts(client: TestClient, sample_users: list[str]) -> None:
     """測試 qb 與 sorts 衝突時應返回錯誤"""
     response = client.get(
         "/user/data",
@@ -195,14 +200,14 @@ def test_qb_conflict_with_sorts(client, sample_users):
     assert "sorts" in detail
 
 
-def test_qb_invalid_expression(client, sample_users):
+def test_qb_invalid_expression(client: TestClient, sample_users: list[str]) -> None:
     """測試無效的 QB 表達式應返回 400"""
     response = client.get("/user/data", params={"qb": "QB['age'].invalid_method(25)"})
     assert response.status_code == 400
     assert "Invalid QB expression" in response.json()["detail"]
 
 
-def test_qb_with_meta_endpoint(client, sample_users):
+def test_qb_with_meta_endpoint(client: TestClient, sample_users: list[str]) -> None:
     """測試 QB 表達式在 /meta endpoint 的使用"""
     response = client.get(
         "/user/meta", params={"qb": "QB['department'].eq('Engineering')"}
@@ -212,7 +217,7 @@ def test_qb_with_meta_endpoint(client, sample_users):
     assert len(data) == 3
 
 
-def test_qb_with_full_endpoint(client, sample_users):
+def test_qb_with_full_endpoint(client: TestClient, sample_users: list[str]) -> None:
     """測試 QB 表達式在 /full endpoint 的使用"""
     response = client.get("/user/full", params={"qb": "QB['age'].between(25, 30)"})
     assert response.status_code == 200
@@ -222,7 +227,7 @@ def test_qb_with_full_endpoint(client, sample_users):
     assert all(25 <= item["data"]["age"] <= 30 for item in data)
 
 
-def test_qb_with_count_endpoint(client, sample_users):
+def test_qb_with_count_endpoint(client: TestClient, sample_users: list[str]) -> None:
     """測試 QB 表達式在 /count endpoint 的使用"""
     response = client.get(
         "/user/count", params={"qb": "QB['department'].eq('Engineering')"}
@@ -231,7 +236,7 @@ def test_qb_with_count_endpoint(client, sample_users):
     assert response.json() == 3
 
 
-def test_qb_complex_expression(client, sample_users):
+def test_qb_complex_expression(client: TestClient, sample_users: list[str]) -> None:
     """測試複雜的 QB 表達式"""
     response = client.get(
         "/user/data",
@@ -247,7 +252,7 @@ def test_qb_complex_expression(client, sample_users):
     assert len(data) == 3
 
 
-def test_qb_string_methods(client, sample_users):
+def test_qb_string_methods(client: TestClient, sample_users: list[str]) -> None:
     """測試字符串方法"""
     # contains
     response = client.get("/user/data", params={"qb": "QB['name'].contains('li')"})
@@ -276,7 +281,7 @@ def test_qb_string_methods(client, sample_users):
     assert all(u["name"][0] in "ABC" for u in data)
 
 
-def test_qb_boolean_methods(client, sample_users):
+def test_qb_boolean_methods(client: TestClient, sample_users: list[str]) -> None:
     """測試布林方法"""
     # is_true
     response = client.get("/user/data", params={"qb": "QB['active'].is_true()"})
@@ -299,7 +304,7 @@ def test_qb_boolean_methods(client, sample_users):
     assert len(data) == 5
 
 
-def test_qb_between_range(client, sample_users):
+def test_qb_between_range(client: TestClient, sample_users: list[str]) -> None:
     """測試 between 範圍查詢"""
     response = client.get("/user/data", params={"qb": "QB['age'].between(26, 33)"})
     assert response.status_code == 200
@@ -309,7 +314,7 @@ def test_qb_between_range(client, sample_users):
     assert all(26 <= u["age"] <= 33 for u in data)
 
 
-def test_qb_in_list(client, sample_users):
+def test_qb_in_list(client: TestClient, sample_users: list[str]) -> None:
     """測試 in 列表操作"""
     response = client.get(
         "/user/data",
@@ -321,7 +326,7 @@ def test_qb_in_list(client, sample_users):
     assert all(u["department"] in ["Engineering", "Marketing"] for u in data)
 
 
-def test_qb_operators_shortcuts(client, sample_users):
+def test_qb_operators_shortcuts(client: TestClient, sample_users: list[str]) -> None:
     """測試運算符快捷方式"""
     # % for regex
     response = client.get("/user/data", params={"qb": "QB['name'] % r'^[AB]'"})
@@ -343,7 +348,7 @@ def test_qb_operators_shortcuts(client, sample_users):
     assert all("a" in u["name"] for u in data)
 
 
-def test_qb_comparison_operators(client, sample_users):
+def test_qb_comparison_operators(client: TestClient, sample_users: list[str]) -> None:
     """測試各種比較運算符"""
     # ==
     response = client.get("/user/data", params={"qb": "QB['age'] == 30"})
@@ -380,7 +385,7 @@ def test_qb_comparison_operators(client, sample_users):
     assert all(u["age"] <= 30 for u in data)
 
 
-def test_qb_numeric_operations(client, sample_users):
+def test_qb_numeric_operations(client: TestClient, sample_users: list[str]) -> None:
     """測試數值運算"""
     # 加法
     response = client.get("/user/data", params={"qb": "QB['age'].gt(20 + 5)"})
@@ -407,7 +412,7 @@ def test_qb_numeric_operations(client, sample_users):
     assert all(u["age"] < 30 for u in data)
 
 
-def test_qb_unary_operators(client, sample_users):
+def test_qb_unary_operators(client: TestClient, sample_users: list[str]) -> None:
     """測試一元運算符"""
     # 正號
     response = client.get("/user/data", params={"qb": "QB['age'].gt(+25)"})
@@ -422,7 +427,7 @@ def test_qb_unary_operators(client, sample_users):
     assert all(u["age"] > 30 for u in data)
 
 
-def test_qb_literals(client, sample_users):
+def test_qb_literals(client: TestClient, sample_users: list[str]) -> None:
     """測試字面量"""
     # 布林字面量 True
     response = client.get("/user/data", params={"qb": "QB['active'].eq(True)"})
@@ -442,7 +447,7 @@ def test_qb_literals(client, sample_users):
     assert data[0]["name"] == "Alice"
 
 
-def test_qb_chained_methods(client, sample_users):
+def test_qb_chained_methods(client: TestClient, sample_users: list[str]) -> None:
     """測試鏈式方法調用"""
     # filter
     response = client.get(
@@ -463,7 +468,7 @@ def test_qb_chained_methods(client, sample_users):
     assert all(u["age"] > 25 and u["department"] != "Marketing" for u in data)
 
 
-def test_qb_page_method(client, sample_users):
+def test_qb_page_method(client: TestClient, sample_users: list[str]) -> None:
     """測試 page 方法"""
     # 第1頁，每頁2筆
     response = client.get(
@@ -484,7 +489,7 @@ def test_qb_page_method(client, sample_users):
     assert len(data) == 1
 
 
-def test_qb_first_method(client, sample_users):
+def test_qb_first_method(client: TestClient, sample_users: list[str]) -> None:
     """測試 first 方法"""
     response = client.get(
         "/user/data", params={"qb": "QB['department'].eq('Engineering').first()"}
@@ -494,7 +499,7 @@ def test_qb_first_method(client, sample_users):
     assert len(data) == 1
 
 
-def test_qb_logical_not(client, sample_users):
+def test_qb_logical_not(client: TestClient, sample_users: list[str]) -> None:
     """測試邏輯 not"""
     response = client.get("/user/data", params={"qb": "QB['active'].eq(not False)"})
     assert response.status_code == 200
@@ -502,7 +507,7 @@ def test_qb_logical_not(client, sample_users):
     assert len(data) == 4
 
 
-def test_qb_meta_attributes(client, sample_users):
+def test_qb_meta_attributes(client: TestClient, sample_users: list[str]) -> None:
     """測試 meta 屬性訪問"""
     # QB.resource_id()
     response = client.get(
@@ -514,7 +519,9 @@ def test_qb_meta_attributes(client, sample_users):
     assert len(data) >= 0  # 可能因為實作不同而有不同結果
 
 
-def test_qb_case_insensitive_methods(client, sample_users):
+def test_qb_case_insensitive_methods(
+    client: TestClient, sample_users: list[str]
+) -> None:
     """測試大小寫不敏感的方法"""
     # icontains
     response = client.get("/user/data", params={"qb": "QB['name'].icontains('ALICE')"})
@@ -535,7 +542,7 @@ def test_qb_case_insensitive_methods(client, sample_users):
     assert all(u["name"].lower().endswith("e") for u in data)
 
 
-def test_qb_truthy_falsy(client, sample_users):
+def test_qb_truthy_falsy(client: TestClient, sample_users: list[str]) -> None:
     """測試 truthy/falsy 方法"""
     # is_truthy
     response = client.get("/user/data", params={"qb": "QB['active'].is_truthy()"})
@@ -550,7 +557,7 @@ def test_qb_truthy_falsy(client, sample_users):
     assert len(data) == 1
 
 
-def test_qb_not_methods(client, sample_users):
+def test_qb_not_methods(client: TestClient, sample_users: list[str]) -> None:
     """測試 not_ 開頭的方法"""
     # not_contains
     response = client.get("/user/data", params={"qb": "QB['name'].not_contains('z')"})
@@ -573,7 +580,7 @@ def test_qb_not_methods(client, sample_users):
     assert len(data) == 5
 
 
-def test_qb_all_any_combinators(client, sample_users):
+def test_qb_all_any_combinators(client: TestClient, sample_users: list[str]) -> None:
     """測試 all/any 組合器"""
     # all
     response = client.get(
@@ -594,7 +601,7 @@ def test_qb_all_any_combinators(client, sample_users):
     assert len(data) == 2
 
 
-def test_qb_order_by_alias(client, sample_users):
+def test_qb_order_by_alias(client: TestClient, sample_users: list[str]) -> None:
     """測試 order_by 別名"""
     response = client.get(
         "/user/data",
@@ -606,7 +613,7 @@ def test_qb_order_by_alias(client, sample_users):
     assert ages == sorted(ages, reverse=True)
 
 
-def test_qb_nested_expressions(client, sample_users):
+def test_qb_nested_expressions(client: TestClient, sample_users: list[str]) -> None:
     """測試巢狀表達式"""
     response = client.get(
         "/user/data",
@@ -619,7 +626,7 @@ def test_qb_nested_expressions(client, sample_users):
     assert all(((u["age"] > 25 or u["age"] < 28) and u["active"] is True) for u in data)
 
 
-def test_qb_multiple_args_method(client, sample_users):
+def test_qb_multiple_args_method(client: TestClient, sample_users: list[str]) -> None:
     """測試多參數方法"""
     response = client.get("/user/data", params={"qb": "QB['age'].between(25, 32)"})
     assert response.status_code == 200
@@ -627,7 +634,7 @@ def test_qb_multiple_args_method(client, sample_users):
     assert all(25 <= u["age"] <= 32 for u in data)
 
 
-def test_qb_datetime_variable(client, sample_users):
+def test_qb_datetime_variable(client: TestClient, sample_users: list[str]) -> None:
     """測試 datetime 變量訪問 (line 156)"""
     # 使用 datetime 構造日期
     response = client.get(
@@ -639,13 +646,13 @@ def test_qb_datetime_variable(client, sample_users):
     assert len(data) == 0
 
 
-def test_qb_dt_variable(client, sample_users):
+def test_qb_dt_variable(client: TestClient, sample_users: list[str]) -> None:
     """測試 dt 變量訪問 (line 153)"""
     # 這個比較困難，因為需要在表達式中使用 dt
     pass
 
 
-def test_qb_datetime_timedelta(client, sample_users):
+def test_qb_datetime_timedelta(client: TestClient, sample_users: list[str]) -> None:
     """測試 datetime.timedelta 調用 (lines 219-227)"""
     # 使用 timedelta 計算
     response = client.get(
@@ -658,7 +665,9 @@ def test_qb_datetime_timedelta(client, sample_users):
     assert len(data) == 4
 
 
-def test_qb_datetime_date_constructor(client, sample_users):
+def test_qb_datetime_date_constructor(
+    client: TestClient, sample_users: list[str]
+) -> None:
     """測試 datetime.date 構造函數 (lines 219-227)"""
     response = client.get(
         "/user/data",
@@ -670,7 +679,7 @@ def test_qb_datetime_date_constructor(client, sample_users):
     assert len(data) == 4
 
 
-def test_qb_tuple_literal(client, sample_users):
+def test_qb_tuple_literal(client: TestClient, sample_users: list[str]) -> None:
     """測試元組字面量 (line 241)"""
     # 使用元組作為參數
     response = client.get("/user/data", params={"qb": "QB['age'].in_((25, 30, 35))"})
@@ -679,7 +688,7 @@ def test_qb_tuple_literal(client, sample_users):
     assert len(data) == 3
 
 
-def test_qb_error_handling(client, sample_users):
+def test_qb_error_handling(client: TestClient, sample_users: list[str]) -> None:
     """測試錯誤處理"""
     # 語法錯誤 (line 137)
     response = client.get("/user/data", params={"qb": "QB['age'].gt("})
@@ -706,7 +715,9 @@ def test_qb_error_handling(client, sample_users):
     assert response.status_code == 400
 
 
-def test_qb_datetime_time_constructor(client, sample_users):
+def test_qb_datetime_time_constructor(
+    client: TestClient, sample_users: list[str]
+) -> None:
     """測試 datetime.time 構造函數"""
     # time 構造函數應該被允許
     response = client.get(
@@ -718,7 +729,7 @@ def test_qb_datetime_time_constructor(client, sample_users):
     assert len(data) == 5
 
 
-def test_qb_list_literal(client, sample_users):
+def test_qb_list_literal(client: TestClient, sample_users: list[str]) -> None:
     """測試列表字面量 (line 237)"""
     # 直接在表達式中使用列表
     response = client.get(
@@ -730,7 +741,7 @@ def test_qb_list_literal(client, sample_users):
     assert all(u["name"] in ["Alice", "Bob", "Charlie"] for u in data)
 
 
-def test_qb_subscript_error(client, sample_users):
+def test_qb_subscript_error(client: TestClient, sample_users: list[str]) -> None:
     """測試下標錯誤"""
     # 非字符串下標 (line 196)
     response = client.get("/user/data", params={"qb": "QB[123]"})
@@ -741,14 +752,14 @@ def test_qb_subscript_error(client, sample_users):
     assert response.status_code == 400
 
 
-def test_qb_attribute_not_found(client, sample_users):
+def test_qb_attribute_not_found(client: TestClient, sample_users: list[str]) -> None:
     """測試屬性不存在 (line 183)"""
     # Field 對象沒有這個屬性
     response = client.get("/user/data", params={"qb": "QB['age'].nonexistent_attr"})
     assert response.status_code == 400
 
 
-def test_qb_not_in_operator(client, sample_users):
+def test_qb_not_in_operator(client: TestClient, sample_users: list[str]) -> None:
     """測試 not_in 運算符"""
     # 測試 not_in 方法
     response = client.get(
@@ -760,7 +771,9 @@ def test_qb_not_in_operator(client, sample_users):
     assert all(u["name"] not in ["Alice", "Bob"] for u in data)
 
 
-def test_qb_unsupported_binary_operator(client, sample_users):
+def test_qb_unsupported_binary_operator(
+    client: TestClient, sample_users: list[str]
+) -> None:
     """測試不支持的二元運算符 (line 276)"""
     # ** 冪次運算符不支持
     response = client.get("/user/data", params={"qb": "QB['age'].gt(2 ** 5)"})
@@ -768,7 +781,9 @@ def test_qb_unsupported_binary_operator(client, sample_users):
     assert "Binary operator not supported" in response.json()["detail"]
 
 
-def test_qb_unsupported_comparison_operator(client, sample_users):
+def test_qb_unsupported_comparison_operator(
+    client: TestClient, sample_users: list[str]
+) -> None:
     """測試不支持的比較運算符 (line 325)"""
     # in 運算符應該用 in_() 方法，不能直接用
     response = client.get("/user/data", params={"qb": "QB['name'] in ['Alice', 'Bob']"})
@@ -776,7 +791,7 @@ def test_qb_unsupported_comparison_operator(client, sample_users):
     assert "Comparison operator not supported" in response.json()["detail"]
 
 
-def test_qb_unsupported_ast_node(client, sample_users):
+def test_qb_unsupported_ast_node(client: TestClient, sample_users: list[str]) -> None:
     """測試不支持的 AST 節點類型 (line 330)"""
     # Lambda 表達式不支持
     response = client.get("/user/data", params={"qb": "lambda x: x > 0"})
