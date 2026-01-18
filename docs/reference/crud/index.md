@@ -1,0 +1,3 @@
+# autocrud.crud
+
+::: autocrud.crud

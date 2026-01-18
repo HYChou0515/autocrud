@@ -1,0 +1,3 @@
+# autocrud.query
+
+::: autocrud.query

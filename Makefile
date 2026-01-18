@@ -1,10 +1,9 @@
 # AutoCRUD 開發與文檔 Makefile
 
 # 變數設定
-SPHINXOPTS    ?=
-SPHINXBUILD  ?= uv run sphinx-build
-SOURCEDIR    = docs/source
-BUILDDIR     = docs/build
+MKDOCS       ?= uv run mkdocs
+DOCSDIR      = docs
+SITEDIR      = site
 
 # 默認目標
 .PHONY: help
@@ -29,11 +28,13 @@ help:
 	@echo "  clean-dev    清理開發暫存檔案"
 	@echo ""
 	@echo "文檔工具："
-	@echo "  html         構建 HTML 文檔"
+	@echo "  docs         構建 MkDocs HTML 文檔"
+	@echo "  serve        啟動本地文檔服務器（http://127.0.0.1:8000）"
+	@echo "  deploy-docs  部署文檔到 GitHub Pages"
 	@echo "  clean-docs   清理文檔構建文件"
-	@echo "  serve        啟動本地文檔服務器"
-	@echo "  linkcheck    檢查文檔中的連結"
-	@echo "  all-docs     構建所有文檔格式"
+	@echo "  docs-check   檢查文檔配置"
+	@echo "  docs-quick   快速構建文檔（不清理）"
+	@echo "  all-docs     清理並構建完整文檔"
 	@echo ""
 	@echo "複合指令："
 	@echo "  quality      完整的程式碽品質檢查 (style + check + test)"
@@ -168,41 +169,54 @@ full-check: clean-dev dev-install quality coverage
 # === 文檔工具 ===
 
 # 構建 HTML 文檔
-.PHONY: html
-html:
-	$(SPHINXBUILD) -b html "$(SOURCEDIR)" "$(BUILDDIR)/html" $(SPHINXOPTS)
+.PHONY: docs
+docs:
+	@echo "構建 MkDocs 文檔..."
+	$(MKDOCS) build --clean
 	@echo ""
 	@echo "HTML 文檔構建完成。文檔位置："
-	@echo "  file://$(PWD)/$(BUILDDIR)/html/index.html"
+	@echo "  file://$(PWD)/$(SITEDIR)/index.html"
+
+# 啟動本地文檔服務器
+.PHONY: serve
+serve:
+	@echo "啟動 MkDocs 開發服務器於 http://127.0.0.1:8000"
+	$(MKDOCS) serve
+
+# 部署文檔到 GitHub Pages
+.PHONY: deploy-docs
+deploy-docs:
+	@echo "部署文檔到 GitHub Pages..."
+	$(MKDOCS) gh-deploy --force
 
 # 清理文檔構建文件
 .PHONY: clean-docs
 clean-docs:
-	rm -rf "$(BUILDDIR)"/*
+	@echo "清理文檔構建文件..."
+	rm -rf "$(SITEDIR)"
 	@echo "文檔構建文件已清理"
 
-# 啟動本地服務器
-.PHONY: serve
-serve: html
-	@echo "啟動文檔服務器於 http://localhost:8089"
-	@cd "$(BUILDDIR)/html" && python -m http.server 8089
+# 檢查文檔連結
+.PHONY: docs-check
+docs-check:
+	@echo "檢查文檔配置..."
+	$(MKDOCS) build --strict
 
-# 檢查連結
-.PHONY: linkcheck
-linkcheck:
-	$(SPHINXBUILD) -b linkcheck "$(SOURCEDIR)" "$(BUILDDIR)/linkcheck" $(SPHINXOPTS)
+# 快速構建文檔（不清理）
+.PHONY: docs-quick
+docs-quick:
+	@echo "快速構建文檔..."
+	$(MKDOCS) build
 
 # 構建所有文檔格式
 .PHONY: all-docs
-all-docs: clean-docs html
+all-docs: clean-docs docs
 	@echo "所有文檔格式構建完成"
 
-# 快速構建（不清理）
-.PHONY: quick
-quick:
-	$(SPHINXBUILD) -b html "$(SOURCEDIR)" "$(BUILDDIR)/html" $(SPHINXOPTS)
+# 向後相容的別名
+.PHONY: html
+html: docs
 
-# 實時監控和重建
 .PHONY: livehtml
-livehtml:
-	sphinx-autobuild "$(SOURCEDIR)" "$(BUILDDIR)/html"
+livehtml: serve
+

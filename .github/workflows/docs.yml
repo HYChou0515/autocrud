@@ -35,11 +35,11 @@ jobs:
       
     - name: 安裝依賴
       run: |
-        uv sync --dev --extra docs
+        uv sync --extra docs
         
     - name: 構建文檔
       run: |
-        uv run make html
+        uv run mkdocs build --clean
         
     - name: 設置 Pages
       uses: actions/configure-pages@v4
@@ -47,7 +47,7 @@ jobs:
     - name: 上傳文檔制品
       uses: actions/upload-pages-artifact@v3
       with:
-        path: ./docs/build/html
+        path: ./site
         
     - name: 部署到 GitHub Pages
       id: deployment

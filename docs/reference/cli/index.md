@@ -1,0 +1,3 @@
+# autocrud.cli
+
+::: autocrud.cli

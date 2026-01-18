@@ -8,38 +8,38 @@
 [![Versioning](https://img.shields.io/badge/Versioning-Built--in-blue)]()
 
 <div style="padding:12px;border:1px solid #add3ff99;border-radius:8px;background: #add3ff33;">
-  <strong>AutoCRUD 是模型驅動的自動化FastAPI：</strong>內建版本控制、權限與搜尋，聚焦業務邏輯快速上線。
+  <strong>AutoCRUD is a model-driven automated FastAPI:</strong> built-in versioning, permissions, and search, focused on getting business logic to production quickly.
 </div>
 
-## ✨ 特色
+## ✨ Features
 
-- 🧠 **只需關心業務與模型**：開發者只需專注 business logic 與 domain model schema；metadata、索引、事件、權限等基礎能力由框架自動處理
-- ⚙️ **自動 FastAPI**：一行代碼套用模型，自動生成 CRUD 路由與 OpenAPI/Swagger，零樣板、零手工綁定
-- 🗂️ **版本控制**：原生支援完整版本歷史、草稿不進版編輯、版本切換與還原，適合審計/回溯/草稿流程
-- 🔧 **高度可定制**：靈活的路由命名、索引欄位、事件處理器與權限檢查
-- 🏎️ **高性能**：基於 FastAPI + msgspec，低延遲高吞吐
+- 🧠 **Focus only on business and models**: Developers only need to focus on business logic and domain model schema; metadata, indexing, events, permissions, and other foundational capabilities are automatically handled by the framework.
+- ⚙️ **Automated FastAPI**: Apply a model with one line of code to automatically generate CRUD routes and OpenAPI/Swagger—zero boilerplate, zero manual binding.
+- 🗂️ **Versioning**: Native support for full revision history, draft in-place editing, revision switching and restore—ideal for auditing, rollback, and draft workflows.
+- 🔧 **Highly customizable**: Flexible route naming, indexed fields, event handlers, and permission checks.
+- 🏎️ **High performance**: Built on FastAPI + msgspec for low latency and high throughput.
 
-## 功能概覽
+## Feature Overview
 
-| 功能 | 說明 |
+| Feature | Description |
 | :--- | :--- |
-| ✅ 自動生成 (Schema → API/Storage) | `Schema as Infrastructure`：自動產生路由、邏輯綁定與儲存映射 |
-| ✅ 版本控制 (Revision History) | Draft→Update / Stable→Append、完整 parent revision 鏈 |
-| ✅ 遷移 (Migration) | Functional Converter，Lazy Upgrade on Read + Save |
-| ✅ 儲存架構 (Storage) | Hybrid：Meta (SQL/Redis) + Payload (Object Store) + Blob |
-| ✅ 可擴展性 (Scale Out) | 使用 Object Storage 與索引分離，便於水平擴展 |
-| ✅ 局部更新 (Partial Update / PATCH) | JSON Patch精準更新, 提速省頻寬 |
-| ✅ 局部讀取 (Partial Read) | msgspec 解碼階段跳過不必要欄位, 提速省頻寬 |
-| ✅ GraphQL 整合 | 自動產生 Strawberry GraphQL Endpoint |
-| ✅ Blob優化 | BlobStore 去重、延遲載入 |
-| ✅ 權限控制 (Permissions) | Global / Model / Resource 三層 RBAC 與自定義檢查器 |
-| ✅ Event Hooks | 每種操作都可以自訂 Before / After / OnSuccess / OnError |
-| ✅ Route Templates | 標準 CRUD 與plug-in自定義端點 |
-| ✅ 搜尋與索引 (Search / Index) | Meta Store 提供高效篩選、排序、分頁與複雜查詢 |
-| ✅ 審計 / 日誌 (Audit / Logging) | 支援事件後的審計紀錄與審查流程 |
-| ✅ 訊息佇列 (Message Queue) | 內建非同步任務處理，將 Job 視為資源進行版本與狀態管理 |
+| ✅ Auto-generation (Schema → API/Storage) | `Schema as Infrastructure`: automatically generates routes, logic bindings, and storage mappings |
+| ✅ Versioning (Revision History) | Draft→Update / Stable→Append, complete parent revision chain |
+| ✅ Migration | Functional Converter, Lazy Upgrade on Read + Save |
+| ✅ Storage Architecture | Hybrid: Meta (SQL/Redis) + Payload (Object Store) + Blob |
+| ✅ Scalability | Object Storage with decoupled indexing for horizontal scaling |
+| ✅ Partial Update (PATCH) | Precise JSON Patch updates for speed and bandwidth efficiency |
+| ✅ Partial Read | Skip unnecessary fields at msgspec decode time for speed and bandwidth efficiency |
+| ✅ GraphQL Integration | Auto-generated Strawberry GraphQL Endpoint |
+| ✅ Blob Optimization | BlobStore deduplication and lazy loading |
+| ✅ Permissions | Three-tier RBAC (Global / Model / Resource) and custom checkers |
+| ✅ Event Hooks | Customizable Before / After / OnSuccess / OnError for every operation |
+| ✅ Route Templates | Standard CRUD plus plug-in custom endpoints |
+| ✅ Search & Index | Meta Store provides efficient filtering, sorting, pagination, and complex queries |
+| ✅ Audit / Logging | Post-event audit records and review workflows |
+| ✅ Message Queue | Built-in async job processing; manage Jobs as resources with versioning and states |
 
-## 安裝
+## Installation
 
 ```
 pip install autocrud
@@ -47,28 +47,28 @@ pip install autocrud
 
 **Optional Dependencies**
 
-若需要 **S3** 儲存支援：
+For **S3** storage support:
 
 ```
 pip install "autocrud[s3]"
 ```
 
-若需要 **BlobStore 自動偵測 Content-Type**：
+For **BlobStore automatic Content-Type detection**:
 
 ```
 pip install "autocrud[magic]"
 ```
 
-`autocrud[magic]` 依賴 `python-magic`。
-- **Linux**: 需確認環境已安裝 `libmagic` (例如 Ubuntu 下執行 `sudo apt-get install libmagic1`)。
-- **其他 OS**: 請參考 [python-magic 安裝說明](https://github.com/ahupp/python-magic#installation)。
+`autocrud[magic]` depends on `python-magic`.
 
-## 文檔
+* **Linux**: Ensure `libmagic` is installed (e.g., on Ubuntu run `sudo apt-get install libmagic1`).
+* **Other OS**: See the [python-magic installation guide](https://github.com/ahupp/python-magic#installation).
+
+## Documentation
 
 https://hychou0515.github.io/autocrud/
 
-
-## 第一個 API
+## Your First API
 
 ```python
 from datetime import datetime, timedelta
@@ -86,7 +86,7 @@ class TodoList(Struct):
     items: list[TodoItem]
     notes: str
 
-# 創建 AutoCRUD
+# Create AutoCRUD
 crud = AutoCRUD()
 crud.add_model(TodoItem)
 crud.add_model(TodoList)
@@ -97,28 +97,27 @@ crud.openapi(app)
 
 uvicorn.run(app, host="0.0.0.0", port=8000, log_level="info")
 ```
-## 自動生成的CRUD端點
 
-- `POST /todo-item` - 創建
-- `GET /todo-item/{id}/data` - 讀取
-- `PATCH /todo-item/{id}` - JSON Patch 更新
-- `DELETE /todo-item/{id}` - 軟刪除
-- `GET /todo-list/data` - 列表, 支援搜尋
-- *其他十多種auto endpoints*
+## Auto-generated CRUD Endpoints
 
-➡️ *[AutoCRUD 使用指南](https://hychou0515.github.io/autocrud/auto_routes)*
+- `POST /todo-item` - Create
+- `GET /todo-item/{id}/data` - Read
+- `PATCH /todo-item/{id}` - JSON Patch update
+- `DELETE /todo-item/{id}` - Soft delete
+- `GET /todo-list/data` - List with search support
+- *A dozen more auto endpoints*
 
-## 透過 ResourceManager 操作資源
+➡️ *AutoCRUD User Guide*
 
-ResourceManager 是 AutoCRUD 的資源操作入口，負責管理資源的建立、查詢、更新、刪除、版本等操作。
+## Operate Resources via ResourceManager
 
-其核心是「版本控制」：每次 `create/update/patch` 都會產生新的 `revision_id`（進版），完整保留歷史；草稿（`draft`）可用 `modify` 不進版反覆編輯，確認後切換為 `stable`。你也可以列出所有版本、讀取任意版本、`switch` 切換目前版本，或在軟刪除後 `restore` 還原。索引查詢支援依 metadata 與資料欄位（indexed fields）進行篩選、排序與分頁，適合審計、回溯與大量資料的檢索。
+ResourceManager is the entry point for resource operations in AutoCRUD. It manages create, query, update, delete, and versioning of resources.
 
-➡️ *[ResourceManager 使用說明](https://hychou0515.github.io/autocrud/resource_manager)*
+Its core is **versioning**: every `create/update/patch` generates a new `revision_id` (create new revision) and preserves full history; drafts (`draft`) can be repeatedly edited with `modify` (in-place, without creating a new revision), then switched to `stable` when confirmed. You can also list all revisions, read any revision, `switch` the current revision, or `restore` after a soft delete. Indexed queries support filtering, sorting, and pagination by metadata and data fields (indexed fields), making it ideal for auditing, rollback, and large-scale retrieval.
 
+➡️ *ResourceManager Guide*
 
-## 🚀 快速開始
-
+## 🚀 Quick Start
 
 ```python
 from datetime import datetime, timedelta
@@ -136,7 +135,7 @@ class TodoList(Struct):
     items: list[TodoItem]
     notes: str
 
-# 創建 CRUD API
+# Create CRUD API
 crud = AutoCRUD()
 crud.add_model(TodoItem)
 crud.add_model(TodoList)
@@ -144,31 +143,31 @@ crud.add_model(TodoList)
 app = FastAPI()
 crud.apply(app)
 
-# 測試
+# Test
 client = TestClient(app)
-resp = client.post("/todo-list", json={"items": [], "notes": "我的待辦"})
+resp = client.post("/todo-list", json={"items": [], "notes": "My todos"})
 todo_id = resp.json()["resource_id"]
 
-# 使用 JSON Patch 添加項目
+# Add an item using JSON Patch
 client.patch(f"/todo-list/{todo_id}", json=[{
     "op": "add", 
     "path": "/items/-",
     "value": {
-        "title": "完成項目",
+        "title": "Complete item",
         "completed": False,
         "due": (datetime.now() + timedelta(hours=1)).isoformat()
     }
 }])
 
-# 獲取結果
+# Get the result
 result = client.get(f"/todo-list/{todo_id}/data")
 print(result.json())
 ```
 
-**啟動開發服務器:**
+**Start the development server:**
 
 ```bash
 python -m fastapi dev main.py
 ```
 
-訪問 http://localhost:8000/docs 查看自動生成的 API 文檔。
+Visit [http://localhost:8000/docs](http://localhost:8000/docs) to view the auto-generated API documentation.

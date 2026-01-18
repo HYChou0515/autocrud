@@ -531,6 +531,19 @@ class ResourceManager(IResourceManager[T], Generic[T]):
         "meta",
     )
     def migrate(self, resource_id: str) -> ResourceMeta:
+        """
+        Migrate a resource to the latest schema version.
+
+        Arguments:
+            resource_id (str): The ID of the resource to migrate.
+
+        Returns:
+            meta (ResourceMeta): The updated metadata after migration.
+
+        Raises:
+            ValueError: If migration logic is not configured.
+            ResourceIDNotFoundError: If the resource ID does not exist.
+        """
         if self._migration is None:
             raise ValueError("Migration is not set for this resource manager")
 
@@ -584,6 +597,14 @@ class ResourceManager(IResourceManager[T], Generic[T]):
         *,
         resource_id: str | UnsetType = UNSET,
     ):
+        """
+        Context manager to provide metadata context (user, time, resource_id).
+
+        Arguments:
+            user (str, optional): The user performing the action.
+            now (datetime, optional): The current timestamp.
+            resource_id (str, optional): Specific resource ID to use.
+        """
         with (
             self.user_ctx.ctx(user) if user is not UNSET else suppress(),
             self.now_ctx.ctx(now) if now is not UNSET else suppress(),
@@ -721,9 +742,28 @@ class ResourceManager(IResourceManager[T], Generic[T]):
         return meta
 
     def exists(self, resource_id: str) -> bool:
+        """
+        Check if a resource exists.
+
+        Arguments:
+            resource_id (str): The ID of the resource to check.
+
+        Returns:
+            bool: True if the resource exists, False otherwise.
+        """
         return self.storage.exists(resource_id)
 
     def revision_exists(self, resource_id: str, revision_id: str) -> bool:
+        """
+        Check if a specific revision of a resource exists.
+
+        Arguments:
+            resource_id (str): The ID of the resource.
+            revision_id (str): The revision ID to check.
+
+        Returns:
+            bool: True if the revision exists, False otherwise.
+        """
         return self.storage.revision_exists(resource_id, revision_id)
 
     @execute_with_events(
@@ -736,6 +776,19 @@ class ResourceManager(IResourceManager[T], Generic[T]):
         "meta",
     )
     def get_meta(self, resource_id: str) -> ResourceMeta:
+        """
+        Get the metadata of a resource.
+
+        Arguments:
+            resource_id (str): The ID of the resource.
+
+        Returns:
+            meta (ResourceMeta): The metadata object.
+
+        Raises:
+            ResourceIDNotFoundError: If the resource ID does not exist.
+            ResourceIsDeletedError: If the resource has been soft-deleted.
+        """
         meta = self._get_meta_no_check_is_deleted(resource_id)
         if meta.is_deleted:
             raise ResourceIsDeletedError(resource_id)
@@ -763,6 +816,15 @@ class ResourceManager(IResourceManager[T], Generic[T]):
         return worker_thread
 
     def count_resources(self, query: ResourceMetaSearchQuery | Query) -> int:
+        """
+        Count the number of resources matching the query.
+
+        Arguments:
+            query (ResourceMetaSearchQuery | Query): The search query object or Query builder.
+
+        Returns:
+            count (int): The number of matching resources.
+        """
         if isinstance(query, Query):
             query = query.build()
         return self.storage.count(query)
@@ -779,6 +841,15 @@ class ResourceManager(IResourceManager[T], Generic[T]):
     def search_resources(
         self, query: ResourceMetaSearchQuery | Query
     ) -> list[ResourceMeta]:
+        """
+        Search resources based on the provided query.
+
+        Arguments:
+            query (ResourceMetaSearchQuery | Query): The search query object or Query builder.
+
+        Returns:
+            results (list[ResourceMeta]): A list of ResourceMeta objects matching the query.
+        """
         if isinstance(query, Query):
             query = query.build()
         return self.storage.search(query)
@@ -790,6 +861,16 @@ class ResourceManager(IResourceManager[T], Generic[T]):
     def create(
         self, data: T, *, status: RevisionStatus | UnsetType = UNSET
     ) -> RevisionInfo:
+        """
+        Create a new resource.
+
+        Arguments:
+            data (T): The resource data object.
+            status (RevisionStatus | UnsetType): The initial status of the resource (default: stable).
+
+        Returns:
+            info (RevisionInfo): The revision info of the created resource.
+        """
         status = self.default_status if status is UNSET else status
         data = self._process_binary_fields(data)
         info = self._rev_info(_BuildRevInfoCreate(data, status))
@@ -810,6 +891,21 @@ class ResourceManager(IResourceManager[T], Generic[T]):
         revision_id: str | UnsetType = UNSET,
         schema_version: str | None | UnsetType = UNSET,
     ) -> Resource[T]:
+        """
+        Get a resource by its ID.
+
+        Arguments:
+            resource_id (str): The ID of the resource to retrieve.
+            revision_id (str | UnsetType): (Optional) The specific revision ID to retrieve. If not set, retrieves the latest revision.
+            schema_version (str | None | UnsetType): (Optional) The schema version of the resource.
+
+        Returns:
+            resource (Resource[T]): The resource object containing both data and metadata.
+
+        Raises:
+            ResourceIDNotFoundError: If the resource ID or revision ID does not exist.
+            ResourceIsDeletedError: If the resource has been soft-deleted.
+        """
         if revision_id is UNSET or schema_version is UNSET:
             meta = self.get_meta(resource_id)
             if revision_id is UNSET:
@@ -828,6 +924,17 @@ class ResourceManager(IResourceManager[T], Generic[T]):
         *,
         schema_version: str | None | UnsetType = UNSET,
     ) -> Struct:
+        """
+        Get a partial view of a resource (only specified fields).
+
+        Arguments:
+            resource_id (str): The ID of the resource.
+            revision_id (str): The revision ID of the resource.
+            partial (Iterable[str | JsonPointer]): A list of fields or JSON pointers to retrieve.
+
+        Returns:
+            partial_data (Struct): A struct containing only the requested fields.
+        """
         with self.storage.get_data_bytes(
             resource_id, revision_id, schema_version=schema_version
         ) as data_io:
@@ -846,6 +953,16 @@ class ResourceManager(IResourceManager[T], Generic[T]):
         *,
         schema_version: str | None | UnsetType = UNSET,
     ) -> RevisionInfo:
+        """
+        Get the metadata (RevisionInfo) of a specific revision.
+
+        Arguments:
+            resource_id (str): The ID of the resource.
+            revision_id (str | UnsetType): The revision ID. If not set, returns the latest revision info.
+
+        Returns:
+            info (RevisionInfo): The metadata of the revision.
+        """
         if revision_id is UNSET:
             meta = self.get_meta(resource_id)
             revision_id = meta.current_revision_id
@@ -871,6 +988,16 @@ class ResourceManager(IResourceManager[T], Generic[T]):
         revision_id: str,
         schema_version: str | None | UnsetType = UNSET,
     ) -> Resource[T]:
+        """
+        Get a specific revision of a resource.
+
+        Arguments:
+            resource_id (str): The ID of the resource.
+            revision_id (str): The specific revision ID.
+
+        Returns:
+            resource (Resource[T]): The resource object.
+        """
         info = self.storage.get_resource_revision_info(
             resource_id, revision_id, schema_version
         )
@@ -890,6 +1017,15 @@ class ResourceManager(IResourceManager[T], Generic[T]):
         "revisions",
     )
     def list_revisions(self, resource_id: str) -> list[str]:
+        """
+        List all revision IDs for a given resource.
+
+        Arguments:
+            resource_id (str): The ID of the resource.
+
+        Returns:
+            revisions (list[str]): A list of revision IDs.
+        """
         return self.storage.list_revisions(resource_id)
 
     @execute_with_events(
@@ -899,6 +1035,20 @@ class ResourceManager(IResourceManager[T], Generic[T]):
     def update(
         self, resource_id: str, data: T, *, status: RevisionStatus | UnsetType = UNSET
     ) -> RevisionInfo:
+        """
+        Update an existing resource with new data (creates a new revision).
+
+        Arguments:
+            resource_id (str): The ID of the resource to update.
+            data (T): The new resource data.
+            status (RevisionStatus | UnsetType): The status of the new revision (default: stable).
+
+        Returns:
+            info (RevisionInfo): The revision info of the updated resource.
+
+        Raises:
+            ResourceIDNotFoundError: If the resource ID does not exist.
+        """
         status = self.default_status if status is UNSET else status
         data = self._process_binary_fields(data)
         prev_res_meta = self.get_meta(resource_id)
@@ -917,6 +1067,17 @@ class ResourceManager(IResourceManager[T], Generic[T]):
     def create_or_update(
         self, resource_id, data, *, status: RevisionStatus | UnsetType = UNSET
     ):
+        """
+        Create a new resource or update if it already exists.
+
+        Arguments:
+            resource_id (str): The ID of the resource.
+            data (T): The resource data.
+            status (RevisionStatus | UnsetType): The status (default: stable).
+
+        Returns:
+            info (RevisionInfo): The revision info.
+        """
         try:
             return self.update(resource_id, data, status=status)
         except ResourceIDNotFoundError:
@@ -932,6 +1093,20 @@ class ResourceManager(IResourceManager[T], Generic[T]):
         data: T | JsonPatch | UnsetType = UNSET,
         status: RevisionStatus | UnsetType = UNSET,
     ) -> RevisionInfo:
+        """
+        Modify a resource without creating a new revision (only for DRAFT status).
+
+        Arguments:
+            resource_id (str): The ID of the resource.
+            data (T | JsonPatch | UnsetType): The new data or JSON patch to apply.
+            status (RevisionStatus | UnsetType): The new status.
+
+        Returns:
+            info (RevisionInfo): The updated revision info.
+
+        Raises:
+            CannotModifyResourceError: If the resource is not in DRAFT status.
+        """
         if data is UNSET and status is not UNSET:
             return self._modify_status(resource_id, status)
 
@@ -992,15 +1167,15 @@ class ResourceManager(IResourceManager[T], Generic[T]):
         Apply RFC 6902 JSON Patch operations to the resource.
 
         Arguments:
-            - resource_id (str): the id of the resource to patch.
-            - patch_data (JsonPatch): RFC 6902 JSON Patch operations to apply.
+            resource_id (str): the id of the resource to patch.
+            patch_data (JsonPatch): RFC 6902 JSON Patch operations to apply.
 
         Returns:
-            - info (RevisionInfo): the metadata of the newly created revision.
+            info (RevisionInfo): the metadata of the newly created revision.
 
         Raises:
-            - ResourceIDNotFoundError: if resource id does not exist.
-            - ResourceIsDeletedError: if resource is soft-deleted.
+            ResourceIDNotFoundError: if resource id does not exist.
+            ResourceIsDeletedError: if resource is soft-deleted.
         """
         data = self._apply_patch(resource_id, patch_data)
         return self.update(resource_id, data)
@@ -1016,6 +1191,19 @@ class ResourceManager(IResourceManager[T], Generic[T]):
         "meta",
     )
     def switch(self, resource_id: str, revision_id: str) -> ResourceMeta:
+        """
+        Switch specific resource to another revision.
+
+        Arguments:
+            resource_id (str): The ID of the resource.
+            revision_id (str): The revision ID to switch to.
+
+        Returns:
+            meta (ResourceMeta): The updated metadata.
+
+        Raises:
+            RevisionIDNotFoundError: If the revision ID does not exist.
+        """
         meta = self.get_meta(resource_id)
         if meta.current_revision_id == revision_id:
             return meta
@@ -1039,6 +1227,18 @@ class ResourceManager(IResourceManager[T], Generic[T]):
         "meta",
     )
     def delete(self, resource_id: str) -> ResourceMeta:
+        """
+        Soft delete a resource.
+
+        Arguments:
+            resource_id (str): The ID of the resource to delete.
+
+        Returns:
+            meta (ResourceMeta): The updated metadata (is_deleted=True).
+
+        Raises:
+            ResourceIDNotFoundError: If the resource ID does not exist.
+        """
         meta = self.get_meta(resource_id)
         meta.is_deleted = True
         meta.updated_by = self.user_ctx.get()
@@ -1051,6 +1251,18 @@ class ResourceManager(IResourceManager[T], Generic[T]):
         "meta",
     )
     def restore(self, resource_id: str) -> ResourceMeta:
+        """
+        Restore a soft-deleted resource.
+
+        Arguments:
+            resource_id (str): The ID of the resource to restore.
+
+        Returns:
+            meta (ResourceMeta): The updated metadata (is_deleted=False).
+
+        Raises:
+            ResourceIDNotFoundError: If the resource ID does not exist.
+        """
         meta = self._get_meta_no_check_is_deleted(resource_id)
         if meta.is_deleted:
             meta.is_deleted = False
@@ -1064,6 +1276,12 @@ class ResourceManager(IResourceManager[T], Generic[T]):
         "result",
     )
     def dump(self) -> Generator[tuple[str, IO[bytes]]]:
+        """
+        Dump all data and metadata.
+
+        Returns:
+            generator: Yields tuples of (key, data_io).
+        """
         for meta in self.storage.dump_meta():
             yield (
                 f"meta/{meta.resource_id}",
@@ -1081,6 +1299,13 @@ class ResourceManager(IResourceManager[T], Generic[T]):
         inputs={"bio": UNSET},
     )
     def load(self, key: str, bio: IO[bytes]) -> None:
+        """
+        Load a single data item (restoration).
+
+        Arguments:
+            key (str): The key (from dump).
+            bio (IO[bytes]): The data stream.
+        """
         if key.startswith("meta/"):
             self.storage.save_meta(self.meta_serializer.decode(bio.read()))
         elif key.startswith("data/"):

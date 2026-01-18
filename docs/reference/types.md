@@ -1,0 +1,3 @@
+# autocrud.types
+
+::: autocrud.types

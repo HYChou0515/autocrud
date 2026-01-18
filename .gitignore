@@ -5,7 +5,32 @@ build/
 dist/
 wheels/
 *.egg-info
-.coverage*
+.coverage
+.coverage.*
+htmlcov/
+coverage.xml
+
+# Testing & Quality
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.tox/
+nosetests.xml
+
+# Documentation
+site/
 
 # Virtual environments
 .venv
+env/
+venv/
+ENV/
+
+# Development & IDE
+.vscode/
+.idea/
+*.env
+.DS_Store
+
+# Temporary files
+tmp*/

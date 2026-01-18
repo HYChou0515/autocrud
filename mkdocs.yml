@@ -1,0 +1,258 @@
+site_name: AutoCRUD
+site_url: https://hychou0515.github.io/autocrud/
+site_description: 模型驅動的自動化 FastAPI：內建版本控制、權限與搜尋
+site_author: HYChou0515
+repo_url: https://github.com/HYChou0515/autocrud
+repo_name: HYChou0515/autocrud
+edit_uri: edit/master/docs/
+
+# Copyright
+copyright: Copyright &copy; 2025 HYChou0515
+
+# Documentation directory
+docs_dir: docs
+
+theme:
+  name: material
+  language: en
+  custom_dir: docs/overrides
+  
+  # Color palette
+  palette:
+    # Light mode
+    - media: "(prefers-color-scheme: light)"
+      scheme: default
+      primary: blue
+      accent: indigo
+      toggle:
+        icon: material/brightness-7
+        name: 切換至深色模式
+    
+    # Dark mode  
+    - media: "(prefers-color-scheme: dark)"
+      scheme: slate
+      primary: blue
+      accent: indigo
+      toggle:
+        icon: material/brightness-4
+        name: 切換至淺色模式
+  
+  # Features
+  features:
+    - announce.dismiss
+    - content.action.edit
+    - content.action.view
+    - content.code.annotate
+    - content.code.copy
+    - content.tabs.link
+    - content.tooltips
+    - navigation.expand
+    - navigation.footer
+    - navigation.indexes
+    - navigation.instant
+    - navigation.instant.prefetch
+    - navigation.instant.progress
+    - navigation.path
+    - navigation.sections
+    - navigation.tabs
+    - navigation.tabs.sticky
+    - navigation.top
+    - navigation.tracking
+    - search.highlight
+    - search.share
+    - search.suggest
+    - toc.follow
+  
+  # Icons
+  icon:
+    repo: fontawesome/brands/github
+    edit: material/pencil
+    view: material/eye
+    
+  # Logo and favicon (add these files if available)
+  # logo: assets/logo.png
+  # favicon: assets/favicon.png
+
+# Plugins
+plugins:
+  - search:
+      lang:
+        - zh
+        - en
+      separator: '[\s\-\.]+'
+  
+  - section-index
+  
+  - mkdocstrings:
+      handlers:
+        python:
+          paths: [.]
+          options:
+            docstring_style: google
+            docstring_section_style: spacy
+            show_root_heading: true
+            show_source: true
+            show_symbol_type_heading: true
+            show_symbol_type_toc: true
+            signature_crossrefs: true
+            separate_signature: true
+            merge_init_into_class: false
+            show_if_no_docstring: true
+            inherited_members: true
+            members_order: source
+            group_by_category: true
+            show_category_heading: true
+            members: true
+            filters:
+              - "!^_"
+            show_inheritance_diagram: false
+  
+  - i18n:
+      docs_structure: folder
+      fallback_to_default: true
+      reconfigure_material: true
+      reconfigure_search: true
+      languages:
+        - locale: en
+          default: true
+          name: English
+          build: true
+          site_name: AutoCRUD
+          site_description: "Model-driven automated FastAPI: Built-in versioning, permissions, and search"
+          theme:
+            language: en
+          nav:
+            - Home: index.md
+            - Getting Started:
+              - Installation: getting-started/installation.md
+              - Quick Start: getting-started/quickstart.md
+              - First API: getting-started/first-api.md
+            - Core Concepts:
+              - Architecture: core-concepts/architecture.md
+              - AutoCRUD Routes: core-concepts/auto-routes.md
+              - ResourceManager: core-concepts/resource-manager.md
+              - Query Builder: core-concepts/query-builder.md
+            - Examples:
+              - Overview: examples/index.md
+            - Benchmarks:
+              - Performance: benchmarks/index.md
+              - MetaStore Performance: benchmarks/metastore.md
+              - ResourceStore Performance: benchmarks/resource_store.md
+            - API Reference:
+              - reference/autocrud.md
+              - reference/resource-manager.md
+              - reference/types.md
+              - reference/permission.md
+              - reference/message-queue.md
+              - reference/query.md
+        - locale: zh
+          name: 繁體中文
+          build: true
+          site_name: AutoCRUD
+          site_description: 模型驅動的自動化 FastAPI：內建版本控制、權限與搜尋
+          theme:
+            language: zh-TW
+          nav:
+            - 首頁: index.md
+            - 開始使用:
+              - 安裝: getting-started/installation.md
+              - 快速開始: getting-started/quickstart.md
+              - 第一個 API: getting-started/first-api.md
+            - 核心概念:
+              - 架構概覽: core-concepts/architecture.md
+              - AutoCRUD 路由: core-concepts/auto-routes.md
+              - ResourceManager: core-concepts/resource-manager.md
+              - Query Builder: core-concepts/query-builder.md
+            - 範例:
+              - 概覽: examples/index.md
+            - Benchmarks:
+              - 效能測試: benchmarks/index.md
+              - MetaStore 效能: benchmarks/metastore.md
+              - ResourceStore 效能: benchmarks/resource_store.md
+            - API 參考:
+              - reference/autocrud.md
+              - reference/resource-manager.md
+              - reference/types.md
+              - reference/permission.md
+              - reference/message-queue.md
+              - reference/query.md
+            
+# Extensions
+markdown_extensions:
+  # Python Markdown
+  - abbr
+  - admonition
+  - attr_list
+  - def_list
+  - footnotes
+  - md_in_html
+  - tables
+  - toc:
+      permalink: true
+      permalink_title: 錨點連結
+      toc_depth: 3
+  
+  # Python Markdown Extensions  
+  - pymdownx.arithmatex:
+      generic: true
+  - pymdownx.betterem:
+      smart_enable: all
+  - pymdownx.caret
+  - pymdownx.details
+  - pymdownx.emoji:
+      emoji_index: !!python/name:material.extensions.emoji.twemoji
+      emoji_generator: !!python/name:material.extensions.emoji.to_svg
+  - pymdownx.highlight:
+      anchor_linenums: true
+      line_spans: __span
+      pygments_lang_class: true
+  - pymdownx.inlinehilite
+  - pymdownx.keys
+  - pymdownx.mark
+  - pymdownx.smartsymbols
+  - pymdownx.snippets:
+      base_path: docs
+      auto_append:
+        - includes/abbreviations.md
+  - pymdownx.superfences:
+      custom_fences:
+        - name: mermaid
+          class: mermaid
+          format: !!python/name:pymdownx.superfences.fence_code_format
+  - pymdownx.tabbed:
+      alternate_style: true
+      combine_header_slug: true
+  - pymdownx.tasklist:
+      custom_checkbox: true
+  - pymdownx.tilde
+
+# Extra CSS & JavaScript
+extra_css:
+  - stylesheets/extra.css
+
+extra_javascript:
+  - javascripts/mathjax.js
+  - https://unpkg.com/mathjax@3/es5/tex-mml-chtml.js
+  - https://unpkg.com/mermaid@10.9.0/dist/mermaid.min.js
+
+# Extra configuration
+extra:
+  generator: false
+  
+  # Social links
+  social:
+    - icon: fontawesome/brands/github
+      link: https://github.com/HYChou0515/autocrud
+      name: GitHub
+    - icon: fontawesome/brands/python
+      link: https://pypi.org/project/autocrud/
+      name: PyPI
+  
+  # Version selector (if you have multiple versions)
+  # version:
+  #   provider: mike
+  
+  # Analytics (uncomment if you want to add)
+  # analytics:
+  #   provider: google
+  #   property: G-XXXXXXXXXX

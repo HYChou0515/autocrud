@@ -1,0 +1,77 @@
+/* 自定義樣式 */
+
+/* 首頁卡片美化 */
+.md-typeset .grid.cards > * {
+  transition: transform 0.2s, box-shadow 0.2s;
+}
+
+.md-typeset .grid.cards > *:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 8px 16px rgba(0, 0, 0, 0.1);
+}
+
+/* 程式碼區塊優化 */
+.md-typeset code {
+  border-radius: 0.25rem;
+}
+
+.md-typeset pre > code {
+  border-radius: 0.5rem;
+}
+
+/* Admonition 圖示調整 */
+.md-typeset .admonition {
+  border-left-width: 0.25rem;
+}
+
+/* 表格美化 */
+.md-typeset table:not([class]) {
+  border-radius: 0.5rem;
+  overflow: hidden;
+}
+
+.md-typeset table:not([class]) th {
+  font-weight: 600;
+}
+
+/* 導航卡片間距 */
+.md-typeset .grid.cards {
+  margin-top: 1.5rem;
+}
+
+/* Mermaid 圖表置中 */
+.mermaid {
+  text-align: center;
+  margin: 2rem 0;
+}
+
+/* 強調色調整 */
+:root {
+  --md-primary-fg-color: #2563eb;
+  --md-accent-fg-color: #6366f1;
+}
+
+[data-md-color-scheme="slate"] {
+  --md-primary-fg-color: #60a5fa;
+  --md-accent-fg-color: #818cf8;
+}
+
+/* 首頁特殊樣式 */
+.md-content__inner > h1:first-child {
+  font-size: 3rem;
+  font-weight: 700;
+  margin-bottom: 2rem;
+}
+
+/* 功能圖示美化 */
+.md-typeset .grid > .lg.middle {
+  font-size: 3rem;
+  margin-bottom: 1rem;
+}
+
+/* 響應式調整 */
+@media screen and (max-width: 76.1875em) {
+  .md-content__inner > h1:first-child {
+    font-size: 2rem;
+  }
+}

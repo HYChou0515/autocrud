@@ -1117,29 +1117,98 @@ class IMigration(ABC, Generic[T]):
 
 
 class IResourceManager(ABC, Generic[T]):
+    """Interface for managing versioned resources with full lifecycle support.
+
+    This is the core interface for AutoCRUD's resource management system.
+    It provides CRUD operations, versioning, search, permissions, and more.
+    """
+
     @property
     @abstractmethod
-    def user(self) -> str: ...
+    def user(self) -> str:
+        """Get the current user from context.
+
+        Returns:
+            str: The current user identifier.
+
+        Raises:
+            LookupError: If no user is set in the context.
+        """
+
     @property
     @abstractmethod
-    def now(self) -> dt.datetime: ...
+    def now(self) -> dt.datetime:
+        """Get the current timestamp from context.
+
+        Returns:
+            datetime: The current timestamp.
+
+        Raises:
+            LookupError: If no timestamp is set in the context.
+        """
+
     @property
     @abstractmethod
-    def user_or_unset(self) -> str | UnsetType: ...
+    def user_or_unset(self) -> str | UnsetType:
+        """Get the current user from context, or UNSET if not available.
+
+        Returns:
+            str | UnsetType: The current user identifier or UNSET.
+        """
+
     @property
     @abstractmethod
-    def now_or_unset(self) -> dt.datetime | UnsetType: ...
+    def now_or_unset(self) -> dt.datetime | UnsetType:
+        """Get the current timestamp from context, or UNSET if not available.
+
+        Returns:
+            datetime | UnsetType: The current timestamp or UNSET.
+        """
+
     @property
     @abstractmethod
-    def resource_type(self) -> type[T]: ...
+    def resource_type(self) -> type[T]:
+        """Get the resource data type managed by this manager.
+
+        Returns:
+            type[T]: The resource type class.
+        """
+
     @abstractmethod
-    def migrate(self, resource_id: str) -> ResourceMeta: ...
+    def migrate(self, resource_id: str) -> ResourceMeta:
+        """Migrate a resource to the latest schema version.
+
+        Args:
+            resource_id: The ID of the resource to migrate.
+
+        Returns:
+            ResourceMeta: The updated metadata after migration.
+
+        Raises:
+            ValueError: If migration logic is not configured.
+            ResourceIDNotFoundError: If the resource ID does not exist.
+        """
+
     @property
     @abstractmethod
-    def schema_version(self) -> str: ...
+    def schema_version(self) -> str:
+        """Get the current schema version for this resource type.
+
+        Returns:
+            str: The schema version identifier.
+
+        Raises:
+            ValueError: If schema version is not configured.
+        """
+
     @property
     @abstractmethod
-    def resource_name(self) -> str: ...
+    def resource_name(self) -> str:
+        """Get the name of this resource type.
+
+        Returns:
+            str: The resource name.
+        """
 
     @abstractmethod
     def meta_provide(
@@ -1148,27 +1217,62 @@ class IResourceManager(ABC, Generic[T]):
         now: dt.datetime | UnsetType = UNSET,
         *,
         resource_id: str | UnsetType = UNSET,
-    ) -> AbstractContextManager: ...
+    ) -> AbstractContextManager:
+        """Context manager to provide metadata context (user, time, resource_id).
+
+        Args:
+            user: The user performing the action.
+            now: The current timestamp.
+            resource_id: Specific resource ID to use.
+
+        Yields:
+            None: Use this as a context manager with 'with' statement.
+        """
 
     @abstractmethod
     def create(
         self, data: T, *, status: RevisionStatus | UnsetType = UNSET
     ) -> RevisionInfo:
-        """Create resource and return the metadata.
+        """Create a new resource.
 
-        Arguments:
-            - data (T): the data to be created.
+        This method creates a new resource with an initial revision. The resource
+        will be assigned a unique resource_id and revision_id.
+
+        Args:
+            data: The resource data object conforming to the resource type.
+            status: The initial status of the resource (default: stable).
 
         Returns:
-            - info (RevisionInfo): the metadata of the created data.
+            RevisionInfo: Metadata about the created revision including
+                resource_id, revision_id, created_time, created_by, and status.
 
+        Note:
+            Binary fields (Binary type) will be automatically extracted and stored
+            in the blob store if configured.
         """
 
     @abstractmethod
-    def exists(self, resource_id: str) -> bool: ...
+    def exists(self, resource_id: str) -> bool:
+        """Check if a resource exists.
+
+        Args:
+            resource_id: The ID of the resource to check.
+
+        Returns:
+            bool: True if the resource exists, False otherwise.
+        """
 
     @abstractmethod
-    def revision_exists(self, resource_id: str, revision_id: str) -> bool: ...
+    def revision_exists(self, resource_id: str, revision_id: str) -> bool:
+        """Check if a specific revision of a resource exists.
+
+        Args:
+            resource_id: The ID of the resource.
+            revision_id: The revision ID to check.
+
+        Returns:
+            bool: True if the revision exists, False otherwise.
+        """
 
     @abstractmethod
     def get(
@@ -1180,16 +1284,16 @@ class IResourceManager(ABC, Generic[T]):
     ) -> Resource[T]:
         """Get the current revision of the resource.
 
-        Arguments:
-            - resource_id (str): the id of the resource to get.
-            - revision_id (str | UnsetType): the id of a specific revision to get.
+        Args:
+            resource_id (str): the id of the resource to get.
+            revision_id (str | UnsetType): the id of a specific revision to get.
               If UNSET, the current revision is returned.
         Returns:
-            - resource (Resource[T]): the resource with its data and revision info.
+            resource (Resource[T]): the resource with its data and revision info.
 
         Raises:
-            - ResourceIDNotFoundError: if resource id does not exist.
-            - ResourceIsDeletedError: if resource is soft-deleted.
+            ResourceIDNotFoundError: if resource id does not exist.
+            ResourceIsDeletedError: if resource is soft-deleted.
 
         ---
 
@@ -1209,15 +1313,15 @@ class IResourceManager(ABC, Generic[T]):
     ) -> Struct:
         """Get a partial view of the resource data for a specific revision.
 
-        Arguments:
-            - resource_id (str): the id of the resource.
-            - revision_id (str): the id of the specific revision to retrieve.
-            - partial (Iterable[str | JsonPointer]): list of field paths to include in the result.
+        Args:
+            resource_id (str): the id of the resource.
+            revision_id (str): the id of the specific revision to retrieve.
+            partial (Iterable[str | JsonPointer]): list of field paths to include in the result.
         Returns:
-            - partial_data (Struct): a Struct containing only the requested fields.
+            partial_data (Struct): a Struct containing only the requested fields.
         Raises:
-            - ResourceIDNotFoundError: if resource id does not exist.
-            - RevisionIDNotFoundError: if revision id does not exist for this resource.
+            ResourceIDNotFoundError: if resource id does not exist.
+            RevisionIDNotFoundError: if revision id does not exist for this resource.
 
         Retrieves a subset of the resource's data for the specified revision,
         based on the provided list of field paths. This allows clients to fetch
@@ -1235,15 +1339,15 @@ class IResourceManager(ABC, Generic[T]):
     ) -> RevisionInfo:
         """Get the RevisionInfo for a specific revision of the resource.
 
-        Arguments:
-            - resource_id (str): the id of the resource.
-            - revision_id (str | UnsetType): the id of the specific revision to retrieve.
+        Args:
+            resource_id (str): the id of the resource.
+            revision_id (str | UnsetType): the id of the specific revision to retrieve.
               If UNSET, the current revision is returned.
         Returns:
-            - info (RevisionInfo): the metadata of the specified revision.
+            info (RevisionInfo): the metadata of the specified revision.
         Raises:
-            - ResourceIDNotFoundError: if resource id does not exist.
-            - RevisionIDNotFoundError: if revision id does not exist for this resource.
+            ResourceIDNotFoundError: if resource id does not exist.
+            RevisionIDNotFoundError: if revision id does not exist for this resource.
 
         Retrieves the RevisionInfo metadata for a specific revision of the resource.
         If revision_id is UNSET, the current revision's info is returned. This method does NOT
@@ -1260,16 +1364,16 @@ class IResourceManager(ABC, Generic[T]):
     ) -> Resource[T]:
         """Get a specific revision of the resource.
 
-        Arguments:
-            - resource_id (str): the id of the resource.
-            - revision_id (str): the id of the specific revision to retrieve.
+        Args:
+            resource_id (str): the id of the resource.
+            revision_id (str): the id of the specific revision to retrieve.
 
         Returns:
-            - resource (Resource[T]): the resource with its data and revision info for the specified revision.
+            resource (Resource[T]): the resource with its data and revision info for the specified revision.
 
         Raises:
-            - ResourceIDNotFoundError: if resource id does not exist.
-            - RevisionIDNotFoundError: if revision id does not exist for this resource.
+            ResourceIDNotFoundError: if resource id does not exist.
+            RevisionIDNotFoundError: if revision id does not exist for this resource.
 
         ---
 
@@ -1289,14 +1393,14 @@ class IResourceManager(ABC, Generic[T]):
     def list_revisions(self, resource_id: str) -> list[str]:
         """Get a list of all revision IDs for the resource.
 
-        Arguments:
-            - resource_id (str): the id of the resource.
+        Args:
+            resource_id (str): the id of the resource.
 
         Returns:
-            - list[str]: list of revision IDs for the resource, typically ordered chronologically.
+            list[str]: list of revision IDs for the resource, typically ordered chronologically.
 
         Raises:
-            - ResourceIDNotFoundError: if resource id does not exist.
+            ResourceIDNotFoundError: if resource id does not exist.
 
         ---
 
@@ -1318,15 +1422,15 @@ class IResourceManager(ABC, Generic[T]):
     def get_meta(self, resource_id: str) -> ResourceMeta:
         """Get the metadata of the resource.
 
-        Arguments:
-            - resource_id (str): the id of the resource to get metadata for.
+        Args:
+            resource_id (str): the id of the resource to get metadata for.
 
         Returns:
-            - meta (ResourceMeta): the metadata of the resource.
+            meta (ResourceMeta): the metadata of the resource.
 
         Raises:
-            - ResourceIDNotFoundError: if resource id does not exist.
-            - ResourceIsDeletedError: if resource is soft-deleted.
+            ResourceIDNotFoundError: if resource id does not exist.
+            ResourceIsDeletedError: if resource is soft-deleted.
 
         ---
 
@@ -1353,11 +1457,11 @@ class IResourceManager(ABC, Generic[T]):
     def search_resources(self, query: ResourceMetaSearchQuery) -> list[ResourceMeta]:
         """Search for resources based on a query.
 
-        Arguments:
-            - query (ResourceMetaSearchQuery): the search criteria and options.
+        Args:
+            query (ResourceMetaSearchQuery): the search criteria and options.
 
         Returns:
-            - list[ResourceMeta]: list of resource metadata matching the query criteria.
+            list[ResourceMeta]: list of resource metadata matching the query criteria.
 
         ---
 
@@ -1378,16 +1482,16 @@ class IResourceManager(ABC, Generic[T]):
     def update(self, resource_id: str, data: T) -> RevisionInfo:
         """Update the data of the resource by creating a new revision.
 
-        Arguments:
-            - resource_id (str): the id of the resource to update.
-            - data (T): the data to replace the current one.
+        Args:
+            resource_id (str): the id of the resource to update.
+            data (T): the data to replace the current one.
 
         Returns:
-            - info (RevisionInfo): the metadata of the newly created revision.
+            info (RevisionInfo): the metadata of the newly created revision.
 
         Raises:
-            - ResourceIDNotFoundError: if resource id does not exist.
-            - ResourceIsDeletedError: if resource is soft-deleted.
+            ResourceIDNotFoundError: if resource id does not exist.
+            ResourceIsDeletedError: if resource is soft-deleted.
 
         ---
 
@@ -1414,31 +1518,31 @@ class IResourceManager(ABC, Generic[T]):
     ) -> RevisionInfo:
         """Modify the data of the resource by update the current revision.
 
-        Arguments:
-            - resource_id (str): the id of the resource to modify.
-            - data (T): the data to replace the current one.
+        Args:
+            resource_id (str): the id of the resource to modify.
+            data (T): the data to replace the current one.
         Returns:
-            - info (RevisionInfo): the metadata of the modified revision.
+            info (RevisionInfo): the metadata of the modified revision.
         Raises:
-            - ResourceIDNotFoundError: if resource id does not exist.
-            - ResourceIsDeletedError: if resource is soft-deleted.
-            - CannotModifyResourceError: if resource is not in draft status.
+            ResourceIDNotFoundError: if resource id does not exist.
+            ResourceIsDeletedError: if resource is soft-deleted.
+            CannotModifyResourceError: if resource is not in draft status.
         """
 
     @abstractmethod
     def patch(self, resource_id: str, patch_data: JsonPatch) -> RevisionInfo:
         """Apply RFC 6902 JSON Patch operations to the resource.
 
-        Arguments:
-            - resource_id (str): the id of the resource to patch.
-            - patch_data (JsonPatch): RFC 6902 JSON Patch operations to apply.
+        Args:
+            resource_id (str): the id of the resource to patch.
+            patch_data (JsonPatch): RFC 6902 JSON Patch operations to apply.
 
         Returns:
-            - info (RevisionInfo): the metadata of the newly created revision.
+            info (RevisionInfo): the metadata of the newly created revision.
 
         Raises:
-            - ResourceIDNotFoundError: if resource id does not exist.
-            - ResourceIsDeletedError: if resource is soft-deleted.
+            ResourceIDNotFoundError: if resource id does not exist.
+            ResourceIsDeletedError: if resource is soft-deleted.
 
         ---
 
@@ -1459,17 +1563,17 @@ class IResourceManager(ABC, Generic[T]):
     def switch(self, resource_id: str, revision_id: str) -> ResourceMeta:
         """Switch the current revision to a specific revision.
 
-        Arguments:
-            - resource_id (str): the id of the resource.
-            - revision_id (str): the id of the revision to switch to.
+        Args:
+            resource_id (str): the id of the resource.
+            revision_id (str): the id of the revision to switch to.
 
         Returns:
-            - meta (ResourceMeta): the metadata of the resource after switching.
+            meta (ResourceMeta): the metadata of the resource after switching.
 
         Raises:
-            - ResourceIDNotFoundError: if resource id does not exist.
-            - ResourceIsDeletedError: if resource is soft-deleted.
-            - RevisionIDNotFoundError: if revision id does not exist.
+            ResourceIDNotFoundError: if resource id does not exist.
+            ResourceIsDeletedError: if resource is soft-deleted.
+            RevisionIDNotFoundError: if revision id does not exist.
 
         ---
 
@@ -1491,15 +1595,15 @@ class IResourceManager(ABC, Generic[T]):
     def delete(self, resource_id: str) -> ResourceMeta:
         """Mark the resource as deleted (soft delete).
 
-        Arguments:
-            - resource_id (str): the id of the resource to delete.
+        Args:
+            resource_id (str): the id of the resource to delete.
 
         Returns:
-            - meta (ResourceMeta): the updated metadata with is_deleted=True.
+            meta (ResourceMeta): the updated metadata with is_deleted=True.
 
         Raises:
-            - ResourceIDNotFoundError: if resource id does not exist.
-            - ResourceIsDeletedError: if resource is already soft-deleted.
+            ResourceIDNotFoundError: if resource id does not exist.
+            ResourceIsDeletedError: if resource is already soft-deleted.
 
         ---
 
@@ -1522,14 +1626,14 @@ class IResourceManager(ABC, Generic[T]):
     def restore(self, resource_id: str) -> ResourceMeta:
         """Restore a previously deleted resource (undo soft delete).
 
-        Arguments:
-            - resource_id (str): the id of the resource to restore.
+        Args:
+            resource_id (str): the id of the resource to restore.
 
         Returns:
-            - meta (ResourceMeta): the updated metadata with is_deleted=False.
+            meta (ResourceMeta): the updated metadata with is_deleted=False.
 
         Raises:
-            - ResourceIDNotFoundError: if resource id does not exist.
+            ResourceIDNotFoundError: if resource id does not exist.
 
         ---
 
@@ -1558,7 +1662,7 @@ class IResourceManager(ABC, Generic[T]):
         """Dump all resource data as a series of tar archive entries.
 
         Returns:
-            - Generator[tuple[str, IO[bytes]]]: generator yielding (filename, fileobj) pairs for each resource.
+            Generator[tuple[str, IO[bytes]]]: generator yielding (filename, fileobj) pairs for each resource.
 
         ---
 
@@ -1588,9 +1692,9 @@ class IResourceManager(ABC, Generic[T]):
     def load(self, key: str, bio: IO[bytes]) -> None:
         """Load resource data from a tar archive entry.
 
-        Arguments:
-            - key (str): the unique identifier for the resource being loaded.
-            - bio (IO[bytes]): the tar archive containing the resource data.
+        Args:
+            key (str): the unique identifier for the resource being loaded.
+            bio (IO[bytes]): the tar archive containing the resource data.
 
         ---
 
@@ -1637,7 +1741,7 @@ class IResourceManager(ABC, Generic[T]):
         Uses the callback function that was configured when the message queue was created.
 
         Raises:
-            - NotImplementedError: if message queue is not configured.
+            NotImplementedError: if message queue is not configured.
         """
 
 
