@@ -214,47 +214,82 @@ crud.add_model(Article, indexed_fields=[("author", str)])
 
 ## 進階儲存組合
 
-### 範例 3：S3 Meta + S3 Resource（完全 S3 方案）
+### 範例 3：S3 + SQLite Meta + S3 Resource（雲端 S3 方案）
 
-適合完全基於雲端物件儲存的場景。
+✨ 適合完全基於雲端物件儲存的場景，使用 S3SqliteMetaStore（SQLite 資料庫檔案存放在 S3）。
+
+!!! info "New in version 0.7.6"
 
 ```python
-from autocrud.resource_manager.meta_store.s3 import S3MetaStore
+from autocrud.resource_manager.meta_store.sqlite3 import S3SqliteMetaStore
+from autocrud.resource_manager.resource_store.s3 import S3ResourceStore
 
-class FullS3StorageFactory(IStorageFactory):
-    """完全使用 S3 儲存的方案"""
+class S3StorageFactory(IStorageFactory):
+    """完全使用 S3 儲存的方案（SQLite DB 檔案也在 S3）"""
     
-    def __init__(self, s3_config: dict):
-        self.s3_config = s3_config
+    def __init__(
+        self,
+        bucket: str,
+        endpoint_url: str | None = None,
+        access_key_id: str = "minioadmin",
+        secret_access_key: str = "minioadmin",
+        region_name: str = "us-east-1",
+    ):
+        self.bucket = bucket
+        self.endpoint_url = endpoint_url
+        self.access_key_id = access_key_id
+        self.secret_access_key = secret_access_key
+        self.region_name = region_name
     
     def build(self, model_name: str) -> IStorage:
-        # S3 MetaStore
-        meta_store = S3MetaStore(
-            bucket=self.s3_config["bucket"],
-            prefix=f"meta/{model_name}/",
-            **self.s3_config["credentials"]
+        # S3SqliteMetaStore：SQLite 資料庫存放在 S3
+        meta_store = S3SqliteMetaStore(
+            bucket=self.bucket,
+            key=f"meta/{model_name}.sqlite",
+            endpoint_url=self.endpoint_url,
+            access_key_id=self.access_key_id,
+            secret_access_key=self.secret_access_key,
+            region_name=self.region_name,
+            encoding=Encoding.msgpack,
+            auto_sync=True,  # 自動同步到 S3
+            sync_interval=5.0,  # 每 5 秒同步一次
+            enable_locking=True,  # 啟用 ETag 鎖定防止衝突
         )
         
-        # S3 ResourceStore
+        # S3 ResourceStore：資料存放在 S3
         resource_store = S3ResourceStore(
-            bucket=self.s3_config["bucket"],
+            bucket=self.bucket,
             prefix=f"data/{model_name}/",
-            **self.s3_config["credentials"]
+            endpoint_url=self.endpoint_url,
+            access_key_id=self.access_key_id,
+            secret_access_key=self.secret_access_key,
+            region_name=self.region_name,
+            encoding=Encoding.msgpack,
         )
         
         return SimpleStorage(meta_store, resource_store)
 
-s3_config = {
-    "bucket": "my-app-storage",
-    "credentials": {
-        "endpoint_url": "http://localhost:9000",
-        "access_key_id": "minioadmin",
-        "secret_access_key": "minioadmin",
-    }
-}
+# MinIO 或 AWS S3 配置
+storage_factory = S3StorageFactory(
+    bucket="my-app-storage",
+    endpoint_url="http://localhost:9000",  # MinIO，AWS S3 則省略此參數
+    access_key_id="minioadmin",
+    secret_access_key="minioadmin",
+)
 
-crud = AutoCRUD(storage_factory=FullS3StorageFactory(s3_config))
+crud = AutoCRUD(storage_factory=storage_factory)
 ```
+
+**特性：**
+
+- ☁️ 完全雲端化，不依賴本地磁碟
+- 🔐 ETag 樂觀鎖定防止併發寫入衝突
+- 🔄 自動同步 SQLite 資料庫到 S3
+- 💾 適合 serverless 或容器化部署
+
+**詳細說明：**
+
+查看 [S3 + SQLite MetaStore 文件](../storage/s3-sqlite-meta-store.md) 了解更多關於 S3SqliteMetaStore 的配置選項和最佳實踐。
 
 ### 範例 4：Redis Meta + PostgreSQL Meta（雙層快取）
 

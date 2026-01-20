@@ -7,6 +7,8 @@ description: 將 SQLite 資料庫儲存在 S3 上的 MetaStore 實作
 
 S3SqliteMetaStore 結合了 SQLite 的高效能查詢能力和 S3 的持久化儲存優勢，讓你可以將 metadata 存放在雲端物件儲存上。
 
+!!! info "New in version 0.7.6"
+
 ## ✨ 特性
 
 - 🔄 **自動同步**：自動同步本地 SQLite 資料庫到 S3
