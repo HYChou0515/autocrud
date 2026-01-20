@@ -4,8 +4,10 @@ from autocrud.util.naming import NameConverter, NamingFormat
 from typing import TYPE_CHECKING, Callable, Generic, TypeVar
 from contextlib import contextmanager
 
-
-import pika
+try:
+    import pika
+except ImportError:
+    pika = None  # type: ignore
 
 if TYPE_CHECKING:
     from autocrud.types import IResourceManager
