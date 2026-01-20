@@ -37,7 +37,7 @@ description: 模型驅動的自動化 FastAPI：內建版本控制、權限與�
 
     靈活的事件系統、自定義路由與混合儲存策略
 
-    [:octicons-arrow-right-24: 進階功能](advanced/graphql.md)
+    [:octicons-arrow-right-24: 查看範例](examples/index.md)
 
 </div>
 

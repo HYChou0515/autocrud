@@ -123,4 +123,3 @@ uv run mkdocs serve
 ## 下一步
 
 - [快速開始](quickstart.md) - 學習如何建立第一個 API
-- [第一個 API](first-api.md) - 詳細的步驟指南
