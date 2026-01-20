@@ -121,6 +121,46 @@ def get_meta_store(store_type: str, tmpdir: Path = None):
         return DFMemoryMetaStore(encoding="msgpack")
     if store_type == "sql3-mem":
         return MemorySqliteMetaStore(encoding="msgpack")
+    if store_type == "sql3-s3":
+        # Use real S3/MinIO connection
+        import uuid
+        from autocrud.resource_manager.meta_store.sqlite3 import S3SqliteMetaStore
+
+        test_key = f"test-resource-mgr-{uuid.uuid4()}.db"
+        try:
+            store = S3SqliteMetaStore(
+                bucket="test-autocrud",
+                key=test_key,
+                endpoint_url="http://localhost:9000",
+                access_key_id="minioadmin",
+                secret_access_key="minioadmin",
+                encoding="msgpack",
+                auto_sync=False,
+                enable_locking=False,
+            )
+            # 清理函數
+            import atexit
+
+            def cleanup():
+                try:
+                    store.close()
+                    import boto3
+
+                    s3 = boto3.client(
+                        "s3",
+                        endpoint_url="http://localhost:9000",
+                        aws_access_key_id="minioadmin",
+                        aws_secret_access_key="minioadmin",
+                        region_name="us-east-1",
+                    )
+                    s3.delete_object(Bucket="test-autocrud", Key=test_key)
+                except Exception:
+                    pass
+
+            atexit.register(cleanup)
+            return store
+        except Exception as e:
+            pytest.skip(f"S3/MinIO not available: {e}")
     if store_type == "memory-pg":
         return FastSlowMetaStore(
             fast_store=MemoryMetaStore(encoding="msgpack"),
@@ -199,7 +239,16 @@ def get_resource_store(
 @pytest.mark.flaky(retries=6, delay=1)
 @pytest.mark.parametrize(
     "meta_store_type",
-    ["memory", "sql3-mem", "sql3-file", "redis", "disk", "redis-pg", "postgres"],
+    [
+        "memory",
+        "sql3-mem",
+        "sql3-file",
+        "sql3-s3",
+        "redis",
+        "disk",
+        "redis-pg",
+        "postgres",
+    ],
 )
 @pytest.mark.parametrize("res_store_type", ["memory", "disk", "s3"])
 class TestResourceManager:
@@ -1138,6 +1187,7 @@ def my_tmpdir():
         "memory-pg",
         "sql3-mem",
         "sql3-file",
+        "sql3-s3",
         "disk-sql3file",
         "redis",
         "dfm",

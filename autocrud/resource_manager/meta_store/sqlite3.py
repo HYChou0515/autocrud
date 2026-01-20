@@ -520,3 +520,340 @@ class MemorySqliteMetaStore(SqliteMetaStore):
     def __init__(self, *, encoding=Encoding.json):
         get_conn = functools.partial(sqlite3.connect, ":memory:")
         super().__init__(get_conn=get_conn, encoding=encoding)
+
+
+class S3ConflictError(Exception):
+    """Raised when S3 ETag conflict is detected during sync"""
+
+    pass
+
+
+class S3SqliteMetaStore(SqliteMetaStore):
+    """SQLite Meta Store with S3 backend storage
+
+    Downloads the SQLite database from S3 on initialization,
+    operates on local copy, and syncs back to S3 when needed.
+
+    Uses ETag-based optimistic locking to prevent concurrent write conflicts.
+    """
+
+    def __init__(
+        self,
+        *,
+        bucket: str,
+        key: str,
+        access_key_id: str = "minioadmin",
+        secret_access_key: str = "minioadmin",
+        region_name: str = "us-east-1",
+        endpoint_url: str | None = None,
+        encoding: Encoding = Encoding.json,
+        auto_sync: bool = True,
+        sync_interval: float = 0,  # Sync interval in seconds (0 = immediate)
+        enable_locking: bool = True,  # Enable ETag-based locking
+        auto_reload_on_conflict: bool = False,  # Auto reload from S3 on conflict
+        check_etag_on_read: bool = True,  # Check ETag before read operations
+    ):
+        """Initialize S3 SQLite Meta Store
+
+        Args:
+            bucket: S3 bucket name
+            key: S3 object key for the database file
+            access_key_id: AWS access key ID
+            secret_access_key: AWS secret access key
+            region_name: AWS region name
+            endpoint_url: Custom endpoint URL (for MinIO, LocalStack, etc.)
+            encoding: Encoding format (json or msgpack)
+            auto_sync: Whether to automatically sync to S3
+            sync_interval: Time interval in seconds between syncs (0 = immediate, default)
+            enable_locking: Enable ETag-based optimistic locking
+            auto_reload_on_conflict: Automatically reload from S3 on conflict
+            check_etag_on_read: Check and reload if S3 version changed before reads
+        """
+        import tempfile
+        import time
+        import boto3
+        from botocore.exceptions import ClientError
+
+        self.bucket = bucket
+        self.key = key
+        self.auto_sync = auto_sync
+        self.sync_interval = sync_interval
+        self.enable_locking = enable_locking
+        self.auto_reload_on_conflict = auto_reload_on_conflict
+        self._check_etag_on_read = check_etag_on_read
+        self._current_etag: str | None = None
+        self._last_sync_time: float = 0
+        self._last_read_check_time: float = 0
+
+        # Initialize S3 client
+        self.s3_client = boto3.client(
+            "s3",
+            endpoint_url=endpoint_url,
+            aws_access_key_id=access_key_id,
+            aws_secret_access_key=secret_access_key,
+            region_name=region_name,
+        )
+
+        # Create temporary file for local database
+        self._temp_file = tempfile.NamedTemporaryFile(
+            delete=False,
+            suffix=".db",
+        )
+        self._db_filepath = Path(self._temp_file.name)
+        self._temp_file.close()
+
+        # Try to download existing database from S3
+        try:
+            response = self.s3_client.get_object(Bucket=self.bucket, Key=self.key)
+            # Save the ETag for optimistic locking
+            self._current_etag = response.get("ETag")
+            # Download the file content
+            with open(self._db_filepath, "wb") as f:
+                f.write(response["Body"].read())
+        except ClientError as e:
+            error_code = e.response.get("Error", {}).get("Code")
+            if error_code == "404" or error_code == "NoSuchKey":
+                # Database doesn't exist in S3 yet, will be created locally
+                self._current_etag = None
+            else:
+                raise
+
+        # Initialize with local database file
+        get_conn = functools.partial(sqlite3.connect, self._db_filepath)
+        super().__init__(get_conn=get_conn, encoding=encoding)
+
+        self._last_sync_time = time.time()
+        self._last_read_check_time = time.time()
+
+    def _check_and_reload_if_needed(self):
+        """Check S3 ETag before read and reload if changed"""
+        if not self._check_etag_on_read or not self.enable_locking:
+            return
+
+        import time
+        from botocore.exceptions import ClientError
+
+        # Only check periodically to avoid too many API calls
+        current_time = time.time()
+        if (
+            current_time - self._last_read_check_time < 1.0
+        ):  # Check at most once per second
+            return
+
+        self._last_read_check_time = current_time
+
+        try:
+            head_response = self.s3_client.head_object(Bucket=self.bucket, Key=self.key)
+            s3_etag = head_response.get("ETag")
+
+            if s3_etag != self._current_etag:
+                # S3 version changed, reload
+                self._reload_from_s3()
+        except ClientError as e:
+            error_code = e.response.get("Error", {}).get("Code")
+            if error_code == "404" or error_code == "NoSuchKey":
+                # File deleted from S3
+                pass
+            else:
+                # Ignore errors during read check to avoid blocking reads
+                pass
+
+    def _maybe_sync(self):
+        """Sync to S3 if auto_sync is enabled and interval reached"""
+        if not self.auto_sync:
+            return
+
+        import time
+
+        current_time = time.time()
+
+        # sync_interval = 0 means immediate sync (default)
+        if self.sync_interval == 0:
+            self.sync_to_s3()
+            self._last_sync_time = current_time
+        elif current_time - self._last_sync_time >= self.sync_interval:
+            self.sync_to_s3()
+            self._last_sync_time = current_time
+
+    def sync_to_s3(self, force: bool = False):
+        """Manually sync local database to S3
+
+        Args:
+            force: If True, bypass ETag check and force upload
+
+        Raises:
+            S3ConflictError: If ETag conflict detected (another instance modified the file)
+        """
+        from botocore.exceptions import ClientError
+
+        # Ensure all connections are committed
+        for conn in self._conns.values():
+            conn.commit()
+
+        # Upload to S3 with ETag-based optimistic locking
+        try:
+            extra_args = {}
+
+            # If locking is enabled and we have an ETag, use conditional upload
+            if self.enable_locking and self._current_etag and not force:
+                # Use If-Match to ensure we only upload if ETag matches
+                extra_args["Metadata"] = {"uploaded-by": "autocrud"}
+                # Note: S3's put_object doesn't support If-Match directly
+                # We need to use a different approach: check ETag before upload
+                try:
+                    head_response = self.s3_client.head_object(
+                        Bucket=self.bucket, Key=self.key
+                    )
+                    current_s3_etag = head_response.get("ETag")
+
+                    if current_s3_etag != self._current_etag:
+                        if self.auto_reload_on_conflict:
+                            # Reload from S3 and retry
+                            self._reload_from_s3()
+                            raise S3ConflictError(
+                                f"S3 object was modified by another process. "
+                                f"Expected ETag: {self._current_etag}, "
+                                f"Current ETag: {current_s3_etag}. "
+                                f"Database reloaded from S3. "
+                                f"Local changes were discarded."
+                            )
+                        else:
+                            raise S3ConflictError(
+                                f"S3 object was modified by another process. "
+                                f"Expected ETag: {self._current_etag}, "
+                                f"Current ETag: {current_s3_etag}. "
+                                f"Sync aborted to prevent data loss."
+                            )
+                except ClientError as e:
+                    error_code = e.response.get("Error", {}).get("Code")
+                    if error_code == "404" or error_code == "NoSuchKey":
+                        # File was deleted, we can proceed with upload
+                        pass
+                    else:
+                        raise
+
+            # Upload the file
+            self.s3_client.upload_file(
+                str(self._db_filepath), self.bucket, self.key, ExtraArgs=extra_args
+            )
+
+            # Get the new ETag after upload
+            head_response = self.s3_client.head_object(Bucket=self.bucket, Key=self.key)
+            self._current_etag = head_response.get("ETag")
+
+        except S3ConflictError:
+            raise
+        except Exception as e:
+            # Re-raise other exceptions
+            raise RuntimeError(f"Failed to sync to S3: {e}") from e
+
+    def __getitem__(self, pk: str) -> ResourceMeta:
+        """Get resource metadata, checking S3 for updates first if enabled"""
+        self._check_and_reload_if_needed()
+        return super().__getitem__(pk)
+
+    def __setitem__(self, pk: str, meta: ResourceMeta) -> None:
+        super().__setitem__(pk, meta)
+        self._maybe_sync()
+
+    def __delitem__(self, pk: str) -> None:
+        super().__delitem__(pk)
+        self._maybe_sync()
+
+    def __iter__(self):
+        """Iterate over resource IDs, checking S3 for updates first if enabled"""
+        self._check_and_reload_if_needed()
+        return super().__iter__()
+
+    def iter_search(self, query):
+        """Search resources, checking S3 for updates first if enabled"""
+        self._check_and_reload_if_needed()
+        return super().iter_search(query)
+
+    def save_many(self, metas):
+        super().save_many(metas)
+        self._maybe_sync()
+
+    def close(self):
+        """Close all connections and sync to S3"""
+        # Sync before closing
+        if self.auto_sync:
+            self.sync_to_s3()
+
+        # Close all connections
+        for conn in self._conns.values():
+            conn.close()
+        self._conns.clear()
+
+    def _reload_from_s3(self):
+        """Reload database from S3, discarding local changes (private method)"""
+        from botocore.exceptions import ClientError
+
+        # Close existing connections
+        for conn in self._conns.values():
+            conn.close()
+        self._conns.clear()
+
+        # Download fresh copy from S3
+        try:
+            response = self.s3_client.get_object(Bucket=self.bucket, Key=self.key)
+            self._current_etag = response.get("ETag")
+            with open(self._db_filepath, "wb") as f:
+                f.write(response["Body"].read())
+        except ClientError as e:
+            error_code = e.response.get("Error", {}).get("Code")
+            if error_code == "404" or error_code == "NoSuchKey":
+                # File doesn't exist anymore
+                self._current_etag = None
+                # Create empty database with proper schema
+                self._db_filepath.unlink(missing_ok=True)
+                conn = sqlite3.connect(self._db_filepath)
+                # Initialize schema with correct columns
+                conn.execute(
+                    """
+                    CREATE TABLE IF NOT EXISTS resource_meta (
+                        resource_id TEXT PRIMARY KEY,
+                        data BLOB NOT NULL,
+                        created_time REAL NOT NULL,
+                        updated_time REAL NOT NULL,
+                        created_by TEXT NOT NULL,
+                        updated_by TEXT NOT NULL,
+                        is_deleted INTEGER NOT NULL,
+                        schema_version TEXT,
+                        indexed_data TEXT
+                    )
+                    """
+                )
+                # Create indexes
+                conn.execute(
+                    "CREATE INDEX IF NOT EXISTS idx_created_time ON resource_meta(created_time)"
+                )
+                conn.execute(
+                    "CREATE INDEX IF NOT EXISTS idx_updated_time ON resource_meta(updated_time)"
+                )
+                conn.execute(
+                    "CREATE INDEX IF NOT EXISTS idx_created_by ON resource_meta(created_by)"
+                )
+                conn.execute(
+                    "CREATE INDEX IF NOT EXISTS idx_updated_by ON resource_meta(updated_by)"
+                )
+                conn.execute(
+                    "CREATE INDEX IF NOT EXISTS idx_is_deleted ON resource_meta(is_deleted)"
+                )
+                conn.commit()
+                conn.close()
+            else:
+                raise
+
+    def __del__(self):
+        """Cleanup: sync to S3 and remove temporary file"""
+        try:
+            self.close()
+        except Exception:
+            pass
+
+        # Remove temporary file
+        try:
+            self._db_filepath.unlink()
+        except Exception:
+            pass
