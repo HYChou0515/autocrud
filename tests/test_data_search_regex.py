@@ -27,6 +27,7 @@ def my_tmpdir():
         "memory",
         "sql3-mem",
         "sql3-file",
+        "sql3-s3",
         "memory-pg",
         "redis",
         "redis-pg",
@@ -180,6 +181,7 @@ class TestMetaStoreRegexSearch:
         from autocrud.resource_manager.meta_store.sqlite3 import (
             FileSqliteMetaStore,
             MemorySqliteMetaStore,
+            S3SqliteMetaStore,
         )
 
         if store_type == "memory":
@@ -191,6 +193,45 @@ class TestMetaStoreRegexSearch:
                 db_filepath=tmpdir / "test_data_search.db",
                 encoding="msgpack",
             )
+        if store_type == "sql3-s3":
+            # Use real S3/MinIO connection
+            import uuid
+
+            test_key = f"test-regex-{uuid.uuid4()}.db"
+            try:
+                store = S3SqliteMetaStore(
+                    bucket="test-autocrud",
+                    key=test_key,
+                    endpoint_url="http://localhost:9000",
+                    access_key_id="minioadmin",
+                    secret_access_key="minioadmin",
+                    encoding="msgpack",
+                    auto_sync=False,
+                    enable_locking=False,
+                )
+                # 清理函數
+                import atexit
+
+                def cleanup():
+                    try:
+                        store.close()
+                        import boto3
+
+                        s3 = boto3.client(
+                            "s3",
+                            endpoint_url="http://localhost:9000",
+                            aws_access_key_id="minioadmin",
+                            aws_secret_access_key="minioadmin",
+                            region_name="us-east-1",
+                        )
+                        s3.delete_object(Bucket="test-autocrud", Key=test_key)
+                    except Exception:
+                        pass
+
+                atexit.register(cleanup)
+                return store
+            except Exception as e:
+                pytest.skip(f"S3/MinIO not available: {e}")
         if store_type == "memory-pg":
             import psycopg2
 
