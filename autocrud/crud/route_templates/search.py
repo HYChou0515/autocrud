@@ -6,7 +6,7 @@ from contextlib import contextmanager, suppress
 from typing import IO, TypeVar
 
 import msgspec
-from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi import APIRouter, Depends, HTTPException, Query, Request
 from msgspec import UNSET
 from qqabc.rurl import resolve
 from qqabc.types import InData, IUrlGrammar, IWorker, OutData
@@ -521,6 +521,7 @@ class ListRouteTemplate(BaseRouteTemplate):
             ),
         )
         async def list_resources_full(
+            request: Request,
             query_params: QueryInputsWithReturns = Query(...),
             current_user: str = Depends(self.deps.get_user),
             current_time: dt.datetime = Depends(self.deps.get_now),

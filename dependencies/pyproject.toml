@@ -23,16 +23,13 @@ classifiers = [
     "Framework :: FastAPI",
 ]
 dependencies = [
-    "boto3>=1.40.21",
     "fastapi>=0.116.1",
     "jsonpatch>=1.33",
     "jsonpointer>=3.0.0",
     "more-itertools>=10.7.0",
     "msgpack>=1.1.1",
     "msgspec>=0.19.0",
-    "pika>=1.3.2",
-    "pydantic<2",
-    "python-magic>=0.4.27",
+    "pydantic>=2.11.7",
     "qqabc>=0.2.1",
     "strawberry-graphql>=0.288.1",
     "xxhash>=3.5.0",
@@ -61,6 +58,14 @@ dev = [
 s3 = [
     "boto3>=1.40.21",
 ]
+cli = [
+    "datamodel-code-generator[http]>=0.35.0",
+    "fstui>=0.1.1",
+    "httpx>=0.28.1",
+    "tenacity>=9.1.2",
+    "textual>=6.3.0",
+    "typer>=0.20.0",
+]
 magic = [
     "python-magic>=0.4.27",
 ]
@@ -77,13 +82,11 @@ Issues = "https://github.com/HYChou0515/autocrud/issues"
 dev = [
     "boto3-stubs[full]>=1.40.21",
     "build>=1.2.2.post1",
-    "celery>=5.6.2",
     "coverage>=7.9.2",
     "faker>=37.5.3",
     "fastapi[standard]>=0.116.1",
     "furo>=2025.7.19",
     "httpx>=0.28.1",
-    "ipykernel>=7.1.0",
     "ipython>=9.4.0",
     "linkify-it-py>=2.0.3",
     "myst-parser>=4.0.1",
@@ -132,11 +135,6 @@ omit = [
 ]
 [tool.ruff.format]
 docstring-code-format = true
-
-[tool.ruff.lint]
-extend-select = [
-    "I",
-]
 
 [tool.ruff.lint.pydocstyle]
 convention = "google"

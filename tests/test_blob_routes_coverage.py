@@ -43,18 +43,7 @@ def test_blob_data_missing_500():
     router = APIRouter()
     template.apply("test", manager, router)
 
-    client = TestClient(router)
-    # The default TestClient raises exceptions instead of returning 500 response unless handled
-    # We expect 500 status code, but TestClient propagates the exception.
-    # We should catch it or use app with exception handler.
-    # But usually TestClient catches HTTPException and converts to response?
-    # No, starlette TestClient raises exceptions if raise_server_exceptions=True (default).
-
-    # Let's recreate client with raise_server_exceptions=False
-    # But wait, TestClient wraps an app. We passed router.
-    # Router doesn't have exception handlers.
-
-    # We need a proper app that handles HTTPException.
+    # TestClient needs a proper FastAPI app with exception handlers
     app = FastAPI()
     app.include_router(router)
     client = TestClient(app)
@@ -71,7 +60,9 @@ def test_blob_content_type_handling():
     router = APIRouter()
     template.apply("test", manager, router)
 
-    client = TestClient(router)
+    app = FastAPI()
+    app.include_router(router)
+    client = TestClient(app)
     response = client.get("/blobs/file1")
     assert response.status_code == 200
     assert response.content == b"xyz"
@@ -85,7 +76,9 @@ def test_blob_default_content_type():
     router = APIRouter()
     template.apply("test", manager, router)
 
-    client = TestClient(router)
+    app = FastAPI()
+    app.include_router(router)
+    client = TestClient(app)
     response = client.get("/blobs/file1")
     assert response.status_code == 200
     assert response.content == b"xyz"
