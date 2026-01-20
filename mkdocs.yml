@@ -158,11 +158,16 @@ plugins:
               - 安裝: getting-started/installation.md
               - 快速開始: getting-started/quickstart.md
               - 第一個 API: getting-started/first-api.md
+              - 設定儲存後端: getting-started/storage-backend.md
+              - 調整 API Routes: getting-started/customize-routes.md
             - 核心概念:
               - 架構概覽: core-concepts/architecture.md
               - AutoCRUD 路由: core-concepts/auto-routes.md
               - ResourceManager: core-concepts/resource-manager.md
               - Query Builder: core-concepts/query-builder.md
+            - 進階儲存:
+              - S3 + SQLite MetaStore: storage/s3-sqlite-meta-store.md
+              - S3 + SQLite 鎖定機制: storage/s3-sqlite-locking.md
             - 範例:
               - 概覽: examples/index.md
             - Benchmarks:

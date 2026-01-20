@@ -74,6 +74,8 @@ crud.add_model(TodoItem)
 # 建立 FastAPI app
 app = FastAPI(title="Todo API")
 crud.apply(app)
+# 建立 swagger docs
+crud.openapi(app)
 
 if __name__ == "__main__":
     import uvicorn
@@ -171,9 +173,40 @@ AutoCRUD 為 `TodoItem` 自動生成了以下端點：
 !!! info "還有更多端點"
     完整的端點列表請參考 [AutoCRUD 路由](../core-concepts/auto-routes.md)。
 
+## 常見問題
+
+??? question "如何修改已建立的資源？"
+    使用 `PATCH` 端點配合 JSON Patch 操作，或使用 `PUT` 進行完整更新。
+
+??? question "資源被刪除後能復原嗎？"
+    可以！AutoCRUD 使用軟刪除。使用 `POST /{model}/{id}/restore` 端點復原。
+
+??? question "如何查看資源的所有版本？"
+    使用 `GET /{model}/{id}/revisions` 端點取得版本列表。
+
+??? question "能不能只讀取部分欄位？"
+    可以！使用 `GET /{model}/{id}/partial` 端點，傳入 `fields` 參數。
+
+
 ## 下一步
 
 <div class="grid cards" markdown>
+
+-   :material-book-open-page-variant: __設定儲存後端__
+
+    ---
+
+    看範例瞭解如何設定儲存後端, 內建memory, disk, sqlite, postgres等等可供選擇
+
+    [:octicons-arrow-right-24: 設定儲存後端](storage-backend.md)
+
+-   :material-book-open-page-variant: __調整API Routes__
+
+    ---
+
+    看範例瞭解如何調整API Routes, 包含設定resource name, route template
+
+    [:octicons-arrow-right-24: 調整API Routes](customize-routes.md)
 
 -   :material-book-open-page-variant: __深入了解__
 
@@ -205,6 +238,6 @@ AutoCRUD 為 `TodoItem` 自動生成了以下端點：
 
     了解如何客製化路由、權限與事件
 
-    [:octicons-arrow-right-24: 功能指南](../guides/versioning.md)
+    [:octicons-arrow-right-24: 調整路由](customize-routes.md)
 
 </div>
