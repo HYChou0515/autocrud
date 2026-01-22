@@ -12,7 +12,6 @@ import shutil
 import sys
 from typing import IO
 
-
 from autocrud.resource_manager.basic import Encoding, MsgspecSerializer
 from autocrud.resource_manager.storage_factory import DiskStorageFactory
 from autocrud.types import IMigration

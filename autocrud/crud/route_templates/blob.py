@@ -3,8 +3,8 @@ from fastapi.responses import RedirectResponse
 from msgspec import UNSET
 
 from autocrud.crud.route_templates.basic import BaseRouteTemplate
-from autocrud.types import IResourceManager
 from autocrud.resource_manager.core import ResourceManager
+from autocrud.types import IResourceManager
 
 
 class BlobRouteTemplate(BaseRouteTemplate):

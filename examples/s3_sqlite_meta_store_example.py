@@ -11,12 +11,13 @@ S3SqliteMetaStore 使用範例
 - 衝突處理
 """
 
+from msgspec import Struct
+
 from autocrud.crud import AutoCRUD
 from autocrud.resource_manager.meta_store.sqlite3 import (
     S3ConflictError,
     S3SqliteMetaStore,
 )
-from msgspec import Struct
 
 
 class Product(Struct):
@@ -237,6 +238,7 @@ def example_with_locking():
 
     # 模擬數據操作
     import datetime as dt
+
     from autocrud.types import ResourceMeta
 
     now = dt.datetime.now(dt.timezone.utc)

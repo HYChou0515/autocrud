@@ -14,14 +14,6 @@ import redis
 from faker import Faker
 from msgspec import UNSET, Struct, UnsetType
 
-from autocrud.types import (
-    CannotModifyResourceError,
-    ResourceIDNotFoundError,
-    ResourceIsDeletedError,
-    ResourceMetaSortKey,
-    RevisionInfo,
-    RevisionStatus,
-)
 from autocrud.resource_manager.core import (
     IResourceStore,
     ResourceManager,
@@ -44,10 +36,16 @@ from autocrud.resource_manager.resource_store.simple import (
     MemoryResourceStore,
 )
 from autocrud.types import (
+    CannotModifyResourceError,
+    ResourceIDNotFoundError,
+    ResourceIsDeletedError,
     ResourceMeta,
     ResourceMetaSearchQuery,
     ResourceMetaSearchSort,
     ResourceMetaSortDirection,
+    ResourceMetaSortKey,
+    RevisionInfo,
+    RevisionStatus,
 )
 
 
@@ -124,6 +122,7 @@ def get_meta_store(store_type: str, tmpdir: Path = None):
     if store_type == "sql3-s3":
         # Use real S3/MinIO connection
         import uuid
+
         from autocrud.resource_manager.meta_store.sqlite3 import S3SqliteMetaStore
 
         test_key = f"test-resource-mgr-{uuid.uuid4()}.db"

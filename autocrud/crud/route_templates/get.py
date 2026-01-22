@@ -14,8 +14,10 @@ from autocrud.crud.route_templates.basic import (
 )
 from autocrud.types import (
     IResourceManager,
+    Resource,
+    ResourceMeta,
+    RevisionInfo,
 )
-from autocrud.types import Resource, ResourceMeta, RevisionInfo
 
 T = TypeVar("T")
 

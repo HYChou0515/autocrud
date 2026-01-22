@@ -11,11 +11,11 @@ from autocrud.types import (
     DataSearchGroup,
     DataSearchLogicOperator,
     DataSearchOperator,
+    ResourceDataSearchSort,
     ResourceMeta,
     ResourceMetaSearchQuery,
     ResourceMetaSearchSort,
     ResourceMetaSortDirection,
-    ResourceDataSearchSort,
     ResourceMetaSortKey,
 )
 

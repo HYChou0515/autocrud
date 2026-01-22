@@ -1,7 +1,8 @@
+import datetime as dt
 import io
 import os
 from pathlib import Path
-import datetime as dt
+
 import pytest
 from msgspec import Struct
 

@@ -10,16 +10,20 @@ from typing import IO, Any, Generic, TypeVar
 import msgspec
 from msgspec import UNSET, Struct, UnsetType
 
-from autocrud.types import ResourceMeta
-from autocrud.types import ResourceMetaSearchQuery
-from autocrud.types import DataSearchCondition, DataSearchGroup, DataSearchLogicOperator
-from autocrud.types import DataSearchOperator
-from autocrud.types import ResourceDataSearchSort
-from autocrud.types import ResourceMetaSearchSort
-from autocrud.types import ResourceMetaSortDirection
-from autocrud.types import ResourceMetaSortKey
-from autocrud.types import RevisionInfo
-from autocrud.types import Binary
+from autocrud.types import (
+    Binary,
+    DataSearchCondition,
+    DataSearchGroup,
+    DataSearchLogicOperator,
+    DataSearchOperator,
+    ResourceDataSearchSort,
+    ResourceMeta,
+    ResourceMetaSearchQuery,
+    ResourceMetaSearchSort,
+    ResourceMetaSortDirection,
+    ResourceMetaSortKey,
+    RevisionInfo,
+)
 
 T = TypeVar("T")
 

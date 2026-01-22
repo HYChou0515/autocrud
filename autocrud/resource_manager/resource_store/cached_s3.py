@@ -1,10 +1,10 @@
+import io
 from collections.abc import Generator
 from contextlib import contextmanager
 from typing import IO
-import io
 
-from autocrud.resource_manager.resource_store.s3 import S3ResourceStore
 from autocrud.resource_manager.resource_store.cache import ICache
+from autocrud.resource_manager.resource_store.s3 import S3ResourceStore
 from autocrud.types import RevisionInfo, RevisionStatus
 
 

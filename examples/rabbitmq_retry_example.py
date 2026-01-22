@@ -8,11 +8,12 @@ RabbitMQ 重試機制示例
 - 超過最大重試次數後發送到 dead letter queue
 """
 
+from msgspec import Struct
+
 from autocrud import ResourceManager
 from autocrud.message_queue.rabbitmq import RabbitMQMessageQueue
 from autocrud.resource_manager.storage_factory import SimpleStorageFactory
 from autocrud.types import Job, Resource
-from msgspec import Struct
 
 
 class ProcessingTask(Struct):

@@ -1,4 +1,5 @@
 import enum
+
 import msgspec
 import pytest
 from fastapi import APIRouter, FastAPI

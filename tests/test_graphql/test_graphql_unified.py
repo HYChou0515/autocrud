@@ -1,4 +1,5 @@
 import datetime as dt
+
 import msgspec
 import pytest
 from fastapi import APIRouter, FastAPI

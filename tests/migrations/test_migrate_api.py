@@ -1,8 +1,8 @@
 """測試 migrate route template 功能"""
 
-from collections.abc import Callable
 import datetime as dt
 import json
+from collections.abc import Callable
 from typing import Any, AsyncGenerator, Dict, List
 from unittest.mock import AsyncMock, Mock, patch
 

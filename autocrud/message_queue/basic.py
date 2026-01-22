@@ -1,6 +1,6 @@
+import datetime as dt
 from typing import Callable, Generic, TypeVar
 
-import datetime as dt
 from autocrud.types import (
     IMessageQueue,
     IResourceManager,

@@ -1,11 +1,13 @@
-from typing import List, Optional, Dict, Any
-from msgspec import Struct, UNSET
-import pytest
 import datetime as dt
+from typing import Any, Dict, List, Optional
+
+import pytest
+from msgspec import UNSET, Struct
+
 from autocrud.resource_manager.core import ResourceManager, SimpleStorage
-from autocrud.types import Binary
-from autocrud.resource_manager.resource_store.simple import MemoryResourceStore
 from autocrud.resource_manager.meta_store.simple import MemoryMetaStore
+from autocrud.resource_manager.resource_store.simple import MemoryResourceStore
+from autocrud.types import Binary
 
 
 class BinaryData(Struct):

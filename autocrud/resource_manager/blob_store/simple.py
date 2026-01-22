@@ -1,9 +1,11 @@
 from pathlib import Path
+
 import msgspec
 from msgspec import UNSET, UnsetType
+from xxhash import xxh3_128_hexdigest
+
 from autocrud.resource_manager.basic import IBlobStore
 from autocrud.types import Binary
-from xxhash import xxh3_128_hexdigest
 
 
 def _fallback_content_type_guesser(data: bytes) -> UnsetType:

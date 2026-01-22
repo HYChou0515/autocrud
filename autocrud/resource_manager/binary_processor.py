@@ -1,6 +1,8 @@
 from typing import Any, Callable, Dict, List, Union, get_args, get_origin
+
 import msgspec
-from msgspec import Struct, UNSET, UnsetType
+from msgspec import UNSET, Struct, UnsetType
+
 from autocrud.resource_manager.basic import IBlobStore
 from autocrud.types import Binary
 

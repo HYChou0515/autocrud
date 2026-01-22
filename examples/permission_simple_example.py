@@ -11,22 +11,22 @@
 import datetime as dt
 
 from autocrud.permission.acl import Policy
-from autocrud.types import PermissionResult
 from autocrud.permission.rbac import (
     RBACPermission,
     RBACPermissionChecker,
     RBACPermissionEntry,
     RoleMembership,
 )
-from autocrud.types import (
-    DataSearchCondition,
-    PermissionContext,
-    ResourceAction,
-    ResourceMetaSearchQuery,
-)
 from autocrud.resource_manager.core import ResourceManager, SimpleStorage
 from autocrud.resource_manager.meta_store.simple import MemoryMetaStore
 from autocrud.resource_manager.resource_store.simple import MemoryResourceStore
+from autocrud.types import (
+    DataSearchCondition,
+    PermissionContext,
+    PermissionResult,
+    ResourceAction,
+    ResourceMetaSearchQuery,
+)
 
 
 def setup_permission_manager():

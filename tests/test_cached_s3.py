@@ -1,14 +1,15 @@
-import os
+import datetime as dt
 import io
-from pathlib import Path
+import os
 import time
+from pathlib import Path
 from unittest.mock import MagicMock, patch
 from uuid import uuid4
-import datetime as dt
+
 import pytest
 
+from autocrud.resource_manager.resource_store.cache import DiskCache, MemoryCache
 from autocrud.resource_manager.resource_store.cached_s3 import CachedS3ResourceStore
-from autocrud.resource_manager.resource_store.cache import MemoryCache, DiskCache
 from autocrud.types import RevisionInfo, RevisionStatus
 
 

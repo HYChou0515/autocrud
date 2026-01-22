@@ -1,13 +1,13 @@
+import datetime as dt
 from unittest.mock import Mock
-from msgspec import Struct, to_builtins
+
 import pytest
 from jsonpointer import JsonPointer
+from msgspec import Struct, to_builtins
 
 from autocrud.crud.core import AutoCRUD
 from autocrud.crud.route_templates.get import ReadRouteTemplate
 from autocrud.resource_manager.basic import Encoding
-import datetime as dt
-
 from autocrud.types import IResourceManager, RevisionInfo
 
 

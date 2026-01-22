@@ -1,24 +1,26 @@
-from msgspec import UNSET, Struct, UnsetType, convert, to_builtins
-import msgspec
-from pydantic import BaseModel
-import sys
-from datetime import datetime
-from tenacity import retry, wait_fixed, stop_after_attempt
-from typer import Typer
-import typer
-import json
-from pathlib import Path
 import importlib.util
+import json
+import sys
 import typing
+from datetime import datetime
+from pathlib import Path
 from typing import Annotated, Literal
-from rich import print
-from rich.prompt import Prompt
+
 import fstui
 import httpx
-from autocrud.cli import config
-from autocrud.types import ResourceMeta, ResourceMetaSortKey, RevisionInfo
+import msgspec
+import typer
+from msgspec import UNSET, Struct, UnsetType, convert, to_builtins
+from pydantic import BaseModel
+from rich import print
+from rich.prompt import Prompt
 from rich.table import Table
 from rich.text import Text
+from tenacity import retry, stop_after_attempt, wait_fixed
+from typer import Typer
+
+from autocrud.cli import config
+from autocrud.types import ResourceMeta, ResourceMetaSortKey, RevisionInfo
 
 
 def build_from_config():

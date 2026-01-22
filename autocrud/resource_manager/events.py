@@ -6,7 +6,8 @@ do(callable).{phase}(ResourceAction)
 
 from collections.abc import Callable
 from typing import Self, Sequence
-from autocrud.types import EventContext, ResourceAction, IEventHandler
+
+from autocrud.types import EventContext, IEventHandler, ResourceAction
 
 
 class SimpleEventHandler(IEventHandler):

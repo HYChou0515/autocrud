@@ -1,12 +1,13 @@
-from time import time
-import statistics
-import msgspec
-import random
-import string
 import os
+import random
+import statistics
+import string
+from time import time
+
 import matplotlib.pyplot as plt
-from pydantic import BaseModel, ConfigDict
+import msgspec
 from msgspec import Struct
+from pydantic import BaseModel, ConfigDict
 
 
 class PArtifact(BaseModel):

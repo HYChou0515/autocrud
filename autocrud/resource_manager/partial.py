@@ -1,8 +1,9 @@
-from typing import Any, Iterable, TypeVar, get_args, get_origin, Union
-import msgspec
-from msgspec import Struct, defstruct, UnsetType, UNSET
-from jsonpointer import JsonPointer
 import types
+from typing import Any, Iterable, TypeVar, Union, get_args, get_origin
+
+import msgspec
+from jsonpointer import JsonPointer
+from msgspec import UNSET, Struct, UnsetType, defstruct
 
 T = TypeVar("T")
 

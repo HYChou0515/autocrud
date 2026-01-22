@@ -1,15 +1,15 @@
-from collections.abc import Callable
 import datetime as dt
 import io
 import textwrap
+from collections.abc import Callable
 from contextlib import contextmanager, suppress
 from typing import IO, TypeVar
 
+import msgspec
 from fastapi import APIRouter, Depends, HTTPException, Query
 from msgspec import UNSET
-import msgspec
 from qqabc.rurl import resolve
-from qqabc.types import IUrlGrammar, IWorker, InData, OutData
+from qqabc.types import InData, IUrlGrammar, IWorker, OutData
 
 from autocrud.crud.route_templates.basic import (
     BaseRouteTemplate,
@@ -23,8 +23,6 @@ from autocrud.crud.route_templates.basic import (
 )
 from autocrud.types import (
     IResourceManager,
-)
-from autocrud.types import (
     ResourceMeta,
     RevisionInfo,
 )

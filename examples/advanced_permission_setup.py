@@ -3,7 +3,6 @@
 import datetime as dt
 
 from autocrud.permission.acl import ACLPermissionChecker
-from autocrud.types import PermissionResult
 from autocrud.permission.composite import (
     CompositePermissionChecker,
     ConditionalPermissionChecker,
@@ -11,7 +10,7 @@ from autocrud.permission.composite import (
 from autocrud.permission.data_based import FieldLevelPermissionChecker
 from autocrud.permission.meta_based import ResourceOwnershipChecker
 from autocrud.permission.simple import AllowAll
-from autocrud.types import PermissionContext, ResourceAction
+from autocrud.types import PermissionContext, PermissionResult, ResourceAction
 
 
 def setup_advanced_permissions(permission_manager=None, resource_manager=None):

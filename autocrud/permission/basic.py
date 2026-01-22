@@ -1,11 +1,10 @@
 from abc import abstractmethod
 from typing import Generic, TypeVar
 
-
 from autocrud.types import (
+    IPermissionChecker,
     IResourceManager,
 )
-from autocrud.types import IPermissionChecker
 
 T = TypeVar("T")
 

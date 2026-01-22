@@ -1,6 +1,6 @@
 import datetime as dt
 import textwrap
-from typing import TypeVar, Literal
+from typing import Literal, TypeVar
 
 import msgspec
 from fastapi import APIRouter, Depends, HTTPException
@@ -12,8 +12,7 @@ from autocrud.crud.route_templates.basic import (
     jsonschema_to_json_schema_extra,
     struct_to_responses_type,
 )
-from autocrud.types import IResourceManager, RevisionStatus
-from autocrud.types import RevisionInfo
+from autocrud.types import IResourceManager, RevisionInfo, RevisionStatus
 
 T = TypeVar("T")
 

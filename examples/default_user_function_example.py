@@ -11,7 +11,9 @@ which is useful for dynamic user identification scenarios like:
 
 import datetime as dt
 import uuid
+
 from msgspec import Struct
+
 from autocrud import AutoCRUD
 
 

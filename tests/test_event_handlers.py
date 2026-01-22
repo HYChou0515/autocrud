@@ -16,9 +16,9 @@ from autocrud.resource_manager.events import do
 from autocrud.resource_manager.meta_store.simple import MemoryMetaStore
 from autocrud.resource_manager.resource_store.simple import MemoryResourceStore
 from autocrud.types import (
+    EventContext,
     OnSuccessCreate,
     ResourceAction,
-    EventContext,
     ResourceMetaSearchQuery,
 )
 

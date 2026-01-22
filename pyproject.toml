@@ -136,6 +136,11 @@ omit = [
 [tool.ruff.format]
 docstring-code-format = true
 
+[tool.ruff.lint]
+select = [
+    "I",
+]
+
 [tool.ruff.lint.pydocstyle]
 convention = "google"
 

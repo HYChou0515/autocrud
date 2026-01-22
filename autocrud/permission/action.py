@@ -11,9 +11,11 @@ import logging
 from collections.abc import Callable
 
 from autocrud.types import (
+    IPermissionChecker,
+    PermissionContext,
     PermissionResult,
+    ResourceAction,
 )
-from autocrud.types import IPermissionChecker, PermissionContext, ResourceAction
 
 logger = logging.getLogger(__name__)
 

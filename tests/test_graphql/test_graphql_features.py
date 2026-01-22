@@ -11,8 +11,8 @@ from fastapi.testclient import TestClient
 from autocrud.crud.core import AutoCRUD
 from autocrud.crud.route_templates.graphql import GraphQLRouteTemplate
 from autocrud.types import (
-    ResourceMeta,
     Resource,
+    ResourceMeta,
     RevisionInfo,
     RevisionStatus,
 )

@@ -1,5 +1,5 @@
-from contextlib import contextmanager
 from collections.abc import Generator
+from contextlib import contextmanager
 from typing import IO
 
 import boto3

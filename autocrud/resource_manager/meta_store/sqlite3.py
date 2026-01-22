@@ -1,10 +1,10 @@
+import datetime as dt
 import functools
 import json
 import pickle
 import re
 import sqlite3
 import threading
-import datetime as dt
 from collections import defaultdict
 from collections.abc import Callable, Generator
 from pathlib import Path
@@ -575,6 +575,7 @@ class S3SqliteMetaStore(SqliteMetaStore):
         """
         import tempfile
         import time
+
         import boto3
         from botocore.exceptions import ClientError
 
@@ -679,6 +680,7 @@ class S3SqliteMetaStore(SqliteMetaStore):
             return
 
         import time
+
         from botocore.exceptions import ClientError
 
         # Only check periodically to avoid too many API calls

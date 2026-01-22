@@ -793,8 +793,9 @@ def test_s3_sqlite_meta_store_reload_with_s3_file_deleted(s3_test_key, cleanup_s
 def test_s3_sqlite_meta_store_check_etag_s3_file_deleted(s3_test_key, cleanup_s3_file):
     """測試讀取檢查時 S3 文件已被刪除 (649->exit and 654-656)"""
     cleanup_s3_file.append(s3_test_key)
-    import boto3
     import time
+
+    import boto3
 
     # 創建並同步
     store = S3SqliteMetaStore(
@@ -856,6 +857,7 @@ def test_s3_sqlite_meta_store_check_etag_other_error(s3_test_key, cleanup_s3_fil
     cleanup_s3_file.append(s3_test_key)
     import time
     from unittest.mock import patch
+
     from botocore.exceptions import ClientError
 
     # 創建並同步

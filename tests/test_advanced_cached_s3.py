@@ -2,16 +2,17 @@
 Tests for MQCachedS3ResourceStore and ETagCachedS3ResourceStore
 """
 
+import datetime as dt
 import io
 from pathlib import Path
 from uuid import uuid4
-import datetime as dt
+
 import pytest
 
+from autocrud.resource_manager.resource_store.cache import MemoryCache
 from autocrud.resource_manager.resource_store.etag_cached_s3 import (
     ETagCachedS3ResourceStore,
 )
-from autocrud.resource_manager.resource_store.cache import MemoryCache
 from autocrud.resource_manager.resource_store.s3 import S3ResourceStore
 from autocrud.types import RevisionInfo, RevisionStatus
 
@@ -56,10 +57,11 @@ def test_mq_cached_invalidation(tmp_path: Path, wait_mq: bool, require_rabbitmq)
     4. Instance A更新資料（會發送MQ invalidation）
     5. Instance B再次讀取應該讀到新資料
     """
+    import time
+
     from autocrud.resource_manager.resource_store.mq_cached_s3 import (
         MQCachedS3ResourceStore,
     )
-    import time
 
     # Instance A
     store_a = MQCachedS3ResourceStore(
@@ -248,10 +250,11 @@ def test_mq_cached_auto_subscriber(tmp_path: Path, require_rabbitmq):
 
     驗證背景線程能正確接收和處理invalidation消息
     """
+    import time
+
     from autocrud.resource_manager.resource_store.mq_cached_s3 import (
         MQCachedS3ResourceStore,
     )
-    import time
 
     queue_prefix = f"test_auto_{uuid4().hex[:8]}_"
 
