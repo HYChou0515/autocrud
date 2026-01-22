@@ -4,11 +4,12 @@ from dataclasses import dataclass
 from msgspec import UNSET
 
 from autocrud.crud.core import AutoCRUD
-from autocrud.types import (
-    DataSearchOperator,
-)
 from autocrud.resource_manager.core import ResourceManager
-from autocrud.types import DataSearchCondition, ResourceMetaSearchQuery
+from autocrud.types import (
+    DataSearchCondition,
+    DataSearchOperator,
+    ResourceMetaSearchQuery,
+)
 
 
 @dataclass

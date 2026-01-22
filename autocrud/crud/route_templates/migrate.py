@@ -2,6 +2,7 @@ import datetime as dt
 import textwrap
 from typing import AsyncGenerator, TypeVar
 
+import msgspec
 from fastapi import (
     APIRouter,
     Depends,
@@ -23,7 +24,6 @@ from autocrud.types import (
     IResourceManager,
     ResourceMetaSearchQuery,
 )
-import msgspec
 
 T = TypeVar("T")
 

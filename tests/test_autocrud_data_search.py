@@ -5,13 +5,14 @@ import pytest
 from msgspec import UNSET
 
 from autocrud.crud.core import AutoCRUD
-from autocrud.types import (
-    DataSearchOperator,
-    RevisionInfo,
-)
 from autocrud.resource_manager.core import ResourceManager
 from autocrud.resource_manager.storage_factory import MemoryStorageFactory
-from autocrud.types import DataSearchCondition, ResourceMetaSearchQuery
+from autocrud.types import (
+    DataSearchCondition,
+    DataSearchOperator,
+    ResourceMetaSearchQuery,
+    RevisionInfo,
+)
 
 
 @dataclass

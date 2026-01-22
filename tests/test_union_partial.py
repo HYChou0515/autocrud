@@ -1,7 +1,9 @@
+import datetime as dt
+from typing import Union
+
 import pytest
 from msgspec import Struct
-from typing import Union
-import datetime as dt
+
 from autocrud.resource_manager.core import ResourceManager
 from autocrud.resource_manager.storage_factory import MemoryStorageFactory
 

@@ -1,19 +1,13 @@
+import time
 from collections.abc import Generator, Iterable
 from contextlib import contextmanager, suppress
-import time
+from enum import Enum as EnumType
 
 import psycopg2 as pg
 import psycopg2.pool
 from msgspec import UNSET
 from psycopg2.extras import DictCursor, execute_batch
 
-from autocrud.types import (
-    DataSearchGroup,
-    DataSearchLogicOperator,
-    DataSearchOperator,
-)
-
-from enum import Enum as EnumType
 from autocrud.resource_manager.basic import (
     Encoding,
     ISlowMetaStore,
@@ -21,11 +15,14 @@ from autocrud.resource_manager.basic import (
 )
 from autocrud.types import (
     DataSearchFilter,
+    DataSearchGroup,
+    DataSearchLogicOperator,
+    DataSearchOperator,
+    FieldTransform,
     ResourceMeta,
     ResourceMetaSearchQuery,
     ResourceMetaSearchSort,
     ResourceMetaSortDirection,
-    FieldTransform,
 )
 
 

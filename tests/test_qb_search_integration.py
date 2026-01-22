@@ -2,11 +2,12 @@
 測試 QB 表達式與 Search API 的整合
 """
 
-import pytest
-from fastapi.testclient import TestClient
-from fastapi import FastAPI, APIRouter
-from msgspec import Struct
 from typing import Any
+
+import pytest
+from fastapi import APIRouter, FastAPI
+from fastapi.testclient import TestClient
+from msgspec import Struct
 
 from autocrud import AutoCRUD
 

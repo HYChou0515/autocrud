@@ -1,26 +1,23 @@
 import datetime as dt
 from dataclasses import dataclass
+from enum import Enum, auto
 from pathlib import Path
 from zoneinfo import ZoneInfo
 
 import pytest
-from msgspec import UNSET
+from msgspec import UNSET, Struct
 
-from autocrud.types import (
-    ResourceMetaSortDirection,
-)
+from autocrud.resource_manager.core import IndexedValueExtractor
 from autocrud.types import (
     DataSearchCondition,
     DataSearchOperator,
+    IndexableField,
     ResourceDataSearchSort,
     ResourceMeta,
     ResourceMetaSearchQuery,
-    IndexableField,
+    ResourceMetaSortDirection,
     SpecialIndex,
 )
-from autocrud.resource_manager.core import IndexedValueExtractor
-from enum import Enum, auto
-from msgspec import Struct
 
 
 class UserRole(Enum):

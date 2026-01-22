@@ -9,9 +9,6 @@ from autocrud.permission.basic import (
     IPermissionCheckerWithStore,
 )
 from autocrud.permission.simple import RootOnly
-from autocrud.types import (
-    SpecialIndex,
-)
 from autocrud.resource_manager.core import ResourceManager
 from autocrud.resource_manager.storage_factory import (
     IStorageFactory,
@@ -29,6 +26,7 @@ from autocrud.types import (
     ResourceMetaSearchSort,
     ResourceMetaSortDirection,
     ResourceMetaSortKey,
+    SpecialIndex,
 )
 
 logger = logging.getLogger(__name__)

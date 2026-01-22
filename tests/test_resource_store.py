@@ -1,6 +1,6 @@
+import datetime as dt
 import io
 from uuid import uuid4
-import datetime as dt
 
 import pytest
 
@@ -13,9 +13,9 @@ from autocrud.types import RevisionInfo, RevisionStatus
 
 # Try to import S3ResourceStore, but make it optional
 try:
-    from autocrud.resource_manager.resource_store.s3 import S3ResourceStore
-    from autocrud.resource_manager.resource_store.cached_s3 import CachedS3ResourceStore
     from autocrud.resource_manager.resource_store.cache import MemoryCache
+    from autocrud.resource_manager.resource_store.cached_s3 import CachedS3ResourceStore
+    from autocrud.resource_manager.resource_store.s3 import S3ResourceStore
 
     S3_AVAILABLE = True
 except ImportError:

@@ -1,11 +1,12 @@
-from abc import ABC, abstractmethod
-from typing import IO
 import io
+import os
 import shutil
 import time
-import os
-from pathlib import Path
+from abc import ABC, abstractmethod
 from dataclasses import dataclass
+from pathlib import Path
+from typing import IO
+
 from autocrud.types import RevisionInfo
 
 
@@ -133,7 +134,7 @@ class DiskCache(ICache):
         self.cache_dir = Path(cache_dir)
         self.cache_dir.mkdir(parents=True, exist_ok=True)
         # We need a serializer for RevisionInfo to store it on disk
-        from autocrud.resource_manager.basic import MsgspecSerializer, Encoding
+        from autocrud.resource_manager.basic import Encoding, MsgspecSerializer
 
         self._info_serializer = MsgspecSerializer(
             encoding=Encoding.json,

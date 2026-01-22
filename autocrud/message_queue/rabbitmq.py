@@ -1,8 +1,9 @@
+from contextlib import contextmanager
+from typing import TYPE_CHECKING, Callable, Generic, TypeVar
+
 from autocrud.message_queue.basic import BasicMessageQueue, NoRetry
 from autocrud.types import Job, Resource, TaskStatus
 from autocrud.util.naming import NameConverter, NamingFormat
-from typing import TYPE_CHECKING, Callable, Generic, TypeVar
-from contextlib import contextmanager
 
 try:
     import pika

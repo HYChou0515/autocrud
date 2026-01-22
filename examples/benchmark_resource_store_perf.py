@@ -1,11 +1,11 @@
 import datetime as dt
-import time
-import shutil
-from pathlib import Path
-from uuid import uuid4
 import io
 import os
+import shutil
+import time
 import traceback
+from pathlib import Path
+from uuid import uuid4
 
 try:
     import matplotlib.pyplot as plt
@@ -28,11 +28,12 @@ from autocrud.types import RevisionInfo, RevisionStatus
 
 # Try importing S3 components
 try:
-    from autocrud.resource_manager.resource_store.s3 import S3ResourceStore
-    from autocrud.resource_manager.resource_store.cached_s3 import CachedS3ResourceStore
-    from autocrud.resource_manager.resource_store.cache import MemoryCache
     import boto3
     from botocore.exceptions import ClientError
+
+    from autocrud.resource_manager.resource_store.cache import MemoryCache
+    from autocrud.resource_manager.resource_store.cached_s3 import CachedS3ResourceStore
+    from autocrud.resource_manager.resource_store.s3 import S3ResourceStore
 
     S3_IMP_AVAILABLE = True
 except ImportError:

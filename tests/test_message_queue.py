@@ -1,29 +1,30 @@
 import datetime as dt
 import threading
 import time
+from unittest.mock import MagicMock, call, patch
+from uuid import uuid4
+
 import pytest
 from msgspec import Struct
-from unittest.mock import MagicMock, patch, call
-from uuid import uuid4
+
+from autocrud.message_queue.basic import NoRetry
 from autocrud.message_queue.rabbitmq import (
     RabbitMQMessageQueue,
     RabbitMQMessageQueueFactory,
 )
-from autocrud.message_queue.simple import SimpleMessageQueueFactory
-from autocrud.message_queue.basic import NoRetry
+from autocrud.message_queue.simple import SimpleMessageQueue, SimpleMessageQueueFactory
 from autocrud.resource_manager.core import ResourceManager, SimpleStorage
 from autocrud.resource_manager.meta_store.simple import MemoryMetaStore
 from autocrud.resource_manager.resource_store.simple import MemoryResourceStore
-from autocrud.message_queue.simple import SimpleMessageQueue
 from autocrud.types import (
     IMessageQueue,
+    IndexableField,
     Job,
     Resource,
-    TaskStatus,
-    IndexableField,
     ResourceMetaSearchQuery,
     RevisionInfo,
     RevisionStatus,
+    TaskStatus,
 )
 
 

@@ -1,6 +1,7 @@
 """Test ResourceManager message queue integration."""
 
 import datetime as dt
+
 from msgspec import Struct
 
 from autocrud import AutoCRUD

@@ -19,24 +19,24 @@
 """
 
 import datetime as dt
-from msgspec import Struct
+import random
+import time
 from enum import Enum
 from typing import Optional
-import time
-import random
 
 import uvicorn
 from fastapi import FastAPI
+from msgspec import Struct
 
 from autocrud import AutoCRUD
-from autocrud.query import QB  # QueryBuilder for advanced queries
 from autocrud.crud.route_templates.blob import BlobRouteTemplate
-from autocrud.types import Binary, Job, Resource
 from autocrud.crud.route_templates.graphql import GraphQLRouteTemplate
 from autocrud.crud.route_templates.migrate import MigrateRouteTemplate
-from autocrud.resource_manager.storage_factory import DiskStorageFactory
-from autocrud.message_queue.simple import SimpleMessageQueueFactory
 from autocrud.message_queue.rabbitmq import RabbitMQMessageQueueFactory
+from autocrud.message_queue.simple import SimpleMessageQueueFactory
+from autocrud.query import QB  # QueryBuilder for advanced queries
+from autocrud.resource_manager.storage_factory import DiskStorageFactory
+from autocrud.types import Binary, Job, Resource
 
 
 class CharacterClass(Enum):

@@ -1,9 +1,11 @@
 """Test default_user as a function"""
 
 import datetime as dt
-from msgspec import Struct
-from autocrud import AutoCRUD
 import uuid
+
+from msgspec import Struct
+
+from autocrud import AutoCRUD
 
 
 class SampleModel(Struct):

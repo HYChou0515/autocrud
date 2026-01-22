@@ -4,12 +4,13 @@
 
 import datetime as dt
 
-from autocrud.types import (
-    PermissionResult,
-)
 from autocrud.permission.composite import CompositePermissionChecker
 from autocrud.permission.simple import AllowAll
-from autocrud.types import IPermissionChecker, PermissionContext
+from autocrud.types import (
+    IPermissionChecker,
+    PermissionContext,
+    PermissionResult,
+)
 
 
 class SimplePermissionManager:

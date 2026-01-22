@@ -1,9 +1,11 @@
 import base64
 from contextlib import contextmanager
+
 import pytest
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
 from msgspec import Struct
+
 from autocrud.crud.core import AutoCRUD
 from autocrud.types import Binary
 
@@ -89,12 +91,12 @@ def test_blob_store_not_configured():
     # We need to manually construct AutoCRUD/ResourceManager to simulate no blob_store
     # or Mock AutoCRUD to return a manager without blob_store
 
-    from autocrud.resource_manager.core import ResourceManager, SimpleStorage
-    from autocrud.resource_manager.resource_store.simple import MemoryResourceStore
-    from autocrud.resource_manager.meta_store.simple import MemoryMetaStore
+    from fastapi import APIRouter
 
     from autocrud.crud.route_templates.blob import BlobRouteTemplate
-    from fastapi import APIRouter
+    from autocrud.resource_manager.core import ResourceManager, SimpleStorage
+    from autocrud.resource_manager.meta_store.simple import MemoryMetaStore
+    from autocrud.resource_manager.resource_store.simple import MemoryResourceStore
 
     # Create manager without blob_store
     store = SimpleStorage(MemoryMetaStore(), MemoryResourceStore())
@@ -147,8 +149,9 @@ def test_blob_route_not_implemented_error():
     manager = MockManager()
 
     # Setup Route
-    from autocrud.crud.route_templates.blob import BlobRouteTemplate
     from fastapi import APIRouter
+
+    from autocrud.crud.route_templates.blob import BlobRouteTemplate
 
     template = BlobRouteTemplate()
     router = APIRouter()
@@ -171,8 +174,9 @@ def test_blob_route_skip_non_resource_manager():
 
     manager = NotAManager()
 
-    from autocrud.crud.route_templates.blob import BlobRouteTemplate
     from fastapi import APIRouter
+
+    from autocrud.crud.route_templates.blob import BlobRouteTemplate
 
     template = BlobRouteTemplate()
     router = APIRouter()
@@ -211,8 +215,9 @@ def test_blob_redirect():
 
     manager = MockManager()
 
-    from autocrud.crud.route_templates.blob import BlobRouteTemplate
     from fastapi import APIRouter
+
+    from autocrud.crud.route_templates.blob import BlobRouteTemplate
 
     template = BlobRouteTemplate()
     router = APIRouter()

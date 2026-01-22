@@ -1,15 +1,15 @@
 import datetime as dt
-import time
 import shutil
+import statistics
+import time
 from pathlib import Path
 from uuid import uuid4
-import statistics
 
 try:
     import matplotlib.pyplot as plt
-    from matplotlib.colors import LogNorm
     import pandas as pd
     import seaborn as sns
+    from matplotlib.colors import LogNorm
 
     HAS_PLOT_DEPS = True
 except ImportError:
@@ -17,17 +17,10 @@ except ImportError:
     print("Warning: matplotlib and pandas not found. PNG generation will be skipped.")
 
 import json
+
 import psycopg2
 import redis
-from autocrud.types import (
-    ResourceMeta,
-    ResourceMetaSearchQuery,
-    ResourceMetaSearchSort,
-    ResourceMetaSortKey,
-    ResourceMetaSortDirection,
-    DataSearchCondition,
-    DataSearchOperator,
-)
+
 from autocrud.resource_manager.meta_store.df import DFMemoryMetaStore
 from autocrud.resource_manager.meta_store.fast_slow import FastSlowMetaStore
 from autocrud.resource_manager.meta_store.postgres import PostgresMetaStore
@@ -39,6 +32,15 @@ from autocrud.resource_manager.meta_store.simple import (
 from autocrud.resource_manager.meta_store.sqlite3 import (
     FileSqliteMetaStore,
     MemorySqliteMetaStore,
+)
+from autocrud.types import (
+    DataSearchCondition,
+    DataSearchOperator,
+    ResourceMeta,
+    ResourceMetaSearchQuery,
+    ResourceMetaSearchSort,
+    ResourceMetaSortDirection,
+    ResourceMetaSortKey,
 )
 
 # --- Helpers adapted from test_resource_manager.py ---

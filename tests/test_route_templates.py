@@ -1,11 +1,12 @@
 """測試 RouteTemplate 功能"""
 
 # 測試用的模型
+import itertools as it
+
 import msgspec
 import pytest
 from fastapi import APIRouter, FastAPI
 from fastapi.testclient import TestClient
-import itertools as it
 
 from autocrud.crud.core import (
     AutoCRUD,

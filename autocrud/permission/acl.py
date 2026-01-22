@@ -8,9 +8,6 @@ from autocrud.permission.basic import (
     IPermissionCheckerWithStore,
 )
 from autocrud.permission.simple import RootOnly
-from autocrud.types import (
-    IndexableField,
-)
 from autocrud.resource_manager.core import ResourceManager
 from autocrud.resource_manager.storage_factory import (
     IStorageFactory,
@@ -19,6 +16,7 @@ from autocrud.resource_manager.storage_factory import (
 from autocrud.types import (
     DataSearchCondition,
     DataSearchOperator,
+    IndexableField,
     PermissionContext,
     PermissionResult,
     ResourceAction,

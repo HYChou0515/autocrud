@@ -1,6 +1,6 @@
-import sys
-import shutil
 import re
+import shutil
+import sys
 from pathlib import Path
 
 # Add examples to path to allow importing benchmark scripts
@@ -13,8 +13,8 @@ def run_benchmarks():
     """Run both benchmarks."""
     # We import here so that sys.path modification takes effect
     try:
-        import benchmark_resource_store_perf
         import benchmark_metastore_perf
+        import benchmark_resource_store_perf
     except ImportError as e:
         print(f"Error importing benchmark scripts: {e}")
         sys.exit(1)

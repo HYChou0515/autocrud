@@ -1,24 +1,25 @@
 import datetime as dt
 from zoneinfo import ZoneInfo
-from msgspec import UNSET
+
 import pytest
+from msgspec import UNSET
+
 from autocrud.query import QB, ConditionBuilder
+from autocrud.resource_manager.core import ResourceManager, SimpleStorage
+from autocrud.resource_manager.meta_store.simple import MemoryMetaStore
+from autocrud.resource_manager.resource_store.simple import MemoryResourceStore
 from autocrud.types import (
     DataSearchCondition,
     DataSearchGroup,
     DataSearchLogicOperator,
     DataSearchOperator,
+    IndexableField,
     ResourceDataSearchSort,
     ResourceMeta,
-    ResourceMetaSortKey,
-    ResourceMetaSortDirection,
     ResourceMetaSearchQuery,
-    IndexableField,
+    ResourceMetaSortDirection,
+    ResourceMetaSortKey,
 )
-from autocrud.resource_manager.core import ResourceManager
-from autocrud.resource_manager.meta_store.simple import MemoryMetaStore
-from autocrud.resource_manager.resource_store.simple import MemoryResourceStore
-from autocrud.resource_manager.core import SimpleStorage
 
 
 class TestQueryBuilder:
@@ -2593,8 +2594,9 @@ class TestQueryBuilderEdgeCases:
 
     def test_filter_with_enum_value(self):
         """Test filter() method with Enum value - RPG game example."""
-        from autocrud.query import QB
         from enum import Enum
+
+        from autocrud.query import QB
 
         class CharacterClass(Enum):
             WARRIOR = "⚔️ 戰士"

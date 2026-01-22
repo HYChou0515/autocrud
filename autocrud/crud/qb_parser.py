@@ -7,10 +7,9 @@
 
 import ast
 import datetime as dt
-from typing import Any
 
 # 為了避免循環導入，在類型檢查時才導入
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any
 
 if TYPE_CHECKING:
     from autocrud.query import ConditionBuilder

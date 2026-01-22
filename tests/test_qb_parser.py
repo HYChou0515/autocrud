@@ -4,7 +4,7 @@
 
 import pytest
 
-from autocrud.crud.qb_parser import SafeQBParser, QBParseError, parse_qb_expression
+from autocrud.crud.qb_parser import QBParseError, SafeQBParser, parse_qb_expression
 
 
 class TestSafeQBParser:

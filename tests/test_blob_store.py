@@ -1,10 +1,12 @@
 from collections.abc import Generator
-from msgspec import UNSET
+
 import pytest
+from msgspec import UNSET
+from xxhash import xxh3_128_hexdigest
+
 from autocrud.resource_manager.basic import IBlobStore
 from autocrud.resource_manager.blob_store.simple import DiskBlobStore, MemoryBlobStore
 from autocrud.types import Binary
-from xxhash import xxh3_128_hexdigest
 
 # -----------------------------------------------------------------------------
 # Behavior / Contract Tests

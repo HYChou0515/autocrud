@@ -1,9 +1,9 @@
 from autocrud.resource_manager.basic import _evaluate_trivalent
 from autocrud.types import (
     DataSearchCondition,
-    DataSearchOperator,
     DataSearchGroup,
     DataSearchLogicOperator,
+    DataSearchOperator,
 )
 
 

@@ -1,16 +1,15 @@
+import datetime as dt
 from abc import ABC, abstractmethod
 from collections.abc import Generator, Iterable
 from contextlib import AbstractContextManager
-from jsonpointer import JsonPointer
-import datetime as dt
 from enum import Enum, Flag, StrEnum, auto
 from typing import IO, Any, Callable, Generic, TypeVar
-from typing_extensions import Literal
 from uuid import UUID
 
 from jsonpatch import JsonPatch
+from jsonpointer import JsonPointer
 from msgspec import UNSET, Struct, UnsetType, defstruct
-
+from typing_extensions import Literal
 
 T = TypeVar("T")
 

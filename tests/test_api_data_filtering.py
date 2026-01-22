@@ -1,12 +1,12 @@
 """測試 API 端點的 data filtering 功能"""
 
+import itertools as it
 import json
 
 import pytest
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
 from msgspec import Struct, to_builtins
-import itertools as it
 
 from autocrud.crud.core import AutoCRUD
 from autocrud.resource_manager.storage_factory import MemoryStorageFactory

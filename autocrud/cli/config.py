@@ -1,11 +1,12 @@
+import json
+import subprocess as sp
 from contextlib import suppress
+from pathlib import Path
+
+import httpx
+import typer
 from pydantic import BaseModel
 from typer import Typer
-import typer
-import subprocess as sp
-import json
-import httpx
-from pathlib import Path
 
 
 class UserConfig(BaseModel):

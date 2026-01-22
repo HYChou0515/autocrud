@@ -1,11 +1,11 @@
 import datetime as dt
-from collections.abc import Callable, Generator, Iterable, Sequence
+import inspect
+import io
 import threading
-from jsonpointer import JsonPointer
+import traceback
+from collections.abc import Callable, Generator, Iterable, Sequence
 from contextlib import contextmanager, suppress
 from functools import cached_property, wraps
-import io
-import traceback
 from typing import (
     IO,
     TYPE_CHECKING,
@@ -17,27 +17,15 @@ from typing import (
     get_origin,
 )
 from uuid import uuid4
-import inspect
+
+import more_itertools as mit
 import msgspec
-from autocrud.resource_manager.partial import create_partial_type, prune_object
 from jsonpatch import JsonPatch
+from jsonpointer import JsonPointer
 from msgspec import UNSET, Struct, UnsetType
 from xxhash import xxh3_128_hexdigest
-from autocrud.types import (
-    AfterMigrate,
-    AfterModify,
-    BeforeMigrate,
-    BeforeModify,
-    CannotModifyResourceError,
-    IMessageQueue,
-    OnFailureMigrate,
-    OnFailureModify,
-    OnSuccessMigrate,
-    OnSuccessModify,
-    PermissionDeniedError,
-    RawResource,
-)
-import more_itertools as mit
+
+from autocrud.resource_manager.partial import create_partial_type, prune_object
 from autocrud.types import (
     AfterCreate,
     AfterDelete,
@@ -47,6 +35,8 @@ from autocrud.types import (
     AfterGetResourceRevision,
     AfterListRevisions,
     AfterLoad,
+    AfterMigrate,
+    AfterModify,
     AfterPatch,
     AfterRestore,
     AfterSearchResources,
@@ -60,15 +50,21 @@ from autocrud.types import (
     BeforeGetResourceRevision,
     BeforeListRevisions,
     BeforeLoad,
+    BeforeMigrate,
+    BeforeModify,
     BeforePatch,
     BeforeRestore,
     BeforeSearchResources,
     BeforeSwitch,
     BeforeUpdate,
+    Binary,
+    CannotModifyResourceError,
     EventContext,
+    IEventHandler,
+    IMessageQueue,
     IMigration,
-    IResourceManager,
     IndexableField,
+    IResourceManager,
     OnFailureCreate,
     OnFailureDelete,
     OnFailureDump,
@@ -77,6 +73,8 @@ from autocrud.types import (
     OnFailureGetResourceRevision,
     OnFailureListRevisions,
     OnFailureLoad,
+    OnFailureMigrate,
+    OnFailureModify,
     OnFailurePatch,
     OnFailureRestore,
     OnFailureSearchResources,
@@ -90,12 +88,15 @@ from autocrud.types import (
     OnSuccessGetResourceRevision,
     OnSuccessListRevisions,
     OnSuccessLoad,
+    OnSuccessMigrate,
+    OnSuccessModify,
     OnSuccessPatch,
     OnSuccessRestore,
     OnSuccessSearchResources,
     OnSuccessSwitch,
     OnSuccessUpdate,
-    Binary,
+    PermissionDeniedError,
+    RawResource,
     Resource,
     ResourceAction,
     ResourceIDNotFoundError,
@@ -107,26 +108,25 @@ from autocrud.types import (
     RevisionStatus,
     SpecialIndex,
 )
-from autocrud.types import IEventHandler
 
 if TYPE_CHECKING:
     from autocrud.types import IPermissionChecker
 
 
-from autocrud.types import PermissionResult
+from autocrud.query import Query
 from autocrud.resource_manager.basic import (
     Ctx,
     Encoding,
+    IBlobStore,
     IMetaStore,
     IResourceStore,
-    IBlobStore,
     IStorage,
     MsgspecSerializer,
 )
 from autocrud.resource_manager.binary_processor import BinaryProcessor
 from autocrud.resource_manager.data_converter import DataConverter
+from autocrud.types import PermissionResult
 from autocrud.util.naming import NameConverter, NamingFormat
-from autocrud.query import Query
 
 T = TypeVar("T")
 
