@@ -78,7 +78,7 @@ plugins:
   - search:
       lang:
         - zh
-        - en
+        # - en
       separator: '[\s\-\.]+'
   
   - section-index
@@ -113,39 +113,40 @@ plugins:
       reconfigure_material: true
       reconfigure_search: true
       languages:
-        - locale: en
-          default: true
-          name: English
-          build: true
-          site_name: AutoCRUD
-          site_description: "Model-driven automated FastAPI: Built-in versioning, permissions, and search"
-          theme:
-            language: en
-          nav:
-            - Home: index.md
-            - Getting Started:
-              - Installation: getting-started/installation.md
-              - Quick Start: getting-started/quickstart.md
-              - First API: getting-started/first-api.md
-            - Core Concepts:
-              - Architecture: core-concepts/architecture.md
-              - AutoCRUD Routes: core-concepts/auto-routes.md
-              - ResourceManager: core-concepts/resource-manager.md
-              - Query Builder: core-concepts/query-builder.md
-            - Examples:
-              - Overview: examples/index.md
-            - Benchmarks:
-              - Performance: benchmarks/index.md
-              - MetaStore Performance: benchmarks/metastore.md
-              - ResourceStore Performance: benchmarks/resource_store.md
-            - API Reference:
-              - reference/autocrud.md
-              - reference/resource-manager.md
-              - reference/types.md
-              - reference/permission.md
-              - reference/message-queue.md
-              - reference/query.md
+        # - locale: en
+        #   default: true
+        #   name: English
+        #   build: true
+        #   site_name: AutoCRUD
+        #   site_description: "Model-driven automated FastAPI: Built-in versioning, permissions, and search"
+          # theme:
+          #   language: en
+          # nav:
+          #   - Home: index.md
+          #   - Getting Started:
+          #     - Installation: getting-started/installation.md
+          #     - Quick Start: getting-started/quickstart.md
+          #     - First API: getting-started/first-api.md
+          #   - Core Concepts:
+          #     - Architecture: core-concepts/architecture.md
+          #     - AutoCRUD Routes: core-concepts/auto-routes.md
+          #     - ResourceManager: core-concepts/resource-manager.md
+          #     - Query Builder: core-concepts/query-builder.md
+          #   - Examples:
+          #     - Overview: examples/index.md
+          #   - Benchmarks:
+          #     - Performance: benchmarks/index.md
+          #     - MetaStore Performance: benchmarks/metastore.md
+          #     - ResourceStore Performance: benchmarks/resource_store.md
+          #   - API Reference:
+          #     - reference/autocrud.md
+          #     - reference/resource-manager.md
+          #     - reference/types.md
+          #     - reference/permission.md
+          #     - reference/message-queue.md
+          #     - reference/query.md
         - locale: zh
+          default: true
           name: 繁體中文
           build: true
           site_name: AutoCRUD
