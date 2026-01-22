@@ -50,6 +50,8 @@ from fastapi import FastAPI
 
 app = FastAPI()
 crud.apply(app)
+# 建立 swagger docs
+crud.openapi(app)
 ```
 
 ## 完整範例
@@ -171,7 +173,7 @@ AutoCRUD 為 `TodoItem` 自動生成了以下端點：
 | `POST` | `/todo-item/{id}/switch` | 切換版本 |
 
 !!! info "還有更多端點"
-    完整的端點列表請參考 [AutoCRUD 路由](../core-concepts/auto-routes.md)。
+    完整的端點列表請參考 [AutoCRUD 路由](../core-concepts/auto-routes.md#auto-fastapi-routes)。
 
 ## 常見問題
 
@@ -198,7 +200,7 @@ AutoCRUD 為 `TodoItem` 自動生成了以下端點：
 
     看範例瞭解如何設定儲存後端, 內建memory, disk, sqlite, postgres等等可供選擇
 
-    [:octicons-arrow-right-24: 設定儲存後端](storage-backend.md)
+    [:octicons-arrow-right-24: 設定儲存後端](../storage/index.md)
 
 -   :material-book-open-page-variant: __調整API Routes__
 
@@ -231,13 +233,5 @@ AutoCRUD 為 `TodoItem` 自動生成了以下端點：
     直接使用 ResourceManager 進行資源操作
 
     [:octicons-arrow-right-24: ResourceManager](../core-concepts/resource-manager.md)
-
--   :material-tune: __自定義配置__
-
-    ---
-
-    了解如何客製化路由、權限與事件
-
-    [:octicons-arrow-right-24: 調整路由](customize-routes.md)
 
 </div>

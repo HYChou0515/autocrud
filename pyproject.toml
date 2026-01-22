@@ -87,6 +87,7 @@ dev = [
     "fastapi[standard]>=0.116.1",
     "furo>=2025.7.19",
     "httpx>=0.28.1",
+    "ipykernel>=7.1.0",
     "ipython>=9.4.0",
     "linkify-it-py>=2.0.3",
     "myst-parser>=4.0.1",

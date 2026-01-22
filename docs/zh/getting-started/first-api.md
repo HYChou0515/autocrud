@@ -269,35 +269,43 @@ crud.add_model(
 
 <div class="grid cards" markdown>
 
--   :material-shield-lock: __權限系統__
+-   :material-book-open-page-variant: __設定儲存後端__
 
     ---
 
-    了解如何實作複雜的權限控制
+    看範例瞭解如何設定儲存後端, 內建memory, disk, sqlite, postgres等等可供選擇
 
-    [:octicons-arrow-right-24: 權限指南](../guides/permissions.md)
+    [:octicons-arrow-right-24: 設定儲存後端](../storage/index.md)
 
--   :material-history: __版本控制__
-
-    ---
-
-    深入了解版本控制機制
-
-    [:octicons-arrow-right-24: 版本控制](../guides/versioning.md)
-
--   :material-magnify: __搜尋與過濾__
+-   :material-book-open-page-variant: __調整API Routes__
 
     ---
 
-    學習進階搜尋功能
+    看範例瞭解如何調整API Routes, 包含設定resource name, route template
 
-    [:octicons-arrow-right-24: 搜尋指南](../guides/search.md)
+    [:octicons-arrow-right-24: 調整API Routes](customize-routes.md)
 
--   :material-puzzle: __ResourceManager__
+-   :material-book-open-page-variant: __深入了解__
 
     ---
 
-    直接使用 ResourceManager 進行操作
+    學習 AutoCRUD 的核心概念與架構
+
+    [:octicons-arrow-right-24: 架構概覽](../core-concepts/architecture.md)
+
+-   :material-code-braces: __查看更多範例__
+
+    ---
+
+    探索權限、版本控制等進階功能
+
+    [:octicons-arrow-right-24: 範例集](../examples/index.md)
+
+-   :material-cog: __ResourceManager__
+
+    ---
+
+    直接使用 ResourceManager 進行資源操作
 
     [:octicons-arrow-right-24: ResourceManager](../core-concepts/resource-manager.md)
 

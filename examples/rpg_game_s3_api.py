@@ -38,7 +38,7 @@ from autocrud import AutoCRUD
 from autocrud.crud.route_templates.blob import BlobRouteTemplate
 from autocrud.crud.route_templates.graphql import GraphQLRouteTemplate
 from autocrud.query import QB
-from autocrud.resource_manager.s3_storage_factory import S3StorageFactory
+from autocrud.resource_manager.storage_factory import S3StorageFactory
 from autocrud.types import Binary
 
 

@@ -24,7 +24,7 @@ class TodoItem(Struct):
 crud = AutoCRUD()
 
 # 預設會是 "todo-item"
-crud.add_model(TodoItem)
+# crud.add_model(TodoItem)
 
 # 自定義為 "tasks"
 crud.add_model(TodoItem, name="tasks")
@@ -69,7 +69,7 @@ def custom_naming(model_type: type) -> str:
     return f"api/v1/{name.lower()}"
 
 crud = AutoCRUD(model_naming=custom_naming)
-crud.add_model(User)  # 生成 /api/v1/user
+crud.add_model(TodoItem)  # 生成 /api/v1/todoitem
 ```
 
 ## 路由模板系統
@@ -107,13 +107,13 @@ crud = AutoCRUD(
     ]
 )
 
-crud.add_model(Article)
+crud.add_model(TodoItem)
 ```
 
 這樣只會生成：
 
-- `GET /article/{id}/data` - 讀取文章
-- `GET /article/data` - 列出文章
+- `GET /todo-item/{id}/data` - 讀取文章
+- `GET /todo-item/data` - 列出文章
 
 而不會有建立、更新、刪除等端點。
 
@@ -129,10 +129,10 @@ from autocrud.crud.route_templates.graphql import GraphQLRouteTemplate
 
 crud = AutoCRUD()
 crud.add_route_template(GraphQLRouteTemplate())
-crud.add_model(User)
+crud.add_model(TodoItem)
 ```
 
-生成端點：`POST /user/graphql`
+生成端點：`POST /todo-item/graphql`
 
 使用範例：
 
@@ -180,25 +180,32 @@ crud.add_model(ProfileImage)
 ```python
 from autocrud import AutoCRUD
 from autocrud.crud.route_templates.migrate import MigrateRouteTemplate
+from autocrud.types import IMigration
+from typing import IO
 
 crud = AutoCRUD()
 crud.add_route_template(MigrateRouteTemplate())
 
 # 定義遷移邏輯
-def migrate_v1_to_v2(data: dict) -> dict:
-    data["new_field"] = "default_value"
-    return data
+class TodoItemMigration(IMigration):
+    schema_version = "2"
+    
+    def migrate(self, data: IO[bytes], schema_version: str | None) -> dict:
+        import msgspec
+        old_data = msgspec.json.decode(data.read())
+        old_data["new_field"] = "default_value"
+        return old_data
 
 crud.add_model(
-    User,
-    migration={"1": ("2", migrate_v1_to_v2)}
+    TodoItem,
+    migration=TodoItemMigration()
 )
 ```
 
 生成端點：
 
-- `POST /user/migrate/test` - 測試遷移（不實際修改資料）
-- `POST /user/migrate/execute` - 執行遷移
+- `POST /todo-item/migrate/test` - 測試遷移（不實際修改資料）
+- `POST /todo-item/migrate/execute` - 執行遷移
 
 ## 實際範例
 
@@ -266,11 +273,10 @@ crud.add_model(Document)
 
 ```python title="mixed_config.py"
 from msgspec import Struct
+from fastapi import FastAPI, APIRouter
 from autocrud import AutoCRUD
 from autocrud.crud.route_templates.create import CreateRouteTemplate
 from autocrud.crud.route_templates.get import ReadRouteTemplate
-from autocrud.crud.route_templates.update import UpdateRouteTemplate
-from autocrud.crud.route_templates.delete import DeleteRouteTemplate
 from autocrud.crud.route_templates.search import ListRouteTemplate
 
 class User(Struct):
@@ -282,21 +288,23 @@ class AuditLog(Struct):
     user_id: str
     timestamp: str
 
-# 全域預設配置
-crud = AutoCRUD()
+app = FastAPI()
 
-# User: 完整 CRUD
-crud.add_model(User)
+# User: 完整 CRUD（使用預設路由模板）
+user_crud = AutoCRUD()
+user_crud.add_model(User)
+user_crud.apply(app)
 
 # AuditLog: 只能建立和讀取（Append-only）
-crud.add_model(
-    AuditLog,
+audit_crud = AutoCRUD(
     route_templates=[
         CreateRouteTemplate(),
         ReadRouteTemplate(),
         ListRouteTemplate(),
     ]
 )
+audit_crud.add_model(AuditLog)
+audit_crud.apply(app)
 ```
 
 ### 範例 4：自定義路由前綴
@@ -359,28 +367,6 @@ crud.add_model(User)
 # 生成端點: GET /user/stats
 ```
 
-## 配置路由模板參數
-
-使用字典配置內建模板的參數：
-
-```python
-from autocrud import AutoCRUD
-from autocrud.crud.route_templates.search import ListRouteTemplate
-from autocrud.crud.route_templates.get import ReadRouteTemplate
-
-crud = AutoCRUD(
-    route_templates={
-        ListRouteTemplate: {
-            "default_limit": 50,  # 預設每頁 50 筆
-            "max_limit": 200,     # 最多每頁 200 筆
-        },
-        ReadRouteTemplate: {
-            "include_metadata": True,  # 預設包含 metadata
-        },
-    }
-)
-```
-
 ## 路由優先順序
 
 路由模板透過 `order` 屬性控制註冊順序。數字越小越早註冊：
@@ -409,14 +395,27 @@ crud = AutoCRUD(
 
 ### 2. 為不同資源使用不同配置
 
-```python
-# ✅ 好：根據資源特性調整
-crud.add_model(User)  # 完整 CRUD
+不同的資源可以使用不同的 AutoCRUD 實例來配置不同的路由：
 
-crud.add_model(
-    AuditLog,  # 唯讀 + 建立
-    route_templates=[CreateRouteTemplate(), ReadRouteTemplate()]
+```python
+# User: 完整 CRUD
+user_crud = AutoCRUD()
+user_crud.add_model(User)
+
+# AuditLog: 只有建立和讀取
+audit_crud = AutoCRUD(
+    route_templates=[
+        CreateRouteTemplate(),
+        ReadRouteTemplate(),
+        ListRouteTemplate(),
+    ]
 )
+audit_crud.add_model(AuditLog)
+
+# 應用到同一個 FastAPI app
+app = FastAPI()
+user_crud.apply(app)
+audit_crud.apply(app)
 ```
 
 ### 3. 使用語意化的資源名稱
@@ -434,8 +433,8 @@ crud.add_model(UserProfile, name="up")
 
 ```python
 # ✅ 好：清楚的版本控制
-crud.add_model(User, name="v1/users")
-crud.add_model(UserV2, name="v2/users")
+crud.add_model(User, name="user")
+crud.add_model(UserV2, name="user-v2")
 ```
 
 ## 常見問題
@@ -449,8 +448,8 @@ A: 使用 `route_templates` 參數只包含需要的模板。
 A: 可以，使用不同的 `name` 參數即可。
 
 ```python
-crud.add_model(User, name="users")
-crud.add_model(User, name="admin/users")  # 不同的端點
+crud.add_model(User, name="user")
+crud.add_model(User, name="admin-user")  # 不同的端點
 ```
 
 ### Q: 如何添加認證到特定端點？
@@ -458,20 +457,38 @@ crud.add_model(User, name="admin/users")  # 不同的端點
 A: 在自定義路由模板中使用 FastAPI 的 `Depends`：
 
 ```python
-from fastapi import Depends, HTTPException
-from fastapi.security import HTTPBearer
+from fastapi import Depends, APIRouter
+from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
+from autocrud.crud.route_templates.basic import BaseRouteTemplate
 
 security = HTTPBearer()
 
 class SecureReadTemplate(BaseRouteTemplate):
+    @property
+    def order(self) -> int:
+        return 100
+    
     def apply(self, model_name: str, resource_manager, router: APIRouter):
         @router.get(
-            f"/{model_name}/{{id}}/data",
+            f"/{model_name}/{{resource_id}}/data",
             dependencies=[Depends(security)]  # 需要認證
         )
-        async def read_resource(id: str):
-            # 端點邏輯
-            pass
+        async def read_resource(
+            resource_id: str,
+            credentials: HTTPAuthorizationCredentials = Depends(security)
+        ):
+            # 驗證 token（範例）
+            # if not verify_token(credentials.credentials):
+            #     raise HTTPException(status_code=401, detail="Invalid token")
+            
+            # 取得資源
+            resource = resource_manager.get(resource_id)
+            return resource.data
+
+# 使用範例
+crud = AutoCRUD()
+crud.add_route_template(SecureReadTemplate())
+crud.add_model(User)
 ```
 
 ### Q: 路由模板的執行順序重要嗎？
