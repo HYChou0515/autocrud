@@ -895,7 +895,7 @@ class TestIndexedValueExtractor:
         assert result == {"address.city": "Taipei"}
 
     def test_extract_enum_string_values(self):
-        """測試 Enum（字符串值）保留原始 Enum 對象（序列化時才轉換）"""
+        """測試 Enum（字符串值）會被轉換為其值"""
 
         class User(Struct):
             name: str
@@ -909,13 +909,13 @@ class TestIndexedValueExtractor:
         user = User(name="Charlie", role=UserRole.DEVELOPER)
         result = extractor.extract_indexed_values(user)
 
-        # 提取階段保留 Enum 對象，序列化時才轉換為 .value
-        assert result == {"role": UserRole.DEVELOPER}
-        assert isinstance(result["role"], UserRole)
-        assert result["role"].value == "開發者"
+        # 提取階段會將 Enum 轉換為 .value（為了支援 JSON 序列化）
+        assert result == {"role": "開發者"}
+        assert isinstance(result["role"], str)
+        assert result["role"] == "開發者"
 
     def test_extract_enum_int_values(self):
-        """測試 Enum（整數值）保留原始 Enum 對象（序列化時才轉換）"""
+        """測試 Enum（整數值）會被轉換為其值"""
 
         class Task(Struct):
             name: str
@@ -929,13 +929,13 @@ class TestIndexedValueExtractor:
         task = Task(name="Important Task", priority=Priority.HIGH)
         result = extractor.extract_indexed_values(task)
 
-        # 提取階段保留 Enum 對象，序列化時才轉換為 .value
-        assert result == {"priority": Priority.HIGH}
-        assert isinstance(result["priority"], Priority)
-        assert result["priority"].value == 3
+        # 提取階段會將 Enum 轉換為 .value（為了支援 JSON 序列化）
+        assert result == {"priority": 3}
+        assert isinstance(result["priority"], int)
+        assert result["priority"] == 3
 
     def test_extract_enum_auto_values(self):
-        """測試 Enum（auto() 生成的值）保留原始 Enum 對象（序列化時才轉換）"""
+        """測試 Enum（auto() 生成的值）會被轉換為其值"""
 
         class Task(Struct):
             name: str
@@ -949,13 +949,13 @@ class TestIndexedValueExtractor:
         task = Task(name="Active Task", status=Status.ACTIVE)
         result = extractor.extract_indexed_values(task)
 
-        # 提取階段保留 Enum 對象，序列化時才轉換為 auto() 生成的值
-        assert result == {"status": Status.ACTIVE}
-        assert isinstance(result["status"], Status)
-        assert result["status"].value == 2
+        # 提取階段會將 Enum 轉換為 auto() 生成的值（為了支援 JSON 序列化）
+        assert result == {"status": 2}
+        assert isinstance(result["status"], int)
+        assert result["status"] == 2
 
     def test_extract_multiple_fields_with_enum(self):
-        """測試同時提取多個欄位，包含 Enum（保留原始對象）"""
+        """測試同時提取多個欄位，包含 Enum（會被轉換為值）"""
 
         class User(Struct):
             name: str
@@ -972,8 +972,8 @@ class TestIndexedValueExtractor:
         user = User(name="David", age=25, role=UserRole.ANALYST)
         result = extractor.extract_indexed_values(user)
 
-        assert result == {"name": "David", "age": 25, "role": UserRole.ANALYST}
-        assert result["role"].value == "分析師"
+        assert result == {"name": "David", "age": 25, "role": "分析師"}
+        assert result["role"] == "分析師"
 
     def test_extract_msgspec_tag(self):
         """測試提取 msgspec tag（用於 Union 類型識別）"""
@@ -1214,8 +1214,8 @@ class TestIndexedValueExtractor:
             "active": True,
             "tags": ["urgent", "review"],
             "created_at": created_time,
-            "role": UserRole.ADMIN,  # 保留 Enum 對象
-            "priority": Priority.HIGH,  # 保留 Enum 對象
+            "role": "管理員",  # Enum 轉換為值
+            "priority": 3,  # Enum 轉換為值
         }
 
         # 驗證類型
@@ -1225,10 +1225,10 @@ class TestIndexedValueExtractor:
         assert isinstance(result["active"], bool)
         assert isinstance(result["tags"], list)
         assert isinstance(result["created_at"], dt.datetime)
-        assert isinstance(result["role"], UserRole)  # Enum 保留為對象
-        assert isinstance(result["priority"], Priority)  # Enum 保留為對象
-        assert result["role"].value == "管理員"
-        assert result["priority"].value == 3
+        assert isinstance(result["role"], str)  # Enum 轉換為字串值
+        assert isinstance(result["priority"], int)  # Enum 轉換為整數值
+        assert result["role"] == "管理員"
+        assert result["priority"] == 3
 
     def test_extract_deeply_nested_fields(self):
         """測試提取深度嵌套的欄位"""

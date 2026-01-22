@@ -22,7 +22,7 @@ import more_itertools as mit
 import msgspec
 from jsonpatch import JsonPatch
 from jsonpointer import JsonPointer
-from msgspec import UNSET, Struct, UnsetType
+from msgspec import UNSET, Struct, UnsetType, to_builtins
 from xxhash import xxh3_128_hexdigest
 
 from autocrud.resource_manager.partial import create_partial_type, prune_object
@@ -152,13 +152,28 @@ def _get_type_name(resource_type) -> str:
 
 
 class IndexedValueExtractor:
-    """從資源資料中提取需要索引的欄位值（Enum 會在序列化時自動轉換為 value）"""
+    """從資源資料中提取需要索引的欄位值（Enum 會自動轉換為 value）"""
 
     def __init__(self, indexed_fields: list[IndexableField]):
         self.indexed_fields = indexed_fields
 
+    def _convert_enum_to_value(self, value: Any) -> Any:
+        """將 Enum 轉換為其值，但保留其他類型（如 datetime）"""
+        from enum import Enum
+
+        if isinstance(value, Enum):
+            return value.value
+        elif isinstance(value, list):
+            return [self._convert_enum_to_value(v) for v in value]
+        elif isinstance(value, dict):
+            return {k: self._convert_enum_to_value(v) for k, v in value.items()}
+        else:
+            # 保留其他類型（datetime, int, str, etc.）
+            return value
+
     def extract_indexed_values(self, data: Any) -> dict[str, Any]:
-        """從 data 中提取需要索引的值（保留原始類型，Enum 會在 msgspec 序列化時轉為 value）"""
+        """從 data 中提取需要索引的值，並將 Enum 轉換為其值"""
+
         indexed_data = {}
         for field in self.indexed_fields:
             value = UNSET
@@ -171,7 +186,8 @@ class IndexedValueExtractor:
                     value = self._extract_by_path(data, field.field_path)
 
             if value is not UNSET:
-                indexed_data[field.field_path] = value
+                # 將 Enum 轉換為其值（但保留其他類型如 datetime）
+                indexed_data[field.field_path] = self._convert_enum_to_value(value)
 
         return indexed_data
 

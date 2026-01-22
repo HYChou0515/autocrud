@@ -210,6 +210,9 @@ class AutoCRUD:
         self.blob_store = None
         if isinstance(self.storage_factory, DiskStorageFactory):
             self.blob_store = DiskBlobStore(self.storage_factory.rootdir / "_blobs")
+        elif hasattr(self.storage_factory, "build_blob_store"):
+            # S3StorageFactory 或其他提供 build_blob_store 方法的 factory
+            self.blob_store = self.storage_factory.build_blob_store()
         else:
             self.blob_store = MemoryBlobStore()
 
