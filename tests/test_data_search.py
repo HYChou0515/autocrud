@@ -704,6 +704,67 @@ class TestMetaStoreIterSearch:
             names.append(meta.indexed_data["name"])
         assert sorted(names) == ["Alice"]
 
+    def test_is_deleted_negation_equivalence(self):
+        """Test that ~QB.is_deleted() and QB.is_deleted() == False are equivalent in SQLite3."""
+        # Create some deleted and non-deleted resources
+        import uuid
+
+        from autocrud.query import QB
+
+        base_time = dt.datetime(2024, 1, 1, 12, 0, 0, tzinfo=ZoneInfo("UTC"))
+
+        # Add a deleted resource
+        deleted_meta = ResourceMeta(
+            resource_id=str(uuid.uuid4()),
+            current_revision_id="rev_deleted",
+            total_revision_count=1,
+            created_time=base_time,
+            updated_time=base_time,
+            created_by="test_user",
+            updated_by="test_user",
+            is_deleted=True,
+            indexed_data={"name": "Deleted User", "age": 99},
+        )
+        self.meta_store[deleted_meta.resource_id] = deleted_meta
+
+        # Test 1: Using QB.is_deleted() == False
+        query1 = ResourceMetaSearchQuery(
+            conditions=[QB["is_deleted"].eq(False)._condition],
+            limit=100,
+            offset=0,
+        )
+        results1 = list(self.meta_store.iter_search(query1))
+
+        # Test 2: Using ~QB.is_deleted()
+        # QB.is_deleted() should return truthy condition for is_deleted field
+        # ~QB.is_deleted() should negate it
+        condition2 = ~QB["is_deleted"]
+        query2 = ResourceMetaSearchQuery(
+            conditions=[condition2._condition],
+            limit=100,
+            offset=0,
+        )
+        results2 = list(self.meta_store.iter_search(query2))
+
+        # Both should return the same non-deleted resources
+        ids1 = sorted([m.resource_id for m in results1])
+        ids2 = sorted([m.resource_id for m in results2])
+
+        # Should not include the deleted resource
+        assert deleted_meta.resource_id not in ids1
+        assert deleted_meta.resource_id not in ids2
+
+        # Both queries should return the same results
+        assert ids1 == ids2, f"Query results differ: {len(ids1)} vs {len(ids2)}"
+
+        # Verify we got all non-deleted resources (8 original samples)
+        assert len(results1) == 8, (
+            f"Expected 8 non-deleted resources, got {len(results1)}"
+        )
+        assert len(results2) == 8, (
+            f"Expected 8 non-deleted resources, got {len(results2)}"
+        )
+
     def _create_sample_resource_metas(self, meta_store):
         """Create sample ResourceMeta objects for testing."""
         import uuid
