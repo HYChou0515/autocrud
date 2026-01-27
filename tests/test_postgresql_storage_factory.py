@@ -5,14 +5,11 @@ Tests for PostgreSQLStorageFactory combining PostgreSQL MetaStore with S3 Resour
 Tests use mock S3 (moto) and in-memory PostgreSQL (sqlite) to avoid external dependencies.
 """
 
-import os
-from datetime import datetime, timezone
-from unittest.mock import MagicMock, patch
+from unittest.mock import patch
 
 import pytest
 from msgspec import Struct
 
-from autocrud.crud.core import AutoCRUD
 from autocrud.resource_manager.basic import Encoding
 from autocrud.resource_manager.storage_factory import PostgreSQLStorageFactory
 

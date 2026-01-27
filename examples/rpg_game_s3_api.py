@@ -331,7 +331,7 @@ def demonstrate_s3_features(crud: AutoCRUD):
         # 讀取新版本
         updated = character_manager.get(first_meta.resource_id)
         print(f"   升級後: {updated.data.name}, Level: {updated.data.level}")
-        print(f"   ✅ 資料已更新並同步到 S3！")
+        print("   ✅ 資料已更新並同步到 S3！")
 
     print("\n📊 3. 二進制數據存儲 (Blob 存於 S3)")
     equipment_manager = crud.get_resource_manager(Equipment)
@@ -343,7 +343,7 @@ def demonstrate_s3_features(crud: AutoCRUD):
                 print(f"   裝備: {eq_resource.data.name}")
                 print(f"   圖片大小: {eq_resource.data.icon.size} bytes")
                 print(f"   檔案 ID: {eq_resource.data.icon.file_id}")
-                print(f"   ✅ 圖片數據已存於 S3 Blob Store!")
+                print("   ✅ 圖片數據已存於 S3 Blob Store!")
 
 
 def main():
@@ -395,7 +395,7 @@ def main():
         )
         print(f"\n✅ 使用 MinIO: {endpoint_url}")
         print(f"   Bucket: {bucket}")
-        print(f"   可在 http://localhost:9001 查看 MinIO Console")
+        print("   可在 http://localhost:9001 查看 MinIO Console")
 
     # 創建 FastAPI 應用
     app = FastAPI(
@@ -474,9 +474,9 @@ def main():
     print("   裝備 API: http://localhost:8000/equipment/data")
     print("\n☁️ S3 存儲:")
     if storage_factory.endpoint_url:
-        print(f"   MinIO Console: http://localhost:9001")
+        print("   MinIO Console: http://localhost:9001")
         print(f"   Bucket: {storage_factory.bucket}")
-        print(f"   查看數據: rpg-game/ 資料夾")
+        print("   查看數據: rpg-game/ 資料夾")
     else:
         print(f"   AWS S3 Bucket: {storage_factory.bucket}")
         print(f"   Region: {storage_factory.region_name}")

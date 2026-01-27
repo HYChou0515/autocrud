@@ -138,7 +138,7 @@ omit = [
 docstring-code-format = true
 
 [tool.ruff.lint]
-select = [
+extend-select = [
     "I",
 ]
 

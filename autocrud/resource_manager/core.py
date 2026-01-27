@@ -22,7 +22,7 @@ import more_itertools as mit
 import msgspec
 from jsonpatch import JsonPatch
 from jsonpointer import JsonPointer
-from msgspec import UNSET, Struct, UnsetType, to_builtins
+from msgspec import UNSET, Struct, UnsetType
 from xxhash import xxh3_128_hexdigest
 
 from autocrud.resource_manager.partial import create_partial_type, prune_object
