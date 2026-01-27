@@ -474,9 +474,36 @@ class PostgresMetaStore(ISlowMetaStore):
         if field_path in meta_fields:
             column_name = field_path
 
+            # Special handling for boolean fields (is_deleted)
+            is_boolean_field = field_path == "is_deleted"
+
             if operator == DataSearchOperator.equals:
+                # Handle list/dict comparison for meta fields
+                if isinstance(value, (list, dict)):
+                    # Cannot compare meta fields to list/dict, skip this condition
+                    return "", []
+                # Handle incompatible type comparison for boolean fields
+                if (
+                    is_boolean_field
+                    and isinstance(value, (int, float, str))
+                    and value not in (True, False)
+                ):
+                    # PostgreSQL boolean cannot be compared with non-boolean types, skip this condition
+                    return "", []
                 return f"{column_name} = %s", [value]
             if operator == DataSearchOperator.not_equals:
+                # Handle list/dict comparison for meta fields
+                if isinstance(value, (list, dict)):
+                    # Meta field is never equal to list/dict, so skip this condition (no-op)
+                    # Return empty condition to be filtered out by parent AND/OR group
+                    return "", []
+                # Handle incompatible type comparison for boolean fields
+                # PostgreSQL boolean cannot be compared with non-boolean types (int, float, str except boolean values)
+                # IMPORTANT: Check bool FIRST because bool is subclass of int in Python!
+                if is_boolean_field and not isinstance(value, bool):
+                    if isinstance(value, (int, float, str)):
+                        # Boolean is never equal to non-boolean values, skip this condition
+                        return "", []
                 return f"{column_name} != %s", [value]
             if operator == DataSearchOperator.greater_than:
                 return f"{column_name} > %s", [value]
@@ -541,10 +568,23 @@ class PostgresMetaStore(ISlowMetaStore):
                 jsonb_numeric_extract = jsonb_text_extract  # Use same for both
 
         if operator == DataSearchOperator.equals:
+            if isinstance(value, (list, dict)):
+                # For list/dict, use JSONB comparison
+                import json
+
+                return f"indexed_data->'{field_path}' = %s::jsonb", [json.dumps(value)]
             if isinstance(value, bool):
                 return f"{jsonb_text_extract} = %s", ["true" if value else "false"]
             return f"{jsonb_text_extract} = %s", [str(value)]
         if operator == DataSearchOperator.not_equals:
+            if isinstance(value, (list, dict)):
+                # For list/dict, use JSONB comparison with NULL safe
+                import json
+
+                return (
+                    f"({jsonb_text_extract} IS NULL OR indexed_data->'{field_path}' != %s::jsonb)",
+                    [json.dumps(value)],
+                )
             if isinstance(value, bool):
                 return f"{jsonb_text_extract} != %s", ["true" if value else "false"]
             return f"{jsonb_text_extract} != %s", [str(value)]

@@ -384,8 +384,16 @@ class SqliteMetaStore(ISlowMetaStore):
             column_name = field_path
 
             if operator == DataSearchOperator.equals:
+                # Handle list/dict comparison for meta fields
+                if isinstance(value, (list, dict)):
+                    # Cannot compare meta fields to list/dict, skip this condition
+                    return "", []
                 return f"{column_name} = ?", [value]
             if operator == DataSearchOperator.not_equals:
+                # Handle list/dict comparison for meta fields
+                if isinstance(value, (list, dict)):
+                    # Meta field is never equal to list/dict, skip this condition
+                    return "", []
                 return f"{column_name} != ?", [value]
             if operator == DataSearchOperator.greater_than:
                 return f"{column_name} > ?", [value]
@@ -454,8 +462,25 @@ class SqliteMetaStore(ISlowMetaStore):
                 END"""
 
         if operator == DataSearchOperator.equals:
+            # Handle list/dict comparison for JSON fields
+            if isinstance(value, (list, dict)):
+                # For list/dict, we need JSON comparison
+                import json
+
+                return f"{json_extract} = json(?)", [
+                    json.dumps(value, ensure_ascii=False)
+                ]
             return f"{json_extract} = ?", [value]
         if operator == DataSearchOperator.not_equals:
+            # Handle list/dict comparison for JSON fields
+            if isinstance(value, (list, dict)):
+                # For list/dict, we need JSON comparison
+                import json
+
+                # NULL safe comparison: field != value OR field IS NULL
+                return f"({json_extract} != json(?) OR {json_extract} IS NULL)", [
+                    json.dumps(value, ensure_ascii=False)
+                ]
             return f"{json_extract} != ?", [value]
         if operator == DataSearchOperator.greater_than:
             return f"CAST({json_extract} AS REAL) > ?", [value]
