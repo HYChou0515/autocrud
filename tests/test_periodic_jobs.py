@@ -3,14 +3,25 @@
 import datetime as dt
 import time
 from threading import Thread
+from unittest.mock import MagicMock
 
+import pytest
 from msgspec import Struct
 
+from autocrud.message_queue.rabbitmq import RabbitMQMessageQueue
 from autocrud.message_queue.simple import SimpleMessageQueue
 from autocrud.resource_manager.core import ResourceManager, SimpleStorage
 from autocrud.resource_manager.meta_store.simple import MemoryMetaStore
 from autocrud.resource_manager.resource_store.simple import MemoryResourceStore
 from autocrud.types import IndexableField, Job, Resource, TaskStatus
+
+# Check if pika is available
+try:
+    import pika  # noqa: F401
+
+    PIKA_AVAILABLE = True
+except ImportError:
+    PIKA_AVAILABLE = False
 
 
 class SimpleTask(Struct):
@@ -402,3 +413,462 @@ def test_periodic_job_callback_returns_none_continues():
 
     # Should execute 3 times (max_runs)
     assert execution_count[0] == 3, f"Expected 3 executions, got {execution_count[0]}"
+
+
+@pytest.fixture
+def rm_fixture():
+    """Create a ResourceManager for testing."""
+    meta_store = MemoryMetaStore()
+    resource_store = MemoryResourceStore()
+    storage = SimpleStorage(meta_store, resource_store)
+
+    rm = ResourceManager(
+        Job[SimpleTask],
+        storage=storage,
+        indexed_fields=[IndexableField(field_path="status", field_type=str)],
+    )
+    return rm
+
+
+@pytest.mark.skipif(not PIKA_AVAILABLE, reason="pika not installed")
+class TestRabbitMQPeriodicJobs:
+    """Tests for RabbitMQ-specific periodic job behavior."""
+
+    def test_enqueue_periodic_job_creates_delay_queue(self, rm_fixture):
+        """Test that _enqueue_periodic_job creates a delay queue with correct TTL."""
+
+        def handler(resource):
+            pass
+
+        mq = RabbitMQMessageQueue(
+            do=handler,
+            resource_manager=rm_fixture,
+            queue_prefix="test:",
+        )
+
+        # Mock the channel
+        mock_channel = MagicMock()
+
+        # Call _enqueue_periodic_job
+        resource_id = "test-resource-123"
+        interval_seconds = 5
+
+        mq._enqueue_periodic_job(mock_channel, resource_id, interval_seconds)
+
+        # Verify queue_declare was called with correct arguments
+        expected_queue_name = f"{mq.queue_name}:periodic:{interval_seconds}s"
+        mock_channel.queue_declare.assert_called_once_with(
+            queue=expected_queue_name,
+            durable=True,
+            arguments={
+                "x-message-ttl": interval_seconds * 1000,  # Convert to milliseconds
+                "x-dead-letter-exchange": "",
+                "x-dead-letter-routing-key": mq.queue_name,
+            },
+        )
+
+        # Verify basic_publish was called
+        mock_channel.basic_publish.assert_called_once()
+        publish_call = mock_channel.basic_publish.call_args
+        assert publish_call[1]["exchange"] == ""
+        assert publish_call[1]["routing_key"] == expected_queue_name
+        assert publish_call[1]["body"] == resource_id.encode("utf-8")
+        # Check delivery_mode is Persistent (value is 2)
+        assert (
+            publish_call[1]["properties"].delivery_mode == 2
+        )  # pika.DeliveryMode.Persistent
+
+    def test_enqueue_periodic_job_different_intervals(self, rm_fixture):
+        """Test that different intervals create different delay queues."""
+
+        def handler(resource):
+            pass
+
+        mq = RabbitMQMessageQueue(
+            do=handler,
+            resource_manager=rm_fixture,
+            queue_prefix="test:",
+        )
+
+        mock_channel = MagicMock()
+        resource_id = "test-resource-456"
+
+        # Enqueue with 5 second interval
+        mq._enqueue_periodic_job(mock_channel, resource_id, 5)
+
+        # Enqueue with 10 second interval
+        mq._enqueue_periodic_job(mock_channel, resource_id, 10)
+
+        # Should have declared two different queues
+        assert mock_channel.queue_declare.call_count == 2
+
+        # Check the queue names are different
+        call_1_queue = mock_channel.queue_declare.call_args_list[0][1]["queue"]
+        call_2_queue = mock_channel.queue_declare.call_args_list[1][1]["queue"]
+
+        assert call_1_queue.endswith(":periodic:5s")
+        assert call_2_queue.endswith(":periodic:10s")
+        assert call_1_queue != call_2_queue
+
+    def test_periodic_job_increments_run_count(self, rm_fixture):
+        """Test that periodic jobs increment periodic_runs on each execution."""
+        execution_count = [0]
+
+        def handler(resource: Resource[Job[SimpleTask]]):
+            execution_count[0] += 1
+
+        mq = RabbitMQMessageQueue(
+            do=handler,
+            resource_manager=rm_fixture,
+            queue_prefix="test:",
+        )
+
+        # Create a periodic job
+        job = Job(
+            payload=SimpleTask(name="test", value=42),
+            status=TaskStatus.PENDING,
+            periodic_interval_seconds=1,
+            periodic_max_runs=3,
+        )
+
+        with rm_fixture.meta_provide(user="test_user", now=dt.datetime.now()):
+            job_info = rm_fixture.create(job)
+
+        # Purge queue before test
+        with mq._get_connection() as (_, channel):
+            channel.queue_purge(mq.queue_name)
+
+        # Start consumer
+        mq.put(job_info.resource_id)
+        consumer_thread = Thread(target=mq.start_consume, daemon=True)
+        consumer_thread.start()
+
+        # Wait for all runs to complete
+        time.sleep(5)
+        mq.stop_consuming()
+
+        # Verify execution count
+        assert execution_count[0] == 3
+
+        # Verify periodic_runs was incremented
+        final_resource = rm_fixture.get(job_info.resource_id)
+        assert final_resource.data.periodic_runs == 3
+
+    def test_periodic_job_stops_at_max_runs(self, rm_fixture):
+        """Test that periodic jobs stop when reaching periodic_max_runs."""
+        execution_count = [0]
+
+        def handler(resource: Resource[Job[SimpleTask]]):
+            execution_count[0] += 1
+
+        mq = RabbitMQMessageQueue(
+            do=handler,
+            resource_manager=rm_fixture,
+            queue_prefix="test:",
+        )
+
+        # Create a periodic job with max_runs=2
+        job = Job(
+            payload=SimpleTask(name="test_max", value=100),
+            status=TaskStatus.PENDING,
+            periodic_interval_seconds=1,
+            periodic_max_runs=2,
+        )
+
+        with rm_fixture.meta_provide(user="test_user", now=dt.datetime.now()):
+            job_info = rm_fixture.create(job)
+
+        # Purge queue
+        with mq._get_connection() as (_, channel):
+            channel.queue_purge(mq.queue_name)
+
+        # Start consumer
+        mq.put(job_info.resource_id)
+        consumer_thread = Thread(target=mq.start_consume, daemon=True)
+        consumer_thread.start()
+
+        # Wait long enough for more than 2 runs if it didn't stop
+        time.sleep(4)
+        mq.stop_consuming()
+
+        # Should execute exactly 2 times
+        assert execution_count[0] == 2
+
+        # Verify final state
+        final_resource = rm_fixture.get(job_info.resource_id)
+        assert final_resource.data.periodic_runs == 2
+        assert final_resource.data.status == TaskStatus.COMPLETED
+
+    def test_periodic_job_stops_when_callback_returns_false(self, rm_fixture):
+        """Test that periodic jobs stop when callback returns False."""
+        execution_count = [0]
+
+        def handler(resource: Resource[Job[SimpleTask]]):
+            execution_count[0] += 1
+            # Stop after 2 executions
+            if execution_count[0] >= 2:
+                return False
+            return True
+
+        mq = RabbitMQMessageQueue(
+            do=handler,
+            resource_manager=rm_fixture,
+            queue_prefix="test:",
+        )
+
+        # Create a periodic job with high max_runs
+        job = Job(
+            payload=SimpleTask(name="test_callback_stop", value=200),
+            status=TaskStatus.PENDING,
+            periodic_interval_seconds=1,
+            periodic_max_runs=10,  # Would run 10 times, but callback stops at 2
+        )
+
+        with rm_fixture.meta_provide(user="test_user", now=dt.datetime.now()):
+            job_info = rm_fixture.create(job)
+
+        # Purge queue
+        with mq._get_connection() as (_, channel):
+            channel.queue_purge(mq.queue_name)
+
+        # Start consumer
+        mq.put(job_info.resource_id)
+        consumer_thread = Thread(target=mq.start_consume, daemon=True)
+        consumer_thread.start()
+
+        # Wait long enough to verify it stopped
+        time.sleep(4)
+        mq.stop_consuming()
+
+        # Should execute exactly 2 times (stopped by callback)
+        assert execution_count[0] == 2
+
+        # Verify periodic_runs was still incremented
+        final_resource = rm_fixture.get(job_info.resource_id)
+        assert final_resource.data.periodic_runs == 2
+
+    def test_periodic_job_continues_when_callback_returns_none(self, rm_fixture):
+        """Test that periodic jobs continue when callback returns None (default)."""
+        execution_count = [0]
+
+        def handler(resource: Resource[Job[SimpleTask]]):
+            execution_count[0] += 1
+            # Implicitly returns None
+
+        mq = RabbitMQMessageQueue(
+            do=handler,
+            resource_manager=rm_fixture,
+            queue_prefix="test:",
+        )
+
+        # Create a periodic job
+        job = Job(
+            payload=SimpleTask(name="test_none_return", value=300),
+            status=TaskStatus.PENDING,
+            periodic_interval_seconds=1,
+            periodic_max_runs=3,
+        )
+
+        with rm_fixture.meta_provide(user="test_user", now=dt.datetime.now()):
+            job_info = rm_fixture.create(job)
+
+        # Purge queue
+        with mq._get_connection() as (_, channel):
+            channel.queue_purge(mq.queue_name)
+
+        # Start consumer
+        mq.put(job_info.resource_id)
+        consumer_thread = Thread(target=mq.start_consume, daemon=True)
+        consumer_thread.start()
+
+        # Wait for all runs
+        time.sleep(5)
+        mq.stop_consuming()
+
+        # Should execute 3 times (max_runs)
+        assert execution_count[0] == 3
+
+        # Verify periodic_runs
+        final_resource = rm_fixture.get(job_info.resource_id)
+        assert final_resource.data.periodic_runs == 3
+
+    def test_periodic_job_resets_retry_count_on_reschedule(self, rm_fixture):
+        """Test that retry count is reset to 0 when periodic job is rescheduled."""
+        execution_count = [0]
+
+        def handler(resource: Resource[Job[SimpleTask]]):
+            execution_count[0] += 1
+
+        mq = RabbitMQMessageQueue(
+            do=handler,
+            resource_manager=rm_fixture,
+            queue_prefix="test:",
+        )
+
+        # Create a periodic job with some initial retries
+        job = Job(
+            payload=SimpleTask(name="test_retry_reset", value=400),
+            status=TaskStatus.PENDING,
+            periodic_interval_seconds=1,
+            periodic_max_runs=2,
+            retries=5,  # Start with non-zero retries
+        )
+
+        with rm_fixture.meta_provide(user="test_user", now=dt.datetime.now()):
+            job_info = rm_fixture.create(job)
+
+        # Purge queue
+        with mq._get_connection() as (_, channel):
+            channel.queue_purge(mq.queue_name)
+
+        # Start consumer
+        mq.put(job_info.resource_id)
+        consumer_thread = Thread(target=mq.start_consume, daemon=True)
+        consumer_thread.start()
+
+        # Wait for runs to complete
+        time.sleep(4)
+        mq.stop_consuming()
+
+        # After first successful run, retries should be reset to 0
+        # After second run (final), it should still be 0
+        final_resource = rm_fixture.get(job_info.resource_id)
+        assert final_resource.data.retries == 0
+        assert final_resource.data.periodic_runs == 2
+
+    def test_periodic_job_infinite_runs(self, rm_fixture):
+        """Test periodic job with None max_runs runs indefinitely."""
+        execution_count = [0]
+
+        def handler(resource: Resource[Job[SimpleTask]]):
+            execution_count[0] += 1
+
+        mq = RabbitMQMessageQueue(
+            do=handler,
+            resource_manager=rm_fixture,
+            queue_prefix="test:",
+        )
+
+        # Create a periodic job with no max_runs
+        job = Job(
+            payload=SimpleTask(name="test_infinite", value=500),
+            status=TaskStatus.PENDING,
+            periodic_interval_seconds=1,
+            periodic_max_runs=None,  # Run indefinitely
+        )
+
+        with rm_fixture.meta_provide(user="test_user", now=dt.datetime.now()):
+            job_info = rm_fixture.create(job)
+
+        # Purge queue
+        with mq._get_connection() as (_, channel):
+            channel.queue_purge(mq.queue_name)
+
+        # Start consumer
+        mq.put(job_info.resource_id)
+        consumer_thread = Thread(target=mq.start_consume, daemon=True)
+        consumer_thread.start()
+
+        # Let it run for a while
+        time.sleep(3.5)
+        mq.stop_consuming()
+
+        # Should have run at least 3 times
+        assert execution_count[0] >= 3
+
+        # Verify it's still ready to continue
+        final_resource = rm_fixture.get(job_info.resource_id)
+        assert final_resource.data.status == TaskStatus.COMPLETED
+        assert final_resource.data.periodic_runs >= 3
+
+    def test_periodic_job_updates_runs_even_when_stopped(self, rm_fixture):
+        """Test that periodic_runs is incremented even when job is stopped by callback."""
+        execution_count = [0]
+
+        def handler(resource: Resource[Job[SimpleTask]]):
+            execution_count[0] += 1
+            # Always return False to stop immediately
+            return False
+
+        mq = RabbitMQMessageQueue(
+            do=handler,
+            resource_manager=rm_fixture,
+            queue_prefix="test:",
+        )
+
+        # Create a periodic job
+        job = Job(
+            payload=SimpleTask(name="test_immediate_stop", value=600),
+            status=TaskStatus.PENDING,
+            periodic_interval_seconds=1,
+            periodic_max_runs=10,
+        )
+
+        with rm_fixture.meta_provide(user="test_user", now=dt.datetime.now()):
+            job_info = rm_fixture.create(job)
+
+        # Purge queue
+        with mq._get_connection() as (_, channel):
+            channel.queue_purge(mq.queue_name)
+
+        # Start consumer
+        mq.put(job_info.resource_id)
+        consumer_thread = Thread(target=mq.start_consume, daemon=True)
+        consumer_thread.start()
+
+        # Wait briefly
+        time.sleep(2)
+        mq.stop_consuming()
+
+        # Should execute exactly once (stopped by callback)
+        assert execution_count[0] == 1
+
+        # Verify periodic_runs was still incremented
+        final_resource = rm_fixture.get(job_info.resource_id)
+        assert final_resource.data.periodic_runs == 1
+        assert final_resource.data.status == TaskStatus.COMPLETED
+
+    def test_periodic_job_with_zero_interval(self, rm_fixture):
+        """Test that jobs with 0 or None interval are not treated as periodic."""
+        execution_count = [0]
+
+        def handler(resource: Resource[Job[SimpleTask]]):
+            execution_count[0] += 1
+
+        mq = RabbitMQMessageQueue(
+            do=handler,
+            resource_manager=rm_fixture,
+            queue_prefix="test:",
+        )
+
+        # Create a job with 0 interval (not periodic)
+        job = Job(
+            payload=SimpleTask(name="test_zero_interval", value=700),
+            status=TaskStatus.PENDING,
+            periodic_interval_seconds=0,
+            periodic_max_runs=3,
+        )
+
+        with rm_fixture.meta_provide(user="test_user", now=dt.datetime.now()):
+            job_info = rm_fixture.create(job)
+
+        # Purge queue
+        with mq._get_connection() as (_, channel):
+            channel.queue_purge(mq.queue_name)
+
+        # Start consumer
+        mq.put(job_info.resource_id)
+        consumer_thread = Thread(target=mq.start_consume, daemon=True)
+        consumer_thread.start()
+
+        # Wait
+        time.sleep(2)
+        mq.stop_consuming()
+
+        # Should execute exactly once (not periodic)
+        assert execution_count[0] == 1
+
+        # Verify periodic_runs was not incremented (since it's not periodic)
+        final_resource = rm_fixture.get(job_info.resource_id)
+        assert final_resource.data.periodic_runs == 0
+        assert final_resource.data.status == TaskStatus.COMPLETED
