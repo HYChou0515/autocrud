@@ -67,6 +67,27 @@ def test_configure_storage_factory():
         assert test_crud.storage_factory.rootdir == Path(tmpdir)
 
 
+def test_configure_storage_factory_none():
+    """Test that configure(storage_factory=None) uses default MemoryStorageFactory."""
+    import datetime as dt
+
+    test_crud = AutoCRUD()
+
+    # Configure with None should use MemoryStorageFactory
+    test_crud.configure(storage_factory=None)
+    assert isinstance(test_crud.storage_factory, MemoryStorageFactory)
+
+    # Should be able to add models and use them without errors
+    test_crud.add_model(User)
+    manager = test_crud.get_resource_manager(User)
+    assert manager is not None
+
+    # Should be able to create resources
+    with manager.meta_provide(user="test", now=dt.datetime.now()):
+        info = manager.create(User(name="Alice", age=30))
+        assert info.resource_id is not None
+
+
 def test_configure_model_naming():
     """Test configuring model_naming via configure()."""
     test_crud = AutoCRUD()
@@ -320,3 +341,103 @@ def test_global_instance_isolation():
     # We can't test this perfectly since global instance is shared,
     # but we can verify they are different objects
     assert global_crud is not local_crud
+
+
+# ============================================================================
+# Configuration Consistency Tests (__init__ vs configure)
+# ============================================================================
+# These tests verify that the refactored _apply_configuration method
+# ensures __init__ and configure use the same logic, preventing inconsistencies.
+
+
+def test_init_and_configure_consistency():
+    """Test that __init__ and configure use the same logic via _apply_configuration.
+
+    This demonstrates the DRY principle: configuration logic is shared between
+    __init__ and configure, making it easier to maintain and add new options.
+    """
+    # Test 1: Create instance with __init__
+    with tempfile.TemporaryDirectory() as tmpdir1:
+        crud1 = AutoCRUD(
+            model_naming="snake",
+            storage_factory=DiskStorageFactory(Path(tmpdir1)),
+            encoding=Encoding.msgpack,
+            admin="admin@example.com",
+        )
+
+        assert crud1.model_naming == "snake"
+        assert isinstance(crud1.storage_factory, DiskStorageFactory)
+        assert crud1.default_encoding == Encoding.msgpack
+
+    # Test 2: Create instance then configure - should have identical results
+    with tempfile.TemporaryDirectory() as tmpdir2:
+        crud2 = AutoCRUD()
+        crud2.configure(
+            model_naming="snake",
+            storage_factory=DiskStorageFactory(Path(tmpdir2)),
+            encoding=Encoding.msgpack,
+            admin="admin@example.com",
+        )
+
+        assert crud2.model_naming == "snake"
+        assert isinstance(crud2.storage_factory, DiskStorageFactory)
+        assert crud2.default_encoding == Encoding.msgpack
+
+
+def test_shared_configuration_handles_all_parameters():
+    """Test that _apply_configuration correctly handles all configuration parameters."""
+    import datetime as dt
+
+    crud = AutoCRUD()
+
+    # Test that we can configure all parameters via configure()
+    with tempfile.TemporaryDirectory() as tmpdir:
+
+        def custom_naming(model):
+            return f"custom_{model.__name__}"
+
+        def custom_user():
+            return "custom_user"
+
+        def custom_now():
+            return dt.datetime(2024, 1, 1)
+
+        crud.configure(
+            model_naming=custom_naming,
+            storage_factory=DiskStorageFactory(Path(tmpdir)),
+            encoding=Encoding.msgpack,
+            admin="root@example.com",
+            default_user=custom_user,
+            default_now=custom_now,
+        )
+
+        # Verify all configurations are applied
+        assert callable(crud.model_naming)
+        assert crud.model_naming(User) == "custom_User"
+        assert isinstance(crud.storage_factory, DiskStorageFactory)
+        assert crud.default_encoding == Encoding.msgpack
+        assert callable(crud.default_user)
+        assert crud.default_user() == "custom_user"
+        assert callable(crud.default_now)
+        assert crud.default_now() == dt.datetime(2024, 1, 1)
+
+
+def test_init_configure_consistency_validates_dry_principle():
+    """Verify that __init__ and configure produce identical configurations.
+
+    This test demonstrates the benefit of the refactored _apply_configuration:
+    - Configuration logic is defined only once (DRY principle)
+    - Adding new options requires updating _apply_configuration only once
+    - No risk of __init__ and configure diverging over time
+    """
+    # Create two instances with identical parameters
+    crud1 = AutoCRUD(model_naming="snake", encoding=Encoding.msgpack)
+
+    crud2 = AutoCRUD()
+    crud2.configure(model_naming="snake", encoding=Encoding.msgpack)
+
+    # Both should have identical configuration
+    assert crud1.model_naming == crud2.model_naming
+    assert crud1.default_encoding == crud2.default_encoding
+    assert isinstance(crud1.storage_factory, type(crud2.storage_factory))
+    assert isinstance(crud1.permission_checker, type(crud2.permission_checker))
