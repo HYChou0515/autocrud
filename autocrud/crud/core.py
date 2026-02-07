@@ -262,6 +262,154 @@ class AutoCRUD:
         self.default_user = default_user
         self.default_now = default_now
 
+    def configure(
+        self,
+        *,
+        model_naming: Literal["same", "pascal", "camel", "snake", "kebab"]
+        | Callable[[type], str]
+        | UnsetType = UNSET,
+        route_templates: list[IRouteTemplate]
+        | dict[type, dict[str, Any]]
+        | UnsetType = UNSET,
+        storage_factory: IStorageFactory | UnsetType = UNSET,
+        message_queue_factory: IMessageQueueFactory | UnsetType = UNSET,
+        admin: str | None | UnsetType = UNSET,
+        permission_checker: IPermissionChecker | UnsetType = UNSET,
+        dependency_provider: DependencyProvider | UnsetType = UNSET,
+        event_handlers: Sequence[IEventHandler] | UnsetType = UNSET,
+        encoding: Encoding | UnsetType = UNSET,
+        default_user: str | Callable[[], str] | UnsetType = UNSET,
+        default_now: Callable[[], dt.datetime] | UnsetType = UNSET,
+    ) -> None:
+        """Configure the AutoCRUD instance dynamically.
+
+        This method allows you to reconfigure an existing AutoCRUD instance,
+        useful for the global instance pattern where you import a pre-created
+        instance and configure it later in your application startup.
+
+        Warning:
+            This method should only be called during application initialization,
+            before any models are registered or routes are applied. Calling this
+            after models have been registered may lead to inconsistent behavior.
+
+        Args:
+            model_naming: Controls how model names are converted to URL paths.
+            route_templates: Custom list of route templates or configuration dict.
+            storage_factory: Storage backend to use for all models.
+            message_queue_factory: Message queue factory for async job processing.
+            admin: Admin user for RBAC permission system.
+            permission_checker: Custom permission checker implementation.
+            dependency_provider: Dependency injection provider for routes.
+            event_handlers: List of event handlers for lifecycle hooks.
+            encoding: Default encoding format (json/msgpack).
+            default_user: Default user for operations when not specified.
+            default_now: Default timestamp function for operations.
+
+        Example:
+            ```python
+            from autocrud import crud
+            from autocrud.resource_manager.storage_factory import DiskStorageFactory
+
+            # Configure the global instance
+            crud.configure(
+                storage_factory=DiskStorageFactory("./data"),
+                model_naming="snake",
+                admin="root@example.com",
+            )
+
+            # Now register models
+            crud.add_model(User)
+            ```
+        """
+        if self.resource_managers:
+            logger.warning(
+                "configure() called after models have been registered. "
+                "This may lead to inconsistent behavior."
+            )
+
+        # Update model_naming
+        if model_naming is not UNSET:
+            self.model_naming = model_naming
+
+        # Update storage_factory and blob_store
+        if storage_factory is not UNSET:
+            self.storage_factory = storage_factory
+
+            # Recreate blob_store based on new storage_factory
+            if isinstance(self.storage_factory, DiskStorageFactory):
+                self.blob_store = DiskBlobStore(self.storage_factory.rootdir / "_blobs")
+            elif hasattr(self.storage_factory, "build_blob_store"):
+                self.blob_store = self.storage_factory.build_blob_store()
+            else:
+                self.blob_store = MemoryBlobStore()
+
+        # Update message_queue_factory
+        if message_queue_factory is not UNSET:
+            self.message_queue_factory = message_queue_factory
+
+        # Update route_templates
+        # If dependency_provider is changed, we need to rebuild route_templates
+        rebuild_templates = route_templates is not UNSET or (
+            dependency_provider is not UNSET and route_templates is UNSET
+        )
+
+        if rebuild_templates:
+            self.route_templates = []
+            if (
+                route_templates is UNSET
+                or route_templates is None
+                or isinstance(route_templates, dict)
+            ):
+                route_templates_dict = (
+                    route_templates if isinstance(route_templates, dict) else {}
+                )
+                dep_provider = (
+                    dependency_provider if dependency_provider is not UNSET else None
+                )
+                for rt in [
+                    CreateRouteTemplate,
+                    ListRouteTemplate,
+                    ReadRouteTemplate,
+                    UpdateRouteTemplate,
+                    PatchRouteTemplate,
+                    SwitchRevisionRouteTemplate,
+                    DeleteRouteTemplate,
+                    RestoreRouteTemplate,
+                ]:
+                    more_kwargs = route_templates_dict.get(rt, {})
+                    more_kwargs.setdefault("dependency_provider", dep_provider)
+                    self.route_templates.append(rt(**more_kwargs))
+            else:
+                self.route_templates = route_templates
+
+        # Update permission_checker
+        if permission_checker is not UNSET:
+            self.permission_checker = permission_checker
+        elif admin is not UNSET:
+            if not admin:
+                self.permission_checker = AllowAll()
+            else:
+                self.permission_checker = RBACPermissionChecker(
+                    storage_factory=self.storage_factory,
+                    root_user=admin,
+                )
+
+        # Update event_handlers
+        if event_handlers is not UNSET:
+            self.event_handlers = event_handlers
+
+        # Update encoding
+        if encoding is not UNSET:
+            self.default_encoding = encoding
+
+        # Update default_user
+        if default_user is not UNSET:
+            self.default_user = default_user
+
+        # Update default_now
+        if default_now is not UNSET:
+            self.default_now = default_now
+
     def get_resource_manager(self, model: type[T] | str) -> IResourceManager[T]:
         """Get the resource manager for a registered model.
 
