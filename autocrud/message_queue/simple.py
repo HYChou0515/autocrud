@@ -1,5 +1,5 @@
-from typing import TYPE_CHECKING, Callable, Generic, TypeVar
 import datetime as dt
+from typing import TYPE_CHECKING, Callable, Generic, TypeVar
 
 from autocrud.message_queue.basic import BasicMessageQueue, NoRetry
 from autocrud.types import (

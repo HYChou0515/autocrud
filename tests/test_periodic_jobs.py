@@ -1,15 +1,16 @@
 """Tests for periodic job functionality in message queues."""
 
-import time
 import datetime as dt
+import time
 from threading import Thread
+
 from msgspec import Struct
 
 from autocrud.message_queue.simple import SimpleMessageQueue
 from autocrud.resource_manager.core import ResourceManager, SimpleStorage
 from autocrud.resource_manager.meta_store.simple import MemoryMetaStore
 from autocrud.resource_manager.resource_store.simple import MemoryResourceStore
-from autocrud.types import Job, Resource, TaskStatus, IndexableField
+from autocrud.types import IndexableField, Job, Resource, TaskStatus
 
 
 class SimpleTask(Struct):
