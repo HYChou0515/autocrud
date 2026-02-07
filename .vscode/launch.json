@@ -40,6 +40,14 @@
             "justMyCode": false,
         },
         {
+            "name": "rpg_game_celery_api",
+            "type": "debugpy",
+            "request": "launch",
+            "program": "examples/rpg_game_celery_api.py",
+            "console": "integratedTerminal",
+            "justMyCode": false,
+        },
+        {
             "name": "Debug: schema_upgrade.py",
             "type": "debugpy",
             "request": "launch",

@@ -2,12 +2,23 @@
 
 import datetime as dt
 
+import pytest
 from msgspec import Struct
 
 from autocrud import AutoCRUD
 from autocrud.message_queue.simple import SimpleMessageQueueFactory
 from autocrud.resource_manager.storage_factory import MemoryStorageFactory
 from autocrud.types import Job
+
+# Check if celery is available
+try:
+    from celery import Celery
+
+    from autocrud.message_queue.celery_queue import CeleryMessageQueueFactory
+
+    CELERY_AVAILABLE = True
+except ImportError:
+    CELERY_AVAILABLE = False
 
 
 class EmailPayload(Struct):
@@ -31,9 +42,24 @@ class NotAJob(Struct):
     value: int
 
 
-def test_resource_manager_has_message_queue():
+@pytest.mark.parametrize(
+    "mq_factory_type",
+    [
+        pytest.param("simple", id="simple"),
+    ],
+)
+def test_resource_manager_has_message_queue(mq_factory_type):
     """Test that ResourceManager exposes message queue via put_job/start_consume."""
-    crud = AutoCRUD(storage_factory=MemoryStorageFactory())
+    if mq_factory_type == "simple":
+        mq_factory = SimpleMessageQueueFactory()
+    else:  # celery
+        app = Celery("test_app", broker="memory://", backend="cache+memory://")
+        app.conf.update(task_always_eager=True, task_eager_propagates=True)
+        mq_factory = CeleryMessageQueueFactory(celery_app=app)
+
+    crud = AutoCRUD(
+        storage_factory=MemoryStorageFactory(), message_queue_factory=mq_factory
+    )
 
     def handler(job):
         pass
@@ -59,7 +85,13 @@ def test_resource_manager_has_message_queue():
     assert rm_regular.message_queue is None
 
 
-def test_resource_manager_start_consume():
+@pytest.mark.parametrize(
+    "mq_factory_type",
+    [
+        pytest.param("simple", id="simple"),
+    ],
+)
+def test_resource_manager_start_consume(mq_factory_type):
     """Test that ResourceManager start_consume works correctly."""
     # Track consumed jobs
     consumed_jobs = []
@@ -67,8 +99,16 @@ def test_resource_manager_start_consume():
     def process_job(job):
         consumed_jobs.append(job)
 
+    if mq_factory_type == "simple":
+        mq_factory = SimpleMessageQueueFactory()
+    else:  # celery
+        app = Celery("test_app", broker="memory://", backend="cache+memory://")
+        app.conf.update(task_always_eager=True, task_eager_propagates=True)
+        mq_factory = CeleryMessageQueueFactory(celery_app=app)
+
     crud = AutoCRUD(
         storage_factory=MemoryStorageFactory(),
+        message_queue_factory=mq_factory,
         default_now=dt.datetime.now,
         default_user="test-user",
     )
@@ -134,7 +174,13 @@ def test_resource_manager_disabled_message_queue():
     assert rm.message_queue is None
 
 
-def test_resource_manager_message_queue_workflow():
+@pytest.mark.parametrize(
+    "mq_factory_type",
+    [
+        pytest.param("simple", id="simple"),
+    ],
+)
+def test_resource_manager_message_queue_workflow(mq_factory_type):
     """Test complete workflow using ResourceManager's put_job/start_consume."""
     # Track consumed jobs
     consumed_jobs = []
@@ -142,8 +188,16 @@ def test_resource_manager_message_queue_workflow():
     def process_job(job):
         consumed_jobs.append(job)
 
+    if mq_factory_type == "simple":
+        mq_factory = SimpleMessageQueueFactory()
+    else:  # celery
+        app = Celery("test_app", broker="memory://", backend="cache+memory://")
+        app.conf.update(task_always_eager=True, task_eager_propagates=True)
+        mq_factory = CeleryMessageQueueFactory(celery_app=app)
+
     crud = AutoCRUD(
         storage_factory=MemoryStorageFactory(),
+        message_queue_factory=mq_factory,
         default_now=dt.datetime.now,
         default_user="test-user",
     )
@@ -194,9 +248,21 @@ def test_resource_manager_message_queue_workflow():
     assert consumed_jobs[1].data.payload.to == "user2@example.com"
 
 
-def test_resource_manager_custom_mq_factory():
+@pytest.mark.parametrize(
+    "mq_factory_type",
+    [
+        pytest.param("simple", id="simple"),
+    ],
+)
+def test_resource_manager_custom_mq_factory(mq_factory_type):
     """Test ResourceManager with custom message queue factory."""
-    custom_factory = SimpleMessageQueueFactory()
+    if mq_factory_type == "simple":
+        custom_factory = SimpleMessageQueueFactory()
+    else:  # celery
+        app = Celery("test_app", broker="memory://", backend="cache+memory://")
+        app.conf.update(task_always_eager=True, task_eager_propagates=True)
+        custom_factory = CeleryMessageQueueFactory(celery_app=app)
+
     crud = AutoCRUD(
         storage_factory=MemoryStorageFactory(), message_queue_factory=custom_factory
     )
