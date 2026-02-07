@@ -19,6 +19,7 @@ from autocrud.crud.route_templates.basic import (
     QueryInputs,
     QueryInputsWithReturns,
     build_query,
+    get_partial_fields,
     struct_to_responses_type,
 )
 from autocrud.types import (
@@ -235,6 +236,7 @@ class ListRouteTemplate(BaseRouteTemplate):
             ),
         )
         async def list_resources_data(
+            request: Request,
             query_params: QueryInputs = Query(...),
             current_user: str = Depends(self.deps.get_user),
             current_time: dt.datetime = Depends(self.deps.get_now),
@@ -242,7 +244,7 @@ class ListRouteTemplate(BaseRouteTemplate):
             try:
                 # 構建查詢對象
                 query = build_query(query_params)
-                fields = query_params.partial or query_params.partial_brackets
+                fields = get_partial_fields(request, query_params)
 
                 def get_worker():
                     return Worker(
@@ -530,7 +532,7 @@ class ListRouteTemplate(BaseRouteTemplate):
             try:
                 # 構建查詢對象
                 query = build_query(query_params)
-                fields = query_params.partial or query_params.partial_brackets
+                fields = get_partial_fields(request, query_params)
 
                 def get_worker():
                     return Worker(

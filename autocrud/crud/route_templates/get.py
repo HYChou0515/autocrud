@@ -2,7 +2,7 @@ import datetime as dt
 import textwrap
 from typing import Generic, Optional, TypeVar
 
-from fastapi import APIRouter, Depends, HTTPException, Path, Query, Response
+from fastapi import APIRouter, Depends, HTTPException, Path, Query, Request, Response
 from msgspec import UNSET
 
 from autocrud.crud.route_templates.basic import (
@@ -181,6 +181,7 @@ class ReadRouteTemplate(BaseRouteTemplate, Generic[T]):
             ),
         )
         async def get_resource_full(
+            request: Request,
             resource_id: str,
             revision_id: Optional[str] = Query(
                 None,
@@ -206,6 +207,14 @@ class ReadRouteTemplate(BaseRouteTemplate, Generic[T]):
             # 獲取資源和元數據
             try:
                 fields = partial or partial_brackets
+                if fields is None:
+                    raw = [
+                        v
+                        for k, v in request.query_params.multi_items()
+                        if k == "partial[]"
+                    ]
+                    if raw:
+                        fields = raw
                 returns_list = [r.strip() for r in returns.split(",")]
 
                 with resource_manager.meta_provide(current_user, current_time):
@@ -375,6 +384,7 @@ class ReadRouteTemplate(BaseRouteTemplate, Generic[T]):
             ),
         )
         async def get_resource_data(
+            request: Request,
             resource_id: str,
             revision_id: Optional[str] = Query(
                 None,
@@ -397,6 +407,14 @@ class ReadRouteTemplate(BaseRouteTemplate, Generic[T]):
             try:
                 with resource_manager.meta_provide(current_user, current_time):
                     fields = partial or partial_brackets
+                    if fields is None:
+                        raw = [
+                            v
+                            for k, v in request.query_params.multi_items()
+                            if k == "partial[]"
+                        ]
+                        if raw:
+                            fields = raw
                     schema_version = UNSET
 
                     if fields:

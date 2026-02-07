@@ -5,7 +5,7 @@ from collections.abc import Callable
 from typing import Any, Generic, Optional, TypeVar
 
 import msgspec
-from fastapi import APIRouter, HTTPException, Query, Response
+from fastapi import APIRouter, HTTPException, Query, Request, Response
 from pydantic import BaseModel
 
 from autocrud.types import (
@@ -211,6 +211,24 @@ class QueryInputsWithReturns(QueryInputs):
         default="data,revision_info,meta",
         description="Fields to return, comma-separated. Options: data, revision_info, meta",
     )
+
+
+def get_partial_fields(
+    request: Request,
+    query_params: QueryInputs,
+) -> list[str] | None:
+    """Extract partial fields from query params with Pydantic v1 fallback.
+
+    In Pydantic v1, aliased query parameters (e.g. ``partial[]``) are not
+    properly bound by FastAPI.  This helper falls back to reading the raw
+    query string when the alias-based field is ``None``.
+    """
+    fields = query_params.partial or query_params.partial_brackets
+    if fields is None:
+        raw = [v for k, v in request.query_params.multi_items() if k == "partial[]"]
+        if raw:
+            fields = raw
+    return fields
 
 
 def build_query(q: QueryInputs) -> ResourceMetaSearchQuery:
