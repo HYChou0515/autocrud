@@ -1,7 +1,7 @@
 import datetime as dt
 from typing import TYPE_CHECKING, Callable, Generic, TypeVar
 
-from autocrud.message_queue.basic import BasicMessageQueue, DelayRetry, NoRetry
+from autocrud.message_queue.basic import DelayableMessageQueue, DelayRetry, NoRetry
 from autocrud.types import (
     DataSearchCondition,
     DataSearchOperator,
@@ -22,7 +22,7 @@ if TYPE_CHECKING:
 T = TypeVar("T")
 
 
-class SimpleMessageQueue(BasicMessageQueue[T], Generic[T]):
+class SimpleMessageQueue(DelayableMessageQueue[T], Generic[T]):
     """
     A dedicated message queue that manages jobs as resources via ResourceManager.
 
@@ -63,11 +63,7 @@ class SimpleMessageQueue(BasicMessageQueue[T], Generic[T]):
         job = resource.data
 
         # Check if job has initial delay configured
-        if (
-            job.periodic_initial_delay_seconds is not None
-            and job.periodic_initial_delay_seconds > 0
-            and job.periodic_runs == 0  # Only apply initial delay for first run
-        ):
+        if self._should_apply_initial_delay(job):
             # Set status to COMPLETED so pop() won't pick it up immediately
             # _check_periodic_jobs will set it back to PENDING when ready
             job.status = TaskStatus.COMPLETED
@@ -75,7 +71,7 @@ class SimpleMessageQueue(BasicMessageQueue[T], Generic[T]):
                 self.rm.create_or_update(resource_id, job)
 
             # Schedule for delayed execution
-            self._schedule_periodic_job(resource_id, job.periodic_initial_delay_seconds)
+            self._schedule_delayed_job(resource_id, job.periodic_initial_delay_seconds)
         # else: job remains PENDING and will be picked up by pop() immediately
 
         return resource
@@ -150,6 +146,18 @@ class SimpleMessageQueue(BasicMessageQueue[T], Generic[T]):
         next_run_time = dt.datetime.now() + dt.timedelta(seconds=interval_seconds)
         self._periodic_schedule[resource_id] = next_run_time
 
+    def _schedule_delayed_job(self, resource_id: str, delay_seconds: int) -> None:
+        """
+        Implementation of abstract method from DelayableMessageQueue.
+
+        Schedules a job for delayed execution using the periodic job mechanism.
+
+        Args:
+            resource_id: The ID of the job resource to schedule
+            delay_seconds: Number of seconds to delay before execution
+        """
+        self._schedule_periodic_job(resource_id, delay_seconds)
+
     def _check_periodic_jobs(self) -> None:
         """
         Check for periodic jobs that are ready to run and re-enqueue them.
@@ -176,6 +184,61 @@ class SimpleMessageQueue(BasicMessageQueue[T], Generic[T]):
                 # If update fails, just skip this job
                 pass
 
+    def _execute_job(self, job: Resource[Job[T]]) -> None:
+        """
+        Execute a job and handle success, DelayRetry, or failure.
+
+        Args:
+            job: The job resource to execute
+        """
+        try:
+            result = self._do(job)
+            # Check if callback explicitly requested to stop periodic execution
+            user_requested_stop = result is False
+
+            completed_job = self.complete(job.info.resource_id)
+
+            # Handle periodic job using parent class method
+            self._handle_periodic_job(
+                job.info.resource_id, completed_job, user_requested_stop
+            )
+
+        except DelayRetry as e:
+            # Handle DelayRetry using parent class method
+            self._handle_delay_retry(
+                job.info.resource_id, e.delay_seconds, job.info.created_by
+            )
+
+        except Exception as e:
+            # Update Job with error message and retry count
+            error_msg = str(e)
+            updated_job = job.data
+            updated_job.errmsg = error_msg
+            updated_job.retries += 1
+
+            # Check if we should retry or fail permanently
+            should_retry = (
+                not isinstance(e, NoRetry) and updated_job.retries <= self.max_retries
+            )
+
+            if should_retry:
+                # Retry: set status back to PENDING
+                updated_job.status = TaskStatus.PENDING
+            else:
+                # No retry: mark as permanently FAILED
+                updated_job.status = TaskStatus.FAILED
+
+            try:
+                with self._rm_meta_provide(job.info.created_by):
+                    self.rm.create_or_update(job.info.resource_id, updated_job)
+            except Exception:
+                # If update fails, still mark as failed via fail()
+                pass
+
+            # If not retrying, also call fail() to ensure consistent state
+            if not should_retry:
+                self.fail(job.info.resource_id, error_msg)
+
     def start_consume(self) -> None:
         """Start consuming jobs from the queue."""
         import time
@@ -187,86 +250,7 @@ class SimpleMessageQueue(BasicMessageQueue[T], Generic[T]):
 
             job = self.pop()
             if job:
-                try:
-                    result = self._do(job)
-                    # Check if callback explicitly requested to stop periodic execution
-                    user_requested_stop = result is False
-
-                    completed_job = self.complete(job.info.resource_id)
-
-                    # Check if this is a periodic job
-                    job_data = completed_job.data
-                    if (
-                        job_data.periodic_interval_seconds is not None
-                        and job_data.periodic_interval_seconds > 0
-                    ):
-                        # Increment run count first (always, even if user requested stop)
-                        job_data.periodic_runs += 1
-
-                        # Check if we should continue running (after incrementing)
-                        # Stop if: user requested stop OR reached max runs
-                        should_continue = not user_requested_stop and (
-                            job_data.periodic_max_runs is None
-                            or job_data.periodic_runs < job_data.periodic_max_runs
-                        )
-
-                        if should_continue:
-                            # Reset retry count for next run, but keep status as COMPLETED
-                            # _check_periodic_jobs will set it to PENDING when ready
-                            job_data.retries = 0
-                            with self._rm_meta_provide(completed_job.info.created_by):
-                                self.rm.create_or_update(job.info.resource_id, job_data)
-
-                            # Schedule next run (will be picked up by _check_periodic_jobs)
-                            self._schedule_periodic_job(
-                                job.info.resource_id, job_data.periodic_interval_seconds
-                            )
-                        else:
-                            # Reached max runs, just update the periodic_runs count
-                            with self._rm_meta_provide(completed_job.info.created_by):
-                                self.rm.create_or_update(job.info.resource_id, job_data)
-
-                except DelayRetry as e:
-                    # User requested delayed retry - complete job and schedule for re-execution
-                    completed_job = self.complete(job.info.resource_id)
-                    job_data = completed_job.data
-                    job_data.retries = 0
-                    with self._rm_meta_provide(completed_job.info.created_by):
-                        self.rm.create_or_update(job.info.resource_id, job_data)
-
-                    # Schedule with user-specified delay
-                    self._schedule_periodic_job(job.info.resource_id, e.delay_seconds)
-
-                except Exception as e:
-                    # Update Job with error message and retry count
-                    error_msg = str(e)
-                    updated_job = job.data
-                    updated_job.errmsg = error_msg
-                    updated_job.retries += 1
-
-                    # Check if we should retry or fail permanently
-                    should_retry = (
-                        not isinstance(e, NoRetry)
-                        and updated_job.retries <= self.max_retries
-                    )
-
-                    if should_retry:
-                        # Retry: set status back to PENDING
-                        updated_job.status = TaskStatus.PENDING
-                    else:
-                        # No retry: mark as permanently FAILED
-                        updated_job.status = TaskStatus.FAILED
-
-                    try:
-                        with self._rm_meta_provide(job.info.created_by):
-                            self.rm.create_or_update(job.info.resource_id, updated_job)
-                    except Exception:
-                        # If update fails, still mark as failed via fail()
-                        pass
-
-                    # If not retrying, also call fail() to ensure consistent state
-                    if not should_retry:
-                        self.fail(job.info.resource_id, error_msg)
+                self._execute_job(job)
             else:
                 time.sleep(0.1)
 

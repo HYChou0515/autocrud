@@ -1,7 +1,7 @@
 from contextlib import contextmanager
 from typing import TYPE_CHECKING, Callable, Generic, TypeVar
 
-from autocrud.message_queue.basic import BasicMessageQueue, DelayRetry, NoRetry
+from autocrud.message_queue.basic import DelayableMessageQueue, DelayRetry, NoRetry
 from autocrud.types import Job, Resource, TaskStatus
 from autocrud.util.naming import NameConverter, NamingFormat
 
@@ -16,7 +16,7 @@ if TYPE_CHECKING:
 T = TypeVar("T")
 
 
-class RabbitMQMessageQueue(BasicMessageQueue[T], Generic[T]):
+class RabbitMQMessageQueue(DelayableMessageQueue[T], Generic[T]):
     """
     AMQP-based Message Queue implementation using RabbitMQ (via pika).
 
@@ -117,16 +117,9 @@ class RabbitMQMessageQueue(BasicMessageQueue[T], Generic[T]):
         job = resource.data
 
         # Check if job has initial delay configured
-        if (
-            job.periodic_initial_delay_seconds is not None
-            and job.periodic_initial_delay_seconds > 0
-            and job.periodic_runs == 0  # Only apply initial delay for first run
-        ):
+        if self._should_apply_initial_delay(job):
             # Use periodic delay queue mechanism for initial delay
-            with self._get_connection() as (_, channel):
-                self._enqueue_periodic_job(
-                    channel, resource_id, job.periodic_initial_delay_seconds
-                )
+            self._schedule_delayed_job(resource_id, job.periodic_initial_delay_seconds)
         else:
             # Publish Resource ID to RabbitMQ immediately
             with self._get_connection() as (_, channel):
@@ -248,6 +241,72 @@ class RabbitMQMessageQueue(BasicMessageQueue[T], Generic[T]):
             ),
         )
 
+    def _schedule_delayed_job(self, resource_id: str, delay_seconds: int) -> None:
+        """
+        Implementation of abstract method from DelayableMessageQueue.
+
+        Schedules a job for delayed execution using RabbitMQ delay queue.
+
+        Args:
+            resource_id: The ID of the job resource to schedule
+            delay_seconds: Number of seconds to delay before execution
+        """
+        with self._get_connection() as (_, channel):
+            self._enqueue_periodic_job(channel, resource_id, delay_seconds)
+
+    def _execute_job(
+        self, ch, method, resource: Resource[Job[T]], retry_count: int
+    ) -> None:
+        """
+        Execute a job and handle success, DelayRetry, or failure.
+
+        Args:
+            ch: RabbitMQ channel
+            method: RabbitMQ method frame
+            resource: The job resource to execute
+            retry_count: Current retry count from message headers
+        """
+        resource_id = resource.info.resource_id
+        job = resource.data
+
+        try:
+            result = self._do(resource)
+            # Check if callback explicitly requested to stop periodic execution
+            user_requested_stop = result is False
+
+            # Complete (Update RM) & Ack (RabbitMQ)
+            completed_resource = self.complete(resource_id)
+            ch.basic_ack(delivery_tag=method.delivery_tag)
+
+            # Handle periodic job using parent class method
+            self._handle_periodic_job(
+                resource_id, completed_resource, user_requested_stop
+            )
+
+        except DelayRetry as e:
+            # Handle DelayRetry using parent class method
+            ch.basic_ack(delivery_tag=method.delivery_tag)
+            self._handle_delay_retry(
+                resource_id, e.delay_seconds, resource.info.created_by
+            )
+
+        except Exception as e:
+            # Callback failed - update Job with error and retry info
+            error_msg = str(e)
+
+            # Update Job with error message and retry count
+            job.status = TaskStatus.FAILED
+            job.errmsg = error_msg
+            job.retries = retry_count + 1
+            with self._rm_meta_provide(resource.info.created_by):
+                self.rm.create_or_update(resource_id, job)
+
+            # Send to retry or dead letter queue
+            self._send_to_retry_or_dead(ch, resource_id, retry_count, e)
+
+            # Ack the original message (it's now in retry/dead queue)
+            ch.basic_ack(delivery_tag=method.delivery_tag)
+
     def start_consume(self) -> None:
         """
         Start consuming jobs from the queue with the configured callback.
@@ -284,80 +343,7 @@ class RabbitMQMessageQueue(BasicMessageQueue[T], Generic[T]):
                     resource.data = job
 
                     # 2. Execute user callback
-                    try:
-                        result = self._do(resource)
-                        # Check if callback explicitly requested to stop periodic execution
-                        user_requested_stop = result is False
-
-                        # 3. Complete (Update RM) & Ack (RabbitMQ)
-                        completed_resource = self.complete(resource_id)
-                        ch.basic_ack(delivery_tag=method.delivery_tag)
-
-                        # 4. Check if this is a periodic job
-                        job = completed_resource.data
-                        if (
-                            job.periodic_interval_seconds is not None
-                            and job.periodic_interval_seconds > 0
-                        ):
-                            # Increment run count first (always, even if user requested stop)
-                            job.periodic_runs += 1
-
-                            # Check if we should continue running (after incrementing)
-                            # Stop if: user requested stop OR reached max runs
-                            should_continue = not user_requested_stop and (
-                                job.periodic_max_runs is None
-                                or job.periodic_runs < job.periodic_max_runs
-                            )
-
-                            if should_continue:
-                                # Reset retry count for next run, but keep status as COMPLETED
-                                # The delay queue will automatically re-enqueue to main queue
-                                job.retries = 0
-                                with self._rm_meta_provide(
-                                    completed_resource.info.created_by
-                                ):
-                                    self.rm.create_or_update(resource_id, job)
-
-                                # Enqueue to periodic delay queue
-                                # When TTL expires, it will be routed back to main queue
-                                self._enqueue_periodic_job(
-                                    ch, resource_id, job.periodic_interval_seconds
-                                )
-                            else:
-                                # Reached max runs, just update the periodic_runs count
-                                with self._rm_meta_provide(
-                                    completed_resource.info.created_by
-                                ):
-                                    self.rm.create_or_update(resource_id, job)
-                    except DelayRetry as e:
-                        # User requested delayed retry - complete job and re-enqueue with delay
-                        completed_resource = self.complete(resource_id)
-                        ch.basic_ack(delivery_tag=method.delivery_tag)
-
-                        # Reset retry count and re-enqueue with specified delay
-                        job = completed_resource.data
-                        job.retries = 0
-                        with self._rm_meta_provide(completed_resource.info.created_by):
-                            self.rm.create_or_update(resource_id, job)
-
-                        # Enqueue to delay queue with user-specified interval
-                        self._enqueue_periodic_job(ch, resource_id, e.delay_seconds)
-                    except Exception as e:
-                        # 4. Callback failed - update Job with error and retry info
-                        error_msg = str(e)
-
-                        # Update Job with error message and retry count
-                        job.status = TaskStatus.FAILED
-                        job.errmsg = error_msg  # Store error message in result field
-                        job.retries = retry_count + 1  # Increment retry count
-                        with self._rm_meta_provide(resource.info.created_by):
-                            self.rm.create_or_update(resource_id, job)
-
-                        # Send to retry or dead letter queue
-                        self._send_to_retry_or_dead(ch, resource_id, retry_count, e)
-
-                        # Ack the original message (it's now in retry/dead queue)
-                        ch.basic_ack(delivery_tag=method.delivery_tag)
+                    self._execute_job(ch, method, resource, retry_count)
 
                 except Exception as e:
                     # Resource fetch failure, RM update failure, or critical error
