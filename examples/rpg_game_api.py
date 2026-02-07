@@ -28,7 +28,7 @@ import uvicorn
 from fastapi import FastAPI
 from msgspec import Struct
 
-from autocrud import AutoCRUD
+from autocrud import crud
 from autocrud.crud.route_templates.blob import BlobRouteTemplate
 from autocrud.crud.route_templates.graphql import GraphQLRouteTemplate
 from autocrud.crud.route_templates.migrate import MigrateRouteTemplate
@@ -141,7 +141,7 @@ def get_random_image():
     return r.content
 
 
-def create_sample_data(crud: AutoCRUD):
+def create_sample_data():
     """創建示範數據"""
     print("🎮 創建示範遊戲數據...")
 
@@ -356,7 +356,7 @@ def create_sample_data(crud: AutoCRUD):
                 print(f"❌ 裝備創建失敗: {e}")
 
 
-def demonstrate_qb_queries(crud: AutoCRUD):
+def demonstrate_qb_queries():
     """展示 QueryBuilder (QB) 的使用範例"""
     print("\n🔍 === QueryBuilder (QB) 使用範例 ===")
 
@@ -508,39 +508,35 @@ def demonstrate_qb_queries(crud: AutoCRUD):
     print("   - 提供元數據查詢: QB.created_time(), QB.status() 等\n")
 
 
-_crud = None
+def configure_crud():
+    """設定全域 crud 實例"""
+    storage_type = input("使用memory or disk storage？ [[M]emory/(D)isk]: ")
 
-
-def get_crud():
-    """創建並返回 AutoCRUD 實例"""
-    global _crud
-    if _crud is None:
-        storage_type = input("使用memory or disk storage？ [[M]emory/(D)isk]: ")
-
-        if storage_type.lower() in ("d", "disk"):
-            storage_path = (
-                input("請輸入磁盤存儲路徑（預設: ./rpg_game_data）: ")
-                or "./rpg_game_data"
-            )
-            storage_factory = DiskStorageFactory(rootdir=storage_path)
-        else:
-            storage_factory = None
-
-        mq_type = input("使用rabbit mq嗎？ [y/N]: ")
-        if mq_type.lower() == "y":
-            mq_factory = RabbitMQMessageQueueFactory()
-        else:
-            mq_factory = SimpleMessageQueueFactory()
-        _crud = AutoCRUD(
-            storage_factory=storage_factory, message_queue_factory=mq_factory
+    if storage_type.lower() in ("d", "disk"):
+        storage_path = (
+            input("請輸入磁盤存儲路徑（預設: ./rpg_game_data）: ") or "./rpg_game_data"
         )
-    _crud.add_route_template(GraphQLRouteTemplate())
-    _crud.add_route_template(BlobRouteTemplate())
-    _crud.add_route_template(MigrateRouteTemplate())
+        storage_factory = DiskStorageFactory(rootdir=storage_path)
+    else:
+        storage_factory = None
+
+    mq_type = input("使用rabbit mq嗎？ [y/N]: ")
+    if mq_type.lower() == "y":
+        mq_factory = RabbitMQMessageQueueFactory()
+    else:
+        mq_factory = SimpleMessageQueueFactory()
+
+    # 使用全域 crud 實例的 configure 方法
+    crud.configure(storage_factory=storage_factory, message_queue_factory=mq_factory)
+
+    # 添加額外的路由模板
+    crud.add_route_template(GraphQLRouteTemplate())
+    crud.add_route_template(BlobRouteTemplate())
+    crud.add_route_template(MigrateRouteTemplate())
 
     # 註冊模型
     # 注意：使用 QB 查詢的欄位必須建立索引
-    _crud.add_model(
+    crud.add_model(
         Character,
         indexed_fields=[
             ("level", int),  # 用於等級查詢、排序
@@ -550,19 +546,17 @@ def get_crud():
             ("character_class", CharacterClass),  # 用於職業篩選
         ],
     )
-    _crud.add_model(Guild)
-    _crud.add_model(Equipment)
+    crud.add_model(Guild)
+    crud.add_model(Equipment)
 
     # 註冊遊戲事件任務模型（使用 Message Queue）
     # 注意：需要提供 job_handler 才會啟用 message queue
     # 這裡先用一個簡單的佔位函數，實際處理會在背景執行緒中進行
-    _crud.add_model(
+    crud.add_model(
         GameEvent,
         indexed_fields=[("status", str)],
         job_handler=process_game_event,
     )
-
-    return _crud
 
 
 def process_game_event(event_resource: Resource[GameEvent]):
@@ -576,7 +570,6 @@ def process_game_event(event_resource: Resource[GameEvent]):
     - 系統會在 N 秒後自動重新執行此事件
     - 適用於需要等待外部資源、隊伍集結、冷卻時間等場景
     """
-    global _crud
     event = event_resource.data
     payload = event.payload
 
@@ -655,7 +648,7 @@ def process_game_event(event_resource: Resource[GameEvent]):
     print(f"   {result_msg}")
 
 
-def create_sample_events(crud: AutoCRUD):
+def create_sample_events():
     """創建一些示範遊戲事件"""
     print("\n🎮 創建示範遊戲事件...")
 
@@ -780,8 +773,8 @@ def main():
         redoc_url="/redoc",
     )
 
-    # 創建 AutoCRUD 實例
-    crud = get_crud()
+    # 設定全域 crud 實例
+    configure_crud()
 
     # 應用到 FastAPI
     crud.apply(app)
@@ -791,7 +784,7 @@ def main():
     # 創建示範數據
     ans = input("需要創建示範數據嗎？[y/N]: ")
     if ans.lower() == "y":
-        create_sample_data(crud)
+        create_sample_data()
 
     # 啟動遊戲事件處理背景工作執行緒
     print("\n🔄 啟動遊戲事件處理系統...")
@@ -799,12 +792,12 @@ def main():
     # 創建示範遊戲事件
     ans = input("需要創建示範遊戲事件嗎？[y/N]: ")
     if ans.lower() == "y":
-        create_sample_events(crud)
+        create_sample_events()
 
     # 展示 QueryBuilder 使用範例
     ans = input("需要展示 QueryBuilder (QB) 使用範例嗎？[y/N]: ")
     if ans.lower() == "y":
-        demonstrate_qb_queries(crud)
+        demonstrate_qb_queries()
 
     print("\n🚀 === 服務器啟動成功 === 🚀")
     print("📖 OpenAPI 文檔: http://localhost:8000/docs")
