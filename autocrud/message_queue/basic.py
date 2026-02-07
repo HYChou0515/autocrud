@@ -18,6 +18,30 @@ class NoRetry(Exception):
     pass
 
 
+class DelayRetry(Exception):
+    """Indicates that a job should be delayed and retried after a specified interval.
+
+    This exception allows the job handler to trigger a delayed retry by raising
+    DelayRetry(delay_seconds). The job will be marked as COMPLETED and re-enqueued
+    to run again after the specified delay.
+
+    Args:
+        delay_seconds: Number of seconds to wait before retrying the job.
+
+    Example:
+        ```python
+        def process_job(resource: Resource[Job[MyTask]]):
+            if should_wait():
+                raise DelayRetry(60)  # Retry after 60 seconds
+            # Process normally
+        ```
+    """
+
+    def __init__(self, delay_seconds: int):
+        self.delay_seconds = delay_seconds
+        super().__init__(f"Job will be retried after {delay_seconds} seconds")
+
+
 class BasicMessageQueue(IMessageQueue[T], Generic[T]):
     """
     A dedicated message queue that manages jobs as resources via ResourceManager.

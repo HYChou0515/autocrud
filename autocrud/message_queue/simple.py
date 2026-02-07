@@ -1,7 +1,7 @@
 import datetime as dt
 from typing import TYPE_CHECKING, Callable, Generic, TypeVar
 
-from autocrud.message_queue.basic import BasicMessageQueue, NoRetry
+from autocrud.message_queue.basic import BasicMessageQueue, DelayRetry, NoRetry
 from autocrud.types import (
     DataSearchCondition,
     DataSearchOperator,
@@ -225,6 +225,17 @@ class SimpleMessageQueue(BasicMessageQueue[T], Generic[T]):
                             # Reached max runs, just update the periodic_runs count
                             with self._rm_meta_provide(completed_job.info.created_by):
                                 self.rm.create_or_update(job.info.resource_id, job_data)
+
+                except DelayRetry as e:
+                    # User requested delayed retry - complete job and schedule for re-execution
+                    completed_job = self.complete(job.info.resource_id)
+                    job_data = completed_job.data
+                    job_data.retries = 0
+                    with self._rm_meta_provide(completed_job.info.created_by):
+                        self.rm.create_or_update(job.info.resource_id, job_data)
+
+                    # Schedule with user-specified delay
+                    self._schedule_periodic_job(job.info.resource_id, e.delay_seconds)
 
                 except Exception as e:
                     # Update Job with error message and retry count

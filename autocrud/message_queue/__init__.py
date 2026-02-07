@@ -1,3 +1,4 @@
+from autocrud.message_queue.basic import DelayRetry, NoRetry
 from autocrud.message_queue.rabbitmq import (
     RabbitMQMessageQueue,
     RabbitMQMessageQueueFactory,
@@ -9,4 +10,6 @@ __all__ = [
     "SimpleMessageQueueFactory",
     "RabbitMQMessageQueue",
     "RabbitMQMessageQueueFactory",
+    "NoRetry",
+    "DelayRetry",
 ]

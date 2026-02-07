@@ -1,7 +1,7 @@
 from contextlib import contextmanager
 from typing import TYPE_CHECKING, Callable, Generic, TypeVar
 
-from autocrud.message_queue.basic import BasicMessageQueue, NoRetry
+from autocrud.message_queue.basic import BasicMessageQueue, DelayRetry, NoRetry
 from autocrud.types import Job, Resource, TaskStatus
 from autocrud.util.naming import NameConverter, NamingFormat
 
@@ -329,6 +329,19 @@ class RabbitMQMessageQueue(BasicMessageQueue[T], Generic[T]):
                                     completed_resource.info.created_by
                                 ):
                                     self.rm.create_or_update(resource_id, job)
+                    except DelayRetry as e:
+                        # User requested delayed retry - complete job and re-enqueue with delay
+                        completed_resource = self.complete(resource_id)
+                        ch.basic_ack(delivery_tag=method.delivery_tag)
+
+                        # Reset retry count and re-enqueue with specified delay
+                        job = completed_resource.data
+                        job.retries = 0
+                        with self._rm_meta_provide(completed_resource.info.created_by):
+                            self.rm.create_or_update(resource_id, job)
+
+                        # Enqueue to delay queue with user-specified interval
+                        self._enqueue_periodic_job(ch, resource_id, e.delay_seconds)
                     except Exception as e:
                         # 4. Callback failed - update Job with error and retry info
                         error_msg = str(e)
