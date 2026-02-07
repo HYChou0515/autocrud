@@ -270,6 +270,66 @@ class TestRouteTemplates:
         )
         assert response.status_code == 400
 
+    def test_status_change_without_data_change(self, client: TestClient):
+        """測試只改變狀態，不改變資料的情況"""
+        # 創建一個stable資源
+        new_user = {
+            "name": "Alice Williams",
+            "email": "alice@example.com",
+            "age": 28,
+        }
+        response = client.post("/user", json=new_user)
+        assert response.status_code == 200
+        data = response.json()
+        resource_id = data["resource_id"]
+        revision_id = data["revision_id"]
+
+        # 獲取資源資訊
+        get_response = client.get(f"/user/{resource_id}/revision-info")
+        get_data = get_response.json()
+        assert get_data["status"] == "stable"
+        original_data_hash = get_data["data_hash"]
+
+        # 在不提供body的情況下，將status從stable改為draft
+        response = client.put(
+            f"/user/{resource_id}",
+            params={
+                "mode": "modify",
+                "change_status": "draft",
+            },
+        )
+        assert response.status_code == 200
+        modified_data = response.json()
+        assert modified_data["status"] == "draft"
+        assert modified_data["revision_id"] == revision_id  # 不進版
+        assert modified_data["data_hash"] == original_data_hash  # 資料未改變
+
+        # 驗證資料未改變
+        get_response = client.get(f"/user/{resource_id}/revision-info")
+        get_data = get_response.json()
+        assert get_data["status"] == "draft"
+        assert get_data["data_hash"] == original_data_hash
+
+        # 在不提供body的情況下，將status從draft改回stable
+        response = client.put(
+            f"/user/{resource_id}",
+            params={
+                "mode": "modify",
+                "change_status": "stable",
+            },
+        )
+        assert response.status_code == 200
+        modified_data = response.json()
+        assert modified_data["status"] == "stable"
+        assert modified_data["revision_id"] == revision_id  # 仍不進版
+        assert modified_data["data_hash"] == original_data_hash  # 資料仍未改變
+
+        # 驗證資料仍未改變
+        get_response = client.get(f"/user/{resource_id}/revision-info")
+        get_data = get_response.json()
+        assert get_data["status"] == "stable"
+        assert get_data["data_hash"] == original_data_hash
+
     def test_delete_user(self, client: TestClient):
         """測試刪除用戶"""
         # 先創建一個用戶

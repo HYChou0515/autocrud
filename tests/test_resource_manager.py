@@ -344,6 +344,54 @@ class TestResourceManager:
         assert res_meta.updated_time == now
         assert res_meta.updated_by == user
 
+    def test_modify_stable_to_draft_without_data_change(self):
+        """測試stable資源可以在不改內容的情況下變成draft"""
+        data = new_data()
+        user, now, meta = self.create(data)
+        assert meta.status == "stable"
+
+        # 在不改內容的情況下，將status從stable改為draft
+        u_user = faker.user_name()
+        u_now = faker.date_time()
+        with self.mgr.meta_provide(u_user, u_now):
+            u_meta = self.mgr.modify(meta.resource_id, status=RevisionStatus.draft)
+
+        # 驗證狀態已改變
+        assert u_meta.status == "draft"
+        # 驗證其他資訊保持不變
+        assert u_meta.resource_id == meta.resource_id
+        assert u_meta.revision_id == meta.revision_id  # 不進版，revision_id不變
+        assert u_meta.data_hash == meta.data_hash  # 資料未改變
+
+        # 驗證資料內容未改變
+        got = self.mgr.get(meta.resource_id)
+        assert got.data == data
+        assert got.info.status == "draft"
+
+    def test_modify_draft_to_stable_without_data_change(self):
+        """測試draft資源可以在不改內容的情況下變成stable"""
+        data = new_data()
+        user, now, meta = self.create(data, status=RevisionStatus.draft)
+        assert meta.status == "draft"
+
+        # 在不改內容的情況下，將status從draft改為stable
+        u_user = faker.user_name()
+        u_now = faker.date_time()
+        with self.mgr.meta_provide(u_user, u_now):
+            u_meta = self.mgr.modify(meta.resource_id, status=RevisionStatus.stable)
+
+        # 驗證狀態已改變
+        assert u_meta.status == "stable"
+        # 驗證其他資訊保持不變
+        assert u_meta.resource_id == meta.resource_id
+        assert u_meta.revision_id == meta.revision_id  # 不進版，revision_id不變
+        assert u_meta.data_hash == meta.data_hash  # 資料未改變
+
+        # 驗證資料內容未改變
+        got = self.mgr.get(meta.resource_id)
+        assert got.data == data
+        assert got.info.status == "stable"
+
     def check_modified_info(
         self,
         before: tuple[RevisionInfo, str, dt.datetime],
