@@ -32,9 +32,10 @@ from autocrud import AutoCRUD
 from autocrud.crud.route_templates.blob import BlobRouteTemplate
 from autocrud.crud.route_templates.graphql import GraphQLRouteTemplate
 from autocrud.crud.route_templates.migrate import MigrateRouteTemplate
+from autocrud.message_queue.basic import DelayRetry 
 from autocrud.message_queue.rabbitmq import RabbitMQMessageQueueFactory
 from autocrud.message_queue.simple import SimpleMessageQueueFactory
-from autocrud.query import QB  # QueryBuilder for advanced queries
+from autocrud.query import QB
 from autocrud.resource_manager.storage_factory import DiskStorageFactory
 from autocrud.types import Binary, Job, Resource
 
@@ -112,6 +113,8 @@ class GameEventType(Enum):
     DAILY_LOGIN = "daily_login"  # 每日登入獎勵
     QUEST_COMPLETE = "quest_complete"  # 任務完成
     EQUIPMENT_ENHANCE = "equipment_enhance"  # 裝備強化
+    RAID_BOSS = "raid_boss"  # 團隊 BOSS 戰（需要等待隊伍集結）
+    SERVER_MAINTENANCE = "server_maintenance"  # 伺服器維護（需要延遲處理）
 
 
 class GameEventPayload(Struct):
@@ -567,6 +570,11 @@ def process_game_event(event_resource: Resource[GameEvent]):
     處理遊戲事件的背景工作函數
 
     這個函數會在背景執行緒中運行，從 message queue 取出事件並處理
+    
+    DelayRetry 使用範例：
+    - 當需要延遲處理時，拋出 DelayRetry(delay_seconds=N)
+    - 系統會在 N 秒後自動重新執行此事件
+    - 適用於需要等待外部資源、隊伍集結、冷卻時間等場景
     """
     global _crud
     event = event_resource.data
@@ -575,6 +583,7 @@ def process_game_event(event_resource: Resource[GameEvent]):
     print(f"\n🎮 處理遊戲事件: {payload.event_type.value}")
     print(f"   角色: {payload.character_name}")
     print(f"   描述: {payload.description}")
+    print(f"   重試次數: {event.retries}")
 
     # 模擬異步處理
     time.sleep(random.uniform(0.5, 2.0))
@@ -604,6 +613,41 @@ def process_game_event(event_resource: Resource[GameEvent]):
         # 處理裝備強化
         equipment_name = payload.extra_data.get("equipment_name", "未知裝備")
         print(f"   🔨 裝備強化！{equipment_name} 強化成功")
+
+    elif payload.event_type == GameEventType.RAID_BOSS:
+        # 🎯 DelayRetry 範例 1: 團隊 BOSS 戰需要等待隊伍集結
+        required_members = payload.extra_data.get("required_members", 5)
+        current_members = payload.extra_data.get("current_members", 0)
+        
+        if current_members < required_members:
+            wait_time = 10  # 等待 10 秒讓更多玩家加入
+            print(f"   ⏳ 隊伍人數不足 ({current_members}/{required_members})")
+            print(f"   等待 {wait_time} 秒後重試...")
+            # 拋出 DelayRetry，系統會在指定秒數後重新執行
+            raise DelayRetry(delay_seconds=wait_time)
+        
+        boss_name = payload.extra_data.get("boss_name", "未知 BOSS")
+        print(f"   ⚔️ 團隊集結完成！開始挑戰 {boss_name}")
+        print(f"   💰 擊敗 BOSS 獲得獎勵: {payload.reward_gold} 金幣")
+
+    elif payload.event_type == GameEventType.SERVER_MAINTENANCE:
+        # 🎯 DelayRetry 範例 2: 伺服器維護期間延遲處理
+        maintenance_end_time = payload.extra_data.get("maintenance_end_time")
+        
+        if maintenance_end_time:
+            # 檢查維護是否結束
+            end_time = dt.datetime.fromisoformat(maintenance_end_time)
+            now = dt.datetime.now()
+            
+            if now < end_time:
+                delay = int((end_time - now).total_seconds())
+                print(f"   🔧 伺服器維護中，預計 {delay} 秒後結束")
+                print(f"   事件將延遲至維護結束後處理")
+                # 延遲到維護結束
+                raise DelayRetry(delay_seconds=min(delay, 30))  # 最多延遲30秒
+        
+        print(f"   ✅ 伺服器維護結束，獎勵已發放")
+        print(f"   💰 補償獎勵: {payload.reward_gold} 金幣, {payload.reward_exp} 經驗值")
 
     result_msg = f"✅ 事件處理成功: {payload.description}"
     print(f"   {result_msg}")
@@ -656,6 +700,29 @@ def create_sample_events(crud: AutoCRUD):
             reward_gold=0,
             extra_data={"equipment_name": "精準查詢弓", "enhance_level": 5},
         ),
+        # 🎯 DelayRetry 範例事件
+        GameEventPayload(
+            event_type=GameEventType.RAID_BOSS,
+            character_name="AutoCRUD 開發者聯盟",
+            description="挑戰世界 BOSS：代碼債務巨龍",
+            reward_gold=50000,
+            reward_exp=10000,
+            extra_data={
+                "boss_name": "代碼債務巨龍",
+                "required_members": 5,
+                "current_members": 2,  # 人數不足，會觸發 DelayRetry
+            },
+        ),
+        GameEventPayload(
+            event_type=GameEventType.SERVER_MAINTENANCE,
+            character_name="全體玩家",
+            description="伺服器維護補償獎勵",
+            reward_gold=1000,
+            reward_exp=500,
+            extra_data={
+                "maintenance_end_time": (current_time + dt.timedelta(seconds=15)).isoformat(),
+            },
+        ),
     ]
 
     with event_manager.meta_provide(user="game_admin", now=current_time):
@@ -670,7 +737,11 @@ def create_sample_events(crud: AutoCRUD):
                 print(f"❌ 事件創建失敗: {e}")
 
     print(f"\n📊 已加入 {len(sample_events)} 個遊戲事件到處理隊列")
-    print("   背景工作執行緒將會自動處理這些事件\n")
+    print("   背景工作執行緒將會自動處理這些事件")
+    print("\n💡 DelayRetry 使用說明：")
+    print("   - 團隊 BOSS 戰事件會因人數不足而延遲 10 秒重試")
+    print("   - 伺服器維護事件會延遲到維護結束後處理")
+    print("   - 你可以透過 GET /game-event/data 查看事件狀態和重試次數\n")
 
 
 def main():
