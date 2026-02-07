@@ -1,3 +1,5 @@
+from __future__ import annotations
+
 from contextlib import contextmanager
 from typing import TYPE_CHECKING, Callable, Generic, TypeVar
 
@@ -11,6 +13,9 @@ except ImportError:
     pika = None  # type: ignore
 
 if TYPE_CHECKING:
+    from pika.adapters.blocking_connection import BlockingChannel
+    from pika.spec import Basic, BasicProperties
+
     from autocrud.types import IResourceManager
 
 T = TypeVar("T")
@@ -128,7 +133,7 @@ class RabbitMQMessageQueue(DelayableMessageQueue[T], Generic[T]):
                     routing_key=self.queue_name,
                     body=resource_id.encode("utf-8"),
                     properties=pika.BasicProperties(
-                        delivery_mode=pika.DeliveryMode.Persistent
+                        delivery_mode=pika.spec.PERSISTENT_DELIVERY_MODE
                     ),
                 )
 
@@ -169,7 +174,7 @@ class RabbitMQMessageQueue(DelayableMessageQueue[T], Generic[T]):
         return None
 
     def _send_to_retry_or_dead(
-        self, ch, resource_id: str, retry_count: int, err: Exception
+        self, ch: BlockingChannel, resource_id: str, retry_count: int, err: Exception
     ) -> None:
         """
         Send a failed message to retry queue or dead letter queue based on retry count.
@@ -194,7 +199,7 @@ class RabbitMQMessageQueue(DelayableMessageQueue[T], Generic[T]):
             routing_key=target_queue,
             body=resource_id.encode("utf-8"),
             properties=pika.BasicProperties(
-                delivery_mode=pika.DeliveryMode.Persistent,
+                delivery_mode=pika.spec.PERSISTENT_DELIVERY_MODE,
                 headers={
                     "x-retry-count": new_retry_count,
                     "x-last-error": error_msg[:500],  # Limit error message length
@@ -203,7 +208,7 @@ class RabbitMQMessageQueue(DelayableMessageQueue[T], Generic[T]):
         )
 
     def _enqueue_periodic_job(
-        self, ch, resource_id: str, interval_seconds: int
+        self, ch: BlockingChannel, resource_id: str, interval_seconds: int
     ) -> None:
         """
         Enqueue a periodic job to a delay queue for re-execution.
@@ -237,7 +242,7 @@ class RabbitMQMessageQueue(DelayableMessageQueue[T], Generic[T]):
             routing_key=delay_queue_name,
             body=resource_id.encode("utf-8"),
             properties=pika.BasicProperties(
-                delivery_mode=pika.DeliveryMode.Persistent,
+                delivery_mode=pika.spec.PERSISTENT_DELIVERY_MODE,
             ),
         )
 
@@ -255,7 +260,11 @@ class RabbitMQMessageQueue(DelayableMessageQueue[T], Generic[T]):
             self._enqueue_periodic_job(channel, resource_id, delay_seconds)
 
     def _execute_job(
-        self, ch, method, resource: Resource[Job[T]], retry_count: int
+        self,
+        ch: BlockingChannel,
+        method: Basic.Deliver,
+        resource: Resource[Job[T]],
+        retry_count: int,
     ) -> None:
         """
         Execute a job and handle success, DelayRetry, or failure.
@@ -324,7 +333,12 @@ class RabbitMQMessageQueue(DelayableMessageQueue[T], Generic[T]):
             self._consuming_connection = connection
             self._consuming_channel = channel
 
-            def callback(ch, method, properties, body):
+            def callback(
+                ch: BlockingChannel,
+                method: Basic.Deliver,
+                properties: BasicProperties,
+                body: bytes,
+            ) -> None:
                 resource_id = body.decode("utf-8")
 
                 # Get retry count from message headers
