@@ -82,6 +82,7 @@ Issues = "https://github.com/HYChou0515/autocrud/issues"
 dev = [
     "boto3-stubs[full]>=1.40.21",
     "build>=1.2.2.post1",
+    "celery>=5.6.2",
     "coverage>=7.9.2",
     "faker>=37.5.3",
     "fastapi[standard]>=0.116.1",

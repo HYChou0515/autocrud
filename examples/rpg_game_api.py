@@ -32,7 +32,7 @@ from autocrud import AutoCRUD
 from autocrud.crud.route_templates.blob import BlobRouteTemplate
 from autocrud.crud.route_templates.graphql import GraphQLRouteTemplate
 from autocrud.crud.route_templates.migrate import MigrateRouteTemplate
-from autocrud.message_queue.basic import DelayRetry 
+from autocrud.message_queue.basic import DelayRetry
 from autocrud.message_queue.rabbitmq import RabbitMQMessageQueueFactory
 from autocrud.message_queue.simple import SimpleMessageQueueFactory
 from autocrud.query import QB
@@ -570,7 +570,7 @@ def process_game_event(event_resource: Resource[GameEvent]):
     處理遊戲事件的背景工作函數
 
     這個函數會在背景執行緒中運行，從 message queue 取出事件並處理
-    
+
     DelayRetry 使用範例：
     - 當需要延遲處理時，拋出 DelayRetry(delay_seconds=N)
     - 系統會在 N 秒後自動重新執行此事件
@@ -618,14 +618,14 @@ def process_game_event(event_resource: Resource[GameEvent]):
         # 🎯 DelayRetry 範例 1: 團隊 BOSS 戰需要等待隊伍集結
         required_members = payload.extra_data.get("required_members", 5)
         current_members = payload.extra_data.get("current_members", 0)
-        
+
         if current_members < required_members:
             wait_time = 10  # 等待 10 秒讓更多玩家加入
             print(f"   ⏳ 隊伍人數不足 ({current_members}/{required_members})")
             print(f"   等待 {wait_time} 秒後重試...")
             # 拋出 DelayRetry，系統會在指定秒數後重新執行
             raise DelayRetry(delay_seconds=wait_time)
-        
+
         boss_name = payload.extra_data.get("boss_name", "未知 BOSS")
         print(f"   ⚔️ 團隊集結完成！開始挑戰 {boss_name}")
         print(f"   💰 擊敗 BOSS 獲得獎勵: {payload.reward_gold} 金幣")
@@ -633,21 +633,23 @@ def process_game_event(event_resource: Resource[GameEvent]):
     elif payload.event_type == GameEventType.SERVER_MAINTENANCE:
         # 🎯 DelayRetry 範例 2: 伺服器維護期間延遲處理
         maintenance_end_time = payload.extra_data.get("maintenance_end_time")
-        
+
         if maintenance_end_time:
             # 檢查維護是否結束
             end_time = dt.datetime.fromisoformat(maintenance_end_time)
             now = dt.datetime.now()
-            
+
             if now < end_time:
                 delay = int((end_time - now).total_seconds())
                 print(f"   🔧 伺服器維護中，預計 {delay} 秒後結束")
-                print(f"   事件將延遲至維護結束後處理")
+                print("   事件將延遲至維護結束後處理")
                 # 延遲到維護結束
                 raise DelayRetry(delay_seconds=min(delay, 30))  # 最多延遲30秒
-        
-        print(f"   ✅ 伺服器維護結束，獎勵已發放")
-        print(f"   💰 補償獎勵: {payload.reward_gold} 金幣, {payload.reward_exp} 經驗值")
+
+        print("   ✅ 伺服器維護結束，獎勵已發放")
+        print(
+            f"   💰 補償獎勵: {payload.reward_gold} 金幣, {payload.reward_exp} 經驗值"
+        )
 
     result_msg = f"✅ 事件處理成功: {payload.description}"
     print(f"   {result_msg}")
@@ -720,7 +722,9 @@ def create_sample_events(crud: AutoCRUD):
             reward_gold=1000,
             reward_exp=500,
             extra_data={
-                "maintenance_end_time": (current_time + dt.timedelta(seconds=15)).isoformat(),
+                "maintenance_end_time": (
+                    current_time + dt.timedelta(seconds=15)
+                ).isoformat(),
             },
         ),
     ]

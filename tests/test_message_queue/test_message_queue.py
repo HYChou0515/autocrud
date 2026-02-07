@@ -13,6 +13,19 @@ from autocrud.message_queue.rabbitmq import (
     RabbitMQMessageQueueFactory,
 )
 from autocrud.message_queue.simple import SimpleMessageQueue, SimpleMessageQueueFactory
+
+# Check if celery is available
+try:
+    from celery import Celery
+
+    from autocrud.message_queue.celery_queue import (
+        CeleryMessageQueue,
+        CeleryMessageQueueFactory,
+    )
+
+    CELERY_AVAILABLE = True
+except ImportError:
+    CELERY_AVAILABLE = False
 from autocrud.resource_manager.core import ResourceManager, SimpleStorage
 from autocrud.resource_manager.meta_store.simple import MemoryMetaStore
 from autocrud.resource_manager.resource_store.simple import MemoryResourceStore
@@ -54,7 +67,19 @@ def get_rabbitmq_queue(rm):
     return mq
 
 
-@pytest.fixture(params=["simple", "rabbitmq"])
+@pytest.fixture(
+    params=[
+        pytest.param("simple", id="simple"),
+        pytest.param("rabbitmq", id="rabbitmq"),
+        pytest.param(
+            "celery",
+            marks=pytest.mark.skipif(
+                not CELERY_AVAILABLE, reason="celery not installed"
+            ),
+            id="celery",
+        ),
+    ]
+)
 def mq_context(request: pytest.FixtureRequest):
     """Fixture that provides both the queue implementation and its associated resource manager."""
     meta_store = MemoryMetaStore()
@@ -73,7 +98,7 @@ def mq_context(request: pytest.FixtureRequest):
             indexed_fields=[IndexableField(field_path="status", field_type=str)],
         )
         queue = rm.message_queue
-    else:
+    elif request.param == "rabbitmq":
         mq_factory = RabbitMQMessageQueueFactory(queue_prefix="test:")
         rm = ResourceManager(
             Job[Payload],
@@ -86,6 +111,23 @@ def mq_context(request: pytest.FixtureRequest):
         if queue.queue_name:
             with queue._get_connection() as (_, channel):
                 channel.queue_purge(queue.queue_name)
+    else:  # celery
+        app = Celery("test_app", broker="memory://", backend="cache+memory://")
+        app.conf.update(
+            task_always_eager=True,
+            task_eager_propagates=True,
+            result_backend="cache+memory://",
+        )
+
+        # Create queue with factory like other implementations
+        mq_factory = CeleryMessageQueueFactory(celery_app=app, max_retries=3)
+        rm = ResourceManager(
+            Job[Payload],
+            storage=storage,
+            message_queue=mq_factory.build(handler),
+            indexed_fields=[IndexableField(field_path="status", field_type=str)],
+        )
+        queue = rm.message_queue
 
     return queue, rm
 
@@ -247,6 +289,7 @@ class TestMessageQueueUnified:
 
         return consumer_ref[0], published_messages
 
+    @pytest.mark.parametrize("mq_context", ["simple", "rabbitmq"], indirect=True)
     def test_workflow(self):
         queue, rm = self.queue, self.rm
         user = "test_user"
@@ -293,6 +336,7 @@ class TestMessageQueueUnified:
             # 7. Empty
             assert queue.pop() is None
 
+    @pytest.mark.parametrize("mq_context", ["simple", "rabbitmq"], indirect=True)
     def test_missing_resource_resilience(self):
         """Tests that the queue handles cases where the resource is deleted out-of-band."""
         queue, rm = self.queue, self.rm
@@ -308,7 +352,13 @@ class TestMessageQueueUnified:
             res_pop = queue.pop()
             assert res_pop is None
 
-    def test_consume_loop(self):
+    def test_consume_loop(self, request):
+        # Skip for celery (eager mode executes in main thread, not consumer thread)
+        if CELERY_AVAILABLE and isinstance(self.queue, CeleryMessageQueue):
+            pytest.skip(
+                "Test requires real consumer thread - not compatible with celery eager mode"
+            )
+
         queue_producer, rm = self.queue, self.rm
 
         # Prepare Data
@@ -347,6 +397,7 @@ class TestMessageQueueUnified:
             assert statuses.get("success_job") == TaskStatus.COMPLETED
             assert statuses.get("fail_job") == TaskStatus.FAILED
 
+    @pytest.mark.parametrize("mq_context", ["simple", "rabbitmq"], indirect=True)
     def test_error_message_recorded_on_failure(self):
         """Test that error message is recorded in Job.errmsg when task fails."""
         queue, rm = self.queue, self.rm
@@ -377,8 +428,13 @@ class TestMessageQueueUnified:
             retrieved = rm.get(resource_id)
             assert retrieved.data.errmsg == error_msg
 
-    def test_error_overwrites_in_consume_loop(self):
+    def test_error_overwrites_in_consume_loop(self, request):
         """Test that error messages are updated correctly in consume loop."""
+        # Skip for celery (eager mode executes in main thread, not consumer thread)
+        if CELERY_AVAILABLE and isinstance(self.queue, CeleryMessageQueue):
+            pytest.skip(
+                "Test requires real consumer thread - not compatible with celery eager mode"
+            )
 
         queue_producer, rm = self.queue, self.rm
         user = "producer"
@@ -405,6 +461,7 @@ class TestMessageQueueUnified:
                     assert "Specific processing error" in res.data.errmsg
                     assert res.data.retries >= 1
 
+    @pytest.mark.parametrize("mq_context", ["simple", "rabbitmq"], indirect=True)
     def test_retry_count_increments_on_failure(self):
         """Test that retry count increments when jobs fail."""
         queue, rm = self.queue, self.rm
@@ -432,12 +489,18 @@ class TestMessageQueueUnified:
             # So we check it's at least 0 (unchanged) or 1 (incremented)
             assert updated.data.retries >= 0
 
-    def test_noretry_exception_skips_retry(self):
+    def test_noretry_exception_skips_retry(self, request):
         """測試當拋出 NoRetry 異常時，任務應直接失敗而不重試。
 
         - SimpleMessageQueue: 任務應標記為 FAILED 且 retries=1 (不會重新設為 PENDING)
         - RabbitMQ: 訊息應直接送到 dead letter queue 而非 retry queue
         """
+        # Skip for celery (eager mode executes in main thread, not consumer thread)
+        if CELERY_AVAILABLE and isinstance(self.queue, CeleryMessageQueue):
+            pytest.skip(
+                "Test requires real consumer thread - not compatible with celery eager mode"
+            )
+
         queue_producer, rm = self.queue, self.rm
 
         user = "producer"
