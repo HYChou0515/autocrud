@@ -77,7 +77,7 @@ class TestComprehensiveDataSearch:
                 "id": "3",
                 "str": "cherry",
                 "int": 30,
-                "float": 3.3,
+                "float": 3.33997581420365102578,
                 "bool": True,
                 "list_str": ["c", "d"],
                 "list_int": [3, 4],
@@ -160,7 +160,9 @@ class TestComprehensiveDataSearch:
         self._assert_search_results(
             [
                 DataSearchCondition(
-                    field_path="float", operator=DataSearchOperator.equals, value=3.3
+                    field_path="float",
+                    operator=DataSearchOperator.equals,
+                    value=3.33997581420365102578,
                 )
             ]
         )

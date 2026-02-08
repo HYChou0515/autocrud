@@ -448,19 +448,18 @@ class SQLAlchemyMetaStore(ISlowMetaStore):
         """Extract a numeric value from indexed_data.
 
         PostgreSQL: (indexed_data ->> 'field_path')::numeric
-        MySQL/MariaDB: CAST(JSON_EXTRACT(indexed_data, '$.field_path') AS DECIMAL)
+        MySQL/MariaDB: JSON_EXTRACT(indexed_data, '$.field_path') - MySQL auto-converts for comparison
         SQLite: CAST(json_extract(indexed_data, '$.field_path') AS REAL)
         """
         if self._get_dialect() == DialectType.postgresql:
             t = self._table
             return t.c.indexed_data[field_path].astext.cast(Numeric)
         if self._get_dialect() == DialectType.mysql:
-            # MySQL/MariaDB: use JSON_EXTRACT and cast to DECIMAL for precision
-            return func.CAST(
-                func.JSON_EXTRACT(
-                    self._table.c.indexed_data, self._json_path(field_path)
-                ),
-                Numeric,
+            # MySQL/MariaDB: Direct JSON_EXTRACT without CAST
+            # MySQL automatically converts JSON numbers to numeric types for comparison
+            # CAST(... AS DECIMAL) would truncate decimals (3.3 -> 3)
+            return func.JSON_EXTRACT(
+                self._table.c.indexed_data, self._json_path(field_path)
             )
         return func.CAST(
             func.json_extract(self._table.c.indexed_data, self._json_path(field_path)),
@@ -499,9 +498,15 @@ class SQLAlchemyMetaStore(ISlowMetaStore):
 
         PostgreSQL: jsonb_typeof(indexed_data -> 'field_path') -> lowercase
         MySQL/MariaDB: LOWER(JSON_TYPE(JSON_EXTRACT(...))) -> normalized to lowercase
-        SQLite: json_type(indexed_data, '$.field_path') -> lowercase
+        SQLite: Normalized from SQLite's type names to standard names
 
-        Returns normalized lowercase type: 'string', 'array', 'object', 'null', etc.
+        Returns normalized lowercase type: 'string', 'array', 'object', 'null', 'number', 'boolean'
+
+        SQLite uses different type names:
+        - 'text' -> 'string'
+        - 'integer'/'real' -> 'number'
+        - 'true'/'false' -> 'boolean'
+        - 'array', 'object', 'null' remain unchanged
         """
         t = self._table
         if self._get_dialect() == DialectType.postgresql:
@@ -514,8 +519,16 @@ class SQLAlchemyMetaStore(ISlowMetaStore):
                     func.JSON_EXTRACT(t.c.indexed_data, self._json_path(field_path))
                 )
             )
-        # SQLite: json_type takes two arguments, returns lowercase
-        return func.json_type(t.c.indexed_data, self._json_path(field_path))
+        # SQLite: json_type returns different names, need to normalize
+        # 'text' -> 'string', 'integer'/'real' -> 'number', 'true'/'false' -> 'boolean'
+        sqlite_type = func.json_type(t.c.indexed_data, self._json_path(field_path))
+        return case(
+            (sqlite_type == "text", "string"),
+            (sqlite_type == "integer", "number"),
+            (sqlite_type == "real", "number"),
+            (sqlite_type.in_(["true", "false"]), "boolean"),
+            else_=sqlite_type,  # 'array', 'object', 'null' pass through
+        )
 
     def _jsonb_array_length(self, field_path: str):
         """Get length of a JSON array in indexed_data.
@@ -711,7 +724,17 @@ class SQLAlchemyMetaStore(ISlowMetaStore):
                     json.dumps(value), _jsonb_cast_type(self._get_dialect())
                 )
             if isinstance(value, bool):
+                # For SQLite: json_extract returns 1/0, need to use json_type which returns "true"/"false"
+                # For PostgreSQL/MySQL: jsonb_text returns "true"/"false" strings
+                if self._get_dialect() == DialectType.sqlite:
+                    t = self._table
+                    return func.json_type(
+                        t.c.indexed_data, self._json_path(field_path)
+                    ) == ("true" if value else "false")
                 return jsonb_text == ("true" if value else "false")
+            # For numeric values (but not bool), use numeric comparison for SQLite compatibility
+            if isinstance(value, (int, float)) and not isinstance(value, bool):
+                return jsonb_numeric == value
             return jsonb_text == str(value)
 
         if operator == DataSearchOperator.not_equals:
@@ -724,7 +747,17 @@ class SQLAlchemyMetaStore(ISlowMetaStore):
                     )
                 )
             if isinstance(value, bool):
+                # For SQLite: json_extract returns 1/0, need to use json_type which returns "true"/"false"
+                # For PostgreSQL/MySQL: jsonb_text returns "true"/"false" strings
+                if self._get_dialect() == DialectType.sqlite:
+                    t = self._table
+                    return func.json_type(
+                        t.c.indexed_data, self._json_path(field_path)
+                    ) != ("true" if value else "false")
                 return jsonb_text != ("true" if value else "false")
+            # For numeric values (but not bool), use numeric comparison for SQLite compatibility
+            if isinstance(value, (int, float)) and not isinstance(value, bool):
+                return jsonb_numeric != value
             return jsonb_text != str(value)
 
         if operator == DataSearchOperator.greater_than:
@@ -748,9 +781,21 @@ class SQLAlchemyMetaStore(ISlowMetaStore):
 
         if operator == DataSearchOperator.in_list:
             if isinstance(value, (list, tuple, set)):
+                # Check if all values are numeric (but not bool) for SQLite compatibility
+                if all(
+                    isinstance(v, (int, float)) and not isinstance(v, bool)
+                    for v in value
+                ):
+                    return jsonb_numeric.in_(list(value))
                 return jsonb_text.in_([str(v) for v in value])
         elif operator == DataSearchOperator.not_in_list:
             if isinstance(value, (list, tuple, set)):
+                # Check if all values are numeric (but not bool) for SQLite compatibility
+                if all(
+                    isinstance(v, (int, float)) and not isinstance(v, bool)
+                    for v in value
+                ):
+                    return jsonb_numeric.notin_(list(value))
                 return jsonb_text.notin_([str(v) for v in value])
 
         if operator == DataSearchOperator.is_null:

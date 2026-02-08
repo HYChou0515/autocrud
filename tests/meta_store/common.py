@@ -19,6 +19,7 @@ ALL_META_STORE_TYPES = [
     "sa-pg",
     "sa-mariadb",
     "sa-mysql",
+    "sa-sqlite",
 ]
 
 
@@ -252,4 +253,16 @@ def get_meta_store(store_type: str, tmpdir: Path = None):
             return SQLAlchemyMetaStore(url=sa_url, encoding="msgpack")
         except Exception as e:
             pytest.fail(f"MySQL not available: {e}")
+    if store_type == "sa-sqlite":
+        from autocrud.resource_manager.meta_store.sqlalchemy import (
+            SQLAlchemyMetaStore,
+        )
+
+        # Use file-based SQLite for testing
+        db_file = tmpdir / "test_sa_sqlite.db"
+        sa_url = f"sqlite:///{db_file}"
+        try:
+            return SQLAlchemyMetaStore(url=sa_url, encoding="msgpack")
+        except Exception as e:
+            pytest.fail(f"SQLite not available: {e}")
     raise ValueError(f"Unsupported store_type: {store_type}")
