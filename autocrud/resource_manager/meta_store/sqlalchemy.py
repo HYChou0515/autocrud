@@ -79,10 +79,10 @@ class _JSONEncodedDict(TypeDecorator):
 
 
 def _build_resource_meta_table(
-    table_name: str, metadata: MetaData, *, use_jsonb: bool
+    table_name: str, metadata: MetaData, *, dialect: DialectType
 ) -> Table:
     """Build the SQLAlchemy Table object for resource metadata."""
-    indexed_data_type = JSONB if use_jsonb else _JSONEncodedDict
+    indexed_data_type = JSONB if dialect == DialectType.postgresql else _JSONEncodedDict
     table = Table(
         table_name,
         metadata,
@@ -136,7 +136,7 @@ class SQLAlchemyMetaStore(ISlowMetaStore):
 
         self._metadata = MetaData()
         self._table = _build_resource_meta_table(
-            table_name, self._metadata, use_jsonb=self._is_pg()
+            table_name, self._metadata, dialect=self._get_dialect()
         )
         self._Session = sessionmaker(bind=self._engine)
 
@@ -386,9 +386,6 @@ class SQLAlchemyMetaStore(ISlowMetaStore):
             return DialectType.sqlite
         return DialectType.unknown
 
-    def _is_pg(self) -> bool:
-        return self._get_dialect() == DialectType.postgresql
-
     def _json_path(self, field_path: str) -> str:
         """Build proper JSON path for the given field_path.
 
@@ -500,19 +497,24 @@ class SQLAlchemyMetaStore(ISlowMetaStore):
     def _jsonb_typeof(self, field_path: str):
         """Get the JSON type of a value in indexed_data.
 
-        PostgreSQL: jsonb_typeof(indexed_data -> 'field_path')
-        MySQL/MariaDB: JSON_TYPE(JSON_EXTRACT(indexed_data, '$.field_path'))
-        SQLite: json_type(indexed_data, '$.field_path')
+        PostgreSQL: jsonb_typeof(indexed_data -> 'field_path') -> lowercase
+        MySQL/MariaDB: LOWER(JSON_TYPE(JSON_EXTRACT(...))) -> normalized to lowercase
+        SQLite: json_type(indexed_data, '$.field_path') -> lowercase
+
+        Returns normalized lowercase type: 'string', 'array', 'object', 'null', etc.
         """
         t = self._table
         if self._get_dialect() == DialectType.postgresql:
             return func.jsonb_typeof(t.c.indexed_data[field_path])
         if self._get_dialect() == DialectType.mysql:
-            # MySQL/MariaDB: JSON_TYPE takes a single JSON value
-            return func.JSON_TYPE(
-                func.JSON_EXTRACT(t.c.indexed_data, self._json_path(field_path))
+            # MySQL/MariaDB: JSON_TYPE returns uppercase ('STRING', 'ARRAY', etc.)
+            # Normalize to lowercase for consistency
+            return func.LOWER(
+                func.JSON_TYPE(
+                    func.JSON_EXTRACT(t.c.indexed_data, self._json_path(field_path))
+                )
             )
-        # SQLite: json_type takes two arguments
+        # SQLite: json_type takes two arguments, returns lowercase
         return func.json_type(t.c.indexed_data, self._json_path(field_path))
 
     def _jsonb_array_length(self, field_path: str):
@@ -542,18 +544,15 @@ class SQLAlchemyMetaStore(ISlowMetaStore):
     def _jsonb_is_json_null(self, field_path: str):
         """Check if a JSON value is JSON null (not SQL NULL).
 
-        PostgreSQL: jsonb_typeof(indexed_data -> 'field_path') = 'null'
-        MySQL/MariaDB: JSON_TYPE(JSON_EXTRACT(indexed_data, '$.field_path')) = 'NULL'
-        SQLite: json_type(indexed_data, '$.field_path') = 'null'
+        All dialects now return lowercase type names from _jsonb_typeof,
+        so we compare against 'null' uniformly.
+
+        PostgreSQL: jsonb_typeof returns 'null' (lowercase)
+        MySQL/MariaDB: LOWER(JSON_TYPE) returns 'null' (lowercase)
+        SQLite: json_type returns 'null' (lowercase)
         """
         typeof = self._jsonb_typeof(field_path)
-        if self._get_dialect() == DialectType.postgresql:
-            # PostgreSQL: jsonb_typeof returns 'null' (lowercase) for JSON null
-            return typeof == "null"
-        if self._get_dialect() == DialectType.mysql:
-            # MySQL/MariaDB: JSON_TYPE returns 'NULL' (uppercase) for JSON null
-            return typeof == "NULL"
-        # SQLite: json_type returns 'null' (lowercase) for JSON null
+        # All dialects: compare with lowercase 'null'
         return typeof == "null"
 
     def _regex_match(self, expr, pattern):
