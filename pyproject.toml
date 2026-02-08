@@ -109,6 +109,7 @@ dev = [
     "sphinx>=8.2.3",
     "sphinx-autodoc-typehints>=3.2.0",
     "sphinx-design>=0.6.1",
+    "sqlalchemy>=2.0.46",
     "twine>=6.1.0",
     "uvicorn>=0.35.0",
 ]
