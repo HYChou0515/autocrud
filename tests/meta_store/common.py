@@ -20,6 +20,7 @@ ALL_META_STORE_TYPES = [
     "sa-mariadb",
     "sa-mysql",
     "sa-sqlite",
+    "sa-oracle",
 ]
 
 
@@ -265,4 +266,34 @@ def get_meta_store(store_type: str, tmpdir: Path = None):
             return SQLAlchemyMetaStore(url=sa_url, encoding="msgpack")
         except Exception as e:
             pytest.fail(f"SQLite not available: {e}")
+    if store_type == "sa-oracle":
+        import oracledb
+
+        from autocrud.resource_manager.meta_store.sqlalchemy import (
+            SQLAlchemyMetaStore,
+        )
+
+        sa_url = (
+            "oracle+oracledb://admin:password@localhost:1522/?service_name=FREEPDB1"
+        )
+        try:
+            # Clean up test table using direct connection
+            conn = oracledb.connect(
+                user="admin",
+                password="password",
+                host="localhost",
+                port=1522,
+                service_name="FREEPDB1",
+            )
+            with conn.cursor() as cur:
+                try:
+                    cur.execute("DROP TABLE resource_meta")
+                except Exception:
+                    pass  # Table might not exist
+            conn.commit()
+            conn.close()
+
+            return SQLAlchemyMetaStore(url=sa_url, encoding="msgpack")
+        except Exception as e:
+            pytest.fail(f"Oracle not available: {e}")
     raise ValueError(f"Unsupported store_type: {store_type}")

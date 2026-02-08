@@ -22,6 +22,7 @@ from sqlalchemy import (
     create_engine,
     delete,
     func,
+    literal_column,
     not_,
     or_,
     select,
@@ -56,6 +57,7 @@ class DialectType(EnumType):
     postgresql = "postgresql"
     mysql = "mysql"
     sqlite = "sqlite"
+    oracle = "oracle"
     unknown = "unknown"
 
 
@@ -384,6 +386,8 @@ class SQLAlchemyMetaStore(ISlowMetaStore):
             return DialectType.mysql
         if name == "sqlite":
             return DialectType.sqlite
+        if name == "oracle":
+            return DialectType.oracle
         return DialectType.unknown
 
     def _json_path(self, field_path: str) -> str:
@@ -418,6 +422,7 @@ class SQLAlchemyMetaStore(ISlowMetaStore):
         PostgreSQL: indexed_data ->> 'field_path'
         MySQL/MariaDB: JSON_UNQUOTE(JSON_EXTRACT(indexed_data, '$.field_path'))
         SQLite: json_extract(indexed_data, '$.field_path')
+        Oracle: JSON_VALUE(indexed_data, '$.field_path')
         """
         t = self._table
         if self._get_dialect() == DialectType.postgresql:
@@ -427,6 +432,11 @@ class SQLAlchemyMetaStore(ISlowMetaStore):
             return func.JSON_UNQUOTE(
                 func.JSON_EXTRACT(t.c.indexed_data, self._json_path(field_path))
             )
+        # Oracle: Use literal_column() for literal path (JSON_VALUE requires literal)
+        if self._get_dialect() == DialectType.oracle:
+            # Escape single quotes in path and use literal_column() for sortable expression
+            path = self._json_path(field_path).replace("'", "''")
+            return literal_column(f"JSON_VALUE(indexed_data, '{path}')")
         extracted = func.json_extract(t.c.indexed_data, self._json_path(field_path))
         return extracted
 
@@ -436,12 +446,16 @@ class SQLAlchemyMetaStore(ISlowMetaStore):
         PostgreSQL: indexed_data -> 'field_path'
         MySQL/MariaDB: JSON_EXTRACT(indexed_data, '$.field_path')
         SQLite: json_extract(indexed_data, '$.field_path')
+        Oracle: JSON_QUERY(indexed_data, '$.field_path')
         """
         t = self._table
         if self._get_dialect() == DialectType.postgresql:
             return t.c.indexed_data[field_path]
         if self._get_dialect() == DialectType.mysql:
             return func.JSON_EXTRACT(t.c.indexed_data, self._json_path(field_path))
+        if self._get_dialect() == DialectType.oracle:
+            path = self._json_path(field_path).replace("'", "''")
+            return literal_column(f"JSON_QUERY(indexed_data, '{path}')")
         return func.json_extract(t.c.indexed_data, self._json_path(field_path))
 
     def _jsonb_numeric(self, field_path: str):
@@ -450,6 +464,7 @@ class SQLAlchemyMetaStore(ISlowMetaStore):
         PostgreSQL: (indexed_data ->> 'field_path')::numeric
         MySQL/MariaDB: JSON_EXTRACT(indexed_data, '$.field_path') - MySQL auto-converts for comparison
         SQLite: CAST(json_extract(indexed_data, '$.field_path') AS REAL)
+        Oracle: JSON_VALUE(indexed_data, '$.field_path' RETURNING NUMBER)
         """
         if self._get_dialect() == DialectType.postgresql:
             t = self._table
@@ -460,6 +475,11 @@ class SQLAlchemyMetaStore(ISlowMetaStore):
             # CAST(... AS DECIMAL) would truncate decimals (3.3 -> 3)
             return func.JSON_EXTRACT(
                 self._table.c.indexed_data, self._json_path(field_path)
+            )
+        if self._get_dialect() == DialectType.oracle:
+            path = self._json_path(field_path).replace("'", "''")
+            return literal_column(
+                f"JSON_VALUE(indexed_data, '{path}' RETURNING NUMBER)"
             )
         return func.CAST(
             func.json_extract(self._table.c.indexed_data, self._json_path(field_path)),
@@ -473,6 +493,9 @@ class SQLAlchemyMetaStore(ISlowMetaStore):
             return t.c.indexed_data[field_path]
         if self._get_dialect() == DialectType.mysql:
             return func.JSON_EXTRACT(t.c.indexed_data, self._json_path(field_path))
+        if self._get_dialect() == DialectType.oracle:
+            path = self._json_path(field_path).replace("'", "''")
+            return literal_column(f"JSON_VALUE(indexed_data, '{path}')")
         return func.json_extract(t.c.indexed_data, self._json_path(field_path))
 
     def _jsonb_has_key(self, field_path: str):
@@ -481,6 +504,7 @@ class SQLAlchemyMetaStore(ISlowMetaStore):
         PostgreSQL: indexed_data ? 'field_path'
         MySQL/MariaDB: JSON_CONTAINS_PATH(indexed_data, 'one', '$.field_path')
         SQLite: json_type(indexed_data, '$.field_path') IS NOT NULL
+        Oracle: JSON_EXISTS(indexed_data, '$.field_path')
         """
         t = self._table
         if self._get_dialect() == DialectType.postgresql:
@@ -490,6 +514,9 @@ class SQLAlchemyMetaStore(ISlowMetaStore):
             return func.JSON_CONTAINS_PATH(
                 t.c.indexed_data, "one", self._json_path(field_path)
             )
+        if self._get_dialect() == DialectType.oracle:
+            path = self._json_path(field_path).replace("'", "''")
+            return literal_column(f"JSON_EXISTS(indexed_data, '{path}')")
         # SQLite: key exists if json_type returns something
         return func.json_type(t.c.indexed_data, self._json_path(field_path)).isnot(None)
 
@@ -499,6 +526,7 @@ class SQLAlchemyMetaStore(ISlowMetaStore):
         PostgreSQL: jsonb_typeof(indexed_data -> 'field_path') -> lowercase
         MySQL/MariaDB: LOWER(JSON_TYPE(JSON_EXTRACT(...))) -> normalized to lowercase
         SQLite: Normalized from SQLite's type names to standard names
+        Oracle: Limited support - can detect 'null' via comparison, others return 'string'
 
         Returns normalized lowercase type: 'string', 'array', 'object', 'null', 'number', 'boolean'
 
@@ -519,6 +547,10 @@ class SQLAlchemyMetaStore(ISlowMetaStore):
                     func.JSON_EXTRACT(t.c.indexed_data, self._json_path(field_path))
                 )
             )
+        if self._get_dialect() == DialectType.oracle:
+            # Oracle: Use .type() function in JSON path
+            path = self._json_path(field_path).replace("'", "''")
+            return literal_column(f"JSON_VALUE(indexed_data, '{path}.type()')")
         # SQLite: json_type returns different names, need to normalize
         # 'text' -> 'string', 'integer'/'real' -> 'number', 'true'/'false' -> 'boolean'
         sqlite_type = func.json_type(t.c.indexed_data, self._json_path(field_path))
@@ -536,6 +568,7 @@ class SQLAlchemyMetaStore(ISlowMetaStore):
         PostgreSQL: jsonb_array_length(indexed_data -> 'field_path')
         MySQL/MariaDB: JSON_LENGTH(indexed_data, '$.field_path')
         SQLite: json_array_length(indexed_data, '$.field_path')
+        Oracle: JSON_VALUE(indexed_data, '$.field_path.size()' RETURNING NUMBER)
         """
         t = self._table
         if self._get_dialect() == DialectType.postgresql:
@@ -543,6 +576,14 @@ class SQLAlchemyMetaStore(ISlowMetaStore):
         if self._get_dialect() == DialectType.mysql:
             # MySQL/MariaDB: JSON_LENGTH
             return func.JSON_LENGTH(t.c.indexed_data, self._json_path(field_path))
+        if self._get_dialect() == DialectType.oracle:
+            # Oracle: Use .size() in JSON path expression (Oracle 12.2+)
+            path = self._json_path(field_path).replace("'", "''")
+            # Add .size() to the path
+            size_path = f"{path}.size()"
+            return literal_column(
+                f"JSON_VALUE(indexed_data, '{size_path}' RETURNING NUMBER)"
+            )
         # SQLite: json_array_length
         return func.json_array_length(t.c.indexed_data, self._json_path(field_path))
 
@@ -550,8 +591,13 @@ class SQLAlchemyMetaStore(ISlowMetaStore):
         """Get length of a string stored in indexed_data.
 
         PostgreSQL: length(indexed_data ->> 'field_path')
+        Oracle:     LENGTH(JSON_VALUE(indexed_data, '$.field_path'))
         Others:     length(json_extract(indexed_data, '$.field_path'))
         """
+        if self._get_dialect() == DialectType.oracle:
+            # Oracle: Use LENGTH() function with JSON_VALUE
+            path = self._json_path(field_path).replace("'", "''")
+            return literal_column(f"LENGTH(JSON_VALUE(indexed_data, '{path}'))")
         return func.length(self._jsonb_text(field_path))
 
     def _jsonb_is_json_null(self, field_path: str):
@@ -563,7 +609,14 @@ class SQLAlchemyMetaStore(ISlowMetaStore):
         PostgreSQL: jsonb_typeof returns 'null' (lowercase)
         MySQL/MariaDB: LOWER(JSON_TYPE) returns 'null' (lowercase)
         SQLite: json_type returns 'null' (lowercase)
+        Oracle: JSON_EXISTS AND JSON_VALUE IS NULL
         """
+        if self._get_dialect() == DialectType.oracle:
+            # Oracle: JSON null is when key exists AND JSON_VALUE returns NULL
+            has_key = self._jsonb_has_key(field_path)
+            json_value = self._jsonb_text(field_path)
+            return and_(has_key, json_value.is_(None))
+
         typeof = self._jsonb_typeof(field_path)
         # All dialects: compare with lowercase 'null'
         return typeof == "null"
@@ -572,15 +625,53 @@ class SQLAlchemyMetaStore(ISlowMetaStore):
         """Build a regex match expression.
 
         PostgreSQL: expr ~ pattern
+        Oracle:     REGEXP_LIKE(expr, pattern) = 1
         SQLite:     expr REGEXP pattern  (requires extension, but we use text-based fallback)
         """
         if self._get_dialect() == DialectType.postgresql:
             # PostgreSQL regex operator ~
             return expr.op("~")(pattern)
+        elif self._get_dialect() == DialectType.oracle:
+            # Oracle uses REGEXP_LIKE function
+            from sqlalchemy import func
+
+            return func.REGEXP_LIKE(expr, pattern) == 1
         # SQLite does not support REGEXP natively; some builds have it.
         # We use the REGEXP operator and hope the connection has it loaded.
         # Alternatively fall back to LIKE for basic patterns.
         return expr.op("REGEXP")(pattern)
+
+    def _oracle_compare(
+        self, field_path: str, operator: str, value, is_numeric: bool = False
+    ):
+        """Build a comparison expression for Oracle using literal_column.
+
+        Oracle's oracledb driver has issues with bind parameters when using
+        literal_column expressions, so we embed the value directly in the SQL.
+        """
+        path = self._json_path(field_path).replace("'", "''")
+
+        # Escape single quotes in string values
+        if isinstance(value, str):
+            escaped_value = value.replace("'", "''")
+            value_str = f"'{escaped_value}'"
+        elif isinstance(value, bool):
+            value_str = f"'{str(value).lower()}'"
+        elif value is None:
+            value_str = "NULL"
+        else:
+            value_str = str(value)
+
+        if is_numeric:
+            # Numeric comparison
+            return literal_column(
+                f"JSON_VALUE(indexed_data, '{path}' RETURNING NUMBER) {operator} {value_str}"
+            )
+        else:
+            # Text comparison
+            return literal_column(
+                f"JSON_VALUE(indexed_data, '{path}') {operator} {value_str}"
+            )
 
     # ------------------------------------------------------------------
     # Condition builder
@@ -701,10 +792,11 @@ class SQLAlchemyMetaStore(ISlowMetaStore):
         jsonb_numeric = self._jsonb_numeric(field_path)
 
         # Apply field transformation
-        if (
+        has_transform = (
             condition.transform is not None
             and condition.transform == FieldTransform.length
-        ):
+        )
+        if has_transform:
             typeof = self._jsonb_typeof(field_path)
             arr_len = self._jsonb_array_length(field_path)
             str_len = self._jsonb_string_length(field_path)
@@ -731,10 +823,18 @@ class SQLAlchemyMetaStore(ISlowMetaStore):
                     return func.json_type(
                         t.c.indexed_data, self._json_path(field_path)
                     ) == ("true" if value else "false")
+                if self._get_dialect() == DialectType.oracle:
+                    return self._oracle_compare(
+                        field_path, "=", "true" if value else "false", is_numeric=False
+                    )
                 return jsonb_text == ("true" if value else "false")
             # For numeric values (but not bool), use numeric comparison for SQLite compatibility
             if isinstance(value, (int, float)) and not isinstance(value, bool):
+                if self._get_dialect() == DialectType.oracle and not has_transform:
+                    return self._oracle_compare(field_path, "=", value, is_numeric=True)
                 return jsonb_numeric == value
+            if self._get_dialect() == DialectType.oracle:
+                return self._oracle_compare(field_path, "=", value, is_numeric=False)
             return jsonb_text == str(value)
 
         if operator == DataSearchOperator.not_equals:
@@ -754,22 +854,64 @@ class SQLAlchemyMetaStore(ISlowMetaStore):
                     return func.json_type(
                         t.c.indexed_data, self._json_path(field_path)
                     ) != ("true" if value else "false")
+                if self._get_dialect() == DialectType.oracle:
+                    return self._oracle_compare(
+                        field_path, "!=", "true" if value else "false", is_numeric=False
+                    )
                 return jsonb_text != ("true" if value else "false")
             # For numeric values (but not bool), use numeric comparison for SQLite compatibility
             if isinstance(value, (int, float)) and not isinstance(value, bool):
+                if self._get_dialect() == DialectType.oracle and not has_transform:
+                    return self._oracle_compare(
+                        field_path, "!=", value, is_numeric=True
+                    )
                 return jsonb_numeric != value
+            if self._get_dialect() == DialectType.oracle:
+                return self._oracle_compare(field_path, "!=", value, is_numeric=False)
             return jsonb_text != str(value)
 
         if operator == DataSearchOperator.greater_than:
+            if self._get_dialect() == DialectType.oracle and not has_transform:
+                return self._oracle_compare(field_path, ">", value, is_numeric=True)
             return jsonb_numeric > value
         if operator == DataSearchOperator.greater_than_or_equal:
+            if self._get_dialect() == DialectType.oracle and not has_transform:
+                return self._oracle_compare(field_path, ">=", value, is_numeric=True)
             return jsonb_numeric >= value
         if operator == DataSearchOperator.less_than:
+            if self._get_dialect() == DialectType.oracle and not has_transform:
+                return self._oracle_compare(field_path, "<", value, is_numeric=True)
             return jsonb_numeric < value
         if operator == DataSearchOperator.less_than_or_equal:
+            if self._get_dialect() == DialectType.oracle and not has_transform:
+                return self._oracle_compare(field_path, "<=", value, is_numeric=True)
             return jsonb_numeric <= value
 
         if operator == DataSearchOperator.contains:
+            # Oracle: Use JSON_EXISTS for array member check, LIKE for string substring
+            if self._get_dialect() == DialectType.oracle:
+                # Heuristic: if field name contains 'list', treat as array
+                if "list" in field_path.lower():
+                    path = self._json_path(field_path).replace("'", "''")
+                    # Remove the leading $. for array path
+                    array_path = path[2:] if path.startswith("$.") else path
+                    # Format value for JSON path expression
+                    if isinstance(value, str):
+                        # String values need to be quoted in the path expression
+                        json_value = f'"{value}"'
+                    elif isinstance(value, bool):
+                        json_value = "true" if value else "false"
+                    else:
+                        json_value = str(value)
+                    return literal_column(
+                        f"JSON_EXISTS(indexed_data, '$.{array_path}[*]?(@ == {json_value})')"
+                    )
+                else:
+                    # String contains: use LIKE with JSON_VALUE
+                    path = self._json_path(field_path).replace("'", "''")
+                    return literal_column(f"JSON_VALUE(indexed_data, '{path}')").like(
+                        f"%{value}%"
+                    )
             return jsonb_text.contains(str(value))
         if operator == DataSearchOperator.starts_with:
             return jsonb_text.startswith(str(value))
@@ -781,6 +923,28 @@ class SQLAlchemyMetaStore(ISlowMetaStore):
 
         if operator == DataSearchOperator.in_list:
             if isinstance(value, (list, tuple, set)):
+                # Oracle: Build IN clause directly to avoid bind parameter issues
+                if self._get_dialect() == DialectType.oracle:
+                    # Check if all values are numeric (but not bool)
+                    if all(
+                        isinstance(v, (int, float)) and not isinstance(v, bool)
+                        for v in value
+                    ):
+                        # Numeric IN: use JSON_VALUE RETURNING NUMBER
+                        path = self._json_path(field_path).replace("'", "''")
+                        values_str = ", ".join(str(v) for v in value)
+                        return literal_column(
+                            f"JSON_VALUE(indexed_data, '{path}' RETURNING NUMBER) IN ({values_str})"
+                        )
+                    else:
+                        # String IN: use JSON_VALUE
+                        path = self._json_path(field_path).replace("'", "''")
+                        values_str = ", ".join(f"'{str(v)}'" for v in value)
+                        return literal_column(
+                            f"JSON_VALUE(indexed_data, '{path}') IN ({values_str})"
+                        )
+
+                # Other databases: use standard .in_() method
                 # Check if all values are numeric (but not bool) for SQLite compatibility
                 if all(
                     isinstance(v, (int, float)) and not isinstance(v, bool)
@@ -790,6 +954,28 @@ class SQLAlchemyMetaStore(ISlowMetaStore):
                 return jsonb_text.in_([str(v) for v in value])
         elif operator == DataSearchOperator.not_in_list:
             if isinstance(value, (list, tuple, set)):
+                # Oracle: Build NOT IN clause directly to avoid bind parameter issues
+                if self._get_dialect() == DialectType.oracle:
+                    # Check if all values are numeric (but not bool)
+                    if all(
+                        isinstance(v, (int, float)) and not isinstance(v, bool)
+                        for v in value
+                    ):
+                        # Numeric NOT IN: use JSON_VALUE RETURNING NUMBER
+                        path = self._json_path(field_path).replace("'", "''")
+                        values_str = ", ".join(str(v) for v in value)
+                        return literal_column(
+                            f"JSON_VALUE(indexed_data, '{path}' RETURNING NUMBER) NOT IN ({values_str})"
+                        )
+                    else:
+                        # String NOT IN: use JSON_VALUE
+                        path = self._json_path(field_path).replace("'", "''")
+                        values_str = ", ".join(f"'{str(v)}'" for v in value)
+                        return literal_column(
+                            f"JSON_VALUE(indexed_data, '{path}') NOT IN ({values_str})"
+                        )
+
+                # Other databases: use standard .notin_() method
                 # Check if all values are numeric (but not bool) for SQLite compatibility
                 if all(
                     isinstance(v, (int, float)) and not isinstance(v, bool)
