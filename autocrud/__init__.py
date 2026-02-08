@@ -6,4 +6,4 @@ from autocrud.crud.core import AutoCRUD
 crud = AutoCRUD()
 
 __all__ = ["AutoCRUD", "crud"]
-__version__ = "0.7.7"
+__version__ = "0.8.0"
