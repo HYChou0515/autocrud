@@ -19,18 +19,6 @@ from autocrud.resource_manager.core import (
     ResourceManager,
     SimpleStorage,
 )
-from autocrud.resource_manager.meta_store.df import DFMemoryMetaStore
-from autocrud.resource_manager.meta_store.fast_slow import FastSlowMetaStore
-from autocrud.resource_manager.meta_store.postgres import PostgresMetaStore
-from autocrud.resource_manager.meta_store.redis import RedisMetaStore
-from autocrud.resource_manager.meta_store.simple import (
-    DiskMetaStore,
-    MemoryMetaStore,
-)
-from autocrud.resource_manager.meta_store.sqlite3 import (
-    FileSqliteMetaStore,
-    MemorySqliteMetaStore,
-)
 from autocrud.resource_manager.resource_store.simple import (
     DiskResourceStore,
     MemoryResourceStore,
@@ -47,6 +35,8 @@ from autocrud.types import (
     RevisionInfo,
     RevisionStatus,
 )
+
+from .common import ALL_META_STORE_TYPES, get_meta_store
 
 
 class InnerData(Struct):
@@ -111,103 +101,6 @@ def reset_and_get_redis_url():
     return redis_url
 
 
-def get_meta_store(store_type: str, tmpdir: Path = None):
-    """Fixture to provide a fast store for testing."""
-    if store_type == "memory":
-        return MemoryMetaStore(encoding="msgpack")
-    if store_type == "dfm":
-        return DFMemoryMetaStore(encoding="msgpack")
-    if store_type == "sql3-mem":
-        return MemorySqliteMetaStore(encoding="msgpack")
-    if store_type == "sql3-s3":
-        # Use real S3/MinIO connection
-        import uuid
-
-        from autocrud.resource_manager.meta_store.sqlite3 import S3SqliteMetaStore
-
-        test_key = f"test-resource-mgr-{uuid.uuid4()}.db"
-        try:
-            store = S3SqliteMetaStore(
-                bucket="test-autocrud",
-                key=test_key,
-                endpoint_url="http://localhost:9000",
-                access_key_id="minioadmin",
-                secret_access_key="minioadmin",
-                encoding="msgpack",
-                auto_sync=False,
-                enable_locking=False,
-            )
-            # 清理函數
-            import atexit
-
-            def cleanup():
-                try:
-                    store.close()
-                    import boto3
-
-                    s3 = boto3.client(
-                        "s3",
-                        endpoint_url="http://localhost:9000",
-                        aws_access_key_id="minioadmin",
-                        aws_secret_access_key="minioadmin",
-                        region_name="us-east-1",
-                    )
-                    s3.delete_object(Bucket="test-autocrud", Key=test_key)
-                except Exception:
-                    pass
-
-            atexit.register(cleanup)
-            return store
-        except Exception as e:
-            pytest.skip(f"S3/MinIO not available: {e}")
-    if store_type == "memory-pg":
-        return FastSlowMetaStore(
-            fast_store=MemoryMetaStore(encoding="msgpack"),
-            slow_store=PostgresMetaStore(
-                pg_dsn=reset_and_get_pg_dsn(),
-                encoding="msgpack",
-            ),
-        )
-    if store_type == "sql3-file":
-        return FileSqliteMetaStore(db_filepath=tmpdir / "meta.db", encoding="msgpack")
-    if store_type == "disk-sql3file":
-        d = tmpdir / faker.pystr()
-        d.mkdir()
-        return FastSlowMetaStore(
-            fast_store=DiskMetaStore(encoding="msgpack", rootdir=d),
-            slow_store=FileSqliteMetaStore(
-                db_filepath=d / "meta.db",
-                encoding="msgpack",
-            ),
-        )
-    if store_type == "redis":
-        return RedisMetaStore(
-            redis_url=reset_and_get_redis_url(),
-            encoding="msgpack",
-            prefix=str(tmpdir).rsplit("/", 1)[-1],
-        )
-    if store_type == "redis-pg":
-        return FastSlowMetaStore(
-            fast_store=RedisMetaStore(
-                redis_url=reset_and_get_redis_url(),
-                encoding="msgpack",
-                prefix=str(tmpdir).rsplit("/", 1)[-1],
-            ),
-            slow_store=PostgresMetaStore(
-                pg_dsn=reset_and_get_pg_dsn(),
-                encoding="msgpack",
-            ),
-        )
-    if store_type == "postgres":
-        return PostgresMetaStore(
-            pg_dsn=reset_and_get_pg_dsn(),
-            encoding="msgpack",
-        )
-    d = tmpdir / faker.pystr()
-    d.mkdir()
-    return DiskMetaStore(encoding="msgpack", rootdir=d)
-
-
 @contextmanager
 def get_resource_store(
     store_type: str, tmpdir: Path | None = None
@@ -238,16 +131,7 @@ def get_resource_store(
 @pytest.mark.flaky(retries=6, delay=1)
 @pytest.mark.parametrize(
     "meta_store_type",
-    [
-        "memory",
-        "sql3-mem",
-        "sql3-file",
-        "sql3-s3",
-        "redis",
-        "disk",
-        "redis-pg",
-        "postgres",
-    ],
+    ALL_META_STORE_TYPES,
 )
 @pytest.mark.parametrize("res_store_type", ["memory", "disk", "s3"])
 class TestResourceManager:
@@ -1192,6 +1076,7 @@ def my_tmpdir():
         "dfm",
         "disk",
         "redis-pg",
+        "sa-pg",  # SQLAlchemyMetaStore with PostgreSQL
     ],
 )
 class TestMetaStore:
