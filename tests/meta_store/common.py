@@ -203,7 +203,15 @@ def get_meta_store(store_type: str, tmpdir: Path = None):
                 pg_conn.commit()
             pg_conn.close()
 
-            return SQLAlchemyMetaStore(url=sa_url, encoding="msgpack")
+            engine_kwargs = {
+                "pool_size": 5,
+                "max_overflow": 10,
+                "pool_pre_ping": True,
+                "pool_recycle": 3600,
+            }
+            return SQLAlchemyMetaStore(
+                url=sa_url, encoding="msgpack", engine_kwargs=engine_kwargs
+            )
         except Exception as e:
             pytest.fail(f"PostgreSQL not available: {e}")
     if store_type == "sa-mariadb":
@@ -227,7 +235,15 @@ def get_meta_store(store_type: str, tmpdir: Path = None):
             conn.commit()
             conn.close()
 
-            return SQLAlchemyMetaStore(url=sa_url, encoding="msgpack")
+            engine_kwargs = {
+                "pool_size": 5,
+                "max_overflow": 10,
+                "pool_pre_ping": True,
+                "pool_recycle": 3600,
+            }
+            return SQLAlchemyMetaStore(
+                url=sa_url, encoding="msgpack", engine_kwargs=engine_kwargs
+            )
         except Exception as e:
             pytest.fail(f"MariaDB not available: {e}")
     if store_type == "sa-mysql":
@@ -251,7 +267,15 @@ def get_meta_store(store_type: str, tmpdir: Path = None):
             conn.commit()
             conn.close()
 
-            return SQLAlchemyMetaStore(url=sa_url, encoding="msgpack")
+            engine_kwargs = {
+                "pool_size": 5,
+                "max_overflow": 10,
+                "pool_pre_ping": True,
+                "pool_recycle": 3600,
+            }
+            return SQLAlchemyMetaStore(
+                url=sa_url, encoding="msgpack", engine_kwargs=engine_kwargs
+            )
         except Exception as e:
             pytest.fail(f"MySQL not available: {e}")
     if store_type == "sa-sqlite":
@@ -276,24 +300,50 @@ def get_meta_store(store_type: str, tmpdir: Path = None):
         sa_url = (
             "oracle+oracledb://admin:password@localhost:1522/?service_name=FREEPDB1"
         )
-        try:
-            # Clean up test table using direct connection
-            conn = oracledb.connect(
-                user="admin",
-                password="password",
-                host="localhost",
-                port=1522,
-                service_name="FREEPDB1",
-            )
-            with conn.cursor() as cur:
-                try:
-                    cur.execute("DROP TABLE resource_meta")
-                except Exception:
-                    pass  # Table might not exist
-            conn.commit()
-            conn.close()
 
-            return SQLAlchemyMetaStore(url=sa_url, encoding="msgpack")
+        # Add connection pool configuration to prevent connection exhaustion
+        engine_kwargs = {
+            "pool_size": 5,
+            "max_overflow": 10,
+            "pool_pre_ping": True,  # Verify connections before using
+            "pool_recycle": 3600,  # Recycle connections after 1 hour
+        }
+
+        try:
+            # Clean up test table using direct connection with retry
+            import time
+
+            max_retries = 3
+            retry_delay = 2
+
+            for attempt in range(max_retries):
+                try:
+                    conn = oracledb.connect(
+                        user="admin",
+                        password="password",
+                        host="localhost",
+                        port=1522,
+                        service_name="FREEPDB1",
+                    )
+                    with conn.cursor() as cur:
+                        try:
+                            cur.execute("DROP TABLE resource_meta")
+                        except Exception:
+                            pass  # Table might not exist
+                    conn.commit()
+                    conn.close()
+                    break  # Success, exit retry loop
+                except oracledb.OperationalError as e:
+                    if "DPY-6000" in str(e) and attempt < max_retries - 1:
+                        # Connection pool full, wait and retry
+                        time.sleep(retry_delay)
+                        retry_delay *= 2  # Exponential backoff
+                        continue
+                    raise  # Re-raise if not retryable or last attempt
+
+            return SQLAlchemyMetaStore(
+                url=sa_url, encoding="msgpack", engine_kwargs=engine_kwargs
+            )
         except Exception as e:
             pytest.fail(f"Oracle not available: {e}")
     raise ValueError(f"Unsupported store_type: {store_type}")

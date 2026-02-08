@@ -31,6 +31,7 @@ def my_tmpdir():
         yield Path(d)
 
 
+@pytest.mark.flaky(retries=6, delay=1)
 @pytest.mark.parametrize(
     "meta_store_type",
     ALL_META_STORE_TYPES,
