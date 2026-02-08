@@ -1,3 +1,4 @@
+import datetime as dt
 import json
 from collections.abc import Generator, Iterable
 from contextlib import contextmanager
@@ -7,6 +8,7 @@ from msgspec import UNSET
 from sqlalchemy import (
     Boolean,
     Column,
+    DateTime,
     Float,
     Index,
     LargeBinary,
@@ -28,7 +30,7 @@ from sqlalchemy import (
 from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.engine import Engine
 from sqlalchemy.orm import Session, sessionmaker
-from sqlalchemy.types import DateTime, TypeDecorator
+from sqlalchemy.types import TypeDecorator
 
 from autocrud.resource_manager.basic import (
     Encoding,
@@ -46,6 +48,15 @@ from autocrud.types import (
     ResourceMetaSearchSort,
     ResourceMetaSortDirection,
 )
+
+
+class DialectType(EnumType):
+    """Helper Enum type for SQLAlchemy to store the database dialect name."""
+
+    postgresql = "postgresql"
+    mysql = "mysql"
+    sqlite = "sqlite"
+    unknown = "unknown"
 
 
 class _JSONEncodedDict(TypeDecorator):
@@ -75,14 +86,14 @@ def _build_resource_meta_table(
     table = Table(
         table_name,
         metadata,
-        Column("resource_id", String, primary_key=True),
+        Column("resource_id", String(255), primary_key=True),
         Column("data", LargeBinary, nullable=False),
-        Column("created_time", DateTime, nullable=False),
-        Column("updated_time", DateTime, nullable=False),
-        Column("created_by", String, nullable=False),
-        Column("updated_by", String, nullable=False),
+        Column("created_time", DateTime(timezone=True), nullable=False),
+        Column("updated_time", DateTime(timezone=True), nullable=False),
+        Column("created_by", String(255), nullable=False),
+        Column("updated_by", String(255), nullable=False),
         Column("is_deleted", Boolean, nullable=False),
-        Column("schema_version", String, nullable=True),
+        Column("schema_version", String(100), nullable=True),
         Column("indexed_data", indexed_data_type, nullable=True),
     )
     Index(f"ix_{table_name}_created_time", table.c.created_time)
@@ -180,13 +191,46 @@ class SQLAlchemyMetaStore(ISlowMetaStore):
     # ------------------------------------------------------------------
     # Helper: build a row dict from ResourceMeta
     # ------------------------------------------------------------------
+    def _to_utc(self, datetime_obj: dt.datetime) -> dt.datetime:
+        """Convert datetime to UTC for storage.
+
+        For MySQL/MariaDB: Since DATETIME doesn't store timezone, we convert
+        all times to UTC before storage for consistency.
+        For PostgreSQL: TIMESTAMP WITH TIME ZONE handles this automatically,
+        but explicit conversion doesn't hurt.
+        """
+        if datetime_obj.tzinfo is None:
+            # Naive datetime, assume it's already UTC
+            return datetime_obj.replace(tzinfo=dt.timezone.utc)
+        # Convert to UTC and make naive for storage
+        utc_dt = datetime_obj.astimezone(dt.timezone.utc)
+        if self._get_dialect() in (DialectType.mysql, DialectType.sqlite):
+            # MySQL/SQLite: store as naive UTC
+            return utc_dt.replace(tzinfo=None)
+        # PostgreSQL: keep timezone info
+        return utc_dt
+
+    def _from_utc(self, datetime_obj: dt.datetime) -> dt.datetime:
+        """Convert datetime from storage (assumed UTC) to timezone-aware.
+
+        For MySQL/MariaDB: Stored as naive UTC, restore timezone info.
+        For PostgreSQL: Already has timezone info from TIMESTAMP WITH TIME ZONE.
+        """
+        if datetime_obj is None:
+            return None
+        if datetime_obj.tzinfo is None:
+            # Naive datetime from storage, assume it's UTC
+            return datetime_obj.replace(tzinfo=dt.timezone.utc)
+        # Already has timezone
+        return datetime_obj
+
     def _meta_to_row(self, meta: ResourceMeta) -> dict:
         indexed = meta.indexed_data if meta.indexed_data is not UNSET else None
         return {
             "resource_id": meta.resource_id,
             "data": self._serializer.encode(meta),
-            "created_time": meta.created_time,
-            "updated_time": meta.updated_time,
+            "created_time": self._to_utc(meta.created_time),
+            "updated_time": self._to_utc(meta.updated_time),
             "created_by": meta.created_by,
             "updated_by": meta.updated_by,
             "is_deleted": meta.is_deleted,
@@ -272,14 +316,14 @@ class SQLAlchemyMetaStore(ISlowMetaStore):
             filters.append(t.c.is_deleted == query.is_deleted)
 
         if query.created_time_start is not UNSET:
-            filters.append(t.c.created_time >= query.created_time_start)
+            filters.append(t.c.created_time >= self._to_utc(query.created_time_start))
         if query.created_time_end is not UNSET:
-            filters.append(t.c.created_time <= query.created_time_end)
+            filters.append(t.c.created_time <= self._to_utc(query.created_time_end))
 
         if query.updated_time_start is not UNSET:
-            filters.append(t.c.updated_time >= query.updated_time_start)
+            filters.append(t.c.updated_time >= self._to_utc(query.updated_time_start))
         if query.updated_time_end is not UNSET:
-            filters.append(t.c.updated_time <= query.updated_time_end)
+            filters.append(t.c.updated_time <= self._to_utc(query.updated_time_end))
 
         if query.created_bys is not UNSET:
             filters.append(t.c.created_by.in_(query.created_bys))
@@ -332,87 +376,160 @@ class SQLAlchemyMetaStore(ISlowMetaStore):
     # ------------------------------------------------------------------
     # Dialect-aware helpers for JSONB / JSON extraction
     # ------------------------------------------------------------------
+    def _get_dialect(self) -> DialectType:
+        name = self._engine.dialect.name
+        if name == "postgresql":
+            return DialectType.postgresql
+        if name == "mysql":
+            return DialectType.mysql
+        if name == "sqlite":
+            return DialectType.sqlite
+        return DialectType.unknown
+
     def _is_pg(self) -> bool:
-        return self._engine.dialect.name == "postgresql"
+        return self._get_dialect() == DialectType.postgresql
+
+    def _json_path(self, field_path: str) -> str:
+        """Build proper JSON path for the given field_path.
+
+        PostgreSQL: Uses subscript operator, doesn't need path string
+        MySQL/MariaDB/SQLite: Need to handle keys with dots/special chars.
+            - Regular key: "$.key"
+            - Key with dots: '$."key.with.dots"'
+        """
+        dialect = self._get_dialect()
+        if dialect == DialectType.postgresql:
+            # PostgreSQL uses subscript operator, not JSON path strings
+            return field_path
+
+        # For MySQL/MariaDB: check if field_path contains special characters
+        # If it does, use quoted notation: $."key.name"
+        # SQLite appears to not support dotted keys properly in any syntax,
+        # but we'll use the same logic for consistency
+        if "." in field_path or '"' in field_path:
+            # Use quoted notation for keys with dots or quotes
+            # Need to escape any quotes in the field name
+            escaped = field_path.replace('"', '\\"')
+            return f'$."{escaped}"'
+        else:
+            # Simple key without dots
+            return f"$.{field_path}"
 
     def _jsonb_text(self, field_path: str):
         """Extract text value from indexed_data for a given field path.
 
         PostgreSQL: indexed_data ->> 'field_path'
-        Others:     json_extract(indexed_data, '$.field_path')  (as text via CAST)
+        MySQL/MariaDB: JSON_UNQUOTE(JSON_EXTRACT(indexed_data, '$.field_path'))
+        SQLite: json_extract(indexed_data, '$.field_path')
         """
         t = self._table
-        if self._is_pg():
+        if self._get_dialect() == DialectType.postgresql:
             return t.c.indexed_data[field_path].astext
-        # SQLite / others: use json_extract
-        return func.json_extract(t.c.indexed_data, f"$.{field_path}")
+        # MySQL/MariaDB: json_extract returns quoted strings for string values
+        if self._get_dialect() == DialectType.mysql:
+            return func.JSON_UNQUOTE(
+                func.JSON_EXTRACT(t.c.indexed_data, self._json_path(field_path))
+            )
+        extracted = func.json_extract(t.c.indexed_data, self._json_path(field_path))
+        return extracted
 
     def _jsonb_element(self, field_path: str):
         """Extract the raw JSON element (keeping type) from indexed_data.
 
         PostgreSQL: indexed_data -> 'field_path'
-        Others:     json_extract(indexed_data, '$.field_path')
+        MySQL/MariaDB: JSON_EXTRACT(indexed_data, '$.field_path')
+        SQLite: json_extract(indexed_data, '$.field_path')
         """
         t = self._table
-        if self._is_pg():
+        if self._get_dialect() == DialectType.postgresql:
             return t.c.indexed_data[field_path]
-        return func.json_extract(t.c.indexed_data, f"$.{field_path}")
+        if self._get_dialect() == DialectType.mysql:
+            return func.JSON_EXTRACT(t.c.indexed_data, self._json_path(field_path))
+        return func.json_extract(t.c.indexed_data, self._json_path(field_path))
 
     def _jsonb_numeric(self, field_path: str):
         """Extract a numeric value from indexed_data.
 
         PostgreSQL: (indexed_data ->> 'field_path')::numeric
-        Others:     CAST(json_extract(indexed_data, '$.field_path') AS REAL)
+        MySQL/MariaDB: CAST(JSON_EXTRACT(indexed_data, '$.field_path') AS DECIMAL)
+        SQLite: CAST(json_extract(indexed_data, '$.field_path') AS REAL)
         """
-        if self._is_pg():
+        if self._get_dialect() == DialectType.postgresql:
             t = self._table
             return t.c.indexed_data[field_path].astext.cast(Numeric)
+        if self._get_dialect() == DialectType.mysql:
+            # MySQL/MariaDB: use JSON_EXTRACT and cast to DECIMAL for precision
+            return func.CAST(
+                func.JSON_EXTRACT(
+                    self._table.c.indexed_data, self._json_path(field_path)
+                ),
+                Numeric,
+            )
         return func.CAST(
-            func.json_extract(self._table.c.indexed_data, f"$.{field_path}"),
+            func.json_extract(self._table.c.indexed_data, self._json_path(field_path)),
             Float,
         )
 
     def _jsonb_sort_expr(self, field_path: str):
         """Expression for ORDER BY on indexed_data field."""
         t = self._table
-        if self._is_pg():
+        if self._get_dialect() == DialectType.postgresql:
             return t.c.indexed_data[field_path]
-        return func.json_extract(t.c.indexed_data, f"$.{field_path}")
+        if self._get_dialect() == DialectType.mysql:
+            return func.JSON_EXTRACT(t.c.indexed_data, self._json_path(field_path))
+        return func.json_extract(t.c.indexed_data, self._json_path(field_path))
 
     def _jsonb_has_key(self, field_path: str):
         """Check if indexed_data contains a key.
 
         PostgreSQL: indexed_data ? 'field_path'
-        Others:     json_extract(indexed_data, '$.field_path') IS NOT NULL
-                    (plus check json_type is not 'null' if needed)
+        MySQL/MariaDB: JSON_CONTAINS_PATH(indexed_data, 'one', '$.field_path')
+        SQLite: json_type(indexed_data, '$.field_path') IS NOT NULL
         """
         t = self._table
-        if self._is_pg():
+        if self._get_dialect() == DialectType.postgresql:
             return t.c.indexed_data.has_key(field_path)
-        # For SQLite: key exists if json_extract returns something and the column itself is not NULL
-        return func.json_type(t.c.indexed_data, f"$.{field_path}").isnot(None)
+        if self._get_dialect() == DialectType.mysql:
+            # MySQL/MariaDB: JSON_CONTAINS_PATH
+            return func.JSON_CONTAINS_PATH(
+                t.c.indexed_data, "one", self._json_path(field_path)
+            )
+        # SQLite: key exists if json_type returns something
+        return func.json_type(t.c.indexed_data, self._json_path(field_path)).isnot(None)
 
     def _jsonb_typeof(self, field_path: str):
         """Get the JSON type of a value in indexed_data.
 
         PostgreSQL: jsonb_typeof(indexed_data -> 'field_path')
-        Others:     json_type(indexed_data, '$.field_path')
+        MySQL/MariaDB: JSON_TYPE(JSON_EXTRACT(indexed_data, '$.field_path'))
+        SQLite: json_type(indexed_data, '$.field_path')
         """
         t = self._table
-        if self._is_pg():
+        if self._get_dialect() == DialectType.postgresql:
             return func.jsonb_typeof(t.c.indexed_data[field_path])
-        return func.json_type(t.c.indexed_data, f"$.{field_path}")
+        if self._get_dialect() == DialectType.mysql:
+            # MySQL/MariaDB: JSON_TYPE takes a single JSON value
+            return func.JSON_TYPE(
+                func.JSON_EXTRACT(t.c.indexed_data, self._json_path(field_path))
+            )
+        # SQLite: json_type takes two arguments
+        return func.json_type(t.c.indexed_data, self._json_path(field_path))
 
     def _jsonb_array_length(self, field_path: str):
         """Get length of a JSON array in indexed_data.
 
         PostgreSQL: jsonb_array_length(indexed_data -> 'field_path')
-        Others:     json_array_length(indexed_data, '$.field_path')
+        MySQL/MariaDB: JSON_LENGTH(indexed_data, '$.field_path')
+        SQLite: json_array_length(indexed_data, '$.field_path')
         """
         t = self._table
-        if self._is_pg():
+        if self._get_dialect() == DialectType.postgresql:
             return func.jsonb_array_length(t.c.indexed_data[field_path])
-        return func.json_array_length(t.c.indexed_data, f"$.{field_path}")
+        if self._get_dialect() == DialectType.mysql:
+            # MySQL/MariaDB: JSON_LENGTH
+            return func.JSON_LENGTH(t.c.indexed_data, self._json_path(field_path))
+        # SQLite: json_array_length
+        return func.json_array_length(t.c.indexed_data, self._json_path(field_path))
 
     def _jsonb_string_length(self, field_path: str):
         """Get length of a string stored in indexed_data.
@@ -422,13 +539,30 @@ class SQLAlchemyMetaStore(ISlowMetaStore):
         """
         return func.length(self._jsonb_text(field_path))
 
+    def _jsonb_is_json_null(self, field_path: str):
+        """Check if a JSON value is JSON null (not SQL NULL).
+
+        PostgreSQL: jsonb_typeof(indexed_data -> 'field_path') = 'null'
+        MySQL/MariaDB: JSON_TYPE(JSON_EXTRACT(indexed_data, '$.field_path')) = 'NULL'
+        SQLite: json_type(indexed_data, '$.field_path') = 'null'
+        """
+        typeof = self._jsonb_typeof(field_path)
+        if self._get_dialect() == DialectType.postgresql:
+            # PostgreSQL: jsonb_typeof returns 'null' (lowercase) for JSON null
+            return typeof == "null"
+        if self._get_dialect() == DialectType.mysql:
+            # MySQL/MariaDB: JSON_TYPE returns 'NULL' (uppercase) for JSON null
+            return typeof == "NULL"
+        # SQLite: json_type returns 'null' (lowercase) for JSON null
+        return typeof == "null"
+
     def _regex_match(self, expr, pattern):
         """Build a regex match expression.
 
         PostgreSQL: expr ~ pattern
         SQLite:     expr REGEXP pattern  (requires extension, but we use text-based fallback)
         """
-        if self._is_pg():
+        if self._get_dialect() == DialectType.postgresql:
             # PostgreSQL regex operator ~
             return expr.op("~")(pattern)
         # SQLite does not support REGEXP natively; some builds have it.
@@ -575,7 +709,7 @@ class SQLAlchemyMetaStore(ISlowMetaStore):
             if isinstance(value, (list, dict)):
                 elem = self._jsonb_element(field_path)
                 return elem == func.cast(
-                    json.dumps(value), _jsonb_cast_type(self._is_pg())
+                    json.dumps(value), _jsonb_cast_type(self._get_dialect())
                 )
             if isinstance(value, bool):
                 return jsonb_text == ("true" if value else "false")
@@ -586,7 +720,9 @@ class SQLAlchemyMetaStore(ISlowMetaStore):
                 elem = self._jsonb_element(field_path)
                 return (jsonb_text.is_(None)) | (
                     elem
-                    != func.cast(json.dumps(value), _jsonb_cast_type(self._is_pg()))
+                    != func.cast(
+                        json.dumps(value), _jsonb_cast_type(self._get_dialect())
+                    )
                 )
             if isinstance(value, bool):
                 return jsonb_text != ("true" if value else "false")
@@ -620,20 +756,27 @@ class SQLAlchemyMetaStore(ISlowMetaStore):
 
         if operator == DataSearchOperator.is_null:
             has_key = self._jsonb_has_key(field_path)
+            is_json_null = self._jsonb_is_json_null(field_path)
             if value:
-                return and_(has_key, jsonb_text.is_(None))
+                # is_null=True: key exists AND value is JSON null
+                return and_(has_key, is_json_null)
             else:
-                return and_(has_key, jsonb_text.isnot(None))
+                # is_null=False: key exists AND value is not JSON null
+                return and_(has_key, ~is_json_null)
 
         if operator == DataSearchOperator.exists:
             has_key = self._jsonb_has_key(field_path)
             return has_key if value else ~has_key
 
         if operator == DataSearchOperator.isna:
+            has_key = self._jsonb_has_key(field_path)
+            is_json_null = self._jsonb_is_json_null(field_path)
             if value:
-                return jsonb_text.is_(None)
+                # isna=True: key doesn't exist OR value is JSON null
+                return or_(~has_key, is_json_null)
             else:
-                return jsonb_text.isnot(None)
+                # isna=False: key exists AND value is not JSON null
+                return and_(has_key, ~is_json_null)
 
         return None
 
@@ -643,8 +786,8 @@ class SQLAlchemyMetaStore(ISlowMetaStore):
 # ------------------------------------------------------------------
 
 
-def _jsonb_cast_type(is_pg: bool):
+def _jsonb_cast_type(dialect: DialectType):
     """Return the type to cast a JSON string literal."""
-    if is_pg:
+    if dialect == DialectType.postgresql:
         return JSONB
     return Text

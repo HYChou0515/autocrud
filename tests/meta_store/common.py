@@ -17,6 +17,7 @@ ALL_META_STORE_TYPES = [
     "redis",
     "redis-pg",
     "sa-pg",
+    "sa-mariadb",
 ]
 
 
@@ -202,4 +203,28 @@ def get_meta_store(store_type: str, tmpdir: Path = None):
             return SQLAlchemyMetaStore(url=sa_url, encoding="msgpack")
         except Exception as e:
             pytest.fail(f"PostgreSQL not available: {e}")
+    if store_type == "sa-mariadb":
+        import pymysql
+
+        from autocrud.resource_manager.meta_store.sqlalchemy import (
+            SQLAlchemyMetaStore,
+        )
+
+        sa_url = "mysql+pymysql://admin:password@localhost:3306/your_database"
+        try:
+            conn = pymysql.connect(
+                host="localhost",
+                port=3306,
+                user="admin",
+                password="password",
+                database="your_database",
+            )
+            with conn.cursor() as cur:
+                cur.execute("DROP TABLE IF EXISTS resource_meta")
+            conn.commit()
+            conn.close()
+
+            return SQLAlchemyMetaStore(url=sa_url, encoding="msgpack")
+        except Exception as e:
+            pytest.fail(f"MariaDB not available: {e}")
     raise ValueError(f"Unsupported store_type: {store_type}")

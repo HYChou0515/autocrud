@@ -30,6 +30,7 @@ dependencies = [
     "msgpack>=1.1.1",
     "msgspec>=0.19.0",
     "pydantic>=1.10.26",
+    "pymysql[dev]>=1.1.2",
     "qqabc>=0.2.1",
     "xxhash>=3.5.0",
 ]
