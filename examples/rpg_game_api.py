@@ -26,6 +26,7 @@ from typing import Optional
 
 import uvicorn
 from fastapi import FastAPI
+from fastapi.middleware.cors import CORSMiddleware
 from msgspec import Struct
 
 from autocrud import crud
@@ -771,6 +772,15 @@ def main():
         version="2.1.0",
         docs_url="/docs",
         redoc_url="/redoc",
+    )
+
+    # 加入 CORS middleware 允許前端存取
+    app.add_middleware(
+        CORSMiddleware,
+        allow_origins=["*"],  # 開發環境允許所有來源，生產環境應限制具體網域
+        allow_credentials=True,
+        allow_methods=["*"],
+        allow_headers=["*"],
     )
 
     # 設定全域 crud 實例
