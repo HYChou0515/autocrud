@@ -12,6 +12,7 @@ import { ResourceForm } from './ResourceForm';
 import { MetadataSection } from './MetadataSection';
 import { RevisionHistorySection } from './RevisionHistorySection';
 import { ResourceIdCell } from './resource-table/ResourceIdCell';
+import { RefLink } from './RefLink';
 import { RevisionIdCell } from './resource-table/RevisionIdCell';
 import { TimeDisplay } from './TimeDisplay';
 
@@ -567,7 +568,11 @@ export function ResourceDetail<T extends Record<string, any>>({
                       return (
                         <Table.Tr key={field.name}>
                           <Table.Td style={{ fontWeight: 500, width: '30%' }}>{field.label}</Table.Td>
-                          <Table.Td>{renderDetailValue(value, field.type)}</Table.Td>
+                          <Table.Td>
+                            {field.ref
+                              ? <RefLink value={value as string | null} fieldRef={field.ref} />
+                              : renderDetailValue(value, field.type)}
+                          </Table.Td>
                         </Table.Tr>
                       );
                     })}

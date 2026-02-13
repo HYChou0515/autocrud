@@ -5,6 +5,7 @@ import { TextInput, NumberInput, Textarea, Checkbox, Select, Button, Stack, Grou
 import { DateTimePicker } from '@mantine/dates';
 import { IconForms, IconCode, IconArrowRight, IconLayersSubtract, IconTrash, IconPlus, IconLink, IconX } from '@tabler/icons-react';
 import type { ResourceConfig, ResourceField, FieldVariant } from '../resources';
+import { RefSelect } from './RefSelect';
 
 /** Get a value from an object using dot-notation path */
 function getByPath(obj: Record<string, any>, path: string): any {
@@ -1189,6 +1190,22 @@ export function ResourceForm<T extends Record<string, any>>({
           required={isRequired}
           rows={textareaVariant.rows || 3}
           {...form.getInputProps(name)}
+        />
+      );
+    }
+
+    // Ref field — render as searchable select for the referenced resource
+    if (field.ref && field.ref.type === 'resource_id') {
+      return (
+        <RefSelect
+          key={key}
+          label={label}
+          required={isRequired}
+          fieldRef={field.ref}
+          value={form.getValues()[name as keyof T] as string | null}
+          onChange={(val) => form.setFieldValue(name as any, val as any)}
+          error={form.errors[name as string] as string | undefined}
+          clearable={field.isNullable}
         />
       );
     }

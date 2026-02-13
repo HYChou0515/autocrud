@@ -22,14 +22,14 @@ import datetime as dt
 import random
 import time
 from enum import Enum
-from typing import Optional
+from typing import Annotated, Optional
 
 import uvicorn
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from msgspec import Struct
 
-from autocrud import crud
+from autocrud import OnDelete, Ref, crud
 from autocrud.crud.route_templates.blob import BlobRouteTemplate
 from autocrud.crud.route_templates.graphql import GraphQLRouteTemplate
 from autocrud.crud.route_templates.migrate import MigrateRouteTemplate
@@ -86,6 +86,7 @@ class Character(Struct):
     defense: int = 5
     experience: int = 0
     gold: int = 100
+    guild_id: Annotated[str | None, Ref("guild", on_delete=OnDelete.set_null)] = None
     guild_name: Optional[str] = None
     special_ability: Optional[str] = None
     equipments: list[Equipment] = []  # 角色裝備列表
@@ -196,10 +197,12 @@ def create_sample_data():
     ]
 
     # 創建公會數據
+    guild_ids = {}  # name -> resource_id
     with guild_manager.meta_provide(current_user, current_time):
         for guild in guilds:
             try:
-                guild_manager.create(guild)
+                info = guild_manager.create(guild)
+                guild_ids[guild.name] = info.resource_id
                 print(f"✅ 創建公會: {guild.name}")
             except Exception as e:
                 print(f"❌ 公會創建失敗: {e}")
@@ -216,6 +219,7 @@ def create_sample_data():
             defense=300,
             experience=999999,
             gold=1000000,
+            guild_id=guild_ids.get("AutoCRUD 開發者聯盟"),
             guild_name="AutoCRUD 開發者聯盟",
             special_ability="🚀 一鍵生成完美 API",
             equipments=[
@@ -244,6 +248,7 @@ def create_sample_data():
             defense=150,
             experience=750000,
             gold=500000,
+            guild_id=guild_ids.get("數據庫騎士團"),
             guild_name="數據庫騎士團",
             special_ability="💾 瞬間優化查詢",
             equipments=[
@@ -265,6 +270,7 @@ def create_sample_data():
             defense=250,
             experience=850000,
             gold=750000,
+            guild_id=guild_ids.get("API 法師學院"),
             guild_name="API 法師學院",
             special_ability="⚡ HTTP 狀態碼斬",
             equipments=[
@@ -293,6 +299,7 @@ def create_sample_data():
             defense=120,
             experience=600000,
             gold=400000,
+            guild_id=guild_ids.get("AutoCRUD 開發者聯盟"),
             guild_name="AutoCRUD 開發者聯盟",
             special_ability="🎯 精準數據建模",
         ),
@@ -306,6 +313,7 @@ def create_sample_data():
             defense=8,
             experience=500,
             gold=250,
+            guild_id=guild_ids.get("新手村互助會"),
             guild_name="新手村互助會",
             special_ability="🌱 學習能力超強",
             equipments=[
@@ -327,6 +335,7 @@ def create_sample_data():
             defense=90,
             experience=400000,
             gold=300000,
+            guild_id=guild_ids.get("API 法師學院"),
             guild_name="API 法師學院",
             special_ability="🔮 自動生成文檔",
         ),
@@ -596,6 +605,7 @@ def configure_crud():
             ("gold", int),  # 用於金幣查詢、排序
             ("guild_name", str | None),  # 用於公會查詢、is_not_null 檢查
             ("character_class", CharacterClass),  # 用於職業篩選
+            # guild_id 會由 Ref 自動索引，不需手動添加
         ],
     )
     crud.add_model(Guild)
