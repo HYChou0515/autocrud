@@ -18,7 +18,7 @@ import type { FullResource } from '../../../types/api';
 import { useResourceList } from '../../hooks/useResourceList';
 import { formatTime } from '../TimeDisplay';
 import { ResourceIdCell } from './ResourceIdCell';
-import { RefLink } from '../RefLink';
+import { RefLink, RefLinkList } from '../RefLink';
 import { SearchForm } from './SearchForm';
 import { MetaSearchForm } from './MetaSearchForm';
 import type { ResourceTableProps, SearchCondition, MetaFilters, ColumnVariant } from './types';
@@ -697,10 +697,19 @@ export function ResourceTable<T extends MRT_RowData>({ config, basePath, columns
       else if (field.isArray) defaultVariant = 'array';
       else if (field.type === 'date' || field.variant?.type === 'date') defaultVariant = 'relative-time';
 
-      // Ref fields get a custom render as RefLink
-      const refCustomRender = field.ref && field.ref.type === 'resource_id'
-        ? (value: unknown) => <RefLink value={value as string | null} fieldRef={field.ref!} />
-        : undefined;
+      // Ref fields get a custom render as RefLink (scalar) or RefLinkList (array)
+      let refCustomRender: ((value: unknown) => React.ReactNode) | undefined;
+      if (field.ref && field.ref.type === 'resource_id') {
+        if (field.isArray) {
+          refCustomRender = (value: unknown) => (
+            <RefLinkList values={value as string[] | null} fieldRef={field.ref!} maxVisible={3} />
+          );
+        } else {
+          refCustomRender = (value: unknown) => (
+            <RefLink value={value as string | null} fieldRef={field.ref!} />
+          );
+        }
+      }
 
       allColumns.push({
         id: field.name,

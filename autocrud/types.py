@@ -119,6 +119,8 @@ class _RefInfo(Struct, frozen=True, kw_only=True):
     """Referential action on delete."""
     nullable: bool
     """Whether the field is nullable (Optional)."""
+    is_list: bool = False
+    """Whether the field is a list of references (e.g. ``list[Annotated[str, Ref(...)]]``)."""
 
 
 def extract_refs(struct_type: type, source_name: str) -> list[_RefInfo]:
@@ -143,6 +145,8 @@ def _extract_from_hint(
     field_name: str,
     source_name: str,
     out: list[_RefInfo],
+    *,
+    is_list: bool = False,
 ) -> None:
     origin = get_origin(hint)
 
@@ -160,6 +164,7 @@ def _extract_from_hint(
                         ref_type="resource_id",
                         on_delete=metadata.on_delete,
                         nullable=nullable,
+                        is_list=is_list,
                     )
                 )
             elif isinstance(metadata, RefRevision):
@@ -171,15 +176,19 @@ def _extract_from_hint(
                         ref_type="revision_id",
                         on_delete=OnDelete.dangling,
                         nullable=nullable,
+                        is_list=is_list,
                     )
                 )
         return
 
     # Fallback: unwrap Union/Optional and recurse into each arg
+    # Detect list origin to propagate is_list flag
+    if origin is list:
+        is_list = True
     args = get_args(hint)
     if args:
         for arg in args:
-            _extract_from_hint(arg, field_name, source_name, out)
+            _extract_from_hint(arg, field_name, source_name, out, is_list=is_list)
 
 
 def _is_nullable(tp: Any) -> bool:

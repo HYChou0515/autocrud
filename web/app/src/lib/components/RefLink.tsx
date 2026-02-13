@@ -3,10 +3,12 @@
  *
  * Displays the ID in a truncated "first4...last4" format (same style as ResourceIdCell),
  * but as a clickable link that navigates to the referenced resource's detail page.
- * Hover tooltip shows the full ID. A copy button is provided alongside.
+ *
+ * RefLinkList — renders an array of resource IDs as a list of RefLinks.
+ * Used for list[Annotated[str, Ref(...)]] fields (N:N relationships).
  */
 import { useState } from 'react';
-import { ActionIcon, Anchor, Code, Group, Tooltip } from '@mantine/core';
+import { ActionIcon, Anchor, Code, Group, Stack, Text, Tooltip } from '@mantine/core';
 import { IconCheck, IconCopy, IconExternalLink } from '@tabler/icons-react';
 import { Link } from '@tanstack/react-router';
 import type { FieldRef } from '../resources';
@@ -18,6 +20,10 @@ interface RefLinkProps {
   fieldRef: FieldRef;
 }
 
+function shortId(id: string): string {
+  return id.length > 12 ? `${id.slice(0, 4)}...${id.slice(-4)}` : id;
+}
+
 export function RefLink({ value, fieldRef }: RefLinkProps) {
   const [copied, setCopied] = useState(false);
 
@@ -26,9 +32,6 @@ export function RefLink({ value, fieldRef }: RefLinkProps) {
   }
 
   const detailPath = `/autocrud-admin/${fieldRef.resource}/${value}`;
-  const shortId = value.length > 12
-    ? `${value.slice(0, 4)}...${value.slice(-4)}`
-    : value;
 
   const handleCopy = (e: React.MouseEvent) => {
     e.stopPropagation();
@@ -43,7 +46,7 @@ export function RefLink({ value, fieldRef }: RefLinkProps) {
       <Tooltip label={`${fieldRef.resource}: ${value}`} position="top" withArrow>
         <Anchor component={Link} to={detailPath} size="sm" onClick={(e: React.MouseEvent) => e.stopPropagation()}>
           <Group gap={4} wrap="nowrap">
-            <Code style={{ cursor: 'pointer' }}>{shortId}</Code>
+            <Code style={{ cursor: 'pointer' }}>{shortId(value)}</Code>
             <IconExternalLink size={14} />
           </Group>
         </Anchor>
@@ -59,5 +62,57 @@ export function RefLink({ value, fieldRef }: RefLinkProps) {
         </ActionIcon>
       </Tooltip>
     </Group>
+  );
+}
+
+interface RefLinkListProps {
+  /** Array of resource IDs */
+  values: string[] | null | undefined;
+  /** Ref metadata from the field definition */
+  fieldRef: FieldRef;
+  /** Max items to show before collapsing (default: 5) */
+  maxVisible?: number;
+}
+
+/**
+ * Renders an array of resource IDs as a vertical list of RefLinks.
+ * Used for list[Annotated[str, Ref(...)]] fields.
+ */
+export function RefLinkList({ values, fieldRef, maxVisible = 5 }: RefLinkListProps) {
+  const [expanded, setExpanded] = useState(false);
+
+  if (!values || values.length === 0) {
+    return <Text c="dimmed" size="sm">（空）</Text>;
+  }
+
+  const visible = expanded ? values : values.slice(0, maxVisible);
+  const remaining = values.length - maxVisible;
+
+  return (
+    <Stack gap={4}>
+      {visible.map((id) => (
+        <RefLink key={id} value={id} fieldRef={fieldRef} />
+      ))}
+      {!expanded && remaining > 0 && (
+        <Text
+          size="xs"
+          c="blue"
+          style={{ cursor: 'pointer' }}
+          onClick={() => setExpanded(true)}
+        >
+          +{remaining} more...
+        </Text>
+      )}
+      {expanded && values.length > maxVisible && (
+        <Text
+          size="xs"
+          c="blue"
+          style={{ cursor: 'pointer' }}
+          onClick={() => setExpanded(false)}
+        >
+          收起
+        </Text>
+      )}
+    </Stack>
   );
 }

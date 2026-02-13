@@ -72,6 +72,19 @@ class SetNullNonNullable(Struct):
     target_id: Annotated[str, Ref("target", on_delete=OnDelete.set_null)]
 
 
+class Skill(Struct):
+    """A skill resource (target of list ref)."""
+
+    name: str
+
+
+class CharacterWithSkills(Struct, kw_only=True):
+    """Character that references skills via a list of Refs (N:N)."""
+
+    name: str
+    skill_ids: list[Annotated[str, Ref("skill")]] = []
+
+
 class UnregisteredTarget(Struct):
     """Ref to a model that won't be registered."""
 
@@ -892,3 +905,79 @@ class TestRelationshipsAPI:
             assert "ref_type" in rel
             assert "on_delete" in rel
             assert "nullable" in rel
+
+
+class TestListRefReferrers:
+    """Bug: referrers endpoint returns empty for list[Annotated[str, Ref(...)]] fields.
+
+    When a field is ``list[Annotated[str, Ref("skill")]]``, the indexed value
+    is a list of IDs.  The referrers lookup uses ``equals`` operator which
+    cannot match a single ID inside a list.  It should use ``contains`` instead.
+    """
+
+    @pytest.fixture
+    def crud_and_client(self):
+        crud = AutoCRUD(
+            default_user="admin",
+            default_now=dt.datetime.now,
+        )
+        crud.add_model(Skill, name="skill")
+        crud.add_model(CharacterWithSkills, name="character")
+        app = FastAPI()
+        crud.apply(app)
+        client = TestClient(app)
+        return crud, client
+
+    def test_referrers_for_list_ref_field(self, crud_and_client):
+        """A skill referenced inside character.skill_ids should appear in referrers."""
+        crud, client = crud_and_client
+        skill_rm = crud.resource_managers["skill"]
+        char_rm = crud.resource_managers["character"]
+
+        s1 = skill_rm.create(Skill(name="Fireball"))
+        s2 = skill_rm.create(Skill(name="Heal"))
+
+        c1 = char_rm.create(
+            CharacterWithSkills(name="Mage", skill_ids=[s1.resource_id, s2.resource_id])
+        )
+        c2 = char_rm.create(
+            CharacterWithSkills(name="Warrior", skill_ids=[s1.resource_id])
+        )
+        # c3 does NOT have s1
+        char_rm.create(CharacterWithSkills(name="Thief", skill_ids=[s2.resource_id]))
+
+        resp = client.get(f"/skill/{s1.resource_id}/referrers")
+        assert resp.status_code == 200
+        data = resp.json()
+
+        skill_refs = [
+            r
+            for r in data
+            if r["source"] == "character" and r["source_field"] == "skill_ids"
+        ]
+        assert len(skill_refs) == 1, f"Expected 1 referrer group, got {data}"
+        assert set(skill_refs[0]["resource_ids"]) == {
+            c1.resource_id,
+            c2.resource_id,
+        }
+
+    def test_referrers_list_ref_empty_when_not_referenced(self, crud_and_client):
+        """A skill not in any character's skill_ids returns empty referrers."""
+        crud, client = crud_and_client
+        skill_rm = crud.resource_managers["skill"]
+        char_rm = crud.resource_managers["character"]
+
+        s1 = skill_rm.create(Skill(name="Unused Skill"))
+        char_rm.create(CharacterWithSkills(name="Solo", skill_ids=[]))
+
+        resp = client.get(f"/skill/{s1.resource_id}/referrers")
+        assert resp.status_code == 200
+        data = resp.json()
+        # No character references s1, so should be empty
+        assert data == [] or all(len(r["resource_ids"]) == 0 for r in data)
+
+    def test_referrers_nonexistent_resource_returns_404(self, crud_and_client):
+        """Requesting referrers for a non-existent resource_id should return 404."""
+        _crud, client = crud_and_client
+        resp = client.get("/skill/nonexistent-id-12345/referrers")
+        assert resp.status_code == 404

@@ -15,6 +15,7 @@
     http://localhost:8000/docs - OpenAPI 文檔
     http://localhost:8000/character - 角色 API
     http://localhost:8000/guild - 公會 API
+    http://localhost:8000/skill - 技能 API
     http://localhost:8000/game-event - 遊戲事件任務 API
 """
 
@@ -60,11 +61,36 @@ class ItemRarity(Enum):
     AUTOCRUD = "🚀 AutoCRUD 神器"  # 特殊等級
 
 
+class SkillType(Enum):
+    """技能類型"""
+
+    ACTIVE = "主動技能"
+    PASSIVE = "被動技能"
+    ULTIMATE = "終極技能"
+
+
+class Skill(Struct):
+    """遊戲技能"""
+
+    name: str
+    skill_type: SkillType
+    description: str = ""
+    mp_cost: int = 0
+    cooldown_seconds: int = 0
+    damage: int = 0
+    required_level: int = 1
+    required_class: Optional[CharacterClass] = None  # None = 所有職業可學
+
+
 class Equipment(Struct):
     """遊戲裝備"""
 
     name: str
     rarity: ItemRarity
+    # 1:N 關係：裝備歸屬某個角色（可為空代表在商店中）
+    owner_id: Annotated[str | None, Ref("character", on_delete=OnDelete.set_null)] = (
+        None
+    )
     character_class_req: Optional[CharacterClass] = None
     attack_bonus: int = 0
     defense_bonus: int = 0
@@ -89,7 +115,9 @@ class Character(Struct):
     guild_id: Annotated[str | None, Ref("guild", on_delete=OnDelete.set_null)] = None
     guild_name: Optional[str] = None
     special_ability: Optional[str] = None
-    equipments: list[Equipment] = []  # 角色裝備列表
+    # N:N 關係：角色學會的技能（透過 skill resource_id 列表）
+    skill_ids: list[Annotated[str, Ref("skill")]] = []
+    equipments: list[Equipment] = []  # 角色裝備列表（嵌入式，非 Ref）
     created_at: dt.datetime = dt.datetime.now()
 
 
@@ -150,10 +178,11 @@ def create_sample_data():
 
     # 取得資源管理器
     guild_manager = crud.resource_managers.get("guild")
+    skill_manager = crud.resource_managers.get("skill")
     character_manager = crud.resource_managers.get("character")
     equipment_manager = crud.resource_managers.get("equipment")
 
-    if not all([guild_manager, character_manager, equipment_manager]):
+    if not all([guild_manager, skill_manager, character_manager, equipment_manager]):
         print("❌ 資源管理器未找到，請確保已註冊模型")
         return
 
@@ -207,6 +236,89 @@ def create_sample_data():
             except Exception as e:
                 print(f"❌ 公會創建失敗: {e}")
 
+    # 🎯 創建技能
+    skills = [
+        Skill(
+            name="火球術",
+            skill_type=SkillType.ACTIVE,
+            description="向敵人發射一顆強力火球",
+            mp_cost=30,
+            cooldown_seconds=5,
+            damage=150,
+            required_level=10,
+            required_class=CharacterClass.MAGE,
+        ),
+        Skill(
+            name="治癒之光",
+            skill_type=SkillType.ACTIVE,
+            description="恢復自身或隊友的生命值",
+            mp_cost=25,
+            cooldown_seconds=8,
+            damage=0,
+            required_level=5,
+        ),
+        Skill(
+            name="重擊",
+            skill_type=SkillType.ACTIVE,
+            description="對單一敵人造成巨額物理傷害",
+            mp_cost=20,
+            cooldown_seconds=3,
+            damage=200,
+            required_level=15,
+            required_class=CharacterClass.WARRIOR,
+        ),
+        Skill(
+            name="精準射擊",
+            skill_type=SkillType.ACTIVE,
+            description="100% 命中的遠程攻擊",
+            mp_cost=15,
+            cooldown_seconds=2,
+            damage=120,
+            required_level=8,
+            required_class=CharacterClass.ARCHER,
+        ),
+        Skill(
+            name="CRUD 終極奧義",
+            skill_type=SkillType.ULTIMATE,
+            description="一鍵生成完美的 RESTful API，對所有敵人造成毀滅性打擊",
+            mp_cost=100,
+            cooldown_seconds=60,
+            damage=9999,
+            required_level=50,
+            required_class=CharacterClass.DATA_KEEPER,
+        ),
+        Skill(
+            name="鋼鐵意志",
+            skill_type=SkillType.PASSIVE,
+            description="永久提升防禦力 20%",
+            required_level=20,
+            required_class=CharacterClass.WARRIOR,
+        ),
+        Skill(
+            name="魔力親和",
+            skill_type=SkillType.PASSIVE,
+            description="永久降低所有技能 MP 消耗 15%",
+            required_level=15,
+            required_class=CharacterClass.MAGE,
+        ),
+        Skill(
+            name="經驗加成",
+            skill_type=SkillType.PASSIVE,
+            description="獲得的經驗值增加 10%",
+            required_level=1,
+        ),
+    ]
+
+    skill_ids = {}  # name -> resource_id
+    with skill_manager.meta_provide(current_user, current_time):
+        for skill in skills:
+            try:
+                info = skill_manager.create(skill)
+                skill_ids[skill.name] = info.resource_id
+                print(f"✅ 創建技能: {skill.name} [{skill.skill_type.value}]")
+            except Exception as e:
+                print(f"❌ 技能創建失敗: {e}")
+
     # ⚔️ 創建角色
     characters = [
         Character(
@@ -222,6 +334,11 @@ def create_sample_data():
             guild_id=guild_ids.get("AutoCRUD 開發者聯盟"),
             guild_name="AutoCRUD 開發者聯盟",
             special_ability="🚀 一鍵生成完美 API",
+            skill_ids=[
+                skill_ids.get("CRUD 終極奧義", ""),
+                skill_ids.get("經驗加成", ""),
+                skill_ids.get("治癒之光", ""),
+            ],
             equipments=[
                 Equipment(
                     name="AutoCRUD 神劍",
@@ -251,6 +368,11 @@ def create_sample_data():
             guild_id=guild_ids.get("數據庫騎士團"),
             guild_name="數據庫騎士團",
             special_ability="💾 瞬間優化查詢",
+            skill_ids=[
+                skill_ids.get("火球術", ""),
+                skill_ids.get("魔力親和", ""),
+                skill_ids.get("治癒之光", ""),
+            ],
             equipments=[
                 Equipment(
                     name="數據庫守護盾",
@@ -273,6 +395,11 @@ def create_sample_data():
             guild_id=guild_ids.get("API 法師學院"),
             guild_name="API 法師學院",
             special_ability="⚡ HTTP 狀態碼斬",
+            skill_ids=[
+                skill_ids.get("重擊", ""),
+                skill_ids.get("鋼鐵意志", ""),
+                skill_ids.get("經驗加成", ""),
+            ],
             equipments=[
                 Equipment(
                     name="API 魔法杖",
@@ -302,6 +429,10 @@ def create_sample_data():
             guild_id=guild_ids.get("AutoCRUD 開發者聯盟"),
             guild_name="AutoCRUD 開發者聯盟",
             special_ability="🎯 精準數據建模",
+            skill_ids=[
+                skill_ids.get("精準射擊", ""),
+                skill_ids.get("經驗加成", ""),
+            ],
         ),
         Character(
             name="新手小白",
@@ -316,6 +447,9 @@ def create_sample_data():
             guild_id=guild_ids.get("新手村互助會"),
             guild_name="新手村互助會",
             special_ability="🌱 學習能力超強",
+            skill_ids=[
+                skill_ids.get("經驗加成", ""),
+            ],
             equipments=[
                 Equipment(
                     name="新手村木劍",
@@ -338,14 +472,20 @@ def create_sample_data():
             guild_id=guild_ids.get("API 法師學院"),
             guild_name="API 法師學院",
             special_ability="🔮 自動生成文檔",
+            skill_ids=[
+                skill_ids.get("火球術", ""),
+                skill_ids.get("治癒之光", ""),
+            ],
         ),
     ]
 
     # 創建角色數據
+    character_ids = {}  # name -> resource_id
     with character_manager.meta_provide(current_user, current_time):
         for character in characters:
             try:
-                character_manager.create(character)
+                info = character_manager.create(character)
+                character_ids[character.name] = info.resource_id
                 print(f"✅ 創建角色: {character.name} (Lv.{character.level})")
             except Exception as e:
                 print(f"❌ 角色創建失敗: {e}")
@@ -357,6 +497,7 @@ def create_sample_data():
         Equipment(
             name="AutoCRUD 神劍",
             rarity=ItemRarity.AUTOCRUD,
+            owner_id=character_ids.get("AutoCRUD 大神"),  # 1:N — 歸屬角色
             character_class_req=CharacterClass.DATA_KEEPER,
             attack_bonus=200,
             defense_bonus=50,
@@ -371,6 +512,7 @@ def create_sample_data():
         Equipment(
             name="數據庫守護盾",
             rarity=ItemRarity.LEGENDARY,
+            owner_id=character_ids.get("資料庫女王"),  # 1:N — 歸屬角色
             character_class_req=CharacterClass.WARRIOR,
             attack_bonus=20,
             defense_bonus=150,
@@ -381,6 +523,7 @@ def create_sample_data():
         Equipment(
             name="API 魔法杖",
             rarity=ItemRarity.EPIC,
+            owner_id=character_ids.get("RESTful 劍聖"),  # 1:N — 歸屬角色
             character_class_req=CharacterClass.MAGE,
             attack_bonus=100,
             defense_bonus=30,
@@ -391,6 +534,7 @@ def create_sample_data():
         Equipment(
             name="精準查詢弓",
             rarity=ItemRarity.RARE,
+            owner_id=character_ids.get("Schema 設計師"),  # 1:N — 歸屬角色
             character_class_req=CharacterClass.ARCHER,
             attack_bonus=80,
             special_effects=["🎯 100% 命中率", "🏹 穿透防禦 20%"],
@@ -400,9 +544,20 @@ def create_sample_data():
         Equipment(
             name="新手村木劍",
             rarity=ItemRarity.COMMON,
+            owner_id=character_ids.get("新手小白"),  # 1:N — 歸屬角色
             attack_bonus=5,
             special_effects=["🌱 經驗值獲得 +10%"],
             price=50,
+            icon=Binary(data=get_random_image()),
+        ),
+        Equipment(
+            name="傳說中的未鑑定裝備",
+            rarity=ItemRarity.LEGENDARY,
+            owner_id=None,  # 無人持有 — 在商店中
+            attack_bonus=999,
+            defense_bonus=999,
+            special_effects=["❓ 未鑑定效果"],
+            price=9999999,
             icon=Binary(data=get_random_image()),
         ),
     ]
@@ -609,6 +764,14 @@ def configure_crud():
         ],
     )
     crud.add_model(Guild)
+    crud.add_model(
+        Skill,
+        indexed_fields=[
+            ("name", str),
+            ("skill_type", SkillType),
+            ("required_level", int),
+        ],
+    )
     crud.add_model(Equipment)
 
     # 註冊遊戲事件任務模型（使用 Message Queue）

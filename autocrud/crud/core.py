@@ -8,7 +8,7 @@ from collections import OrderedDict
 from collections.abc import Callable, Sequence
 from typing import IO, Any, Literal, TypeVar
 
-from fastapi import APIRouter, FastAPI
+from fastapi import APIRouter, FastAPI, HTTPException
 from fastapi.openapi.utils import get_openapi
 from msgspec import UNSET, UnsetType
 
@@ -1172,6 +1172,19 @@ class AutoCRUD:
             ),
         )
         async def _list_referrers(resource_id: str) -> list[dict]:
+            # Verify the target resource exists
+            target_rm = resource_managers.get(target_name)
+            if target_rm is None:
+                raise HTTPException(
+                    status_code=404, detail=f"Unknown resource type: {target_name}"
+                )
+            try:
+                target_rm.get_meta(resource_id)
+            except KeyError:
+                raise HTTPException(
+                    status_code=404,
+                    detail=f"{target_name} '{resource_id}' not found",
+                )
             results: list[dict] = []
             for ref_info in refs:
                 source_rm = resource_managers.get(ref_info.source)
@@ -1180,13 +1193,21 @@ class AutoCRUD:
                 # Only resource_id refs are auto-indexed and searchable
                 if ref_info.ref_type != "resource_id":
                     continue
+                # For list ref fields (e.g. list[Annotated[str, Ref(...)]]),
+                # use 'contains' to check if the list includes the target ID.
+                # For scalar ref fields, use 'equals' for exact match.
+                op = (
+                    DataSearchOperator.contains
+                    if ref_info.is_list
+                    else DataSearchOperator.equals
+                )
                 metas = source_rm.search_resources(
                     ResourceMetaSearchQuery(
                         is_deleted=False,
                         conditions=[
                             DataSearchCondition(
                                 field_path=ref_info.source_field,
-                                operator=DataSearchOperator.equals,
+                                operator=op,
                                 value=resource_id,
                             )
                         ],
