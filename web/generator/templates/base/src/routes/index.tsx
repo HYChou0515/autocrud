@@ -1,0 +1,42 @@
+import { createFileRoute, Link } from '@tanstack/react-router';
+import { Container, Title, Text, Button, Stack, Paper, Group } from '@mantine/core';
+import { IconArrowRight, IconDatabase } from '@tabler/icons-react';
+
+export const Route = createFileRoute('/')({
+  component: HomePage,
+});
+
+function HomePage() {
+  return (
+    <Container size="sm" style={{ marginTop: '10vh' }}>
+      <Stack gap="xl">
+        <Paper shadow="md" p="xl" radius="md">
+          <Stack gap="lg">
+            <Group gap="xs">
+              <IconDatabase size={32} />
+              <Title order={1}>AutoCRUD Web</Title>
+            </Group>
+            
+            <Text size="lg" c="dimmed">
+              歡迎使用 AutoCRUD 自動化管理介面
+            </Text>
+            
+            <Text>
+              這是一個由 AutoCRUD 後端自動生成的 React 管理介面。
+              點擊下方按鈕進入管理控制台。
+            </Text>
+            
+            <Button
+              component={Link}
+              to="/autocrud-admin"
+              size="lg"
+              rightSection={<IconArrowRight size={20} />}
+            >
+              進入管理控制台
+            </Button>
+          </Stack>
+        </Paper>
+      </Stack>
+    </Container>
+  );
+}

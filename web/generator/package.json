@@ -1,0 +1,52 @@
+{
+  "name": "autocrud-web-generator",
+  "version": "0.2.0",
+  "description": "Code generator for AutoCRUD frontend - generates React/Mantine/TanStack apps from OpenAPI spec",
+  "type": "module",
+  "bin": {
+    "autocrud-web": "./dist/cli.js"
+  },
+  "files": [
+    "dist",
+    "templates"
+  ],
+  "scripts": {
+    "build": "tsc",
+    "lint": "eslint src/",
+    "lint:fix": "eslint src/ --fix",
+    "format": "prettier --write src/",
+    "format:check": "prettier --check src/",
+    "check": "pnpm lint && pnpm format:check",
+    "prepublishOnly": "npm run build"
+  },
+  "keywords": [
+    "autocrud",
+    "code-generator",
+    "fastapi",
+    "openapi",
+    "react",
+    "mantine",
+    "tanstack",
+    "crud"
+  ],
+  "author": "",
+  "license": "MIT",
+  "dependencies": {
+    "commander": "^12.1.0"
+  },
+  "devDependencies": {
+    "@eslint/js": "^9.39.2",
+    "@types/node": "^20.11.0",
+    "eslint": "^9.39.2",
+    "eslint-config-prettier": "^10.1.8",
+    "eslint-plugin-prettier": "^5.5.5",
+    "prettier": "^3.8.1",
+    "tsx": "^4.19.0",
+    "typescript": "^5.9.3",
+    "typescript-eslint": "^8.55.0",
+    "zod": "^4.3.6"
+  },
+  "engines": {
+    "node": ">=18.0.0"
+  }
+}

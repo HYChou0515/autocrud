@@ -1,0 +1,40 @@
+{
+  "name": "my-autocrud-app",
+  "private": true,
+  "version": "0.1.0",
+  "type": "module",
+  "scripts": {
+    "dev": "vite",
+    "build": "tsc -b && vite build",
+    "generate": "autocrud-web generate",
+    "preview": "vite preview"
+  },
+  "dependencies": {
+    "@mantine/core": "^7.17.8",
+    "@mantine/dates": "^7.17.8",
+    "@mantine/form": "^7.17.8",
+    "@mantine/hooks": "^7.17.8",
+    "@tabler/icons-react": "^3.35.0",
+    "@tanstack/react-router": "^1.134.9",
+    "axios": "^1.7.0",
+    "clsx": "^2.1.1",
+    "dayjs": "^1.11.19",
+    "mantine-form-zod-resolver": "^1.3.0",
+    "mantine-react-table": "2.0.0-beta.9",
+    "react": "^18.3.1",
+    "react-dom": "^18.3.1",
+    "zod": "^4.3.6"
+  },
+  "devDependencies": {
+    "@tanstack/router-plugin": "^1.134.9",
+    "@types/node": "^24.6.0",
+    "@types/react": "^18.3.18",
+    "@types/react-dom": "^18.3.5",
+    "@vitejs/plugin-react": "^4.7.0",
+    "postcss": "^8.5.6",
+    "postcss-preset-mantine": "^1.18.0",
+    "postcss-simple-vars": "^7.0.1",
+    "typescript": "~5.9.3",
+    "vite": "^6.4.1"
+  }
+}
