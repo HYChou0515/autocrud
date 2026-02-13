@@ -60,6 +60,19 @@ class ItemRarity(Enum):
     AUTOCRUD = "🚀 AutoCRUD 神器"  # 特殊等級
 
 
+class Equipment(Struct):
+    """遊戲裝備"""
+
+    name: str
+    rarity: ItemRarity
+    character_class_req: Optional[CharacterClass] = None
+    attack_bonus: int = 0
+    defense_bonus: int = 0
+    special_effects: list[str] = []  # 裝備特效列表
+    price: int = 100
+    icon: Optional[Binary] = None  # Binary 類型欄位
+
+
 class Character(Struct):
     """遊戲角色"""
 
@@ -75,6 +88,7 @@ class Character(Struct):
     gold: int = 100
     guild_name: Optional[str] = None
     special_ability: Optional[str] = None
+    equipments: list[Equipment] = []  # 角色裝備列表
     created_at: dt.datetime = dt.datetime.now()
 
 
@@ -88,19 +102,6 @@ class Guild(Struct):
     level: int = 1
     treasury: int = 1000
     founded_at: dt.datetime = dt.datetime.now()
-
-
-class Equipment(Struct):
-    """遊戲裝備"""
-
-    name: str
-    rarity: ItemRarity
-    character_class_req: Optional[CharacterClass] = None
-    attack_bonus: int = 0
-    defense_bonus: int = 0
-    special_effect: Optional[str] = None
-    price: int = 100
-    icon: Optional[Binary] = None  # Binary 類型欄位
 
 
 # ===== Message Queue 使用範例：遊戲事件系統 =====
@@ -217,6 +218,21 @@ def create_sample_data():
             gold=1000000,
             guild_name="AutoCRUD 開發者聯盟",
             special_ability="🚀 一鍵生成完美 API",
+            equipments=[
+                Equipment(
+                    name="AutoCRUD 神劍",
+                    rarity=ItemRarity.AUTOCRUD,
+                    attack_bonus=200,
+                    defense_bonus=50,
+                    special_effects=["🚀 自動生成 CRUD 操作", "⚡ API 響應速度 +100%"],
+                ),
+                Equipment(
+                    name="版本控制護符",
+                    rarity=ItemRarity.LEGENDARY,
+                    defense_bonus=100,
+                    special_effects=["📖 自動追蹤所有變更", "🔄 一鍵回滾"],
+                ),
+            ],
         ),
         Character(
             name="資料庫女王",
@@ -230,6 +246,14 @@ def create_sample_data():
             gold=500000,
             guild_name="數據庫騎士團",
             special_ability="💾 瞬間優化查詢",
+            equipments=[
+                Equipment(
+                    name="數據庫守護盾",
+                    rarity=ItemRarity.LEGENDARY,
+                    defense_bonus=150,
+                    special_effects=["🛡️ 防止 SQL 注入攻擊", "💾 查詢效能 +200%"],
+                ),
+            ],
         ),
         Character(
             name="RESTful 劍聖",
@@ -243,6 +267,21 @@ def create_sample_data():
             gold=750000,
             guild_name="API 法師學院",
             special_ability="⚡ HTTP 狀態碼斬",
+            equipments=[
+                Equipment(
+                    name="API 魔法杖",
+                    rarity=ItemRarity.EPIC,
+                    attack_bonus=100,
+                    defense_bonus=30,
+                    special_effects=["✨ 法術冷卻時間減少 50%"],
+                ),
+                Equipment(
+                    name="精準查詢弓",
+                    rarity=ItemRarity.RARE,
+                    attack_bonus=80,
+                    special_effects=["🎯 100% 命中率"],
+                ),
+            ],
         ),
         Character(
             name="Schema 設計師",
@@ -269,6 +308,14 @@ def create_sample_data():
             gold=250,
             guild_name="新手村互助會",
             special_ability="🌱 學習能力超強",
+            equipments=[
+                Equipment(
+                    name="新手村木劍",
+                    rarity=ItemRarity.COMMON,
+                    attack_bonus=5,
+                    special_effects=["🌱 經驗值獲得 +10%"],
+                ),
+            ],
         ),
         Character(
             name="API 魔法師",
@@ -304,7 +351,11 @@ def create_sample_data():
             character_class_req=CharacterClass.DATA_KEEPER,
             attack_bonus=200,
             defense_bonus=50,
-            special_effect="🚀 自動生成 CRUD 操作",
+            special_effects=[
+                "🚀 自動生成 CRUD 操作",
+                "⚡ API 響應速度 +100%",
+                "📊 自動生成文檔",
+            ],
             price=1000000,
             icon=Binary(data=get_random_image()),
         ),
@@ -314,7 +365,7 @@ def create_sample_data():
             character_class_req=CharacterClass.WARRIOR,
             attack_bonus=20,
             defense_bonus=150,
-            special_effect="🛡️ 防止 SQL 注入攻擊",
+            special_effects=["🛡️ 防止 SQL 注入攻擊", "💾 查詢效能 +200%"],
             price=500000,
             icon=Binary(data=get_random_image()),
         ),
@@ -324,7 +375,7 @@ def create_sample_data():
             character_class_req=CharacterClass.MAGE,
             attack_bonus=100,
             defense_bonus=30,
-            special_effect="✨ 法術冷卻時間減少 50%",
+            special_effects=["✨ 法術冷卻時間減少 50%", "🔮 魔力恢復速度 +30%"],
             price=250000,
             icon=Binary(data=get_random_image()),
         ),
@@ -333,7 +384,7 @@ def create_sample_data():
             rarity=ItemRarity.RARE,
             character_class_req=CharacterClass.ARCHER,
             attack_bonus=80,
-            special_effect="🎯 100% 命中率",
+            special_effects=["🎯 100% 命中率", "🏹 穿透防禦 20%"],
             price=150000,
             icon=Binary(data=get_random_image()),
         ),
@@ -341,7 +392,7 @@ def create_sample_data():
             name="新手村木劍",
             rarity=ItemRarity.COMMON,
             attack_bonus=5,
-            special_effect="🌱 經驗值獲得 +10%",
+            special_effects=["🌱 經驗值獲得 +10%"],
             price=50,
             icon=Binary(data=get_random_image()),
         ),
