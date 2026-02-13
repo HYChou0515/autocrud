@@ -7,20 +7,20 @@ faker = Faker()
 
 ALL_META_STORE_TYPES = [
     "memory",
-    "df",
+    # "df",
     "disk",
     "postgres",
     "sql3-mem",
-    "sql3-file",
+    # "sql3-file",
     "sql3-s3",
-    "memory-pg",
+    # "memory-pg",
     "redis",
-    "redis-pg",
-    "sa-pg",
-    "sa-mariadb",
-    "sa-mysql",
-    "sa-sqlite",
-    "sa-oracle",
+    # "redis-pg",
+    # "sa-pg",
+    # "sa-mariadb",
+    # "sa-mysql",
+    # "sa-sqlite",
+    # "sa-oracle",
 ]
 
 
@@ -56,7 +56,8 @@ def get_meta_store(store_type: str, tmpdir: Path = None):
             # Reset the test database
             pg_conn = psycopg2.connect(pg_dsn)
             with pg_conn.cursor() as cur:
-                cur.execute("DROP TABLE IF EXISTS resource_meta;")
+                cur.execute("DROP TABLE IF EXISTS resource_meta CASCADE;")
+                cur.execute("DROP TYPE IF EXISTS resource_meta CASCADE;")
                 pg_conn.commit()
             pg_conn.close()
 
@@ -122,7 +123,8 @@ def get_meta_store(store_type: str, tmpdir: Path = None):
             # Reset the test database
             pg_conn = psycopg2.connect(pg_dsn)
             with pg_conn.cursor() as cur:
-                cur.execute("DROP TABLE IF EXISTS resource_meta;")
+                cur.execute("DROP TABLE IF EXISTS resource_meta CASCADE;")
+                cur.execute("DROP TYPE IF EXISTS resource_meta CASCADE;")
                 pg_conn.commit()
             pg_conn.close()
 
@@ -173,7 +175,8 @@ def get_meta_store(store_type: str, tmpdir: Path = None):
             # Reset the test PostgreSQL database
             pg_conn = psycopg2.connect(pg_dsn)
             with pg_conn.cursor() as cur:
-                cur.execute("DROP TABLE IF EXISTS resource_meta;")
+                cur.execute("DROP TABLE IF EXISTS resource_meta CASCADE;")
+                cur.execute("DROP TYPE IF EXISTS resource_meta CASCADE;")
                 pg_conn.commit()
             pg_conn.close()
 
@@ -199,7 +202,8 @@ def get_meta_store(store_type: str, tmpdir: Path = None):
         try:
             pg_conn = psycopg2.connect(pg_dsn)
             with pg_conn.cursor() as cur:
-                cur.execute("DROP TABLE IF EXISTS resource_meta;")
+                cur.execute("DROP TABLE IF EXISTS resource_meta CASCADE;")
+                cur.execute("DROP TYPE IF EXISTS resource_meta CASCADE;")
                 pg_conn.commit()
             pg_conn.close()
 

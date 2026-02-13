@@ -197,10 +197,28 @@ class Generator {
       }
     }
 
+    // Extract x-ref-* metadata (may be at top level for Annotated[str|None, Ref(...)])
+    let ref: FieldRef | undefined;
+    if (prop['x-ref-resource']) {
+      ref = {
+        resource: prop['x-ref-resource'],
+        type: prop['x-ref-type'] ?? 'resource_id',
+        ...(prop['x-ref-on-delete'] ? { onDelete: prop['x-ref-on-delete'] } : {}),
+      };
+    }
+
     if (prop.anyOf) {
       const types = prop.anyOf.filter((t: any) => t.type !== 'null');
       isNullable = prop.anyOf.some((t: any) => t.type === 'null');
       if (types.length > 0) {
+        // Check for x-ref-* in anyOf branch (for Optional[Annotated[str, Ref(...)]])
+        if (!ref && types[0]['x-ref-resource']) {
+          ref = {
+            resource: types[0]['x-ref-resource'],
+            type: types[0]['x-ref-type'] ?? 'resource_id',
+            ...(types[0]['x-ref-on-delete'] ? { onDelete: types[0]['x-ref-on-delete'] } : {}),
+          };
+        }
         prop = types[0];
         // Resolve $ref in anyOf
         if (prop.$ref) {
@@ -337,6 +355,7 @@ class Generator {
       enumValues,
       zodType,
       ...(itemFields ? { itemFields } : {}),
+      ...(ref ? { ref } : {}),
     };
   }
 
@@ -399,6 +418,10 @@ class Generator {
             }
             return subConfig;
           });
+        }
+        // Include ref metadata for resource references
+        if (f.ref) {
+          fieldConfig.ref = f.ref;
         }
         return fieldConfig;
       });
@@ -677,6 +700,12 @@ interface Resource {
   maxFormDepth: number;
 }
 
+interface FieldRef {
+  resource: string;
+  type: 'resource_id' | 'revision_id';
+  onDelete?: string;
+}
+
 interface Field {
   name: string;
   label: string;
@@ -688,6 +717,7 @@ interface Field {
   enumValues?: string[];
   zodType?: string; // Zod validation type
   itemFields?: Field[]; // For arrays of typed objects: the item's sub-fields
+  ref?: FieldRef; // Reference to another resource
 }
 
 /**

@@ -5,6 +5,7 @@ import { TextInput, NumberInput, Textarea, Checkbox, Select, Button, Stack, Grou
 import { DateTimePicker } from '@mantine/dates';
 import { IconForms, IconCode, IconArrowRight, IconLayersSubtract, IconTrash, IconPlus, IconLink, IconX } from '@tabler/icons-react';
 import type { ResourceConfig, ResourceField, FieldVariant } from '../resources';
+import { RefSelect, RefMultiSelect } from './RefSelect';
 
 /** Get a value from an object using dot-notation path */
 function getByPath(obj: Record<string, any>, path: string): any {
@@ -289,7 +290,8 @@ export function ResourceForm<T extends Record<string, any>>({
               // Convert array to comma-separated string for form display
               processed[sf.name] = processed[sf.name].join(', ');
             } else if (processed[sf.name] === null || processed[sf.name] === undefined) {
-              if (sf.type === 'string' || sf.type === undefined) processed[sf.name] = '';
+              if (sf.enumValues && sf.enumValues.length > 0) processed[sf.name] = null;
+              else if (sf.type === 'string' || sf.type === undefined) processed[sf.name] = '';
               else if (sf.type === 'number') processed[sf.name] = '';
               else if (sf.type === 'boolean') processed[sf.name] = false;
               else if (sf.type === 'object') processed[sf.name] = '';
@@ -312,6 +314,9 @@ export function ResourceForm<T extends Record<string, any>>({
       } else if (val == null) {
         setByPath(processedInitialValues, field.name, null);
       }
+    } else if (field.isArray && field.ref && field.ref.type === 'resource_id') {
+      // Array ref field — keep as array for MultiSelect, default to []
+      setByPath(processedInitialValues, field.name, Array.isArray(val) ? val : []);
     } else if (field.type === 'binary') {
       // Convert existing binary data to BinaryFormValue for editing
       if (val && typeof val === 'object' && val.file_id) {
@@ -390,9 +395,10 @@ export function ResourceForm<T extends Record<string, any>>({
     if (zodValidate) {
       try {
         // Pre-process values for zod: convert comma-separated strings to arrays for isArray fields
+        // Skip array ref fields — they are already arrays from RefMultiSelect
         const zodValues = { ...(values as Record<string, any>) };
         for (const field of config.fields) {
-          if (field.isArray && !(field.itemFields && field.itemFields.length > 0)) {
+          if (field.isArray && !(field.itemFields && field.itemFields.length > 0) && !(field.ref && field.ref.type === 'resource_id')) {
             const val = zodValues[field.name];
             if (typeof val === 'string') {
               zodValues[field.name] = val ? val.split(',').map((s: string) => s.trim()).filter(Boolean) : [];
@@ -418,8 +424,8 @@ export function ResourceForm<T extends Record<string, any>>({
         const suppressPaths = new Set([
           ...config.fields.filter(f => f.type === 'object' && !(f.itemFields && f.itemFields.length > 0)).map(f => f.name),
           ...config.fields.filter(f => f.type === 'binary').map(f => f.name),
-          // Simple array fields (comma-separated string in form, z.array() in schema)
-          ...config.fields.filter(f => f.isArray && !(f.itemFields && f.itemFields.length > 0)).map(f => f.name),
+          // Simple array fields (comma-separated string in form, z.array() in schema) — exclude array ref fields
+          ...config.fields.filter(f => f.isArray && !(f.itemFields && f.itemFields.length > 0) && !(f.ref && f.ref.type === 'resource_id')).map(f => f.name),
           ...collapsedGroups.map(g => g.path),
         ]);
         // Collect nested simple-array sub-field names within array-with-itemFields
@@ -507,6 +513,9 @@ export function ResourceForm<T extends Record<string, any>>({
             } else if (sf.isArray && sf.type === 'string') {
               // Convert comma-separated string to array
               v = typeof v === 'string' ? v.split(',').map((s: string) => s.trim()).filter(Boolean) : (Array.isArray(v) ? v : []);
+            } else if (sf.enumValues && sf.enumValues.length > 0 && (v === '' || v === null || v === undefined)) {
+              // Nullable enum: empty/null → null; required enum: keep as-is
+              v = sf.isNullable ? null : undefined;
             } else if (sf.type === 'number' && (v === '' || v === undefined)) {
               v = sf.isNullable ? null : undefined;
             } else if (sf.type === 'string' && v === '' && sf.isNullable) {
@@ -822,8 +831,9 @@ export function ResourceForm<T extends Record<string, any>>({
         } else if (typeof val === 'string' && !val.trim()) {
           setByPath(processed, field.name, null);
         }
-      } else if (field.isArray && !(field.itemFields && field.itemFields.length > 0)) {
+      } else if (field.isArray && !(field.itemFields && field.itemFields.length > 0) && !(field.ref && field.ref.type === 'resource_id')) {
         // Simple array field (comma-separated string in form) — convert to array before zod
+        // Skip array ref fields — they are already arrays from RefMultiSelect
         if (typeof val === 'string') {
           setByPath(processed, field.name, val ? val.split(',').map((s: string) => s.trim()).filter(Boolean) : []);
         }
@@ -883,7 +893,7 @@ export function ResourceForm<T extends Record<string, any>>({
         const item: Record<string, any> = {};
         for (const sf of field.itemFields!) {
           if (sf.type === 'binary') item[sf.name] = { _mode: 'empty' } as BinaryFormValue;
-          else if (sf.enumValues && sf.enumValues.length > 0) item[sf.name] = '';
+          else if (sf.enumValues && sf.enumValues.length > 0) item[sf.name] = sf.isNullable ? null : (sf.enumValues[0] ?? '');
           else if (sf.type === 'number') item[sf.name] = '';
           else if (sf.type === 'boolean') item[sf.name] = false;
           else if (sf.type === 'object') item[sf.name] = '';
@@ -1069,8 +1079,8 @@ export function ResourceForm<T extends Record<string, any>>({
       );
     }
 
-    // Array text input (comma-separated)
-    if (isArray && type === 'string') {
+    // Array text input (comma-separated) — skip array ref fields (handled by RefMultiSelect below)
+    if (isArray && type === 'string' && !(field.ref && field.ref.type === 'resource_id')) {
       return (
         <TextInput
           key={key}
@@ -1189,6 +1199,37 @@ export function ResourceForm<T extends Record<string, any>>({
           required={isRequired}
           rows={textareaVariant.rows || 3}
           {...form.getInputProps(name)}
+        />
+      );
+    }
+
+    // Ref field — render as searchable select for the referenced resource
+    if (field.ref && field.ref.type === 'resource_id') {
+      // Array ref (N:N) — multi-select
+      if (field.isArray) {
+        return (
+          <RefMultiSelect
+            key={key}
+            label={label}
+            required={isRequired}
+            fieldRef={field.ref}
+            value={(form.getValues()[name as keyof T] as string[] | undefined) ?? []}
+            onChange={(val) => form.setFieldValue(name as any, val as any)}
+            error={form.errors[name as string] as string | undefined}
+          />
+        );
+      }
+      // Scalar ref (1:N / 1:1) — single select
+      return (
+        <RefSelect
+          key={key}
+          label={label}
+          required={isRequired}
+          fieldRef={field.ref}
+          value={form.getValues()[name as keyof T] as string | null}
+          onChange={(val) => form.setFieldValue(name as any, val as any)}
+          error={form.errors[name as string] as string | undefined}
+          clearable={field.isNullable}
         />
       );
     }

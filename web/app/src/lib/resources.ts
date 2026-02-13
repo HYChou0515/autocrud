@@ -23,6 +23,15 @@ export type FieldVariant =
   | { type: 'union'; variant?: 'radio.group' | 'radio.card' };
 
 /**
+ * Reference metadata for fields that point to another resource
+ */
+export interface FieldRef {
+  resource: string;
+  type: 'resource_id' | 'revision_id';
+  onDelete?: 'dangling' | 'set_null' | 'cascade';
+}
+
+/**
  * Resource field definition for meta-programming
  */
 export interface ResourceField {
@@ -38,6 +47,8 @@ export interface ResourceField {
   variant?: FieldVariant;
   // For arrays of typed objects: the item's sub-fields
   itemFields?: ResourceField[];
+  // Reference to another resource (from Ref/RefRevision annotations)
+  ref?: FieldRef;
 }
 
 /**

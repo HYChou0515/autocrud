@@ -8,7 +8,7 @@ from collections import OrderedDict
 from collections.abc import Callable, Sequence
 from typing import IO, Any, Literal, TypeVar
 
-from fastapi import APIRouter, FastAPI
+from fastapi import APIRouter, FastAPI, HTTPException
 from fastapi.openapi.utils import get_openapi
 from msgspec import UNSET, UnsetType
 
@@ -52,6 +52,8 @@ from autocrud.resource_manager.storage_factory import (
     MemoryStorageFactory,
 )
 from autocrud.types import (
+    DataSearchCondition,
+    DataSearchOperator,
     IEventHandler,
     IMessageQueue,
     IMessageQueueFactory,
@@ -60,11 +62,16 @@ from autocrud.types import (
     IPermissionChecker,
     IResourceManager,
     Job,
+    OnDelete,
     Resource,
+    ResourceAction,
     ResourceMeta,
+    ResourceMetaSearchQuery,
     RevisionInfo,
     RevisionStatus,
     TaskStatus,
+    _RefInfo,
+    extract_refs,
 )
 from autocrud.util.naming import NameConverter
 
@@ -81,6 +88,79 @@ class LazyJobHandler:
         if self._handler is None:
             self._handler = self._factory()
         return self._handler(resource)
+
+
+class _RefIntegrityHandler(IEventHandler):
+    """Internal event handler that enforces referential integrity on delete.
+
+    When a *target* resource is deleted, this handler iterates over all
+    ``_RefInfo`` entries that reference the target and applies the configured
+    ``on_delete`` action:
+
+    * ``cascade``  — soft-delete each referencing resource.
+    * ``set_null`` — set the referencing field to ``None`` via update.
+    * ``dangling`` — (not handled here; no action needed).
+    """
+
+    def __init__(
+        self,
+        refs: list[_RefInfo],
+        resource_managers: dict[str, IResourceManager],
+    ):
+        self._refs = refs
+        self._resource_managers = resource_managers
+
+    # ------------------------------------------------------------------
+    # IEventHandler interface
+    # ------------------------------------------------------------------
+
+    def is_supported(self, context) -> bool:
+        return (
+            getattr(context, "phase", None) == "on_success"
+            and getattr(context, "action", None) is ResourceAction.delete
+        )
+
+    def handle_event(self, context) -> None:
+        deleted_resource_id: str = context.resource_id
+        for ref_info in self._refs:
+            source_rm = self._resource_managers.get(ref_info.source)
+            if source_rm is None:
+                continue
+
+            # Find all source resources referencing the deleted target
+            matching = source_rm.search_resources(
+                ResourceMetaSearchQuery(
+                    is_deleted=False,
+                    conditions=[
+                        DataSearchCondition(
+                            field_path=ref_info.source_field,
+                            operator=DataSearchOperator.equals,
+                            value=deleted_resource_id,
+                        )
+                    ],
+                    limit=10_000,
+                )
+            )
+
+            for meta in matching:
+                if ref_info.on_delete == OnDelete.cascade:
+                    source_rm.delete(meta.resource_id)
+                elif ref_info.on_delete == OnDelete.set_null:
+                    from jsonpatch import JsonPatch
+
+                    patch = JsonPatch(
+                        [
+                            {
+                                "op": "replace",
+                                "path": f"/{ref_info.source_field}",
+                                "value": None,
+                            }
+                        ]
+                    )
+                    source_rm.update(
+                        meta.resource_id,
+                        source_rm._apply_patch(meta.resource_id, patch),
+                    )
 
 
 class AutoCRUD:
@@ -206,6 +286,7 @@ class AutoCRUD:
         self.resource_managers: OrderedDict[str, IResourceManager] = OrderedDict()
         self.message_queues: OrderedDict[str, IMessageQueue] = OrderedDict()
         self.model_names: dict[type[T], str | None] = {}
+        self.relationships: list[_RefInfo] = []
 
         # Initialize attributes with defaults before applying configuration
         self.storage_factory = MemoryStorageFactory()
@@ -758,6 +839,39 @@ class AutoCRUD:
         )
         self.resource_managers[model_name] = resource_manager
 
+        # Scan Ref / RefRevision annotations and collect relationships
+        refs = extract_refs(model, model_name)
+        self.relationships.extend(refs)
+        # Validate set_null requires nullable field
+        for ref_info in refs:
+            if ref_info.on_delete == OnDelete.set_null and not ref_info.nullable:
+                raise ValueError(
+                    f"Ref on '{model.__name__}.{ref_info.source_field}' uses "
+                    f"on_delete=set_null but the field is not Optional. "
+                    f"Use Annotated[str | None, Ref(...)] instead."
+                )
+
+        # Auto-index Ref fields (resource_id refs only) for searchability
+        existing_paths = {f.field_path for f in resource_manager.indexed_fields}
+        for ref_info in refs:
+            if (
+                ref_info.ref_type == "resource_id"
+                and ref_info.source_field not in existing_paths
+            ):
+                resource_manager._indexed_fields.append(
+                    IndexableField(
+                        field_path=ref_info.source_field,
+                        field_type=str,
+                    )
+                )
+        # Rebuild extractor if new fields were added
+        if len(resource_manager.indexed_fields) != len(existing_paths):
+            from autocrud.resource_manager.core import IndexedValueExtractor
+
+            resource_manager._indexed_value_extractor = IndexedValueExtractor(
+                resource_manager._indexed_fields
+            )
+
     def openapi(self, app: FastAPI, structs: list[type] = None) -> None:
         """Generate and register the OpenAPI schema for the FastAPI application.
 
@@ -818,6 +932,94 @@ class AutoCRUD:
             ],
         )[1]
 
+        # Inject x-ref-* / x-ref-revision-* metadata into schema properties
+        self._inject_ref_metadata(app.openapi_schema)
+
+    def _inject_ref_metadata(self, schema: dict) -> None:
+        """Post-process OpenAPI schema to inject ``x-ref-*`` extensions.
+
+        This scans all registered resource Structs for ``Ref`` / ``RefRevision``
+        annotations and writes the corresponding ``x-ref-resource``,
+        ``x-ref-type``, and ``x-ref-on-delete`` extensions into the matching
+        schema properties so the web generator can discover relationships.
+        """
+        components = schema.get("components", {}).get("schemas", {})
+        all_refs: list[_RefInfo] = []
+
+        for model_name, rm in self.resource_managers.items():
+            refs = extract_refs(rm.resource_type, model_name)
+            all_refs.extend(refs)
+
+            # Find the schema by the Struct class name (msgspec uses class name)
+            schema_name = rm.resource_type.__name__
+            comp = components.get(schema_name)
+            if not comp or "properties" not in comp:
+                continue
+
+            for ref_info in refs:
+                prop = comp["properties"].get(ref_info.source_field)
+                if not prop:
+                    continue
+
+                ext = {
+                    "x-ref-resource": ref_info.target,
+                    "x-ref-type": ref_info.ref_type,
+                }
+                if ref_info.ref_type == "resource_id":
+                    ext["x-ref-on-delete"] = ref_info.on_delete.value
+
+                # For nullable fields the property is wrapped in anyOf
+                if "anyOf" in prop:
+                    # Inject at the property level (alongside anyOf)
+                    prop.update(ext)
+                else:
+                    prop.update(ext)
+
+        # Also inject a top-level x-autocrud-relationships extension
+        if all_refs:
+            schema["x-autocrud-relationships"] = [
+                {
+                    "source": r.source,
+                    "sourceField": r.source_field,
+                    "target": r.target,
+                    "refType": r.ref_type,
+                    "onDelete": r.on_delete.value,
+                    "nullable": r.nullable,
+                }
+                for r in all_refs
+            ]
+
+    def _install_ref_integrity_handlers(self) -> None:
+        """Install event handlers for referential integrity (cascade / set_null).
+
+        For each registered resource that is a *target* of a ``Ref`` with
+        ``on_delete`` of ``cascade`` or ``set_null``, this method registers a
+        ``_RefIntegrityHandler`` on the target's ``ResourceManager`` so that
+        when the target is deleted the referencing resources are automatically
+        updated.
+        """
+        registered = set(self.resource_managers.keys())
+
+        # Build a mapping: target_resource -> list of actionable refs
+        from collections import defaultdict
+
+        target_refs: dict[str, list[_RefInfo]] = defaultdict(list)
+        for ref_info in self.relationships:
+            if (
+                ref_info.on_delete != OnDelete.dangling
+                and ref_info.target in registered
+                and ref_info.source in registered
+            ):
+                target_refs[ref_info.target].append(ref_info)
+
+        for target_name, refs in target_refs.items():
+            handler = _RefIntegrityHandler(
+                refs=refs,
+                resource_managers=self.resource_managers,
+            )
+            target_rm = self.resource_managers[target_name]
+            target_rm.event_handlers.append(handler)
+
     def apply(self, router: APIRouter) -> APIRouter:
         """Apply all route templates to generate API endpoints on the given router.
 
@@ -863,6 +1065,19 @@ class AutoCRUD:
             - Routes are generated dynamically based on model structure
             - This method is idempotent - calling it multiple times is safe
         """
+        # Validate all Ref targets point to registered resources
+        registered = set(self.resource_managers.keys())
+        for ref_info in self.relationships:
+            if ref_info.target not in registered:
+                logger.warning(
+                    f"Ref on '{ref_info.source}.{ref_info.source_field}' targets "
+                    f"resource '{ref_info.target}' which is not registered. "
+                    f"The reference will be dangling at runtime."
+                )
+
+        # Install referential integrity event handlers
+        self._install_ref_integrity_handlers()
+
         self.route_templates.sort()
         for model_name, resource_manager in self.resource_managers.items():
             for route_template in self.route_templates:
@@ -870,7 +1085,146 @@ class AutoCRUD:
                     route_template.apply(model_name, resource_manager, router)
                 except Exception:
                     pass
+
+        # Add ref-specific routes (referrers + relationships)
+        self._apply_ref_routes(router)
+
         return router
+
+    # ------------------------------------------------------------------
+    # Ref query routes
+    # ------------------------------------------------------------------
+
+    def _apply_ref_routes(self, router: APIRouter) -> None:
+        """Generate ref-related API routes on *router*.
+
+        Creates:
+        * ``GET /{target}/{resource_id}/referrers`` for each model that is a
+          *target* of at least one ``Ref`` annotation.  Returns a list of
+          referrer groups with ``source``, ``source_field``, ``ref_type``,
+          ``on_delete``, and ``resource_ids``.
+        * ``GET /_relationships`` — a global metadata endpoint returning the
+          full relationship graph.
+        """
+        from collections import defaultdict
+
+        # Build target -> list[_RefInfo]
+        target_refs: dict[str, list[_RefInfo]] = defaultdict(list)
+        for ref_info in self.relationships:
+            target_refs[ref_info.target].append(ref_info)
+
+        registered = set(self.resource_managers.keys())
+
+        # Per-target referrers endpoint
+        for target_name, refs in target_refs.items():
+            if target_name not in registered:
+                continue
+
+            # Filter to refs whose source is also registered
+            actionable_refs = [r for r in refs if r.source in registered]
+            if not actionable_refs:
+                continue
+
+            self._add_referrers_route(router, target_name, actionable_refs)
+
+        # Global relationships metadata endpoint
+        all_rels = self.relationships
+
+        @router.get(
+            "/_relationships",
+            summary="List all resource relationships",
+            tags=["_meta"],
+            description=(
+                "Returns the complete relationship graph discovered from "
+                "Ref / RefRevision annotations across all registered models."
+            ),
+        )
+        async def _list_relationships() -> list[dict]:
+            return [
+                {
+                    "source": r.source,
+                    "source_field": r.source_field,
+                    "target": r.target,
+                    "ref_type": r.ref_type,
+                    "on_delete": r.on_delete.value,
+                    "nullable": r.nullable,
+                }
+                for r in all_rels
+            ]
+
+    def _add_referrers_route(
+        self,
+        router: APIRouter,
+        target_name: str,
+        refs: list[_RefInfo],
+    ) -> None:
+        """Register ``GET /{target_name}/{resource_id}/referrers`` on *router*."""
+        resource_managers = self.resource_managers
+
+        @router.get(
+            f"/{target_name}/{{resource_id}}/referrers",
+            summary=f"List referrers of a {target_name} resource",
+            tags=[f"{target_name}"],
+            description=(
+                f"Find all resources that reference a specific `{target_name}` "
+                f"resource via Ref-annotated fields.  Results are grouped by "
+                f"source model and field."
+            ),
+        )
+        async def _list_referrers(resource_id: str) -> list[dict]:
+            # Verify the target resource exists
+            target_rm = resource_managers.get(target_name)
+            if target_rm is None:
+                raise HTTPException(
+                    status_code=404, detail=f"Unknown resource type: {target_name}"
+                )
+            try:
+                target_rm.get_meta(resource_id)
+            except KeyError:
+                raise HTTPException(
+                    status_code=404,
+                    detail=f"{target_name} '{resource_id}' not found",
+                )
+            results: list[dict] = []
+            for ref_info in refs:
+                source_rm = resource_managers.get(ref_info.source)
+                if source_rm is None:
+                    continue
+                # Only resource_id refs are auto-indexed and searchable
+                if ref_info.ref_type != "resource_id":
+                    continue
+                # For list ref fields (e.g. list[Annotated[str, Ref(...)]]),
+                # use 'contains' to check if the list includes the target ID.
+                # For scalar ref fields, use 'equals' for exact match.
+                op = (
+                    DataSearchOperator.contains
+                    if ref_info.is_list
+                    else DataSearchOperator.equals
+                )
+                metas = source_rm.search_resources(
+                    ResourceMetaSearchQuery(
+                        is_deleted=False,
+                        conditions=[
+                            DataSearchCondition(
+                                field_path=ref_info.source_field,
+                                operator=op,
+                                value=resource_id,
+                            )
+                        ],
+                        limit=10_000,
+                    )
+                )
+                if metas:
+                    results.append(
+                        {
+                            "source": ref_info.source,
+                            "source_field": ref_info.source_field,
+                            "ref_type": ref_info.ref_type,
+                            "on_delete": ref_info.on_delete.value,
+                            "resource_ids": [m.resource_id for m in metas],
+                        }
+                    )
+            return results
 
     def dump(self, bio: IO[bytes]) -> None:
         """Export all resources and their data to a tar archive for backup or migration.
