@@ -65,6 +65,8 @@ from autocrud.types import (
     OnDelete,
     Resource,
     ResourceAction,
+    ResourceIDNotFoundError,
+    ResourceIsDeletedError,
     ResourceMeta,
     ResourceMetaSearchQuery,
     RevisionInfo,
@@ -858,10 +860,12 @@ class AutoCRUD:
                 ref_info.ref_type == "resource_id"
                 and ref_info.source_field not in existing_paths
             ):
+                # Use list[str] for list refs, str for scalar refs
+                field_type = list[str] if ref_info.is_list else str
                 resource_manager._indexed_fields.append(
                     IndexableField(
                         field_path=ref_info.source_field,
-                        field_type=str,
+                        field_type=field_type,
                     )
                 )
         # Rebuild extractor if new fields were added
@@ -1180,7 +1184,7 @@ class AutoCRUD:
                 )
             try:
                 target_rm.get_meta(resource_id)
-            except KeyError:
+            except (ResourceIDNotFoundError, ResourceIsDeletedError):
                 raise HTTPException(
                     status_code=404,
                     detail=f"{target_name} '{resource_id}' not found",
