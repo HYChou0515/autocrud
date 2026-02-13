@@ -60,11 +60,14 @@ from autocrud.types import (
     IPermissionChecker,
     IResourceManager,
     Job,
+    OnDelete,
     Resource,
     ResourceMeta,
     RevisionInfo,
     RevisionStatus,
     TaskStatus,
+    _RefInfo,
+    extract_refs,
 )
 from autocrud.util.naming import NameConverter
 
@@ -206,6 +209,7 @@ class AutoCRUD:
         self.resource_managers: OrderedDict[str, IResourceManager] = OrderedDict()
         self.message_queues: OrderedDict[str, IMessageQueue] = OrderedDict()
         self.model_names: dict[type[T], str | None] = {}
+        self.relationships: list[_RefInfo] = []
 
         # Initialize attributes with defaults before applying configuration
         self.storage_factory = MemoryStorageFactory()
@@ -758,6 +762,18 @@ class AutoCRUD:
         )
         self.resource_managers[model_name] = resource_manager
 
+        # Scan Ref / RefRevision annotations and collect relationships
+        refs = extract_refs(model, model_name)
+        self.relationships.extend(refs)
+        # Validate set_null requires nullable field
+        for ref_info in refs:
+            if ref_info.on_delete == OnDelete.set_null and not ref_info.nullable:
+                raise ValueError(
+                    f"Ref on '{model.__name__}.{ref_info.source_field}' uses "
+                    f"on_delete=set_null but the field is not Optional. "
+                    f"Use Annotated[str | None, Ref(...)] instead."
+                )
+
     def openapi(self, app: FastAPI, structs: list[type] = None) -> None:
         """Generate and register the OpenAPI schema for the FastAPI application.
 
@@ -818,6 +834,170 @@ class AutoCRUD:
             ],
         )[1]
 
+        # Inject x-ref-* / x-ref-revision-* metadata into schema properties
+        self._inject_ref_metadata(app.openapi_schema)
+
+    def _inject_ref_metadata(self, schema: dict) -> None:
+        """Post-process OpenAPI schema to inject ``x-ref-*`` extensions.
+
+        This scans all registered resource Structs for ``Ref`` / ``RefRevision``
+        annotations and writes the corresponding ``x-ref-resource``,
+        ``x-ref-type``, and ``x-ref-on-delete`` extensions into the matching
+        schema properties so the web generator can discover relationships.
+        """
+        components = schema.get("components", {}).get("schemas", {})
+        all_refs: list[_RefInfo] = []
+
+        for model_name, rm in self.resource_managers.items():
+            refs = extract_refs(rm.resource_type, model_name)
+            all_refs.extend(refs)
+
+            # Find the schema by the Struct class name (msgspec uses class name)
+            schema_name = rm.resource_type.__name__
+            comp = components.get(schema_name)
+            if not comp or "properties" not in comp:
+                continue
+
+            for ref_info in refs:
+                prop = comp["properties"].get(ref_info.source_field)
+                if not prop:
+                    continue
+
+                ext = {
+                    "x-ref-resource": ref_info.target,
+                    "x-ref-type": ref_info.ref_type,
+                }
+                if ref_info.ref_type == "resource_id":
+                    ext["x-ref-on-delete"] = ref_info.on_delete.value
+
+                # For nullable fields the property is wrapped in anyOf
+                if "anyOf" in prop:
+                    # Inject at the property level (alongside anyOf)
+                    prop.update(ext)
+                else:
+                    prop.update(ext)
+
+        # Also inject a top-level x-autocrud-relationships extension
+        if all_refs:
+            schema["x-autocrud-relationships"] = [
+                {
+                    "source": r.source,
+                    "sourceField": r.source_field,
+                    "target": r.target,
+                    "refType": r.ref_type,
+                    "onDelete": r.on_delete.value,
+                    "nullable": r.nullable,
+                }
+                for r in all_refs
+            ]
+
+    def _register_ref_delete_handlers(self) -> None:
+        """Register on_delete event handlers (cascade / set_null) based on Ref relationships.
+
+        For each relationship with ``on_delete != dangling``, attaches an
+        ``OnSuccessDelete`` event handler to the **target** resource manager.
+        When the target resource is deleted, the handler searches the source
+        resource manager for records referencing the deleted resource and either
+        cascade-deletes them or sets the field to null.
+        """
+        from jsonpatch import JsonPatch
+
+        from autocrud.types import (
+            DataSearchCondition,
+            DataSearchOperator,
+            ResourceAction,
+            ResourceMetaSearchQuery,
+        )
+
+        registered = set(self.resource_managers.keys())
+
+        # Group relationships by target resource so we can batch handlers
+        for ref_info in self.relationships:
+            if ref_info.on_delete == OnDelete.dangling:
+                continue
+            if ref_info.target not in registered or ref_info.source not in registered:
+                continue
+
+            target_rm = self.resource_managers[ref_info.target]
+            source_rm = self.resource_managers[ref_info.source]
+            field = ref_info.source_field
+            on_delete = ref_info.on_delete
+
+            # Ensure the ref field is indexed on the source so we can search by it
+            if not any(idx.field_path == field for idx in source_rm.indexed_fields):
+                source_rm._indexed_fields.append(
+                    IndexableField(field_path=field, field_type=str)
+                )
+                # Rebuild the indexed value extractor with the updated list
+                from autocrud.resource_manager.core import IndexedValueExtractor
+
+                source_rm._indexed_value_extractor = IndexedValueExtractor(
+                    source_rm._indexed_fields
+                )
+                logger.info(
+                    f"Auto-indexed '{ref_info.source}.{field}' for "
+                    f"on_delete={on_delete} referential action."
+                )
+
+            def _make_handler(
+                _source_rm: IResourceManager,
+                _field: str,
+                _on_delete: OnDelete,
+                _source_name: str,
+            ):
+                """Create a closure capturing the source RM and field."""
+
+                def _handler(ctx) -> None:
+                    deleted_resource_id = ctx.resource_id
+                    query = ResourceMetaSearchQuery(
+                        conditions=[
+                            DataSearchCondition(
+                                field_path=_field,
+                                operator=DataSearchOperator.equals,
+                                value=deleted_resource_id,
+                            )
+                        ],
+                        is_deleted=False,
+                        limit=10000,
+                    )
+                    referencing = _source_rm.search_resources(query)
+                    # Reuse the user/now from the delete context so the source
+                    # operations run within a valid context.
+                    user = getattr(ctx, "user", "system")
+                    now = getattr(ctx, "now", None) or dt.datetime.now()
+                    with _source_rm.meta_provide(user, now):
+                        for meta in referencing:
+                            try:
+                                if _on_delete == OnDelete.cascade:
+                                    _source_rm.delete(meta.resource_id)
+                                elif _on_delete == OnDelete.set_null:
+                                    patch = JsonPatch(
+                                        [
+                                            {
+                                                "op": "replace",
+                                                "path": f"/{_field}",
+                                                "value": None,
+                                            }
+                                        ]
+                                    )
+                                    _source_rm.patch(meta.resource_id, patch)
+                            except Exception:
+                                logger.exception(
+                                    f"Failed to apply on_delete={_on_delete} for "
+                                    f"{_source_name}.{_field} (resource {meta.resource_id})"
+                                )
+
+                return _handler
+
+            handler_func = _make_handler(source_rm, field, on_delete, ref_info.source)
+
+            # Attach as OnSuccessDelete handler on the target resource manager
+            from autocrud.resource_manager.events import SimpleEventHandler
+
+            target_rm.event_handlers.append(
+                SimpleEventHandler(handler_func, "on_success", ResourceAction.delete)
+            )
+
     def apply(self, router: APIRouter) -> APIRouter:
         """Apply all route templates to generate API endpoints on the given router.
 
@@ -863,6 +1043,19 @@ class AutoCRUD:
             - Routes are generated dynamically based on model structure
             - This method is idempotent - calling it multiple times is safe
         """
+        # Validate all Ref targets point to registered resources
+        registered = set(self.resource_managers.keys())
+        for ref_info in self.relationships:
+            if ref_info.target not in registered:
+                logger.warning(
+                    f"Ref on '{ref_info.source}.{ref_info.source_field}' targets "
+                    f"resource '{ref_info.target}' which is not registered. "
+                    f"The reference will be dangling at runtime."
+                )
+
+        # Register on_delete event handlers for cascade / set_null
+        self._register_ref_delete_handlers()
+
         self.route_templates.sort()
         for model_name, resource_manager in self.resource_managers.items():
             for route_template in self.route_templates:

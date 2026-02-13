@@ -3,7 +3,17 @@ from abc import ABC, abstractmethod
 from collections.abc import Generator, Iterable
 from contextlib import AbstractContextManager
 from enum import Enum, Flag, StrEnum, auto
-from typing import IO, Any, Callable, Generic, TypeVar
+from typing import (
+    IO,
+    Annotated,
+    Any,
+    Callable,
+    Generic,
+    TypeVar,
+    get_args,
+    get_origin,
+    get_type_hints,
+)
 from uuid import UUID
 
 from jsonpatch import JsonPatch
@@ -12,6 +22,173 @@ from msgspec import UNSET, Struct, UnsetType, defstruct
 from typing_extensions import Literal
 
 T = TypeVar("T")
+
+
+# ---------------------------------------------------------------------------
+# Resource References (Ref / RefRevision)
+# ---------------------------------------------------------------------------
+
+
+class OnDelete(StrEnum):
+    """Defines the referential action when the referenced resource is deleted."""
+
+    dangling = "dangling"
+    """No action taken. The reference becomes dangling. (default)"""
+
+    set_null = "set_null"
+    """Set the referencing field to null. Requires the field to be Optional."""
+
+    cascade = "cascade"
+    """Delete the referencing resource as well."""
+
+
+class Ref:
+    """Metadata marker for a field that references another resource's resource_id.
+
+    Use with ``Annotated`` to annotate a ``str`` field that holds a reference
+    to another AutoCRUD resource.
+
+    Example::
+
+        class Monster(Struct):
+            zone_id: Annotated[str, Ref("zone")]
+            guild_id: Annotated[
+                str | None, Ref("guild", on_delete=OnDelete.set_null)
+            ] = None
+            owner_id: Annotated[str, Ref("character", on_delete=OnDelete.cascade)]
+    """
+
+    __slots__ = ("resource", "on_delete")
+
+    def __init__(
+        self, resource: str, *, on_delete: OnDelete = OnDelete.dangling
+    ) -> None:
+        self.resource = resource
+        self.on_delete = OnDelete(on_delete)
+
+    def __repr__(self) -> str:
+        return f"Ref({self.resource!r}, on_delete={self.on_delete!r})"
+
+    def __eq__(self, other: object) -> bool:
+        if not isinstance(other, Ref):
+            return NotImplemented
+        return self.resource == other.resource and self.on_delete == other.on_delete
+
+    def __hash__(self) -> int:
+        return hash((self.resource, self.on_delete))
+
+
+class RefRevision:
+    """Metadata marker for a field that references another resource's revision_id.
+
+    Example::
+
+        class Monster(Struct):
+            zone_revision_id: Annotated[str, RefRevision("zone")]
+    """
+
+    __slots__ = ("resource",)
+
+    def __init__(self, resource: str) -> None:
+        self.resource = resource
+
+    def __repr__(self) -> str:
+        return f"RefRevision({self.resource!r})"
+
+    def __eq__(self, other: object) -> bool:
+        if not isinstance(other, RefRevision):
+            return NotImplemented
+        return self.resource == other.resource
+
+    def __hash__(self) -> int:
+        return hash(self.resource)
+
+
+class _RefInfo(Struct, frozen=True, kw_only=True):
+    """Describes a single reference relationship discovered from type annotations."""
+
+    source: str
+    """Name of the resource that contains the reference."""
+    source_field: str
+    """Field name on the source resource."""
+    target: str
+    """Name of the referenced resource."""
+    ref_type: str
+    """Either ``'resource_id'`` or ``'revision_id'``."""
+    on_delete: OnDelete
+    """Referential action on delete."""
+    nullable: bool
+    """Whether the field is nullable (Optional)."""
+
+
+def extract_refs(struct_type: type, source_name: str) -> list[_RefInfo]:
+    """Scan a Struct's annotated fields and extract all Ref / RefRevision markers.
+
+    Handles both direct ``Annotated[str, Ref(...)]`` and nullable
+    ``Annotated[str | None, Ref(...)]`` forms.
+    """
+    refs: list[_RefInfo] = []
+    try:
+        hints = get_type_hints(struct_type, include_extras=True)
+    except Exception:
+        return refs
+
+    for field_name, hint in hints.items():
+        _extract_from_hint(hint, field_name, source_name, refs)
+    return refs
+
+
+def _extract_from_hint(
+    hint: Any,
+    field_name: str,
+    source_name: str,
+    out: list[_RefInfo],
+) -> None:
+    origin = get_origin(hint)
+
+    if origin is Annotated:
+        args = get_args(hint)
+        inner_type = args[0] if args else None
+        nullable = _is_nullable(inner_type)
+        for metadata in args[1:]:
+            if isinstance(metadata, Ref):
+                out.append(
+                    _RefInfo(
+                        source=source_name,
+                        source_field=field_name,
+                        target=metadata.resource,
+                        ref_type="resource_id",
+                        on_delete=metadata.on_delete,
+                        nullable=nullable,
+                    )
+                )
+            elif isinstance(metadata, RefRevision):
+                out.append(
+                    _RefInfo(
+                        source=source_name,
+                        source_field=field_name,
+                        target=metadata.resource,
+                        ref_type="revision_id",
+                        on_delete=OnDelete.dangling,
+                        nullable=nullable,
+                    )
+                )
+        return
+
+    # Fallback: unwrap Union/Optional and recurse into each arg
+    args = get_args(hint)
+    if args:
+        for arg in args:
+            _extract_from_hint(arg, field_name, source_name, out)
+
+
+def _is_nullable(tp: Any) -> bool:
+    """Return True if ``tp`` is a Union that includes NoneType."""
+    origin = get_origin(tp)
+    if origin is not None:
+        args = get_args(tp)
+        return type(None) in args
+    return tp is type(None)
 
 
 class RevisionStatus(StrEnum):
