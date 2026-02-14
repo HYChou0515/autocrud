@@ -344,6 +344,8 @@ export function ResourceDetail<T extends Record<string, any>>({
   const handleEdit = async (values: T) => {
     await update(values);
     setEditOpen(false);
+    // Navigate to latest (no revision param) after successful edit
+    handleRevisionSelect(null);
   };
 
   const handleDelete = async () => {

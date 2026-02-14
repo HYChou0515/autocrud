@@ -456,10 +456,12 @@ ${zodFields}
     const listRouteCases = this.resources.map((r) => `  '${r.name}': '/autocrud-admin/${r.name}'`).join(',\n');
 
     // Generate per-resource field name union types
-    const fieldNameTypes = this.resources.map((r) => {
-      const fieldNames = r.fields.map((f) => `'${f.name}'`).join(' | ');
-      return `export type ${r.pascal}FieldName = ${fieldNames};`;
-    }).join('\n');
+    const fieldNameTypes = this.resources
+      .map((r) => {
+        const fieldNames = r.fields.map((f) => `'${f.name}'`).join(' | ');
+        return `export type ${r.pascal}FieldName = ${fieldNames};`;
+      })
+      .join('\n');
 
     // Generate ResourceFieldMap: resource name -> field name union
     const fieldMapEntries = this.resources.map((r) => `  '${r.name}': ${r.pascal}FieldName;`).join('\n');
