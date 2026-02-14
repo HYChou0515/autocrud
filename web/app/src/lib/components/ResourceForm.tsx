@@ -1,11 +1,28 @@
 import { useState, useMemo } from 'react';
 import { useForm } from '@mantine/form';
 import { zodResolver } from 'mantine-form-zod-resolver';
-import { TextInput, NumberInput, Textarea, Checkbox, Select, Button, Stack, Group, FileInput, Switch, SegmentedControl, Alert, Text, Tooltip, ActionIcon, Paper } from '@mantine/core';
+import {
+  TextInput,
+  NumberInput,
+  Textarea,
+  Checkbox,
+  Select,
+  Button,
+  Stack,
+  Group,
+  FileInput,
+  Switch,
+  SegmentedControl,
+  Alert,
+  Text,
+  Tooltip,
+  ActionIcon,
+  Paper,
+} from '@mantine/core';
 import { DateTimePicker } from '@mantine/dates';
-import { IconForms, IconCode, IconArrowRight, IconLayersSubtract, IconTrash, IconPlus, IconLink, IconX } from '@tabler/icons-react';
+import { IconLayersSubtract, IconTrash, IconPlus, IconLink, IconX } from '@tabler/icons-react';
 import type { ResourceConfig, ResourceField, FieldVariant } from '../resources';
-import { RefSelect, RefMultiSelect } from './RefSelect';
+import { RefSelect, RefMultiSelect, RefRevisionSelect, RefRevisionMultiSelect } from './RefSelect';
 
 /** Get a value from an object using dot-notation path */
 function getByPath(obj: Record<string, any>, path: string): any {
@@ -39,7 +56,9 @@ interface BinaryFormValue {
 }
 
 /** Convert a BinaryFormValue to API-ready binary payload */
-async function binaryFormValueToApi(val: BinaryFormValue | null | undefined): Promise<Record<string, any> | null> {
+async function binaryFormValueToApi(
+  val: BinaryFormValue | null | undefined,
+): Promise<Record<string, any> | null> {
   if (!val || val._mode === 'empty') return null;
   if (val._mode === 'existing') {
     // Don't re-send existing binary — return object with file_id so backend keeps it
@@ -69,7 +88,13 @@ async function binaryFormValueToApi(val: BinaryFormValue | null | undefined): Pr
 }
 
 /** Inline binary field editor — file upload or URL input */
-function BinaryFieldEditor({ label, required, value, onChange, apiUrl }: {
+function BinaryFieldEditor({
+  label,
+  required,
+  value,
+  onChange,
+  apiUrl,
+}: {
   label: string;
   required?: boolean;
   value: BinaryFormValue | null;
@@ -96,19 +121,21 @@ function BinaryFieldEditor({ label, required, value, onChange, apiUrl }: {
     onChange({ _mode: 'empty' });
   };
 
-  const blobUrl = value?.file_id && apiUrl
-    ? `${apiUrl}/blobs/${value.file_id}`
-    : null;
+  const blobUrl = value?.file_id && apiUrl ? `${apiUrl}/blobs/${value.file_id}` : null;
 
   return (
     <Stack gap={4}>
       <Group gap="xs" align="flex-end">
         <Text size="sm" fw={500}>
-          {label}{required && <span style={{ color: 'var(--mantine-color-red-6)' }}> *</span>}
+          {label}
+          {required && <span style={{ color: 'var(--mantine-color-red-6)' }}> *</span>}
         </Text>
         {mode === 'existing' && blobUrl && (
           <Text size="xs" c="dimmed">
-            (current: <a href={blobUrl} target="_blank" rel="noreferrer">{value?.content_type}</a>
+            (current:{' '}
+            <a href={blobUrl} target="_blank" rel="noreferrer">
+              {value?.content_type}
+            </a>
             {value?.size != null && `, ${(value.size / 1024).toFixed(1)} KB`})
           </Text>
         )}
@@ -123,7 +150,7 @@ function BinaryFieldEditor({ label, required, value, onChange, apiUrl }: {
             { label: 'URL', value: 'url' },
           ]}
         />
-        {(mode !== 'empty') && (
+        {mode !== 'empty' && (
           <Tooltip label="Clear">
             <ActionIcon variant="subtle" color="gray" size="sm" onClick={handleClear}>
               <IconX size={14} />
@@ -175,12 +202,12 @@ export interface ResourceFormProps<T> {
  * Generic resource form with auto-generated fields based on config
  * 支援 Zod 驗證和 variant 自定義
  */
-export function ResourceForm<T extends Record<string, any>>({ 
-  config, 
-  initialValues = {}, 
+export function ResourceForm<T extends Record<string, any>>({
+  config,
+  initialValues = {},
   onSubmit,
   onCancel,
-  submitLabel = 'Submit'
+  submitLabel = 'Submit',
 }: ResourceFormProps<T>) {
   const [editMode, setEditMode] = useState<'form' | 'json'>('form');
   const [jsonText, setJsonText] = useState('');
@@ -199,9 +226,7 @@ export function ResourceForm<T extends Record<string, any>>({
   }, [config.fields]);
 
   // Runtime-adjustable form depth (how deep nested objects expand into form fields)
-  const [formDepth, setFormDepth] = useState<number>(
-    config.maxFormDepth ?? maxAvailableDepth
-  );
+  const [formDepth, setFormDepth] = useState<number>(config.maxFormDepth ?? maxAvailableDepth);
 
   /**
    * Compute visible fields and collapsed groups based on formDepth.
@@ -209,7 +234,11 @@ export function ResourceForm<T extends Record<string, any>>({
    * - collapsedGroups: parent paths at the depth boundary → rendered as JSON editors
    * - collapsedGroupFields: mapping from parent path → its child fields (for reconstruction)
    */
-  const { visibleFields, collapsedGroups, collapsedGroupFields } = useMemo(() => {
+  const {
+    visibleFields,
+    collapsedGroups,
+    collapsedGroupFields: _collapsedGroupFields,
+  } = useMemo(() => {
     const visible: ResourceField[] = [];
     const groupedChildren = new Map<string, ResourceField[]>();
 
@@ -238,7 +267,7 @@ export function ResourceForm<T extends Record<string, any>>({
     for (const parentPath of groupedChildren.keys()) {
       // Don't add a collapsed group if this path already exists as a visible field
       // (e.g. field.type === 'object' already renders as JSON)
-      const alreadyVisible = visible.some(f => f.name === parentPath);
+      const alreadyVisible = visible.some((f) => f.name === parentPath);
       if (!alreadyVisible) {
         const labelParts = parentPath.split('.');
         const label = toLabel(labelParts[labelParts.length - 1]);
@@ -255,8 +284,8 @@ export function ResourceForm<T extends Record<string, any>>({
 
   // Identify date fields to convert between ISO strings and Date objects
   const dateFieldNames = config.fields
-    .filter(f => f.type === 'date' || f.variant?.type === 'date')
-    .map(f => f.name);
+    .filter((f) => f.type === 'date' || f.variant?.type === 'date')
+    .map((f) => f.name);
 
   // Convert ISO string values to Date objects for date fields
   // and convert null values to appropriate defaults to avoid React warnings
@@ -264,7 +293,12 @@ export function ResourceForm<T extends Record<string, any>>({
   const processedInitialValues = { ...initialValues } as Record<string, any>;
   // Deep clone nested objects so mutations don't affect original data
   for (const key of Object.keys(processedInitialValues)) {
-    if (processedInitialValues[key] && typeof processedInitialValues[key] === 'object' && !Array.isArray(processedInitialValues[key]) && !(processedInitialValues[key] instanceof Date)) {
+    if (
+      processedInitialValues[key] &&
+      typeof processedInitialValues[key] === 'object' &&
+      !Array.isArray(processedInitialValues[key]) &&
+      !(processedInitialValues[key] instanceof Date)
+    ) {
       processedInitialValues[key] = JSON.parse(JSON.stringify(processedInitialValues[key]));
     }
   }
@@ -282,7 +316,12 @@ export function ResourceForm<T extends Record<string, any>>({
               // Convert existing binary data to BinaryFormValue
               const sv = processed[sf.name];
               if (sv && typeof sv === 'object' && sv.file_id) {
-                processed[sf.name] = { _mode: 'existing', file_id: sv.file_id, content_type: sv.content_type, size: sv.size } as BinaryFormValue;
+                processed[sf.name] = {
+                  _mode: 'existing',
+                  file_id: sv.file_id,
+                  content_type: sv.content_type,
+                  size: sv.size,
+                } as BinaryFormValue;
               } else {
                 processed[sf.name] = { _mode: 'empty' } as BinaryFormValue;
               }
@@ -398,20 +437,38 @@ export function ResourceForm<T extends Record<string, any>>({
         // Skip array ref fields — they are already arrays from RefMultiSelect
         const zodValues = { ...(values as Record<string, any>) };
         for (const field of config.fields) {
-          if (field.isArray && !(field.itemFields && field.itemFields.length > 0) && !(field.ref && field.ref.type === 'resource_id')) {
+          if (
+            field.isArray &&
+            !(field.itemFields && field.itemFields.length > 0) &&
+            !(field.ref && field.ref.type === 'resource_id')
+          ) {
             const val = zodValues[field.name];
             if (typeof val === 'string') {
-              zodValues[field.name] = val ? val.split(',').map((s: string) => s.trim()).filter(Boolean) : [];
+              zodValues[field.name] = val
+                ? val
+                    .split(',')
+                    .map((s: string) => s.trim())
+                    .filter(Boolean)
+                : [];
             }
           }
           // Also pre-process nested simple-array sub-fields inside array-with-itemFields
-          if (field.itemFields && field.itemFields.length > 0 && Array.isArray(zodValues[field.name])) {
+          if (
+            field.itemFields &&
+            field.itemFields.length > 0 &&
+            Array.isArray(zodValues[field.name])
+          ) {
             zodValues[field.name] = zodValues[field.name].map((item: any) => {
               if (!item || typeof item !== 'object') return item;
               const processed = { ...item };
               for (const sf of field.itemFields!) {
                 if (sf.isArray && typeof processed[sf.name] === 'string') {
-                  processed[sf.name] = processed[sf.name] ? processed[sf.name].split(',').map((s: string) => s.trim()).filter(Boolean) : [];
+                  processed[sf.name] = processed[sf.name]
+                    ? processed[sf.name]
+                        .split(',')
+                        .map((s: string) => s.trim())
+                        .filter(Boolean)
+                    : [];
                 }
               }
               return processed;
@@ -422,11 +479,20 @@ export function ResourceForm<T extends Record<string, any>>({
         // Suppress zod errors for object-type fields (stored as JSON strings) and collapsed group paths
         // BUT NOT for fields with itemFields (they use actual arrays, zod can validate them directly)
         const suppressPaths = new Set([
-          ...config.fields.filter(f => f.type === 'object' && !(f.itemFields && f.itemFields.length > 0)).map(f => f.name),
-          ...config.fields.filter(f => f.type === 'binary').map(f => f.name),
+          ...config.fields
+            .filter((f) => f.type === 'object' && !(f.itemFields && f.itemFields.length > 0))
+            .map((f) => f.name),
+          ...config.fields.filter((f) => f.type === 'binary').map((f) => f.name),
           // Simple array fields (comma-separated string in form, z.array() in schema) — exclude array ref fields
-          ...config.fields.filter(f => f.isArray && !(f.itemFields && f.itemFields.length > 0) && !(f.ref && f.ref.type === 'resource_id')).map(f => f.name),
-          ...collapsedGroups.map(g => g.path),
+          ...config.fields
+            .filter(
+              (f) =>
+                f.isArray &&
+                !(f.itemFields && f.itemFields.length > 0) &&
+                !(f.ref && f.ref.type === 'resource_id'),
+            )
+            .map((f) => f.name),
+          ...collapsedGroups.map((g) => g.path),
         ]);
         // Collect nested simple-array sub-field names within array-with-itemFields
         const nestedArraySubFields: { parent: string; sub: string }[] = [];
@@ -447,14 +513,16 @@ export function ResourceForm<T extends Record<string, any>>({
             delete zodErrors[key];
           }
           // Also suppress child path errors of collapsed groups
-          if (collapsedGroups.some(g => key.startsWith(g.path + '.'))) {
+          if (collapsedGroups.some((g) => key.startsWith(g.path + '.'))) {
             delete zodErrors[key];
           }
           // Suppress errors for nested comma-separated array / binary sub-fields (e.g. equipments.0.special_effects)
-          if (nestedArraySubFields.some(({ parent, sub }) => {
-            const regex = new RegExp(`^${parent}\\.\\d+\\.${sub}$`);
-            return regex.test(key);
-          })) {
+          if (
+            nestedArraySubFields.some(({ parent, sub }) => {
+              const regex = new RegExp(`^${parent}\\.\\d+\\.${sub}$`);
+              return regex.test(key);
+            })
+          ) {
             delete zodErrors[key];
           }
         }
@@ -473,9 +541,7 @@ export function ResourceForm<T extends Record<string, any>>({
   });
 
   // Identify object fields to parse JSON strings back to objects
-  const objectFieldNames = config.fields
-    .filter(f => f.type === 'object')
-    .map(f => f.name);
+  const _objectFieldNames = config.fields.filter((f) => f.type === 'object').map((f) => f.name);
 
   /** Convert current form values to a clean API-ready object */
   const formValuesToApiObject = (): Record<string, any> => {
@@ -483,9 +549,9 @@ export function ResourceForm<T extends Record<string, any>>({
     const result: Record<string, any> = {};
 
     // Track which field paths are managed by collapsed groups
-    const collapsedPaths = new Set(collapsedGroups.map(g => g.path));
+    const _collapsedPaths = new Set(collapsedGroups.map((g) => g.path));
     const isCollapsedChild = (name: string) =>
-      collapsedGroups.some(g => name.startsWith(g.path + '.'));
+      collapsedGroups.some((g) => name.startsWith(g.path + '.'));
 
     for (const field of config.fields) {
       // Skip fields whose data is managed by a collapsed group JSON editor
@@ -509,11 +575,25 @@ export function ResourceForm<T extends Record<string, any>>({
                 v = { _pending_file: bv.file.name, content_type: bv.file.type };
               } else if (bv && bv._mode === 'url' && bv.url) {
                 v = { _pending_url: bv.url };
-              } else { v = null; }
+              } else {
+                v = null;
+              }
             } else if (sf.isArray && sf.type === 'string') {
               // Convert comma-separated string to array
-              v = typeof v === 'string' ? v.split(',').map((s: string) => s.trim()).filter(Boolean) : (Array.isArray(v) ? v : []);
-            } else if (sf.enumValues && sf.enumValues.length > 0 && (v === '' || v === null || v === undefined)) {
+              v =
+                typeof v === 'string'
+                  ? v
+                      .split(',')
+                      .map((s: string) => s.trim())
+                      .filter(Boolean)
+                  : Array.isArray(v)
+                    ? v
+                    : [];
+            } else if (
+              sf.enumValues &&
+              sf.enumValues.length > 0 &&
+              (v === '' || v === null || v === undefined)
+            ) {
               // Nullable enum: empty/null → null; required enum: keep as-is
               v = sf.isNullable ? null : undefined;
             } else if (sf.type === 'number' && (v === '' || v === undefined)) {
@@ -522,8 +602,14 @@ export function ResourceForm<T extends Record<string, any>>({
               v = null;
             } else if (sf.type === 'object') {
               if (typeof v === 'string' && v.trim()) {
-                try { v = JSON.parse(v); } catch { /* keep */ }
-              } else { v = null; }
+                try {
+                  v = JSON.parse(v);
+                } catch {
+                  /* keep */
+                }
+              } else {
+                v = null;
+              }
             }
             res[sf.name] = v;
           }
@@ -557,7 +643,11 @@ export function ResourceForm<T extends Record<string, any>>({
         }
       } else if (field.type === 'object') {
         if (typeof val === 'string' && val.trim()) {
-          try { cleanVal = JSON.parse(val); } catch { cleanVal = val; }
+          try {
+            cleanVal = JSON.parse(val);
+          } catch {
+            cleanVal = val;
+          }
         } else {
           cleanVal = null;
         }
@@ -578,7 +668,11 @@ export function ResourceForm<T extends Record<string, any>>({
     for (const group of collapsedGroups) {
       const val = getByPath(values, group.path);
       if (typeof val === 'string' && val.trim()) {
-        try { setByPath(result, group.path, JSON.parse(val)); } catch { /* keep as-is */ }
+        try {
+          setByPath(result, group.path, JSON.parse(val));
+        } catch {
+          /* keep as-is */
+        }
       } else {
         setByPath(result, group.path, null);
       }
@@ -591,7 +685,7 @@ export function ResourceForm<T extends Record<string, any>>({
   const applyJsonToForm = (obj: Record<string, any>) => {
     const newValues: Record<string, any> = {};
     const isCollapsedChild = (name: string) =>
-      collapsedGroups.some(g => name.startsWith(g.path + '.'));
+      collapsedGroups.some((g) => name.startsWith(g.path + '.'));
 
     for (const field of config.fields) {
       // Skip fields managed by collapsed groups
@@ -608,7 +702,12 @@ export function ResourceForm<T extends Record<string, any>>({
               const v = item?.[sf.name];
               if (sf.type === 'binary') {
                 if (v && typeof v === 'object' && v.file_id) {
-                  processed[sf.name] = { _mode: 'existing', file_id: v.file_id, content_type: v.content_type, size: v.size };
+                  processed[sf.name] = {
+                    _mode: 'existing',
+                    file_id: v.file_id,
+                    content_type: v.content_type,
+                    size: v.size,
+                  };
                 } else {
                   processed[sf.name] = { _mode: 'empty' };
                 }
@@ -643,7 +742,12 @@ export function ResourceForm<T extends Record<string, any>>({
       } else if (field.type === 'binary') {
         // Convert JSON binary data back to BinaryFormValue
         if (val && typeof val === 'object' && val.file_id) {
-          newValues[field.name] = { _mode: 'existing', file_id: val.file_id, content_type: val.content_type, size: val.size };
+          newValues[field.name] = {
+            _mode: 'existing',
+            file_id: val.file_id,
+            content_type: val.content_type,
+            size: val.size,
+          };
         } else {
           newValues[field.name] = { _mode: 'empty' };
         }
@@ -675,7 +779,10 @@ export function ResourceForm<T extends Record<string, any>>({
     // For dot-path fields, we need to set them via form.setFieldValue
     for (const field of config.fields) {
       if (isCollapsedChild(field.name)) continue;
-      const val = newValues[field.name] !== undefined ? newValues[field.name] : getByPath(newValues, field.name);
+      const val =
+        newValues[field.name] !== undefined
+          ? newValues[field.name]
+          : getByPath(newValues, field.name);
       form.setFieldValue(field.name, val);
     }
     // Apply collapsed group values
@@ -727,7 +834,7 @@ export function ResourceForm<T extends Record<string, any>>({
       if (!result.success) {
         const fieldErrors = result.error.issues.map((issue: any) => {
           const path = issue.path.join('.');
-          const fieldDef = config.fields.find(f => f.name === path);
+          const fieldDef = config.fields.find((f) => f.name === path);
           const label = fieldDef?.label || path || 'Root';
           return `${label}: ${issue.message}`;
         });
@@ -770,7 +877,7 @@ export function ResourceForm<T extends Record<string, any>>({
     const processed = JSON.parse(JSON.stringify(values)) as Record<string, any>;
 
     const isCollapsedChild = (name: string) =>
-      collapsedGroups.some(g => name.startsWith(g.path + '.'));
+      collapsedGroups.some((g) => name.startsWith(g.path + '.'));
 
     // Clean up field values based on type
     for (const field of config.fields) {
@@ -782,30 +889,46 @@ export function ResourceForm<T extends Record<string, any>>({
       // Array of typed objects — process each item's sub-fields
       if (field.itemFields && field.itemFields.length > 0) {
         if (Array.isArray(val)) {
-          const hasBinarySubs = field.itemFields.some(sf => sf.type === 'binary');
-          const cleanItems = await Promise.all(val.map(async (item: any, idx: number) => {
-            const res: Record<string, any> = {};
-            for (const sf of field.itemFields!) {
-              let v = item?.[sf.name];
-              if (sf.type === 'binary') {
-                // Use pre-extracted binary value (has File object)
-                const bv = arrayItemBinaryValues.get(`${field.name}.${idx}.${sf.name}`);
-                v = await binaryFormValueToApi(bv);
-              } else if (sf.isArray && sf.type === 'string') {
-                v = typeof v === 'string' ? v.split(',').map((s: string) => s.trim()).filter(Boolean) : (Array.isArray(v) ? v : []);
-              } else if (sf.type === 'number' && (v === '' || v === undefined)) {
-                v = sf.isNullable ? null : undefined;
-              } else if (sf.type === 'string' && v === '' && sf.isNullable) {
-                v = null;
-              } else if (sf.type === 'object') {
-                if (typeof v === 'string' && v.trim()) {
-                  try { v = JSON.parse(v); } catch { /* keep */ }
-                } else if (typeof v === 'string' && !v.trim()) { v = null; }
+          const _hasBinarySubs = field.itemFields.some((sf) => sf.type === 'binary');
+          const cleanItems = await Promise.all(
+            val.map(async (item: any, idx: number) => {
+              const res: Record<string, any> = {};
+              for (const sf of field.itemFields!) {
+                let v = item?.[sf.name];
+                if (sf.type === 'binary') {
+                  // Use pre-extracted binary value (has File object)
+                  const bv = arrayItemBinaryValues.get(`${field.name}.${idx}.${sf.name}`);
+                  v = await binaryFormValueToApi(bv);
+                } else if (sf.isArray && sf.type === 'string') {
+                  v =
+                    typeof v === 'string'
+                      ? v
+                          .split(',')
+                          .map((s: string) => s.trim())
+                          .filter(Boolean)
+                      : Array.isArray(v)
+                        ? v
+                        : [];
+                } else if (sf.type === 'number' && (v === '' || v === undefined)) {
+                  v = sf.isNullable ? null : undefined;
+                } else if (sf.type === 'string' && v === '' && sf.isNullable) {
+                  v = null;
+                } else if (sf.type === 'object') {
+                  if (typeof v === 'string' && v.trim()) {
+                    try {
+                      v = JSON.parse(v);
+                    } catch {
+                      /* keep */
+                    }
+                  } else if (typeof v === 'string' && !v.trim()) {
+                    v = null;
+                  }
+                }
+                res[sf.name] = v;
               }
-              res[sf.name] = v;
-            }
-            return res;
-          }));
+              return res;
+            }),
+          );
           setByPath(processed, field.name, cleanItems);
         }
         continue;
@@ -831,11 +954,24 @@ export function ResourceForm<T extends Record<string, any>>({
         } else if (typeof val === 'string' && !val.trim()) {
           setByPath(processed, field.name, null);
         }
-      } else if (field.isArray && !(field.itemFields && field.itemFields.length > 0) && !(field.ref && field.ref.type === 'resource_id')) {
+      } else if (
+        field.isArray &&
+        !(field.itemFields && field.itemFields.length > 0) &&
+        !(field.ref && field.ref.type === 'resource_id')
+      ) {
         // Simple array field (comma-separated string in form) — convert to array before zod
         // Skip array ref fields — they are already arrays from RefMultiSelect
         if (typeof val === 'string') {
-          setByPath(processed, field.name, val ? val.split(',').map((s: string) => s.trim()).filter(Boolean) : []);
+          setByPath(
+            processed,
+            field.name,
+            val
+              ? val
+                  .split(',')
+                  .map((s: string) => s.trim())
+                  .filter(Boolean)
+              : [],
+          );
         }
       } else if (field.type === 'number') {
         // Convert empty string back to null for nullable number fields
@@ -854,7 +990,11 @@ export function ResourceForm<T extends Record<string, any>>({
     for (const group of collapsedGroups) {
       const val = getByPath(processed, group.path);
       if (typeof val === 'string' && val.trim()) {
-        try { setByPath(processed, group.path, JSON.parse(val)); } catch { /* keep */ }
+        try {
+          setByPath(processed, group.path, JSON.parse(val));
+        } catch {
+          /* keep */
+        }
       } else if (typeof val === 'string' && !val.trim()) {
         setByPath(processed, group.path, null);
       }
@@ -893,7 +1033,8 @@ export function ResourceForm<T extends Record<string, any>>({
         const item: Record<string, any> = {};
         for (const sf of field.itemFields!) {
           if (sf.type === 'binary') item[sf.name] = { _mode: 'empty' } as BinaryFormValue;
-          else if (sf.enumValues && sf.enumValues.length > 0) item[sf.name] = sf.isNullable ? null : (sf.enumValues[0] ?? '');
+          else if (sf.enumValues && sf.enumValues.length > 0)
+            item[sf.name] = sf.isNullable ? null : (sf.enumValues[0] ?? '');
           else if (sf.type === 'number') item[sf.name] = '';
           else if (sf.type === 'boolean') item[sf.name] = false;
           else if (sf.type === 'object') item[sf.name] = '';
@@ -905,7 +1046,9 @@ export function ResourceForm<T extends Record<string, any>>({
       return (
         <Stack key={key} gap="xs">
           <Group justify="space-between" align="center">
-            <Text fw={500} size="sm">{label}</Text>
+            <Text fw={500} size="sm">
+              {label}
+            </Text>
             <Button
               size="compact-xs"
               variant="light"
@@ -916,12 +1059,16 @@ export function ResourceForm<T extends Record<string, any>>({
             </Button>
           </Group>
           {items.length === 0 && (
-            <Text size="sm" c="dimmed" fs="italic">No items yet</Text>
+            <Text size="sm" c="dimmed" fs="italic">
+              No items yet
+            </Text>
           )}
           {items.map((_: any, index: number) => (
             <Paper key={index} withBorder p="sm" radius="sm">
               <Group justify="space-between" mb="xs">
-                <Text size="xs" c="dimmed" fw={500}>#{index + 1}</Text>
+                <Text size="xs" c="dimmed" fw={500}>
+                  #{index + 1}
+                </Text>
                 <ActionIcon
                   size="sm"
                   color="red"
@@ -932,9 +1079,9 @@ export function ResourceForm<T extends Record<string, any>>({
                 </ActionIcon>
               </Group>
               <Stack gap="xs">
-                {field.itemFields!.map(sf => {
+                {field.itemFields!.map((sf) => {
                   const itemPath = `${name}.${index}.${sf.name}`;
-                  const subVariant = sf.variant || inferDefaultVariant(sf);
+                  const _subVariant = sf.variant || inferDefaultVariant(sf);
 
                   // Enum → Select
                   if (sf.enumValues && sf.enumValues.length > 0) {
@@ -943,7 +1090,7 @@ export function ResourceForm<T extends Record<string, any>>({
                         key={itemPath}
                         label={sf.label}
                         required={sf.isRequired}
-                        data={sf.enumValues.map(v => ({ value: v, label: v }))}
+                        data={sf.enumValues.map((v) => ({ value: v, label: v }))}
                         clearable={sf.isNullable}
                         {...form.getInputProps(itemPath)}
                       />
@@ -965,8 +1112,13 @@ export function ResourceForm<T extends Record<string, any>>({
                   }
                   // Binary → upload/URL editor
                   if (sf.type === 'binary') {
-                    const itemApiUrl = (typeof window !== 'undefined' && (import.meta as any).env?.VITE_API_URL) || '';
-                    const itemBv = getByPath(form.getValues() as Record<string, any>, itemPath) as BinaryFormValue | null;
+                    const itemApiUrl =
+                      (typeof window !== 'undefined' && (import.meta as any).env?.VITE_API_URL) ||
+                      '';
+                    const itemBv = getByPath(
+                      form.getValues() as Record<string, any>,
+                      itemPath,
+                    ) as BinaryFormValue | null;
                     return (
                       <BinaryFieldEditor
                         key={itemPath}
@@ -1034,7 +1186,8 @@ export function ResourceForm<T extends Record<string, any>>({
 
     // Binary/File fields — upload or URL
     if (type === 'binary') {
-      const apiUrl = (typeof window !== 'undefined' && (import.meta as any).env?.VITE_API_URL) || '';
+      const apiUrl =
+        (typeof window !== 'undefined' && (import.meta as any).env?.VITE_API_URL) || '';
       const binaryVal = form.getValues()[name as keyof T] as unknown as BinaryFormValue | null;
       return (
         <BinaryFieldEditor
@@ -1123,23 +1276,13 @@ export function ResourceForm<T extends Record<string, any>>({
     // Boolean - Checkbox
     if (type === 'boolean' && effectiveVariant.type === 'checkbox') {
       return (
-        <Checkbox
-          key={key}
-          label={label}
-          {...form.getInputProps(name, { type: 'checkbox' })}
-        />
+        <Checkbox key={key} label={label} {...form.getInputProps(name, { type: 'checkbox' })} />
       );
     }
 
     // Boolean - Switch (default for boolean)
     if (type === 'boolean') {
-      return (
-        <Switch
-          key={key}
-          label={label}
-          {...form.getInputProps(name, { type: 'checkbox' })}
-        />
-      );
+      return <Switch key={key} label={label} {...form.getInputProps(name, { type: 'checkbox' })} />;
     }
 
     // Date/time input
@@ -1234,14 +1377,40 @@ export function ResourceForm<T extends Record<string, any>>({
       );
     }
 
+    // RefRevision field — render as searchable select for revision IDs
+    if (field.ref && field.ref.type === 'revision_id') {
+      // Array ref revision — multi-select
+      if (field.isArray) {
+        return (
+          <RefRevisionMultiSelect
+            key={key}
+            label={label}
+            required={isRequired}
+            fieldRef={field.ref}
+            value={(form.getValues()[name as keyof T] as string[] | undefined) ?? []}
+            onChange={(val) => form.setFieldValue(name as any, val as any)}
+            error={form.errors[name as string] as string | undefined}
+          />
+        );
+      }
+      // Scalar ref revision — single select
+      return (
+        <RefRevisionSelect
+          key={key}
+          label={label}
+          required={isRequired}
+          fieldRef={field.ref}
+          value={form.getValues()[name as keyof T] as string | null}
+          onChange={(val) => form.setFieldValue(name as any, val as any)}
+          error={form.errors[name as string] as string | undefined}
+          clearable={field.isNullable}
+        />
+      );
+    }
+
     // Default: text input
     return (
-      <TextInput
-        key={key}
-        label={label}
-        required={isRequired}
-        {...form.getInputProps(name)}
-      />
+      <TextInput key={key} label={label} required={isRequired} {...form.getInputProps(name)} />
     );
   };
 
@@ -1277,10 +1446,15 @@ export function ResourceForm<T extends Record<string, any>>({
           ]}
         />
         {editMode === 'form' && maxAvailableDepth > 1 && (
-          <Tooltip label="Form field expansion depth: lower values collapse nested objects into JSON editors" withArrow>
+          <Tooltip
+            label="Form field expansion depth: lower values collapse nested objects into JSON editors"
+            withArrow
+          >
             <Group gap={4}>
               <IconLayersSubtract size={16} />
-              <Text size="xs" c="dimmed">Depth</Text>
+              <Text size="xs" c="dimmed">
+                Depth
+              </Text>
               <NumberInput
                 size="xs"
                 value={formDepth}
@@ -1356,7 +1530,7 @@ function inferDefaultVariant(field: ResourceField): FieldVariant {
 
   // If field has enumValues, use select
   if (enumValues && enumValues.length > 0) {
-    const options = enumValues.map(v => ({ value: v, label: v }));
+    const options = enumValues.map((v) => ({ value: v, label: v }));
     return { type: 'select', options };
   }
 
@@ -1366,12 +1540,15 @@ function inferDefaultVariant(field: ResourceField): FieldVariant {
   if (type === 'binary') return { type: 'file' };
   if (type === 'object') return { type: 'json' };
   if (isArray) return { type: 'array', itemType: 'text' };
-  
+
   // Default to text
   return { type: 'text' };
 }
 
 /** Convert snake_case to Title Case label */
 function toLabel(s: string): string {
-  return s.split(/[-_]+/).map(w => w[0].toUpperCase() + w.slice(1)).join(' ');
+  return s
+    .split(/[-_]+/)
+    .map((w) => w[0].toUpperCase() + w.slice(1))
+    .join(' ');
 }

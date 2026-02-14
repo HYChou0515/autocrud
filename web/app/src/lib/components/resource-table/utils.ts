@@ -21,10 +21,10 @@ export function conditionToQB(
   meta: MetaFilters,
   data: SearchCondition[],
   resultLimit?: number,
-  sortBy?: { field: string; order: 'asc' | 'desc' }[]
+  sortBy?: { field: string; order: 'asc' | 'desc' }[],
 ): string {
   const parts: string[] = [];
-  
+
   // 轉換 Meta 條件 - 使用 QB.created_time().gte(dt.datetime(...)) 語法
   if (meta.created_time_start) {
     parts.push(`QB.created_time().gte(${isoToPythonDatetime(meta.created_time_start)})`);
@@ -44,15 +44,15 @@ export function conditionToQB(
   if (meta.updated_by) {
     parts.push(`QB.updated_by().eq("${meta.updated_by}")`);
   }
-  
+
   // 轉換 Data conditions
   for (const cond of data) {
     const op = cond.operator;
     const val = typeof cond.value === 'string' ? `"${cond.value}"` : cond.value;
-    
+
     // 使用 QB["field"] 語法
     const field = `QB["${cond.field}"]`;
-    
+
     switch (op) {
       // 比較運算符 - 直接用 Python 語法
       case 'eq':
@@ -87,25 +87,27 @@ export function conditionToQB(
         parts.push(`${field} == ${val}`);
     }
   }
-  
+
   // 基礎查詢條件（使用 & 連接）
   // 如果沒有條件，使用 QB.all() 表示查詢全部
   let qb = parts.length > 0 ? parts.join(' & ') : 'QB.all()';
-  
+
   // 加入排序（多層排序）
   if (sortBy && sortBy.length > 0) {
-    const validSorts = sortBy.filter(s => s.field); // 過濾掉未選擇欄位的
+    const validSorts = sortBy.filter((s) => s.field); // 過濾掉未選擇欄位的
     if (validSorts.length > 0) {
-      const orderByArgs = validSorts.map(s => `"${s.order === 'desc' ? '-' : ''}${s.field}"`).join(', ');
+      const orderByArgs = validSorts
+        .map((s) => `"${s.order === 'desc' ? '-' : ''}${s.field}"`)
+        .join(', ');
       qb = `${qb}.order_by(${orderByArgs})`;
     }
   }
-  
+
   // 加入結果數量限制
   if (resultLimit) {
     qb = `${qb}.limit(${resultLimit})`;
   }
-  
+
   return qb;
 }
 
@@ -114,15 +116,24 @@ export function conditionToQB(
  * Meta 欄位使用 key，Data 欄位使用 field_path
  */
 export function sortByToSorts(sortBy: { field: string; order: 'asc' | 'desc' }[]): string {
-  const validSorts = sortBy.filter(s => s.field); // 過濾掉未選擇欄位的
+  const validSorts = sortBy.filter((s) => s.field); // 過濾掉未選擇欄位的
   if (validSorts.length === 0) return '';
-  
-  const metaFields = ['created_time', 'updated_time', 'created_by', 'updated_by', 'resource_id', 'current_revision_id', 'schema_version', 'is_deleted'];
-  
-  const sortsArray = validSorts.map(s => {
+
+  const metaFields = [
+    'created_time',
+    'updated_time',
+    'created_by',
+    'updated_by',
+    'resource_id',
+    'current_revision_id',
+    'schema_version',
+    'is_deleted',
+  ];
+
+  const sortsArray = validSorts.map((s) => {
     const isMeta = metaFields.includes(s.field);
     const direction = s.order === 'desc' ? '-' : '+';
-    
+
     if (isMeta) {
       // Meta 欄位使用 key
       return {
@@ -139,6 +150,6 @@ export function sortByToSorts(sortBy: { field: string; order: 'asc' | 'desc' }[]
       };
     }
   });
-  
+
   return JSON.stringify(sortsArray);
 }

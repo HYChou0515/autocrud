@@ -3,7 +3,6 @@
  */
 
 import type { ResourceConfig } from '../../resources';
-import type { MRT_RowData } from 'mantine-react-table';
 
 /**
  * 搜尋條件介面
@@ -29,37 +28,49 @@ export interface MetaFilters {
 /**
  * 欄位顯示變體
  */
-export type ColumnVariant = 
-  | 'auto'           // 自動判斷（預設）
-  | 'string'         // 強制顯示為字串
-  | 'relative-time'  // 相對時間（2小時前）
-  | 'full-time'      // 完整時間（ISO格式）
-  | 'short-time'     // 短格式時間（MM/DD HH:mm）
-  | 'date'           // 只顯示日期（YYYY-MM-DD）
-  | 'boolean'        // ✅/❌
-  | 'array'          // 陣列 join(', ')
-  | 'json';          // JSON.stringify
+export type ColumnVariant =
+  | 'auto' // 自動判斷（預設）
+  | 'string' // 強制顯示為字串
+  | 'relative-time' // 相對時間（2小時前）
+  | 'full-time' // 完整時間（ISO格式）
+  | 'short-time' // 短格式時間（MM/DD HH:mm）
+  | 'date' // 只顯示日期（YYYY-MM-DD）
+  | 'boolean' // ✅/❌
+  | 'array' // 陣列 join(', ')
+  | 'json'; // JSON.stringify
 
 /**
  * 欄位覆蓋設定
  */
 export interface ColumnOverride {
-  label?: string;              // 自訂欄位標題
-  variant?: ColumnVariant;     // 顯示方式
-  size?: number;               // 欄位寬度
-  hidden?: boolean;            // 是否隱藏
-  render?: (value: unknown) => React.ReactNode;  // 自訂渲染函數（優先於 variant）
+  label?: string; // 自訂欄位標題
+  variant?: ColumnVariant; // 顯示方式
+  size?: number; // 欄位寬度
+  hidden?: boolean; // 是否隱藏
+  render?: (value: unknown) => React.ReactNode; // 自訂渲染函數（優先於 variant）
 }
 
 /**
  * 可搜尋欄位的定義
  */
 export interface SearchableField {
-  name: string;                // 欄位名稱（對應 data 中的 key）
-  label?: string;              // 顯示標籤（預設為 name）
-  type: 'string' | 'number' | 'boolean' | 'date' | 'select';  // 搜尋類型
-  operators?: ('eq' | 'ne' | 'gt' | 'gte' | 'lt' | 'lte' | 'in' | 'not_in' | 'contains' | 'starts_with' | 'ends_with')[];
-  options?: { label: string; value: string | number | boolean }[];  // select/boolean 的選項
+  name: string; // 欄位名稱（對應 data 中的 key）
+  label?: string; // 顯示標籤（預設為 name）
+  type: 'string' | 'number' | 'boolean' | 'date' | 'select'; // 搜尋類型
+  operators?: (
+    | 'eq'
+    | 'ne'
+    | 'gt'
+    | 'gte'
+    | 'lt'
+    | 'lte'
+    | 'in'
+    | 'not_in'
+    | 'contains'
+    | 'starts_with'
+    | 'ends_with'
+  )[];
+  options?: { label: string; value: string | number | boolean }[]; // select/boolean 的選項
 }
 
 /**
@@ -76,11 +87,11 @@ export interface ResourceTableProps<T> {
   config: ResourceConfig<T>;
   basePath: string;
   columns?: {
-    order?: string[];                         // 欄位順序（不在此列表的按預設順序放後面）
-    overrides?: Record<string, ColumnOverride>;  // 覆蓋特定欄位的設定
+    order?: string[]; // 欄位順序（不在此列表的按預設順序放後面）
+    overrides?: Record<string, ColumnOverride>; // 覆蓋特定欄位的設定
   };
-  searchableFields?: SearchableField[];      // 可搜尋的欄位（用於後端 filter 表單）
-  disableQB?: boolean;                        // 是否啟用 QB 語法搜尋（預設 false）
+  searchableFields?: SearchableField[]; // 可搜尋的欄位（用於後端 filter 表單）
+  disableQB?: boolean; // 是否啟用 QB 語法搜尋（預設 false）
 }
 
 /**

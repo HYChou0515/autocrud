@@ -3,7 +3,17 @@
  */
 
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { Group, Button, Stack, Text, ActionIcon, TextInput, Select, NumberInput, Switch } from '@mantine/core';
+import {
+  Group,
+  Button,
+  Stack,
+  Text,
+  ActionIcon,
+  TextInput,
+  Select,
+  NumberInput,
+  Switch,
+} from '@mantine/core';
 import { IconPlus, IconSearch, IconFilterOff, IconTrash } from '@tabler/icons-react';
 import type { SearchCondition, NormalizedSearchableField } from './types';
 import { operatorLabels, getDefaultOperators } from './types';
@@ -16,10 +26,16 @@ interface SearchFormProps {
   onChange?: (conditions: SearchCondition[], isDirty: boolean) => void;
 }
 
-export function SearchForm({ fields, onSubmit, initialConditions, hideButtons, onChange }: SearchFormProps) {
+export function SearchForm({
+  fields,
+  onSubmit,
+  initialConditions,
+  hideButtons,
+  onChange,
+}: SearchFormProps) {
   const [conditions, setConditions] = useState<SearchCondition[]>([]);
   const [isOpen, setIsOpen] = useState(false);
-  const [isDirty, setIsDirty] = useState(false);  // 是否有未提交的變更
+  const [isDirty, setIsDirty] = useState(false); // 是否有未提交的變更
 
   // 用來追蹤 initialConditions 的字串化版本，判斷是否有變化
   const prevInitialRef = useRef<string>('');
@@ -43,16 +59,26 @@ export function SearchForm({ fields, onSubmit, initialConditions, hideButtons, o
   }, [initialConditions]);
 
   // 當條件改變時通知外部
-  const notifyChange = useCallback((newConditions: SearchCondition[], newIsDirty: boolean) => {
-    onChange?.(newConditions, newIsDirty);
-  }, [onChange]);
+  const notifyChange = useCallback(
+    (newConditions: SearchCondition[], newIsDirty: boolean) => {
+      onChange?.(newConditions, newIsDirty);
+    },
+    [onChange],
+  );
 
   const addCondition = () => {
     if (fields.length === 0) return;
     const firstField = fields[0];
     const defaultOperators = firstField.operators || getDefaultOperators(firstField.type);
-    setConditions(prev => {
-      const next = [...prev, { field: firstField.name, operator: defaultOperators[0], value: firstField.type === 'boolean' ? false : '' }];
+    setConditions((prev) => {
+      const next = [
+        ...prev,
+        {
+          field: firstField.name,
+          operator: defaultOperators[0],
+          value: firstField.type === 'boolean' ? false : '',
+        },
+      ];
       notifyChange(next, true);
       return next;
     });
@@ -61,7 +87,7 @@ export function SearchForm({ fields, onSubmit, initialConditions, hideButtons, o
   };
 
   const removeCondition = (index: number) => {
-    setConditions(prev => {
+    setConditions((prev) => {
       const next = prev.filter((_, i) => i !== index);
       notifyChange(next, true);
       return next;
@@ -70,12 +96,12 @@ export function SearchForm({ fields, onSubmit, initialConditions, hideButtons, o
   };
 
   const updateCondition = (index: number, updates: Partial<SearchCondition>) => {
-    setConditions(prev => {
+    setConditions((prev) => {
       const next = [...prev];
       next[index] = { ...next[index], ...updates };
       // 改變欄位時重設操作符和值
       if (updates.field !== undefined) {
-        const field = fields.find(f => f.name === updates.field);
+        const field = fields.find((f) => f.name === updates.field);
         if (field) {
           const ops = field.operators || getDefaultOperators(field.type);
           next[index].operator = ops[0];
@@ -102,7 +128,7 @@ export function SearchForm({ fields, onSubmit, initialConditions, hideButtons, o
   };
 
   const renderValueInput = (condition: SearchCondition, index: number) => {
-    const field = fields.find(f => f.name === condition.field);
+    const field = fields.find((f) => f.name === condition.field);
     if (!field) return null;
 
     const handleKeyDown = (e: React.KeyboardEvent) => {
@@ -125,7 +151,13 @@ export function SearchForm({ fields, onSubmit, initialConditions, hideButtons, o
         return (
           <NumberInput
             placeholder="數值"
-            value={typeof condition.value === 'number' ? condition.value : (condition.value === '' ? undefined : Number(condition.value))}
+            value={
+              typeof condition.value === 'number'
+                ? condition.value
+                : condition.value === ''
+                  ? undefined
+                  : Number(condition.value)
+            }
             onChange={(val) => updateCondition(index, { value: val ?? 0 })}
             onKeyDown={handleKeyDown}
             style={{ flex: 1, minWidth: 100 }}
@@ -145,7 +177,9 @@ export function SearchForm({ fields, onSubmit, initialConditions, hideButtons, o
         return (
           <Select
             placeholder="選擇..."
-            data={field.options?.map(opt => ({ value: String(opt.value), label: opt.label })) || []}
+            data={
+              field.options?.map((opt) => ({ value: String(opt.value), label: opt.label })) || []
+            }
             value={condition.value != null ? String(condition.value) : ''}
             onChange={(val) => updateCondition(index, { value: val ?? '' })}
             style={{ flex: 1 }}
@@ -175,14 +209,16 @@ export function SearchForm({ fields, onSubmit, initialConditions, hideButtons, o
   return (
     <Stack gap="sm">
       {conditions.map((condition, index) => {
-        const field = fields.find(f => f.name === condition.field);
-        const availableOperators = field ? (field.operators || getDefaultOperators(field.type)) : [];
+        const field = fields.find((f) => f.name === condition.field);
+        const availableOperators = field ? field.operators || getDefaultOperators(field.type) : [];
 
         return (
           <Group key={index} gap="sm" align="center" wrap="nowrap">
-            <Text size="sm" c="dimmed" w={20} ta="center">{index + 1}</Text>
+            <Text size="sm" c="dimmed" w={20} ta="center">
+              {index + 1}
+            </Text>
             <Select
-              data={fields.map(f => ({ value: f.name, label: f.label }))}
+              data={fields.map((f) => ({ value: f.name, label: f.label }))}
               value={condition.field ?? ''}
               onChange={(val) => updateCondition(index, { field: val || '' })}
               style={{ width: 140 }}
@@ -190,7 +226,10 @@ export function SearchForm({ fields, onSubmit, initialConditions, hideButtons, o
               comboboxProps={{ withinPortal: true }}
             />
             <Select
-              data={availableOperators.map(op => ({ value: op, label: operatorLabels[op] || op }))}
+              data={availableOperators.map((op) => ({
+                value: op,
+                label: operatorLabels[op] || op,
+              }))}
               value={condition.operator ?? 'eq'}
               onChange={(val) => updateCondition(index, { operator: val || 'eq' })}
               style={{ width: 90 }}

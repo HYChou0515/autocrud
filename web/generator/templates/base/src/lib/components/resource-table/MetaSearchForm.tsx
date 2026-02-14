@@ -12,7 +12,9 @@ import type { MetaFilters } from './types';
 function dateToISO(d: Date | null): string {
   if (!d) return '';
   const pad = (n: number) => String(n).padStart(2, '0');
-  const h = d.getHours(), m = d.getMinutes(), s = d.getSeconds();
+  const h = d.getHours(),
+    m = d.getMinutes(),
+    s = d.getSeconds();
   return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(h)}:${pad(m)}:${pad(s)}`;
 }
 
@@ -41,7 +43,12 @@ interface MetaSearchFormProps {
   onChange?: (filters: MetaFilters, isDirty: boolean) => void;
 }
 
-export function MetaSearchForm({ onSubmit, initialValues, hideButtons, onChange }: MetaSearchFormProps) {
+export function MetaSearchForm({
+  onSubmit,
+  initialValues,
+  hideButtons,
+  onChange,
+}: MetaSearchFormProps) {
   const [createdStart, setCreatedStart] = useState<Date | null>(null);
   const [createdEnd, setCreatedEnd] = useState<Date | null>(null);
   const [updatedStart, setUpdatedStart] = useState<Date | null>(null);
@@ -61,9 +68,12 @@ export function MetaSearchForm({ onSubmit, initialValues, hideButtons, onChange 
 
     if (!initialValues || Object.keys(initialValues).length === 0) {
       // URL 被清空，重置表單
-      setCreatedStart(null); setCreatedEnd(null);
-      setUpdatedStart(null); setUpdatedEnd(null);
-      setCreatedBy(''); setUpdatedBy('');
+      setCreatedStart(null);
+      setCreatedEnd(null);
+      setUpdatedStart(null);
+      setUpdatedEnd(null);
+      setCreatedBy('');
+      setUpdatedBy('');
       setIsDirty(false);
     } else {
       // 從 URL 初始化
@@ -108,9 +118,12 @@ export function MetaSearchForm({ onSubmit, initialValues, hideButtons, onChange 
   };
 
   const handleClear = () => {
-    setCreatedStart(null); setCreatedEnd(null);
-    setUpdatedStart(null); setUpdatedEnd(null);
-    setCreatedBy(''); setUpdatedBy('');
+    setCreatedStart(null);
+    setCreatedEnd(null);
+    setUpdatedStart(null);
+    setUpdatedEnd(null);
+    setCreatedBy('');
+    setUpdatedBy('');
     onSubmit({});
     setIsDirty(false);
     onChange?.({}, false);
@@ -130,18 +143,26 @@ export function MetaSearchForm({ onSubmit, initialValues, hideButtons, onChange 
           label="創建時間（從）"
           placeholder="選擇起始時間"
           value={createdStart}
-          onChange={(v) => { setCreatedStart(v); markDirty(); }}
+          onChange={(v) => {
+            setCreatedStart(v);
+            markDirty();
+          }}
           clearable
           valueFormat="YYYY-MM-DD HH:mm"
           size="sm"
           style={{ flex: 1 }}
         />
-        <Text size="sm" c="dimmed" pb={8}>—</Text>
+        <Text size="sm" c="dimmed" pb={8}>
+          —
+        </Text>
         <DateTimePicker
           label="創建時間（到）"
           placeholder="選擇結束時間"
           value={createdEnd}
-          onChange={(v) => { setCreatedEnd(adjustEndTime(v)); markDirty(); }}
+          onChange={(v) => {
+            setCreatedEnd(adjustEndTime(v));
+            markDirty();
+          }}
           clearable
           valueFormat="YYYY-MM-DD HH:mm"
           minDate={createdStart || undefined}
@@ -156,18 +177,26 @@ export function MetaSearchForm({ onSubmit, initialValues, hideButtons, onChange 
           label="更新時間（從）"
           placeholder="選擇起始時間"
           value={updatedStart}
-          onChange={(v) => { setUpdatedStart(v); markDirty(); }}
+          onChange={(v) => {
+            setUpdatedStart(v);
+            markDirty();
+          }}
           clearable
           valueFormat="YYYY-MM-DD HH:mm"
           size="sm"
           style={{ flex: 1 }}
         />
-        <Text size="sm" c="dimmed" pb={8}>—</Text>
+        <Text size="sm" c="dimmed" pb={8}>
+          —
+        </Text>
         <DateTimePicker
           label="更新時間（到）"
           placeholder="選擇結束時間"
           value={updatedEnd}
-          onChange={(v) => { setUpdatedEnd(adjustEndTime(v)); markDirty(); }}
+          onChange={(v) => {
+            setUpdatedEnd(adjustEndTime(v));
+            markDirty();
+          }}
           clearable
           valueFormat="YYYY-MM-DD HH:mm"
           minDate={updatedStart || undefined}
@@ -182,7 +211,10 @@ export function MetaSearchForm({ onSubmit, initialValues, hideButtons, onChange 
           label="創建者"
           placeholder="例如: admin"
           value={createdBy}
-          onChange={(e) => { setCreatedBy(e.target.value); markDirty(); }}
+          onChange={(e) => {
+            setCreatedBy(e.target.value);
+            markDirty();
+          }}
           onKeyDown={handleKeyDown}
           size="sm"
         />
@@ -190,7 +222,10 @@ export function MetaSearchForm({ onSubmit, initialValues, hideButtons, onChange 
           label="更新者"
           placeholder="例如: admin"
           value={updatedBy}
-          onChange={(e) => { setUpdatedBy(e.target.value); markDirty(); }}
+          onChange={(e) => {
+            setUpdatedBy(e.target.value);
+            markDirty();
+          }}
           onKeyDown={handleKeyDown}
           size="sm"
         />
@@ -200,11 +235,22 @@ export function MetaSearchForm({ onSubmit, initialValues, hideButtons, onChange 
       {!hideButtons && (
         <Group gap="xs" justify="flex-end">
           {activeCount > 0 && (
-            <Button size="xs" variant="subtle" color="gray" leftSection={<IconFilterOff size={14} />} onClick={handleClear}>
+            <Button
+              size="xs"
+              variant="subtle"
+              color="gray"
+              leftSection={<IconFilterOff size={14} />}
+              onClick={handleClear}
+            >
               清除
             </Button>
           )}
-          <Button size="xs" disabled={!isDirty && activeCount === 0} leftSection={<IconSearch size={14} />} onClick={handleSubmit}>
+          <Button
+            size="xs"
+            disabled={!isDirty && activeCount === 0}
+            leftSection={<IconSearch size={14} />}
+            onClick={handleSubmit}
+          >
             搜尋
           </Button>
         </Group>

@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback } from 'react';
-import type { FullResource } from '../types/api';
-import type { ResourceConfig } from './resources';
+import type { FullResource } from '../../types/api';
+import type { ResourceConfig } from '../resources';
 
 export interface UseResourceListParams {
   limit?: number;
@@ -22,7 +22,7 @@ export interface UseResourceListResult<T> {
  */
 export function useResourceList<T>(
   config: ResourceConfig<T>,
-  params: UseResourceListParams = {}
+  params: UseResourceListParams = {},
 ): UseResourceListResult<T> {
   const [data, setData] = useState<FullResource<T>[]>([]);
   const [total, setTotal] = useState(0);
@@ -31,12 +31,12 @@ export function useResourceList<T>(
   const [refreshCount, setRefreshCount] = useState(0);
 
   const refresh = useCallback(() => {
-    setRefreshCount(c => c + 1);
+    setRefreshCount((c) => c + 1);
   }, []);
 
   useEffect(() => {
     let cancelled = false;
-    
+
     const fetchData = async () => {
       setLoading(true);
       setError(null);
@@ -62,7 +62,7 @@ export function useResourceList<T>(
     };
 
     fetchData();
-    
+
     return () => {
       cancelled = true;
     };

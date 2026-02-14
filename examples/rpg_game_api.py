@@ -39,7 +39,7 @@ from autocrud.message_queue.rabbitmq import RabbitMQMessageQueueFactory
 from autocrud.message_queue.simple import SimpleMessageQueueFactory
 from autocrud.query import QB
 from autocrud.resource_manager.storage_factory import DiskStorageFactory
-from autocrud.types import Binary, Job, Resource
+from autocrud.types import Binary, Job, RefRevision, Resource
 
 
 class CharacterClass(Enum):
@@ -153,6 +153,7 @@ class GameEventPayload(Struct):
 
     event_type: GameEventType
     character_name: str
+    character_id: Annotated[Optional[str], RefRevision("character")]
     description: str
     reward_gold: int = 0
     reward_exp: int = 0
@@ -170,6 +171,10 @@ def get_random_image():
 
     r = httpx.get("https://picsum.photos/200", follow_redirects=True)
     return r.content
+
+
+character_ids = {}  # name -> resource_id
+character_revs = {}  # name -> RefRevision
 
 
 def create_sample_data():
@@ -480,12 +485,12 @@ def create_sample_data():
     ]
 
     # 創建角色數據
-    character_ids = {}  # name -> resource_id
     with character_manager.meta_provide(current_user, current_time):
         for character in characters:
             try:
                 info = character_manager.create(character)
                 character_ids[character.name] = info.resource_id
+                character_revs[character.name] = info.revision_id
                 print(f"✅ 創建角色: {character.name} (Lv.{character.level})")
             except Exception as e:
                 print(f"❌ 角色創建失敗: {e}")
@@ -889,6 +894,7 @@ def create_sample_events():
         GameEventPayload(
             event_type=GameEventType.LEVEL_UP,
             character_name="新手小白",
+            character_id=character_revs.get("新手小白"),
             description="角色升級到 6 級",
             reward_exp=500,
             reward_gold=100,
@@ -896,12 +902,14 @@ def create_sample_events():
         GameEventPayload(
             event_type=GameEventType.GUILD_REWARD,
             character_name="AutoCRUD 大神",
+            character_id=character_revs.get("AutoCRUD 大神"),
             description="公會活動獎勵發放",
             reward_gold=5000,
         ),
         GameEventPayload(
             event_type=GameEventType.DAILY_LOGIN,
             character_name="API 魔法師",
+            character_id=character_revs.get("API 魔法師"),
             description="每日登入獎勵",
             reward_exp=200,
             reward_gold=50,
@@ -909,6 +917,7 @@ def create_sample_events():
         GameEventPayload(
             event_type=GameEventType.QUEST_COMPLETE,
             character_name="RESTful 劍聖",
+            character_id=character_revs.get("RESTful 劍聖"),
             description="完成任務：擊敗 SQL 注入怪獸",
             reward_exp=1000,
             reward_gold=500,
@@ -916,6 +925,7 @@ def create_sample_events():
         GameEventPayload(
             event_type=GameEventType.EQUIPMENT_ENHANCE,
             character_name="Schema 設計師",
+            character_id=character_revs.get("Schema 設計師"),
             description="裝備強化成功",
             reward_gold=0,
             extra_data={"equipment_name": "精準查詢弓", "enhance_level": 5},
@@ -924,6 +934,7 @@ def create_sample_events():
         GameEventPayload(
             event_type=GameEventType.RAID_BOSS,
             character_name="AutoCRUD 開發者聯盟",
+            character_id=None,
             description="挑戰世界 BOSS：代碼債務巨龍",
             reward_gold=50000,
             reward_exp=10000,
@@ -935,6 +946,7 @@ def create_sample_events():
         ),
         GameEventPayload(
             event_type=GameEventType.SERVER_MAINTENANCE,
+            character_id=None,
             character_name="全體玩家",
             description="伺服器維護補償獎勵",
             reward_gold=1000,

@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback } from 'react';
-import type { FullResource, ResourceMeta, RevisionInfo } from '../types/api';
-import type { ResourceConfig } from './resources';
+import type { FullResource, RevisionInfo } from '../../types/api';
+import type { ResourceConfig } from '../resources';
 
 export interface UseResourceDetailResult<T> {
   resource: FullResource<T> | null;
@@ -19,7 +19,7 @@ export interface UseResourceDetailResult<T> {
 export function useResourceDetail<T>(
   config: ResourceConfig<T>,
   resourceId: string,
-  revisionId?: string | null
+  revisionId?: string | null,
 ): UseResourceDetailResult<T> {
   const [resource, setResource] = useState<FullResource<T> | null>(null);
   const [revisions, setRevisions] = useState<RevisionInfo[]>([]);
@@ -28,7 +28,7 @@ export function useResourceDetail<T>(
   const [refreshCount, setRefreshCount] = useState(0);
 
   const refresh = useCallback(() => {
-    setRefreshCount(c => c + 1);
+    setRefreshCount((c) => c + 1);
   }, []);
 
   useEffect(() => {
@@ -66,10 +66,13 @@ export function useResourceDetail<T>(
     };
   }, [config.apiClient, resourceId, revisionId, refreshCount]);
 
-  const update = useCallback(async (data: T) => {
-    await config.apiClient.update(resourceId, data);
-    refresh();
-  }, [config.apiClient, resourceId, refresh]);
+  const update = useCallback(
+    async (data: T) => {
+      await config.apiClient.update(resourceId, data);
+      refresh();
+    },
+    [config.apiClient, resourceId, refresh],
+  );
 
   const deleteResource = useCallback(async () => {
     await config.apiClient.delete(resourceId);

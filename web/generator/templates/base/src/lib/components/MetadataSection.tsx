@@ -1,6 +1,6 @@
 /**
  * MetadataSection - Shared metadata display component
- * 
+ *
  * Shows resource metadata including ID, revision, timestamps, and authors
  */
 
@@ -29,7 +29,7 @@ export interface MetadataSectionProps {
 
 /**
  * Displays resource metadata in a consistent format
- * 
+ *
  * @param meta - Resource metadata object
  * @param variant - Display style ('compact' or 'full')
  */
@@ -40,7 +40,7 @@ export function MetadataSection({ meta, revisionInfo, variant = 'full' }: Metada
         <Text fw={600} size="lg">
           Metadata
         </Text>
-        
+
         <Group grow>
           <div>
             <Text size="sm" c="dimmed">
@@ -50,7 +50,12 @@ export function MetadataSection({ meta, revisionInfo, variant = 'full' }: Metada
           </div>
           <div>
             <Text size="sm" c="dimmed">
-              Revision {meta.revision_status && <Badge size="xs" variant="light" ml="xs">{meta.revision_status}</Badge>}
+              Revision{' '}
+              {meta.revision_status && (
+                <Badge size="xs" variant="light" ml="xs">
+                  {meta.revision_status}
+                </Badge>
+              )}
             </Text>
             <RevisionIdCell revisionId={meta.current_revision_id} resourceId={meta.resource_id} />
           </div>
@@ -70,7 +75,7 @@ export function MetadataSection({ meta, revisionInfo, variant = 'full' }: Metada
             <Text size="sm" c="dimmed">
               Created
             </Text>
-            <TimeDisplay time={meta.created_time} variant="full" />
+            <TimeDisplay time={meta.created_time} format="full" />
             <Text size="xs" c="dimmed">
               by {meta.created_by}
             </Text>
@@ -79,7 +84,7 @@ export function MetadataSection({ meta, revisionInfo, variant = 'full' }: Metada
             <Text size="sm" c="dimmed">
               Updated
             </Text>
-            <TimeDisplay time={revisionInfo?.updated_time ?? meta.updated_time} variant="full" />
+            <TimeDisplay time={revisionInfo?.updated_time ?? meta.updated_time} format="full" />
             <Text size="xs" c="dimmed">
               by {revisionInfo?.updated_by ?? meta.updated_by}
             </Text>

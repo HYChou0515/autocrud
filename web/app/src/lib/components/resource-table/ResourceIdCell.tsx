@@ -20,9 +20,7 @@ export function ResourceIdCell({ rid }: ResourceIdCellProps) {
     setTimeout(() => setCopied(false), 2000);
   };
 
-  const shortId = rid.length > 12 
-    ? `${rid.slice(0, 4)}...${rid.slice(-4)}` 
-    : rid;
+  const shortId = rid.length > 12 ? `${rid.slice(0, 4)}...${rid.slice(-4)}` : rid;
 
   return (
     <Group gap="xs" wrap="nowrap">

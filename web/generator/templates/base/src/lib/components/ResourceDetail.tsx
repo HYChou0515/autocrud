@@ -1,20 +1,45 @@
 import { useState, useEffect, useMemo } from 'react';
-import { useNavigate, useLocation } from '@tanstack/react-router';
+import { Link } from '@tanstack/react-router';
 import {
-  Container, Title, Stack, Group, Button, Badge, Alert, Loader, Paper,
-  Text, Modal, Table, Select, Code, Progress, Divider, Image, Anchor,
-  NumberInput, Tooltip,
+  Container,
+  Title,
+  Stack,
+  Group,
+  Button,
+  Badge,
+  Alert,
+  Loader,
+  Paper,
+  Text,
+  Modal,
+  Table,
+  Select,
+  Code,
+  Progress,
+  Image,
+  Anchor,
+  NumberInput,
+  Tooltip,
 } from '@mantine/core';
-import { IconEdit, IconTrash, IconRestore, IconArrowLeft, IconAlertCircle, IconDownload, IconLayersSubtract } from '@tabler/icons-react';
+import {
+  IconEdit,
+  IconTrash,
+  IconRestore,
+  IconArrowLeft,
+  IconAlertCircle,
+  IconDownload,
+  IconLayersSubtract,
+} from '@tabler/icons-react';
 import type { ResourceConfig, ResourceField } from '../resources';
 import { useResourceDetail } from '../hooks/useResourceDetail';
 import { ResourceForm } from './ResourceForm';
 import { MetadataSection } from './MetadataSection';
 import { RevisionHistorySection } from './RevisionHistorySection';
 import { ResourceIdCell } from './resource-table/ResourceIdCell';
-import { RefLink, RefLinkList } from './RefLink';
+import { RefLink, RefLinkList, RefRevisionLink, RefRevisionLinkList } from './RefLink';
 import { RevisionIdCell } from './resource-table/RevisionIdCell';
 import { TimeDisplay } from './TimeDisplay';
+import type { ResourceListRoute } from '../../generated/resources';
 
 const API_BASE_URL = import.meta.env.VITE_API_URL || 'http://localhost:8000';
 
@@ -25,7 +50,10 @@ function getByPath(obj: Record<string, any>, path: string): any {
 
 /** Convert snake_case / kebab-case to Title Case */
 function toLabel(s: string): string {
-  return s.split(/[-_]+/).map(w => w[0].toUpperCase() + w.slice(1)).join(' ');
+  return s
+    .split(/[-_]+/)
+    .map((w) => w[0].toUpperCase() + w.slice(1))
+    .join(' ');
 }
 
 /** Build a URL to fetch a blob by file_id */
@@ -51,12 +79,13 @@ function formatSize(bytes: number): string {
 }
 
 /** Render a detail value as React node, with date auto-detection */
-function renderDetailValue(
-  value: unknown,
-  fieldType?: string,
-): React.ReactNode {
+function renderDetailValue(value: unknown, fieldType?: string): React.ReactNode {
   if (value == null) {
-    return <Text c="dimmed" size="sm">N/A</Text>;
+    return (
+      <Text c="dimmed" size="sm">
+        N/A
+      </Text>
+    );
   }
   // Date fields by type or ISO string detection
   if (fieldType === 'date' || isISODateString(value)) {
@@ -66,7 +95,12 @@ function renderDetailValue(
     return value ? '✅ Yes' : '❌ No';
   }
   if (Array.isArray(value)) {
-    if (value.length === 0) return <Text c="dimmed" size="sm">[]</Text>;
+    if (value.length === 0)
+      return (
+        <Text c="dimmed" size="sm">
+          []
+        </Text>
+      );
     // If elements are objects, show as formatted JSON
     if (typeof value[0] === 'object' && value[0] !== null) {
       return <Code block>{JSON.stringify(value, null, 2)}</Code>;
@@ -94,9 +128,14 @@ function renderDetailValue(
               style={{ border: '1px solid var(--mantine-color-gray-3)' }}
             />
             <Group gap="xs">
-              <Text size="xs" c="dimmed">{contentType} · {formatSize(size)}</Text>
+              <Text size="xs" c="dimmed">
+                {contentType} · {formatSize(size)}
+              </Text>
               <Anchor href={blobUrl} target="_blank" size="xs">
-                <Group gap={4}><IconDownload size={12} />Download</Group>
+                <Group gap={4}>
+                  <IconDownload size={12} />
+                  Download
+                </Group>
               </Anchor>
             </Group>
           </Stack>
@@ -105,9 +144,14 @@ function renderDetailValue(
 
       return (
         <Group gap="xs">
-          <Text size="sm">📎 {contentType || 'File'} ({formatSize(size)})</Text>
+          <Text size="sm">
+            📎 {contentType || 'File'} ({formatSize(size)})
+          </Text>
           <Anchor href={blobUrl} target="_blank" size="sm">
-            <Group gap={4}><IconDownload size={14} />Download</Group>
+            <Group gap={4}>
+              <IconDownload size={14} />
+              Download
+            </Group>
           </Anchor>
         </Group>
       );
@@ -120,8 +164,12 @@ function renderDetailValue(
 export interface ResourceDetailProps<T> {
   config: ResourceConfig<T>;
   resourceId: string;
-  basePath: string;
+  basePath: ResourceListRoute;
   isJob?: boolean;
+  /** Current revision from URL search params (passed by route component) */
+  initialRevision?: string;
+  /** Callback to update revision in URL (handled by route component with proper typing) */
+  onRevisionChange?: (revision: string | null) => void;
 }
 
 const statusColors: Record<string, string> = {
@@ -148,9 +196,8 @@ function formatRevisionLabel(revisionId: string, resourceId: string, isCurrent: 
     return isCurrent ? `Current (Rev #${match[1]})` : `Rev #${match[1]}`;
   }
   // Last resort: show truncated ID
-  const shortId = revisionId.length > 12 
-    ? `${revisionId.slice(0, 6)}...${revisionId.slice(-4)}`
-    : revisionId;
+  const shortId =
+    revisionId.length > 12 ? `${revisionId.slice(0, 6)}...${revisionId.slice(-4)}` : revisionId;
   return isCurrent ? `Current (${shortId})` : shortId;
 }
 
@@ -158,26 +205,38 @@ function formatRevisionLabel(revisionId: string, resourceId: string, isCurrent: 
  * Generic resource detail page with edit, delete, restore, and revision history
  * Supports both regular resources and Job resources
  */
-export function ResourceDetail<T extends Record<string, any>>({ 
-  config, 
+export function ResourceDetail<T extends Record<string, any>>({
+  config,
   resourceId,
   basePath,
   isJob = false,
+  initialRevision,
+  onRevisionChange,
 }: ResourceDetailProps<T>) {
-  const navigate = useNavigate();
-  const location = useLocation();
   const [editOpen, setEditOpen] = useState(false);
-  
-  // Read revision from URL
-  const urlParams = new URLSearchParams(location.search);
-  const revisionFromUrl = urlParams.get('revision');
-  const [selectedRevision, setSelectedRevision] = useState<string | null>(revisionFromUrl);
-  
-  const { resource, revisions, loading, refresh, update, deleteResource, restore, error } = useResourceDetail(
-    config, 
-    resourceId,
-    selectedRevision
-  );
+  const [selectedRevision, setSelectedRevision] = useState<string | null>(initialRevision ?? null);
+
+  // Sync with external revision changes (e.g., browser back/forward)
+  useEffect(() => {
+    setSelectedRevision(initialRevision ?? null);
+  }, [initialRevision]);
+
+  // Wrapper to update both local state and notify parent for URL sync
+  const handleRevisionSelect = (revision: string | null) => {
+    setSelectedRevision(revision);
+    onRevisionChange?.(revision);
+  };
+
+  const {
+    resource,
+    revisions,
+    loading,
+    refresh: _refresh,
+    update,
+    deleteResource,
+    restore,
+    error,
+  } = useResourceDetail(config, resourceId, selectedRevision);
 
   // Depth control (same logic as ResourceForm)
   const maxAvailableDepth = useMemo(() => {
@@ -191,9 +250,7 @@ export function ResourceDetail<T extends Record<string, any>>({
     return max;
   }, [config.fields]);
 
-  const [detailDepth, setDetailDepth] = useState<number>(
-    config.maxFormDepth ?? maxAvailableDepth
-  );
+  const [detailDepth, setDetailDepth] = useState<number>(config.maxFormDepth ?? maxAvailableDepth);
 
   const { visibleFields, collapsedGroups } = useMemo(() => {
     const visible: ResourceField[] = [];
@@ -220,7 +277,7 @@ export function ResourceDetail<T extends Record<string, any>>({
 
     const groups: { path: string; label: string }[] = [];
     for (const parentPath of groupedChildren.keys()) {
-      const alreadyVisible = visible.some(f => f.name === parentPath);
+      const alreadyVisible = visible.some((f) => f.name === parentPath);
       if (!alreadyVisible) {
         const labelParts = parentPath.split('.');
         const label = toLabel(labelParts[labelParts.length - 1]);
@@ -230,22 +287,6 @@ export function ResourceDetail<T extends Record<string, any>>({
 
     return { visibleFields: visible, collapsedGroups: groups };
   }, [config.fields, detailDepth]);
-  
-  // Update URL when revision changes
-  useEffect(() => {
-    const params = new URLSearchParams(location.search);
-    if (selectedRevision) {
-      params.set('revision', selectedRevision);
-    } else {
-      params.delete('revision');
-    }
-    const newSearch = params.toString();
-    const newUrl = `${location.pathname}${newSearch ? `?${newSearch}` : ''}`;
-    
-    if (newUrl !== `${location.pathname}${location.search}`) {
-      navigate({ to: newUrl, replace: true });
-    }
-  }, [selectedRevision, location.pathname, location.search, navigate]);
 
   if (loading) {
     return (
@@ -267,6 +308,10 @@ export function ResourceDetail<T extends Record<string, any>>({
 
   const { data, meta, revision_info } = resource;
 
+  // Whether the user is viewing a historical (non-current) revision
+  const isViewingHistorical =
+    selectedRevision != null && selectedRevision !== meta.current_revision_id;
+
   // Job-specific extractions
   const jobStatusFields = new Set([
     'status',
@@ -278,25 +323,23 @@ export function ResourceDetail<T extends Record<string, any>>({
     'periodic_initial_delay_seconds',
   ]);
 
-  const status = isJob ? (data.status || 'unknown') : null;
-  const retries = isJob ? (data.retries || 0) : null;
-  const errmsg = isJob ? (data.errmsg || null) : null;
+  const status = isJob ? data.status || 'unknown' : null;
+  const retries = isJob ? data.retries || 0 : null;
+  const errmsg = isJob ? data.errmsg || null : null;
   const isPeriodic = isJob && data.periodic_interval_seconds != null;
-  const periodicRuns = isJob ? (data.periodic_runs || 0) : null;
-  const periodicMaxRuns = isJob ? (data.periodic_max_runs || 0) : null;
+  const periodicRuns = isJob ? data.periodic_runs || 0 : null;
+  const periodicMaxRuns = isJob ? data.periodic_max_runs || 0 : null;
 
   // For Job resources:
   // - Use data.payload directly for payload data
   // - Extract other fields (not status fields, not payload)
-  const payloadData = isJob ? (data.payload || {}) : data;
+  const payloadData = isJob ? data.payload || {} : data;
   const otherJobFields = isJob
     ? Object.fromEntries(
-        Object.entries(data).filter(
-          ([key]) => !jobStatusFields.has(key) && key !== 'payload'
-        )
+        Object.entries(data).filter(([key]) => !jobStatusFields.has(key) && key !== 'payload'),
       )
     : {};
-  const displayData = isJob ? payloadData : data;
+  const _displayData = isJob ? payloadData : data;
 
   const handleEdit = async (values: T) => {
     await update(values);
@@ -318,14 +361,17 @@ export function ResourceDetail<T extends Record<string, any>>({
       <Stack gap="lg">
         <Group justify="space-between">
           <Group>
-            <Button variant="subtle" leftSection={<IconArrowLeft size={16} />} onClick={() => navigate({ to: basePath })}>
+            <Button
+              component={Link}
+              to={basePath}
+              variant="subtle"
+              leftSection={<IconArrowLeft size={16} />}
+            >
               Back
             </Button>
             <div>
               <Group gap="xs" mb="xs">
-                <Title order={2}>
-                  {isJob ? 'Job Detail' : `${config.label} Detail`}
-                </Title>
+                <Title order={2}>{isJob ? 'Job Detail' : `${config.label} Detail`}</Title>
                 {isJob && status && (
                   <Badge color={statusColors[status] || 'gray'} variant="filled">
                     {status.toUpperCase()}
@@ -341,10 +387,15 @@ export function ResourceDetail<T extends Record<string, any>>({
               <Select
                 placeholder="Select revision"
                 value={selectedRevision ?? meta.current_revision_id}
-                onChange={(value) => setSelectedRevision(value === meta.current_revision_id ? null : value)}
+                onChange={(value) =>
+                  handleRevisionSelect(value === meta.current_revision_id ? null : value)
+                }
                 data={[...revisions]
-                  .sort((a, b) => new Date(b.created_time).getTime() - new Date(a.created_time).getTime())
-                  .map(r => {
+                  .sort(
+                    (a, b) =>
+                      new Date(b.created_time).getTime() - new Date(a.created_time).getTime(),
+                  )
+                  .map((r) => {
                     const revId = r.revision_id || r.uid || '';
                     const isCurrent = revId === meta.current_revision_id;
                     return {
@@ -356,18 +407,27 @@ export function ResourceDetail<T extends Record<string, any>>({
                 size="sm"
               />
             )}
-            
-            {!selectedRevision && !meta.is_deleted && (
+
+            {!isViewingHistorical && !meta.is_deleted && (
               <>
-                <Button variant="light" leftSection={<IconEdit size={16} />} onClick={() => setEditOpen(true)}>
+                <Button
+                  variant="light"
+                  leftSection={<IconEdit size={16} />}
+                  onClick={() => setEditOpen(true)}
+                >
                   Edit
                 </Button>
-                <Button color="red" variant="light" leftSection={<IconTrash size={16} />} onClick={handleDelete}>
+                <Button
+                  color="red"
+                  variant="light"
+                  leftSection={<IconTrash size={16} />}
+                  onClick={handleDelete}
+                >
                   Delete
                 </Button>
               </>
             )}
-            {!selectedRevision && meta.is_deleted && (
+            {!isViewingHistorical && meta.is_deleted && (
               <Button color="green" leftSection={<IconRestore size={16} />} onClick={handleRestore}>
                 Restore
               </Button>
@@ -381,10 +441,14 @@ export function ResourceDetail<T extends Record<string, any>>({
           </Alert>
         )}
 
-        {selectedRevision && (
+        {isViewingHistorical && (
           <Alert color="blue" title="Viewing Historical Revision">
             You are viewing{' '}
-            <RevisionIdCell revisionId={selectedRevision} resourceId={meta.resource_id} showCopy={false} />
+            <RevisionIdCell
+              revisionId={selectedRevision!}
+              resourceId={meta.resource_id}
+              showCopy={false}
+            />
             . This is a read-only view.
           </Alert>
         )}
@@ -401,7 +465,7 @@ export function ResourceDetail<T extends Record<string, any>>({
                   {status!.toUpperCase()}
                 </Badge>
               </Group>
-              
+
               <Table>
                 <Table.Tbody>
                   <Table.Tr>
@@ -424,17 +488,23 @@ export function ResourceDetail<T extends Record<string, any>>({
                           {errmsg}
                         </Code>
                       ) : (
-                        <Text c="dimmed" size="sm">N/A</Text>
+                        <Text c="dimmed" size="sm">
+                          N/A
+                        </Text>
                       )}
                     </Table.Td>
                   </Table.Tr>
                   <Table.Tr>
-                    <Table.Td style={{ fontWeight: 500, width: '30%' }}>Periodic Interval (seconds)</Table.Td>
+                    <Table.Td style={{ fontWeight: 500, width: '30%' }}>
+                      Periodic Interval (seconds)
+                    </Table.Td>
                     <Table.Td>
                       {data.periodic_interval_seconds != null ? (
                         `${data.periodic_interval_seconds}s`
                       ) : (
-                        <Text c="dimmed" size="sm">N/A</Text>
+                        <Text c="dimmed" size="sm">
+                          N/A
+                        </Text>
                       )}
                     </Table.Td>
                   </Table.Tr>
@@ -442,9 +512,15 @@ export function ResourceDetail<T extends Record<string, any>>({
                     <Table.Td style={{ fontWeight: 500, width: '30%' }}>Periodic Max Runs</Table.Td>
                     <Table.Td>
                       {data.periodic_max_runs != null ? (
-                        data.periodic_max_runs === 0 ? 'Unlimited' : data.periodic_max_runs
+                        data.periodic_max_runs === 0 ? (
+                          'Unlimited'
+                        ) : (
+                          data.periodic_max_runs
+                        )
                       ) : (
-                        <Text c="dimmed" size="sm">N/A</Text>
+                        <Text c="dimmed" size="sm">
+                          N/A
+                        </Text>
                       )}
                     </Table.Td>
                   </Table.Tr>
@@ -454,7 +530,8 @@ export function ResourceDetail<T extends Record<string, any>>({
                       {periodicRuns}
                       {isPeriodic && periodicMaxRuns! > 0 && (
                         <>
-                          {' / '}{periodicMaxRuns}
+                          {' / '}
+                          {periodicMaxRuns}
                           <Progress
                             value={(periodicRuns! / periodicMaxRuns!) * 100}
                             size="sm"
@@ -465,12 +542,16 @@ export function ResourceDetail<T extends Record<string, any>>({
                     </Table.Td>
                   </Table.Tr>
                   <Table.Tr>
-                    <Table.Td style={{ fontWeight: 500, width: '30%' }}>Periodic Initial Delay (seconds)</Table.Td>
+                    <Table.Td style={{ fontWeight: 500, width: '30%' }}>
+                      Periodic Initial Delay (seconds)
+                    </Table.Td>
                     <Table.Td>
                       {data.periodic_initial_delay_seconds != null ? (
                         `${data.periodic_initial_delay_seconds}s`
                       ) : (
-                        <Text c="dimmed" size="sm">N/A</Text>
+                        <Text c="dimmed" size="sm">
+                          N/A
+                        </Text>
                       )}
                     </Table.Td>
                   </Table.Tr>
@@ -483,15 +564,17 @@ export function ResourceDetail<T extends Record<string, any>>({
         {/* Other Job Fields Section (fields other than status and payload) */}
         {isJob && Object.keys(otherJobFields).length > 0 && (
           <Paper withBorder p="md">
-            <Title order={4} mb="md">Job Fields</Title>
+            <Title order={4} mb="md">
+              Job Fields
+            </Title>
             <Table>
               <Table.Tbody>
                 {Object.entries(otherJobFields).map(([key, value]) => (
-                    <Table.Tr key={key}>
-                      <Table.Td style={{ fontWeight: 500, width: '30%' }}>{key}</Table.Td>
-                      <Table.Td>{renderDetailValue(value)}</Table.Td>
-                    </Table.Tr>
-                  ))}
+                  <Table.Tr key={key}>
+                    <Table.Td style={{ fontWeight: 500, width: '30%' }}>{key}</Table.Td>
+                    <Table.Td>{renderDetailValue(value)}</Table.Td>
+                  </Table.Tr>
+                ))}
               </Table.Tbody>
             </Table>
           </Paper>
@@ -502,10 +585,15 @@ export function ResourceDetail<T extends Record<string, any>>({
           <Group justify="space-between" mb="md">
             <Title order={4}>{isJob ? 'Payload' : 'Data'}</Title>
             {maxAvailableDepth > 1 && (
-              <Tooltip label="Field expansion depth: lower values collapse nested objects into JSON" withArrow>
+              <Tooltip
+                label="Field expansion depth: lower values collapse nested objects into JSON"
+                withArrow
+              >
                 <Group gap={4}>
                   <IconLayersSubtract size={16} />
-                  <Text size="xs" c="dimmed">Depth</Text>
+                  <Text size="xs" c="dimmed">
+                    Depth
+                  </Text>
                   <NumberInput
                     size="xs"
                     value={detailDepth}
@@ -524,35 +612,47 @@ export function ResourceDetail<T extends Record<string, any>>({
             <Table.Tbody>
               {(() => {
                 // For Job: filter out status fields (shown in Job Status section)
-                const dataFields = isJob 
-                  ? visibleFields.filter(f => !jobStatusFields.has(f.name))
+                const dataFields = isJob
+                  ? visibleFields.filter((f) => !jobStatusFields.has(f.name))
                   : visibleFields;
                 const dataGroups = isJob
-                  ? collapsedGroups.filter(g => !jobStatusFields.has(g.path))
+                  ? collapsedGroups.filter((g) => !jobStatusFields.has(g.path))
                   : collapsedGroups;
                 return (
                   <>
-                    {dataFields.map(field => {
+                    {dataFields.map((field) => {
                       const value = getByPath(data, field.name);
                       // Array of typed objects with itemFields — render as sub-table
                       if (field.itemFields && field.itemFields.length > 0 && Array.isArray(value)) {
                         return (
                           <Table.Tr key={field.name}>
-                            <Table.Td style={{ fontWeight: 500, width: '30%', verticalAlign: 'top' }}>{field.label}</Table.Td>
+                            <Table.Td
+                              style={{ fontWeight: 500, width: '30%', verticalAlign: 'top' }}
+                            >
+                              {field.label}
+                            </Table.Td>
                             <Table.Td>
                               {value.length === 0 ? (
-                                <Text c="dimmed" size="sm">[]</Text>
+                                <Text c="dimmed" size="sm">
+                                  []
+                                </Text>
                               ) : (
                                 <Stack gap="xs">
                                   {value.map((item: any, idx: number) => (
                                     <Paper key={idx} withBorder p="xs" radius="sm">
-                                      <Text size="xs" c="dimmed" mb={4}>#{idx + 1}</Text>
+                                      <Text size="xs" c="dimmed" mb={4}>
+                                        #{idx + 1}
+                                      </Text>
                                       <Table fz="sm">
                                         <Table.Tbody>
-                                          {field.itemFields!.map(sf => (
+                                          {field.itemFields!.map((sf) => (
                                             <Table.Tr key={sf.name}>
-                                              <Table.Td style={{ fontWeight: 500, width: '35%' }}>{sf.label}</Table.Td>
-                                              <Table.Td>{renderDetailValue(item?.[sf.name], sf.type)}</Table.Td>
+                                              <Table.Td style={{ fontWeight: 500, width: '35%' }}>
+                                                {sf.label}
+                                              </Table.Td>
+                                              <Table.Td>
+                                                {renderDetailValue(item?.[sf.name], sf.type)}
+                                              </Table.Td>
                                             </Table.Tr>
                                           ))}
                                         </Table.Tbody>
@@ -567,22 +667,38 @@ export function ResourceDetail<T extends Record<string, any>>({
                       }
                       return (
                         <Table.Tr key={field.name}>
-                          <Table.Td style={{ fontWeight: 500, width: '30%' }}>{field.label}</Table.Td>
+                          <Table.Td style={{ fontWeight: 500, width: '30%' }}>
+                            {field.label}
+                          </Table.Td>
                           <Table.Td>
-                            {field.ref && field.isArray
-                              ? <RefLinkList values={value as string[] | null} fieldRef={field.ref} />
-                              : field.ref
-                                ? <RefLink value={value as string | null} fieldRef={field.ref} />
-                                : renderDetailValue(value, field.type)}
+                            {field.ref && field.ref.type === 'resource_id' && field.isArray ? (
+                              <RefLinkList values={value as string[] | null} fieldRef={field.ref} />
+                            ) : field.ref && field.ref.type === 'resource_id' ? (
+                              <RefLink value={value as string | null} fieldRef={field.ref} />
+                            ) : field.ref && field.ref.type === 'revision_id' && field.isArray ? (
+                              <RefRevisionLinkList
+                                values={value as string[] | null}
+                                fieldRef={field.ref}
+                              />
+                            ) : field.ref && field.ref.type === 'revision_id' ? (
+                              <RefRevisionLink
+                                value={value as string | null}
+                                fieldRef={field.ref}
+                              />
+                            ) : (
+                              renderDetailValue(value, field.type)
+                            )}
                           </Table.Td>
                         </Table.Tr>
                       );
                     })}
-                    {dataGroups.map(group => {
+                    {dataGroups.map((group) => {
                       const value = getByPath(data, group.path);
                       return (
                         <Table.Tr key={group.path}>
-                          <Table.Td style={{ fontWeight: 500, width: '30%' }}>{group.label}</Table.Td>
+                          <Table.Td style={{ fontWeight: 500, width: '30%' }}>
+                            {group.label}
+                          </Table.Td>
                           <Table.Td>{renderDetailValue(value)}</Table.Td>
                         </Table.Tr>
                       );
@@ -596,25 +712,30 @@ export function ResourceDetail<T extends Record<string, any>>({
 
         <MetadataSection meta={meta} revisionInfo={revision_info} variant="full" />
 
-        <RevisionHistorySection 
-          revisions={revisions} 
+        <RevisionHistorySection
+          revisions={revisions}
           currentRevisionId={meta.current_revision_id}
           onRevisionSelect={(revisionId) => {
-            setSelectedRevision(revisionId === meta.current_revision_id ? null : revisionId);
+            handleRevisionSelect(revisionId === meta.current_revision_id ? null : revisionId);
           }}
           selectedRevisionId={selectedRevision || undefined}
           resourceId={meta.resource_id}
         />
       </Stack>
 
-      <Modal opened={editOpen} onClose={() => setEditOpen(false)} title={`Edit ${config.label}`} size="lg">
+      <Modal
+        opened={editOpen}
+        onClose={() => setEditOpen(false)}
+        title={`Edit ${config.label}`}
+        size="lg"
+      >
         {editOpen && (
-          <ResourceForm 
-            config={config} 
-            initialValues={data} 
-            onSubmit={handleEdit} 
-            onCancel={() => setEditOpen(false)} 
-            submitLabel="Update" 
+          <ResourceForm
+            config={config}
+            initialValues={data}
+            onSubmit={handleEdit}
+            onCancel={() => setEditOpen(false)}
+            submitLabel="Update"
           />
         )}
       </Modal>

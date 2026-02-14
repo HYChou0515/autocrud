@@ -942,42 +942,125 @@ class AutoCRUD:
     def _inject_ref_metadata(self, schema: dict) -> None:
         """Post-process OpenAPI schema to inject ``x-ref-*`` extensions.
 
-        This scans all registered resource Structs for ``Ref`` / ``RefRevision``
+        This scans all registered resource Structs — and their nested Struct
+        fields (e.g. ``Job[PayloadType]``) — for ``Ref`` / ``RefRevision``
         annotations and writes the corresponding ``x-ref-resource``,
         ``x-ref-type``, and ``x-ref-on-delete`` extensions into the matching
         schema properties so the web generator can discover relationships.
         """
+        from typing import Annotated, TypeVar, get_args, get_origin, get_type_hints
+
+        from msgspec import Struct
+
         components = schema.get("components", {}).get("schemas", {})
         all_refs: list[_RefInfo] = []
 
-        for model_name, rm in self.resource_managers.items():
-            refs = extract_refs(rm.resource_type, model_name)
-            all_refs.extend(refs)
+        # Collect (schema_name, refs) pairs for both top-level and nested Structs
+        processed_structs: set[type] = set()
 
-            # Find the schema by the Struct class name (msgspec uses class name)
-            schema_name = rm.resource_type.__name__
-            comp = components.get(schema_name)
+        def _inject_into_component(comp_name: str, refs: list[_RefInfo]) -> None:
+            comp = components.get(comp_name)
             if not comp or "properties" not in comp:
-                continue
-
+                return
             for ref_info in refs:
                 prop = comp["properties"].get(ref_info.source_field)
                 if not prop:
                     continue
-
-                ext = {
+                ext: dict[str, str] = {
                     "x-ref-resource": ref_info.target,
                     "x-ref-type": ref_info.ref_type,
                 }
                 if ref_info.ref_type == "resource_id":
                     ext["x-ref-on-delete"] = ref_info.on_delete.value
+                prop.update(ext)
 
-                # For nullable fields the property is wrapped in anyOf
-                if "anyOf" in prop:
-                    # Inject at the property level (alongside anyOf)
-                    prop.update(ext)
+        def _build_typevar_map(cls: type) -> dict[TypeVar, type]:
+            """Build a TypeVar → concrete type mapping from __orig_bases__."""
+            mapping: dict[TypeVar, type] = {}
+            for base in getattr(cls, "__orig_bases__", ()):
+                origin = get_origin(base)
+                args = get_args(base)
+                if origin is not None and args:
+                    params = getattr(origin, "__parameters__", ())
+                    for param, arg in zip(params, args):
+                        if isinstance(param, TypeVar):
+                            mapping[param] = arg
+                    # Recurse into the origin class for deeper generic chains
+                    mapping.update(_build_typevar_map(origin))
+            return mapping
+
+        def _collect_nested_struct_types(
+            struct_type: type, visited: set[type]
+        ) -> list[type]:
+            """Recursively collect Struct types referenced in type hints.
+
+            Resolves TypeVar parameters (e.g. ``Job[T]`` → ``T=EventPayload``)
+            via ``__orig_bases__`` so that nested payloads are discovered.
+            """
+            if struct_type in visited:
+                return []
+            visited.add(struct_type)
+            result: list[type] = []
+            try:
+                hints = get_type_hints(struct_type, include_extras=True)
+            except Exception:
+                return result
+
+            # Build TypeVar mapping for this class
+            tv_map = _build_typevar_map(struct_type)
+
+            for hint in hints.values():
+                resolved = tv_map.get(hint, hint) if isinstance(hint, TypeVar) else hint
+                _walk_hint(resolved, visited, result, tv_map)
+            return result
+
+        def _walk_hint(
+            hint: Any,
+            visited: set[type],
+            out: list[type],
+            tv_map: dict[TypeVar, type],
+        ) -> None:
+            # Resolve TypeVar if applicable
+            if isinstance(hint, TypeVar):
+                resolved = tv_map.get(hint)
+                if resolved is not None:
+                    hint = resolved
                 else:
-                    prop.update(ext)
+                    return
+
+            origin = get_origin(hint)
+            if origin is Annotated:
+                args = get_args(hint)
+                if args:
+                    _walk_hint(args[0], visited, out, tv_map)
+                return
+            if origin is not None:
+                for arg in get_args(hint):
+                    _walk_hint(arg, visited, out, tv_map)
+                return
+            # Plain type — check if it's a Struct subclass
+            if isinstance(hint, type) and issubclass(hint, Struct):
+                if hint not in visited:
+                    out.append(hint)
+                    out.extend(_collect_nested_struct_types(hint, visited))
+
+        for model_name, rm in self.resource_managers.items():
+            # --- top-level resource Struct ---
+            refs = extract_refs(rm.resource_type, model_name)
+            all_refs.extend(refs)
+            schema_name = rm.resource_type.__name__
+            _inject_into_component(schema_name, refs)
+            processed_structs.add(rm.resource_type)
+
+            # --- nested Struct types (e.g. Job[Payload]) ---
+            nested = _collect_nested_struct_types(rm.resource_type, set())
+            for nested_struct in nested:
+                if nested_struct in processed_structs:
+                    continue
+                processed_structs.add(nested_struct)
+                nested_refs = extract_refs(nested_struct, model_name)
+                all_refs.extend(nested_refs)
+                _inject_into_component(nested_struct.__name__, nested_refs)
 
         # Also inject a top-level x-autocrud-relationships extension
         if all_refs:

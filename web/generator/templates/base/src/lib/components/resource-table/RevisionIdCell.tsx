@@ -1,12 +1,12 @@
 /**
  * Revision ID 顯示元件 - 智能顯示 revision ID
- * 
+ *
  * 對於格式 "resource_id:revision_number" 的 ID，只顯示版本號
  * 否則使用類似 ResourceIdCell 的簡短格式
  */
 
 import { useState } from 'react';
-import { Group, Tooltip, ActionIcon, Code, Text } from '@mantine/core';
+import { Group, Tooltip, ActionIcon, Code } from '@mantine/core';
 import { IconCopy, IconCheck } from '@tabler/icons-react';
 
 interface RevisionIdCellProps {
@@ -25,13 +25,13 @@ function extractRevisionNumber(revisionId: string, resourceId?: string): string 
     const parts = revisionId.split(':');
     return parts[parts.length - 1];
   }
-  
+
   // 嘗試從 revision_id 末尾提取數字
   const match = revisionId.match(/:(\d+)$/);
   if (match) {
     return match[1];
   }
-  
+
   return null;
 }
 
@@ -46,13 +46,13 @@ export function RevisionIdCell({ revisionId, resourceId, showCopy = true }: Revi
   };
 
   const revisionNumber = extractRevisionNumber(revisionId, resourceId);
-  
+
   // 如果能提取版本號，顯示 "Rev #3"
   // 否則使用簡短格式
-  const displayText = revisionNumber 
+  const displayText = revisionNumber
     ? `Rev #${revisionNumber}`
-    : revisionId.length > 12 
-      ? `${revisionId.slice(0, 4)}...${revisionId.slice(-4)}` 
+    : revisionId.length > 12
+      ? `${revisionId.slice(0, 4)}...${revisionId.slice(-4)}`
       : revisionId;
 
   return (

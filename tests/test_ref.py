@@ -26,6 +26,7 @@ from msgspec import Struct
 
 from autocrud.crud.core import AutoCRUD
 from autocrud.types import (
+    Job,
     OnDelete,
     Ref,
     RefRevision,
@@ -89,6 +90,20 @@ class UnregisteredTarget(Struct):
     """Ref to a model that won't be registered."""
 
     other_id: Annotated[str, Ref("nonexistent")]
+
+
+class EventPayload(Struct):
+    """Nested Struct with Ref/RefRevision — used inside Job[EventPayload]."""
+
+    event_type: str
+    character_id: Annotated[str | None, RefRevision("character")] = None
+    zone_id: Annotated[str | None, Ref("zone", on_delete=OnDelete.set_null)] = None
+
+
+class GameEvent(Job[EventPayload]):
+    """Job wrapping a payload that has Ref/RefRevision."""
+
+    pass
 
 
 # ---------------------------------------------------------------------------
@@ -309,6 +324,22 @@ class TestExtractRefs:
         # The main point is it doesn't crash
         assert isinstance(refs, list)
 
+    def test_nested_struct_refs_direct(self):
+        """extract_refs on a nested Struct should find Ref/RefRevision."""
+        refs = extract_refs(EventPayload, "game-event")
+        assert len(refs) == 2
+        char_refs = [r for r in refs if r.source_field == "character_id"]
+        assert len(char_refs) == 1
+        assert char_refs[0].target == "character"
+        assert char_refs[0].ref_type == "revision_id"
+        assert char_refs[0].nullable is True
+
+        zone_refs = [r for r in refs if r.source_field == "zone_id"]
+        assert len(zone_refs) == 1
+        assert zone_refs[0].target == "zone"
+        assert zone_refs[0].ref_type == "resource_id"
+        assert zone_refs[0].on_delete == OnDelete.set_null
+
 
 # ---------------------------------------------------------------------------
 # AutoCRUD add_model() validation
@@ -451,6 +482,56 @@ class TestInjectRefMetadata:
         crud.openapi(app)
         schema = app.openapi_schema
         assert "x-autocrud-relationships" not in schema
+
+    def _build_job_app_with_schema(self):
+        """Helper: create a FastAPI app with GameEvent (Job[EventPayload]) + deps."""
+        crud = AutoCRUD()
+        crud.add_model(Zone, name="zone")
+        crud.add_model(Character, name="character")
+        crud.add_model(GameEvent, name="game-event")
+        app = FastAPI()
+        crud.apply(app)
+        crud.openapi(app)
+        return app
+
+    def test_x_ref_on_nested_struct_revision(self):
+        """x-ref-* should be injected into nested Struct properties (RefRevision)."""
+        app = self._build_job_app_with_schema()
+        schema = app.openapi_schema
+        payload_schema = schema["components"]["schemas"]["EventPayload"]
+        props = payload_schema["properties"]
+
+        assert props["character_id"]["x-ref-resource"] == "character"
+        assert props["character_id"]["x-ref-type"] == "revision_id"
+        # RefRevision has no on_delete
+        assert "x-ref-on-delete" not in props["character_id"]
+
+    def test_x_ref_on_nested_struct_resource(self):
+        """x-ref-* should be injected into nested Struct properties (Ref)."""
+        app = self._build_job_app_with_schema()
+        schema = app.openapi_schema
+        payload_schema = schema["components"]["schemas"]["EventPayload"]
+        props = payload_schema["properties"]
+
+        assert props["zone_id"]["x-ref-resource"] == "zone"
+        assert props["zone_id"]["x-ref-type"] == "resource_id"
+        assert props["zone_id"]["x-ref-on-delete"] == "set_null"
+
+    def test_x_autocrud_relationships_includes_nested(self):
+        """x-autocrud-relationships should include refs from nested Structs."""
+        app = self._build_job_app_with_schema()
+        schema = app.openapi_schema
+        rels = schema.get("x-autocrud-relationships")
+        assert rels is not None
+
+        # Should contain refs from EventPayload
+        char_rels = [
+            r
+            for r in rels
+            if r["target"] == "character" and r["source"] == "game-event"
+        ]
+        assert len(char_rels) == 1
+        assert char_rels[0]["refType"] == "revision_id"
 
 
 # ---------------------------------------------------------------------------

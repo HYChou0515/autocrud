@@ -1,7 +1,15 @@
 import { useEffect, useState } from 'react';
 import { Link } from '@tanstack/react-router';
 import {
-  SimpleGrid, Card, Text, Title, Group, Badge, Stack, Container, Loader,
+  SimpleGrid,
+  Card,
+  Text,
+  Title,
+  Group,
+  Badge,
+  Stack,
+  Container,
+  Loader,
 } from '@mantine/core';
 import { IconDatabase } from '@tabler/icons-react';
 import { getResourceNames, getResource } from '../resources';
@@ -19,10 +27,10 @@ interface ResourceSummary {
 export function Dashboard() {
   const resourceNames = getResourceNames();
   const [summaries, setSummaries] = useState<ResourceSummary[]>(
-    resourceNames.map(name => {
+    resourceNames.map((name) => {
       const config = getResource(name)!;
       return { name, label: config.label, count: 0, loading: true };
-    })
+    }),
   );
 
   useEffect(() => {
@@ -31,15 +39,20 @@ export function Dashboard() {
         const config = getResource(name)!;
         const res = await config.apiClient.count();
         return { name, label: config.label, count: res.data, loading: false } as ResourceSummary;
-      })
+      }),
     ).then((results) =>
       setSummaries(
         results.map((r, i) =>
           r.status === 'fulfilled'
             ? r.value
-            : { name: resourceNames[i], label: getResource(resourceNames[i])!.label, count: 0, loading: false }
-        )
-      )
+            : {
+                name: resourceNames[i],
+                label: getResource(resourceNames[i])!.label,
+                count: 0,
+                loading: false,
+              },
+        ),
+      ),
     );
   }, []);
 

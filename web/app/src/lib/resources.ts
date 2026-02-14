@@ -5,7 +5,7 @@ import type { z } from 'zod';
  * Field variant types - allows customization of input component
  * 支援不同的 UI variant
  */
-export type FieldVariant = 
+export type FieldVariant =
   | { type: 'text' }
   | { type: 'textarea'; rows?: number }
   | { type: 'monaco'; language?: string; height?: number }
@@ -73,7 +73,9 @@ export interface ResourceConfig<T = any> {
     update: (id: string, data: T, params?: any) => Promise<{ data: RevisionInfo }>;
     delete: (id: string) => Promise<{ data: ResourceMeta }>;
     restore: (id: string) => Promise<{ data: ResourceMeta }>;
-    revisionList: (id: string) => Promise<{ data: { meta: ResourceMeta; revisions: RevisionInfo[] } }>;
+    revisionList: (
+      id: string,
+    ) => Promise<{ data: { meta: ResourceMeta; revisions: RevisionInfo[] } }>;
   };
 }
 
@@ -81,6 +83,102 @@ export interface ResourceConfig<T = any> {
  * Registry of all resources (generated)
  */
 export const resources: Record<string, ResourceConfig> = {};
+
+/**
+ * Per-field customization options
+ */
+export interface FieldCustomization {
+  /** Override the UI variant for this field */
+  variant?: FieldVariant;
+  /** Override or add reference metadata */
+  ref?: FieldRef;
+  /** Override the field label */
+  label?: string;
+}
+
+/**
+ * Per-resource customization options.
+ *
+ * The field name type F provides IDE autocomplete for known fields.
+ * Unknown field names produce a runtime warning via applyCustomizations().
+ */
+export interface ResourceCustomizationConfig<F extends string = string> {
+  /** Field-level customizations keyed by field name */
+  fields?: Partial<Record<F, FieldCustomization>>;
+  /** Override the Zod schema (receives the generated schema for extension) */
+  zodSchema?: (generated: z.ZodObject<any>) => z.ZodObject<any>;
+  /** Override max form depth */
+  maxFormDepth?: number;
+  /** Override resource label */
+  label?: string;
+  /** Override resource plural label */
+  pluralLabel?: string;
+}
+
+/**
+ * Type-safe customizations map — generic over a ResourceFieldMap interface.
+ *
+ * Usage (generated code provides the concrete ResourceFieldMap):
+ * ```ts
+ * const customizations: ResourceCustomizations = {
+ *   character: {
+ *     fields: {
+ *       special_ability: { variant: { type: 'textarea', rows: 5 } },
+ *       // 'typo_field' would be a TypeScript error ✅
+ *     },
+ *   },
+ * };
+ * ```
+ */
+export type ResourceCustomizations<
+  FieldMap = Record<string, string>,
+> = {
+  [K in keyof FieldMap]?: ResourceCustomizationConfig<FieldMap[K] & string>;
+};
+
+/**
+ * Apply customizations to the registered resources.
+ * Merges field-level and resource-level overrides into the registry.
+ */
+export function applyCustomizations(
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  customizations: ResourceCustomizations<any>,
+): void {
+  for (const [resourceName, config] of Object.entries(customizations)) {
+    if (!config) continue;
+    const resource = resources[resourceName];
+    if (!resource) {
+      console.warn(`⚠️ Customization: resource '${resourceName}' not found, skipping`);
+      continue;
+    }
+
+    // Resource-level overrides
+    if (config.label) resource.label = config.label;
+    if (config.pluralLabel) resource.pluralLabel = config.pluralLabel;
+    if (config.maxFormDepth !== undefined) resource.maxFormDepth = config.maxFormDepth;
+    if (config.zodSchema && resource.zodSchema) {
+      resource.zodSchema = config.zodSchema(resource.zodSchema);
+    }
+
+    // Field-level overrides
+    if (config.fields) {
+      for (const [fieldName, fieldConfig] of Object.entries(config.fields)) {
+        if (!fieldConfig) continue;
+        const field = resource.fields.find((f) => f.name === fieldName);
+        if (!field) {
+          console.warn(
+            `⚠️ Customization: field '${fieldName}' not found in resource '${resourceName}', skipping`,
+          );
+          continue;
+        }
+        if (fieldConfig.variant) field.variant = fieldConfig.variant;
+        if (fieldConfig.ref) field.ref = fieldConfig.ref;
+        if (fieldConfig.label) field.label = fieldConfig.label;
+      }
+    }
+  }
+  console.log('✅ Resource customizations applied');
+}
 
 /**
  * Get resource config by name

@@ -4,8 +4,50 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useNavigate, useLocation } from '@tanstack/react-router';
-import { Container, Title, Group, Button, Stack, Text, Tooltip, ActionIcon, TextInput, Alert, Collapse, Paper, Badge, Box, Code, Divider, SegmentedControl, Textarea, NumberInput, Select, CloseButton, Image, Anchor } from '@mantine/core';
-import { IconPlus, IconRefresh, IconSearch, IconX, IconAlertCircle, IconFilterOff, IconChevronDown, IconChevronUp, IconDatabase, IconCode, IconArrowRight, IconArrowsSort, IconFileCode, IconPhoto, IconFile, IconMusic, IconVideo, IconFileText, IconDownload, IconFileZip } from '@tabler/icons-react';
+import {
+  Container,
+  Title,
+  Group,
+  Button,
+  Stack,
+  Text,
+  Tooltip,
+  ActionIcon,
+  TextInput,
+  Alert,
+  Collapse,
+  Paper,
+  Badge,
+  Box,
+  Code,
+  Divider,
+  SegmentedControl,
+  Textarea,
+  NumberInput,
+  Select,
+  CloseButton,
+  Image,
+} from '@mantine/core';
+import {
+  IconPlus,
+  IconRefresh,
+  IconSearch,
+  IconX,
+  IconAlertCircle,
+  IconFilterOff,
+  IconChevronDown,
+  IconChevronUp,
+  IconDatabase,
+  IconCode,
+  IconArrowRight,
+  IconFileCode,
+  IconPhoto,
+  IconFile,
+  IconMusic,
+  IconVideo,
+  IconFileText,
+  IconFileZip,
+} from '@tabler/icons-react';
 import {
   MantineReactTable,
   useMantineReactTable,
@@ -18,7 +60,7 @@ import type { FullResource } from '../../../types/api';
 import { useResourceList } from '../../hooks/useResourceList';
 import { formatTime } from '../TimeDisplay';
 import { ResourceIdCell } from './ResourceIdCell';
-import { RefLink, RefLinkList } from '../RefLink';
+import { RefLink, RefLinkList, RefRevisionLink, RefRevisionLinkList } from '../RefLink';
 import { SearchForm } from './SearchForm';
 import { MetaSearchForm } from './MetaSearchForm';
 import type { ResourceTableProps, SearchCondition, MetaFilters, ColumnVariant } from './types';
@@ -46,14 +88,28 @@ function formatBinarySize(bytes: number): string {
 /** Return an appropriate icon component for a given MIME content type. */
 function getContentTypeIcon(contentType: string | undefined, size = 16) {
   if (!contentType) return <IconFile size={size} />;
-  if (contentType.startsWith('image/')) return <IconPhoto size={size} color="var(--mantine-color-teal-6)" />;
-  if (contentType.startsWith('video/')) return <IconVideo size={size} color="var(--mantine-color-grape-6)" />;
-  if (contentType.startsWith('audio/')) return <IconMusic size={size} color="var(--mantine-color-orange-6)" />;
-  if (contentType.startsWith('text/')) return <IconFileText size={size} color="var(--mantine-color-blue-6)" />;
-  if (contentType.includes('pdf')) return <IconFileText size={size} color="var(--mantine-color-red-6)" />;
-  if (contentType.includes('zip') || contentType.includes('tar') || contentType.includes('gzip') || contentType.includes('compressed'))
+  if (contentType.startsWith('image/'))
+    return <IconPhoto size={size} color="var(--mantine-color-teal-6)" />;
+  if (contentType.startsWith('video/'))
+    return <IconVideo size={size} color="var(--mantine-color-grape-6)" />;
+  if (contentType.startsWith('audio/'))
+    return <IconMusic size={size} color="var(--mantine-color-orange-6)" />;
+  if (contentType.startsWith('text/'))
+    return <IconFileText size={size} color="var(--mantine-color-blue-6)" />;
+  if (contentType.includes('pdf'))
+    return <IconFileText size={size} color="var(--mantine-color-red-6)" />;
+  if (
+    contentType.includes('zip') ||
+    contentType.includes('tar') ||
+    contentType.includes('gzip') ||
+    contentType.includes('compressed')
+  )
     return <IconFileZip size={size} color="var(--mantine-color-yellow-6)" />;
-  if (contentType.includes('json') || contentType.includes('xml') || contentType.includes('javascript'))
+  if (
+    contentType.includes('json') ||
+    contentType.includes('xml') ||
+    contentType.includes('javascript')
+  )
     return <IconFileCode size={size} color="var(--mantine-color-violet-6)" />;
   return <IconFile size={size} />;
 }
@@ -89,7 +145,10 @@ function renderBinaryCell(value: Record<string, unknown>): React.ReactNode {
   const label = contentType || 'File';
 
   return (
-    <Tooltip label={fileId ? `${label} · ${sizeStr} — click to download` : `${label} · ${sizeStr}`} withArrow>
+    <Tooltip
+      label={fileId ? `${label} · ${sizeStr} — click to download` : `${label} · ${sizeStr}`}
+      withArrow
+    >
       <Group gap={4} wrap="nowrap" style={{ cursor: fileId ? 'pointer' : 'default' }}>
         {getContentTypeIcon(contentType, 16)}
         <Text size="xs" c="dimmed" truncate style={{ maxWidth: 120 }}>
@@ -108,18 +167,21 @@ function renderObjectPreview(value: Record<string, unknown>): React.ReactNode {
   const keys = Object.keys(value);
 
   if (keys.length === 0) {
-    return <Text c="dimmed" size="sm">{'{}'}</Text>;
+    return (
+      <Text c="dimmed" size="sm">
+        {'{}'}
+      </Text>
+    );
   }
 
   const firstKey = keys[0];
   const firstValue = value[firstKey];
-  const previewText = keys.length === 1
-    ? `${firstKey}: ${JSON.stringify(firstValue)}`
-    : `${firstKey}: ${JSON.stringify(firstValue)}, +${keys.length - 1} more`;
+  const previewText =
+    keys.length === 1
+      ? `${firstKey}: ${JSON.stringify(firstValue)}`
+      : `${firstKey}: ${JSON.stringify(firstValue)}, +${keys.length - 1} more`;
 
-  const shortPreview = previewText.length > 40
-    ? previewText.slice(0, 37) + '...'
-    : previewText;
+  const shortPreview = previewText.length > 40 ? previewText.slice(0, 37) + '...' : previewText;
 
   return (
     <Tooltip
@@ -144,17 +206,17 @@ function renderObjectPreview(value: Record<string, unknown>): React.ReactNode {
 
 /**
  * Generic resource list table with server-side pagination and sorting
- * 
+ *
  * @example
  * // 預設：顯示所有欄位
  * <ResourceTable config={config} basePath="/guilds" />
- * 
+ *
  * @example
  * // 控制欄位順序
  * <ResourceTable config={config} basePath="/guilds" columns={{
  *   order: ['name', 'created_at', 'resource_id']
  * }} />
- * 
+ *
  * @example
  * // 覆蓋特定欄位的顯示方式
  * <ResourceTable config={config} basePath="/guilds" columns={{
@@ -163,7 +225,7 @@ function renderObjectPreview(value: Record<string, unknown>): React.ReactNode {
  *     resource_id: { hidden: true }
  *   }
  * }} />
- * 
+ *
  * @example
  * // 顯示預設隱藏的 meta 欄位
  * <ResourceTable config={config} basePath="/guilds" columns={{
@@ -175,12 +237,12 @@ function renderObjectPreview(value: Record<string, unknown>): React.ReactNode {
  *     is_deleted: { hidden: false }            // 顯示刪除狀態
  *   }
  * }} />
- * 
+ *
  * @example
  * // 啟用後端篩選表單（label 預設為 name）
- * <ResourceTable 
- *   config={config} 
- *   basePath="/characters" 
+ * <ResourceTable
+ *   config={config}
+ *   basePath="/characters"
  *   searchableFields={[
  *     { name: 'level', type: 'number' },
  *     { name: 'class', label: '職業', type: 'select', options: [
@@ -190,12 +252,18 @@ function renderObjectPreview(value: Record<string, unknown>): React.ReactNode {
  *     { name: 'is_active', type: 'boolean' },
  *   ]}
  * />
- * 
+ *
  * @example
  * // 停用 QB 語法搜尋
  * <ResourceTable config={config} basePath="/guilds" disableQB />
  */
-export function ResourceTable<T extends MRT_RowData>({ config, basePath, columns, searchableFields, disableQB = true }: ResourceTableProps<T>) {
+export function ResourceTable<T extends MRT_RowData>({
+  config,
+  basePath,
+  columns,
+  searchableFields,
+  disableQB = true,
+}: ResourceTableProps<T>) {
   const navigate = useNavigate();
   const location = useLocation();
   const [pagination, setPagination] = useState<MRT_PaginationState>({ pageIndex: 0, pageSize: 20 });
@@ -207,14 +275,14 @@ export function ResourceTable<T extends MRT_RowData>({ config, basePath, columns
   // 進階搜尋（server-side）- 統一狀態管理
   const [searchMode, setSearchMode] = useState<'condition' | 'qb'>('condition');
   const [advancedOpen, setAdvancedOpen] = useState(false);
-  
+
   // 已提交的搜尋狀態（用於 API 查詢）
   const [activeSearch, setActiveSearch] = useState<{
     mode: 'condition' | 'qb';
     condition: { meta: MetaFilters; data: SearchCondition[] };
     qb: string;
-    resultLimit?: number;  // 後端返回結果數量限制
-    sortBy?: { field: string; order: 'asc' | 'desc' }[];  // 後端排序
+    resultLimit?: number; // 後端返回結果數量限制
+    sortBy?: { field: string; order: 'asc' | 'desc' }[]; // 後端排序
   }>({
     mode: 'condition',
     condition: { meta: {}, data: [] },
@@ -222,7 +290,7 @@ export function ResourceTable<T extends MRT_RowData>({ config, basePath, columns
     resultLimit: undefined,
     sortBy: undefined,
   });
-  
+
   // 當前編輯中的狀態（未提交）
   const [editingState, setEditingState] = useState<{
     condition: { meta: MetaFilters; data: SearchCondition[] };
@@ -262,7 +330,7 @@ export function ResourceTable<T extends MRT_RowData>({ config, basePath, columns
         resultLimit: undefined,
         sortBy: undefined,
       });
-      setPagination(prev => ({ ...prev, pageIndex: 0 }));
+      setPagination((prev) => ({ ...prev, pageIndex: 0 }));
       return;
     }
 
@@ -274,10 +342,10 @@ export function ResourceTable<T extends MRT_RowData>({ config, basePath, columns
 
     // 用 location.href 取得完整的 search string
     const urlParams = new URLSearchParams(location.href.split('?')[1] || '');
-    
+
     // QB 參數
     const qbFromUrl = urlParams.get('qb');
-    
+
     // Meta 參數
     const metaFromUrl: MetaFilters = {};
     const cts = urlParams.get('created_time_start');
@@ -292,33 +360,41 @@ export function ResourceTable<T extends MRT_RowData>({ config, basePath, columns
     if (ute) metaFromUrl.updated_time_end = ute;
     if (cb) metaFromUrl.created_by = cb;
     if (ub) metaFromUrl.updated_by = ub;
-    
+
     // data_conditions 參數
     const dcStr = urlParams.get('data_conditions');
     let parsedConditions: SearchCondition[] = [];
     if (dcStr) {
       try {
-        const parsed = JSON.parse(dcStr) as { field_path: string; operator: string; value: unknown }[];
-        parsedConditions = parsed.map(c => ({ 
-          field: c.field_path, 
-          operator: c.operator, 
-          value: c.value ?? '' // 確保 value 不是 undefined
+        const parsed = JSON.parse(dcStr) as {
+          field_path: string;
+          operator: string;
+          value: unknown;
+        }[];
+        parsedConditions = parsed.map((c) => ({
+          field: c.field_path,
+          operator: c.operator,
+          value: c.value ?? '', // 確保 value 不是 undefined
         })) as SearchCondition[];
-      } catch { /* ignore parse error */ }
+      } catch {
+        /* ignore parse error */
+      }
     }
-    
+
     // resultLimit 和 sortBy 參數
     const resultLimitStr = urlParams.get('result_limit');
     const resultLimit = resultLimitStr ? parseInt(resultLimitStr, 10) : undefined;
-    
+
     const sortByStr = urlParams.get('sort_by');
     let sortBy: { field: string; order: 'asc' | 'desc' }[] | undefined;
     if (sortByStr) {
       try {
         sortBy = JSON.parse(sortByStr) as { field: string; order: 'asc' | 'desc' }[];
-      } catch { /* ignore parse error */ }
+      } catch {
+        /* ignore parse error */
+      }
     }
-    
+
     // 根據 URL 參數設定搜尋狀態
     const newActiveSearch = {
       mode: qbFromUrl ? ('qb' as const) : ('condition' as const),
@@ -334,31 +410,31 @@ export function ResourceTable<T extends MRT_RowData>({ config, basePath, columns
       resultLimit,
       sortBy,
     });
-    
+
     // 如果 URL 有 QB 參數，切換到 QB 模式
     if (qbFromUrl) {
       setSearchMode('qb');
     }
 
     // 有任何搜尋參數時展開進階搜尋面板
-    const hasSearchParams = !!qbFromUrl || Object.keys(metaFromUrl).length > 0 || parsedConditions.length > 0;
+    const hasSearchParams =
+      !!qbFromUrl || Object.keys(metaFromUrl).length > 0 || parsedConditions.length > 0;
     setAdvancedOpen(hasSearchParams);
   }, [location.href]);
 
   // 正規化 searchableFields - label 預設為 name
   const normalizedSearchableFields = useMemo(
-    () => searchableFields?.map(f => ({ ...f, label: f.label || f.name })) ?? [],
+    () => searchableFields?.map((f) => ({ ...f, label: f.label || f.name })) ?? [],
     [searchableFields],
   );
 
   // 排序選項：searchableFields（如果有定義）或所有欄位 + meta 欄位
   const sortFieldOptions = useMemo(() => {
-    const dataFields = normalizedSearchableFields.length > 0 
-      ? normalizedSearchableFields 
-      : config.fields;
-    
+    const dataFields =
+      normalizedSearchableFields.length > 0 ? normalizedSearchableFields : config.fields;
+
     return [
-      ...dataFields.map(f => ({ value: f.name, label: f.label })),
+      ...dataFields.map((f) => ({ value: f.name, label: f.label })),
       // Meta 欄位
       { value: 'created_time', label: '建立時間' },
       { value: 'updated_time', label: '更新時間' },
@@ -380,7 +456,7 @@ export function ResourceTable<T extends MRT_RowData>({ config, basePath, columns
     } else {
       // Condition 模式：傳遞各別參數
       const { meta, data } = activeSearch.condition;
-      
+
       // 後端結果數量限制（優先於 pagination.pageSize）
       if (activeSearch.resultLimit) {
         baseParams.limit = activeSearch.resultLimit;
@@ -393,10 +469,10 @@ export function ResourceTable<T extends MRT_RowData>({ config, basePath, columns
           baseParams.sorts = sortsStr;
         }
       }
-      
+
       // 後端篩選參數（data_conditions）
       if (data.length > 0) {
-        const dataConditions = data.map(condition => ({
+        const dataConditions = data.map((condition) => ({
           field_path: condition.field,
           operator: condition.operator,
           value: condition.value,
@@ -420,17 +496,21 @@ export function ResourceTable<T extends MRT_RowData>({ config, basePath, columns
   useEffect(() => {
     // 建構 search params
     const searchParams: Record<string, string> = {};
-    
+
     if (activeSearch.mode === 'qb' && activeSearch.qb) {
       searchParams.qb = activeSearch.qb;
     } else {
       const { meta, data } = activeSearch.condition;
-      
+
       if (data.length > 0) {
-        const dataConditions = data.map(c => ({ field_path: c.field, operator: c.operator, value: c.value }));
+        const dataConditions = data.map((c) => ({
+          field_path: c.field,
+          operator: c.operator,
+          value: c.value,
+        }));
         searchParams.data_conditions = JSON.stringify(dataConditions);
       }
-      
+
       if (meta.created_time_start) searchParams.created_time_start = meta.created_time_start;
       if (meta.created_time_end) searchParams.created_time_end = meta.created_time_end;
       if (meta.updated_time_start) searchParams.updated_time_start = meta.updated_time_start;
@@ -449,7 +529,7 @@ export function ResourceTable<T extends MRT_RowData>({ config, basePath, columns
 
     // 標記為內部更新，避免觸發從 URL 讀取的 useEffect
     isInternalUpdate.current = true;
-    
+
     // 使用 TanStack Router 的 navigate 更新 URL
     navigate({
       to: location.pathname,
@@ -459,24 +539,27 @@ export function ResourceTable<T extends MRT_RowData>({ config, basePath, columns
   }, [activeSearch, navigate, location.pathname]);
 
   // 更新編輯中的 Meta 條件
-  const handleMetaConditionChange = useCallback((filters: MetaFilters, isDirty: boolean) => {
-    setEditingState(prev => ({
+  const handleMetaConditionChange = useCallback((filters: MetaFilters, _isDirty: boolean) => {
+    setEditingState((prev) => ({
       ...prev,
       condition: { ...prev.condition, meta: filters },
     }));
   }, []);
 
   // 更新編輯中的 Data 條件
-  const handleDataConditionChange = useCallback((conditions: SearchCondition[], isDirty: boolean) => {
-    setEditingState(prev => ({
-      ...prev,
-      condition: { ...prev.condition, data: conditions },
-    }));
-  }, []);
+  const handleDataConditionChange = useCallback(
+    (conditions: SearchCondition[], _isDirty: boolean) => {
+      setEditingState((prev) => ({
+        ...prev,
+        condition: { ...prev.condition, data: conditions },
+      }));
+    },
+    [],
+  );
 
   // 更新編輯中的 QB 文字
   const handleQBTextChange = useCallback((text: string) => {
-    setEditingState(prev => ({
+    setEditingState((prev) => ({
       ...prev,
       qb: text,
     }));
@@ -484,20 +567,24 @@ export function ResourceTable<T extends MRT_RowData>({ config, basePath, columns
 
   // 更新結果數量限制
   const handleResultLimitChange = useCallback((value: number | string) => {
-    const limit = typeof value === 'number' ? value : (value === '' ? undefined : parseInt(value, 10));
-    setEditingState(prev => ({
+    const limit =
+      typeof value === 'number' ? value : value === '' ? undefined : parseInt(value, 10);
+    setEditingState((prev) => ({
       ...prev,
       resultLimit: limit,
     }));
   }, []);
 
   // 更新排序
-  const handleSortByChange = useCallback((sortBy: { field: string; order: 'asc' | 'desc' }[] | undefined) => {
-    setEditingState(prev => ({
-      ...prev,
-      sortBy,
-    }));
-  }, []);
+  const handleSortByChange = useCallback(
+    (sortBy: { field: string; order: 'asc' | 'desc' }[] | undefined) => {
+      setEditingState((prev) => ({
+        ...prev,
+        sortBy,
+      }));
+    },
+    [],
+  );
 
   // Condition 模式搜尋（提交編輯狀態）
   const handleConditionSearch = useCallback(() => {
@@ -508,12 +595,12 @@ export function ResourceTable<T extends MRT_RowData>({ config, basePath, columns
       resultLimit: editingState.resultLimit,
       sortBy: editingState.sortBy,
     });
-    setPagination(prev => ({ ...prev, pageIndex: 0 }));
+    setPagination((prev) => ({ ...prev, pageIndex: 0 }));
   }, [editingState]);
 
   // Condition 模式清除
   const handleConditionClear = useCallback(() => {
-    const emptyState = { 
+    const emptyState = {
       condition: { meta: {}, data: [] },
       qb: '',
       resultLimit: undefined,
@@ -524,7 +611,7 @@ export function ResourceTable<T extends MRT_RowData>({ config, basePath, columns
       mode: 'condition',
       ...emptyState,
     });
-    setPagination(prev => ({ ...prev, pageIndex: 0 }));
+    setPagination((prev) => ({ ...prev, pageIndex: 0 }));
   }, []);
 
   // QB 模式搜尋（提交編輯狀態）
@@ -536,7 +623,7 @@ export function ResourceTable<T extends MRT_RowData>({ config, basePath, columns
       resultLimit: editingState.resultLimit,
       sortBy: editingState.sortBy,
     });
-    setPagination(prev => ({ ...prev, pageIndex: 0 }));
+    setPagination((prev) => ({ ...prev, pageIndex: 0 }));
   }, [editingState]);
 
   // QB 模式清除
@@ -552,18 +639,18 @@ export function ResourceTable<T extends MRT_RowData>({ config, basePath, columns
       mode: 'qb',
       ...emptyState,
     });
-    setPagination(prev => ({ ...prev, pageIndex: 0 }));
+    setPagination((prev) => ({ ...prev, pageIndex: 0 }));
   }, []);
 
   // 「轉為 QB」按鈕 - 從當前條件轉換
   const handleSwitchToQB = useCallback(() => {
     const qb = conditionToQB(
-      editingState.condition.meta, 
+      editingState.condition.meta,
       editingState.condition.data,
       editingState.resultLimit,
-      editingState.sortBy
+      editingState.sortBy,
     );
-    setEditingState(prev => ({
+    setEditingState((prev) => ({
       ...prev,
       qb,
     }));
@@ -589,7 +676,7 @@ export function ResourceTable<T extends MRT_RowData>({ config, basePath, columns
     // Helper function to render cell based on variant
     const renderCell = (variant: ColumnVariant, value: unknown): React.ReactNode => {
       if (value == null) return '';
-      
+
       switch (variant) {
         case 'string':
           return String(value);
@@ -605,9 +692,17 @@ export function ResourceTable<T extends MRT_RowData>({ config, basePath, columns
           return value ? '✅' : '❌';
         case 'array':
           if (Array.isArray(value)) {
-            if (value.length === 0) return <Text c="dimmed" size="sm">[]</Text>;
+            if (value.length === 0)
+              return (
+                <Text c="dimmed" size="sm">
+                  []
+                </Text>
+              );
             if (typeof value[0] === 'object' && value[0] !== null) {
-              return renderObjectPreview({ [`${value.length} items`]: value } as Record<string, unknown>);
+              return renderObjectPreview({ [`${value.length} items`]: value } as Record<
+                string,
+                unknown
+              >);
             }
             return value.join(', ');
           }
@@ -622,9 +717,17 @@ export function ResourceTable<T extends MRT_RowData>({ config, basePath, columns
           // Auto detection
           if (typeof value === 'boolean') return value ? '✅' : '❌';
           if (Array.isArray(value)) {
-            if (value.length === 0) return <Text c="dimmed" size="sm">[]</Text>;
+            if (value.length === 0)
+              return (
+                <Text c="dimmed" size="sm">
+                  []
+                </Text>
+              );
             if (value.length > 0 && typeof value[0] === 'object' && value[0] !== null) {
-              return renderObjectPreview({ [`${value.length} items`]: value } as Record<string, unknown>);
+              return renderObjectPreview({ [`${value.length} items`]: value } as Record<
+                string,
+                unknown
+              >);
             }
             return value.join(', ');
           }
@@ -686,7 +789,11 @@ export function ResourceTable<T extends MRT_RowData>({ config, basePath, columns
             if (value && typeof value === 'object' && 'file_id' in (value as any)) {
               return renderBinaryCell(value as Record<string, unknown>);
             }
-            return <Text c="dimmed" size="sm">—</Text>;
+            return (
+              <Text c="dimmed" size="sm">
+                —
+              </Text>
+            );
           },
         });
         continue;
@@ -695,7 +802,8 @@ export function ResourceTable<T extends MRT_RowData>({ config, basePath, columns
       let defaultVariant: ColumnVariant = 'auto';
       if (field.type === 'boolean') defaultVariant = 'boolean';
       else if (field.isArray) defaultVariant = 'array';
-      else if (field.type === 'date' || field.variant?.type === 'date') defaultVariant = 'relative-time';
+      else if (field.type === 'date' || field.variant?.type === 'date')
+        defaultVariant = 'relative-time';
 
       // Ref fields get a custom render as RefLink (scalar) or RefLinkList (array)
       let refCustomRender: ((value: unknown) => React.ReactNode) | undefined;
@@ -707,6 +815,20 @@ export function ResourceTable<T extends MRT_RowData>({ config, basePath, columns
         } else {
           refCustomRender = (value: unknown) => (
             <RefLink value={value as string | null} fieldRef={field.ref!} />
+          );
+        }
+      } else if (field.ref && field.ref.type === 'revision_id') {
+        if (field.isArray) {
+          refCustomRender = (value: unknown) => (
+            <RefRevisionLinkList
+              values={value as string[] | null}
+              fieldRef={field.ref!}
+              maxVisible={3}
+            />
+          );
+        } else {
+          refCustomRender = (value: unknown) => (
+            <RefRevisionLink value={value as string | null} fieldRef={field.ref!} />
           );
         }
       }
@@ -743,62 +865,61 @@ export function ResourceTable<T extends MRT_RowData>({ config, basePath, columns
         header: 'Schema Version',
         accessorFn: (row) => row?.meta?.schema_version,
         variant: 'string',
-        defaultHidden: true,  // 預設隱藏
+        defaultHidden: true, // 預設隱藏
       },
       {
         id: 'is_deleted',
         header: 'Deleted',
         accessorFn: (row) => row?.meta?.is_deleted,
         variant: 'boolean',
-        defaultHidden: true,  // 預設隱藏
+        defaultHidden: true, // 預設隱藏
       },
       {
         id: 'created_time',
         header: 'Created',
         accessorFn: (row) => row?.meta?.created_time,
         variant: 'relative-time',
-        defaultHidden: false,  // 預設顯示
+        defaultHidden: false, // 預設顯示
       },
       {
         id: 'created_by',
         header: 'Created By',
         accessorFn: (row) => row?.meta?.created_by,
         variant: 'string',
-        defaultHidden: true,  // 預設隱藏
+        defaultHidden: true, // 預設隱藏
       },
       {
         id: 'updated_time',
         header: 'Updated',
         accessorFn: (row) => row?.meta?.updated_time,
         variant: 'relative-time',
-        defaultHidden: false,  // 預設顯示
+        defaultHidden: false, // 預設顯示
       },
       {
         id: 'updated_by',
         header: 'Updated By',
         accessorFn: (row) => row?.meta?.updated_by,
         variant: 'string',
-        defaultHidden: true,  // 預設隱藏
+        defaultHidden: true, // 預設隱藏
       },
     );
 
     // Apply overrides
     const overrides = columns?.overrides ?? {};
-    const processedColumns = allColumns.map(col => {
+    const processedColumns = allColumns.map((col) => {
       const override = overrides[col.id];
-      
+
       // 決定是否隱藏：override.hidden > defaultHidden > false
-      const hidden = override?.hidden !== undefined 
-        ? override.hidden 
-        : (col.defaultHidden ?? false);
-      
+      const hidden =
+        override?.hidden !== undefined ? override.hidden : (col.defaultHidden ?? false);
+
       return {
         ...col,
         header: override?.label ?? col.header,
         size: override?.size ?? col.size,
         variant: override?.variant ?? col.variant,
         hidden,
-        customRender: override?.render ?? col.customRender,  // 保留原本的 customRender
+        customRender: override?.render ?? col.customRender, // 保留原本的 customRender
       };
     });
 
@@ -815,8 +936,8 @@ export function ResourceTable<T extends MRT_RowData>({ config, basePath, columns
 
     // Filter hidden columns and convert to MRT format
     return orderedColumns
-      .filter(col => !col.hidden)
-      .map(col => ({
+      .filter((col) => !col.hidden)
+      .map((col) => ({
         id: col.id,
         header: col.header,
         accessorFn: col.accessorFn,
@@ -844,10 +965,11 @@ export function ResourceTable<T extends MRT_RowData>({ config, basePath, columns
     onPaginationChange: setPagination,
     onSortingChange: setSorting,
     mantineTableBodyRowProps: ({ row }) => ({
-      onClick: () => navigate({
-        to: `${basePath}/$resourceId`,
-        params: { resourceId: row.original?.meta?.resource_id ?? '' },
-      }),
+      onClick: () =>
+        navigate({
+          to: `${basePath}/$resourceId`,
+          params: { resourceId: row.original?.meta?.resource_id ?? '' },
+        }),
       style: { cursor: 'pointer' },
     }),
     initialState: { density: 'xs' },
@@ -859,13 +981,18 @@ export function ResourceTable<T extends MRT_RowData>({ config, basePath, columns
         <Group justify="space-between">
           <div>
             <Title order={2}>{config.label}</Title>
-            <Text c="dimmed" size="sm">{total} total resources</Text>
+            <Text c="dimmed" size="sm">
+              {total} total resources
+            </Text>
           </div>
           <Group>
             <Button variant="light" leftSection={<IconRefresh size={16} />} onClick={refresh}>
               Refresh
             </Button>
-            <Button leftSection={<IconPlus size={16} />} onClick={() => navigate({ to: `${basePath}/create` })}>
+            <Button
+              leftSection={<IconPlus size={16} />}
+              onClick={() => navigate({ to: `${basePath}/create` })}
+            >
               Create
             </Button>
           </Group>
@@ -897,9 +1024,14 @@ export function ResourceTable<T extends MRT_RowData>({ config, basePath, columns
               rightSection={
                 advancedOpen ? <IconChevronUp size={14} /> : <IconChevronDown size={14} />
               }
-              onClick={() => setAdvancedOpen(o => !o)}
+              onClick={() => setAdvancedOpen((o) => !o)}
             >
-              進階搜尋{activeBackendCount > 0 && <Badge size="sm" ml={6} circle>{activeBackendCount}</Badge>}
+              進階搜尋
+              {activeBackendCount > 0 && (
+                <Badge size="sm" ml={6} circle>
+                  {activeBackendCount}
+                </Badge>
+              )}
             </Button>
           </Tooltip>
         </Group>
@@ -912,10 +1044,14 @@ export function ResourceTable<T extends MRT_RowData>({ config, basePath, columns
               <Group justify="space-between" align="center">
                 <Group gap={6}>
                   <IconDatabase size={16} color="var(--mantine-color-blue-6)" />
-                  <Text size="sm" fw={500}>進階搜尋</Text>
-                  <Text size="xs" c="dimmed">— 查詢結果由伺服器回傳</Text>
+                  <Text size="sm" fw={500}>
+                    進階搜尋
+                  </Text>
+                  <Text size="xs" c="dimmed">
+                    — 查詢結果由伺服器回傳
+                  </Text>
                 </Group>
-                
+
                 {disableQB && (
                   <SegmentedControl
                     size="xs"
@@ -932,10 +1068,10 @@ export function ResourceTable<T extends MRT_RowData>({ config, basePath, columns
               {/* 條件模式 - 使用 CSS 隱藏以保留表單狀態 */}
               <Box style={{ display: searchMode === 'condition' ? 'block' : 'none' }}>
                 {/* Meta 篩選 */}
-                <MetaSearchForm 
-                  onSubmit={handleConditionSearch} 
-                  initialValues={editingState.condition.meta} 
-                  hideButtons 
+                <MetaSearchForm
+                  onSubmit={handleConditionSearch}
+                  initialValues={editingState.condition.meta}
+                  hideButtons
                   onChange={handleMetaConditionChange}
                 />
 
@@ -943,10 +1079,10 @@ export function ResourceTable<T extends MRT_RowData>({ config, basePath, columns
                 {normalizedSearchableFields.length > 0 && (
                   <>
                     <Divider label="資料欄位篩選" labelPosition="center" my="sm" />
-                    <SearchForm 
-                      fields={normalizedSearchableFields} 
-                      onSubmit={handleConditionSearch} 
-                      initialConditions={editingState.condition.data} 
+                    <SearchForm
+                      fields={normalizedSearchableFields}
+                      onSubmit={handleConditionSearch}
+                      initialConditions={editingState.condition.data}
                       hideButtons
                       onChange={handleDataConditionChange}
                     />
@@ -955,7 +1091,7 @@ export function ResourceTable<T extends MRT_RowData>({ config, basePath, columns
 
                 {/* 結果數量限制和排序（兩種模式通用） */}
                 <Divider label="查詢選項" labelPosition="center" my="sm" />
-                
+
                 {/* 結果數量限制 */}
                 <NumberInput
                   label="結果數量限制"
@@ -968,16 +1104,23 @@ export function ResourceTable<T extends MRT_RowData>({ config, basePath, columns
                   size="sm"
                   allowDecimal={false}
                 />
-                
+
                 {/* 多層排序 */}
                 <Box mt="md">
                   <Group justify="space-between" mb="xs">
-                    <Text size="sm" fw={500}>排序設定</Text>
-                    <Button 
-                      size="xs" 
-                      variant="light" 
+                    <Text size="sm" fw={500}>
+                      排序設定
+                    </Text>
+                    <Button
+                      size="xs"
+                      variant="light"
                       leftSection={<IconPlus size={14} />}
-                      onClick={() => handleSortByChange([...(editingState.sortBy || []), { field: '', order: 'asc' }])}
+                      onClick={() =>
+                        handleSortByChange([
+                          ...(editingState.sortBy || []),
+                          { field: '', order: 'asc' },
+                        ])
+                      }
                     >
                       新增排序
                     </Button>
@@ -993,7 +1136,9 @@ export function ResourceTable<T extends MRT_RowData>({ config, basePath, columns
                   <Stack gap="xs">
                     {editingState.sortBy?.map((sort, index) => (
                       <Group key={index} gap="xs" wrap="nowrap">
-                        <Text size="sm" c="dimmed" style={{ minWidth: '24px' }}>{index + 1}.</Text>
+                        <Text size="sm" c="dimmed" style={{ minWidth: '24px' }}>
+                          {index + 1}.
+                        </Text>
                         <Select
                           placeholder="選擇欄位"
                           value={sort.field ?? ''}
@@ -1011,7 +1156,10 @@ export function ResourceTable<T extends MRT_RowData>({ config, basePath, columns
                           value={sort.order ?? 'asc'}
                           onChange={(value) => {
                             const newSortBy = [...(editingState.sortBy || [])];
-                            newSortBy[index] = { ...newSortBy[index], order: value as 'asc' | 'desc' };
+                            newSortBy[index] = {
+                              ...newSortBy[index],
+                              order: value as 'asc' | 'desc',
+                            };
                             handleSortByChange(newSortBy);
                           }}
                           data={[
@@ -1025,7 +1173,9 @@ export function ResourceTable<T extends MRT_RowData>({ config, basePath, columns
                           size="md"
                           onClick={() => {
                             const newSortBy = editingState.sortBy?.filter((_, i) => i !== index);
-                            handleSortByChange(newSortBy && newSortBy.length > 0 ? newSortBy : undefined);
+                            handleSortByChange(
+                              newSortBy && newSortBy.length > 0 ? newSortBy : undefined,
+                            );
                           }}
                         />
                       </Group>
@@ -1037,9 +1187,9 @@ export function ResourceTable<T extends MRT_RowData>({ config, basePath, columns
                 <Group gap="sm" justify="space-between" mt="md">
                   {disableQB && (
                     <Tooltip label="將目前條件轉換為 QB 語法">
-                      <Button 
-                        size="xs" 
-                        variant="subtle" 
+                      <Button
+                        size="xs"
+                        variant="subtle"
                         color="gray"
                         leftSection={<IconCode size={14} />}
                         rightSection={<IconArrowRight size={12} />}
@@ -1051,25 +1201,27 @@ export function ResourceTable<T extends MRT_RowData>({ config, basePath, columns
                   )}
                   <Group gap="xs" ml="auto">
                     {activeBackendCount > 0 && (
-                      <Button 
-                        size="xs" 
-                        variant="subtle" 
-                        color="gray" 
-                        leftSection={<IconFilterOff size={14} />} 
+                      <Button
+                        size="xs"
+                        variant="subtle"
+                        color="gray"
+                        leftSection={<IconFilterOff size={14} />}
                         onClick={handleConditionClear}
                       >
                         清除全部
                       </Button>
                     )}
-                    <Button 
-                      size="xs" 
+                    <Button
+                      size="xs"
                       disabled={
-                        JSON.stringify(editingState.condition) === JSON.stringify(activeSearch.condition) &&
+                        JSON.stringify(editingState.condition) ===
+                          JSON.stringify(activeSearch.condition) &&
                         editingState.resultLimit === activeSearch.resultLimit &&
-                        JSON.stringify(editingState.sortBy) === JSON.stringify(activeSearch.sortBy) &&
+                        JSON.stringify(editingState.sortBy) ===
+                          JSON.stringify(activeSearch.sortBy) &&
                         activeSearch.mode === 'condition'
                       }
-                      leftSection={<IconSearch size={14} />} 
+                      leftSection={<IconSearch size={14} />}
                       onClick={handleConditionSearch}
                     >
                       搜尋
@@ -1083,7 +1235,8 @@ export function ResourceTable<T extends MRT_RowData>({ config, basePath, columns
                 <Stack gap="sm">
                   <Divider label="QB 語法" labelPosition="center" />
                   <Text size="xs" c="dimmed">
-                    範例: QB["level"] {'>'} 50 & QB.created_time().gte(dt.datetime(2024, 1, 1)).order_by("-level", "name").limit(100) | 查全部: QB.all().limit(10)
+                    範例: QB["level"] {'>'} 50 & QB.created_time().gte(dt.datetime(2024, 1,
+                    1)).order_by("-level", "name").limit(100) | 查全部: QB.all().limit(10)
                   </Text>
                   <Textarea
                     placeholder={'QB["level"] > 50.order_by(QB.created_time().desc()).limit(100)'}
@@ -1096,14 +1249,20 @@ export function ResourceTable<T extends MRT_RowData>({ config, basePath, columns
 
                   <Group gap="xs" justify="flex-end">
                     {activeBackendCount > 0 && (
-                      <Button size="xs" variant="subtle" color="gray" leftSection={<IconX size={14} />} onClick={handleQBClear}>
+                      <Button
+                        size="xs"
+                        variant="subtle"
+                        color="gray"
+                        leftSection={<IconX size={14} />}
+                        onClick={handleQBClear}
+                      >
                         清除
                       </Button>
                     )}
-                    <Button 
-                      size="xs" 
+                    <Button
+                      size="xs"
                       disabled={editingState.qb === activeSearch.qb && activeSearch.mode === 'qb'}
-                      leftSection={<IconSearch size={14} />} 
+                      leftSection={<IconSearch size={14} />}
                       onClick={handleQBSubmit}
                     >
                       查詢

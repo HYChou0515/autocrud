@@ -1,6 +1,6 @@
 /**
  * RevisionHistorySection - Shared revision history display component
- * 
+ *
  * Shows timeline of resource revisions with timestamps and authors
  * Supports clicking on revisions to view historical data
  */
@@ -32,21 +32,21 @@ export interface RevisionHistorySectionProps {
 
 /**
  * Displays revision history in a timeline format
- * 
+ *
  * @param revisions - Array of revision objects
  * @param currentRevisionId - ID of the currently active revision
  * @param selectedRevisionId - ID of the revision being viewed
  * @param onRevisionSelect - Callback when a revision is clicked
  */
-export function RevisionHistorySection({ 
-  revisions, 
+export function RevisionHistorySection({
+  revisions,
   currentRevisionId,
   selectedRevisionId,
   onRevisionSelect,
   resourceId,
 }: RevisionHistorySectionProps) {
   const [sortOrder, setSortOrder] = useState<'desc' | 'asc'>('desc'); // Default: newest first
-  
+
   if (!revisions || revisions.length === 0) {
     return null;
   }
@@ -55,7 +55,7 @@ export function RevisionHistorySection({
   const sortedRevisions = [...revisions].sort((a, b) => {
     const timeA = a.created_time || a.updated_time || '';
     const timeB = b.created_time || b.updated_time || '';
-    return sortOrder === 'desc' 
+    return sortOrder === 'desc'
       ? timeB.localeCompare(timeA) // Newest first
       : timeA.localeCompare(timeB); // Oldest first
   });
@@ -73,7 +73,13 @@ export function RevisionHistorySection({
           <Button
             variant="light"
             size="xs"
-            leftSection={sortOrder === 'desc' ? <IconSortDescending size={14} /> : <IconSortAscending size={14} />}
+            leftSection={
+              sortOrder === 'desc' ? (
+                <IconSortDescending size={14} />
+              ) : (
+                <IconSortAscending size={14} />
+              )
+            }
             onClick={() => setSortOrder(sortOrder === 'desc' ? 'asc' : 'desc')}
           >
             {sortOrder === 'desc' ? '新到舊' : '舊到新'}
@@ -97,7 +103,11 @@ export function RevisionHistorySection({
                   <Group gap="xs" justify="space-between">
                     <Group gap="xs">
                       {revId ? (
-                        <RevisionIdCell revisionId={revId} resourceId={resourceId} showCopy={false} />
+                        <RevisionIdCell
+                          revisionId={revId}
+                          resourceId={resourceId}
+                          showCopy={false}
+                        />
                       ) : (
                         <Text size="sm" fw={500}>
                           Revision {sortedRevisions.length - idx}
@@ -135,7 +145,7 @@ export function RevisionHistorySection({
               >
                 {time && (
                   <Text size="xs" c="dimmed">
-                    <TimeDisplay time={time} variant="full" />
+                    <TimeDisplay time={time} format="full" />
                   </Text>
                 )}
                 {author && (

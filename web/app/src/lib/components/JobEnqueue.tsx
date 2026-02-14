@@ -1,11 +1,11 @@
 /**
  * JobEnqueue - Job creation form
- * 
+ *
  * Creates new jobs with payload validation
  */
 
 import { Container, Title, Stack, Group, Button, Alert, Text } from '@mantine/core';
-import { IconArrowLeft, IconAlertCircle, IconInfoCircle } from '@tabler/icons-react';
+import { IconArrowLeft, IconInfoCircle } from '@tabler/icons-react';
 import { useNavigate } from '@tanstack/react-router';
 import type { ResourceConfig } from '../resources';
 import { ResourceForm } from './ResourceForm';
@@ -36,9 +36,7 @@ export function JobEnqueue<T extends Record<string, any>>({
 
   // Extract payload Zod schema (if available)
   const payloadZodSchema = config.zodSchema
-    ? config.zodSchema.pick(
-        Object.fromEntries(payloadFields.map((f) => [f.name, true]))
-      )
+    ? config.zodSchema.pick(Object.fromEntries(payloadFields.map((f) => [f.name, true])))
     : undefined;
 
   const payloadConfig = {
@@ -55,7 +53,7 @@ export function JobEnqueue<T extends Record<string, any>>({
           <div>
             <Title order={2}>Enqueue Job</Title>
             <Text c="dimmed" size="sm">
-              Create a new {config.singularLabel.toLowerCase()} job
+              Create a new {config.label.toLowerCase()} job
             </Text>
           </div>
           <Button
@@ -75,9 +73,10 @@ export function JobEnqueue<T extends Record<string, any>>({
 
         {/* Form */}
         <ResourceForm
-          config={payloadConfig}
-          onSuccess={(resource) => {
-            navigate({ to: `${basePath}/${resource.meta.resource_id}` });
+          config={payloadConfig as ResourceConfig<Record<string, any>>}
+          onSubmit={async (values) => {
+            const result = await config.apiClient.create(values as T);
+            navigate({ to: `${basePath}/${result.data.resource_id}` });
           }}
           onCancel={() => navigate({ to: basePath })}
           submitLabel="Enqueue Job"

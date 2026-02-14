@@ -1,6 +1,6 @@
 /**
  * ResourceTable 元件 - 從 resource-table 模組 re-export
- * 
+ *
  * 此檔案保持向後相容性，實際實作已移至 ./resource-table/ 資料夾
  */
 

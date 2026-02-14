@@ -12,7 +12,10 @@ export interface ResourceCreateProps<T> {
 /**
  * Generic resource create page
  */
-export function ResourceCreate<T extends Record<string, any>>({ config, basePath }: ResourceCreateProps<T>) {
+export function ResourceCreate<T extends Record<string, any>>({
+  config,
+  basePath,
+}: ResourceCreateProps<T>) {
   const navigate = useNavigate();
 
   const handleSubmit = async (values: T) => {
@@ -24,7 +27,11 @@ export function ResourceCreate<T extends Record<string, any>>({ config, basePath
     <Container size="md" py="xl">
       <Stack gap="lg">
         <Group>
-          <Button variant="subtle" leftSection={<IconArrowLeft size={16} />} onClick={() => navigate({ to: basePath })}>
+          <Button
+            variant="subtle"
+            leftSection={<IconArrowLeft size={16} />}
+            onClick={() => navigate({ to: basePath })}
+          >
             Back
           </Button>
           <Title order={2}>Create {config.label}</Title>
