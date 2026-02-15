@@ -229,7 +229,6 @@ export function ResourceDetail<T extends Record<string, any>>({
 
   const {
     resource,
-    revisions,
     loading,
     refresh: _refresh,
     update,
@@ -397,32 +396,6 @@ export function ResourceDetail<T extends Record<string, any>>({
             </div>
           </Group>
           <Group>
-            {/* Revision Selector */}
-            {revisions.length > 1 && (
-              <Select
-                placeholder="Select revision"
-                value={selectedRevision ?? meta.current_revision_id}
-                onChange={(value) =>
-                  handleRevisionSelect(value === meta.current_revision_id ? null : value)
-                }
-                data={[...revisions]
-                  .sort(
-                    (a, b) =>
-                      new Date(b.created_time).getTime() - new Date(a.created_time).getTime(),
-                  )
-                  .map((r) => {
-                    const revId = r.revision_id || r.uid || '';
-                    const isCurrent = revId === meta.current_revision_id;
-                    return {
-                      value: revId,
-                      label: formatRevisionLabel(revId, meta.resource_id, isCurrent),
-                    };
-                  })}
-                style={{ width: 200 }}
-                size="sm"
-              />
-            )}
-
             {!isViewingHistorical && !meta.is_deleted && (
               <>
                 <Button
@@ -728,13 +701,13 @@ export function ResourceDetail<T extends Record<string, any>>({
         <MetadataSection meta={meta} revisionInfo={revision_info} variant="full" />
 
         <RevisionHistorySection
-          revisions={revisions}
+          config={config}
+          resourceId={meta.resource_id}
           currentRevisionId={meta.current_revision_id}
           onRevisionSelect={(revisionId) => {
             handleRevisionSelect(revisionId === meta.current_revision_id ? null : revisionId);
           }}
           selectedRevisionId={selectedRevision || undefined}
-          resourceId={meta.resource_id}
         />
       </Stack>
 

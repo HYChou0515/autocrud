@@ -5,11 +5,12 @@
  * Supports clicking on revisions to view historical data
  */
 
-import { Paper, Stack, Group, Text, Badge, Timeline, ActionIcon, Button } from '@mantine/core';
-import { IconClock, IconEye, IconSortAscending, IconSortDescending } from '@tabler/icons-react';
-import { useState } from 'react';
+import { Paper, Stack, Group, Text, Badge, Timeline, ActionIcon, Button, Loader, Center } from '@mantine/core';
+import { IconClock, IconEye, IconSortAscending, IconSortDescending, IconChevronDown } from '@tabler/icons-react';
+import { useState, useEffect, useCallback } from 'react';
 import { TimeDisplay } from './TimeDisplay';
 import { RevisionIdCell } from './resource-table/RevisionIdCell';
+import type { ResourceConfig } from '../resources';
 
 export interface Revision {
   revision_id?: string;
@@ -23,29 +24,93 @@ export interface Revision {
 }
 
 export interface RevisionHistorySectionProps {
-  revisions: Revision[];
+  config: ResourceConfig;
+  resourceId: string;
   currentRevisionId?: string;
   selectedRevisionId?: string;
   onRevisionSelect?: (revisionId: string) => void;
-  resourceId?: string;
 }
 
 /**
  * Displays revision history in a timeline format
  *
- * @param revisions - Array of revision objects
+ * @param config - Resource configuration
+ * @param resourceId - Resource ID
  * @param currentRevisionId - ID of the currently active revision
  * @param selectedRevisionId - ID of the revision being viewed
  * @param onRevisionSelect - Callback when a revision is clicked
  */
 export function RevisionHistorySection({
-  revisions,
+  config,
+  resourceId,
   currentRevisionId,
   selectedRevisionId,
   onRevisionSelect,
-  resourceId,
 }: RevisionHistorySectionProps) {
   const [sortOrder, setSortOrder] = useState<'desc' | 'asc'>('desc'); // Default: newest first
+  const [revisions, setRevisions] = useState<Revision[]>([]);
+  const [total, setTotal] = useState(0);
+  const [hasMore, setHasMore] = useState(false);
+  const [loading, setLoading] = useState(true);
+  const [loadingMore, setLoadingMore] = useState(false);
+
+  const fetchRevisions = useCallback(
+    async (fromRevisionId?: string) => {
+      if (!fromRevisionId) {
+        setLoading(true);
+      } else {
+        setLoadingMore(true);
+      }
+      try {
+        const params: any = {
+          chain_only: true,
+          limit: 10,
+        };
+        if (fromRevisionId) {
+          params.from_revision_id = fromRevisionId;
+        }
+        const response = await config.apiClient.revisionList(resourceId, params);
+        
+        if (!fromRevisionId) {
+          // Initial load
+          setRevisions(response.data.revisions);
+        } else {
+          // Load more - append new revisions (skip first one as it's the from_revision_id)
+          setRevisions((prev) => [...prev, ...response.data.revisions.slice(1)]);
+        }
+        setTotal(response.data.total);
+        setHasMore(response.data.has_more);
+      } catch (error) {
+        console.error('Failed to fetch revisions:', error);
+      } finally {
+        setLoading(false);
+        setLoadingMore(false);
+      }
+    },
+    [config.apiClient, resourceId],
+  );
+
+  useEffect(() => {
+    fetchRevisions();
+  }, [fetchRevisions]);
+
+  const handleLoadMore = () => {
+    const lastRevision = revisions[revisions.length - 1];
+    if (lastRevision?.revision_id || lastRevision?.uid) {
+      const lastRevId = lastRevision.revision_id || lastRevision.uid;
+      fetchRevisions(lastRevId);
+    }
+  };
+
+  if (loading) {
+    return (
+      <Paper p="md" withBorder>
+        <Center py="xl">
+          <Loader size="sm" />
+        </Center>
+      </Paper>
+    );
+  }
 
   if (!revisions || revisions.length === 0) {
     return null;
@@ -157,6 +222,20 @@ export function RevisionHistorySection({
             );
           })}
         </Timeline>
+
+        {hasMore && (
+          <Center mt="md">
+            <Button
+              variant="light"
+              size="xs"
+              leftSection={<IconChevronDown size={14} />}
+              onClick={handleLoadMore}
+              loading={loadingMore}
+            >
+              載入更多 (+10)
+            </Button>
+          </Center>
+        )}
       </Stack>
     </Paper>
   );

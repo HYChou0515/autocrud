@@ -14,7 +14,6 @@ from autocrud.crud.route_templates.basic import (
 )
 from autocrud.types import (
     IResourceManager,
-    Resource,
     ResourceMeta,
     RevisionInfo,
 )
@@ -24,31 +23,6 @@ T = TypeVar("T")
 
 class ReadRouteTemplate(BaseRouteTemplate, Generic[T]):
     """讀取單一資源的路由模板"""
-
-    def _get_resource_and_meta(
-        self,
-        resource_manager: IResourceManager[T],
-        resource_id: str,
-        revision_id: Optional[str],
-        current_user: str,
-        current_time: dt.datetime,
-    ) -> tuple[Resource[T], ResourceMeta]:
-        """獲取資源和元數據"""
-        with resource_manager.meta_provide(current_user, current_time):
-            meta = resource_manager.get_meta(resource_id)
-            if revision_id:
-                resource = resource_manager.get_resource_revision(
-                    resource_id,
-                    revision_id,
-                    schema_version=meta.schema_version,
-                )
-            else:
-                resource = resource_manager.get(
-                    resource_id,
-                    revision_id=meta.current_revision_id,
-                    schema_version=meta.schema_version,
-                )
-        return resource, meta
 
     def apply(
         self,
@@ -285,6 +259,17 @@ class ReadRouteTemplate(BaseRouteTemplate, Generic[T]):
                   - `meta`: Current resource metadata
                   - `revisions`: Array of all revision information objects
                     - Each revision includes uid, revision_id, parent_revision_id, schema_version, data_hash, and status
+                                    - `total`: Total number of revisions matching the query (before limit)
+                                    - `has_more`: Whether more revisions are available beyond the returned list
+
+                                **Query Parameters:**
+                                - `limit` (default 10): Maximum number of revisions to return
+                                - `offset` (default 0): Number of revisions to skip
+                                - `sort`: `created_time` or `-created_time` (default `-created_time`)
+                                - `created_time_start`: ISO datetime lower bound (inclusive)
+                                - `created_time_end`: ISO datetime upper bound (inclusive)
+                                - `from_revision_id`: Start listing from this revision_id (inclusive)
+                                - `chain_only`: Return only the parent chain from current revision
 
                 **Use Cases:**
                 - View complete change history of a resource
@@ -300,6 +285,10 @@ class ReadRouteTemplate(BaseRouteTemplate, Generic[T]):
 
                 **Examples:**
                 - `GET /{model_name}/123/revision-list` - Get all revisions for resource 123
+                - `GET /{model_name}/123/revision-list?limit=10&offset=20`
+                - `GET /{model_name}/123/revision-list?created_time_start=2025-01-01T00:00:00`
+                - `GET /{model_name}/123/revision-list?from_revision_id=rev123`
+                - `GET /{model_name}/123/revision-list?chain_only=true`
                 - Response includes metadata and array of revision information
 
                 **Error Responses:**
@@ -308,6 +297,13 @@ class ReadRouteTemplate(BaseRouteTemplate, Generic[T]):
         )
         async def get_resource_revision_list(
             resource_id: str,
+            limit: int = 10,
+            offset: int = 0,
+            created_time_start: str | None = None,
+            created_time_end: str | None = None,
+            from_revision_id: str | None = None,
+            chain_only: bool = False,
+            sort: str = "-created_time",
             current_user: str = Depends(self.deps.get_user),
             current_time: dt.datetime = Depends(self.deps.get_now),
         ):
@@ -315,6 +311,19 @@ class ReadRouteTemplate(BaseRouteTemplate, Generic[T]):
             try:
                 with resource_manager.meta_provide(current_user, current_time):
                     meta = resource_manager.get_meta(resource_id)
+
+                    if sort not in {"created_time", "-created_time"}:
+                        raise HTTPException(status_code=400, detail="Invalid sort")
+
+                    if limit < 1:
+                        raise HTTPException(
+                            status_code=400, detail="limit must be >= 1"
+                        )
+                    if offset < 0:
+                        raise HTTPException(
+                            status_code=400, detail="offset must be >= 0"
+                        )
+
                     revision_ids = resource_manager.list_revisions(resource_id)
                     revision_infos: list[RevisionInfo] = []
                     for rev_id in revision_ids:
@@ -329,10 +338,65 @@ class ReadRouteTemplate(BaseRouteTemplate, Generic[T]):
                             # 如果無法獲取某個版本，跳過
                             continue
 
+                    # Sort by created_time
+                    reverse = sort == "-created_time"
+                    revision_infos.sort(key=lambda r: r.created_time, reverse=reverse)
+
+                    # Filter by created_time range
+                    if created_time_start:
+                        start_dt = dt.datetime.fromisoformat(created_time_start)
+                        revision_infos = [
+                            r for r in revision_infos if r.created_time >= start_dt
+                        ]
+                    if created_time_end:
+                        end_dt = dt.datetime.fromisoformat(created_time_end)
+                        revision_infos = [
+                            r for r in revision_infos if r.created_time <= end_dt
+                        ]
+
+                    # Filter by starting revision_id (inclusive)
+                    if from_revision_id:
+                        idx = next(
+                            (
+                                i
+                                for i, r in enumerate(revision_infos)
+                                if r.revision_id == from_revision_id
+                            ),
+                            None,
+                        )
+                        if idx is None:
+                            raise HTTPException(
+                                status_code=404, detail="revision_id not found"
+                            )
+                        revision_infos = revision_infos[idx:]
+
+                    # Parent chain only (walk via parent_revision_id)
+                    if chain_only:
+                        by_id = {r.revision_id: r for r in revision_infos}
+                        chain: list[RevisionInfo] = []
+                        cur = (
+                            from_revision_id
+                            if from_revision_id
+                            else meta.current_revision_id
+                        )
+                        while cur:
+                            info = by_id.get(cur)
+                            if info is None:
+                                break
+                            chain.append(info)
+                            cur = info.parent_revision_id
+                        revision_infos = chain
+
+                    total = len(revision_infos)
+                    revision_infos = revision_infos[offset : offset + limit]
+                    has_more = offset + limit < total
+
                     return MsgspecResponse(
                         RevisionListResponse(
                             meta=meta,
                             revisions=revision_infos,
+                            total=total,
+                            has_more=has_more,
                         ),
                     )
             except HTTPException:

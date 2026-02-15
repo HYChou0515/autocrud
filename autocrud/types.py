@@ -206,7 +206,7 @@ class DisplayName:
     Usage::
 
         class Character(Struct):
-            name: Annotated[str, DisplayName()]   # ← this field is the display name
+            name: Annotated[str, DisplayName()]  # ← this field is the display name
             level: int = 1
 
     The AutoCRUD framework will inject ``x-display-name-field`` into the

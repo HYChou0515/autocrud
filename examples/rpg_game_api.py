@@ -39,7 +39,7 @@ from autocrud.message_queue.rabbitmq import RabbitMQMessageQueueFactory
 from autocrud.message_queue.simple import SimpleMessageQueueFactory
 from autocrud.query import QB
 from autocrud.resource_manager.storage_factory import DiskStorageFactory
-from autocrud.types import Binary, Job, RefRevision, Resource, DisplayName
+from autocrud.types import Binary, DisplayName, Job, RefRevision, Resource
 
 
 class CharacterClass(Enum):
@@ -243,7 +243,6 @@ def create_sample_data():
 
     # 🎯 創建技能
     skills = [
-        
         Skill(
             skname="火球術",
             skill_type=SkillType.ACTIVE,
