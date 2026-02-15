@@ -1193,9 +1193,7 @@ class TestRevisionListEdgeCases:
             )
 
         # 第一次載入：chain_only=true, limit=2
-        resp1 = client.get(
-            f"/user/{resource_id}/revision-list?chain_only=true&limit=2"
-        )
+        resp1 = client.get(f"/user/{resource_id}/revision-list?chain_only=true&limit=2")
         assert resp1.status_code == 200
         data1 = resp1.json()
         assert len(data1["revisions"]) == 2

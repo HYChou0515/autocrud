@@ -61,23 +61,35 @@ class ItemRarity(Enum):
     AUTOCRUD = "🚀 AutoCRUD 神器"  # 特殊等級
 
 
-class SkillType(Enum):
-    """技能類型"""
+class ActiveSkillData(Struct, tag="active"):
+    """主動技能數據"""
 
-    ACTIVE = "主動技能"
-    PASSIVE = "被動技能"
-    ULTIMATE = "終極技能"
-
-
-class Skill(Struct):
-    """遊戲技能"""
-
-    skill_type: SkillType
-    skname: Annotated[str, DisplayName()]
-    description: str = ""
     mp_cost: int = 0
     cooldown_seconds: int = 0
     damage: int = 0
+
+
+class PassiveSkillData(Struct, tag="passive"):
+    """被動技能數據"""
+
+    buff_percentage: int = 0  # 增益百分比
+
+
+class UltimateSkillData(Struct, tag="ultimate"):
+    """終極技能數據"""
+
+    mp_cost: int = 0
+    cooldown_seconds: int = 0
+    damage: int = 0
+    area_of_effect: bool = False  # 是否為範圍攻擊
+
+
+class Skill(Struct):
+    """遊戲技能（使用 Union 區分技能類型）"""
+
+    skname: Annotated[str, DisplayName()]
+    detail: ActiveSkillData | PassiveSkillData | UltimateSkillData
+    description: str = ""
     required_level: int = 1
     required_class: Optional[CharacterClass] = None  # None = 所有職業可學
 
@@ -245,70 +257,57 @@ def create_sample_data():
     skills = [
         Skill(
             skname="火球術",
-            skill_type=SkillType.ACTIVE,
+            detail=ActiveSkillData(mp_cost=30, cooldown_seconds=5, damage=150),
             description="向敵人發射一顆強力火球",
-            mp_cost=30,
-            cooldown_seconds=5,
-            damage=150,
             required_level=10,
             required_class=CharacterClass.MAGE,
         ),
         Skill(
             skname="治癒之光",
-            skill_type=SkillType.ACTIVE,
+            detail=ActiveSkillData(mp_cost=25, cooldown_seconds=8),
             description="恢復自身或隊友的生命值",
-            mp_cost=25,
-            cooldown_seconds=8,
-            damage=0,
             required_level=5,
         ),
         Skill(
             skname="重擊",
-            skill_type=SkillType.ACTIVE,
+            detail=ActiveSkillData(mp_cost=20, cooldown_seconds=3, damage=200),
             description="對單一敵人造成巨額物理傷害",
-            mp_cost=20,
-            cooldown_seconds=3,
-            damage=200,
             required_level=15,
             required_class=CharacterClass.WARRIOR,
         ),
         Skill(
             skname="精準射擊",
-            skill_type=SkillType.ACTIVE,
+            detail=ActiveSkillData(mp_cost=15, cooldown_seconds=2, damage=120),
             description="100% 命中的遠程攻擊",
-            mp_cost=15,
-            cooldown_seconds=2,
-            damage=120,
             required_level=8,
             required_class=CharacterClass.ARCHER,
         ),
         Skill(
             skname="CRUD 終極奧義",
-            skill_type=SkillType.ULTIMATE,
+            detail=UltimateSkillData(
+                mp_cost=100, cooldown_seconds=60, damage=9999, area_of_effect=True
+            ),
             description="一鍵生成完美的 RESTful API，對所有敵人造成毀滅性打擊",
-            mp_cost=100,
-            cooldown_seconds=60,
-            damage=9999,
             required_level=50,
             required_class=CharacterClass.DATA_KEEPER,
         ),
         Skill(
             skname="鋼鐵意志",
-            skill_type=SkillType.PASSIVE,
+            detail=PassiveSkillData(buff_percentage=20),
             description="永久提升防禦力 20%",
             required_level=20,
             required_class=CharacterClass.WARRIOR,
         ),
         Skill(
             skname="魔力親和",
-            skill_type=SkillType.PASSIVE,
+            detail=PassiveSkillData(buff_percentage=15),
             description="永久降低所有技能 MP 消耗 15%",
             required_level=15,
             required_class=CharacterClass.MAGE,
         ),
         Skill(
             skname="經驗加成",
-            skill_type=SkillType.PASSIVE,
+            detail=PassiveSkillData(buff_percentage=10),
             description="獲得的經驗值增加 10%",
             required_level=1,
         ),
@@ -320,7 +319,7 @@ def create_sample_data():
             try:
                 info = skill_manager.create(skill)
                 skill_ids[skill.skname] = info.resource_id
-                print(f"✅ 創建技能: {skill.skname} [{skill.skill_type.value}]")
+                print(f"✅ 創建技能: {skill.skname} [{type(skill.detail).__name__}]")
             except Exception as e:
                 print(f"❌ 技能創建失敗: {e}")
 
@@ -773,7 +772,6 @@ def configure_crud():
         Skill,
         indexed_fields=[
             ("name", str),
-            ("skill_type", SkillType),
             ("required_level", int),
         ],
     )

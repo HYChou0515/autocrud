@@ -18,10 +18,11 @@ import {
   Tooltip,
   ActionIcon,
   Paper,
+  Radio,
 } from '@mantine/core';
 import { DateTimePicker } from '@mantine/dates';
 import { IconLayersSubtract, IconTrash, IconPlus, IconLink, IconX } from '@tabler/icons-react';
-import type { ResourceConfig, ResourceField, FieldVariant } from '../resources';
+import type { ResourceConfig, ResourceField, FieldVariant, UnionMeta } from '../resources';
 import { RefSelect, RefMultiSelect, RefRevisionSelect, RefRevisionMultiSelect } from './RefSelect';
 
 /** Get a value from an object using dot-notation path */
@@ -228,6 +229,9 @@ export function ResourceForm<T extends Record<string, any>>({
   // Runtime-adjustable form depth (how deep nested objects expand into form fields)
   const [formDepth, setFormDepth] = useState<number>(config.maxFormDepth ?? maxAvailableDepth);
 
+  // Track selected type for simple union fields (discriminatorField === '__type')
+  const [simpleUnionTypes, setSimpleUnionTypes] = useState<Record<string, string>>({});
+
   /**
    * Compute visible fields and collapsed groups based on formDepth.
    * - visibleFields: fields rendered as individual form inputs
@@ -368,9 +372,12 @@ export function ResourceForm<T extends Record<string, any>>({
       } else {
         setByPath(processedInitialValues, field.name, { _mode: 'empty' } as BinaryFormValue);
       }
-    } else if (val === null || val === undefined) {
-      // Convert null/undefined to empty string for text-like inputs to avoid React warning
-      if (field.type === 'string' || field.type === undefined) {
+    } else if (val == null) {
+      // Convert null/undefined to proper defaults to avoid React warnings and Zod errors
+      if (field.enumValues && field.enumValues.length > 0) {
+        // Nullable enum: keep null so Zod z.enum().nullable() is satisfied
+        setByPath(processedInitialValues, field.name, null);
+      } else if (field.type === 'string' || field.type === undefined) {
         setByPath(processedInitialValues, field.name, '');
       } else if (field.type === 'number') {
         setByPath(processedInitialValues, field.name, '');
@@ -1022,6 +1029,221 @@ export function ResourceForm<T extends Record<string, any>>({
     return onSubmit(processed as T);
   };
 
+  /**
+   * Render a union field as Radio Cards (discriminated) or Radio Group (simple).
+   * - Discriminated unions: Radio.Card per variant → sub-fields for selected variant
+   * - Simple unions: Radio buttons for type → matching input control
+   */
+  const renderUnionField = (
+    field: ResourceField,
+    unionMeta: UnionMeta,
+    key: string,
+    fieldLabel: string,
+    isRequired: boolean,
+  ) => {
+    const { name } = field;
+    const isDiscriminated = unionMeta.discriminatorField !== '__type';
+    const currentValue = (form.getValues() as Record<string, any>)[name];
+
+    if (isDiscriminated) {
+      // ── Discriminated union: Radio.Card for each variant ──
+      const discField = unionMeta.discriminatorField;
+      const selectedTag = currentValue?.[discField] ?? '';
+      const selectedVariant = unionMeta.variants.find((v) => v.tag === selectedTag);
+
+      const handleVariantChange = (tag: string) => {
+        const variant = unionMeta.variants.find((v) => v.tag === tag);
+        if (!variant) return;
+        // Build a new value object: discriminator + empty sub-fields
+        const newValue: Record<string, any> = { [discField]: tag };
+        if (variant.fields) {
+          for (const sf of variant.fields) {
+            if (sf.type === 'number') newValue[sf.name] = '';
+            else if (sf.type === 'boolean') newValue[sf.name] = false;
+            else if (sf.type === 'object') newValue[sf.name] = '';
+            else newValue[sf.name] = '';
+          }
+        }
+        form.setFieldValue(name as any, newValue as any);
+      };
+
+      return (
+        <Stack key={key} gap="xs">
+          <Radio.Group
+            label={fieldLabel}
+            required={isRequired}
+            value={selectedTag}
+            onChange={(val) => handleVariantChange(val)}
+          >
+            <Stack gap="xs" mt="xs">
+              {unionMeta.variants.map((v) => (
+                <Radio.Card key={v.tag} value={v.tag} radius="md" withBorder p="md">
+                  <Group wrap="nowrap" align="flex-start">
+                    <Radio.Indicator />
+                    <div>
+                      <Text fw={500} size="sm">
+                        {v.label}
+                      </Text>
+                      {v.schemaName && (
+                        <Text size="xs" c="dimmed">
+                          {v.schemaName}
+                        </Text>
+                      )}
+                    </div>
+                  </Group>
+                </Radio.Card>
+              ))}
+            </Stack>
+          </Radio.Group>
+
+          {/* Render sub-fields of the selected variant */}
+          {selectedVariant?.fields && selectedVariant.fields.length > 0 && (
+            <Paper withBorder p="sm" radius="sm">
+              <Stack gap="xs">
+                {selectedVariant.fields.map((sf) => {
+                  const subPath = `${name}.${sf.name}`;
+
+                  // Enum → Select
+                  if (sf.enumValues && sf.enumValues.length > 0) {
+                    return (
+                      <Select
+                        key={subPath}
+                        label={sf.label}
+                        required={sf.isRequired}
+                        data={sf.enumValues.map((v) => ({ value: v, label: v }))}
+                        clearable={sf.isNullable}
+                        {...form.getInputProps(subPath)}
+                      />
+                    );
+                  }
+                  // Boolean → Switch
+                  if (sf.type === 'boolean') {
+                    return (
+                      <Switch
+                        key={subPath}
+                        label={sf.label}
+                        {...form.getInputProps(subPath, { type: 'checkbox' })}
+                      />
+                    );
+                  }
+                  // Number
+                  if (sf.type === 'number') {
+                    return (
+                      <NumberInput
+                        key={subPath}
+                        label={sf.label}
+                        required={sf.isRequired}
+                        {...form.getInputProps(subPath)}
+                      />
+                    );
+                  }
+                  // Object → JSON textarea
+                  if (sf.type === 'object') {
+                    return (
+                      <Textarea
+                        key={subPath}
+                        label={sf.label}
+                        required={sf.isRequired}
+                        placeholder="{}"
+                        minRows={2}
+                        styles={{ input: { fontFamily: 'monospace', fontSize: '13px' } }}
+                        {...form.getInputProps(subPath)}
+                      />
+                    );
+                  }
+                  // Default: text
+                  return (
+                    <TextInput
+                      key={subPath}
+                      label={sf.label}
+                      required={sf.isRequired}
+                      {...form.getInputProps(subPath)}
+                    />
+                  );
+                })}
+              </Stack>
+            </Paper>
+          )}
+        </Stack>
+      );
+    }
+
+    // ── Simple union (discriminatorField === '__type') ──
+    // Use plain Radio buttons for type selection
+    const inferType = (): string => {
+      if (currentValue === null || currentValue === undefined || currentValue === '') {
+        return simpleUnionTypes[name] || unionMeta.variants[0]?.tag || '';
+      }
+      if (typeof currentValue === 'number') return 'number';
+      if (typeof currentValue === 'boolean') return 'boolean';
+      return 'string';
+    };
+    const selectedType = inferType();
+
+    const handleTypeChange = (tag: string) => {
+      setSimpleUnionTypes((prev) => ({ ...prev, [name]: tag }));
+      const variant = unionMeta.variants.find((v) => v.tag === tag);
+      if (!variant) return;
+      // Reset value to type-appropriate default
+      if (variant.type === 'number' || variant.type === 'integer') {
+        form.setFieldValue(name as any, '' as any);
+      } else if (variant.type === 'boolean') {
+        form.setFieldValue(name as any, false as any);
+      } else {
+        form.setFieldValue(name as any, '' as any);
+      }
+    };
+
+    const renderSimpleInput = () => {
+      const variant = unionMeta.variants.find((v) => v.tag === selectedType);
+      if (!variant) return null;
+
+      if (variant.type === 'boolean') {
+        return (
+          <Switch
+            label={`${fieldLabel} value`}
+            {...form.getInputProps(name, { type: 'checkbox' })}
+          />
+        );
+      }
+      if (variant.type === 'number' || variant.type === 'integer') {
+        return (
+          <NumberInput
+            label={`${fieldLabel} value`}
+            required={isRequired}
+            {...form.getInputProps(name)}
+          />
+        );
+      }
+      // string or other
+      return (
+        <TextInput
+          label={`${fieldLabel} value`}
+          required={isRequired}
+          {...form.getInputProps(name)}
+        />
+      );
+    };
+
+    return (
+      <Stack key={key} gap="xs">
+        <Radio.Group
+          label={fieldLabel}
+          required={isRequired}
+          value={selectedType}
+          onChange={(val) => handleTypeChange(val)}
+        >
+          <Group mt="xs">
+            {unionMeta.variants.map((v) => (
+              <Radio key={v.tag} value={v.tag} label={v.label} />
+            ))}
+          </Group>
+        </Radio.Group>
+        {renderSimpleInput()}
+      </Stack>
+    );
+  };
+
   const renderField = (field: ResourceField) => {
     const { name, label, type, isRequired, isArray, variant } = field;
     const key = name;
@@ -1184,6 +1406,11 @@ export function ResourceForm<T extends Record<string, any>>({
     // 如果沒有指定 variant，使用預設的 inputType
     const effectiveVariant = variant || inferDefaultVariant(field);
 
+    // Union fields — Radio Card (default) or Radio Group
+    if (type === 'union' && field.unionMeta) {
+      return renderUnionField(field, field.unionMeta, key, label, isRequired);
+    }
+
     // Binary/File fields — upload or URL
     if (type === 'binary') {
       const apiUrl =
@@ -1262,13 +1489,20 @@ export function ResourceForm<T extends Record<string, any>>({
     // Select with options
     if (effectiveVariant.type === 'select') {
       const selectVariant = effectiveVariant as Extract<FieldVariant, { type: 'select' }>;
+      const inputProps = form.getInputProps(name);
       return (
         <Select
           key={key}
           label={label}
           required={isRequired}
           data={selectVariant.options || []}
-          {...form.getInputProps(name)}
+          clearable={field.isNullable}
+          {...inputProps}
+          onChange={(val) => {
+            // When cleared, Mantine gives null — set it directly to avoid
+            // Zod validation seeing an empty string for nullable enums.
+            form.setFieldValue(name as any, (val ?? null) as any);
+          }}
         />
       );
     }

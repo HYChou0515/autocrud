@@ -214,6 +214,135 @@ class Generator {
     if (prop.anyOf) {
       const types = prop.anyOf.filter((t: any) => t.type !== 'null');
       isNullable = prop.anyOf.some((t: any) => t.type === 'null');
+
+      // Check for discriminated union (anyOf + discriminator)
+      // This can be at prop level, or nested inside a nullable anyOf
+      let unionSource = prop;
+      if (prop.discriminator) {
+        // Direct: { anyOf: [{$ref: Cat}, {$ref: Dog}], discriminator: {...} }
+        unionSource = prop;
+      } else if (types.length === 1 && types[0].anyOf && types[0].discriminator) {
+        // Nullable: { anyOf: [{type: null}, {anyOf: [...], discriminator: {...}}] }
+        unionSource = types[0];
+      }
+
+      if (unionSource.discriminator) {
+        // Discriminated union (tagged struct union)
+        const disc = unionSource.discriminator;
+        const discriminatorField = disc.propertyName || 'type';
+        const variants: UnionVariant[] = [];
+        const variantTsTypes: string[] = [];
+
+        for (const [tag, refPath] of Object.entries<string>(disc.mapping || {})) {
+          const schemaName = refPath.split('/').pop()!;
+          const schema = this.resolveRef(refPath);
+          const variantFields: Field[] = [];
+
+          if (schema?.properties) {
+            const variantRequired = new Set(schema.required ?? []);
+            for (const [subName, subProp] of Object.entries<any>(schema.properties)) {
+              // Skip the discriminator field itself
+              if (subName === discriminatorField) continue;
+              const subField = this.parseField(subName, subProp, variantRequired.has(subName));
+              if (subField) variantFields.push(subField);
+            }
+          }
+
+          variants.push({
+            tag,
+            label: toLabel(tag),
+            schemaName,
+            fields: variantFields,
+          });
+          variantTsTypes.push(schemaName);
+        }
+
+        tsType = variantTsTypes.join(' | ');
+        // Build zod discriminated union
+        const zodVariants = variants.map((v) => {
+          const zodFields = v.fields?.map((f) => `${f.name}: ${f.zodType}`).join(', ') || '';
+          return `z.object({ ${discriminatorField}: z.literal('${v.tag}'), ${zodFields} })`;
+        });
+        zodType = `z.discriminatedUnion('${discriminatorField}', [${zodVariants.join(', ')}])`;
+
+        if (isNullable || !isRequired) {
+          if (isNullable && !isRequired) {
+            tsType += ' | null';
+            zodType = `${zodType}.nullable().optional()`;
+          } else if (isNullable) {
+            tsType += ' | null';
+            zodType = `${zodType}.nullable()`;
+          } else {
+            zodType = `${zodType}.optional()`;
+          }
+        }
+
+        const labelSource = name.includes('.') ? name.split('.').pop()! : name;
+        return {
+          name,
+          label: toLabel(labelSource),
+          type: 'union',
+          tsType,
+          isArray: false,
+          isRequired,
+          isNullable,
+          zodType,
+          unionMeta: { discriminatorField, variants },
+        };
+      }
+
+      // Check for simple union (multiple non-null primitive types without discriminator)
+      if (types.length > 1 && !types.some((t: any) => t.$ref)) {
+        const variants: UnionVariant[] = [];
+        const variantTsTypes: string[] = [];
+
+        for (const t of types) {
+          const primitiveType = t.type === 'integer' ? 'number' : t.type;
+          variants.push({
+            tag: primitiveType,
+            label: toLabel(primitiveType),
+            type: primitiveType,
+          });
+          variantTsTypes.push(primitiveType === 'integer' ? 'number' : primitiveType);
+        }
+
+        tsType = variantTsTypes.join(' | ');
+        const zodVariants = types.map((t: any) => {
+          if (t.type === 'string') return 'z.string()';
+          if (t.type === 'integer') return 'z.number().int()';
+          if (t.type === 'number') return 'z.number()';
+          if (t.type === 'boolean') return 'z.boolean()';
+          return 'z.any()';
+        });
+        zodType = `z.union([${zodVariants.join(', ')}])`;
+
+        if (isNullable || !isRequired) {
+          if (isNullable && !isRequired) {
+            tsType += ' | null';
+            zodType = `${zodType}.nullable().optional()`;
+          } else if (isNullable) {
+            tsType += ' | null';
+            zodType = `${zodType}.nullable()`;
+          } else {
+            zodType = `${zodType}.optional()`;
+          }
+        }
+
+        const labelSource = name.includes('.') ? name.split('.').pop()! : name;
+        return {
+          name,
+          label: toLabel(labelSource),
+          type: 'union',
+          tsType,
+          isArray: false,
+          isRequired,
+          isNullable,
+          zodType,
+          unionMeta: { discriminatorField: '__type', variants },
+        };
+      }
+
+      // Simple nullable (single non-null type) — original logic
       if (types.length > 0) {
         // Check for x-ref-* in anyOf branch (for Optional[Annotated[str, Ref(...)]])
         if (!ref && types[0]['x-ref-resource']) {
@@ -427,6 +556,34 @@ class Generator {
         if (f.ref) {
           fieldConfig.ref = f.ref;
         }
+        // Include union metadata for union fields
+        if (f.unionMeta) {
+          fieldConfig.unionMeta = {
+            discriminatorField: f.unionMeta.discriminatorField,
+            variants: f.unionMeta.variants.map((v) => {
+              const variant: any = { tag: v.tag, label: v.label };
+              if (v.schemaName) variant.schemaName = v.schemaName;
+              if (v.type) variant.type = v.type;
+              if (v.fields && v.fields.length > 0) {
+                variant.fields = v.fields.map((sf) => {
+                  const subConfig: any = {
+                    name: sf.name,
+                    label: sf.label,
+                    type: sf.type,
+                    isArray: sf.isArray,
+                    isRequired: sf.isRequired,
+                    isNullable: sf.isNullable,
+                  };
+                  if (sf.enumValues && sf.enumValues.length > 0) {
+                    subConfig.enumValues = sf.enumValues;
+                  }
+                  return subConfig;
+                });
+              }
+              return variant;
+            }),
+          };
+        }
         return fieldConfig;
       });
 
@@ -596,16 +753,15 @@ function HomePage() {
               <IconDatabase size={32} />
               <Title order={1}>AutoCRUD Web</Title>
             </Group>
-            
+
             <Text size="lg" c="dimmed">
               歡迎使用 AutoCRUD 自動化管理介面
             </Text>
-            
+
             <Text>
-              這是一個由 AutoCRUD 後端自動生成的 React 管理介面。
-              點擊下方按鈕進入管理控制台。
+              這是一個由 AutoCRUD 後端自動生成的 React 管理介面。 點擊下方按鈕進入管理控制台。
             </Text>
-            
+
             <Button
               component={Link}
               to="/autocrud-admin"
@@ -808,6 +964,19 @@ interface FieldRef {
   onDelete?: string;
 }
 
+interface UnionVariant {
+  tag: string;
+  label: string;
+  schemaName?: string; // For discriminated unions: schema name
+  fields?: Field[]; // For discriminated unions: sub-fields of this variant
+  type?: string; // For simple unions: primitive type ('string', 'number', 'boolean')
+}
+
+interface UnionMeta {
+  discriminatorField: string; // The tag field name (e.g. 'type', 'kind')
+  variants: UnionVariant[];
+}
+
 interface Field {
   name: string;
   label: string;
@@ -820,6 +989,7 @@ interface Field {
   zodType?: string; // Zod validation type
   itemFields?: Field[]; // For arrays of typed objects: the item's sub-fields
   ref?: FieldRef; // Reference to another resource
+  unionMeta?: UnionMeta; // For union fields: discriminator + variant info
 }
 
 /**

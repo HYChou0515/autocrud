@@ -12,16 +12,14 @@ function AutoCRUDLayout() {
   const resourceNames = getResourceNames();
 
   return (
-    <AppShell
-      header={{ height: 60 }}
-      navbar={{ width: 240, breakpoint: 'sm' }}
-      padding="md"
-    >
+    <AppShell header={{ height: 60 }} navbar={{ width: 240, breakpoint: 'sm' }} padding="md">
       <AppShell.Header>
         <Group h="100%" px="md" justify="space-between">
           <Group>
             <Title order={3}>⚡ AutoCRUD Admin</Title>
-            <Text size="xs" c="dimmed">Management Console</Text>
+            <Text size="xs" c="dimmed">
+              Management Console
+            </Text>
           </Group>
         </Group>
       </AppShell.Header>

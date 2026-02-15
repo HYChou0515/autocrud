@@ -5,8 +5,25 @@
  * Supports clicking on revisions to view historical data
  */
 
-import { Paper, Stack, Group, Text, Badge, Timeline, ActionIcon, Button, Loader, Center } from '@mantine/core';
-import { IconClock, IconEye, IconSortAscending, IconSortDescending, IconChevronDown } from '@tabler/icons-react';
+import {
+  Paper,
+  Stack,
+  Group,
+  Text,
+  Badge,
+  Timeline,
+  ActionIcon,
+  Button,
+  Loader,
+  Center,
+} from '@mantine/core';
+import {
+  IconClock,
+  IconEye,
+  IconSortAscending,
+  IconSortDescending,
+  IconChevronDown,
+} from '@tabler/icons-react';
 import { useState, useEffect, useCallback } from 'react';
 import { TimeDisplay } from './TimeDisplay';
 import { RevisionIdCell } from './resource-table/RevisionIdCell';
@@ -49,7 +66,6 @@ export function RevisionHistorySection({
 }: RevisionHistorySectionProps) {
   const [sortOrder, setSortOrder] = useState<'desc' | 'asc'>('desc'); // Default: newest first
   const [revisions, setRevisions] = useState<Revision[]>([]);
-  const [total, setTotal] = useState(0);
   const [hasMore, setHasMore] = useState(false);
   const [loading, setLoading] = useState(true);
   const [loadingMore, setLoadingMore] = useState(false);
@@ -70,7 +86,7 @@ export function RevisionHistorySection({
           params.from_revision_id = fromRevisionId;
         }
         const response = await config.apiClient.revisionList(resourceId, params);
-        
+
         if (!fromRevisionId) {
           // Initial load
           setRevisions(response.data.revisions);
@@ -78,7 +94,6 @@ export function RevisionHistorySection({
           // Load more - append new revisions (skip first one as it's the from_revision_id)
           setRevisions((prev) => [...prev, ...response.data.revisions.slice(1)]);
         }
-        setTotal(response.data.total);
         setHasMore(response.data.has_more);
       } catch (error) {
         console.error('Failed to fetch revisions:', error);
