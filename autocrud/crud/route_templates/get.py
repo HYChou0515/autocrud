@@ -14,7 +14,6 @@ from autocrud.crud.route_templates.basic import (
 )
 from autocrud.types import (
     IResourceManager,
-    Resource,
     ResourceMeta,
     RevisionInfo,
 )
@@ -24,31 +23,6 @@ T = TypeVar("T")
 
 class ReadRouteTemplate(BaseRouteTemplate, Generic[T]):
     """讀取單一資源的路由模板"""
-
-    def _get_resource_and_meta(
-        self,
-        resource_manager: IResourceManager[T],
-        resource_id: str,
-        revision_id: Optional[str],
-        current_user: str,
-        current_time: dt.datetime,
-    ) -> tuple[Resource[T], ResourceMeta]:
-        """獲取資源和元數據"""
-        with resource_manager.meta_provide(current_user, current_time):
-            meta = resource_manager.get_meta(resource_id)
-            if revision_id:
-                resource = resource_manager.get_resource_revision(
-                    resource_id,
-                    revision_id,
-                    schema_version=meta.schema_version,
-                )
-            else:
-                resource = resource_manager.get(
-                    resource_id,
-                    revision_id=meta.current_revision_id,
-                    schema_version=meta.schema_version,
-                )
-        return resource, meta
 
     def apply(
         self,

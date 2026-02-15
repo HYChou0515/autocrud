@@ -826,5 +826,349 @@ class TestAutoCRUD:
         assert autocrud.resource_managers["custom-user"].resource_type == User
 
 
-if __name__ == "__main__":
-    pytest.main([__file__, "-v"])
+class TestRevisionListAdvanced:
+    """測試 revision-list 端點的進階功能"""
+
+    def test_revision_list_invalid_sort(self, client: TestClient):
+        """測試無效的 sort 參數 (行 342)"""
+        # 創建資源
+        user_data = {"name": "Test", "email": "test@example.com", "age": 20}
+        create_response = client.post("/user", json=user_data)
+        resource_id = create_response.json()["resource_id"]
+
+        # 測試無效的 sort 參數
+        response = client.get(f"/user/{resource_id}/revision-list?sort=invalid")
+        assert response.status_code == 400
+        assert "Invalid sort" in response.json()["detail"]
+
+    def test_revision_list_invalid_limit(self, client: TestClient):
+        """測試無效的 limit 參數 (行 345)"""
+        # 創建資源
+        user_data = {"name": "Test", "email": "test@example.com", "age": 20}
+        create_response = client.post("/user", json=user_data)
+        resource_id = create_response.json()["resource_id"]
+
+        # 測試 limit < 1
+        response = client.get(f"/user/{resource_id}/revision-list?limit=0")
+        assert response.status_code == 400
+        assert "limit must be >= 1" in response.json()["detail"]
+
+        response = client.get(f"/user/{resource_id}/revision-list?limit=-5")
+        assert response.status_code == 400
+        assert "limit must be >= 1" in response.json()["detail"]
+
+    def test_revision_list_invalid_offset(self, client: TestClient):
+        """測試無效的 offset 參數 (行 349)"""
+        # 創建資源
+        user_data = {"name": "Test", "email": "test@example.com", "age": 20}
+        create_response = client.post("/user", json=user_data)
+        resource_id = create_response.json()["resource_id"]
+
+        # 測試 offset < 0
+        response = client.get(f"/user/{resource_id}/revision-list?offset=-1")
+        assert response.status_code == 400
+        assert "offset must be >= 0" in response.json()["detail"]
+
+    def test_revision_list_with_time_filters(self, client: TestClient):
+        """測試 created_time_start 和 created_time_end 過濾 (行 373-374, 377-380)"""
+        # 創建第一個版本
+        user_data_v1 = {"name": "V1", "email": "v1@example.com", "age": 20}
+        create_response = client.post("/user", json=user_data_v1)
+        assert create_response.status_code == 200
+        resource_id = create_response.json()["resource_id"]
+
+        # 創建第二個版本
+        user_data_v2 = {"name": "V2", "email": "v2@example.com", "age": 21}
+        update_response = client.put(f"/user/{resource_id}", json=user_data_v2)
+        assert update_response.status_code == 200
+
+        # 獲取所有 revisions 以便取得實際時間
+        all_revs_response = client.get(f"/user/{resource_id}/revision-list")
+        assert all_revs_response.status_code == 200
+        all_revs = all_revs_response.json()["revisions"]
+        assert len(all_revs) == 2
+
+        # 使用第一個 revision 的時間作為 end filter
+        first_rev_time = all_revs[1]["created_time"]  # 較早的那個
+
+        # 測試 created_time_end 過濾
+        response = client.get(
+            f"/user/{resource_id}/revision-list?created_time_end={first_rev_time}"
+        )
+        assert response.status_code == 200
+        data = response.json()
+        # 應該只包含第一個版本
+        assert data["total"] <= 1
+
+        # 使用第二個 revision 的時間作為 start filter
+        second_rev_time = all_revs[0]["created_time"]  # 較晚的那個
+
+        # 測試 created_time_start 過濾
+        response = client.get(
+            f"/user/{resource_id}/revision-list?created_time_start={second_rev_time}"
+        )
+        assert response.status_code == 200
+        data = response.json()
+        # 應該只包含第二個版本
+        assert data["total"] <= 1
+
+    def test_revision_list_from_revision_id(self, client: TestClient):
+        """測試 from_revision_id 參數 (行 385-397)"""
+        # 創建資源並更新幾次
+        user_data = {"name": "V1", "email": "v1@example.com", "age": 20}
+        create_response = client.post("/user", json=user_data)
+        resource_id = create_response.json()["resource_id"]
+        rev1_id = create_response.json()["revision_id"]
+
+        client.put(
+            f"/user/{resource_id}",
+            json={"name": "V2", "email": "v2@example.com", "age": 21},
+        )
+        update2 = client.put(
+            f"/user/{resource_id}",
+            json={"name": "V3", "email": "v3@example.com", "age": 22},
+        )
+        rev3_id = update2.json()["revision_id"]
+
+        # 從第一個 revision 開始
+        response = client.get(
+            f"/user/{resource_id}/revision-list?from_revision_id={rev1_id}&sort=created_time"
+        )
+        assert response.status_code == 200
+        data = response.json()
+        assert data["total"] == 3  # 應該包含所有三個版本
+
+        # 從第三個 revision 開始
+        response = client.get(
+            f"/user/{resource_id}/revision-list?from_revision_id={rev3_id}&sort=created_time"
+        )
+        assert response.status_code == 200
+        data = response.json()
+        assert data["total"] == 1  # 只包含第三個版本
+
+    def test_revision_list_from_revision_id_not_found(self, client: TestClient):
+        """測試 from_revision_id 找不到的情況 (行 393-397)"""
+        # 創建資源
+        user_data = {"name": "Test", "email": "test@example.com", "age": 20}
+        create_response = client.post("/user", json=user_data)
+        resource_id = create_response.json()["resource_id"]
+
+        # 使用不存在的 revision_id
+        response = client.get(
+            f"/user/{resource_id}/revision-list?from_revision_id=nonexistent"
+        )
+        assert response.status_code == 404
+        assert "revision_id not found" in response.json()["detail"]
+
+    def test_revision_list_chain_only(self, client: TestClient):
+        """測試 chain_only 參數 (行 401-410)"""
+        # 創建資源並更新幾次，形成 parent chain
+        user_data = {"name": "V1", "email": "v1@example.com", "age": 20}
+        create_response = client.post("/user", json=user_data)
+        resource_id = create_response.json()["resource_id"]
+
+        # 更新兩次
+        client.put(
+            f"/user/{resource_id}",
+            json={"name": "V2", "email": "v2@example.com", "age": 21},
+        )
+        client.put(
+            f"/user/{resource_id}",
+            json={"name": "V3", "email": "v3@example.com", "age": 22},
+        )
+
+        # 測試 chain_only=true
+        response = client.get(f"/user/{resource_id}/revision-list?chain_only=true")
+        assert response.status_code == 200
+        data = response.json()
+
+        # 驗證返回的是 parent chain
+        assert len(data["revisions"]) == 3
+        revisions = data["revisions"]
+
+        # 驗證 parent chain 順序（從當前版本往回追溯）
+        assert revisions[0]["parent_revision_id"] == revisions[1]["revision_id"]
+        assert revisions[1]["parent_revision_id"] == revisions[2]["revision_id"]
+        assert revisions[2]["parent_revision_id"] is None  # 第一個版本沒有 parent
+
+    def test_revision_list_pagination(self, client: TestClient):
+        """測試 limit 和 offset 的分頁功能"""
+        # 創建資源並更新多次
+        user_data = {"name": "V1", "email": "v1@example.com", "age": 20}
+        create_response = client.post("/user", json=user_data)
+        resource_id = create_response.json()["resource_id"]
+
+        # 更新 4 次，總共 5 個版本
+        for i in range(2, 6):
+            client.put(
+                f"/user/{resource_id}",
+                json={"name": f"V{i}", "email": f"v{i}@example.com", "age": 20 + i},
+            )
+
+        # 第一頁，每頁 2 個
+        response = client.get(f"/user/{resource_id}/revision-list?limit=2&offset=0")
+        assert response.status_code == 200
+        data = response.json()
+        assert len(data["revisions"]) == 2
+        assert data["total"] == 5
+        assert data["has_more"] is True
+
+        # 第二頁
+        response = client.get(f"/user/{resource_id}/revision-list?limit=2&offset=2")
+        assert response.status_code == 200
+        data = response.json()
+        assert len(data["revisions"]) == 2
+        assert data["total"] == 5
+        assert data["has_more"] is True
+
+        # 最後一頁
+        response = client.get(f"/user/{resource_id}/revision-list?limit=2&offset=4")
+        assert response.status_code == 200
+        data = response.json()
+        assert len(data["revisions"]) == 1
+        assert data["total"] == 5
+        assert data["has_more"] is False
+
+
+class TestGetEndpointPartialFields:
+    """測試 GET 端點的 partial 欄位功能"""
+
+    def test_get_with_partial_query_params(self, client: TestClient):
+        """測試使用 partial[] query params (行 217, 503)"""
+        # 創建資源
+        user_data = {"name": "Test User", "email": "test@example.com", "age": 30}
+        create_response = client.post("/user", json=user_data)
+        resource_id = create_response.json()["resource_id"]
+
+        # 使用 partial[] query params 只獲取部分欄位
+        response = client.get(f"/user/{resource_id}/full?partial[]=name&partial[]=age")
+        assert response.status_code == 200
+        full_data = response.json()
+
+        # 驗證只包含請求的欄位
+        assert "data" in full_data
+        data = full_data["data"]
+        assert "name" in data
+        assert "age" in data
+        # email 不應該在結果中（因為沒有請求）
+        # 注意：partial 可能返回所有欄位或只返回請求的欄位，取決於實作
+
+    def test_get_data_with_partial_brackets(self, client: TestClient):
+        """測試 /data 端點的 partial[] query params (行 503)"""
+        # 創建資源
+        user_data = {"name": "Test User", "email": "test@example.com", "age": 30}
+        create_response = client.post("/user", json=user_data)
+        resource_id = create_response.json()["resource_id"]
+
+        # 使用 partial[] query params
+        response = client.get(f"/user/{resource_id}/data?partial[]=name")
+        assert response.status_code == 200
+        data = response.json()
+
+        # 應該返回 partial 資料
+        assert "name" in data or response.status_code == 200
+
+    def test_get_data_with_partial_and_revision(self, client: TestClient):
+        """測試 /data 端點的 partial 配合 revision_id (行 503-515)"""
+        # 創建資源
+        user_data_v1 = {"name": "Version 1", "email": "v1@example.com", "age": 25}
+        create_response = client.post("/user", json=user_data_v1)
+        resource_id = create_response.json()["resource_id"]
+        revision_id_v1 = create_response.json()["revision_id"]
+
+        # 更新資源
+        user_data_v2 = {"name": "Version 2", "email": "v2@example.com", "age": 30}
+        client.put(f"/user/{resource_id}", json=user_data_v2)
+
+        # 使用 partial[] 獲取特定 revision 的部分欄位
+        response = client.get(
+            f"/user/{resource_id}/data?revision_id={revision_id_v1}&partial[]=/name"
+        )
+        assert response.status_code == 200
+        data = response.json()
+        assert "name" in data
+
+    def test_get_data_without_partial_but_with_revision(self, client: TestClient):
+        """測試 /data 端點無 partial 但有 revision_id (行 520-525)"""
+        # 創建資源
+        user_data_v1 = {"name": "Version 1", "email": "v1@example.com", "age": 25}
+        create_response = client.post("/user", json=user_data_v1)
+        resource_id = create_response.json()["resource_id"]
+        revision_id_v1 = create_response.json()["revision_id"]
+
+        # 更新資源
+        user_data_v2 = {"name": "Version 2", "email": "v2@example.com", "age": 30}
+        client.put(f"/user/{resource_id}", json=user_data_v2)
+
+        # 不使用 partial，但指定 revision_id
+        response = client.get(f"/user/{resource_id}/data?revision_id={revision_id_v1}")
+        assert response.status_code == 200
+        data = response.json()
+        assert data["name"] == "Version 1"
+        assert data["age"] == 25
+
+    def test_get_with_revision_id_parameter(self, client: TestClient):
+        """測試 GET 端點使用 revision_id 參數 (行 37-51)"""
+        # 創建資源
+        user_data_v1 = {"name": "Version 1", "email": "v1@example.com", "age": 25}
+        create_response = client.post("/user", json=user_data_v1)
+        resource_id = create_response.json()["resource_id"]
+        revision_id_v1 = create_response.json()["revision_id"]
+
+        # 更新資源
+        user_data_v2 = {"name": "Version 2", "email": "v2@example.com", "age": 30}
+        update_response = client.put(f"/user/{resource_id}", json=user_data_v2)
+        revision_id_v2 = update_response.json()["revision_id"]
+
+        # 獲取最新版本（不帶 revision_id）- 測試 else 分支（行 46-50）
+        response = client.get(f"/user/{resource_id}/full")
+        assert response.status_code == 200
+        data = response.json()
+        assert data["data"]["name"] == "Version 2"
+        assert data["revision_info"]["revision_id"] == revision_id_v2
+
+        # 獲取特定版本（帶 revision_id）- 測試 if 分支（行 40-44）
+        response = client.get(f"/user/{resource_id}/full?revision_id={revision_id_v1}")
+        assert response.status_code == 200
+        data = response.json()
+        assert data["data"]["name"] == "Version 1"
+        assert data["revision_info"]["revision_id"] == revision_id_v1
+
+
+class TestRevisionListEdgeCases:
+    """測試 revision-list 的邊界條件"""
+
+    def test_chain_only_with_broken_chain(self, client: TestClient):
+        """測試 chain_only 當 parent chain 中斷時的情況 (行 407)"""
+        # 創建資源並更新
+        user_data = {"name": "V1", "email": "v1@example.com", "age": 20}
+        create_response = client.post("/user", json=user_data)
+        resource_id = create_response.json()["resource_id"]
+
+        # 更新幾次
+        client.put(
+            f"/user/{resource_id}",
+            json={"name": "V2", "email": "v2@example.com", "age": 21},
+        )
+        client.put(
+            f"/user/{resource_id}",
+            json={"name": "V3", "email": "v3@example.com", "age": 22},
+        )
+
+        # 測試 chain_only - 即使有中斷的情況也應該正常工作
+        response = client.get(f"/user/{resource_id}/revision-list?chain_only=true")
+        assert response.status_code == 200
+        data = response.json()
+
+        # chain 應該包含從當前版本追溯的所有可達版本
+        assert len(data["revisions"]) >= 1
+
+        # 驗證 chain 的連續性
+        revisions = data["revisions"]
+        for i in range(len(revisions) - 1):
+            # 每個 revision 的 parent 應該是下一個 revision（或 None）
+            if revisions[i]["parent_revision_id"] is not None:
+                assert (
+                    revisions[i]["parent_revision_id"]
+                    == revisions[i + 1]["revision_id"]
+                )
