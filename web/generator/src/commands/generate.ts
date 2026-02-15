@@ -96,6 +96,9 @@ class Generator {
       const schema = this.spec.components.schemas[schemaName];
       if (!schema?.properties) continue;
 
+      const displayNameField =
+        typeof schema['x-display-name-field'] === 'string' ? schema['x-display-name-field'] : undefined;
+
       const isJob = this.detectJobSchema(schema);
       const maxFormDepth = isJob ? 3 : 2;
 
@@ -105,6 +108,7 @@ class Generator {
         pascal: toPascal(name),
         camel: toCamel(name),
         schemaName,
+        displayNameField,
         fields: this.extractFields(schema, '', 1, 10),
         isJob,
         maxFormDepth,
@@ -429,11 +433,15 @@ class Generator {
       // Generate Zod schema with nested structure for dot-notation fields
       const zodFields = buildNestedZodFields(r.fields);
 
+      const displayNameLine = r.displayNameField
+        ? `    displayNameField: '${r.displayNameField}',\n`
+        : '';
+
       return `  '${r.name}': {
     name: '${r.name}',
     label: '${r.label}',
     pluralLabel: '${r.label}s',
-    schema: '${r.schemaName}',
+${displayNameLine}    schema: '${r.schemaName}',
     fields: ${JSON.stringify(fields, null, 6).replace(/"([^"]+)":/g, '$1:')},
     zodSchema: z.object({
 ${zodFields}
@@ -790,6 +798,7 @@ interface Resource {
   pascal: string;
   camel: string;
   schemaName: string;
+  displayNameField?: string;
   fields: Field[];
   isJob: boolean;
   maxFormDepth: number;

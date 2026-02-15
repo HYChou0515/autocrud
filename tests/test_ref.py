@@ -26,11 +26,13 @@ from msgspec import Struct
 
 from autocrud.crud.core import AutoCRUD
 from autocrud.types import (
+    DisplayName,
     Job,
     OnDelete,
     Ref,
     RefRevision,
     _RefInfo,
+    extract_display_name,
     extract_refs,
 )
 
@@ -104,6 +106,27 @@ class GameEvent(Job[EventPayload]):
     """Job wrapping a payload that has Ref/RefRevision."""
 
     pass
+
+
+class CharacterWithDisplayName(Struct):
+    """Character with a DisplayName-annotated field."""
+
+    name: Annotated[str, DisplayName]
+    level: int = 1
+
+
+class GuildWithDisplayName(Struct):
+    """Guild with DisplayName on a different field."""
+
+    title: Annotated[str, DisplayName]
+    description: str = ""
+
+
+class NoDisplayName(Struct):
+    """Struct with no DisplayName annotation."""
+
+    name: str
+    age: int = 0
 
 
 # ---------------------------------------------------------------------------
@@ -1062,3 +1085,81 @@ class TestListRefReferrers:
         _crud, client = crud_and_client
         resp = client.get("/skill/nonexistent-id-12345/referrers")
         assert resp.status_code == 404
+
+
+# ---------------------------------------------------------------------------
+# DisplayName
+# ---------------------------------------------------------------------------
+
+
+class TestDisplayName:
+    """Tests for the DisplayName annotation marker."""
+
+    def test_display_name_is_str(self):
+        """DisplayName should be a string type."""
+        assert isinstance(DisplayName, str)
+
+    def test_display_name_value(self):
+        """DisplayName sentinel should have a recognisable value."""
+        assert DisplayName == "display_name"
+
+    def test_display_name_repr(self):
+        assert repr(DisplayName) == "'display_name'"
+
+
+class TestExtractDisplayName:
+    """Tests for extract_display_name()."""
+
+    def test_extract_from_annotated_struct(self):
+        """Should find the field annotated with DisplayName."""
+        result = extract_display_name(CharacterWithDisplayName)
+        assert result == "name"
+
+    def test_extract_different_field(self):
+        """Should find the correct field even when it's not 'name'."""
+        result = extract_display_name(GuildWithDisplayName)
+        assert result == "title"
+
+    def test_extract_returns_none_when_missing(self):
+        """Should return None if no field is annotated with DisplayName."""
+        result = extract_display_name(NoDisplayName)
+        assert result is None
+
+    def test_extract_returns_none_for_non_struct(self):
+        """Should return None for a non-Struct type."""
+        result = extract_display_name(str)
+        assert result is None
+
+
+class TestInjectDisplayNameMetadata:
+    """Tests for x-display-name-field injection into OpenAPI schema."""
+
+    def _build_app(self, *models_and_names):
+        app = FastAPI()
+        c = AutoCRUD()
+        for model, name in models_and_names:
+            c.add_model(model, name=name)
+        c.apply(app)
+        c.openapi(app)
+        return app
+
+    def test_display_name_injected_into_schema(self):
+        """x-display-name-field should appear in schema for annotated resource."""
+        app = self._build_app((CharacterWithDisplayName, "hero"))
+        schema = app.openapi_schema
+        comp = schema["components"]["schemas"]["CharacterWithDisplayName"]
+        assert comp.get("x-display-name-field") == "name"
+
+    def test_display_name_not_injected_when_missing(self):
+        """x-display-name-field should NOT appear for resources without DisplayName."""
+        app = self._build_app((NoDisplayName, "thing"))
+        schema = app.openapi_schema
+        comp = schema["components"]["schemas"]["NoDisplayName"]
+        assert "x-display-name-field" not in comp
+
+    def test_display_name_with_different_field(self):
+        """x-display-name-field should use the correct annotated field name."""
+        app = self._build_app((GuildWithDisplayName, "org"))
+        schema = app.openapi_schema
+        comp = schema["components"]["schemas"]["GuildWithDisplayName"]
+        assert comp.get("x-display-name-field") == "title"
