@@ -72,8 +72,8 @@ class SkillType(Enum):
 class Skill(Struct):
     """遊戲技能"""
 
-    cool: Annotated[str, DisplayName]
     skill_type: SkillType
+    skname: Annotated[str, DisplayName()]
     description: str = ""
     mp_cost: int = 0
     cooldown_seconds: int = 0
@@ -85,7 +85,7 @@ class Skill(Struct):
 class Equipment(Struct):
     """遊戲裝備"""
 
-    name: Annotated[str, DisplayName]
+    name: Annotated[str, DisplayName()]
     rarity: ItemRarity
     # 1:N 關係：裝備歸屬某個角色（可為空代表在商店中）
     owner_id: Annotated[str | None, Ref("character", on_delete=OnDelete.set_null)] = (
@@ -102,7 +102,7 @@ class Equipment(Struct):
 class Character(Struct):
     """遊戲角色"""
 
-    name: Annotated[str, DisplayName]
+    name: Annotated[str, DisplayName()]
     character_class: CharacterClass
     valueAD__x: int = 12
     level: int = 1
@@ -124,7 +124,7 @@ class Character(Struct):
 class Guild(Struct):
     """遊戲公會"""
 
-    name: Annotated[str, DisplayName]
+    name: Annotated[str, DisplayName()]
     description: str
     leader: str
     member_count: int = 1
@@ -245,7 +245,7 @@ def create_sample_data():
     skills = [
         
         Skill(
-            cool="火球術",
+            skname="火球術",
             skill_type=SkillType.ACTIVE,
             description="向敵人發射一顆強力火球",
             mp_cost=30,
@@ -255,7 +255,7 @@ def create_sample_data():
             required_class=CharacterClass.MAGE,
         ),
         Skill(
-            cool="治癒之光",
+            skname="治癒之光",
             skill_type=SkillType.ACTIVE,
             description="恢復自身或隊友的生命值",
             mp_cost=25,
@@ -264,7 +264,7 @@ def create_sample_data():
             required_level=5,
         ),
         Skill(
-            cool="重擊",
+            skname="重擊",
             skill_type=SkillType.ACTIVE,
             description="對單一敵人造成巨額物理傷害",
             mp_cost=20,
@@ -274,7 +274,7 @@ def create_sample_data():
             required_class=CharacterClass.WARRIOR,
         ),
         Skill(
-            cool="精準射擊",
+            skname="精準射擊",
             skill_type=SkillType.ACTIVE,
             description="100% 命中的遠程攻擊",
             mp_cost=15,
@@ -284,7 +284,7 @@ def create_sample_data():
             required_class=CharacterClass.ARCHER,
         ),
         Skill(
-            cool="CRUD 終極奧義",
+            skname="CRUD 終極奧義",
             skill_type=SkillType.ULTIMATE,
             description="一鍵生成完美的 RESTful API，對所有敵人造成毀滅性打擊",
             mp_cost=100,
@@ -294,21 +294,21 @@ def create_sample_data():
             required_class=CharacterClass.DATA_KEEPER,
         ),
         Skill(
-            cool="鋼鐵意志",
+            skname="鋼鐵意志",
             skill_type=SkillType.PASSIVE,
             description="永久提升防禦力 20%",
             required_level=20,
             required_class=CharacterClass.WARRIOR,
         ),
         Skill(
-            cool="魔力親和",
+            skname="魔力親和",
             skill_type=SkillType.PASSIVE,
             description="永久降低所有技能 MP 消耗 15%",
             required_level=15,
             required_class=CharacterClass.MAGE,
         ),
         Skill(
-            cool="經驗加成",
+            skname="經驗加成",
             skill_type=SkillType.PASSIVE,
             description="獲得的經驗值增加 10%",
             required_level=1,
@@ -320,8 +320,8 @@ def create_sample_data():
         for skill in skills:
             try:
                 info = skill_manager.create(skill)
-                skill_ids[skill.cool] = info.resource_id
-                print(f"✅ 創建技能: {skill.cool} [{skill.skill_type.value}]")
+                skill_ids[skill.skname] = info.resource_id
+                print(f"✅ 創建技能: {skill.skname} [{skill.skill_type.value}]")
             except Exception as e:
                 print(f"❌ 技能創建失敗: {e}")
 

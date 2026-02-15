@@ -111,14 +111,14 @@ class GameEvent(Job[EventPayload]):
 class CharacterWithDisplayName(Struct):
     """Character with a DisplayName-annotated field."""
 
-    name: Annotated[str, DisplayName]
+    name: Annotated[str, DisplayName()]
     level: int = 1
 
 
 class GuildWithDisplayName(Struct):
     """Guild with DisplayName on a different field."""
 
-    title: Annotated[str, DisplayName]
+    title: Annotated[str, DisplayName()]
     description: str = ""
 
 
@@ -1095,16 +1095,16 @@ class TestListRefReferrers:
 class TestDisplayName:
     """Tests for the DisplayName annotation marker."""
 
-    def test_display_name_is_str(self):
-        """DisplayName should be a string type."""
-        assert isinstance(DisplayName, str)
-
-    def test_display_name_value(self):
-        """DisplayName sentinel should have a recognisable value."""
-        assert DisplayName == "display_name"
+    def test_display_name_is_class(self):
+        """DisplayName should be a class-based marker."""
+        marker = DisplayName()
+        assert isinstance(marker, DisplayName)
 
     def test_display_name_repr(self):
-        assert repr(DisplayName) == "'display_name'"
+        assert repr(DisplayName()) == "DisplayName()"
+
+    def test_display_name_repr_with_label(self):
+        assert repr(DisplayName("Hero Name")) == "DisplayName('Hero Name')"
 
 
 class TestExtractDisplayName:
