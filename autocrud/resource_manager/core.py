@@ -505,6 +505,9 @@ class ResourceManager(IResourceManager[T], Generic[T]):
     def decode(self, data: bytes) -> T:
         return self._data_serializer.decode(data)
 
+    def _decode_and_validate(self, data: bytes) -> None:
+        return self._data_serializer.decode_and_validate(data)
+
     @property
     def user(self) -> str:
         return self.user_ctx.get()
@@ -671,7 +674,7 @@ class ResourceManager(IResourceManager[T], Generic[T]):
 
     def get_data_hash(self, data: T) -> str:
         b = self.encode(data)
-        self.decode(b)  # 確保可解碼
+        self._decode_and_validate(b)  # 確保可解碼
         data_hash = f"xxh3_128:{xxh3_128_hexdigest(b)}"
         return data_hash
 

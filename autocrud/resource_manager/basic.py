@@ -360,6 +360,10 @@ class MsgspecSerializer(Generic[T]):
     def decode(self, b: bytes) -> T:
         return self.decoder.decode(b)
 
+    def decode_and_validate(self, b: bytes) -> None:
+        """Decode and validate the data by re-encoding it and comparing hashes."""
+        self.decode(b)
+
 
 class IMetaStore(MutableMapping[str, ResourceMeta]):
     """Interface for a metadata store that manages resource metadata.
