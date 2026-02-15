@@ -1052,6 +1052,15 @@ class AutoCRUD:
             _inject_into_component(schema_name, refs)
             processed_structs.add(rm.resource_type)
 
+            # --- DisplayName annotation ---
+            from autocrud.types import extract_display_name
+
+            dn_field = extract_display_name(rm.resource_type)
+            if dn_field is not None:
+                comp = components.get(schema_name)
+                if comp is not None:
+                    comp["x-display-name-field"] = dn_field
+
             # --- nested Struct types (e.g. Job[Payload]) ---
             nested = _collect_nested_struct_types(rm.resource_type, set())
             for nested_struct in nested:

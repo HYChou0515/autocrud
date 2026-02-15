@@ -200,6 +200,46 @@ def _is_nullable(tp: Any) -> bool:
     return tp is type(None)
 
 
+class DisplayName:
+    """Annotation marker designating a ``str`` field as the display name.
+
+    Usage::
+
+        class Character(Struct):
+            name: Annotated[str, DisplayName()]   # ← this field is the display name
+            level: int = 1
+
+    The AutoCRUD framework will inject ``x-display-name-field`` into the
+    OpenAPI schema so the web frontend can show a friendly name instead of
+    just the resource ID.
+    """
+
+    __slots__ = ("label",)
+
+    def __init__(self, label: str | None = None) -> None:
+        self.label = label
+
+    def __repr__(self) -> str:
+        if self.label is None:
+            return "DisplayName()"
+        return f"DisplayName({self.label!r})"
+
+
+def extract_display_name(struct_type: type) -> str | None:
+    """Return the field name annotated with :class:`DisplayName`, or ``None``."""
+    try:
+        hints = get_type_hints(struct_type, include_extras=True)
+    except Exception:
+        return None
+    for field_name, hint in hints.items():
+        origin = get_origin(hint)
+        if origin is Annotated:
+            for metadata in get_args(hint)[1:]:
+                if isinstance(metadata, DisplayName):
+                    return field_name
+    return None
+
+
 class RevisionStatus(StrEnum):
     draft = "draft"
     stable = "stable"

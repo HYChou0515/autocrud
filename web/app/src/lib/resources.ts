@@ -59,6 +59,8 @@ export interface ResourceConfig<T = any> {
   label: string;
   pluralLabel: string;
   schema: string;
+  /** Optional field name to display as a human-friendly label for this resource. */
+  displayNameField?: string;
   fields: ResourceField[];
   indexedFields?: string[];
   /** Default max depth for form field expansion. Fields deeper than this render as JSON editors. */

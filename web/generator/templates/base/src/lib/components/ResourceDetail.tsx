@@ -341,6 +341,14 @@ export function ResourceDetail<T extends Record<string, any>>({
     : {};
   const _displayData = isJob ? payloadData : data;
 
+  const displayNameValue = config.displayNameField
+    ? getByPath(_displayData, config.displayNameField)
+    : undefined;
+  const displayNameText =
+    typeof displayNameValue === 'string' && displayNameValue.trim().length > 0
+      ? displayNameValue
+      : undefined;
+
   const handleEdit = async (values: T) => {
     await update(values);
     setEditOpen(false);
@@ -380,6 +388,11 @@ export function ResourceDetail<T extends Record<string, any>>({
                   </Badge>
                 )}
               </Group>
+              {displayNameText && (
+                <Text size="sm" c="dimmed" mb={4}>
+                  {displayNameText}
+                </Text>
+              )}
               <ResourceIdCell rid={meta.resource_id} />
             </div>
           </Group>

@@ -36,6 +36,11 @@ interface SelectOption {
   label: string;
 }
 
+function getByPath(obj: Record<string, any>, path: string | undefined): unknown {
+  if (!path) return undefined;
+  return path.split('.').reduce((acc, key) => acc?.[key], obj);
+}
+
 function useRefOptions(resource: string) {
   const [options, setOptions] = useState<SelectOption[]>([]);
   const [loading, setLoading] = useState(false);
@@ -51,7 +56,11 @@ function useRefOptions(resource: string) {
       const newOptions: SelectOption[] = items.map((item: any) => {
         const resourceId = item.meta?.resource_id ?? '';
         const data = item.data ?? {};
-        const displayName = data.name || data.title || data.label || resourceId;
+        const preferred = getByPath(data, targetResource.displayNameField);
+        const displayName =
+          (typeof preferred === 'string' && preferred.trim().length > 0
+            ? preferred
+            : data.name || data.title || data.label || resourceId);
         return {
           value: resourceId,
           label: `${displayName} (${resourceId.slice(0, 8)}…)`,
@@ -188,7 +197,11 @@ function useRefRevisionOptions(resource: string) {
         const data = item.data ?? {};
         const resourceId = meta.resource_id ?? '';
         const revisionId = meta.current_revision_id ?? '';
-        const displayName = data.name || data.title || data.label || resourceId;
+        const preferred = getByPath(data, targetResource.displayNameField);
+        const displayName =
+          (typeof preferred === 'string' && preferred.trim().length > 0
+            ? preferred
+            : data.name || data.title || data.label || resourceId);
         const shortRevision =
           revisionId.length > 12 ? `${revisionId.slice(0, 4)}…${revisionId.slice(-4)}` : revisionId;
         return {
