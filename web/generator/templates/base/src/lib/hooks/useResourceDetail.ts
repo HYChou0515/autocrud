@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback } from 'react';
-import type { FullResource, RevisionInfo } from '../../types/api';
+import type { FullResource } from '../../types/api';
 import type { ResourceConfig } from '../resources';
 
 export interface UseResourceDetailResult<T> {

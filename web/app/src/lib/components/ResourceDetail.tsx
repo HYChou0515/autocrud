@@ -13,7 +13,6 @@ import {
   Text,
   Modal,
   Table,
-  Select,
   Code,
   Progress,
   Image,
@@ -178,28 +177,6 @@ const statusColors: Record<string, string> = {
   completed: 'green',
   failed: 'red',
 };
-
-/**
- * Extract revision number from revision_id
- * e.g., "game-event:uuid:3" -> "Rev #3"
- */
-function formatRevisionLabel(revisionId: string, resourceId: string, isCurrent: boolean): string {
-  const prefix = resourceId + ':';
-  if (revisionId.startsWith(prefix)) {
-    const parts = revisionId.split(':');
-    const revNum = parts[parts.length - 1];
-    return isCurrent ? `Current (Rev #${revNum})` : `Rev #${revNum}`;
-  }
-  // Fallback: try to extract number from end
-  const match = revisionId.match(/:(\d+)$/);
-  if (match) {
-    return isCurrent ? `Current (Rev #${match[1]})` : `Rev #${match[1]}`;
-  }
-  // Last resort: show truncated ID
-  const shortId =
-    revisionId.length > 12 ? `${revisionId.slice(0, 6)}...${revisionId.slice(-4)}` : revisionId;
-  return isCurrent ? `Current (${shortId})` : shortId;
-}
 
 /**
  * Generic resource detail page with edit, delete, restore, and revision history
@@ -653,6 +630,55 @@ export function ResourceDetail<T extends Record<string, any>>({
                           </Table.Tr>
                         );
                       }
+
+                      // Union fields — show discriminator badge + sub-fields
+                      if (
+                        field.type === 'union' &&
+                        field.unionMeta &&
+                        field.unionMeta.discriminatorField !== '__type' &&
+                        typeof value === 'object' &&
+                        value !== null
+                      ) {
+                        const discField = field.unionMeta.discriminatorField;
+                        const tag = (value as Record<string, any>)[discField];
+                        const variant = field.unionMeta.variants.find((v) => v.tag === tag);
+                        return (
+                          <Table.Tr key={field.name}>
+                            <Table.Td
+                              style={{ fontWeight: 500, width: '30%', verticalAlign: 'top' }}
+                            >
+                              {field.label}
+                            </Table.Td>
+                            <Table.Td>
+                              <Stack gap="xs">
+                                <Badge variant="light" size="sm">
+                                  {variant?.label || tag || 'unknown'}
+                                </Badge>
+                                {variant?.fields && variant.fields.length > 0 && (
+                                  <Table fz="sm">
+                                    <Table.Tbody>
+                                      {variant.fields.map((sf) => (
+                                        <Table.Tr key={sf.name}>
+                                          <Table.Td style={{ fontWeight: 500, width: '35%' }}>
+                                            {sf.label}
+                                          </Table.Td>
+                                          <Table.Td>
+                                            {renderDetailValue(
+                                              (value as Record<string, any>)?.[sf.name],
+                                              sf.type,
+                                            )}
+                                          </Table.Td>
+                                        </Table.Tr>
+                                      ))}
+                                    </Table.Tbody>
+                                  </Table>
+                                )}
+                              </Stack>
+                            </Table.Td>
+                          </Table.Tr>
+                        );
+                      }
+
                       return (
                         <Table.Tr key={field.name}>
                           <Table.Td style={{ fontWeight: 500, width: '30%' }}>

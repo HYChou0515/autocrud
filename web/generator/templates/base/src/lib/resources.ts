@@ -1,4 +1,10 @@
-import type { ResourceMeta, RevisionInfo, FullResource, RevisionListParams, RevisionListResponse } from '../types/api';
+import type {
+  ResourceMeta,
+  RevisionInfo,
+  FullResource,
+  RevisionListParams,
+  RevisionListResponse,
+} from '../types/api';
 import type { z } from 'zod';
 
 /**
@@ -32,12 +38,38 @@ export interface FieldRef {
 }
 
 /**
+ * Union variant definition for discriminated or simple union fields
+ */
+export interface UnionVariant {
+  /** Discriminator tag value */
+  tag: string;
+  /** Display label for this variant */
+  label: string;
+  /** For discriminated unions: schema name */
+  schemaName?: string;
+  /** For discriminated unions: sub-fields of this variant */
+  fields?: ResourceField[];
+  /** For simple unions: primitive type ('string', 'number', 'boolean') */
+  type?: string;
+}
+
+/**
+ * Union metadata for fields that are union types
+ */
+export interface UnionMeta {
+  /** The discriminator field name (e.g. 'type', 'kind') or '__type' for simple unions */
+  discriminatorField: string;
+  /** Available variant options */
+  variants: UnionVariant[];
+}
+
+/**
  * Resource field definition for meta-programming
  */
 export interface ResourceField {
   name: string;
   label: string;
-  type: 'string' | 'number' | 'boolean' | 'date' | 'array' | 'object' | 'binary';
+  type: 'string' | 'number' | 'boolean' | 'date' | 'array' | 'object' | 'binary' | 'union';
   isArray: boolean;
   isRequired: boolean;
   isNullable: boolean;
@@ -49,6 +81,8 @@ export interface ResourceField {
   itemFields?: ResourceField[];
   // Reference to another resource (from Ref/RefRevision annotations)
   ref?: FieldRef;
+  // For union fields: discriminator + variant info
+  unionMeta?: UnionMeta;
 }
 
 /**
@@ -77,7 +111,7 @@ export interface ResourceConfig<T = any> {
     restore: (id: string) => Promise<{ data: ResourceMeta }>;
     revisionList: (
       id: string,
-      params?: RevisionListParams
+      params?: RevisionListParams,
     ) => Promise<{ data: RevisionListResponse }>;
   };
 }
@@ -133,9 +167,7 @@ export interface ResourceCustomizationConfig<F extends string = string> {
  * };
  * ```
  */
-export type ResourceCustomizations<
-  FieldMap = Record<string, string>,
-> = {
+export type ResourceCustomizations<FieldMap = Record<string, string>> = {
   [K in keyof FieldMap]?: ResourceCustomizationConfig<FieldMap[K] & string>;
 };
 

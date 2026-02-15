@@ -22,8 +22,7 @@ function HomePage() {
             </Text>
             
             <Text>
-              這是一個由 AutoCRUD 後端自動生成的 React 管理介面。
-              點擊下方按鈕進入管理控制台。
+              這是一個由 AutoCRUD 後端自動生成的 React 管理介面。 點擊下方按鈕進入管理控制台。
             </Text>
             
             <Button

@@ -17,16 +17,15 @@ function HomePage() {
               <IconDatabase size={32} />
               <Title order={1}>AutoCRUD Web</Title>
             </Group>
-            
+
             <Text size="lg" c="dimmed">
               歡迎使用 AutoCRUD 自動化管理介面
             </Text>
-            
+
             <Text>
-              這是一個由 AutoCRUD 後端自動生成的 React 管理介面。
-              點擊下方按鈕進入管理控制台。
+              這是一個由 AutoCRUD 後端自動生成的 React 管理介面。 點擊下方按鈕進入管理控制台。
             </Text>
-            
+
             <Button
               component={Link}
               to="/autocrud-admin"

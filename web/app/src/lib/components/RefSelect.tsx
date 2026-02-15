@@ -58,9 +58,9 @@ function useRefOptions(resource: string) {
         const data = item.data ?? {};
         const preferred = getByPath(data, targetResource.displayNameField);
         const displayName =
-          (typeof preferred === 'string' && preferred.trim().length > 0
+          typeof preferred === 'string' && preferred.trim().length > 0
             ? preferred
-            : data.name || data.title || data.label || resourceId);
+            : data.name || data.title || data.label || resourceId;
         return {
           value: resourceId,
           label: `${displayName} (${resourceId.slice(0, 8)}…)`,
@@ -199,9 +199,9 @@ function useRefRevisionOptions(resource: string) {
         const revisionId = meta.current_revision_id ?? '';
         const preferred = getByPath(data, targetResource.displayNameField);
         const displayName =
-          (typeof preferred === 'string' && preferred.trim().length > 0
+          typeof preferred === 'string' && preferred.trim().length > 0
             ? preferred
-            : data.name || data.title || data.label || resourceId);
+            : data.name || data.title || data.label || resourceId;
         const shortRevision =
           revisionId.length > 12 ? `${revisionId.slice(0, 4)}…${revisionId.slice(-4)}` : revisionId;
         return {
