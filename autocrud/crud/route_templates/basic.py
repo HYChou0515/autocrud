@@ -144,6 +144,10 @@ def struct_to_responses_type(
 class RevisionListResponse(msgspec.Struct):
     meta: ResourceMeta
     revisions: list[RevisionInfo]
+    # Total revisions matching query (before limit)
+    total: int = 0
+    # Whether more revisions are available beyond the returned list
+    has_more: bool = False
 
 
 class FullResourceResponse(msgspec.Struct, Generic[T]):

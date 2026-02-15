@@ -1,4 +1,4 @@
-import type { ResourceMeta, RevisionInfo, FullResource } from '../types/api';
+import type { ResourceMeta, RevisionInfo, FullResource, RevisionListParams, RevisionListResponse } from '../types/api';
 import type { z } from 'zod';
 
 /**
@@ -77,7 +77,8 @@ export interface ResourceConfig<T = any> {
     restore: (id: string) => Promise<{ data: ResourceMeta }>;
     revisionList: (
       id: string,
-    ) => Promise<{ data: { meta: ResourceMeta; revisions: RevisionInfo[] } }>;
+      params?: RevisionListParams
+    ) => Promise<{ data: RevisionListResponse }>;
   };
 }
 

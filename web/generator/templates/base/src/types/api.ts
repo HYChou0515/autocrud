@@ -37,6 +37,18 @@ export interface FullResource<T> {
 export interface RevisionListResponse {
   meta: ResourceMeta;
   revisions: RevisionInfo[];
+  total: number;
+  has_more: boolean;
+}
+
+export interface RevisionListParams {
+  limit?: number;
+  offset?: number;
+  sort?: 'created_time' | '-created_time';
+  created_time_start?: string;
+  created_time_end?: string;
+  from_revision_id?: string;
+  chain_only?: boolean;
 }
 
 export interface SearchParams {
