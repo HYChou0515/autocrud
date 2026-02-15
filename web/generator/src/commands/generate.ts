@@ -433,9 +433,7 @@ class Generator {
       // Generate Zod schema with nested structure for dot-notation fields
       const zodFields = buildNestedZodFields(r.fields);
 
-      const displayNameLine = r.displayNameField
-        ? `    displayNameField: '${r.displayNameField}',\n`
-        : '';
+      const displayNameLine = r.displayNameField ? `    displayNameField: '${r.displayNameField}',\n` : '';
 
       return `  '${r.name}': {
     name: '${r.name}',

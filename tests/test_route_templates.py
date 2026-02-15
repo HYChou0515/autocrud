@@ -1172,3 +1172,75 @@ class TestRevisionListEdgeCases:
                     revisions[i]["parent_revision_id"]
                     == revisions[i + 1]["revision_id"]
                 )
+
+    def test_chain_only_with_from_revision_id_pagination(self, client: TestClient):
+        """測試 chain_only + from_revision_id 的分頁功能
+
+        模擬前端的 Load More 行為：
+        1. 第一次 chain_only=true&limit=2 → 取得最新 2 筆
+        2. 第二次 chain_only=true&limit=2&from_revision_id=<最後一筆的 id> → 繼續取
+        3. 不應出現重複資料（扣掉 from_revision_id 本身）
+        """
+        # 建立資源並更新 4 次，產生 5 個 revision
+        user_data = {"name": "V1", "email": "v1@example.com", "age": 20}
+        create_response = client.post("/user", json=user_data)
+        resource_id = create_response.json()["resource_id"]
+
+        for i in range(2, 6):
+            client.put(
+                f"/user/{resource_id}",
+                json={"name": f"V{i}", "email": f"v{i}@example.com", "age": 20 + i},
+            )
+
+        # 第一次載入：chain_only=true, limit=2
+        resp1 = client.get(
+            f"/user/{resource_id}/revision-list?chain_only=true&limit=2"
+        )
+        assert resp1.status_code == 200
+        data1 = resp1.json()
+        assert len(data1["revisions"]) == 2
+        assert data1["has_more"] is True
+
+        # 第一批最後一筆的 revision_id
+        last_rev_id = data1["revisions"][-1]["revision_id"]
+
+        # 第二次載入：from_revision_id=<上次最後一筆>, chain_only=true, limit=2
+        resp2 = client.get(
+            f"/user/{resource_id}/revision-list?chain_only=true&limit=2&from_revision_id={last_rev_id}"
+        )
+        assert resp2.status_code == 200
+        data2 = resp2.json()
+        assert len(data2["revisions"]) >= 1
+
+        # from_revision_id 是 inclusive，第一筆應該就是 last_rev_id
+        assert data2["revisions"][0]["revision_id"] == last_rev_id
+
+        # 第二批的第二筆（若有）不應與第一批重複
+        first_batch_ids = {r["revision_id"] for r in data1["revisions"]}
+        second_batch_new = data2["revisions"][1:]  # 跳過 from_revision_id 本身
+        for rev in second_batch_new:
+            assert rev["revision_id"] not in first_batch_ids, (
+                f"Duplicate revision {rev['revision_id']} found in second batch"
+            )
+
+        # 合併後應該有 3 筆不重複
+        all_ids = [r["revision_id"] for r in data1["revisions"]]
+        all_ids.extend(r["revision_id"] for r in second_batch_new)
+        assert len(all_ids) == len(set(all_ids)), "Should have no duplicates"
+
+        # 第三次載入（如果 has_more）
+        if data2["has_more"]:
+            last_rev_id_2 = data2["revisions"][-1]["revision_id"]
+            resp3 = client.get(
+                f"/user/{resource_id}/revision-list?chain_only=true&limit=2&from_revision_id={last_rev_id_2}"
+            )
+            assert resp3.status_code == 200
+            data3 = resp3.json()
+
+            # 第三批不應與前面重複
+            third_batch_new = data3["revisions"][1:]
+            for rev in third_batch_new:
+                assert rev["revision_id"] not in first_batch_ids
+                assert rev["revision_id"] not in {
+                    r["revision_id"] for r in second_batch_new
+                }

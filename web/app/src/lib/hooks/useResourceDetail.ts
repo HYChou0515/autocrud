@@ -4,7 +4,6 @@ import type { ResourceConfig } from '../resources';
 
 export interface UseResourceDetailResult<T> {
   resource: FullResource<T> | null;
-  revisions: RevisionInfo[];
   loading: boolean;
   error: Error | null;
   refresh: () => void;
@@ -22,7 +21,6 @@ export function useResourceDetail<T>(
   revisionId?: string | null,
 ): UseResourceDetailResult<T> {
   const [resource, setResource] = useState<FullResource<T> | null>(null);
-  const [revisions, setRevisions] = useState<RevisionInfo[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<Error | null>(null);
   const [refreshCount, setRefreshCount] = useState(0);
@@ -39,13 +37,9 @@ export function useResourceDetail<T>(
       setError(null);
       try {
         const params = revisionId ? { revision_id: revisionId } : undefined;
-        const [res, revList] = await Promise.all([
-          config.apiClient.getFull(resourceId, params),
-          config.apiClient.revisionList(resourceId),
-        ]);
+        const res = await config.apiClient.getFull(resourceId, params);
         if (!cancelled) {
           setResource(res.data);
-          setRevisions(revList.data.revisions);
         }
       } catch (e) {
         if (!cancelled) {
@@ -84,5 +78,5 @@ export function useResourceDetail<T>(
     refresh();
   }, [config.apiClient, resourceId, refresh]);
 
-  return { resource, revisions, loading, error, refresh, update, deleteResource, restore };
+  return { resource, loading, error, refresh, update, deleteResource, restore };
 }

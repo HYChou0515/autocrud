@@ -374,7 +374,11 @@ class ReadRouteTemplate(BaseRouteTemplate, Generic[T]):
                     if chain_only:
                         by_id = {r.revision_id: r for r in revision_infos}
                         chain: list[RevisionInfo] = []
-                        cur = meta.current_revision_id
+                        cur = (
+                            from_revision_id
+                            if from_revision_id
+                            else meta.current_revision_id
+                        )
                         while cur:
                             info = by_id.get(cur)
                             if info is None:
