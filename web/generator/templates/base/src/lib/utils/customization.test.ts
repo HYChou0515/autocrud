@@ -1,4 +1,4 @@
-import { describe, expect, it, beforeEach } from 'vitest';
+import { describe, expect, it, beforeEach, vi } from 'vitest';
 import {
   getCustomization,
   getRevisionViewMode,
@@ -27,9 +27,9 @@ function createStorage() {
 describe('customization storage', () => {
   beforeEach(() => {
     const storage = createStorage();
-    Object.defineProperty(window, 'localStorage', {
-      value: storage,
-      configurable: true,
+    // Mock window object with localStorage
+    vi.stubGlobal('window', {
+      localStorage: storage,
     });
     window.localStorage.clear();
   });
