@@ -674,13 +674,12 @@ class AutoCRUD:
 
     def add_model(
         self,
-        model: type[T],
+        model: "type[T] | Schema[T]",
         *,
         name: str | None = None,
         id_generator: Callable[[], str] | None = None,
         storage: IStorage | None = None,
-        migration: IMigration | None = None,
-        schema: "Schema | None" = None,
+        migration: "IMigration | Schema | None" = None,
         indexed_fields: list[str | tuple[str, type] | IndexableField] | None = None,
         event_handlers: Sequence[IEventHandler] | None = None,
         permission_checker: IPermissionChecker | None = None,
@@ -778,6 +777,42 @@ class AutoCRUD:
                     "Invalid indexed field, should be IndexableField or tuple[field_name, field_type]",
                 )
 
+        # ── Resolve Schema vs type argument ────────────────────────
+        import warnings
+
+        resolved_schema: Schema | None = None
+        if isinstance(model, Schema):
+            # Schema passed as first argument
+            if migration is not None:
+                raise ValueError(
+                    "Cannot specify 'migration' when passing Schema as the first argument. "
+                    "Define migration steps on the Schema instead."
+                )
+            if validator is not None:
+                raise ValueError(
+                    "Cannot specify 'validator' when passing Schema as the first argument. "
+                    "Pass validator to Schema(..., validator=...) instead."
+                )
+            resolved_schema = model
+            model = resolved_schema.resource_type  # type: ignore[assignment]
+            if model is None:
+                raise ValueError(
+                    "Schema passed as first argument must have a resource_type."
+                )
+        else:
+            # model is a plain type
+            if isinstance(migration, Schema):
+                resolved_schema = migration
+            elif isinstance(migration, IMigration):
+                warnings.warn(
+                    "Passing IMigration to migration= is deprecated. "
+                    "Use Schema(resource_type, version).step(...) instead.",
+                    DeprecationWarning,
+                    stacklevel=2,
+                )
+                resolved_schema = Schema.from_legacy(migration)
+            # else migration is None → no schema
+
         model_name = name or self._resource_name(model)
 
         # Handle Pydantic BaseModel as model type:
@@ -786,7 +821,9 @@ class AutoCRUD:
         if _is_pydantic_model(model):
             pydantic_model = model
             model = pydantic_to_struct(pydantic_model)
-            if validator is None and (schema is None or not schema.has_validator):
+            if validator is None and (
+                resolved_schema is None or not resolved_schema.has_validator
+            ):
                 validator = pydantic_model
 
         if model_name in self.resource_managers:
@@ -851,8 +888,7 @@ class AutoCRUD:
             storage=storage,
             blob_store=self.blob_store,
             id_generator=id_generator,
-            migration=migration,
-            schema=schema,
+            migration=resolved_schema or migration,
             indexed_fields=_indexed_fields,
             event_handlers=self.event_handlers or event_handlers,
             permission_checker=self.permission_checker or permission_checker,

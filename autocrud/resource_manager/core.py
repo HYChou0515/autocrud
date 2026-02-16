@@ -434,8 +434,7 @@ class ResourceManager(IResourceManager[T], Generic[T]):
         blob_store: IBlobStore | None = None,
         message_queue: Callable[["IResourceManager[T]"], IMessageQueue] | None = None,
         id_generator: Callable[[], str] | None = None,
-        migration: IMigration[T] | None = None,
-        schema: "Schema[T] | None" = None,
+        migration: "IMigration[T] | Schema[T] | None" = None,
         indexed_fields: list[IndexableField] | None = None,
         permission_checker: "IPermissionChecker | None" = None,
         name: str | NamingFormat = NamingFormat.SNAKE,
@@ -452,22 +451,23 @@ class ResourceManager(IResourceManager[T], Generic[T]):
         # ── Resolve Schema vs legacy migration/validator ──────────────
         from autocrud.schema import Schema as _Schema
 
-        if schema is not None and migration is not None:
-            raise ValueError(
-                "Cannot specify both 'schema' and 'migration'. "
-                "Use Schema.from_legacy(migration) or migrate to Schema API."
-            )
-
-        if schema is not None:
-            self._schema = schema
-            # Extract migration / version / validator from Schema
-            migration = schema if schema.has_migration else None
-            if schema.has_validator and validator is None:
-                validator = schema._validator  # already normalized callable
-        elif migration is not None:
+        if isinstance(migration, _Schema):
+            self._schema = migration
+            # Extract validator from Schema if present and no explicit validator
+            if migration.has_validator and validator is None:
+                validator = migration._validator  # already normalized callable
+            # Use Schema as migration if it has migration steps
+            migration_obj = migration if migration.has_migration else None
+        elif isinstance(migration, IMigration):
             self._schema = _Schema.from_legacy(migration)
-        else:
+            migration_obj = self._schema
+        elif migration is None:
             self._schema = None
+            migration_obj = None
+        else:
+            raise TypeError(
+                f"migration must be Schema, IMigration, or None, got {type(migration).__name__}"
+            )
 
         if default_user is UNSET:
             self.user_ctx = Ctx("user_ctx", strict_type=str)
@@ -503,7 +503,7 @@ class ResourceManager(IResourceManager[T], Generic[T]):
         self._schema_version = schema_version
         self._indexed_fields = indexed_fields or []
         self._indexed_value_extractor = IndexedValueExtractor(self._indexed_fields)
-        self._migration = self._schema if self._schema is not None else migration
+        self._migration = self._schema if self._schema is not None else migration_obj
         self._encoding = encoding
         self._data_serializer = MsgspecSerializer(
             encoding=encoding,

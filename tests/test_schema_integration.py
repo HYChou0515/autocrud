@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import datetime as dt
 import io
+import warnings
 from typing import IO
 from unittest.mock import MagicMock
 
@@ -78,12 +79,12 @@ class TestSchemaResourceManagerIntegration:
         return MagicMock()
 
     def test_rm_with_schema_single_step(self, mock_storage: MagicMock):
-        """RM created with schema= parameter, single step migration."""
-        schema = Schema("v2").step("v1", migrate_v1_to_v2)
+        """RM created with migration=Schema, single step migration."""
+        schema = Schema(ItemV2, "v2").step("v1", migrate_v1_to_v2)
         rm = ResourceManager(
             resource_type=ItemV2,
             storage=mock_storage,
-            schema=schema,
+            migration=schema,
             indexed_fields=[IndexableField("name")],
         )
 
@@ -91,12 +92,16 @@ class TestSchemaResourceManagerIntegration:
         assert rm._migration is not None
 
     def test_rm_with_schema_chain(self, mock_storage: MagicMock):
-        """RM created with schema= parameter, chain migration."""
-        schema = Schema("v3").step("v1", migrate_v1_to_v2).step("v2", migrate_v2_to_v3)
+        """RM created with migration=Schema, chain migration."""
+        schema = (
+            Schema(ItemV3, "v3")
+            .step("v1", migrate_v1_to_v2)
+            .step("v2", migrate_v2_to_v3)
+        )
         rm = ResourceManager(
             resource_type=ItemV3,
             storage=mock_storage,
-            schema=schema,
+            migration=schema,
         )
         assert rm._schema_version == "v3"
 
@@ -107,11 +112,11 @@ class TestSchemaResourceManagerIntegration:
             if data.price < 0:
                 raise ValueError("Price must be non-negative")
 
-        schema = Schema("v1", validator=check_price)
+        schema = Schema(ItemV1, "v1", validator=check_price)
         rm = ResourceManager(
             resource_type=ItemV1,
             storage=mock_storage,
-            schema=schema,
+            migration=schema,
         )
         # Validator should be set
         assert rm._validator is not None
@@ -122,26 +127,6 @@ class TestSchemaResourceManagerIntegration:
         # Bad data
         with pytest.raises(ValidationError, match="non-negative"):
             rm._run_validator(ItemV1(name="bad", price=-5))
-
-    def test_rm_schema_and_migration_raises(self, mock_storage: MagicMock):
-        """Cannot specify both schema= and migration=."""
-
-        class LegacyMig(IMigration[ItemV2]):
-            @property
-            def schema_version(self) -> str:
-                return "v2"
-
-            def migrate(self, data, sv):
-                pass
-
-        schema = Schema("v2").step("v1", migrate_v1_to_v2)
-        with pytest.raises(ValueError, match="Cannot specify both"):
-            ResourceManager(
-                resource_type=ItemV2,
-                storage=mock_storage,
-                schema=schema,
-                migration=LegacyMig(),
-            )
 
     def test_rm_with_legacy_migration_backward_compat(self, mock_storage: MagicMock):
         """Existing migration= parameter still works (wrapped in Schema)."""
@@ -165,11 +150,11 @@ class TestSchemaResourceManagerIntegration:
 
     def test_rm_migrate_with_schema(self, mock_storage: MagicMock):
         """Full migration flow using Schema with ResourceManager.migrate()."""
-        schema = Schema("v2").step("v1", migrate_v1_to_v2)
+        schema = Schema(ItemV2, "v2").step("v1", migrate_v1_to_v2)
         rm = ResourceManager(
             resource_type=ItemV2,
             storage=mock_storage,
-            schema=schema,
+            migration=schema,
             indexed_fields=[IndexableField("name"), IndexableField("currency")],
         )
 
@@ -237,11 +222,11 @@ class TestSchemaResourceManagerIntegration:
 
     def test_rm_reindex_only_schema(self, mock_storage: MagicMock):
         """Schema with version but no steps = reindex only."""
-        schema = Schema("v2")
+        schema = Schema(ItemV2, "v2")
         rm = ResourceManager(
             resource_type=ItemV2,
             storage=mock_storage,
-            schema=schema,
+            migration=schema,
         )
         assert rm._schema_version == "v2"
         # No migration steps, but version is set
@@ -264,15 +249,22 @@ class TestSchemaAddModelIntegration:
 
         return AutoCRUD()
 
-    def test_add_model_with_schema(self, app):
-        """add_model with schema= parameter."""
-        schema = Schema("v2").step("v1", migrate_v1_to_v2)
-        app.add_model(ItemV2, schema=schema)
+    def test_add_model_with_schema_as_first_arg(self, app):
+        """add_model with Schema as first argument."""
+        schema = Schema(ItemV2, "v2").step("v1", migrate_v1_to_v2)
+        app.add_model(schema)
         rm = app.resource_managers["item-v2"]
         assert rm._schema_version == "v2"
 
-    def test_add_model_legacy_migration_compat(self, app):
-        """add_model with migration= (existing API) still works."""
+    def test_add_model_with_migration_schema(self, app):
+        """add_model with migration=Schema."""
+        schema = Schema(ItemV2, "v2").step("v1", migrate_v1_to_v2)
+        app.add_model(ItemV2, migration=schema)
+        rm = app.resource_managers["item-v2"]
+        assert rm._schema_version == "v2"
+
+    def test_add_model_legacy_migration_warns(self, app):
+        """add_model with migration=IMigration triggers DeprecationWarning."""
 
         class LegacyMig(IMigration[ItemV2]):
             @property
@@ -282,7 +274,13 @@ class TestSchemaAddModelIntegration:
             def migrate(self, data, sv):
                 pass
 
-        app.add_model(ItemV2, migration=LegacyMig())
+        with warnings.catch_warnings(record=True) as w:
+            warnings.simplefilter("always")
+            app.add_model(ItemV2, migration=LegacyMig())
+            assert len(w) == 1
+            assert issubclass(w[0].category, DeprecationWarning)
+            assert "IMigration" in str(w[0].message)
+
         rm = app.resource_managers["item-v2"]
         assert rm._schema_version == "v2"
 
@@ -293,25 +291,49 @@ class TestSchemaAddModelIntegration:
             if data.price < 0:
                 raise ValueError("bad")
 
-        schema = Schema("v1", validator=check)
-        app.add_model(ItemV1, schema=schema)
+        schema = Schema(ItemV1, "v1", validator=check)
+        app.add_model(schema)
         rm = app.resource_managers["item-v1"]
         assert rm._validator is not None
 
-    def test_add_model_schema_and_migration_raises(self, app):
-        """Cannot specify both schema= and migration= in add_model."""
+    def test_add_model_schema_first_arg_and_migration_raises(self, app):
+        """Cannot specify migration= when Schema is the first argument."""
+        schema = Schema(ItemV2, "v2")
+        with pytest.raises(ValueError, match="Cannot specify 'migration'"):
+            app.add_model(schema, migration=Schema(ItemV2, "v2"))
 
-        class LegacyMig(IMigration[ItemV2]):
-            @property
-            def schema_version(self) -> str:
-                return "v2"
+    def test_add_model_schema_first_arg_and_validator_raises(self, app):
+        """Cannot specify validator= when Schema is the first argument."""
 
-            def migrate(self, data, sv):
-                pass
+        def check(data):
+            pass
 
-        schema = Schema("v2")
-        with pytest.raises(ValueError, match="Cannot specify both"):
-            app.add_model(ItemV2, schema=schema, migration=LegacyMig())
+        schema = Schema(ItemV2, "v2", validator=check)
+        with pytest.raises(ValueError, match="Cannot specify 'validator'"):
+            app.add_model(schema, validator=lambda d: None)
+
+    def test_add_model_type_only_no_warning(self, app):
+        """add_model(type) without migration/schema works without warning."""
+        with warnings.catch_warnings(record=True) as w:
+            warnings.simplefilter("always")
+            app.add_model(ItemV1)
+            # No deprecation warning
+            dep_warnings = [x for x in w if issubclass(x.category, DeprecationWarning)]
+            assert len(dep_warnings) == 0
+
+        rm = app.resource_managers["item-v1"]
+        assert rm._schema is None
+
+    def test_add_model_type_with_validator(self, app):
+        """add_model(type, validator=fn) works."""
+
+        def check(data):
+            if data.price < 0:
+                raise ValueError("bad")
+
+        app.add_model(ItemV1, validator=check)
+        rm = app.resource_managers["item-v1"]
+        assert rm._validator is not None
 
     def test_add_model_pydantic_with_schema(self):
         """Pydantic model + Schema: validator comes from Schema, not Pydantic."""
@@ -329,8 +351,8 @@ class TestSchemaAddModelIntegration:
                 raise ValueError("too expensive")
 
         app = AutoCRUD()
-        schema = Schema("v1", validator=custom_check)
-        app.add_model(PydItem, schema=schema)
+        schema = Schema(PydItem, "v1", validator=custom_check)
+        app.add_model(schema)
         rm = app.resource_managers["pyd-item"]
         # Since Schema already has a validator, Pydantic should NOT override it
         # The rm._validator should be the Schema's validator
@@ -348,8 +370,8 @@ class TestSchemaAddModelIntegration:
             price: int
 
         app = AutoCRUD()
-        schema = Schema("v1")  # no validator
-        app.add_model(PydItem2, schema=schema)
+        schema = Schema(PydItem2, "v1")  # no validator
+        app.add_model(schema)
         rm = app.resource_managers["pyd-item2"]
         # Pydantic auto-detect should set the validator
         assert rm._validator is not None
