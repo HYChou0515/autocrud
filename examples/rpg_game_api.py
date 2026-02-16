@@ -25,6 +25,7 @@ import time
 from enum import Enum
 from typing import Annotated, Optional
 
+import msgspec
 import uvicorn
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
@@ -266,6 +267,52 @@ def get_random_image():
 
 character_ids = {}  # name -> resource_id
 character_revs = {}  # name -> RefRevision
+history_seed = 20240216
+
+
+def generate_character_update_history(
+    character_manager,
+    current_user: str,
+    base_time: dt.datetime,
+    seed: int = history_seed,
+    min_updates: int = 5,
+    max_updates: int = 30,
+) -> None:
+    rng = random.Random(seed)
+    for idx, (name, resource_id) in enumerate(character_ids.items()):
+        revisions: list[str] = []
+        if name in character_revs:
+            revisions.append(character_revs[name])
+
+        update_count = rng.randint(min_updates, max_updates)
+        current_time = base_time + dt.timedelta(hours=idx)
+
+        for _ in range(update_count):
+            current_time += dt.timedelta(minutes=rng.randint(15, 180))
+            with character_manager.meta_provide(current_user, current_time):
+                if len(revisions) > 1 and rng.random() < 0.35:
+                    branch_target = rng.choice(revisions[:-1])
+                    character_manager.switch(resource_id, branch_target)
+
+            parent_info = character_manager.get_revision_info(resource_id)
+            if current_time <= parent_info.created_time:
+                current_time = parent_info.created_time + dt.timedelta(minutes=1)
+
+            with character_manager.meta_provide(current_user, current_time):
+                resource = character_manager.get(resource_id).data
+                updated = msgspec.structs.replace(
+                    resource,
+                    level=min(999, resource.level + rng.randint(0, 2)),
+                    experience=max(0, resource.experience + rng.randint(50, 500)),
+                    gold=max(0, resource.gold + rng.randint(-200, 800)),
+                    hp=max(1, resource.hp + rng.randint(-20, 80)),
+                    mp=max(0, resource.mp + rng.randint(-15, 60)),
+                    attack=max(0, resource.attack + rng.randint(-2, 6)),
+                    defense=max(0, resource.defense + rng.randint(-2, 6)),
+                )
+                info = character_manager.update(resource_id, updated)
+                revisions.append(info.revision_id)
+                character_revs[name] = info.revision_id
 
 
 def create_sample_data():
@@ -572,6 +619,13 @@ def create_sample_data():
                 print(f"✅ 創建角色: {character.name} (Lv.{character.level})")
             except Exception as e:
                 print(f"❌ 角色創建失敗: {e}")
+
+    # Generate deterministic update history for revision tree testing
+    generate_character_update_history(
+        character_manager,
+        current_user,
+        dt.datetime(2024, 1, 1, 12, 0, 0),
+    )
 
     # 🗡️ 創建裝備
     # 創建一個簡單的 1x1 PNG圖片 作為圖標
