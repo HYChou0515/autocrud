@@ -2017,6 +2017,47 @@ class CannotModifyResourceError(ResourceConflictError):
         self.resource_id = resource_id
 
 
+class ValidationError(ValueError):
+    """Raised when data fails custom validation.
+
+    Inherits from ValueError so it can be caught broadly.
+    This is distinct from msgspec.ValidationError which handles
+    type-level validation.
+    """
+
+    pass
+
+
+class IValidator(ABC):
+    """Interface for custom data validators.
+
+    Implement this to create reusable validators that can be
+    attached to ResourceManager via ``add_model(validator=...)``.
+
+    Example::
+
+        class PriceValidator(IValidator):
+            def validate(self, data) -> None:
+                if data.price < 0:
+                    raise ValueError("Price must be non-negative")
+
+
+        crud.add_model(Item, validator=PriceValidator())
+    """
+
+    @abstractmethod
+    def validate(self, data: Any) -> None:
+        """Validate the data.
+
+        Args:
+            data: The resource data (a msgspec Struct instance).
+
+        Raises:
+            ValueError: If validation fails. The error will be
+                wrapped in a ``ValidationError``.
+        """
+
+
 PermissionContext = EventContext
 
 

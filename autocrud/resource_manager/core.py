@@ -26,6 +26,9 @@ from msgspec import UNSET, Struct, UnsetType
 from xxhash import xxh3_128_hexdigest
 
 from autocrud.resource_manager.partial import create_partial_type, prune_object
+from autocrud.resource_manager.pydantic_converter import (  # noqa: E402
+    build_validator,
+)
 from autocrud.types import (
     AfterCreate,
     AfterDelete,
@@ -65,6 +68,7 @@ from autocrud.types import (
     IMigration,
     IndexableField,
     IResourceManager,
+    IValidator,
     OnFailureCreate,
     OnFailureDelete,
     OnFailureDump,
@@ -107,6 +111,7 @@ from autocrud.types import (
     RevisionInfo,
     RevisionStatus,
     SpecialIndex,
+    ValidationError,
 )
 
 if TYPE_CHECKING:
@@ -437,7 +442,10 @@ class ResourceManager(IResourceManager[T], Generic[T]):
         default_status: RevisionStatus = RevisionStatus.stable,
         default_user: str | Callable[[], str] | UnsetType = UNSET,
         default_now: Callable[[], dt.datetime] | UnsetType = UNSET,
+        validator: "Callable[[T], None] | IValidator | type | None" = None,
+        pydantic_type: type | None = None,
     ):
+        self._pydantic_type = pydantic_type
         if default_user is UNSET:
             self.user_ctx = Ctx("user_ctx", strict_type=str)
         elif callable(default_user):
@@ -493,6 +501,9 @@ class ResourceManager(IResourceManager[T], Generic[T]):
 
         self._binary_processor = BinaryProcessor(resource_type)
 
+        # Set up validator
+        self._validator = build_validator(validator)
+
         # Message queue is provided as a factory callable
         if message_queue is not None:
             self.message_queue = message_queue(self)
@@ -504,6 +515,49 @@ class ResourceManager(IResourceManager[T], Generic[T]):
 
     def decode(self, data: bytes) -> T:
         return self._data_serializer.decode(data)
+
+    def _decode_and_validate(self, data: bytes) -> None:
+        return self._data_serializer.decode_and_validate(data)
+
+    def _run_validator(self, data: T) -> None:
+        """Run the custom validator on the data if one is configured."""
+        if self._validator is not None:
+            try:
+                self._validator(data)
+            except ValidationError:
+                raise
+            except Exception as e:
+                raise ValidationError(str(e)) from e
+
+    def _coerce_data(self, data: Any) -> T:
+        """Coerce data to the resource Struct type.
+
+        Accepts:
+        - msgspec Struct instance → returned as-is
+        - dict → converted via msgspec.convert
+        - Pydantic BaseModel instance (when pydantic_type is set)
+          → model_dump() → msgspec.convert
+
+        This allows Pydantic users to pass native Pydantic instances
+        or plain dicts without knowing about msgspec.
+        """
+        if isinstance(data, Struct):
+            return data
+        if isinstance(data, dict):
+            return msgspec.convert(data, self._resource_type)
+        # Accept Pydantic instance when RM was configured with pydantic_type
+        if self._pydantic_type is not None and isinstance(data, self._pydantic_type):
+            try:
+                d = data.model_dump()  # Pydantic v2
+            except AttributeError:
+                d = data.dict()  # Pydantic v1
+            return msgspec.convert(d, self._resource_type)
+        return data
+
+    @property
+    def pydantic_type(self) -> type | None:
+        """The original Pydantic model class, if this RM was created from one."""
+        return self._pydantic_type
 
     @property
     def user(self) -> str:
@@ -671,7 +725,8 @@ class ResourceManager(IResourceManager[T], Generic[T]):
 
     def get_data_hash(self, data: T) -> str:
         b = self.encode(data)
-        self.decode(b)  # 確保可解碼
+        self._decode_and_validate(b)  # 確保可解碼
+        self._run_validator(data)  # 執行自訂驗證
         data_hash = f"xxh3_128:{xxh3_128_hexdigest(b)}"
         return data_hash
 
@@ -887,6 +942,7 @@ class ResourceManager(IResourceManager[T], Generic[T]):
         Returns:
             info (RevisionInfo): The revision info of the created resource.
         """
+        data = self._coerce_data(data)
         status = self.default_status if status is UNSET else status
         data = self._process_binary_fields(data)
         info = self._rev_info(_BuildRevInfoCreate(data, status))
@@ -1065,6 +1121,7 @@ class ResourceManager(IResourceManager[T], Generic[T]):
         Raises:
             ResourceIDNotFoundError: If the resource ID does not exist.
         """
+        data = self._coerce_data(data)
         status = self.default_status if status is UNSET else status
         data = self._process_binary_fields(data)
         prev_res_meta = self.get_meta(resource_id)
@@ -1123,6 +1180,9 @@ class ResourceManager(IResourceManager[T], Generic[T]):
         Raises:
             CannotModifyResourceError: If the resource is not in DRAFT status.
         """
+        if data is not UNSET and type(data) is not JsonPatch:
+            data = self._coerce_data(data)
+
         if data is UNSET and status is not UNSET:
             return self._modify_status(resource_id, status)
 
