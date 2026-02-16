@@ -115,6 +115,7 @@ from autocrud.types import (
 )
 
 if TYPE_CHECKING:
+    from autocrud.schema import Schema
     from autocrud.types import IPermissionChecker
 
 
@@ -434,6 +435,7 @@ class ResourceManager(IResourceManager[T], Generic[T]):
         message_queue: Callable[["IResourceManager[T]"], IMessageQueue] | None = None,
         id_generator: Callable[[], str] | None = None,
         migration: IMigration[T] | None = None,
+        schema: "Schema[T] | None" = None,
         indexed_fields: list[IndexableField] | None = None,
         permission_checker: "IPermissionChecker | None" = None,
         name: str | NamingFormat = NamingFormat.SNAKE,
@@ -446,6 +448,27 @@ class ResourceManager(IResourceManager[T], Generic[T]):
         pydantic_type: type | None = None,
     ):
         self._pydantic_type = pydantic_type
+
+        # ── Resolve Schema vs legacy migration/validator ──────────────
+        from autocrud.schema import Schema as _Schema
+
+        if schema is not None and migration is not None:
+            raise ValueError(
+                "Cannot specify both 'schema' and 'migration'. "
+                "Use Schema.from_legacy(migration) or migrate to Schema API."
+            )
+
+        if schema is not None:
+            self._schema = schema
+            # Extract migration / version / validator from Schema
+            migration = schema if schema.has_migration else None
+            if schema.has_validator and validator is None:
+                validator = schema._validator  # already normalized callable
+        elif migration is not None:
+            self._schema = _Schema.from_legacy(migration)
+        else:
+            self._schema = None
+
         if default_user is UNSET:
             self.user_ctx = Ctx("user_ctx", strict_type=str)
         elif callable(default_user):
@@ -474,11 +497,13 @@ class ResourceManager(IResourceManager[T], Generic[T]):
             self._resource_name = name
 
         self.data_converter = DataConverter(self.resource_type)
-        schema_version = migration.schema_version if migration else None
+        schema_version = (
+            self._schema.schema_version if self._schema is not None else None
+        )
         self._schema_version = schema_version
         self._indexed_fields = indexed_fields or []
         self._indexed_value_extractor = IndexedValueExtractor(self._indexed_fields)
-        self._migration = migration
+        self._migration = self._schema if self._schema is not None else migration
         self._encoding = encoding
         self._data_serializer = MsgspecSerializer(
             encoding=encoding,

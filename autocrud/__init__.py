@@ -1,4 +1,5 @@
 from autocrud.crud.core import AutoCRUD
+from autocrud.schema import Schema
 from autocrud.types import (
     DisplayName,
     IValidator,
@@ -20,6 +21,7 @@ __all__ = [
     "OnDelete",
     "Ref",
     "RefRevision",
+    "Schema",
     "ValidationError",
     "crud",
 ]

@@ -57,6 +57,7 @@ from autocrud.resource_manager.storage_factory import (
     IStorageFactory,
     MemoryStorageFactory,
 )
+from autocrud.schema import Schema
 from autocrud.types import (
     DataSearchCondition,
     DataSearchOperator,
@@ -679,6 +680,7 @@ class AutoCRUD:
         id_generator: Callable[[], str] | None = None,
         storage: IStorage | None = None,
         migration: IMigration | None = None,
+        schema: "Schema | None" = None,
         indexed_fields: list[str | tuple[str, type] | IndexableField] | None = None,
         event_handlers: Sequence[IEventHandler] | None = None,
         permission_checker: IPermissionChecker | None = None,
@@ -784,7 +786,7 @@ class AutoCRUD:
         if _is_pydantic_model(model):
             pydantic_model = model
             model = pydantic_to_struct(pydantic_model)
-            if validator is None:
+            if validator is None and (schema is None or not schema.has_validator):
                 validator = pydantic_model
 
         if model_name in self.resource_managers:
@@ -850,6 +852,7 @@ class AutoCRUD:
             blob_store=self.blob_store,
             id_generator=id_generator,
             migration=migration,
+            schema=schema,
             indexed_fields=_indexed_fields,
             event_handlers=self.event_handlers or event_handlers,
             permission_checker=self.permission_checker or permission_checker,
