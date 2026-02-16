@@ -32,6 +32,14 @@
             "justMyCode": false,
         },
         {
+            "name": "rpg_game_api (pydantic)",
+            "type": "debugpy",
+            "request": "launch",
+            "program": "examples/rpg_game_pydantic_api.py",
+            "console": "integratedTerminal",
+            "justMyCode": false,
+        },
+        {
             "name": "rpg_game_s3_api",
             "type": "debugpy",
             "request": "launch",

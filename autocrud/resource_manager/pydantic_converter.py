@@ -139,8 +139,16 @@ def _iter_model_fields(
     result: list[tuple[str, Any, bool, Any, str | None]] = []
     if _PYDANTIC_V2:
         for name, fi in pydantic_model.model_fields.items():
+            annotation = fi.annotation
+            # Pydantic v2 strips top-level Annotated metadata (e.g. Ref,
+            # DisplayName, RefRevision) into fi.metadata while fi.annotation
+            # only contains the bare type.  Reconstruct Annotated[] so that
+            # downstream code (extract_refs, extract_display_name) can
+            # discover the metadata on the resulting Struct type hints.
+            if fi.metadata:
+                annotation = Annotated[tuple([annotation, *fi.metadata])]
             result.append(
-                (name, fi.annotation, fi.is_required(), fi.default, fi.discriminator)
+                (name, annotation, fi.is_required(), fi.default, fi.discriminator)
             )
     else:
         for name, mf in pydantic_model.__fields__.items():

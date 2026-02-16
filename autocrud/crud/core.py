@@ -780,6 +780,7 @@ class AutoCRUD:
 
         # Handle Pydantic BaseModel as model type:
         # auto-generate struct and use Pydantic for validation
+        pydantic_model = None
         if _is_pydantic_model(model):
             pydantic_model = model
             model = pydantic_to_struct(pydantic_model)
@@ -855,6 +856,7 @@ class AutoCRUD:
             encoding=encoding,
             name=model_name,
             validator=validator,
+            pydantic_type=pydantic_model,
             **other_options,
         )
         self.resource_managers[model_name] = resource_manager

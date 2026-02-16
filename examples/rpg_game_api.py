@@ -30,7 +30,7 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from msgspec import Struct
 
-from autocrud import OnDelete, Ref, crud
+from autocrud import IValidator, OnDelete, Ref, crud
 from autocrud.crud.route_templates.blob import BlobRouteTemplate
 from autocrud.crud.route_templates.graphql import GraphQLRouteTemplate
 from autocrud.crud.route_templates.migrate import MigrateRouteTemplate
@@ -176,6 +176,85 @@ class GameEvent(Job[GameEventPayload]):
     """遊戲事件任務（使用 Message Queue 處理）"""
 
     pass
+
+
+# ===== 資料驗證器 =====
+
+
+def validate_character(data: Character) -> None:
+    """角色資料驗證（Callable 風格）"""
+    errors = []
+    if not data.name.strip():
+        errors.append("角色名稱不可為空")
+    if data.level < 1 or data.level > 999:
+        errors.append("等級必須在 1~999 之間")
+    if data.hp < 0:
+        errors.append("生命值不可為負數")
+    if data.mp < 0:
+        errors.append("魔力值不可為負數")
+    if data.attack < 0:
+        errors.append("攻擊力不可為負數")
+    if data.defense < 0:
+        errors.append("防禦力不可為負數")
+    if data.gold < 0:
+        errors.append("金幣不可為負數")
+    if data.experience < 0:
+        errors.append("經驗值不可為負數")
+    if errors:
+        raise ValueError("; ".join(errors))
+
+
+def validate_guild(data: Guild) -> None:
+    """公會資料驗證（Callable 風格）"""
+    errors = []
+    if not data.name.strip():
+        errors.append("公會名稱不可為空")
+    if data.member_count < 1:
+        errors.append("公會成員數至少為 1")
+    if data.level < 1:
+        errors.append("公會等級至少為 1")
+    if data.treasury < 0:
+        errors.append("公會金庫不可為負數")
+    if errors:
+        raise ValueError("; ".join(errors))
+
+
+class SkillValidator(IValidator):
+    """技能資料驗證（IValidator 風格）"""
+
+    def validate(self, data: Skill) -> None:
+        errors = []
+        if not data.skname.strip():
+            errors.append("技能名稱不可為空")
+        if data.required_level < 1:
+            errors.append("技能需求等級至少為 1")
+        if isinstance(data.detail, ActiveSkillData):
+            if data.detail.mp_cost < 0:
+                errors.append("MP 消耗不可為負數")
+            if data.detail.cooldown_seconds < 0:
+                errors.append("冷卻時間不可為負數")
+        elif isinstance(data.detail, UltimateSkillData):
+            if data.detail.mp_cost < 0:
+                errors.append("MP 消耗不可為負數")
+            if data.detail.damage <= 0:
+                errors.append("終極技能傷害必須大於 0")
+        if errors:
+            raise ValueError("; ".join(errors))
+
+
+def validate_equipment(data: Equipment) -> None:
+    """裝備資料驗證（Callable 風格）"""
+    errors = []
+    if not data.name.strip():
+        errors.append("裝備名稱不可為空")
+    if data.price < 0:
+        errors.append("裝備價格不可為負數")
+    if data.attack_bonus < 0:
+        errors.append("攻擊加成不可為負數")
+    if data.defense_bonus < 0:
+        errors.append("防禦加成不可為負數")
+    if errors:
+        raise ValueError("; ".join(errors))
 
 
 def get_random_image():
@@ -766,16 +845,18 @@ def configure_crud():
             ("character_class", CharacterClass),  # 用於職業篩選
             # guild_id 會由 Ref 自動索引，不需手動添加
         ],
+        validator=validate_character,  # Callable 風格驗證器
     )
-    crud.add_model(Guild)
+    crud.add_model(Guild, validator=validate_guild)  # Callable 風格驗證器
     crud.add_model(
         Skill,
         indexed_fields=[
             ("name", str),
             ("required_level", int),
         ],
+        validator=SkillValidator(),  # IValidator 風格驗證器
     )
-    crud.add_model(Equipment)
+    crud.add_model(Equipment, validator=validate_equipment)  # Callable 風格驗證器
 
     # 註冊遊戲事件任務模型（使用 Message Queue）
     # 注意：需要提供 job_handler 才會啟用 message queue
