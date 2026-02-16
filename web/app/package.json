@@ -8,6 +8,7 @@
     "build": "tsc -b && vite build",
     "generate": "autocrud-web generate",
     "preview": "vite preview",
+    "test": "vitest run --coverage",
     "lint": "eslint src",
     "lint:fix": "eslint src --fix",
     "format": "prettier --write \"src/**/*.{ts,tsx,css}\"",
@@ -20,6 +21,7 @@
     "@mantine/hooks": "^7.17.8",
     "@mantine/notifications": "^7.17.8",
     "@tabler/icons-react": "^3.35.0",
+    "@tanstack/react-virtual": "^3.13.12",
     "@tanstack/react-router": "^1.134.9",
     "axios": "^1.7.0",
     "clsx": "^2.1.1",
@@ -37,6 +39,7 @@
     "@types/react": "^18.3.18",
     "@types/react-dom": "^18.3.5",
     "@vitejs/plugin-react": "^4.7.0",
+    "@vitest/coverage-v8": "^2.1.9",
     "eslint": "^10.0.0",
     "eslint-config-prettier": "^10.1.8",
     "eslint-plugin-react": "^7.37.5",
@@ -47,6 +50,7 @@
     "prettier": "^3.8.1",
     "typescript": "~5.9.3",
     "typescript-eslint": "^8.55.0",
-    "vite": "^6.4.1"
+    "vite": "^6.4.1",
+    "vitest": "^2.1.9"
   }
 }
