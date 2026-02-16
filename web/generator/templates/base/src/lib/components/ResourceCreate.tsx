@@ -3,6 +3,7 @@ import { Container, Title, Stack, Button, Group, Paper } from '@mantine/core';
 import { IconArrowLeft } from '@tabler/icons-react';
 import type { ResourceConfig } from '../resources';
 import { ResourceForm } from './ResourceForm';
+import { showErrorNotification } from '../utils/errorNotification';
 
 export interface ResourceCreateProps<T> {
   config: ResourceConfig<T>;
@@ -19,8 +20,12 @@ export function ResourceCreate<T extends Record<string, any>>({
   const navigate = useNavigate();
 
   const handleSubmit = async (values: T) => {
-    await config.apiClient.create(values);
-    navigate({ to: basePath });
+    try {
+      await config.apiClient.create(values);
+      navigate({ to: basePath });
+    } catch (error) {
+      showErrorNotification(error, 'Create Failed');
+    }
   };
 
   return (

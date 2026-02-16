@@ -9,6 +9,7 @@ import { IconArrowLeft, IconInfoCircle } from '@tabler/icons-react';
 import { useNavigate } from '@tanstack/react-router';
 import type { ResourceConfig } from '../resources';
 import { ResourceForm } from './ResourceForm';
+import { showErrorNotification } from '../utils/errorNotification';
 
 export interface JobEnqueueProps<T> {
   config: ResourceConfig<T>;
@@ -75,8 +76,12 @@ export function JobEnqueue<T extends Record<string, any>>({
         <ResourceForm
           config={payloadConfig as ResourceConfig<Record<string, any>>}
           onSubmit={async (values) => {
-            const result = await config.apiClient.create(values as T);
-            navigate({ to: `${basePath}/${result.data.resource_id}` });
+            try {
+              const result = await config.apiClient.create(values as T);
+              navigate({ to: `${basePath}/${result.data.resource_id}` });
+            } catch (error) {
+              showErrorNotification(error, 'Enqueue Failed');
+            }
           }}
           onCancel={() => navigate({ to: basePath })}
           submitLabel="Enqueue Job"
