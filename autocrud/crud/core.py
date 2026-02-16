@@ -46,6 +46,12 @@ from autocrud.resource_manager.basic import (
 )
 from autocrud.resource_manager.blob_store.simple import DiskBlobStore, MemoryBlobStore
 from autocrud.resource_manager.core import ResourceManager
+from autocrud.resource_manager.pydantic_converter import (
+    is_pydantic_model as _is_pydantic_model,
+)
+from autocrud.resource_manager.pydantic_converter import (
+    pydantic_to_struct,
+)
 from autocrud.resource_manager.storage_factory import (
     DiskStorageFactory,
     IStorageFactory,
@@ -61,6 +67,7 @@ from autocrud.types import (
     IndexableField,
     IPermissionChecker,
     IResourceManager,
+    IValidator,
     Job,
     OnDelete,
     Resource,
@@ -683,6 +690,7 @@ class AutoCRUD:
         job_handler: Callable[[Resource[Job[T]]], None] | None = None,
         job_handler_factory: Callable[[], Callable[[Resource[Job[T]]], None]]
         | None = None,
+        validator: "Callable[[T], None] | IValidator | type | None" = None,
     ) -> None:
         """Add a data model to AutoCRUD and configure its API endpoints.
 
@@ -769,6 +777,15 @@ class AutoCRUD:
                 )
 
         model_name = name or self._resource_name(model)
+
+        # Handle Pydantic BaseModel as model type:
+        # auto-generate struct and use Pydantic for validation
+        if _is_pydantic_model(model):
+            pydantic_model = model
+            model = pydantic_to_struct(pydantic_model)
+            if validator is None:
+                validator = pydantic_model
+
         if model_name in self.resource_managers:
             raise ValueError(f"Model name {model_name} already exists.")
         if model in self.model_names:
@@ -837,6 +854,7 @@ class AutoCRUD:
             permission_checker=self.permission_checker or permission_checker,
             encoding=encoding,
             name=model_name,
+            validator=validator,
             **other_options,
         )
         self.resource_managers[model_name] = resource_manager

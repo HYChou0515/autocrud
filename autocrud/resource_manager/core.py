@@ -65,6 +65,7 @@ from autocrud.types import (
     IMigration,
     IndexableField,
     IResourceManager,
+    IValidator,
     OnFailureCreate,
     OnFailureDelete,
     OnFailureDump,
@@ -107,6 +108,7 @@ from autocrud.types import (
     RevisionInfo,
     RevisionStatus,
     SpecialIndex,
+    ValidationError,
 )
 
 if TYPE_CHECKING:
@@ -419,6 +421,12 @@ def execute_with_events(
     return wrapper
 
 
+# Re-export pydantic converter utilities for backward compatibility
+from autocrud.resource_manager.pydantic_converter import (  # noqa: E402
+    build_validator as _build_validator,
+)
+
+
 class ResourceManager(IResourceManager[T], Generic[T]):
     def __init__(
         self,
@@ -437,6 +445,7 @@ class ResourceManager(IResourceManager[T], Generic[T]):
         default_status: RevisionStatus = RevisionStatus.stable,
         default_user: str | Callable[[], str] | UnsetType = UNSET,
         default_now: Callable[[], dt.datetime] | UnsetType = UNSET,
+        validator: "Callable[[T], None] | IValidator | type | None" = None,
     ):
         if default_user is UNSET:
             self.user_ctx = Ctx("user_ctx", strict_type=str)
@@ -493,6 +502,9 @@ class ResourceManager(IResourceManager[T], Generic[T]):
 
         self._binary_processor = BinaryProcessor(resource_type)
 
+        # Set up validator
+        self._validator = _build_validator(validator)
+
         # Message queue is provided as a factory callable
         if message_queue is not None:
             self.message_queue = message_queue(self)
@@ -507,6 +519,16 @@ class ResourceManager(IResourceManager[T], Generic[T]):
 
     def _decode_and_validate(self, data: bytes) -> None:
         return self._data_serializer.decode_and_validate(data)
+
+    def _run_validator(self, data: T) -> None:
+        """Run the custom validator on the data if one is configured."""
+        if self._validator is not None:
+            try:
+                self._validator(data)
+            except ValidationError:
+                raise
+            except Exception as e:
+                raise ValidationError(str(e)) from e
 
     @property
     def user(self) -> str:
@@ -675,6 +697,7 @@ class ResourceManager(IResourceManager[T], Generic[T]):
     def get_data_hash(self, data: T) -> str:
         b = self.encode(data)
         self._decode_and_validate(b)  # 確保可解碼
+        self._run_validator(data)  # 執行自訂驗證
         data_hash = f"xxh3_128:{xxh3_128_hexdigest(b)}"
         return data_hash
 

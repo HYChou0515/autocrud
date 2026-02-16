@@ -12,7 +12,7 @@ from autocrud.crud.route_templates.basic import (
     jsonschema_to_json_schema_extra,
     struct_to_responses_type,
 )
-from autocrud.types import IResourceManager, RevisionInfo
+from autocrud.types import IResourceManager, RevisionInfo, ValidationError
 
 T = TypeVar("T")
 
@@ -69,7 +69,7 @@ class CreateRouteTemplate(BaseRouteTemplate):
                 with resource_manager.meta_provide(current_user, current_time):
                     info = resource_manager.create(data)
                 return MsgspecResponse(info)
-            except msgspec.ValidationError as e:
+            except (msgspec.ValidationError, ValidationError) as e:
                 # 數據驗證錯誤，返回 422
                 raise HTTPException(status_code=422, detail=str(e))
             except Exception as e:
