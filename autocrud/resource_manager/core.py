@@ -26,6 +26,9 @@ from msgspec import UNSET, Struct, UnsetType
 from xxhash import xxh3_128_hexdigest
 
 from autocrud.resource_manager.partial import create_partial_type, prune_object
+from autocrud.resource_manager.pydantic_converter import (  # noqa: E402
+    build_validator,
+)
 from autocrud.types import (
     AfterCreate,
     AfterDelete,
@@ -421,12 +424,6 @@ def execute_with_events(
     return wrapper
 
 
-# Re-export pydantic converter utilities for backward compatibility
-from autocrud.resource_manager.pydantic_converter import (  # noqa: E402
-    build_validator as _build_validator,
-)
-
-
 class ResourceManager(IResourceManager[T], Generic[T]):
     def __init__(
         self,
@@ -503,7 +500,7 @@ class ResourceManager(IResourceManager[T], Generic[T]):
         self._binary_processor = BinaryProcessor(resource_type)
 
         # Set up validator
-        self._validator = _build_validator(validator)
+        self._validator = build_validator(validator)
 
         # Message queue is provided as a factory callable
         if message_queue is not None:

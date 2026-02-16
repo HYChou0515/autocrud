@@ -6,6 +6,8 @@ including:
 - Nested Pydantic BaseModel → recursive Struct conversion
 - Pydantic discriminated unions → msgspec tagged unions
 - Validator normalization (callable / IValidator / Pydantic model)
+
+Supports both Pydantic v1 (1.x) and v2 (2.x).
 """
 
 from collections.abc import Callable
@@ -14,6 +16,17 @@ from typing import Annotated, Any, Union, get_args, get_origin
 import msgspec
 
 from autocrud.types import IValidator
+
+# ---------------------------------------------------------------------------
+# Pydantic version detection
+# ---------------------------------------------------------------------------
+
+try:
+    from pydantic import VERSION as _PYDANTIC_VERSION
+
+    _PYDANTIC_V2 = int(_PYDANTIC_VERSION.split(".")[0]) >= 2
+except Exception:  # pragma: no cover
+    _PYDANTIC_V2 = False
 
 
 def is_pydantic_model(obj: type) -> bool:
@@ -30,12 +43,18 @@ def pydantic_to_validator(pydantic_model: type) -> Callable:
     """Create a validator function from a Pydantic model class.
 
     Converts the data (a msgspec Struct) to a dict, then validates
-    via Pydantic's model_validate.
+    via Pydantic's ``model_validate`` (v2) or ``parse_obj`` (v1).
     """
+    if _PYDANTIC_V2:
 
-    def validate(data):
-        d = msgspec.to_builtins(data)
-        pydantic_model.model_validate(d)
+        def validate(data):
+            d = msgspec.to_builtins(data)
+            pydantic_model.model_validate(d)
+    else:
+
+        def validate(data):
+            d = msgspec.to_builtins(data)
+            pydantic_model.parse_obj(d)
 
     return validate
 
@@ -105,6 +124,62 @@ def build_validator(
 # ---------------------------------------------------------------------------
 # Internal helpers
 # ---------------------------------------------------------------------------
+
+
+def _iter_model_fields(
+    pydantic_model: type,
+) -> list[tuple[str, Any, bool, Any, "str | None"]]:
+    """Iterate model fields with a unified interface for Pydantic v1 and v2.
+
+    Returns a list of ``(field_name, annotation, is_required, default, discriminator)``.
+
+    - **v2**: Uses ``model.model_fields`` → ``FieldInfo``.
+    - **v1**: Uses ``model.__fields__`` → ``ModelField``.
+    """
+    result: list[tuple[str, Any, bool, Any, str | None]] = []
+    if _PYDANTIC_V2:
+        for name, fi in pydantic_model.model_fields.items():
+            result.append(
+                (name, fi.annotation, fi.is_required(), fi.default, fi.discriminator)
+            )
+    else:
+        for name, mf in pydantic_model.__fields__.items():
+            # v1 ModelField: outer_type_ preserves generics but strips Optional;
+            # annotation preserves the raw annotation including Optional.
+            annotation = mf.outer_type_
+            # Reconstruct Optional if the field allows None but outer_type_
+            # already stripped it.
+            if mf.allow_none and get_origin(annotation) is not Union:
+                annotation = Union[annotation, type(None)]
+            result.append(
+                (
+                    name,
+                    annotation,
+                    mf.required,
+                    mf.default,
+                    getattr(mf, "discriminator_key", None),
+                )
+            )
+    return result
+
+
+def _get_field_annotation(
+    pydantic_model: type, field_name: str
+) -> "tuple[Any, Any] | None":
+    """Get (annotation, default) for a single field — v1/v2 compatible.
+
+    Returns ``None`` if the field does not exist on the model.
+    """
+    if _PYDANTIC_V2:
+        fi = pydantic_model.model_fields.get(field_name)
+        if fi is None:
+            return None
+        return fi.annotation, fi.default
+    else:
+        mf = pydantic_model.__fields__.get(field_name)
+        if mf is None:
+            return None
+        return mf.outer_type_, mf.default
 
 
 def _convert_annotation(annotation: Any, cache: dict) -> Any:
@@ -219,13 +294,13 @@ def _pydantic_to_struct_tagged(
         return cache[pydantic_model]
 
     # Extract the tag value from the Literal annotation on the discriminator field
-    field_info = pydantic_model.model_fields.get(tag_field)
-    if field_info is None:
+    info = _get_field_annotation(pydantic_model, tag_field)
+    if info is None:
         raise TypeError(
             f"Discriminator field '{tag_field}' not found in {pydantic_model.__name__}"
         )
 
-    tag_annotation = field_info.annotation
+    tag_annotation, _tag_default = info
     literal_args = get_args(tag_annotation)
     if not literal_args:
         raise TypeError(
@@ -236,12 +311,13 @@ def _pydantic_to_struct_tagged(
 
     # Build fields, excluding the discriminator field (handled by tag mechanism)
     fields: list[tuple[str, type, Any]] = []
-    for field_name, fi in pydantic_model.model_fields.items():
+    for field_name, annotation, is_required, default, _disc in _iter_model_fields(
+        pydantic_model
+    ):
         if field_name == tag_field:
             continue  # Skip discriminator field
-        annotation = _convert_annotation(fi.annotation, cache)
-        default = fi.default
-        if fi.is_required():
+        annotation = _convert_annotation(annotation, cache)
+        if is_required:
             fields.append((field_name, annotation, msgspec.NODEFAULT))
         elif default is not None:
             fields.append((field_name, annotation, default))
@@ -272,16 +348,19 @@ def _pydantic_to_struct_recursive(pydantic_model: type, cache: dict) -> type:
         return cache[pydantic_model]
 
     fields: list[tuple[str, type, Any]] = []
-    for field_name, field_info in pydantic_model.model_fields.items():
+    for (
+        field_name,
+        annotation,
+        is_required,
+        default,
+        discriminator,
+    ) in _iter_model_fields(pydantic_model):
         # Check if this field has a discriminator (discriminated union)
-        if field_info.discriminator is not None:
-            annotation = _convert_discriminated_union(
-                field_info.annotation, field_info.discriminator, cache
-            )
+        if discriminator is not None:
+            annotation = _convert_discriminated_union(annotation, discriminator, cache)
         else:
-            annotation = _convert_annotation(field_info.annotation, cache)
-        default = field_info.default
-        if field_info.is_required():
+            annotation = _convert_annotation(annotation, cache)
+        if is_required:
             # Required field, no default
             fields.append((field_name, annotation, msgspec.NODEFAULT))
         elif default is not None:

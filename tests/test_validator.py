@@ -16,9 +16,16 @@ import pytest
 from msgspec import Struct
 
 from autocrud.resource_manager.core import ResourceManager
-from autocrud.resource_manager.pydantic_converter import pydantic_to_struct
+from autocrud.resource_manager.pydantic_converter import (
+    _PYDANTIC_V2,
+    pydantic_to_struct,
+)
 from autocrud.resource_manager.storage_factory import MemoryStorageFactory
 from autocrud.types import ValidationError
+
+requires_pydantic_v2 = pytest.mark.skipif(
+    not _PYDANTIC_V2, reason="Requires Pydantic v2"
+)
 
 # ===== Test Models =====
 
@@ -129,8 +136,9 @@ class TestValidatorFunction:
 # ===== 2. Pydantic Model as Validator =====
 
 
+@requires_pydantic_v2
 class TestPydanticValidator:
-    """Test using a Pydantic BaseModel as validator."""
+    """Test using a Pydantic BaseModel as validator (v2-only features)."""
 
     @pytest.fixture(autouse=True)
     def setup_pydantic(self):
@@ -248,6 +256,136 @@ class TestPydanticValidator:
                 mgr.create(Item(name="Expensive", price=10000, quantity=200))
 
 
+class TestPydanticValidatorCompat:
+    """Test Pydantic validator with v1/v2-compatible features only."""
+
+    @pytest.fixture(autouse=True)
+    def setup_pydantic(self):
+        """Skip if pydantic is not installed."""
+        pytest.importorskip("pydantic")
+
+    def test_pydantic_validator_rejects_invalid(self):
+        """Pydantic model with v1-compatible validator should reject invalid data."""
+        from pydantic import BaseModel, validator
+
+        class ItemValidator(BaseModel):
+            name: str
+            price: int
+            quantity: int = 0
+            description: str = ""
+
+            @validator("price")
+            @classmethod
+            def price_must_be_positive(cls, v):
+                if v < 0:
+                    raise ValueError("Price must be non-negative")
+                return v
+
+        mgr = make_mgr(validator=ItemValidator)
+        with mgr.meta_provide("user", dt.datetime.now()):
+            with pytest.raises(ValidationError, match="Price must be non-negative"):
+                mgr.create(Item(name="Bad", price=-1))
+
+    def test_pydantic_validator_accepts_valid(self):
+        """Pydantic model with v1-compatible validator should allow valid data."""
+        from pydantic import BaseModel, validator
+
+        class ItemValidator(BaseModel):
+            name: str
+            price: int
+            quantity: int = 0
+            description: str = ""
+
+            @validator("price")
+            @classmethod
+            def price_must_be_positive(cls, v):
+                if v < 0:
+                    raise ValueError("Price must be non-negative")
+                return v
+
+        mgr = make_mgr(validator=ItemValidator)
+        with mgr.meta_provide("user", dt.datetime.now()):
+            info = mgr.create(Item(name="Sword", price=100))
+        assert info.resource_id is not None
+
+    def test_pydantic_as_model_auto_generates_struct(self):
+        """Pydantic model as 'model' to add_model — v1/v2 compatible."""
+        from pydantic import BaseModel, validator
+
+        from autocrud import AutoCRUD
+
+        class ProductValidator(BaseModel):
+            name: str
+            price: int
+            quantity: int = 0
+
+            @validator("price")
+            @classmethod
+            def price_must_be_positive(cls, v):
+                if v < 0:
+                    raise ValueError("Price must be non-negative")
+                return v
+
+        app_crud = AutoCRUD()
+        app_crud.configure()
+        app_crud.add_model(ProductValidator)
+
+        mgr = app_crud.resource_managers.get("product-validator")
+        assert mgr is not None
+        assert issubclass(mgr.resource_type, Struct)
+
+        struct_type = mgr.resource_type
+        with mgr.meta_provide("user", dt.datetime.now()):
+            info = mgr.create(struct_type(name="Sword", price=100))
+            assert info.resource_id is not None
+
+        with mgr.meta_provide("user", dt.datetime.now()):
+            with pytest.raises(ValidationError, match="Price must be non-negative"):
+                mgr.create(struct_type(name="Bad", price=-1))
+
+    def test_build_validator_with_pydantic_model(self):
+        """build_validator should accept a Pydantic model class."""
+        from pydantic import BaseModel
+
+        from autocrud.resource_manager.pydantic_converter import build_validator
+
+        class SimpleModel(BaseModel):
+            name: str
+            value: int
+
+        validator_fn = build_validator(SimpleModel)
+        assert callable(validator_fn)
+
+    def test_add_model_with_pydantic_validator(self):
+        """add_model with v1-compatible Pydantic validator."""
+        pytest.importorskip("pydantic")
+        from pydantic import BaseModel, validator
+
+        from autocrud import AutoCRUD
+
+        class ItemValidator(BaseModel):
+            name: str
+            price: int
+            quantity: int = 0
+            description: str = ""
+
+            @validator("price")
+            @classmethod
+            def price_must_be_positive(cls, v):
+                if v < 0:
+                    raise ValueError("Price must be non-negative")
+                return v
+
+        app_crud = AutoCRUD()
+        app_crud.configure()
+        app_crud.add_model(Item, validator=ItemValidator)
+
+        mgr = app_crud.resource_managers["item"]
+        with mgr.meta_provide("user", dt.datetime.now()):
+            with pytest.raises(ValidationError, match="Price must be non-negative"):
+                mgr.create(Item(name="Bad", price=-1))
+
+
 # ===== 3. IValidator Protocol =====
 
 
@@ -314,6 +452,7 @@ class TestAddModelValidator:
             with pytest.raises(ValidationError, match="Price must be non-negative"):
                 mgr.create(Item(name="Bad", price=-1))
 
+    @requires_pydantic_v2
     def test_add_model_with_pydantic_validator(self):
         pytest.importorskip("pydantic")
         from pydantic import BaseModel, field_validator
@@ -918,6 +1057,7 @@ class TestPydanticToStruct:
 class TestPydanticToStructUnsupported:
     """Test that unsupported Pydantic features raise clear errors."""
 
+    @requires_pydantic_v2
     def test_rejects_model_with_computed_field(self):
         """Pydantic computed_field is not supported — should raise or be excluded."""
         from pydantic import BaseModel, computed_field
@@ -939,6 +1079,7 @@ class TestPydanticToStructUnsupported:
         assert obj.last == "Chen"
         assert not hasattr(obj, "full_name")
 
+    @requires_pydantic_v2
     def test_rejects_model_with_validator_decorator(self):
         """Pydantic @field_validator is ignored — validation is Pydantic's job,
         struct only carries data structure."""
@@ -960,6 +1101,7 @@ class TestPydanticToStructUnsupported:
         obj = S(age=-5)
         assert obj.age == -5
 
+    @requires_pydantic_v2
     def test_rejects_root_model(self):
         """Pydantic RootModel is not supported — should raise TypeError."""
         from pydantic import RootModel
@@ -984,6 +1126,7 @@ class TestPydanticToStructUnsupported:
         assert obj.name == "Alice"
         assert not hasattr(obj, "_secret")
 
+    @requires_pydantic_v2
     def test_rejects_model_with_json_schema_extra(self):
         """model_config extras should not affect struct generation."""
         from pydantic import BaseModel
