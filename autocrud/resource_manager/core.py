@@ -115,6 +115,7 @@ from autocrud.types import (
 )
 
 if TYPE_CHECKING:
+    from autocrud.schema import Schema
     from autocrud.types import IPermissionChecker
 
 
@@ -433,7 +434,7 @@ class ResourceManager(IResourceManager[T], Generic[T]):
         blob_store: IBlobStore | None = None,
         message_queue: Callable[["IResourceManager[T]"], IMessageQueue] | None = None,
         id_generator: Callable[[], str] | None = None,
-        migration: IMigration[T] | None = None,
+        migration: "IMigration[T] | Schema[T] | None" = None,
         indexed_fields: list[IndexableField] | None = None,
         permission_checker: "IPermissionChecker | None" = None,
         name: str | NamingFormat = NamingFormat.SNAKE,
@@ -446,6 +447,28 @@ class ResourceManager(IResourceManager[T], Generic[T]):
         pydantic_type: type | None = None,
     ):
         self._pydantic_type = pydantic_type
+
+        # ── Resolve Schema vs legacy migration/validator ──────────────
+        from autocrud.schema import Schema as _Schema
+
+        if isinstance(migration, _Schema):
+            self._schema = migration
+            # Extract validator from Schema if present and no explicit validator
+            if migration.has_validator and validator is None:
+                validator = migration._validator  # already normalized callable
+            # Use Schema as migration if it has migration steps
+            migration_obj = migration if migration.has_migration else None
+        elif isinstance(migration, IMigration):
+            self._schema = _Schema.from_legacy(migration)
+            migration_obj = self._schema
+        elif migration is None:
+            self._schema = None
+            migration_obj = None
+        else:
+            raise TypeError(
+                f"migration must be Schema, IMigration, or None, got {type(migration).__name__}"
+            )
+
         if default_user is UNSET:
             self.user_ctx = Ctx("user_ctx", strict_type=str)
         elif callable(default_user):
@@ -474,11 +497,13 @@ class ResourceManager(IResourceManager[T], Generic[T]):
             self._resource_name = name
 
         self.data_converter = DataConverter(self.resource_type)
-        schema_version = migration.schema_version if migration else None
+        schema_version = (
+            self._schema.schema_version if self._schema is not None else None
+        )
         self._schema_version = schema_version
         self._indexed_fields = indexed_fields or []
         self._indexed_value_extractor = IndexedValueExtractor(self._indexed_fields)
-        self._migration = migration
+        self._migration = self._schema if self._schema is not None else migration_obj
         self._encoding = encoding
         self._data_serializer = MsgspecSerializer(
             encoding=encoding,

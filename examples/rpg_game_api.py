@@ -30,7 +30,7 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from msgspec import Struct
 
-from autocrud import IValidator, OnDelete, Ref, crud
+from autocrud import IValidator, OnDelete, Ref, Schema, crud
 from autocrud.crud.route_templates.blob import BlobRouteTemplate
 from autocrud.crud.route_templates.graphql import GraphQLRouteTemplate
 from autocrud.crud.route_templates.migrate import MigrateRouteTemplate
@@ -834,9 +834,10 @@ def configure_crud():
     crud.add_route_template(MigrateRouteTemplate())
 
     # 註冊模型
+    # 推薦做法：使用 Schema 將 resource type、version、validator 統一管理
     # 注意：使用 QB 查詢的欄位必須建立索引
     crud.add_model(
-        Character,
+        Schema(Character, "v1", validator=validate_character),  # Callable 風格驗證器
         indexed_fields=[
             ("level", int),  # 用於等級查詢、排序
             ("name", str),  # 用於名稱搜尋、字串包含查詢
@@ -845,18 +846,18 @@ def configure_crud():
             ("character_class", CharacterClass),  # 用於職業篩選
             # guild_id 會由 Ref 自動索引，不需手動添加
         ],
-        validator=validate_character,  # Callable 風格驗證器
     )
-    crud.add_model(Guild, validator=validate_guild)  # Callable 風格驗證器
+    crud.add_model(Schema(Guild, "v1", validator=validate_guild))  # Callable 風格驗證器
     crud.add_model(
-        Skill,
+        Schema(Skill, "v1", validator=SkillValidator()),  # IValidator 風格驗證器
         indexed_fields=[
             ("name", str),
             ("required_level", int),
         ],
-        validator=SkillValidator(),  # IValidator 風格驗證器
     )
-    crud.add_model(Equipment, validator=validate_equipment)  # Callable 風格驗證器
+    crud.add_model(
+        Schema(Equipment, "v1", validator=validate_equipment)
+    )  # Callable 風格驗證器
 
     # 註冊遊戲事件任務模型（使用 Message Queue）
     # 注意：需要提供 job_handler 才會啟用 message queue

@@ -39,6 +39,7 @@ import { RefLink, RefLinkList, RefRevisionLink, RefRevisionLinkList } from './Re
 import { RevisionIdCell } from './resource-table/RevisionIdCell';
 import { TimeDisplay } from './TimeDisplay';
 import type { ResourceListRoute } from '../../generated/resources';
+import { showErrorNotification } from '../utils/errorNotification';
 
 const API_BASE_URL = import.meta.env.VITE_API_URL || 'http://localhost:8000';
 
@@ -326,20 +327,32 @@ export function ResourceDetail<T extends Record<string, any>>({
       : undefined;
 
   const handleEdit = async (values: T) => {
-    await update(values);
-    setEditOpen(false);
-    // Navigate to latest (no revision param) after successful edit
-    handleRevisionSelect(null);
+    try {
+      await update(values);
+      setEditOpen(false);
+      // Navigate to latest (no revision param) after successful edit
+      handleRevisionSelect(null);
+    } catch (error) {
+      showErrorNotification(error, 'Update Failed');
+    }
   };
 
   const handleDelete = async () => {
     if (confirm('Are you sure you want to delete this resource?')) {
-      await deleteResource();
+      try {
+        await deleteResource();
+      } catch (error) {
+        showErrorNotification(error, 'Delete Failed');
+      }
     }
   };
 
   const handleRestore = async () => {
-    await restore();
+    try {
+      await restore();
+    } catch (error) {
+      showErrorNotification(error, 'Restore Failed');
+    }
   };
 
   return (
