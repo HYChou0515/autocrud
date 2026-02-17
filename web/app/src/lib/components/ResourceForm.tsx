@@ -27,9 +27,7 @@ import { RefSelect, RefMultiSelect, RefRevisionSelect, RefRevisionMultiSelect } 
 import {
   getByPath,
   setByPath,
-  fileToBase64,
   binaryFormValueToApi,
-  toLabel,
   inferDefaultVariant,
   computeVisibleFieldsAndGroups,
   computeMaxAvailableDepth,
