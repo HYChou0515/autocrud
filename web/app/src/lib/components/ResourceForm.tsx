@@ -190,22 +190,26 @@ export function ResourceForm<T extends Record<string, any>>({
   const processedInitialValues = processInitialValues(
     initialValues as Record<string, any>,
     config.fields,
-    dateFieldNames,
     collapsedGroups,
+    dateFieldNames,
   );
 
   // Custom validation for JSON object fields + zod schema validation
   const zodValidate = config.zodSchema ? zodResolver(config.zodSchema) : undefined;
   const combinedValidate = (values: T) => {
     // Validate JSON object fields using extracted utility
-    const errors = validateJsonFields(values as Record<string, any>, config.fields, collapsedGroups);
-    
+    const errors = validateJsonFields(
+      values as Record<string, any>,
+      config.fields,
+      collapsedGroups,
+    );
+
     // Merge with zod validation errors
     if (zodValidate) {
       try {
         // Pre-process values for zod: convert comma-separated strings to arrays for isArray fields
         const zodValues = preprocessArrayFields(values as Record<string, any>, config.fields);
-        
+
         const zodErrors = zodValidate(zodValues as T);
         // Suppress zod errors for object-type fields (stored as JSON strings) and collapsed group paths
         // BUT NOT for fields with itemFields (they use actual arrays, zod can validate them directly)
@@ -223,7 +227,7 @@ export function ResourceForm<T extends Record<string, any>>({
                 !(f.ref && f.ref.type === 'resource_id'),
             )
             .map((f) => f.name),
-          ...collapsedGroups.map((g) => g.path),
+          ...collapsedGroups.map((g: { path: string; label: string }) => g.path),
         ]);
         // Collect nested simple-array sub-field names within array-with-itemFields
         const nestedArraySubFields: { parent: string; sub: string }[] = [];
@@ -244,7 +248,11 @@ export function ResourceForm<T extends Record<string, any>>({
             delete zodErrors[key];
           }
           // Also suppress child path errors of collapsed groups
-          if (collapsedGroups.some((g) => key.startsWith(g.path + '.'))) {
+          if (
+            collapsedGroups.some((g: { path: string; label: string }) =>
+              key.startsWith(g.path + '.'),
+            )
+          ) {
             delete zodErrors[key];
           }
           // Suppress errors for nested comma-separated array / binary sub-fields (e.g. equipments.0.special_effects)
@@ -277,13 +285,13 @@ export function ResourceForm<T extends Record<string, any>>({
   /** Convert current form values to a clean API-ready object */
   const formValuesToApiObject = (): Record<string, any> => {
     const values = form.getValues() as Record<string, any>;
-    return formValuesToApiObjectUtil(values, config.fields, dateFieldNames, collapsedGroups);
+    return formValuesToApiObjectUtil(values, config.fields, collapsedGroups, dateFieldNames);
   };
 
   /** Apply a parsed JSON object back into form values */
   const applyJsonToForm = (obj: Record<string, any>) => {
     const newValues = applyJsonToFormUtil(obj, config.fields, collapsedGroups, dateFieldNames);
-    
+
     // Apply values to form using setFieldValue
     for (const field of config.fields) {
       if (isCollapsedChildUtil(field.name, collapsedGroups)) continue;
@@ -327,7 +335,7 @@ export function ResourceForm<T extends Record<string, any>>({
       return;
     }
     const parsed = result.data;
-    
+
     // Use zod schema for full validation (enum, type checks, patterns, etc.)
     if (config.zodSchema) {
       const zodResult = config.zodSchema.safeParse(parsed);
@@ -377,7 +385,7 @@ export function ResourceForm<T extends Record<string, any>>({
     const processed = JSON.parse(JSON.stringify(values)) as Record<string, any>;
 
     const isCollapsedChild = (name: string) =>
-      collapsedGroups.some((g) => name.startsWith(g.path + '.'));
+      collapsedGroups.some((g: { path: string; label: string }) => name.startsWith(g.path + '.'));
 
     // Clean up field values based on type
     for (const field of config.fields) {

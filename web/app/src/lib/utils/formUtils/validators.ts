@@ -20,12 +20,12 @@ interface CollapsedGroup {
 /**
  * Validate JSON object fields
  * Checks that JSON string fields contain valid JSON objects (not arrays or primitives)
- * 
+ *
  * @param values - Form values to validate
  * @param fields - Field definitions
  * @param collapsedGroups - Collapsed groups (also validated as JSON objects)
  * @returns Object with field names as keys and error messages as values
- * 
+ *
  * @example
  * validateJsonFields(
  *   { metadata: '{"key": "value"}' },
@@ -33,7 +33,7 @@ interface CollapsedGroup {
  *   []
  * )
  * // Returns: {} (no errors)
- * 
+ *
  * @example
  * validateJsonFields(
  *   { metadata: '[1, 2, 3]' },  // Array, not object
@@ -48,7 +48,7 @@ export function validateJsonFields(
   collapsedGroups: CollapsedGroup[],
 ): Record<string, string> {
   const errors: Record<string, string> = {};
-  
+
   // Validate JSON object fields (skip array fields with itemFields — they use actual arrays)
   for (const field of fields) {
     if (field.type === 'object' && !(field.itemFields && field.itemFields.length > 0)) {
@@ -65,7 +65,7 @@ export function validateJsonFields(
       }
     }
   }
-  
+
   // Also validate collapsed group JSON fields
   for (const group of collapsedGroups) {
     const val = getByPath(values, group.path);
@@ -80,25 +80,25 @@ export function validateJsonFields(
       }
     }
   }
-  
+
   return errors;
 }
 
 /**
  * Parse and validate JSON text
  * Used for JSON mode validation
- * 
+ *
  * @param jsonText - JSON string to validate
  * @returns Object with success flag, error message, or parsed data
- * 
+ *
  * @example
  * parseAndValidateJson('{"name": "Alice"}')
  * // Returns: { success: true, data: { name: 'Alice' } }
- * 
+ *
  * @example
  * parseAndValidateJson('[1, 2, 3]')  // Array, not object
  * // Returns: { success: false, error: 'Must be a JSON object' }
- * 
+ *
  * @example
  * parseAndValidateJson('invalid json')
  * // Returns: { success: false, error: 'Invalid JSON format' }
@@ -114,11 +114,11 @@ export function parseAndValidateJson(jsonText: string): {
   } catch {
     return { success: false, error: 'Invalid JSON format' };
   }
-  
+
   if (typeof parsed !== 'object' || parsed === null || Array.isArray(parsed)) {
     return { success: false, error: 'Must be a JSON object' };
   }
-  
+
   return { success: true, data: parsed };
 }
 
@@ -126,11 +126,11 @@ export function parseAndValidateJson(jsonText: string): {
  * Pre-process array field values for validation
  * Converts comma-separated strings to arrays for isArray fields
  * (excluding array ref fields and itemFields arrays which are already arrays)
- * 
+ *
  * @param values - Form values
  * @param fields - Field definitions
  * @returns Processed values with arrays converted
- * 
+ *
  * @example
  * preprocessArrayFields(
  *   { tags: 'a, b, c', items: [{ id: 1 }] },
@@ -146,7 +146,7 @@ export function preprocessArrayFields(
   fields: ResourceFieldMinimal[],
 ): Record<string, any> {
   const processed = { ...(values as Record<string, any>) };
-  
+
   for (const field of fields) {
     // Simple array fields (comma-separated string) need conversion
     if (
@@ -164,13 +164,9 @@ export function preprocessArrayFields(
           : [];
       }
     }
-    
+
     // Also pre-process nested simple-array sub-fields inside array-with-itemFields
-    if (
-      field.itemFields &&
-      field.itemFields.length > 0 &&
-      Array.isArray(processed[field.name])
-    ) {
+    if (field.itemFields && field.itemFields.length > 0 && Array.isArray(processed[field.name])) {
       processed[field.name] = processed[field.name].map((item: any) => {
         if (!item || typeof item !== 'object') return item;
         const processedItem = { ...item };
@@ -188,6 +184,6 @@ export function preprocessArrayFields(
       });
     }
   }
-  
+
   return processed;
 }

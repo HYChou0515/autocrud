@@ -35,10 +35,10 @@ export type FieldVariant =
 /**
  * Infer default UI variant from field metadata
  * Used when no explicit variant is specified in field configuration
- * 
+ *
  * @param field - Resource field definition
  * @returns Default field variant based on field type and metadata
- * 
+ *
  * @example
  * inferDefaultVariant({ type: 'boolean' }) // { type: 'switch' }
  * inferDefaultVariant({ type: 'number' }) // { type: 'number' }
@@ -67,10 +67,10 @@ export function inferDefaultVariant(field: ResourceFieldMinimal): FieldVariant {
 /**
  * Infer TypeScript type from a runtime value
  * Used for simple union fields to determine which type variant is active
- * 
+ *
  * @param value - Value to inspect
  * @returns Inferred type string ('string', 'number', or 'boolean')
- * 
+ *
  * @example
  * inferSimpleUnionType(42) // 'number'
  * inferSimpleUnionType(true) // 'boolean'
@@ -89,10 +89,10 @@ export function inferSimpleUnionType(value: any): 'string' | 'number' | 'boolean
 /**
  * Create empty/default object for array item based on itemFields
  * Used when adding a new item to an array of typed objects
- * 
+ *
  * @param itemFields - Field definitions for array item properties
  * @returns Object with default values for all item fields
- * 
+ *
  * @example
  * createEmptyItemForFields([
  *   { name: 'name', type: 'string' },
@@ -101,9 +101,7 @@ export function inferSimpleUnionType(value: any): 'string' | 'number' | 'boolean
  * ])
  * // Returns: { name: '', age: '', active: false }
  */
-export function createEmptyItemForFields(
-  itemFields: ResourceFieldMinimal[],
-): Record<string, any> {
+export function createEmptyItemForFields(itemFields: ResourceFieldMinimal[]): Record<string, any> {
   const item: Record<string, any> = {};
   for (const sf of itemFields) {
     if (sf.type === 'binary') {

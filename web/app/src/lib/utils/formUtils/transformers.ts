@@ -30,7 +30,7 @@ interface CollapsedGroup {
  * @param fieldName - Field name to check (e.g., "user.profile.name")
  * @param collapsedGroups - Array of collapsed group definitions
  * @returns true if the field is under a collapsed group
- * 
+ *
  * @example
  * isCollapsedChild('user.profile.name', [{ path: 'user', label: 'User' }])
  * // Returns: true (because 'user.profile.name' starts with 'user.')
@@ -41,7 +41,7 @@ export function isCollapsedChild(fieldName: string, collapsedGroups: CollapsedGr
 
 /**
  * Process initial values from API to form-compatible format
- * 
+ *
  * Transforms raw API data into form state:
  * - ISO date strings → Date objects
  * - Binary data → BinaryFormValue objects
@@ -50,9 +50,9 @@ export function isCollapsedChild(fieldName: string, collapsedGroups: CollapsedGr
  * - Objects → JSON strings for textarea display
  * - Collapsed groups → JSON strings
  * - itemFields (array of typed objects) → processed array items
- * 
+ *
  * **Warning**: This function mutates the input object (deep clone recommended before calling)
- * 
+ *
  * @param initialValues - Raw initial values from API
  * @param fields - Field definitions
  * @param collapsedGroups - Groups that should render as JSON editors
@@ -66,7 +66,7 @@ export function processInitialValues(
   dateFieldNames: string[],
 ): Record<string, any> {
   const processed = { ...initialValues } as Record<string, any>;
-  
+
   // Deep clone nested objects so mutations don't affect original data
   for (const key of Object.keys(processed)) {
     if (
@@ -78,7 +78,7 @@ export function processInitialValues(
       processed[key] = JSON.parse(JSON.stringify(processed[key]));
     }
   }
-  
+
   for (const field of fields) {
     const val = getByPath(processed, field.name);
 
@@ -102,7 +102,11 @@ export function processInitialValues(
               } else {
                 processedItem[sf.name] = { _mode: 'empty' } as BinaryFormValue;
               }
-            } else if (sf.isArray && sf.type === 'string' && Array.isArray(processedItem[sf.name])) {
+            } else if (
+              sf.isArray &&
+              sf.type === 'string' &&
+              Array.isArray(processedItem[sf.name])
+            ) {
               // Convert array to comma-separated string for form display
               processedItem[sf.name] = processedItem[sf.name].join(', ');
             } else if (processedItem[sf.name] === null || processedItem[sf.name] === undefined) {
@@ -182,7 +186,7 @@ export function processInitialValues(
 /**
  * Convert form values to API-ready object (synchronous version)
  * Does NOT convert binary files (use processSubmitValues for that)
- * 
+ *
  * Transforms form state to API format:
  * - Date objects → ISO strings
  * - Binary → display format (existing file_id or pending markers)
@@ -190,7 +194,7 @@ export function processInitialValues(
  * - Empty strings → null for nullable fields
  * - itemFields → processed array items
  * - Collapsed groups → parsed objects
- * 
+ *
  * @param formValues - Current form state
  * @param fields - Field definitions
  * @param collapsedGroups - Groups rendered as JSON editors
@@ -336,7 +340,7 @@ export function formValuesToApiObject(
 /**
  * Apply a parsed JSON object back into form values
  * Inverse operation of formValuesToApiObject
- * 
+ *
  * Transforms API JSON to form state:
  * - ISO date strings → Date objects
  * - Binary objects → BinaryFormValue objects
@@ -344,7 +348,7 @@ export function formValuesToApiObject(
  * - null/undefined → type-appropriate form defaults
  * - itemFields → processed array items
  * - Collapsed groups → JSON strings
- * 
+ *
  * @param jsonObject - Parsed JSON object from API
  * @param fields - Field definitions
  * @param collapsedGroups - Groups that render as JSON editors

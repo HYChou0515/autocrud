@@ -27,15 +27,15 @@ export interface FieldGroupingResult<T extends ResourceFieldMinimal = ResourceFi
 
 /**
  * Compute visible fields and collapsed groups based on form depth
- * 
+ *
  * This function splits fields into two categories:
  * 1. Fields at or above the depth threshold → rendered as individual form inputs
  * 2. Fields beyond the depth threshold → grouped by ancestor path, rendered as JSON editors
- * 
+ *
  * @param fields - All resource fields
  * @param formDepth - Maximum depth for field expansion (1 = flat, higher = more nesting)
  * @returns Object with visibleFields, collapsedGroups, and collapsedGroupFields
- * 
+ *
  * @example
  * // With formDepth=1, all nested fields collapse into JSON editors
  * computeVisibleFieldsAndGroups([
@@ -47,7 +47,7 @@ export interface FieldGroupingResult<T extends ResourceFieldMinimal = ResourceFi
  * // visibleFields: [{ name: 'name' }]
  * // collapsedGroups: [{ path: 'user', label: 'User' }]
  * // collapsedGroupFields: Map { 'user' => [{ name: 'user.email' }, { name: 'user.profile.bio' }] }
- * 
+ *
  * @example
  * // With formDepth=2, second-level fields are visible
  * computeVisibleFieldsAndGroups([
@@ -69,7 +69,7 @@ export function computeVisibleFieldsAndGroups<T extends ResourceFieldMinimal>(
 
   for (const field of fields) {
     const depth = field.name.split('.').length;
-    
+
     if (depth <= formDepth) {
       // Field is at or above the depth threshold
       // If field has itemFields but depth isn't enough to expand them, strip itemFields
@@ -113,10 +113,10 @@ export function computeVisibleFieldsAndGroups<T extends ResourceFieldMinimal>(
 /**
  * Compute maximum available depth from all fields
  * Fields with itemFields add an extra depth level
- * 
+ *
  * @param fields - All resource fields
  * @returns Maximum depth value (minimum is 1)
- * 
+ *
  * @example
  * computeMaxAvailableDepth([
  *   { name: 'name' },                    // depth 1
@@ -124,7 +124,7 @@ export function computeVisibleFieldsAndGroups<T extends ResourceFieldMinimal>(
  *   { name: 'user.profile.bio' }         // depth 3
  * ])
  * // Returns: 3
- * 
+ *
  * @example
  * computeMaxAvailableDepth([
  *   { name: 'items', itemFields: [...] } // depth 1 + 1 = 2

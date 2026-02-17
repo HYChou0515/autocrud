@@ -45,7 +45,7 @@ describe('fileToBase64', () => {
   it('should convert file to base64 string', async () => {
     const file = new File(['hello world'], 'test.txt', { type: 'text/plain' });
     const base64 = await fileToBase64(file);
-    
+
     // Expected base64: 'aGVsbG8gd29ybGQ=' (base64 of 'hello world')
     expect(base64).toBe('aGVsbG8gd29ybGQ=');
   });
@@ -53,7 +53,7 @@ describe('fileToBase64', () => {
   it('should strip data URL prefix', async () => {
     const file = new File(['test'], 'test.txt', { type: 'text/plain' });
     const base64 = await fileToBase64(file);
-    
+
     // Should not contain 'data:' prefix
     expect(base64).not.toContain('data:');
     expect(base64).not.toContain('base64,');
@@ -62,27 +62,27 @@ describe('fileToBase64', () => {
   it('should handle empty file', async () => {
     const file = new File([], 'empty.txt', { type: 'text/plain' });
     const base64 = await fileToBase64(file);
-    
+
     // Empty file should return empty base64 or small string
     expect(typeof base64).toBe('string');
   });
 
   it('should handle binary file', async () => {
-    const buffer = new Uint8Array([0x89, 0x50, 0x4E, 0x47]); // PNG header
+    const buffer = new Uint8Array([0x89, 0x50, 0x4e, 0x47]); // PNG header
     const file = new File([buffer], 'image.png', { type: 'image/png' });
     const base64 = await fileToBase64(file);
-    
+
     expect(typeof base64).toBe('string');
     expect(base64.length).toBeGreaterThan(0);
   });
 
   it('should reject on FileReader error', async () => {
     const file = new File(['test'], 'test.txt', { type: 'text/plain' });
-    
+
     // Mock FileReader to simulate error
     const originalFileReader = global.FileReader;
     global.FileReader = vi.fn().mockImplementation(() => ({
-      readAsDataURL: function() {
+      readAsDataURL: function () {
         setTimeout(() => this.onerror(new Error('Read error')), 0);
       },
       onerror: null,
@@ -91,7 +91,7 @@ describe('fileToBase64', () => {
     })) as any;
 
     await expect(fileToBase64(file)).rejects.toThrow();
-    
+
     // Restore original FileReader
     global.FileReader = originalFileReader;
   });
@@ -132,9 +132,9 @@ describe('binaryFormValueToApi', () => {
   it('should convert file to base64 for file mode', async () => {
     const file = new File(['test content'], 'test.txt', { type: 'text/plain' });
     const val: BinaryFormValue = { _mode: 'file', file };
-    
+
     const result = await binaryFormValueToApi(val);
-    
+
     expect(result).toHaveProperty('data');
     expect(result).toHaveProperty('content_type');
     expect(result?.content_type).toBe('text/plain');
@@ -144,9 +144,9 @@ describe('binaryFormValueToApi', () => {
   it('should use default content_type for file without type', async () => {
     const file = new File(['test'], 'test.bin', { type: '' });
     const val: BinaryFormValue = { _mode: 'file', file };
-    
+
     const result = await binaryFormValueToApi(val);
-    
+
     expect(result?.content_type).toBe('application/octet-stream');
   });
 

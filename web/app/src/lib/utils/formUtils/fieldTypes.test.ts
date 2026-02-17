@@ -5,7 +5,7 @@ describe('inferDefaultVariant', () => {
   it('should return select variant for fields with enumValues', () => {
     const field = { name: 'status', enumValues: ['active', 'inactive', 'pending'] };
     const variant = inferDefaultVariant(field);
-    
+
     expect(variant.type).toBe('select');
     expect(variant).toHaveProperty('options');
     if (variant.type === 'select') {
@@ -17,42 +17,42 @@ describe('inferDefaultVariant', () => {
   it('should return number variant for number type', () => {
     const field = { name: 'age', type: 'number' as const };
     const variant = inferDefaultVariant(field);
-    
+
     expect(variant).toEqual({ type: 'number' });
   });
 
   it('should return switch variant for boolean type', () => {
     const field = { name: 'active', type: 'boolean' as const };
     const variant = inferDefaultVariant(field);
-    
+
     expect(variant).toEqual({ type: 'switch' });
   });
 
   it('should return date variant for date type', () => {
     const field = { name: 'created_at', type: 'date' as const };
     const variant = inferDefaultVariant(field);
-    
+
     expect(variant).toEqual({ type: 'date' });
   });
 
   it('should return file variant for binary type', () => {
     const field = { name: 'avatar', type: 'binary' as const };
     const variant = inferDefaultVariant(field);
-    
+
     expect(variant).toEqual({ type: 'file' });
   });
 
   it('should return json variant for object type', () => {
     const field = { name: 'metadata', type: 'object' as const };
     const variant = inferDefaultVariant(field);
-    
+
     expect(variant).toEqual({ type: 'json' });
   });
 
   it('should return array variant for array fields', () => {
     const field = { name: 'tags', isArray: true };
     const variant = inferDefaultVariant(field);
-    
+
     expect(variant.type).toBe('array');
     if (variant.type === 'array') {
       expect(variant.itemType).toBe('text');
@@ -62,21 +62,21 @@ describe('inferDefaultVariant', () => {
   it('should return text variant as default', () => {
     const field = { name: 'name' };
     const variant = inferDefaultVariant(field);
-    
+
     expect(variant).toEqual({ type: 'text' });
   });
 
   it('should prioritize enumValues over type', () => {
     const field = { name: 'status', type: 'string' as const, enumValues: ['a', 'b'] };
     const variant = inferDefaultVariant(field);
-    
+
     expect(variant.type).toBe('select');
   });
 
   it('should handle empty enumValues array', () => {
     const field = { name: 'status', enumValues: [] };
     const variant = inferDefaultVariant(field);
-    
+
     // With empty array, should fall back to default text
     expect(variant).toEqual({ type: 'text' });
   });
@@ -84,7 +84,7 @@ describe('inferDefaultVariant', () => {
   it('should handle string type explicitly', () => {
     const field = { name: 'description', type: 'string' as const };
     const variant = inferDefaultVariant(field);
-    
+
     expect(variant).toEqual({ type: 'text' });
   });
 });
@@ -139,9 +139,9 @@ describe('createEmptyItemForFields', () => {
       { name: 'active', type: 'boolean' as const },
       { name: 'metadata', type: 'object' as const },
     ];
-    
+
     const item = createEmptyItemForFields(itemFields);
-    
+
     expect(item).toEqual({
       name: '',
       age: '',
@@ -151,43 +151,34 @@ describe('createEmptyItemForFields', () => {
   });
 
   it('should create BinaryFormValue for binary fields', () => {
-    const itemFields = [
-      { name: 'avatar', type: 'binary' as const },
-    ];
-    
+    const itemFields = [{ name: 'avatar', type: 'binary' as const }];
+
     const item = createEmptyItemForFields(itemFields);
-    
+
     expect(item.avatar).toEqual({ _mode: 'empty' });
   });
 
   it('should use first enum value for non-nullable enum fields', () => {
-    const itemFields = [
-      { name: 'status', enumValues: ['active', 'inactive'], isNullable: false },
-    ];
-    
+    const itemFields = [{ name: 'status', enumValues: ['active', 'inactive'], isNullable: false }];
+
     const item = createEmptyItemForFields(itemFields);
-    
+
     expect(item.status).toBe('active');
   });
 
   it('should use null for nullable enum fields', () => {
-    const itemFields = [
-      { name: 'status', enumValues: ['active', 'inactive'], isNullable: true },
-    ];
-    
+    const itemFields = [{ name: 'status', enumValues: ['active', 'inactive'], isNullable: true }];
+
     const item = createEmptyItemForFields(itemFields);
-    
+
     expect(item.status).toBeNull();
   });
 
   it('should handle fields without explicit type', () => {
-    const itemFields = [
-      { name: 'field1' },
-      { name: 'field2' },
-    ];
-    
+    const itemFields = [{ name: 'field1' }, { name: 'field2' }];
+
     const item = createEmptyItemForFields(itemFields);
-    
+
     expect(item).toEqual({
       field1: '',
       field2: '',
@@ -196,7 +187,7 @@ describe('createEmptyItemForFields', () => {
 
   it('should handle empty itemFields array', () => {
     const item = createEmptyItemForFields([]);
-    
+
     expect(item).toEqual({});
   });
 
@@ -209,9 +200,9 @@ describe('createEmptyItemForFields', () => {
       { name: 'image', type: 'binary' as const },
       { name: 'config', type: 'object' as const },
     ];
-    
+
     const item = createEmptyItemForFields(itemFields);
-    
+
     expect(item).toEqual({
       id: '',
       name: '',
@@ -223,12 +214,10 @@ describe('createEmptyItemForFields', () => {
   });
 
   it('should handle enum with empty array', () => {
-    const itemFields = [
-      { name: 'status', enumValues: [], isNullable: false },
-    ];
-    
+    const itemFields = [{ name: 'status', enumValues: [], isNullable: false }];
+
     const item = createEmptyItemForFields(itemFields);
-    
+
     // Empty enum array should fall back to empty string
     expect(item.status).toBe('');
   });

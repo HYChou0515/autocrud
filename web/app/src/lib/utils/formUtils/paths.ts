@@ -7,7 +7,7 @@
  * @param obj - The object to get the value from
  * @param path - Dot-notation path (e.g., "user.profile.name")
  * @returns The value at the path, or undefined if not found
- * 
+ *
  * @example
  * getByPath({ user: { name: 'Alice' } }, 'user.name') // 'Alice'
  * getByPath({ items: [{ id: 1 }] }, 'items.0.id') // 1
@@ -21,16 +21,16 @@ export function getByPath(obj: Record<string, any>, path: string): any {
 /**
  * Set a value in an object using dot-notation path
  * **Warning**: This function mutates the original object
- * 
+ *
  * @param obj - The object to set the value in (will be mutated)
  * @param path - Dot-notation path (e.g., "user.profile.name")
  * @param value - The value to set
- * 
+ *
  * @example
  * const obj = {};
  * setByPath(obj, 'user.name', 'Alice');
  * // obj is now { user: { name: 'Alice' } }
- * 
+ *
  * setByPath(obj, 'user.age', 30);
  * // obj is now { user: { name: 'Alice', age: 30 } }
  */
