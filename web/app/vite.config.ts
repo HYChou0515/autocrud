@@ -36,7 +36,6 @@ export default defineConfig({
         'src/lib/utils/virtualization.ts',
         'src/lib/utils/formUtils/paths.ts',
         'src/lib/utils/formUtils/converters.ts',
-        'src/lib/utils/formUtils/fieldTypes.ts',
         'src/lib/utils/formUtils/fieldTypeRegistry.ts',
         'src/lib/utils/formUtils/fieldGrouping.ts',
         'src/lib/utils/formUtils/transformers.ts',

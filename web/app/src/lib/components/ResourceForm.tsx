@@ -28,7 +28,9 @@ import {
   getByPath,
   setByPath,
   binaryFormValueToApi,
-  inferDefaultVariant,
+  getDefaultVariant,
+  getHandler,
+  getEmptyValue,
   computeVisibleFieldsAndGroups,
   computeMaxAvailableDepth,
   processInitialValues,
@@ -40,7 +42,6 @@ import {
   parseAndValidateJson,
   type BinaryFormValue,
 } from '@/lib/utils/formUtils';
-import { getHandler, getEmptyValue } from '@/lib/utils/formUtils/fieldTypeRegistry';
 
 /** Inline binary field editor — file upload or URL input */
 function BinaryFieldEditor({
@@ -740,7 +741,7 @@ export function ResourceForm<T extends Record<string, any>>({
               <Stack gap="xs">
                 {field.itemFields!.map((sf) => {
                   const itemPath = `${name}.${index}.${sf.name}`;
-                  const _subVariant = sf.variant || inferDefaultVariant(sf);
+                  const _subVariant = sf.variant || getDefaultVariant(sf);
 
                   // Enum → Select
                   if (sf.enumValues && sf.enumValues.length > 0) {
@@ -841,7 +842,7 @@ export function ResourceForm<T extends Record<string, any>>({
 
     // 根據 variant 渲染不同的輸入組件
     // 如果沒有指定 variant，使用預設的 inputType
-    const effectiveVariant = variant || inferDefaultVariant(field);
+    const effectiveVariant = variant || getDefaultVariant(field);
 
     // Union fields — Radio Card (default) or Radio Group
     if (type === 'union' && field.unionMeta) {

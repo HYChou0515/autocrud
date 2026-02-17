@@ -14,6 +14,7 @@ import {
   registerFieldType,
   getDefaultVariant,
   getEmptyValue,
+  inferSimpleUnionType,
   stringHandler,
   numberHandler,
   booleanHandler,
@@ -859,6 +860,51 @@ describe('arrayHandler', () => {
     it('returns empty array for non-array', () => {
       expect(arrayHandler.fromJsonValue(null, field())).toEqual([]);
     });
+  });
+});
+
+// ============================================================================
+// inferSimpleUnionType
+// ============================================================================
+describe('inferSimpleUnionType', () => {
+  it('should infer number type', () => {
+    expect(inferSimpleUnionType(42)).toBe('number');
+    expect(inferSimpleUnionType(0)).toBe('number');
+    expect(inferSimpleUnionType(-10)).toBe('number');
+    expect(inferSimpleUnionType(3.14)).toBe('number');
+  });
+
+  it('should infer boolean type', () => {
+    expect(inferSimpleUnionType(true)).toBe('boolean');
+    expect(inferSimpleUnionType(false)).toBe('boolean');
+  });
+
+  it('should infer string type for string values', () => {
+    expect(inferSimpleUnionType('hello')).toBe('string');
+    expect(inferSimpleUnionType('123')).toBe('string');
+    expect(inferSimpleUnionType('true')).toBe('string');
+  });
+
+  it('should default to string for null', () => {
+    expect(inferSimpleUnionType(null)).toBe('string');
+  });
+
+  it('should default to string for undefined', () => {
+    expect(inferSimpleUnionType(undefined)).toBe('string');
+  });
+
+  it('should default to string for empty string', () => {
+    expect(inferSimpleUnionType('')).toBe('string');
+  });
+
+  it('should infer string for objects', () => {
+    expect(inferSimpleUnionType({})).toBe('string');
+    expect(inferSimpleUnionType({ key: 'value' })).toBe('string');
+  });
+
+  it('should infer string for arrays', () => {
+    expect(inferSimpleUnionType([])).toBe('string');
+    expect(inferSimpleUnionType([1, 2, 3])).toBe('string');
   });
 });
 

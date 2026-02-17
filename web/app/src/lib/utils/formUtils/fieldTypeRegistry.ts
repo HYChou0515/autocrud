@@ -482,3 +482,29 @@ export function getEmptyValue(field: ResourceFieldMinimal): any {
   }
   return getHandler(field.type).emptyValue(field);
 }
+
+// ============================================================================
+// Utility Functions
+// ============================================================================
+
+/**
+ * Infer TypeScript type from a runtime value.
+ * Used for simple union fields to determine which type variant is active.
+ *
+ * @param value - Value to inspect
+ * @returns Inferred type string ('string', 'number', or 'boolean')
+ *
+ * @example
+ * inferSimpleUnionType(42) // 'number'
+ * inferSimpleUnionType(true) // 'boolean'
+ * inferSimpleUnionType('hello') // 'string'
+ * inferSimpleUnionType(null) // 'string' (default)
+ */
+export function inferSimpleUnionType(value: any): 'string' | 'number' | 'boolean' {
+  if (value === null || value === undefined || value === '') {
+    return 'string'; // Default
+  }
+  if (typeof value === 'number') return 'number';
+  if (typeof value === 'boolean') return 'boolean';
+  return 'string';
+}
