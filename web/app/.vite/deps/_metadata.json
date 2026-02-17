@@ -1,0 +1,148 @@
+{
+  "hash": "3ae78bd0",
+  "configHash": "d6c67621",
+  "lockfileHash": "8b59e96f",
+  "browserHash": "18f4ce9b",
+  "optimized": {
+    "react/jsx-dev-runtime": {
+      "src": "../../node_modules/.pnpm/react@18.3.1/node_modules/react/jsx-dev-runtime.js",
+      "file": "react_jsx-dev-runtime.js",
+      "fileHash": "93c2f45e",
+      "needsInterop": true
+    },
+    "@mantine/core": {
+      "src": "../../node_modules/.pnpm/@mantine+core@7.17.8_@mantine+hooks@7.17.8_react@18.3.1__@types+react@18.3.28_react-dom_0310bd13482d623f1babe5c013e40beb/node_modules/@mantine/core/esm/index.mjs",
+      "file": "@mantine_core.js",
+      "fileHash": "8dd53693",
+      "needsInterop": false
+    },
+    "@mantine/hooks": {
+      "src": "../../node_modules/.pnpm/@mantine+hooks@7.17.8_react@18.3.1/node_modules/@mantine/hooks/esm/index.mjs",
+      "file": "@mantine_hooks.js",
+      "fileHash": "89d2bc63",
+      "needsInterop": false
+    },
+    "@tabler/icons-react": {
+      "src": "../../node_modules/.pnpm/@tabler+icons-react@3.36.1_react@18.3.1/node_modules/@tabler/icons-react/dist/esm/tabler-icons-react.mjs",
+      "file": "@tabler_icons-react.js",
+      "fileHash": "6036816b",
+      "needsInterop": false
+    },
+    "react": {
+      "src": "../../node_modules/.pnpm/react@18.3.1/node_modules/react/index.js",
+      "file": "react.js",
+      "fileHash": "a56ca429",
+      "needsInterop": true
+    },
+    "@tanstack/react-virtual": {
+      "src": "../../node_modules/.pnpm/@tanstack+react-virtual@3.13.18_react-dom@18.3.1_react@18.3.1__react@18.3.1/node_modules/@tanstack/react-virtual/dist/esm/index.js",
+      "file": "@tanstack_react-virtual.js",
+      "fileHash": "3c2b0795",
+      "needsInterop": false
+    },
+    "dayjs": {
+      "src": "../../node_modules/.pnpm/dayjs@1.11.19/node_modules/dayjs/dayjs.min.js",
+      "file": "dayjs.js",
+      "fileHash": "795d3077",
+      "needsInterop": true
+    },
+    "dayjs/plugin/relativeTime": {
+      "src": "../../node_modules/.pnpm/dayjs@1.11.19/node_modules/dayjs/plugin/relativeTime.js",
+      "file": "dayjs_plugin_relativeTime.js",
+      "fileHash": "f58f9d8a",
+      "needsInterop": true
+    },
+    "dayjs/locale/zh-tw": {
+      "src": "../../node_modules/.pnpm/dayjs@1.11.19/node_modules/dayjs/locale/zh-tw.js",
+      "file": "dayjs_locale_zh-tw.js",
+      "fileHash": "bae1633b",
+      "needsInterop": true
+    },
+    "@mantine/form": {
+      "src": "../../node_modules/.pnpm/@mantine+form@7.17.8_react@18.3.1/node_modules/@mantine/form/esm/index.mjs",
+      "file": "@mantine_form.js",
+      "fileHash": "f72500cd",
+      "needsInterop": false
+    },
+    "mantine-form-zod-resolver": {
+      "src": "../../node_modules/.pnpm/mantine-form-zod-resolver@1.3.0_@mantine+form@7.17.8_react@18.3.1__zod@4.3.6/node_modules/mantine-form-zod-resolver/dist/esm/index.mjs",
+      "file": "mantine-form-zod-resolver.js",
+      "fileHash": "7adf5ecc",
+      "needsInterop": false
+    },
+    "@mantine/dates": {
+      "src": "../../node_modules/.pnpm/@mantine+dates@7.17.8_@mantine+core@7.17.8_@mantine+hooks@7.17.8_react@18.3.1__@types+r_002b83e2d53b34ce986dd896d52c5e01/node_modules/@mantine/dates/esm/index.mjs",
+      "file": "@mantine_dates.js",
+      "fileHash": "2fc88868",
+      "needsInterop": false
+    },
+    "react-dom/client": {
+      "src": "../../node_modules/.pnpm/react-dom@18.3.1_react@18.3.1/node_modules/react-dom/client.js",
+      "file": "react-dom_client.js",
+      "fileHash": "a271ca10",
+      "needsInterop": true
+    },
+    "@mantine/notifications": {
+      "src": "../../node_modules/.pnpm/@mantine+notifications@7.17.8_@mantine+core@7.17.8_@mantine+hooks@7.17.8_react@18.3.1___25503d0b79edfce0c2c736a053b062be/node_modules/@mantine/notifications/esm/index.mjs",
+      "file": "@mantine_notifications.js",
+      "fileHash": "815ed678",
+      "needsInterop": false
+    },
+    "@tanstack/react-router": {
+      "src": "../../node_modules/.pnpm/@tanstack+react-router@1.158.4_react-dom@18.3.1_react@18.3.1__react@18.3.1/node_modules/@tanstack/react-router/dist/esm/index.dev.js",
+      "file": "@tanstack_react-router.js",
+      "fileHash": "23cfef11",
+      "needsInterop": false
+    },
+    "zod": {
+      "src": "../../node_modules/.pnpm/zod@4.3.6/node_modules/zod/index.js",
+      "file": "zod.js",
+      "fileHash": "c6124311",
+      "needsInterop": false
+    },
+    "axios": {
+      "src": "../../node_modules/.pnpm/axios@1.13.5/node_modules/axios/index.js",
+      "file": "axios.js",
+      "fileHash": "7354c3bf",
+      "needsInterop": false
+    },
+    "mantine-react-table": {
+      "src": "../../node_modules/.pnpm/mantine-react-table@2.0.0-beta.9_@mantine+core@7.17.8_@mantine+hooks@7.17.8_react@18.3._d4569f894839b9d1dca3974b17f9f7c6/node_modules/mantine-react-table/dist/index.esm.mjs",
+      "file": "mantine-react-table.js",
+      "fileHash": "60876796",
+      "needsInterop": false
+    }
+  },
+  "chunks": {
+    "chunk-OXFCLLK7": {
+      "file": "chunk-OXFCLLK7.js"
+    },
+    "chunk-5CZMG6BE": {
+      "file": "chunk-5CZMG6BE.js"
+    },
+    "chunk-5EQW2MGV": {
+      "file": "chunk-5EQW2MGV.js"
+    },
+    "chunk-BSJUYPHC": {
+      "file": "chunk-BSJUYPHC.js"
+    },
+    "chunk-PLI3YFLS": {
+      "file": "chunk-PLI3YFLS.js"
+    },
+    "chunk-LBEETZ2E": {
+      "file": "chunk-LBEETZ2E.js"
+    },
+    "chunk-FYOO46XK": {
+      "file": "chunk-FYOO46XK.js"
+    },
+    "chunk-OELA7GPI": {
+      "file": "chunk-OELA7GPI.js"
+    },
+    "chunk-GJOL5HO3": {
+      "file": "chunk-GJOL5HO3.js"
+    },
+    "chunk-G3PMV62Z": {
+      "file": "chunk-G3PMV62Z.js"
+    }
+  }
+}
