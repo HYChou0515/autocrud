@@ -40,6 +40,7 @@ import {
   parseAndValidateJson,
   type BinaryFormValue,
 } from '@/lib/utils/formUtils';
+import { getHandler, getEmptyValue } from '@/lib/utils/formUtils/fieldTypeRegistry';
 
 /** Inline binary field editor — file upload or URL input */
 function BinaryFieldEditor({
@@ -395,7 +396,6 @@ export function ResourceForm<T extends Record<string, any>>({
       // Array of typed objects — process each item's sub-fields
       if (field.itemFields && field.itemFields.length > 0) {
         if (Array.isArray(val)) {
-          const _hasBinarySubs = field.itemFields.some((sf) => sf.type === 'binary');
           const cleanItems = await Promise.all(
             val.map(async (item: any, idx: number) => {
               const res: Record<string, any> = {};
@@ -405,30 +405,10 @@ export function ResourceForm<T extends Record<string, any>>({
                   // Use pre-extracted binary value (has File object)
                   const bv = arrayItemBinaryValues.get(`${field.name}.${idx}.${sf.name}`);
                   v = await binaryFormValueToApi(bv);
-                } else if (sf.isArray && sf.type === 'string') {
-                  v =
-                    typeof v === 'string'
-                      ? v
-                          .split(',')
-                          .map((s: string) => s.trim())
-                          .filter(Boolean)
-                      : Array.isArray(v)
-                        ? v
-                        : [];
-                } else if (sf.type === 'number' && (v === '' || v === undefined)) {
-                  v = sf.isNullable ? null : undefined;
-                } else if (sf.type === 'string' && v === '' && sf.isNullable) {
-                  v = null;
-                } else if (sf.type === 'object') {
-                  if (typeof v === 'string' && v.trim()) {
-                    try {
-                      v = JSON.parse(v);
-                    } catch {
-                      /* keep */
-                    }
-                  } else if (typeof v === 'string' && !v.trim()) {
-                    v = null;
-                  }
+                } else {
+                  // Delegate to registry handler
+                  const handler = getHandler(sf.type);
+                  v = (handler.submitValue ?? handler.toApiValue)(v, sf);
                 }
                 res[sf.name] = v;
               }
@@ -441,54 +421,18 @@ export function ResourceForm<T extends Record<string, any>>({
       }
 
       if (dateFieldNames.includes(field.name)) {
-        if (val instanceof Date || (typeof val === 'string' && val)) {
-          const d = val instanceof Date ? val : new Date(val);
-          if (!isNaN(d.getTime())) {
-            setByPath(processed, field.name, d.toISOString());
-          }
-        }
+        // Date fields: use date handler's submitValue
+        const handler = getHandler('date');
+        const submitFn = handler.submitValue ?? handler.toApiValue;
+        setByPath(processed, field.name, submitFn(val, field));
       } else if (field.type === 'binary') {
-        // Binary fields are processed separately above via binaryFieldValues
+        // Binary fields are processed separately below via binaryFieldValues
         continue;
-      } else if (field.type === 'object') {
-        if (typeof val === 'string' && val.trim()) {
-          try {
-            setByPath(processed, field.name, JSON.parse(val));
-          } catch {
-            // Keep as string if invalid JSON
-          }
-        } else if (typeof val === 'string' && !val.trim()) {
-          setByPath(processed, field.name, null);
-        }
-      } else if (
-        field.isArray &&
-        !(field.itemFields && field.itemFields.length > 0) &&
-        !(field.ref && field.ref.type === 'resource_id')
-      ) {
-        // Simple array field (comma-separated string in form) — convert to array before zod
-        // Skip array ref fields — they are already arrays from RefMultiSelect
-        if (typeof val === 'string') {
-          setByPath(
-            processed,
-            field.name,
-            val
-              ? val
-                  .split(',')
-                  .map((s: string) => s.trim())
-                  .filter(Boolean)
-              : [],
-          );
-        }
-      } else if (field.type === 'number') {
-        // Convert empty string back to null for nullable number fields
-        if (val === '' || val === undefined) {
-          setByPath(processed, field.name, field.isNullable ? null : undefined);
-        }
-      } else if (field.type === 'string') {
-        // Convert empty string to null for nullable string fields
-        if (val === '' && field.isNullable) {
-          setByPath(processed, field.name, null);
-        }
+      } else {
+        // All other types: delegate to registry handler
+        const handler = getHandler(field.type);
+        const submitFn = handler.submitValue ?? handler.toApiValue;
+        setByPath(processed, field.name, submitFn(val, field));
       }
     }
 
@@ -753,13 +697,7 @@ export function ResourceForm<T extends Record<string, any>>({
       const createEmptyItem = () => {
         const item: Record<string, any> = {};
         for (const sf of field.itemFields!) {
-          if (sf.type === 'binary') item[sf.name] = { _mode: 'empty' } as BinaryFormValue;
-          else if (sf.enumValues && sf.enumValues.length > 0)
-            item[sf.name] = sf.isNullable ? null : (sf.enumValues[0] ?? '');
-          else if (sf.type === 'number') item[sf.name] = '';
-          else if (sf.type === 'boolean') item[sf.name] = false;
-          else if (sf.type === 'object') item[sf.name] = '';
-          else item[sf.name] = '';
+          item[sf.name] = getEmptyValue(sf);
         }
         return item;
       };

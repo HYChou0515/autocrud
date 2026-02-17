@@ -1,8 +1,11 @@
 /**
  * Validation utility functions for form data
+ *
+ * Delegates type-specific validation to the Field Type Registry.
  */
 
 import { getByPath } from './paths';
+import { getHandler } from './fieldTypeRegistry';
 
 // Minimal field interface
 interface ResourceFieldMinimal {
@@ -19,7 +22,7 @@ interface CollapsedGroup {
 
 /**
  * Validate JSON object fields
- * Checks that JSON string fields contain valid JSON objects (not arrays or primitives)
+ * Delegates to registry handler.validate() for each field type.
  *
  * @param values - Form values to validate
  * @param fields - Field definitions
@@ -49,24 +52,22 @@ export function validateJsonFields(
 ): Record<string, string> {
   const errors: Record<string, string> = {};
 
-  // Validate JSON object fields (skip array fields with itemFields — they use actual arrays)
+  // Validate fields using registry handler.validate()
   for (const field of fields) {
-    if (field.type === 'object' && !(field.itemFields && field.itemFields.length > 0)) {
+    // Skip array fields with itemFields — they use actual arrays
+    if (field.itemFields && field.itemFields.length > 0) continue;
+
+    const handler = getHandler(field.type);
+    if (handler.validate) {
       const val = getByPath(values, field.name);
-      if (typeof val === 'string' && val.trim()) {
-        try {
-          const parsed = JSON.parse(val);
-          if (typeof parsed !== 'object' || parsed === null || Array.isArray(parsed)) {
-            errors[field.name] = 'Must be a JSON object (not array or primitive)';
-          }
-        } catch {
-          errors[field.name] = 'Invalid JSON format';
-        }
+      const error = handler.validate(val, field);
+      if (error) {
+        errors[field.name] = error;
       }
     }
   }
 
-  // Also validate collapsed group JSON fields
+  // Also validate collapsed group JSON fields (structural concern, not type-based)
   for (const group of collapsedGroups) {
     const val = getByPath(values, group.path);
     if (typeof val === 'string' && val.trim()) {

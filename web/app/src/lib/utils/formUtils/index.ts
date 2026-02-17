@@ -11,6 +11,26 @@
 export type { BinaryFormValue } from './types';
 
 // ============================================================================
+// Field Type Registry (centralized type dispatch)
+// ============================================================================
+export {
+  getHandler,
+  getDefaultVariant,
+  getEmptyValue,
+  registerFieldType,
+  // Built-in handlers (for testing, extension, or override)
+  stringHandler,
+  numberHandler,
+  booleanHandler,
+  dateHandler,
+  objectHandler,
+  binaryHandler,
+  unionHandler,
+  arrayHandler,
+} from './fieldTypeRegistry';
+export type { FieldTypeHandler, FieldType, ResourceFieldMinimal } from './fieldTypeRegistry';
+
+// ============================================================================
 // Path Utilities (nested object access)
 // ============================================================================
 export { getByPath, setByPath } from './paths';
