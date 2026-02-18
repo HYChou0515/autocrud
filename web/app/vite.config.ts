@@ -20,6 +20,7 @@ export default defineConfig({
     include: [
       'src/lib/utils/**/*.test.ts',
       'src/lib/utils/formUtils/**/*.test.ts',
+      'src/lib/components/**/*.test.ts',
     ],
     coverage: {
       provider: 'v8',
@@ -41,6 +42,7 @@ export default defineConfig({
         'src/lib/utils/formUtils/transformers.ts',
         'src/lib/utils/formUtils/validators.ts',
         'src/lib/utils/formUtils/depthTransition.ts',
+        'src/lib/components/FieldRenderer/resolveFieldKind.ts',
       ],
     },
   },
