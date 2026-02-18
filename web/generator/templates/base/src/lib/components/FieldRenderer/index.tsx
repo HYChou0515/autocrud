@@ -9,8 +9,8 @@ import { TextInput, NumberInput, Textarea, Checkbox, Select, Switch } from '@man
 import { DateTimePicker } from '@mantine/dates';
 import type { UseFormReturnType } from '@mantine/form';
 import type { ResourceField, FieldVariant } from '../../resources';
-import { RefSelect, RefMultiSelect, RefRevisionSelect, RefRevisionMultiSelect } from './RefSelect';
-import { MarkdownEditor } from './MarkdownEditor';
+import { RefSelect, RefMultiSelect, RefRevisionSelect, RefRevisionMultiSelect } from '../RefSelect';
+import { MarkdownEditor } from '../MarkdownEditor';
 import { BinaryFieldEditor } from './BinaryFieldEditor';
 import { UnionFieldRenderer } from './UnionFieldRenderer';
 import { ArrayFieldRenderer } from './ArrayFieldRenderer';

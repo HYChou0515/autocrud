@@ -17,4 +17,9 @@ export const customizations: ResourceCustomizations = {
   //     'my_field': { variant: { type: 'textarea', rows: 5 } },
   //   },
   // },
+  character: {
+    fields: {
+      name: { variant: { type: 'markdown' } },
+    },
+  },
 };
