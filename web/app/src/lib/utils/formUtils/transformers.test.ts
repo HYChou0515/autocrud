@@ -4,6 +4,8 @@ import {
   processInitialValues,
   formValuesToApiObject,
   applyJsonToForm,
+  createEmptyItem,
+  processSubmitValues,
 } from './transformers';
 import type { BinaryFormValue } from './types';
 
@@ -1051,5 +1053,275 @@ describe('applyJsonToForm', () => {
     const result = applyJsonToForm({ name: null }, fields, [], []);
 
     expect(result.name).toBe('');
+  });
+
+  it('should keep array ref field as array (bug: was joining to comma-separated string)', () => {
+    const fields = [
+      {
+        name: 'skill_ids',
+        type: 'string' as const,
+        isArray: true,
+        ref: { resource: 'skill', type: 'resource_id' as const },
+      },
+    ];
+
+    const result = applyJsonToForm({ skill_ids: ['id1', 'id2', 'id3'] }, fields, [], []);
+
+    expect(result.skill_ids).toEqual(['id1', 'id2', 'id3']);
+  });
+
+  it('should default array ref field to empty array when null', () => {
+    const fields = [
+      {
+        name: 'skill_ids',
+        type: 'string' as const,
+        isArray: true,
+        ref: { resource: 'skill', type: 'resource_id' as const },
+      },
+    ];
+
+    const result = applyJsonToForm({ skill_ids: null }, fields, [], []);
+
+    expect(result.skill_ids).toEqual([]);
+  });
+
+  it('should default array ref field to empty array when undefined', () => {
+    const fields = [
+      {
+        name: 'skill_ids',
+        type: 'string' as const,
+        isArray: true,
+        ref: { resource: 'skill', type: 'resource_id' as const },
+      },
+    ];
+
+    const result = applyJsonToForm({}, fields, [], []);
+
+    expect(result.skill_ids).toEqual([]);
+  });
+});
+
+// ============================================================================
+// createEmptyItem
+// ============================================================================
+
+describe('createEmptyItem', () => {
+  it('should create item with string defaults', () => {
+    const itemFields = [
+      { name: 'name', label: 'Name', type: 'string' as const },
+      { name: 'description', label: 'Desc', type: 'string' as const },
+    ];
+    const result = createEmptyItem(itemFields);
+    expect(result).toEqual({ name: '', description: '' });
+  });
+
+  it('should create item with number defaults', () => {
+    const itemFields = [{ name: 'count', label: 'Count', type: 'number' as const }];
+    const result = createEmptyItem(itemFields);
+    expect(result).toEqual({ count: '' });
+  });
+
+  it('should create item with boolean defaults', () => {
+    const itemFields = [{ name: 'active', label: 'Active', type: 'boolean' as const }];
+    const result = createEmptyItem(itemFields);
+    expect(result).toEqual({ active: false });
+  });
+
+  it('should create item with date defaults', () => {
+    const itemFields = [{ name: 'created', label: 'Created', type: 'date' as const }];
+    const result = createEmptyItem(itemFields);
+    expect(result).toEqual({ created: null });
+  });
+
+  it('should create item with object defaults', () => {
+    const itemFields = [{ name: 'meta', label: 'Meta', type: 'object' as const }];
+    const result = createEmptyItem(itemFields);
+    // objectHandler.emptyValue() returns '' (empty string for JSON textarea)
+    expect(result).toEqual({ meta: '' });
+  });
+
+  it('should create item with binary defaults', () => {
+    const itemFields = [{ name: 'file', label: 'File', type: 'binary' as const }];
+    const result = createEmptyItem(itemFields);
+    // binaryHandler.emptyValue() returns { _mode: 'empty' }
+    expect(result).toEqual({ file: { _mode: 'empty' } });
+  });
+
+  it('should create item with mixed sub-field types', () => {
+    const itemFields = [
+      { name: 'name', label: 'Name', type: 'string' as const },
+      { name: 'score', label: 'Score', type: 'number' as const },
+      { name: 'active', label: 'Active', type: 'boolean' as const },
+      { name: 'avatar', label: 'Avatar', type: 'binary' as const },
+    ];
+    const result = createEmptyItem(itemFields);
+    expect(result).toEqual({
+      name: '',
+      score: '',
+      active: false,
+      avatar: { _mode: 'empty' },
+    });
+  });
+
+  it('should return empty object for empty itemFields', () => {
+    expect(createEmptyItem([])).toEqual({});
+  });
+});
+
+// ============================================================================
+// processSubmitValues
+// ============================================================================
+
+describe('processSubmitValues', () => {
+  it('should process string fields using handler', () => {
+    const fields = [{ name: 'name', label: 'Name', type: 'string' as const }];
+    const values = { name: 'Alice' };
+
+    const result = processSubmitValues(values, fields, [], []);
+    expect(result.processed.name).toBe('Alice');
+    expect(result.skippedBinaryFields).toEqual([]);
+    expect(result.binarySubFieldKeys).toEqual([]);
+  });
+
+  it('should process number fields using handler', () => {
+    const fields = [{ name: 'age', label: 'Age', type: 'number' as const }];
+    // NumberInput gives a number, not string; toApiValue passes through
+    const values = { age: 25 };
+
+    const result = processSubmitValues(values, fields, [], []);
+    expect(result.processed.age).toBe(25);
+  });
+
+  it('should process date fields via date handler', () => {
+    const fields = [{ name: 'created', label: 'Created', type: 'date' as const }];
+    const date = new Date('2024-06-15T00:00:00Z');
+    const values = { created: date };
+
+    const result = processSubmitValues(values, fields, [], ['created']);
+    expect(result.processed.created).toBe(date.toISOString());
+  });
+
+  it('should skip binary fields and report them', () => {
+    const fields = [{ name: 'avatar', label: 'Avatar', type: 'binary' as const }];
+    const values = { avatar: { _mode: 'file', file: null } };
+
+    const result = processSubmitValues(values, fields, [], []);
+    expect(result.skippedBinaryFields).toEqual(['avatar']);
+    // Value should NOT be processed (kept as-is for async handling)
+    expect(result.processed.avatar).toEqual({ _mode: 'file', file: null });
+  });
+
+  it('should process itemFields sub-fields using handlers', () => {
+    const fields = [
+      {
+        name: 'items',
+        label: 'Items',
+        type: 'array' as const,
+        itemFields: [
+          { name: 'name', label: 'Name', type: 'string' as const },
+          { name: 'count', label: 'Count', type: 'number' as const },
+        ],
+      },
+    ];
+    // NumberInput gives numbers, not strings
+    const values = { items: [{ name: 'foo', count: 10 }] };
+
+    const result = processSubmitValues(values, fields, [], []);
+    expect(result.processed.items).toEqual([{ name: 'foo', count: 10 }]);
+  });
+
+  it('should report binary sub-fields in itemFields', () => {
+    const fields = [
+      {
+        name: 'docs',
+        label: 'Docs',
+        type: 'array' as const,
+        itemFields: [
+          { name: 'title', label: 'Title', type: 'string' as const },
+          { name: 'file', label: 'File', type: 'binary' as const },
+        ],
+      },
+    ];
+    const values = {
+      docs: [
+        { title: 'doc1', file: { _mode: 'file', file: null } },
+        { title: 'doc2', file: { _mode: 'url', url: 'http://x' } },
+      ],
+    };
+
+    const result = processSubmitValues(values, fields, [], []);
+    expect(result.binarySubFieldKeys).toEqual(['docs.0.file', 'docs.1.file']);
+    expect(result.processed.docs[0].title).toBe('doc1');
+    expect(result.processed.docs[1].title).toBe('doc2');
+  });
+
+  it('should parse collapsed group JSON strings', () => {
+    const fields = [{ name: 'name', label: 'Name', type: 'string' as const }];
+    const collapsedGroups = [{ path: 'meta', label: 'Meta' }];
+    const values = { name: 'Alice', meta: '{"key":"val"}' };
+
+    const result = processSubmitValues(values, fields, collapsedGroups, []);
+    expect(result.processed.meta).toEqual({ key: 'val' });
+  });
+
+  it('should set collapsed group to null for empty JSON string', () => {
+    const fields: any[] = [];
+    const collapsedGroups = [{ path: 'meta', label: 'Meta' }];
+    const values = { meta: '  ' };
+
+    const result = processSubmitValues(values, fields, collapsedGroups, []);
+    expect(result.processed.meta).toBeNull();
+  });
+
+  it('should keep collapsed group as-is on invalid JSON', () => {
+    const fields: any[] = [];
+    const collapsedGroups = [{ path: 'meta', label: 'Meta' }];
+    const values = { meta: 'not json' };
+
+    const result = processSubmitValues(values, fields, collapsedGroups, []);
+    // JSON.parse fails, keeps as-is
+    expect(result.processed.meta).toBe('not json');
+  });
+
+  it('should skip collapsed child fields', () => {
+    const fields = [
+      { name: 'user', label: 'User', type: 'object' as const },
+      { name: 'user.name', label: 'Name', type: 'string' as const },
+    ];
+    const collapsedGroups = [{ path: 'user', label: 'User' }];
+    const values = { user: '{"name":"Alice"}', 'user.name': 'Alice' };
+
+    const result = processSubmitValues(values, fields, collapsedGroups, []);
+    // user.name should be skipped (it's a collapsed child)
+    // user should be parsed from JSON
+    expect(result.processed.user).toEqual({ name: 'Alice' });
+  });
+
+  it('should handle boolean and nullable fields via handler', () => {
+    const fields = [
+      { name: 'active', label: 'Active', type: 'boolean' as const },
+      { name: 'note', label: 'Note', type: 'string' as const, isNullable: true },
+    ];
+    const values = { active: true, note: '' };
+
+    const result = processSubmitValues(values, fields, [], []);
+    expect(result.processed.active).toBe(true);
+    // String handler with nullable: empty string → null
+    expect(result.processed.note).toBeNull();
+  });
+
+  it('should handle empty itemFields array', () => {
+    const fields = [
+      {
+        name: 'items',
+        label: 'Items',
+        type: 'array' as const,
+        itemFields: [{ name: 'id', label: 'ID', type: 'string' as const }],
+      },
+    ];
+    const values = { items: [] };
+
+    const result = processSubmitValues(values, fields, [], []);
+    expect(result.processed.items).toEqual([]);
   });
 });

@@ -5,7 +5,7 @@
  */
 
 import { getByPath, setByPath } from './paths';
-import { getHandler } from './fieldTypeRegistry';
+import { getHandler, getEmptyValue } from './fieldTypeRegistry';
 import type { ResourceFieldMinimal } from './fieldTypeRegistry';
 
 interface CollapsedGroup {
@@ -109,7 +109,9 @@ export function processInitialValues(
     if (parentVal && typeof parentVal === 'object' && !(parentVal instanceof Date)) {
       setByPath(processed, group.path, JSON.stringify(parentVal, null, 2));
     } else if (parentVal == null || parentVal === undefined) {
-      setByPath(processed, group.path, '{}');
+      // Use '[]' for array fields (itemFields), '{}' for plain objects
+      const field = fields.find((f) => f.name === group.path);
+      setByPath(processed, group.path, field?.itemFields ? '[]' : '{}');
     }
     // If it's already a string (e.g. from a visible 'object' field), keep it
   }
@@ -238,6 +240,12 @@ export function applyJsonToForm(
       continue;
     }
 
+    // Array ref field — keep as array for RefMultiSelect, default to []
+    if (field.isArray && field.ref && field.ref.type === 'resource_id') {
+      newValues[field.name] = Array.isArray(val) ? val : [];
+      continue;
+    }
+
     // Determine effective type: use 'date' handler for date-variant fields
     const effectiveType = dateFieldNames.includes(field.name) ? 'date' : field.type;
     const handler = getHandler(effectiveType);
@@ -255,4 +263,123 @@ export function applyJsonToForm(
   }
 
   return newValues;
+}
+
+/**
+ * Create an empty item for an array-with-itemFields field.
+ *
+ * Builds a default object with each sub-field set to its type-appropriate
+ * empty value via the Field Type Registry.
+ *
+ * @param itemFields - Sub-field definitions for the array items
+ * @returns A new empty item object with defaults for each sub-field
+ *
+ * @example
+ * createEmptyItem([
+ *   { name: 'name', label: 'Name', type: 'string' },
+ *   { name: 'count', label: 'Count', type: 'number' },
+ *   { name: 'active', label: 'Active', type: 'boolean' },
+ * ])
+ * // Returns: { name: '', count: '', active: false }
+ */
+export function createEmptyItem(itemFields: ResourceFieldMinimal[]): Record<string, any> {
+  const item: Record<string, any> = {};
+  for (const sf of itemFields) {
+    item[sf.name] = getEmptyValue(sf);
+  }
+  return item;
+}
+
+/**
+ * Process form values for submission (synchronous field processing).
+ *
+ * Handles all non-binary field transformations:
+ * - itemFields: each sub-field processed via handler.submitValue ?? handler.toApiValue
+ * - Date fields: converted via date handler
+ * - Binary field sub-items in itemFields: marked as skipped (returned in binarySubFieldKeys)
+ * - All other fields: delegated to registry handler
+ * - Collapsed groups: JSON strings parsed back to objects
+ *
+ * Binary top-level fields are SKIPPED (returned in skippedBinaryFields) because
+ * they require async File→base64 conversion that must happen in the component.
+ *
+ * @param values - Deep-cloned form values (will be mutated)
+ * @param fields - Field definitions
+ * @param collapsedGroups - Groups rendered as JSON editors
+ * @param dateFieldNames - Names of date-type fields
+ * @returns Object with processed values and lists of binary fields to handle async
+ */
+export function processSubmitValues(
+  values: Record<string, any>,
+  fields: ResourceFieldMinimal[],
+  collapsedGroups: CollapsedGroup[],
+  dateFieldNames: string[],
+): {
+  processed: Record<string, any>;
+  skippedBinaryFields: string[];
+  binarySubFieldKeys: string[];
+} {
+  const processed = values;
+  const skippedBinaryFields: string[] = [];
+  const binarySubFieldKeys: string[] = [];
+
+  for (const field of fields) {
+    // Skip collapsed children — their data is in the parent JSON string
+    if (isCollapsedChild(field.name, collapsedGroups)) continue;
+
+    const val = getByPath(processed, field.name);
+
+    // Array of typed objects — process each item's sub-fields
+    if (field.itemFields && field.itemFields.length > 0) {
+      if (Array.isArray(val)) {
+        const cleanItems = val.map((item: any, idx: number) => {
+          const res: Record<string, any> = {};
+          for (const sf of field.itemFields!) {
+            let v = item?.[sf.name];
+            if (sf.type === 'binary') {
+              // Mark for async processing by component
+              binarySubFieldKeys.push(`${field.name}.${idx}.${sf.name}`);
+              res[sf.name] = v; // placeholder, component replaces with async result
+            } else {
+              const handler = getHandler(sf.type);
+              v = (handler.submitValue ?? handler.toApiValue)(v, sf);
+              res[sf.name] = v;
+            }
+          }
+          return res;
+        });
+        setByPath(processed, field.name, cleanItems);
+      }
+      continue;
+    }
+
+    if (dateFieldNames.includes(field.name)) {
+      const handler = getHandler('date');
+      const submitFn = handler.submitValue ?? handler.toApiValue;
+      setByPath(processed, field.name, submitFn(val, field));
+    } else if (field.type === 'binary') {
+      skippedBinaryFields.push(field.name);
+      continue;
+    } else {
+      const handler = getHandler(field.type);
+      const submitFn = handler.submitValue ?? handler.toApiValue;
+      setByPath(processed, field.name, submitFn(val, field));
+    }
+  }
+
+  // Parse collapsed group JSON strings back to objects
+  for (const group of collapsedGroups) {
+    const val = getByPath(processed, group.path);
+    if (typeof val === 'string' && val.trim()) {
+      try {
+        setByPath(processed, group.path, JSON.parse(val));
+      } catch {
+        /* keep */
+      }
+    } else if (typeof val === 'string' && !val.trim()) {
+      setByPath(processed, group.path, null);
+    }
+  }
+
+  return { processed, skippedBinaryFields, binarySubFieldKeys };
 }

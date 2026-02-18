@@ -50,7 +50,7 @@ describe('computeVisibleFieldsAndGroups', () => {
     expect(result.collapsedGroupFields.get('user.profile')).toHaveLength(2);
   });
 
-  it('should strip itemFields when depth is insufficient', () => {
+  it('should add depth-insufficient itemFields field to collapsedGroups (renders as JSON textarea)', () => {
     const fields = [
       {
         name: 'items',
@@ -59,11 +59,12 @@ describe('computeVisibleFieldsAndGroups', () => {
       },
     ];
 
-    // Items at depth 1, but itemFields need depth 2
+    // Items at depth 1, but itemFields need depth 2 → collapse as JSON textarea
     const result = computeVisibleFieldsAndGroups(fields, 1);
 
-    expect(result.visibleFields).toHaveLength(1);
-    expect(result.visibleFields[0].itemFields).toBeUndefined();
+    expect(result.visibleFields).toHaveLength(0);
+    expect(result.collapsedGroups).toHaveLength(1);
+    expect(result.collapsedGroups[0].path).toBe('items');
   });
 
   it('should preserve itemFields when depth is sufficient', () => {

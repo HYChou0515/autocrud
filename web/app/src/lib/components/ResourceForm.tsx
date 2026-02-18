@@ -1,4 +1,4 @@
-import { useState, useMemo } from 'react';
+import { useState, useMemo, useEffect, useRef } from 'react';
 import { useForm } from '@mantine/form';
 import { zodResolver } from 'mantine-form-zod-resolver';
 import {
@@ -24,13 +24,12 @@ import { DateTimePicker } from '@mantine/dates';
 import { IconLayersSubtract, IconTrash, IconPlus, IconLink, IconX } from '@tabler/icons-react';
 import type { ResourceConfig, ResourceField, FieldVariant, UnionMeta } from '../resources';
 import { RefSelect, RefMultiSelect, RefRevisionSelect, RefRevisionMultiSelect } from './RefSelect';
+import { MarkdownEditor } from './MarkdownEditor';
 import {
   getByPath,
   setByPath,
   binaryFormValueToApi,
   getDefaultVariant,
-  getHandler,
-  getEmptyValue,
   computeVisibleFieldsAndGroups,
   computeMaxAvailableDepth,
   processInitialValues,
@@ -40,6 +39,13 @@ import {
   validateJsonFields,
   preprocessArrayFields,
   parseAndValidateJson,
+  createEmptyItem,
+  processSubmitValues,
+  computeValidationSuppressPaths,
+  collapseFieldToJson,
+  expandFieldFromJson,
+  safeGetArrayItems,
+  safeGetJsonString,
   type BinaryFormValue,
 } from '@/lib/utils/formUtils';
 
@@ -181,6 +187,58 @@ export function ResourceForm<T extends Record<string, any>>({
     return computeVisibleFieldsAndGroups(config.fields, formDepth);
   }, [config.fields, formDepth]);
 
+  /**
+   * Sync form values when collapsedGroups change (e.g. depth slider adjusted).
+   *
+   * When a field transitions:
+   * - visible → collapsed: convert form value (array/object) to JSON string
+   * - collapsed → visible: parse JSON string back to proper form values
+   */
+  const prevCollapsedGroupPathsRef = useRef<Set<string>>(new Set());
+  useEffect(() => {
+    const prevPaths = prevCollapsedGroupPathsRef.current;
+    const currPaths = new Set(collapsedGroups.map((g) => g.path));
+    // Skip on first render (initial values already handled by processInitialValues)
+    if (prevPaths.size === 0 && currPaths.size === 0) {
+      prevCollapsedGroupPathsRef.current = currPaths;
+      return;
+    }
+    const values = form.getValues() as Record<string, any>;
+
+    // Fields newly entering collapsed: convert value → JSON string
+    for (const group of collapsedGroups) {
+      if (!prevPaths.has(group.path)) {
+        const val = getByPath(values, group.path);
+        if (typeof val !== 'string') {
+          const field = config.fields.find((f) => f.name === group.path);
+          const jsonStr = collapseFieldToJson(
+            val,
+            field ?? { name: group.path, label: group.label },
+          );
+          form.setFieldValue(group.path as any, jsonStr as any);
+        }
+      }
+    }
+
+    // Fields leaving collapsed: parse JSON string → proper form values
+    for (const prevPath of prevPaths) {
+      if (!currPaths.has(prevPath)) {
+        const val = getByPath(values, prevPath);
+        if (typeof val === 'string') {
+          const field = config.fields.find((f) => f.name === prevPath);
+          if (field) {
+            const expanded = expandFieldFromJson(val, field);
+            if (expanded !== undefined) {
+              form.setFieldValue(prevPath as any, expanded as any);
+            }
+          }
+        }
+      }
+    }
+
+    prevCollapsedGroupPathsRef.current = currPaths;
+  }, [collapsedGroups]);
+
   // Identify date fields to convert between ISO strings and Date objects
   const dateFieldNames = config.fields
     .filter((f) => f.type === 'date' || f.variant?.type === 'date')
@@ -211,38 +269,11 @@ export function ResourceForm<T extends Record<string, any>>({
         const zodValues = preprocessArrayFields(values as Record<string, any>, config.fields);
 
         const zodErrors = zodValidate(zodValues as T);
-        // Suppress zod errors for object-type fields (stored as JSON strings) and collapsed group paths
-        // BUT NOT for fields with itemFields (they use actual arrays, zod can validate them directly)
-        const suppressPaths = new Set([
-          ...config.fields
-            .filter((f) => f.type === 'object' && !(f.itemFields && f.itemFields.length > 0))
-            .map((f) => f.name),
-          ...config.fields.filter((f) => f.type === 'binary').map((f) => f.name),
-          // Simple array fields (comma-separated string in form, z.array() in schema) — exclude array ref fields
-          ...config.fields
-            .filter(
-              (f) =>
-                f.isArray &&
-                !(f.itemFields && f.itemFields.length > 0) &&
-                !(f.ref && f.ref.type === 'resource_id'),
-            )
-            .map((f) => f.name),
-          ...collapsedGroups.map((g: { path: string; label: string }) => g.path),
-        ]);
-        // Collect nested simple-array sub-field names within array-with-itemFields
-        const nestedArraySubFields: { parent: string; sub: string }[] = [];
-        for (const f of config.fields) {
-          if (f.itemFields && f.itemFields.length > 0) {
-            for (const sf of f.itemFields) {
-              if (sf.isArray) {
-                nestedArraySubFields.push({ parent: f.name, sub: sf.name });
-              }
-              if (sf.type === 'binary') {
-                nestedArraySubFields.push({ parent: f.name, sub: sf.name });
-              }
-            }
-          }
-        }
+        // Compute paths to suppress from zod validation
+        const { suppressPaths, nestedArraySubFields } = computeValidationSuppressPaths(
+          config.fields,
+          collapsedGroups,
+        );
         for (const key of Object.keys(zodErrors)) {
           if (suppressPaths.has(key)) {
             delete zodErrors[key];
@@ -384,75 +415,24 @@ export function ResourceForm<T extends Record<string, any>>({
 
     const processed = JSON.parse(JSON.stringify(values)) as Record<string, any>;
 
-    const isCollapsedChild = (name: string) =>
-      collapsedGroups.some((g: { path: string; label: string }) => name.startsWith(g.path + '.'));
+    // Process all synchronous field transformations via extracted utility
+    const { skippedBinaryFields, binarySubFieldKeys } = processSubmitValues(
+      processed,
+      config.fields,
+      collapsedGroups,
+      dateFieldNames,
+    );
 
-    // Clean up field values based on type
-    for (const field of config.fields) {
-      // Skip collapsed children — their data is in the parent JSON string
-      if (isCollapsedChild(field.name)) continue;
-
-      const val = getByPath(processed, field.name);
-
-      // Array of typed objects — process each item's sub-fields
-      if (field.itemFields && field.itemFields.length > 0) {
-        if (Array.isArray(val)) {
-          const cleanItems = await Promise.all(
-            val.map(async (item: any, idx: number) => {
-              const res: Record<string, any> = {};
-              for (const sf of field.itemFields!) {
-                let v = item?.[sf.name];
-                if (sf.type === 'binary') {
-                  // Use pre-extracted binary value (has File object)
-                  const bv = arrayItemBinaryValues.get(`${field.name}.${idx}.${sf.name}`);
-                  v = await binaryFormValueToApi(bv);
-                } else {
-                  // Delegate to registry handler
-                  const handler = getHandler(sf.type);
-                  v = (handler.submitValue ?? handler.toApiValue)(v, sf);
-                }
-                res[sf.name] = v;
-              }
-              return res;
-            }),
-          );
-          setByPath(processed, field.name, cleanItems);
-        }
-        continue;
-      }
-
-      if (dateFieldNames.includes(field.name)) {
-        // Date fields: use date handler's submitValue
-        const handler = getHandler('date');
-        const submitFn = handler.submitValue ?? handler.toApiValue;
-        setByPath(processed, field.name, submitFn(val, field));
-      } else if (field.type === 'binary') {
-        // Binary fields are processed separately below via binaryFieldValues
-        continue;
-      } else {
-        // All other types: delegate to registry handler
-        const handler = getHandler(field.type);
-        const submitFn = handler.submitValue ?? handler.toApiValue;
-        setByPath(processed, field.name, submitFn(val, field));
-      }
-    }
-
-    // Parse collapsed group JSON strings back to objects
-    for (const group of collapsedGroups) {
-      const val = getByPath(processed, group.path);
-      if (typeof val === 'string' && val.trim()) {
-        try {
-          setByPath(processed, group.path, JSON.parse(val));
-        } catch {
-          /* keep */
-        }
-      } else if (typeof val === 'string' && !val.trim()) {
-        setByPath(processed, group.path, null);
-      }
+    // Process binary sub-fields in array items (async: File → base64)
+    for (const key of binarySubFieldKeys) {
+      const bv = arrayItemBinaryValues.get(key);
+      const apiVal = await binaryFormValueToApi(bv);
+      setByPath(processed, key, apiVal);
     }
 
     // Process binary fields: convert File/URL to base64 API payload
-    for (const [fieldName, bv] of binaryFieldValues) {
+    for (const fieldName of skippedBinaryFields) {
+      const bv = binaryFieldValues.get(fieldName);
       const apiVal = await binaryFormValueToApi(bv);
       setByPath(processed, fieldName, apiVal);
     }
@@ -694,14 +674,11 @@ export function ResourceForm<T extends Record<string, any>>({
 
     // Array of typed objects — render as repeatable list with sub-fields
     if (field.itemFields && field.itemFields.length > 0) {
-      const items = (form.getValues() as Record<string, any>)[name] || [];
-      const createEmptyItem = () => {
-        const item: Record<string, any> = {};
-        for (const sf of field.itemFields!) {
-          item[sf.name] = getEmptyValue(sf);
-        }
-        return item;
-      };
+      // Guard: form value may still be a JSON string if useEffect hasn't run yet
+      // (transition from collapsed → expanded happens before useEffect fires)
+      const rawItems = (form.getValues() as Record<string, any>)[name];
+      const items = safeGetArrayItems(rawItems);
+      const emptyItemFactory = () => createEmptyItem(field.itemFields!);
 
       return (
         <Stack key={key} gap="xs">
@@ -713,7 +690,7 @@ export function ResourceForm<T extends Record<string, any>>({
               size="compact-xs"
               variant="light"
               leftSection={<IconPlus size={14} />}
-              onClick={() => form.insertListItem(name, createEmptyItem())}
+              onClick={() => form.insertListItem(name, emptyItemFactory())}
             >
               Add
             </Button>
@@ -882,17 +859,19 @@ export function ResourceForm<T extends Record<string, any>>({
       );
     }
 
-    // Markdown editor
+    // Markdown editor (Monaco + preview toggle)
     if (effectiveVariant.type === 'markdown') {
       const markdownVariant = effectiveVariant as Extract<FieldVariant, { type: 'markdown' }>;
+      const inputProps = form.getInputProps(name);
       return (
-        <Textarea
+        <MarkdownEditor
           key={key}
           label={label}
           required={isRequired}
-          placeholder="Markdown content"
-          minRows={markdownVariant.height ? markdownVariant.height / 24 : 5}
-          {...form.getInputProps(name)}
+          value={inputProps.value ?? ''}
+          onChange={(val) => form.setFieldValue(name as any, val as any)}
+          height={markdownVariant.height ?? 300}
+          error={inputProps.error as string | undefined}
         />
       );
     }
@@ -1088,15 +1067,20 @@ export function ResourceForm<T extends Record<string, any>>({
 
   /** Render a collapsed group as a JSON textarea */
   const renderCollapsedGroup = (group: { path: string; label: string }) => {
+    // Guard: form value may still be an array if useEffect hasn't run yet
+    // (transition from expanded → collapsed happens before useEffect fires)
+    const rawVal = (form.getValues() as Record<string, any>)[group.path];
+    const strVal = safeGetJsonString(rawVal);
     return (
       <Textarea
         key={`collapsed-${group.path}`}
-        label={`${group.label} (JSON)`}
+        label={group.label}
         placeholder="{}"
         minRows={4}
         autosize
         styles={{ input: { fontFamily: 'monospace', fontSize: '13px' } }}
         {...form.getInputProps(group.path)}
+        value={strVal}
       />
     );
   };

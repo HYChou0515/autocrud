@@ -72,9 +72,12 @@ export function computeVisibleFieldsAndGroups<T extends ResourceFieldMinimal>(
 
     if (depth <= formDepth) {
       // Field is at or above the depth threshold
-      // If field has itemFields but depth isn't enough to expand them, strip itemFields
+      // If field has itemFields but depth isn't enough to expand them,
+      // treat it as a collapsed JSON editor (like a nested object group).
       if (field.itemFields && field.itemFields.length > 0 && depth + 1 > formDepth) {
-        visible.push({ ...field, itemFields: undefined } as T);
+        if (!groupedChildren.has(field.name)) {
+          groupedChildren.set(field.name, []);
+        }
       } else {
         visible.push(field);
       }

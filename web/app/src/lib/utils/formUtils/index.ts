@@ -59,9 +59,26 @@ export {
   processInitialValues,
   formValuesToApiObject,
   applyJsonToForm,
+  createEmptyItem,
+  processSubmitValues,
 } from './transformers';
 
 // ============================================================================
 // Validators (JSON validation and preprocessing)
 // ============================================================================
-export { validateJsonFields, parseAndValidateJson, preprocessArrayFields } from './validators';
+export {
+  validateJsonFields,
+  parseAndValidateJson,
+  preprocessArrayFields,
+  computeValidationSuppressPaths,
+} from './validators';
+
+// ============================================================================
+// Depth Transition (collapse/expand guards and conversions)
+// ============================================================================
+export {
+  collapseFieldToJson,
+  expandFieldFromJson,
+  safeGetArrayItems,
+  safeGetJsonString,
+} from './depthTransition';

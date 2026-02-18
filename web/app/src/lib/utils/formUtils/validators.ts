@@ -188,3 +188,79 @@ export function preprocessArrayFields(
 
   return processed;
 }
+
+/**
+ * Compute paths and patterns that should be suppressed from zod validation errors.
+ *
+ * These are fields whose form representation differs from the zod schema expectation:
+ * - Object fields (stored as JSON strings, zod expects objects)
+ * - Binary fields (stored as BinaryFormValue, zod expects binary struct)
+ * - Simple array fields (stored as comma-separated strings, zod expects arrays)
+ * - Collapsed group paths (stored as JSON strings)
+ * - Nested array/binary sub-fields within itemFields parents
+ *
+ * @param fields - Field definitions
+ * @param collapsedGroups - Groups rendered as JSON editors
+ * @returns suppressPaths (exact path matches) and nestedArraySubFields (regex patterns)
+ *
+ * @example
+ * computeValidationSuppressPaths(
+ *   [
+ *     { name: 'metadata', type: 'object' },
+ *     { name: 'avatar', type: 'binary' },
+ *     { name: 'tags', isArray: true },
+ *     { name: 'items', itemFields: [{ name: 'effects', isArray: true }] },
+ *   ],
+ *   [{ path: 'nested.obj', label: 'Nested' }]
+ * )
+ * // Returns:
+ * // {
+ * //   suppressPaths: Set(['metadata', 'avatar', 'tags', 'nested.obj']),
+ * //   nestedArraySubFields: [{ parent: 'items', sub: 'effects' }]
+ * // }
+ */
+export function computeValidationSuppressPaths(
+  fields: ResourceFieldMinimal[],
+  collapsedGroups: CollapsedGroup[],
+): {
+  suppressPaths: Set<string>;
+  nestedArraySubFields: { parent: string; sub: string }[];
+} {
+  const suppressPaths = new Set([
+    // Object fields without itemFields (stored as JSON string, zod expects object)
+    ...fields
+      .filter((f) => f.type === 'object' && !(f.itemFields && f.itemFields.length > 0))
+      .map((f) => f.name),
+    // Binary fields (form uses BinaryFormValue, zod expects binary struct)
+    ...fields.filter((f) => f.type === 'binary').map((f) => f.name),
+    // Simple array fields (comma-separated string, zod expects array)
+    // Exclude array ref fields (they use actual arrays via MultiSelect)
+    ...fields
+      .filter(
+        (f) =>
+          f.isArray &&
+          !(f.itemFields && f.itemFields.length > 0) &&
+          !(f.ref && f.ref.type === 'resource_id'),
+      )
+      .map((f) => f.name),
+    // Collapsed group paths (JSON string in form)
+    ...collapsedGroups.map((g) => g.path),
+  ]);
+
+  // Collect nested sub-fields within itemFields parents that need suppression
+  const nestedArraySubFields: { parent: string; sub: string }[] = [];
+  for (const f of fields) {
+    if (f.itemFields && f.itemFields.length > 0) {
+      for (const sf of f.itemFields) {
+        if (sf.isArray) {
+          nestedArraySubFields.push({ parent: f.name, sub: sf.name });
+        }
+        if (sf.type === 'binary') {
+          nestedArraySubFields.push({ parent: f.name, sub: sf.name });
+        }
+      }
+    }
+  }
+
+  return { suppressPaths, nestedArraySubFields };
+}

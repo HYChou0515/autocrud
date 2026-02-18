@@ -200,9 +200,7 @@ describe('stringHandler', () => {
     });
 
     it('joins array to comma-separated string for isArray', () => {
-      expect(stringHandler.toFormValue(['a', 'b', 'c'], field({ isArray: true }))).toBe(
-        'a, b, c',
-      );
+      expect(stringHandler.toFormValue(['a', 'b', 'c'], field({ isArray: true }))).toBe('a, b, c');
     });
 
     it('handles empty array for isArray', () => {
@@ -244,9 +242,9 @@ describe('stringHandler', () => {
     });
 
     it('returns null for empty enum value with nullable', () => {
-      expect(
-        stringHandler.toApiValue('', field({ enumValues: ['a'], isNullable: true })),
-      ).toBe(null);
+      expect(stringHandler.toApiValue('', field({ enumValues: ['a'], isNullable: true }))).toBe(
+        null,
+      );
     });
 
     it('returns undefined for empty enum value without nullable', () => {
@@ -254,9 +252,9 @@ describe('stringHandler', () => {
     });
 
     it('returns null for null enum value with nullable', () => {
-      expect(
-        stringHandler.toApiValue(null, field({ enumValues: ['a'], isNullable: true })),
-      ).toBe(null);
+      expect(stringHandler.toApiValue(null, field({ enumValues: ['a'], isNullable: true }))).toBe(
+        null,
+      );
     });
   });
 
@@ -331,9 +329,9 @@ describe('numberHandler', () => {
     });
 
     it('handles enum empty value with nullable', () => {
-      expect(
-        numberHandler.toApiValue('', field({ enumValues: ['1'], isNullable: true })),
-      ).toBe(null);
+      expect(numberHandler.toApiValue('', field({ enumValues: ['1'], isNullable: true }))).toBe(
+        null,
+      );
     });
 
     it('handles enum empty value without nullable', () => {
@@ -705,7 +703,12 @@ describe('binaryHandler', () => {
 
   describe('toApiValue', () => {
     it('converts existing BinaryFormValue', () => {
-      const bv = { _mode: 'existing' as const, file_id: 'abc', content_type: 'text/plain', size: 100 };
+      const bv = {
+        _mode: 'existing' as const,
+        file_id: 'abc',
+        content_type: 'text/plain',
+        size: 100,
+      };
       expect(binaryHandler.toApiValue(bv, field())).toEqual({
         file_id: 'abc',
         content_type: 'text/plain',

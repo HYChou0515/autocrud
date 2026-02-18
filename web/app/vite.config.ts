@@ -40,6 +40,7 @@ export default defineConfig({
         'src/lib/utils/formUtils/fieldGrouping.ts',
         'src/lib/utils/formUtils/transformers.ts',
         'src/lib/utils/formUtils/validators.ts',
+        'src/lib/utils/formUtils/depthTransition.ts',
       ],
     },
   },

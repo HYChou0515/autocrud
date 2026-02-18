@@ -1,5 +1,10 @@
 import { describe, expect, it } from 'vitest';
-import { validateJsonFields, parseAndValidateJson, preprocessArrayFields } from './validators';
+import {
+  validateJsonFields,
+  parseAndValidateJson,
+  preprocessArrayFields,
+  computeValidationSuppressPaths,
+} from './validators';
 
 describe('validateJsonFields', () => {
   it('should return empty errors for valid JSON object', () => {
@@ -289,5 +294,182 @@ describe('preprocessArrayFields', () => {
       categories: ['x', 'y', 'z'],
       name: 'Test',
     });
+  });
+});
+
+// ============================================================================
+// computeValidationSuppressPaths
+// ============================================================================
+
+describe('computeValidationSuppressPaths', () => {
+  it('should include plain object fields in suppressPaths', () => {
+    const fields = [{ name: 'metadata', type: 'object' as const }];
+    const { suppressPaths } = computeValidationSuppressPaths(fields, []);
+    expect(suppressPaths.has('metadata')).toBe(true);
+  });
+
+  it('should NOT include object fields with itemFields in suppressPaths', () => {
+    const fields = [
+      {
+        name: 'items',
+        type: 'object' as const,
+        itemFields: [{ name: 'id', label: 'ID' }],
+      },
+    ];
+    const { suppressPaths } = computeValidationSuppressPaths(fields, []);
+    expect(suppressPaths.has('items')).toBe(false);
+  });
+
+  it('should include binary fields in suppressPaths', () => {
+    const fields = [{ name: 'avatar', type: 'binary' as const }];
+    const { suppressPaths } = computeValidationSuppressPaths(fields, []);
+    expect(suppressPaths.has('avatar')).toBe(true);
+  });
+
+  it('should include simple isArray fields in suppressPaths', () => {
+    const fields = [{ name: 'tags', isArray: true }];
+    const { suppressPaths } = computeValidationSuppressPaths(fields, []);
+    expect(suppressPaths.has('tags')).toBe(true);
+  });
+
+  it('should NOT include isArray fields with itemFields in suppressPaths', () => {
+    const fields = [
+      {
+        name: 'items',
+        isArray: true,
+        itemFields: [{ name: 'id', label: 'ID' }],
+      },
+    ];
+    const { suppressPaths } = computeValidationSuppressPaths(fields, []);
+    expect(suppressPaths.has('items')).toBe(false);
+  });
+
+  it('should NOT include array ref fields in suppressPaths', () => {
+    const fields = [
+      {
+        name: 'skill_ids',
+        isArray: true,
+        ref: { resource: 'skill', type: 'resource_id' as const },
+      },
+    ];
+    const { suppressPaths } = computeValidationSuppressPaths(fields, []);
+    expect(suppressPaths.has('skill_ids')).toBe(false);
+  });
+
+  it('should include collapsed group paths in suppressPaths', () => {
+    const fields: any[] = [];
+    const collapsedGroups = [
+      { path: 'nested.obj', label: 'Nested' },
+      { path: 'deep.path', label: 'Deep' },
+    ];
+    const { suppressPaths } = computeValidationSuppressPaths(fields, collapsedGroups);
+    expect(suppressPaths.has('nested.obj')).toBe(true);
+    expect(suppressPaths.has('deep.path')).toBe(true);
+  });
+
+  it('should collect isArray sub-fields as nestedArraySubFields', () => {
+    const fields = [
+      {
+        name: 'equipments',
+        itemFields: [
+          { name: 'name', label: 'Name', type: 'string' as const },
+          { name: 'effects', label: 'Effects', isArray: true },
+        ],
+      },
+    ];
+    const { nestedArraySubFields } = computeValidationSuppressPaths(fields, []);
+    expect(nestedArraySubFields).toEqual([{ parent: 'equipments', sub: 'effects' }]);
+  });
+
+  it('should collect binary sub-fields as nestedArraySubFields', () => {
+    const fields = [
+      {
+        name: 'documents',
+        itemFields: [
+          { name: 'title', label: 'Title', type: 'string' as const },
+          { name: 'attachment', label: 'Attachment', type: 'binary' as const },
+        ],
+      },
+    ];
+    const { nestedArraySubFields } = computeValidationSuppressPaths(fields, []);
+    expect(nestedArraySubFields).toEqual([{ parent: 'documents', sub: 'attachment' }]);
+  });
+
+  it('should collect both isArray and binary sub-fields', () => {
+    const fields = [
+      {
+        name: 'items',
+        itemFields: [
+          { name: 'name', label: 'Name', type: 'string' as const },
+          { name: 'tags', label: 'Tags', isArray: true },
+          { name: 'file', label: 'File', type: 'binary' as const },
+        ],
+      },
+    ];
+    const { nestedArraySubFields } = computeValidationSuppressPaths(fields, []);
+    expect(nestedArraySubFields).toEqual([
+      { parent: 'items', sub: 'tags' },
+      { parent: 'items', sub: 'file' },
+    ]);
+  });
+
+  it('should return empty sets for no fields and no groups', () => {
+    const { suppressPaths, nestedArraySubFields } = computeValidationSuppressPaths([], []);
+    expect(suppressPaths.size).toBe(0);
+    expect(nestedArraySubFields).toEqual([]);
+  });
+
+  it('should skip fields without itemFields for nestedArraySubFields', () => {
+    const fields = [
+      { name: 'tags', isArray: true },
+      { name: 'avatar', type: 'binary' as const },
+    ];
+    const { nestedArraySubFields } = computeValidationSuppressPaths(fields, []);
+    expect(nestedArraySubFields).toEqual([]);
+  });
+
+  it('should handle comprehensive mixed field scenario', () => {
+    const fields = [
+      { name: 'metadata', type: 'object' as const },
+      { name: 'avatar', type: 'binary' as const },
+      { name: 'tags', isArray: true },
+      {
+        name: 'skill_ids',
+        isArray: true,
+        ref: { resource: 'skill', type: 'resource_id' as const },
+      },
+      {
+        name: 'equipments',
+        itemFields: [
+          { name: 'name', label: 'Name', type: 'string' as const },
+          { name: 'effects', label: 'Effects', isArray: true },
+          { name: 'icon', label: 'Icon', type: 'binary' as const },
+        ],
+      },
+      { name: 'title', type: 'string' as const },
+    ];
+    const collapsedGroups = [{ path: 'nested.deep', label: 'Deep Nested' }];
+
+    const { suppressPaths, nestedArraySubFields } = computeValidationSuppressPaths(
+      fields,
+      collapsedGroups,
+    );
+
+    // Should be suppressed
+    expect(suppressPaths.has('metadata')).toBe(true);
+    expect(suppressPaths.has('avatar')).toBe(true);
+    expect(suppressPaths.has('tags')).toBe(true);
+    expect(suppressPaths.has('nested.deep')).toBe(true);
+
+    // Should NOT be suppressed
+    expect(suppressPaths.has('skill_ids')).toBe(false);
+    expect(suppressPaths.has('equipments')).toBe(false);
+    expect(suppressPaths.has('title')).toBe(false);
+
+    // Nested sub-fields
+    expect(nestedArraySubFields).toEqual([
+      { parent: 'equipments', sub: 'effects' },
+      { parent: 'equipments', sub: 'icon' },
+    ]);
   });
 });
