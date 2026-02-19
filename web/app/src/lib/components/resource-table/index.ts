@@ -10,6 +10,39 @@ export { ResourceIdCell } from './ResourceIdCell';
 export { RevisionIdCell } from './RevisionIdCell';
 export { SearchForm } from './SearchForm';
 export { MetaSearchForm } from './MetaSearchForm';
+export { AdvancedSearchPanel } from './AdvancedSearchPanel';
+export type { ActiveSearchState, AdvancedSearchPanelProps } from './AdvancedSearchPanel';
+
+// Search utilities (pure functions)
+export {
+  parseSearchFromURL,
+  serializeSearchToURL,
+  countActiveConditions,
+  EMPTY_ACTIVE_SEARCH,
+  EMPTY_EDITING,
+} from './searchUtils';
+export type { EditingState, ParseSearchResult } from './searchUtils';
+
+// Hook
+export { useAdvancedSearch } from '../../hooks/useAdvancedSearch';
+export type {
+  UseAdvancedSearchOptions,
+  UseAdvancedSearchReturn,
+} from '../../hooks/useAdvancedSearch';
+
+// CellFieldRenderer registry
+export { CellFieldRenderer, renderCellValue, CELL_RENDERERS } from '../Field/CellFieldRenderer';
+export type { CellRenderContext } from '../Field/CellFieldRenderer';
+
+// Cell helpers (for custom cell renderers)
+export {
+  renderBinaryCell,
+  renderObjectPreview,
+  getContentTypeIcon,
+  formatBinarySize,
+  getBlobUrl,
+  isImageContentType,
+} from '../Field/CellFieldRenderer/helpers';
 
 // 工具函數
 export { conditionToQB, sortByToSorts, isoToPythonDatetime } from './utils';
