@@ -4,7 +4,7 @@
  */
 
 import { Code, Text } from '@mantine/core';
-import { TimeDisplay } from '../components/TimeDisplay';
+import { TimeDisplay } from '../components/common/TimeDisplay';
 
 /** Check if a string looks like an ISO datetime (e.g. "2024-01-01T00:00:00...") */
 export function isISODateString(value: unknown): value is string {

@@ -6,8 +6,8 @@
 export { ResourceTable } from './ResourceTable';
 
 // 子元件
-export { ResourceIdCell } from './ResourceIdCell';
-export { RevisionIdCell } from './RevisionIdCell';
+export { ResourceIdCell } from '../common/ResourceIdCell';
+export { RevisionIdCell } from '../common/RevisionIdCell';
 export { SearchForm } from './SearchForm';
 export { MetaSearchForm } from './MetaSearchForm';
 export { AdvancedSearchPanel } from './AdvancedSearchPanel';
@@ -31,8 +31,8 @@ export type {
 } from '../../hooks/useAdvancedSearch';
 
 // CellFieldRenderer registry
-export { CellFieldRenderer, renderCellValue, CELL_RENDERERS } from '../Field/CellFieldRenderer';
-export type { CellRenderContext } from '../Field/CellFieldRenderer';
+export { CellFieldRenderer, renderCellValue, CELL_RENDERERS } from '../field/CellFieldRenderer';
+export type { CellRenderContext } from '../field/CellFieldRenderer';
 
 // Cell helpers (for custom cell renderers)
 export {
@@ -42,7 +42,7 @@ export {
   formatBinarySize,
   getBlobUrl,
   isImageContentType,
-} from '../Field/CellFieldRenderer/helpers';
+} from '../field/CellFieldRenderer/helpers';
 
 // 工具函數
 export { conditionToQB, sortByToSorts, isoToPythonDatetime } from './utils';

@@ -6,7 +6,7 @@
  */
 
 import { describe, it, expect } from 'vitest';
-import { JOB_STATUS_FIELDS } from '../../JobStatusSection';
+import { JOB_STATUS_FIELDS } from '../../job/JobStatusSection';
 
 describe('JOB_STATUS_FIELDS', () => {
   it('contains all expected job status field names', () => {

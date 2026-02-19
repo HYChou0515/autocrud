@@ -14,8 +14,8 @@ import { useState } from 'react';
 import { ActionIcon, Code, Group, Stack, Text, Tooltip } from '@mantine/core';
 import { IconCheck, IconCopy, IconExternalLink } from '@tabler/icons-react';
 import { Link } from '@tanstack/react-router';
-import type { FieldRef } from '../resources';
-import { getResourceDetailRoute, type ResourceName } from '../../generated/resources';
+import type { FieldRef } from '../../resources';
+import { getResourceDetailRoute, type ResourceName } from '../../../generated/resources';
 
 interface RefLinkProps {
   /** The resource ID value (or null) */

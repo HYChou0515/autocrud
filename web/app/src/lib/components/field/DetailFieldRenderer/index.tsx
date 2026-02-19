@@ -15,8 +15,8 @@
 import { Code, Text } from '@mantine/core';
 import type { ResourceField } from '../../../resources';
 import { resolveFieldKind, type FieldKind } from '../resolveFieldKind';
-import { RefLink, RefLinkList, RefRevisionLink, RefRevisionLinkList } from '../../RefLink';
-import { TimeDisplay } from '../../TimeDisplay';
+import { RefLink, RefLinkList, RefRevisionLink, RefRevisionLinkList } from '../../common/RefLink';
+import { TimeDisplay } from '../../common/TimeDisplay';
 import { isBlobObject, renderSimpleValue, NA } from '../../../utils/displayHelpers';
 import { BinaryFieldDisplay } from './BinaryFieldDisplay';
 import { ArrayFieldDisplay } from './ArrayFieldDisplay';

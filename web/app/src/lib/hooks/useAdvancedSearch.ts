@@ -14,8 +14,8 @@ import type {
   MetaFilters,
   NormalizedSearchableField,
   SearchableField,
-} from '../components/resource-table/types';
-import { conditionToQB } from '../components/resource-table/utils';
+} from '../components/table/types';
+import { conditionToQB } from '../components/table/utils';
 import {
   type ActiveSearchState,
   type EditingState,
@@ -24,7 +24,7 @@ import {
   parseSearchFromURL,
   serializeSearchToURL,
   countActiveConditions,
-} from '../components/resource-table/searchUtils';
+} from '../components/table/searchUtils';
 
 // ---------------------------------------------------------------------------
 // Pure state-transition helpers (exported for testing)

@@ -19,8 +19,8 @@
 import { Text } from '@mantine/core';
 import type { ResourceField } from '../../../resources';
 import { resolveFieldKind, type FieldKind } from '../resolveFieldKind';
-import { RefLink, RefLinkList, RefRevisionLink, RefRevisionLinkList } from '../../RefLink';
-import { formatTime } from '../../TimeDisplay';
+import { RefLink, RefLinkList, RefRevisionLink, RefRevisionLinkList } from '../../common/RefLink';
+import { formatTime } from '../../common/TimeDisplay';
 import { renderBinaryCell, renderObjectPreview } from './helpers';
 
 // ---------------------------------------------------------------------------

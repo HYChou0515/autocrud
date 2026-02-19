@@ -22,8 +22,8 @@ import {
   EMPTY_ACTIVE_SEARCH,
   EMPTY_EDITING,
   type EditingState,
-} from '../components/resource-table/searchUtils';
-import type { SearchableField } from '../components/resource-table/types';
+} from '../components/table/searchUtils';
+import type { SearchableField } from '../components/table/types';
 import type { ResourceConfig } from '../resources';
 
 // ---------------------------------------------------------------------------
@@ -38,7 +38,7 @@ vi.mock('@tanstack/react-router', () => ({
   useLocation: () => mockLocation,
 }));
 
-vi.mock('../components/resource-table/utils', () => ({
+vi.mock('../components/table/utils', () => ({
   conditionToQB: vi.fn(
     (meta: any, data: any, limit: any, sortBy: any) =>
       `QB_MOCK(${JSON.stringify({ meta, data, limit, sortBy })})`,

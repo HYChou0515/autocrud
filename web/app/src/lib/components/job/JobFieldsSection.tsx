@@ -6,7 +6,7 @@
  */
 
 import { Paper, Table, Title } from '@mantine/core';
-import { renderSimpleValue } from '../utils/displayHelpers';
+import { renderSimpleValue } from '../../utils/displayHelpers';
 import { JOB_STATUS_FIELDS } from './JobStatusSection';
 
 export interface JobFieldsSectionProps {

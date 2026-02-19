@@ -27,9 +27,9 @@ import {
 import type { FullResource } from '../../../types/api';
 import type { ResourceField } from '../../resources';
 import { useResourceList } from '../../hooks/useResourceList';
-import { formatTime } from '../TimeDisplay';
-import { renderCellValue } from '../Field/CellFieldRenderer';
-import { ResourceIdCell } from './ResourceIdCell';
+import { formatTime } from '../common/TimeDisplay';
+import { renderCellValue } from '../field/CellFieldRenderer';
+import { ResourceIdCell } from '../common/ResourceIdCell';
 import { AdvancedSearchPanel } from './AdvancedSearchPanel';
 import type { ActiveSearchState } from './searchUtils';
 import type { ResourceTableProps, ColumnVariant } from './types';

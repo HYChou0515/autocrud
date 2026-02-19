@@ -8,7 +8,7 @@
 import { useState, useMemo, useEffect, useRef } from 'react';
 import { useForm, type UseFormReturnType } from '@mantine/form';
 import { zodResolver } from 'mantine-form-zod-resolver';
-import type { ResourceConfig, ResourceField } from '../resources';
+import type { ResourceConfig, ResourceField } from '../../resources';
 import {
   getByPath,
   setByPath,
