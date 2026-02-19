@@ -90,10 +90,20 @@ build: build-gen
 	cd app && pnpm build
 	@echo "✅ 生產版本編譯完成"
 
-# 同步 templates（當修改 app/src/lib 時）
+# 同步 app → generator/templates/base（排除自動生成的檔案）
 sync-templates:
-	@echo "📋 同步 templates..."
-	rsync -av --delete app/src/lib/ generator/templates/base/src/lib/
+	@echo "📋 同步 app → generator/templates/base..."
+	rsync -av --delete \
+		--exclude='node_modules' \
+		--exclude='.vite' \
+		--exclude='.tanstack' \
+		--exclude='dist' \
+		--exclude='.env' \
+		--exclude='pnpm-lock.yaml' \
+		--exclude='src/generated' \
+		--exclude='src/routes/autocrud-admin' \
+		--exclude='src/routeTree.gen.ts' \
+		app/ generator/templates/base/
 	@echo "✅ Templates 同步完成"
 
 # ============================================================================
