@@ -15,7 +15,7 @@ import {
   Radio,
 } from '@mantine/core';
 import type { UseFormReturnType } from '@mantine/form';
-import type { ResourceField, UnionMeta } from '../../resources';
+import type { ResourceField, UnionMeta } from '../../../resources';
 
 interface UnionFieldRendererProps {
   field: ResourceField;

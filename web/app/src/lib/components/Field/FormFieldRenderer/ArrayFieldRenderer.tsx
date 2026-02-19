@@ -20,7 +20,7 @@ import {
 } from '@mantine/core';
 import { IconTrash, IconPlus } from '@tabler/icons-react';
 import type { UseFormReturnType } from '@mantine/form';
-import type { ResourceField } from '../../resources';
+import type { ResourceField } from '../../../resources';
 import { BinaryFieldEditor } from './BinaryFieldEditor';
 import {
   getByPath,

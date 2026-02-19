@@ -8,13 +8,13 @@
 import { TextInput, NumberInput, Textarea, Checkbox, Select, Switch } from '@mantine/core';
 import { DateTimePicker } from '@mantine/dates';
 import type { UseFormReturnType } from '@mantine/form';
-import type { ResourceField, FieldVariant } from '../../resources';
+import type { ResourceField, FieldVariant } from '../../../resources';
 import { RefSelect, RefMultiSelect, RefRevisionSelect, RefRevisionMultiSelect } from './RefSelect';
 import { MarkdownEditor } from './MarkdownEditor';
 import { BinaryFieldEditor } from './BinaryFieldEditor';
 import { UnionFieldRenderer } from './UnionFieldRenderer';
 import { ArrayFieldRenderer } from './ArrayFieldRenderer';
-import { resolveFieldKind, type FieldKind } from './resolveFieldKind';
+import { resolveFieldKind, type FieldKind } from '../resolveFieldKind';
 import { getDefaultVariant, type BinaryFormValue } from '@/lib/utils/formUtils';
 
 // ---------------------------------------------------------------------------

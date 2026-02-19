@@ -11,8 +11,8 @@
  */
 import { useCallback, useEffect, useState } from 'react';
 import { Select, MultiSelect, Loader } from '@mantine/core';
-import { getResource } from '../../resources';
-import type { FieldRef } from '../../resources';
+import { getResource } from '../../../resources';
+import type { FieldRef } from '../../../resources';
 
 interface RefSelectProps {
   /** Field label */

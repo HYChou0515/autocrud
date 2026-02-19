@@ -13,7 +13,7 @@ import { IconLayersSubtract } from '@tabler/icons-react';
 import type { ResourceConfig } from '../resources';
 import { safeGetJsonString } from '@/lib/utils/formUtils';
 import { useResourceForm } from './useResourceForm';
-import { FieldRenderer } from './FieldRenderer';
+import { FieldRenderer } from './Field/FormFieldRenderer';
 
 export interface ResourceFormProps<T> {
   config: ResourceConfig<T>;

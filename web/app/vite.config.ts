@@ -21,6 +21,7 @@ export default defineConfig({
       'src/lib/utils/**/*.test.ts',
       'src/lib/utils/formUtils/**/*.test.ts',
       'src/lib/components/**/*.test.ts',
+      'src/lib/hooks/**/*.test.ts',
     ],
     coverage: {
       provider: 'v8',
@@ -43,6 +44,8 @@ export default defineConfig({
         'src/lib/utils/formUtils/validators.ts',
         'src/lib/utils/formUtils/depthTransition.ts',
         'src/lib/components/FieldRenderer/resolveFieldKind.ts',
+        'src/lib/components/DetailFieldRenderer/BinaryFieldDisplay.tsx',
+        'src/lib/components/JobStatusSection.tsx',
       ],
     },
   },
