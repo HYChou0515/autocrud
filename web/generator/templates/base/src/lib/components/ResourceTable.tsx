@@ -1,7 +1,7 @@
 /**
- * ResourceTable 元件 - 從 resource-table 模組 re-export
+ * ResourceTable 元件 - 從 table 模組 re-export
  *
- * 此檔案保持向後相容性，實際實作已移至 ./resource-table/ 資料夾
+ * 此檔案保持向後相容性，實際實作已移至 ./table/ 資料夾
  */
 
 export {
@@ -11,7 +11,7 @@ export {
   MetaSearchForm,
   operatorLabels,
   getDefaultOperators,
-} from './resource-table';
+} from './table';
 
 export type {
   SearchCondition,
@@ -21,4 +21,4 @@ export type {
   SearchableField,
   NormalizedSearchableField,
   ResourceTableProps,
-} from './resource-table';
+} from './table';

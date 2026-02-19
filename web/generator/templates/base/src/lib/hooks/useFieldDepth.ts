@@ -12,10 +12,7 @@
 
 import { useState, useMemo } from 'react';
 import type { ResourceField } from '../resources';
-import {
-  computeMaxAvailableDepth,
-  computeVisibleFieldsAndGroups,
-} from '@/lib/utils/formUtils';
+import { computeMaxAvailableDepth, computeVisibleFieldsAndGroups } from '@/lib/utils/formUtils';
 
 export interface UseFieldDepthOptions {
   fields: ResourceField[];
@@ -42,10 +39,7 @@ export function useFieldDepth({
   maxFormDepth,
   stripItemFields = false,
 }: UseFieldDepthOptions): UseFieldDepthReturn {
-  const maxAvailableDepth = useMemo(
-    () => computeMaxAvailableDepth(fields),
-    [fields],
-  );
+  const maxAvailableDepth = useMemo(() => computeMaxAvailableDepth(fields), [fields]);
 
   const [depth, setDepth] = useState<number>(maxFormDepth ?? maxAvailableDepth);
 
@@ -86,14 +80,15 @@ export function useFieldDepth({
     }
 
     const filteredGroups = result.collapsedGroups.filter(
-      (g) => !fields.some(
-        (f) =>
-          f.name === g.path &&
-          f.itemFields &&
-          f.itemFields.length > 0 &&
-          f.name.split('.').length <= depth &&
-          f.name.split('.').length + 1 > depth,
-      ),
+      (g) =>
+        !fields.some(
+          (f) =>
+            f.name === g.path &&
+            f.itemFields &&
+            f.itemFields.length > 0 &&
+            f.name.split('.').length <= depth &&
+            f.name.split('.').length + 1 > depth,
+        ),
     );
 
     // Re-sort visible fields to match original field order

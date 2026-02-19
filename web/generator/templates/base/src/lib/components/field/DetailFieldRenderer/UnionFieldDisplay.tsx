@@ -6,7 +6,7 @@
  */
 
 import { Badge, Stack, Table } from '@mantine/core';
-import type { UnionMeta, ResourceField } from '../../resources';
+import type { UnionMeta, ResourceField } from '../../../resources';
 import type { DetailRenderContext } from './index';
 
 export interface UnionFieldDisplayProps {
@@ -31,9 +31,7 @@ export function UnionFieldDisplay({ value, unionMeta, renderValue }: UnionFieldD
           <Table.Tbody>
             {variant.fields.map((sf: ResourceField) => (
               <Table.Tr key={sf.name}>
-                <Table.Td style={{ fontWeight: 500, width: '35%' }}>
-                  {sf.label}
-                </Table.Td>
+                <Table.Td style={{ fontWeight: 500, width: '35%' }}>{sf.label}</Table.Td>
                 <Table.Td>
                   {renderValue({
                     field: sf,

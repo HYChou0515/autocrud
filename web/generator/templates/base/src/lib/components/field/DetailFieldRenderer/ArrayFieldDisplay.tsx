@@ -6,7 +6,7 @@
  */
 
 import { Paper, Stack, Table, Text } from '@mantine/core';
-import type { ResourceField } from '../../resources';
+import type { ResourceField } from '../../../resources';
 import type { DetailRenderContext } from './index';
 
 export interface ArrayFieldDisplayProps {
@@ -36,9 +36,7 @@ export function ArrayFieldDisplay({ value, itemFields, renderValue }: ArrayField
             <Table.Tbody>
               {itemFields.map((sf) => (
                 <Table.Tr key={sf.name}>
-                  <Table.Td style={{ fontWeight: 500, width: '35%' }}>
-                    {sf.label}
-                  </Table.Td>
+                  <Table.Td style={{ fontWeight: 500, width: '35%' }}>{sf.label}</Table.Td>
                   <Table.Td>
                     {renderValue({
                       field: sf,

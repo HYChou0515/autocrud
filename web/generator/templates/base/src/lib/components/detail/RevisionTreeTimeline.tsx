@@ -2,10 +2,10 @@ import { ActionIcon, Badge, Box, Group, Stack, Text, Tooltip } from '@mantine/co
 import { useRef, useState } from 'react';
 import { useVirtualizer } from '@tanstack/react-virtual';
 import { IconEye } from '@tabler/icons-react';
-import { RevisionIdCell } from './resource-table/RevisionIdCell';
-import { TimeDisplay } from './TimeDisplay';
-import { buildRevisionTreeLayout, getMissingParentMarkers } from '../utils/revisionTree';
-import type { Revision } from '../types/revision';
+import { RevisionIdCell } from '../common/RevisionIdCell';
+import { TimeDisplay } from '../common/TimeDisplay';
+import { buildRevisionTreeLayout, getMissingParentMarkers } from '../../utils/revisionTree';
+import type { Revision } from '../../types/revision';
 
 export interface RevisionTreeTimelineProps {
   revisions: Revision[];

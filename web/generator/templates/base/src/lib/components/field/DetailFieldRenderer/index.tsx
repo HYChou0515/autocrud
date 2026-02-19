@@ -13,11 +13,11 @@
  */
 
 import { Code, Text } from '@mantine/core';
-import type { ResourceField } from '../../resources';
-import { resolveFieldKind, type FieldKind } from '../FieldRenderer/resolveFieldKind';
-import { RefLink, RefLinkList, RefRevisionLink, RefRevisionLinkList } from '../RefLink';
-import { TimeDisplay } from '../TimeDisplay';
-import { isBlobObject, renderSimpleValue, NA } from '../../utils/displayHelpers';
+import type { ResourceField } from '../../../resources';
+import { resolveFieldKind, type FieldKind } from '../resolveFieldKind';
+import { RefLink, RefLinkList, RefRevisionLink, RefRevisionLinkList } from '../../common/RefLink';
+import { TimeDisplay } from '../../common/TimeDisplay';
+import { isBlobObject, renderSimpleValue, NA } from '../../../utils/displayHelpers';
 import { BinaryFieldDisplay } from './BinaryFieldDisplay';
 import { ArrayFieldDisplay } from './ArrayFieldDisplay';
 import { UnionFieldDisplay } from './UnionFieldDisplay';
@@ -58,7 +58,13 @@ const renderLongText: Renderer = ({ value }) => {
 
 const renderArrayJoin: Renderer = ({ value }) => {
   if (Array.isArray(value)) {
-    return value.length === 0 ? <Text c="dimmed" size="sm">[]</Text> : value.join(', ');
+    return value.length === 0 ? (
+      <Text c="dimmed" size="sm">
+        []
+      </Text>
+    ) : (
+      value.join(', ')
+    );
   }
   return String(value ?? '');
 };
@@ -101,7 +107,11 @@ const DETAIL_RENDERERS: Record<FieldKind, (ctx: DetailRenderContext) => React.Re
   },
 
   binary: ({ value }) => {
-    if (typeof value === 'object' && value !== null && isBlobObject(value as Record<string, unknown>)) {
+    if (
+      typeof value === 'object' &&
+      value !== null &&
+      isBlobObject(value as Record<string, unknown>)
+    ) {
       return <BinaryFieldDisplay value={value as Record<string, unknown>} />;
     }
     return <Code block>{JSON.stringify(value, null, 2)}</Code>;
@@ -161,7 +171,11 @@ const DETAIL_RENDERERS: Record<FieldKind, (ctx: DetailRenderContext) => React.Re
   text: ({ field, value }) => {
     // Schema-aware overrides first
     if (field.type === 'date') return <TimeDisplay time={String(value)} format="full" />;
-    if (typeof value === 'object' && value !== null && isBlobObject(value as Record<string, unknown>)) {
+    if (
+      typeof value === 'object' &&
+      value !== null &&
+      isBlobObject(value as Record<string, unknown>)
+    ) {
       return <BinaryFieldDisplay value={value as Record<string, unknown>} />;
     }
     // Fall back to shared simple renderer

@@ -60,9 +60,18 @@ export function JobStatusSection({ data }: JobStatusSectionProps) {
     { label: 'Retries', value: retries },
     {
       label: 'Error Message',
-      value: errmsg ? <Code block color="red">{errmsg}</Code> : NA,
+      value: errmsg ? (
+        <Code block color="red">
+          {errmsg}
+        </Code>
+      ) : (
+        NA
+      ),
     },
-    { label: 'Periodic Interval (seconds)', value: optionalSeconds(data.periodic_interval_seconds) },
+    {
+      label: 'Periodic Interval (seconds)',
+      value: optionalSeconds(data.periodic_interval_seconds),
+    },
     {
       label: 'Periodic Max Runs',
       value:
@@ -87,7 +96,10 @@ export function JobStatusSection({ data }: JobStatusSectionProps) {
         </>
       ),
     },
-    { label: 'Periodic Initial Delay (seconds)', value: optionalSeconds(data.periodic_initial_delay_seconds) },
+    {
+      label: 'Periodic Initial Delay (seconds)',
+      value: optionalSeconds(data.periodic_initial_delay_seconds),
+    },
   ];
 
   return (

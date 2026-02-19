@@ -5,9 +5,9 @@
  */
 
 import { Paper, Stack, Group, Text, Badge } from '@mantine/core';
-import { TimeDisplay } from './TimeDisplay';
-import { ResourceIdCell } from './resource-table/ResourceIdCell';
-import { RevisionIdCell } from './resource-table/RevisionIdCell';
+import { TimeDisplay } from '../common/TimeDisplay';
+import { ResourceIdCell } from '../common/ResourceIdCell';
+import { RevisionIdCell } from '../common/RevisionIdCell';
 
 export interface MetadataSectionProps {
   meta: {

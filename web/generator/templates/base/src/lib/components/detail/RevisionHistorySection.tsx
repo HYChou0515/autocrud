@@ -29,19 +29,19 @@ import {
 } from '@tabler/icons-react';
 import { useState, useEffect, useCallback, useRef } from 'react';
 import { useVirtualizer } from '@tanstack/react-virtual';
-import { TimeDisplay } from './TimeDisplay';
-import { RevisionIdCell } from './resource-table/RevisionIdCell';
-import type { ResourceConfig } from '../resources';
-import type { Revision } from '../types/revision';
+import { TimeDisplay } from '../common/TimeDisplay';
+import { RevisionIdCell } from '../common/RevisionIdCell';
+import type { ResourceConfig } from '../../resources';
+import type { Revision } from '../../types/revision';
 import { RevisionTreeTimeline } from './RevisionTreeTimeline';
-import { getRevisionViewMode, setRevisionViewMode } from '../utils/customization';
-import { getVirtualPadding } from '../utils/virtualization';
+import { getRevisionViewMode, setRevisionViewMode } from '../../utils/customization';
+import { getVirtualPadding } from '../../utils/virtualization';
 import {
   ensureRevisionInList,
   hasRevisionId,
   mergeRevisionsUnique,
   toRevisionFromInfo,
-} from '../utils/revisionList';
+} from '../../utils/revisionList';
 
 export interface RevisionHistorySectionProps {
   config: ResourceConfig;

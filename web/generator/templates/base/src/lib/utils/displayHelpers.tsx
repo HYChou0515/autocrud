@@ -4,7 +4,7 @@
  */
 
 import { Code, Text } from '@mantine/core';
-import { TimeDisplay } from '../components/TimeDisplay';
+import { TimeDisplay } from '../components/common/TimeDisplay';
 
 /** Check if a string looks like an ISO datetime (e.g. "2024-01-01T00:00:00...") */
 export function isISODateString(value: unknown): value is string {
@@ -34,7 +34,12 @@ export function renderSimpleValue(value: unknown): React.ReactNode {
   if (isISODateString(value)) return <TimeDisplay time={String(value)} format="full" />;
   if (typeof value === 'boolean') return value ? '✅ Yes' : '❌ No';
   if (Array.isArray(value)) {
-    if (value.length === 0) return <Text c="dimmed" size="sm">[]</Text>;
+    if (value.length === 0)
+      return (
+        <Text c="dimmed" size="sm">
+          []
+        </Text>
+      );
     if (typeof value[0] === 'object' && value[0] !== null) {
       return <Code block>{JSON.stringify(value, null, 2)}</Code>;
     }
