@@ -22,6 +22,7 @@ coverage:
 	pnpm exec vitest run --coverage
 
 style:
+	pnpm exec prettier --write "src/**/*.{ts,tsx}"
 	pnpm exec eslint --fix src/
 
 clean:

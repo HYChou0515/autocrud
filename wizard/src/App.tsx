@@ -1,4 +1,4 @@
-import { useState, useCallback } from 'react';
+import { useState, useCallback } from "react";
 import {
   MantineProvider,
   Container,
@@ -10,17 +10,22 @@ import {
   Anchor,
   Stack,
   Box,
-} from '@mantine/core';
-import '@mantine/core/styles.css';
-import { StepProject, StepStorage, StepModels, StepPreview } from '@/components/steps';
-import { DEFAULT_WIZARD_STATE } from '@/types/wizard';
-import type { WizardState } from '@/types/wizard';
+} from "@mantine/core";
+import "@mantine/core/styles.css";
+import {
+  StepProject,
+  StepStorage,
+  StepModels,
+  StepPreview,
+} from "@/components/steps";
+import { DEFAULT_WIZARD_STATE } from "@/types/wizard";
+import type { WizardState } from "@/types/wizard";
 
 const STEPS = [
-  { label: '專案設定', description: '名稱、版本、Port' },
-  { label: '儲存 & 設定', description: 'Storage、Naming、Encoding' },
-  { label: 'Model 定義', description: '定義 Resource Models' },
-  { label: '預覽 & 下載', description: '檢查程式碼並下載' },
+  { label: "專案設定", description: "名稱、版本、Port" },
+  { label: "儲存 & 設定", description: "Storage、Naming、Encoding" },
+  { label: "Model 定義", description: "定義 Resource Models" },
+  { label: "預覽 & 下載", description: "檢查程式碼並下載" },
 ];
 
 function App() {
@@ -43,7 +48,7 @@ function App() {
         <Stack gap={4} mb="xl" align="center">
           <Title order={1}>AutoCRUD Starter Wizard</Title>
           <Text c="dimmed" size="sm">
-            快速產生 AutoCRUD Python 專案模板 —{' '}
+            快速產生 AutoCRUD Python 專案模板 —{" "}
             <Anchor href="https://github.com/hychou/autocrud" target="_blank">
               autocrud
             </Anchor>

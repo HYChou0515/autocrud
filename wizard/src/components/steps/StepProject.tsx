@@ -6,8 +6,8 @@ import {
   Stack,
   Title,
   Text,
-} from '@mantine/core';
-import type { WizardState } from '@/types/wizard';
+} from "@mantine/core";
+import type { WizardState } from "@/types/wizard";
 
 interface Props {
   state: WizardState;
@@ -44,14 +44,14 @@ export function StepProject({ state, onChange }: Props) {
         label="Python 版本"
         description="pyproject.toml requires-python 版本"
         data={[
-          { value: '3.11', label: 'Python 3.11' },
-          { value: '3.12', label: 'Python 3.12' },
-          { value: '3.13', label: 'Python 3.13' },
+          { value: "3.11", label: "Python 3.11" },
+          { value: "3.12", label: "Python 3.12" },
+          { value: "3.13", label: "Python 3.13" },
         ]}
         value={state.pythonVersion}
         onChange={(v) =>
           onChange({
-            pythonVersion: (v as WizardState['pythonVersion']) || '3.12',
+            pythonVersion: (v as WizardState["pythonVersion"]) || "3.12",
           })
         }
       />
@@ -62,7 +62,7 @@ export function StepProject({ state, onChange }: Props) {
         min={1}
         max={65535}
         value={state.port}
-        onChange={(v) => onChange({ port: typeof v === 'number' ? v : 8000 })}
+        onChange={(v) => onChange({ port: typeof v === "number" ? v : 8000 })}
       />
 
       <Switch

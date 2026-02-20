@@ -1,4 +1,4 @@
-import { useState, useCallback, useRef, useEffect } from 'react';
+import { useState, useCallback, useRef, useEffect } from "react";
 import {
   Stack,
   Title,
@@ -6,7 +6,6 @@ import {
   Group,
   TextInput,
   Select,
-  MultiSelect,
   TagsInput,
   Switch,
   ActionIcon,
@@ -21,16 +20,17 @@ import {
   Code,
   Divider,
   ScrollArea,
-  Textarea,
-} from '@mantine/core';
-import type { ComboboxLikeRenderOptionInput } from '@mantine/core';
+  Alert,
+} from "@mantine/core";
+import type { ComboboxLikeRenderOptionInput } from "@mantine/core";
 import {
   IconPlus,
   IconTrash,
   IconCode,
   IconForms,
   IconCopy,
-} from '@tabler/icons-react';
+  IconInfoCircle,
+} from "@tabler/icons-react";
 import type {
   WizardState,
   ModelDefinition,
@@ -38,14 +38,20 @@ import type {
   FieldType,
   EnumDefinition,
   SubStructDefinition,
-} from '@/types/wizard';
+} from "@/types/wizard";
 import {
   createEmptyField,
   createEmptyModel,
   createEmptyEnum,
   createEmptySubStruct,
   BUILTIN_TYPES,
-} from '@/types/wizard';
+} from "@/types/wizard";
+import Editor from "@monaco-editor/react";
+import {
+  generateValidatorFunction,
+  generateCodeModeValidatorScaffold,
+  toSnakeCase,
+} from "@/lib/generator/generateProject";
 
 interface Props {
   state: WizardState;
@@ -57,52 +63,52 @@ const FIELD_TYPE_OPTIONS: {
   label: string;
   description?: string;
 }[] = [
-  { value: 'str', label: 'str' },
-  { value: 'int', label: 'int' },
-  { value: 'float', label: 'float' },
-  { value: 'bool', label: 'bool' },
-  { value: 'datetime', label: 'datetime' },
+  { value: "str", label: "str" },
+  { value: "int", label: "int" },
+  { value: "float", label: "float" },
+  { value: "bool", label: "bool" },
+  { value: "datetime", label: "datetime" },
   {
-    value: 'dict',
-    label: 'dict',
-    description: '字典型別，可選 dict 或 dict[K, V]',
+    value: "dict",
+    label: "dict",
+    description: "字典型別，可選 dict 或 dict[K, V]",
   },
   {
-    value: 'Binary',
-    label: 'Binary',
-    description: '二進位資料，自動存入 blob store',
+    value: "Binary",
+    label: "Binary",
+    description: "二進位資料，自動存入 blob store",
   },
   {
-    value: 'Ref',
-    label: 'Ref',
-    description: '外鍵，關聯到另一個 resource',
+    value: "Ref",
+    label: "Ref",
+    description: "外鍵，關聯到另一個 resource",
   },
   {
-    value: 'RefRevision',
-    label: 'RefRevision',
-    description: '參照特定 resource 的某個 revision',
+    value: "RefRevision",
+    label: "RefRevision",
+    description: "參照特定 resource 的某個 revision",
   },
   {
-    value: 'Enum',
-    label: 'Enum',
-    description: '列舉型別，需先在下方定義 Enum',
+    value: "Enum",
+    label: "Enum",
+    description: "列舉型別，需先在下方定義 Enum",
   },
   {
-    value: 'Struct',
-    label: 'Struct',
-    description: '巢狀結構，需先在下方定義 Sub-struct',
+    value: "Struct",
+    label: "Struct",
+    description: "巢狀結構，需先在下方定義 Sub-struct",
   },
   {
-    value: 'Union',
-    label: 'Union',
-    description: '聯合型別，如 str | int 或 tagged union',
+    value: "Union",
+    label: "Union",
+    description: "聯合型別，如 str | int 或 tagged union",
   },
 ];
 
 const ON_DELETE_OPTIONS = [
-  { value: 'dangling', label: 'dangling（預設）' },
-  { value: 'set_null', label: 'set_null（設為 null）' },
-  { value: 'cascade', label: 'cascade（連帶刪除）' },
+  { value: "dangling", label: "dangling（預設）" },
+  { value: "set_null", label: "set_null（設為 null）" },
+  { value: "cascade", label: "cascade（連帶刪除）" },
 ];
 
 // Description lookup for field type options
@@ -129,9 +135,9 @@ function renderTypeOption({
 }
 
 const TAG_MODE_OPTIONS = [
-  { value: '', label: '無' },
-  { value: '__auto__', label: '自動 (tag=True)' },
-  { value: '__custom__', label: '自訂 tag 值' },
+  { value: "", label: "無" },
+  { value: "__auto__", label: "自動 (tag=True)" },
+  { value: "__custom__", label: "自訂 tag 值" },
 ];
 
 export function StepModels({ state, onChange }: Props) {
@@ -141,7 +147,7 @@ export function StepModels({ state, onChange }: Props) {
     (models: ModelDefinition[]) => {
       onChange({ models });
     },
-    [onChange]
+    [onChange],
   );
 
   const updateModel = useCallback(
@@ -150,7 +156,7 @@ export function StepModels({ state, onChange }: Props) {
       models[index] = { ...models[index], ...patch };
       updateModels(models);
     },
-    [state.models, updateModels]
+    [state.models, updateModels],
   );
 
   const addModel = useCallback(() => {
@@ -168,7 +174,7 @@ export function StepModels({ state, onChange }: Props) {
         setActiveModel(models.length - 1);
       }
     },
-    [state.models, activeModel, updateModels]
+    [state.models, activeModel, updateModels],
   );
 
   const model = state.models[activeModel];
@@ -189,14 +195,14 @@ export function StepModels({ state, onChange }: Props) {
           <Button
             key={i}
             size="xs"
-            variant={i === activeModel ? 'filled' : 'outline'}
+            variant={i === activeModel ? "filled" : "outline"}
             onClick={() => setActiveModel(i)}
             rightSection={
               state.models.length > 1 ? (
                 <ActionIcon
                   size="xs"
                   variant="transparent"
-                  c={i === activeModel ? 'white' : 'red'}
+                  c={i === activeModel ? "white" : "red"}
                   onClick={(e) => {
                     e.stopPropagation();
                     removeModel(i);
@@ -250,28 +256,65 @@ export function StepModels({ state, onChange }: Props) {
             label="啟用 Validator"
             description="生成一個 validate 函式模板供你填寫驗證邏輯"
             checked={model.enableValidator}
-            onChange={(e) =>
-              updateModel(activeModel, {
-                enableValidator: e.currentTarget.checked,
-              })
-            }
+            onChange={(e) => {
+              const enabled = e.currentTarget.checked;
+              const patch: Partial<ModelDefinition> = {
+                enableValidator: enabled,
+              };
+              // Auto-prefill scaffold when enabling validator with empty code
+              if (enabled && !model.validatorCode) {
+                patch.validatorCode =
+                  model.inputMode === "form"
+                    ? generateValidatorFunction(model)
+                    : generateCodeModeValidatorScaffold(model);
+              }
+              updateModel(activeModel, patch);
+            }}
           />
 
           {model.enableValidator && (
-            <Textarea
-              label="Validator 程式碼（選填）"
-              description="自訂驗證函式。留空則自動生成基本模板。"
-              placeholder={`def validate_${model.name.replace(/([A-Z])/g, '_$1').toLowerCase().replace(/^_/, '')}(data: ${model.name}) -> None:\n    pass`}
-              minRows={4}
-              autosize
-              value={model.validatorCode}
-              onChange={(e) =>
-                updateModel(activeModel, {
-                  validatorCode: e.currentTarget.value,
-                })
-              }
-              styles={{ input: { fontFamily: 'monospace', fontSize: '13px' } }}
-            />
+            <>
+              <Alert
+                variant="light"
+                color="blue"
+                icon={<IconInfoCircle size={16} />}
+                p="xs"
+              >
+                <Text size="xs">
+                  請勿修改函式名稱{" "}
+                  <Code>validate_{toSnakeCase(model.name)}</Code>，
+                  它會被自動引用於{" "}
+                  <Code>
+                    Schema(..., validator=validate_{toSnakeCase(model.name)})
+                  </Code>
+                </Text>
+              </Alert>
+              <div
+                style={{
+                  border: "1px solid var(--mantine-color-default-border)",
+                  borderRadius: 4,
+                  overflow: "hidden",
+                }}
+              >
+                <Editor
+                  height="180px"
+                  language="python"
+                  theme="vs-dark"
+                  value={model.validatorCode}
+                  onChange={(value) =>
+                    updateModel(activeModel, { validatorCode: value || "" })
+                  }
+                  options={{
+                    minimap: { enabled: false },
+                    lineNumbers: "on",
+                    fontSize: 13,
+                    scrollBeyondLastLine: false,
+                    wordWrap: "on",
+                    tabSize: 4,
+                  }}
+                />
+              </div>
+            </>
           )}
 
           {/* Input mode toggle */}
@@ -279,21 +322,15 @@ export function StepModels({ state, onChange }: Props) {
             value={model.inputMode}
             onChange={(v) =>
               updateModel(activeModel, {
-                inputMode: (v as 'form' | 'code') || 'form',
+                inputMode: (v as "form" | "code") || "form",
               })
             }
           >
             <Tabs.List>
-              <Tabs.Tab
-                value="form"
-                leftSection={<IconForms size={16} />}
-              >
+              <Tabs.Tab value="form" leftSection={<IconForms size={16} />}>
                 表單模式
               </Tabs.Tab>
-              <Tabs.Tab
-                value="code"
-                leftSection={<IconCode size={16} />}
-              >
+              <Tabs.Tab value="code" leftSection={<IconCode size={16} />}>
                 Code 模式
               </Tabs.Tab>
             </Tabs.List>
@@ -553,7 +590,7 @@ function FieldRow({
             value={field.type}
             renderOption={renderTypeOption}
             onChange={(v) =>
-              updateField(fieldIndex, { type: (v as FieldType) || 'str' })
+              updateField(fieldIndex, { type: (v as FieldType) || "str" })
             }
           />
         </Table.Td>
@@ -598,7 +635,7 @@ function FieldRow({
           <Checkbox
             size="xs"
             checked={field.isDisplayName}
-            disabled={field.type !== 'str'}
+            disabled={field.type !== "str"}
             onChange={(e) =>
               setDisplayName(fieldIndex, e.currentTarget.checked)
             }
@@ -617,7 +654,7 @@ function FieldRow({
       </Table.Tr>
 
       {/* Extra config rows for Ref/RefRevision/Enum */}
-      {field.type === 'Ref' && (
+      {field.type === "Ref" && (
         <Table.Tr>
           <Table.Td colSpan={8}>
             <Group gap="sm" ml="md">
@@ -625,12 +662,12 @@ function FieldRow({
                 size="xs"
                 label="Ref → Resource"
                 data={modelNames}
-                value={field.ref?.resource || ''}
+                value={field.ref?.resource || ""}
                 onChange={(v) =>
                   updateField(fieldIndex, {
                     ref: {
-                      resource: v || '',
-                      onDelete: field.ref?.onDelete || 'dangling',
+                      resource: v || "",
+                      onDelete: field.ref?.onDelete || "dangling",
                     },
                   })
                 }
@@ -640,14 +677,14 @@ function FieldRow({
                 size="xs"
                 label="On Delete"
                 data={ON_DELETE_OPTIONS}
-                value={field.ref?.onDelete || 'dangling'}
+                value={field.ref?.onDelete || "dangling"}
                 onChange={(v) =>
                   updateField(fieldIndex, {
                     ref: {
-                      resource: field.ref?.resource || '',
+                      resource: field.ref?.resource || "",
                       onDelete:
-                        (v as 'dangling' | 'set_null' | 'cascade') ||
-                        'dangling',
+                        (v as "dangling" | "set_null" | "cascade") ||
+                        "dangling",
                     },
                   })
                 }
@@ -658,7 +695,7 @@ function FieldRow({
         </Table.Tr>
       )}
 
-      {field.type === 'RefRevision' && (
+      {field.type === "RefRevision" && (
         <Table.Tr>
           <Table.Td colSpan={8}>
             <Group gap="sm" ml="md">
@@ -666,10 +703,10 @@ function FieldRow({
                 size="xs"
                 label="RefRevision → Resource"
                 data={modelNames}
-                value={field.refRevision?.resource || ''}
+                value={field.refRevision?.resource || ""}
                 onChange={(v) =>
                   updateField(fieldIndex, {
-                    refRevision: { resource: v || '' },
+                    refRevision: { resource: v || "" },
                   })
                 }
                 w={200}
@@ -679,7 +716,7 @@ function FieldRow({
         </Table.Tr>
       )}
 
-      {field.type === 'Enum' && (
+      {field.type === "Enum" && (
         <Table.Tr>
           <Table.Td colSpan={8}>
             <Group gap="sm" ml="md">
@@ -688,10 +725,8 @@ function FieldRow({
                 label="Enum Type"
                 description="選擇已定義的 Enum"
                 data={enumNames}
-                value={field.default || ''}
-                onChange={(v) =>
-                  updateField(fieldIndex, { default: v || '' })
-                }
+                value={field.default || ""}
+                onChange={(v) => updateField(fieldIndex, { default: v || "" })}
                 w={200}
               />
               <Text size="xs" c="dimmed" mt={20}>
@@ -703,7 +738,7 @@ function FieldRow({
       )}
 
       {/* Dict config: optional key/value type */}
-      {field.type === 'dict' && (
+      {field.type === "dict" && (
         <Table.Tr>
           <Table.Td colSpan={8}>
             <Group gap="sm" ml="md">
@@ -711,7 +746,7 @@ function FieldRow({
                 size="xs"
                 label="Key Type（可選）"
                 placeholder="str"
-                value={field.dictKeyType || ''}
+                value={field.dictKeyType || ""}
                 onChange={(e) =>
                   updateField(fieldIndex, {
                     dictKeyType: e.currentTarget.value || null,
@@ -723,7 +758,7 @@ function FieldRow({
                 size="xs"
                 label="Value Type（可選）"
                 placeholder="Any"
-                value={field.dictValueType || ''}
+                value={field.dictValueType || ""}
                 onChange={(e) =>
                   updateField(fieldIndex, {
                     dictValueType: e.currentTarget.value || null,
@@ -740,7 +775,7 @@ function FieldRow({
       )}
 
       {/* Struct config: select sub-struct name */}
-      {field.type === 'Struct' && (
+      {field.type === "Struct" && (
         <Table.Tr>
           <Table.Td colSpan={8}>
             <Group gap="sm" ml="md">
@@ -749,7 +784,7 @@ function FieldRow({
                 label="Sub-struct"
                 description="選擇已定義的 Sub-struct"
                 data={subStructNames}
-                value={field.structName || ''}
+                value={field.structName || ""}
                 onChange={(v) =>
                   updateField(fieldIndex, { structName: v || null })
                 }
@@ -764,7 +799,7 @@ function FieldRow({
       )}
 
       {/* Union config: pick member types */}
-      {field.type === 'Union' && (
+      {field.type === "Union" && (
         <Table.Tr>
           <Table.Td colSpan={8}>
             <Group gap="sm" ml="md">
@@ -773,10 +808,10 @@ function FieldRow({
                 label="Union 成員"
                 description="輸入類型名稱或選擇已有類型"
                 data={[
-                  'str',
-                  'int',
-                  'float',
-                  'bool',
+                  "str",
+                  "int",
+                  "float",
+                  "bool",
                   ...subStructNames,
                   ...modelNames,
                 ]}
@@ -862,7 +897,7 @@ function EnumEditor({
             onClick={() => {
               const values = enumDef.values.filter((_, i) => i !== vi);
               updateEnum(enumIndex, {
-                values: values.length ? values : [{ key: '', label: '' }],
+                values: values.length ? values : [{ key: "", label: "" }],
               });
             }}
           >
@@ -876,7 +911,7 @@ function EnumEditor({
         leftSection={<IconPlus size={12} />}
         onClick={() =>
           updateEnum(enumIndex, {
-            values: [...enumDef.values, { key: '', label: '' }],
+            values: [...enumDef.values, { key: "", label: "" }],
           })
         }
       >
@@ -914,11 +949,7 @@ function SubStructEditor({
   };
 
   const tagMode =
-    subStruct.tag === true
-      ? '__auto__'
-      : subStruct.tag
-        ? '__custom__'
-        : '';
+    subStruct.tag === true ? "__auto__" : subStruct.tag ? "__custom__" : "";
 
   return (
     <Paper p="sm" withBorder>
@@ -941,22 +972,22 @@ function SubStructEditor({
             data={TAG_MODE_OPTIONS}
             value={tagMode}
             onChange={(v) => {
-              if (v === '__auto__') {
+              if (v === "__auto__") {
                 updateSubStruct(ssIndex, { tag: true });
-              } else if (v === '__custom__') {
-                updateSubStruct(ssIndex, { tag: 'my_tag' });
+              } else if (v === "__custom__") {
+                updateSubStruct(ssIndex, { tag: "my_tag" });
               } else {
-                updateSubStruct(ssIndex, { tag: '' });
+                updateSubStruct(ssIndex, { tag: "" });
               }
             }}
             w={160}
           />
-          {tagMode === '__custom__' && (
+          {tagMode === "__custom__" && (
             <TextInput
               size="xs"
               label="Tag 值"
               placeholder='e.g. "warrior"'
-              value={typeof subStruct.tag === 'string' ? subStruct.tag : ''}
+              value={typeof subStruct.tag === "string" ? subStruct.tag : ""}
               onChange={(e) =>
                 updateSubStruct(ssIndex, { tag: e.currentTarget.value })
               }
@@ -989,7 +1020,8 @@ function SubStructEditor({
           <Select
             size="xs"
             data={FIELD_TYPE_OPTIONS.filter(
-              (o) => !['Ref', 'RefRevision', 'Struct', 'Union'].includes(o.value),
+              (o) =>
+                !["Ref", "RefRevision", "Struct", "Union"].includes(o.value),
             )}
             value={field.type}
             renderOption={renderTypeOption}
@@ -997,7 +1029,7 @@ function SubStructEditor({
               const fields = [...subStruct.fields];
               fields[fi] = {
                 ...fields[fi],
-                type: (v as FieldType) || 'str',
+                type: (v as FieldType) || "str",
               };
               updateSubStruct(ssIndex, { fields });
             }}
@@ -1058,7 +1090,7 @@ interface CodeEditorProps {
   model: ModelDefinition;
   modelIndex: number;
   updateModel: (index: number, patch: Partial<ModelDefinition>) => void;
-  modelStyle: WizardState['modelStyle'];
+  modelStyle: WizardState["modelStyle"];
 }
 
 function CodeModeEditor({
@@ -1070,12 +1102,12 @@ function CodeModeEditor({
   const textareaRef = useRef<HTMLTextAreaElement>(null);
 
   const placeholder =
-    modelStyle === 'struct'
-      ? `class ${model.name || 'MyModel'}(Struct):
+    modelStyle === "struct"
+      ? `class ${model.name || "MyModel"}(Struct):
     name: Annotated[str, DisplayName()]
     description: str = ""
     done: bool = False`
-      : `class ${model.name || 'MyModel'}(BaseModel):
+      : `class ${model.name || "MyModel"}(BaseModel):
     name: str
     description: str = ""
     done: bool = False`;
@@ -1084,38 +1116,38 @@ function CodeModeEditor({
   useEffect(() => {
     const ta = textareaRef.current;
     if (ta) {
-      ta.style.height = 'auto';
-      ta.style.height = Math.max(200, ta.scrollHeight) + 'px';
+      ta.style.height = "auto";
+      ta.style.height = Math.max(200, ta.scrollHeight) + "px";
     }
   }, [model.rawCode]);
 
   return (
     <Stack gap="sm">
       <Text size="xs" c="dimmed">
-        直接寫 Python class 定義。支援 Annotated、DisplayName、Ref、RefRevision、Binary
-        等所有 AutoCRUD 型別。import 會自動從 code 中偵測。
+        直接寫 Python class 定義。支援
+        Annotated、DisplayName、Ref、RefRevision、Binary 等所有 AutoCRUD
+        型別。import 會自動從 code 中偵測。
       </Text>
 
       <textarea
         ref={textareaRef}
         value={model.rawCode}
         placeholder={placeholder}
-        onChange={(e) =>
-          updateModel(modelIndex, { rawCode: e.target.value })
-        }
+        onChange={(e) => updateModel(modelIndex, { rawCode: e.target.value })}
         style={{
-          fontFamily: 'ui-monospace, "Cascadia Code", "Source Code Pro", Menlo, monospace',
-          fontSize: '13px',
-          lineHeight: '1.5',
-          padding: '12px',
-          borderRadius: '8px',
-          border: '1px solid var(--mantine-color-default-border)',
-          backgroundColor: 'var(--mantine-color-body)',
-          color: 'var(--mantine-color-text)',
-          resize: 'vertical',
-          minHeight: '200px',
-          width: '100%',
-          outline: 'none',
+          fontFamily:
+            'ui-monospace, "Cascadia Code", "Source Code Pro", Menlo, monospace',
+          fontSize: "13px",
+          lineHeight: "1.5",
+          padding: "12px",
+          borderRadius: "8px",
+          border: "1px solid var(--mantine-color-default-border)",
+          backgroundColor: "var(--mantine-color-body)",
+          color: "var(--mantine-color-text)",
+          resize: "vertical",
+          minHeight: "200px",
+          width: "100%",
+          outline: "none",
           tabSize: 4,
         }}
         spellCheck={false}
@@ -1139,26 +1171,23 @@ interface PaletteProps {
 function BuiltinTypePalette({ model, modelIndex, updateModel }: PaletteProps) {
   const [copied, setCopied] = useState<string | null>(null);
 
-  const copySnippet = useCallback(
-    (name: string, snippet: string) => {
-      navigator.clipboard.writeText(snippet).then(() => {
-        setCopied(name);
-        setTimeout(() => setCopied(null), 1500);
-      });
-    },
-    []
-  );
+  const copySnippet = useCallback((name: string, snippet: string) => {
+    navigator.clipboard.writeText(snippet).then(() => {
+      setCopied(name);
+      setTimeout(() => setCopied(null), 1500);
+    });
+  }, []);
 
   const insertToCode = useCallback(
     (snippet: string) => {
-      if (model.inputMode === 'code') {
+      if (model.inputMode === "code") {
         const code = model.rawCode
-          ? model.rawCode + '\n    ' + snippet
+          ? model.rawCode + "\n    " + snippet
           : snippet;
         updateModel(modelIndex, { rawCode: code });
       }
     },
-    [model, modelIndex, updateModel]
+    [model, modelIndex, updateModel],
   );
 
   return (
@@ -1187,19 +1216,17 @@ function BuiltinTypePalette({ model, modelIndex, updateModel }: PaletteProps) {
                   </Group>
                   <Group gap="xs">
                     <Tooltip
-                      label={copied === bt.name ? '已複製！' : '複製程式碼'}
+                      label={copied === bt.name ? "已複製！" : "複製程式碼"}
                     >
                       <ActionIcon
                         size="sm"
                         variant="subtle"
-                        onClick={() =>
-                          copySnippet(bt.name, bt.codeSnippet)
-                        }
+                        onClick={() => copySnippet(bt.name, bt.codeSnippet)}
                       >
                         <IconCopy size={14} />
                       </ActionIcon>
                     </Tooltip>
-                    {model.inputMode === 'code' && (
+                    {model.inputMode === "code" && (
                       <Button
                         size="xs"
                         variant="light"
@@ -1216,7 +1243,9 @@ function BuiltinTypePalette({ model, modelIndex, updateModel }: PaletteProps) {
                 <Text size="xs" c="dimmed" mb="xs">
                   {bt.detailedDescription}
                 </Text>
-                <Code block>{bt.importStatement + '\n\n' + bt.codeSnippet}</Code>
+                <Code block>
+                  {bt.importStatement + "\n\n" + bt.codeSnippet}
+                </Code>
               </Paper>
             ))}
           </Stack>

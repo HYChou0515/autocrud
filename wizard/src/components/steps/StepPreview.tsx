@@ -1,4 +1,4 @@
-import { useState, useMemo, useCallback } from 'react';
+import { useState, useMemo, useCallback } from "react";
 import {
   Stack,
   Title,
@@ -12,20 +12,20 @@ import {
   Tooltip,
   ScrollArea,
   Alert,
-} from '@mantine/core';
+} from "@mantine/core";
 import {
   IconDownload,
   IconCopy,
   IconCheck,
   IconFile,
   IconAlertCircle,
-} from '@tabler/icons-react';
-import Editor from '@monaco-editor/react';
-import JSZip from 'jszip';
-import { saveAs } from 'file-saver';
-import { generateProject } from '@/lib/generator';
-import type { GeneratedFile } from '@/lib/generator';
-import type { WizardState } from '@/types/wizard';
+} from "@tabler/icons-react";
+import Editor from "@monaco-editor/react";
+import JSZip from "jszip";
+import { saveAs } from "file-saver";
+import { generateProject } from "@/lib/generator";
+
+import type { WizardState } from "@/types/wizard";
 
 interface Props {
   state: WizardState;
@@ -45,8 +45,8 @@ export function StepPreview({ state }: Props) {
       for (const f of files) {
         zip.file(f.filename, f.content);
       }
-      const blob = await zip.generateAsync({ type: 'blob' });
-      saveAs(blob, `${state.projectName || 'autocrud-project'}.zip`);
+      const blob = await zip.generateAsync({ type: "blob" });
+      saveAs(blob, `${state.projectName || "autocrud-project"}.zip`);
     } finally {
       setDownloading(false);
     }
@@ -55,14 +55,14 @@ export function StepPreview({ state }: Props) {
   // Validation warnings
   const warnings = useMemo(() => {
     const w: string[] = [];
-    if (!state.projectName.trim()) w.push('專案名稱未填寫');
-    if (state.models.length === 0) w.push('至少需要一個 Model');
+    if (!state.projectName.trim()) w.push("專案名稱未填寫");
+    if (state.models.length === 0) w.push("至少需要一個 Model");
     state.models.forEach((m, i) => {
       if (!m.name.trim()) w.push(`Model ${i + 1} 名稱未填寫`);
-      if (m.inputMode === 'form' && m.fields.length === 0) {
+      if (m.inputMode === "form" && m.fields.length === 0) {
         w.push(`${m.name || `Model ${i + 1}`} 至少需要一個欄位`);
       }
-      if (m.inputMode === 'code' && !m.rawCode.trim()) {
+      if (m.inputMode === "code" && !m.rawCode.trim()) {
         w.push(`${m.name || `Model ${i + 1}`} code 未填寫`);
       }
     });
@@ -99,7 +99,7 @@ export function StepPreview({ state }: Props) {
         <Paper
           withBorder
           w={200}
-          style={{ flexShrink: 0, alignSelf: 'stretch' }}
+          style={{ flexShrink: 0, alignSelf: "stretch" }}
         >
           <ScrollArea h="100%">
             <Stack gap={0} p="xs">
@@ -124,14 +124,14 @@ export function StepPreview({ state }: Props) {
         {/* Code preview */}
         <Paper
           withBorder
-          style={{ flex: 1, overflow: 'hidden', alignSelf: 'stretch' }}
+          style={{ flex: 1, overflow: "hidden", alignSelf: "stretch" }}
         >
           <Group
             justify="space-between"
             px="sm"
             py={6}
             style={{
-              borderBottom: '1px solid var(--mantine-color-default-border)',
+              borderBottom: "1px solid var(--mantine-color-default-border)",
             }}
           >
             <Text size="xs" fw={500} c="dimmed">
@@ -139,11 +139,11 @@ export function StepPreview({ state }: Props) {
             </Text>
             <CopyButton value={currentFile.content} timeout={2000}>
               {({ copied, copy }) => (
-                <Tooltip label={copied ? '已複製！' : '複製程式碼'}>
+                <Tooltip label={copied ? "已複製！" : "複製程式碼"}>
                   <ActionIcon
                     size="sm"
                     variant="subtle"
-                    color={copied ? 'teal' : 'gray'}
+                    color={copied ? "teal" : "gray"}
                     onClick={copy}
                   >
                     {copied ? <IconCheck size={14} /> : <IconCopy size={14} />}
@@ -161,9 +161,9 @@ export function StepPreview({ state }: Props) {
               readOnly: true,
               minimap: { enabled: false },
               fontSize: 13,
-              lineNumbers: 'on',
+              lineNumbers: "on",
               scrollBeyondLastLine: false,
-              wordWrap: 'on',
+              wordWrap: "on",
               padding: { top: 8 },
             }}
           />
