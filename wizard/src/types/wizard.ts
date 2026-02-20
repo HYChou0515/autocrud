@@ -7,6 +7,7 @@ export interface WizardState {
   pythonVersion: "3.11" | "3.12" | "3.13";
   port: number;
   enableCORS: boolean;
+  enableGraphql: boolean;
 
   // Step 2: Storage & config
   storage: StorageType;
@@ -207,6 +208,7 @@ export const DEFAULT_WIZARD_STATE: WizardState = {
   pythonVersion: "3.12",
   port: 8000,
   enableCORS: true,
+  enableGraphql: true,
 
   storage: "memory",
   storageConfig: {},

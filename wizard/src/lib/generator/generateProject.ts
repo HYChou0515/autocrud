@@ -73,49 +73,61 @@ build-backend = "hatchling.backends"
 }
 
 export function computeDependencies(state: WizardState): string[] {
-  const deps: string[] = [];
+  const extras = new Set<string>();
 
+  // ── Storage-based extras ──
   switch (state.storage) {
     case "s3":
-      deps.push("autocrud[s3]>=0.8.0");
+      extras.add("s3");
       break;
     case "postgresql":
-      deps.push("autocrud[s3]>=0.8.0");
-      deps.push("psycopg2-binary");
+      extras.add("s3");
+      extras.add("postgresql");
       break;
     case "custom": {
       const sc = state.storageConfig;
       const meta = sc.customMetaStore || "memory";
       const res = sc.customResourceStore || "memory";
 
-      // Gather all store types to check (including fast/slow sub-stores)
+      // Gather all meta store types (including fast/slow sub-stores)
       const allMetas: string[] = [meta];
       if (meta === "fast-slow") {
         allMetas.push(sc.metaFastStore || "memory");
         allMetas.push(sc.metaSlowStore || "file-sqlite");
       }
 
-      const needsS3 =
-        ["s3", "cached-s3", "etag-cached-s3", "mq-cached-s3"].includes(res) ||
-        allMetas.includes("s3-sqlite");
-      const needsRedis = allMetas.includes("redis");
-      const needsPostgres = allMetas.includes("postgres");
-      const needsSqlalchemy = allMetas.includes("sqlalchemy");
-
-      if (needsS3) {
-        deps.push("autocrud[s3]>=0.8.0");
-      } else {
-        deps.push("autocrud>=0.8.0");
+      // Resource store → extras
+      if (["s3", "cached-s3", "etag-cached-s3"].includes(res)) {
+        extras.add("s3");
       }
-      if (needsRedis) deps.push("redis");
-      if (needsPostgres) deps.push("psycopg2-binary");
-      if (needsSqlalchemy) deps.push("sqlalchemy");
+      if (res === "mq-cached-s3") {
+        extras.add("s3");
+        extras.add("mq");
+      }
+
+      // Meta store → extras
+      if (allMetas.includes("s3-sqlite")) extras.add("s3");
+      if (allMetas.includes("redis")) extras.add("redis");
+      if (allMetas.includes("postgres")) extras.add("postgresql");
+      if (allMetas.includes("sqlalchemy")) extras.add("sqlalchemy");
       break;
     }
-    default:
-      deps.push("autocrud>=0.8.0");
   }
 
+  // ── Feature-based extras ──
+  if (state.enableGraphql) extras.add("graphql");
+
+  // magic: auto-add when S3 is involved (blob content-type detection)
+  if (extras.has("s3")) extras.add("magic");
+
+  // ── Build final dependency list ──
+  const deps: string[] = [];
+  if (extras.size > 0) {
+    const sorted = [...extras].sort();
+    deps.push(`autocrud[${sorted.join(",")}]>=0.8.0`);
+  } else {
+    deps.push("autocrud>=0.8.0");
+  }
   deps.push("uvicorn>=0.30.0");
 
   return deps;

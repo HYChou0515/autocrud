@@ -30,7 +30,6 @@ dependencies = [
     "msgpack>=1.1.1",
     "msgspec>=0.19.0",
     "pydantic>=1.10.26,<3",
-    "pymysql[dev]>=1.1.2",
     "qqabc>=0.2.1",
     "xxhash>=3.5.0",
 ]
@@ -54,7 +53,6 @@ dev = [
     "ruff>=0.12.4",
     "pytest-asyncio>=1.1.0",
     "autocrud[all]",
-    "oracledb>=3.4.2",
 ]
 s3 = [
     "boto3>=1.40.21",
@@ -76,8 +74,26 @@ mq = [
 graphql = [
     "strawberry-graphql>=0.288.1",
 ]
+postgresql = [
+    "psycopg2-binary>=2.9.10",
+]
+redis = [
+    "redis>=6.4.0",
+]
+sqlalchemy = [
+    "sqlalchemy>=2.0.46",
+]
+mysql = [
+    "pymysql>=1.1.2",
+]
+oracle = [
+    "oracledb>=3.4.2",
+]
+celery = [
+    "celery>=5.6.2",
+]
 all = [
-    "autocrud[s3,magic,mq,graphql,cli]",
+    "autocrud[s3,magic,mq,graphql,cli,postgresql,redis,sqlalchemy,mysql,oracle,celery]",
 ]
 [project.urls]
 Homepage = "https://github.com/HYChou0515/autocrud"

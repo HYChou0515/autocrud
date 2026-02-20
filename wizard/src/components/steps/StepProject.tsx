@@ -71,6 +71,13 @@ export function StepProject({ state, onChange }: Props) {
         checked={state.enableCORS}
         onChange={(e) => onChange({ enableCORS: e.currentTarget.checked })}
       />
+
+      <Switch
+        label="GraphQL Endpoint"
+        description="自動產生 Strawberry GraphQL endpoint（需安裝 autocrud[graphql]）"
+        checked={state.enableGraphql}
+        onChange={(e) => onChange({ enableGraphql: e.currentTarget.checked })}
+      />
     </Stack>
   );
 }

@@ -80,29 +80,55 @@ describe("generateProject", () => {
 // ─── computeDependencies ───────────────────────────────────────
 
 describe("computeDependencies", () => {
-  it("memory storage → autocrud + uvicorn only", () => {
+  it("memory storage → autocrud[graphql] + uvicorn (graphql default on)", () => {
     const deps = computeDependencies(makeState({ storage: "memory" }));
-    expect(deps).toContain("autocrud>=0.8.0");
+    expect(deps).toContain("autocrud[graphql]>=0.8.0");
     expect(deps).toContain("uvicorn>=0.30.0");
     expect(deps).toHaveLength(2);
   });
 
-  it("disk storage → autocrud + uvicorn only", () => {
-    const deps = computeDependencies(makeState({ storage: "disk" }));
+  it("memory storage with graphql off → base autocrud only", () => {
+    const deps = computeDependencies(
+      makeState({ storage: "memory", enableGraphql: false }),
+    );
     expect(deps).toContain("autocrud>=0.8.0");
-    expect(deps).not.toContain("autocrud[s3]>=0.8.0");
+    expect(deps).toHaveLength(2);
   });
 
-  it("s3 storage → autocrud[s3]", () => {
+  it("disk storage → autocrud[graphql] (no s3)", () => {
+    const deps = computeDependencies(makeState({ storage: "disk" }));
+    expect(deps).toContain("autocrud[graphql]>=0.8.0");
+    expect(deps).not.toContain("magic");
+  });
+
+  it("s3 storage → extras include s3 + magic + graphql", () => {
     const deps = computeDependencies(makeState({ storage: "s3" }));
-    expect(deps).toContain("autocrud[s3]>=0.8.0");
-    expect(deps).not.toContain("autocrud>=0.8.0");
+    expect(deps[0]).toContain("s3");
+    expect(deps[0]).toContain("magic");
+    expect(deps[0]).toContain("graphql");
+    expect(deps).toHaveLength(2);
   });
 
-  it("postgresql → autocrud[s3] + psycopg2-binary", () => {
+  it("postgresql → extras include graphql,magic,postgresql,s3", () => {
     const deps = computeDependencies(makeState({ storage: "postgresql" }));
-    expect(deps).toContain("autocrud[s3]>=0.8.0");
-    expect(deps).toContain("psycopg2-binary");
+    expect(deps[0]).toContain("postgresql");
+    expect(deps[0]).toContain("s3");
+    expect(deps[0]).toContain("magic");
+    expect(deps[0]).toContain("graphql");
+    expect(deps).not.toContain("psycopg2-binary");
+  });
+
+  it("extras are sorted alphabetically", () => {
+    const deps = computeDependencies(makeState({ storage: "postgresql" }));
+    // graphql, magic, postgresql, s3
+    expect(deps[0]).toBe("autocrud[graphql,magic,postgresql,s3]>=0.8.0");
+  });
+
+  it("s3 with graphql off → s3 + magic only", () => {
+    const deps = computeDependencies(
+      makeState({ storage: "s3", enableGraphql: false }),
+    );
+    expect(deps[0]).toBe("autocrud[magic,s3]>=0.8.0");
   });
 });
 
@@ -1319,7 +1345,7 @@ describe("F2: Custom SimpleStorage", () => {
     expect(result).toContain("CachedS3ResourceStore");
   });
 
-  it("custom storage → computeDependencies includes autocrud", () => {
+  it("custom storage → computeDependencies includes extras", () => {
     const deps = computeDependencies(
       makeState({
         storage: "custom",
@@ -1329,11 +1355,13 @@ describe("F2: Custom SimpleStorage", () => {
         },
       }),
     );
-    expect(deps).toContain("autocrud[s3]>=0.8.0");
-    expect(deps).toContain("redis");
+    expect(deps[0]).toContain("s3");
+    expect(deps[0]).toContain("redis");
+    expect(deps[0]).toContain("magic");
+    expect(deps).not.toContain("redis"); // no bare redis
   });
 
-  it("custom storage memory+memory → base autocrud only", () => {
+  it("custom storage memory+memory → autocrud[graphql] only", () => {
     const deps = computeDependencies(
       makeState({
         storage: "custom",
@@ -1343,8 +1371,21 @@ describe("F2: Custom SimpleStorage", () => {
         },
       }),
     );
-    expect(deps).toContain("autocrud>=0.8.0");
-    expect(deps).not.toContain("autocrud[s3]>=0.8.0");
+    expect(deps[0]).toBe("autocrud[graphql]>=0.8.0");
+  });
+
+  it("custom storage memory+memory graphql off → base autocrud", () => {
+    const deps = computeDependencies(
+      makeState({
+        storage: "custom",
+        enableGraphql: false,
+        storageConfig: {
+          customMetaStore: "memory",
+          customResourceStore: "memory",
+        },
+      }),
+    );
+    expect(deps[0]).toBe("autocrud>=0.8.0");
   });
 
   it("custom storage README description", () => {
@@ -1534,7 +1575,7 @@ describe("F2: Custom SimpleStorage", () => {
     expect(result).toContain("MemorySqliteMetaStore()");
   });
 
-  it("custom with sqlalchemy → computeDependencies includes sqlalchemy", () => {
+  it("custom with sqlalchemy → extras include sqlalchemy", () => {
     const deps = computeDependencies(
       makeState({
         storage: "custom",
@@ -1544,10 +1585,11 @@ describe("F2: Custom SimpleStorage", () => {
         },
       }),
     );
-    expect(deps).toContain("sqlalchemy");
+    expect(deps[0]).toContain("sqlalchemy");
+    expect(deps).not.toContain("sqlalchemy"); // no bare sqlalchemy
   });
 
-  it("custom with postgres → computeDependencies includes psycopg2", () => {
+  it("custom with postgres → extras include postgresql", () => {
     const deps = computeDependencies(
       makeState({
         storage: "custom",
@@ -1557,10 +1599,11 @@ describe("F2: Custom SimpleStorage", () => {
         },
       }),
     );
-    expect(deps).toContain("psycopg2-binary");
+    expect(deps[0]).toContain("postgresql");
+    expect(deps).not.toContain("psycopg2-binary"); // no bare psycopg2
   });
 
-  it("custom with s3-sqlite meta → s3 deps", () => {
+  it("custom with s3-sqlite meta → extras include s3 + magic", () => {
     const deps = computeDependencies(
       makeState({
         storage: "custom",
@@ -1570,7 +1613,23 @@ describe("F2: Custom SimpleStorage", () => {
         },
       }),
     );
-    expect(deps).toContain("autocrud[s3]>=0.8.0");
+    expect(deps[0]).toContain("s3");
+    expect(deps[0]).toContain("magic");
+  });
+
+  it("custom with mq-cached-s3 → extras include mq + s3 + magic", () => {
+    const deps = computeDependencies(
+      makeState({
+        storage: "custom",
+        storageConfig: {
+          customMetaStore: "memory",
+          customResourceStore: "mq-cached-s3",
+        },
+      }),
+    );
+    expect(deps[0]).toContain("mq");
+    expect(deps[0]).toContain("s3");
+    expect(deps[0]).toContain("magic");
   });
 });
 
@@ -1657,7 +1716,7 @@ describe("FastSlowMetaStore", () => {
     expect(imports).toContain("PostgresMetaStore");
   });
 
-  it("fast-slow with redis fast → computeDependencies includes redis", () => {
+  it("fast-slow with redis fast → extras include redis", () => {
     const deps = computeDependencies(
       makeState({
         storage: "custom",
@@ -1669,10 +1728,11 @@ describe("FastSlowMetaStore", () => {
         },
       }),
     );
-    expect(deps).toContain("redis");
+    expect(deps[0]).toContain("redis");
+    expect(deps).not.toContain("redis"); // no bare redis
   });
 
-  it("fast-slow with s3-sqlite slow → s3 deps", () => {
+  it("fast-slow with s3-sqlite slow → extras include s3 + magic", () => {
     const deps = computeDependencies(
       makeState({
         storage: "custom",
@@ -1684,7 +1744,8 @@ describe("FastSlowMetaStore", () => {
         },
       }),
     );
-    expect(deps).toContain("autocrud[s3]>=0.8.0");
+    expect(deps[0]).toContain("s3");
+    expect(deps[0]).toContain("magic");
   });
 
   it("fast-slow with disk fast + s3-sqlite slow with params", () => {
