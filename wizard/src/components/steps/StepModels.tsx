@@ -1,0 +1,817 @@
+import { useState, useCallback, useRef, useEffect } from 'react';
+import {
+  Stack,
+  Title,
+  Text,
+  Group,
+  TextInput,
+  Select,
+  Switch,
+  ActionIcon,
+  Paper,
+  Tabs,
+  Button,
+  Accordion,
+  Badge,
+  Tooltip,
+  Table,
+  Checkbox,
+  Code,
+  Divider,
+  ScrollArea,
+} from '@mantine/core';
+import {
+  IconPlus,
+  IconTrash,
+  IconCode,
+  IconForms,
+  IconCopy,
+} from '@tabler/icons-react';
+import type {
+  WizardState,
+  ModelDefinition,
+  FieldDefinition,
+  FieldType,
+  EnumDefinition,
+} from '@/types/wizard';
+import {
+  createEmptyField,
+  createEmptyModel,
+  createEmptyEnum,
+  BUILTIN_TYPES,
+} from '@/types/wizard';
+
+interface Props {
+  state: WizardState;
+  onChange: (patch: Partial<WizardState>) => void;
+}
+
+const FIELD_TYPE_OPTIONS: { value: FieldType; label: string }[] = [
+  { value: 'str', label: 'str' },
+  { value: 'int', label: 'int' },
+  { value: 'float', label: 'float' },
+  { value: 'bool', label: 'bool' },
+  { value: 'datetime', label: 'datetime' },
+  { value: 'Binary', label: 'Binary' },
+  { value: 'Ref', label: 'Ref' },
+  { value: 'RefRevision', label: 'RefRevision' },
+  { value: 'Enum', label: 'Enum' },
+];
+
+const ON_DELETE_OPTIONS = [
+  { value: 'dangling', label: 'dangling（預設）' },
+  { value: 'set_null', label: 'set_null（設為 null）' },
+  { value: 'cascade', label: 'cascade（連帶刪除）' },
+];
+
+export function StepModels({ state, onChange }: Props) {
+  const [activeModel, setActiveModel] = useState(0);
+
+  const updateModels = useCallback(
+    (models: ModelDefinition[]) => {
+      onChange({ models });
+    },
+    [onChange]
+  );
+
+  const updateModel = useCallback(
+    (index: number, patch: Partial<ModelDefinition>) => {
+      const models = [...state.models];
+      models[index] = { ...models[index], ...patch };
+      updateModels(models);
+    },
+    [state.models, updateModels]
+  );
+
+  const addModel = useCallback(() => {
+    const models = [...state.models, createEmptyModel()];
+    updateModels(models);
+    setActiveModel(models.length - 1);
+  }, [state.models, updateModels]);
+
+  const removeModel = useCallback(
+    (index: number) => {
+      if (state.models.length <= 1) return;
+      const models = state.models.filter((_, i) => i !== index);
+      updateModels(models);
+      if (activeModel >= models.length) {
+        setActiveModel(models.length - 1);
+      }
+    },
+    [state.models, activeModel, updateModels]
+  );
+
+  const model = state.models[activeModel];
+  if (!model) return null;
+
+  return (
+    <Stack gap="lg">
+      <div>
+        <Title order={3}>Model 定義</Title>
+        <Text size="sm" c="dimmed">
+          定義你的 resource models，可用表單或直接寫 Python code
+        </Text>
+      </div>
+
+      {/* Model list tabs */}
+      <Group gap="xs" wrap="wrap">
+        {state.models.map((m, i) => (
+          <Button
+            key={i}
+            size="xs"
+            variant={i === activeModel ? 'filled' : 'outline'}
+            onClick={() => setActiveModel(i)}
+            rightSection={
+              state.models.length > 1 ? (
+                <ActionIcon
+                  size="xs"
+                  variant="transparent"
+                  c={i === activeModel ? 'white' : 'red'}
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    removeModel(i);
+                  }}
+                >
+                  <IconTrash size={12} />
+                </ActionIcon>
+              ) : undefined
+            }
+          >
+            {m.name || `Model ${i + 1}`}
+          </Button>
+        ))}
+        <Button
+          size="xs"
+          variant="light"
+          leftSection={<IconPlus size={14} />}
+          onClick={addModel}
+        >
+          新增 Model
+        </Button>
+      </Group>
+
+      {/* Active model editor */}
+      <Paper p="md" withBorder>
+        <Stack gap="md">
+          {/* Model name & version */}
+          <Group grow>
+            <TextInput
+              label="Model 名稱"
+              placeholder="MyModel"
+              value={model.name}
+              onChange={(e) =>
+                updateModel(activeModel, { name: e.currentTarget.value })
+              }
+            />
+            <TextInput
+              label="Schema Version"
+              description="用於 Schema(Model, version)"
+              placeholder="v1"
+              value={model.schemaVersion}
+              onChange={(e) =>
+                updateModel(activeModel, {
+                  schemaVersion: e.currentTarget.value,
+                })
+              }
+            />
+          </Group>
+
+          <Switch
+            label="啟用 Validator"
+            description="生成一個 validate 函式模板供你填寫驗證邏輯"
+            checked={model.enableValidator}
+            onChange={(e) =>
+              updateModel(activeModel, {
+                enableValidator: e.currentTarget.checked,
+              })
+            }
+          />
+
+          {/* Input mode toggle */}
+          <Tabs
+            value={model.inputMode}
+            onChange={(v) =>
+              updateModel(activeModel, {
+                inputMode: (v as 'form' | 'code') || 'form',
+              })
+            }
+          >
+            <Tabs.List>
+              <Tabs.Tab
+                value="form"
+                leftSection={<IconForms size={16} />}
+              >
+                表單模式
+              </Tabs.Tab>
+              <Tabs.Tab
+                value="code"
+                leftSection={<IconCode size={16} />}
+              >
+                Code 模式
+              </Tabs.Tab>
+            </Tabs.List>
+
+            <Tabs.Panel value="form" pt="md">
+              <FormModeEditor
+                model={model}
+                modelIndex={activeModel}
+                state={state}
+                updateModel={updateModel}
+              />
+            </Tabs.Panel>
+
+            <Tabs.Panel value="code" pt="md">
+              <CodeModeEditor
+                model={model}
+                modelIndex={activeModel}
+                updateModel={updateModel}
+                modelStyle={state.modelStyle}
+              />
+            </Tabs.Panel>
+          </Tabs>
+        </Stack>
+      </Paper>
+
+      {/* Built-in type palette */}
+      <BuiltinTypePalette
+        model={model}
+        modelIndex={activeModel}
+        updateModel={updateModel}
+      />
+    </Stack>
+  );
+}
+
+// ─── Form Mode Editor ──────────────────────────────────────────
+
+interface FormEditorProps {
+  model: ModelDefinition;
+  modelIndex: number;
+  state: WizardState;
+  updateModel: (index: number, patch: Partial<ModelDefinition>) => void;
+}
+
+function FormModeEditor({
+  model,
+  modelIndex,
+  state,
+  updateModel,
+}: FormEditorProps) {
+  const updateField = (fieldIndex: number, patch: Partial<FieldDefinition>) => {
+    const fields = [...model.fields];
+    fields[fieldIndex] = { ...fields[fieldIndex], ...patch };
+    updateModel(modelIndex, { fields });
+  };
+
+  const addField = () => {
+    updateModel(modelIndex, { fields: [...model.fields, createEmptyField()] });
+  };
+
+  const removeField = (fieldIndex: number) => {
+    updateModel(modelIndex, {
+      fields: model.fields.filter((_, i) => i !== fieldIndex),
+    });
+  };
+
+  // Enum helpers
+  const addEnum = () => {
+    updateModel(modelIndex, { enums: [...model.enums, createEmptyEnum()] });
+  };
+
+  const updateEnum = (enumIndex: number, patch: Partial<EnumDefinition>) => {
+    const enums = [...model.enums];
+    enums[enumIndex] = { ...enums[enumIndex], ...patch };
+    updateModel(modelIndex, { enums });
+  };
+
+  const removeEnum = (enumIndex: number) => {
+    updateModel(modelIndex, {
+      enums: model.enums.filter((_, i) => i !== enumIndex),
+    });
+  };
+
+  const modelNames = state.models.map((m) => m.name).filter(Boolean);
+  const enumNames = model.enums.map((e) => e.name).filter(Boolean);
+
+  return (
+    <Stack gap="md">
+      {/* Fields Table */}
+      <Text fw={500} size="sm">
+        欄位定義
+      </Text>
+      <ScrollArea>
+        <Table withTableBorder withColumnBorders>
+          <Table.Thead>
+            <Table.Tr>
+              <Table.Th w={150}>名稱</Table.Th>
+              <Table.Th w={120}>類型</Table.Th>
+              <Table.Th w={60}>Optional</Table.Th>
+              <Table.Th w={60}>List</Table.Th>
+              <Table.Th w={120}>預設值</Table.Th>
+              <Table.Th w={60}>Indexed</Table.Th>
+              <Table.Th w={80}>Display</Table.Th>
+              <Table.Th w={50}></Table.Th>
+            </Table.Tr>
+          </Table.Thead>
+          <Table.Tbody>
+            {model.fields.map((field, fi) => (
+              <FieldRow
+                key={fi}
+                field={field}
+                fieldIndex={fi}
+                updateField={updateField}
+                removeField={removeField}
+                modelNames={modelNames}
+                enumNames={enumNames}
+              />
+            ))}
+          </Table.Tbody>
+        </Table>
+      </ScrollArea>
+
+      <Button
+        size="xs"
+        variant="light"
+        leftSection={<IconPlus size={14} />}
+        onClick={addField}
+      >
+        新增欄位
+      </Button>
+
+      {/* Enum definitions */}
+      {model.enums.length > 0 && <Divider label="Enum 定義" />}
+      {model.enums.map((enumDef, ei) => (
+        <EnumEditor
+          key={ei}
+          enumDef={enumDef}
+          enumIndex={ei}
+          updateEnum={updateEnum}
+          removeEnum={removeEnum}
+        />
+      ))}
+      <Button
+        size="xs"
+        variant="light"
+        leftSection={<IconPlus size={14} />}
+        onClick={addEnum}
+      >
+        新增 Enum
+      </Button>
+    </Stack>
+  );
+}
+
+// ─── Single Field Row ──────────────────────────────────────────
+
+interface FieldRowProps {
+  field: FieldDefinition;
+  fieldIndex: number;
+  updateField: (index: number, patch: Partial<FieldDefinition>) => void;
+  removeField: (index: number) => void;
+  modelNames: string[];
+  enumNames: string[];
+}
+
+function FieldRow({
+  field,
+  fieldIndex,
+  updateField,
+  removeField,
+  modelNames,
+  enumNames,
+}: FieldRowProps) {
+  return (
+    <>
+      <Table.Tr>
+        <Table.Td>
+          <TextInput
+            size="xs"
+            placeholder="field_name"
+            value={field.name}
+            onChange={(e) =>
+              updateField(fieldIndex, { name: e.currentTarget.value })
+            }
+          />
+        </Table.Td>
+        <Table.Td>
+          <Select
+            size="xs"
+            data={FIELD_TYPE_OPTIONS}
+            value={field.type}
+            onChange={(v) =>
+              updateField(fieldIndex, { type: (v as FieldType) || 'str' })
+            }
+          />
+        </Table.Td>
+        <Table.Td>
+          <Checkbox
+            size="xs"
+            checked={field.optional}
+            onChange={(e) =>
+              updateField(fieldIndex, { optional: e.currentTarget.checked })
+            }
+          />
+        </Table.Td>
+        <Table.Td>
+          <Checkbox
+            size="xs"
+            checked={field.isList}
+            onChange={(e) =>
+              updateField(fieldIndex, { isList: e.currentTarget.checked })
+            }
+          />
+        </Table.Td>
+        <Table.Td>
+          <TextInput
+            size="xs"
+            placeholder='""'
+            value={field.default}
+            onChange={(e) =>
+              updateField(fieldIndex, { default: e.currentTarget.value })
+            }
+          />
+        </Table.Td>
+        <Table.Td>
+          <Checkbox
+            size="xs"
+            checked={field.isIndexed}
+            onChange={(e) =>
+              updateField(fieldIndex, { isIndexed: e.currentTarget.checked })
+            }
+          />
+        </Table.Td>
+        <Table.Td>
+          <Checkbox
+            size="xs"
+            checked={field.isDisplayName}
+            onChange={(e) =>
+              updateField(fieldIndex, { isDisplayName: e.currentTarget.checked })
+            }
+          />
+        </Table.Td>
+        <Table.Td>
+          <ActionIcon
+            size="xs"
+            color="red"
+            variant="subtle"
+            onClick={() => removeField(fieldIndex)}
+          >
+            <IconTrash size={12} />
+          </ActionIcon>
+        </Table.Td>
+      </Table.Tr>
+
+      {/* Extra config rows for Ref/RefRevision/Enum */}
+      {field.type === 'Ref' && (
+        <Table.Tr>
+          <Table.Td colSpan={8}>
+            <Group gap="sm" ml="md">
+              <Select
+                size="xs"
+                label="Ref → Resource"
+                data={modelNames}
+                value={field.ref?.resource || ''}
+                onChange={(v) =>
+                  updateField(fieldIndex, {
+                    ref: {
+                      resource: v || '',
+                      onDelete: field.ref?.onDelete || 'dangling',
+                    },
+                  })
+                }
+                w={200}
+              />
+              <Select
+                size="xs"
+                label="On Delete"
+                data={ON_DELETE_OPTIONS}
+                value={field.ref?.onDelete || 'dangling'}
+                onChange={(v) =>
+                  updateField(fieldIndex, {
+                    ref: {
+                      resource: field.ref?.resource || '',
+                      onDelete:
+                        (v as 'dangling' | 'set_null' | 'cascade') ||
+                        'dangling',
+                    },
+                  })
+                }
+                w={200}
+              />
+            </Group>
+          </Table.Td>
+        </Table.Tr>
+      )}
+
+      {field.type === 'RefRevision' && (
+        <Table.Tr>
+          <Table.Td colSpan={8}>
+            <Group gap="sm" ml="md">
+              <Select
+                size="xs"
+                label="RefRevision → Resource"
+                data={modelNames}
+                value={field.refRevision?.resource || ''}
+                onChange={(v) =>
+                  updateField(fieldIndex, {
+                    refRevision: { resource: v || '' },
+                  })
+                }
+                w={200}
+              />
+            </Group>
+          </Table.Td>
+        </Table.Tr>
+      )}
+
+      {field.type === 'Enum' && (
+        <Table.Tr>
+          <Table.Td colSpan={8}>
+            <Group gap="sm" ml="md">
+              <Select
+                size="xs"
+                label="Enum Type"
+                description="選擇已定義的 Enum"
+                data={enumNames}
+                value={field.default || ''}
+                onChange={(v) =>
+                  updateField(fieldIndex, { default: v || '' })
+                }
+                w={200}
+              />
+              <Text size="xs" c="dimmed" mt={20}>
+                在下方 Enum 定義區域新增 Enum
+              </Text>
+            </Group>
+          </Table.Td>
+        </Table.Tr>
+      )}
+    </>
+  );
+}
+
+// ─── Enum Editor ───────────────────────────────────────────────
+
+interface EnumEditorProps {
+  enumDef: EnumDefinition;
+  enumIndex: number;
+  updateEnum: (index: number, patch: Partial<EnumDefinition>) => void;
+  removeEnum: (index: number) => void;
+}
+
+function EnumEditor({
+  enumDef,
+  enumIndex,
+  updateEnum,
+  removeEnum,
+}: EnumEditorProps) {
+  return (
+    <Paper p="sm" withBorder>
+      <Group justify="space-between" mb="xs">
+        <TextInput
+          size="xs"
+          label="Enum 名稱"
+          placeholder="MyEnum"
+          value={enumDef.name}
+          onChange={(e) =>
+            updateEnum(enumIndex, { name: e.currentTarget.value })
+          }
+          w={200}
+        />
+        <ActionIcon
+          color="red"
+          variant="subtle"
+          onClick={() => removeEnum(enumIndex)}
+        >
+          <IconTrash size={16} />
+        </ActionIcon>
+      </Group>
+
+      {enumDef.values.map((v, vi) => (
+        <Group key={vi} gap="xs" mb={4}>
+          <TextInput
+            size="xs"
+            placeholder="key"
+            value={v.key}
+            onChange={(e) => {
+              const values = [...enumDef.values];
+              values[vi] = { ...values[vi], key: e.currentTarget.value };
+              updateEnum(enumIndex, { values });
+            }}
+            w={120}
+          />
+          <TextInput
+            size="xs"
+            placeholder="label"
+            value={v.label}
+            onChange={(e) => {
+              const values = [...enumDef.values];
+              values[vi] = { ...values[vi], label: e.currentTarget.value };
+              updateEnum(enumIndex, { values });
+            }}
+            w={150}
+          />
+          <ActionIcon
+            size="xs"
+            color="red"
+            variant="subtle"
+            onClick={() => {
+              const values = enumDef.values.filter((_, i) => i !== vi);
+              updateEnum(enumIndex, {
+                values: values.length ? values : [{ key: '', label: '' }],
+              });
+            }}
+          >
+            <IconTrash size={12} />
+          </ActionIcon>
+        </Group>
+      ))}
+      <Button
+        size="xs"
+        variant="subtle"
+        leftSection={<IconPlus size={12} />}
+        onClick={() =>
+          updateEnum(enumIndex, {
+            values: [...enumDef.values, { key: '', label: '' }],
+          })
+        }
+      >
+        新增值
+      </Button>
+    </Paper>
+  );
+}
+
+// ─── Code Mode Editor ──────────────────────────────────────────
+
+interface CodeEditorProps {
+  model: ModelDefinition;
+  modelIndex: number;
+  updateModel: (index: number, patch: Partial<ModelDefinition>) => void;
+  modelStyle: WizardState['modelStyle'];
+}
+
+function CodeModeEditor({
+  model,
+  modelIndex,
+  updateModel,
+  modelStyle,
+}: CodeEditorProps) {
+  const textareaRef = useRef<HTMLTextAreaElement>(null);
+
+  const placeholder =
+    modelStyle === 'struct'
+      ? `class ${model.name || 'MyModel'}(Struct):
+    name: Annotated[str, DisplayName()]
+    description: str = ""
+    done: bool = False`
+      : `class ${model.name || 'MyModel'}(BaseModel):
+    name: str
+    description: str = ""
+    done: bool = False`;
+
+  // Auto-resize textarea
+  useEffect(() => {
+    const ta = textareaRef.current;
+    if (ta) {
+      ta.style.height = 'auto';
+      ta.style.height = Math.max(200, ta.scrollHeight) + 'px';
+    }
+  }, [model.rawCode]);
+
+  return (
+    <Stack gap="sm">
+      <Text size="xs" c="dimmed">
+        直接寫 Python class 定義。支援 Annotated、DisplayName、Ref、RefRevision、Binary
+        等所有 AutoCRUD 型別。import 會自動從 code 中偵測。
+      </Text>
+
+      <textarea
+        ref={textareaRef}
+        value={model.rawCode}
+        placeholder={placeholder}
+        onChange={(e) =>
+          updateModel(modelIndex, { rawCode: e.target.value })
+        }
+        style={{
+          fontFamily: 'ui-monospace, "Cascadia Code", "Source Code Pro", Menlo, monospace',
+          fontSize: '13px',
+          lineHeight: '1.5',
+          padding: '12px',
+          borderRadius: '8px',
+          border: '1px solid var(--mantine-color-default-border)',
+          backgroundColor: 'var(--mantine-color-body)',
+          color: 'var(--mantine-color-text)',
+          resize: 'vertical',
+          minHeight: '200px',
+          width: '100%',
+          outline: 'none',
+          tabSize: 4,
+        }}
+        spellCheck={false}
+      />
+
+      <Text size="xs" c="dimmed">
+        提示: 你也可以從下方的「Built-in Type 一覽」複製程式碼片段到這裡。
+      </Text>
+    </Stack>
+  );
+}
+
+// ─── Built-in Type Palette ─────────────────────────────────────
+
+interface PaletteProps {
+  model: ModelDefinition;
+  modelIndex: number;
+  updateModel: (index: number, patch: Partial<ModelDefinition>) => void;
+}
+
+function BuiltinTypePalette({ model, modelIndex, updateModel }: PaletteProps) {
+  const [copied, setCopied] = useState<string | null>(null);
+
+  const copySnippet = useCallback(
+    (name: string, snippet: string) => {
+      navigator.clipboard.writeText(snippet).then(() => {
+        setCopied(name);
+        setTimeout(() => setCopied(null), 1500);
+      });
+    },
+    []
+  );
+
+  const insertToCode = useCallback(
+    (snippet: string) => {
+      if (model.inputMode === 'code') {
+        const code = model.rawCode
+          ? model.rawCode + '\n    ' + snippet
+          : snippet;
+        updateModel(modelIndex, { rawCode: code });
+      }
+    },
+    [model, modelIndex, updateModel]
+  );
+
+  return (
+    <Accordion variant="separated">
+      <Accordion.Item value="builtin-types">
+        <Accordion.Control>
+          <Group>
+            <Text fw={500} size="sm">
+              Built-in Type 一覽
+            </Text>
+            <Badge size="sm" variant="light">
+              {BUILTIN_TYPES.length} 種
+            </Badge>
+          </Group>
+        </Accordion.Control>
+        <Accordion.Panel>
+          <Stack gap="sm">
+            {BUILTIN_TYPES.map((bt) => (
+              <Paper key={bt.name} p="sm" withBorder>
+                <Group justify="space-between" mb="xs">
+                  <Group gap="xs">
+                    <Text size="lg">{bt.icon}</Text>
+                    <Text fw={600} size="sm">
+                      {bt.name}
+                    </Text>
+                  </Group>
+                  <Group gap="xs">
+                    <Tooltip
+                      label={copied === bt.name ? '已複製！' : '複製程式碼'}
+                    >
+                      <ActionIcon
+                        size="sm"
+                        variant="subtle"
+                        onClick={() =>
+                          copySnippet(bt.name, bt.codeSnippet)
+                        }
+                      >
+                        <IconCopy size={14} />
+                      </ActionIcon>
+                    </Tooltip>
+                    {model.inputMode === 'code' && (
+                      <Button
+                        size="xs"
+                        variant="light"
+                        onClick={() => insertToCode(bt.codeSnippet)}
+                      >
+                        插入到 Code
+                      </Button>
+                    )}
+                  </Group>
+                </Group>
+                <Text size="xs" mb="xs">
+                  {bt.description}
+                </Text>
+                <Text size="xs" c="dimmed" mb="xs">
+                  {bt.detailedDescription}
+                </Text>
+                <Code block>{bt.importStatement + '\n\n' + bt.codeSnippet}</Code>
+              </Paper>
+            ))}
+          </Stack>
+        </Accordion.Panel>
+      </Accordion.Item>
+    </Accordion>
+  );
+}
