@@ -40,7 +40,24 @@ jobs:
     - name: 構建文檔
       run: |
         uv run mkdocs build --clean
-        
+
+    - name: 設置 Node.js
+      uses: actions/setup-node@v4
+      with:
+        node-version: '20'
+
+    - name: 安裝 pnpm
+      uses: pnpm/action-setup@v4
+      with:
+        version: 10
+
+    - name: 構建 Wizard
+      run: |
+        cd wizard
+        pnpm install --frozen-lockfile
+        pnpm build
+        cp -r dist ../site/wizard
+
     - name: 設置 Pages
       uses: actions/configure-pages@v4
         
