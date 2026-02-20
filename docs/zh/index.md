@@ -15,6 +15,14 @@ description: 模型驅動的自動化 FastAPI：內建版本控制、權限與�
 
     [:octicons-arrow-right-24: 開始使用](getting-started/quickstart.md)
 
+-   :material-wizard-hat:{ .lg .middle } __Starter Wizard__
+
+    ---
+
+    互動式快速生成完整 AutoCRUD 專案，零樣板配置
+
+    [:octicons-arrow-right-24: 開始使用 Wizard](https://hychou0515.github.io/autocrud/wizard/){ target="_blank" }
+
 -   :material-cog-outline:{ .lg .middle } __自動化一切__
 
     ---
@@ -38,14 +46,6 @@ description: 模型驅動的自動化 FastAPI：內建版本控制、權限與�
     靈活的事件系統、自定義路由與混合儲存策略
 
     [:octicons-arrow-right-24: 查看範例](examples/index.md)
-
--   :material-wizard-hat:{ .lg .middle } __Starter Wizard__
-
-    ---
-
-    互動式快速生成完整 AutoCRUD 專案，零樣板配置
-
-    [:octicons-arrow-right-24: 開始使用 Wizard](https://hychou0515.github.io/autocrud/wizard/){ target="_blank" }
 
 </div>
 

@@ -20,6 +20,12 @@
 - 🔧 **高度可定制**：靈活的路由命名、索引欄位、事件處理器與權限檢查
 - 🏎️ **高性能**：基於 FastAPI + msgspec，低延遲高吞吐
 
+## 🧙 Starter Wizard
+
+使用互動式 **Starter Wizard** 快速生成可直接執行的 AutoCRUD 專案，包含模型、儲存與權限配置 — 免去手動撰寫樣板程式碼。
+
+👉 [https://hychou0515.github.io/autocrud/wizard/](https://hychou0515.github.io/autocrud/wizard/)
+
 ## 功能概覽
 
 | 功能 | 說明 |
@@ -67,12 +73,6 @@ pip install "autocrud[magic]"
 ## 文檔
 
 https://hychou0515.github.io/autocrud/
-
-## 🧙 Starter Wizard
-
-使用互動式 **Starter Wizard** 快速生成可直接執行的 AutoCRUD 專案，包含模型、儲存與權限配置 — 免去手動撰寫樣板程式碼。
-
-👉 [https://hychou0515.github.io/autocrud/wizard/](https://hychou0515.github.io/autocrud/wizard/)
 
 ## 第一個 API
 

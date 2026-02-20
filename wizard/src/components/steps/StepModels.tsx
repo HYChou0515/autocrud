@@ -1,4 +1,4 @@
-import { useState, useCallback, useRef, useEffect } from "react";
+import { useState, useCallback } from "react";
 import {
   Stack,
   Title,
@@ -1099,8 +1099,6 @@ function CodeModeEditor({
   updateModel,
   modelStyle,
 }: CodeEditorProps) {
-  const textareaRef = useRef<HTMLTextAreaElement>(null);
-
   const placeholder =
     modelStyle === "struct"
       ? `class ${model.name || "MyModel"}(Struct):
@@ -1112,15 +1110,6 @@ function CodeModeEditor({
     description: str = ""
     done: bool = False`;
 
-  // Auto-resize textarea
-  useEffect(() => {
-    const ta = textareaRef.current;
-    if (ta) {
-      ta.style.height = "auto";
-      ta.style.height = Math.max(200, ta.scrollHeight) + "px";
-    }
-  }, [model.rawCode]);
-
   return (
     <Stack gap="sm">
       <Text size="xs" c="dimmed">
@@ -1129,29 +1118,32 @@ function CodeModeEditor({
         型別。import 會自動從 code 中偵測。
       </Text>
 
-      <textarea
-        ref={textareaRef}
-        value={model.rawCode}
-        placeholder={placeholder}
-        onChange={(e) => updateModel(modelIndex, { rawCode: e.target.value })}
+      <div
         style={{
-          fontFamily:
-            'ui-monospace, "Cascadia Code", "Source Code Pro", Menlo, monospace',
-          fontSize: "13px",
-          lineHeight: "1.5",
-          padding: "12px",
-          borderRadius: "8px",
           border: "1px solid var(--mantine-color-default-border)",
-          backgroundColor: "var(--mantine-color-body)",
-          color: "var(--mantine-color-text)",
-          resize: "vertical",
-          minHeight: "200px",
-          width: "100%",
-          outline: "none",
-          tabSize: 4,
+          borderRadius: 4,
+          overflow: "hidden",
         }}
-        spellCheck={false}
-      />
+      >
+        <Editor
+          height="240px"
+          language="python"
+          theme="vs-dark"
+          value={model.rawCode || ""}
+          onChange={(value) =>
+            updateModel(modelIndex, { rawCode: value || "" })
+          }
+          options={{
+            minimap: { enabled: false },
+            lineNumbers: "on",
+            fontSize: 13,
+            scrollBeyondLastLine: false,
+            wordWrap: "on",
+            tabSize: 4,
+            placeholder: placeholder,
+          }}
+        />
+      </div>
 
       <Text size="xs" c="dimmed">
         提示: 你也可以從下方的「Built-in Type 一覽」複製程式碼片段到這裡。
@@ -1191,7 +1183,7 @@ function BuiltinTypePalette({ model, modelIndex, updateModel }: PaletteProps) {
   );
 
   return (
-    <Accordion variant="separated">
+    <Accordion variant="separated" defaultValue="builtin-types">
       <Accordion.Item value="builtin-types">
         <Accordion.Control>
           <Group>

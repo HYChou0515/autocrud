@@ -20,6 +20,12 @@
 - 🔧 **Highly customizable**: Flexible route naming, indexed fields, event handlers, and permission checks.
 - 🏎️ **High performance**: Built on FastAPI + msgspec for low latency and high throughput.
 
+## 🧙 Starter Wizard
+
+Use the interactive **Starter Wizard** to generate a ready-to-run AutoCRUD project with your models, storage, and permissions configured — no boilerplate needed.
+
+👉 [https://hychou0515.github.io/autocrud/wizard/](https://hychou0515.github.io/autocrud/wizard/)
+
 ## Feature Overview
 
 | Feature | Description |
@@ -68,12 +74,6 @@ pip install "autocrud[magic]"
 ## Documentation
 
 https://hychou0515.github.io/autocrud/
-
-## 🧙 Starter Wizard
-
-Use the interactive **Starter Wizard** to generate a ready-to-run AutoCRUD project with your models, storage, and permissions configured — no boilerplate needed.
-
-👉 [https://hychou0515.github.io/autocrud/wizard/](https://hychou0515.github.io/autocrud/wizard/)
 
 ## Your First API
 
