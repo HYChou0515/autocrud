@@ -49,7 +49,7 @@ function App() {
           <Title order={1}>AutoCRUD Starter Wizard</Title>
           <Text c="dimmed" size="sm">
             快速產生 AutoCRUD Python 專案模板 —{" "}
-            <Anchor href="https://github.com/hychou/autocrud" target="_blank">
+            <Anchor href="https://github.com/HYChou0515/autocrud" target="_blank">
               autocrud
             </Anchor>
           </Text>

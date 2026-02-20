@@ -39,6 +39,14 @@ description: 模型驅動的自動化 FastAPI：內建版本控制、權限與�
 
     [:octicons-arrow-right-24: 查看範例](examples/index.md)
 
+-   :material-wizard-hat:{ .lg .middle } __Starter Wizard__
+
+    ---
+
+    互動式快速生成完整 AutoCRUD 專案，零樣板配置
+
+    [:octicons-arrow-right-24: 開始使用 Wizard](https://hychou0515.github.io/autocrud/wizard/){ target="_blank" }
+
 </div>
 
 ## 特色功能
@@ -161,5 +169,6 @@ crud.apply(app)
 -   [:material-domain: 架構概覽](core-concepts/architecture.md)
 -   [:material-api: AutoCRUD 路由](core-concepts/auto-routes.md)
 -   [:material-code-braces: 範例集](examples/index.md)
+-   [:material-wizard-hat: Starter Wizard](https://hychou0515.github.io/autocrud/wizard/){ target="_blank" }
 
 </div>
