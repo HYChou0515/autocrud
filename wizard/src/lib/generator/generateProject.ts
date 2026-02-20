@@ -10,6 +10,7 @@ import type {
   ModelDefinition,
   FieldDefinition,
   EnumDefinition,
+  SubStructDefinition,
 } from '@/types/wizard';
 
 // ─── Public API ────────────────────────────────────────────────
@@ -101,7 +102,11 @@ export function generateMainPy(state: WizardState): string {
   const enumDefs = generateEnumDefinitions(state);
   if (enumDefs) sections.push(enumDefs);
 
-  // 3. Model definitions
+  // 3. Sub-struct definitions (from form-mode models)
+  const subStructDefs = generateSubStructDefinitions(state);
+  if (subStructDefs) sections.push(subStructDefs);
+
+  // 4. Model definitions
   sections.push(generateModelDefinitions(state));
 
   // 4. Validators
@@ -157,6 +162,14 @@ export function generateImports(state: WizardState): string {
         }
         if (field.type === 'Binary') {
           autocrudTypesImports.add('Binary');
+        }
+        if (
+          field.type === 'dict' &&
+          field.dictKeyType &&
+          field.dictValueType &&
+          field.dictValueType === 'Any'
+        ) {
+          typingImports.add('Any');
         }
       }
       if (model.enums.length > 0) {
@@ -270,6 +283,51 @@ function generateSingleEnum(en: EnumDefinition): string {
   return lines.join('\n');
 }
 
+// ─── Sub-struct Generation ─────────────────────────────────────
+
+export function generateSubStructDefinitions(state: WizardState): string {
+  const subStructs: SubStructDefinition[] = [];
+
+  for (const model of state.models) {
+    if (model.inputMode === 'form' && model.subStructs) {
+      subStructs.push(...model.subStructs);
+    }
+  }
+
+  if (subStructs.length === 0) return '';
+
+  return subStructs.map(generateSingleSubStruct).join('\n\n');
+}
+
+function generateSingleSubStruct(ss: SubStructDefinition): string {
+  let tagSuffix = '';
+  if (ss.tag === true) {
+    tagSuffix = ', tag=True';
+  } else if (ss.tag) {
+    tagSuffix = `, tag="${ss.tag}"`;
+  }
+  const lines: string[] = [`class ${ss.name}(Struct${tagSuffix}):`];
+
+  if (ss.fields.length === 0) {
+    lines.push('    pass');
+  } else {
+    // Same field ordering logic as generateFormModel
+    const requiredFields = ss.fields.filter(
+      (f) => !f.optional && !f.default,
+    );
+    const defaultedFields = ss.fields.filter(
+      (f) => f.optional || !!f.default,
+    );
+    const orderedFields = [...requiredFields, ...defaultedFields];
+
+    for (const field of orderedFields) {
+      lines.push('    ' + generateFieldLine(field));
+    }
+  }
+
+  return lines.join('\n');
+}
+
 // ─── Model Generation ──────────────────────────────────────────
 
 export function generateModelDefinitions(state: WizardState): string {
@@ -368,6 +426,24 @@ export function resolveFieldType(field: FieldDefinition): string {
       if (!refRev) return 'str';
       const innerType = field.optional ? 'Optional[str]' : 'str';
       return `Annotated[${innerType}, RefRevision("${refRev.resource}")]`;
+    }
+    case 'dict': {
+      if (field.dictKeyType && field.dictValueType) {
+        baseType = `dict[${field.dictKeyType}, ${field.dictValueType}]`;
+      } else {
+        baseType = 'dict';
+      }
+      break;
+    }
+    case 'Struct': {
+      if (!field.structName) return 'str';
+      baseType = field.structName;
+      break;
+    }
+    case 'Union': {
+      if (!field.unionMembers || field.unionMembers.length === 0) return 'str';
+      baseType = field.unionMembers.join(' | ');
+      break;
     }
     case 'Enum':
       // The enum name should be set in the default or derived from context
@@ -618,6 +694,12 @@ function fieldTypeToPythonType(field: FieldDefinition): string {
       return 'bool';
     case 'datetime':
       return 'dt.datetime';
+    case 'dict':
+      return 'dict';
+    case 'Struct':
+      return field.structName || 'str';
+    case 'Union':
+      return field.unionMembers?.join(' | ') || 'str';
     case 'Enum':
       return capitalizeFirst(field.name);
     default:

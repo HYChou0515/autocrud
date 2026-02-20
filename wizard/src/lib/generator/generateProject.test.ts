@@ -11,6 +11,7 @@ import {
   resolveFieldType,
   generateValidators,
   generateEnumDefinitions,
+  generateSubStructDefinitions,
   generateReadme,
   computeDependencies,
   toSnakeCase,
@@ -43,6 +44,10 @@ function makeField(overrides: Partial<FieldDefinition> = {}): FieldDefinition {
     isList: false,
     ref: null,
     refRevision: null,
+    dictKeyType: null,
+    dictValueType: null,
+    structName: null,
+    unionMembers: null,
     ...overrides,
   };
 }
@@ -776,5 +781,361 @@ describe('toSnakeCase', () => {
 
   it('handles already snake_case', () => {
     expect(toSnakeCase('already_snake')).toBe('already_snake');
+  });
+});
+
+// ─── Phase 1: DisplayName 互斥 (generator protection) ─────────
+
+describe('DisplayName edge cases', () => {
+  it('multiple isDisplayName fields → all get Annotated', () => {
+    // Generator faithfully generates what it's given — UI should enforce exclusivity
+    const model = makeModel({
+      name: 'Multi',
+      fields: [
+        makeField({ name: 'a', type: 'str', isDisplayName: true }),
+        makeField({ name: 'b', type: 'str', isDisplayName: true }),
+      ],
+    });
+    const code = generateFormModel(model, 'struct');
+    expect(code).toContain('a: Annotated[str, DisplayName()]');
+    expect(code).toContain('b: Annotated[str, DisplayName()]');
+  });
+
+  it('isDisplayName on non-str field → ignored', () => {
+    const result = resolveFieldType(
+      makeField({ type: 'int', isDisplayName: true }),
+    );
+    expect(result).toBe('int');
+    expect(result).not.toContain('DisplayName');
+  });
+});
+
+// ─── Phase 2: Dict ─────────────────────────────────────────────
+
+describe('dict field type', () => {
+  it('bare dict → dict', () => {
+    expect(resolveFieldType(makeField({ type: 'dict' }))).toBe('dict');
+  });
+
+  it('typed dict → dict[str, int]', () => {
+    expect(
+      resolveFieldType(
+        makeField({ type: 'dict', dictKeyType: 'str', dictValueType: 'int' }),
+      ),
+    ).toBe('dict[str, int]');
+  });
+
+  it('optional dict → Optional[dict]', () => {
+    expect(
+      resolveFieldType(makeField({ type: 'dict', optional: true })),
+    ).toBe('Optional[dict]');
+  });
+
+  it('list of dict → list[dict]', () => {
+    expect(
+      resolveFieldType(makeField({ type: 'dict', isList: true })),
+    ).toBe('list[dict]');
+  });
+
+  it('optional typed dict → Optional[dict[str, Any]]', () => {
+    expect(
+      resolveFieldType(
+        makeField({
+          type: 'dict',
+          optional: true,
+          dictKeyType: 'str',
+          dictValueType: 'Any',
+        }),
+      ),
+    ).toBe('Optional[dict[str, Any]]');
+  });
+
+  it('dict field line with default', () => {
+    const line = generateFieldLine(
+      makeField({ name: 'extra', type: 'dict', default: '{}' }),
+    );
+    expect(line).toBe('extra: dict = {}');
+  });
+
+  it('dict imports Any when used in typed dict', () => {
+    const model = makeModel({
+      fields: [
+        makeField({ type: 'dict', dictKeyType: 'str', dictValueType: 'Any' }),
+      ],
+    });
+    const imports = generateImports(makeState({ models: [model] }));
+    expect(imports).toContain('Any');
+  });
+});
+
+// ─── Phase 3: Sub-struct / Nested Class ────────────────────────
+
+describe('Struct field type', () => {
+  it('Struct → struct name', () => {
+    expect(
+      resolveFieldType(makeField({ type: 'Struct', structName: 'Equipment' })),
+    ).toBe('Equipment');
+  });
+
+  it('list[Struct] → list[Equipment]', () => {
+    expect(
+      resolveFieldType(
+        makeField({ type: 'Struct', structName: 'Equipment', isList: true }),
+      ),
+    ).toBe('list[Equipment]');
+  });
+
+  it('optional Struct → Optional[Equipment]', () => {
+    expect(
+      resolveFieldType(
+        makeField({ type: 'Struct', structName: 'Equipment', optional: true }),
+      ),
+    ).toBe('Optional[Equipment]');
+  });
+
+  it('Struct without structName → fallback to str', () => {
+    expect(resolveFieldType(makeField({ type: 'Struct' }))).toBe('str');
+  });
+});
+
+describe('generateSubStructDefinitions', () => {
+  it('returns empty string when no sub-structs', () => {
+    expect(generateSubStructDefinitions(makeState())).toBe('');
+  });
+
+  it('generates sub-struct class', () => {
+    const model = makeModel({
+      subStructs: [
+        {
+          name: 'Equipment',
+          tag: '',
+          fields: [
+            makeField({ name: 'slot', type: 'str' }),
+            makeField({ name: 'level', type: 'int', default: '1' }),
+          ],
+        },
+      ],
+    });
+    const result = generateSubStructDefinitions(
+      makeState({ models: [model] }),
+    );
+    expect(result).toContain('class Equipment(Struct):');
+    expect(result).toContain('slot: str');
+    expect(result).toContain('level: int = 1');
+  });
+
+  it('generates tagged sub-struct', () => {
+    const model = makeModel({
+      subStructs: [
+        {
+          name: 'ActiveSkill',
+          tag: 'active',
+          fields: [makeField({ name: 'damage', type: 'int' })],
+        },
+      ],
+    });
+    const result = generateSubStructDefinitions(
+      makeState({ models: [model] }),
+    );
+    expect(result).toContain('class ActiveSkill(Struct, tag="active"):');
+  });
+
+  it('ignores code-mode models', () => {
+    const model = makeModel({
+      inputMode: 'code',
+      subStructs: [
+        {
+          name: 'Foo',
+          tag: '',
+          fields: [makeField({ name: 'x', type: 'int' })],
+        },
+      ],
+    });
+    const result = generateSubStructDefinitions(
+      makeState({ models: [model] }),
+    );
+    expect(result).toBe('');
+  });
+
+  it('generates multiple sub-structs across models', () => {
+    const m1 = makeModel({
+      name: 'A',
+      subStructs: [
+        { name: 'Sub1', tag: '', fields: [makeField({ name: 'x', type: 'int' })] },
+      ],
+    });
+    const m2 = makeModel({
+      name: 'B',
+      subStructs: [
+        { name: 'Sub2', tag: 'two', fields: [makeField({ name: 'y', type: 'str' })] },
+      ],
+    });
+    const result = generateSubStructDefinitions(
+      makeState({ models: [m1, m2] }),
+    );
+    expect(result).toContain('class Sub1(Struct):');
+    expect(result).toContain('class Sub2(Struct, tag="two"):');
+  });
+
+  it('generates auto-tagged sub-struct (tag=True)', () => {
+    const model = makeModel({
+      subStructs: [
+        {
+          name: 'Warrior',
+          tag: true,
+          fields: [makeField({ name: 'strength', type: 'int' })],
+        },
+      ],
+    });
+    const result = generateSubStructDefinitions(
+      makeState({ models: [model] }),
+    );
+    expect(result).toContain('class Warrior(Struct, tag=True):');
+    expect(result).not.toContain('tag="True"');
+    expect(result).not.toContain('tag="true"');
+  });
+});
+
+// ─── Phase 4: Union ────────────────────────────────────────────
+
+describe('Union field type', () => {
+  it('simple union → str | int', () => {
+    expect(
+      resolveFieldType(
+        makeField({ type: 'Union', unionMembers: ['str', 'int'] }),
+      ),
+    ).toBe('str | int');
+  });
+
+  it('struct union → A | B | C', () => {
+    expect(
+      resolveFieldType(
+        makeField({
+          type: 'Union',
+          unionMembers: ['ActiveSkill', 'PassiveSkill', 'UltimateSkill'],
+        }),
+      ),
+    ).toBe('ActiveSkill | PassiveSkill | UltimateSkill');
+  });
+
+  it('optional union → Optional[str | int]', () => {
+    expect(
+      resolveFieldType(
+        makeField({
+          type: 'Union',
+          unionMembers: ['str', 'int'],
+          optional: true,
+        }),
+      ),
+    ).toBe('Optional[str | int]');
+  });
+
+  it('list of union → list[str | int]', () => {
+    expect(
+      resolveFieldType(
+        makeField({
+          type: 'Union',
+          unionMembers: ['str', 'int'],
+          isList: true,
+        }),
+      ),
+    ).toBe('list[str | int]');
+  });
+
+  it('Union without members → fallback to str', () => {
+    expect(resolveFieldType(makeField({ type: 'Union' }))).toBe('str');
+    expect(
+      resolveFieldType(makeField({ type: 'Union', unionMembers: [] })),
+    ).toBe('str');
+  });
+});
+
+// ─── Integration: main.py with new types ───────────────────────
+
+describe('generateMainPy with new types', () => {
+  it('sub-struct definitions appear before model definitions', () => {
+    const model = makeModel({
+      name: 'Character',
+      subStructs: [
+        {
+          name: 'Equipment',
+          tag: '',
+          fields: [makeField({ name: 'slot', type: 'str' })],
+        },
+      ],
+      fields: [
+        makeField({
+          name: 'equipments',
+          type: 'Struct',
+          structName: 'Equipment',
+          isList: true,
+          default: '[]',
+        }),
+      ],
+    });
+    const code = generateMainPy(makeState({ models: [model] }));
+    const subStructIdx = code.indexOf('class Equipment(Struct):');
+    const modelIdx = code.indexOf('class Character(Struct):');
+    expect(subStructIdx).toBeGreaterThan(-1);
+    expect(modelIdx).toBeGreaterThan(-1);
+    expect(subStructIdx).toBeLessThan(modelIdx);
+    expect(code).toContain('equipments: list[Equipment] = []');
+  });
+
+  it('dict field generates correct code', () => {
+    const model = makeModel({
+      name: 'Event',
+      fields: [
+        makeField({
+          name: 'extra_data',
+          type: 'dict',
+          default: '{}',
+        }),
+      ],
+    });
+    const code = generateMainPy(makeState({ models: [model] }));
+    expect(code).toContain('extra_data: dict = {}');
+  });
+
+  it('union field generates correct code', () => {
+    const model = makeModel({
+      name: 'Skill',
+      subStructs: [
+        { name: 'Active', tag: 'active', fields: [makeField({ name: 'dmg', type: 'int' })] },
+        { name: 'Passive', tag: 'passive', fields: [makeField({ name: 'buff', type: 'str' })] },
+      ],
+      fields: [
+        makeField({
+          name: 'detail',
+          type: 'Union',
+          unionMembers: ['Active', 'Passive'],
+        }),
+      ],
+    });
+    const code = generateMainPy(makeState({ models: [model] }));
+    expect(code).toContain('class Active(Struct, tag="active"):');
+    expect(code).toContain('class Passive(Struct, tag="passive"):');
+    expect(code).toContain('detail: Active | Passive');
+  });
+
+  it('auto-tagged sub-struct generates tag=True', () => {
+    const model = makeModel({
+      name: 'Hero',
+      subStructs: [
+        { name: 'MeleeClass', tag: true, fields: [makeField({ name: 'atk', type: 'int' })] },
+        { name: 'RangedClass', tag: true, fields: [makeField({ name: 'range', type: 'int' })] },
+      ],
+      fields: [
+        makeField({
+          name: 'spec',
+          type: 'Union',
+          unionMembers: ['MeleeClass', 'RangedClass'],
+        }),
+      ],
+    });
+    const code = generateMainPy(makeState({ models: [model] }));
+    expect(code).toContain('class MeleeClass(Struct, tag=True):');
+    expect(code).toContain('class RangedClass(Struct, tag=True):');
+    expect(code).toContain('spec: MeleeClass | RangedClass');
   });
 });

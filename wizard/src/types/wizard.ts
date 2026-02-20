@@ -50,12 +50,19 @@ export interface ModelDefinition {
   // Form mode
   fields: FieldDefinition[];
   enums: EnumDefinition[];
+  subStructs: SubStructDefinition[];
 
   // Code mode
   rawCode: string;
 
   // Shared settings
   enableValidator: boolean;
+}
+
+export interface SubStructDefinition {
+  name: string;
+  fields: FieldDefinition[];
+  tag: string | boolean; // '' = no tag, true = auto (tag=True), string = custom tag
 }
 
 export interface FieldDefinition {
@@ -70,6 +77,14 @@ export interface FieldDefinition {
   // Ref configuration
   ref: RefConfig | null;
   refRevision: RefRevisionConfig | null;
+
+  // Dict configuration (null = bare dict)
+  dictKeyType: string | null;
+  dictValueType: string | null;
+
+  // Struct / Union configuration
+  structName: string | null;
+  unionMembers: string[] | null;
 }
 
 export type FieldType =
@@ -78,10 +93,13 @@ export type FieldType =
   | 'float'
   | 'bool'
   | 'datetime'
+  | 'dict'
   | 'Binary'
   | 'Ref'
   | 'RefRevision'
-  | 'Enum';
+  | 'Enum'
+  | 'Struct'
+  | 'Union';
 
 export interface RefConfig {
   resource: string;
@@ -148,6 +166,10 @@ export function createDefaultModel(): ModelDefinition {
         isList: false,
         ref: null,
         refRevision: null,
+        dictKeyType: null,
+        dictValueType: null,
+        structName: null,
+        unionMembers: null,
       },
       {
         name: 'description',
@@ -159,6 +181,10 @@ export function createDefaultModel(): ModelDefinition {
         isList: false,
         ref: null,
         refRevision: null,
+        dictKeyType: null,
+        dictValueType: null,
+        structName: null,
+        unionMembers: null,
       },
       {
         name: 'done',
@@ -170,9 +196,14 @@ export function createDefaultModel(): ModelDefinition {
         isList: false,
         ref: null,
         refRevision: null,
+        dictKeyType: null,
+        dictValueType: null,
+        structName: null,
+        unionMembers: null,
       },
     ],
     enums: [],
+    subStructs: [],
     rawCode: `class Todo(Struct):
     title: Annotated[str, DisplayName()]
     description: str = ""
@@ -192,6 +223,18 @@ export function createEmptyField(): FieldDefinition {
     isList: false,
     ref: null,
     refRevision: null,
+    dictKeyType: null,
+    dictValueType: null,
+    structName: null,
+    unionMembers: null,
+  };
+}
+
+export function createEmptySubStruct(): SubStructDefinition {
+  return {
+    name: '',
+    fields: [createEmptyField()],
+    tag: '',
   };
 }
 
@@ -218,9 +261,14 @@ export function createEmptyModel(): ModelDefinition {
         isList: false,
         ref: null,
         refRevision: null,
+        dictKeyType: null,
+        dictValueType: null,
+        structName: null,
+        unionMembers: null,
       },
     ],
     enums: [],
+    subStructs: [],
     rawCode: '',
     enableValidator: false,
   };

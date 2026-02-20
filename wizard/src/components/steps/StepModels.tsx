@@ -6,6 +6,8 @@ import {
   Group,
   TextInput,
   Select,
+  MultiSelect,
+  TagsInput,
   Switch,
   ActionIcon,
   Paper,
@@ -20,6 +22,7 @@ import {
   Divider,
   ScrollArea,
 } from '@mantine/core';
+import type { ComboboxLikeRenderOptionInput } from '@mantine/core';
 import {
   IconPlus,
   IconTrash,
@@ -33,11 +36,13 @@ import type {
   FieldDefinition,
   FieldType,
   EnumDefinition,
+  SubStructDefinition,
 } from '@/types/wizard';
 import {
   createEmptyField,
   createEmptyModel,
   createEmptyEnum,
+  createEmptySubStruct,
   BUILTIN_TYPES,
 } from '@/types/wizard';
 
@@ -46,22 +51,86 @@ interface Props {
   onChange: (patch: Partial<WizardState>) => void;
 }
 
-const FIELD_TYPE_OPTIONS: { value: FieldType; label: string }[] = [
+const FIELD_TYPE_OPTIONS: {
+  value: FieldType;
+  label: string;
+  description?: string;
+}[] = [
   { value: 'str', label: 'str' },
   { value: 'int', label: 'int' },
   { value: 'float', label: 'float' },
   { value: 'bool', label: 'bool' },
   { value: 'datetime', label: 'datetime' },
-  { value: 'Binary', label: 'Binary' },
-  { value: 'Ref', label: 'Ref' },
-  { value: 'RefRevision', label: 'RefRevision' },
-  { value: 'Enum', label: 'Enum' },
+  {
+    value: 'dict',
+    label: 'dict',
+    description: '字典型別，可選 dict 或 dict[K, V]',
+  },
+  {
+    value: 'Binary',
+    label: 'Binary',
+    description: '二進位資料，自動存入 blob store',
+  },
+  {
+    value: 'Ref',
+    label: 'Ref',
+    description: '外鍵，關聯到另一個 resource',
+  },
+  {
+    value: 'RefRevision',
+    label: 'RefRevision',
+    description: '參照特定 resource 的某個 revision',
+  },
+  {
+    value: 'Enum',
+    label: 'Enum',
+    description: '列舉型別，需先在下方定義 Enum',
+  },
+  {
+    value: 'Struct',
+    label: 'Struct',
+    description: '巢狀結構，需先在下方定義 Sub-struct',
+  },
+  {
+    value: 'Union',
+    label: 'Union',
+    description: '聯合型別，如 str | int 或 tagged union',
+  },
 ];
 
 const ON_DELETE_OPTIONS = [
   { value: 'dangling', label: 'dangling（預設）' },
   { value: 'set_null', label: 'set_null（設為 null）' },
   { value: 'cascade', label: 'cascade（連帶刪除）' },
+];
+
+// Description lookup for field type options
+const TYPE_DESCRIPTION_MAP = Object.fromEntries(
+  FIELD_TYPE_OPTIONS.filter((o) => o.description).map((o) => [
+    o.value,
+    o.description,
+  ]),
+);
+
+function renderTypeOption({
+  option,
+}: ComboboxLikeRenderOptionInput<{ value: string; label: string }>) {
+  const desc = TYPE_DESCRIPTION_MAP[option.value];
+  if (!desc) return option.label;
+  return (
+    <div>
+      <Text size="sm">{option.label}</Text>
+      <Text size="xs" c="dimmed">
+        {desc}
+      </Text>
+    </div>
+  );
+}
+
+const TAG_MODE_OPTIONS = [
+  { value: '', label: '無' },
+  { value: '__auto__', label: '自動 (tag=True)' },
+  { value: '__custom__', label: '自訂 tag 值' },
 ];
 
 export function StepModels({ state, onChange }: Props) {
@@ -263,6 +332,19 @@ function FormModeEditor({
     updateModel(modelIndex, { fields });
   };
 
+  const setDisplayName = (fieldIndex: number, checked: boolean) => {
+    // Radio semantics: only one field can be DisplayName per model
+    if (checked) {
+      const fields = model.fields.map((f, i) => ({
+        ...f,
+        isDisplayName: i === fieldIndex,
+      }));
+      updateModel(modelIndex, { fields });
+    } else {
+      updateField(fieldIndex, { isDisplayName: false });
+    }
+  };
+
   const addField = () => {
     updateModel(modelIndex, { fields: [...model.fields, createEmptyField()] });
   };
@@ -290,8 +372,33 @@ function FormModeEditor({
     });
   };
 
+  // Sub-struct helpers
+  const addSubStruct = () => {
+    updateModel(modelIndex, {
+      subStructs: [...(model.subStructs || []), createEmptySubStruct()],
+    });
+  };
+
+  const updateSubStruct = (
+    ssIndex: number,
+    patch: Partial<SubStructDefinition>,
+  ) => {
+    const subStructs = [...(model.subStructs || [])];
+    subStructs[ssIndex] = { ...subStructs[ssIndex], ...patch };
+    updateModel(modelIndex, { subStructs });
+  };
+
+  const removeSubStruct = (ssIndex: number) => {
+    updateModel(modelIndex, {
+      subStructs: (model.subStructs || []).filter((_, i) => i !== ssIndex),
+    });
+  };
+
   const modelNames = state.models.map((m) => m.name).filter(Boolean);
   const enumNames = model.enums.map((e) => e.name).filter(Boolean);
+  const subStructNames = (model.subStructs || [])
+    .map((s) => s.name)
+    .filter(Boolean);
 
   return (
     <Stack gap="md">
@@ -320,9 +427,11 @@ function FormModeEditor({
                 field={field}
                 fieldIndex={fi}
                 updateField={updateField}
+                setDisplayName={setDisplayName}
                 removeField={removeField}
                 modelNames={modelNames}
                 enumNames={enumNames}
+                subStructNames={subStructNames}
               />
             ))}
           </Table.Tbody>
@@ -336,6 +445,28 @@ function FormModeEditor({
         onClick={addField}
       >
         新增欄位
+      </Button>
+
+      {/* Sub-struct definitions */}
+      {(model.subStructs || []).length > 0 && (
+        <Divider label="Sub-struct 定義" />
+      )}
+      {(model.subStructs || []).map((ss, si) => (
+        <SubStructEditor
+          key={si}
+          subStruct={ss}
+          ssIndex={si}
+          updateSubStruct={updateSubStruct}
+          removeSubStruct={removeSubStruct}
+        />
+      ))}
+      <Button
+        size="xs"
+        variant="light"
+        leftSection={<IconPlus size={14} />}
+        onClick={addSubStruct}
+      >
+        新增 Sub-struct
       </Button>
 
       {/* Enum definitions */}
@@ -367,18 +498,22 @@ interface FieldRowProps {
   field: FieldDefinition;
   fieldIndex: number;
   updateField: (index: number, patch: Partial<FieldDefinition>) => void;
+  setDisplayName: (fieldIndex: number, checked: boolean) => void;
   removeField: (index: number) => void;
   modelNames: string[];
   enumNames: string[];
+  subStructNames: string[];
 }
 
 function FieldRow({
   field,
   fieldIndex,
   updateField,
+  setDisplayName,
   removeField,
   modelNames,
   enumNames,
+  subStructNames,
 }: FieldRowProps) {
   return (
     <>
@@ -398,6 +533,7 @@ function FieldRow({
             size="xs"
             data={FIELD_TYPE_OPTIONS}
             value={field.type}
+            renderOption={renderTypeOption}
             onChange={(v) =>
               updateField(fieldIndex, { type: (v as FieldType) || 'str' })
             }
@@ -444,8 +580,9 @@ function FieldRow({
           <Checkbox
             size="xs"
             checked={field.isDisplayName}
+            disabled={field.type !== 'str'}
             onChange={(e) =>
-              updateField(fieldIndex, { isDisplayName: e.currentTarget.checked })
+              setDisplayName(fieldIndex, e.currentTarget.checked)
             }
           />
         </Table.Td>
@@ -546,6 +683,95 @@ function FieldRow({
           </Table.Td>
         </Table.Tr>
       )}
+
+      {/* Dict config: optional key/value type */}
+      {field.type === 'dict' && (
+        <Table.Tr>
+          <Table.Td colSpan={8}>
+            <Group gap="sm" ml="md">
+              <TextInput
+                size="xs"
+                label="Key Type（可選）"
+                placeholder="str"
+                value={field.dictKeyType || ''}
+                onChange={(e) =>
+                  updateField(fieldIndex, {
+                    dictKeyType: e.currentTarget.value || null,
+                  })
+                }
+                w={150}
+              />
+              <TextInput
+                size="xs"
+                label="Value Type（可選）"
+                placeholder="Any"
+                value={field.dictValueType || ''}
+                onChange={(e) =>
+                  updateField(fieldIndex, {
+                    dictValueType: e.currentTarget.value || null,
+                  })
+                }
+                w={150}
+              />
+              <Text size="xs" c="dimmed" mt={20}>
+                留空則產生 bare dict
+              </Text>
+            </Group>
+          </Table.Td>
+        </Table.Tr>
+      )}
+
+      {/* Struct config: select sub-struct name */}
+      {field.type === 'Struct' && (
+        <Table.Tr>
+          <Table.Td colSpan={8}>
+            <Group gap="sm" ml="md">
+              <Select
+                size="xs"
+                label="Sub-struct"
+                description="選擇已定義的 Sub-struct"
+                data={subStructNames}
+                value={field.structName || ''}
+                onChange={(v) =>
+                  updateField(fieldIndex, { structName: v || null })
+                }
+                w={200}
+              />
+              <Text size="xs" c="dimmed" mt={20}>
+                在下方 Sub-struct 定義區域新增
+              </Text>
+            </Group>
+          </Table.Td>
+        </Table.Tr>
+      )}
+
+      {/* Union config: pick member types */}
+      {field.type === 'Union' && (
+        <Table.Tr>
+          <Table.Td colSpan={8}>
+            <Group gap="sm" ml="md">
+              <TagsInput
+                size="xs"
+                label="Union 成員"
+                description="輸入類型名稱或選擇已有類型"
+                data={[
+                  'str',
+                  'int',
+                  'float',
+                  'bool',
+                  ...subStructNames,
+                  ...modelNames,
+                ]}
+                value={field.unionMembers || []}
+                onChange={(v) =>
+                  updateField(fieldIndex, { unionMembers: v.length ? v : null })
+                }
+                w={400}
+              />
+            </Group>
+          </Table.Td>
+        </Table.Tr>
+      )}
     </>
   );
 }
@@ -637,6 +863,172 @@ function EnumEditor({
         }
       >
         新增值
+      </Button>
+    </Paper>
+  );
+}
+
+// ─── Sub-struct Editor ─────────────────────────────────────────
+
+interface SubStructEditorProps {
+  subStruct: SubStructDefinition;
+  ssIndex: number;
+  updateSubStruct: (index: number, patch: Partial<SubStructDefinition>) => void;
+  removeSubStruct: (index: number) => void;
+}
+
+function SubStructEditor({
+  subStruct,
+  ssIndex,
+  updateSubStruct,
+  removeSubStruct,
+}: SubStructEditorProps) {
+  const addField = () => {
+    updateSubStruct(ssIndex, {
+      fields: [...subStruct.fields, createEmptyField()],
+    });
+  };
+
+  const removeField = (fieldIndex: number) => {
+    updateSubStruct(ssIndex, {
+      fields: subStruct.fields.filter((_, i) => i !== fieldIndex),
+    });
+  };
+
+  const tagMode =
+    subStruct.tag === true
+      ? '__auto__'
+      : subStruct.tag
+        ? '__custom__'
+        : '';
+
+  return (
+    <Paper p="sm" withBorder>
+      <Group justify="space-between" mb="xs">
+        <Group gap="sm">
+          <TextInput
+            size="xs"
+            label="Sub-struct 名稱"
+            placeholder="MySubStruct"
+            value={subStruct.name}
+            onChange={(e) =>
+              updateSubStruct(ssIndex, { name: e.currentTarget.value })
+            }
+            w={200}
+          />
+          <Select
+            size="xs"
+            label="Tag 模式"
+            description="用於 tagged union 識別"
+            data={TAG_MODE_OPTIONS}
+            value={tagMode}
+            onChange={(v) => {
+              if (v === '__auto__') {
+                updateSubStruct(ssIndex, { tag: true });
+              } else if (v === '__custom__') {
+                updateSubStruct(ssIndex, { tag: 'my_tag' });
+              } else {
+                updateSubStruct(ssIndex, { tag: '' });
+              }
+            }}
+            w={160}
+          />
+          {tagMode === '__custom__' && (
+            <TextInput
+              size="xs"
+              label="Tag 值"
+              placeholder='e.g. "warrior"'
+              value={typeof subStruct.tag === 'string' ? subStruct.tag : ''}
+              onChange={(e) =>
+                updateSubStruct(ssIndex, { tag: e.currentTarget.value })
+              }
+              w={150}
+            />
+          )}
+        </Group>
+        <ActionIcon
+          color="red"
+          variant="subtle"
+          onClick={() => removeSubStruct(ssIndex)}
+        >
+          <IconTrash size={16} />
+        </ActionIcon>
+      </Group>
+
+      {subStruct.fields.map((field, fi) => (
+        <Group key={fi} gap="xs" mb={4}>
+          <TextInput
+            size="xs"
+            placeholder="field_name"
+            value={field.name}
+            onChange={(e) => {
+              const fields = [...subStruct.fields];
+              fields[fi] = { ...fields[fi], name: e.currentTarget.value };
+              updateSubStruct(ssIndex, { fields });
+            }}
+            w={120}
+          />
+          <Select
+            size="xs"
+            data={FIELD_TYPE_OPTIONS.filter(
+              (o) => !['Ref', 'RefRevision', 'Struct', 'Union'].includes(o.value),
+            )}
+            value={field.type}
+            renderOption={renderTypeOption}
+            onChange={(v) => {
+              const fields = [...subStruct.fields];
+              fields[fi] = {
+                ...fields[fi],
+                type: (v as FieldType) || 'str',
+              };
+              updateSubStruct(ssIndex, { fields });
+            }}
+            w={120}
+          />
+          <Checkbox
+            size="xs"
+            label="Optional"
+            checked={field.optional}
+            onChange={(e) => {
+              const fields = [...subStruct.fields];
+              fields[fi] = {
+                ...fields[fi],
+                optional: e.currentTarget.checked,
+              };
+              updateSubStruct(ssIndex, { fields });
+            }}
+          />
+          <TextInput
+            size="xs"
+            placeholder="預設值"
+            value={field.default}
+            onChange={(e) => {
+              const fields = [...subStruct.fields];
+              fields[fi] = {
+                ...fields[fi],
+                default: e.currentTarget.value,
+              };
+              updateSubStruct(ssIndex, { fields });
+            }}
+            w={100}
+          />
+          <ActionIcon
+            size="xs"
+            color="red"
+            variant="subtle"
+            onClick={() => removeField(fi)}
+          >
+            <IconTrash size={12} />
+          </ActionIcon>
+        </Group>
+      ))}
+      <Button
+        size="xs"
+        variant="subtle"
+        leftSection={<IconPlus size={12} />}
+        onClick={addField}
+      >
+        新增欄位
       </Button>
     </Paper>
   );
