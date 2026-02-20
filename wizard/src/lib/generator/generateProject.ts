@@ -11,6 +11,8 @@ import type {
   FieldDefinition,
   EnumDefinition,
   SubStructDefinition,
+  MetaStoreType,
+  ResourceStoreType,
 } from '@/types/wizard';
 
 // ─── Public API ────────────────────────────────────────────────
@@ -81,6 +83,27 @@ export function computeDependencies(state: WizardState): string[] {
       deps.push('autocrud[s3]>=0.8.0');
       deps.push('psycopg2-binary');
       break;
+    case 'custom': {
+      const sc = state.storageConfig;
+      const meta = sc.customMetaStore || 'memory';
+      const res = sc.customResourceStore || 'memory';
+      const needsS3 =
+        ['s3', 'cached-s3', 'etag-cached-s3', 'mq-cached-s3'].includes(res) ||
+        meta === 's3-sqlite';
+      const needsRedis = meta === 'redis';
+      const needsPostgres = meta === 'postgres';
+      const needsSqlalchemy = meta === 'sqlalchemy';
+
+      if (needsS3) {
+        deps.push('autocrud[s3]>=0.8.0');
+      } else {
+        deps.push('autocrud>=0.8.0');
+      }
+      if (needsRedis) deps.push('redis');
+      if (needsPostgres) deps.push('psycopg2-binary');
+      if (needsSqlalchemy) deps.push('sqlalchemy');
+      break;
+    }
     default:
       deps.push('autocrud>=0.8.0');
   }
@@ -126,7 +149,7 @@ export function generateImports(state: WizardState): string {
   const autocrudImports = new Set<string>(['crud', 'Schema']);
   const autocrudTypesImports = new Set<string>();
   const typingImports = new Set<string>();
-  let needDatetime = false;
+  let needDatetime = state.defaultNow !== '';
   let needEnum = false;
 
   // Scan all form-mode models for what they use
@@ -233,7 +256,18 @@ export function generateImports(state: WizardState): string {
   const storageImport = getStorageImport(state.storage);
   if (storageImport) lines.push(storageImport);
 
+  // Custom storage imports (SimpleStorage + individual stores)
+  if (state.storage === 'custom') {
+    for (const imp of getCustomStorageImports(state)) {
+      lines.push(imp);
+    }
+  }
+
   // autocrud.types imports
+  // Add IValidator if any model has validators enabled
+  if (state.models.some((m) => m.enableValidator)) {
+    autocrudTypesImports.add('IValidator');
+  }
   if (autocrudTypesImports.size > 0) {
     const sorted = [...autocrudTypesImports].sort();
     lines.push(`from autocrud.types import ${sorted.join(', ')}`);
@@ -253,6 +287,143 @@ function getStorageImport(storage: WizardState['storage']): string | null {
     default:
       return null;
   }
+}
+
+function getCustomStorageImports(state: WizardState): string[] {
+  const imports: string[] = [];
+  const sc = state.storageConfig;
+  const meta = sc.customMetaStore || 'memory';
+  const res = sc.customResourceStore || 'memory';
+
+  imports.push(
+    'from autocrud.resource_manager.storage_factory import SimpleStorage',
+  );
+
+  // Meta store import
+  const metaImport = META_STORE_IMPORT_MAP[meta];
+  if (metaImport) imports.push(metaImport);
+
+  // Resource store import
+  const resImport = RESOURCE_STORE_IMPORT_MAP[res];
+  if (resImport) imports.push(resImport);
+
+  return imports;
+}
+
+const META_STORE_CLASS_MAP: Record<MetaStoreType, string> = {
+  memory: 'MemoryMetaStore',
+  disk: 'DiskMetaStore',
+  'memory-sqlite': 'MemorySqliteMetaStore',
+  'file-sqlite': 'FileSqliteMetaStore',
+  's3-sqlite': 'S3SqliteMetaStore',
+  postgres: 'PostgresMetaStore',
+  sqlalchemy: 'SqlAlchemyMetaStore',
+  redis: 'RedisMetaStore',
+  'fast-slow': 'FastSlowMetaStore',
+};
+
+const META_STORE_IMPORT_MAP: Record<MetaStoreType, string> = {
+  memory:
+    'from autocrud.resource_manager.meta_store import MemoryMetaStore',
+  disk: 'from autocrud.resource_manager.meta_store import DiskMetaStore',
+  'memory-sqlite':
+    'from autocrud.resource_manager.meta_store import MemorySqliteMetaStore',
+  'file-sqlite':
+    'from autocrud.resource_manager.meta_store import FileSqliteMetaStore',
+  's3-sqlite':
+    'from autocrud.resource_manager.meta_store import S3SqliteMetaStore',
+  postgres:
+    'from autocrud.resource_manager.meta_store import PostgresMetaStore',
+  sqlalchemy:
+    'from autocrud.resource_manager.meta_store import SqlAlchemyMetaStore',
+  redis:
+    'from autocrud.resource_manager.meta_store import RedisMetaStore',
+  'fast-slow':
+    'from autocrud.resource_manager.meta_store import FastSlowMetaStore',
+};
+
+const RESOURCE_STORE_CLASS_MAP: Record<ResourceStoreType, string> = {
+  memory: 'MemoryResourceStore',
+  disk: 'DiskResourceStore',
+  s3: 'S3ResourceStore',
+  'cached-s3': 'CachedS3ResourceStore',
+  'etag-cached-s3': 'ETagCachedS3ResourceStore',
+  'mq-cached-s3': 'MQCachedS3ResourceStore',
+};
+
+const RESOURCE_STORE_IMPORT_MAP: Record<ResourceStoreType, string> = {
+  memory:
+    'from autocrud.resource_manager.resource_store import MemoryResourceStore',
+  disk: 'from autocrud.resource_manager.resource_store import DiskResourceStore',
+  s3: 'from autocrud.resource_manager.resource_store import S3ResourceStore',
+  'cached-s3':
+    'from autocrud.resource_manager.resource_store import CachedS3ResourceStore',
+  'etag-cached-s3':
+    'from autocrud.resource_manager.resource_store import ETagCachedS3ResourceStore',
+  'mq-cached-s3':
+    'from autocrud.resource_manager.resource_store import MQCachedS3ResourceStore',
+};
+
+import type { StorageConfig } from '@/types/wizard';
+
+function buildMetaStoreArgs(sc: StorageConfig, meta: MetaStoreType): string[] {
+  const args: string[] = [];
+  switch (meta) {
+    case 'disk':
+      if (sc.metaRootdir) args.push(`rootdir="${sc.metaRootdir}"`);
+      break;
+    case 'redis':
+      if (sc.metaRedisUrl) args.push(`url="${sc.metaRedisUrl}"`);
+      if (sc.metaRedisPrefix) args.push(`prefix="${sc.metaRedisPrefix}"`);
+      break;
+    case 'postgres':
+      if (sc.metaPostgresDsn) args.push(`dsn="${sc.metaPostgresDsn}"`);
+      if (sc.metaPostgresTable) args.push(`table="${sc.metaPostgresTable}"`);
+      break;
+    case 'sqlalchemy':
+      if (sc.metaSqlalchemyUrl) args.push(`url="${sc.metaSqlalchemyUrl}"`);
+      if (sc.metaSqlalchemyTable) args.push(`table="${sc.metaSqlalchemyTable}"`);
+      break;
+    case 'file-sqlite':
+      if (sc.metaSqliteFilepath) args.push(`filepath="${sc.metaSqliteFilepath}"`);
+      break;
+    case 's3-sqlite':
+      if (sc.metaS3Bucket) args.push(`bucket="${sc.metaS3Bucket}"`);
+      if (sc.metaS3Key) args.push(`key="${sc.metaS3Key}"`);
+      if (sc.metaS3EndpointUrl) args.push(`endpoint_url="${sc.metaS3EndpointUrl}"`);
+      if (sc.metaS3AccessKeyId) args.push(`access_key_id="${sc.metaS3AccessKeyId}"`);
+      if (sc.metaS3SecretAccessKey) args.push(`secret_access_key="${sc.metaS3SecretAccessKey}"`);
+      if (sc.metaS3RegionName) args.push(`region_name="${sc.metaS3RegionName}"`);
+      break;
+    // memory, memory-sqlite, fast-slow: no required args (or handled separately)
+  }
+  return args;
+}
+
+function buildResourceStoreArgs(sc: StorageConfig, res: ResourceStoreType): string[] {
+  const args: string[] = [];
+  switch (res) {
+    case 'disk':
+      if (sc.resRootdir) args.push(`rootdir="${sc.resRootdir}"`);
+      break;
+    case 's3':
+    case 'cached-s3':
+    case 'etag-cached-s3':
+    case 'mq-cached-s3':
+      if (sc.resBucket) args.push(`bucket="${sc.resBucket}"`);
+      if (sc.resPrefix) args.push(`prefix="${sc.resPrefix}"`);
+      if (sc.resEndpointUrl) args.push(`endpoint_url="${sc.resEndpointUrl}"`);
+      if (sc.resAccessKeyId) args.push(`access_key_id="${sc.resAccessKeyId}"`);
+      if (sc.resSecretAccessKey) args.push(`secret_access_key="${sc.resSecretAccessKey}"`);
+      if (sc.resRegionName) args.push(`region_name="${sc.resRegionName}"`);
+      if (res === 'mq-cached-s3') {
+        if (sc.resAmqpUrl) args.push(`amqp_url="${sc.resAmqpUrl}"`);
+        if (sc.resQueuePrefix) args.push(`queue_prefix="${sc.resQueuePrefix}"`);
+      }
+      break;
+    // memory: no args
+  }
+  return args;
 }
 
 // ─── Enum Generation ───────────────────────────────────────────
@@ -481,14 +652,32 @@ export function generateValidators(state: WizardState): string {
   const parts: string[] = [];
 
   for (const model of state.models) {
-    if (model.enableValidator && model.inputMode === 'form') {
-      parts.push(generateValidatorFunction(model));
+    if (model.enableValidator) {
+      if (model.validatorCode) {
+        // User provided custom validator code
+        parts.push(model.validatorCode);
+      } else if (model.inputMode === 'form') {
+        // Auto-generate scaffold for form-mode models
+        parts.push(generateValidatorFunction(model));
+      } else {
+        // code-mode with no custom code: generate basic scaffold
+        parts.push(generateCodeModeValidatorScaffold(model));
+      }
     }
   }
 
   if (parts.length === 0) return '';
 
   return '\n# ===== Validators =====\n\n' + parts.join('\n\n');
+}
+
+function generateCodeModeValidatorScaffold(model: ModelDefinition): string {
+  const fnName = `validate_${toSnakeCase(model.name)}`;
+  return [
+    `def ${fnName}(data: ${model.name}) -> None:`,
+    '    # Add your validation rules here',
+    '    pass',
+  ].join('\n');
 }
 
 function generateValidatorFunction(model: ModelDefinition): string {
@@ -557,6 +746,21 @@ export function generateAppSetup(state: WizardState): string {
   lines.push('crud.apply(app)');
   lines.push('crud.openapi(app)');
   lines.push('');
+
+  // Migration comment snippet
+  lines.push('# ===== Migration (uncomment to enable) =====');
+  lines.push('# from autocrud.types import IMigration');
+  lines.push('#');
+  lines.push('# def migrate_v1_to_v2(data: dict) -> dict:');
+  lines.push('#     data["new_field"] = "default_value"');
+  lines.push('#     return data');
+  lines.push('#');
+  lines.push('# crud.add_model(');
+  lines.push('#     Schema(MyModel, "v2"),');
+  lines.push('#     migration={"v1": ("v2", migrate_v1_to_v2)},');
+  lines.push('# )');
+  lines.push('');
+
   lines.push('');
   lines.push('if __name__ == "__main__":');
   lines.push(
@@ -601,10 +805,41 @@ export function generateConfigureCall(state: WizardState): string {
       if (sc.s3Bucket) pgArgs.push(`s3_bucket="${sc.s3Bucket}"`);
       if (sc.s3EndpointUrl)
         pgArgs.push(`s3_endpoint_url="${sc.s3EndpointUrl}"`);
+      if (sc.s3Region) pgArgs.push(`s3_region="${sc.s3Region}"`);
+      if (sc.s3AccessKeyId)
+        pgArgs.push(`s3_access_key_id="${sc.s3AccessKeyId}"`);
+      if (sc.s3SecretAccessKey)
+        pgArgs.push(`s3_secret_access_key="${sc.s3SecretAccessKey}"`);
       if (sc.tablePrefix)
         pgArgs.push(`table_prefix="${sc.tablePrefix}"`);
+      if (sc.blobBucket)
+        pgArgs.push(`blob_bucket="${sc.blobBucket}"`);
+      if (sc.blobPrefix)
+        pgArgs.push(`blob_prefix="${sc.blobPrefix}"`);
       args.push(
         `storage_factory=PostgreSQLStorageFactory(\n        ${pgArgs.join(',\n        ')},\n    )`,
+      );
+      break;
+    }
+    case 'custom': {
+      const sc = state.storageConfig;
+      const meta = sc.customMetaStore || 'memory';
+      const res = sc.customResourceStore || 'memory';
+      const metaClass = META_STORE_CLASS_MAP[meta];
+      const resClass = RESOURCE_STORE_CLASS_MAP[res];
+
+      const metaArgs = buildMetaStoreArgs(sc, meta);
+      const resArgs = buildResourceStoreArgs(sc, res);
+
+      const metaExpr = metaArgs.length > 0
+        ? `${metaClass}(${metaArgs.join(', ')})`
+        : `${metaClass}()`;
+      const resExpr = resArgs.length > 0
+        ? `${resClass}(${resArgs.join(', ')})`
+        : `${resClass}()`;
+
+      args.push(
+        `storage_factory=SimpleStorage(\n        meta_store=${metaExpr},\n        resource_store=${resExpr},\n    )`,
       );
       break;
     }
@@ -619,6 +854,18 @@ export function generateConfigureCall(state: WizardState): string {
   // Encoding (only if not default)
   if (state.encoding !== 'json') {
     args.push('encoding=Encoding.msgpack');
+  }
+
+  // Admin (default user)
+  if (state.defaultUser) {
+    args.push(`admin="${state.defaultUser}"`);
+  }
+
+  // Default now
+  if (state.defaultNow === 'utcnow') {
+    args.push('default_now=dt.datetime.utcnow');
+  } else if (state.defaultNow === 'now') {
+    args.push('default_now=dt.datetime.now');
   }
 
   if (args.length === 0) {
@@ -640,7 +887,7 @@ export function generateAddModelCall(
 
   // First arg: Schema(Model, version) or Schema(Model, version, validator=fn)
   const validatorSuffix =
-    model.enableValidator && model.inputMode === 'form'
+    model.enableValidator
       ? `, validator=validate_${toSnakeCase(model.name)}`
       : '';
   args.push(
@@ -753,6 +1000,11 @@ function getStorageDescription(state: WizardState): string {
       return 'Using **S3** storage. Data is stored in an S3-compatible object store.';
     case 'postgresql':
       return 'Using **PostgreSQL + S3** storage. Production-grade setup with database and object storage.';
+    case 'custom': {
+      const meta = state.storageConfig.customMetaStore || 'memory';
+      const res = state.storageConfig.customResourceStore || 'memory';
+      return `Using **custom** storage: ${META_STORE_CLASS_MAP[meta]} (meta) + ${RESOURCE_STORE_CLASS_MAP[res]} (resource).`;
+    }
   }
 }
 

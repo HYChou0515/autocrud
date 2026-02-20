@@ -12,6 +12,7 @@ import {
   generateValidators,
   generateEnumDefinitions,
   generateSubStructDefinitions,
+  generateAppSetup,
   generateReadme,
   computeDependencies,
   toSnakeCase,
@@ -485,13 +486,14 @@ describe('generateValidators', () => {
     expect(result).toContain('data.body.strip()');
   });
 
-  it('skips code-mode models', () => {
+  it('code-mode with enableValidator → generates scaffold', () => {
     const model = makeModel({
       inputMode: 'code',
       enableValidator: true,
     });
     const result = generateValidators(makeState({ models: [model] }));
-    expect(result).toBe('');
+    expect(result).toContain('def validate_test_model');
+    expect(result).toContain('pass');
   });
 });
 
@@ -633,9 +635,10 @@ describe('generateMainPy', () => {
     expect(code).not.toContain('IValidator');
   });
 
-  it('does not contain IMigration', () => {
+  it('contains commented-out IMigration snippet', () => {
     const code = generateMainPy(DEFAULT_WIZARD_STATE);
-    expect(code).not.toContain('IMigration');
+    // Migration is now always present as a comment
+    expect(code).toContain('# ===== Migration (uncomment to enable) =====');
   });
 
   it('includes CORS middleware when enabled', () => {
@@ -1137,5 +1140,518 @@ describe('generateMainPy with new types', () => {
     expect(code).toContain('class MeleeClass(Struct, tag=True):');
     expect(code).toContain('class RangedClass(Struct, tag=True):');
     expect(code).toContain('spec: MeleeClass | RangedClass');
+  });
+});
+
+// ─── F1: PostgreSQL+S3 full params ─────────────────────────────
+
+describe('F1: PostgreSQL+S3 full params', () => {
+  it('postgresql with all params emits every arg', () => {
+    const result = generateConfigureCall(
+      makeState({
+        storage: 'postgresql',
+        storageConfig: {
+          connectionString: 'postgresql://u:p@h/db',
+          s3Bucket: 'data',
+          s3EndpointUrl: 'http://s3:9000',
+          s3Region: 'us-east-1',
+          s3AccessKeyId: 'AKID',
+          s3SecretAccessKey: 'SECRET',
+          tablePrefix: 'pf_',
+          blobBucket: 'blobs',
+          blobPrefix: 'bp_',
+        },
+      }),
+    );
+    expect(result).toContain('PostgreSQLStorageFactory');
+    expect(result).toContain('connection_string="postgresql://u:p@h/db"');
+    expect(result).toContain('s3_bucket="data"');
+    expect(result).toContain('s3_endpoint_url="http://s3:9000"');
+    expect(result).toContain('s3_region="us-east-1"');
+    expect(result).toContain('s3_access_key_id="AKID"');
+    expect(result).toContain('s3_secret_access_key="SECRET"');
+    expect(result).toContain('table_prefix="pf_"');
+    expect(result).toContain('blob_bucket="blobs"');
+    expect(result).toContain('blob_prefix="bp_"');
+  });
+
+  it('postgresql default → only set fields emitted', () => {
+    const result = generateConfigureCall(
+      makeState({
+        storage: 'postgresql',
+        storageConfig: { connectionString: 'pg://host/db' },
+      }),
+    );
+    expect(result).toContain('connection_string="pg://host/db"');
+    expect(result).not.toContain('s3_region');
+    expect(result).not.toContain('s3_access_key_id');
+    expect(result).not.toContain('blob_bucket');
+  });
+});
+
+// ─── F2: Custom SimpleStorage ──────────────────────────────────
+
+describe('F2: Custom SimpleStorage', () => {
+  it('custom storage → SimpleStorage import', () => {
+    const result = generateImports(
+      makeState({
+        storage: 'custom',
+        storageConfig: {
+          customMetaStore: 'memory',
+          customResourceStore: 'memory',
+        },
+      }),
+    );
+    expect(result).toContain('SimpleStorage');
+  });
+
+  it('custom with MemoryMetaStore + DiskResourceStore', () => {
+    const result = generateConfigureCall(
+      makeState({
+        storage: 'custom',
+        storageConfig: {
+          customMetaStore: 'memory',
+          customResourceStore: 'disk',
+          resRootdir: './res',
+        },
+      }),
+    );
+    expect(result).toContain('SimpleStorage');
+    expect(result).toContain('MemoryMetaStore');
+    expect(result).toContain('DiskResourceStore');
+    expect(result).toContain('./res');
+  });
+
+  it('custom with postgres meta + s3 resource', () => {
+    const result = generateConfigureCall(
+      makeState({
+        storage: 'custom',
+        storageConfig: {
+          customMetaStore: 'postgres',
+          customResourceStore: 's3',
+          metaPostgresDsn: 'pg://h/db',
+          resBucket: 'mybucket',
+        },
+      }),
+    );
+    expect(result).toContain('PostgresMetaStore');
+    expect(result).toContain('S3ResourceStore');
+    expect(result).toContain('pg://h/db');
+    expect(result).toContain('mybucket');
+  });
+
+  it('custom with redis meta → imports redis store', () => {
+    const result = generateImports(
+      makeState({
+        storage: 'custom',
+        storageConfig: {
+          customMetaStore: 'redis',
+          customResourceStore: 'memory',
+        },
+      }),
+    );
+    expect(result).toContain('RedisMetaStore');
+  });
+
+  it('custom with file-sqlite meta → imports file sqlite store', () => {
+    const result = generateImports(
+      makeState({
+        storage: 'custom',
+        storageConfig: {
+          customMetaStore: 'file-sqlite',
+          customResourceStore: 'memory',
+        },
+      }),
+    );
+    expect(result).toContain('FileSqliteMetaStore');
+  });
+
+  it('custom with cached-s3 resource → imports CachedS3ResourceStore', () => {
+    const result = generateImports(
+      makeState({
+        storage: 'custom',
+        storageConfig: {
+          customMetaStore: 'memory',
+          customResourceStore: 'cached-s3',
+        },
+      }),
+    );
+    expect(result).toContain('CachedS3ResourceStore');
+  });
+
+  it('custom storage → computeDependencies includes autocrud', () => {
+    const deps = computeDependencies(
+      makeState({
+        storage: 'custom',
+        storageConfig: {
+          customMetaStore: 'redis',
+          customResourceStore: 's3',
+        },
+      }),
+    );
+    expect(deps).toContain('autocrud[s3]>=0.8.0');
+    expect(deps).toContain('redis');
+  });
+
+  it('custom storage memory+memory → base autocrud only', () => {
+    const deps = computeDependencies(
+      makeState({
+        storage: 'custom',
+        storageConfig: {
+          customMetaStore: 'memory',
+          customResourceStore: 'memory',
+        },
+      }),
+    );
+    expect(deps).toContain('autocrud>=0.8.0');
+    expect(deps).not.toContain('autocrud[s3]>=0.8.0');
+  });
+
+  it('custom storage README description', () => {
+    const readme = generateReadme(
+      makeState({
+        storage: 'custom',
+        storageConfig: {
+          customMetaStore: 'postgres',
+          customResourceStore: 's3',
+        },
+      }),
+    );
+    expect(readme).toContain('custom');
+  });
+
+  it('custom with disk meta + all params', () => {
+    const result = generateConfigureCall(
+      makeState({
+        storage: 'custom',
+        storageConfig: {
+          customMetaStore: 'disk',
+          customResourceStore: 'memory',
+          metaRootdir: './meta',
+        },
+      }),
+    );
+    expect(result).toContain('DiskMetaStore');
+    expect(result).toContain('./meta');
+  });
+
+  it('custom with redis meta + params', () => {
+    const result = generateConfigureCall(
+      makeState({
+        storage: 'custom',
+        storageConfig: {
+          customMetaStore: 'redis',
+          customResourceStore: 'memory',
+          metaRedisUrl: 'redis://localhost',
+          metaRedisPrefix: 'ac_',
+        },
+      }),
+    );
+    expect(result).toContain('RedisMetaStore');
+    expect(result).toContain('redis://localhost');
+    expect(result).toContain('ac_');
+  });
+
+  it('custom with sqlalchemy meta', () => {
+    const result = generateConfigureCall(
+      makeState({
+        storage: 'custom',
+        storageConfig: {
+          customMetaStore: 'sqlalchemy',
+          customResourceStore: 'memory',
+          metaSqlalchemyUrl: 'sqlite:///test.db',
+          metaSqlalchemyTable: 'meta_tbl',
+        },
+      }),
+    );
+    expect(result).toContain('SqlAlchemyMetaStore');
+    expect(result).toContain('sqlite:///test.db');
+    expect(result).toContain('meta_tbl');
+  });
+
+  it('custom with file-sqlite meta', () => {
+    const result = generateConfigureCall(
+      makeState({
+        storage: 'custom',
+        storageConfig: {
+          customMetaStore: 'file-sqlite',
+          customResourceStore: 'memory',
+          metaSqliteFilepath: './db.sqlite',
+        },
+      }),
+    );
+    expect(result).toContain('FileSqliteMetaStore');
+    expect(result).toContain('./db.sqlite');
+  });
+
+  it('custom with s3-sqlite meta + params', () => {
+    const result = generateConfigureCall(
+      makeState({
+        storage: 'custom',
+        storageConfig: {
+          customMetaStore: 's3-sqlite',
+          customResourceStore: 'memory',
+          metaS3Bucket: 'mybucket',
+          metaS3Key: 'meta.db',
+          metaS3EndpointUrl: 'http://minio:9000',
+        },
+      }),
+    );
+    expect(result).toContain('S3SqliteMetaStore');
+    expect(result).toContain('mybucket');
+    expect(result).toContain('meta.db');
+  });
+
+  it('custom with disk resource', () => {
+    const result = generateConfigureCall(
+      makeState({
+        storage: 'custom',
+        storageConfig: {
+          customMetaStore: 'memory',
+          customResourceStore: 'disk',
+          resRootdir: './resources',
+        },
+      }),
+    );
+    expect(result).toContain('DiskResourceStore');
+    expect(result).toContain('./resources');
+  });
+
+  it('custom with etag-cached-s3 resource', () => {
+    const result = generateConfigureCall(
+      makeState({
+        storage: 'custom',
+        storageConfig: {
+          customMetaStore: 'memory',
+          customResourceStore: 'etag-cached-s3',
+          resBucket: 'res',
+          resPrefix: 'data/',
+        },
+      }),
+    );
+    expect(result).toContain('ETagCachedS3ResourceStore');
+    expect(result).toContain('res');
+  });
+
+  it('custom with mq-cached-s3 resource + amqp args', () => {
+    const result = generateConfigureCall(
+      makeState({
+        storage: 'custom',
+        storageConfig: {
+          customMetaStore: 'memory',
+          customResourceStore: 'mq-cached-s3',
+          resBucket: 'res',
+          resAmqpUrl: 'amqp://localhost',
+          resQueuePrefix: 'q_',
+        },
+      }),
+    );
+    expect(result).toContain('MQCachedS3ResourceStore');
+    expect(result).toContain('amqp://localhost');
+    expect(result).toContain('q_');
+  });
+
+  it('custom with memory-sqlite meta → no special args', () => {
+    const result = generateConfigureCall(
+      makeState({
+        storage: 'custom',
+        storageConfig: {
+          customMetaStore: 'memory-sqlite',
+          customResourceStore: 'memory',
+        },
+      }),
+    );
+    expect(result).toContain('MemorySqliteMetaStore()');
+  });
+
+  it('custom with sqlalchemy → computeDependencies includes sqlalchemy', () => {
+    const deps = computeDependencies(
+      makeState({
+        storage: 'custom',
+        storageConfig: {
+          customMetaStore: 'sqlalchemy',
+          customResourceStore: 'memory',
+        },
+      }),
+    );
+    expect(deps).toContain('sqlalchemy');
+  });
+
+  it('custom with postgres → computeDependencies includes psycopg2', () => {
+    const deps = computeDependencies(
+      makeState({
+        storage: 'custom',
+        storageConfig: {
+          customMetaStore: 'postgres',
+          customResourceStore: 'memory',
+        },
+      }),
+    );
+    expect(deps).toContain('psycopg2-binary');
+  });
+
+  it('custom with s3-sqlite meta → s3 deps', () => {
+    const deps = computeDependencies(
+      makeState({
+        storage: 'custom',
+        storageConfig: {
+          customMetaStore: 's3-sqlite',
+          customResourceStore: 'memory',
+        },
+      }),
+    );
+    expect(deps).toContain('autocrud[s3]>=0.8.0');
+  });
+});
+
+// ─── F3: defaultUser / defaultNow ──────────────────────────────
+
+describe('F3: defaultUser / defaultNow', () => {
+  it('defaultUser → admin param in configure', () => {
+    const result = generateConfigureCall(
+      makeState({ defaultUser: 'admin' }),
+    );
+    expect(result).toContain('admin="admin"');
+  });
+
+  it('empty defaultUser → no admin param', () => {
+    const result = generateConfigureCall(makeState({ defaultUser: '' }));
+    expect(result).not.toContain('admin=');
+  });
+
+  it('defaultNow utcnow → default_now in configure', () => {
+    const result = generateConfigureCall(
+      makeState({ defaultNow: 'utcnow' }),
+    );
+    expect(result).toContain('default_now');
+    expect(result).toContain('dt.datetime.utcnow');
+  });
+
+  it('defaultNow now → default_now in configure', () => {
+    const result = generateConfigureCall(
+      makeState({ defaultNow: 'now' }),
+    );
+    expect(result).toContain('default_now');
+    expect(result).toContain('dt.datetime.now');
+  });
+
+  it('empty defaultNow → no default_now param', () => {
+    const result = generateConfigureCall(makeState({ defaultNow: '' }));
+    expect(result).not.toContain('default_now');
+  });
+
+  it('defaultNow utcnow → imports datetime', () => {
+    const result = generateImports(makeState({ defaultNow: 'utcnow' }));
+    expect(result).toContain('import datetime as dt');
+  });
+
+  it('no datetime fields + no defaultNow → no datetime import', () => {
+    const result = generateImports(makeState({ defaultNow: '' }));
+    expect(result).not.toContain('datetime');
+  });
+});
+
+// ─── F4: Migration comment snippet ────────────────────────────
+
+describe('F4: Migration comment snippet', () => {
+  it('generateAppSetup includes migration comment', () => {
+    const result = generateAppSetup(makeState());
+    expect(result).toContain('# ===== Migration (uncomment to enable) =====');
+    expect(result).toContain('IMigration');
+  });
+
+  it('migration comment is commented out (not active code)', () => {
+    const result = generateAppSetup(makeState());
+    // Every IMigration line should be a comment
+    const migLines = result.split('\n').filter((l: string) => l.includes('IMigration'));
+    for (const line of migLines) {
+      expect(line.trimStart().startsWith('#')).toBe(true);
+    }
+  });
+
+  it('generateMainPy includes commented migration snippet', () => {
+    const code = generateMainPy(DEFAULT_WIZARD_STATE);
+    expect(code).toContain('# ===== Migration (uncomment to enable) =====');
+  });
+});
+
+// ─── F5: Editable validators ──────────────────────────────────
+
+describe('F5: Editable validators', () => {
+  it('code-mode model with enableValidator + validatorCode → emits code', () => {
+    const model = makeModel({
+      name: 'Item',
+      inputMode: 'code',
+      rawCode: 'class Item(Struct):\n    price: int',
+      enableValidator: true,
+      validatorCode: 'def validate_item(data: Item) -> None:\n    if data.price < 0:\n        raise ValueError("price must be >= 0")',
+    });
+    const result = generateValidators(makeState({ models: [model] }));
+    expect(result).toContain('def validate_item(data: Item) -> None:');
+    expect(result).toContain('price must be >= 0');
+  });
+
+  it('code-mode with enableValidator but empty validatorCode → scaffold', () => {
+    const model = makeModel({
+      name: 'Thing',
+      inputMode: 'code',
+      rawCode: 'class Thing(Struct):\n    x: int',
+      enableValidator: true,
+      validatorCode: '',
+    });
+    const result = generateValidators(makeState({ models: [model] }));
+    expect(result).toContain('def validate_thing(data: Thing) -> None:');
+  });
+
+  it('form-mode with validatorCode → uses validatorCode', () => {
+    const model = makeModel({
+      name: 'User',
+      inputMode: 'form',
+      enableValidator: true,
+      validatorCode: 'def validate_user(data: User) -> None:\n    pass',
+      fields: [makeField({ name: 'email', type: 'str' })],
+    });
+    const result = generateValidators(makeState({ models: [model] }));
+    expect(result).toContain('def validate_user(data: User) -> None:');
+    expect(result).toContain('pass');
+    // Should use custom code, not auto-generated
+    expect(result).not.toContain('errors = []');
+  });
+
+  it('form-mode with enableValidator but no validatorCode → auto scaffold', () => {
+    const model = makeModel({
+      name: 'Product',
+      inputMode: 'form',
+      enableValidator: true,
+      validatorCode: '',
+      fields: [makeField({ name: 'title', type: 'str' })],
+    });
+    const result = generateValidators(makeState({ models: [model] }));
+    expect(result).toContain('def validate_product(data: Product) -> None:');
+    expect(result).toContain('errors = []');
+  });
+
+  it('code-mode with enableValidator → adds_model includes validator', () => {
+    const model = makeModel({
+      name: 'Widget',
+      inputMode: 'code',
+      rawCode: 'class Widget(Struct):\n    w: int',
+      enableValidator: true,
+      validatorCode: 'def validate_widget(data: Widget) -> None:\n    pass',
+    });
+    const result = generateAddModelCall(model, makeState());
+    expect(result).toContain('validator=validate_widget');
+  });
+
+  it('imports IValidator when any model has validator', () => {
+    const model = makeModel({
+      name: 'Gadget',
+      inputMode: 'code',
+      rawCode: 'class Gadget(Struct):\n    g: int',
+      enableValidator: true,
+      validatorCode: 'def validate_gadget(data: Gadget) -> None:\n    pass',
+    });
+    const result = generateImports(makeState({ models: [model] }));
+    expect(result).toContain('IValidator');
   });
 });

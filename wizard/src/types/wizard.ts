@@ -14,12 +14,33 @@ export interface WizardState {
   naming: NamingConvention;
   encoding: EncodingType;
   modelStyle: ModelStyle;
+  defaultUser: string;
+  defaultNow: '' | 'utcnow' | 'now';
 
   // Step 3: Model definitions
   models: ModelDefinition[];
 }
 
-export type StorageType = 'memory' | 'disk' | 's3' | 'postgresql';
+export type StorageType = 'memory' | 'disk' | 's3' | 'postgresql' | 'custom';
+
+export type MetaStoreType =
+  | 'memory'
+  | 'disk'
+  | 'memory-sqlite'
+  | 'file-sqlite'
+  | 's3-sqlite'
+  | 'postgres'
+  | 'sqlalchemy'
+  | 'redis'
+  | 'fast-slow';
+
+export type ResourceStoreType =
+  | 'memory'
+  | 'disk'
+  | 's3'
+  | 'cached-s3'
+  | 'etag-cached-s3'
+  | 'mq-cached-s3';
 export type NamingConvention = 'same' | 'pascal' | 'camel' | 'snake' | 'kebab';
 export type EncodingType = 'json' | 'msgpack';
 export type ModelStyle = 'struct' | 'pydantic';
@@ -33,11 +54,49 @@ export interface StorageConfig {
   accessKeyId?: string;
   secretAccessKey?: string;
   regionName?: string;
-  // PostgreSQL
+  // PostgreSQL + S3
   connectionString?: string;
   s3Bucket?: string;
   s3EndpointUrl?: string;
+  s3Region?: string;
+  s3AccessKeyId?: string;
+  s3SecretAccessKey?: string;
   tablePrefix?: string;
+  blobBucket?: string;
+  blobPrefix?: string;
+  // Custom (SimpleStorage)
+  customMetaStore?: MetaStoreType;
+  customResourceStore?: ResourceStoreType;
+  // Per-store params: MetaStore
+  metaRootdir?: string;
+  metaRedisUrl?: string;
+  metaRedisPrefix?: string;
+  metaPostgresDsn?: string;
+  metaPostgresTable?: string;
+  metaSqlalchemyUrl?: string;
+  metaSqlalchemyTable?: string;
+  metaSqliteFilepath?: string;
+  metaS3Bucket?: string;
+  metaS3Key?: string;
+  metaS3EndpointUrl?: string;
+  metaS3AccessKeyId?: string;
+  metaS3SecretAccessKey?: string;
+  metaS3RegionName?: string;
+  // FastSlowMetaStore
+  metaFastStore?: MetaStoreType;
+  metaSlowStore?: MetaStoreType;
+  metaSyncInterval?: number;
+  // Per-store params: ResourceStore
+  resRootdir?: string;
+  resBucket?: string;
+  resPrefix?: string;
+  resEndpointUrl?: string;
+  resAccessKeyId?: string;
+  resSecretAccessKey?: string;
+  resRegionName?: string;
+  // MQCachedS3
+  resAmqpUrl?: string;
+  resQueuePrefix?: string;
 }
 
 // ─── Model Definition ──────────────────────────────────────────
@@ -57,6 +116,7 @@ export interface ModelDefinition {
 
   // Shared settings
   enableValidator: boolean;
+  validatorCode: string;
 }
 
 export interface SubStructDefinition {
@@ -146,6 +206,8 @@ export const DEFAULT_WIZARD_STATE: WizardState = {
   naming: 'kebab',
   encoding: 'json',
   modelStyle: 'struct',
+  defaultUser: '',
+  defaultNow: '',
 
   models: [createDefaultModel()],
 };
@@ -209,6 +271,7 @@ export function createDefaultModel(): ModelDefinition {
     description: str = ""
     done: bool = False`,
     enableValidator: false,
+    validatorCode: '',
   };
 }
 
@@ -271,6 +334,7 @@ export function createEmptyModel(): ModelDefinition {
     subStructs: [],
     rawCode: '',
     enableValidator: false,
+    validatorCode: '',
   };
 }
 

@@ -21,6 +21,7 @@ import {
   Code,
   Divider,
   ScrollArea,
+  Textarea,
 } from '@mantine/core';
 import type { ComboboxLikeRenderOptionInput } from '@mantine/core';
 import {
@@ -255,6 +256,23 @@ export function StepModels({ state, onChange }: Props) {
               })
             }
           />
+
+          {model.enableValidator && (
+            <Textarea
+              label="Validator 程式碼（選填）"
+              description="自訂驗證函式。留空則自動生成基本模板。"
+              placeholder={`def validate_${model.name.replace(/([A-Z])/g, '_$1').toLowerCase().replace(/^_/, '')}(data: ${model.name}) -> None:\n    pass`}
+              minRows={4}
+              autosize
+              value={model.validatorCode}
+              onChange={(e) =>
+                updateModel(activeModel, {
+                  validatorCode: e.currentTarget.value,
+                })
+              }
+              styles={{ input: { fontFamily: 'monospace', fontSize: '13px' } }}
+            />
+          )}
 
           {/* Input mode toggle */}
           <Tabs
