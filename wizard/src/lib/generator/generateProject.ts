@@ -257,6 +257,10 @@ export function generateImports(state: WizardState): string {
     state.modelStyle === "struct" ||
     state.models.some(
       (m) => m.inputMode === "code" && m.rawCode.includes("Struct"),
+    ) ||
+    // Sub-structs always use Struct, even when modelStyle is "pydantic"
+    state.models.some(
+      (m) => m.inputMode === "form" && m.subStructs && m.subStructs.length > 0,
     )
   ) {
     lines.push("from msgspec import Struct");
@@ -267,13 +271,35 @@ export function generateImports(state: WizardState): string {
       (m) => m.inputMode === "code" && m.rawCode.includes("BaseModel"),
     )
   ) {
-    lines.push("from pydantic import BaseModel");
+    // Check if any form-mode model needs arbitrary_types_allowed
+    const needsConfigDict =
+      state.modelStyle === "pydantic" &&
+      state.models.some(
+        (m) =>
+          m.inputMode === "form" &&
+          m.fields.some(
+            (f) =>
+              f.type === "Struct" || f.type === "Union" || f.type === "Binary",
+          ),
+      );
+    if (needsConfigDict) {
+      lines.push("from pydantic import BaseModel, ConfigDict");
+    } else {
+      lines.push("from pydantic import BaseModel");
+    }
   }
   lines.push("");
 
   // AutoCRUD imports
   const sortedAutocrud = [...autocrudImports].sort();
   lines.push(`from autocrud import ${sortedAutocrud.join(", ")}`);
+
+  // Encoding import (needed when non-default encoding is used)
+  if (state.encoding !== "json") {
+    lines.push(
+      "from autocrud.resource_manager.basic import Encoding",
+    );
+  }
 
   // Storage factory import
   const storageImport = getStorageImport(state.storage);
@@ -319,8 +345,12 @@ function getCustomStorageImports(state: WizardState): string[] {
   const res = sc.customResourceStore || "memory";
 
   imports.push(
-    "from autocrud.resource_manager.storage_factory import SimpleStorage",
+    "from autocrud.resource_manager.core import SimpleStorage",
   );
+  imports.push(
+    "from autocrud.resource_manager.storage_factory import IStorageFactory",
+  );
+  imports.push("from autocrud.resource_manager.basic import IStorage");
 
   // Meta store import
   if (meta === "fast-slow") {
@@ -350,27 +380,27 @@ const META_STORE_CLASS_MAP: Record<MetaStoreType, string> = {
   "file-sqlite": "FileSqliteMetaStore",
   "s3-sqlite": "S3SqliteMetaStore",
   postgres: "PostgresMetaStore",
-  sqlalchemy: "SqlAlchemyMetaStore",
+  sqlalchemy: "SQLAlchemyMetaStore",
   redis: "RedisMetaStore",
   "fast-slow": "FastSlowMetaStore",
 };
 
 const META_STORE_IMPORT_MAP: Record<MetaStoreType, string> = {
-  memory: "from autocrud.resource_manager.meta_store import MemoryMetaStore",
-  disk: "from autocrud.resource_manager.meta_store import DiskMetaStore",
+  memory: "from autocrud.resource_manager.meta_store.simple import MemoryMetaStore",
+  disk: "from autocrud.resource_manager.meta_store.simple import DiskMetaStore",
   "memory-sqlite":
-    "from autocrud.resource_manager.meta_store import MemorySqliteMetaStore",
+    "from autocrud.resource_manager.meta_store.sqlite3 import MemorySqliteMetaStore",
   "file-sqlite":
-    "from autocrud.resource_manager.meta_store import FileSqliteMetaStore",
+    "from autocrud.resource_manager.meta_store.sqlite3 import FileSqliteMetaStore",
   "s3-sqlite":
-    "from autocrud.resource_manager.meta_store import S3SqliteMetaStore",
+    "from autocrud.resource_manager.meta_store.sqlite3 import S3SqliteMetaStore",
   postgres:
-    "from autocrud.resource_manager.meta_store import PostgresMetaStore",
+    "from autocrud.resource_manager.meta_store.postgres import PostgresMetaStore",
   sqlalchemy:
-    "from autocrud.resource_manager.meta_store import SqlAlchemyMetaStore",
-  redis: "from autocrud.resource_manager.meta_store import RedisMetaStore",
+    "from autocrud.resource_manager.meta_store.sqlalchemy import SQLAlchemyMetaStore",
+  redis: "from autocrud.resource_manager.meta_store.redis import RedisMetaStore",
   "fast-slow":
-    "from autocrud.resource_manager.meta_store import FastSlowMetaStore",
+    "from autocrud.resource_manager.meta_store.fast_slow import FastSlowMetaStore",
 };
 
 const RESOURCE_STORE_CLASS_MAP: Record<ResourceStoreType, string> = {
@@ -404,14 +434,14 @@ function buildMetaStoreArgs(sc: StorageConfig, meta: MetaStoreType): string[] {
       args.push(`rootdir="${sc.metaRootdir || "./meta"}"`);
       break;
     case "redis":
-      args.push(`url="${sc.metaRedisUrl || "redis://localhost:6379"}"`);
+      args.push(`redis_url="${sc.metaRedisUrl || "redis://localhost:6379"}"`);
       args.push(`prefix="${sc.metaRedisPrefix || ""}"`);
       break;
     case "postgres":
       args.push(
-        `dsn="${sc.metaPostgresDsn || "postgresql://user:pass@localhost/db"}"`,
+        `pg_dsn="${sc.metaPostgresDsn || "postgresql://user:pass@localhost/db"}"`,
       );
-      args.push(`table="${sc.metaPostgresTable || "resource_meta"}"`);
+      args.push(`table_name="${sc.metaPostgresTable || "resource_meta"}"`);
       break;
     case "sqlalchemy":
       args.push(`url="${sc.metaSqlalchemyUrl || "sqlite:///data.db"}"`);
@@ -437,6 +467,113 @@ function buildMetaStoreArgs(sc: StorageConfig, meta: MetaStoreType): string[] {
   return args;
 }
 
+/**
+ * Build meta store args for use inside a factory build(model_name) method.
+ * Uses f-strings to incorporate model_name into isolation-relevant args
+ * (prefix, table_name, rootdir, key path).
+ */
+function buildMetaStoreArgsForFactory(
+  sc: StorageConfig,
+  meta: MetaStoreType,
+): string[] {
+  const args: string[] = [];
+  switch (meta) {
+    case "disk": {
+      const rootdir = sc.metaRootdir || "./meta";
+      args.push(`rootdir=f"${rootdir}/{model_name}"`);
+      break;
+    }
+    case "redis": {
+      const redisUrl = sc.metaRedisUrl || "redis://localhost:6379";
+      const prefix = sc.metaRedisPrefix || "";
+      args.push(`redis_url="${redisUrl}"`);
+      args.push(`prefix=f"${prefix}{model_name}:"`);
+      break;
+    }
+    case "postgres": {
+      const dsn =
+        sc.metaPostgresDsn || "postgresql://user:pass@localhost/db";
+      const table = sc.metaPostgresTable || "resource_meta";
+      args.push(`pg_dsn="${dsn}"`);
+      args.push(`table_name=f"${table}_{model_name}"`);
+      break;
+    }
+    case "sqlalchemy": {
+      const url = sc.metaSqlalchemyUrl || "sqlite:///data.db";
+      const table = sc.metaSqlalchemyTable || "resource_meta";
+      args.push(`url="${url}"`);
+      args.push(`table=f"${table}_{model_name}"`);
+      break;
+    }
+    case "file-sqlite": {
+      const filepath = sc.metaSqliteFilepath || "./meta";
+      args.push(`filepath=f"${filepath}_{model_name}.db"`);
+      break;
+    }
+    case "s3-sqlite": {
+      const bucket = sc.metaS3Bucket || "meta-bucket";
+      const key = sc.metaS3Key || "meta";
+      args.push(`bucket="${bucket}"`);
+      args.push(`key=f"${key}/{model_name}.db"`);
+      args.push(
+        `endpoint_url="${sc.metaS3EndpointUrl || "http://localhost:9000"}"`,
+      );
+      args.push(`access_key_id="${sc.metaS3AccessKeyId || "minioadmin"}"`);
+      args.push(
+        `secret_access_key="${sc.metaS3SecretAccessKey || "minioadmin"}"`,
+      );
+      args.push(`region_name="${sc.metaS3RegionName || "us-east-1"}"`);
+      break;
+    }
+    // memory, memory-sqlite: no args (fresh instance per call)
+  }
+  return args;
+}
+
+/**
+ * Build resource store args for use inside a factory build(model_name) method.
+ * Uses f-strings to incorporate model_name into prefix/rootdir arguments.
+ */
+function buildResourceStoreArgsForFactory(
+  sc: StorageConfig,
+  res: ResourceStoreType,
+): string[] {
+  const args: string[] = [];
+  switch (res) {
+    case "disk": {
+      const rootdir = sc.resRootdir || "./resources";
+      args.push(`rootdir=f"${rootdir}/{model_name}"`);
+      break;
+    }
+    case "s3":
+    case "cached-s3":
+    case "etag-cached-s3":
+    case "mq-cached-s3": {
+      const bucket = sc.resBucket || "autocrud";
+      const prefix = sc.resPrefix || "";
+      args.push(`bucket="${bucket}"`);
+      args.push(`prefix=f"${prefix}{model_name}/"`);
+      args.push(
+        `endpoint_url="${sc.resEndpointUrl || "http://localhost:9000"}"`,
+      );
+      args.push(`access_key_id="${sc.resAccessKeyId || "minioadmin"}"`);
+      args.push(`secret_access_key="${sc.resSecretAccessKey || "minioadmin"}"`);
+      args.push(`region_name="${sc.resRegionName || "us-east-1"}"`);
+      if (res === "mq-cached-s3") {
+        args.push(
+          `amqp_url="${sc.resAmqpUrl || "amqp://guest:guest@localhost:5672/"}"`,
+        );
+        args.push(
+          `queue_prefix=f"${sc.resQueuePrefix || "autocrud:"}{model_name}:"`,
+        );
+      }
+      break;
+    }
+    // memory: no args (fresh instance per call)
+  }
+  return args;
+}
+
 function buildFastSlowMetaStoreExpr(sc: StorageConfig): string {
   const fast = sc.metaFastStore || "memory";
   const slow = sc.metaSlowStore || "file-sqlite";
@@ -451,6 +588,31 @@ function buildFastSlowMetaStoreExpr(sc: StorageConfig): string {
 
   const slowClass = META_STORE_CLASS_MAP[slow];
   const slowArgs = buildMetaStoreArgs(sc, slow);
+  const slowExpr =
+    slowArgs.length > 0
+      ? `${slowClass}(${slowArgs.join(", ")})`
+      : `${slowClass}()`;
+
+  return `FastSlowMetaStore(fast_store=${fastExpr}, slow_store=${slowExpr}, sync_interval=${syncInterval})`;
+}
+
+/**
+ * Factory-aware version: uses model_name f-strings for per-model isolation.
+ */
+function buildFastSlowMetaStoreExprForFactory(sc: StorageConfig): string {
+  const fast = sc.metaFastStore || "memory";
+  const slow = sc.metaSlowStore || "file-sqlite";
+  const syncInterval = sc.metaSyncInterval ?? 1;
+
+  const fastClass = META_STORE_CLASS_MAP[fast];
+  const fastArgs = buildMetaStoreArgsForFactory(sc, fast);
+  const fastExpr =
+    fastArgs.length > 0
+      ? `${fastClass}(${fastArgs.join(", ")})`
+      : `${fastClass}()`;
+
+  const slowClass = META_STORE_CLASS_MAP[slow];
+  const slowArgs = buildMetaStoreArgsForFactory(sc, slow);
   const slowExpr =
     slowArgs.length > 0
       ? `${slowClass}(${slowArgs.join(", ")})`
@@ -587,6 +749,22 @@ export function generateFormModel(
   if (model.fields.length === 0) {
     lines.push("    pass");
     return lines.join("\n");
+  }
+
+  // Pydantic models need arbitrary_types_allowed when using Struct/Binary/Union fields
+  if (style === "pydantic") {
+    const needsArbitraryTypes = model.fields.some(
+      (f) =>
+        f.type === "Struct" ||
+        f.type === "Union" ||
+        f.type === "Binary",
+    );
+    if (needsArbitraryTypes) {
+      lines.push(
+        "    model_config = ConfigDict(arbitrary_types_allowed=True)",
+        "",
+      );
+    }
   }
 
   // Separate required fields (no default) from optional/defaulted fields
@@ -833,6 +1011,7 @@ export function generateAppSetup(state: WizardState): string {
 
 export function generateConfigureCall(state: WizardState): string {
   const args: string[] = [];
+  let customFactoryClass = "";
 
   // Storage factory
   switch (state.storage) {
@@ -888,10 +1067,10 @@ export function generateConfigureCall(state: WizardState): string {
 
       let metaExpr: string;
       if (meta === "fast-slow") {
-        metaExpr = buildFastSlowMetaStoreExpr(sc);
+        metaExpr = buildFastSlowMetaStoreExprForFactory(sc);
       } else {
         const metaClass = META_STORE_CLASS_MAP[meta];
-        const metaArgs = buildMetaStoreArgs(sc, meta);
+        const metaArgs = buildMetaStoreArgsForFactory(sc, meta);
         metaExpr =
           metaArgs.length > 0
             ? `${metaClass}(${metaArgs.join(", ")})`
@@ -899,15 +1078,24 @@ export function generateConfigureCall(state: WizardState): string {
       }
 
       const resClass = RESOURCE_STORE_CLASS_MAP[res];
-      const resArgs = buildResourceStoreArgs(sc, res);
+      const resArgs = buildResourceStoreArgsForFactory(sc, res);
       const resExpr =
         resArgs.length > 0
           ? `${resClass}(${resArgs.join(", ")})`
           : `${resClass}()`;
 
-      args.push(
-        `storage_factory=SimpleStorage(\n        meta_store=${metaExpr},\n        resource_store=${resExpr},\n    )`,
-      );
+      // Generate a proper IStorageFactory class
+      customFactoryClass = [
+        "class _CustomStorageFactory(IStorageFactory):",
+        "    def build(self, model_name: str) -> IStorage:",
+        `        return SimpleStorage(`,
+        `            meta_store=${metaExpr},`,
+        `            resource_store=${resExpr},`,
+        `        )`,
+        "",
+      ].join("\n");
+
+      args.push("storage_factory=_CustomStorageFactory()");
       break;
     }
     // memory: no storage_factory arg needed (it's the default)
@@ -933,14 +1121,14 @@ export function generateConfigureCall(state: WizardState): string {
   }
 
   if (args.length === 0) {
-    return "crud.configure()";
+    return customFactoryClass + "crud.configure()";
   }
 
   if (args.length === 1 && !args[0].includes("\n")) {
-    return `crud.configure(${args[0]})`;
+    return customFactoryClass + `crud.configure(${args[0]})`;
   }
 
-  return `crud.configure(\n    ${args.join(",\n    ")},\n)`;
+  return customFactoryClass + `crud.configure(\n    ${args.join(",\n    ")},\n)`;
 }
 
 export function generateAddModelCall(model: ModelDefinition): string {

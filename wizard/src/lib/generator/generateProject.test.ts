@@ -1444,7 +1444,7 @@ describe("F2: Custom SimpleStorage", () => {
       }),
     );
     expect(result).toContain(
-      'RedisMetaStore(url="redis://localhost:6379", prefix="")',
+      'RedisMetaStore(redis_url="redis://localhost:6379", prefix=f"{model_name}:")',
     );
   });
 
@@ -1460,7 +1460,7 @@ describe("F2: Custom SimpleStorage", () => {
         },
       }),
     );
-    expect(result).toContain("SqlAlchemyMetaStore");
+    expect(result).toContain("SQLAlchemyMetaStore");
     expect(result).toContain("sqlite:///test.db");
     expect(result).toContain("meta_tbl");
   });
@@ -1523,7 +1523,7 @@ describe("F2: Custom SimpleStorage", () => {
         },
       }),
     );
-    expect(result).toContain('S3ResourceStore(bucket="autocrud", prefix=""');
+    expect(result).toContain('S3ResourceStore(bucket="autocrud", prefix=f"{model_name}/"');
     expect(result).toContain('access_key_id="minioadmin"');
     expect(result).toContain('region_name="us-east-1"');
   });
@@ -1653,7 +1653,7 @@ describe("FastSlowMetaStore", () => {
     expect(result).toContain("FastSlowMetaStore(");
     expect(result).toContain("fast_store=MemoryMetaStore()");
     expect(result).toContain(
-      'slow_store=FileSqliteMetaStore(filepath="./meta.db")',
+      'slow_store=FileSqliteMetaStore(filepath=f"./meta.db_{model_name}.db")',
     );
     expect(result).toContain("sync_interval=5");
   });
@@ -1675,10 +1675,10 @@ describe("FastSlowMetaStore", () => {
       }),
     );
     expect(result).toContain(
-      'fast_store=RedisMetaStore(url="redis://myhost:6379", prefix="ac:")',
+      'fast_store=RedisMetaStore(redis_url="redis://myhost:6379", prefix=f"ac:{model_name}:")',
     );
     expect(result).toContain(
-      'slow_store=PostgresMetaStore(dsn="pg://h/db", table="meta_tbl")',
+      'slow_store=PostgresMetaStore(pg_dsn="pg://h/db", table_name=f"meta_tbl_{model_name}")',
     );
   });
 
@@ -1694,7 +1694,7 @@ describe("FastSlowMetaStore", () => {
     );
     expect(result).toContain("fast_store=MemoryMetaStore()");
     expect(result).toContain(
-      'slow_store=FileSqliteMetaStore(filepath="./meta.db")',
+      'slow_store=FileSqliteMetaStore(filepath=f"./meta_{model_name}.db")',
     );
     expect(result).toContain("sync_interval=1");
   });
@@ -1764,9 +1764,9 @@ describe("FastSlowMetaStore", () => {
         },
       }),
     );
-    expect(result).toContain('fast_store=DiskMetaStore(rootdir="./fast")');
+    expect(result).toContain('fast_store=DiskMetaStore(rootdir=f"./fast/{model_name}")');
     expect(result).toContain(
-      'slow_store=S3SqliteMetaStore(bucket="slow-bucket", key="slow.db"',
+      'slow_store=S3SqliteMetaStore(bucket="slow-bucket", key=f"slow.db/{model_name}.db"',
     );
     expect(result).toContain("sync_interval=10");
   });

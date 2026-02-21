@@ -649,7 +649,9 @@ class S3SqliteMetaStore(SqliteMetaStore):
                 raise
 
         # Initialize with local database file
-        get_conn = functools.partial(sqlite3.connect, self._db_filepath)
+        get_conn = functools.partial(
+            sqlite3.connect, self._db_filepath, check_same_thread=False
+        )
         super().__init__(get_conn=get_conn, encoding=encoding)
 
         self._last_sync_time = time.time()
