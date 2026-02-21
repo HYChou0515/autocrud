@@ -846,6 +846,35 @@ class TestCoverageSupplementary:
         assert result.name == "chain"
         assert result.tag == "migrated"
 
+    def test_chain_migration_with_pydantic_intermediate(self):
+        """Chain migration where intermediate fn returns Pydantic BaseModel.
+
+        Schema._encode_intermediate must handle Pydantic objects (not just
+        msgspec Structs) so that the next step receives valid IO[bytes].
+        """
+        from pydantic import BaseModel
+
+        class V2Pydantic(BaseModel):
+            name: str
+            value: int
+            tag: str
+
+        def migrate_v1_to_v2_pydantic(data: IO[bytes]) -> V2Pydantic:
+            obj = msgspec.json.decode(data.read(), type=V1Data)
+            return V2Pydantic(name=obj.name, value=obj.value, tag="pydantic")
+
+        s = (
+            Schema(V3Data, "v3")
+            .step("v1", migrate_v1_to_v2_pydantic, to="v2")
+            .step("v2", migrate_v2_to_v3)
+        )
+        data = io.BytesIO(msgspec.json.encode(V1Data(name="pyd", value=7)))
+        result = s.migrate(data, "v1")
+        assert isinstance(result, V3Data)
+        assert result.name == "pyd"
+        assert result.tag == "pydantic"
+        assert result.score == 0.0
+
     def test_from_legacy_step_without_to_raises(self):
         """from_legacy with None version + step (no to=) → ValueError on _resolve."""
 

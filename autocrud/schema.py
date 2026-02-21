@@ -26,7 +26,12 @@ import re
 from collections import defaultdict, deque
 from typing import IO, Any, Callable, Generic, TypeVar
 
-from autocrud.resource_manager.pydantic_converter import build_validator
+import msgspec
+
+from autocrud.resource_manager.pydantic_converter import (
+    build_validator,
+    pydantic_to_dict,
+)
 from autocrud.types import IMigration
 
 T = TypeVar("T")
@@ -109,6 +114,8 @@ class Schema(Generic[T]):
         ] = {}
         # Legacy migration wrapper (set by ``from_legacy``).
         self._legacy_migration: IMigration | None = None
+        # Encoder for re-serializing intermediate migration results.
+        self._encoder = msgspec.json.Encoder()
 
     # ------------------------------------------------------------------
     # Fluent builders
@@ -344,18 +351,30 @@ class Schema(Generic[T]):
         result: Any = data
         for _src, _dst, fn in path:
             if not isinstance(result, (io.IOBase, io.BufferedIOBase)):
-                # Wrap intermediate results back into a stream for the next step
-                if isinstance(result, bytes):
-                    result = io.BytesIO(result)
-                else:
-                    # The previous fn returned a decoded object — we need to
-                    # re-serialize so the next fn gets IO[bytes].
-                    import msgspec
-
-                    result = io.BytesIO(msgspec.json.encode(result))
+                # fn returned a decoded struct/basemodel — re-encode for
+                # the next step so it receives IO[bytes].
+                result = io.BytesIO(self._encode_intermediate(result))
             result = fn(result)
 
         return result  # type: ignore[return-value]
+
+    # ------------------------------------------------------------------
+    # Intermediate encoding
+    # ------------------------------------------------------------------
+
+    def _encode_intermediate(self, obj: Any) -> bytes:
+        """Encode a decoded intermediate object back to bytes.
+
+        Handles ``bytes``, ``msgspec.Struct`` (via the Schema's encoder),
+        and Pydantic ``BaseModel`` (v1/v2 via ``pydantic_to_dict``).
+        """
+        if isinstance(obj, bytes):
+            return obj
+        try:
+            return self._encoder.encode(obj)
+        except TypeError:
+            # Pydantic BaseModel — convert to dict first, then encode.
+            return self._encoder.encode(pydantic_to_dict(obj))
 
     # ------------------------------------------------------------------
     # Validation
@@ -416,6 +435,7 @@ class Schema(Generic[T]):
         schema._regex_edges = []
         schema._path_cache = {}
         schema._legacy_migration = migration
+        schema._encoder = msgspec.json.Encoder()
         return schema
 
     # ------------------------------------------------------------------

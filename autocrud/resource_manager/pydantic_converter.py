@@ -39,6 +39,17 @@ def is_pydantic_model(obj: type) -> bool:
         return False
 
 
+def pydantic_to_dict(obj: Any) -> dict:
+    """Convert a Pydantic BaseModel instance to a plain dict.
+
+    Supports both Pydantic v1 (``.dict()``) and v2 (``.model_dump()``).
+    """
+    try:
+        return obj.model_dump()  # Pydantic v2
+    except AttributeError:
+        return obj.dict()  # Pydantic v1
+
+
 def pydantic_to_validator(pydantic_model: type) -> Callable:
     """Create a validator function from a Pydantic model class.
 
