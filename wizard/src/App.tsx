@@ -50,10 +50,17 @@ function App() {
           <Text c="dimmed" size="sm">
             快速產生 AutoCRUD Python 專案模板 —{" "}
             <Anchor
+              href="https://hychou0515.github.io/autocrud/"
+              target="_blank"
+            >
+              文件
+            </Anchor>
+            {" · "}
+            <Anchor
               href="https://github.com/HYChou0515/autocrud"
               target="_blank"
             >
-              autocrud
+              GitHub
             </Anchor>
           </Text>
         </Stack>
