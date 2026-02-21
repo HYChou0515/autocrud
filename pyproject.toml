@@ -50,6 +50,7 @@ docs = [
 dev = [
     "coverage>=7.9.2",
     "pytest>=8.4.1",
+    "pytest-rerunfailures>=15.0",
     "ruff>=0.12.4",
     "pytest-asyncio>=1.1.0",
     "autocrud[all]",

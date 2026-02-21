@@ -296,9 +296,7 @@ export function generateImports(state: WizardState): string {
 
   // Encoding import (needed when non-default encoding is used)
   if (state.encoding !== "json") {
-    lines.push(
-      "from autocrud.resource_manager.basic import Encoding",
-    );
+    lines.push("from autocrud.resource_manager.basic import Encoding");
   }
 
   // Storage factory import
@@ -338,15 +336,24 @@ function getStorageImport(storage: WizardState["storage"]): string | null {
   }
 }
 
+const S3_RESOURCE_STORES: ResourceStoreType[] = [
+  "s3",
+  "cached-s3",
+  "etag-cached-s3",
+  "mq-cached-s3",
+];
+
+function isS3ResourceStore(res: ResourceStoreType): boolean {
+  return S3_RESOURCE_STORES.includes(res);
+}
+
 function getCustomStorageImports(state: WizardState): string[] {
   const imports: string[] = [];
   const sc = state.storageConfig;
   const meta = sc.customMetaStore || "memory";
   const res = sc.customResourceStore || "memory";
 
-  imports.push(
-    "from autocrud.resource_manager.core import SimpleStorage",
-  );
+  imports.push("from autocrud.resource_manager.core import SimpleStorage");
   imports.push(
     "from autocrud.resource_manager.storage_factory import IStorageFactory",
   );
@@ -370,6 +377,14 @@ function getCustomStorageImports(state: WizardState): string[] {
   const resImport = RESOURCE_STORE_IMPORT_MAP[res];
   if (resImport) imports.push(resImport);
 
+  // S3 blob store imports (for build_blob_store)
+  if (isS3ResourceStore(res)) {
+    imports.push(
+      "from autocrud.resource_manager.blob_store.s3 import S3BlobStore",
+    );
+    imports.push("from autocrud.resource_manager.basic import IBlobStore");
+  }
+
   return imports;
 }
 
@@ -386,7 +401,8 @@ const META_STORE_CLASS_MAP: Record<MetaStoreType, string> = {
 };
 
 const META_STORE_IMPORT_MAP: Record<MetaStoreType, string> = {
-  memory: "from autocrud.resource_manager.meta_store.simple import MemoryMetaStore",
+  memory:
+    "from autocrud.resource_manager.meta_store.simple import MemoryMetaStore",
   disk: "from autocrud.resource_manager.meta_store.simple import DiskMetaStore",
   "memory-sqlite":
     "from autocrud.resource_manager.meta_store.sqlite3 import MemorySqliteMetaStore",
@@ -398,7 +414,8 @@ const META_STORE_IMPORT_MAP: Record<MetaStoreType, string> = {
     "from autocrud.resource_manager.meta_store.postgres import PostgresMetaStore",
   sqlalchemy:
     "from autocrud.resource_manager.meta_store.sqlalchemy import SQLAlchemyMetaStore",
-  redis: "from autocrud.resource_manager.meta_store.redis import RedisMetaStore",
+  redis:
+    "from autocrud.resource_manager.meta_store.redis import RedisMetaStore",
   "fast-slow":
     "from autocrud.resource_manager.meta_store.fast_slow import FastSlowMetaStore",
 };
@@ -427,46 +444,6 @@ const RESOURCE_STORE_IMPORT_MAP: Record<ResourceStoreType, string> = {
 
 import type { StorageConfig } from "@/types/wizard";
 
-function buildMetaStoreArgs(sc: StorageConfig, meta: MetaStoreType): string[] {
-  const args: string[] = [];
-  switch (meta) {
-    case "disk":
-      args.push(`rootdir="${sc.metaRootdir || "./meta"}"`);
-      break;
-    case "redis":
-      args.push(`redis_url="${sc.metaRedisUrl || "redis://localhost:6379"}"`);
-      args.push(`prefix="${sc.metaRedisPrefix || ""}"`);
-      break;
-    case "postgres":
-      args.push(
-        `pg_dsn="${sc.metaPostgresDsn || "postgresql://user:pass@localhost/db"}"`,
-      );
-      args.push(`table_name="${sc.metaPostgresTable || "resource_meta"}"`);
-      break;
-    case "sqlalchemy":
-      args.push(`url="${sc.metaSqlalchemyUrl || "sqlite:///data.db"}"`);
-      args.push(`table="${sc.metaSqlalchemyTable || "resource_meta"}"`);
-      break;
-    case "file-sqlite":
-      args.push(`filepath="${sc.metaSqliteFilepath || "./meta.db"}"`);
-      break;
-    case "s3-sqlite":
-      args.push(`bucket="${sc.metaS3Bucket || "meta-bucket"}"`);
-      args.push(`key="${sc.metaS3Key || "meta.db"}"`);
-      args.push(
-        `endpoint_url="${sc.metaS3EndpointUrl || "http://localhost:9000"}"`,
-      );
-      args.push(`access_key_id="${sc.metaS3AccessKeyId || "minioadmin"}"`);
-      args.push(
-        `secret_access_key="${sc.metaS3SecretAccessKey || "minioadmin"}"`,
-      );
-      args.push(`region_name="${sc.metaS3RegionName || "us-east-1"}"`);
-      break;
-    // memory, memory-sqlite: no args
-  }
-  return args;
-}
-
 /**
  * Build meta store args for use inside a factory build(model_name) method.
  * Uses f-strings to incorporate model_name into isolation-relevant args
@@ -491,8 +468,7 @@ function buildMetaStoreArgsForFactory(
       break;
     }
     case "postgres": {
-      const dsn =
-        sc.metaPostgresDsn || "postgresql://user:pass@localhost/db";
+      const dsn = sc.metaPostgresDsn || "postgresql://user:pass@localhost/db";
       const table = sc.metaPostgresTable || "resource_meta";
       args.push(`pg_dsn="${dsn}"`);
       args.push(`table_name=f"${table}_{model_name}"`);
@@ -574,38 +550,20 @@ function buildResourceStoreArgsForFactory(
   return args;
 }
 
-function buildFastSlowMetaStoreExpr(sc: StorageConfig): string {
-  const fast = sc.metaFastStore || "memory";
-  const slow = sc.metaSlowStore || "file-sqlite";
-  const syncInterval = sc.metaSyncInterval ?? 1;
-
-  const fastClass = META_STORE_CLASS_MAP[fast];
-  const fastArgs = buildMetaStoreArgs(sc, fast);
-  const fastExpr =
-    fastArgs.length > 0
-      ? `${fastClass}(${fastArgs.join(", ")})`
-      : `${fastClass}()`;
-
-  const slowClass = META_STORE_CLASS_MAP[slow];
-  const slowArgs = buildMetaStoreArgs(sc, slow);
-  const slowExpr =
-    slowArgs.length > 0
-      ? `${slowClass}(${slowArgs.join(", ")})`
-      : `${slowClass}()`;
-
-  return `FastSlowMetaStore(fast_store=${fastExpr}, slow_store=${slowExpr}, sync_interval=${syncInterval})`;
-}
-
 /**
  * Factory-aware version: uses model_name f-strings for per-model isolation.
  */
-function buildFastSlowMetaStoreExprForFactory(sc: StorageConfig): string {
+function buildFastSlowMetaStoreExprForFactory(
+  sc: StorageConfig,
+  needsEncoding: boolean = false,
+): string {
   const fast = sc.metaFastStore || "memory";
   const slow = sc.metaSlowStore || "file-sqlite";
   const syncInterval = sc.metaSyncInterval ?? 1;
 
   const fastClass = META_STORE_CLASS_MAP[fast];
   const fastArgs = buildMetaStoreArgsForFactory(sc, fast);
+  if (needsEncoding) fastArgs.push("encoding=self.encoding");
   const fastExpr =
     fastArgs.length > 0
       ? `${fastClass}(${fastArgs.join(", ")})`
@@ -613,45 +571,13 @@ function buildFastSlowMetaStoreExprForFactory(sc: StorageConfig): string {
 
   const slowClass = META_STORE_CLASS_MAP[slow];
   const slowArgs = buildMetaStoreArgsForFactory(sc, slow);
+  if (needsEncoding) slowArgs.push("encoding=self.encoding");
   const slowExpr =
     slowArgs.length > 0
       ? `${slowClass}(${slowArgs.join(", ")})`
       : `${slowClass}()`;
 
   return `FastSlowMetaStore(fast_store=${fastExpr}, slow_store=${slowExpr}, sync_interval=${syncInterval})`;
-}
-
-function buildResourceStoreArgs(
-  sc: StorageConfig,
-  res: ResourceStoreType,
-): string[] {
-  const args: string[] = [];
-  switch (res) {
-    case "disk":
-      args.push(`rootdir="${sc.resRootdir || "./resources"}"`);
-      break;
-    case "s3":
-    case "cached-s3":
-    case "etag-cached-s3":
-    case "mq-cached-s3":
-      args.push(`bucket="${sc.resBucket || "autocrud"}"`);
-      args.push(`prefix="${sc.resPrefix || ""}"`);
-      args.push(
-        `endpoint_url="${sc.resEndpointUrl || "http://localhost:9000"}"`,
-      );
-      args.push(`access_key_id="${sc.resAccessKeyId || "minioadmin"}"`);
-      args.push(`secret_access_key="${sc.resSecretAccessKey || "minioadmin"}"`);
-      args.push(`region_name="${sc.resRegionName || "us-east-1"}"`);
-      if (res === "mq-cached-s3") {
-        args.push(
-          `amqp_url="${sc.resAmqpUrl || "amqp://guest:guest@localhost:5672/"}"`,
-        );
-        args.push(`queue_prefix="${sc.resQueuePrefix || "autocrud:"}"`);
-      }
-      break;
-    // memory: no args
-  }
-  return args;
 }
 
 // ─── Enum Generation ───────────────────────────────────────────
@@ -754,10 +680,7 @@ export function generateFormModel(
   // Pydantic models need arbitrary_types_allowed when using Struct/Binary/Union fields
   if (style === "pydantic") {
     const needsArbitraryTypes = model.fields.some(
-      (f) =>
-        f.type === "Struct" ||
-        f.type === "Union" ||
-        f.type === "Binary",
+      (f) => f.type === "Struct" || f.type === "Union" || f.type === "Binary",
     );
     if (needsArbitraryTypes) {
       lines.push(
@@ -1064,13 +987,15 @@ export function generateConfigureCall(state: WizardState): string {
       const sc = state.storageConfig;
       const meta = sc.customMetaStore || "memory";
       const res = sc.customResourceStore || "memory";
+      const needsEncoding = state.encoding !== "json";
 
       let metaExpr: string;
       if (meta === "fast-slow") {
-        metaExpr = buildFastSlowMetaStoreExprForFactory(sc);
+        metaExpr = buildFastSlowMetaStoreExprForFactory(sc, needsEncoding);
       } else {
         const metaClass = META_STORE_CLASS_MAP[meta];
         const metaArgs = buildMetaStoreArgsForFactory(sc, meta);
+        if (needsEncoding) metaArgs.push("encoding=self.encoding");
         metaExpr =
           metaArgs.length > 0
             ? `${metaClass}(${metaArgs.join(", ")})`
@@ -1079,23 +1004,64 @@ export function generateConfigureCall(state: WizardState): string {
 
       const resClass = RESOURCE_STORE_CLASS_MAP[res];
       const resArgs = buildResourceStoreArgsForFactory(sc, res);
+      // encoding is supported by: memory, disk, s3 (cached-s3 passes it through **kwargs)
+      if (
+        needsEncoding &&
+        ["memory", "disk", "s3", "cached-s3"].includes(res)
+      ) {
+        resArgs.push("encoding=self.encoding");
+      }
       const resExpr =
         resArgs.length > 0
           ? `${resClass}(${resArgs.join(", ")})`
           : `${resClass}()`;
 
-      // Generate a proper IStorageFactory class
-      customFactoryClass = [
-        "class _CustomStorageFactory(IStorageFactory):",
-        "    def build(self, model_name: str) -> IStorage:",
-        `        return SimpleStorage(`,
-        `            meta_store=${metaExpr},`,
-        `            resource_store=${resExpr},`,
-        `        )`,
-        "",
-      ].join("\n");
+      // Build the custom factory class lines
+      const factoryLines: string[] = [];
+      factoryLines.push("class _CustomStorageFactory(IStorageFactory):");
 
-      args.push("storage_factory=_CustomStorageFactory()");
+      // P0-2: Add __init__ with encoding when non-json encoding is used
+      if (needsEncoding) {
+        factoryLines.push("    def __init__(self, encoding=Encoding.json):");
+        factoryLines.push("        self.encoding = encoding");
+        factoryLines.push("");
+      }
+
+      factoryLines.push("    def build(self, model_name: str) -> IStorage:");
+      factoryLines.push(`        return SimpleStorage(`);
+      factoryLines.push(`            meta_store=${metaExpr},`);
+      factoryLines.push(`            resource_store=${resExpr},`);
+      factoryLines.push(`        )`);
+
+      // P0-1: Add build_blob_store when using S3-series resource stores
+      if (isS3ResourceStore(res)) {
+        factoryLines.push("");
+        factoryLines.push("    def build_blob_store(self) -> IBlobStore:");
+        const blobArgs: string[] = [];
+        blobArgs.push(`bucket="${sc.resBucket || "autocrud"}"`);
+        blobArgs.push(
+          `endpoint_url="${sc.resEndpointUrl || "http://localhost:9000"}"`,
+        );
+        blobArgs.push(`access_key_id="${sc.resAccessKeyId || "minioadmin"}"`);
+        blobArgs.push(
+          `secret_access_key="${sc.resSecretAccessKey || "minioadmin"}"`,
+        );
+        blobArgs.push(`region_name="${sc.resRegionName || "us-east-1"}"`);
+        blobArgs.push(`prefix="blobs/"`);
+        factoryLines.push(`        return S3BlobStore(${blobArgs.join(", ")})`);
+      }
+
+      factoryLines.push("");
+      customFactoryClass = factoryLines.join("\n");
+
+      // P0-2: Pass encoding to factory instantiation when non-json
+      if (needsEncoding) {
+        args.push(
+          "storage_factory=_CustomStorageFactory(encoding=Encoding.msgpack)",
+        );
+      } else {
+        args.push("storage_factory=_CustomStorageFactory()");
+      }
       break;
     }
     // memory: no storage_factory arg needed (it's the default)
@@ -1128,7 +1094,9 @@ export function generateConfigureCall(state: WizardState): string {
     return customFactoryClass + `crud.configure(${args[0]})`;
   }
 
-  return customFactoryClass + `crud.configure(\n    ${args.join(",\n    ")},\n)`;
+  return (
+    customFactoryClass + `crud.configure(\n    ${args.join(",\n    ")},\n)`
+  );
 }
 
 export function generateAddModelCall(model: ModelDefinition): string {

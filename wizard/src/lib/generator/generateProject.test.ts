@@ -366,6 +366,26 @@ describe("resolveFieldType", () => {
       "list[str]",
     );
   });
+
+  it("list[int] → list[int]", () => {
+    expect(resolveFieldType(makeField({ type: "int", isList: true }))).toBe(
+      "list[int]",
+    );
+  });
+
+  it("list[float] → list[float]", () => {
+    expect(resolveFieldType(makeField({ type: "float", isList: true }))).toBe(
+      "list[float]",
+    );
+  });
+
+  it("list[Struct] → list[StructName]", () => {
+    expect(
+      resolveFieldType(
+        makeField({ type: "Struct", isList: true, structName: "Equipment" }),
+      ),
+    ).toBe("list[Equipment]");
+  });
 });
 
 // ─── generateFieldLine ─────────────────────────────────────────
@@ -895,6 +915,30 @@ describe("dict field type", () => {
         }),
       ),
     ).toBe("Optional[dict[str, Any]]");
+  });
+
+  it("dict[str, Any] → dict[str, Any]", () => {
+    expect(
+      resolveFieldType(
+        makeField({
+          type: "dict",
+          dictKeyType: "str",
+          dictValueType: "Any",
+        }),
+      ),
+    ).toBe("dict[str, Any]");
+  });
+
+  it("dict[str, str] → dict[str, str]", () => {
+    expect(
+      resolveFieldType(
+        makeField({
+          type: "dict",
+          dictKeyType: "str",
+          dictValueType: "str",
+        }),
+      ),
+    ).toBe("dict[str, str]");
   });
 
   it("dict field line with default", () => {
@@ -1523,7 +1567,9 @@ describe("F2: Custom SimpleStorage", () => {
         },
       }),
     );
-    expect(result).toContain('S3ResourceStore(bucket="autocrud", prefix=f"{model_name}/"');
+    expect(result).toContain(
+      'S3ResourceStore(bucket="autocrud", prefix=f"{model_name}/"',
+    );
     expect(result).toContain('access_key_id="minioadmin"');
     expect(result).toContain('region_name="us-east-1"');
   });
@@ -1764,11 +1810,203 @@ describe("FastSlowMetaStore", () => {
         },
       }),
     );
-    expect(result).toContain('fast_store=DiskMetaStore(rootdir=f"./fast/{model_name}")');
+    expect(result).toContain(
+      'fast_store=DiskMetaStore(rootdir=f"./fast/{model_name}")',
+    );
     expect(result).toContain(
       'slow_store=S3SqliteMetaStore(bucket="slow-bucket", key=f"slow.db/{model_name}.db"',
     );
     expect(result).toContain("sync_interval=10");
+  });
+});
+
+// ─── P0-1: build_blob_store for S3 resource stores ────────────
+
+describe("P0-1: build_blob_store", () => {
+  const S3_RESOURCE_STORES = [
+    "s3",
+    "cached-s3",
+    "etag-cached-s3",
+    "mq-cached-s3",
+  ] as const;
+
+  for (const resStore of S3_RESOURCE_STORES) {
+    it(`custom + ${resStore} → generateConfigureCall includes build_blob_store`, () => {
+      const result = generateConfigureCall(
+        makeState({
+          storage: "custom",
+          storageConfig: {
+            customMetaStore: "memory",
+            customResourceStore: resStore,
+            resBucket: "mybucket",
+            resEndpointUrl: "http://localhost:9000",
+            resAccessKeyId: "minioadmin",
+            resSecretAccessKey: "minioadmin",
+            resRegionName: "us-east-1",
+            ...(resStore === "mq-cached-s3"
+              ? { resAmqpUrl: "amqp://localhost" }
+              : {}),
+          },
+        }),
+      );
+      expect(result).toContain("build_blob_store");
+      expect(result).toContain("S3BlobStore");
+      expect(result).toContain("IBlobStore");
+      expect(result).toContain('prefix="blobs/"');
+    });
+  }
+
+  it("custom + memory resource → no build_blob_store", () => {
+    const result = generateConfigureCall(
+      makeState({
+        storage: "custom",
+        storageConfig: {
+          customMetaStore: "memory",
+          customResourceStore: "memory",
+        },
+      }),
+    );
+    expect(result).not.toContain("build_blob_store");
+    expect(result).not.toContain("S3BlobStore");
+  });
+
+  it("custom + disk resource → no build_blob_store", () => {
+    const result = generateConfigureCall(
+      makeState({
+        storage: "custom",
+        storageConfig: {
+          customMetaStore: "memory",
+          customResourceStore: "disk",
+          resRootdir: "./res",
+        },
+      }),
+    );
+    expect(result).not.toContain("build_blob_store");
+    expect(result).not.toContain("S3BlobStore");
+  });
+
+  it("custom + s3 resource → imports include S3BlobStore + IBlobStore", () => {
+    const result = generateImports(
+      makeState({
+        storage: "custom",
+        storageConfig: {
+          customMetaStore: "memory",
+          customResourceStore: "s3",
+        },
+      }),
+    );
+    expect(result).toContain("S3BlobStore");
+    expect(result).toContain("IBlobStore");
+  });
+
+  it("custom + memory resource → no S3BlobStore import", () => {
+    const result = generateImports(
+      makeState({
+        storage: "custom",
+        storageConfig: {
+          customMetaStore: "memory",
+          customResourceStore: "memory",
+        },
+      }),
+    );
+    expect(result).not.toContain("S3BlobStore");
+  });
+
+  it("build_blob_store uses same S3 connection params as resource store", () => {
+    const result = generateConfigureCall(
+      makeState({
+        storage: "custom",
+        storageConfig: {
+          customMetaStore: "memory",
+          customResourceStore: "cached-s3",
+          resBucket: "my-bucket",
+          resEndpointUrl: "http://minio:9000",
+          resAccessKeyId: "mykey",
+          resSecretAccessKey: "mysecret",
+          resRegionName: "eu-west-1",
+        },
+      }),
+    );
+    // blob store should use same connection params
+    expect(result).toContain('bucket="my-bucket"');
+    expect(result).toContain('endpoint_url="http://minio:9000"');
+    expect(result).toContain('access_key_id="mykey"');
+    expect(result).toContain('secret_access_key="mysecret"');
+    expect(result).toContain('region_name="eu-west-1"');
+    expect(result).toContain('prefix="blobs/"');
+  });
+});
+
+// ─── P0-2: encoding passthrough for custom factory ────────────
+
+describe("P0-2: encoding passthrough", () => {
+  it("custom + msgpack → factory __init__ accepts encoding", () => {
+    const result = generateConfigureCall(
+      makeState({
+        storage: "custom",
+        encoding: "msgpack",
+        storageConfig: {
+          customMetaStore: "memory",
+          customResourceStore: "memory",
+        },
+      }),
+    );
+    expect(result).toContain("def __init__(self, encoding=Encoding.json):");
+    expect(result).toContain("self.encoding = encoding");
+    expect(result).toContain(
+      "_CustomStorageFactory(encoding=Encoding.msgpack)",
+    );
+  });
+
+  it("custom + json → no __init__ / no encoding param", () => {
+    const result = generateConfigureCall(
+      makeState({
+        storage: "custom",
+        encoding: "json",
+        storageConfig: {
+          customMetaStore: "memory",
+          customResourceStore: "memory",
+        },
+      }),
+    );
+    expect(result).not.toContain("def __init__");
+    expect(result).not.toContain("self.encoding");
+    expect(result).toContain("_CustomStorageFactory()");
+  });
+
+  it("custom + msgpack → imports Encoding", () => {
+    const imports = generateImports(
+      makeState({
+        storage: "custom",
+        encoding: "msgpack",
+        storageConfig: {
+          customMetaStore: "memory",
+          customResourceStore: "memory",
+        },
+      }),
+    );
+    expect(imports).toContain("Encoding");
+  });
+
+  it("custom + msgpack + s3 resource → encoding passed in factory instantiation", () => {
+    const result = generateConfigureCall(
+      makeState({
+        storage: "custom",
+        encoding: "msgpack",
+        storageConfig: {
+          customMetaStore: "postgres",
+          customResourceStore: "s3",
+          metaPostgresDsn: "pg://h/db",
+          resBucket: "mybucket",
+        },
+      }),
+    );
+    expect(result).toContain(
+      "_CustomStorageFactory(encoding=Encoding.msgpack)",
+    );
+    expect(result).toContain("self.encoding = encoding");
+    // encoding should be passed to stores that support it
+    expect(result).toContain("encoding=self.encoding");
   });
 });
 
