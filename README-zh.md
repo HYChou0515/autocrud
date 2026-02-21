@@ -1,6 +1,7 @@
 # AutoCRUD
 
 [![Docs](https://img.shields.io/badge/Docs-Documentation-blue)](https://hychou0515.github.io/autocrud/)
+[![Wizard](https://img.shields.io/badge/Wizard-Starter_Wizard-ff69b4)](https://hychou0515.github.io/autocrud/wizard/)
 [![PyPI](https://img.shields.io/pypi/v/autocrud)](https://pypi.org/project/autocrud/)
 [![FastAPI](https://img.shields.io/badge/FastAPI-Automation-009688)](https://fastapi.tiangolo.com)
 [![GraphQL](https://img.shields.io/badge/GraphQL-Supported-E10098?logo=graphql)](https://graphql.org/)
@@ -18,6 +19,12 @@
 - 🗂️ **版本控制**：原生支援完整版本歷史、草稿不進版編輯、版本切換與還原，適合審計/回溯/草稿流程
 - 🔧 **高度可定制**：靈活的路由命名、索引欄位、事件處理器與權限檢查
 - 🏎️ **高性能**：基於 FastAPI + msgspec，低延遲高吞吐
+
+## 🧙 Starter Wizard
+
+使用互動式 **Starter Wizard** 快速生成可直接執行的 AutoCRUD 專案，包含模型、儲存與權限配置 — 免去手動撰寫樣板程式碼。
+
+👉 [https://hychou0515.github.io/autocrud/wizard/](https://hychou0515.github.io/autocrud/wizard/)
 
 ## 功能概覽
 
@@ -66,7 +73,6 @@ pip install "autocrud[magic]"
 ## 文檔
 
 https://hychou0515.github.io/autocrud/
-
 
 ## 第一個 API
 

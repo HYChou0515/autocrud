@@ -1,6 +1,7 @@
 # AutoCRUD
 
 [![Docs](https://img.shields.io/badge/Docs-Documentation-blue)](https://hychou0515.github.io/autocrud/)
+[![Wizard](https://img.shields.io/badge/Wizard-Starter_Wizard-ff69b4)](https://hychou0515.github.io/autocrud/wizard/)
 [![PyPI](https://img.shields.io/pypi/v/autocrud)](https://pypi.org/project/autocrud/)
 [![FastAPI](https://img.shields.io/badge/FastAPI-Automation-009688)](https://fastapi.tiangolo.com)
 [![GraphQL](https://img.shields.io/badge/GraphQL-Supported-E10098?logo=graphql)](https://graphql.org/)
@@ -18,6 +19,12 @@
 - 🗂️ **Versioning**: Native support for full revision history, draft in-place editing, revision switching and restore—ideal for auditing, rollback, and draft workflows.
 - 🔧 **Highly customizable**: Flexible route naming, indexed fields, event handlers, and permission checks.
 - 🏎️ **High performance**: Built on FastAPI + msgspec for low latency and high throughput.
+
+## 🧙 Starter Wizard
+
+Use the interactive **Starter Wizard** to generate a ready-to-run AutoCRUD project with your models, storage, and permissions configured — no boilerplate needed.
+
+👉 [https://hychou0515.github.io/autocrud/wizard/](https://hychou0515.github.io/autocrud/wizard/)
 
 ## Feature Overview
 
