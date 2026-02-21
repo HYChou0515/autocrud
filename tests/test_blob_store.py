@@ -24,6 +24,48 @@ def test_fallback_content_type_guesser():
     assert content_type is UNSET
 
 
+def test_get_content_type_guesser_warns_when_libmagic_missing():
+    """When python-magic is installed but libmagic is absent, warn and fallback."""
+    import warnings
+    from unittest.mock import MagicMock
+
+    from autocrud.resource_manager.blob_store import simple as mod
+
+    # Create a fake magic module whose from_buffer raises an OSError
+    # (simulates libmagic shared library not found)
+    fake_magic = MagicMock()
+    fake_magic.from_buffer.side_effect = OSError("failed to find libmagic")
+
+    original_import = (
+        __builtins__.__import__ if hasattr(__builtins__, "__import__") else __import__
+    )
+
+    def patched_import(name, *args, **kwargs):
+        if name == "magic":
+            return fake_magic
+        return original_import(name, *args, **kwargs)
+
+    import builtins
+
+    old_import = builtins.__import__
+    builtins.__import__ = patched_import
+    try:
+        with warnings.catch_warnings(record=True) as w:
+            warnings.simplefilter("always")
+            guesser = mod.get_content_type_guesser()
+            # Should have emitted a warning
+            assert len(w) == 1
+            assert (
+                "libmagic" in str(w[0].message).lower()
+                or "magic" in str(w[0].message).lower()
+            )
+        # Guesser should be the fallback
+        result = guesser(b"test data")
+        assert result is UNSET
+    finally:
+        builtins.__import__ = old_import
+
+
 @pytest.fixture(params=["memory", "simple", "s3"])
 def blob_store(
     request: pytest.FixtureRequest, tmp_path: pytest.TempPathFactory
