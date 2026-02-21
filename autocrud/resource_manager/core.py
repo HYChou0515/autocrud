@@ -28,6 +28,7 @@ from xxhash import xxh3_128_hexdigest
 from autocrud.resource_manager.partial import create_partial_type, prune_object
 from autocrud.resource_manager.pydantic_converter import (  # noqa: E402
     build_validator,
+    pydantic_to_dict,
 )
 from autocrud.types import (
     AfterCreate,
@@ -572,11 +573,7 @@ class ResourceManager(IResourceManager[T], Generic[T]):
             return msgspec.convert(data, self._resource_type)
         # Accept Pydantic instance when RM was configured with pydantic_type
         if self._pydantic_type is not None and isinstance(data, self._pydantic_type):
-            try:
-                d = data.model_dump()  # Pydantic v2
-            except AttributeError:
-                d = data.dict()  # Pydantic v1
-            return msgspec.convert(d, self._resource_type)
+            return msgspec.convert(pydantic_to_dict(data), self._resource_type)
         return data
 
     @property
