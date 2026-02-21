@@ -21,6 +21,8 @@ from autocrud.crud.route_templates.basic import (
 )
 from autocrud.crud.route_templates.create import CreateRouteTemplate
 from autocrud.crud.route_templates.delete import (
+    BatchDeleteRouteTemplate,
+    BatchRestoreRouteTemplate,
     DeleteRouteTemplate,
     RestoreRouteTemplate,
 )
@@ -407,6 +409,8 @@ class AutoCRUD:
                     SwitchRevisionRouteTemplate,
                     DeleteRouteTemplate,
                     RestoreRouteTemplate,
+                    BatchDeleteRouteTemplate,
+                    BatchRestoreRouteTemplate,
                 ]:
                     more_kwargs = route_templates_dict.get(rt, {})
                     more_kwargs.setdefault("dependency_provider", dep_provider)
