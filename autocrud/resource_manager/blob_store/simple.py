@@ -17,11 +17,25 @@ def get_content_type_guesser():
     try:
         import magic
 
+        # Probe once to verify libmagic is actually usable
+        magic.from_buffer(b"", mime=True)
+
         def guess_content_type(data: bytes) -> str:
             return magic.from_buffer(data, mime=True)
 
         return guess_content_type
     except ImportError:
+        return _fallback_content_type_guesser
+    except Exception as exc:
+        import warnings
+
+        warnings.warn(
+            f"python-magic is installed but content-type detection failed ({exc}). "
+            "Falling back to no content-type detection. "
+            "If this is unexpected, ensure libmagic is installed "
+            "(e.g. `apt install libmagic1`).",
+            stacklevel=2,
+        )
         return _fallback_content_type_guesser
 
 
