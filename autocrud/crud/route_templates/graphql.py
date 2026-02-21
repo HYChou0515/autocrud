@@ -4,13 +4,21 @@ import inspect
 from typing import Any, Generic, Optional, TypeVar, get_args, get_origin
 
 import msgspec
-import strawberry
+
+try:
+    import strawberry
+    from strawberry.fastapi import GraphQLRouter
+    from strawberry.scalars import JSON
+    from strawberry.tools import create_type
+    from strawberry.types import Info
+    from strawberry.utils.str_converters import to_camel_case, to_snake_case
+except ModuleNotFoundError as _err:
+    raise ImportError(
+        "GraphQL support requires the 'strawberry-graphql' package. "
+        "Install it with: pip install autocrud[graphql]"
+    ) from _err
+
 from fastapi import APIRouter, Depends
-from strawberry.fastapi import GraphQLRouter
-from strawberry.scalars import JSON
-from strawberry.tools import create_type
-from strawberry.types import Info
-from strawberry.utils.str_converters import to_camel_case, to_snake_case
 
 from autocrud.crud.route_templates.basic import BaseRouteTemplate, DependencyProvider
 from autocrud.types import (
