@@ -39,6 +39,8 @@ class ReadRouteTemplate(BaseRouteTemplate, Generic[T]):
             responses=struct_to_responses_type(ResourceMeta),
             summary=f"Get {model_name} Meta by ID",
             tags=[f"{model_name}"],
+            deprecated=True,
+            description=f"Deprecated: use `GET /{model_name}/{{resource_id}}?returns=meta` instead.",
         )
         async def get_resource_meta(
             request: Request,
@@ -89,6 +91,7 @@ class ReadRouteTemplate(BaseRouteTemplate, Generic[T]):
             responses=struct_to_responses_type(RevisionInfo),
             summary=f"Get {model_name} Revision Info",
             tags=[f"{model_name}"],
+            deprecated=True,
             description=textwrap.dedent(
                 f"""
                 Retrieve revision information for a specific `{model_name}` resource.
@@ -172,67 +175,16 @@ class ReadRouteTemplate(BaseRouteTemplate, Generic[T]):
 
             return MsgspecResponse(info)
 
-        @router.get(
-            f"/{model_name}/{{resource_id}}/full",
-            responses=struct_to_responses_type(FullResourceResponse[resource_type]),
-            summary=f"Get Complete {model_name} Information",
-            tags=[f"{model_name}"],
-            description=textwrap.dedent(
-                f"""
-                Retrieve complete information for a `{model_name}` resource including data, metadata, and revision info.
-
-                **Path Parameters:**
-                - `resource_id`: The unique identifier of the resource
-
-                **Query Parameters:**
-                - `revision_id` (optional): Specific revision ID to retrieve. If not provided, returns the current revision
-                - `partial` (optional): List of fields to retrieve (e.g. '/field1', '/nested/field2')
-
-                **Response:**
-                - Returns comprehensive resource information including:
-                  - `data`: The actual resource data
-                  - `meta`: Resource metadata (creation time, update time, deletion status, etc.)
-                  - `revision_info`: Detailed revision information (uid, revision_id, parent_revision, etc.)
-
-                **Use Cases:**
-                - Get all available information about a resource in one request
-                - Complete resource inspection for debugging or auditing
-                - Comprehensive data export including all metadata
-                - Full context retrieval for complex operations
-                - Fetching only necessary data fields while keeping metadata (using partial)
-
-                **Examples:**
-                - `GET /{model_name}/123/full` - Get complete current resource information
-                - `GET /{model_name}/123/full?revision_id=rev456` - Get complete information for specific revision
-                - `GET /{model_name}/123/full?partial=/name&partial=/email` - Get specific fields in data
-
-                **Error Responses:**
-                - `404`: Resource or revision not found""",
-            ),
-        )
-        async def get_resource_full(
-            request: Request,
-            resource_id: str,
-            revision_id: Optional[str] = Query(
-                None,
-                description="Specific revision ID to retrieve. If not provided, returns the current revision",
-            ),
-            partial: Optional[list[str]] = Query(
-                None,
-                description="List of fields to retrieve (e.g. '/field1', '/nested/field2')",
-            ),
-            partial_brackets: Optional[list[str]] = Query(
-                None,
-                alias="partial[]",
-                description="List of fields to retrieve (e.g. '/field1', '/nested/field2') - for axios support",
-                include_in_schema=False,
-            ),
-            current_user: str = Depends(self.deps.get_user),
-            current_time: dt.datetime = Depends(self.deps.get_now),
-            returns: str = Query(
-                default="data,revision_info,meta",
-                description="Fields to return, comma-separated. Options: data, revision_info, meta",
-            ),
+        # Shared implementation for /full and bare path GET endpoints
+        async def _handle_get_with_returns(
+            request,
+            resource_id,
+            revision_id,
+            partial,
+            partial_brackets,
+            current_user,
+            current_time,
+            returns,
         ):
             # 獲取資源和元數據
             try:
@@ -305,6 +257,62 @@ class ReadRouteTemplate(BaseRouteTemplate, Generic[T]):
                     revision_info=revision_info,
                     meta=meta,
                 ),
+            )
+
+        @router.get(
+            f"/{model_name}/{{resource_id}}/full",
+            responses=struct_to_responses_type(FullResourceResponse[resource_type]),
+            summary=f"Get Complete {model_name} Information",
+            tags=[f"{model_name}"],
+            deprecated=True,
+            description=textwrap.dedent(
+                f"""
+                Deprecated: use `GET /{model_name}/{{resource_id}}` instead.
+
+                Retrieve complete information for a `{model_name}` resource including data, metadata, and revision info.
+
+                **Query Parameters:**
+                - `revision_id` (optional): Specific revision ID to retrieve
+                - `partial` (optional): List of fields to retrieve
+                - `returns`: Comma-separated fields to return (data, revision_info, meta)
+
+                **Error Responses:**
+                - `404`: Resource or revision not found""",
+            ),
+        )
+        async def get_resource_full(
+            request: Request,
+            resource_id: str,
+            revision_id: Optional[str] = Query(
+                None,
+                description="Specific revision ID to retrieve. If not provided, returns the current revision",
+            ),
+            partial: Optional[list[str]] = Query(
+                None,
+                description="List of fields to retrieve (e.g. '/field1', '/nested/field2')",
+            ),
+            partial_brackets: Optional[list[str]] = Query(
+                None,
+                alias="partial[]",
+                description="List of fields to retrieve (e.g. '/field1', '/nested/field2') - for axios support",
+                include_in_schema=False,
+            ),
+            current_user: str = Depends(self.deps.get_user),
+            current_time: dt.datetime = Depends(self.deps.get_now),
+            returns: str = Query(
+                default="data,revision_info,meta",
+                description="Fields to return, comma-separated. Options: data, revision_info, meta",
+            ),
+        ):
+            return await _handle_get_with_returns(
+                request,
+                resource_id,
+                revision_id,
+                partial,
+                partial_brackets,
+                current_user,
+                current_time,
+                returns,
             )
 
         @router.get(
@@ -507,6 +515,7 @@ class ReadRouteTemplate(BaseRouteTemplate, Generic[T]):
             responses=struct_to_responses_type(resource_type),
             summary=f"Get {model_name} Data",
             tags=[f"{model_name}"],
+            deprecated=True,
             description=textwrap.dedent(
                 f"""
                 Retrieve only the data content of a `{model_name}` resource.
@@ -642,3 +651,68 @@ class ReadRouteTemplate(BaseRouteTemplate, Generic[T]):
                 raise HTTPException(status_code=404, detail="Blob not found")
             except NotImplementedError:
                 raise HTTPException(status_code=400, detail="Blob store not configured")
+
+        # New bare path endpoint — canonical GET for a single resource
+        @router.get(
+            f"/{model_name}/{{resource_id}}",
+            responses=struct_to_responses_type(FullResourceResponse[resource_type]),
+            summary=f"Get {model_name} resource",
+            tags=[f"{model_name}"],
+            description=textwrap.dedent(
+                f"""
+                Retrieve a `{model_name}` resource by ID.
+
+                Use the `returns` query parameter to control which sections are included in the response.
+                By default all sections are returned: `data`, `revision_info`, `meta`.
+
+                **Query Parameters:**
+                - `returns` (default `"data,revision_info,meta"`): Comma-separated list of sections to include.
+                  Allowed values: `data`, `revision_info`, `meta`.
+                - `revision_id` (optional): Specific revision ID to retrieve.
+                - `partial` / `partial[]` (optional): List of fields for partial response.
+
+                **Examples:**
+                - `GET /{model_name}/123` — full response (data + meta + revision_info)
+                - `GET /{model_name}/123?returns=data` — data only
+                - `GET /{model_name}/123?returns=data,meta` — data + meta, no revision_info
+                - `GET /{model_name}/123?returns=meta` — metadata only
+                - `GET /{model_name}/123?partial=/name&partial=/email` — partial data fields
+
+                **Error Responses:**
+                - `404`: Resource or revision not found""",
+            ),
+        )
+        async def get_resource(
+            request: Request,
+            resource_id: str,
+            revision_id: Optional[str] = Query(
+                None,
+                description="Specific revision ID to retrieve. If not provided, returns the current revision",
+            ),
+            partial: Optional[list[str]] = Query(
+                None,
+                description="List of fields to retrieve (e.g. '/field1', '/nested/field2')",
+            ),
+            partial_brackets: Optional[list[str]] = Query(
+                None,
+                alias="partial[]",
+                description="List of fields to retrieve (e.g. '/field1', '/nested/field2') - for axios support",
+                include_in_schema=False,
+            ),
+            current_user: str = Depends(self.deps.get_user),
+            current_time: dt.datetime = Depends(self.deps.get_now),
+            returns: str = Query(
+                default="data,revision_info,meta",
+                description="Fields to return, comma-separated. Options: data, revision_info, meta",
+            ),
+        ):
+            return await _handle_get_with_returns(
+                request,
+                resource_id,
+                revision_id,
+                partial,
+                partial_brackets,
+                current_user,
+                current_time,
+                returns,
+            )
