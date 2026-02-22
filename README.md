@@ -90,7 +90,7 @@ Point the generator at your running API and it produces:
 
 The output is a standalone [Vite](https://vitejs.dev/) + [React](https://react.dev/) + [Mantine](https://mantine.dev/) + [TanStack Router](https://tanstack.com/router) project — not a thin shell. You own the generated code and can customize it freely.
 
-**Quick start** (backend must be running at `http://localhost:8000`):
+**Quick start** (suppose backend run at `http://localhost:8000`):
 
 ```bash
 npm install -g autocrud-web-generator
