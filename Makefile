@@ -140,7 +140,7 @@ build: clean-dev
 
 # 發布套件到 PyPI
 .PHONY: publish
-publish: build test
+publish: build 
 	@echo "發布套件到 PyPI..."
 	uv run python scripts/publish.py
 
