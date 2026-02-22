@@ -10,9 +10,12 @@
  * RefRevisionMultiSelect — same but for list[Annotated[str, RefRevision(...)]].
  */
 import { useCallback, useEffect, useState } from 'react';
-import { Select, MultiSelect, Loader } from '@mantine/core';
+import { Select, MultiSelect, Loader, ActionIcon, Group, Tooltip } from '@mantine/core';
+import { useDisclosure } from '@mantine/hooks';
+import { IconTableFilled } from '@tabler/icons-react';
 import { getResource } from '../../../resources';
 import type { FieldRef } from '../../../resources';
+import { RefTableSelectModal } from './RefTableSelectModal';
 
 interface RefSelectProps {
   /** Field label */
@@ -93,23 +96,43 @@ export function RefSelect({
 }: RefSelectProps) {
   const { options, loading } = useRefOptions(fieldRef.resource);
   const [searchValue, setSearchValue] = useState('');
+  const [tableOpened, { open: openTable, close: closeTable }] = useDisclosure(false);
 
   return (
-    <Select
-      label={label}
-      required={required}
-      placeholder={`Select ${fieldRef.resource}…`}
-      data={options}
-      value={value}
-      onChange={onChange}
-      searchable
-      searchValue={searchValue}
-      onSearchChange={setSearchValue}
-      clearable={clearable}
-      nothingFoundMessage={loading ? 'Loading…' : 'No results'}
-      error={error}
-      rightSection={loading ? <Loader size="xs" /> : undefined}
-    />
+    <>
+      <Group wrap="nowrap" align="flex-end" gap={4}>
+        <Select
+          label={label}
+          required={required}
+          placeholder={`Select ${fieldRef.resource}…`}
+          data={options}
+          value={value}
+          onChange={onChange}
+          searchable
+          searchValue={searchValue}
+          onSearchChange={setSearchValue}
+          clearable={clearable}
+          nothingFoundMessage={loading ? 'Loading…' : 'No results'}
+          error={error}
+          rightSection={loading ? <Loader size="xs" /> : undefined}
+          style={{ flex: 1 }}
+        />
+        <Tooltip label="用表格選擇">
+          <ActionIcon variant="light" size="lg" onClick={openTable} mb={error ? 22 : 0}>
+            <IconTableFilled size={18} />
+          </ActionIcon>
+        </Tooltip>
+      </Group>
+      <RefTableSelectModal
+        opened={tableOpened}
+        onClose={closeTable}
+        onConfirm={(selected) => onChange(selected[0] ?? null)}
+        resourceName={fieldRef.resource}
+        mode="single"
+        selectedValues={value ? [value] : []}
+        valueField="resource_id"
+      />
+    </>
   );
 }
 
@@ -141,23 +164,43 @@ export function RefMultiSelect({
 }: RefMultiSelectProps) {
   const { options, loading } = useRefOptions(fieldRef.resource);
   const [searchValue, setSearchValue] = useState('');
+  const [tableOpened, { open: openTable, close: closeTable }] = useDisclosure(false);
 
   return (
-    <MultiSelect
-      label={label}
-      required={required}
-      placeholder={`Select ${fieldRef.resource}…`}
-      data={options}
-      value={value}
-      onChange={onChange}
-      searchable
-      searchValue={searchValue}
-      onSearchChange={setSearchValue}
-      clearable
-      nothingFoundMessage={loading ? 'Loading…' : 'No results'}
-      error={error}
-      rightSection={loading ? <Loader size="xs" /> : undefined}
-    />
+    <>
+      <Group wrap="nowrap" align="flex-end" gap={4}>
+        <MultiSelect
+          label={label}
+          required={required}
+          placeholder={`Select ${fieldRef.resource}…`}
+          data={options}
+          value={value}
+          onChange={onChange}
+          searchable
+          searchValue={searchValue}
+          onSearchChange={setSearchValue}
+          clearable
+          nothingFoundMessage={loading ? 'Loading…' : 'No results'}
+          error={error}
+          rightSection={loading ? <Loader size="xs" /> : undefined}
+          style={{ flex: 1 }}
+        />
+        <Tooltip label="用表格選擇">
+          <ActionIcon variant="light" size="lg" onClick={openTable} mb={error ? 22 : 0}>
+            <IconTableFilled size={18} />
+          </ActionIcon>
+        </Tooltip>
+      </Group>
+      <RefTableSelectModal
+        opened={tableOpened}
+        onClose={closeTable}
+        onConfirm={(selected) => onChange(selected)}
+        resourceName={fieldRef.resource}
+        mode="multi"
+        selectedValues={value}
+        valueField="resource_id"
+      />
+    </>
   );
 }
 
@@ -240,23 +283,43 @@ export function RefRevisionSelect({
 }: RefRevisionSelectProps) {
   const { options, loading } = useRefRevisionOptions(fieldRef.resource);
   const [searchValue, setSearchValue] = useState('');
+  const [tableOpened, { open: openTable, close: closeTable }] = useDisclosure(false);
 
   return (
-    <Select
-      label={label}
-      required={required}
-      placeholder={`Select ${fieldRef.resource} revision…`}
-      data={options}
-      value={value}
-      onChange={onChange}
-      searchable
-      searchValue={searchValue}
-      onSearchChange={setSearchValue}
-      clearable={clearable}
-      nothingFoundMessage={loading ? 'Loading…' : 'No results'}
-      error={error}
-      rightSection={loading ? <Loader size="xs" /> : undefined}
-    />
+    <>
+      <Group wrap="nowrap" align="flex-end" gap={4}>
+        <Select
+          label={label}
+          required={required}
+          placeholder={`Select ${fieldRef.resource} revision…`}
+          data={options}
+          value={value}
+          onChange={onChange}
+          searchable
+          searchValue={searchValue}
+          onSearchChange={setSearchValue}
+          clearable={clearable}
+          nothingFoundMessage={loading ? 'Loading…' : 'No results'}
+          error={error}
+          rightSection={loading ? <Loader size="xs" /> : undefined}
+          style={{ flex: 1 }}
+        />
+        <Tooltip label="用表格選擇">
+          <ActionIcon variant="light" size="lg" onClick={openTable} mb={error ? 22 : 0}>
+            <IconTableFilled size={18} />
+          </ActionIcon>
+        </Tooltip>
+      </Group>
+      <RefTableSelectModal
+        opened={tableOpened}
+        onClose={closeTable}
+        onConfirm={(selected) => onChange(selected[0] ?? null)}
+        resourceName={fieldRef.resource}
+        mode="single"
+        selectedValues={value ? [value] : []}
+        valueField="current_revision_id"
+      />
+    </>
   );
 }
 
@@ -288,22 +351,42 @@ export function RefRevisionMultiSelect({
 }: RefRevisionMultiSelectProps) {
   const { options, loading } = useRefRevisionOptions(fieldRef.resource);
   const [searchValue, setSearchValue] = useState('');
+  const [tableOpened, { open: openTable, close: closeTable }] = useDisclosure(false);
 
   return (
-    <MultiSelect
-      label={label}
-      required={required}
-      placeholder={`Select ${fieldRef.resource} revisions…`}
-      data={options}
-      value={value}
-      onChange={onChange}
-      searchable
-      searchValue={searchValue}
-      onSearchChange={setSearchValue}
-      clearable
-      nothingFoundMessage={loading ? 'Loading…' : 'No results'}
-      error={error}
-      rightSection={loading ? <Loader size="xs" /> : undefined}
-    />
+    <>
+      <Group wrap="nowrap" align="flex-end" gap={4}>
+        <MultiSelect
+          label={label}
+          required={required}
+          placeholder={`Select ${fieldRef.resource} revisions…`}
+          data={options}
+          value={value}
+          onChange={onChange}
+          searchable
+          searchValue={searchValue}
+          onSearchChange={setSearchValue}
+          clearable
+          nothingFoundMessage={loading ? 'Loading…' : 'No results'}
+          error={error}
+          rightSection={loading ? <Loader size="xs" /> : undefined}
+          style={{ flex: 1 }}
+        />
+        <Tooltip label="用表格選擇">
+          <ActionIcon variant="light" size="lg" onClick={openTable} mb={error ? 22 : 0}>
+            <IconTableFilled size={18} />
+          </ActionIcon>
+        </Tooltip>
+      </Group>
+      <RefTableSelectModal
+        opened={tableOpened}
+        onClose={closeTable}
+        onConfirm={(selected) => onChange(selected)}
+        resourceName={fieldRef.resource}
+        mode="multi"
+        selectedValues={value}
+        valueField="current_revision_id"
+      />
+    </>
   );
 }

@@ -19,20 +19,15 @@ import { IconPlus, IconRefresh, IconSearch, IconX, IconAlertCircle } from '@tabl
 import {
   MantineReactTable,
   useMantineReactTable,
-  type MRT_ColumnDef,
   type MRT_PaginationState,
   type MRT_SortingState,
   type MRT_RowData,
 } from 'mantine-react-table';
-import type { FullResource } from '../../../types/api';
-import type { ResourceField } from '../../resources';
 import { useResourceList } from '../../hooks/useResourceList';
-import { formatTime } from '../common/TimeDisplay';
-import { renderCellValue } from '../field/CellFieldRenderer';
-import { ResourceIdCell } from '../common/ResourceIdCell';
 import { AdvancedSearchPanel } from './AdvancedSearchPanel';
+import { buildTableColumns } from './buildColumns';
 import type { ActiveSearchState } from './searchUtils';
-import type { ResourceTableProps, ColumnVariant } from './types';
+import type { ResourceTableProps } from './types';
 import { sortByToSorts } from './utils';
 
 /**
@@ -168,184 +163,14 @@ export function ResourceTable<T extends MRT_RowData>({
 
   const { data, total, loading, error, refresh } = useResourceList(config, params);
 
-  const tableColumns = useMemo<MRT_ColumnDef<FullResource<T>, unknown>[]>(() => {
-    // Render meta columns using ColumnVariant (fixed set, no ResourceField)
-    const renderMetaCell = (variant: ColumnVariant, value: unknown): React.ReactNode => {
-      if (value == null) return '';
-      switch (variant) {
-        case 'string':
-          return String(value);
-        case 'relative-time':
-          return formatTime(String(value), 'relative');
-        case 'full-time':
-          return formatTime(String(value), 'full');
-        case 'short-time':
-          return formatTime(String(value), 'short');
-        case 'date':
-          return formatTime(String(value), 'date');
-        case 'boolean':
-          return value ? '✅' : '❌';
-        case 'array':
-          return Array.isArray(value) ? value.join(', ') : String(value);
-        case 'json':
-          return typeof value === 'object' ? JSON.stringify(value) : String(value);
-        case 'auto':
-        default:
-          return String(value);
-      }
-    };
-
-    // Build column definitions with default settings
-    interface ColumnDef {
-      id: string;
-      header: string;
-      accessorFn: (row: FullResource<T>) => unknown;
-      size?: number;
-      /** Meta-column display variant (used only when field is absent). */
-      variant?: ColumnVariant;
-      /** ResourceField metadata — present for data columns, absent for meta columns. */
-      field?: ResourceField;
-      defaultHidden?: boolean;
-      /** Override render — highest priority, set by ColumnOverride.render or meta-specific renderers. */
-      customRender?: (value: unknown) => React.ReactNode;
-    }
-
-    const allColumns: ColumnDef[] = [
-      {
-        id: 'resource_id',
-        header: 'Resource ID',
-        accessorFn: (row) => row?.meta?.resource_id,
-        size: 180,
-        variant: 'string',
-        customRender: (value) => <ResourceIdCell rid={String(value)} />,
-      },
-    ];
-
-    // Add data fields — cell rendering is delegated to CellFieldRenderer registry
-    for (const field of config.fields) {
-      if (field.variant?.type === 'json') continue;
-
-      allColumns.push({
-        id: field.name,
-        header: field.label,
-        field, // <-- attach ResourceField for registry-based rendering
-        accessorFn: (row) => {
-          const parts = field.name.split('.');
-          let val: any = row?.data;
-          for (const p of parts) val = val?.[p];
-          return val;
-        },
-        size: field.type === 'binary' ? 120 : undefined,
-      });
-    }
-
-    // Add metadata columns (all available, some hidden by default)
-    allColumns.push(
-      {
-        id: 'current_revision_id',
-        header: 'Revision ID',
-        accessorFn: (row) => row?.meta?.current_revision_id,
-        variant: 'string',
-        defaultHidden: true,
-        customRender: (value) => <ResourceIdCell rid={String(value)} />,
-      },
-      {
-        id: 'schema_version',
-        header: 'Schema Version',
-        accessorFn: (row) => row?.meta?.schema_version,
-        variant: 'string',
-        defaultHidden: true,
-      },
-      {
-        id: 'is_deleted',
-        header: 'Deleted',
-        accessorFn: (row) => row?.meta?.is_deleted,
-        variant: 'boolean',
-        defaultHidden: true,
-      },
-      {
-        id: 'created_time',
-        header: 'Created',
-        accessorFn: (row) => row?.meta?.created_time,
-        variant: 'relative-time',
-        defaultHidden: false,
-      },
-      {
-        id: 'created_by',
-        header: 'Created By',
-        accessorFn: (row) => row?.meta?.created_by,
-        variant: 'string',
-        defaultHidden: true,
-      },
-      {
-        id: 'updated_time',
-        header: 'Updated',
-        accessorFn: (row) => row?.meta?.updated_time,
-        variant: 'relative-time',
-        defaultHidden: false,
-      },
-      {
-        id: 'updated_by',
-        header: 'Updated By',
-        accessorFn: (row) => row?.meta?.updated_by,
-        variant: 'string',
-        defaultHidden: true,
-      },
-    );
-
-    // Apply overrides
-    const overrides = columns?.overrides ?? {};
-    const processedColumns = allColumns.map((col) => {
-      const override = overrides[col.id];
-
-      // 決定是否隱藏：override.hidden > defaultHidden > false
-      const hidden =
-        override?.hidden !== undefined ? override.hidden : (col.defaultHidden ?? false);
-
-      return {
-        ...col,
-        header: override?.label ?? col.header,
-        size: override?.size ?? col.size,
-        variant: override?.variant ?? col.variant,
-        hidden,
-        customRender: override?.render ?? col.customRender,
-      };
-    });
-
-    // Apply ordering
-    let orderedColumns = processedColumns;
-    if (columns?.order) {
-      const orderMap = new Map(columns.order.map((id, idx) => [id, idx]));
-      orderedColumns = processedColumns.sort((a, b) => {
-        const aOrder = orderMap.get(a.id) ?? Infinity;
-        const bOrder = orderMap.get(b.id) ?? Infinity;
-        return aOrder - bOrder;
-      });
-    }
-
-    // Filter hidden columns and convert to MRT format
-    return orderedColumns
-      .filter((col) => !col.hidden)
-      .map((col) => ({
-        id: col.id,
-        header: col.header,
-        accessorFn: col.accessorFn,
-        size: col.size,
-        Cell: ({ cell }) => {
-          const value = cell.getValue();
-          // 1. 最高優先：使用者自訂 render（ColumnOverride.render 或 meta 硬編碼）
-          if (col.customRender) {
-            return col.customRender(value);
-          }
-          // 2. Data field：使用 CellFieldRenderer registry
-          if (col.field) {
-            return renderCellValue({ field: col.field, value });
-          }
-          // 3. Meta field fallback：使用 ColumnVariant
-          return renderMetaCell(col.variant ?? 'auto', value);
-        },
-      }));
-  }, [config.fields, columns]);
+  const tableColumns = useMemo(
+    () =>
+      buildTableColumns(config, {
+        order: columns?.order,
+        overrides: columns?.overrides,
+      }),
+    [config.fields, columns],
+  );
 
   const table = useMantineReactTable({
     columns: tableColumns,

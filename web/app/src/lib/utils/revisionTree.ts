@@ -157,7 +157,14 @@ export function buildRevisionTreeLayout(
 
       for (const branchRoot of branchRoots) {
         // DFS: first child inherits parent lane, rest get new lanes
-        dfsAssignLanes(branchRoot.id, assignLane(branchRoot.id), childrenMap, byId, laneMap, assignLane);
+        dfsAssignLanes(
+          branchRoot.id,
+          assignLane(branchRoot.id),
+          childrenMap,
+          byId,
+          laneMap,
+          assignLane,
+        );
       }
     }
 

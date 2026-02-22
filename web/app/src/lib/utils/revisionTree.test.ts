@@ -230,10 +230,7 @@ describe('buildRevisionTreeLayout', () => {
 
   it('currentRevisionId not in list: safe fallback with empty trunk', () => {
     const layout = buildRevisionTreeLayout(
-      [
-        rev('root', null, '2024-01-01T00:00:00Z'),
-        rev('a', 'root', '2024-01-02T00:00:00Z'),
-      ],
+      [rev('root', null, '2024-01-01T00:00:00Z'), rev('a', 'root', '2024-01-02T00:00:00Z')],
       'asc',
       'nonexistent',
     );
@@ -247,10 +244,7 @@ describe('buildRevisionTreeLayout', () => {
 
   it('returns trunkIds in layout', () => {
     const layout = buildRevisionTreeLayout(
-      [
-        rev('r1', null, '2024-01-01T00:00:00Z'),
-        rev('r2', 'r1', '2024-01-02T00:00:00Z'),
-      ],
+      [rev('r1', null, '2024-01-01T00:00:00Z'), rev('r2', 'r1', '2024-01-02T00:00:00Z')],
       'asc',
       'r2',
     );
