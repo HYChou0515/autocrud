@@ -74,6 +74,33 @@ pip install "autocrud[magic]"
 
 https://hychou0515.github.io/autocrud/
 
+## AutoCRUD Web Generator
+
+[`autocrud-web-generator`](https://www.npmjs.com/package/autocrud-web-generator) 可以直接從 AutoCRUD 後端的 OpenAPI 規格，在幾秒內生成一個完整的 React 管理後台，不需要手寫任何前端樣板程式碼。
+
+對著正在執行的 API 跑一次 generator，就能得到：
+
+- **TypeScript 型別** — 從 OpenAPI schemas 自動推導
+- **Axios API client** — 每個資源各自一份，可直接使用
+- **列表頁面** — 含伺服器端分頁、排序與搜尋
+- **新增頁面** — 依 schema 自動產生表單，搭配 Zod 驗證
+- **詳情頁面** — 含完整版本歷史瀏覽（AutoCRUD revision）
+- **Dashboard** — 顯示各資源的即時數量
+
+生成結果是完整獨立的 [Vite](https://vitejs.dev/) + [React](https://react.dev/) + [Mantine](https://mantine.dev/) + [TanStack Router](https://tanstack.com/router) 專案，產出的程式碼完全歸你所有，可以自由客製化。
+
+**快速開始**（後端須先在 `http://localhost:8000` 執行）：
+
+```bash
+npm install -g autocrud-web-generator
+autocrud-web init my-app
+cd my-app && pnpm install
+pnpm generate --url http://localhost:8000
+pnpm dev
+```
+
+完整的 CLI 選項與客製化說明請見 [generator README](web/generator/README.md)。
+
 ## 第一個 API
 
 ```python
