@@ -19,6 +19,8 @@ from autocrud.crud.route_templates.basic import (
     QueryInputs,
     QueryInputsWithReturns,
     build_query,
+    classify_partial_fields,
+    filter_struct_partial,
     get_partial_fields,
     struct_to_responses_type,
 )
@@ -37,10 +39,14 @@ class Worker(IWorker):
         resource_manager: IResourceManager[T],
         fields: list[str] | None,
         returns: list[str] | str,
+        meta_fields: list[str] | None = None,
+        info_fields: list[str] | None = None,
     ):
         self.resource_manager = resource_manager
         self.fields = fields
         self.returns = returns
+        self.meta_fields = meta_fields
+        self.info_fields = info_fields
 
     @contextmanager
     def start(self, worker_id: int):
@@ -80,6 +86,12 @@ class Worker(IWorker):
             meta_out = meta
         else:
             meta_out = UNSET
+
+        # Apply partial filtering on meta and revision_info
+        if self.meta_fields and meta_out is not UNSET:
+            meta_out = filter_struct_partial(meta_out, self.meta_fields)
+        if self.info_fields and revision_info is not UNSET:
+            revision_info = filter_struct_partial(revision_info, self.info_fields)
 
         if isinstance(self.returns, str):
             if self.returns == "data":
@@ -245,11 +257,12 @@ class ListRouteTemplate(BaseRouteTemplate):
                 # 構建查詢對象
                 query = build_query(query_params)
                 fields = get_partial_fields(request, query_params)
+                spec = classify_partial_fields(fields, default_category="data")
 
                 def get_worker():
                     return Worker(
                         resource_manager,
-                        fields,
+                        spec.data_fields,
                         "data",
                     )
 
@@ -337,6 +350,7 @@ class ListRouteTemplate(BaseRouteTemplate):
             ),
         )
         async def list_resources_meta(
+            request: Request,
             query_params: QueryInputs = Query(...),
             current_user: str = Depends(self.deps.get_user),
             current_time: dt.datetime = Depends(self.deps.get_now),
@@ -344,14 +358,22 @@ class ListRouteTemplate(BaseRouteTemplate):
             try:
                 # 構建查詢對象
                 query = build_query(query_params)
+                fields = get_partial_fields(request, query_params)
+                spec = classify_partial_fields(fields, default_category="meta")
+
                 with resource_manager.meta_provide(current_user, current_time):
                     metas = resource_manager.search_resources(query)
 
                     # 根據響應類型處理資源數據
-                    resources_data: list[ResourceMeta] = []
+                    resources_data = []
                     for meta in metas:
                         with suppress(Exception):
-                            resources_data.append(meta)
+                            if spec.meta_fields:
+                                resources_data.append(
+                                    filter_struct_partial(meta, spec.meta_fields)
+                                )
+                            else:
+                                resources_data.append(meta)
 
                 return MsgspecResponse(resources_data)
             except Exception as e:
@@ -423,6 +445,7 @@ class ListRouteTemplate(BaseRouteTemplate):
             ),
         )
         async def list_resources_revision_info(
+            request: Request,
             query_params: QueryInputs = Query(...),
             current_user: str = Depends(self.deps.get_user),
             current_time: dt.datetime = Depends(self.deps.get_now),
@@ -430,12 +453,15 @@ class ListRouteTemplate(BaseRouteTemplate):
             try:
                 # 構建查詢對象
                 query = build_query(query_params)
+                fields = get_partial_fields(request, query_params)
+                spec = classify_partial_fields(fields, default_category="info")
 
                 def get_worker():
                     return Worker(
                         resource_manager,
                         None,
                         "revision_info",
+                        info_fields=spec.info_fields,
                     )
 
                 with resource_manager.meta_provide(current_user, current_time):
@@ -533,12 +559,15 @@ class ListRouteTemplate(BaseRouteTemplate):
                 # 構建查詢對象
                 query = build_query(query_params)
                 fields = get_partial_fields(request, query_params)
+                spec = classify_partial_fields(fields, default_category="data")
 
                 def get_worker():
                     return Worker(
                         resource_manager,
-                        fields,
+                        spec.data_fields,
                         returns,
+                        meta_fields=spec.meta_fields,
+                        info_fields=spec.info_fields,
                     )
 
                 with resource_manager.meta_provide(current_user, current_time):
