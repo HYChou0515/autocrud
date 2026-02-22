@@ -75,6 +75,33 @@ pip install "autocrud[magic]"
 
 https://hychou0515.github.io/autocrud/
 
+## AutoCRUD Web Generator
+
+[`autocrud-web-generator`](https://www.npmjs.com/package/autocrud-web-generator) turns your AutoCRUD backend into a fully functional React admin interface in seconds — no frontend boilerplate, no manual wiring.
+
+Point the generator at your running API and it produces:
+
+- **TypeScript types** derived from OpenAPI schemas
+- **Axios API clients** — one per resource, ready to use
+- **List pages** with server-side pagination, sorting, and search
+- **Create pages** with auto-generated forms and Zod validation
+- **Detail pages** including full revision history browsing
+- **Dashboard** with live resource counts
+
+The output is a standalone [Vite](https://vitejs.dev/) + [React](https://react.dev/) + [Mantine](https://mantine.dev/) + [TanStack Router](https://tanstack.com/router) project — not a thin shell. You own the generated code and can customize it freely.
+
+**Quick start** (backend must be running at `http://localhost:8000`):
+
+```bash
+npm install -g autocrud-web-generator
+autocrud-web init my-app
+cd my-app && pnpm install
+pnpm generate --url http://localhost:8000
+pnpm dev
+```
+
+See the [generator README](web/generator/README.md) for full CLI options and customization guide.
+
 ## Your First API
 
 ```python
