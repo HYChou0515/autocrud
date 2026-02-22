@@ -10,6 +10,7 @@ export interface UseResourceDetailResult<T> {
   update: (data: T) => Promise<void>;
   deleteResource: () => Promise<void>;
   restore: () => Promise<void>;
+  switchRevision: (revisionId: string) => Promise<void>;
 }
 
 /**
@@ -78,5 +79,13 @@ export function useResourceDetail<T>(
     refresh();
   }, [config.apiClient, resourceId, refresh]);
 
-  return { resource, loading, error, refresh, update, deleteResource, restore };
+  const switchRevision = useCallback(
+    async (revisionId: string) => {
+      await config.apiClient.switchRevision(resourceId, revisionId);
+      refresh();
+    },
+    [config.apiClient, resourceId, refresh],
+  );
+
+  return { resource, loading, error, refresh, update, deleteResource, restore, switchRevision };
 }

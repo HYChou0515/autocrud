@@ -725,6 +725,9 @@ export const ${r.camel}Api = {
 
   revisionList: (id: string, params?: RevisionListParams) =>
     client.get<RevisionListResponse>(\`\${BASE}/\${id}/revision-list\`, { params }),
+
+  switchRevision: (id: string, revisionId: string) =>
+    client.post<ResourceMeta>(\`\${BASE}/\${id}/switch/\${revisionId}\`),
 };
 `;
   }
