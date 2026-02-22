@@ -56,7 +56,7 @@ export function RevisionTreeTimeline({
   const treeViewportHeight = viewportHeight ?? 520;
   const [hoveredId, setHoveredId] = useState<string | null>(null);
   const scrollRef = useRef<HTMLDivElement | null>(null);
-  const layout = buildRevisionTreeLayout(revisions, sortOrder);
+  const layout = buildRevisionTreeLayout(revisions, sortOrder, currentRevisionId);
   const graphWidth = layout.laneCount * laneWidth;
   const lineColor = 'var(--mantine-color-gray-4)';
   const rowStride = rowHeight + rowGap;

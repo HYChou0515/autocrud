@@ -17,6 +17,7 @@ export interface RevisionTreeLayout {
   nodes: RevisionTreeNode[];
   laneCount: number;
   missingParentIds: Set<string>;
+  trunkIds: Set<string>;
 }
 
 export interface MissingParentMarker {
@@ -70,6 +71,7 @@ export function getMissingParentMarkers(nodes: RevisionTreeNode[]): MissingParen
 export function buildRevisionTreeLayout(
   revisions: Revision[],
   sortOrder: 'asc' | 'desc',
+  currentRevisionId?: string,
 ): RevisionTreeLayout {
   const items: RevisionItem[] = revisions.map((rev, index) => ({
     id: getRevisionId(rev, index),
@@ -102,6 +104,20 @@ export function buildRevisionTreeLayout(
     .filter((item) => !item.parentId || missingParentIds.has(item.parentId))
     .sort(sortByTimeAsc);
 
+  // --- Trunk detection ---
+  const trunkIds = new Set<string>();
+  if (currentRevisionId && byId.has(currentRevisionId)) {
+    let cur: string | null = currentRevisionId;
+    while (cur) {
+      trunkIds.add(cur);
+      const item = byId.get(cur);
+      if (!item || !item.parentId || !byId.has(item.parentId)) {
+        break;
+      }
+      cur = item.parentId;
+    }
+  }
+
   const laneMap = new Map<string, number>();
   let nextLane = 0;
   const assignLane = (id: string, preferredLane?: number): number => {
@@ -110,16 +126,56 @@ export function buildRevisionTreeLayout(
     }
     const lane = preferredLane ?? nextLane;
     laneMap.set(id, lane);
-    if (lane === nextLane) {
-      nextLane += 1;
+    if (lane >= nextLane) {
+      nextLane = lane + 1;
     }
     return lane;
   };
 
-  for (const root of roots) {
-    assignLane(root.id);
+  const hasTrunk = trunkIds.size > 0;
+
+  if (hasTrunk) {
+    // --- Phase A: Assign all trunk nodes to lane 0 ---
+    for (const id of trunkIds) {
+      assignLane(id, 0);
+    }
+
+    // --- Phase B: Assign branches from trunk (latest fork first → inner lane) ---
+    // Collect trunk nodes sorted by time descending (latest first)
+    const trunkNodesDesc = [...trunkIds]
+      .map((id) => byId.get(id)!)
+      .sort((a, b) => b.time.localeCompare(a.time));
+
+    for (const trunkNode of trunkNodesDesc) {
+      const children = childrenMap.get(trunkNode.id) ?? [];
+      // Non-trunk children, sorted by time ascending
+      const branchRoots = children
+        .filter((childId) => !trunkIds.has(childId))
+        .map((childId) => byId.get(childId)!)
+        .filter(Boolean)
+        .sort(sortByTimeAsc);
+
+      for (const branchRoot of branchRoots) {
+        // DFS: first child inherits parent lane, rest get new lanes
+        dfsAssignLanes(branchRoot.id, assignLane(branchRoot.id), childrenMap, byId, laneMap, assignLane);
+      }
+    }
+
+    // --- Phase C: Non-trunk roots and orphans ---
+    for (const root of roots) {
+      if (!trunkIds.has(root.id) && !laneMap.has(root.id)) {
+        dfsAssignLanes(root.id, assignLane(root.id), childrenMap, byId, laneMap, assignLane);
+      }
+    }
+  } else {
+    // --- Fallback: no currentRevisionId provided ---
+    // First root gets lane 0, others get new lanes
+    for (const root of roots) {
+      assignLane(root.id);
+    }
   }
 
+  // Assign any remaining unassigned nodes via DFS from roots (handles fallback and edge cases)
   const itemsAsc = [...items].sort(sortByTimeAsc);
   for (const item of itemsAsc) {
     if (!laneMap.has(item.id)) {
@@ -138,13 +194,15 @@ export function buildRevisionTreeLayout(
       return leftItem.time.localeCompare(rightItem.time);
     });
 
-    const parentLane = laneMap.get(item.id) ?? assignLane(item.id);
+    const parentLane = laneMap.get(item.id)!;
     const [firstChild, ...restChildren] = sortedChildren;
-    if (firstChild) {
+    if (firstChild && !laneMap.has(firstChild)) {
       assignLane(firstChild, parentLane);
     }
     for (const childId of restChildren) {
-      assignLane(childId);
+      if (!laneMap.has(childId)) {
+        assignLane(childId);
+      }
     }
   }
 
@@ -174,5 +232,39 @@ export function buildRevisionTreeLayout(
     nodes,
     laneCount: Math.max(nextLane, 1),
     missingParentIds,
+    trunkIds,
   };
+}
+
+/** DFS helper: assign lanes for a subtree. First child inherits parent lane, rest get new lanes. */
+function dfsAssignLanes(
+  nodeId: string,
+  lane: number,
+  childrenMap: Map<string, string[]>,
+  byId: Map<string, RevisionItem>,
+  laneMap: Map<string, number>,
+  assignLane: (id: string, preferredLane?: number) => number,
+): void {
+  if (!laneMap.has(nodeId)) {
+    assignLane(nodeId, lane);
+  }
+  const children = childrenMap.get(nodeId) ?? [];
+  if (children.length === 0) {
+    return;
+  }
+  const sortedChildren = [...children]
+    .map((id) => byId.get(id)!)
+    .filter(Boolean)
+    .sort(sortByTimeAsc);
+
+  const [firstChild, ...restChildren] = sortedChildren;
+  if (firstChild && !laneMap.has(firstChild.id)) {
+    dfsAssignLanes(firstChild.id, lane, childrenMap, byId, laneMap, assignLane);
+  }
+  for (const child of restChildren) {
+    if (!laneMap.has(child.id)) {
+      const newLane = assignLane(child.id);
+      dfsAssignLanes(child.id, newLane, childrenMap, byId, laneMap, assignLane);
+    }
+  }
 }
