@@ -542,6 +542,7 @@ function FormModeEditor({
           ssIndex={si}
           updateSubStruct={updateSubStruct}
           removeSubStruct={removeSubStruct}
+          hasBlobStore={hasBlobStore}
         />
       ))}
       <Button
@@ -963,6 +964,7 @@ interface SubStructEditorProps {
   ssIndex: number;
   updateSubStruct: (index: number, patch: Partial<SubStructDefinition>) => void;
   removeSubStruct: (index: number) => void;
+  hasBlobStore: boolean;
 }
 
 function SubStructEditor({
@@ -970,6 +972,7 @@ function SubStructEditor({
   ssIndex,
   updateSubStruct,
   removeSubStruct,
+  hasBlobStore,
 }: SubStructEditorProps) {
   const addField = () => {
     updateSubStruct(ssIndex, {
@@ -1059,7 +1062,7 @@ function SubStructEditor({
                 !["Ref", "RefRevision", "Struct", "Union"].includes(o.value),
             )}
             value={field.type}
-            renderOption={renderTypeOption}
+            renderOption={renderTypeOption(hasBlobStore)}
             onChange={(v) => {
               const fields = [...subStruct.fields];
               fields[fi] = {
