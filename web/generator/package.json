@@ -1,6 +1,6 @@
 {
   "name": "autocrud-web-generator",
-  "version": "0.2.0",
+  "version": "0.3.0",
   "description": "Code generator for AutoCRUD frontend - generates React/Mantine/TanStack apps from OpenAPI spec",
   "type": "module",
   "bin": {
