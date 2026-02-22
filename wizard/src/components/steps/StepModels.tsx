@@ -30,6 +30,7 @@ import {
   IconForms,
   IconCopy,
   IconInfoCircle,
+  IconAlertTriangle,
 } from "@tabler/icons-react";
 import type {
   WizardState,
@@ -119,24 +120,35 @@ const TYPE_DESCRIPTION_MAP = Object.fromEntries(
   ]),
 );
 
-function renderTypeOption({
-  option,
-}: ComboboxLikeRenderOptionInput<{ value: string; label: string }>) {
-  const desc = TYPE_DESCRIPTION_MAP[option.value];
-  if (!desc) return option.label;
-  return (
-    <div>
-      <Text size="sm">{option.label}</Text>
-      <Text size="xs" c="dimmed">
-        {desc}
-      </Text>
-    </div>
-  );
+function renderTypeOption(hasBlobStore: boolean) {
+  return function ({
+    option,
+  }: ComboboxLikeRenderOptionInput<{ value: string; label: string }>) {
+    const desc = TYPE_DESCRIPTION_MAP[option.value];
+    const isBinaryDisabled = option.value === "Binary" && !hasBlobStore;
+    return (
+      <div style={{ opacity: isBinaryDisabled ? 0.4 : 1 }}>
+        <Text size="sm">
+          {option.label}
+          {isBinaryDisabled && (
+            <Text span size="xs" c="red" ml={4}>
+              (需啟用 Blob Store)
+            </Text>
+          )}
+        </Text>
+        {desc && (
+          <Text size="xs" c="dimmed">
+            {desc}
+          </Text>
+        )}
+      </div>
+    );
+  };
 }
 
 const TAG_MODE_OPTIONS = [
   { value: "", label: "無" },
-  { value: "__auto__", label: "自動 (tag=True)" },
+  { value: "__auto__", label: "auto" },
   { value: "__custom__", label: "自訂 tag 值" },
 ];
 
@@ -454,9 +466,25 @@ function FormModeEditor({
   const subStructNames = (model.subStructs || [])
     .map((s) => s.name)
     .filter(Boolean);
+  const hasBlobStore = state.blobStore !== "none";
+  const hasBinaryFields = model.fields.some((f) => f.type === "Binary");
 
   return (
     <Stack gap="md">
+      {/* Warning: Binary fields without blob store */}
+      {!hasBlobStore && hasBinaryFields && (
+        <Alert
+          variant="light"
+          color="orange"
+          icon={<IconAlertTriangle size={16} />}
+          p="xs"
+        >
+          <Text size="xs">
+            此 Model 包含 Binary 欄位，但 Blob Store 未啟用。請在「儲存 &amp;
+            設定」步驟中啟用 Blob Store，或移除 Binary 欄位。
+          </Text>
+        </Alert>
+      )}
       {/* Fields Table */}
       <Text fw={500} size="sm">
         欄位定義
@@ -487,6 +515,7 @@ function FormModeEditor({
                 modelNames={modelNames}
                 enumNames={enumNames}
                 subStructNames={subStructNames}
+                hasBlobStore={hasBlobStore}
               />
             ))}
           </Table.Tbody>
@@ -558,6 +587,7 @@ interface FieldRowProps {
   modelNames: string[];
   enumNames: string[];
   subStructNames: string[];
+  hasBlobStore: boolean;
 }
 
 function FieldRow({
@@ -569,6 +599,7 @@ function FieldRow({
   modelNames,
   enumNames,
   subStructNames,
+  hasBlobStore,
 }: FieldRowProps) {
   return (
     <>
@@ -586,9 +617,13 @@ function FieldRow({
         <Table.Td>
           <Select
             size="xs"
-            data={FIELD_TYPE_OPTIONS}
+            data={FIELD_TYPE_OPTIONS.map((o) =>
+              o.value === "Binary" && !hasBlobStore
+                ? { ...o, disabled: true }
+                : o,
+            )}
             value={field.type}
-            renderOption={renderTypeOption}
+            renderOption={renderTypeOption(hasBlobStore)}
             onChange={(v) =>
               updateField(fieldIndex, { type: (v as FieldType) || "str" })
             }

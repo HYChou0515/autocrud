@@ -12,6 +12,7 @@ export interface WizardState {
   // Step 2: Storage & config
   storage: StorageType;
   storageConfig: StorageConfig;
+  blobStore: BlobStoreType;
   naming: NamingConvention;
   encoding: EncodingType;
   modelStyle: ModelStyle;
@@ -49,6 +50,7 @@ export type ResourceStoreType =
   | "cached-s3"
   | "etag-cached-s3"
   | "mq-cached-s3";
+export type BlobStoreType = "none" | "memory" | "disk" | "s3";
 export type NamingConvention = "same" | "pascal" | "camel" | "snake" | "kebab";
 export type EncodingType = "json" | "msgpack";
 export type ModelStyle = "struct" | "pydantic";
@@ -105,6 +107,14 @@ export interface StorageConfig {
   // MQCachedS3
   resAmqpUrl?: string;
   resQueuePrefix?: string;
+  // Blob Store
+  blobRootdir?: string;
+  blobS3Bucket?: string;
+  blobS3EndpointUrl?: string;
+  blobS3AccessKeyId?: string;
+  blobS3SecretAccessKey?: string;
+  blobS3RegionName?: string;
+  blobS3Prefix?: string;
 }
 
 // ─── Model Definition ──────────────────────────────────────────
@@ -212,8 +222,9 @@ export const DEFAULT_WIZARD_STATE: WizardState = {
 
   storage: "memory",
   storageConfig: {},
+  blobStore: "memory",
   naming: "kebab",
-  encoding: "json",
+  encoding: "msgpack",
   modelStyle: "struct",
   defaultNow: "",
 

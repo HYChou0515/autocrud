@@ -14,6 +14,7 @@ import { useState } from "react";
 import type {
   WizardState,
   StorageType,
+  BlobStoreType,
   NamingConvention,
   EncodingType,
   ModelStyle,
@@ -46,8 +47,8 @@ const NAMING_OPTIONS = [
 ];
 
 const ENCODING_OPTIONS = [
-  { value: "json", label: "JSON" },
   { value: "msgpack", label: "MsgPack" },
+  { value: "json", label: "JSON" },
 ];
 
 const MODEL_STYLE_OPTIONS = [
@@ -71,52 +72,39 @@ function storageDescription(t: StorageType): string {
 }
 
 const META_STORE_OPTIONS = [
-  {
-    value: "memory",
-    label: "MemoryMetaStore",
-    description: "記憶體，重啟消失（IFastMetaStore）",
-  },
-  {
-    value: "disk",
-    label: "DiskMetaStore",
-    description: "檔案系統（IFastMetaStore）",
-  },
-  {
-    value: "memory-sqlite",
-    label: "MemorySqliteMetaStore",
-    description: "SQLite :memory:（ISlowMetaStore）",
-  },
-  {
-    value: "file-sqlite",
-    label: "FileSqliteMetaStore",
-    description: "SQLite 檔案（ISlowMetaStore）",
-  },
-  {
-    value: "s3-sqlite",
-    label: "S3SqliteMetaStore",
-    description: "S3 上的 SQLite（ISlowMetaStore）",
-  },
-  {
-    value: "postgres",
-    label: "PostgresMetaStore",
-    description: "PostgreSQL（ISlowMetaStore）",
-  },
-  {
-    value: "sqlalchemy",
-    label: "SqlAlchemyMetaStore",
-    description: "SQLAlchemy 任意 DB（ISlowMetaStore）",
-  },
-  {
-    value: "redis",
-    label: "RedisMetaStore",
-    description: "Redis KV（IFastMetaStore）",
-  },
-  {
-    value: "fast-slow",
-    label: "FastSlowMetaStore",
-    description: "快慢雙層：fast(寫) + slow(持久化)",
-  },
+  { value: "memory", label: "Memory" },
+  { value: "disk", label: "Disk" },
+  { value: "redis", label: "Redis" },
+  { value: "memory-sqlite", label: "Mem SQLite" },
+  { value: "file-sqlite", label: "File SQLite" },
+  { value: "s3-sqlite", label: "S3 SQLite" },
+  { value: "postgres", label: "PostgreSQL" },
+  { value: "sqlalchemy", label: "SQLAlchemy" },
+  { value: "fast-slow", label: "Fast+Slow" },
 ];
+
+function metaStoreDescription(t: MetaStoreType): string {
+  switch (t) {
+    case "memory":
+      return "記憶體，重啟後消失";
+    case "disk":
+      return "檔案系統";
+    case "redis":
+      return "Redis KV";
+    case "memory-sqlite":
+      return "SQLite :memory:，重啟後消失";
+    case "file-sqlite":
+      return "SQLite 檔案";
+    case "s3-sqlite":
+      return "S3 上的 SQLite";
+    case "postgres":
+      return "PostgreSQL";
+    case "sqlalchemy":
+      return "SQLAlchemy 任意 DB";
+    case "fast-slow":
+      return "快慢雙層：fast(寫入) + slow(持久化)";
+  }
+}
 
 const META_FAST_STORE_OPTIONS = [
   { value: "memory", label: "MemoryMetaStore", description: "記憶體" },
@@ -149,37 +137,66 @@ const META_SLOW_STORE_OPTIONS = [
 ];
 
 const RESOURCE_STORE_OPTIONS = [
-  {
-    value: "memory",
-    label: "MemoryResourceStore",
-    description: "記憶體，重啟消失",
-  },
-  {
-    value: "disk",
-    label: "DiskResourceStore",
-    description: "本地磁碟檔案系統",
-  },
-  {
-    value: "s3",
-    label: "S3ResourceStore",
-    description: "S3 相容 object storage",
-  },
-  {
-    value: "cached-s3",
-    label: "CachedS3ResourceStore",
-    description: "S3 + 本地檔案快取",
-  },
-  {
-    value: "etag-cached-s3",
-    label: "ETagCachedS3ResourceStore",
-    description: "S3 + ETag 條件快取",
-  },
-  {
-    value: "mq-cached-s3",
-    label: "MQCachedS3ResourceStore",
-    description: "S3 + MQ 非同步寫入快取",
-  },
+  { value: "memory", label: "Memory" },
+  { value: "disk", label: "Disk" },
+  { value: "s3", label: "S3" },
+  { value: "etag-cached-s3", label: "ETag Cached S3" },
+  { value: "mq-cached-s3", label: "MQ Cached S3" },
+  { value: "cached-s3", label: "Cached S3" },
 ];
+
+function resourceStoreDescription(t: ResourceStoreType): string {
+  switch (t) {
+    case "memory":
+      return "記憶體，重啟後消失";
+    case "disk":
+      return "本地磁碟檔案系統";
+    case "s3":
+      return "S3 相容 object storage";
+    case "cached-s3":
+      return "S3 + 本地檔案快取  (單一server專用）";
+    case "etag-cached-s3":
+      return "S3 + ETag 條件快取";
+    case "mq-cached-s3":
+      return "S3 + MQ 非同步寫入快取";
+  }
+}
+
+const BLOB_STORE_OPTIONS = [
+  { value: "none", label: "None" },
+  { value: "memory", label: "Memory" },
+  { value: "disk", label: "Disk" },
+  { value: "s3", label: "S3" },
+];
+
+function blobStoreDescription(t: BlobStoreType): string {
+  switch (t) {
+    case "none":
+      return "不啟用 Blob Store。無法在 Model 中使用 Binary 欄位。";
+    case "memory":
+      return "記憶體 blob store，重啟後消失。適合開發測試。";
+    case "disk":
+      return "磁碟檔案系統 blob store。";
+    case "s3":
+      return "S3 相容 blob store，適合生產環境。";
+  }
+}
+
+/** Default blob store for each top-level storage type. */
+function defaultBlobStoreForStorage(storage: StorageType): BlobStoreType {
+  switch (storage) {
+    case "memory":
+      return "memory";
+    case "disk":
+      return "disk";
+    case "s3":
+      return "s3";
+    case "postgresql":
+      return "s3";
+    case "custom":
+      return "none";
+  }
+}
 
 const TIMEZONE_OPTIONS = [
   { value: "", label: "不設定" },
@@ -224,7 +241,12 @@ export function StepStorage({ state, onChange }: Props) {
           fullWidth
           data={STORAGE_OPTIONS}
           value={state.storage}
-          onChange={(v) => onChange({ storage: v as StorageType })}
+          onChange={(v) =>
+            onChange({
+              storage: v as StorageType,
+              blobStore: defaultBlobStoreForStorage(v as StorageType),
+            })
+          }
         />
         <Text size="xs" c="dimmed" mt={4}>
           {storageDescription(state.storage)}
@@ -390,34 +412,52 @@ export function StepStorage({ state, onChange }: Props) {
         <Paper p="md" withBorder>
           <Stack gap="sm">
             <Text fw={500} size="sm">
-              自訂儲存組合 (SimpleStorage)
+              自訂儲存組合
             </Text>
-            <Group grow>
-              <Select
-                label="MetaStore"
-                description="儲存 metadata / index 的後端"
+
+            {/* MetaStore */}
+            <div>
+              <Text size="sm" fw={500} mb={4}>
+                Meta Store：儲存index與metadata的儲存層，負責資源的查詢與管理
+              </Text>
+              <SegmentedControl
+                fullWidth
                 data={META_STORE_OPTIONS}
                 value={state.storageConfig.customMetaStore || "memory"}
-                onChange={(v) => {
-                  if (v !== null)
-                    updateStorageConfig({
-                      customMetaStore: v as MetaStoreType,
-                    });
-                }}
+                onChange={(v) =>
+                  updateStorageConfig({ customMetaStore: v as MetaStoreType })
+                }
               />
-              <Select
-                label="ResourceStore"
-                description="儲存 resource payload 的後端"
+              <Text size="xs" c="dimmed" mt={4}>
+                {metaStoreDescription(
+                  (state.storageConfig.customMetaStore ||
+                    "memory") as MetaStoreType,
+                )}
+              </Text>
+            </div>
+
+            {/* ResourceStore */}
+            <div>
+              <Text size="sm" fw={500} mb={4}>
+                Resource Store：儲存實際資源資料的儲存層，負責資源的讀寫
+              </Text>
+              <SegmentedControl
+                fullWidth
                 data={RESOURCE_STORE_OPTIONS}
                 value={state.storageConfig.customResourceStore || "memory"}
-                onChange={(v) => {
-                  if (v !== null)
-                    updateStorageConfig({
-                      customResourceStore: v as ResourceStoreType,
-                    });
-                }}
+                onChange={(v) =>
+                  updateStorageConfig({
+                    customResourceStore: v as ResourceStoreType,
+                  })
+                }
               />
-            </Group>
+              <Text size="xs" c="dimmed" mt={4}>
+                {resourceStoreDescription(
+                  (state.storageConfig.customResourceStore ||
+                    "memory") as ResourceStoreType,
+                )}
+              </Text>
+            </div>
 
             {/* MetaStore params */}
             {state.storageConfig.customMetaStore === "disk" && (
@@ -798,6 +838,106 @@ export function StepStorage({ state, onChange }: Props) {
         </Paper>
       )}
 
+      {/* Blob Store */}
+      <div>
+        <Text fw={500} size="sm" mb={4}>
+          Blob Store：用於支援 Binary
+          欄位的儲存層，以支援大檔案或非結構化資料的儲存與去重。
+        </Text>
+        <SegmentedControl
+          fullWidth
+          data={BLOB_STORE_OPTIONS}
+          value={state.blobStore}
+          onChange={(v) => onChange({ blobStore: v as BlobStoreType })}
+        />
+        <Text size="xs" c="dimmed" mt={4}>
+          {blobStoreDescription(state.blobStore)}
+        </Text>
+      </div>
+
+      {/* Blob Store config: Disk */}
+      {state.blobStore === "disk" && (
+        <Paper p="md" withBorder>
+          <TextInput
+            label="Blob Root Directory"
+            description="Blob 檔案儲存路徑"
+            placeholder="./blobs"
+            value={state.storageConfig.blobRootdir || ""}
+            onChange={(e) =>
+              updateStorageConfig({ blobRootdir: e.currentTarget.value })
+            }
+          />
+        </Paper>
+      )}
+
+      {/* Blob Store config: S3 */}
+      {state.blobStore === "s3" && (
+        <Paper p="md" withBorder>
+          <Stack gap="sm">
+            <TextInput
+              label="Blob S3 Bucket"
+              placeholder="autocrud-blobs"
+              value={state.storageConfig.blobS3Bucket || ""}
+              onChange={(e) =>
+                updateStorageConfig({ blobS3Bucket: e.currentTarget.value })
+              }
+            />
+            <TextInput
+              label="Blob S3 Endpoint URL"
+              placeholder="http://localhost:9000"
+              value={state.storageConfig.blobS3EndpointUrl || ""}
+              onChange={(e) =>
+                updateStorageConfig({
+                  blobS3EndpointUrl: e.currentTarget.value,
+                })
+              }
+            />
+            <Group grow>
+              <TextInput
+                label="Blob S3 Access Key ID"
+                placeholder="minioadmin"
+                value={state.storageConfig.blobS3AccessKeyId || ""}
+                onChange={(e) =>
+                  updateStorageConfig({
+                    blobS3AccessKeyId: e.currentTarget.value,
+                  })
+                }
+              />
+              <TextInput
+                label="Blob S3 Secret Access Key"
+                placeholder="minioadmin"
+                value={state.storageConfig.blobS3SecretAccessKey || ""}
+                onChange={(e) =>
+                  updateStorageConfig({
+                    blobS3SecretAccessKey: e.currentTarget.value,
+                  })
+                }
+              />
+            </Group>
+            <Group grow>
+              <TextInput
+                label="Blob S3 Region"
+                placeholder="us-east-1"
+                value={state.storageConfig.blobS3RegionName || ""}
+                onChange={(e) =>
+                  updateStorageConfig({
+                    blobS3RegionName: e.currentTarget.value,
+                  })
+                }
+              />
+              <TextInput
+                label="Blob S3 Prefix"
+                placeholder="blobs/"
+                value={state.storageConfig.blobS3Prefix || ""}
+                onChange={(e) =>
+                  updateStorageConfig({ blobS3Prefix: e.currentTarget.value })
+                }
+              />
+            </Group>
+          </Stack>
+        </Paper>
+      )}
+
       {/* Naming Convention */}
       <div>
         <Text fw={500} size="sm" mb={4}>
@@ -817,7 +957,8 @@ export function StepStorage({ state, onChange }: Props) {
       {/* Encoding */}
       <div>
         <Text fw={500} size="sm" mb={4}>
-          Encoding
+          Encoding；內部資料的序列化格式，影響性能與可讀性，不影響 API
+          格式（始終為 JSON）
         </Text>
         <SegmentedControl
           fullWidth
@@ -846,7 +987,7 @@ export function StepStorage({ state, onChange }: Props) {
         <Text size="xs" c="dimmed" mt={4}>
           {state.modelStyle === "struct"
             ? "msgspec.Struct 高效能序列化，AutoCRUD 原生支援。"
-            : "Pydantic BaseModel，自動轉換為 Struct，支援 field_validator。"}
+            : "Pydantic BaseModel，自動轉換為 Struct，支援 field_validator，不支援Job, Binary等功能。"}
         </Text>
       </div>
 

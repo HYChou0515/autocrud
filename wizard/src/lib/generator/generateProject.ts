@@ -11,6 +11,7 @@ import type {
   FieldDefinition,
   EnumDefinition,
   SubStructDefinition,
+  BlobStoreType,
   MetaStoreType,
   ResourceStoreType,
 } from "@/types/wizard";
@@ -310,6 +311,14 @@ export function generateImports(state: WizardState): string {
     }
   }
 
+  // Blob store imports for non-custom mode overrides
+  if (state.storage !== "custom") {
+    const blobImports = getBlobStoreOverrideImports(state);
+    for (const imp of blobImports) {
+      lines.push(imp);
+    }
+  }
+
   // autocrud.types imports
   // Add IValidator if any model has validators enabled
   if (state.models.some((m) => m.enableValidator)) {
@@ -334,17 +343,6 @@ function getStorageImport(storage: WizardState["storage"]): string | null {
     default:
       return null;
   }
-}
-
-const S3_RESOURCE_STORES: ResourceStoreType[] = [
-  "s3",
-  "cached-s3",
-  "etag-cached-s3",
-  "mq-cached-s3",
-];
-
-function isS3ResourceStore(res: ResourceStoreType): boolean {
-  return S3_RESOURCE_STORES.includes(res);
 }
 
 function getCustomStorageImports(state: WizardState): string[] {
@@ -377,15 +375,99 @@ function getCustomStorageImports(state: WizardState): string[] {
   const resImport = RESOURCE_STORE_IMPORT_MAP[res];
   if (resImport) imports.push(resImport);
 
-  // S3 blob store imports (for build_blob_store)
-  if (isS3ResourceStore(res)) {
+  // S3 blob store imports (for build_blob_store) — based on blobStore selection
+  if (state.blobStore === "s3") {
     imports.push(
       "from autocrud.resource_manager.blob_store.s3 import S3BlobStore",
+    );
+    imports.push("from autocrud.resource_manager.basic import IBlobStore");
+  } else if (state.blobStore === "disk") {
+    imports.push(
+      "from autocrud.resource_manager.blob_store.simple import DiskBlobStore",
+    );
+    imports.push("from autocrud.resource_manager.basic import IBlobStore");
+  } else if (state.blobStore === "memory") {
+    imports.push(
+      "from autocrud.resource_manager.blob_store.simple import MemoryBlobStore",
     );
     imports.push("from autocrud.resource_manager.basic import IBlobStore");
   }
 
   return imports;
+}
+
+/** Default blob store type for each top-level storage. */
+function defaultBlobStoreForStorage(
+  storage: WizardState["storage"],
+): BlobStoreType {
+  switch (storage) {
+    case "memory":
+      return "memory";
+    case "disk":
+      return "disk";
+    case "s3":
+      return "s3";
+    case "postgresql":
+      return "s3";
+    case "custom":
+      return "none";
+  }
+}
+
+/** Returns imports needed when blobStore differs from the storage default (non-custom only). */
+function getBlobStoreOverrideImports(state: WizardState): string[] {
+  const defaultBlob = defaultBlobStoreForStorage(state.storage);
+  if (state.blobStore === defaultBlob) return [];
+  const imports: string[] = [];
+  switch (state.blobStore) {
+    case "s3":
+      imports.push(
+        "from autocrud.resource_manager.blob_store.s3 import S3BlobStore",
+      );
+      break;
+    case "disk":
+      imports.push(
+        "from autocrud.resource_manager.blob_store.simple import DiskBlobStore",
+      );
+      break;
+    case "memory":
+      imports.push(
+        "from autocrud.resource_manager.blob_store.simple import MemoryBlobStore",
+      );
+      break;
+    // "none" → no override needed, AutoCRUD falls back to MemoryBlobStore automatically
+  }
+  return imports;
+}
+
+/** Generate a `crud.blob_store = ...` line when blobStore differs from storage default (non-custom). */
+function generateBlobStoreOverride(state: WizardState): string | null {
+  if (state.storage === "custom") return null; // custom handles via build_blob_store
+  const defaultBlob = defaultBlobStoreForStorage(state.storage);
+  if (state.blobStore === defaultBlob) return null;
+  const sc = state.storageConfig;
+  switch (state.blobStore) {
+    case "s3": {
+      const args: string[] = [];
+      args.push(`bucket="${sc.blobS3Bucket || "autocrud"}"`);
+      args.push(
+        `endpoint_url="${sc.blobS3EndpointUrl || "http://localhost:9000"}"`,
+      );
+      args.push(`access_key_id="${sc.blobS3AccessKeyId || "minioadmin"}"`);
+      args.push(
+        `secret_access_key="${sc.blobS3SecretAccessKey || "minioadmin"}"`,
+      );
+      args.push(`region_name="${sc.blobS3RegionName || "us-east-1"}"`);
+      args.push(`prefix="${sc.blobS3Prefix || "blobs/"}"`);
+      return `crud.blob_store = S3BlobStore(${args.join(", ")})`;
+    }
+    case "disk":
+      return `crud.blob_store = DiskBlobStore(rootdir="${sc.blobRootdir || "./blobs"}")`;
+    case "memory":
+      return "crud.blob_store = MemoryBlobStore()";
+    case "none":
+      return null; // fallback to default
+  }
 }
 
 const META_STORE_CLASS_MAP: Record<MetaStoreType, string> = {
@@ -876,6 +958,13 @@ export function generateAppSetup(state: WizardState): string {
   lines.push(generateConfigureCall(state));
   lines.push("");
 
+  // blob store override (non-custom modes only)
+  const blobOverride = generateBlobStoreOverride(state);
+  if (blobOverride) {
+    lines.push(blobOverride);
+    lines.push("");
+  }
+
   // add_model calls
   lines.push("# ===== Register Models =====");
   lines.push("");
@@ -1033,23 +1122,39 @@ export function generateConfigureCall(state: WizardState): string {
       factoryLines.push(`            resource_store=${resExpr},`);
       factoryLines.push(`        )`);
 
-      // P0-1: Add build_blob_store when using S3-series resource stores
-      if (isS3ResourceStore(res)) {
+      // Add build_blob_store based on blobStore selection
+      if (state.blobStore === "s3") {
         factoryLines.push("");
         factoryLines.push("    def build_blob_store(self) -> IBlobStore:");
         const blobArgs: string[] = [];
-        blobArgs.push(`bucket="${sc.resBucket || "autocrud"}"`);
         blobArgs.push(
-          `endpoint_url="${sc.resEndpointUrl || "http://localhost:9000"}"`,
+          `bucket="${sc.blobS3Bucket || sc.resBucket || "autocrud"}"`,
         );
-        blobArgs.push(`access_key_id="${sc.resAccessKeyId || "minioadmin"}"`);
         blobArgs.push(
-          `secret_access_key="${sc.resSecretAccessKey || "minioadmin"}"`,
+          `endpoint_url="${sc.blobS3EndpointUrl || sc.resEndpointUrl || "http://localhost:9000"}"`,
         );
-        blobArgs.push(`region_name="${sc.resRegionName || "us-east-1"}"`);
-        blobArgs.push(`prefix="blobs/"`);
+        blobArgs.push(
+          `access_key_id="${sc.blobS3AccessKeyId || sc.resAccessKeyId || "minioadmin"}"`,
+        );
+        blobArgs.push(
+          `secret_access_key="${sc.blobS3SecretAccessKey || sc.resSecretAccessKey || "minioadmin"}"`,
+        );
+        blobArgs.push(
+          `region_name="${sc.blobS3RegionName || sc.resRegionName || "us-east-1"}"`,
+        );
+        blobArgs.push(`prefix="${sc.blobS3Prefix || "blobs/"}"`);
         factoryLines.push(`        return S3BlobStore(${blobArgs.join(", ")})`);
+      } else if (state.blobStore === "disk") {
+        factoryLines.push("");
+        factoryLines.push("    def build_blob_store(self) -> IBlobStore:");
+        const rootdir = sc.blobRootdir || "./blobs";
+        factoryLines.push(`        return DiskBlobStore(rootdir="${rootdir}")`);
+      } else if (state.blobStore === "memory") {
+        factoryLines.push("");
+        factoryLines.push("    def build_blob_store(self) -> IBlobStore:");
+        factoryLines.push(`        return MemoryBlobStore()`);
       }
+      // blobStore === "none": no build_blob_store method
 
       factoryLines.push("");
       customFactoryClass = factoryLines.join("\n");
