@@ -24,6 +24,7 @@ import {
   IconArrowLeft,
   IconAlertCircle,
   IconLayersSubtract,
+  IconHistory,
 } from '@tabler/icons-react';
 import type { ResourceConfig } from '../../resources';
 import { useResourceDetail } from '../../hooks/useResourceDetail';
@@ -84,6 +85,7 @@ export function ResourceDetail<T extends Record<string, any>>({
     update,
     deleteResource,
     restore,
+    switchRevision,
     error,
   } = useResourceDetail(config, resourceId, selectedRevision);
 
@@ -165,6 +167,18 @@ export function ResourceDetail<T extends Record<string, any>>({
     }
   };
 
+  const handleRevert = async () => {
+    if (!selectedRevision) return;
+    if (confirm('Are you sure you want to revert to this revision?')) {
+      try {
+        await switchRevision(selectedRevision);
+        handleRevisionSelect(null);
+      } catch (error) {
+        showErrorNotification(error, 'Revert Failed');
+      }
+    }
+  };
+
   return (
     <Container size="lg" py="xl">
       <Stack gap="lg">
@@ -238,6 +252,16 @@ export function ResourceDetail<T extends Record<string, any>>({
               showCopy={false}
             />
             . This is a read-only view.
+            <Button
+              variant="light"
+              color="blue"
+              size="xs"
+              leftSection={<IconHistory size={14} />}
+              onClick={handleRevert}
+              mt="xs"
+            >
+              Revert to this revision
+            </Button>
           </Alert>
         )}
 

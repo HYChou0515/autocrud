@@ -610,7 +610,9 @@ def create_sample_data():
     ]
 
     # 創建角色數據
-    with character_manager.meta_provide(current_user, current_time):
+    with character_manager.meta_provide(
+        current_user, current_time - dt.timedelta(days=90)
+    ):
         for character in characters:
             try:
                 info = character_manager.create(character)

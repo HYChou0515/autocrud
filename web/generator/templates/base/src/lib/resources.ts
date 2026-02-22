@@ -113,6 +113,7 @@ export interface ResourceConfig<T = any> {
       id: string,
       params?: RevisionListParams,
     ) => Promise<{ data: RevisionListResponse }>;
+    switchRevision: (id: string, revisionId: string) => Promise<{ data: ResourceMeta }>;
   };
 }
 
