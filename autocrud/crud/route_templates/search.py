@@ -182,6 +182,7 @@ class ListRouteTemplate(BaseRouteTemplate):
             responses=struct_to_responses_type(list[resource_manager.resource_type]),
             summary=f"List {model_name} Data Only",
             tags=[f"{model_name}"],
+            deprecated=True,
             description=textwrap.dedent(
                 f"""
                 Retrieve a list of `{model_name}` resources returning only the data content.
@@ -280,6 +281,7 @@ class ListRouteTemplate(BaseRouteTemplate):
             responses=struct_to_responses_type(list[ResourceMeta]),
             summary=f"List {model_name} Metadata Only",
             tags=[f"{model_name}"],
+            deprecated=True,
             description=textwrap.dedent(
                 f"""
                 Retrieve a list of `{model_name}` resources returning only the metadata.
@@ -384,6 +386,7 @@ class ListRouteTemplate(BaseRouteTemplate):
             responses=struct_to_responses_type(list[RevisionInfo]),
             summary=f"List {model_name} Current Revision Info",
             tags=[f"{model_name}"],
+            deprecated=True,
             description=textwrap.dedent(
                 f"""
                 Retrieve a list of `{model_name}` resources returning only the current revision information.
@@ -473,90 +476,15 @@ class ListRouteTemplate(BaseRouteTemplate):
             except Exception as e:
                 raise HTTPException(status_code=400, detail=str(e))
 
-        @router.get(
-            f"/{model_name}/full",
-            responses=struct_to_responses_type(
-                list[FullResourceResponse[resource_manager.resource_type]],
-            ),
-            summary=f"List {model_name} Complete Information",
-            tags=[f"{model_name}"],
-            description=textwrap.dedent(
-                f"""
-                Retrieve a list of `{model_name}` resources with complete information including data, metadata, and revision info.
-
-                **Response Format:**
-                - Returns comprehensive information for each resource
-                - Includes data content, resource metadata, and current revision information
-                - Most complete but also largest response format
-
-                **Complete Information Includes:**
-                - `data`: The actual resource data content
-                - `meta`: Resource metadata (timestamps, user info, deletion status, etc.)
-                - `revision_info`: Current revision details (uid, revision_id, parent_revision, hash, status)
-
-                **Filtering Options:**
-                - `is_deleted`: Filter by deletion status (true/false)
-                - `created_time_start/end`: Filter by creation time range (ISO format)
-                - `updated_time_start/end`: Filter by update time range (ISO format)
-                - `created_bys`: Filter by resource creators (list of usernames)
-                - `updated_bys`: Filter by resource updaters (list of usernames)
-                - `data_conditions`: Filter by data content (JSON format)
-                - `conditions`: Filter by meta fields or data content (JSON format)
-
-                **General Filtering:**
-                - Use `conditions` parameter to filter by metadata fields or data content
-                - Format: JSON array of condition objects
-                - Attributes: `field_path`, `operator`, `value`
-                - Meta fields: `resource_id`, `is_deleted`, `created_time`, `updated_time`, `created_by`, `updated_by`
-                - Example: `[{{"field_path": "resource_id", "operator": "starts_with", "value": "user-"}}]`
-
-                **Data Filtering:**
-                - Use `data_conditions` parameter to filter resources by their data content
-                - Format: JSON array of condition objects
-                - Each condition has: `field_path`, `operator`, `value`
-                - Supported operators: `eq`, `ne`, `gt`, `lt`, `gte`, `lte`, `contains`, `starts_with`, `ends_with`, `in`, `not_in`
-                - Example: `[{{"field_path": "name", "operator": "contains", "value": "project"}}]`
-
-                **Pagination:**
-                - `limit`: Maximum number of results to return (default: 10)
-                - `offset`: Number of results to skip for pagination (default: 0)
-
-                **Partial Response:**
-                - `partial`: List of fields to retrieve (e.g. '/field1', '/nested/field2')
-                - Useful for reducing payload size when only specific fields are needed
-
-                **Use Cases:**
-                - Complete data export operations
-                - Comprehensive resource inspection
-                - Full context retrieval for complex operations
-                - Debugging and detailed analysis
-                - Administrative overview with all details
-                - Fetching only necessary data fields while keeping metadata (using partial)
-
-                **Performance Considerations:**
-                - Largest response payload size
-                - May have slower response times for large datasets
-                - Consider using pagination with smaller limits
-
-                **Examples:**
-                - `GET /{model_name}/full` - Get complete info for first 10 resources
-                - `GET /{model_name}/full?limit=5` - Get complete info for first 5 resources (smaller payload)
-                - `GET /{model_name}/full?is_deleted=false&limit=20` - Get complete info for 20 active resources
-                - `GET /{model_name}/full?partial=/name&partial=/email` - Get specific fields for all resources
-
-                **Error Responses:**
-                - `400`: Bad request - Invalid query parameters or search error""",
-            ),
-        )
-        async def list_resources_full(
-            request: Request,
-            query_params: QueryInputsWithReturns = Query(...),
-            current_user: str = Depends(self.deps.get_user),
-            current_time: dt.datetime = Depends(self.deps.get_now),
+        # Shared implementation for /full and bare path collection GET endpoints
+        async def _handle_list_with_returns(
+            request,
+            query_params,
+            current_user,
+            current_time,
         ):
             returns = [r.strip() for r in query_params.returns.split(",")]
             try:
-                # 構建查詢對象
                 query = build_query(query_params)
                 fields = get_partial_fields(request, query_params)
                 spec = classify_partial_fields(fields, default_category="data")
@@ -578,6 +506,30 @@ class ListRouteTemplate(BaseRouteTemplate):
                 return JsonListResponse(resources_data)
             except Exception as e:
                 raise HTTPException(status_code=400, detail=str(e))
+
+        @router.get(
+            f"/{model_name}/full",
+            responses=struct_to_responses_type(
+                list[FullResourceResponse[resource_manager.resource_type]],
+            ),
+            summary=f"List {model_name} Complete Information",
+            tags=[f"{model_name}"],
+            deprecated=True,
+            description=f"Deprecated: use `GET /{model_name}` instead. "
+            f"Retrieve a list of `{model_name}` resources with complete information including data, metadata, and revision info.",
+        )
+        async def list_resources_full(
+            request: Request,
+            query_params: QueryInputsWithReturns = Query(...),
+            current_user: str = Depends(self.deps.get_user),
+            current_time: dt.datetime = Depends(self.deps.get_now),
+        ):
+            return await _handle_list_with_returns(
+                request,
+                query_params,
+                current_user,
+                current_time,
+            )
 
         @router.get(
             f"/{model_name}/count",
@@ -639,3 +591,48 @@ class ListRouteTemplate(BaseRouteTemplate):
                 return count
             except Exception as e:
                 raise HTTPException(status_code=400, detail=str(e))
+
+        # New bare path endpoint — canonical GET for listing resources
+        @router.get(
+            f"/{model_name}",
+            responses=struct_to_responses_type(
+                list[FullResourceResponse[resource_manager.resource_type]],
+            ),
+            summary=f"List {model_name} resources",
+            tags=[f"{model_name}"],
+            description=textwrap.dedent(
+                f"""
+                Retrieve a list of `{model_name}` resources.
+
+                Use the `returns` query parameter to control which sections are included in each item.
+                By default all sections are returned: `data`, `revision_info`, `meta`.
+
+                **Query Parameters:**
+                - `returns` (default `"data,revision_info,meta"`): Comma-separated list of sections to include.
+                  Allowed values: `data`, `revision_info`, `meta`.
+                - `limit` / `offset`: Pagination controls.
+                - `partial` / `partial[]`: Partial field selection.
+                - All standard filtering and sorting parameters.
+
+                **Examples:**
+                - `GET /{model_name}` — full list (data + meta + revision_info)
+                - `GET /{model_name}?returns=data` — data only
+                - `GET /{model_name}?returns=data,meta` — data + meta, no revision_info
+                - `GET /{model_name}?limit=20&offset=40` — pagination
+
+                **Error Responses:**
+                - `400`: Bad request - Invalid query parameters or search error""",
+            ),
+        )
+        async def list_resources(
+            request: Request,
+            query_params: QueryInputsWithReturns = Query(...),
+            current_user: str = Depends(self.deps.get_user),
+            current_time: dt.datetime = Depends(self.deps.get_now),
+        ):
+            return await _handle_list_with_returns(
+                request,
+                query_params,
+                current_user,
+                current_time,
+            )
