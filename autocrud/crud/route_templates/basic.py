@@ -2,13 +2,12 @@ import datetime as dt
 import json
 from abc import ABC, abstractmethod
 from collections.abc import Callable
-from typing import Any, Generic, NamedTuple, Optional, TypeVar
+from typing import Any, Generic, Optional, TypeVar
 
 import msgspec
 from fastapi import APIRouter, HTTPException, Query, Request, Response
 from pydantic import BaseModel
 
-from autocrud.resource_manager.partial import create_partial_type
 from autocrud.types import (
     DataSearchCondition,
     DataSearchOperator,
@@ -234,81 +233,6 @@ def get_partial_fields(
         if raw:
             fields = raw
     return fields
-
-
-class PartialFieldsSpec(NamedTuple):
-    """Classified partial fields by prefix (meta/info/data)."""
-
-    data_fields: list[str] | None = None
-    meta_fields: list[str] | None = None
-    info_fields: list[str] | None = None
-
-
-def classify_partial_fields(
-    fields: list[str] | None,
-    default_category: str = "data",
-) -> PartialFieldsSpec:
-    """Classify partial field paths by prefix.
-
-    Fields prefixed with ``meta/``, ``info/``, or ``data/`` are routed to the
-    corresponding bucket.  Fields without a recognised prefix fall into
-    *default_category* (``"data"`` by default, ``"meta"`` for meta-only
-    endpoints, etc.).
-
-    Args:
-        fields: raw partial field list from the query string.
-        default_category: where to place unprefixed fields
-            (``"data"`` | ``"meta"`` | ``"info"``).
-
-    Returns:
-        A ``PartialFieldsSpec`` with each bucket set to ``None`` when empty.
-    """
-    if not fields:
-        return PartialFieldsSpec()
-
-    data_fields: list[str] = []
-    meta_fields: list[str] = []
-    info_fields: list[str] = []
-
-    for raw in fields:
-        # Normalise: strip leading slash
-        stripped = raw.lstrip("/")
-
-        if stripped.startswith("meta/"):
-            meta_fields.append("/" + stripped[len("meta/") :])
-        elif stripped.startswith("info/"):
-            info_fields.append("/" + stripped[len("info/") :])
-        elif stripped.startswith("data/"):
-            data_fields.append("/" + stripped[len("data/") :])
-        else:
-            # No recognised prefix → default category
-            path = raw if raw.startswith("/") else "/" + raw
-            if default_category == "meta":
-                meta_fields.append(path)
-            elif default_category == "info":
-                info_fields.append(path)
-            else:
-                data_fields.append(path)
-
-    return PartialFieldsSpec(
-        data_fields=data_fields or None,
-        meta_fields=meta_fields or None,
-        info_fields=info_fields or None,
-    )
-
-
-def filter_struct_partial(
-    struct: msgspec.Struct,
-    fields: list[str],
-) -> msgspec.Struct:
-    """Return a copy of *struct* keeping only the requested fields.
-
-    Uses ``create_partial_type`` to build a lightweight Struct type that
-    contains only the selected fields, then round-trips through msgspec
-    JSON encode/decode for the actual filtering.
-    """
-    partial_type = create_partial_type(type(struct), fields)
-    return msgspec.json.decode(msgspec.json.encode(struct), type=partial_type)
 
 
 def build_query(q: QueryInputs) -> ResourceMetaSearchQuery:

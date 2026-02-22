@@ -1,26 +1,16 @@
 import datetime as dt
-import io
 import textwrap
-from collections.abc import Callable
-from contextlib import contextmanager, suppress
-from typing import IO, TypeVar
+from typing import TypeVar
 
-import msgspec
 from fastapi import APIRouter, Depends, HTTPException, Query, Request
-from msgspec import UNSET
-from qqabc.rurl import resolve
-from qqabc.types import InData, IUrlGrammar, IWorker, OutData
 
 from autocrud.crud.route_templates.basic import (
     BaseRouteTemplate,
     FullResourceResponse,
-    JsonListResponse,
     MsgspecResponse,
     QueryInputs,
     QueryInputsWithReturns,
     build_query,
-    classify_partial_fields,
-    filter_struct_partial,
     get_partial_fields,
     struct_to_responses_type,
 )
@@ -33,143 +23,15 @@ from autocrud.types import (
 T = TypeVar("T")
 
 
-class Worker(IWorker):
-    def __init__(
-        self,
-        resource_manager: IResourceManager[T],
-        fields: list[str] | None,
-        returns: list[str] | str,
-        meta_fields: list[str] | None = None,
-        info_fields: list[str] | None = None,
-    ):
-        self.resource_manager = resource_manager
-        self.fields = fields
-        self.returns = returns
-        self.meta_fields = meta_fields
-        self.info_fields = info_fields
-
-    @contextmanager
-    def start(self, worker_id: int):
-        self.worker_id = worker_id
-        yield self
-
-    def get_resource(self, meta: ResourceMeta) -> bytes:
-        data = UNSET
-        revision_info = UNSET
-
-        if "data" in self.returns:
-            if self.fields:
-                data = self.resource_manager.get_partial(
-                    meta.resource_id,
-                    meta.current_revision_id,
-                    self.fields,
-                    schema_version=meta.schema_version,
-                )
-            else:
-                resource = self.resource_manager.get(
-                    meta.resource_id,
-                    revision_id=meta.current_revision_id,
-                    schema_version=meta.schema_version,
-                )
-                data = resource.data
-                if "revision_info" in self.returns:
-                    revision_info = resource.info
-
-        if "revision_info" in self.returns and revision_info is UNSET:
-            revision_info = self.resource_manager.get_revision_info(
-                meta.resource_id,
-                meta.current_revision_id,
-                schema_version=meta.schema_version,
-            )
-
-        if "meta" in self.returns:
-            meta_out = meta
-        else:
-            meta_out = UNSET
-
-        # Apply partial filtering on meta and revision_info
-        if self.meta_fields and meta_out is not UNSET:
-            meta_out = filter_struct_partial(meta_out, self.meta_fields)
-        if self.info_fields and revision_info is not UNSET:
-            revision_info = filter_struct_partial(revision_info, self.info_fields)
-
-        if isinstance(self.returns, str):
-            if self.returns == "data":
-                return msgspec.json.encode(data)
-            elif self.returns == "meta":
-                return msgspec.json.encode(meta_out)
-            elif self.returns == "revision_info":
-                return msgspec.json.encode(revision_info)
-            else:
-                raise ValueError(f"Unknown return type: {self.returns}")
-        else:
-            return msgspec.json.encode(
-                FullResourceResponse(
-                    data=data,
-                    revision_info=revision_info,
-                    meta=meta_out,
-                )
-            )
-
-    def resolve(self, indata: InData) -> OutData:
-        meta = self.resource_manager.get_meta(indata.url)
-        try:
-            b = self.get_resource(meta)
-        except Exception:
-            # 如果無法獲取資源數據，跳過
-            b = b""
-        return OutData(task_id=indata.task_id, data=io.BytesIO(b))
-
-
-class CustomGrammar(IUrlGrammar):
-    def parse_url(self, fp: IO[bytes]) -> str | None:
-        return fp.read().decode("utf-8")
-
-
-def default_worker_num(nr_work: int) -> int:
-    if nr_work <= 10:
-        return 1
-    return max(1, min(16, nr_work // 3))
-
-
 class ListRouteTemplate(BaseRouteTemplate):
     """列出所有資源的路由模板"""
 
     def __init__(
         self,
         *args,
-        worker_num_calc: Callable[[int], int] | None = None,
         **kwargs,
     ):
         super().__init__(*args, **kwargs)
-        self.worker_num_calc = worker_num_calc or default_worker_num
-
-    def fetch_resources_data(
-        self, metas: list[ResourceMeta], get_worker: Callable[[], Worker]
-    ) -> list[bytes]:
-        resources_data: list[bytes] = []
-        worker_num = self.worker_num_calc(len(metas))
-        if worker_num <= 1:
-            for meta in metas:
-                resource = get_worker().get_resource(meta)
-                resources_data.append(resource)
-        else:
-            with resolve(
-                num_workers=worker_num,
-                worker=get_worker,
-                job_chance=1,
-                grammars=[CustomGrammar()],
-            ) as resolver:
-                # 根據響應類型處理資源數據
-                tasks = []
-                for meta in metas:
-                    tasks.append(resolver.add(str(meta.resource_id)))
-
-                for task in tasks:
-                    outd = resolver.wait(task)
-                    if b := outd.data.read():
-                        resources_data.append(b)
-        return resources_data
 
     def apply(
         self,
@@ -255,24 +117,16 @@ class ListRouteTemplate(BaseRouteTemplate):
             current_time: dt.datetime = Depends(self.deps.get_now),
         ) -> list[T]:
             try:
-                # 構建查詢對象
                 query = build_query(query_params)
                 fields = get_partial_fields(request, query_params)
-                spec = classify_partial_fields(fields, default_category="data")
-
-                def get_worker():
-                    return Worker(
-                        resource_manager,
-                        spec.data_fields,
-                        "data",
-                    )
 
                 with resource_manager.meta_provide(current_user, current_time):
-                    resources_data = self.fetch_resources_data(
-                        resource_manager.search_resources(query),
-                        get_worker,
+                    results = resource_manager.list_resources(
+                        query,
+                        returns=["data"],
+                        partial=fields,
                     )
-                return JsonListResponse(resources_data)
+                return MsgspecResponse([item.data for item in results])
             except Exception as e:
                 raise HTTPException(status_code=400, detail=str(e))
 
@@ -358,26 +212,26 @@ class ListRouteTemplate(BaseRouteTemplate):
             current_time: dt.datetime = Depends(self.deps.get_now),
         ):
             try:
-                # 構建查詢對象
                 query = build_query(query_params)
                 fields = get_partial_fields(request, query_params)
-                spec = classify_partial_fields(fields, default_category="meta")
+                # For meta-only, prepend "meta/" prefix to unprefixed fields
+                meta_partial = None
+                if fields:
+                    meta_partial = []
+                    for f in fields:
+                        stripped = f.lstrip("/")
+                        if not stripped.startswith(("meta/", "info/", "data/")):
+                            meta_partial.append("meta/" + stripped)
+                        else:
+                            meta_partial.append(f)
 
                 with resource_manager.meta_provide(current_user, current_time):
-                    metas = resource_manager.search_resources(query)
-
-                    # 根據響應類型處理資源數據
-                    resources_data = []
-                    for meta in metas:
-                        with suppress(Exception):
-                            if spec.meta_fields:
-                                resources_data.append(
-                                    filter_struct_partial(meta, spec.meta_fields)
-                                )
-                            else:
-                                resources_data.append(meta)
-
-                return MsgspecResponse(resources_data)
+                    results = resource_manager.list_resources(
+                        query,
+                        returns=["meta"],
+                        partial=meta_partial,
+                    )
+                return MsgspecResponse([item.meta for item in results])
             except Exception as e:
                 raise HTTPException(status_code=400, detail=str(e))
 
@@ -454,25 +308,26 @@ class ListRouteTemplate(BaseRouteTemplate):
             current_time: dt.datetime = Depends(self.deps.get_now),
         ):
             try:
-                # 構建查詢對象
                 query = build_query(query_params)
                 fields = get_partial_fields(request, query_params)
-                spec = classify_partial_fields(fields, default_category="info")
-
-                def get_worker():
-                    return Worker(
-                        resource_manager,
-                        None,
-                        "revision_info",
-                        info_fields=spec.info_fields,
-                    )
+                # For info-only, prepend "info/" prefix to unprefixed fields
+                info_partial = None
+                if fields:
+                    info_partial = []
+                    for f in fields:
+                        stripped = f.lstrip("/")
+                        if not stripped.startswith(("meta/", "info/", "data/")):
+                            info_partial.append("info/" + stripped)
+                        else:
+                            info_partial.append(f)
 
                 with resource_manager.meta_provide(current_user, current_time):
-                    resources_data = self.fetch_resources_data(
-                        resource_manager.search_resources(query),
-                        get_worker,
+                    results = resource_manager.list_resources(
+                        query,
+                        returns=["info"],
+                        partial=info_partial,
                     )
-                return JsonListResponse(resources_data)
+                return MsgspecResponse([item.info for item in results])
             except Exception as e:
                 raise HTTPException(status_code=400, detail=str(e))
 
@@ -483,27 +338,31 @@ class ListRouteTemplate(BaseRouteTemplate):
             current_user,
             current_time,
         ):
-            returns = [r.strip() for r in query_params.returns.split(",")]
+            raw_returns = [r.strip() for r in query_params.returns.split(",")]
+            # Map route-level "revision_info" to RM-level "info"
+            returns = ["info" if r == "revision_info" else r for r in raw_returns]
             try:
                 query = build_query(query_params)
                 fields = get_partial_fields(request, query_params)
-                spec = classify_partial_fields(fields, default_category="data")
-
-                def get_worker():
-                    return Worker(
-                        resource_manager,
-                        spec.data_fields,
-                        returns,
-                        meta_fields=spec.meta_fields,
-                        info_fields=spec.info_fields,
-                    )
 
                 with resource_manager.meta_provide(current_user, current_time):
-                    resources_data = self.fetch_resources_data(
-                        resource_manager.search_resources(query),
-                        get_worker,
+                    results = resource_manager.list_resources(
+                        query,
+                        returns=returns,
+                        partial=fields,
                     )
-                return JsonListResponse(resources_data)
+
+                # Map SearchedResource back to FullResourceResponse for API compat
+                responses = []
+                for item in results:
+                    responses.append(
+                        FullResourceResponse(
+                            data=item.data,
+                            revision_info=item.info,
+                            meta=item.meta,
+                        )
+                    )
+                return MsgspecResponse(responses)
             except Exception as e:
                 raise HTTPException(status_code=400, detail=str(e))
 

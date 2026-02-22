@@ -10,9 +10,11 @@ from autocrud.crud.route_templates.basic import (
     FullResourceResponse,
     MsgspecResponse,
     RevisionListResponse,
+    struct_to_responses_type,
+)
+from autocrud.resource_manager.partial import (
     classify_partial_fields,
     filter_struct_partial,
-    struct_to_responses_type,
 )
 from autocrud.types import (
     IResourceManager,

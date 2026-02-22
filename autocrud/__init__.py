@@ -6,6 +6,7 @@ from autocrud.types import (
     OnDelete,
     Ref,
     RefRevision,
+    SearchedResource,
     ValidationError,
 )
 
@@ -22,6 +23,7 @@ __all__ = [
     "Ref",
     "RefRevision",
     "Schema",
+    "SearchedResource",
     "ValidationError",
     "crud",
 ]

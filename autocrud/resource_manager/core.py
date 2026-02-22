@@ -1,3 +1,4 @@
+import concurrent.futures
 import datetime as dt
 import inspect
 import io
@@ -25,7 +26,12 @@ from jsonpointer import JsonPointer
 from msgspec import UNSET, Struct, UnsetType
 from xxhash import xxh3_128_hexdigest
 
-from autocrud.resource_manager.partial import create_partial_type, prune_object
+from autocrud.resource_manager.partial import (
+    classify_partial_fields,
+    create_partial_type,
+    filter_struct_partial,
+    prune_object,
+)
 from autocrud.resource_manager.pydantic_converter import (  # noqa: E402
     build_validator,
     pydantic_to_dict,
@@ -111,6 +117,7 @@ from autocrud.types import (
     RevisionIDNotFoundError,
     RevisionInfo,
     RevisionStatus,
+    SearchedResource,
     SpecialIndex,
     ValidationError,
 )
@@ -946,6 +953,116 @@ class ResourceManager(IResourceManager[T], Generic[T]):
         if isinstance(query, Query):
             query = query.build()
         return self.storage.search(query)
+
+    def _default_worker_num(self, nr_work: int) -> int:
+        """Calculate the number of worker threads for parallel fetch."""
+        if nr_work <= 10:
+            return 1
+        return max(1, min(16, nr_work // 3))
+
+    def list_resources(
+        self,
+        query: ResourceMetaSearchQuery | Query,
+        *,
+        returns: list[str] | None = None,
+        partial: list[str] | None = None,
+    ) -> list[SearchedResource[T]]:
+        """Search for resources and fetch their data in one call.
+
+        Internally calls ``search_resources(query)`` (which triggers
+        Before/After/OnSuccess/OnFailure SearchResources events), then
+        fetches the requested sections for each matching resource.
+
+        Arguments:
+            query (ResourceMetaSearchQuery | Query): The search query.
+            returns: sections to include per item.  Allowed values are
+                ``"data"``, ``"info"``, ``"meta"``.  ``None`` means all three.
+            partial: optional list of field paths to retrieve.  Paths may
+                be prefixed with ``data/``, ``meta/``, or ``info/`` to
+                target a specific section; unprefixed paths default to
+                ``"data"``.
+
+        Returns:
+            resources (list[SearchedResource[T]]): one item per matched resource.
+        """
+        # 1. Search — triggers SearchResources events
+        metas = self.search_resources(query)
+        if not metas:
+            return []
+
+        # 2. Normalise returns
+        if returns is None:
+            returns = ["data", "info", "meta"]
+
+        # 3. Classify partial fields
+        spec = classify_partial_fields(partial, default_category="data")
+
+        # 4. Define per-item fetch function
+        def _fetch_one(meta: ResourceMeta) -> SearchedResource[T] | None:
+            try:
+                data = UNSET
+                info = UNSET
+
+                if "data" in returns:
+                    if spec.data_fields:
+                        data = self.get_partial(
+                            meta.resource_id,
+                            meta.current_revision_id,
+                            spec.data_fields,
+                            schema_version=meta.schema_version,
+                        )
+                    else:
+                        resource = self.get(
+                            meta.resource_id,
+                            revision_id=meta.current_revision_id,
+                            schema_version=meta.schema_version,
+                        )
+                        data = resource.data
+                        if "info" in returns:
+                            info = resource.info
+
+                if "info" in returns and info is UNSET:
+                    info = self.get_revision_info(
+                        meta.resource_id,
+                        meta.current_revision_id,
+                        schema_version=meta.schema_version,
+                    )
+
+                if "meta" in returns:
+                    meta_out = meta
+                else:
+                    meta_out = UNSET
+
+                # Apply partial filtering on meta and info
+                if spec.meta_fields and meta_out is not UNSET:
+                    meta_out = filter_struct_partial(meta_out, spec.meta_fields)
+                if spec.info_fields and info is not UNSET:
+                    info = filter_struct_partial(info, spec.info_fields)
+
+                return SearchedResource(data=data, info=info, meta=meta_out)
+            except Exception:
+                return None
+
+        # 5. Execute — single-threaded or parallel
+        worker_num = self._default_worker_num(len(metas))
+        results: list[SearchedResource[T]] = []
+
+        if worker_num <= 1:
+            for meta in metas:
+                item = _fetch_one(meta)
+                if item is not None:
+                    results.append(item)
+        else:
+            with concurrent.futures.ThreadPoolExecutor(
+                max_workers=worker_num,
+            ) as executor:
+                futures = [executor.submit(_fetch_one, meta) for meta in metas]
+                for future in futures:
+                    item = future.result()
+                    if item is not None:
+                        results.append(item)
+
+        return results
 
     @execute_with_events(
         (BeforeCreate, AfterCreate, OnSuccessCreate, OnFailureCreate),

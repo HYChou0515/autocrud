@@ -369,6 +369,18 @@ class ResourceMeta(Struct, kw_only=True):
     """A dictionary of indexed fields for the resource, used for searching and sorting."""
 
 
+class SearchedResource(Struct, Generic[T]):
+    """A resource item returned by list_resources.
+
+    Each field may be the full type, a partial Struct (when partial fields
+    are requested), or UNSET (when excluded via the *returns* parameter).
+    """
+
+    data: T | Struct | UnsetType = UNSET
+    info: RevisionInfo | Struct | UnsetType = UNSET
+    meta: ResourceMeta | Struct | UnsetType = UNSET
+
+
 class ResourceAction(Flag):
     create = auto()
     get = auto()
@@ -1701,6 +1713,35 @@ class IResourceManager(ABC, Generic[T]):
         The results are returned as a list of resource metadata that match the specified
         criteria, ordered according to the sort parameters and limited by the
         pagination settings.
+        """
+
+    @abstractmethod
+    def list_resources(
+        self,
+        query: ResourceMetaSearchQuery,
+        *,
+        returns: list[str] | None = None,
+        partial: list[str] | None = None,
+    ) -> list["SearchedResource[T]"]:
+        """Search for resources and fetch their data in one call.
+
+        Internally calls ``search_resources(query)`` (which triggers
+        Before/After/OnSuccess/OnFailure SearchResources events), then
+        fetches the requested sections for each matching resource.
+
+        Args:
+            query: search criteria (same as ``search_resources``).
+            returns: sections to include per item.  Allowed values are
+                ``"data"``, ``"info"``, ``"meta"``.  ``None`` means all three.
+            partial: optional list of field paths to retrieve.  Paths may
+                be prefixed with ``data/``, ``meta/``, or ``info/`` to
+                target a specific section; unprefixed paths default to
+                ``"data"``.
+
+        Returns:
+            list[SearchedResource[T]]: one item per matched resource.
+                Fields excluded by *returns* are ``UNSET``.  Fields
+                narrowed by *partial* are partial ``Struct`` instances.
         """
 
     @abstractmethod

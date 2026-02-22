@@ -6,15 +6,15 @@ from fastapi import APIRouter, FastAPI
 from fastapi.testclient import TestClient
 
 from autocrud.crud.core import AutoCRUD
-from autocrud.crud.route_templates.basic import (
-    PartialFieldsSpec,
-    classify_partial_fields,
-    filter_struct_partial,
-)
 from autocrud.crud.route_templates.create import CreateRouteTemplate
 from autocrud.crud.route_templates.get import ReadRouteTemplate
 from autocrud.crud.route_templates.search import ListRouteTemplate
 from autocrud.crud.route_templates.update import UpdateRouteTemplate
+from autocrud.resource_manager.partial import (
+    PartialFieldsSpec,
+    classify_partial_fields,
+    filter_struct_partial,
+)
 from autocrud.types import ResourceMeta
 
 # ---------------------------------------------------------------------------
