@@ -10,6 +10,8 @@ from autocrud.crud.route_templates.basic import (
     FullResourceResponse,
     MsgspecResponse,
     RevisionListResponse,
+    classify_partial_fields,
+    filter_struct_partial,
     struct_to_responses_type,
 )
 from autocrud.types import (
@@ -39,18 +41,45 @@ class ReadRouteTemplate(BaseRouteTemplate, Generic[T]):
             tags=[f"{model_name}"],
         )
         async def get_resource_meta(
+            request: Request,
             resource_id: str,
+            partial: Optional[list[str]] = Query(
+                None,
+                description="List of meta fields to retrieve (e.g. '/resource_id', '/created_time')",
+            ),
+            partial_brackets: Optional[list[str]] = Query(
+                None,
+                alias="partial[]",
+                description="List of meta fields to retrieve - for axios support",
+                include_in_schema=False,
+            ),
             current_user: str = Depends(self.deps.get_user),
             current_time: dt.datetime = Depends(self.deps.get_now),
         ):
             # 獲取資源和元數據
             try:
+                fields = partial or partial_brackets
+                if fields is None:
+                    raw = [
+                        v
+                        for k, v in request.query_params.multi_items()
+                        if k == "partial[]"
+                    ]
+                    if raw:
+                        fields = raw
+
                 with resource_manager.meta_provide(current_user, current_time):
                     meta = resource_manager.get_meta(resource_id)
             except HTTPException:
                 raise
             except Exception as e:
                 raise HTTPException(status_code=404, detail=str(e))
+
+            # Apply partial filtering (unprefixed fields treated as meta)
+            if fields:
+                spec = classify_partial_fields(fields, default_category="meta")
+                if spec.meta_fields:
+                    meta = filter_struct_partial(meta, spec.meta_fields)
 
             # 根據響應類型處理數據
             return MsgspecResponse(meta)
@@ -94,16 +123,37 @@ class ReadRouteTemplate(BaseRouteTemplate, Generic[T]):
             ),
         )
         async def get_resource_revision_info(
+            request: Request,
             resource_id: str,
             revision_id: Optional[str] = Query(
                 None,
                 description="Specific revision ID to retrieve. If not provided, returns the current revision",
+            ),
+            partial: Optional[list[str]] = Query(
+                None,
+                description="List of revision info fields to retrieve (e.g. '/revision_id', '/status')",
+            ),
+            partial_brackets: Optional[list[str]] = Query(
+                None,
+                alias="partial[]",
+                description="List of revision info fields to retrieve - for axios support",
+                include_in_schema=False,
             ),
             current_user: str = Depends(self.deps.get_user),
             current_time: dt.datetime = Depends(self.deps.get_now),
         ):
             # 獲取資源和元數據
             try:
+                fields = partial or partial_brackets
+                if fields is None:
+                    raw = [
+                        v
+                        for k, v in request.query_params.multi_items()
+                        if k == "partial[]"
+                    ]
+                    if raw:
+                        fields = raw
+
                 with resource_manager.meta_provide(current_user, current_time):
                     info = resource_manager.get_revision_info(
                         resource_id,
@@ -113,6 +163,12 @@ class ReadRouteTemplate(BaseRouteTemplate, Generic[T]):
                 raise
             except Exception as e:
                 raise HTTPException(status_code=404, detail=str(e))
+
+            # Apply partial filtering (unprefixed fields treated as info)
+            if fields:
+                spec = classify_partial_fields(fields, default_category="info")
+                if spec.info_fields:
+                    info = filter_struct_partial(info, spec.info_fields)
 
             return MsgspecResponse(info)
 
@@ -191,6 +247,9 @@ class ReadRouteTemplate(BaseRouteTemplate, Generic[T]):
                         fields = raw
                 returns_list = [r.strip() for r in returns.split(",")]
 
+                # Classify partial fields by prefix
+                spec = classify_partial_fields(fields, default_category="data")
+
                 with resource_manager.meta_provide(current_user, current_time):
                     meta = resource_manager.get_meta(resource_id)
                     target_revision_id = revision_id or meta.current_revision_id
@@ -200,11 +259,11 @@ class ReadRouteTemplate(BaseRouteTemplate, Generic[T]):
 
                     # 1. Get Data
                     if "data" in returns_list:
-                        if fields:
+                        if spec.data_fields:
                             data = resource_manager.get_partial(
                                 resource_id,
                                 target_revision_id,
-                                fields,
+                                spec.data_fields,
                                 schema_version=meta.schema_version,
                             )
                         else:
@@ -233,6 +292,12 @@ class ReadRouteTemplate(BaseRouteTemplate, Generic[T]):
 
             if "meta" not in returns_list:
                 meta = UNSET
+
+            # Apply partial filtering on meta and revision_info
+            if spec.meta_fields and meta is not UNSET:
+                meta = filter_struct_partial(meta, spec.meta_fields)
+            if spec.info_fields and revision_info is not UNSET:
+                revision_info = filter_struct_partial(revision_info, spec.info_fields)
 
             return MsgspecResponse(
                 FullResourceResponse(
@@ -296,6 +361,7 @@ class ReadRouteTemplate(BaseRouteTemplate, Generic[T]):
             ),
         )
         async def get_resource_revision_list(
+            request: Request,
             resource_id: str,
             limit: int = 10,
             offset: int = 0,
@@ -304,11 +370,34 @@ class ReadRouteTemplate(BaseRouteTemplate, Generic[T]):
             from_revision_id: str | None = None,
             chain_only: bool = False,
             sort: str = "-created_time",
+            partial: Optional[list[str]] = Query(
+                None,
+                description="List of fields to retrieve (e.g. '/revision_id', '/status', '/meta/resource_id')",
+            ),
+            partial_brackets: Optional[list[str]] = Query(
+                None,
+                alias="partial[]",
+                description="List of fields to retrieve - for axios support",
+                include_in_schema=False,
+            ),
             current_user: str = Depends(self.deps.get_user),
             current_time: dt.datetime = Depends(self.deps.get_now),
         ):
             # 獲取資源和元數據
             try:
+                fields = partial or partial_brackets
+                if fields is None:
+                    raw = [
+                        v
+                        for k, v in request.query_params.multi_items()
+                        if k == "partial[]"
+                    ]
+                    if raw:
+                        fields = raw
+
+                # Classify: unprefixed fields default to info
+                spec = classify_partial_fields(fields, default_category="info")
+
                 with resource_manager.meta_provide(current_user, current_time):
                     meta = resource_manager.get_meta(resource_id)
 
@@ -390,6 +479,15 @@ class ReadRouteTemplate(BaseRouteTemplate, Generic[T]):
                     total = len(revision_infos)
                     revision_infos = revision_infos[offset : offset + limit]
                     has_more = offset + limit < total
+
+                    # Apply partial filtering
+                    if spec.meta_fields:
+                        meta = filter_struct_partial(meta, spec.meta_fields)
+                    if spec.info_fields:
+                        revision_infos = [
+                            filter_struct_partial(r, spec.info_fields)
+                            for r in revision_infos
+                        ]
 
                     return MsgspecResponse(
                         RevisionListResponse(
