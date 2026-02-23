@@ -7,6 +7,8 @@ from autocrud.types import (
     Ref,
     RefRevision,
     SearchedResource,
+    Unique,
+    UniqueConstraintError,
     ValidationError,
 )
 
@@ -24,6 +26,8 @@ __all__ = [
     "RefRevision",
     "Schema",
     "SearchedResource",
+    "Unique",
+    "UniqueConstraintError",
     "ValidationError",
     "crud",
 ]

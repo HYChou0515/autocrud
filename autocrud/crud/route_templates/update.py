@@ -10,12 +10,14 @@ from autocrud.crud.route_templates.basic import (
     BaseRouteTemplate,
     MsgspecResponse,
     jsonschema_to_json_schema_extra,
+    raise_unique_conflict,
     struct_to_responses_type,
 )
 from autocrud.types import (
     IResourceManager,
     RevisionInfo,
     RevisionStatus,
+    UniqueConstraintError,
     ValidationError,
 )
 
@@ -107,6 +109,8 @@ class UpdateRouteTemplate(BaseRouteTemplate):
             except (msgspec.ValidationError, ValidationError) as e:
                 # 數據驗證錯誤，返回 422
                 raise HTTPException(status_code=422, detail=str(e))
+            except UniqueConstraintError as e:
+                raise_unique_conflict(e)
             except Exception as e:
                 # 其他錯誤，返回 400
                 raise HTTPException(status_code=400, detail=str(e))

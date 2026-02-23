@@ -6,7 +6,16 @@ import logging
 import tarfile
 from collections import OrderedDict
 from collections.abc import Callable, Sequence
-from typing import IO, Any, Literal, TypeVar
+from typing import (
+    IO,
+    Annotated,
+    Any,
+    Literal,
+    TypeVar,
+    get_args,
+    get_origin,
+    get_type_hints,
+)
 
 from fastapi import APIRouter, FastAPI, HTTPException
 from fastapi.openapi.utils import get_openapi
@@ -84,6 +93,7 @@ from autocrud.types import (
     TaskStatus,
     _RefInfo,
     extract_refs,
+    extract_unique_fields,
 )
 from autocrud.util.naming import NameConverter
 
@@ -938,6 +948,49 @@ class AutoCRUD:
             resource_manager._indexed_value_extractor = IndexedValueExtractor(
                 resource_manager._indexed_fields
             )
+
+        self._register_unique_fields(resource_manager, model)
+
+    @staticmethod
+    def _infer_raw_type(model: type, field_name: str) -> Any:
+        """Infer the raw (non-Annotated) type of *field_name* on *model*."""
+        try:
+            hints = get_type_hints(model, include_extras=True)
+            hint = hints.get(field_name)
+            if hint is not None and get_origin(hint) is Annotated:
+                return get_args(hint)[0]
+            if hint is not None:
+                return hint
+        except Exception:
+            pass
+        return UNSET
+
+    @staticmethod
+    def _register_unique_fields(resource_manager: ResourceManager, model: type) -> None:
+        """Auto-detect ``Unique``-annotated fields, index them, and register
+        for unique-constraint enforcement on the *resource_manager*."""
+        unique_field_names = extract_unique_fields(model)
+        if not unique_field_names:
+            return
+
+        existing_paths = {f.field_path for f in resource_manager.indexed_fields}
+        added = False
+        for field_name in unique_field_names:
+            if field_name not in existing_paths:
+                raw_type = AutoCRUD._infer_raw_type(model, field_name)
+                resource_manager._indexed_fields.append(
+                    IndexableField(field_path=field_name, field_type=raw_type)
+                )
+                added = True
+        if added:
+            from autocrud.resource_manager.core import IndexedValueExtractor
+
+            resource_manager._indexed_value_extractor = IndexedValueExtractor(
+                resource_manager._indexed_fields
+            )
+        for field_name in unique_field_names:
+            if field_name not in resource_manager._unique_fields:
+                resource_manager._unique_fields.append(field_name)
 
     def openapi(self, app: FastAPI, structs: list[type] = None) -> None:
         """Generate and register the OpenAPI schema for the FastAPI application.

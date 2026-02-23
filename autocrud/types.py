@@ -240,6 +240,61 @@ def extract_display_name(struct_type: type) -> str | None:
     return None
 
 
+# ---------------------------------------------------------------------------
+# Unique Constraint
+# ---------------------------------------------------------------------------
+
+
+class Unique:
+    """Annotation marker that enforces uniqueness of a field across all resources
+    of the same type.
+
+    Use with ``Annotated`` to annotate a field that must be unique.
+    AutoCRUD will automatically index the field and check uniqueness
+    on every ``create()``, ``update()``, and ``modify()`` call.
+
+    Usage::
+
+        class User(Struct):
+            username: Annotated[str, Unique()]
+            email: Annotated[str, Unique()]
+            age: int = 0
+
+    Raises:
+        :exc:`UniqueConstraintError`: When a duplicate value is detected.
+    """
+
+    __slots__ = ()
+
+    def __repr__(self) -> str:
+        return "Unique()"
+
+
+def extract_unique_fields(struct_type: type) -> list[str]:
+    """Return all field names annotated with :class:`Unique`.
+
+    Arguments:
+        struct_type: A ``msgspec.Struct`` subclass or any class whose fields
+            may carry ``Unique()`` annotations.
+
+    Returns:
+        list[str]: Field names that carry a :class:`Unique` annotation, in
+        definition order.  Returns an empty list if none are found or if
+        type hints cannot be resolved.
+    """
+    unique: list[str] = []
+    try:
+        hints = get_type_hints(struct_type, include_extras=True)
+    except Exception:
+        return unique
+    for field_name, hint in hints.items():
+        if get_origin(hint) is Annotated:
+            for metadata in get_args(hint)[1:]:
+                if isinstance(metadata, Unique):
+                    unique.append(field_name)
+    return unique
+
+
 class RevisionStatus(StrEnum):
     draft = "draft"
     stable = "stable"
@@ -2056,6 +2111,26 @@ class CannotModifyResourceError(ResourceConflictError):
     def __init__(self, resource_id: str):
         super().__init__(f"Resource '{resource_id}' cannot be modified.")
         self.resource_id = resource_id
+
+
+class UniqueConstraintError(ResourceConflictError):
+    """Raised when a field annotated with :class:`Unique` already has the given value
+    on another (non-deleted) resource.
+
+    Attributes:
+        field: The name of the unique-constrained field.
+        value: The duplicate value that caused the conflict.
+        conflicting_resource_id: The ``resource_id`` that already holds the value.
+    """
+
+    def __init__(self, field: str, value: Any, conflicting_resource_id: str) -> None:
+        super().__init__(
+            f"Unique constraint violated: field '{field}' value {value!r} "
+            f"already exists on resource '{conflicting_resource_id}'."
+        )
+        self.field = field
+        self.value = value
+        self.conflicting_resource_id = conflicting_resource_id
 
 
 class ValidationError(ValueError):
