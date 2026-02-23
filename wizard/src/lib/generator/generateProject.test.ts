@@ -541,7 +541,7 @@ describe("generateValidators", () => {
 
 describe("generateConfigureCall", () => {
   it("memory + defaults → crud.configure()", () => {
-    const result = generateConfigureCall(makeState());
+    const result = generateConfigureCall(makeState({ encoding: "json" }));
     expect(result).toBe("crud.configure()");
   });
 
@@ -687,7 +687,7 @@ describe("generateMainPy", () => {
     const code = generateMainPy(DEFAULT_WIZARD_STATE);
     expect(code).toContain("from autocrud import");
     expect(code).toContain("class Todo");
-    expect(code).toContain("crud.configure()");
+    expect(code).toContain("crud.configure(encoding=Encoding.msgpack)");
     expect(code).toContain("crud.add_model(");
     expect(code).toContain("Schema(Todo,");
     expect(code).toContain("crud.apply(app)");
@@ -1481,6 +1481,8 @@ describe("F2: Custom SimpleStorage", () => {
     const result = generateConfigureCall(
       makeState({
         storage: "custom",
+        encoding: "json",
+        blobStore: "none",
         storageConfig: {
           customMetaStore: "redis",
           customResourceStore: "memory",
@@ -1612,6 +1614,8 @@ describe("F2: Custom SimpleStorage", () => {
     const result = generateConfigureCall(
       makeState({
         storage: "custom",
+        encoding: "json",
+        blobStore: "none",
         storageConfig: {
           customMetaStore: "memory-sqlite",
           customResourceStore: "memory",
@@ -1686,6 +1690,8 @@ describe("FastSlowMetaStore", () => {
     const result = generateConfigureCall(
       makeState({
         storage: "custom",
+        encoding: "json",
+        blobStore: "none",
         storageConfig: {
           customMetaStore: "fast-slow",
           customResourceStore: "memory",
@@ -1708,6 +1714,8 @@ describe("FastSlowMetaStore", () => {
     const result = generateConfigureCall(
       makeState({
         storage: "custom",
+        encoding: "json",
+        blobStore: "none",
         storageConfig: {
           customMetaStore: "fast-slow",
           customResourceStore: "memory",
@@ -1732,6 +1740,8 @@ describe("FastSlowMetaStore", () => {
     const result = generateConfigureCall(
       makeState({
         storage: "custom",
+        encoding: "json",
+        blobStore: "none",
         storageConfig: {
           customMetaStore: "fast-slow",
           customResourceStore: "memory",
@@ -1798,6 +1808,8 @@ describe("FastSlowMetaStore", () => {
     const result = generateConfigureCall(
       makeState({
         storage: "custom",
+        encoding: "json",
+        blobStore: "none",
         storageConfig: {
           customMetaStore: "fast-slow",
           customResourceStore: "memory",
@@ -1835,6 +1847,8 @@ describe("P0-1: build_blob_store", () => {
       const result = generateConfigureCall(
         makeState({
           storage: "custom",
+          encoding: "json",
+          blobStore: "s3",
           storageConfig: {
             customMetaStore: "memory",
             customResourceStore: resStore,
@@ -1860,6 +1874,8 @@ describe("P0-1: build_blob_store", () => {
     const result = generateConfigureCall(
       makeState({
         storage: "custom",
+        encoding: "json",
+        blobStore: "none",
         storageConfig: {
           customMetaStore: "memory",
           customResourceStore: "memory",
@@ -1874,6 +1890,8 @@ describe("P0-1: build_blob_store", () => {
     const result = generateConfigureCall(
       makeState({
         storage: "custom",
+        encoding: "json",
+        blobStore: "none",
         storageConfig: {
           customMetaStore: "memory",
           customResourceStore: "disk",
@@ -1889,6 +1907,7 @@ describe("P0-1: build_blob_store", () => {
     const result = generateImports(
       makeState({
         storage: "custom",
+        blobStore: "s3",
         storageConfig: {
           customMetaStore: "memory",
           customResourceStore: "s3",
@@ -1916,6 +1935,8 @@ describe("P0-1: build_blob_store", () => {
     const result = generateConfigureCall(
       makeState({
         storage: "custom",
+        encoding: "json",
+        blobStore: "s3",
         storageConfig: {
           customMetaStore: "memory",
           customResourceStore: "cached-s3",
