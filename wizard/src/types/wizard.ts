@@ -18,11 +18,27 @@ export interface WizardState {
   modelStyle: ModelStyle;
   defaultNow: string; // '' = unset, 'UTC' = utcnow, timezone string = ZoneInfo-aware now
 
+  // Step 2b: Message Queue
+  messageQueue: MessageQueueType;
+  messageQueueConfig: MessageQueueConfig;
+
   // Step 3: Model definitions
   models: ModelDefinition[];
 }
 
 export type StorageType = "memory" | "disk" | "s3" | "postgresql" | "custom";
+
+export type MessageQueueType = "none" | "simple" | "rabbitmq" | "celery";
+
+export interface MessageQueueConfig {
+  maxRetries?: number;
+  retryDelaySeconds?: number;
+  // RabbitMQ
+  amqpUrl?: string;
+  queuePrefix?: string;
+  // Celery
+  celeryBrokerUrl?: string;
+}
 
 export type MetaStoreType =
   | "memory"
@@ -135,6 +151,10 @@ export interface ModelDefinition {
   // Shared settings
   enableValidator: boolean;
   validatorCode: string;
+
+  // Job settings (Message Queue)
+  isJob: boolean;
+  jobHandlerCode: string;
 }
 
 export interface SubStructDefinition {
@@ -228,6 +248,9 @@ export const DEFAULT_WIZARD_STATE: WizardState = {
   modelStyle: "struct",
   defaultNow: "",
 
+  messageQueue: "none",
+  messageQueueConfig: {},
+
   models: [createDefaultModel()],
 };
 
@@ -291,6 +314,8 @@ export function createDefaultModel(): ModelDefinition {
     done: bool = False`,
     enableValidator: false,
     validatorCode: "",
+    isJob: false,
+    jobHandlerCode: "",
   };
 }
 
@@ -354,6 +379,8 @@ export function createEmptyModel(): ModelDefinition {
     rawCode: "",
     enableValidator: false,
     validatorCode: "",
+    isJob: false,
+    jobHandlerCode: "",
   };
 }
 
@@ -407,7 +434,7 @@ export const BUILTIN_TYPES: BuiltinTypeInfo[] = [
     icon: "⚡",
     description: "背景任務 wrapper，自動支援 MQ 處理",
     detailedDescription:
-      "泛型 Struct，用於 message queue 系統。繼承 Job[PayloadStruct] 讓 model 自動支援 MQ 處理、重試、狀態追蹤。需搭配 job_handler 使用。",
+      "泛型 Struct，用於 message queue 系統。繼承 Job[PayloadStruct] 讓 model 自動支援 MQ 處理、重試、狀態追蹤。需搭配 job_handler 使用。在 Wizard 中，可於「儲存 & 設定」步驟啟用 MQ 後端，然後在 Model 層級開啟 isJob toggle，系統會自動生成 Payload Struct 與 Job wrapper。",
     importStatement: "from autocrud.types import Job",
     codeSnippet: `class MyPayload(Struct):
     event_type: str
