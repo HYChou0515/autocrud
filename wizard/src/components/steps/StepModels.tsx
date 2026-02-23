@@ -51,6 +51,7 @@ import Editor from "@monaco-editor/react";
 import {
   generateValidatorFunction,
   generateCodeModeValidatorScaffold,
+  generateJobHandlerFunction,
   toSnakeCase,
 } from "@/lib/generator/generateProject";
 
@@ -327,6 +328,81 @@ export function StepModels({ state, onChange }: Props) {
                 />
               </div>
             </>
+          )}
+
+          {/* Job (Message Queue) toggle */}
+          {state.messageQueue !== "none" ? (
+            <>
+              <Switch
+                label="啟用 Job（Message Queue）"
+                description="將此 Model 包裝為 Job，支援 MQ 背景任務處理"
+                checked={model.isJob}
+                onChange={(e) => {
+                  const enabled = e.currentTarget.checked;
+                  const patch: Partial<ModelDefinition> = {
+                    isJob: enabled,
+                  };
+                  // Auto-prefill scaffold when enabling job with empty code
+                  if (enabled && !model.jobHandlerCode) {
+                    patch.jobHandlerCode = generateJobHandlerFunction(model);
+                  }
+                  updateModel(activeModel, patch);
+                }}
+              />
+
+              {model.isJob && (
+                <>
+                  <Alert
+                    variant="light"
+                    color="cyan"
+                    icon={<IconInfoCircle size={16} />}
+                    p="xs"
+                  >
+                    <Text size="xs">
+                      系統會自動將你定義的 fields 包裝為 Payload Struct， 並生成{" "}
+                      <Code>
+                        {model.name}(Job[{model.name}Payload])
+                      </Code>{" "}
+                      子類。
+                    </Text>
+                  </Alert>
+                  <div
+                    style={{
+                      border: "1px solid var(--mantine-color-default-border)",
+                      borderRadius: 4,
+                      overflow: "hidden",
+                    }}
+                  >
+                    <Editor
+                      height="180px"
+                      language="python"
+                      theme="vs-dark"
+                      value={model.jobHandlerCode}
+                      onChange={(value) =>
+                        updateModel(activeModel, {
+                          jobHandlerCode: value || "",
+                        })
+                      }
+                      options={{
+                        minimap: { enabled: false },
+                        lineNumbers: "on",
+                        fontSize: 13,
+                        scrollBeyondLastLine: false,
+                        wordWrap: "on",
+                        tabSize: 4,
+                      }}
+                    />
+                  </div>
+                </>
+              )}
+            </>
+          ) : (
+            <Switch
+              label="啟用 Job（Message Queue）"
+              description="請先在「儲存 & 設定」步驟設定 MQ 後端"
+              checked={false}
+              disabled
+            />
           )}
 
           {/* Input mode toggle */}

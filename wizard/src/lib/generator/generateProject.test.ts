@@ -7,11 +7,15 @@ import {
   generateConfigureCall,
   generateAddModelCall,
   generateFormModel,
+  generateFormModelAsJob,
   generateFieldLine,
   resolveFieldType,
   generateValidators,
+  generateJobHandlers,
+  generateJobHandlerFunction,
   generateEnumDefinitions,
   generateSubStructDefinitions,
+  generateModelDefinitions,
   generateAppSetup,
   generateReadme,
   computeDependencies,
@@ -82,7 +86,7 @@ describe("generateProject", () => {
 describe("computeDependencies", () => {
   it("memory storage → autocrud[graphql] + uvicorn (graphql default on)", () => {
     const deps = computeDependencies(makeState({ storage: "memory" }));
-    expect(deps).toContain("autocrud[graphql]>=0.8.0");
+    expect(deps).toContain("autocrud[graphql]>=0.8.2");
     expect(deps).toContain("uvicorn>=0.30.0");
     expect(deps).toHaveLength(2);
   });
@@ -91,13 +95,13 @@ describe("computeDependencies", () => {
     const deps = computeDependencies(
       makeState({ storage: "memory", enableGraphql: false }),
     );
-    expect(deps).toContain("autocrud>=0.8.0");
+    expect(deps).toContain("autocrud>=0.8.2");
     expect(deps).toHaveLength(2);
   });
 
   it("disk storage → autocrud[graphql] (no s3)", () => {
     const deps = computeDependencies(makeState({ storage: "disk" }));
-    expect(deps).toContain("autocrud[graphql]>=0.8.0");
+    expect(deps).toContain("autocrud[graphql]>=0.8.2");
     expect(deps).not.toContain("magic");
   });
 
@@ -121,14 +125,14 @@ describe("computeDependencies", () => {
   it("extras are sorted alphabetically", () => {
     const deps = computeDependencies(makeState({ storage: "postgresql" }));
     // graphql, magic, postgresql, s3
-    expect(deps[0]).toBe("autocrud[graphql,magic,postgresql,s3]>=0.8.0");
+    expect(deps[0]).toBe("autocrud[graphql,magic,postgresql,s3]>=0.8.2");
   });
 
   it("s3 with graphql off → s3 + magic only", () => {
     const deps = computeDependencies(
       makeState({ storage: "s3", enableGraphql: false }),
     );
-    expect(deps[0]).toBe("autocrud[magic,s3]>=0.8.0");
+    expect(deps[0]).toBe("autocrud[magic,s3]>=0.8.2");
   });
 });
 
@@ -1415,7 +1419,7 @@ describe("F2: Custom SimpleStorage", () => {
         },
       }),
     );
-    expect(deps[0]).toBe("autocrud[graphql]>=0.8.0");
+    expect(deps[0]).toBe("autocrud[graphql]>=0.8.2");
   });
 
   it("custom storage memory+memory graphql off → base autocrud", () => {
@@ -1429,7 +1433,7 @@ describe("F2: Custom SimpleStorage", () => {
         },
       }),
     );
-    expect(deps[0]).toBe("autocrud>=0.8.0");
+    expect(deps[0]).toBe("autocrud>=0.8.2");
   });
 
   it("custom storage README description", () => {
@@ -2217,5 +2221,447 @@ describe("F5: Editable validators", () => {
     });
     const result = generateImports(makeState({ models: [model] }));
     expect(result).toContain("IValidator");
+  });
+});
+
+// ─── F6: Job Handler Support (Message Queue) ──────────────────
+
+describe("F6: computeDependencies with MQ", () => {
+  it("rabbitmq → extras include mq", () => {
+    const deps = computeDependencies(
+      makeState({ messageQueue: "rabbitmq", enableGraphql: false }),
+    );
+    expect(deps[0]).toContain("mq");
+  });
+
+  it("celery → extras include celery", () => {
+    const deps = computeDependencies(
+      makeState({ messageQueue: "celery", enableGraphql: false }),
+    );
+    expect(deps[0]).toContain("celery");
+  });
+
+  it("simple → no extra MQ deps", () => {
+    const deps = computeDependencies(
+      makeState({ messageQueue: "simple", enableGraphql: false }),
+    );
+    expect(deps[0]).toBe("autocrud>=0.8.2");
+  });
+
+  it("none → no extra MQ deps", () => {
+    const deps = computeDependencies(
+      makeState({ messageQueue: "none", enableGraphql: false }),
+    );
+    expect(deps[0]).toBe("autocrud>=0.8.2");
+  });
+
+  it("rabbitmq + graphql → sorted extras", () => {
+    const deps = computeDependencies(
+      makeState({ messageQueue: "rabbitmq", enableGraphql: true }),
+    );
+    expect(deps[0]).toContain("graphql");
+    expect(deps[0]).toContain("mq");
+  });
+});
+
+describe("F6: generateImports with Job", () => {
+  it("form-mode isJob → imports Job and Resource from autocrud.types", () => {
+    const model = makeModel({
+      name: "MyTask",
+      inputMode: "form",
+      isJob: true,
+      fields: [makeField({ name: "event_type", type: "str" })],
+    });
+    const result = generateImports(
+      makeState({
+        models: [model],
+        messageQueue: "simple",
+      }),
+    );
+    expect(result).toContain("Job");
+    expect(result).toContain("Resource");
+    expect(result).toContain("from autocrud.types import");
+  });
+
+  it("code-mode with Job[ → imports Job", () => {
+    const model = makeModel({
+      name: "MyTask",
+      inputMode: "code",
+      rawCode:
+        "class MyPayload(Struct):\n    x: int\n\nclass MyTask(Job[MyPayload]):\n    pass",
+    });
+    const result = generateImports(makeState({ models: [model] }));
+    expect(result).toContain("Job");
+  });
+
+  it("simple MQ → imports SimpleMessageQueueFactory", () => {
+    const result = generateImports(makeState({ messageQueue: "simple" }));
+    expect(result).toContain("SimpleMessageQueueFactory");
+  });
+
+  it("rabbitmq MQ → imports RabbitMQMessageQueueFactory", () => {
+    const result = generateImports(makeState({ messageQueue: "rabbitmq" }));
+    expect(result).toContain("RabbitMQMessageQueueFactory");
+  });
+
+  it("celery MQ → imports CeleryMessageQueueFactory", () => {
+    const result = generateImports(makeState({ messageQueue: "celery" }));
+    expect(result).toContain("CeleryMessageQueueFactory");
+  });
+
+  it("none MQ → no MQ factory import", () => {
+    const result = generateImports(makeState({ messageQueue: "none" }));
+    expect(result).not.toContain("MessageQueueFactory");
+  });
+});
+
+describe("F6: generateModelDefinitions with Job", () => {
+  it("form-mode isJob → generates Payload + Job wrapper", () => {
+    const model = makeModel({
+      name: "MyTask",
+      inputMode: "form",
+      isJob: true,
+      fields: [
+        makeField({ name: "event_type", type: "str" }),
+        makeField({ name: "count", type: "int", default: "0" }),
+      ],
+    });
+    const result = generateModelDefinitions(
+      makeState({ models: [model], messageQueue: "simple" }),
+    );
+    expect(result).toContain("class MyTaskPayload(Struct):");
+    expect(result).toContain("event_type: str");
+    expect(result).toContain("count: int = 0");
+    expect(result).toContain("class MyTask(Job[MyTaskPayload]):");
+    expect(result).toContain("pass");
+  });
+
+  it("form-mode non-job → generates normal model", () => {
+    const model = makeModel({
+      name: "Todo",
+      inputMode: "form",
+      isJob: false,
+      fields: [makeField({ name: "title", type: "str" })],
+    });
+    const result = generateModelDefinitions(makeState({ models: [model] }));
+    expect(result).toContain("class Todo(Struct):");
+    expect(result).not.toContain("Payload");
+    expect(result).not.toContain("Job[");
+  });
+});
+
+describe("F6: generateFormModelAsJob", () => {
+  it("generates Payload struct + Job wrapper", () => {
+    const model = makeModel({
+      name: "EmailTask",
+      inputMode: "form",
+      isJob: true,
+      fields: [
+        makeField({ name: "to", type: "str" }),
+        makeField({ name: "body", type: "str", default: '""' }),
+      ],
+    });
+    const result = generateFormModelAsJob(model, "struct");
+    expect(result).toContain("class EmailTaskPayload(Struct):");
+    expect(result).toContain("to: str");
+    expect(result).toContain('body: str = ""');
+    expect(result).toContain("class EmailTask(Job[EmailTaskPayload]):");
+    expect(result).toContain("pass");
+  });
+
+  it("Payload is always Struct even with pydantic style", () => {
+    const model = makeModel({
+      name: "PydanticTask",
+      isJob: true,
+      fields: [makeField({ name: "x", type: "int" })],
+    });
+    const result = generateFormModelAsJob(model, "pydantic");
+    expect(result).toContain("class PydanticTaskPayload(Struct):");
+    expect(result).not.toContain("BaseModel");
+  });
+});
+
+describe("F6: generateJobHandlers", () => {
+  it("generates handler for isJob model", () => {
+    const model = makeModel({
+      name: "MyTask",
+      inputMode: "form",
+      isJob: true,
+      jobHandlerCode: "",
+      fields: [makeField({ name: "x", type: "int" })],
+    });
+    const result = generateJobHandlers(
+      makeState({ models: [model], messageQueue: "simple" }),
+    );
+    expect(result).toContain("# ===== Job Handlers =====");
+    expect(result).toContain(
+      "def process_my_task(resource: Resource[MyTask]):",
+    );
+    expect(result).toContain("job = resource.data");
+    expect(result).toContain("payload = job.payload");
+  });
+
+  it("uses custom jobHandlerCode when provided", () => {
+    const model = makeModel({
+      name: "MyTask",
+      inputMode: "form",
+      isJob: true,
+      jobHandlerCode:
+        "def process_my_task(resource: Resource[MyTask]):\n    print('custom')",
+      fields: [makeField({ name: "x", type: "int" })],
+    });
+    const result = generateJobHandlers(
+      makeState({ models: [model], messageQueue: "simple" }),
+    );
+    expect(result).toContain("print('custom')");
+    expect(result).not.toContain("TODO");
+  });
+
+  it("returns empty for no Job models", () => {
+    const model = makeModel({
+      name: "Todo",
+      isJob: false,
+      fields: [makeField({ name: "title", type: "str" })],
+    });
+    const result = generateJobHandlers(makeState({ models: [model] }));
+    expect(result).toBe("");
+  });
+
+  it("code-mode with Job[ → generates handler scaffold", () => {
+    const model = makeModel({
+      name: "CodeTask",
+      inputMode: "code",
+      rawCode:
+        "class CodePayload(Struct):\n    x: int\n\nclass CodeTask(Job[CodePayload]):\n    pass",
+      isJob: false,
+      jobHandlerCode: "",
+    });
+    const result = generateJobHandlers(makeState({ models: [model] }));
+    expect(result).toContain(
+      "def process_code_task(resource: Resource[CodeTask]):",
+    );
+  });
+});
+
+describe("F6: generateJobHandlerFunction", () => {
+  it("generates scaffold with model name", () => {
+    const model = makeModel({ name: "EmailJob" });
+    const result = generateJobHandlerFunction(model);
+    expect(result).toContain(
+      "def process_email_job(resource: Resource[EmailJob]):",
+    );
+    expect(result).toContain("job = resource.data");
+    expect(result).toContain("payload = job.payload");
+    expect(result).toContain("Processing EmailJob");
+    expect(result).toContain("# TODO: Add your job processing logic here");
+  });
+});
+
+describe("F6: generateAddModelCall with Job", () => {
+  it("isJob model → includes job_handler param", () => {
+    const model = makeModel({
+      name: "MyTask",
+      isJob: true,
+    });
+    const result = generateAddModelCall(model);
+    expect(result).toContain("job_handler=process_my_task");
+  });
+
+  it("code-mode with Job[ → includes job_handler param", () => {
+    const model = makeModel({
+      name: "MyTask",
+      inputMode: "code",
+      rawCode: "class MyTask(Job[Payload]):\n    pass",
+      isJob: false,
+    });
+    const result = generateAddModelCall(model);
+    expect(result).toContain("job_handler=process_my_task");
+  });
+
+  it("non-job model → no job_handler param", () => {
+    const model = makeModel({
+      name: "Todo",
+      isJob: false,
+    });
+    const result = generateAddModelCall(model);
+    expect(result).not.toContain("job_handler");
+  });
+});
+
+describe("F6: generateConfigureCall with MQ", () => {
+  it("simple MQ → includes message_queue_factory", () => {
+    const result = generateConfigureCall(makeState({ messageQueue: "simple" }));
+    expect(result).toContain(
+      "message_queue_factory=SimpleMessageQueueFactory()",
+    );
+  });
+
+  it("rabbitmq MQ → includes RabbitMQMessageQueueFactory", () => {
+    const result = generateConfigureCall(
+      makeState({
+        messageQueue: "rabbitmq",
+        messageQueueConfig: {
+          amqpUrl: "amqp://user:pass@host:5672/",
+        },
+      }),
+    );
+    expect(result).toContain("RabbitMQMessageQueueFactory");
+    expect(result).toContain('amqp_url="amqp://user:pass@host:5672/"');
+  });
+
+  it("celery MQ → includes CeleryMessageQueueFactory", () => {
+    const result = generateConfigureCall(
+      makeState({
+        messageQueue: "celery",
+        messageQueueConfig: {
+          celeryBrokerUrl: "amqp://user:pass@host/",
+          queuePrefix: "myapp:",
+        },
+      }),
+    );
+    expect(result).toContain("CeleryMessageQueueFactory");
+    expect(result).toContain('broker_url="amqp://user:pass@host/"');
+    expect(result).toContain('queue_prefix="myapp:"');
+  });
+
+  it("none MQ → no message_queue_factory", () => {
+    const result = generateConfigureCall(makeState({ messageQueue: "none" }));
+    expect(result).not.toContain("message_queue_factory");
+  });
+
+  it("simple MQ with non-default maxRetries", () => {
+    const result = generateConfigureCall(
+      makeState({
+        messageQueue: "simple",
+        messageQueueConfig: { maxRetries: 5 },
+      }),
+    );
+    expect(result).toContain("SimpleMessageQueueFactory(max_retries=5)");
+  });
+});
+
+describe("F6: generateAppSetup with Job", () => {
+  it("includes start_consume for Job models", () => {
+    const model = makeModel({
+      name: "MyTask",
+      isJob: true,
+    });
+    const result = generateAppSetup(
+      makeState({ models: [model], messageQueue: "simple" }),
+    );
+    expect(result).toContain("# ===== Start Job Consumers =====");
+    expect(result).toContain(
+      "crud.get_resource_manager(MyTask).start_consume(block=False)",
+    );
+  });
+
+  it("no Job models → no start_consume section", () => {
+    const model = makeModel({
+      name: "Todo",
+      isJob: false,
+    });
+    const result = generateAppSetup(makeState({ models: [model] }));
+    expect(result).not.toContain("start_consume");
+    expect(result).not.toContain("Start Job Consumers");
+  });
+
+  it("multiple Job models → start_consume for each", () => {
+    const model1 = makeModel({ name: "Task1", isJob: true });
+    const model2 = makeModel({ name: "Task2", isJob: true });
+    const model3 = makeModel({ name: "Normal", isJob: false });
+    const result = generateAppSetup(
+      makeState({
+        models: [model1, model2, model3],
+        messageQueue: "simple",
+      }),
+    );
+    expect(result).toContain(
+      "crud.get_resource_manager(Task1).start_consume(block=False)",
+    );
+    expect(result).toContain(
+      "crud.get_resource_manager(Task2).start_consume(block=False)",
+    );
+    expect(result).not.toContain("get_resource_manager(Normal)");
+  });
+});
+
+describe("F6: generateMainPy e2e with Job", () => {
+  it("complete output with Job model", () => {
+    const model = makeModel({
+      name: "BackgroundTask",
+      inputMode: "form",
+      isJob: true,
+      jobHandlerCode: "",
+      fields: [
+        makeField({ name: "action", type: "str" }),
+        makeField({ name: "priority", type: "int", default: "0" }),
+      ],
+    });
+    const code = generateMainPy(
+      makeState({
+        models: [model],
+        messageQueue: "simple",
+        modelStyle: "struct",
+      }),
+    );
+
+    // Imports
+    expect(code).toContain("from autocrud.types import Job, Resource");
+    expect(code).toContain("SimpleMessageQueueFactory");
+
+    // Payload + Job
+    expect(code).toContain("class BackgroundTaskPayload(Struct):");
+    expect(code).toContain("action: str");
+    expect(code).toContain("class BackgroundTask(Job[BackgroundTaskPayload]):");
+
+    // Job handler
+    expect(code).toContain("# ===== Job Handlers =====");
+    expect(code).toContain(
+      "def process_background_task(resource: Resource[BackgroundTask]):",
+    );
+
+    // App setup
+    expect(code).toContain("message_queue_factory=SimpleMessageQueueFactory()");
+    expect(code).toContain("job_handler=process_background_task");
+    expect(code).toContain(
+      "crud.get_resource_manager(BackgroundTask).start_consume(block=False)",
+    );
+  });
+
+  it("mixed Job + normal models", () => {
+    const jobModel = makeModel({
+      name: "NotifyJob",
+      inputMode: "form",
+      isJob: true,
+      fields: [makeField({ name: "message", type: "str" })],
+    });
+    const normalModel = makeModel({
+      name: "User",
+      inputMode: "form",
+      isJob: false,
+      fields: [makeField({ name: "name", type: "str" })],
+    });
+    const code = generateMainPy(
+      makeState({
+        models: [jobModel, normalModel],
+        messageQueue: "rabbitmq",
+        messageQueueConfig: {
+          amqpUrl: "amqp://guest:guest@localhost:5672/",
+        },
+      }),
+    );
+
+    // Both models present
+    expect(code).toContain("class NotifyJobPayload(Struct):");
+    expect(code).toContain("class NotifyJob(Job[NotifyJobPayload]):");
+    expect(code).toContain("class User(Struct):");
+
+    // Only Job model has handler
+    expect(code).toContain("process_notify_job");
+    expect(code).not.toContain("process_user");
+
+    // Only Job model has start_consume
+    expect(code).toContain("get_resource_manager(NotifyJob).start_consume");
+    expect(code).not.toContain("get_resource_manager(User)");
   });
 });

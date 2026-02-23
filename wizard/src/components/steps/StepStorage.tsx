@@ -23,6 +23,8 @@ import type {
   FastMetaStoreType,
   SlowMetaStoreType,
   ResourceStoreType,
+  MessageQueueType,
+  MessageQueueConfig,
 } from "@/types/wizard";
 
 interface Props {
@@ -210,6 +212,26 @@ const TIMEZONE_OPTIONS = [
   { value: "__other__", label: "自訂時區..." },
 ];
 
+const MQ_OPTIONS = [
+  { value: "none", label: "None" },
+  { value: "simple", label: "Simple" },
+  { value: "rabbitmq", label: "RabbitMQ" },
+  { value: "celery", label: "Celery" },
+];
+
+function mqDescription(t: MessageQueueType): string {
+  switch (t) {
+    case "none":
+      return "不啟用 Message Queue。無法使用 Job 功能。";
+    case "simple":
+      return "內建的簡易 MQ，使用 threading 處理。適合開發與測試。";
+    case "rabbitmq":
+      return "使用 RabbitMQ 作為 MQ 後端。適合生產環境。";
+    case "celery":
+      return "使用 Celery 作為 MQ 後端。適合分散式任務處理。";
+  }
+}
+
 export function StepStorage({ state, onChange }: Props) {
   const [customTimezone, setCustomTimezone] = useState("");
   const isCustomTz =
@@ -221,6 +243,10 @@ export function StepStorage({ state, onChange }: Props) {
 
   const updateStorageConfig = (patch: Partial<StorageConfig>) => {
     onChange({ storageConfig: { ...state.storageConfig, ...patch } });
+  };
+
+  const updateMQConfig = (patch: Partial<MessageQueueConfig>) => {
+    onChange({ messageQueueConfig: { ...state.messageQueueConfig, ...patch } });
   };
 
   return (
@@ -841,8 +867,10 @@ export function StepStorage({ state, onChange }: Props) {
       {/* Blob Store */}
       <div>
         <Text fw={500} size="sm" mb={4}>
-          Blob Store：用於支援 Binary
-          欄位的儲存層，以支援大檔案或非結構化資料的儲存與去重。
+          Blob Store
+        </Text>
+        <Text size="xs" c="dimmed" mb="sm">
+          用於支援 Binary欄位的儲存層，以支援大檔案或非結構化資料的儲存與去重。
         </Text>
         <SegmentedControl
           fullWidth
@@ -938,6 +966,137 @@ export function StepStorage({ state, onChange }: Props) {
         </Paper>
       )}
 
+      {/* Message Queue */}
+      <div>
+        <Text fw={500} size="sm" mb={4}>
+          MQ Backend
+        </Text>
+        <Text size="xs" c="dimmed" mb="sm">
+          設定背景任務處理的 MQ 後端，啟用後可在 Model 層級使用 Job 功能
+        </Text>
+        <SegmentedControl
+          fullWidth
+          data={MQ_OPTIONS}
+          value={state.messageQueue}
+          onChange={(v) => {
+            onChange({
+              messageQueue: v as MessageQueueType,
+              messageQueueConfig: {},
+            });
+          }}
+        />
+        <Text size="xs" c="dimmed" mt={4}>
+          {mqDescription(state.messageQueue)}
+        </Text>
+      </div>
+
+      {state.messageQueue === "simple" && (
+        <Paper p="md" withBorder>
+          <Stack gap="sm">
+            <NumberInput
+              label="Max Retries"
+              description="最大重試次數"
+              placeholder="3"
+              min={0}
+              value={state.messageQueueConfig.maxRetries ?? 3}
+              onChange={(v) =>
+                updateMQConfig({ maxRetries: typeof v === "number" ? v : 3 })
+              }
+            />
+          </Stack>
+        </Paper>
+      )}
+
+      {state.messageQueue === "rabbitmq" && (
+        <Paper p="md" withBorder>
+          <Stack gap="sm">
+            <TextInput
+              label="AMQP URL"
+              placeholder="amqp://guest:guest@localhost:5672/"
+              value={state.messageQueueConfig.amqpUrl || ""}
+              onChange={(e) =>
+                updateMQConfig({ amqpUrl: e.currentTarget.value })
+              }
+            />
+            <TextInput
+              label="Queue Prefix"
+              placeholder="autocrud:"
+              value={state.messageQueueConfig.queuePrefix || ""}
+              onChange={(e) =>
+                updateMQConfig({ queuePrefix: e.currentTarget.value })
+              }
+            />
+            <Group grow>
+              <NumberInput
+                label="Max Retries"
+                placeholder="3"
+                min={0}
+                value={state.messageQueueConfig.maxRetries ?? 3}
+                onChange={(v) =>
+                  updateMQConfig({ maxRetries: typeof v === "number" ? v : 3 })
+                }
+              />
+              <NumberInput
+                label="Retry Delay (seconds)"
+                placeholder="10"
+                min={0}
+                value={state.messageQueueConfig.retryDelaySeconds ?? 10}
+                onChange={(v) =>
+                  updateMQConfig({
+                    retryDelaySeconds: typeof v === "number" ? v : 10,
+                  })
+                }
+              />
+            </Group>
+          </Stack>
+        </Paper>
+      )}
+
+      {state.messageQueue === "celery" && (
+        <Paper p="md" withBorder>
+          <Stack gap="sm">
+            <TextInput
+              label="Celery Broker URL"
+              placeholder="amqp://guest:guest@localhost:5672/"
+              value={state.messageQueueConfig.celeryBrokerUrl || ""}
+              onChange={(e) =>
+                updateMQConfig({ celeryBrokerUrl: e.currentTarget.value })
+              }
+            />
+            <TextInput
+              label="Queue Prefix"
+              placeholder="autocrud:"
+              value={state.messageQueueConfig.queuePrefix || ""}
+              onChange={(e) =>
+                updateMQConfig({ queuePrefix: e.currentTarget.value })
+              }
+            />
+            <Group grow>
+              <NumberInput
+                label="Max Retries"
+                placeholder="3"
+                min={0}
+                value={state.messageQueueConfig.maxRetries ?? 3}
+                onChange={(v) =>
+                  updateMQConfig({ maxRetries: typeof v === "number" ? v : 3 })
+                }
+              />
+              <NumberInput
+                label="Retry Delay (seconds)"
+                placeholder="10"
+                min={0}
+                value={state.messageQueueConfig.retryDelaySeconds ?? 10}
+                onChange={(v) =>
+                  updateMQConfig({
+                    retryDelaySeconds: typeof v === "number" ? v : 10,
+                  })
+                }
+              />
+            </Group>
+          </Stack>
+        </Paper>
+      )}
+
       {/* Naming Convention */}
       <div>
         <Text fw={500} size="sm" mb={4}>
@@ -957,8 +1116,10 @@ export function StepStorage({ state, onChange }: Props) {
       {/* Encoding */}
       <div>
         <Text fw={500} size="sm" mb={4}>
-          Encoding；內部資料的序列化格式，影響性能與可讀性，不影響 API
-          格式（始終為 JSON）
+          Encoding
+        </Text>
+        <Text size="xs" c="dimmed" mb="sm">
+          內部資料的序列化格式，影響性能與可讀性，不影響 API格式（始終為 JSON）
         </Text>
         <SegmentedControl
           fullWidth

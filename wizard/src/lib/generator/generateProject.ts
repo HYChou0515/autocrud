@@ -121,13 +121,17 @@ export function computeDependencies(state: WizardState): string[] {
   // magic: auto-add when S3 is involved (blob content-type detection)
   if (extras.has("s3")) extras.add("magic");
 
+  // ── Message Queue extras ──
+  if (state.messageQueue === "rabbitmq") extras.add("mq");
+  if (state.messageQueue === "celery") extras.add("celery");
+
   // ── Build final dependency list ──
   const deps: string[] = [];
   if (extras.size > 0) {
     const sorted = [...extras].sort();
-    deps.push(`autocrud[${sorted.join(",")}]>=0.8.0`);
+    deps.push(`autocrud[${sorted.join(",")}]>=0.8.2`);
   } else {
-    deps.push("autocrud>=0.8.0");
+    deps.push("autocrud>=0.8.2");
   }
   deps.push("uvicorn>=0.30.0");
 
@@ -153,9 +157,13 @@ export function generateMainPy(state: WizardState): string {
   // 4. Model definitions
   sections.push(generateModelDefinitions(state));
 
-  // 4. Validators
+  // 4b. Validators
   const validators = generateValidators(state);
   if (validators) sections.push(validators);
+
+  // 4c. Job handlers
+  const jobHandlers = generateJobHandlers(state);
+  if (jobHandlers) sections.push(jobHandlers);
 
   // 5. App setup
   sections.push(generateAppSetup(state));
@@ -220,6 +228,11 @@ export function generateImports(state: WizardState): string {
       if (model.enums.length > 0) {
         needEnum = true;
       }
+      // Job detection for form-mode
+      if (model.isJob) {
+        autocrudTypesImports.add("Job");
+        autocrudTypesImports.add("Resource");
+      }
     } else {
       // code-mode: scan rawCode for keywords
       const code = model.rawCode;
@@ -231,6 +244,8 @@ export function generateImports(state: WizardState): string {
       if (code.includes("RefRevision")) autocrudTypesImports.add("RefRevision");
       if (code.includes("Binary")) autocrudTypesImports.add("Binary");
       if (code.includes("Job[")) autocrudTypesImports.add("Job");
+      if (code.includes("Resource[") || code.includes("Resource)"))
+        autocrudTypesImports.add("Resource");
       if (code.includes("Annotated")) typingImports.add("Annotated");
       if (code.includes("Optional")) typingImports.add("Optional");
       if (code.includes("datetime")) needDatetime = true;
@@ -319,6 +334,10 @@ export function generateImports(state: WizardState): string {
     }
   }
 
+  // Message Queue factory import
+  const mqImport = getMQFactoryImport(state.messageQueue);
+  if (mqImport) lines.push(mqImport);
+
   // autocrud.types imports
   // Add IValidator if any model has validators enabled
   if (state.models.some((m) => m.enableValidator)) {
@@ -340,6 +359,64 @@ function getStorageImport(storage: WizardState["storage"]): string | null {
       return "from autocrud.resource_manager.storage_factory import S3StorageFactory";
     case "postgresql":
       return "from autocrud.resource_manager.storage_factory import PostgreSQLStorageFactory";
+    default:
+      return null;
+  }
+}
+
+function getMQFactoryImport(mq: WizardState["messageQueue"]): string | null {
+  switch (mq) {
+    case "simple":
+      return "from autocrud.message_queue.simple import SimpleMessageQueueFactory";
+    case "rabbitmq":
+      return "from autocrud.message_queue.rabbitmq import RabbitMQMessageQueueFactory";
+    case "celery":
+      return "from autocrud.message_queue.celery_queue import CeleryMessageQueueFactory";
+    default:
+      return null;
+  }
+}
+
+function generateMQFactoryExpr(state: WizardState): string | null {
+  const mqc = state.messageQueueConfig;
+  switch (state.messageQueue) {
+    case "simple": {
+      const args: string[] = [];
+      if (mqc.maxRetries !== undefined && mqc.maxRetries !== 3) {
+        args.push(`max_retries=${mqc.maxRetries}`);
+      }
+      return args.length > 0
+        ? `SimpleMessageQueueFactory(${args.join(", ")})`
+        : "SimpleMessageQueueFactory()";
+    }
+    case "rabbitmq": {
+      const args: string[] = [];
+      args.push(
+        `amqp_url="${mqc.amqpUrl || "amqp://guest:guest@localhost:5672/"}"`,
+      );
+      if (mqc.queuePrefix) args.push(`queue_prefix="${mqc.queuePrefix}"`);
+      if (mqc.maxRetries !== undefined && mqc.maxRetries !== 3) {
+        args.push(`max_retries=${mqc.maxRetries}`);
+      }
+      if (mqc.retryDelaySeconds !== undefined && mqc.retryDelaySeconds !== 10) {
+        args.push(`retry_delay_seconds=${mqc.retryDelaySeconds}`);
+      }
+      return `RabbitMQMessageQueueFactory(${args.join(", ")})`;
+    }
+    case "celery": {
+      const args: string[] = [];
+      args.push(
+        `broker_url="${mqc.celeryBrokerUrl || "amqp://guest:guest@localhost:5672/"}"`,
+      );
+      if (mqc.queuePrefix) args.push(`queue_prefix="${mqc.queuePrefix}"`);
+      if (mqc.maxRetries !== undefined && mqc.maxRetries !== 3) {
+        args.push(`max_retries=${mqc.maxRetries}`);
+      }
+      if (mqc.retryDelaySeconds !== undefined && mqc.retryDelaySeconds !== 10) {
+        args.push(`retry_delay_seconds=${mqc.retryDelaySeconds}`);
+      }
+      return `CeleryMessageQueueFactory(${args.join(", ")})`;
+    }
     default:
       return null;
   }
@@ -739,12 +816,35 @@ export function generateModelDefinitions(state: WizardState): string {
   for (const model of state.models) {
     if (model.inputMode === "code") {
       parts.push(model.rawCode);
+    } else if (model.isJob) {
+      // Job model: generate Payload struct + Job wrapper
+      parts.push(generateFormModelAsJob(model, state.modelStyle));
     } else {
       parts.push(generateFormModel(model, state.modelStyle));
     }
   }
 
   return parts.join("\n\n\n");
+}
+
+/**
+ * Generate a Job-wrapped model: {Name}Payload(Struct) + {Name}(Job[{Name}Payload])
+ */
+export function generateFormModelAsJob(
+  model: ModelDefinition,
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars
+  style: WizardState["modelStyle"],
+): string {
+  // Generate the payload struct with original fields
+  const payloadName = `${model.name}Payload`;
+  const payloadModel: ModelDefinition = { ...model, name: payloadName };
+  // Payload is always a Struct (even if modelStyle is pydantic)
+  const payloadCode = generateFormModel(payloadModel, "struct");
+
+  // Generate the Job wrapper class
+  const jobLine = `class ${model.name}(Job[${payloadName}]):\n    pass`;
+
+  return payloadCode + "\n\n\n" + jobLine;
 }
 
 export function generateFormModel(
@@ -947,6 +1047,42 @@ export function generateValidatorFunction(model: ModelDefinition): string {
   return lines.join("\n");
 }
 
+// ─── Job Handler Generation ────────────────────────────────────
+
+export function generateJobHandlers(state: WizardState): string {
+  const parts: string[] = [];
+
+  for (const model of state.models) {
+    if (
+      model.isJob ||
+      (model.inputMode === "code" && model.rawCode.includes("Job["))
+    ) {
+      if (model.jobHandlerCode) {
+        // User provided custom handler code
+        parts.push(model.jobHandlerCode);
+      } else {
+        // Auto-generate scaffold
+        parts.push(generateJobHandlerFunction(model));
+      }
+    }
+  }
+
+  if (parts.length === 0) return "";
+
+  return "\n# ===== Job Handlers =====\n\n" + parts.join("\n\n");
+}
+
+export function generateJobHandlerFunction(model: ModelDefinition): string {
+  const fnName = `process_${toSnakeCase(model.name)}`;
+  return [
+    `def ${fnName}(resource: Resource[${model.name}]):`,
+    "    job = resource.data",
+    "    payload = job.payload",
+    `    print(f"Processing ${model.name}: {payload}")`,
+    "    # TODO: Add your job processing logic here",
+  ].join("\n");
+}
+
 // ─── App Setup Generation ──────────────────────────────────────
 
 export function generateAppSetup(state: WizardState): string {
@@ -1013,6 +1149,20 @@ export function generateAppSetup(state: WizardState): string {
   lines.push("crud.apply(app)");
   lines.push("crud.openapi(app)");
   lines.push("");
+
+  // Start consumers for Job models
+  const jobModels = state.models.filter(
+    (m) => m.isJob || (m.inputMode === "code" && m.rawCode.includes("Job[")),
+  );
+  if (jobModels.length > 0) {
+    lines.push("# ===== Start Job Consumers =====");
+    for (const model of jobModels) {
+      lines.push(
+        `crud.get_resource_manager(${model.name}).start_consume(block=False)`,
+      );
+    }
+    lines.push("");
+  }
 
   lines.push("");
   lines.push('if __name__ == "__main__":');
@@ -1191,6 +1341,14 @@ export function generateConfigureCall(state: WizardState): string {
     );
   }
 
+  // Message Queue factory
+  if (state.messageQueue !== "none") {
+    const mqExpr = generateMQFactoryExpr(state);
+    if (mqExpr) {
+      args.push(`message_queue_factory=${mqExpr}`);
+    }
+  }
+
   if (args.length === 0) {
     return customFactoryClass + "crud.configure()";
   }
@@ -1222,6 +1380,14 @@ export function generateAddModelCall(model: ModelDefinition): string {
       .map((f) => `("${f.name}", ${f.pyType})`)
       .join(", ");
     args.push(`indexed_fields=[${fieldStrs}]`);
+  }
+
+  // job_handler
+  if (
+    model.isJob ||
+    (model.inputMode === "code" && model.rawCode.includes("Job["))
+  ) {
+    args.push(`job_handler=process_${toSnakeCase(model.name)}`);
   }
 
   if (args.length === 1) {
