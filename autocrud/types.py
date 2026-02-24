@@ -1,3 +1,5 @@
+from __future__ import annotations
+
 import datetime as dt
 from abc import ABC, abstractmethod
 from collections.abc import Generator, Iterable
@@ -5,6 +7,7 @@ from contextlib import AbstractContextManager
 from enum import Enum, Flag, StrEnum, auto
 from typing import (
     IO,
+    TYPE_CHECKING,
     Any,
     Callable,
     Generic,
@@ -19,7 +22,8 @@ from jsonpointer import JsonPointer
 from msgspec import UNSET, Struct, UnsetType, defstruct
 from typing_extensions import Literal
 
-from autocrud.query import Query
+if TYPE_CHECKING:
+    from autocrud.query import Query
 
 T = TypeVar("T")
 

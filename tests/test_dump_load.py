@@ -258,31 +258,29 @@ class TestResourceManagerDumpWithQB:
 
     def test_dump_all(self):
         """Dump without query exports all 5 resources."""
-        keys = [k for k, _ in self.mgr.dump()]
-        meta_keys = [k for k in keys if k.startswith("meta/")]
-        data_keys = [k for k in keys if k.startswith("data/")]
-        assert len(meta_keys) == 5
-        assert len(data_keys) == 5
+        records = list(self.mgr.dump())
+        meta_count = sum(1 for r in records if isinstance(r, MetaRecord))
+        rev_count = sum(1 for r in records if isinstance(r, RevisionRecord))
+        assert meta_count == 5
+        assert rev_count == 5
 
     def test_dump_with_qb_filter(self):
         """Dump with QB filter exports only matching resources."""
         query = QB["value"] >= 30  # item_3 (30) and item_4 (40)
-        keys = [k for k, _ in self.mgr.dump(query=query)]
-        meta_keys = [k for k in keys if k.startswith("meta/")]
-        assert len(meta_keys) == 2
+        records = list(self.mgr.dump(query=query))
+        meta_count = sum(1 for r in records if isinstance(r, MetaRecord))
+        assert meta_count == 2
 
     def test_dump_empty_storage(self):
         """Dump on empty storage yields nothing."""
         crud2 = _make_crud(Item)
         mgr2 = crud2.get_resource_manager(Item)
-        keys = [k for k, _ in mgr2.dump()]
-        assert keys == []
+        assert list(mgr2.dump()) == []
 
     def test_dump_with_no_matches(self):
         """QB query that matches nothing yields empty."""
         query = QB["value"] >= 9999
-        keys = [k for k, _ in self.mgr.dump(query=query)]
-        assert keys == []
+        assert list(self.mgr.dump(query=query)) == []
 
     def test_dump_with_multiple_revisions(self):
         """Resources with multiple revisions export all revisions."""
@@ -291,11 +289,22 @@ class TestResourceManagerDumpWithQB:
             self.mgr.update(rid, Item(name="item_0_v2", value=100))
 
         query = QB["resource_id"] == rid
-        keys = [k for k, _ in self.mgr.dump(query=query)]
-        meta_keys = [k for k in keys if k.startswith("meta/")]
-        data_keys = [k for k in keys if k.startswith("data/")]
-        assert len(meta_keys) == 1  # one meta per resource
-        assert len(data_keys) == 2  # two revisions
+        records = list(self.mgr.dump(query=query))
+        meta_count = sum(1 for r in records if isinstance(r, MetaRecord))
+        rev_count = sum(1 for r in records if isinstance(r, RevisionRecord))
+        assert meta_count == 1  # one meta per resource
+        assert rev_count == 2  # two revisions
+
+    def test_dump_interleaves_meta_and_revisions(self):
+        """Each meta record is immediately followed by its revisions."""
+        records = list(self.mgr.dump())
+        current_meta_seen = False
+        for r in records:
+            if isinstance(r, MetaRecord):
+                current_meta_seen = True
+            elif isinstance(r, RevisionRecord):
+                # A revision must come after a meta
+                assert current_meta_seen
 
 
 # ============================================================================
@@ -310,8 +319,8 @@ class TestResourceManagerLoadRecord:
         self.mgr = self.crud.get_resource_manager(Item)
 
     def _dump_records(self, mgr):
-        """Collect dump output as (key, bytes) pairs."""
-        return [(k, v.read()) for k, v in mgr.dump()]
+        """Collect dump output as Record objects."""
+        return list(mgr.dump())
 
     def test_load_overwrite(self):
         """Load on existing resource_id with OVERWRITE replaces meta."""
@@ -325,15 +334,12 @@ class TestResourceManagerLoadRecord:
         mgr2 = crud2.get_resource_manager(Item)
         # Load the same data into crud2 first, then dump it
         records = self._dump_records(self.mgr)
-        for key, data in records:
-            mgr2.load(key, io.BytesIO(data))
+        for rec in records:
+            mgr2.load_record(rec)
 
         # Now load back into original with OVERWRITE - should succeed
-        from autocrud.resource_manager.dump_format import MetaRecord
-
-        for key, data in records:
-            if key.startswith("meta/"):
-                rec = MetaRecord(data=data)
+        for rec in records:
+            if isinstance(rec, MetaRecord):
                 result = self.mgr.load_record(rec, OnDuplicate.overwrite)
                 assert result is True
 
@@ -343,11 +349,8 @@ class TestResourceManagerLoadRecord:
             self.mgr.create(Item(name="original", value=1))
 
         records = self._dump_records(self.mgr)
-        from autocrud.resource_manager.dump_format import MetaRecord
-
-        for key, data in records:
-            if key.startswith("meta/"):
-                rec = MetaRecord(data=data)
+        for rec in records:
+            if isinstance(rec, MetaRecord):
                 result = self.mgr.load_record(rec, OnDuplicate.skip)
                 assert result is False
 
@@ -357,11 +360,8 @@ class TestResourceManagerLoadRecord:
             self.mgr.create(Item(name="original", value=1))
 
         records = self._dump_records(self.mgr)
-        from autocrud.resource_manager.dump_format import MetaRecord
-
-        for key, data in records:
-            if key.startswith("meta/"):
-                rec = MetaRecord(data=data)
+        for rec in records:
+            if isinstance(rec, MetaRecord):
                 with pytest.raises(DuplicateResourceError):
                     self.mgr.load_record(rec, OnDuplicate.raise_error)
 
@@ -374,18 +374,9 @@ class TestResourceManagerLoadRecord:
             self.mgr.create(Item(name="a", value=1))
 
         records = self._dump_records(self.mgr)
-        from autocrud.resource_manager.dump_format import (
-            MetaRecord,
-        )
-        from autocrud.resource_manager.dump_format import (
-            RevisionRecord as RR,
-        )
-
-        for key, data in records:
-            if key.startswith("meta/"):
-                assert mgr2.load_record(MetaRecord(data=data), OnDuplicate.raise_error)
-            elif key.startswith("data/"):
-                assert mgr2.load_record(RR(data=data), OnDuplicate.raise_error)
+        for rec in records:
+            if isinstance(rec, (MetaRecord, RevisionRecord)):
+                assert mgr2.load_record(rec, OnDuplicate.raise_error)
 
 
 # ============================================================================

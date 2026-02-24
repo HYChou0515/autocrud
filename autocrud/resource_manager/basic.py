@@ -1052,6 +1052,16 @@ class IStorage(ABC):
         requiring full data loading for each resource.
         """
 
+    def iter_search(self, query: ResourceMetaSearchQuery) -> Generator[ResourceMeta]:
+        """Streaming variant of :meth:`search`.
+
+        Yields one :class:`ResourceMeta` at a time so callers can avoid
+        materialising the full result list in memory.  The default
+        implementation simply delegates to :meth:`search`; backends that
+        support true streaming should override this method.
+        """
+        yield from self.search(query)
+
     @abstractmethod
     def dump_meta(
         self, resource_ids: frozenset[str] | None = None
@@ -1069,13 +1079,12 @@ class IStorage(ABC):
     @abstractmethod
     def dump_resource(
         self,
-        resource_ids: frozenset[str] | None = None,
+        resource_id: str,
     ) -> Generator[tuple[RevisionInfo, IO[bytes]]]:
-        """Export resource data including complete revision information.
+        """Export all revisions for a single resource.
 
         Args:
-            resource_ids: If provided, only yield revisions for these resource IDs.
-                If ``None``, yield all revisions.
+            resource_id: The resource ID whose revisions to export.
 
         Returns:
             Generator[tuple[RevisionInfo, IO[bytes]]]: A generator that yields

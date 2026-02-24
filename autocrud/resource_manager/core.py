@@ -129,7 +129,6 @@ if TYPE_CHECKING:
     from autocrud.schema import Schema
     from autocrud.types import IPermissionChecker
 
-
 from autocrud.query import Query
 from autocrud.resource_manager.basic import (
     Ctx,
@@ -142,6 +141,11 @@ from autocrud.resource_manager.basic import (
 )
 from autocrud.resource_manager.binary_processor import BinaryProcessor
 from autocrud.resource_manager.data_converter import DataConverter
+from autocrud.resource_manager.dump_format import (
+    BlobRecord,
+    MetaRecord,
+    RevisionRecord,
+)
 from autocrud.types import PermissionResult
 from autocrud.util.naming import NameConverter, NamingFormat
 from autocrud.util.type_utils import (
@@ -267,6 +271,9 @@ class SimpleStorage(IStorage):
     def search(self, query: ResourceMetaSearchQuery) -> list[ResourceMeta]:
         return list(self._meta_store.iter_search(query))
 
+    def iter_search(self, query: ResourceMetaSearchQuery) -> Generator[ResourceMeta]:
+        yield from self._meta_store.iter_search(query)
+
     def count(self, query: ResourceMetaSearchQuery) -> int:
         return mit.ilen(self._meta_store.iter_search(query))
 
@@ -298,25 +305,19 @@ class SimpleStorage(IStorage):
                     yield self._meta_store[rid]
 
     def dump_resource(
-        self, resource_ids: frozenset[str] | None = None
+        self, resource_id: str
     ) -> Generator[tuple[RevisionInfo, IO[bytes]]]:
-        ids_iter = (
-            self._resource_store.list_resources()
-            if resource_ids is None
-            else resource_ids
-        )
-        for resource_id in ids_iter:
-            for revision_id in self._resource_store.list_revisions(resource_id):
-                for schema_version in self._resource_store.list_schema_versions(
-                    resource_id, revision_id
-                ):
-                    info = self._resource_store.get_revision_info(
-                        resource_id, revision_id, schema_version
-                    )
-                    with self._resource_store.get_data_bytes(
-                        resource_id, revision_id, schema_version
-                    ) as data:
-                        yield info, data
+        for revision_id in self._resource_store.list_revisions(resource_id):
+            for schema_version in self._resource_store.list_schema_versions(
+                resource_id, revision_id
+            ):
+                info = self._resource_store.get_revision_info(
+                    resource_id, revision_id, schema_version
+                )
+                with self._resource_store.get_data_bytes(
+                    resource_id, revision_id, schema_version
+                ) as data:
+                    yield info, data
 
 
 class _BlobEntry(Struct, kw_only=True):
@@ -1661,72 +1662,76 @@ class ResourceManager(IResourceManager[T], Generic[T]):
     def dump(
         self,
         query: Query | ResourceMetaSearchQuery | None = None,
-    ) -> Generator[tuple[str, IO[bytes]]]:
-        """Dump metadata, revision data, and blobs.
+    ) -> Generator[
+        BlobRecord,
+        MetaRecord,
+        RevisionRecord,
+    ]:
+        """Dump metadata, revision data, and blobs as Record objects.
 
         Args:
             query: Optional QB/search query.  When given, only matching
                 resources are exported.  ``None`` exports everything.
 
         Yields:
-            ``(key, data_io)`` tuples in three phases:
-
-            1. ``meta/{resource_id}`` — serialised :class:`ResourceMeta`
-            2. ``data/{uid}`` — serialised :class:`RawResource`
-            3. ``blob/{file_id}`` — serialised blob bytes (if blob store exists)
+            :class:`MetaRecord`, :class:`RevisionRecord`, and
+            :class:`BlobRecord` instances.  For each resource the meta
+            record is yielded first, immediately followed by all its
+            revision records — no intermediate id collection needed.
+            Blob records are emitted at the end.
         """
-        # Resolve query → resource_ids
-        resource_ids: frozenset[str] | None = None
+
+        # Pre-hoist encoders
+        meta_encode = self.meta_serializer.encode
+        res_encode = self.resource_serializer.encode
+        has_blobs = self.blob_store is not None
+        collect = self._binary_processor.collect_file_ids if has_blobs else None
+        data_decode = self._data_serializer.decode if has_blobs else None
+        blob_file_ids: set[str] = set()
+
+        # Build meta iterator
         if query is not None:
             if isinstance(query, Query):
                 query = query.build()
-            # Remove the default limit so we get ALL matches
             q = msgspec.structs.replace(query, limit=2**31 - 1, offset=0)
-            metas = self.storage.search(q)
-            resource_ids = frozenset(m.resource_id for m in metas)
+            metas = self.storage.iter_search(q)
+        else:
+            metas = self.storage.dump_meta(None)
 
-        # Phase 1: meta
-        for meta in self.storage.dump_meta(resource_ids):
-            yield (
-                f"meta/{meta.resource_id}",
-                io.BytesIO(self.meta_serializer.encode(meta)),
-            )
-        # Phase 2: revision data (+ collect blob file_ids)
-        blob_file_ids: set[str] = set()
-        for info, data_io in self.storage.dump_resource(resource_ids):
-            raw_data = data_io.read()
-            raw_res = self.resource_serializer.encode(
-                RawResource(info=info, raw_data=raw_data)
-            )
-            yield f"data/{info.uid}", io.BytesIO(raw_res)
-            # Collect blob file_ids from the raw resource data
-            if self.blob_store is not None:
-                try:
-                    decoded = self._data_serializer.decode(raw_data)
-                    blob_file_ids |= self._binary_processor.collect_file_ids(decoded)
-                except Exception:
-                    pass  # skip blob collection on decode failure
-        # Phase 3: blobs
-        if self.blob_store is not None:
+        # Interleaved: meta → its revisions, per resource
+        dump_resource = self.storage.dump_resource
+        for meta in metas:
+            yield MetaRecord(data=meta_encode(meta))
+            for info, data_io in dump_resource(meta.resource_id):
+                raw_data = data_io.read()
+                yield RevisionRecord(
+                    data=res_encode(RawResource(info=info, raw_data=raw_data))
+                )
+                if collect is not None:
+                    try:
+                        blob_file_ids |= collect(data_decode(raw_data))
+                    except Exception:
+                        pass
+
+        # Blobs (must come after all revisions so file_ids are fully collected)
+        if has_blobs and blob_file_ids:
+            blob_store = self.blob_store
             for file_id in blob_file_ids:
                 try:
-                    blob = self.blob_store.get(file_id)
+                    blob = blob_store.get(file_id)
                     if blob.data is not UNSET:
-                        blob_bytes = self._blob_serializer.encode(
-                            _BlobEntry(
-                                file_id=file_id,
-                                data=blob.data,
-                                size=blob.size
-                                if blob.size is not UNSET
-                                else len(blob.data),
-                                content_type=blob.content_type
-                                if blob.content_type is not UNSET
-                                else "",
-                            )
+                        yield BlobRecord(
+                            file_id=file_id,
+                            blob_data=blob.data,
+                            size=blob.size
+                            if blob.size is not UNSET
+                            else len(blob.data),
+                            content_type=blob.content_type
+                            if blob.content_type is not UNSET
+                            else "",
                         )
-                        yield f"blob/{file_id}", io.BytesIO(blob_bytes)
                 except Exception:
-                    pass  # skip missing blobs
+                    pass
 
     @execute_with_events(
         (BeforeLoad, AfterLoad, OnSuccessLoad, OnFailureLoad),

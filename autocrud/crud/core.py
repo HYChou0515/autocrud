@@ -1890,14 +1890,11 @@ class AutoCRUD:
                 autocrud.dump(f, model_queries={"user": QB.name == "Alice"})
         """
         from autocrud.resource_manager.dump_format import (
-            BlobRecord,
             DumpStreamWriter,
             EofRecord,
             HeaderRecord,
-            MetaRecord,
             ModelEndRecord,
             ModelStartRecord,
-            RevisionRecord,
         )
 
         writer = DumpStreamWriter(bio)
@@ -1916,22 +1913,8 @@ class AutoCRUD:
                 )
             mgr = self.resource_managers[model_name]
             writer.write(ModelStartRecord(model_name=model_name))
-            for key, value in mgr.dump(query=query):
-                data = value.read()
-                if key.startswith("meta/"):
-                    writer.write(MetaRecord(data=data))
-                elif key.startswith("data/"):
-                    writer.write(RevisionRecord(data=data))
-                elif key.startswith("blob/"):
-                    blob_entry = mgr._blob_serializer.decode(data)
-                    writer.write(
-                        BlobRecord(
-                            file_id=blob_entry.file_id,
-                            blob_data=blob_entry.data,
-                            size=blob_entry.size,
-                            content_type=blob_entry.content_type,
-                        )
-                    )
+            for record in mgr.dump(query=query):
+                writer.write(record)
             writer.write(ModelEndRecord(model_name=model_name))
 
         writer.write(EofRecord())
