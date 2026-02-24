@@ -83,6 +83,8 @@ export interface ResourceField {
   ref?: FieldRef;
   // For union fields: discriminator + variant info
   unionMeta?: UnionMeta;
+  // Whether this field has a unique constraint (from Unique() annotation)
+  isUnique?: boolean;
 }
 
 /**

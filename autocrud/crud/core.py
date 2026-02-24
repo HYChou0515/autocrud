@@ -1177,6 +1177,16 @@ class AutoCRUD:
                 if comp is not None:
                     comp["x-display-name-field"] = dn_field
 
+            # --- Unique field annotations ---
+            if rm._unique_fields:
+                comp = components.get(schema_name)
+                if comp is not None:
+                    props = comp.get("properties", {})
+                    for uf in rm._unique_fields:
+                        prop = props.get(uf)
+                        if prop is not None:
+                            prop["x-unique"] = True
+
             # --- nested Struct types (e.g. Job[Payload]) ---
             nested = _collect_nested_struct_types(rm.resource_type, set())
             for nested_struct in nested:

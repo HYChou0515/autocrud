@@ -1,9 +1,10 @@
+import { useRef } from 'react';
 import { useNavigate } from '@tanstack/react-router';
 import { Container, Title, Stack, Button, Group, Paper } from '@mantine/core';
 import { IconArrowLeft } from '@tabler/icons-react';
 import type { ResourceConfig } from '../../resources';
-import { ResourceForm } from './ResourceForm';
-import { showErrorNotification } from '../../utils/errorNotification';
+import { ResourceForm, type ResourceFormHandle } from './ResourceForm';
+import { showErrorNotification, extractUniqueConflict } from '../../utils/errorNotification';
 
 export interface ResourceCreateProps<T> {
   config: ResourceConfig<T>;
@@ -18,13 +19,20 @@ export function ResourceCreate<T extends Record<string, any>>({
   basePath,
 }: ResourceCreateProps<T>) {
   const navigate = useNavigate();
+  const formRef = useRef<ResourceFormHandle | null>(null);
 
   const handleSubmit = async (values: T) => {
     try {
       await config.apiClient.create(values);
       navigate({ to: basePath });
     } catch (error) {
-      showErrorNotification(error, 'Create Failed');
+      const conflict = extractUniqueConflict(error);
+      if (conflict && formRef.current) {
+        formRef.current.setFieldError(conflict.field, `此值已被使用 (unique constraint)`);
+        showErrorNotification(error, 'Create Failed');
+      } else {
+        showErrorNotification(error, 'Create Failed');
+      }
     }
   };
 
@@ -48,6 +56,7 @@ export function ResourceCreate<T extends Record<string, any>>({
             onSubmit={handleSubmit}
             onCancel={() => navigate({ to: basePath })}
             submitLabel="Create"
+            formRef={formRef}
           />
         </Paper>
       </Stack>

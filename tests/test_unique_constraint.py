@@ -411,3 +411,56 @@ class TestModifyPostCheck:
         # Verify the data actually changed
         res = rm.get(info_b.resource_id)
         assert res.data.name == "gamma"
+
+
+# ---------------------------------------------------------------------------
+# 11. OpenAPI x-unique extension injection
+# ---------------------------------------------------------------------------
+
+
+class TestOpenAPIUniqueExtension:
+    """Verify that _inject_ref_metadata injects x-unique on unique fields."""
+
+    def _build_app(self, model, name="test"):
+        from fastapi import FastAPI
+
+        from autocrud import AutoCRUD
+
+        crud = AutoCRUD()
+        crud.add_model(model, name=name)
+        app = FastAPI()
+        crud.apply(app)
+        crud.openapi(app)
+        return app
+
+    def test_single_unique_field_has_x_unique(self):
+        """A single Unique() field must have x-unique: true in OpenAPI."""
+        app = self._build_app(Item, name="item")
+        schema = app.openapi_schema
+        item_schema = schema["components"]["schemas"]["Item"]
+        props = item_schema["properties"]
+
+        assert props["name"].get("x-unique") is True
+        # Non-unique field should NOT have x-unique
+        assert "x-unique" not in props["value"]
+
+    def test_multiple_unique_fields_have_x_unique(self):
+        """Multiple Unique() fields must each have x-unique: true."""
+        app = self._build_app(MultiUnique, name="multi-unique")
+        schema = app.openapi_schema
+        mu_schema = schema["components"]["schemas"]["MultiUnique"]
+        props = mu_schema["properties"]
+
+        assert props["code"].get("x-unique") is True
+        assert props["slug"].get("x-unique") is True
+        assert "x-unique" not in props["description"]
+
+    def test_no_unique_fields_no_x_unique(self):
+        """Schema with no Unique() fields should not have any x-unique."""
+        app = self._build_app(NoUnique, name="no-unique")
+        schema = app.openapi_schema
+        nu_schema = schema["components"]["schemas"]["NoUnique"]
+        props = nu_schema["properties"]
+
+        for prop_name, prop_val in props.items():
+            assert "x-unique" not in prop_val, f"Unexpected x-unique on {prop_name}"

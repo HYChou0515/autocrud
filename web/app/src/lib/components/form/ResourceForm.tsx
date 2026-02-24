@@ -21,6 +21,13 @@ export interface ResourceFormProps<T> {
   onSubmit: (values: T) => void | Promise<void>;
   onCancel?: () => void;
   submitLabel?: string;
+  /** Ref exposing form methods for external error handling (e.g. 409 unique conflict) */
+  formRef?: React.MutableRefObject<ResourceFormHandle | null>;
+}
+
+/** Handle exposed by ResourceForm via formRef for external error handling */
+export interface ResourceFormHandle {
+  setFieldError: (field: string, message: string) => void;
 }
 
 /**
@@ -33,6 +40,7 @@ export function ResourceForm<T extends Record<string, any>>({
   onSubmit,
   onCancel,
   submitLabel = 'Submit',
+  formRef,
 }: ResourceFormProps<T>) {
   const {
     form,
@@ -53,6 +61,15 @@ export function ResourceForm<T extends Record<string, any>>({
     setSimpleUnionTypes,
     handleSubmit,
   } = useResourceForm({ config, initialValues, onSubmit });
+
+  // Expose form handle for external error setting (e.g. 409 unique constraint)
+  if (formRef) {
+    formRef.current = {
+      setFieldError: (field: string, message: string) => {
+        form.setFieldError(field, message);
+      },
+    };
+  }
 
   /** Render a collapsed group as a JSON textarea */
   const renderCollapsedGroup = (group: { path: string; label: string }) => {
