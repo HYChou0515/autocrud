@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { Link } from '@tanstack/react-router';
 import {
   Container,
@@ -29,7 +29,7 @@ import {
 import type { ResourceConfig } from '../../resources';
 import { useResourceDetail } from '../../hooks/useResourceDetail';
 import { useFieldDepth } from '../../hooks/useFieldDepth';
-import { ResourceForm } from '../form/ResourceForm';
+import { ResourceForm, type ResourceFormHandle } from '../form/ResourceForm';
 import { MetadataSection } from './MetadataSection';
 import { RevisionHistorySection } from './RevisionHistorySection';
 import { ResourceIdCell } from '../common/ResourceIdCell';
@@ -38,7 +38,7 @@ import { DetailFieldRenderer } from '../field/DetailFieldRenderer';
 import { JobStatusSection, JOB_STATUS_FIELDS, JOB_STATUS_COLORS } from '../job/JobStatusSection';
 import { JobFieldsSection } from '../job/JobFieldsSection';
 import type { ResourceListRoute } from '../../../generated/resources';
-import { showErrorNotification } from '../../utils/errorNotification';
+import { showErrorNotification, extractUniqueConflict } from '../../utils/errorNotification';
 import { getByPath } from '@/lib/utils/formUtils';
 
 export interface ResourceDetailProps<T> {
@@ -66,6 +66,7 @@ export function ResourceDetail<T extends Record<string, any>>({
 }: ResourceDetailProps<T>) {
   const [editOpen, setEditOpen] = useState(false);
   const [selectedRevision, setSelectedRevision] = useState<string | null>(initialRevision ?? null);
+  const editFormRef = useRef<ResourceFormHandle | null>(null);
 
   // Sync with external revision changes (e.g., browser back/forward)
   useEffect(() => {
@@ -145,6 +146,10 @@ export function ResourceDetail<T extends Record<string, any>>({
       // Navigate to latest (no revision param) after successful edit
       handleRevisionSelect(null);
     } catch (error) {
+      const conflict = extractUniqueConflict(error);
+      if (conflict && editFormRef.current) {
+        editFormRef.current.setFieldError(conflict.field, `此值已被使用 (unique constraint)`);
+      }
       showErrorNotification(error, 'Update Failed');
     }
   };
@@ -367,6 +372,7 @@ export function ResourceDetail<T extends Record<string, any>>({
             onSubmit={handleEdit}
             onCancel={() => setEditOpen(false)}
             submitLabel="Update"
+            formRef={editFormRef}
           />
         )}
       </Modal>

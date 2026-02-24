@@ -9,10 +9,12 @@ from typing import (
     Any,
     Callable,
     Generic,
+    Protocol,
     TypeVar,
     get_args,
     get_origin,
     get_type_hints,
+    runtime_checkable,
 )
 from uuid import UUID
 
@@ -238,6 +240,61 @@ def extract_display_name(struct_type: type) -> str | None:
                 if isinstance(metadata, DisplayName):
                     return field_name
     return None
+
+
+# ---------------------------------------------------------------------------
+# Unique Constraint
+# ---------------------------------------------------------------------------
+
+
+class Unique:
+    """Annotation marker that enforces uniqueness of a field across all resources
+    of the same type.
+
+    Use with ``Annotated`` to annotate a field that must be unique.
+    AutoCRUD will automatically index the field and check uniqueness
+    on every ``create()``, ``update()``, and ``modify()`` call.
+
+    Usage::
+
+        class User(Struct):
+            username: Annotated[str, Unique()]
+            email: Annotated[str, Unique()]
+            age: int = 0
+
+    Raises:
+        :exc:`UniqueConstraintError`: When a duplicate value is detected.
+    """
+
+    __slots__ = ()
+
+    def __repr__(self) -> str:
+        return "Unique()"
+
+
+def extract_unique_fields(struct_type: type) -> list[str]:
+    """Return all field names annotated with :class:`Unique`.
+
+    Arguments:
+        struct_type: A ``msgspec.Struct`` subclass or any class whose fields
+            may carry ``Unique()`` annotations.
+
+    Returns:
+        list[str]: Field names that carry a :class:`Unique` annotation, in
+        definition order.  Returns an empty list if none are found or if
+        type hints cannot be resolved.
+    """
+    unique: list[str] = []
+    try:
+        hints = get_type_hints(struct_type, include_extras=True)
+    except Exception:
+        return unique
+    for field_name, hint in hints.items():
+        if get_origin(hint) is Annotated:
+            for metadata in get_args(hint)[1:]:
+                if isinstance(metadata, Unique):
+                    unique.append(field_name)
+    return unique
 
 
 class RevisionStatus(StrEnum):
@@ -506,6 +563,67 @@ class ResourceMetaSearchQuery(Struct, kw_only=True):
 
     sorts: list[ResourceMetaSearchSort | ResourceDataSearchSort] | UnsetType = UNSET
     """Sorting criteria for the search results."""
+
+
+# ============================================================================
+# Event Context Protocols
+# ============================================================================
+#
+# ``defstruct`` generates ``Struct`` subclasses at runtime, which are
+# invisible to static type checkers (pyright / mypy).  The ``Protocol``
+# classes below describe the *structural shape* of each context category
+# so that event handler implementations can annotate their private
+# methods with precise, type-checkable signatures instead of the opaque
+# ``EventContext`` union.
+#
+# These are provided for **structural sub-typing** — you never need to
+# explicitly inherit from them; any ``defstruct``-generated instance
+# that has the matching attributes will satisfy the protocol.
+
+
+@runtime_checkable
+class EventContextProto(Protocol):
+    """Minimal protocol shared by every event context."""
+
+    action: ResourceAction
+    phase: str
+    resource_name: str
+
+
+@runtime_checkable
+class HasData(EventContextProto, Protocol):
+    """Event context that carries a ``data`` payload."""
+
+    data: Any
+
+
+@runtime_checkable
+class HasResourceId(EventContextProto, Protocol):
+    """Event context that carries ``resource_id``."""
+
+    resource_id: str
+
+
+@runtime_checkable
+class HasDataAndResourceId(EventContextProto, Protocol):
+    """Event context that carries both ``data`` and ``resource_id``."""
+
+    data: Any
+    resource_id: str
+
+
+@runtime_checkable
+class HasRevisionId(HasResourceId, Protocol):
+    """Event context that also carries ``revision_id``."""
+
+    revision_id: str
+
+
+@runtime_checkable
+class HasInfo(EventContextProto, Protocol):
+    """Event context that carries a ``info`` (:class:`RevisionInfo`)."""
+
+    info: RevisionInfo
 
 
 # ============================================================================
@@ -2058,6 +2176,26 @@ class CannotModifyResourceError(ResourceConflictError):
         self.resource_id = resource_id
 
 
+class UniqueConstraintError(ResourceConflictError):
+    """Raised when a field annotated with :class:`Unique` already has the given value
+    on another (non-deleted) resource.
+
+    Attributes:
+        field: The name of the unique-constrained field.
+        value: The duplicate value that caused the conflict.
+        conflicting_resource_id: The ``resource_id`` that already holds the value.
+    """
+
+    def __init__(self, field: str, value: Any, conflicting_resource_id: str) -> None:
+        super().__init__(
+            f"Unique constraint violated: field '{field}' value {value!r} "
+            f"already exists on resource '{conflicting_resource_id}'."
+        )
+        self.field = field
+        self.value = value
+        self.conflicting_resource_id = conflicting_resource_id
+
+
 class ValidationError(ValueError):
     """Raised when data fails custom validation.
 
@@ -2144,6 +2282,61 @@ class IEventHandler(ABC):
 
     @abstractmethod
     def handle_event(self, context: EventContext) -> None: ...
+
+
+class IConstraintChecker(ABC):
+    """Interface for custom constraint checkers.
+
+    Implement this to define reusable data constraints that are automatically
+    enforced during create, update, modify, switch and restore operations.
+    The framework handles all event lifecycle (before / on_success) and
+    compensation (rollback) logic — you only need to implement the check.
+
+    Example::
+
+        class NoDuplicateEmailChecker(IConstraintChecker):
+            def __init__(self, rm: ResourceManager) -> None:
+                self.rm = rm
+
+            def check(
+                self, data: Any, *, exclude_resource_id: str | None = None
+            ) -> None:
+                email = getattr(data, "email", None)
+                if email and self._email_exists(email, exclude_resource_id):
+                    raise ValueError(f"Email {email!r} already in use")
+
+
+        # Pass a factory callable (receives ResourceManager):
+        crud.add_model(User, constraint_checkers=[NoDuplicateEmailChecker])
+        # Or a lambda factory:
+        crud.add_model(
+            User, constraint_checkers=[lambda rm: NoDuplicateEmailChecker(rm)]
+        )
+    """
+
+    @abstractmethod
+    def check(self, data: Any, *, exclude_resource_id: str | None = None) -> None:
+        """Validate that *data* satisfies this constraint.
+
+        Args:
+            data: The resource data (msgspec Struct instance).
+            exclude_resource_id: When updating an existing resource, pass its
+                ID so the checker can allow the resource to keep its own values.
+
+        Raises:
+            Any exception to signal a constraint violation.  The framework
+            will catch it, execute compensation, and re-raise.
+        """
+        ...
+
+    def data_relevant_changed(self, current_data: Any, new_data: Any) -> bool:
+        """Return whether the fields relevant to this constraint changed.
+
+        Called during *modify* to skip unnecessary checks when the
+        constrained fields are unchanged.  The default implementation
+        returns ``True`` (always re-check).  Override for optimisation.
+        """
+        return True
 
 
 class TaskStatus(StrEnum):

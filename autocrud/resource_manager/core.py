@@ -70,6 +70,7 @@ from autocrud.types import (
     Binary,
     CannotModifyResourceError,
     EventContext,
+    IConstraintChecker,
     IEventHandler,
     IMessageQueue,
     IMigration,
@@ -284,6 +285,14 @@ class SimpleStorage(IStorage):
     def count(self, query: ResourceMetaSearchQuery) -> int:
         return mit.ilen(self._meta_store.iter_search(query))
 
+    def purge_meta(self, resource_id: str) -> None:
+        """Hard-delete metadata for a resource (no soft-delete, no event hooks).
+
+        Used as a compensating action for unique-constraint race-condition
+        rollback.  Removes the entry from the meta store directly.
+        """
+        del self._meta_store[resource_id]
+
     def dump_meta(self) -> Generator[ResourceMeta]:
         yield from self._meta_store.values()
 
@@ -360,6 +369,28 @@ class PermissionEventHandler(IEventHandler):
                 f"Permission denied for user '{context.user}' "
                 f"to perform '{context.action}' on '{context.resource_name}'",
             )
+
+
+def coerce_data_to_resource_type(func):
+    """Decorator that coerces the ``data`` argument to the resource Struct type
+    **before** the wrapped function (and therefore before any event handlers)
+    executes.  Applied as the *outermost* decorator so that
+    ``@execute_with_events`` passes already-coerced data to event contexts.
+    """
+
+    @wraps(func)
+    def wrapper(self: "ResourceManager", *args, **kwargs):
+        sig = inspect.signature(func)
+        bound = sig.bind(self, *args, **kwargs)
+        bound.apply_defaults()
+        data_arg = bound.arguments.get("data")
+        if data_arg is not None and data_arg is not UNSET:
+            bound.arguments["data"] = self._coerce_data(data_arg)
+        # Re-pack into positional + keyword
+        new_args = tuple(bound.args[1:])  # strip self
+        return func(self, *new_args, **bound.kwargs)
+
+    return wrapper
 
 
 def execute_with_events(
@@ -453,6 +484,7 @@ class ResourceManager(IResourceManager[T], Generic[T]):
         default_now: Callable[[], dt.datetime] | UnsetType = UNSET,
         validator: "Callable[[T], None] | IValidator | type | None" = None,
         pydantic_type: type | None = None,
+        constraint_checkers: "Sequence[IConstraintChecker | Callable[[ResourceManager], IConstraintChecker]] | None" = None,
     ):
         self._pydantic_type = pydantic_type
 
@@ -532,6 +564,31 @@ class ResourceManager(IResourceManager[T], Generic[T]):
                 PermissionEventHandler(permission_checker),
             )
 
+        # Constraint checkers（放在最後，在 PermissionEventHandler 之後執行）
+        _checkers: list[IConstraintChecker] = []
+        for spec in constraint_checkers or []:
+            if isinstance(spec, IConstraintChecker):
+                _checkers.append(spec)
+            elif callable(spec):
+                _checkers.append(spec(self))
+            else:
+                raise TypeError(
+                    f"constraint_checkers items must be IConstraintChecker instances "
+                    f"or callable(rm) factories, got {type(spec).__name__}"
+                )
+        if _checkers:
+            from autocrud.resource_manager.constraint_handler import (
+                ConstraintEventHandler,
+            )
+
+            self._constraint_handler = ConstraintEventHandler(self, _checkers)
+            self.event_handlers.append(self._constraint_handler)
+        else:
+            self._constraint_handler = None
+
+        # Auto-detect Unique-annotated fields and register UniqueConstraintChecker
+        self._register_unique_fields()
+
         self._binary_processor = BinaryProcessor(resource_type)
 
         # Set up validator
@@ -542,6 +599,46 @@ class ResourceManager(IResourceManager[T], Generic[T]):
             self.message_queue = message_queue(self)
         else:
             self.message_queue = None
+
+    def _register_unique_fields(self) -> None:
+        """Auto-detect ``Unique``-annotated fields on the model and register a
+        :class:`UniqueConstraintChecker`.
+
+        If a :class:`ConstraintEventHandler` already exists (from the
+        ``constraint_checkers`` parameter) the checker is appended to it;
+        otherwise a new handler is created.  The checker itself handles
+        auto-indexing the unique fields via :meth:`add_indexed_field`.
+        """
+        from autocrud.resource_manager.constraint_handler import (
+            ConstraintEventHandler,
+        )
+        from autocrud.resource_manager.unique_handler import (
+            UniqueConstraintChecker,
+        )
+        from autocrud.types import extract_unique_fields
+
+        unique_field_names = extract_unique_fields(self.resource_type)
+        if not unique_field_names:
+            return
+
+        # Check if a ConstraintEventHandler already exists (from constraint_checkers param)
+        existing_handler: ConstraintEventHandler | None = None
+        for h in self.event_handlers:
+            if isinstance(h, ConstraintEventHandler):
+                existing_handler = h
+                break
+
+        if existing_handler is not None:
+            # Always append — user's checkers and auto-detected ones may
+            # protect different fields; both should run.
+            existing_handler.checkers.append(UniqueConstraintChecker(self))
+        else:
+            handler = ConstraintEventHandler(
+                self,
+                [UniqueConstraintChecker(self)],
+            )
+            self.event_handlers.append(handler)
+            self._constraint_handler = handler
 
     def encode(self, data: T) -> bytes:
         return self._data_serializer.encode(data)
@@ -574,6 +671,8 @@ class ResourceManager(IResourceManager[T], Generic[T]):
         This allows Pydantic users to pass native Pydantic instances
         or plain dicts without knowing about msgspec.
         """
+        if data is UNSET or type(data) is JsonPatch:
+            return data
         if isinstance(data, Struct):
             return data
         if isinstance(data, dict):
@@ -684,9 +783,24 @@ class ResourceManager(IResourceManager[T], Generic[T]):
         """取得被索引的 data 欄位列表"""
         return self._indexed_fields
 
+    def add_indexed_field(self, field: IndexableField) -> None:
+        """新增一個索引欄位並重建 extractor。
+
+        如果該欄位已存在（依 ``field_path`` 判斷），則不重複新增。
+        """
+        existing = {f.field_path for f in self._indexed_fields}
+        if field.field_path not in existing:
+            self._indexed_fields.append(field)
+            self._indexed_value_extractor = IndexedValueExtractor(self._indexed_fields)
+
     def _extract_indexed_values(self, data: T) -> dict[str, Any]:
         """從 data 中提取需要索引的值（保留原始類型，Enum 會在序列化時轉換）"""
         return self._indexed_value_extractor.extract_indexed_values(data)
+
+    def _load_revision_data(self, resource_id: str, revision_id: str) -> T:
+        """Load and decode data for a specific revision."""
+        with self.storage.get_data_bytes(resource_id, revision_id) as data_io:
+            return self.decode(data_io.read())
 
     @contextmanager
     def meta_provide(
@@ -1064,6 +1178,7 @@ class ResourceManager(IResourceManager[T], Generic[T]):
 
         return results
 
+    @coerce_data_to_resource_type
     @execute_with_events(
         (BeforeCreate, AfterCreate, OnSuccessCreate, OnFailureCreate),
         "info",
@@ -1080,8 +1195,11 @@ class ResourceManager(IResourceManager[T], Generic[T]):
 
         Returns:
             info (RevisionInfo): The revision info of the created resource.
+
+        Raises:
+            UniqueConstraintError: If a field annotated with :class:`Unique` already
+                has the same value on another non-deleted resource.
         """
-        data = self._coerce_data(data)
         status = self.default_status if status is UNSET else status
         data = self._process_binary_fields(data)
         info = self._rev_info(_BuildRevInfoCreate(data, status))
@@ -1239,6 +1357,7 @@ class ResourceManager(IResourceManager[T], Generic[T]):
         """
         return self.storage.list_revisions(resource_id)
 
+    @coerce_data_to_resource_type
     @execute_with_events(
         (BeforeUpdate, AfterUpdate, OnSuccessUpdate, OnFailureUpdate),
         "revision_info",
@@ -1260,7 +1379,6 @@ class ResourceManager(IResourceManager[T], Generic[T]):
         Raises:
             ResourceIDNotFoundError: If the resource ID does not exist.
         """
-        data = self._coerce_data(data)
         status = self.default_status if status is UNSET else status
         data = self._process_binary_fields(data)
         prev_res_meta = self.get_meta(resource_id)
@@ -1295,6 +1413,7 @@ class ResourceManager(IResourceManager[T], Generic[T]):
         except ResourceIDNotFoundError:
             return self.create(data, status=status)
 
+    @coerce_data_to_resource_type
     @execute_with_events(
         (BeforeModify, AfterModify, OnSuccessModify, OnFailureModify),
         "revision_info",
@@ -1319,9 +1438,6 @@ class ResourceManager(IResourceManager[T], Generic[T]):
         Raises:
             CannotModifyResourceError: If the resource is not in DRAFT status.
         """
-        if data is not UNSET and type(data) is not JsonPatch:
-            data = self._coerce_data(data)
-
         if data is UNSET and status is not UNSET:
             return self._modify_status(resource_id, status)
 
@@ -1427,8 +1543,7 @@ class ResourceManager(IResourceManager[T], Generic[T]):
 
         # 切換到指定版本時，需要更新索引數據
         if self._indexed_fields:
-            with self.storage.get_data_bytes(resource_id, revision_id) as dataio:
-                data = self.decode(dataio.read())
+            data = self._load_revision_data(resource_id, revision_id)
             meta.indexed_data = self._extract_indexed_values(data)
 
         meta.updated_by = self.user_ctx.get()

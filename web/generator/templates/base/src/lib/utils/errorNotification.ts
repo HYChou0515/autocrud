@@ -15,6 +15,13 @@ interface ValidationErrorItem {
   type: string;
 }
 
+/** Unique constraint conflict info extracted from a 409 response */
+export interface UniqueConflictInfo {
+  field: string;
+  message: string;
+  conflictingResourceId?: string;
+}
+
 /**
  * Extract a human-readable error message from an Axios error response.
  *
@@ -51,6 +58,32 @@ export function extractErrorMessage(error: unknown): string {
   }
 
   return 'An unexpected error occurred';
+}
+
+/**
+ * Extract unique constraint conflict info from a 409 response.
+ *
+ * AutoCRUD returns 409 with body:
+ *   { detail: { message: "...", field: "username", conflicting_resource_id: "..." } }
+ *
+ * Returns null if the error is not a unique constraint conflict.
+ */
+export function extractUniqueConflict(error: unknown): UniqueConflictInfo | null {
+  const axiosError = error as AxiosError<{
+    detail?: { message?: string; field?: string; conflicting_resource_id?: string } | string;
+  }>;
+
+  if (axiosError?.response?.status !== 409) return null;
+
+  const detail = axiosError.response.data?.detail;
+  if (!detail || typeof detail === 'string') return null;
+  if (typeof detail !== 'object' || !detail.field) return null;
+
+  return {
+    field: detail.field,
+    message: detail.message || `Value already exists for field "${detail.field}"`,
+    conflictingResourceId: detail.conflicting_resource_id,
+  };
 }
 
 /**

@@ -40,7 +40,7 @@ from autocrud.message_queue.rabbitmq import RabbitMQMessageQueueFactory
 from autocrud.message_queue.simple import SimpleMessageQueueFactory
 from autocrud.query import QB
 from autocrud.resource_manager.storage_factory import DiskStorageFactory
-from autocrud.types import Binary, DisplayName, Job, RefRevision, Resource
+from autocrud.types import Binary, DisplayName, Job, RefRevision, Resource, Unique
 
 
 class CharacterClass(Enum):
@@ -115,7 +115,7 @@ class Equipment(Struct):
 class Character(Struct):
     """遊戲角色"""
 
-    name: Annotated[str, DisplayName()]
+    name: Annotated[str, DisplayName(), Unique()]
     character_class: CharacterClass
     valueAD__x: int = 12
     level: int = 1

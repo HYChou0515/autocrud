@@ -2,11 +2,14 @@ from autocrud.crud.core import AutoCRUD
 from autocrud.schema import Schema
 from autocrud.types import (
     DisplayName,
+    IConstraintChecker,
     IValidator,
     OnDelete,
     Ref,
     RefRevision,
     SearchedResource,
+    Unique,
+    UniqueConstraintError,
     ValidationError,
 )
 
@@ -18,12 +21,15 @@ crud = AutoCRUD()
 __all__ = [
     "AutoCRUD",
     "DisplayName",
+    "IConstraintChecker",
     "IValidator",
     "OnDelete",
     "Ref",
     "RefRevision",
     "Schema",
     "SearchedResource",
+    "Unique",
+    "UniqueConstraintError",
     "ValidationError",
     "crud",
 ]

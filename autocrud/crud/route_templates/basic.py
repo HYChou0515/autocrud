@@ -19,9 +19,22 @@ from autocrud.types import (
     ResourceMetaSortDirection,
     ResourceMetaSortKey,
     RevisionInfo,
+    UniqueConstraintError,
 )
 
 T = TypeVar("T")
+
+
+def raise_unique_conflict(e: UniqueConstraintError) -> None:
+    """Convert a :class:`UniqueConstraintError` into an HTTP 409 response."""
+    raise HTTPException(
+        status_code=409,
+        detail={
+            "message": str(e),
+            "field": e.field,
+            "conflicting_resource_id": e.conflicting_resource_id,
+        },
+    )
 
 
 class IRouteTemplate(ABC):

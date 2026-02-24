@@ -960,6 +960,36 @@ class IStorage(ABC):
     @abstractmethod
     def count(self, query: ResourceMetaSearchQuery) -> int: ...
 
+    def purge_meta(self, resource_id: str) -> None:
+        """Hard-delete the metadata for a resource (bypasses soft-delete).
+
+        This is an internal compensating operation used by the unique-constraint
+        enforcement mechanism to roll back a just-created resource when a race
+        condition is detected.  It removes the resource metadata from the store
+        entirely so that the resource becomes invisible to all future queries.
+
+        Unlike :meth:`ResourceManager.delete`, this method does **not** set
+        ``is_deleted=True``; it physically removes the record.  Any revision
+        data that was already saved in the resource store becomes orphaned but
+        is not accessible through normal API paths.
+
+        The base implementation raises :exc:`NotImplementedError`.  Storage
+        backends that need to support unique-constraint rollback must override
+        this method.
+
+        Arguments:
+            resource_id (str): The unique identifier of the resource whose
+                metadata should be permanently removed.
+
+        Raises:
+            NotImplementedError: If the storage backend does not implement
+                hard deletion.
+        """
+        raise NotImplementedError(
+            f"{type(self).__name__} does not implement purge_meta(). "
+            "Override this method to support unique-constraint rollback."
+        )
+
     @abstractmethod
     def search(self, query: ResourceMetaSearchQuery) -> list[ResourceMeta]:
         """Search for resources based on metadata and data criteria.

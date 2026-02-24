@@ -201,6 +201,9 @@ class Generator {
       }
     }
 
+    // Extract x-unique metadata (from Unique() annotation)
+    const isUnique = !!prop['x-unique'];
+
     // Extract x-ref-* metadata (may be at top level for Annotated[str|None, Ref(...)])
     let ref: FieldRef | undefined;
     if (prop['x-ref-resource']) {
@@ -489,6 +492,7 @@ class Generator {
       zodType,
       ...(itemFields ? { itemFields } : {}),
       ...(ref ? { ref } : {}),
+      ...(isUnique ? { isUnique: true } : {}),
     };
   }
 
@@ -555,6 +559,10 @@ class Generator {
         // Include ref metadata for resource references
         if (f.ref) {
           fieldConfig.ref = f.ref;
+        }
+        // Include unique constraint marker
+        if (f.isUnique) {
+          fieldConfig.isUnique = true;
         }
         // Include union metadata for union fields
         if (f.unionMeta) {
@@ -993,6 +1001,7 @@ interface Field {
   itemFields?: Field[]; // For arrays of typed objects: the item's sub-fields
   ref?: FieldRef; // Reference to another resource
   unionMeta?: UnionMeta; // For union fields: discriminator + variant info
+  isUnique?: boolean; // Field has a unique constraint (from x-unique OpenAPI extension)
 }
 
 /**
