@@ -9,10 +9,12 @@ from typing import (
     Any,
     Callable,
     Generic,
+    Protocol,
     TypeVar,
     get_args,
     get_origin,
     get_type_hints,
+    runtime_checkable,
 )
 from uuid import UUID
 
@@ -561,6 +563,67 @@ class ResourceMetaSearchQuery(Struct, kw_only=True):
 
     sorts: list[ResourceMetaSearchSort | ResourceDataSearchSort] | UnsetType = UNSET
     """Sorting criteria for the search results."""
+
+
+# ============================================================================
+# Event Context Protocols
+# ============================================================================
+#
+# ``defstruct`` generates ``Struct`` subclasses at runtime, which are
+# invisible to static type checkers (pyright / mypy).  The ``Protocol``
+# classes below describe the *structural shape* of each context category
+# so that event handler implementations can annotate their private
+# methods with precise, type-checkable signatures instead of the opaque
+# ``EventContext`` union.
+#
+# These are provided for **structural sub-typing** — you never need to
+# explicitly inherit from them; any ``defstruct``-generated instance
+# that has the matching attributes will satisfy the protocol.
+
+
+@runtime_checkable
+class EventContextProto(Protocol):
+    """Minimal protocol shared by every event context."""
+
+    action: ResourceAction
+    phase: str
+    resource_name: str
+
+
+@runtime_checkable
+class HasData(EventContextProto, Protocol):
+    """Event context that carries a ``data`` payload."""
+
+    data: Any
+
+
+@runtime_checkable
+class HasResourceId(EventContextProto, Protocol):
+    """Event context that carries ``resource_id``."""
+
+    resource_id: str
+
+
+@runtime_checkable
+class HasDataAndResourceId(EventContextProto, Protocol):
+    """Event context that carries both ``data`` and ``resource_id``."""
+
+    data: Any
+    resource_id: str
+
+
+@runtime_checkable
+class HasRevisionId(HasResourceId, Protocol):
+    """Event context that also carries ``revision_id``."""
+
+    revision_id: str
+
+
+@runtime_checkable
+class HasInfo(EventContextProto, Protocol):
+    """Event context that carries a ``info`` (:class:`RevisionInfo`)."""
+
+    info: RevisionInfo
 
 
 # ============================================================================

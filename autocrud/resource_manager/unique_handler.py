@@ -11,8 +11,8 @@ checks (``PermissionEventHandler``) run first.
 
 from __future__ import annotations
 
-import threading
 from contextlib import suppress
+from contextvars import ContextVar
 from typing import TYPE_CHECKING, Any
 
 from jsonpatch import JsonPatch
@@ -22,6 +22,12 @@ from autocrud.types import (
     DataSearchCondition,
     DataSearchOperator,
     EventContext,
+    EventContextProto,
+    HasData,
+    HasDataAndResourceId,
+    HasInfo,
+    HasResourceId,
+    HasRevisionId,
     IEventHandler,
     ResourceAction,
     ResourceMeta,
@@ -38,12 +44,12 @@ if TYPE_CHECKING:
 
 
 # ---------------------------------------------------------------------------
-# Thread-local state passed between *before* → *on_success*
+# Per-context state passed between *before* → *on_success*
 # ---------------------------------------------------------------------------
 
 
 class _PhaseState:
-    """Mutable bag that lives on ``threading.local()``."""
+    """Mutable bag stored in a :class:`~contextvars.ContextVar`."""
 
     __slots__ = (
         "needs_post_check",
@@ -54,13 +60,20 @@ class _PhaseState:
         "resource_id",
     )
 
+    needs_post_check: bool
+    prev_meta: ResourceMeta | None
+    prev_info: RevisionInfo | None
+    current_data: Any
+    data: Any
+    resource_id: str | None
+
     def __init__(self) -> None:
-        self.needs_post_check: bool = False
-        self.prev_meta: ResourceMeta | None = None
-        self.prev_info: RevisionInfo | None = None
-        self.current_data: Any = None
-        self.data: Any = None
-        self.resource_id: str | None = None
+        self.needs_post_check = False
+        self.prev_meta = None
+        self.prev_info = None
+        self.current_data = None
+        self.data = None
+        self.resource_id = None
 
     def reset(self) -> None:
         self.needs_post_check = False
@@ -101,18 +114,21 @@ class UniqueConstraintEventHandler(IEventHandler):
     handler executes a compensating action to undo the write.
     """
 
-    def __init__(self, rm: "ResourceManager") -> None:
-        self.rm = rm
-        self._local = threading.local()
+    def __init__(self, rm: ResourceManager) -> None:
+        self.rm: ResourceManager = rm
+        self._state_var: ContextVar[_PhaseState] = ContextVar(
+            f"_phase_state_{id(self)}"
+        )
 
-    # -- helpers to access thread-local state --------------------------------
+    # -- helpers to access context-local state --------------------------------
 
     def _get_state(self) -> _PhaseState:
         try:
-            return self._local.state
-        except AttributeError:
-            self._local.state = _PhaseState()
-            return self._local.state
+            return self._state_var.get()
+        except LookupError:
+            state = _PhaseState()
+            self._state_var.set(state)
+            return state
 
     def _reset_state(self) -> None:
         self._get_state().reset()
@@ -122,6 +138,8 @@ class UniqueConstraintEventHandler(IEventHandler):
     def is_supported(self, context: EventContext) -> bool:
         if not self.rm._unique_fields:
             return False
+        if not isinstance(context, EventContextProto):
+            return False
         with suppress(AttributeError):
             return (
                 context.action in _SUPPORTED_ACTIONS
@@ -130,6 +148,8 @@ class UniqueConstraintEventHandler(IEventHandler):
         return False
 
     def handle_event(self, context: EventContext) -> None:
+        if not isinstance(context, EventContextProto):
+            return
         if context.phase == "before":
             self._on_before(context)
         elif context.phase == "on_success":
@@ -139,25 +159,25 @@ class UniqueConstraintEventHandler(IEventHandler):
     # Before phase (pre-check)
     # ======================================================================
 
-    def _on_before(self, context: EventContext) -> None:
+    def _on_before(self, context: EventContextProto) -> None:
         state = self._get_state()
         state.reset()
 
         action = context.action
         if action == ResourceAction.create:
-            self._before_create(context, state)
+            self._before_create(context, state)  # type: ignore[arg-type]
         elif action == ResourceAction.update:
-            self._before_update(context, state)
+            self._before_update(context, state)  # type: ignore[arg-type]
         elif action == ResourceAction.modify:
-            self._before_modify(context, state)
+            self._before_modify(context, state)  # type: ignore[arg-type]
         elif action == ResourceAction.switch:
-            self._before_switch(context, state)
+            self._before_switch(context, state)  # type: ignore[arg-type]
         elif action == ResourceAction.restore:
-            self._before_restore(context, state)
+            self._before_restore(context, state)  # type: ignore[arg-type]
 
     # -- create --------------------------------------------------------------
 
-    def _before_create(self, ctx: EventContext, state: _PhaseState) -> None:
+    def _before_create(self, ctx: HasData, state: _PhaseState) -> None:
         data = ctx.data
         self._check_unique_constraints(data)
         # Mark for post-check (always needed for create)
@@ -166,7 +186,7 @@ class UniqueConstraintEventHandler(IEventHandler):
 
     # -- update --------------------------------------------------------------
 
-    def _before_update(self, ctx: EventContext, state: _PhaseState) -> None:
+    def _before_update(self, ctx: HasDataAndResourceId, state: _PhaseState) -> None:
         data = ctx.data
         resource_id = ctx.resource_id
         self._check_unique_constraints(data, exclude_resource_id=resource_id)
@@ -178,7 +198,7 @@ class UniqueConstraintEventHandler(IEventHandler):
 
     # -- modify --------------------------------------------------------------
 
-    def _before_modify(self, ctx: EventContext, state: _PhaseState) -> None:
+    def _before_modify(self, ctx: HasDataAndResourceId, state: _PhaseState) -> None:
         data = ctx.data
         if data is UNSET:
             return  # nothing to check
@@ -211,7 +231,7 @@ class UniqueConstraintEventHandler(IEventHandler):
 
     # -- switch --------------------------------------------------------------
 
-    def _before_switch(self, ctx: EventContext, state: _PhaseState) -> None:
+    def _before_switch(self, ctx: HasRevisionId, state: _PhaseState) -> None:
         resource_id = ctx.resource_id
         revision_id = ctx.revision_id
         # Load target revision data
@@ -225,7 +245,7 @@ class UniqueConstraintEventHandler(IEventHandler):
 
     # -- restore -------------------------------------------------------------
 
-    def _before_restore(self, ctx: EventContext, state: _PhaseState) -> None:
+    def _before_restore(self, ctx: HasResourceId, state: _PhaseState) -> None:
         resource_id = ctx.resource_id
         meta = self.rm._get_meta_no_check_is_deleted(resource_id)
         if not meta.is_deleted:
@@ -242,7 +262,7 @@ class UniqueConstraintEventHandler(IEventHandler):
     # On-success phase (post-check + compensate)
     # ======================================================================
 
-    def _on_success(self, context: EventContext) -> None:
+    def _on_success(self, context: EventContextProto) -> None:
         state = self._get_state()
         if not state.needs_post_check:
             return
@@ -250,7 +270,7 @@ class UniqueConstraintEventHandler(IEventHandler):
         action = context.action
         try:
             if action == ResourceAction.create:
-                self._post_check_create(context, state)
+                self._post_check_create(context, state)  # type: ignore[arg-type]
             elif action == ResourceAction.update:
                 self._post_check_update(context, state)
             elif action == ResourceAction.modify:
@@ -264,7 +284,7 @@ class UniqueConstraintEventHandler(IEventHandler):
 
     # -- create --------------------------------------------------------------
 
-    def _post_check_create(self, ctx: EventContext, state: _PhaseState) -> None:
+    def _post_check_create(self, ctx: HasInfo, state: _PhaseState) -> None:
         resource_id = ctx.info.resource_id
         try:
             self._check_unique_constraints(state.data, exclude_resource_id=resource_id)
@@ -274,7 +294,7 @@ class UniqueConstraintEventHandler(IEventHandler):
 
     # -- update --------------------------------------------------------------
 
-    def _post_check_update(self, ctx: EventContext, state: _PhaseState) -> None:
+    def _post_check_update(self, ctx: EventContextProto, state: _PhaseState) -> None:
         try:
             self._check_unique_constraints(
                 state.data, exclude_resource_id=state.resource_id
@@ -286,7 +306,7 @@ class UniqueConstraintEventHandler(IEventHandler):
 
     # -- modify --------------------------------------------------------------
 
-    def _post_check_modify(self, ctx: EventContext, state: _PhaseState) -> None:
+    def _post_check_modify(self, ctx: EventContextProto, state: _PhaseState) -> None:
         try:
             self._check_unique_constraints(
                 state.data, exclude_resource_id=state.resource_id
@@ -304,7 +324,7 @@ class UniqueConstraintEventHandler(IEventHandler):
 
     # -- switch --------------------------------------------------------------
 
-    def _post_check_switch(self, ctx: EventContext, state: _PhaseState) -> None:
+    def _post_check_switch(self, ctx: EventContextProto, state: _PhaseState) -> None:
         try:
             self._check_unique_constraints(
                 state.data, exclude_resource_id=state.resource_id
@@ -316,7 +336,7 @@ class UniqueConstraintEventHandler(IEventHandler):
 
     # -- restore -------------------------------------------------------------
 
-    def _post_check_restore(self, ctx: EventContext, state: _PhaseState) -> None:
+    def _post_check_restore(self, ctx: EventContextProto, state: _PhaseState) -> None:
         try:
             self._check_unique_constraints(
                 state.data, exclude_resource_id=state.resource_id
@@ -333,11 +353,11 @@ class UniqueConstraintEventHandler(IEventHandler):
     # ======================================================================
 
     def _unique_fields_changed(self, current_data: Any, new_data: Any) -> bool:
-        """Return True if any unique-constrained field value differs."""
+        """Return ``True`` if any unique-constrained field value differs."""
         if not self.rm._unique_fields:
             return False
-        current_indexed = self.rm._extract_indexed_values(current_data)
-        new_indexed = self.rm._extract_indexed_values(new_data)
+        current_indexed: dict[str, Any] = self.rm._extract_indexed_values(current_data)
+        new_indexed: dict[str, Any] = self.rm._extract_indexed_values(new_data)
         return any(
             new_indexed.get(f) != current_indexed.get(f) for f in self.rm._unique_fields
         )
@@ -353,7 +373,7 @@ class UniqueConstraintEventHandler(IEventHandler):
         """
         if not self.rm._unique_fields:
             return
-        indexed = self.rm._extract_indexed_values(data)
+        indexed: dict[str, Any] = self.rm._extract_indexed_values(data)
         for field_path in self.rm._unique_fields:
             value = indexed.get(field_path)
             if value is None:
@@ -375,10 +395,10 @@ class UniqueConstraintEventHandler(IEventHandler):
                     )
                 ],
             )
-            matches = self.rm.storage.search(query)
+            matches: list[ResourceMeta] = self.rm.storage.search(query)
             if not matches:
                 continue
-            first = matches[0]
+            first: ResourceMeta = matches[0]
             if (
                 exclude_resource_id is not None
                 and first.resource_id == exclude_resource_id
