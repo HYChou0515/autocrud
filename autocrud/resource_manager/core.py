@@ -287,11 +287,25 @@ class SimpleStorage(IStorage):
         del self._meta_store[resource_id]
         self._resource_store.purge_resource(resource_id)
 
-    def dump_meta(self) -> Generator[ResourceMeta]:
-        yield from self._meta_store.values()
+    def dump_meta(
+        self, resource_ids: frozenset[str] | None = None
+    ) -> Generator[ResourceMeta]:
+        if resource_ids is None:
+            yield from self._meta_store.values()
+        else:
+            for rid in resource_ids:
+                if rid in self._meta_store:
+                    yield self._meta_store[rid]
 
-    def dump_resource(self) -> Generator[tuple[RevisionInfo, IO[bytes]]]:
-        for resource_id in self._resource_store.list_resources():
+    def dump_resource(
+        self, resource_ids: frozenset[str] | None = None
+    ) -> Generator[tuple[RevisionInfo, IO[bytes]]]:
+        ids_iter = (
+            self._resource_store.list_resources()
+            if resource_ids is None
+            else resource_ids
+        )
+        for resource_id in ids_iter:
             for revision_id in self._resource_store.list_revisions(resource_id):
                 for schema_version in self._resource_store.list_schema_versions(
                     resource_id, revision_id
@@ -303,6 +317,15 @@ class SimpleStorage(IStorage):
                         resource_id, revision_id, schema_version
                     ) as data:
                         yield info, data
+
+
+class _BlobEntry(Struct, kw_only=True):
+    """Internal struct for serialising blob data in dump streams."""
+
+    file_id: str
+    data: bytes
+    size: int
+    content_type: str
 
 
 class _BuildRevInfoCreate(Struct):
@@ -1633,43 +1656,100 @@ class ResourceManager(IResourceManager[T], Generic[T]):
     @execute_with_events(
         (BeforeDump, AfterDump, OnSuccessDump, OnFailureDump),
         "result",
+        inputs={"query": UNSET},
     )
-    def dump(self) -> Generator[tuple[str, IO[bytes]]]:
-        """
-        Dump all data and metadata.
+    def dump(
+        self,
+        query: Query | ResourceMetaSearchQuery | None = None,
+    ) -> Generator[tuple[str, IO[bytes]]]:
+        """Dump metadata, revision data, and blobs.
 
-        Returns:
-            generator: Yields tuples of (key, data_io).
+        Args:
+            query: Optional QB/search query.  When given, only matching
+                resources are exported.  ``None`` exports everything.
+
+        Yields:
+            ``(key, data_io)`` tuples in three phases:
+
+            1. ``meta/{resource_id}`` — serialised :class:`ResourceMeta`
+            2. ``data/{uid}`` — serialised :class:`RawResource`
+            3. ``blob/{file_id}`` — serialised blob bytes (if blob store exists)
         """
-        for meta in self.storage.dump_meta():
+        # Resolve query → resource_ids
+        resource_ids: frozenset[str] | None = None
+        if query is not None:
+            if isinstance(query, Query):
+                query = query.build()
+            # Remove the default limit so we get ALL matches
+            q = msgspec.structs.replace(query, limit=2**31 - 1, offset=0)
+            metas = self.storage.search(q)
+            resource_ids = frozenset(m.resource_id for m in metas)
+
+        # Phase 1: meta
+        for meta in self.storage.dump_meta(resource_ids):
             yield (
                 f"meta/{meta.resource_id}",
                 io.BytesIO(self.meta_serializer.encode(meta)),
             )
-        for info, data_io in self.storage.dump_resource():
+        # Phase 2: revision data (+ collect blob file_ids)
+        blob_file_ids: set[str] = set()
+        for info, data_io in self.storage.dump_resource(resource_ids):
+            raw_data = data_io.read()
             raw_res = self.resource_serializer.encode(
-                RawResource(info=info, raw_data=data_io.read())
+                RawResource(info=info, raw_data=raw_data)
             )
             yield f"data/{info.uid}", io.BytesIO(raw_res)
+            # Collect blob file_ids from the raw resource data
+            if self.blob_store is not None:
+                try:
+                    decoded = self._data_serializer.decode(raw_data)
+                    blob_file_ids |= self._binary_processor.collect_file_ids(decoded)
+                except Exception:
+                    pass  # skip blob collection on decode failure
+        # Phase 3: blobs
+        if self.blob_store is not None:
+            for file_id in blob_file_ids:
+                try:
+                    blob = self.blob_store.get(file_id)
+                    if blob.data is not UNSET:
+                        blob_bytes = self._blob_serializer.encode(
+                            _BlobEntry(
+                                file_id=file_id,
+                                data=blob.data,
+                                size=blob.size
+                                if blob.size is not UNSET
+                                else len(blob.data),
+                                content_type=blob.content_type
+                                if blob.content_type is not UNSET
+                                else "",
+                            )
+                        )
+                        yield f"blob/{file_id}", io.BytesIO(blob_bytes)
+                except Exception:
+                    pass  # skip missing blobs
 
     @execute_with_events(
         (BeforeLoad, AfterLoad, OnSuccessLoad, OnFailureLoad),
         lambda _: {},
         inputs={"bio": UNSET},
     )
-    def load(self, key: str, bio: IO[bytes]) -> None:
-        """
-        Load a single data item (restoration).
+    def load(self, record_type: str, bio: IO[bytes]) -> None:
+        """Legacy load interface — load a single keyed item.
 
-        Arguments:
-            key (str): The key (from dump).
-            bio (IO[bytes]): The data stream.
+        .. deprecated::
+            Use :meth:`load_record` with :class:`DumpRecord` objects instead.
         """
-        if key.startswith("meta/"):
+        if record_type.startswith("meta/"):
             self.storage.save_meta(self.meta_serializer.decode(bio.read()))
-        elif key.startswith("data/"):
+        elif record_type.startswith("data/"):
             raw_res = self.resource_serializer.decode(bio.read())
             self.storage.save_revision(raw_res.info, io.BytesIO(raw_res.raw_data))
+        elif record_type.startswith("blob/"):
+            blob_entry = self._blob_serializer.decode(bio.read())
+            if self.blob_store is not None:
+                self.blob_store.put(
+                    blob_entry.data, content_type=blob_entry.content_type
+                )
 
     @cached_property
     def meta_serializer(self):
@@ -1681,3 +1761,11 @@ class ResourceManager(IResourceManager[T], Generic[T]):
             encoding=Encoding.msgpack,
             resource_type=RawResource,
         )
+
+    @cached_property
+    def _blob_serializer(self):
+        return MsgspecSerializer(encoding=Encoding.msgpack, resource_type=_BlobEntry)
+
+    @cached_property
+    def _binary_processor(self) -> BinaryProcessor:
+        return BinaryProcessor(self._resource_type)

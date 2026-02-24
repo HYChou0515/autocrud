@@ -19,6 +19,8 @@ from jsonpointer import JsonPointer
 from msgspec import UNSET, Struct, UnsetType, defstruct
 from typing_extensions import Literal
 
+from autocrud.query import Query
+
 T = TypeVar("T")
 
 
@@ -53,6 +55,19 @@ class RefType(StrEnum):
     (pinned to a specific revision) or a resource_id (meaning *latest*).
     Revision refs are always ``on_delete=dangling``, are not auto-indexed,
     and are excluded from referrers queries."""
+
+
+class OnDuplicate(StrEnum):
+    """Strategy for handling duplicate resource IDs during incremental load."""
+
+    overwrite = "overwrite"
+    """Overwrite existing resources with loaded data."""
+
+    skip = "skip"
+    """Skip resources that already exist."""
+
+    raise_error = "raise_error"
+    """Raise DuplicateResourceError when a duplicate is found."""
 
 
 class Ref:
@@ -1423,7 +1438,7 @@ OnFailureDump = defstruct(
 
 _load_context = [
     ("action", Literal[ResourceAction.load], ResourceAction.load),
-    ("key", str),
+    ("record_type", str),
 ]
 
 BeforeLoad = defstruct(
@@ -2161,7 +2176,10 @@ class IResourceManager(ABC, Generic[T]):
         """
 
     @abstractmethod
-    def dump(self) -> Generator[tuple[str, IO[bytes]]]:
+    def dump(
+        self,
+        query: Query | ResourceMetaSearchQuery | None = None,
+    ) -> Generator[tuple[str, IO[bytes]]]:
         """Dump all resource data as a series of tar archive entries.
 
         Returns:
@@ -2313,6 +2331,17 @@ class UniqueConstraintError(ResourceConflictError):
         self.field = field
         self.value = value
         self.conflicting_resource_id = conflicting_resource_id
+
+
+class DuplicateResourceError(ResourceConflictError):
+    """Raised when loading a resource with an ID that already exists
+    and *on_duplicate* is set to :attr:`OnDuplicate.raise_error`."""
+
+    def __init__(self, resource_id: str) -> None:
+        super().__init__(
+            f"Duplicate resource '{resource_id}' already exists during load."
+        )
+        self.resource_id = resource_id
 
 
 class ValidationError(ValueError):

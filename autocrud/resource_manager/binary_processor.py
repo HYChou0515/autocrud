@@ -1,4 +1,5 @@
-from typing import Any, Callable
+import types
+from typing import Any, Callable, Union, get_args, get_origin
 
 import msgspec
 from msgspec import UNSET, Struct, UnsetType
@@ -28,6 +29,7 @@ class BinaryProcessor:
     def __init__(self, type_hint: Any):
         self._processor = self._compile(type_hint, mode="process")
         self._restorer = self._compile(type_hint, mode="restore")
+        self._collector = self._compile(type_hint, mode="collect")
 
     def process(self, data: Any, store: IBlobStore | None) -> Any:
         """
@@ -65,6 +67,18 @@ class BinaryProcessor:
         if self._restorer:
             return self._restorer(data, store)
         return data
+
+    def collect_file_ids(self, data: Any) -> set[str]:
+        """Collect all ``Binary.file_id`` values found in *data*.
+
+        Returns an empty set when the type has no Binary fields or when
+        data contains no Binary instances with file_ids.
+        """
+        if self._collector is None:
+            return set()
+        result: set[str] = set()
+        self._collector(data, result)
+        return result
 
     def _compile(
         self, type_hint: Any, mode: str, cache: dict[Any, Any] | None = None
@@ -125,10 +139,17 @@ class BinaryProcessor:
         (Union, List, Dict, Struct, etc.).
         """
         if type_hint is Binary:
+            if mode == "collect":
+                return self._collect_leaf
             return self._process_leaf if mode == "process" else self._restore_leaf
 
         if is_union_type(type_hint):
             non_none_args = get_non_none_args(type_hint)
+        origin = get_origin(type_hint)
+
+        if origin is Union or origin is types.UnionType:
+            args = get_args(type_hint)
+            non_none_args = [a for a in args if a is not type(None)]
             if len(non_none_args) == 1:
                 inner_proc = self._compile(non_none_args[0], mode, cache)
                 if inner_proc:
@@ -139,6 +160,8 @@ class BinaryProcessor:
                         return inner_proc(data, store)
 
                     return optional_wrapper
+            if mode == "collect":
+                return self._collect_generic
             return self._process_generic if mode == "process" else self._restore_generic
 
         if is_list_type(type_hint):
@@ -156,6 +179,8 @@ class BinaryProcessor:
                         return data
 
                     return list_processor
+            if mode == "collect":
+                return self._collect_generic
             return self._process_generic if mode == "process" else self._restore_generic
 
         if is_dict_type(type_hint):
@@ -173,6 +198,8 @@ class BinaryProcessor:
                         return data
 
                     return dict_processor
+            if mode == "collect":
+                return self._collect_generic
             return self._process_generic if mode == "process" else self._restore_generic
 
         # Check for concrete Struct types or generic Struct aliases (e.g. Job[MyPayload])
@@ -215,6 +242,8 @@ class BinaryProcessor:
             return None
 
         if type_hint is Any:
+            if mode == "collect":
+                return self._collect_generic
             return self._process_generic if mode == "process" else self._restore_generic
 
         return None
@@ -248,6 +277,39 @@ class BinaryProcessor:
             ):
                 return store.get(data.file_id)
         return data
+
+    # ------------------------------------------------------------------
+    # collect mode helpers (second arg is ``set[str]``, not IBlobStore)
+    # ------------------------------------------------------------------
+
+    def _collect_leaf(self, data: Any, out: set[str]) -> Any:
+        if isinstance(data, Binary) and not isinstance(data.file_id, UnsetType):
+            out.add(data.file_id)
+        return data
+
+    def _collect_generic(self, data: Any, out: set[str]) -> Any:
+        if isinstance(data, Binary):
+            return self._collect_leaf(data, out)
+
+        if isinstance(data, Struct):
+            for field in msgspec.structs.fields(data):
+                self._collect_generic(getattr(data, field.name), out)
+            return data
+
+        if isinstance(data, list):
+            for item in data:
+                self._collect_generic(item, out)
+            return data
+
+        if isinstance(data, dict):
+            for v in data.values():
+                self._collect_generic(v, out)
+
+        return data
+
+    # ------------------------------------------------------------------
+    # process / restore generic fallbacks
+    # ------------------------------------------------------------------
 
     def _process_generic(self, data: Any, store: IBlobStore) -> Any:
         if isinstance(data, Binary):

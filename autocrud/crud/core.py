@@ -3,9 +3,7 @@ from __future__ import annotations
 import asyncio
 import datetime as dt
 import inspect
-import io
 import logging
-import tarfile
 import warnings
 from collections import OrderedDict
 from collections.abc import Callable, Sequence
@@ -54,6 +52,7 @@ from autocrud.crud.route_templates.switch import SwitchRevisionRouteTemplate
 from autocrud.crud.route_templates.update import UpdateRouteTemplate
 from autocrud.permission.rbac import RBACPermissionChecker
 from autocrud.permission.simple import AllowAll
+from autocrud.query import Query
 from autocrud.resource_manager.basic import (
     Encoding,
     IStorage,
@@ -86,6 +85,7 @@ from autocrud.types import (
     IValidator,
     Job,
     OnDelete,
+    OnDuplicate,
     Ref,
     RefRevision,
     RefType,
@@ -113,6 +113,23 @@ from autocrud.util.type_utils import (
 
 logger = logging.getLogger(__name__)
 T = TypeVar("T")
+
+
+class LoadStats:
+    """Per-model statistics returned by :meth:`AutoCRUD.load`."""
+
+    __slots__ = ("loaded", "skipped", "total")
+
+    def __init__(self) -> None:
+        self.loaded = 0
+        self.skipped = 0
+        self.total = 0
+
+    def __repr__(self) -> str:
+        return (
+            f"LoadStats(loaded={self.loaded}, skipped={self.skipped}, "
+            f"total={self.total})"
+        )
 
 
 @dataclass
@@ -1845,150 +1862,177 @@ class AutoCRUD:
                     )
             return results
 
-    def dump(self, bio: IO[bytes]) -> None:
-        """Export all resources and their data to a tar archive for backup or migration.
-
-        This method creates a complete backup of all resources managed by AutoCRUD,
-        including all data, metadata, and revision history. The output is a tar
-        archive that can be used for backup, migration, or data transfer purposes.
+    def dump(
+        self,
+        bio: IO[bytes],
+        model_queries: dict[str, Query | ResourceMetaSearchQuery | None] | None = None,
+    ) -> None:
+        """Export resources to a streaming msgpack archive.
 
         Args:
-            bio: A binary I/O stream to write the tar archive to.
+            bio: Binary I/O stream to write to.
+            model_queries: Optional ``{model_name: QB_query}`` mapping.
+                When *None*, all registered models are exported in full.
+                When provided, only the listed models are exported;
+                each value is a ``Query`` / ``ResourceMetaSearchQuery``
+                (or *None* for "all resources of that model").
 
-        Example:
-            ```python
-            # Backup to file
-            with open("backup.tar", "wb") as f:
+        Example::
+
+            # Dump everything
+            with open("backup.acbak", "wb") as f:
                 autocrud.dump(f)
 
-            # Backup to memory buffer
-            import io
+            # Dump only User resources where name == "Alice"
+            from autocrud.query import QB
 
-            buffer = io.BytesIO()
-            autocrud.dump(buffer)
-            backup_data = buffer.getvalue()
-
-            # Upload to cloud storage
-            import boto3
-
-            s3 = boto3.client("s3")
-            with io.BytesIO() as buffer:
-                autocrud.dump(buffer)
-                buffer.seek(0)
-                s3.upload_fileobj(buffer, "backup-bucket", "autocrud-backup.tar")
-            ```
-
-        Archive Structure:
-            The tar archive contains:
-            - One directory per model (e.g., "users/", "posts/")
-            - Within each directory, files containing resource data
-            - All metadata, revision history, and relationships preserved
-            - Compatible with the load() method for restoration
-
-        Use Cases:
-            - Regular backups of your data
-            - Migrating between environments
-            - Data archival and compliance
-            - Disaster recovery preparations
-            - Development data seeding
-
-        Note:
-            - The archive includes ALL resources, including soft-deleted ones
-            - Large datasets may result in large archive files
-            - Consider streaming to avoid memory issues with large datasets
-            - The archive format is compatible across AutoCRUD versions
+            with open("backup.acbak", "wb") as f:
+                autocrud.dump(f, model_queries={"user": QB.name == "Alice"})
         """
-        with tarfile.open(fileobj=bio, mode="w|") as tar:
-            for model_name, mgr in self.resource_managers.items():
-                for key, value in mgr.dump():
-                    tarinfo = tarfile.TarInfo(name=f"{model_name}/{key}")
-                    if isinstance(value, io.BytesIO):
-                        tarinfo.size = value.getbuffer().nbytes
-                    else:
-                        value.seek(0, io.SEEK_END)
-                        tarinfo.size = value.tell()
-                        value.seek(0)
-                    tar.addfile(tarinfo, fileobj=value)
+        from autocrud.resource_manager.dump_format import (
+            BlobRecord,
+            DumpStreamWriter,
+            EofRecord,
+            HeaderRecord,
+            MetaRecord,
+            ModelEndRecord,
+            ModelStartRecord,
+            RevisionRecord,
+        )
 
-    def load(self, bio: IO[bytes]) -> None:
-        """Import resources from a tar archive created by the dump() method.
+        writer = DumpStreamWriter(bio)
+        writer.write(HeaderRecord())
 
-        This method restores resources from a backup archive, recreating all
-        data, metadata, and revision history. It's the complement to dump()
-        and enables complete data restoration and migration scenarios.
+        # Determine which models to dump
+        if model_queries is None:
+            models_to_dump = {name: None for name in self.resource_managers}
+        else:
+            models_to_dump = model_queries
+
+        for model_name, query in models_to_dump.items():
+            if model_name not in self.resource_managers:
+                raise ValueError(
+                    f"Model '{model_name}' not found in resource managers."
+                )
+            mgr = self.resource_managers[model_name]
+            writer.write(ModelStartRecord(model_name=model_name))
+            for key, value in mgr.dump(query=query):
+                data = value.read()
+                if key.startswith("meta/"):
+                    writer.write(MetaRecord(data=data))
+                elif key.startswith("data/"):
+                    writer.write(RevisionRecord(data=data))
+                elif key.startswith("blob/"):
+                    blob_entry = mgr._blob_serializer.decode(data)
+                    writer.write(
+                        BlobRecord(
+                            file_id=blob_entry.file_id,
+                            blob_data=blob_entry.data,
+                            size=blob_entry.size,
+                            content_type=blob_entry.content_type,
+                        )
+                    )
+            writer.write(ModelEndRecord(model_name=model_name))
+
+        writer.write(EofRecord())
+
+    def load(
+        self,
+        bio: IO[bytes],
+        on_duplicate: "OnDuplicate | None" = None,
+    ) -> dict[str, "LoadStats"]:
+        """Import resources from a streaming msgpack archive.
 
         Args:
-            bio: A binary I/O stream containing the tar archive to load from.
+            bio: Binary I/O stream to read from.
+            on_duplicate: Strategy for duplicate resource IDs.
+                Defaults to ``OnDuplicate.overwrite``.
 
-        Example:
-            ```python
-            # Restore from file backup
-            with open("backup.tar", "rb") as f:
-                autocrud.load(f)
+        Returns:
+            Per-model load statistics: ``{model_name: LoadStats}``.
 
-            # Restore from memory buffer
-            import io
-
-            buffer = io.BytesIO(backup_data)
-            autocrud.load(buffer)
-
-            # Download and restore from cloud storage
-            import boto3
-
-            s3 = boto3.client("s3")
-            with io.BytesIO() as buffer:
-                s3.download_fileobj("backup-bucket", "autocrud-backup.tar", buffer)
-                buffer.seek(0)
-                autocrud.load(buffer)
-            ```
-
-        Behavior:
-            - Only loads data for models that are registered with add_model()
-            - Preserves all metadata including timestamps and user information
-            - Restores complete revision history for each resource
-            - Maintains data integrity and relationships
-            - Handles both active and soft-deleted resources
-
-        Migration Scenarios:
-            ```python
-            # Environment migration
-            # On source system:
-            autocrud_source.dump(backup_file)
-
-            # On target system:
-            autocrud_target.add_model(User)  # Must add models first
-            autocrud_target.add_model(Post)
-            autocrud_target.load(backup_file)
-            ```
-
-        Error Handling:
-            - Raises ValueError if archive contains unknown models
-            - Raises ValueError if archive format is invalid
-            - Existing resources may be overwritten depending on storage backend
-
-        Use Cases:
-            - Disaster recovery and data restoration
-            - Environment migrations (dev → staging → prod)
-            - Data seeding for testing environments
-            - Historical data imports
-            - System migrations and upgrades
-
-        Important Notes:
-            - Models must be registered before loading data for them
-            - Archive must be created by a compatible dump() method
-            - Loading may overwrite existing resources with same IDs
-            - Consider backup existing data before loading
-            - Large archives may take significant time to process
+        Raises:
+            ValueError: If the archive format is invalid or contains
+                unknown models.
         """
-        with tarfile.open(fileobj=bio, mode="r|") as tar:
-            for tarinfo in tar:
-                if not tarinfo.isfile():
-                    raise ValueError(f"TarInfo {tarinfo.name} is not a file.")
-                model_name, key = tarinfo.name.split("/", 1)
-                if model_name in self.resource_managers:
-                    mgr = self.resource_managers[model_name]
-                    mgr.load(key, tar.extractfile(tarinfo))
-                else:
+        from autocrud.resource_manager.dump_format import (
+            BlobRecord,
+            DumpStreamReader,
+            EofRecord,
+            HeaderRecord,
+            MetaRecord,
+            ModelEndRecord,
+            ModelStartRecord,
+            RevisionRecord,
+        )
+        from autocrud.types import OnDuplicate as _OnDuplicate
+
+        if on_duplicate is None:
+            on_duplicate = _OnDuplicate.overwrite
+
+        reader = DumpStreamReader(bio)
+        stats: dict[str, LoadStats] = {}
+
+        # Read header
+        first = next(reader)
+        if not isinstance(first, HeaderRecord):
+            raise ValueError(f"Expected HeaderRecord, got {type(first).__name__}.")
+        if first.version != 2:
+            raise ValueError(f"Unsupported dump format version {first.version}.")
+
+        current_model: str | None = None
+        current_mgr = None
+        skipped_ids: set[str] = set()
+
+        for record in reader:
+            if isinstance(record, ModelStartRecord):
+                current_model = record.model_name
+                if current_model not in self.resource_managers:
                     raise ValueError(
-                        f"Model {model_name} not found in resource managers.",
+                        f"Model '{current_model}' not found in resource managers."
                     )
+                current_mgr = self.resource_managers[current_model]
+                skipped_ids = set()
+                if current_model not in stats:
+                    stats[current_model] = LoadStats()
+
+            elif isinstance(record, ModelEndRecord):
+                current_model = None
+                current_mgr = None
+                skipped_ids = set()
+
+            elif isinstance(record, MetaRecord):
+                if current_mgr is None:
+                    raise ValueError("MetaRecord outside of model section.")
+                st = stats[current_model]
+                st.total += 1
+                try:
+                    loaded = current_mgr.load_record(record, on_duplicate)
+                except Exception:
+                    raise
+                if loaded:
+                    st.loaded += 1
+                else:
+                    st.skipped += 1
+                    # Track skipped resource_id so we skip its revisions too
+                    meta = current_mgr.meta_serializer.decode(record.data)
+                    skipped_ids.add(meta.resource_id)
+
+            elif isinstance(record, RevisionRecord):
+                if current_mgr is None:
+                    raise ValueError("RevisionRecord outside of model section.")
+                # If the parent resource was skipped, skip its revisions
+                raw_res = current_mgr.resource_serializer.decode(record.data)
+                if raw_res.info.resource_id in skipped_ids:
+                    continue
+                current_mgr.load_record(record, on_duplicate)
+
+            elif isinstance(record, BlobRecord):
+                if current_mgr is None:
+                    raise ValueError("BlobRecord outside of model section.")
+                current_mgr.load_record(record, on_duplicate)
+
+            elif isinstance(record, EofRecord):
+                break
+
+        return stats
