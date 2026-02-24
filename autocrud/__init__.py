@@ -2,6 +2,7 @@ from autocrud.crud.core import AutoCRUD
 from autocrud.schema import Schema
 from autocrud.types import (
     DisplayName,
+    IConstraintChecker,
     IValidator,
     OnDelete,
     Ref,
@@ -20,6 +21,7 @@ crud = AutoCRUD()
 __all__ = [
     "AutoCRUD",
     "DisplayName",
+    "IConstraintChecker",
     "IValidator",
     "OnDelete",
     "Ref",

@@ -72,6 +72,9 @@ from autocrud.schema import Schema
 from autocrud.types import (
     DataSearchCondition,
     DataSearchOperator,
+    EventContext,
+    HasResourceId,
+    IConstraintChecker,
     IEventHandler,
     IMessageQueue,
     IMessageQueueFactory,
@@ -93,7 +96,6 @@ from autocrud.types import (
     TaskStatus,
     _RefInfo,
     extract_refs,
-    extract_unique_fields,
 )
 from autocrud.util.naming import NameConverter
 
@@ -136,13 +138,14 @@ class _RefIntegrityHandler(IEventHandler):
     # IEventHandler interface
     # ------------------------------------------------------------------
 
-    def is_supported(self, context) -> bool:
-        return (
-            getattr(context, "phase", None) == "on_success"
-            and getattr(context, "action", None) is ResourceAction.delete
+    def is_supported(self, context: EventContext) -> bool:
+        return isinstance(context, HasResourceId) and (
+            context.phase == "on_success" and context.action is ResourceAction.delete
         )
 
-    def handle_event(self, context) -> None:
+    def handle_event(self, context: EventContext) -> None:
+        if not isinstance(context, HasResourceId):
+            return
         deleted_resource_id: str = context.resource_id
         for ref_info in self._refs:
             source_rm = self._resource_managers.get(ref_info.source)
@@ -179,10 +182,7 @@ class _RefIntegrityHandler(IEventHandler):
                             }
                         ]
                     )
-                    source_rm.update(
-                        meta.resource_id,
-                        source_rm._apply_patch(meta.resource_id, patch),
-                    )
+                    source_rm.patch(meta.resource_id, patch)
 
 
 class AutoCRUD:
@@ -706,6 +706,7 @@ class AutoCRUD:
         job_handler_factory: Callable[[], Callable[[Resource[Job[T]]], None]]
         | None = None,
         validator: "Callable[[T], None] | IValidator | type | None" = None,
+        constraint_checkers: "Sequence[IConstraintChecker | Callable[[ResourceManager], IConstraintChecker]] | None" = None,
     ) -> None:
         """Add a data model to AutoCRUD and configure its API endpoints.
 
@@ -910,6 +911,7 @@ class AutoCRUD:
             name=model_name,
             validator=validator,
             pydantic_type=pydantic_model,
+            constraint_checkers=constraint_checkers,
             **other_options,
         )
         self.resource_managers[model_name] = resource_manager
@@ -927,83 +929,36 @@ class AutoCRUD:
                 )
 
         # Auto-index Ref fields (resource_id refs only) for searchability
-        existing_paths = {f.field_path for f in resource_manager.indexed_fields}
         for ref_info in refs:
-            if (
-                ref_info.ref_type == "resource_id"
-                and ref_info.source_field not in existing_paths
-            ):
+            if ref_info.ref_type == "resource_id":
                 # Use list[str] for list refs, str for scalar refs
                 field_type = list[str] if ref_info.is_list else str
-                resource_manager._indexed_fields.append(
+                resource_manager.add_indexed_field(
                     IndexableField(
                         field_path=ref_info.source_field,
                         field_type=field_type,
                     )
                 )
-        # Rebuild extractor if new fields were added
-        if len(resource_manager.indexed_fields) != len(existing_paths):
-            from autocrud.resource_manager.core import IndexedValueExtractor
-
-            resource_manager._indexed_value_extractor = IndexedValueExtractor(
-                resource_manager._indexed_fields
-            )
-
-        self._register_unique_fields(resource_manager, model)
 
     @staticmethod
-    def _infer_raw_type(model: type, field_name: str) -> Any:
-        """Infer the raw (non-Annotated) type of *field_name* on *model*."""
-        try:
-            hints = get_type_hints(model, include_extras=True)
-            hint = hints.get(field_name)
-            if hint is not None and get_origin(hint) is Annotated:
-                return get_args(hint)[0]
-            if hint is not None:
-                return hint
-        except Exception:
-            pass
-        return UNSET
-
-    @staticmethod
-    def _register_unique_fields(resource_manager: ResourceManager, model: type) -> None:
-        """Auto-detect ``Unique``-annotated fields, index them, and register
-        for unique-constraint enforcement on the *resource_manager*."""
-        unique_field_names = extract_unique_fields(model)
-        if not unique_field_names:
-            return
-
-        existing_paths = {f.field_path for f in resource_manager.indexed_fields}
-        added = False
-        for field_name in unique_field_names:
-            if field_name not in existing_paths:
-                raw_type = AutoCRUD._infer_raw_type(model, field_name)
-                resource_manager._indexed_fields.append(
-                    IndexableField(field_path=field_name, field_type=raw_type)
-                )
-                added = True
-        if added:
-            from autocrud.resource_manager.core import IndexedValueExtractor
-
-            resource_manager._indexed_value_extractor = IndexedValueExtractor(
-                resource_manager._indexed_fields
-            )
-        for field_name in unique_field_names:
-            if field_name not in resource_manager._unique_fields:
-                resource_manager._unique_fields.append(field_name)
-
-        # Register unique-constraint event handler if not already present
+    def _get_unique_fields(rm: ResourceManager) -> list[str]:
+        """Extract unique field names from the RM's registered constraint checkers."""
+        from autocrud.resource_manager.constraint_handler import (
+            ConstraintEventHandler,
+        )
         from autocrud.resource_manager.unique_handler import (
-            UniqueConstraintEventHandler,
+            UniqueConstraintChecker,
         )
 
-        if not any(
-            isinstance(h, UniqueConstraintEventHandler)
-            for h in resource_manager.event_handlers
-        ):
-            resource_manager.event_handlers.append(
-                UniqueConstraintEventHandler(resource_manager)
-            )
+        for h in rm.event_handlers:
+            handler = None
+            if isinstance(h, ConstraintEventHandler):
+                handler = h
+            if handler is not None:
+                for c in handler.checkers:
+                    if isinstance(c, UniqueConstraintChecker):
+                        return c.unique_fields
+        return []
 
     def openapi(self, app: FastAPI, structs: list[type] = None) -> None:
         """Generate and register the OpenAPI schema for the FastAPI application.
@@ -1077,7 +1032,7 @@ class AutoCRUD:
         ``x-ref-type``, and ``x-ref-on-delete`` extensions into the matching
         schema properties so the web generator can discover relationships.
         """
-        from typing import Annotated, TypeVar, get_args, get_origin, get_type_hints
+        from typing import TypeVar
 
         from msgspec import Struct
 
@@ -1191,11 +1146,12 @@ class AutoCRUD:
                     comp["x-display-name-field"] = dn_field
 
             # --- Unique field annotations ---
-            if rm._unique_fields:
+            unique_fields = self._get_unique_fields(rm)
+            if unique_fields:
                 comp = components.get(schema_name)
                 if comp is not None:
                     props = comp.get("properties", {})
-                    for uf in rm._unique_fields:
+                    for uf in unique_fields:
                         prop = props.get(uf)
                         if prop is not None:
                             prop["x-unique"] = True

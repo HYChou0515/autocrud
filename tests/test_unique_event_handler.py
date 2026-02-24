@@ -1,7 +1,7 @@
 """
-Unit tests for UniqueConstraintEventHandler.
+Unit tests for UniqueConstraintChecker.
 
-These tests verify the handler in isolation (is_supported, before/on_success
+These tests verify the checker in isolation (is_supported, before/on_success
 lifecycle, thread-local state) as well as integration through ResourceManager.
 """
 
@@ -15,15 +15,17 @@ import pytest
 from jsonpatch import JsonPatch
 from msgspec import Struct
 
+from autocrud.resource_manager.constraint_handler import (
+    ConstraintEventHandler,
+    _PhaseState,
+)
 from autocrud.resource_manager.core import ResourceManager
 from autocrud.resource_manager.storage_factory import MemoryStorageFactory
 from autocrud.resource_manager.unique_handler import (
-    UniqueConstraintEventHandler,
-    _PhaseState,
+    UniqueConstraintChecker,
 )
 from autocrud.types import (
     EventContext,
-    IndexableField,
     RevisionStatus,
     Unique,
     UniqueConstraintError,
@@ -58,11 +60,14 @@ class NoUnique(Struct):
 def make_rm(resource_type, unique_fields=None, indexed_fields=None):
     """Create a ResourceManager with MemoryStorageFactory."""
     storage = MemoryStorageFactory().build("test")
+    checkers = None
+    if unique_fields:
+        checkers = [lambda rm: UniqueConstraintChecker(rm, unique_fields=unique_fields)]
     return ResourceManager(
         resource_type,
         storage=storage,
         indexed_fields=indexed_fields or [],
-        unique_fields=unique_fields or [],
+        constraint_checkers=checkers,
         default_user="system",
         default_now=dt.datetime.now,
     )
@@ -73,7 +78,6 @@ def make_rm_with_unique():
     return make_rm(
         Item,
         unique_fields=["name"],
-        indexed_fields=[IndexableField(field_path="name", field_type=str)],
     )
 
 
@@ -122,7 +126,7 @@ class TestIsSupported:
         rm = make_rm(NoUnique)
         # No handler should be registered
         handlers = [
-            h for h in rm.event_handlers if isinstance(h, UniqueConstraintEventHandler)
+            h for h in rm.event_handlers if isinstance(h, ConstraintEventHandler)
         ]
         assert handlers == []
 
@@ -509,27 +513,39 @@ class TestHandlerHelpers:
     def test_unique_fields_changed_true(self):
         rm = make_rm_with_unique()
         handler = _get_handler(rm)
+        # Use the UniqueConstraintChecker's data_relevant_changed directly
+        from autocrud.resource_manager.unique_handler import UniqueConstraintChecker
+
+        checker = next(
+            c for c in handler.checkers if isinstance(c, UniqueConstraintChecker)
+        )
         assert (
-            handler._unique_fields_changed(Item(name="alpha"), Item(name="beta"))
-            is True
+            checker.data_relevant_changed(Item(name="alpha"), Item(name="beta")) is True
         )
 
     def test_unique_fields_changed_false(self):
         rm = make_rm_with_unique()
         handler = _get_handler(rm)
+        from autocrud.resource_manager.unique_handler import UniqueConstraintChecker
+
+        checker = next(
+            c for c in handler.checkers if isinstance(c, UniqueConstraintChecker)
+        )
         assert (
-            handler._unique_fields_changed(
+            checker.data_relevant_changed(
                 Item(name="alpha", value=1), Item(name="alpha", value=2)
             )
             is False
         )
 
     def test_check_unique_constraints_no_fields(self):
-        """_check_unique_constraints should be a no-op when no unique fields."""
+        """UniqueConstraintChecker.check should be a no-op when no unique fields."""
         rm = make_rm(NoUnique)
-        handler = UniqueConstraintEventHandler(rm)
+        from autocrud.resource_manager.unique_handler import UniqueConstraintChecker
+
+        checker = UniqueConstraintChecker(rm)
         # Should not raise
-        handler._check_unique_constraints(NoUnique(name="alpha"))
+        checker.check(NoUnique(name="alpha"))
 
     def test_check_unique_constraints_none_value_skipped(self):
         """None values should be skipped (no uniqueness check for None)."""
@@ -541,7 +557,6 @@ class TestHandlerHelpers:
         rm = make_rm(
             OptionalUnique,
             unique_fields=["name"],
-            indexed_fields=[IndexableField(field_path="name", field_type=str)],
         )
         handler = _get_handler(rm)
         # Create with None name — should succeed even if called multiple times
@@ -554,14 +569,14 @@ class TestHandlerHelpers:
         info = rm.create(Item(name="alpha"))
         rid = info.resource_id
         assert rm.storage.exists(rid)
-        handler._hard_purge_resource(rid)
+        handler._compensate_create(rid)
         assert not rm.storage.exists(rid)
 
     def test_hard_purge_nonexistent_noop(self):
         """Purging a non-existent resource should not raise."""
         rm = make_rm_with_unique()
         handler = _get_handler(rm)
-        handler._hard_purge_resource("nonexistent")  # should not raise
+        handler._compensate_create("nonexistent")  # should not raise
 
 
 # ---------------------------------------------------------------------------
@@ -571,47 +586,45 @@ class TestHandlerHelpers:
 
 class TestHandlerRegistration:
     def test_handler_is_last(self):
-        """UniqueConstraintEventHandler should be the last handler."""
+        """ConstraintEventHandler should be the last handler."""
         rm = make_rm_with_unique()
         assert len(rm.event_handlers) >= 1
-        assert isinstance(rm.event_handlers[-1], UniqueConstraintEventHandler)
+        assert isinstance(rm.event_handlers[-1], ConstraintEventHandler)
 
     def test_handler_after_permission(self):
-        """UniqueConstraintEventHandler should come after PermissionEventHandler."""
+        """ConstraintEventHandler should come after PermissionEventHandler."""
         from autocrud.permission.simple import AllowAll
         from autocrud.resource_manager.core import PermissionEventHandler
 
         rm = make_rm(
             Item,
             unique_fields=["name"],
-            indexed_fields=[IndexableField(field_path="name", field_type=str)],
         )
         # create with permission checker
         storage = MemoryStorageFactory().build("test")
         rm2 = ResourceManager(
             Item,
             storage=storage,
-            indexed_fields=[IndexableField(field_path="name", field_type=str)],
-            unique_fields=["name"],
+            constraint_checkers=[UniqueConstraintChecker],
             permission_checker=AllowAll(),
             default_user="system",
             default_now=dt.datetime.now,
         )
         perm_idx = None
-        unique_idx = None
+        constraint_idx = None
         for i, h in enumerate(rm2.event_handlers):
             if isinstance(h, PermissionEventHandler):
                 perm_idx = i
-            if isinstance(h, UniqueConstraintEventHandler):
-                unique_idx = i
+            if isinstance(h, ConstraintEventHandler):
+                constraint_idx = i
         assert perm_idx is not None
-        assert unique_idx is not None
-        assert perm_idx < unique_idx
+        assert constraint_idx is not None
+        assert perm_idx < constraint_idx
 
     def test_no_handler_when_no_unique_fields(self):
         rm = make_rm(NoUnique)
         handlers = [
-            h for h in rm.event_handlers if isinstance(h, UniqueConstraintEventHandler)
+            h for h in rm.event_handlers if isinstance(h, ConstraintEventHandler)
         ]
         assert handlers == []
 
@@ -626,10 +639,6 @@ class TestMultiUnique:
         rm = make_rm(
             MultiUnique,
             unique_fields=["code", "slug"],
-            indexed_fields=[
-                IndexableField(field_path="code", field_type=str),
-                IndexableField(field_path="slug", field_type=str),
-            ],
         )
         rm.create(MultiUnique(code="c1", slug="s1"))
         # Same code → conflict
@@ -684,10 +693,10 @@ class TestModifyJsonPatch:
 # ---------------------------------------------------------------------------
 
 
-def _get_handler(rm: ResourceManager) -> UniqueConstraintEventHandler | None:
-    """Extract the UniqueConstraintEventHandler from an RM's event_handlers."""
+def _get_handler(rm: ResourceManager) -> ConstraintEventHandler | None:
+    """Extract the ConstraintEventHandler from an RM's event_handlers."""
     for h in rm.event_handlers:
-        if isinstance(h, UniqueConstraintEventHandler):
+        if isinstance(h, ConstraintEventHandler):
             return h
     return None
 

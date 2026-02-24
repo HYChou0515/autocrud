@@ -12,8 +12,8 @@ from msgspec import Struct
 
 from autocrud.resource_manager.core import ResourceManager
 from autocrud.resource_manager.storage_factory import MemoryStorageFactory
+from autocrud.resource_manager.unique_handler import UniqueConstraintChecker
 from autocrud.types import (
-    IndexableField,
     RevisionStatus,
     Unique,
     UniqueConstraintError,
@@ -49,11 +49,14 @@ class NoUnique(Struct):
 def make_rm(resource_type, unique_fields=None, indexed_fields=None):
     """Create a ResourceManager with MemoryStorageFactory."""
     storage = MemoryStorageFactory().build("test")
+    checkers = None
+    if unique_fields:
+        checkers = [lambda rm: UniqueConstraintChecker(rm, unique_fields=unique_fields)]
     return ResourceManager(
         resource_type,
         storage=storage,
         indexed_fields=indexed_fields or [],
-        unique_fields=unique_fields or [],
+        constraint_checkers=checkers,
         default_user="system",
         default_now=dt.datetime.now,
     )
@@ -118,7 +121,6 @@ class TestCreateUnique:
         self.rm = make_rm(
             Item,
             unique_fields=["name"],
-            indexed_fields=[IndexableField(field_path="name", field_type=str)],
         )
 
     def test_first_create_succeeds(self):
@@ -156,7 +158,6 @@ class TestUpdateUnique:
         self.rm = make_rm(
             Item,
             unique_fields=["name"],
-            indexed_fields=[IndexableField(field_path="name", field_type=str)],
         )
 
     def test_update_same_resource_same_value_ok(self):
@@ -193,7 +194,6 @@ class TestModifyUnique:
         self.rm = make_rm(
             Item,
             unique_fields=["name"],
-            indexed_fields=[IndexableField(field_path="name", field_type=str)],
         )
 
     def test_modify_same_value_ok(self):
@@ -276,7 +276,6 @@ class TestPurgeMeta:
     def test_purge_meta_removes_resource(self):
         rm = make_rm(
             Item,
-            indexed_fields=[IndexableField(field_path="name", field_type=str)],
             unique_fields=["name"],
         )
         info = rm.create(Item(name="alpha"))
@@ -287,37 +286,32 @@ class TestPurgeMeta:
 
 
 # ---------------------------------------------------------------------------
-# 7. Bug fix: unique_fields ⊆ indexed_fields validation
+# 7. UniqueConstraintChecker auto-indexes unique fields
 # ---------------------------------------------------------------------------
 
 
-class TestUniqueFieldsMustBeIndexed:
-    def test_unique_field_not_indexed_raises_on_init(self):
-        """Creating RM with unique_fields not in indexed_fields must raise."""
-        with pytest.raises(ValueError, match="name"):
-            make_rm(
-                Item,
-                unique_fields=["name"],
-                indexed_fields=[],  # name not indexed!
-            )
+class TestUniqueAutoIndexing:
+    def test_unique_checker_auto_indexes_fields(self):
+        """UniqueConstraintChecker should auto-add unique fields to indexed_fields."""
+        rm = make_rm(
+            Item,
+            unique_fields=["name"],
+        )
+        indexed_paths = {f.field_path for f in rm.indexed_fields}
+        assert "name" in indexed_paths
 
-    def test_unique_field_indexed_ok(self):
-        """Creating RM with unique_fields ⊆ indexed_fields must succeed."""
+    def test_unique_checker_preserves_existing_indexed(self):
+        """Existing indexed fields should not be duplicated."""
+        from autocrud.types import IndexableField
+
         rm = make_rm(
             Item,
             unique_fields=["name"],
             indexed_fields=[IndexableField(field_path="name", field_type=str)],
         )
-        assert rm._unique_fields == ["name"]
-
-    def test_partial_indexed_raises(self):
-        """If only some unique fields are indexed, must raise for the missing ones."""
-        with pytest.raises(ValueError, match="slug"):
-            make_rm(
-                MultiUnique,
-                unique_fields=["code", "slug"],
-                indexed_fields=[IndexableField(field_path="code", field_type=str)],
-            )
+        # Should still have exactly one "name" entry
+        name_count = sum(1 for f in rm.indexed_fields if f.field_path == "name")
+        assert name_count == 1
 
 
 # ---------------------------------------------------------------------------
@@ -330,7 +324,6 @@ class TestRestoreUniqueCheck:
         self.rm = make_rm(
             Item,
             unique_fields=["name"],
-            indexed_fields=[IndexableField(field_path="name", field_type=str)],
         )
 
     def test_restore_conflict_raises(self):
@@ -360,7 +353,6 @@ class TestSwitchUniqueCheck:
         self.rm = make_rm(
             Item,
             unique_fields=["name"],
-            indexed_fields=[IndexableField(field_path="name", field_type=str)],
         )
 
     def test_switch_conflict_raises(self):
@@ -402,7 +394,6 @@ class TestModifyPostCheck:
         rm = make_rm(
             Item,
             unique_fields=["name"],
-            indexed_fields=[IndexableField(field_path="name", field_type=str)],
         )
         info_a = rm.create(Item(name="alpha"), status=RevisionStatus.draft)
         info_b = rm.create(Item(name="beta"), status=RevisionStatus.draft)

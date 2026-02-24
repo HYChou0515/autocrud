@@ -70,6 +70,7 @@ from autocrud.types import (
     Binary,
     CannotModifyResourceError,
     EventContext,
+    IConstraintChecker,
     IEventHandler,
     IMessageQueue,
     IMigration,
@@ -483,7 +484,7 @@ class ResourceManager(IResourceManager[T], Generic[T]):
         default_now: Callable[[], dt.datetime] | UnsetType = UNSET,
         validator: "Callable[[T], None] | IValidator | type | None" = None,
         pydantic_type: type | None = None,
-        unique_fields: list[str] | None = None,
+        constraint_checkers: "Sequence[IConstraintChecker | Callable[[ResourceManager], IConstraintChecker]] | None" = None,
     ):
         self._pydantic_type = pydantic_type
 
@@ -542,16 +543,6 @@ class ResourceManager(IResourceManager[T], Generic[T]):
         self._schema_version = schema_version
         self._indexed_fields = indexed_fields or []
         self._indexed_value_extractor = IndexedValueExtractor(self._indexed_fields)
-        self._unique_fields: list[str] = list(unique_fields) if unique_fields else []
-        # Validate: every unique field must be indexed
-        if self._unique_fields:
-            indexed_paths = {f.field_path for f in self._indexed_fields}
-            missing = [f for f in self._unique_fields if f not in indexed_paths]
-            if missing:
-                raise ValueError(
-                    f"unique_fields {missing} must be present in indexed_fields. "
-                    f"Indexed paths: {sorted(indexed_paths)}"
-                )
         self._migration = self._schema if self._schema is not None else migration_obj
         self._encoding = encoding
         self._data_serializer = MsgspecSerializer(
@@ -573,13 +564,30 @@ class ResourceManager(IResourceManager[T], Generic[T]):
                 PermissionEventHandler(permission_checker),
             )
 
-        # 唯一約束檢查器（放在最後，在 PermissionEventHandler 之後執行）
-        if self._unique_fields:
-            from autocrud.resource_manager.unique_handler import (
-                UniqueConstraintEventHandler,
+        # Constraint checkers（放在最後，在 PermissionEventHandler 之後執行）
+        _checkers: list[IConstraintChecker] = []
+        for spec in constraint_checkers or []:
+            if isinstance(spec, IConstraintChecker):
+                _checkers.append(spec)
+            elif callable(spec):
+                _checkers.append(spec(self))
+            else:
+                raise TypeError(
+                    f"constraint_checkers items must be IConstraintChecker instances "
+                    f"or callable(rm) factories, got {type(spec).__name__}"
+                )
+        if _checkers:
+            from autocrud.resource_manager.constraint_handler import (
+                ConstraintEventHandler,
             )
 
-            self.event_handlers.append(UniqueConstraintEventHandler(self))
+            self._constraint_handler = ConstraintEventHandler(self, _checkers)
+            self.event_handlers.append(self._constraint_handler)
+        else:
+            self._constraint_handler = None
+
+        # Auto-detect Unique-annotated fields and register UniqueConstraintChecker
+        self._register_unique_fields()
 
         self._binary_processor = BinaryProcessor(resource_type)
 
@@ -591,6 +599,46 @@ class ResourceManager(IResourceManager[T], Generic[T]):
             self.message_queue = message_queue(self)
         else:
             self.message_queue = None
+
+    def _register_unique_fields(self) -> None:
+        """Auto-detect ``Unique``-annotated fields on the model and register a
+        :class:`UniqueConstraintChecker`.
+
+        If a :class:`ConstraintEventHandler` already exists (from the
+        ``constraint_checkers`` parameter) the checker is appended to it;
+        otherwise a new handler is created.  The checker itself handles
+        auto-indexing the unique fields via :meth:`add_indexed_field`.
+        """
+        from autocrud.resource_manager.constraint_handler import (
+            ConstraintEventHandler,
+        )
+        from autocrud.resource_manager.unique_handler import (
+            UniqueConstraintChecker,
+        )
+        from autocrud.types import extract_unique_fields
+
+        unique_field_names = extract_unique_fields(self.resource_type)
+        if not unique_field_names:
+            return
+
+        # Check if a ConstraintEventHandler already exists (from constraint_checkers param)
+        existing_handler: ConstraintEventHandler | None = None
+        for h in self.event_handlers:
+            if isinstance(h, ConstraintEventHandler):
+                existing_handler = h
+                break
+
+        if existing_handler is not None:
+            # Always append — user's checkers and auto-detected ones may
+            # protect different fields; both should run.
+            existing_handler.checkers.append(UniqueConstraintChecker(self))
+        else:
+            handler = ConstraintEventHandler(
+                self,
+                [UniqueConstraintChecker(self)],
+            )
+            self.event_handlers.append(handler)
+            self._constraint_handler = handler
 
     def encode(self, data: T) -> bytes:
         return self._data_serializer.encode(data)
@@ -623,7 +671,7 @@ class ResourceManager(IResourceManager[T], Generic[T]):
         This allows Pydantic users to pass native Pydantic instances
         or plain dicts without knowing about msgspec.
         """
-        if data is not UNSET and type(data) is not JsonPatch:
+        if data is UNSET or type(data) is JsonPatch:
             return data
         if isinstance(data, Struct):
             return data
@@ -734,6 +782,16 @@ class ResourceManager(IResourceManager[T], Generic[T]):
     def indexed_fields(self) -> list[IndexableField]:
         """取得被索引的 data 欄位列表"""
         return self._indexed_fields
+
+    def add_indexed_field(self, field: IndexableField) -> None:
+        """新增一個索引欄位並重建 extractor。
+
+        如果該欄位已存在（依 ``field_path`` 判斷），則不重複新增。
+        """
+        existing = {f.field_path for f in self._indexed_fields}
+        if field.field_path not in existing:
+            self._indexed_fields.append(field)
+            self._indexed_value_extractor = IndexedValueExtractor(self._indexed_fields)
 
     def _extract_indexed_values(self, data: T) -> dict[str, Any]:
         """從 data 中提取需要索引的值（保留原始類型，Enum 會在序列化時轉換）"""

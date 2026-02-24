@@ -1,381 +1,114 @@
 """
-UniqueConstraintEventHandler — centralised unique-constraint enforcement.
+UniqueConstraintChecker — unique-field enforcement as an :class:`IConstraintChecker`.
 
-Replaces the scattered pre-check / post-check / compensate logic that was
-previously duplicated across ``ResourceManager.create``, ``update``,
-``modify``, ``switch`` and ``restore``.
+This module provides:
 
-The handler is registered as the **last** event handler so that permission
-checks (``PermissionEventHandler``) run first.
+* :class:`UniqueConstraintChecker` — implements the ``IConstraintChecker``
+  interface.  It checks that every ``Unique``-annotated field value is not
+  already used by another non-deleted resource.
 """
 
 from __future__ import annotations
 
-from contextlib import suppress
-from contextvars import ContextVar
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING, Annotated, Any, get_args, get_origin, get_type_hints
 
-from jsonpatch import JsonPatch
 from msgspec import UNSET
 
 from autocrud.types import (
     DataSearchCondition,
     DataSearchOperator,
-    EventContext,
-    EventContextProto,
-    HasData,
-    HasDataAndResourceId,
-    HasInfo,
-    HasResourceId,
-    HasRevisionId,
-    IEventHandler,
-    ResourceAction,
+    IConstraintChecker,
+    IndexableField,
     ResourceMeta,
     ResourceMetaSearchQuery,
     ResourceMetaSearchSort,
     ResourceMetaSortDirection,
     ResourceMetaSortKey,
-    RevisionInfo,
     UniqueConstraintError,
+    extract_unique_fields,
 )
 
 if TYPE_CHECKING:
     from autocrud.resource_manager.core import ResourceManager
 
 
-# ---------------------------------------------------------------------------
-# Per-context state passed between *before* → *on_success*
-# ---------------------------------------------------------------------------
+def _infer_raw_type(model: type, field_name: str) -> Any:
+    """Infer the raw (non-Annotated) type of *field_name* on *model*.
+
+    Returns the unwrapped type for ``Annotated[T, ...]`` or the raw hint.
+    Falls back to :data:`msgspec.UNSET` when resolution fails.
+    """
+    try:
+        hints = get_type_hints(model, include_extras=True)
+        hint = hints.get(field_name)
+        if hint is not None and get_origin(hint) is Annotated:
+            return get_args(hint)[0]
+        if hint is not None:
+            return hint
+    except Exception:
+        pass
+    return UNSET
 
 
-class _PhaseState:
-    """Mutable bag stored in a :class:`~contextvars.ContextVar`."""
+class UniqueConstraintChecker(IConstraintChecker):
+    """Checks that unique-annotated fields are not duplicated.
 
-    __slots__ = (
-        "needs_post_check",
-        "prev_meta",
-        "prev_info",
-        "current_data",
-        "data",
-        "resource_id",
-    )
+    The checker **owns** the list of unique fields.  When *unique_fields* is
+    not given explicitly it is auto-detected from the model's ``Unique``
+    annotations.  It also ensures every unique field is present in the
+    :class:`ResourceManager`'s indexed fields (auto-adding if missing).
 
-    needs_post_check: bool
-    prev_meta: ResourceMeta | None
-    prev_info: RevisionInfo | None
-    current_data: Any
-    data: Any
-    resource_id: str | None
-
-    def __init__(self) -> None:
-        self.needs_post_check = False
-        self.prev_meta = None
-        self.prev_info = None
-        self.current_data = None
-        self.data = None
-        self.resource_id = None
-
-    def reset(self) -> None:
-        self.needs_post_check = False
-        self.prev_meta = None
-        self.prev_info = None
-        self.current_data = None
-        self.data = None
-        self.resource_id = None
-
-
-# ---------------------------------------------------------------------------
-# Supported (action, phase) pairs
-# ---------------------------------------------------------------------------
-
-_SUPPORTED_ACTIONS = frozenset(
-    {
-        ResourceAction.create,
-        ResourceAction.update,
-        ResourceAction.modify,
-        ResourceAction.switch,
-        ResourceAction.restore,
-    }
-)
-
-_SUPPORTED_PHASES = frozenset({"before", "on_success"})
-
-
-# ---------------------------------------------------------------------------
-# Handler
-# ---------------------------------------------------------------------------
-
-
-class UniqueConstraintEventHandler(IEventHandler):
-    """Enforces unique-field constraints via event lifecycle hooks.
-
-    Performs a **pre-check** in the *before* phase and a **post-check** in
-    *on_success* (to catch race conditions).  If a post-check fails the
-    handler executes a compensating action to undo the write.
+    Args:
+        rm: The owning :class:`ResourceManager` (needed to query storage).
+        unique_fields: Explicit list of field names to enforce uniqueness on.
+            When ``None`` (the default) the fields are auto-detected from
+            ``Unique`` annotations on the model.
     """
 
-    def __init__(self, rm: ResourceManager) -> None:
+    def __init__(
+        self,
+        rm: ResourceManager,
+        unique_fields: list[str] | None = None,
+    ) -> None:
         self.rm: ResourceManager = rm
-        self._state_var: ContextVar[_PhaseState] = ContextVar(
-            f"_phase_state_{id(self)}"
+        self._unique_fields: list[str] = (
+            list(unique_fields)
+            if unique_fields is not None
+            else extract_unique_fields(rm.resource_type)
         )
+        # Auto-ensure every unique field is indexed.
+        self._ensure_indexed()
 
-    # -- helpers to access context-local state --------------------------------
+    @property
+    def unique_fields(self) -> list[str]:
+        """The list of field names enforced by this checker."""
+        return self._unique_fields
 
-    def _get_state(self) -> _PhaseState:
-        try:
-            return self._state_var.get()
-        except LookupError:
-            state = _PhaseState()
-            self._state_var.set(state)
-            return state
+    # -- internal helpers ----------------------------------------------------
 
-    def _reset_state(self) -> None:
-        self._get_state().reset()
-
-    # -- IEventHandler -------------------------------------------------------
-
-    def is_supported(self, context: EventContext) -> bool:
-        if not self.rm._unique_fields:
-            return False
-        if not isinstance(context, EventContextProto):
-            return False
-        with suppress(AttributeError):
-            return (
-                context.action in _SUPPORTED_ACTIONS
-                and context.phase in _SUPPORTED_PHASES
+    def _ensure_indexed(self) -> None:
+        """Add unique fields to RM's indexed fields if not already present."""
+        for field_name in self._unique_fields:
+            raw_type = _infer_raw_type(self.rm.resource_type, field_name)
+            self.rm.add_indexed_field(
+                IndexableField(field_path=field_name, field_type=raw_type)
             )
-        return False
 
-    def handle_event(self, context: EventContext) -> None:
-        if not isinstance(context, EventContextProto):
-            return
-        if context.phase == "before":
-            self._on_before(context)
-        elif context.phase == "on_success":
-            self._on_success(context)
+    # -- IConstraintChecker --------------------------------------------------
 
-    # ======================================================================
-    # Before phase (pre-check)
-    # ======================================================================
-
-    def _on_before(self, context: EventContextProto) -> None:
-        state = self._get_state()
-        state.reset()
-
-        action = context.action
-        if action == ResourceAction.create:
-            self._before_create(context, state)  # type: ignore[arg-type]
-        elif action == ResourceAction.update:
-            self._before_update(context, state)  # type: ignore[arg-type]
-        elif action == ResourceAction.modify:
-            self._before_modify(context, state)  # type: ignore[arg-type]
-        elif action == ResourceAction.switch:
-            self._before_switch(context, state)  # type: ignore[arg-type]
-        elif action == ResourceAction.restore:
-            self._before_restore(context, state)  # type: ignore[arg-type]
-
-    # -- create --------------------------------------------------------------
-
-    def _before_create(self, ctx: HasData, state: _PhaseState) -> None:
-        data = ctx.data
-        self._check_unique_constraints(data)
-        # Mark for post-check (always needed for create)
-        state.needs_post_check = True
-        state.data = data
-
-    # -- update --------------------------------------------------------------
-
-    def _before_update(self, ctx: HasDataAndResourceId, state: _PhaseState) -> None:
-        data = ctx.data
-        resource_id = ctx.resource_id
-        self._check_unique_constraints(data, exclude_resource_id=resource_id)
-        # Save prev meta for compensation
-        state.needs_post_check = True
-        state.data = data
-        state.resource_id = resource_id
-        state.prev_meta = self.rm.get_meta(resource_id)
-
-    # -- modify --------------------------------------------------------------
-
-    def _before_modify(self, ctx: HasDataAndResourceId, state: _PhaseState) -> None:
-        data = ctx.data
-        if data is UNSET:
-            return  # nothing to check
-
-        resource_id = ctx.resource_id
-
-        # JsonPatch: resolve to Struct so we can compare unique fields
-        if isinstance(data, JsonPatch):
-            data = self.rm._apply_patch(resource_id, data)
-
-        # Load current data to determine whether unique fields actually changed
-        prev_meta = self.rm.get_meta(resource_id)
-        current_data = self.rm._load_revision_data(
-            resource_id, prev_meta.current_revision_id
-        )
-        if not self._unique_fields_changed(current_data, data):
-            return  # unique fields unchanged — nothing to do
-
-        self._check_unique_constraints(data, exclude_resource_id=resource_id)
-
-        # Save state for post-check & compensation
-        state.needs_post_check = True
-        state.data = data
-        state.resource_id = resource_id
-        state.prev_meta = prev_meta
-        state.prev_info = self.rm.storage.get_resource_revision_info(
-            resource_id, prev_meta.current_revision_id
-        )
-        state.current_data = current_data
-
-    # -- switch --------------------------------------------------------------
-
-    def _before_switch(self, ctx: HasRevisionId, state: _PhaseState) -> None:
-        resource_id = ctx.resource_id
-        revision_id = ctx.revision_id
-        # Load target revision data
-        data = self.rm._load_revision_data(resource_id, revision_id)
-        self._check_unique_constraints(data, exclude_resource_id=resource_id)
-        # Save state for post-check & compensation
-        state.needs_post_check = True
-        state.data = data
-        state.resource_id = resource_id
-        state.prev_meta = self.rm.get_meta(resource_id)
-
-    # -- restore -------------------------------------------------------------
-
-    def _before_restore(self, ctx: HasResourceId, state: _PhaseState) -> None:
-        resource_id = ctx.resource_id
-        meta = self.rm._get_meta_no_check_is_deleted(resource_id)
-        if not meta.is_deleted:
-            return  # not deleted → restore is a no-op, skip check
-        data = self.rm._load_revision_data(resource_id, meta.current_revision_id)
-        self._check_unique_constraints(data, exclude_resource_id=resource_id)
-        # Save state for post-check & compensation
-        state.needs_post_check = True
-        state.data = data
-        state.resource_id = resource_id
-        state.prev_meta = meta
-
-    # ======================================================================
-    # On-success phase (post-check + compensate)
-    # ======================================================================
-
-    def _on_success(self, context: EventContextProto) -> None:
-        state = self._get_state()
-        if not state.needs_post_check:
-            return
-
-        action = context.action
-        try:
-            if action == ResourceAction.create:
-                self._post_check_create(context, state)  # type: ignore[arg-type]
-            elif action == ResourceAction.update:
-                self._post_check_update(context, state)
-            elif action == ResourceAction.modify:
-                self._post_check_modify(context, state)
-            elif action == ResourceAction.switch:
-                self._post_check_switch(context, state)
-            elif action == ResourceAction.restore:
-                self._post_check_restore(context, state)
-        finally:
-            state.reset()
-
-    # -- create --------------------------------------------------------------
-
-    def _post_check_create(self, ctx: HasInfo, state: _PhaseState) -> None:
-        resource_id = ctx.info.resource_id
-        try:
-            self._check_unique_constraints(state.data, exclude_resource_id=resource_id)
-        except UniqueConstraintError:
-            self._hard_purge_resource(resource_id)
-            raise
-
-    # -- update --------------------------------------------------------------
-
-    def _post_check_update(self, ctx: EventContextProto, state: _PhaseState) -> None:
-        try:
-            self._check_unique_constraints(
-                state.data, exclude_resource_id=state.resource_id
-            )
-        except UniqueConstraintError:
-            # Compensate: restore previous meta
-            self.rm.storage.save_meta(state.prev_meta)
-            raise
-
-    # -- modify --------------------------------------------------------------
-
-    def _post_check_modify(self, ctx: EventContextProto, state: _PhaseState) -> None:
-        try:
-            self._check_unique_constraints(
-                state.data, exclude_resource_id=state.resource_id
-            )
-        except UniqueConstraintError:
-            # Compensate: restore previous revision data + meta
-            import io
-
-            self.rm.storage.save_revision(
-                state.prev_info,
-                io.BytesIO(self.rm.encode(state.current_data)),
-            )
-            self.rm.storage.save_meta(state.prev_meta)
-            raise
-
-    # -- switch --------------------------------------------------------------
-
-    def _post_check_switch(self, ctx: EventContextProto, state: _PhaseState) -> None:
-        try:
-            self._check_unique_constraints(
-                state.data, exclude_resource_id=state.resource_id
-            )
-        except UniqueConstraintError:
-            # Compensate: restore previous meta
-            self.rm.storage.save_meta(state.prev_meta)
-            raise
-
-    # -- restore -------------------------------------------------------------
-
-    def _post_check_restore(self, ctx: EventContextProto, state: _PhaseState) -> None:
-        try:
-            self._check_unique_constraints(
-                state.data, exclude_resource_id=state.resource_id
-            )
-        except UniqueConstraintError:
-            # Compensate: re-delete the resource
-            meta = self.rm._get_meta_no_check_is_deleted(state.resource_id)
-            meta.is_deleted = True
-            self.rm.storage.save_meta(meta)
-            raise
-
-    # ======================================================================
-    # Ported helpers (formerly on ResourceManager)
-    # ======================================================================
-
-    def _unique_fields_changed(self, current_data: Any, new_data: Any) -> bool:
-        """Return ``True`` if any unique-constrained field value differs."""
-        if not self.rm._unique_fields:
-            return False
-        current_indexed: dict[str, Any] = self.rm._extract_indexed_values(current_data)
-        new_indexed: dict[str, Any] = self.rm._extract_indexed_values(new_data)
-        return any(
-            new_indexed.get(f) != current_indexed.get(f) for f in self.rm._unique_fields
-        )
-
-    def _check_unique_constraints(
+    def check(
         self,
         data: Any,
         *,
         exclude_resource_id: str | None = None,
     ) -> None:
-        """Raise ``UniqueConstraintError`` if any unique-annotated field value
-        is already used by another (non-deleted) resource.
+        """Raise :class:`UniqueConstraintError` if any unique-annotated field
+        value is already used by another (non-deleted) resource.
         """
-        if not self.rm._unique_fields:
+        if not self._unique_fields:
             return
-        indexed: dict[str, Any] = self.rm._extract_indexed_values(data)
-        for field_path in self.rm._unique_fields:
-            value = indexed.get(field_path)
+        for field_path in self._unique_fields:
+            value = getattr(data, field_path, None)
             if value is None:
                 continue
             query = ResourceMetaSearchQuery(
@@ -406,14 +139,11 @@ class UniqueConstraintEventHandler(IEventHandler):
                 continue  # this resource is the earliest owner — no conflict
             raise UniqueConstraintError(field_path, value, first.resource_id)
 
-    def _hard_purge_resource(self, resource_id: str) -> None:
-        """Hard-delete a resource's metadata as a unique-constraint rollback."""
-        try:
-            self.rm.storage.purge_meta(resource_id)
-        except (KeyError, NotImplementedError):
-            try:
-                meta = self.rm._get_meta_no_check_is_deleted(resource_id)
-                meta.is_deleted = True
-                self.rm.storage.save_meta(meta)
-            except Exception:
-                pass
+    def data_relevant_changed(self, current_data: Any, new_data: Any) -> bool:
+        """Return ``True`` if any unique-constrained field value differs."""
+        if not self._unique_fields:
+            return False
+        return any(
+            getattr(new_data, f, None) != getattr(current_data, f, None)
+            for f in self._unique_fields
+        )

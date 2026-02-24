@@ -2284,6 +2284,61 @@ class IEventHandler(ABC):
     def handle_event(self, context: EventContext) -> None: ...
 
 
+class IConstraintChecker(ABC):
+    """Interface for custom constraint checkers.
+
+    Implement this to define reusable data constraints that are automatically
+    enforced during create, update, modify, switch and restore operations.
+    The framework handles all event lifecycle (before / on_success) and
+    compensation (rollback) logic — you only need to implement the check.
+
+    Example::
+
+        class NoDuplicateEmailChecker(IConstraintChecker):
+            def __init__(self, rm: ResourceManager) -> None:
+                self.rm = rm
+
+            def check(
+                self, data: Any, *, exclude_resource_id: str | None = None
+            ) -> None:
+                email = getattr(data, "email", None)
+                if email and self._email_exists(email, exclude_resource_id):
+                    raise ValueError(f"Email {email!r} already in use")
+
+
+        # Pass a factory callable (receives ResourceManager):
+        crud.add_model(User, constraint_checkers=[NoDuplicateEmailChecker])
+        # Or a lambda factory:
+        crud.add_model(
+            User, constraint_checkers=[lambda rm: NoDuplicateEmailChecker(rm)]
+        )
+    """
+
+    @abstractmethod
+    def check(self, data: Any, *, exclude_resource_id: str | None = None) -> None:
+        """Validate that *data* satisfies this constraint.
+
+        Args:
+            data: The resource data (msgspec Struct instance).
+            exclude_resource_id: When updating an existing resource, pass its
+                ID so the checker can allow the resource to keep its own values.
+
+        Raises:
+            Any exception to signal a constraint violation.  The framework
+            will catch it, execute compensation, and re-raise.
+        """
+        ...
+
+    def data_relevant_changed(self, current_data: Any, new_data: Any) -> bool:
+        """Return whether the fields relevant to this constraint changed.
+
+        Called during *modify* to skip unnecessary checks when the
+        constrained fields are unchanged.  The default implementation
+        returns ``True`` (always re-check).  Override for optimisation.
+        """
+        return True
+
+
 class TaskStatus(StrEnum):
     PENDING = "pending"
     PROCESSING = "processing"
