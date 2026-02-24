@@ -1,7 +1,7 @@
 import { createFileRoute, Outlet, Link, useLocation } from '@tanstack/react-router';
 import { AppShell, NavLink, Title, Group, ScrollArea, Text } from '@mantine/core';
-import { IconHome, IconDatabase } from '@tabler/icons-react';
 import { getResourceNames, getResource } from '@/autocrud/lib/resources';
+import { IconHome, IconDatabase, IconDatabaseExport } from '@tabler/icons-react';
 
 export const Route = createFileRoute('/autocrud-admin')({
   component: AutoCRUDLayout,
@@ -54,6 +54,18 @@ function AutoCRUDLayout() {
               />
             );
           })}
+        </AppShell.Section>
+        <AppShell.Section>
+          <Text size="xs" fw={500} c="dimmed" px="sm" py="xs">
+            System
+          </Text>
+          <NavLink
+            component={Link}
+            to="/autocrud-admin/backup"
+            label="Backup & Restore"
+            leftSection={<IconDatabaseExport size={16} />}
+            active={location.pathname.startsWith('/autocrud-admin/backup')}
+          />
         </AppShell.Section>
       </AppShell.Navbar>
 

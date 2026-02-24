@@ -15,11 +15,15 @@ from typing import (
     TypeVar,
 )
 
-from fastapi import APIRouter, FastAPI, HTTPException
+from fastapi import APIRouter, FastAPI, File, HTTPException, UploadFile
 from fastapi.openapi.utils import get_openapi
 from fastapi.params import Body
 from msgspec import UNSET, UnsetType
 
+from autocrud.crud.route_templates.backup import (
+    ExportRouteTemplate,
+    ImportRouteTemplate,
+)
 from autocrud.crud.route_templates.basic import (
     DependencyProvider,
     FullResourceResponse,
@@ -463,6 +467,8 @@ class AutoCRUD:
                     RestoreRouteTemplate,
                     BatchDeleteRouteTemplate,
                     BatchRestoreRouteTemplate,
+                    ExportRouteTemplate,
+                    ImportRouteTemplate,
                 ]:
                     more_kwargs = route_templates_dict.get(rt, {})
                     more_kwargs.setdefault("dependency_provider", dep_provider)
@@ -1596,6 +1602,9 @@ class AutoCRUD:
         # Add ref-specific routes (referrers + relationships)
         self._apply_ref_routes(router)
 
+        # Global backup / restore endpoints
+        self._apply_backup_routes(router)
+
         return router
 
     def _apply_create_actions(self, router: APIRouter) -> None:
@@ -1861,6 +1870,119 @@ class AutoCRUD:
                         }
                     )
             return results
+
+    # ------------------------------------------------------------------
+    # Global backup / restore routes
+    # ------------------------------------------------------------------
+
+    def _apply_backup_routes(self, router: APIRouter) -> None:
+        """Register global ``/_backup/export`` and ``/_backup/import``
+        endpoints on *router*.
+
+        * ``GET /_backup/export``  — download a ``.acbak`` archive
+          containing **all** registered models.
+        * ``POST /_backup/import`` — upload a ``.acbak`` archive and
+          load its contents into the matching resource managers.
+        """
+        import io as _io
+
+        from fastapi import Query as _Query
+        from fastapi.responses import StreamingResponse
+
+        autocrud_ref = self  # closure over self
+
+        @router.get(
+            "/_backup/export",
+            summary="Export all models",
+            tags=["_backup"],
+            description=(
+                "Download a `.acbak` archive containing all registered "
+                "models.  Optionally pass `models` query parameter to "
+                "restrict which models are exported."
+            ),
+            response_class=StreamingResponse,
+            responses={
+                200: {
+                    "content": {"application/octet-stream": {}},
+                    "description": "Streaming .acbak archive.",
+                }
+            },
+        )
+        async def global_export(
+            models: list[str] | None = _Query(
+                None,
+                description=(
+                    "Model names to include.  When omitted all registered "
+                    "models are exported."
+                ),
+            ),
+        ):
+            model_queries: dict[str, Query | ResourceMetaSearchQuery | None] | None = (
+                None
+            )
+            if models:
+                unknown = set(models) - set(autocrud_ref.resource_managers)
+                if unknown:
+                    raise HTTPException(
+                        status_code=400,
+                        detail=f"Unknown model(s): {', '.join(sorted(unknown))}",
+                    )
+                model_queries = {m: None for m in models}
+
+            buf = _io.BytesIO()
+            autocrud_ref.dump(buf, model_queries=model_queries)
+            buf.seek(0)
+            return StreamingResponse(
+                buf,
+                media_type="application/octet-stream",
+                headers={
+                    "Content-Disposition": 'attachment; filename="backup.acbak"',
+                },
+            )
+
+        @router.post(
+            "/_backup/import",
+            summary="Import from archive",
+            tags=["_backup"],
+            description=(
+                "Upload a `.acbak` archive.  All model sections found in "
+                "the archive will be loaded into the corresponding resource "
+                "managers.  Use `on_duplicate` to control the duplicate "
+                "handling strategy."
+            ),
+        )
+        async def global_import(
+            file: UploadFile = File(..., description=".acbak archive file"),
+            on_duplicate: str = _Query(
+                "overwrite",
+                description="Strategy: overwrite | skip | raise_error",
+            ),
+        ) -> dict:
+            try:
+                strategy = OnDuplicate(on_duplicate)
+            except ValueError:
+                raise HTTPException(
+                    status_code=400,
+                    detail=(
+                        f"Invalid on_duplicate: {on_duplicate}. "
+                        "Must be one of: overwrite, skip, raise_error"
+                    ),
+                )
+
+            data = await file.read()
+            try:
+                stats = autocrud_ref.load(_io.BytesIO(data), on_duplicate=strategy)
+            except ValueError as e:
+                raise HTTPException(status_code=400, detail=str(e))
+
+            return {
+                model: {
+                    "loaded": s.loaded,
+                    "skipped": s.skipped,
+                    "total": s.total,
+                }
+                for model, s in stats.items()
+            }
 
     def dump(
         self,
