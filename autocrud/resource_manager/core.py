@@ -319,6 +319,21 @@ class SimpleStorage(IStorage):
                 ) as data:
                     yield info, data
 
+    def dump_resources_bulk(
+        self, resource_ids: frozenset[str] | None = None
+    ) -> dict[str, list[tuple[RevisionInfo, bytes]]] | None:
+        """Bulk pre-fetch all revisions (concurrent when supported).
+
+        Returns ``None`` when the underlying resource store does not
+        provide a bulk dump method, signalling the caller to fall back
+        to per-resource streaming via :meth:`dump_resource`.
+        """
+        if hasattr(self._resource_store, "dump_all_revisions"):
+            return self._resource_store.dump_all_revisions(
+                resource_ids=resource_ids,
+            )
+        return None
+
 
 class _BlobEntry(Struct, kw_only=True):
     """Internal struct for serialising blob data in dump streams."""
@@ -1698,20 +1713,47 @@ class ResourceManager(IResourceManager[T], Generic[T]):
         else:
             metas = self.storage.dump_meta(None)
 
-        # Interleaved: meta → its revisions, per resource
-        dump_resource = self.storage.dump_resource
-        for meta in metas:
-            yield MetaRecord(data=meta_encode(meta))
-            for info, data_io in dump_resource(meta.resource_id):
-                raw_data = data_io.read()
-                yield RevisionRecord(
-                    data=res_encode(RawResource(info=info, raw_data=raw_data))
-                )
-                if collect is not None:
-                    try:
-                        blob_file_ids |= collect(data_decode(raw_data))
-                    except Exception:
-                        pass
+        # --- helpers shared by both fast/slow paths ---
+        def _make_rev_record(info, raw_data: bytes):
+            return RevisionRecord(
+                data=res_encode(RawResource(info=info, raw_data=raw_data))
+            )
+
+        def _collect_blobs(raw_data: bytes):
+            if collect is not None:
+                try:
+                    blob_file_ids.update(collect(data_decode(raw_data)))
+                except Exception:
+                    pass
+
+        # Try bulk pre-fetch (concurrent S3 downloads when supported)
+        has_bulk = hasattr(self.storage, "dump_resources_bulk")
+
+        if has_bulk:
+            # Fast path: materialise metas, pre-fetch all revision data
+            metas_list = list(metas)
+            rid_set = frozenset(m.resource_id for m in metas_list)
+            bulk = self.storage.dump_resources_bulk(resource_ids=rid_set)
+        else:
+            metas_list = None
+            bulk = None
+
+        if bulk is not None:
+            for meta in metas_list:
+                yield MetaRecord(data=meta_encode(meta))
+                for info, raw_data in bulk.get(meta.resource_id, []):
+                    yield _make_rev_record(info, raw_data)
+                    _collect_blobs(raw_data)
+        else:
+            # Slow path: stream one resource at a time (original behaviour)
+            it = metas_list if metas_list is not None else metas
+            dump_resource = self.storage.dump_resource
+            for meta in it:
+                yield MetaRecord(data=meta_encode(meta))
+                for info, data_io in dump_resource(meta.resource_id):
+                    raw_data = data_io.read()
+                    yield _make_rev_record(info, raw_data)
+                    _collect_blobs(raw_data)
 
         # Blobs (must come after all revisions so file_ids are fully collected)
         if has_blobs and blob_file_ids:
