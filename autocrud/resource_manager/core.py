@@ -69,8 +69,6 @@ from autocrud.types import (
     BeforeUpdate,
     Binary,
     CannotModifyResourceError,
-    DataSearchCondition,
-    DataSearchOperator,
     EventContext,
     IEventHandler,
     IMessageQueue,
@@ -116,15 +114,11 @@ from autocrud.types import (
     ResourceIsDeletedError,
     ResourceMeta,
     ResourceMetaSearchQuery,
-    ResourceMetaSearchSort,
-    ResourceMetaSortDirection,
-    ResourceMetaSortKey,
     RevisionIDNotFoundError,
     RevisionInfo,
     RevisionStatus,
     SearchedResource,
     SpecialIndex,
-    UniqueConstraintError,
     ValidationError,
 )
 
@@ -376,6 +370,28 @@ class PermissionEventHandler(IEventHandler):
             )
 
 
+def coerce_data_to_resource_type(func):
+    """Decorator that coerces the ``data`` argument to the resource Struct type
+    **before** the wrapped function (and therefore before any event handlers)
+    executes.  Applied as the *outermost* decorator so that
+    ``@execute_with_events`` passes already-coerced data to event contexts.
+    """
+
+    @wraps(func)
+    def wrapper(self: "ResourceManager", *args, **kwargs):
+        sig = inspect.signature(func)
+        bound = sig.bind(self, *args, **kwargs)
+        bound.apply_defaults()
+        data_arg = bound.arguments.get("data")
+        if data_arg is not None and data_arg is not UNSET:
+            bound.arguments["data"] = self._coerce_data(data_arg)
+        # Re-pack into positional + keyword
+        new_args = tuple(bound.args[1:])  # strip self
+        return func(self, *new_args, **bound.kwargs)
+
+    return wrapper
+
+
 def execute_with_events(
     contexts: _Contexts,
     result: str | Callable[[Any], dict[str, Any]],
@@ -557,6 +573,14 @@ class ResourceManager(IResourceManager[T], Generic[T]):
                 PermissionEventHandler(permission_checker),
             )
 
+        # 唯一約束檢查器（放在最後，在 PermissionEventHandler 之後執行）
+        if self._unique_fields:
+            from autocrud.resource_manager.unique_handler import (
+                UniqueConstraintEventHandler,
+            )
+
+            self.event_handlers.append(UniqueConstraintEventHandler(self))
+
         self._binary_processor = BinaryProcessor(resource_type)
 
         # Set up validator
@@ -599,6 +623,8 @@ class ResourceManager(IResourceManager[T], Generic[T]):
         This allows Pydantic users to pass native Pydantic instances
         or plain dicts without knowing about msgspec.
         """
+        if data is not UNSET and type(data) is not JsonPatch:
+            return data
         if isinstance(data, Struct):
             return data
         if isinstance(data, dict):
@@ -717,90 +743,6 @@ class ResourceManager(IResourceManager[T], Generic[T]):
         """Load and decode data for a specific revision."""
         with self.storage.get_data_bytes(resource_id, revision_id) as data_io:
             return self.decode(data_io.read())
-
-    def _unique_fields_changed(self, current_data: T, new_data: T) -> bool:
-        """Return True if any unique-constrained field value differs."""
-        if not self._unique_fields:
-            return False
-        current_indexed = self._extract_indexed_values(current_data)
-        new_indexed = self._extract_indexed_values(new_data)
-        return any(
-            new_indexed.get(f) != current_indexed.get(f) for f in self._unique_fields
-        )
-
-    def _check_unique_constraints(
-        self,
-        data: T,
-        *,
-        exclude_resource_id: str | None = None,
-    ) -> None:
-        """Raise UniqueConstraintError if any unique-annotated field value is already
-        used by another (non-deleted) resource.
-
-        Arguments:
-            data: The resource data to validate.
-            exclude_resource_id: A ``resource_id`` to exclude from the conflict
-                check — typically the resource being updated so that keeping
-                the same value does not trigger a false positive.
-        """
-        if not self._unique_fields:
-            return
-        indexed = self._extract_indexed_values(data)
-        for field_path in self._unique_fields:
-            value = indexed.get(field_path)
-            if value is None:
-                continue
-            query = ResourceMetaSearchQuery(
-                conditions=[
-                    DataSearchCondition(
-                        field_path=field_path,
-                        operator=DataSearchOperator.equals,
-                        value=value,
-                    )
-                ],
-                is_deleted=False,
-                limit=1,
-                sorts=[
-                    ResourceMetaSearchSort(
-                        key=ResourceMetaSortKey.updated_time,
-                        direction=ResourceMetaSortDirection.ascending,
-                    )
-                ],
-            )
-            matches = self.storage.search(query)
-            if not matches:
-                continue
-            first = matches[0]
-            if (
-                exclude_resource_id is not None
-                and first.resource_id == exclude_resource_id
-            ):
-                continue  # this resource is the earliest owner — no conflict
-            raise UniqueConstraintError(field_path, value, first.resource_id)
-
-    def _hard_purge_resource(self, resource_id: str) -> None:
-        """Hard-delete a resource's metadata as a unique-constraint rollback.
-
-        Should be called only when a newly written resource is discovered to
-        conflict with an existing one (race condition).  Uses
-        :meth:`IStorage.purge_meta` which is a physical removal rather than
-        a soft delete.
-
-        Arguments:
-            resource_id: The resource to remove.
-        """
-        try:
-            self.storage.purge_meta(resource_id)
-        except (KeyError, NotImplementedError):
-            # KeyError: already gone (no-op).
-            # NotImplementedError: storage doesn't support hard delete;
-            #   fall back to soft-delete so the UK is at least hidden.
-            try:
-                meta = self._get_meta_no_check_is_deleted(resource_id)
-                meta.is_deleted = True
-                self.storage.save_meta(meta)
-            except Exception:
-                pass
 
     @contextmanager
     def meta_provide(
@@ -1178,6 +1120,7 @@ class ResourceManager(IResourceManager[T], Generic[T]):
 
         return results
 
+    @coerce_data_to_resource_type
     @execute_with_events(
         (BeforeCreate, AfterCreate, OnSuccessCreate, OnFailureCreate),
         "info",
@@ -1199,23 +1142,11 @@ class ResourceManager(IResourceManager[T], Generic[T]):
             UniqueConstraintError: If a field annotated with :class:`Unique` already
                 has the same value on another non-deleted resource.
         """
-        data = self._coerce_data(data)
-        # Step 1 — pre-check: fast path before writing anything
-        self._check_unique_constraints(data)
         status = self.default_status if status is UNSET else status
         data = self._process_binary_fields(data)
         info = self._rev_info(_BuildRevInfoCreate(data, status))
-        # Step 2 — save
         self.storage.save_revision(info, io.BytesIO(self.encode(data)))
         self.storage.save_meta(self._res_meta(_BuildResMetaCreate(info, data)))
-        # Step 3 — post-check: catch race conditions where two writers passed
-        #          the pre-check concurrently
-        try:
-            self._check_unique_constraints(data, exclude_resource_id=info.resource_id)
-        except UniqueConstraintError:
-            # Compensate: hard-delete the revision we just wrote
-            self._hard_purge_resource(info.resource_id)
-            raise
         if self.message_queue is not None:
             self.message_queue.put(info.resource_id)
         return info
@@ -1368,6 +1299,7 @@ class ResourceManager(IResourceManager[T], Generic[T]):
         """
         return self.storage.list_revisions(resource_id)
 
+    @coerce_data_to_resource_type
     @execute_with_events(
         (BeforeUpdate, AfterUpdate, OnSuccessUpdate, OnFailureUpdate),
         "revision_info",
@@ -1389,9 +1321,6 @@ class ResourceManager(IResourceManager[T], Generic[T]):
         Raises:
             ResourceIDNotFoundError: If the resource ID does not exist.
         """
-        data = self._coerce_data(data)
-        # Step 1 — pre-check (exclude self so keeping the same UK value is OK)
-        self._check_unique_constraints(data, exclude_resource_id=resource_id)
         status = self.default_status if status is UNSET else status
         data = self._process_binary_fields(data)
         prev_res_meta = self.get_meta(resource_id)
@@ -1403,16 +1332,8 @@ class ResourceManager(IResourceManager[T], Generic[T]):
         if prev_info.data_hash == rev_info.data_hash:
             return prev_info
         res_meta = self._res_meta(_BuildResMetaUpdate(prev_res_meta, rev_info, data))
-        # Step 2 — save
         self.storage.save_revision(rev_info, io.BytesIO(self.encode(data)))
         self.storage.save_meta(res_meta)
-        # Step 3 — post-check: catch race conditions
-        try:
-            self._check_unique_constraints(data, exclude_resource_id=resource_id)
-        except UniqueConstraintError:
-            # Compensate: restore previous meta (previous revision is still stored)
-            self.storage.save_meta(prev_res_meta)
-            raise
         return rev_info
 
     def create_or_update(
@@ -1434,6 +1355,7 @@ class ResourceManager(IResourceManager[T], Generic[T]):
         except ResourceIDNotFoundError:
             return self.create(data, status=status)
 
+    @coerce_data_to_resource_type
     @execute_with_events(
         (BeforeModify, AfterModify, OnSuccessModify, OnFailureModify),
         "revision_info",
@@ -1458,9 +1380,6 @@ class ResourceManager(IResourceManager[T], Generic[T]):
         Raises:
             CannotModifyResourceError: If the resource is not in DRAFT status.
         """
-        if data is not UNSET and type(data) is not JsonPatch:
-            data = self._coerce_data(data)
-
         if data is UNSET and status is not UNSET:
             return self._modify_status(resource_id, status)
 
@@ -1479,15 +1398,6 @@ class ResourceManager(IResourceManager[T], Generic[T]):
         if type(data) is JsonPatch:
             data = self._apply_patch(resource_id, data)
 
-        # Unique-constraint check: only for unique fields that actually changed
-        current_data = None
-        if data is not UNSET and self._unique_fields:
-            current_data = self._load_revision_data(
-                resource_id, prev_res_meta.current_revision_id
-            )
-            if self._unique_fields_changed(current_data, data):
-                self._check_unique_constraints(data, exclude_resource_id=resource_id)
-
         if data is not UNSET:
             data = self._process_binary_fields(data)
 
@@ -1499,17 +1409,6 @@ class ResourceManager(IResourceManager[T], Generic[T]):
         res_meta = self._res_meta(_BuildResMetaModify(prev_res_meta, rev_info, data))
         self.storage.save_revision(rev_info, io.BytesIO(self.encode(data)))
         self.storage.save_meta(res_meta)
-        # Post-check: catch race conditions where two modifiers passed pre-check
-        if current_data is not None:
-            try:
-                self._check_unique_constraints(data, exclude_resource_id=resource_id)
-            except UniqueConstraintError:
-                # Compensate: restore previous meta and revision data
-                self.storage.save_revision(
-                    prev_info, io.BytesIO(self.encode(current_data))
-                )
-                self.storage.save_meta(prev_res_meta)
-                raise
         return rev_info
 
     def _modify_status(self, resource_id: str, status: RevisionStatus) -> RevisionInfo:
@@ -1585,16 +1484,9 @@ class ResourceManager(IResourceManager[T], Generic[T]):
             raise RevisionIDNotFoundError(resource_id, revision_id)
 
         # 切換到指定版本時，需要更新索引數據
-        data = None
-        if self._indexed_fields or self._unique_fields:
+        if self._indexed_fields:
             data = self._load_revision_data(resource_id, revision_id)
-
-        if data is not None and self._indexed_fields:
             meta.indexed_data = self._extract_indexed_values(data)
-
-        # Unique-constraint check: target revision's data may conflict
-        if data is not None and self._unique_fields:
-            self._check_unique_constraints(data, exclude_resource_id=resource_id)
 
         meta.updated_by = self.user_ctx.get()
         meta.updated_time = self.now_ctx.get()
@@ -1645,10 +1537,6 @@ class ResourceManager(IResourceManager[T], Generic[T]):
         """
         meta = self._get_meta_no_check_is_deleted(resource_id)
         if meta.is_deleted:
-            # Unique-constraint check: restoring re-activates the UK values
-            if self._unique_fields:
-                data = self._load_revision_data(resource_id, meta.current_revision_id)
-                self._check_unique_constraints(data, exclude_resource_id=resource_id)
             meta.is_deleted = False
             meta.updated_by = self.user_ctx.get()
             meta.updated_time = self.now_ctx.get()

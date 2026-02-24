@@ -992,6 +992,19 @@ class AutoCRUD:
             if field_name not in resource_manager._unique_fields:
                 resource_manager._unique_fields.append(field_name)
 
+        # Register unique-constraint event handler if not already present
+        from autocrud.resource_manager.unique_handler import (
+            UniqueConstraintEventHandler,
+        )
+
+        if not any(
+            isinstance(h, UniqueConstraintEventHandler)
+            for h in resource_manager.event_handlers
+        ):
+            resource_manager.event_handlers.append(
+                UniqueConstraintEventHandler(resource_manager)
+            )
+
     def openapi(self, app: FastAPI, structs: list[type] = None) -> None:
         """Generate and register the OpenAPI schema for the FastAPI application.
 
