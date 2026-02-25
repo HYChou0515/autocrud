@@ -10,23 +10,121 @@
 import fs from 'node:fs';
 import path from 'node:path';
 
-export async function generateCode(apiUrl: string, outputRoot: string): Promise<void> {
+export interface GenerateOptions {
+  openapiPath?: string;
+  basePath?: string;
+  apiBaseUrl?: string;
+}
+
+export async function generateCode(
+  apiUrl: string,
+  outputRoot: string,
+  options: GenerateOptions = {},
+): Promise<void> {
   const ROOT = process.cwd();
   const SRC = path.join(ROOT, outputRoot);
   const GEN = path.join(SRC, 'generated');
   const ROUTES = path.join(SRC, 'routes');
 
-  console.log('🚀 AutoCRUD Web Code Generator');
-  console.log(`📡 Fetching OpenAPI spec from ${apiUrl}/openapi.json...\n`);
+  const openapiPath = options.openapiPath ?? '/openapi.json';
+  const specUrl = `${apiUrl}${openapiPath}`;
 
-  const resp = await fetch(`${apiUrl}/openapi.json`);
+  console.log('🚀 AutoCRUD Web Code Generator');
+  console.log(`📡 Fetching OpenAPI spec from ${specUrl}...\n`);
+
+  const resp = await fetch(specUrl);
   if (!resp.ok) throw new Error(`HTTP ${resp.status}: ${resp.statusText}`);
 
   const spec: any = await resp.json();
   console.log(`✅ ${spec.info.title} v${spec.info.version}`);
 
-  const generator = new Generator(spec, ROOT, SRC, GEN, ROUTES);
+  // Detect or use provided base path
+  const basePath = options.basePath ?? detectBasePath(spec);
+  if (basePath) {
+    console.log(`🔗 API base path: ${basePath}`);
+  }
+
+  const generator = new Generator(spec, ROOT, SRC, GEN, ROUTES, basePath);
   await generator.run();
+
+  // Write .env file with VITE_API_URL
+  const runtimeUrl = options.apiBaseUrl ?? `${apiUrl}${basePath}`;
+  writeEnvFile(ROOT, runtimeUrl);
+}
+
+/**
+ * Auto-detect API base path from OpenAPI spec paths.
+ *
+ * Collects all POST endpoints with a $ref request body schema,
+ * strips the last segment (resource name) from each path,
+ * and returns the common prefix if all prefixes are identical.
+ *
+ * @returns The common base path (e.g. '/foo/bar') or '' if paths are at root.
+ */
+export function detectBasePath(spec: any): string {
+  const prefixes = new Set<string>();
+
+  for (const [p, methods] of Object.entries<any>(spec.paths ?? {})) {
+    if (!methods.post) continue;
+    const schema = methods.post.requestBody?.content?.['application/json']?.schema?.$ref;
+    if (!schema) continue;
+
+    // Strip last segment: '/foo/bar/character' → '/foo/bar'
+    const lastSlash = p.lastIndexOf('/');
+    if (lastSlash <= 0) {
+      prefixes.add('');
+    } else {
+      prefixes.add(p.substring(0, lastSlash));
+    }
+  }
+
+  if (prefixes.size === 0) return '';
+  if (prefixes.size === 1) return [...prefixes][0];
+
+  // Multiple different prefixes — try to find longest common prefix
+  const sorted = [...prefixes].sort();
+  const first = sorted[0];
+  const last = sorted[sorted.length - 1];
+  let common = '';
+  for (let i = 0; i < first.length; i++) {
+    if (first[i] === last[i]) {
+      common += first[i];
+    } else {
+      break;
+    }
+  }
+  // Trim to last '/' boundary
+  const trimmed = common.substring(0, common.lastIndexOf('/'));
+  if (trimmed) {
+    console.warn(
+      `⚠️  Multiple path prefixes detected: ${sorted.join(', ')}. Using common prefix: ${trimmed}`,
+    );
+  }
+  return trimmed;
+}
+
+/**
+ * Write or update .env file with VITE_API_URL.
+ * If .env exists, only updates/adds the VITE_API_URL line.
+ */
+export function writeEnvFile(rootDir: string, apiUrl: string): void {
+  const envPath = path.join(rootDir, '.env');
+  const envLine = `VITE_API_URL=${apiUrl}`;
+
+  if (fs.existsSync(envPath)) {
+    const content = fs.readFileSync(envPath, 'utf-8');
+    const lines = content.split('\n');
+    const idx = lines.findIndex((l) => l.startsWith('VITE_API_URL='));
+    if (idx >= 0) {
+      lines[idx] = envLine;
+    } else {
+      lines.push(envLine);
+    }
+    fs.writeFileSync(envPath, lines.join('\n'), 'utf-8');
+  } else {
+    fs.writeFileSync(envPath, envLine + '\n', 'utf-8');
+  }
+  console.log(`📝 .env: VITE_API_URL=${apiUrl}`);
 }
 
 class Generator {
@@ -35,14 +133,16 @@ class Generator {
   private SRC: string;
   private GEN: string;
   private ROUTES: string;
+  private basePath: string;
   private resources: Resource[] = [];
 
-  constructor(spec: any, root: string, src: string, gen: string, routes: string) {
+  constructor(spec: any, root: string, src: string, gen: string, routes: string, basePath: string) {
     this.spec = spec;
     this.ROOT = root;
     this.SRC = src;
     this.GEN = gen;
     this.ROUTES = routes;
+    this.basePath = basePath;
   }
 
   async run() {
@@ -75,10 +175,16 @@ class Generator {
 
   private extractResources() {
     const resourcePaths = new Map<string, string>();
+    const prefix = this.basePath;
+
+    // Build regex that matches {prefix}/{resourceName} (single segment after prefix)
+    const pattern = prefix
+      ? new RegExp(`^${escapeRegex(prefix)}\\/([^/]+)$`)
+      : /^\/([^/]+)$/;
 
     for (const [path, methods] of Object.entries<any>(this.spec.paths)) {
       if (!methods.post) continue;
-      const match = path.match(/^\/([^/]+)$/);
+      const match = path.match(pattern);
       if (!match) continue;
 
       const resourceName = match[1];
@@ -702,12 +808,13 @@ export { registry as resources };
   }
 
   private genApiClient(r: Resource): string {
+    const base = `${this.basePath}/${r.name}`;
     return `// Auto-generated by AutoCRUD Web Generator
 import { client } from '../../lib/client';
 import type { ${r.schemaName} } from '../types';
 import type { ResourceMeta, RevisionInfo, FullResource, RevisionListResponse, RevisionListParams, SearchParams } from '../../types/api';
 
-const BASE = '/${r.name}';
+const BASE = '${base}';
 
 export const ${r.camel}Api = {
   create: (data: ${r.schemaName}) =>
@@ -940,6 +1047,11 @@ function toLabel(s: string) {
     .split(/[-_]+/)
     .map((w) => w[0].toUpperCase() + w.slice(1))
     .join(' ');
+}
+
+/** Escape special regex characters in a string */
+function escapeRegex(s: string): string {
+  return s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 }
 
 /** ISO 8601 datetime pattern */

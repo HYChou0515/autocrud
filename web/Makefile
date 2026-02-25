@@ -1,6 +1,9 @@
 # AutoCRUD Web - Makefile
 # 常用開發指令
 
+# Configurable API URL (override with: make gen-app API_URL=http://myhost:9000)
+API_URL ?= http://0.0.0.0:8000
+
 .PHONY: help build-gen gen dev dev-app dev-gen install clean test clean-app gen-app reset-app regen-app style publish
 
 # 預設目標：顯示幫助
@@ -131,8 +134,8 @@ gen-app: build-gen
 	cd generator && node dist/cli.js init app --dir ..
 	@echo "📦 安裝 app 依賴..."
 	cd app && pnpm install
-	@echo "🔧 從 AutoCRUD 後端生成代碼..."
-	cd app && node ../generator/dist/cli.js generate --url http://0.0.0.0:8000
+	@echo "🔧 從 AutoCRUD 後端生成代碼... ($(API_URL))"
+	cd app && node ../generator/dist/cli.js generate --url $(API_URL)
 	@echo "✅ App 生成完成！"
 	@echo ""
 	@echo "📝 下一步："
@@ -152,8 +155,8 @@ regen-app: build-gen
 	fi
 	@echo "🔧 清除舊的生成代碼..."
 	rm -rf app/src/generated app/src/routes/autocrud-admin
-	@echo "📡 連接到 http://0.0.0.0:8000..."
-	cd app && node ../generator/dist/cli.js generate --url http://0.0.0.0:8000
+	@echo "📡 連接到 $(API_URL)..."
+	cd app && node ../generator/dist/cli.js generate --url $(API_URL)
 	@echo "✅ 代碼生成完成"
 
 regen-and-run: regen-app dev-app

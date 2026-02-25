@@ -67,11 +67,28 @@ Generate code from AutoCRUD API OpenAPI spec.
 Options:
 - `-u, --url <api-url>`: API base URL (default: `http://localhost:8000`)
 - `-o, --output <directory>`: Output directory (default: `src`)
+- `--openapi-path <path>`: Path to OpenAPI spec endpoint (default: `/openapi.json`)
+- `--base-path <path>`: API base path prefix, auto-detected if omitted
+- `--api-base-url <url>`: Runtime API base URL written to `.env` (defaults to `--url` + detected base path)
 
 Example:
 ```bash
 autocrud-web generate --url http://localhost:8000
+# With non-root API prefix:
+autocrud-web generate --url http://localhost:8000 --base-path /api/v1
 ```
+
+### `autocrud-web integrate`
+
+Integrate AutoCRUD generated code into an **existing** React project without overwriting your `package.json`, `tsconfig`, `vite.config.ts`, etc.
+
+Options: same as `generate`.
+
+```bash
+autocrud-web integrate --url http://localhost:8000
+```
+
+See [INTEGRATION.md](INTEGRATION.md) for a detailed step-by-step guide.
 
 ## Generated Structure
 
