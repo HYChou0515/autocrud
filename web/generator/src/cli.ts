@@ -29,13 +29,7 @@ program
   .option('--base-path <path>', 'API base path prefix (auto-detected if omitted)')
   .option('--api-base-url <url>', 'Runtime API base URL for .env (defaults to --url + base-path)')
   .action(
-    async (options: {
-      url: string;
-      output: string;
-      openapiPath: string;
-      basePath?: string;
-      apiBaseUrl?: string;
-    }) => {
+    async (options: { url: string; output: string; openapiPath: string; basePath?: string; apiBaseUrl?: string }) => {
       await generateCode(options.url, options.output, {
         openapiPath: options.openapiPath,
         basePath: options.basePath,
@@ -53,13 +47,7 @@ program
   .option('--base-path <path>', 'API base path prefix (auto-detected if omitted)')
   .option('--api-base-url <url>', 'Runtime API base URL for .env (defaults to --url + base-path)')
   .action(
-    async (options: {
-      url: string;
-      output: string;
-      openapiPath: string;
-      basePath?: string;
-      apiBaseUrl?: string;
-    }) => {
+    async (options: { url: string; output: string; openapiPath: string; basePath?: string; apiBaseUrl?: string }) => {
       await integrateProject(options.url, options.output, {
         openapiPath: options.openapiPath,
         basePath: options.basePath,

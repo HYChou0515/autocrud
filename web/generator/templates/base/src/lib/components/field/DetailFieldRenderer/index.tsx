@@ -12,7 +12,7 @@
  *      have an entry for every FieldKind.
  */
 
-import { Code, Text } from '@mantine/core';
+import { Code, Divider, Stack, Text } from '@mantine/core';
 import type { ResourceField } from '../../../resources';
 import { resolveFieldKind, type FieldKind } from '../resolveFieldKind';
 import { RefLink, RefLinkList, RefRevisionLink, RefRevisionLinkList } from '../../common/RefLink';
@@ -88,19 +88,36 @@ const DETAIL_RENDERERS: Record<FieldKind, (ctx: DetailRenderContext) => React.Re
   },
 
   union: ({ field, value }) => {
-    if (
-      field.unionMeta &&
-      field.unionMeta.discriminatorField !== '__type' &&
-      typeof value === 'object' &&
-      value !== null
-    ) {
-      return (
-        <UnionFieldDisplay
-          value={value as Record<string, any>}
-          unionMeta={field.unionMeta}
-          renderValue={renderDetailValue}
-        />
-      );
+    if (field.unionMeta && field.unionMeta.discriminatorField !== '__type') {
+      // Array of discriminated union items
+      if (field.isArray && Array.isArray(value)) {
+        if (value.length === 0) return NA;
+        return (
+          <Stack gap="xs">
+            {value.map((item, idx) => (
+              <div key={idx}>
+                {idx > 0 && <Divider my="xs" />}
+                <UnionFieldDisplay
+                  value={item as Record<string, any>}
+                  unionMeta={field.unionMeta!}
+                  renderValue={renderDetailValue}
+                />
+              </div>
+            ))}
+          </Stack>
+        );
+      }
+
+      // Single discriminated union value
+      if (typeof value === 'object' && value !== null) {
+        return (
+          <UnionFieldDisplay
+            value={value as Record<string, any>}
+            unionMeta={field.unionMeta}
+            renderValue={renderDetailValue}
+          />
+        );
+      }
     }
     // Simple union or fallback: show as JSON
     return <Code block>{JSON.stringify(value, null, 2)}</Code>;

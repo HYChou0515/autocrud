@@ -1149,39 +1149,47 @@ class AutoCRUD:
                     out.append(hint)
                     out.extend(_collect_nested_struct_types(hint, visited))
 
-        for model_name, rm in self.resource_managers.items():
-            # --- top-level resource Struct ---
-            refs = extract_refs(rm.resource_type, model_name)
-            all_refs.extend(refs)
-            schema_name = getattr(rm.resource_type, "__name__", None)
-            processed_structs.add(rm.resource_type)
-            if schema_name is None:
-                # Union type (e.g. Cat | Dog) — no single OpenAPI component to annotate
-                continue
-            _inject_into_component(schema_name, refs)
+        def _process_single_struct(
+            struct_type: type,
+            model_name: str,
+            *,
+            inject_unique: bool = False,
+            rm: Any = None,
+        ) -> None:
+            """Inject ref / display-name / unique metadata for a single Struct
+            type into its OpenAPI component, and recurse into nested Structs.
+            """
+            struct_name = getattr(struct_type, "__name__", None)
+            if struct_name is None:
+                return
 
-            # --- DisplayName annotation ---
+            refs = extract_refs(struct_type, model_name)
+            all_refs.extend(refs)
+            _inject_into_component(struct_name, refs)
+
+            # DisplayName annotation
             from autocrud.types import extract_display_name
 
-            dn_field = extract_display_name(rm.resource_type)
+            dn_field = extract_display_name(struct_type)
             if dn_field is not None:
-                comp = components.get(schema_name)
+                comp = components.get(struct_name)
                 if comp is not None:
                     comp["x-display-name-field"] = dn_field
 
-            # --- Unique field annotations ---
-            unique_fields = self._get_unique_fields(rm)
-            if unique_fields:
-                comp = components.get(schema_name)
-                if comp is not None:
-                    props = comp.get("properties", {})
-                    for uf in unique_fields:
-                        prop = props.get(uf)
-                        if prop is not None:
-                            prop["x-unique"] = True
+            # Unique field annotations (only for top-level resource types)
+            if inject_unique and rm is not None:
+                unique_fields = self._get_unique_fields(rm)
+                if unique_fields:
+                    comp = components.get(struct_name)
+                    if comp is not None:
+                        props = comp.get("properties", {})
+                        for uf in unique_fields:
+                            prop = props.get(uf)
+                            if prop is not None:
+                                prop["x-unique"] = True
 
-            # --- nested Struct types (e.g. Job[Payload]) ---
-            nested = _collect_nested_struct_types(rm.resource_type, set())
+            # Nested Struct types (e.g. Job[Payload])
+            nested = _collect_nested_struct_types(struct_type, set())
             for nested_struct in nested:
                 if nested_struct in processed_structs:
                     continue
@@ -1191,6 +1199,27 @@ class AutoCRUD:
                 nested_name = getattr(nested_struct, "__name__", None)
                 if nested_name is not None:
                     _inject_into_component(nested_name, nested_refs)
+
+        for model_name, rm in self.resource_managers.items():
+            processed_structs.add(rm.resource_type)
+            schema_name = getattr(rm.resource_type, "__name__", None)
+
+            if schema_name is None:
+                # Union type (e.g. Cat | Dog) — process each member type
+                member_types = get_args(rm.resource_type) or ()
+                for member_type in member_types:
+                    if member_type in processed_structs:
+                        continue
+                    processed_structs.add(member_type)
+                    _process_single_struct(
+                        member_type, model_name, inject_unique=False, rm=rm
+                    )
+                continue
+
+            # Regular (non-union) resource Struct
+            _process_single_struct(
+                rm.resource_type, model_name, inject_unique=True, rm=rm
+            )
 
         # Also inject a top-level x-autocrud-relationships extension
         if all_refs:

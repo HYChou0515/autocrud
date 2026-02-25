@@ -23,7 +23,9 @@ export function ResourceCreate<T extends Record<string, any>>({
 
   const handleSubmit = async (values: T) => {
     try {
-      await config.apiClient.create(values);
+      // Union resource: form wraps in { data: ... }, API expects the unwrapped union object
+      const submitValues = config.isUnion ? ((values as any).data as T) : values;
+      await config.apiClient.create(submitValues);
       navigate({ to: basePath });
     } catch (error) {
       const conflict = extractUniqueConflict(error);

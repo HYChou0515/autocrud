@@ -20,7 +20,7 @@ export default defineConfig({
     include: [
       'src/lib/utils/**/*.test.ts',
       'src/lib/utils/formUtils/**/*.test.ts',
-      'src/lib/components/**/*.test.ts',
+      'src/lib/components/**/*.test.{ts,tsx}',
       'src/lib/hooks/**/*.test.ts',
     ],
     coverage: {

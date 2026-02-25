@@ -16,11 +16,7 @@ export interface GenerateOptions {
   apiBaseUrl?: string;
 }
 
-export async function generateCode(
-  apiUrl: string,
-  outputRoot: string,
-  options: GenerateOptions = {},
-): Promise<void> {
+export async function generateCode(apiUrl: string, outputRoot: string, options: GenerateOptions = {}): Promise<void> {
   const ROOT = process.cwd();
   const SRC = path.join(ROOT, outputRoot);
   const GEN = path.join(SRC, 'generated');
@@ -66,8 +62,11 @@ export function detectBasePath(spec: any): string {
 
   for (const [p, methods] of Object.entries<any>(spec.paths ?? {})) {
     if (!methods.post) continue;
-    const schema = methods.post.requestBody?.content?.['application/json']?.schema?.$ref;
-    if (!schema) continue;
+    const bodySchema = methods.post.requestBody?.content?.['application/json']?.schema;
+    if (!bodySchema) continue;
+    // Accept both $ref (normal models) and anyOf/oneOf (union types)
+    const isResource = bodySchema.$ref || hasRefMembers(bodySchema.anyOf) || hasRefMembers(bodySchema.oneOf);
+    if (!isResource) continue;
 
     // Strip last segment: '/foo/bar/character' → '/foo/bar'
     const lastSlash = p.lastIndexOf('/');
@@ -96,9 +95,7 @@ export function detectBasePath(spec: any): string {
   // Trim to last '/' boundary
   const trimmed = common.substring(0, common.lastIndexOf('/'));
   if (trimmed) {
-    console.warn(
-      `⚠️  Multiple path prefixes detected: ${sorted.join(', ')}. Using common prefix: ${trimmed}`,
-    );
+    console.warn(`⚠️  Multiple path prefixes detected: ${sorted.join(', ')}. Using common prefix: ${trimmed}`);
   }
   return trimmed;
 }
@@ -127,14 +124,16 @@ export function writeEnvFile(rootDir: string, apiUrl: string): void {
   console.log(`📝 .env: VITE_API_URL=${apiUrl}`);
 }
 
-class Generator {
+/** @internal Exported for testing */
+export class Generator {
   private spec: any;
   private ROOT: string;
   private SRC: string;
   private GEN: string;
   private ROUTES: string;
   private basePath: string;
-  private resources: Resource[] = [];
+  /** @internal Exposed for testing */
+  resources: Resource[] = [];
 
   constructor(spec: any, root: string, src: string, gen: string, routes: string, basePath: string) {
     this.spec = spec;
@@ -178,9 +177,10 @@ class Generator {
     const prefix = this.basePath;
 
     // Build regex that matches {prefix}/{resourceName} (single segment after prefix)
-    const pattern = prefix
-      ? new RegExp(`^${escapeRegex(prefix)}\\/([^/]+)$`)
-      : /^\/([^/]+)$/;
+    const pattern = prefix ? new RegExp(`^${escapeRegex(prefix)}\\/([^/]+)$`) : /^\/([^/]+)$/;
+
+    // Also collect union type resources (POST body is anyOf/oneOf, not $ref)
+    const unionResourceSchemas = new Map<string, any>();
 
     for (const [path, methods] of Object.entries<any>(this.spec.paths)) {
       if (!methods.post) continue;
@@ -188,9 +188,14 @@ class Generator {
       if (!match) continue;
 
       const resourceName = match[1];
-      const schema = methods.post.requestBody?.content?.['application/json']?.schema?.$ref;
-      if (schema) {
-        resourcePaths.set(resourceName, schema.split('/').pop()!);
+      const bodySchema = methods.post.requestBody?.content?.['application/json']?.schema;
+      if (!bodySchema) continue;
+
+      if (bodySchema.$ref) {
+        resourcePaths.set(resourceName, bodySchema.$ref.split('/').pop()!);
+      } else if (hasRefMembers(bodySchema.anyOf) || hasRefMembers(bodySchema.oneOf)) {
+        // Union type: POST body is inline anyOf/oneOf with $ref members
+        unionResourceSchemas.set(resourceName, bodySchema);
       }
     }
 
@@ -220,6 +225,136 @@ class Generator {
         maxFormDepth,
       });
     }
+
+    // Process union type resources
+    for (const [name, bodySchema] of unionResourceSchemas) {
+      const unionField = this.buildUnionResourceField(name, bodySchema);
+      if (!unionField) continue;
+
+      // schemaName for the union type alias (e.g. "CatOrDog")
+      const schemaName = toPascal(name);
+
+      this.resources.push({
+        name,
+        label: toLabel(name),
+        pascal: toPascal(name),
+        camel: toCamel(name),
+        schemaName,
+        fields: [unionField],
+        isJob: false,
+        maxFormDepth: 2,
+        isUnion: true,
+        unionVariantSchemaNames: unionField.unionMeta!.variants.map((v) => v.schemaName).filter(Boolean) as string[],
+      });
+    }
+  }
+
+  /**
+   * Build a virtual root Field of type 'union' from a POST body anyOf/oneOf schema.
+   * This is used for union type resources (e.g. Cat | Dog).
+   */
+  private buildUnionResourceField(resourceName: string, bodySchema: any): Field | null {
+    const members = bodySchema.anyOf || bodySchema.oneOf;
+    if (!members) return null;
+
+    const refMembers = members.filter((m: any) => m.$ref);
+    if (refMembers.length === 0) return null;
+
+    // Determine discriminator
+    const disc = bodySchema.discriminator;
+    const discriminatorField = disc?.propertyName || this.detectDiscriminatorField(refMembers);
+    if (!discriminatorField) return null;
+
+    const variants: UnionVariant[] = [];
+    const variantTsTypes: string[] = [];
+
+    if (disc?.mapping) {
+      // Use explicit discriminator mapping
+      for (const [tag, refPath] of Object.entries<string>(disc.mapping)) {
+        const schemaName = refPath.split('/').pop()!;
+        const schema = this.resolveRef(refPath);
+        const variantFields: Field[] = [];
+
+        if (schema?.properties) {
+          const variantRequired = new Set(schema.required ?? []);
+          for (const [subName, subProp] of Object.entries<any>(schema.properties)) {
+            if (subName === discriminatorField) continue;
+            const subField = this.parseField(subName, subProp, variantRequired.has(subName));
+            if (subField) variantFields.push(subField);
+          }
+        }
+
+        variants.push({ tag, label: toLabel(tag), schemaName, fields: variantFields });
+        variantTsTypes.push(schemaName);
+      }
+    } else {
+      // Infer from $ref members
+      for (const member of refMembers) {
+        const schemaName = member.$ref.split('/').pop()!;
+        const schema = this.resolveRef(member.$ref);
+        const variantFields: Field[] = [];
+        let tag = schemaName;
+
+        if (schema?.properties) {
+          const variantRequired = new Set(schema.required ?? []);
+          // Try to extract tag value from the discriminator field's const/enum
+          const discProp = schema.properties[discriminatorField];
+          if (discProp?.const) tag = discProp.const;
+          else if (discProp?.enum?.length === 1) tag = discProp.enum[0];
+
+          for (const [subName, subProp] of Object.entries<any>(schema.properties)) {
+            if (subName === discriminatorField) continue;
+            const subField = this.parseField(subName, subProp, variantRequired.has(subName));
+            if (subField) variantFields.push(subField);
+          }
+        }
+
+        variants.push({ tag, label: toLabel(tag), schemaName, fields: variantFields });
+        variantTsTypes.push(schemaName);
+      }
+    }
+
+    if (variants.length === 0) return null;
+
+    const tsType = variantTsTypes.join(' | ');
+    const zodVariants = variants.map((v) => {
+      const zodFields = v.fields?.map((f) => `${f.name}: ${f.zodType}`).join(', ') || '';
+      return `z.object({ ${discriminatorField}: z.literal('${v.tag}'), ${zodFields} })`;
+    });
+    const zodType = `z.discriminatedUnion('${discriminatorField}', [${zodVariants.join(', ')}])`;
+
+    return {
+      name: 'data',
+      label: toLabel(resourceName),
+      type: 'union',
+      tsType,
+      isArray: false,
+      isRequired: true,
+      isNullable: false,
+      zodType,
+      unionMeta: { discriminatorField, variants },
+    };
+  }
+
+  /**
+   * Detect a common discriminator field across union $ref members.
+   * Looks for a field that exists in all variants and has const/enum with a single value.
+   */
+  private detectDiscriminatorField(refMembers: any[]): string | null {
+    const schemas = refMembers.map((m: any) => this.resolveRef(m.$ref)).filter(Boolean);
+    if (schemas.length === 0) return null;
+
+    // Find property names common to ALL variants that look like discriminator tags
+    const firstProps = Object.keys(schemas[0].properties ?? {});
+    for (const propName of firstProps) {
+      const isDiscriminator = schemas.every((s: any) => {
+        const p = s.properties?.[propName];
+        if (!p) return false;
+        return p.const !== undefined || (p.enum && p.enum.length === 1);
+      });
+      if (isDiscriminator) return propName;
+    }
+    return null;
   }
 
   private detectJobSchema(schema: any): boolean {
@@ -483,6 +618,58 @@ class Generator {
           prop = refSchema;
         }
       }
+
+      // Detect array of discriminated union: items has anyOf/oneOf + discriminator
+      const unionItems = (prop.anyOf || prop.oneOf) && prop.discriminator ? prop : null;
+      if (unionItems) {
+        const disc = unionItems.discriminator;
+        const discriminatorField = disc.propertyName || 'type';
+        const variants: UnionVariant[] = [];
+        const variantTsTypes: string[] = [];
+
+        for (const [tag, refPath] of Object.entries<string>(disc.mapping || {})) {
+          const schemaName = refPath.split('/').pop()!;
+          const itemSchema = this.resolveRef(refPath);
+          const variantFields: Field[] = [];
+
+          if (itemSchema?.properties) {
+            const variantRequired = new Set(itemSchema.required ?? []);
+            for (const [subName, subProp] of Object.entries<any>(itemSchema.properties)) {
+              if (subName === discriminatorField) continue;
+              const subField = this.parseField(subName, subProp, variantRequired.has(subName));
+              if (subField) variantFields.push(subField);
+            }
+          }
+
+          variants.push({ tag, label: toLabel(tag), schemaName, fields: variantFields });
+          variantTsTypes.push(schemaName);
+        }
+
+        tsType = `(${variantTsTypes.join(' | ')})[]`;
+        const zodVariants = variants.map((v) => {
+          const zodFields = v.fields?.map((f) => `${f.name}: ${f.zodType}`).join(', ') || '';
+          return `z.object({ ${discriminatorField}: z.literal('${v.tag}'), ${zodFields} })`;
+        });
+        zodType = `z.array(z.discriminatedUnion('${discriminatorField}', [${zodVariants.join(', ')}]))`;
+
+        if (!isRequired) {
+          zodType = `${zodType}.optional()`;
+        }
+
+        const labelSource = name.includes('.') ? name.split('.').pop()! : name;
+        return {
+          name,
+          label: toLabel(labelSource),
+          type: 'union',
+          tsType,
+          isArray: true,
+          isRequired,
+          isNullable,
+          zodType,
+          unionMeta: { discriminatorField, variants },
+        };
+      }
+
       type = prop.type;
     }
 
@@ -627,79 +814,21 @@ class Generator {
       }
     }
 
-    return `// Auto-generated by AutoCRUD Web Generator\n\n${enums.join('\n\n')}\n\n${interfaces.join('\n\n')}\n`;
+    // Generate union type aliases for union resources
+    const unionAliases: string[] = [];
+    for (const r of this.resources) {
+      if (r.isUnion && r.unionVariantSchemaNames && r.unionVariantSchemaNames.length > 0) {
+        unionAliases.push(`export type ${r.schemaName} = ${r.unionVariantSchemaNames.join(' | ')};`);
+      }
+    }
+
+    const parts = [enums.join('\n\n'), interfaces.join('\n\n'), unionAliases.join('\n\n')].filter(Boolean);
+    return `// Auto-generated by AutoCRUD Web Generator\n\n${parts.join('\n\n')}\n`;
   }
 
   private genResourcesConfig(): string {
     const configs = this.resources.map((r) => {
-      const fields = r.fields.map((f) => {
-        const fieldConfig: any = {
-          name: f.name,
-          label: f.label,
-          type: f.type,
-          isArray: f.isArray,
-          isRequired: f.isRequired,
-          isNullable: f.isNullable,
-        };
-        // Include enum values if present
-        if (f.enumValues && f.enumValues.length > 0) {
-          fieldConfig.enumValues = f.enumValues;
-        }
-        // Include item sub-fields for array of typed objects
-        if (f.itemFields && f.itemFields.length > 0) {
-          fieldConfig.itemFields = f.itemFields.map((sf: Field) => {
-            const subConfig: any = {
-              name: sf.name,
-              label: sf.label,
-              type: sf.type,
-              isArray: sf.isArray,
-              isRequired: sf.isRequired,
-              isNullable: sf.isNullable,
-            };
-            if (sf.enumValues && sf.enumValues.length > 0) {
-              subConfig.enumValues = sf.enumValues;
-            }
-            return subConfig;
-          });
-        }
-        // Include ref metadata for resource references
-        if (f.ref) {
-          fieldConfig.ref = f.ref;
-        }
-        // Include unique constraint marker
-        if (f.isUnique) {
-          fieldConfig.isUnique = true;
-        }
-        // Include union metadata for union fields
-        if (f.unionMeta) {
-          fieldConfig.unionMeta = {
-            discriminatorField: f.unionMeta.discriminatorField,
-            variants: f.unionMeta.variants.map((v) => {
-              const variant: any = { tag: v.tag, label: v.label };
-              if (v.schemaName) variant.schemaName = v.schemaName;
-              if (v.type) variant.type = v.type;
-              if (v.fields && v.fields.length > 0) {
-                variant.fields = v.fields.map((sf) => {
-                  const subConfig: any = {
-                    name: sf.name,
-                    label: sf.label,
-                    type: sf.type,
-                    isArray: sf.isArray,
-                    isRequired: sf.isRequired,
-                    isNullable: sf.isNullable,
-                  };
-                  if (sf.enumValues && sf.enumValues.length > 0) {
-                    subConfig.enumValues = sf.enumValues;
-                  }
-                  return subConfig;
-                });
-              }
-              return variant;
-            }),
-          };
-        }
-        return fieldConfig;
-      });
+      const fields = r.fields.map((f) => serializeField(f));
 
       // Generate Zod schema with nested structure for dot-notation fields
       const zodFields = buildNestedZodFields(r.fields);
@@ -717,7 +846,12 @@ ${zodFields}
     }),
     apiClient: ${r.camel}Api,
     isJob: ${r.isJob},
-    maxFormDepth: ${r.maxFormDepth},
+    maxFormDepth: ${r.maxFormDepth},${
+      r.isUnion
+        ? `
+    isUnion: true,`
+        : ''
+    }
   }`;
     });
 
@@ -809,9 +943,12 @@ export { registry as resources };
 
   private genApiClient(r: Resource): string {
     const base = `${this.basePath}/${r.name}`;
+    // For union types, import the union alias + all variant types
+    const typeImports =
+      r.isUnion && r.unionVariantSchemaNames ? [r.schemaName, ...r.unionVariantSchemaNames].join(', ') : r.schemaName;
     return `// Auto-generated by AutoCRUD Web Generator
 import { client } from '../../lib/client';
-import type { ${r.schemaName} } from '../types';
+import type { ${typeImports} } from '../types';
 import type { ResourceMeta, RevisionInfo, FullResource, RevisionListResponse, RevisionListParams, SearchParams } from '../../types/api';
 
 const BASE = '${base}';
@@ -1054,6 +1191,11 @@ function escapeRegex(s: string): string {
   return s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 }
 
+/** Check if an anyOf/oneOf array contains $ref members (i.e. union type) */
+function hasRefMembers(arr: any[] | undefined): boolean {
+  return Array.isArray(arr) && arr.some((item: any) => item.$ref);
+}
+
 /** ISO 8601 datetime pattern */
 const ISO_DATETIME_RE = /^\d{4}-\d{2}-\d{2}[T ]\d{2}:\d{2}:\d{2}/;
 
@@ -1079,6 +1221,8 @@ interface Resource {
   fields: Field[];
   isJob: boolean;
   maxFormDepth: number;
+  isUnion?: boolean;
+  unionVariantSchemaNames?: string[];
 }
 
 interface FieldRef {
@@ -1114,6 +1258,52 @@ interface Field {
   ref?: FieldRef; // Reference to another resource
   unionMeta?: UnionMeta; // For union fields: discriminator + variant info
   isUnique?: boolean; // Field has a unique constraint (from x-unique OpenAPI extension)
+}
+
+/**
+ * Recursively serialize a Field into a plain object for JSON output.
+ *
+ * This is the SINGLE source of truth for field serialization — used for
+ * top-level fields, itemFields sub-fields, and union variant sub-fields.
+ * All metadata (ref, isUnique, itemFields, unionMeta, enumValues) is preserved
+ * at every nesting level so the UI pipeline treats them identically.
+ */
+function serializeField(f: Field): any {
+  const out: any = {
+    name: f.name,
+    label: f.label,
+    type: f.type,
+    isArray: f.isArray,
+    isRequired: f.isRequired,
+    isNullable: f.isNullable,
+  };
+  if (f.enumValues && f.enumValues.length > 0) {
+    out.enumValues = f.enumValues;
+  }
+  if (f.itemFields && f.itemFields.length > 0) {
+    out.itemFields = f.itemFields.map(serializeField);
+  }
+  if (f.ref) {
+    out.ref = f.ref;
+  }
+  if (f.isUnique) {
+    out.isUnique = true;
+  }
+  if (f.unionMeta) {
+    out.unionMeta = {
+      discriminatorField: f.unionMeta.discriminatorField,
+      variants: f.unionMeta.variants.map((v) => {
+        const variant: any = { tag: v.tag, label: v.label };
+        if (v.schemaName) variant.schemaName = v.schemaName;
+        if (v.type) variant.type = v.type;
+        if (v.fields && v.fields.length > 0) {
+          variant.fields = v.fields.map(serializeField);
+        }
+        return variant;
+      }),
+    };
+  }
+  return out;
 }
 
 /**

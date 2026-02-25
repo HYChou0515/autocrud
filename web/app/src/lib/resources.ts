@@ -101,6 +101,8 @@ export interface ResourceConfig<T = any> {
   indexedFields?: string[];
   /** Default max depth for form field expansion. Fields deeper than this render as JSON editors. */
   maxFormDepth?: number;
+  /** Whether this resource is a union type (e.g. Cat | Dog) */
+  isUnion?: boolean;
   // Zod schema for validation (generated from OpenAPI)
   zodSchema?: z.ZodObject<any>;
   apiClient: {

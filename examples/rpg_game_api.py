@@ -95,7 +95,7 @@ class Skill(Struct):
     required_class: Optional[CharacterClass] = None  # None = 所有職業可學
 
 
-class Equipment(Struct):
+class Equipment(Struct, tag=True):
     """遊戲裝備"""
 
     name: Annotated[str, DisplayName()]
@@ -108,6 +108,15 @@ class Equipment(Struct):
     attack_bonus: int = 0
     defense_bonus: int = 0
     special_effects: list[str] = []  # 裝備特效列表
+    price: int = 100
+    icon: Optional[Binary] = None  # Binary 類型欄位
+
+
+class Item(Struct, tag=True):
+    """遊戲物品（裝備和消耗品的基類）"""
+
+    name: Annotated[str, DisplayName()]
+    description: str = ""
     price: int = 100
     icon: Optional[Binary] = None  # Binary 類型欄位
 
@@ -130,8 +139,34 @@ class Character(Struct):
     special_ability: Optional[str] = None
     # N:N 關係：角色學會的技能（透過 skill resource_id 列表）
     skill_ids: list[Annotated[str, Ref("skill")]] = []
-    equipments: list[Equipment] = []  # 角色裝備列表（嵌入式，非 Ref）
+    equipments: list[Equipment | Item] = []  # 角色裝備列表（嵌入式，非 Ref）
     created_at: dt.datetime = dt.datetime.now()
+
+
+class Dog(Struct, tag=True, kw_only=True):
+    """遊戲中的寵物系統示例"""
+
+    name: Annotated[str, DisplayName()]
+    breed: str
+    level: int = 1
+    hp: int = 100
+    mp: int = 50
+    attack: int = 10
+    defense: int = 5
+    owner_id: Annotated[str, Ref("character", on_delete=OnDelete.set_null)]
+
+
+class Mount(Struct, tag=True, kw_only=True):
+    """遊戲中的坐騎系統示例"""
+
+    name: Annotated[str, DisplayName()]
+    species: str
+    speed: int = 10
+    stamina: int = 100
+    owner_id: Annotated[str, Ref("character", on_delete=OnDelete.set_null)]
+
+
+Pet = Mount | Dog  # 寵物可以是坐騎或寵物狗
 
 
 class Guild(Struct):
@@ -320,12 +355,21 @@ def create_sample_data():
     print("🎮 創建示範遊戲數據...")
 
     # 取得資源管理器
-    guild_manager = crud.resource_managers.get("guild")
-    skill_manager = crud.resource_managers.get("skill")
-    character_manager = crud.resource_managers.get("character")
-    equipment_manager = crud.resource_managers.get("equipment")
+    guild_manager = crud.get_resource_manager(Guild)
+    skill_manager = crud.get_resource_manager(Skill)
+    character_manager = crud.get_resource_manager(Character)
+    equipment_manager = crud.get_resource_manager(Equipment)
+    pet_manager = crud.get_resource_manager(Pet)
 
-    if not all([guild_manager, skill_manager, character_manager, equipment_manager]):
+    if not all(
+        [
+            guild_manager,
+            skill_manager,
+            character_manager,
+            equipment_manager,
+            pet_manager,
+        ]
+    ):
         print("❌ 資源管理器未找到，請確保已註冊模型")
         return
 
@@ -483,6 +527,12 @@ def create_sample_data():
                     defense_bonus=100,
                     special_effects=["📖 自動追蹤所有變更", "🔄 一鍵回滾"],
                 ),
+                Item(
+                    name="神秘的 AutoCRUD 卷軸",
+                    description="一卷記載著 AutoCRUD 最高機密的古老卷軸，使用後可能會帶來意想不到的效果",
+                    price=999999,
+                    icon=Binary(data=get_random_image()),
+                ),
             ],
         ),
         Character(
@@ -509,6 +559,12 @@ def create_sample_data():
                     rarity=ItemRarity.LEGENDARY,
                     defense_bonus=150,
                     special_effects=["🛡️ 防止 SQL 注入攻擊", "💾 查詢效能 +200%"],
+                ),
+                Item(
+                    name="easy mode 模組",
+                    description="一個神奇的模組，安裝後遊戲將變得非常簡單，適合新手玩家",
+                    price=500000,
+                    icon=Binary(data=get_random_image()),
                 ),
             ],
         ),
@@ -537,6 +593,12 @@ def create_sample_data():
                     attack_bonus=100,
                     defense_bonus=30,
                     special_effects=["✨ 法術冷卻時間減少 50%"],
+                ),
+                Item(
+                    name="未鑑定的神秘裝備",
+                    description="一個普通的物品，沒有什麼特別的效果",
+                    price=1000,
+                    icon=Binary(data=get_random_image()),
                 ),
                 Equipment(
                     name="精準查詢弓",
@@ -709,6 +771,88 @@ def create_sample_data():
                 print(f"✅ 創建裝備: {equipment.name} [{equipment.rarity.value}]")
             except Exception as e:
                 print(f"❌ 裝備創建失敗: {e}")
+
+    # 🐾 創建寵物
+    pets: list[Pet] = [
+        Dog(
+            name="像素柴犬",
+            breed="柴犬",
+            level=15,
+            hp=300,
+            mp=50,
+            attack=45,
+            defense=30,
+            owner_id=character_ids.get("AutoCRUD 大神"),
+        ),
+        Dog(
+            name="數據獵犬",
+            breed="德國牧羊犬",
+            level=25,
+            hp=500,
+            mp=80,
+            attack=70,
+            defense=55,
+            owner_id=character_ids.get("資料庫女王"),
+        ),
+        Dog(
+            name="除錯小柯基",
+            breed="柯基",
+            level=8,
+            hp=180,
+            mp=30,
+            attack=20,
+            defense=15,
+            owner_id=character_ids.get("新手小白"),
+        ),
+        Mount(
+            name="API 飛龍",
+            species="火龍",
+            speed=80,
+            stamina=500,
+            owner_id=character_ids.get("RESTful 劍聖"),
+        ),
+        Mount(
+            name="查詢獨角獸",
+            species="獨角獸",
+            speed=60,
+            stamina=400,
+            owner_id=character_ids.get("Schema 設計師"),
+        ),
+        Mount(
+            name="版本控制飛馬",
+            species="飛馬",
+            speed=70,
+            stamina=450,
+            owner_id=character_ids.get("AutoCRUD 大神"),
+        ),
+        Dog(
+            name="SQL 注入偵測犬",
+            breed="邊境牧羊犬",
+            level=40,
+            hp=600,
+            mp=120,
+            attack=90,
+            defense=70,
+            owner_id=character_ids.get("API 魔法師"),
+        ),
+        Mount(
+            name="新手村小毛驢",
+            species="毛驢",
+            speed=20,
+            stamina=200,
+            owner_id=character_ids.get("新手小白"),
+        ),
+    ]
+
+    # 創建寵物數據
+    with pet_manager.meta_provide(current_user, current_time):
+        for pet in pets:
+            try:
+                pet_manager.create(pet)
+                kind = "🐕 狗狗" if isinstance(pet, Dog) else "🐴 坐騎"
+                print(f"✅ 創建寵物: {pet.name} [{kind}]")
+            except Exception as e:
+                print(f"❌ 寵物創建失敗: {e}")
 
 
 def demonstrate_qb_queries():
@@ -914,6 +1058,14 @@ def configure_crud():
     crud.add_model(
         Schema(Equipment, "v1", validator=validate_equipment)
     )  # Callable 風格驗證器
+    crud.add_model(
+        Schema(Pet, "v1"),
+        name="pet",
+        indexed_fields=[
+            ("name", str),
+            ("level", int),
+        ],
+    )
 
     # 註冊遊戲事件任務模型（使用 Message Queue）
     # 注意：需要提供 job_handler 才會啟用 message queue

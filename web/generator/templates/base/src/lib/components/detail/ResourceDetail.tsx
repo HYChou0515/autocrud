@@ -141,7 +141,9 @@ export function ResourceDetail<T extends Record<string, any>>({
 
   const handleEdit = async (values: T) => {
     try {
-      await update(values);
+      // Union resource: form wraps in { data: ... }, API expects the unwrapped union object
+      const submitValues = config.isUnion ? ((values as any).data as T) : values;
+      await update(submitValues);
       setEditOpen(false);
       // Navigate to latest (no revision param) after successful edit
       handleRevisionSelect(null);
@@ -310,7 +312,11 @@ export function ResourceDetail<T extends Record<string, any>>({
                 ? visibleFields.filter((f) => !JOB_STATUS_FIELDS.has(f.name))
                 : visibleFields
               ).map((field) => {
-                const value = getByPath(data, field.name);
+                // Union resource: the "data" wrapper field maps to the entire data object
+                const value =
+                  config.isUnion && field.type === 'union' && field.name === 'data'
+                    ? data
+                    : getByPath(data, field.name);
                 return (
                   <Table.Tr key={field.name}>
                     <Table.Td style={{ fontWeight: 500, width: '30%', verticalAlign: 'top' }}>
@@ -368,7 +374,7 @@ export function ResourceDetail<T extends Record<string, any>>({
         {editOpen && (
           <ResourceForm
             config={config}
-            initialValues={data}
+            initialValues={config.isUnion ? ({ data } as Partial<T>) : data}
             onSubmit={handleEdit}
             onCancel={() => setEditOpen(false)}
             submitLabel="Update"
