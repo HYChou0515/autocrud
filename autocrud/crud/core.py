@@ -585,7 +585,7 @@ class AutoCRUD:
         model_name = self.model_names[model]
         if model_name is None:
             raise ValueError(
-                f"Model {model.__name__} is registered with multiple names."
+                f"Model {getattr(model, '__name__', repr(model))} is registered with multiple names."
             )
         return self.resource_managers[model_name]
 
@@ -650,7 +650,28 @@ class AutoCRUD:
         """
         if callable(self.model_naming):
             return self.model_naming(model)
-        original_name = model.__name__
+        original_name = getattr(model, "__name__", None)
+        if original_name is None:
+            # Handle types.UnionType (A | B) and typing.Union
+            args = get_args(model)
+            if args:
+                name_parts = []
+                for arg in args:
+                    arg_name = getattr(arg, "__name__", None)
+                    if arg_name is None:
+                        raise ValueError(
+                            f"Cannot automatically infer a resource name for union "
+                            f"type {model!r}. Please provide a name explicitly via "
+                            f"add_model(..., name='your_name')."
+                        )
+                    name_parts.append(arg_name)
+                original_name = "Or".join(name_parts)
+            else:
+                raise ValueError(
+                    f"Cannot automatically infer a resource name for type {model!r}. "
+                    f"Please provide a name explicitly via "
+                    f"add_model(..., name='your_name')."
+                )
 
         # 使用 NameConverter 進行轉換
         return NameConverter(original_name).to(self.model_naming)
@@ -846,7 +867,7 @@ class AutoCRUD:
         if model in self.model_names:
             self.model_names[model] = None
             logger.warning(
-                f"Model {model.__name__} is already registered with a different name. "
+                f"Model {getattr(model, '__name__', repr(model))} is already registered with a different name. "
                 f"This resource manager will not be accessible by its type.",
             )
         else:
@@ -923,7 +944,7 @@ class AutoCRUD:
         for ref_info in refs:
             if ref_info.on_delete == OnDelete.set_null and not ref_info.nullable:
                 raise ValueError(
-                    f"Ref on '{model.__name__}.{ref_info.source_field}' uses "
+                    f"Ref on '{getattr(model, '__name__', repr(model))}.{ref_info.source_field}' uses "
                     f"on_delete=set_null but the field is not Optional. "
                     f"Use Annotated[str | None, Ref(...)] instead."
                 )
@@ -1132,9 +1153,12 @@ class AutoCRUD:
             # --- top-level resource Struct ---
             refs = extract_refs(rm.resource_type, model_name)
             all_refs.extend(refs)
-            schema_name = rm.resource_type.__name__
-            _inject_into_component(schema_name, refs)
+            schema_name = getattr(rm.resource_type, "__name__", None)
             processed_structs.add(rm.resource_type)
+            if schema_name is None:
+                # Union type (e.g. Cat | Dog) — no single OpenAPI component to annotate
+                continue
+            _inject_into_component(schema_name, refs)
 
             # --- DisplayName annotation ---
             from autocrud.types import extract_display_name
@@ -1164,7 +1188,9 @@ class AutoCRUD:
                 processed_structs.add(nested_struct)
                 nested_refs = extract_refs(nested_struct, model_name)
                 all_refs.extend(nested_refs)
-                _inject_into_component(nested_struct.__name__, nested_refs)
+                nested_name = getattr(nested_struct, "__name__", None)
+                if nested_name is not None:
+                    _inject_into_component(nested_name, nested_refs)
 
         # Also inject a top-level x-autocrud-relationships extension
         if all_refs:
