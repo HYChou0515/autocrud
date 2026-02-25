@@ -40,7 +40,22 @@ export async function integrateProject(
     process.exit(1);
   }
 
-  // Copy essential source files (non-destructive to top-level configs)
+  await copyIntegrationFiles(templateSrc, SRC);
+
+  console.log('\n🚀 Running code generation...\n');
+
+  // Run generate
+  await generateCode(apiUrl, outputRoot, options);
+
+  // Print integration checklist
+  printChecklist();
+}
+
+/**
+ * Copy only the essential library/type/layout files from template into target SRC dir.
+ * Does NOT overwrite essential app files (App.tsx, main.tsx, etc.) if they already exist.
+ */
+export async function copyIntegrationFiles(templateSrc: string, SRC: string): Promise<void> {
   console.log('📂 Copying AutoCRUD library files...');
 
   // 1. Copy src/lib/ directory
@@ -73,7 +88,7 @@ export async function integrateProject(
     }
   }
 
-  // 4. Copy essential app files
+  // 4. Copy essential app files (only if they don't already exist)
   const essentialFiles = ['index.css', 'App.tsx', 'main.tsx', 'vite-env.d.ts'];
   for (const file of essentialFiles) {
     const src = path.join(templateSrc, file);
@@ -93,14 +108,6 @@ export async function integrateProject(
       }
     }
   }
-
-  console.log('\n🚀 Running code generation...\n');
-
-  // Run generate
-  await generateCode(apiUrl, outputRoot, options);
-
-  // Print integration checklist
-  printChecklist();
 }
 
 function printChecklist(): void {
