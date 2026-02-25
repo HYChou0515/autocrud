@@ -273,3 +273,72 @@ def test_openapi_with_struct_having_union_field(model):
     ac.apply(app)
     ac.openapi(app)
     assert app.openapi_schema is not None
+
+
+# ---- OpenAPI schema name sanitisation (no dots) ----
+
+
+@pytest.mark.parametrize("model", OPENAPI_UNION_MODELS)
+def test_openapi_schema_names_no_dots_for_union_resource(model):
+    """Component schema names must not contain '.' when the resource is a union type.
+
+    msgspec uses module-qualified names (e.g. ``__main__.Cat``) inside generic
+    parameters like ``FullResourceResponse[Cat | Dog]``, which produces schema
+    names containing dots.  These dots break the web code generator.
+    """
+    from fastapi import FastAPI
+
+    ac = AutoCRUDClass()
+    ac.configure(model_naming="same")
+    ac.add_model(model)
+    app = FastAPI()
+    ac.apply(app)
+    ac.openapi(app)
+
+    schema_names = list(app.openapi_schema["components"]["schemas"].keys())
+    dotted = [n for n in schema_names if "." in n]
+    assert dotted == [], f"Schema names must not contain dots, but found: {dotted}"
+
+
+@pytest.mark.parametrize("model", OPENAPI_STRUCT_MODELS)
+def test_openapi_schema_names_no_dots_for_struct_with_union_field(model):
+    """Component schema names must not contain '.' for Structs with union fields."""
+    from fastapi import FastAPI
+
+    ac = AutoCRUDClass()
+    ac.configure(model_naming="same")
+    ac.add_model(model)
+    app = FastAPI()
+    ac.apply(app)
+    ac.openapi(app)
+
+    schema_names = list(app.openapi_schema["components"]["schemas"].keys())
+    dotted = [n for n in schema_names if "." in n]
+    assert dotted == [], f"Schema names must not contain dots, but found: {dotted}"
+
+
+def test_openapi_refs_consistent_after_dot_sanitisation():
+    """All $ref pointers must still resolve after schema name sanitisation."""
+    import json
+
+    from fastapi import FastAPI
+
+    ac = AutoCRUDClass()
+    ac.configure(model_naming="same")
+    ac.add_model(Cat | Dog)
+    app = FastAPI()
+    ac.apply(app)
+    ac.openapi(app)
+
+    schema_json = json.dumps(app.openapi_schema)
+    components = app.openapi_schema["components"]["schemas"]
+
+    # Every $ref must point to an existing component
+    import re
+
+    refs = re.findall(r'"\$ref":\s*"#/components/schemas/([^"]+)"', schema_json)
+    for ref_name in refs:
+        assert ref_name in components, (
+            f"$ref '{ref_name}' points to non-existent component. "
+            f"Available: {list(components.keys())}"
+        )
