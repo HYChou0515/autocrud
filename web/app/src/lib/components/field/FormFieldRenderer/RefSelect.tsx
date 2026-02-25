@@ -262,9 +262,7 @@ function useRefRevisionOptions(resource: string) {
 
         // "Latest" option — stores resource_id
         const shortResId =
-          resourceId.length > 12
-            ? `${resourceId.slice(0, 4)}…${resourceId.slice(-4)}`
-            : resourceId;
+          resourceId.length > 12 ? `${resourceId.slice(0, 4)}…${resourceId.slice(-4)}` : resourceId;
         latestItems.push({
           value: resourceId,
           label: `${displayName} (${shortResId})`,
@@ -272,9 +270,7 @@ function useRefRevisionOptions(resource: string) {
 
         // "Specific Revision" option — stores revision_id
         const shortRevision =
-          revisionId.length > 12
-            ? `${revisionId.slice(0, 4)}…${revisionId.slice(-4)}`
-            : revisionId;
+          revisionId.length > 12 ? `${revisionId.slice(0, 4)}…${revisionId.slice(-4)}` : revisionId;
         revisionItems.push({
           value: revisionId,
           label: `${displayName} (rev: ${shortRevision})`,
