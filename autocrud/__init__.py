@@ -33,4 +33,4 @@ __all__ = [
     "ValidationError",
     "crud",
 ]
-__version__ = "0.8.3a"
+__version__ = "0.8.3a2"
