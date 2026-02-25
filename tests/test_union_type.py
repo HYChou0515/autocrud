@@ -13,12 +13,14 @@ Covers:
 from __future__ import annotations
 
 import datetime as dt
+from typing import Annotated
 
 import pytest
 from msgspec import Struct
 
 from autocrud.crud.core import AutoCRUD as AutoCRUDClass
 from autocrud.schema import Schema
+from autocrud.types import DisplayName, OnDelete, Ref
 
 # ---- Sample types ----
 
@@ -342,3 +344,89 @@ def test_openapi_refs_consistent_after_dot_sanitisation():
             f"$ref '{ref_name}' points to non-existent component. "
             f"Available: {list(components.keys())}"
         )
+
+
+# ---- Ref / DisplayName injection for union member types ----
+
+
+class Owner(Struct):
+    name: str
+
+
+class RefDog(Struct, tag=True):
+    name: Annotated[str, DisplayName()]
+    breed: str
+    owner_id: Annotated[str, Ref("owner", on_delete=OnDelete.set_null)]
+
+
+class RefMount(Struct, tag=True):
+    name: Annotated[str, DisplayName()]
+    speed: int
+    owner_id: Annotated[str, Ref("owner", on_delete=OnDelete.set_null)]
+
+
+RefPet = RefMount | RefDog
+
+
+class TestUnionMemberMetadataInjection:
+    """_inject_ref_metadata should inject x-ref-* and x-display-name-field
+    into each union member's component schema (Dog, Mount), not just the
+    top-level resource type (which for unions has no __name__)."""
+
+    def _build_schema(self):
+        from fastapi import FastAPI
+
+        ac = AutoCRUDClass()
+        ac.configure(model_naming="same")
+        ac.add_model(Owner)
+        ac.add_model(RefPet)
+        app = FastAPI()
+        ac.apply(app)
+        ac.openapi(app)
+        return app.openapi_schema["components"]["schemas"]
+
+    def test_union_member_ref_injected_on_dog(self):
+        """RefDog.owner_id should have x-ref-resource = 'owner'."""
+        components = self._build_schema()
+        dog_props = components["RefDog"]["properties"]
+        assert "x-ref-resource" in dog_props["owner_id"], (
+            f"RefDog.owner_id missing x-ref-resource. Got: {dog_props['owner_id']}"
+        )
+        assert dog_props["owner_id"]["x-ref-resource"] == "owner"
+        assert dog_props["owner_id"]["x-ref-type"] == "resource_id"
+        assert dog_props["owner_id"]["x-ref-on-delete"] == "set_null"
+
+    def test_union_member_ref_injected_on_mount(self):
+        """RefMount.owner_id should have x-ref-resource = 'owner'."""
+        components = self._build_schema()
+        mount_props = components["RefMount"]["properties"]
+        assert "x-ref-resource" in mount_props["owner_id"], (
+            f"RefMount.owner_id missing x-ref-resource. Got: {mount_props['owner_id']}"
+        )
+        assert mount_props["owner_id"]["x-ref-resource"] == "owner"
+
+    def test_union_member_display_name_injected(self):
+        """RefDog and RefMount should have x-display-name-field = 'name'."""
+        components = self._build_schema()
+        assert components["RefDog"].get("x-display-name-field") == "name"
+        assert components["RefMount"].get("x-display-name-field") == "name"
+
+    def test_union_refs_in_relationships_list(self):
+        """x-autocrud-relationships should include refs from union members."""
+        from fastapi import FastAPI
+
+        ac = AutoCRUDClass()
+        ac.configure(model_naming="same")
+        ac.add_model(Owner)
+        ac.add_model(RefPet, name="ref-pet")
+        app = FastAPI()
+        ac.apply(app)
+        ac.openapi(app)
+
+        rels = app.openapi_schema.get("x-autocrud-relationships", [])
+        pet_rels = [r for r in rels if r["source"] == "ref-pet"]
+        assert len(pet_rels) >= 2, (
+            f"Expected >=2 refs from union members, got: {pet_rels}"
+        )
+        targets = {r["target"] for r in pet_rels}
+        assert "owner" in targets

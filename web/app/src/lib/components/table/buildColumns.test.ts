@@ -26,10 +26,7 @@ function makeField(overrides: Partial<ResourceField> & { name: string }): Resour
   };
 }
 
-function makeConfig(
-  fields: ResourceField[],
-  overrides?: Partial<ResourceConfig>,
-): ResourceConfig {
+function makeConfig(fields: ResourceField[], overrides?: Partial<ResourceConfig>): ResourceConfig {
   return {
     name: 'test',
     label: 'Test',

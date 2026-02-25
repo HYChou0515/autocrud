@@ -117,17 +117,11 @@ describe('copyIntegrationFiles', () => {
 
   it('handles nested lib/ subdirectories', async () => {
     await fs.mkdir(path.join(templateSrc, 'lib', 'components'), { recursive: true });
-    await fs.writeFile(
-      path.join(templateSrc, 'lib', 'components', 'Dashboard.tsx'),
-      '<Dashboard />',
-    );
+    await fs.writeFile(path.join(templateSrc, 'lib', 'components', 'Dashboard.tsx'), '<Dashboard />');
 
     await copyIntegrationFiles(templateSrc, targetSrc);
 
-    const dashboard = await fs.readFile(
-      path.join(targetSrc, 'lib', 'components', 'Dashboard.tsx'),
-      'utf-8',
-    );
+    const dashboard = await fs.readFile(path.join(targetSrc, 'lib', 'components', 'Dashboard.tsx'), 'utf-8');
     expect(dashboard).toBe('<Dashboard />');
   });
 
@@ -143,8 +137,6 @@ describe('copyIntegrationFiles', () => {
     expect(root).toBe('<Root />');
 
     // Missing one should not exist
-    await expect(
-      fs.access(path.join(targetSrc, 'routes', 'autocrud-admin.tsx')),
-    ).rejects.toThrow();
+    await expect(fs.access(path.join(targetSrc, 'routes', 'autocrud-admin.tsx'))).rejects.toThrow();
   });
 });

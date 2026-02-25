@@ -8,8 +8,16 @@
  */
 
 import { describe, it, expect } from 'vitest';
+import { render, screen } from '@testing-library/react';
+import { MantineProvider } from '@mantine/core';
 import { resolveFieldKind, type FieldKind } from '../resolveFieldKind';
 import type { ResourceField } from '../../../resources';
+import { DetailFieldRenderer } from './index';
+
+/** Wrap component with MantineProvider for tests that render Mantine components */
+function renderWithMantine(ui: React.ReactElement) {
+  return render(<MantineProvider>{ui}</MantineProvider>);
+}
 
 /** Minimal helper to create a ResourceField with sensible defaults. */
 function makeField(overrides: Partial<ResourceField> & { name: string }): ResourceField {
@@ -182,5 +190,69 @@ describe('DetailFieldRenderer dispatch coverage', () => {
     // We do this by testing a "plain text" field returns 'text' (the default),
     // confirming the type union is complete.
     expect(ALL_FIELD_KINDS.length).toBe(19);
+  });
+});
+
+// ============================================================================
+// Array-of-union rendering (e.g. list[Equipment | Item])
+// ============================================================================
+describe('DetailFieldRenderer — array of union', () => {
+  const unionField: ResourceField = makeField({
+    name: 'equipments',
+    type: 'union',
+    isArray: true,
+    unionMeta: {
+      discriminatorField: 'type',
+      variants: [
+        {
+          tag: 'Equipment',
+          label: 'Equipment',
+          schemaName: 'Equipment',
+          fields: [
+            makeField({ name: 'name', type: 'string', isRequired: true }),
+            makeField({ name: 'attack_bonus', type: 'number', isRequired: true }),
+          ],
+        },
+        {
+          tag: 'Item',
+          label: 'Item',
+          schemaName: 'Item',
+          fields: [
+            makeField({ name: 'name', type: 'string', isRequired: true }),
+            makeField({ name: 'description', type: 'string' }),
+          ],
+        },
+      ],
+    },
+  });
+
+  it('resolves array-of-union field to "union" kind', () => {
+    expect(resolveFieldKind(unionField)).toBe('union');
+  });
+
+  it('renders multiple union items (not raw JSON)', () => {
+    const value = [
+      { type: 'Equipment', name: 'Sword', attack_bonus: 10 },
+      { type: 'Item', name: 'Potion', description: 'Heals 50 HP' },
+    ];
+
+    const { container } = renderWithMantine(
+      <DetailFieldRenderer field={unionField} value={value} data={{}} />,
+    );
+
+    // Should render each item's variant label badge
+    expect(screen.getByText('Equipment')).toBeTruthy();
+    expect(screen.getByText('Item')).toBeTruthy();
+    // Should render sub-field values
+    expect(screen.getByText('Sword')).toBeTruthy();
+    expect(screen.getByText('Potion')).toBeTruthy();
+    // Should NOT just dump JSON
+    expect(container.textContent).not.toContain('"type"');
+  });
+
+  it('renders empty state for empty array', () => {
+    renderWithMantine(<DetailFieldRenderer field={unionField} value={[]} data={{}} />);
+    // With the fix, empty array should show the NA indicator
+    expect(screen.queryByText('N/A')).toBeTruthy();
   });
 });

@@ -12,10 +12,14 @@ describe('detectBasePath', () => {
     const spec = {
       paths: {
         '/character': {
-          post: { requestBody: { content: { 'application/json': { schema: { $ref: '#/components/schemas/Character' } } } } },
+          post: {
+            requestBody: { content: { 'application/json': { schema: { $ref: '#/components/schemas/Character' } } } },
+          },
         },
         '/skill': {
-          post: { requestBody: { content: { 'application/json': { schema: { $ref: '#/components/schemas/Skill' } } } } },
+          post: {
+            requestBody: { content: { 'application/json': { schema: { $ref: '#/components/schemas/Skill' } } } },
+          },
         },
         '/character/{id}': { get: {} },
       },
@@ -27,10 +31,14 @@ describe('detectBasePath', () => {
     const spec = {
       paths: {
         '/foo/bar/character': {
-          post: { requestBody: { content: { 'application/json': { schema: { $ref: '#/components/schemas/Character' } } } } },
+          post: {
+            requestBody: { content: { 'application/json': { schema: { $ref: '#/components/schemas/Character' } } } },
+          },
         },
         '/foo/bar/skill': {
-          post: { requestBody: { content: { 'application/json': { schema: { $ref: '#/components/schemas/Skill' } } } } },
+          post: {
+            requestBody: { content: { 'application/json': { schema: { $ref: '#/components/schemas/Skill' } } } },
+          },
         },
         '/foo/bar/character/{id}': { get: {} },
         '/foo/bar/skill/{id}/revision-list': { get: {} },
@@ -179,10 +187,7 @@ function buildUnionSpec(basePath: string = '') {
             content: {
               'application/json': {
                 schema: {
-                  anyOf: [
-                    { $ref: '#/components/schemas/Cat' },
-                    { $ref: '#/components/schemas/Dog' },
-                  ],
+                  anyOf: [{ $ref: '#/components/schemas/Cat' }, { $ref: '#/components/schemas/Dog' }],
                   discriminator: {
                     propertyName: 'type',
                     mapping: {
@@ -255,10 +260,7 @@ describe('detectBasePath — union types', () => {
               content: {
                 'application/json': {
                   schema: {
-                    anyOf: [
-                      { $ref: '#/components/schemas/Cat' },
-                      { $ref: '#/components/schemas/Dog' },
-                    ],
+                    anyOf: [{ $ref: '#/components/schemas/Cat' }, { $ref: '#/components/schemas/Dog' }],
                   },
                 },
               },
@@ -280,10 +282,7 @@ describe('detectBasePath — union types', () => {
               content: {
                 'application/json': {
                   schema: {
-                    oneOf: [
-                      { $ref: '#/components/schemas/Cat' },
-                      { $ref: '#/components/schemas/Dog' },
-                    ],
+                    oneOf: [{ $ref: '#/components/schemas/Cat' }, { $ref: '#/components/schemas/Dog' }],
                   },
                 },
               },
@@ -305,10 +304,7 @@ describe('detectBasePath — union types', () => {
               content: {
                 'application/json': {
                   schema: {
-                    anyOf: [
-                      { $ref: '#/components/schemas/Cat' },
-                      { $ref: '#/components/schemas/Dog' },
-                    ],
+                    anyOf: [{ $ref: '#/components/schemas/Cat' }, { $ref: '#/components/schemas/Dog' }],
                   },
                 },
               },
@@ -435,10 +431,7 @@ describe('extractResources — union types', () => {
               content: {
                 'application/json': {
                   schema: {
-                    anyOf: [
-                      { $ref: '#/components/schemas/Cat' },
-                      { $ref: '#/components/schemas/Dog' },
-                    ],
+                    anyOf: [{ $ref: '#/components/schemas/Cat' }, { $ref: '#/components/schemas/Dog' }],
                     // No discriminator — should infer from component schemas
                   },
                 },
@@ -493,10 +486,7 @@ describe('extractResources — union types', () => {
               content: {
                 'application/json': {
                   schema: {
-                    anyOf: [
-                      { $ref: '#/components/schemas/Alpha' },
-                      { $ref: '#/components/schemas/Beta' },
-                    ],
+                    anyOf: [{ $ref: '#/components/schemas/Alpha' }, { $ref: '#/components/schemas/Beta' }],
                   },
                 },
               },
@@ -538,10 +528,7 @@ describe('extractResources — union types', () => {
               content: {
                 'application/json': {
                   schema: {
-                    oneOf: [
-                      { $ref: '#/components/schemas/Cat' },
-                      { $ref: '#/components/schemas/Dog' },
-                    ],
+                    oneOf: [{ $ref: '#/components/schemas/Cat' }, { $ref: '#/components/schemas/Dog' }],
                     discriminator: {
                       propertyName: 'type',
                       mapping: {
@@ -720,5 +707,155 @@ describe('genResourcesConfig — union types', () => {
     expect(config).toContain('discriminatorField');
     expect(config).toContain('tag: "Cat"');
     expect(config).toContain('tag: "Dog"');
+  });
+});
+
+// ============================================================================
+// parseField — array of discriminated union (e.g. list[Equipment | Item])
+// ============================================================================
+describe('parseField — array of union', () => {
+  /** Minimal spec with a Character that has equipments: list[Equipment | Item] */
+  function buildArrayUnionSpec() {
+    return {
+      info: { title: 'Test', version: '1.0' },
+      paths: {
+        '/character': {
+          post: {
+            requestBody: {
+              content: { 'application/json': { schema: { $ref: '#/components/schemas/Character' } } },
+            },
+          },
+        },
+        '/character/{id}': { get: {} },
+      },
+      components: {
+        schemas: {
+          Character: {
+            type: 'object',
+            properties: {
+              name: { type: 'string' },
+              equipments: {
+                type: 'array',
+                items: {
+                  anyOf: [{ $ref: '#/components/schemas/Equipment' }, { $ref: '#/components/schemas/Item' }],
+                  discriminator: {
+                    propertyName: 'type',
+                    mapping: {
+                      Equipment: '#/components/schemas/Equipment',
+                      Item: '#/components/schemas/Item',
+                    },
+                  },
+                },
+                default: [],
+              },
+            },
+            required: ['name'],
+          },
+          Equipment: {
+            type: 'object',
+            properties: {
+              type: { type: 'string', enum: ['Equipment'] },
+              name: { type: 'string' },
+              attack_bonus: { type: 'integer' },
+            },
+            required: ['type', 'name', 'attack_bonus'],
+          },
+          Item: {
+            type: 'object',
+            properties: {
+              type: { type: 'string', enum: ['Item'] },
+              name: { type: 'string' },
+              description: { type: 'string' },
+            },
+            required: ['type', 'name'],
+          },
+        },
+      },
+    };
+  }
+
+  it('parseField returns type=union and isArray=true for array of discriminated union', () => {
+    const spec = buildArrayUnionSpec();
+    const gen = createTestGenerator(spec);
+    const equipmentsProp = spec.components.schemas.Character.properties.equipments;
+    const field = (gen as any).parseField('equipments', equipmentsProp, false);
+
+    expect(field).toBeDefined();
+    expect(field.type).toBe('union');
+    expect(field.isArray).toBe(true);
+  });
+
+  it('parseField produces unionMeta with correct discriminatorField', () => {
+    const spec = buildArrayUnionSpec();
+    const gen = createTestGenerator(spec);
+    const equipmentsProp = spec.components.schemas.Character.properties.equipments;
+    const field = (gen as any).parseField('equipments', equipmentsProp, false);
+
+    expect(field.unionMeta).toBeDefined();
+    expect(field.unionMeta.discriminatorField).toBe('type');
+  });
+
+  it('parseField produces correct variant tags', () => {
+    const spec = buildArrayUnionSpec();
+    const gen = createTestGenerator(spec);
+    const equipmentsProp = spec.components.schemas.Character.properties.equipments;
+    const field = (gen as any).parseField('equipments', equipmentsProp, false);
+
+    const tags = field.unionMeta.variants.map((v: any) => v.tag);
+    expect(tags).toContain('Equipment');
+    expect(tags).toContain('Item');
+  });
+
+  it('parseField variant sub-fields exclude discriminator field', () => {
+    const spec = buildArrayUnionSpec();
+    const gen = createTestGenerator(spec);
+    const equipmentsProp = spec.components.schemas.Character.properties.equipments;
+    const field = (gen as any).parseField('equipments', equipmentsProp, false);
+
+    const equipVariant = field.unionMeta.variants.find((v: any) => v.tag === 'Equipment');
+    expect(equipVariant).toBeDefined();
+    const fieldNames = equipVariant.fields.map((f: any) => f.name);
+    expect(fieldNames).toContain('name');
+    expect(fieldNames).toContain('attack_bonus');
+    expect(fieldNames).not.toContain('type'); // discriminator excluded
+  });
+
+  it('parseField generates correct zod type for array of union', () => {
+    const spec = buildArrayUnionSpec();
+    const gen = createTestGenerator(spec);
+    const equipmentsProp = spec.components.schemas.Character.properties.equipments;
+    const field = (gen as any).parseField('equipments', equipmentsProp, false);
+
+    expect(field.zodType).toContain('z.array(');
+    expect(field.zodType).toContain('z.discriminatedUnion(');
+  });
+
+  it('extractFields includes array-of-union field with unionMeta', () => {
+    const spec = buildArrayUnionSpec();
+    const gen = createTestGenerator(spec);
+    const schema = spec.components.schemas.Character;
+    const fields = (gen as any).extractFields(schema, '', 1, 2);
+    const equip = fields.find((f: any) => f.name === 'equipments');
+
+    expect(equip).toBeDefined();
+    expect(equip.type).toBe('union');
+    expect(equip.isArray).toBe(true);
+    expect(equip.unionMeta).toBeDefined();
+    expect(equip.unionMeta.variants.length).toBe(2);
+  });
+
+  it('genResourcesConfig serializes array-of-union with unionMeta', () => {
+    const spec = buildArrayUnionSpec();
+    const gen = createTestGenerator(spec);
+    (gen as any).extractResources();
+    const config = (gen as any).genResourcesConfig() as string;
+
+    // Should contain unionMeta for equipments
+    expect(config).toContain('unionMeta');
+    expect(config).toContain('discriminatorField');
+    expect(config).toContain('"Equipment"');
+    expect(config).toContain('"Item"');
+    // Should mark isArray: true
+    expect(config).toContain('isArray: true');
   });
 });
