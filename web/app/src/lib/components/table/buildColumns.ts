@@ -81,6 +81,41 @@ export function buildRawColumns<T>(config: ResourceConfig<T>): InternalColumnDef
   for (const field of config.fields) {
     if (field.variant?.type === 'json') continue;
 
+    // ── Union resource: expand the "data" wrapper into discriminator + variant sub-fields ──
+    if (config.isUnion && field.type === 'union' && field.unionMeta) {
+      const { discriminatorField, variants } = field.unionMeta;
+
+      // Discriminator column (e.g., "Type")
+      allColumns.push({
+        id: '__union_tag',
+        header: discriminatorField.charAt(0).toUpperCase() + discriminatorField.slice(1),
+        accessorFn: (row) => (row?.data as any)?.[discriminatorField],
+        size: 100,
+        customRender: (value) => (value != null ? String(value) : ''),
+      });
+
+      // Collect all unique sub-fields from all variants (skip discriminator)
+      const seen = new Map<string, ResourceField>();
+      for (const variant of variants) {
+        for (const sf of variant.fields ?? []) {
+          if (sf.name === discriminatorField) continue;
+          if (!seen.has(sf.name)) seen.set(sf.name, sf);
+        }
+      }
+
+      for (const [name, subField] of seen) {
+        allColumns.push({
+          id: name,
+          header: subField.label,
+          field: subField,
+          accessorFn: (row) => (row?.data as any)?.[name],
+          size: subField.type === 'binary' ? 120 : undefined,
+        });
+      }
+      continue; // Don't create the default "data" column
+    }
+
+    // ── Normal field ──
     allColumns.push({
       id: field.name,
       header: field.label,

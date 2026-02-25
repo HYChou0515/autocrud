@@ -786,74 +786,7 @@ export class Generator {
 
   private genResourcesConfig(): string {
     const configs = this.resources.map((r) => {
-      const fields = r.fields.map((f) => {
-        const fieldConfig: any = {
-          name: f.name,
-          label: f.label,
-          type: f.type,
-          isArray: f.isArray,
-          isRequired: f.isRequired,
-          isNullable: f.isNullable,
-        };
-        // Include enum values if present
-        if (f.enumValues && f.enumValues.length > 0) {
-          fieldConfig.enumValues = f.enumValues;
-        }
-        // Include item sub-fields for array of typed objects
-        if (f.itemFields && f.itemFields.length > 0) {
-          fieldConfig.itemFields = f.itemFields.map((sf: Field) => {
-            const subConfig: any = {
-              name: sf.name,
-              label: sf.label,
-              type: sf.type,
-              isArray: sf.isArray,
-              isRequired: sf.isRequired,
-              isNullable: sf.isNullable,
-            };
-            if (sf.enumValues && sf.enumValues.length > 0) {
-              subConfig.enumValues = sf.enumValues;
-            }
-            return subConfig;
-          });
-        }
-        // Include ref metadata for resource references
-        if (f.ref) {
-          fieldConfig.ref = f.ref;
-        }
-        // Include unique constraint marker
-        if (f.isUnique) {
-          fieldConfig.isUnique = true;
-        }
-        // Include union metadata for union fields
-        if (f.unionMeta) {
-          fieldConfig.unionMeta = {
-            discriminatorField: f.unionMeta.discriminatorField,
-            variants: f.unionMeta.variants.map((v) => {
-              const variant: any = { tag: v.tag, label: v.label };
-              if (v.schemaName) variant.schemaName = v.schemaName;
-              if (v.type) variant.type = v.type;
-              if (v.fields && v.fields.length > 0) {
-                variant.fields = v.fields.map((sf) => {
-                  const subConfig: any = {
-                    name: sf.name,
-                    label: sf.label,
-                    type: sf.type,
-                    isArray: sf.isArray,
-                    isRequired: sf.isRequired,
-                    isNullable: sf.isNullable,
-                  };
-                  if (sf.enumValues && sf.enumValues.length > 0) {
-                    subConfig.enumValues = sf.enumValues;
-                  }
-                  return subConfig;
-                });
-              }
-              return variant;
-            }),
-          };
-        }
-        return fieldConfig;
-      });
+      const fields = r.fields.map((f) => serializeField(f));
 
       // Generate Zod schema with nested structure for dot-notation fields
       const zodFields = buildNestedZodFields(r.fields);
@@ -1280,6 +1213,52 @@ interface Field {
   ref?: FieldRef; // Reference to another resource
   unionMeta?: UnionMeta; // For union fields: discriminator + variant info
   isUnique?: boolean; // Field has a unique constraint (from x-unique OpenAPI extension)
+}
+
+/**
+ * Recursively serialize a Field into a plain object for JSON output.
+ *
+ * This is the SINGLE source of truth for field serialization — used for
+ * top-level fields, itemFields sub-fields, and union variant sub-fields.
+ * All metadata (ref, isUnique, itemFields, unionMeta, enumValues) is preserved
+ * at every nesting level so the UI pipeline treats them identically.
+ */
+function serializeField(f: Field): any {
+  const out: any = {
+    name: f.name,
+    label: f.label,
+    type: f.type,
+    isArray: f.isArray,
+    isRequired: f.isRequired,
+    isNullable: f.isNullable,
+  };
+  if (f.enumValues && f.enumValues.length > 0) {
+    out.enumValues = f.enumValues;
+  }
+  if (f.itemFields && f.itemFields.length > 0) {
+    out.itemFields = f.itemFields.map(serializeField);
+  }
+  if (f.ref) {
+    out.ref = f.ref;
+  }
+  if (f.isUnique) {
+    out.isUnique = true;
+  }
+  if (f.unionMeta) {
+    out.unionMeta = {
+      discriminatorField: f.unionMeta.discriminatorField,
+      variants: f.unionMeta.variants.map((v) => {
+        const variant: any = { tag: v.tag, label: v.label };
+        if (v.schemaName) variant.schemaName = v.schemaName;
+        if (v.type) variant.type = v.type;
+        if (v.fields && v.fields.length > 0) {
+          variant.fields = v.fields.map(serializeField);
+        }
+        return variant;
+      }),
+    };
+  }
+  return out;
 }
 
 /**

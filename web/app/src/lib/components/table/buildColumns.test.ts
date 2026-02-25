@@ -9,7 +9,7 @@
 
 import { describe, it, expect } from 'vitest';
 import { buildRawColumns, buildTableColumns, renderMetaCell } from './buildColumns';
-import type { ResourceConfig, ResourceField } from '../../resources';
+import type { ResourceConfig, ResourceField, UnionMeta } from '../../resources';
 
 // ---------------------------------------------------------------------------
 // Test helpers
@@ -26,7 +26,10 @@ function makeField(overrides: Partial<ResourceField> & { name: string }): Resour
   };
 }
 
-function makeConfig(fields: ResourceField[]): ResourceConfig {
+function makeConfig(
+  fields: ResourceField[],
+  overrides?: Partial<ResourceConfig>,
+): ResourceConfig {
   return {
     name: 'test',
     label: 'Test',
@@ -34,7 +37,52 @@ function makeConfig(fields: ResourceField[]): ResourceConfig {
     schema: 'Test',
     fields,
     apiClient: {} as any,
+    ...overrides,
   };
+}
+
+/** Helper to build a union resource config (like Pet = Dog | Mount) */
+function makeUnionConfig(): ResourceConfig {
+  const unionMeta: UnionMeta = {
+    discriminatorField: 'type',
+    variants: [
+      {
+        tag: 'Dog',
+        label: 'Dog',
+        schemaName: 'Dog',
+        fields: [
+          makeField({ name: 'name', label: 'Name' }),
+          makeField({ name: 'breed', label: 'Breed' }),
+          makeField({ name: 'level', label: 'Level', type: 'number' }),
+        ],
+      },
+      {
+        tag: 'Mount',
+        label: 'Mount',
+        schemaName: 'Mount',
+        fields: [
+          makeField({ name: 'name', label: 'Name' }),
+          makeField({ name: 'species', label: 'Species' }),
+          makeField({ name: 'speed', label: 'Speed', type: 'number' }),
+        ],
+      },
+    ],
+  };
+
+  return makeConfig(
+    [
+      {
+        name: 'data',
+        label: 'Pet',
+        type: 'union',
+        isArray: false,
+        isRequired: true,
+        isNullable: false,
+        unionMeta,
+      },
+    ],
+    { isUnion: true },
+  );
 }
 
 // ---------------------------------------------------------------------------
@@ -253,5 +301,138 @@ describe('buildTableColumns', () => {
     const config = makeConfig([makeField({ name: 'a', label: 'A' })]);
     const mrtCols = buildTableColumns(config);
     expect(mrtCols.length).toBeGreaterThan(0);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Union resource column expansion
+// ---------------------------------------------------------------------------
+
+describe('buildRawColumns (union resource)', () => {
+  it('expands union field into discriminator + variant sub-fields', () => {
+    const config = makeUnionConfig();
+    const cols = buildRawColumns(config);
+    const colIds = cols.map((c) => c.id);
+
+    // Should NOT have the original "data" wrapper column
+    expect(colIds).not.toContain('data');
+
+    // Should have discriminator column
+    expect(colIds).toContain('__union_tag');
+
+    // Should have all unique sub-fields from both variants
+    expect(colIds).toContain('name');
+    expect(colIds).toContain('breed'); // Dog-only
+    expect(colIds).toContain('level'); // Dog-only
+    expect(colIds).toContain('species'); // Mount-only
+    expect(colIds).toContain('speed'); // Mount-only
+  });
+
+  it('discriminator column has size 100 and customRender', () => {
+    const config = makeUnionConfig();
+    const cols = buildRawColumns(config);
+    const tagCol = cols.find((c) => c.id === '__union_tag')!;
+
+    expect(tagCol.size).toBe(100);
+    expect(tagCol.header).toBe('Type');
+    expect(tagCol.customRender).toBeDefined();
+    expect(tagCol.customRender!('Dog')).toBe('Dog');
+    expect(tagCol.customRender!(null)).toBe('');
+  });
+
+  it('discriminator accessorFn reads from row.data directly', () => {
+    const config = makeUnionConfig();
+    const cols = buildRawColumns(config);
+    const tagCol = cols.find((c) => c.id === '__union_tag')!;
+
+    const dogRow = { data: { type: 'Dog', name: 'Buddy', breed: 'Lab' }, meta: {} } as any;
+    expect(tagCol.accessorFn(dogRow)).toBe('Dog');
+
+    const mountRow = { data: { type: 'Mount', name: 'Storm', species: 'Horse' }, meta: {} } as any;
+    expect(tagCol.accessorFn(mountRow)).toBe('Mount');
+  });
+
+  it('variant sub-field accessorFn reads from row.data directly', () => {
+    const config = makeUnionConfig();
+    const cols = buildRawColumns(config);
+
+    const nameCol = cols.find((c) => c.id === 'name')!;
+    const breedCol = cols.find((c) => c.id === 'breed')!;
+    const speciesCol = cols.find((c) => c.id === 'species')!;
+
+    const dogRow = { data: { type: 'Dog', name: 'Buddy', breed: 'Lab' }, meta: {} } as any;
+    expect(nameCol.accessorFn(dogRow)).toBe('Buddy');
+    expect(breedCol.accessorFn(dogRow)).toBe('Lab');
+    expect(speciesCol.accessorFn(dogRow)).toBeUndefined(); // Not a Mount
+
+    const mountRow = {
+      data: { type: 'Mount', name: 'Storm', species: 'Horse', speed: 20 },
+      meta: {},
+    } as any;
+    expect(nameCol.accessorFn(mountRow)).toBe('Storm');
+    expect(speciesCol.accessorFn(mountRow)).toBe('Horse');
+    expect(breedCol.accessorFn(mountRow)).toBeUndefined(); // Not a Dog
+  });
+
+  it('deduplicates sub-fields shared across variants', () => {
+    const config = makeUnionConfig();
+    const cols = buildRawColumns(config);
+    // "name" appears in both Dog and Mount but should only appear once
+    const nameCols = cols.filter((c) => c.id === 'name');
+    expect(nameCols).toHaveLength(1);
+  });
+
+  it('preserves field metadata on expanded sub-field columns', () => {
+    const config = makeUnionConfig();
+    const cols = buildRawColumns(config);
+    const levelCol = cols.find((c) => c.id === 'level')!;
+    expect(levelCol.field).toBeDefined();
+    expect(levelCol.field!.type).toBe('number');
+    expect(levelCol.field!.label).toBe('Level');
+  });
+
+  it('still includes resource_id and meta columns', () => {
+    const config = makeUnionConfig();
+    const cols = buildRawColumns(config);
+    const colIds = cols.map((c) => c.id);
+    expect(colIds[0]).toBe('resource_id');
+    expect(colIds).toContain('created_time');
+    expect(colIds).toContain('updated_time');
+  });
+
+  it('non-union config is not affected by union expansion', () => {
+    const normalConfig = makeConfig([
+      makeField({ name: 'title', label: 'Title' }),
+      makeField({ name: 'count', label: 'Count', type: 'number' }),
+    ]);
+    const cols = buildRawColumns(normalConfig);
+    const dataColIds = cols.filter((c) => c.field).map((c) => c.id);
+    expect(dataColIds).toEqual(['title', 'count']);
+    expect(cols.find((c) => c.id === '__union_tag')).toBeUndefined();
+  });
+});
+
+describe('buildTableColumns (union resource)', () => {
+  it('includes discriminator and variant columns in MRT output', () => {
+    const config = makeUnionConfig();
+    const mrtCols = buildTableColumns(config);
+    const ids = mrtCols.map((c) => c.id);
+
+    expect(ids).toContain('__union_tag');
+    expect(ids).toContain('name');
+    expect(ids).toContain('breed');
+    expect(ids).toContain('species');
+    expect(ids).not.toContain('data');
+  });
+
+  it('discriminator column uses customRender in Cell', () => {
+    const config = makeUnionConfig();
+    const mrtCols = buildTableColumns(config);
+    const tagCol = mrtCols.find((c) => c.id === '__union_tag')!;
+    expect(tagCol.Cell).toBeDefined();
+
+    // The Cell function wraps customRender
+    const rendered = tagCol.Cell!({ cell: { getValue: () => 'Dog' } } as any);
+    expect(rendered).toBe('Dog');
   });
 });
