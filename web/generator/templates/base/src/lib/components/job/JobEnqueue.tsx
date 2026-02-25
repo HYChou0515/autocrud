@@ -35,15 +35,9 @@ export function JobEnqueue<T extends Record<string, any>>({
 
   const payloadFields = config.fields.filter((field) => !jobSpecificFields.has(field.name));
 
-  // Extract payload Zod schema (if available)
-  const payloadZodSchema = config.zodSchema
-    ? config.zodSchema.pick(Object.fromEntries(payloadFields.map((f) => [f.name, true])))
-    : undefined;
-
   const payloadConfig = {
     ...config,
     fields: payloadFields,
-    zodSchema: payloadZodSchema,
   };
 
   return (
