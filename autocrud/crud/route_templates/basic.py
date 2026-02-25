@@ -132,11 +132,67 @@ class MsgspecResponse(Response):
         return msgspec.json.encode(content)
 
 
+def _sanitize_schema_names(
+    schemas: list[dict], components: dict[str, dict]
+) -> tuple[list[dict], dict[str, dict]]:
+    """Replace dots in OpenAPI component schema names and update all ``$ref`` pointers.
+
+    ``msgspec`` may produce schema names containing dots when a generic type
+    parameter is a union (e.g. ``FullResourceResponse[A | B]``) because it
+    falls back to module-qualified names like ``mymod.A``.  Dots in component
+    names are problematic for code generators, so we replace them with ``_``.
+    """
+    # Build old→new mapping only for names that actually contain a dot
+    rename_map: dict[str, str] = {}
+    for name in list(components):
+        if "." in name:
+            new_name = name.replace(".", "_")
+            # Avoid collisions: if the sanitised name already exists, append
+            # a suffix.
+            while new_name in components and new_name not in rename_map.values():
+                new_name += "_"
+            rename_map[name] = new_name
+
+    if not rename_map:
+        return schemas, components
+
+    ref_prefix = "#/components/schemas/"
+
+    def _rewrite(obj: Any) -> Any:
+        """Recursively rewrite ``$ref`` strings inside a JSON-like structure."""
+        if isinstance(obj, dict):
+            out: dict[str, Any] = {}
+            for k, v in obj.items():
+                if k == "$ref" and isinstance(v, str) and v.startswith(ref_prefix):
+                    old_name = v[len(ref_prefix) :]
+                    new_name = rename_map.get(old_name, old_name)
+                    out[k] = ref_prefix + new_name
+                else:
+                    out[k] = _rewrite(v)
+            return out
+        if isinstance(obj, list):
+            return [_rewrite(item) for item in obj]
+        return obj
+
+    # Rewrite per-type schemas
+    schemas = [_rewrite(s) for s in schemas]
+
+    # Rebuild components dict with sanitised keys and rewritten $ref values
+    new_components: dict[str, dict] = {}
+    for old_key, value in components.items():
+        new_key = rename_map.get(old_key, old_key)
+        new_components[new_key] = _rewrite(value)
+
+    return schemas, new_components
+
+
 def jsonschema_to_openapi(structs: list[msgspec.Struct | Any]) -> dict:
-    return msgspec.json.schema_components(
+    schemas, components = msgspec.json.schema_components(
         structs,
         ref_template="#/components/schemas/{name}",
     )
+    schemas, components = _sanitize_schema_names(schemas, components)
+    return schemas, components
 
 
 def jsonschema_to_json_schema_extra(struct: msgspec.Struct | Any) -> dict:
