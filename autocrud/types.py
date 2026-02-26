@@ -5,15 +5,11 @@ from contextlib import AbstractContextManager
 from enum import Enum, Flag, StrEnum, auto
 from typing import (
     IO,
-    Annotated,
     Any,
     Callable,
     Generic,
     Protocol,
     TypeVar,
-    get_args,
-    get_origin,
-    get_type_hints,
     runtime_checkable,
 )
 from uuid import UUID
@@ -131,9 +127,11 @@ def extract_refs(struct_type: type, source_name: str) -> list[_RefInfo]:
     Handles both direct ``Annotated[str, Ref(...)]`` and nullable
     ``Annotated[str | None, Ref(...)]`` forms.
     """
+    from autocrud.util.type_utils import get_hints
+
     refs: list[_RefInfo] = []
     try:
-        hints = get_type_hints(struct_type, include_extras=True)
+        hints = get_hints(struct_type)
     except Exception:
         return refs
 
@@ -150,31 +148,36 @@ def _extract_from_hint(
     *,
     is_list: bool = False,
 ) -> None:
-    origin = get_origin(hint)
+    from autocrud.util.type_utils import (
+        get_inner_types,
+        is_annotated_type,
+        is_list_type,
+        is_nullable_type,
+        unwrap_annotated,
+    )
 
-    if origin is Annotated:
-        args = get_args(hint)
-        inner_type = args[0] if args else None
-        nullable = _is_nullable(inner_type)
-        for metadata in args[1:]:
-            if isinstance(metadata, Ref):
+    if is_annotated_type(hint):
+        inner_type, metadata = unwrap_annotated(hint)
+        nullable = is_nullable_type(inner_type)
+        for meta in metadata:
+            if isinstance(meta, Ref):
                 out.append(
                     _RefInfo(
                         source=source_name,
                         source_field=field_name,
-                        target=metadata.resource,
+                        target=meta.resource,
                         ref_type="resource_id",
-                        on_delete=metadata.on_delete,
+                        on_delete=meta.on_delete,
                         nullable=nullable,
                         is_list=is_list,
                     )
                 )
-            elif isinstance(metadata, RefRevision):
+            elif isinstance(meta, RefRevision):
                 out.append(
                     _RefInfo(
                         source=source_name,
                         source_field=field_name,
-                        target=metadata.resource,
+                        target=meta.resource,
                         ref_type="revision_id",
                         on_delete=OnDelete.dangling,
                         nullable=nullable,
@@ -185,21 +188,12 @@ def _extract_from_hint(
 
     # Fallback: unwrap Union/Optional and recurse into each arg
     # Detect list origin to propagate is_list flag
-    if origin is list:
+    if is_list_type(hint):
         is_list = True
-    args = get_args(hint)
+    args = get_inner_types(hint)
     if args:
         for arg in args:
             _extract_from_hint(arg, field_name, source_name, out, is_list=is_list)
-
-
-def _is_nullable(tp: Any) -> bool:
-    """Return True if ``tp`` is a Union that includes NoneType."""
-    origin = get_origin(tp)
-    if origin is not None:
-        args = get_args(tp)
-        return type(None) in args
-    return tp is type(None)
 
 
 class DisplayName:
@@ -229,17 +223,10 @@ class DisplayName:
 
 def extract_display_name(struct_type: type) -> str | None:
     """Return the field name annotated with :class:`DisplayName`, or ``None``."""
-    try:
-        hints = get_type_hints(struct_type, include_extras=True)
-    except Exception:
-        return None
-    for field_name, hint in hints.items():
-        origin = get_origin(hint)
-        if origin is Annotated:
-            for metadata in get_args(hint)[1:]:
-                if isinstance(metadata, DisplayName):
-                    return field_name
-    return None
+    from autocrud.util.type_utils import find_annotated_fields
+
+    fields = find_annotated_fields(struct_type, DisplayName)
+    return fields[0] if fields else None
 
 
 # ---------------------------------------------------------------------------
@@ -284,17 +271,9 @@ def extract_unique_fields(struct_type: type) -> list[str]:
         definition order.  Returns an empty list if none are found or if
         type hints cannot be resolved.
     """
-    unique: list[str] = []
-    try:
-        hints = get_type_hints(struct_type, include_extras=True)
-    except Exception:
-        return unique
-    for field_name, hint in hints.items():
-        if get_origin(hint) is Annotated:
-            for metadata in get_args(hint)[1:]:
-                if isinstance(metadata, Unique):
-                    unique.append(field_name)
-    return unique
+    from autocrud.util.type_utils import find_annotated_fields
+
+    return find_annotated_fields(struct_type, Unique)
 
 
 class RevisionStatus(StrEnum):

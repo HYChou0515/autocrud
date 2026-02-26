@@ -14,8 +14,6 @@ from typing import (
     Generic,
     NamedTuple,
     TypeVar,
-    get_args,
-    get_origin,
 )
 from uuid import uuid4
 
@@ -142,28 +140,11 @@ from autocrud.resource_manager.binary_processor import BinaryProcessor
 from autocrud.resource_manager.data_converter import DataConverter
 from autocrud.types import PermissionResult
 from autocrud.util.naming import NameConverter, NamingFormat
+from autocrud.util.type_utils import (
+    get_type_display_name,
+)
 
 T = TypeVar("T")
-
-
-def _get_type_name(resource_type) -> str:
-    """取得類型名稱，處理 Union 類型"""
-    if hasattr(resource_type, "__name__"):
-        return resource_type.__name__
-
-    # 處理 Union 類型
-    origin = get_origin(resource_type)
-    if origin is not None:
-        args = get_args(resource_type)
-        if args:
-            # 使用第一個類型的名稱，或者創建一個組合名稱
-            first_type = args[0]
-            if hasattr(first_type, "__name__"):
-                return f"{first_type.__name__}Union"
-        return "UnionType"
-
-    # 後備方案
-    return str(resource_type).replace(" ", "").replace("|", "Or")
 
 
 class IndexedValueExtractor:
@@ -530,7 +511,9 @@ class ResourceManager(IResourceManager[T], Generic[T]):
 
         # Set resource_name early because message_queue initialization may need it
         if isinstance(name, NamingFormat):
-            self._resource_name = NameConverter(_get_type_name(resource_type)).to(
+            self._resource_name = NameConverter(
+                get_type_display_name(resource_type)
+            ).to(
                 NamingFormat.SNAKE,
             )
         else:

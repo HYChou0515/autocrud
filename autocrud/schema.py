@@ -33,6 +33,7 @@ from autocrud.resource_manager.pydantic_converter import (
     pydantic_to_dict,
 )
 from autocrud.types import IMigration
+from autocrud.util.type_utils import get_type_name
 
 T = TypeVar("T")
 
@@ -463,7 +464,7 @@ class Schema(Generic[T]):
         return self._version
 
     def __repr__(self) -> str:
-        rt = getattr(self._resource_type, "__name__", repr(self._resource_type))
+        rt = get_type_name(self._resource_type) or repr(self._resource_type)
         parts = [f"Schema({rt}, {self._version!r}"]
         if self._validator is not None:
             parts[0] += ", validator=..."

@@ -11,11 +11,20 @@ Supports both Pydantic v1 (1.x) and v2 (2.x).
 """
 
 from collections.abc import Callable
-from typing import Annotated, Any, Union, get_args, get_origin
+from typing import Annotated, Any, Union
 
 import msgspec
 
 from autocrud.types import IValidator
+from autocrud.util.type_utils import (
+    get_generic_args,
+    get_generic_origin,
+    get_literal_values,
+    get_union_args,
+    is_annotated_type,
+    is_union_type,
+    unwrap_annotated,
+)
 
 # ---------------------------------------------------------------------------
 # Pydantic version detection
@@ -168,7 +177,7 @@ def _iter_model_fields(
             annotation = mf.outer_type_
             # Reconstruct Optional if the field allows None but outer_type_
             # already stripped it.
-            if mf.allow_none and get_origin(annotation) is not Union:
+            if mf.allow_none and not is_union_type(annotation):
                 annotation = Union[annotation, type(None)]
             result.append(
                 (
@@ -215,13 +224,10 @@ def _convert_annotation(annotation: Any, cache: dict) -> Any:
     if isinstance(annotation, type) and issubclass(annotation, BaseModel):
         return _pydantic_to_struct_recursive(annotation, cache)
 
-    # Handle Annotated types first (get_origin is needed; __origin__ is unreliable)
-    real_origin = get_origin(annotation)
-    if real_origin is Annotated:
-        args = get_args(annotation)
-        if len(args) >= 2:
-            inner_type = args[0]
-            metadata = args[1:]
+    # Handle Annotated types first
+    if is_annotated_type(annotation):
+        inner_type, metadata = unwrap_annotated(annotation)
+        if metadata:
             # Check if any metadata is a Pydantic FieldInfo with discriminator
             discriminator = _extract_discriminator(metadata)
             if discriminator is not None:
@@ -234,9 +240,9 @@ def _convert_annotation(annotation: Any, cache: dict) -> Any:
         return annotation  # pragma: no cover
 
     # Handle generic types: list[X], dict[K, V], Optional[X], Union[X, Y]
-    origin = real_origin or getattr(annotation, "__origin__", None)
+    origin = get_generic_origin(annotation)
     if origin is not None:
-        args = getattr(annotation, "__args__", ())
+        args = get_generic_args(annotation)
         if not args:
             return annotation
 
@@ -246,7 +252,7 @@ def _convert_annotation(annotation: Any, cache: dict) -> Any:
 
         # Reconstruct the generic type with converted args
         # For Union types (including Optional), use typing.Union
-        if origin is Union:
+        if is_union_type(annotation):
             return Union[converted_args]
         return origin[converted_args]
 
@@ -278,7 +284,7 @@ def _convert_discriminated_union(
     """
     from pydantic import BaseModel
 
-    args = get_args(union_type)
+    args = get_union_args(union_type)
     if not args:
         return _convert_annotation(union_type, cache)
 
@@ -320,7 +326,7 @@ def _pydantic_to_struct_tagged(
         )
 
     tag_annotation, _tag_default = info
-    literal_args = get_args(tag_annotation)
+    literal_args = get_literal_values(tag_annotation)
     if not literal_args:
         raise TypeError(
             f"Discriminator field '{tag_field}' in {pydantic_model.__name__} "
