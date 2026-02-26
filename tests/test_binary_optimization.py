@@ -1,13 +1,14 @@
 import datetime as dt
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, Generic, List, Optional, TypeVar
 
 import pytest
 from msgspec import UNSET, Struct
 
+from autocrud.resource_manager.binary_processor import BinaryProcessor
 from autocrud.resource_manager.core import ResourceManager, SimpleStorage
 from autocrud.resource_manager.meta_store.simple import MemoryMetaStore
 from autocrud.resource_manager.resource_store.simple import MemoryResourceStore
-from autocrud.types import Binary
+from autocrud.types import Binary, Job
 
 
 class BinaryData(Struct):
@@ -342,3 +343,147 @@ def test_binary_generic_restore(storage):
 
     restored_struct = manager.restore_binary(data_struct_wrapper)
     assert restored_struct.payload.content.data == b"generic-restored"
+
+
+# ── Generic Struct (Job[T]) tests ──────────────────────────────────────
+
+
+class ZipFile(Struct):
+    content: Binary
+
+
+class MyPayload(Struct):
+    filezip: ZipFile
+    age: int
+
+
+class MyJob(Job[MyPayload]):
+    pass
+
+
+class TestGenericStructBinaryProcess:
+    """Tests for Binary fields nested inside Generic Struct types (e.g. Job[T])."""
+
+    def test_concrete_subclass_process(self, storage):
+        """MyJob(Job[MyPayload]) should process nested Binary in payload."""
+        tracker_store = MockBlobStore()
+        manager = ResourceManager(
+            resource_type=MyJob, storage=storage, blob_store=tracker_store
+        )
+
+        data = MyJob(
+            payload=MyPayload(filezip=ZipFile(content=Binary(data=b"hello")), age=12)
+        )
+        processed = manager._binary_processor.process(data, tracker_store)
+
+        assert len(tracker_store.puts) == 1
+        assert tracker_store.puts[0] == b"hello"
+        assert processed.payload.filezip.content.file_id == "mock_file_id"
+        assert processed.payload.filezip.content.data is UNSET
+
+    def test_concrete_subclass_restore(self, storage):
+        """MyJob(Job[MyPayload]) should restore nested Binary from blob store."""
+
+        class InMemBlobStore:
+            def __init__(self):
+                self.blobs = {}
+
+            def put(self, data: bytes, *, content_type: Any = UNSET) -> Binary:
+                fid = f"hash-{len(self.blobs)}"
+                self.blobs[fid] = Binary(
+                    file_id=fid, size=len(data), data=data, content_type=content_type
+                )
+                return Binary(file_id=fid, size=len(data), content_type=content_type)
+
+            def get(self, file_id: str) -> Binary:
+                return self.blobs[file_id]
+
+        blob_store = InMemBlobStore()
+        manager = ResourceManager(
+            resource_type=MyJob, storage=storage, blob_store=blob_store
+        )
+
+        data = MyJob(
+            payload=MyPayload(
+                filezip=ZipFile(content=Binary(data=b"restore-me")), age=5
+            )
+        )
+        processed = manager._binary_processor.process(data, blob_store)
+        assert processed.payload.filezip.content.data is UNSET
+
+        restored = manager.restore_binary(processed)
+        assert restored.payload.filezip.content.data == b"restore-me"
+
+    def test_generic_alias_process(self):
+        """Job[MyPayload] (generic alias, not subclass) should process nested Binary."""
+        tracker_store = MockBlobStore()
+        processor = BinaryProcessor(Job[MyPayload])
+
+        data = Job(
+            payload=MyPayload(filezip=ZipFile(content=Binary(data=b"alias")), age=99)
+        )
+        processed = processor.process(data, tracker_store)
+
+        assert len(tracker_store.puts) == 1
+        assert tracker_store.puts[0] == b"alias"
+        assert processed.payload.filezip.content.file_id == "mock_file_id"
+        assert processed.payload.filezip.content.data is UNSET
+
+    def test_generic_alias_dict_input(self):
+        """Job[MyPayload] should process dict input with nested Binary."""
+        tracker_store = MockBlobStore()
+        processor = BinaryProcessor(Job[MyPayload])
+
+        data = {
+            "payload": {
+                "filezip": {"content": Binary(data=b"dict-input")},
+                "age": 7,
+            },
+            "status": "pending",
+        }
+        processed = processor.process(data, tracker_store)
+
+        assert len(tracker_store.puts) == 1
+        assert processed["payload"]["filezip"]["content"].file_id == "mock_file_id"
+
+    def test_generic_alias_restore(self):
+        """Job[MyPayload] (generic alias) should restore nested Binary."""
+
+        class InMemBlobStore:
+            def __init__(self):
+                self.blobs = {"fid-0": Binary(file_id="fid-0", data=b"restored-alias")}
+
+            def put(self, data, *, content_type=UNSET):
+                pass
+
+            def get(self, file_id):
+                return self.blobs[file_id]
+
+        blob_store = InMemBlobStore()
+        processor = BinaryProcessor(Job[MyPayload])
+
+        data = Job(
+            payload=MyPayload(
+                filezip=ZipFile(content=Binary(file_id="fid-0", data=UNSET)), age=1
+            )
+        )
+        restored = processor.restore(data, blob_store)
+        assert restored.payload.filezip.content.data == b"restored-alias"
+
+    def test_custom_generic_struct_process(self):
+        """Custom Generic[T] Struct (not Job) with nested Binary should work."""
+        U = TypeVar("U")
+
+        class Wrapper(Struct, Generic[U]):
+            inner: U
+            label: str
+
+        tracker_store = MockBlobStore()
+        processor = BinaryProcessor(Wrapper[ZipFile])
+
+        data = Wrapper(inner=ZipFile(content=Binary(data=b"custom")), label="test")
+        processed = processor.process(data, tracker_store)
+
+        assert len(tracker_store.puts) == 1
+        assert processed.inner.content.file_id == "mock_file_id"
+        assert processed.inner.content.data is UNSET

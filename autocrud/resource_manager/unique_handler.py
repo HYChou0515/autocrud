@@ -10,7 +10,7 @@ This module provides:
 
 from __future__ import annotations
 
-from typing import TYPE_CHECKING, Annotated, Any, get_args, get_origin, get_type_hints
+from typing import TYPE_CHECKING, Any
 
 from msgspec import UNSET
 
@@ -27,27 +27,10 @@ from autocrud.types import (
     UniqueConstraintError,
     extract_unique_fields,
 )
+from autocrud.util.type_utils import get_field_raw_type
 
 if TYPE_CHECKING:
     from autocrud.resource_manager.core import ResourceManager
-
-
-def _infer_raw_type(model: type, field_name: str) -> Any:
-    """Infer the raw (non-Annotated) type of *field_name* on *model*.
-
-    Returns the unwrapped type for ``Annotated[T, ...]`` or the raw hint.
-    Falls back to :data:`msgspec.UNSET` when resolution fails.
-    """
-    try:
-        hints = get_type_hints(model, include_extras=True)
-        hint = hints.get(field_name)
-        if hint is not None and get_origin(hint) is Annotated:
-            return get_args(hint)[0]
-        if hint is not None:
-            return hint
-    except Exception:
-        pass
-    return UNSET
 
 
 class UniqueConstraintChecker(IConstraintChecker):
@@ -89,7 +72,9 @@ class UniqueConstraintChecker(IConstraintChecker):
     def _ensure_indexed(self) -> None:
         """Add unique fields to RM's indexed fields if not already present."""
         for field_name in self._unique_fields:
-            raw_type = _infer_raw_type(self.rm.resource_type, field_name)
+            raw_type = get_field_raw_type(
+                self.rm.resource_type, field_name, default=UNSET
+            )
             self.rm.add_indexed_field(
                 IndexableField(field_path=field_name, field_type=raw_type)
             )

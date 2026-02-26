@@ -1,9 +1,17 @@
-import types
-from typing import Any, Iterable, NamedTuple, TypeVar, Union, get_args, get_origin
+from typing import Any, Iterable, NamedTuple, TypeVar, Union
 
 import msgspec
 from jsonpointer import JsonPointer
 from msgspec import UNSET, Struct, UnsetType, defstruct
+
+from autocrud.util.type_utils import (
+    get_list_item_type,
+    get_union_args,
+    is_list_type,
+    is_struct_type,
+    is_union_type,
+    resolve_struct_origin,
+)
 
 T = TypeVar("T")
 
@@ -34,7 +42,7 @@ def _merge_paths(paths: list[list[str]]) -> dict[str, list[list[str]]]:
     return grouped
 
 
-def _get_struct_fields(struct_type: type[Struct]) -> dict[str, Any]:
+def _get_struct_fields(struct_type: Any) -> dict[str, Any]:
     return {f.name: f for f in msgspec.structs.fields(struct_type)}
 
 
@@ -47,12 +55,9 @@ def _build_type(current_type: Any, paths: list[list[str]], prefix: str) -> Any:
     if any(len(p) == 0 for p in paths):
         return current_type
 
-    origin = get_origin(current_type)
-    args = get_args(current_type)
-
-    if origin is Union or origin is types.UnionType:
+    if is_union_type(current_type):
         new_args = []
-        for arg in args:
+        for arg in get_union_args(current_type):
             if arg is type(None):
                 new_args.append(arg)
             else:
@@ -63,17 +68,17 @@ def _build_type(current_type: Any, paths: list[list[str]], prefix: str) -> Any:
             return other | None
         return Union[tuple(new_args)]
 
-    if origin is list or origin is list:
+    if is_list_type(current_type):
         sub_paths = []
         for p in paths:
             if len(p) > 0:
                 sub_paths.append(p[1:])
 
-        element_type = args[0]
+        element_type = get_list_item_type(current_type)
         new_element_type = _build_type(element_type, sub_paths, prefix + "Item")
         return list[new_element_type]
 
-    if isinstance(current_type, type) and issubclass(current_type, Struct):
+    if is_struct_type(current_type):
         fields = _get_struct_fields(current_type)
         grouped_paths = _merge_paths(paths)
 
@@ -88,13 +93,10 @@ def _build_type(current_type: Any, paths: list[list[str]], prefix: str) -> Any:
                 )
 
                 # Add UnsetType to allow pruning
-                if (
-                    get_origin(new_field_type) is Union
-                    or get_origin(new_field_type) is types.UnionType
-                ):
-                    args = get_args(new_field_type)
-                    if UnsetType not in args:
-                        new_field_type = Union[tuple(list(args) + [UnsetType])]
+                if is_union_type(new_field_type):
+                    u_args = get_union_args(new_field_type)
+                    if UnsetType not in u_args:
+                        new_field_type = Union[tuple(list(u_args) + [UnsetType])]
                 else:
                     if new_field_type is not UnsetType:
                         new_field_type = new_field_type | UnsetType
@@ -111,7 +113,9 @@ def _build_type(current_type: Any, paths: list[list[str]], prefix: str) -> Any:
                     )
                 )
 
-        type_name = f"{prefix}_{current_type.__name__}"
+        # For generic aliases (e.g. Job[Payload]), resolve the origin for __name__
+        struct_class = resolve_struct_origin(current_type)
+        type_name = f"{prefix}_{struct_class.__name__}"
 
         # Keep tag info
         kwargs = {}

@@ -1,10 +1,19 @@
-from typing import Any, Callable, Dict, List, Union, get_args, get_origin
+from typing import Any, Callable
 
 import msgspec
 from msgspec import UNSET, Struct, UnsetType
 
 from autocrud.resource_manager.basic import IBlobStore
 from autocrud.types import Binary
+from autocrud.util.type_utils import (
+    get_dict_value_type,
+    get_list_item_type,
+    get_non_none_args,
+    is_dict_type,
+    is_list_type,
+    is_struct_type,
+    is_union_type,
+)
 
 
 class BinaryProcessor:
@@ -118,11 +127,8 @@ class BinaryProcessor:
         if type_hint is Binary:
             return self._process_leaf if mode == "process" else self._restore_leaf
 
-        origin = get_origin(type_hint)
-
-        if origin is Union:
-            args = get_args(type_hint)
-            non_none_args = [a for a in args if a is not type(None)]
+        if is_union_type(type_hint):
+            non_none_args = get_non_none_args(type_hint)
             if len(non_none_args) == 1:
                 inner_proc = self._compile(non_none_args[0], mode, cache)
                 if inner_proc:
@@ -135,10 +141,10 @@ class BinaryProcessor:
                     return optional_wrapper
             return self._process_generic if mode == "process" else self._restore_generic
 
-        if origin is list or origin is List:
-            args = get_args(type_hint)
-            if args:
-                item_proc = self._compile(args[0], mode, cache)
+        if is_list_type(type_hint):
+            item_type = get_list_item_type(type_hint)
+            if item_type is not None:
+                item_proc = self._compile(item_type, mode, cache)
                 if item_proc:
 
                     def list_processor(data, store):
@@ -152,10 +158,10 @@ class BinaryProcessor:
                     return list_processor
             return self._process_generic if mode == "process" else self._restore_generic
 
-        if origin is dict or origin is Dict:
-            args = get_args(type_hint)
-            if args and len(args) == 2:
-                val_proc = self._compile(args[1], mode, cache)
+        if is_dict_type(type_hint):
+            val_type = get_dict_value_type(type_hint)
+            if val_type is not None:
+                val_proc = self._compile(val_type, mode, cache)
                 if val_proc:
 
                     def dict_processor(data, store):
@@ -169,12 +175,11 @@ class BinaryProcessor:
                     return dict_processor
             return self._process_generic if mode == "process" else self._restore_generic
 
-        if (
-            isinstance(type_hint, type)
-            and issubclass(type_hint, Struct)
-            and type_hint is not Binary
-        ):
+        # Check for concrete Struct types or generic Struct aliases (e.g. Job[MyPayload])
+        if type_hint is not Binary and is_struct_type(type_hint):
             field_processors = {}
+            # msgspec.structs.fields() handles both concrete types and generic
+            # aliases, resolving TypeVars to their concrete types automatically.
             for field in msgspec.structs.fields(type_hint):
                 proc = self._compile(field.type, mode, cache)
                 if proc:

@@ -8,13 +8,9 @@ from collections import OrderedDict
 from collections.abc import Callable, Sequence
 from typing import (
     IO,
-    Annotated,
     Any,
     Literal,
     TypeVar,
-    get_args,
-    get_origin,
-    get_type_hints,
 )
 
 from fastapi import APIRouter, FastAPI, HTTPException
@@ -58,9 +54,7 @@ from autocrud.resource_manager.basic import (
 from autocrud.resource_manager.blob_store.simple import DiskBlobStore, MemoryBlobStore
 from autocrud.resource_manager.core import ResourceManager
 from autocrud.resource_manager.pydantic_converter import (
-    is_pydantic_model as _is_pydantic_model,
-)
-from autocrud.resource_manager.pydantic_converter import (
+    is_pydantic_model,
     pydantic_to_struct,
 )
 from autocrud.resource_manager.storage_factory import (
@@ -98,6 +92,13 @@ from autocrud.types import (
     extract_refs,
 )
 from autocrud.util.naming import NameConverter
+from autocrud.util.type_utils import (
+    collect_nested_struct_types,
+    get_type_name,
+    get_union_args,
+    is_generic_subclass,
+    is_union_type,
+)
 
 logger = logging.getLogger(__name__)
 T = TypeVar("T")
@@ -585,7 +586,7 @@ class AutoCRUD:
         model_name = self.model_names[model]
         if model_name is None:
             raise ValueError(
-                f"Model {getattr(model, '__name__', repr(model))} is registered with multiple names."
+                f"Model {get_type_name(model) or repr(model)} is registered with multiple names."
             )
         return self.resource_managers[model_name]
 
@@ -598,31 +599,7 @@ class AutoCRUD:
         Returns:
             True if the model is a Job subclass, False otherwise.
         """
-        try:
-            from typing import get_origin
-
-            # First check if model itself is a generic Job type like Job[T]
-            origin = get_origin(model)
-            if origin is Job:
-                return True
-
-            # Check if model has __mro__ (method resolution order)
-            if not hasattr(model, "__mro__"):
-                return False
-
-            # Walk through the MRO to find Job
-            for base in model.__mro__:
-                base_origin = get_origin(base)
-                if base_origin is not None:
-                    # This is a generic type, check if origin is Job
-                    if base_origin is Job:
-                        return True
-                elif base is Job:
-                    return True
-
-            return False
-        except (AttributeError, TypeError):
-            return False
+        return is_generic_subclass(model, Job)
 
     def _resource_name(self, model: type[T]) -> str:
         """Convert model class name to resource name using the configured naming convention.
@@ -650,28 +627,13 @@ class AutoCRUD:
         """
         if callable(self.model_naming):
             return self.model_naming(model)
-        original_name = getattr(model, "__name__", None)
+        original_name = get_type_name(model)
         if original_name is None:
-            # Handle types.UnionType (A | B) and typing.Union
-            args = get_args(model)
-            if args:
-                name_parts = []
-                for arg in args:
-                    arg_name = getattr(arg, "__name__", None)
-                    if arg_name is None:
-                        raise ValueError(
-                            f"Cannot automatically infer a resource name for union "
-                            f"type {model!r}. Please provide a name explicitly via "
-                            f"add_model(..., name='your_name')."
-                        )
-                    name_parts.append(arg_name)
-                original_name = "Or".join(name_parts)
-            else:
-                raise ValueError(
-                    f"Cannot automatically infer a resource name for type {model!r}. "
-                    f"Please provide a name explicitly via "
-                    f"add_model(..., name='your_name')."
-                )
+            raise ValueError(
+                f"Cannot automatically infer a resource name for type {model!r}. "
+                f"Please provide a name explicitly via "
+                f"add_model(..., name='your_name')."
+            )
 
         # 使用 NameConverter 進行轉換
         return NameConverter(original_name).to(self.model_naming)
@@ -854,7 +816,7 @@ class AutoCRUD:
         # Handle Pydantic BaseModel as model type:
         # auto-generate struct and use Pydantic for validation
         pydantic_model = None
-        if _is_pydantic_model(model):
+        if is_pydantic_model(model):
             pydantic_model = model
             model = pydantic_to_struct(pydantic_model)
             if validator is None and (
@@ -867,7 +829,7 @@ class AutoCRUD:
         if model in self.model_names:
             self.model_names[model] = None
             logger.warning(
-                f"Model {getattr(model, '__name__', repr(model))} is already registered with a different name. "
+                f"Model {get_type_name(model) or repr(model)} is already registered with a different name. "
                 f"This resource manager will not be accessible by its type.",
             )
         else:
@@ -944,7 +906,7 @@ class AutoCRUD:
         for ref_info in refs:
             if ref_info.on_delete == OnDelete.set_null and not ref_info.nullable:
                 raise ValueError(
-                    f"Ref on '{getattr(model, '__name__', repr(model))}.{ref_info.source_field}' uses "
+                    f"Ref on '{get_type_name(model) or repr(model)}.{ref_info.source_field}' uses "
                     f"on_delete=set_null but the field is not Optional. "
                     f"Use Annotated[str | None, Ref(...)] instead."
                 )
@@ -1053,10 +1015,6 @@ class AutoCRUD:
         ``x-ref-type``, and ``x-ref-on-delete`` extensions into the matching
         schema properties so the web generator can discover relationships.
         """
-        from typing import TypeVar
-
-        from msgspec import Struct
-
         components = schema.get("components", {}).get("schemas", {})
         all_refs: list[_RefInfo] = []
 
@@ -1079,76 +1037,6 @@ class AutoCRUD:
                     ext["x-ref-on-delete"] = ref_info.on_delete.value
                 prop.update(ext)
 
-        def _build_typevar_map(cls: type) -> dict[TypeVar, type]:
-            """Build a TypeVar → concrete type mapping from __orig_bases__."""
-            mapping: dict[TypeVar, type] = {}
-            for base in getattr(cls, "__orig_bases__", ()):
-                origin = get_origin(base)
-                args = get_args(base)
-                if origin is not None and args:
-                    params = getattr(origin, "__parameters__", ())
-                    for param, arg in zip(params, args):
-                        if isinstance(param, TypeVar):
-                            mapping[param] = arg
-                    # Recurse into the origin class for deeper generic chains
-                    mapping.update(_build_typevar_map(origin))
-            return mapping
-
-        def _collect_nested_struct_types(
-            struct_type: type, visited: set[type]
-        ) -> list[type]:
-            """Recursively collect Struct types referenced in type hints.
-
-            Resolves TypeVar parameters (e.g. ``Job[T]`` → ``T=EventPayload``)
-            via ``__orig_bases__`` so that nested payloads are discovered.
-            """
-            if struct_type in visited:
-                return []
-            visited.add(struct_type)
-            result: list[type] = []
-            try:
-                hints = get_type_hints(struct_type, include_extras=True)
-            except Exception:
-                return result
-
-            # Build TypeVar mapping for this class
-            tv_map = _build_typevar_map(struct_type)
-
-            for hint in hints.values():
-                resolved = tv_map.get(hint, hint) if isinstance(hint, TypeVar) else hint
-                _walk_hint(resolved, visited, result, tv_map)
-            return result
-
-        def _walk_hint(
-            hint: Any,
-            visited: set[type],
-            out: list[type],
-            tv_map: dict[TypeVar, type],
-        ) -> None:
-            # Resolve TypeVar if applicable
-            if isinstance(hint, TypeVar):
-                resolved = tv_map.get(hint)
-                if resolved is not None:
-                    hint = resolved
-                else:
-                    return
-
-            origin = get_origin(hint)
-            if origin is Annotated:
-                args = get_args(hint)
-                if args:
-                    _walk_hint(args[0], visited, out, tv_map)
-                return
-            if origin is not None:
-                for arg in get_args(hint):
-                    _walk_hint(arg, visited, out, tv_map)
-                return
-            # Plain type — check if it's a Struct subclass
-            if isinstance(hint, type) and issubclass(hint, Struct):
-                if hint not in visited:
-                    out.append(hint)
-                    out.extend(_collect_nested_struct_types(hint, visited))
-
         def _process_single_struct(
             struct_type: type,
             model_name: str,
@@ -1159,7 +1047,7 @@ class AutoCRUD:
             """Inject ref / display-name / unique metadata for a single Struct
             type into its OpenAPI component, and recurse into nested Structs.
             """
-            struct_name = getattr(struct_type, "__name__", None)
+            struct_name = get_type_name(struct_type)
             if struct_name is None:
                 return
 
@@ -1189,24 +1077,23 @@ class AutoCRUD:
                                 prop["x-unique"] = True
 
             # Nested Struct types (e.g. Job[Payload])
-            nested = _collect_nested_struct_types(struct_type, set())
+            nested = collect_nested_struct_types(struct_type, set())
             for nested_struct in nested:
                 if nested_struct in processed_structs:
                     continue
                 processed_structs.add(nested_struct)
                 nested_refs = extract_refs(nested_struct, model_name)
                 all_refs.extend(nested_refs)
-                nested_name = getattr(nested_struct, "__name__", None)
+                nested_name = get_type_name(nested_struct)
                 if nested_name is not None:
                     _inject_into_component(nested_name, nested_refs)
 
         for model_name, rm in self.resource_managers.items():
             processed_structs.add(rm.resource_type)
-            schema_name = getattr(rm.resource_type, "__name__", None)
 
-            if schema_name is None:
+            if is_union_type(rm.resource_type):
                 # Union type (e.g. Cat | Dog) — process each member type
-                member_types = get_args(rm.resource_type) or ()
+                member_types = get_union_args(rm.resource_type) or ()
                 for member_type in member_types:
                     if member_type in processed_structs:
                         continue

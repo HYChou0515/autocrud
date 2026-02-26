@@ -1,9 +1,24 @@
 import datetime as dt
 import enum
 import inspect
-from typing import Any, Generic, Optional, TypeVar, get_args, get_origin
+from typing import Any, Generic, Optional, TypeVar
 
 import msgspec
+
+from autocrud.util.type_utils import (
+    get_list_item_type,
+    get_list_nesting_depth,
+    get_non_none_args,
+    get_set_item_type,
+    is_dict_type,
+    is_list_type,
+    is_optional_type,
+    is_set_type,
+    is_struct_type,
+    is_tuple_type,
+    resolve_struct_origin,
+    unwrap_container_type,
+)
 
 try:
     import strawberry
@@ -153,39 +168,65 @@ class GraphQLResourceMeta:
 
 def _convert_msgspec_to_strawberry(type_: Any, name_prefix: str = "") -> Any:
     """Convert msgspec/python types to strawberry types recursively"""
-    origin = get_origin(type_)
-    args = get_args(type_)
 
     if type_ is Any or type_ is msgspec.UnsetType:
         return JSON
 
-    if origin is list or origin is list:
-        inner = _convert_msgspec_to_strawberry(args[0], name_prefix)
+    if is_list_type(type_):
+        inner = _convert_msgspec_to_strawberry(get_list_item_type(type_), name_prefix)
         return list[inner]
 
-    if origin is dict:
+    if is_dict_type(type_):
         # GraphQL doesn't support arbitrary dicts well, use JSON
         return JSON
 
-    if origin is set:
-        inner = _convert_msgspec_to_strawberry(args[0], name_prefix)
+    if is_set_type(type_):
+        inner = _convert_msgspec_to_strawberry(get_set_item_type(type_), name_prefix)
         return list[inner]
 
-    if origin is tuple:
+    if is_tuple_type(type_):
         # Handle tuple as list for now or JSON
         return JSON
 
-    if origin is type(None) or type_ is type(None):
+    if type_ is type(None):
         return Optional[JSON]  # Should not happen directly usually
 
     # Handle Optional (Union[T, None])
-    if origin is not None and type(None) in args:
-        non_none_args = [arg for arg in args if arg is not type(None)]
+    if is_optional_type(type_):
+        non_none_args = get_non_none_args(type_)
         if len(non_none_args) == 1:
             inner = _convert_msgspec_to_strawberry(non_none_args[0], name_prefix)
             return Optional[inner]
         else:
             return JSON  # Complex union
+
+    if is_struct_type(type_):
+        # Handle Struct types first (including generic aliases like Job[Payload])
+        # For generic aliases, resolve the origin for __name__ access
+        struct_class = resolve_struct_origin(type_)
+        annotations = {}
+        attributes = {}
+        field_map = {}
+        for field in msgspec.structs.fields(type_):
+            field_type = _convert_msgspec_to_strawberry(
+                field.type, f"{name_prefix}{struct_class.__name__}"
+            )
+            # Handle optional fields in msgspec
+            if not field.required:
+                if not is_optional_type(field_type):
+                    field_type = Optional[field_type]
+
+            # Calculate GraphQL name and store mapping
+            graphql_name = to_camel_case(field.name)
+            field_map[graphql_name] = field.name
+
+            annotations[field.name] = field_type
+            attributes[field.name] = strawberry.field(name=graphql_name)
+
+        type_name = f"{name_prefix}{struct_class.__name__}GraphQL"
+        cls = type(type_name, (), {**attributes, "__annotations__": annotations})
+        cls._field_map = field_map
+        return strawberry.type(cls)
 
     if inspect.isclass(type_):
         if issubclass(type_, (str, int, float, bool)):
@@ -197,52 +238,11 @@ def _convert_msgspec_to_strawberry(type_: Any, name_prefix: str = "") -> Any:
         if issubclass(type_, enum.Enum):
             # Create dynamic strawberry enum
             return strawberry.enum(type_, name=f"{name_prefix}{type_.__name__}Enum")
-        if issubclass(type_, msgspec.Struct):
-            # Create dynamic strawberry type
-            annotations = {}
-            attributes = {}
-            field_map = {}
-            for field in msgspec.structs.fields(type_):
-                field_type = _convert_msgspec_to_strawberry(
-                    field.type, f"{name_prefix}{type_.__name__}"
-                )
-                # Handle optional fields in msgspec
-                if not field.required:
-                    if (
-                        get_origin(field_type) is not Optional
-                    ):  # Check if not already optional
-                        field_type = Optional[field_type]
-
-                # Calculate GraphQL name and store mapping
-                graphql_name = to_camel_case(field.name)
-                field_map[graphql_name] = field.name
-
-                annotations[field.name] = field_type
-                attributes[field.name] = strawberry.field(name=graphql_name)
-
-            type_name = f"{name_prefix}{type_.__name__}GraphQL"
-            cls = type(type_name, (), {**attributes, "__annotations__": annotations})
-            cls._field_map = field_map
-            return strawberry.type(cls)
 
     return JSON
 
 
-def _unwrap_type(type_):
-    origin = get_origin(type_)
-    args = get_args(type_)
-
-    if origin is list or origin is list:
-        return _unwrap_type(args[0])
-    if origin is Optional:
-        return _unwrap_type(args[0])
-    # Handle Union[T, None] which is Optional
-    if origin is not None and type(None) in args:
-        non_none = [a for a in args if a is not type(None)]
-        if len(non_none) == 1:
-            return _unwrap_type(non_none[0])
-
-    return type_
+_unwrap_type = unwrap_container_type
 
 
 def _extract_selections(selections, type_: Any = None, parent_path="") -> list[str]:
@@ -285,12 +285,7 @@ def _extract_selections(selections, type_: Any = None, parent_path="") -> list[s
     return fields
 
 
-def _get_list_depth(type_: Any) -> int:
-    depth = 0
-    while get_origin(type_) is list or get_origin(type_) is list:
-        depth += 1
-        type_ = get_args(type_)[0]
-    return depth
+_get_list_depth = get_list_nesting_depth
 
 
 def _convert_filter_input(
