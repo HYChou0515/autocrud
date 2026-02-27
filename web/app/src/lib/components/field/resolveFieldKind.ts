@@ -16,6 +16,7 @@ export type FieldKind =
   | 'itemFields'
   | 'union'
   | 'binary'
+  | 'file'
   | 'json'
   | 'markdown'
   | 'arrayString'
@@ -55,6 +56,11 @@ export function resolveFieldKind(field: ResourceField): FieldKind {
   // 3. Binary
   if (field.type === 'binary') {
     return 'binary';
+  }
+
+  // 3b. File upload (UploadFile)
+  if (field.type === 'file') {
+    return 'file';
   }
 
   // 4. JSON / Object
@@ -122,12 +128,12 @@ export function resolveFieldKind(field: ResourceField): FieldKind {
     return 'refResourceId';
   }
 
-  // 17. Ref revision_id (array) — version-aware ref (resource_id=latest or revision_id=pinned)
+  // 17. Ref revision_id (array)
   if (field.ref?.type === 'revision_id' && field.isArray) {
     return 'refRevisionIdMulti';
   }
 
-  // 18. Ref revision_id (single) — version-aware ref (resource_id=latest or revision_id=pinned)
+  // 18. Ref revision_id (single)
   if (field.ref?.type === 'revision_id') {
     return 'refRevisionId';
   }

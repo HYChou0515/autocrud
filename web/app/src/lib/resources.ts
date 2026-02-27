@@ -29,13 +29,7 @@ export type FieldVariant =
   | { type: 'union'; variant?: 'radio.group' | 'radio.card' };
 
 /**
- * Reference metadata for fields that point to another resource.
- *
- * - `type: 'resource_id'` — the field stores a resource_id and participates
- *   in referential integrity (on_delete), auto-indexing, and referrers queries.
- * - `type: 'revision_id'` — version-aware reference.  The field may store
- *   either a revision_id (pinned to a specific revision) or a resource_id
- *   (meaning "latest").  Always `on_delete: 'dangling'`, not indexed.
+ * Reference metadata for fields that point to another resource
  */
 export interface FieldRef {
   resource: string;
@@ -75,7 +69,7 @@ export interface UnionMeta {
 export interface ResourceField {
   name: string;
   label: string;
-  type: 'string' | 'number' | 'boolean' | 'date' | 'array' | 'object' | 'binary' | 'union';
+  type: 'string' | 'number' | 'boolean' | 'date' | 'array' | 'object' | 'binary' | 'union' | 'file';
   isArray: boolean;
   isRequired: boolean;
   isNullable: boolean;
@@ -91,6 +85,23 @@ export interface ResourceField {
   unionMeta?: UnionMeta;
   // Whether this field has a unique constraint (from Unique() annotation)
   isUnique?: boolean;
+}
+
+/**
+ * Custom create action — an alternative POST endpoint for creating a resource.
+ * Discovered from the backend's @crud.create_action() decorator via OpenAPI extensions.
+ */
+export interface CustomCreateAction {
+  /** Path segment name, e.g. "import-from-url" */
+  name: string;
+  /** Human-readable label, e.g. "Import from URL" */
+  label: string;
+  /** Fields for the action's request body form */
+  fields: ResourceField[];
+  /** Zod schema for validation (generated from action body schema) */
+  zodSchema?: z.ZodObject<any>;
+  /** API method to call when submitting this action */
+  apiMethod: (data: any) => Promise<{ data: RevisionInfo }>;
 }
 
 /**
@@ -111,6 +122,8 @@ export interface ResourceConfig<T = any> {
   isUnion?: boolean;
   // Zod schema for validation (generated from OpenAPI)
   zodSchema?: z.ZodObject<any>;
+  /** Custom create actions — alternative ways to create this resource */
+  customCreateActions?: CustomCreateAction[];
   apiClient: {
     create: (data: T) => Promise<{ data: RevisionInfo }>;
     listFull: (params?: any) => Promise<{ data: FullResource<T>[] }>;

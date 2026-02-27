@@ -35,6 +35,7 @@ export type FieldType =
   | 'array'
   | 'object'
   | 'binary'
+  | 'file'
   | 'union';
 
 /**
@@ -417,6 +418,32 @@ export const arrayHandler: FieldTypeHandler = {
 };
 
 // ============================================================================
+// File Handler
+// ============================================================================
+
+export const fileHandler: FieldTypeHandler = {
+  defaultVariant() {
+    return { type: 'file' as const };
+  },
+
+  emptyValue() {
+    return null;
+  },
+
+  toFormValue(val) {
+    return val ?? null;
+  },
+
+  toApiValue(val) {
+    return val;
+  },
+
+  fromJsonValue(val) {
+    return val ?? null;
+  },
+};
+
+// ============================================================================
 // Registry
 // ============================================================================
 
@@ -429,6 +456,7 @@ registry.set('boolean', booleanHandler);
 registry.set('date', dateHandler);
 registry.set('object', objectHandler);
 registry.set('binary', binaryHandler);
+registry.set('file', fileHandler);
 registry.set('union', unionHandler);
 registry.set('array', arrayHandler);
 
