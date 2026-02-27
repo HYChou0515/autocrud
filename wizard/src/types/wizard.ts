@@ -411,9 +411,10 @@ export const BUILTIN_TYPES: BuiltinTypeInfo[] = [
   {
     name: "RefRevision",
     icon: "📌",
-    description: "參照特定 resource 的某個 revision",
+    description: "（已棄用）參照特定 resource 的某個 revision，建議改用 Ref(ref_type=RefType.revision_id)",
     detailedDescription:
-      "宣告一個欄位參照到另一個 resource 的 revision_id（而非 resource_id）。適用於需要追蹤特定版本的場景。",
+      "⚠️ 已棄用，請改用 Ref(resource, ref_type=RefType.revision_id)。\n" +
+      "宣告一個欄位參照到另一個 resource 的 revision_id 或 resource_id（代表 latest）。適用於需要追蹤特定版本的場景。",
     importStatement: "from autocrud.types import RefRevision",
     codeSnippet:
       'character_id: Annotated[Optional[str], RefRevision("character")]',

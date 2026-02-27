@@ -132,20 +132,31 @@ interface RefRevisionLinkProps {
 }
 
 /**
- * Extract resource_id from a revision_id.
- * revision_id format: "prefix:uuid:revision_number" → resource_id: "prefix:uuid"
+ * Check whether a value looks like a revision_id.
+ * revision_id format: "{resource_id}:{N}" where N is a positive integer.
+ * A plain resource_id (e.g. UUID or "prefix:uuid") won't match.
  */
-function revisionIdToResourceId(revisionId: string): string {
-  const lastColon = revisionId.lastIndexOf(':');
-  if (lastColon > 0) {
-    return revisionId.substring(0, lastColon);
-  }
-  return revisionId;
+function isRevisionId(value: string): boolean {
+  return /:\d+$/.test(value);
 }
 
 /**
- * Renders a revision ID as a clickable link to the referenced resource's detail page
- * at the specific revision. Navigates to /autocrud-admin/{resource}/{resourceId}?revision={revisionId}.
+ * Extract resource_id from a revision_id.
+ * revision_id format: "prefix:uuid:revision_number" → resource_id: "prefix:uuid"
+ * If the value doesn't look like a revision_id, returns the value as-is.
+ */
+function revisionIdToResourceId(value: string): string {
+  if (!isRevisionId(value)) return value;
+  const lastColon = value.lastIndexOf(':');
+  return value.substring(0, lastColon);
+}
+
+/**
+ * Renders a version-aware reference as a clickable link.
+ *
+ * The value can be either:
+ * - A **revision_id** (format: "{resource_id}:{N}") — links to the specific revision
+ * - A **resource_id** (meaning "latest") — links to the resource detail page
  */
 export function RefRevisionLink({ value, fieldRef }: RefRevisionLinkProps) {
   const [copied, setCopied] = useState(false);
@@ -154,6 +165,7 @@ export function RefRevisionLink({ value, fieldRef }: RefRevisionLinkProps) {
     return <Code c="dimmed">N/A</Code>;
   }
 
+  const isRevision = isRevisionId(value);
   const resourceId = revisionIdToResourceId(value);
   const detailRoute = getResourceDetailRoute(fieldRef.resource as ResourceName);
 
@@ -165,25 +177,32 @@ export function RefRevisionLink({ value, fieldRef }: RefRevisionLinkProps) {
     setTimeout(() => setCopied(false), 2000);
   };
 
+  const tooltipLabel = isRevision
+    ? `${fieldRef.resource} revision: ${value}`
+    : `${fieldRef.resource}: ${value} (latest)`;
+  const copyLabel = isRevision ? '複製完整 Revision ID' : '複製完整 ID';
+
   return (
     <Group gap="xs" wrap="nowrap">
-      <Tooltip label={`${fieldRef.resource} revision: ${value}`} position="top" withArrow>
+      <Tooltip label={tooltipLabel} position="top" withArrow>
         <Link
           to={detailRoute}
           params={{ resourceId }}
-          search={{ revision: value }}
+          search={isRevision ? { revision: value } : {}}
           onClick={(e) => e.stopPropagation()}
           onPointerDownCapture={(e) => e.stopPropagation()}
           onClickCapture={(e) => e.stopPropagation()}
           style={{ textDecoration: 'none' }}
         >
           <Group gap={4} wrap="nowrap">
-            <Code style={{ cursor: 'pointer' }}>{shortId(value)}</Code>
+            <Code style={{ cursor: 'pointer' }}>
+              {shortId(value)}{!isRevision && ' ⟨latest⟩'}
+            </Code>
             <IconExternalLink size={14} />
           </Group>
         </Link>
       </Tooltip>
-      <Tooltip label={copied ? '已複製!' : '複製完整 Revision ID'} position="right">
+      <Tooltip label={copied ? '已複製!' : copyLabel} position="right">
         <ActionIcon
           variant="subtle"
           size="sm"

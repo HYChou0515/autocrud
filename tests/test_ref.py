@@ -17,6 +17,7 @@ Covers:
 
 import datetime as dt
 import logging
+import warnings
 from typing import Annotated
 
 import pytest
@@ -31,6 +32,7 @@ from autocrud.types import (
     OnDelete,
     Ref,
     RefRevision,
+    RefType,
     _RefInfo,
     extract_display_name,
     extract_refs,
@@ -1163,3 +1165,320 @@ class TestInjectDisplayNameMetadata:
         schema = app.openapi_schema
         comp = schema["components"]["schemas"]["GuildWithDisplayName"]
         assert comp.get("x-display-name-field") == "title"
+
+
+# ---------------------------------------------------------------------------
+# Test Models for RefType
+# ---------------------------------------------------------------------------
+
+
+class MonsterWithRefType(Struct, kw_only=True):
+    """Monster using new Ref(ref_type=...) syntax."""
+
+    zone_id: Annotated[str, Ref("zone")]  # default: resource_id
+    zone_snapshot_id: Annotated[str, Ref("zone", ref_type=RefType.revision_id)]
+    guild_id: Annotated[str | None, Ref("guild", on_delete=OnDelete.set_null)] = None
+
+
+class RevisionRefOnly(Struct):
+    """Model with only a revision_id ref using new syntax."""
+
+    snapshot_id: Annotated[str | None, Ref("zone", ref_type=RefType.revision_id)] = None
+
+
+# NOTE: RevisionRefWithOnDelete is intentionally NOT defined as a module-level
+# Struct because the Ref() constructor raises ValueError at class definition
+# time.  The validation is tested in TestRefWithRefType instead.
+
+
+# ---------------------------------------------------------------------------
+# RefType enum
+# ---------------------------------------------------------------------------
+
+
+class TestRefType:
+    def test_values(self):
+        assert RefType.resource_id == "resource_id"
+        assert RefType.revision_id == "revision_id"
+
+    def test_membership(self):
+        assert len(RefType) == 2
+
+    def test_string_conversion(self):
+        assert RefType("resource_id") is RefType.resource_id
+        assert RefType("revision_id") is RefType.revision_id
+
+    def test_invalid_value(self):
+        with pytest.raises(ValueError):
+            RefType("any")
+
+
+# ---------------------------------------------------------------------------
+# Ref with ref_type
+# ---------------------------------------------------------------------------
+
+
+class TestRefWithRefType:
+    def test_default_ref_type_is_resource_id(self):
+        r = Ref("zone")
+        assert r.ref_type == RefType.resource_id
+        assert r.ref_type == "resource_id"
+
+    def test_explicit_resource_id(self):
+        r = Ref("zone", ref_type=RefType.resource_id)
+        assert r.ref_type == RefType.resource_id
+
+    def test_explicit_revision_id(self):
+        r = Ref("zone", ref_type=RefType.revision_id)
+        assert r.ref_type == RefType.revision_id
+        assert r.on_delete == OnDelete.dangling
+
+    def test_revision_id_string_conversion(self):
+        r = Ref("zone", ref_type="revision_id")
+        assert r.ref_type is RefType.revision_id
+
+    def test_revision_id_with_dangling_ok(self):
+        """revision_id + dangling is valid."""
+        r = Ref("zone", ref_type=RefType.revision_id, on_delete=OnDelete.dangling)
+        assert r.on_delete == OnDelete.dangling
+
+    def test_revision_id_with_non_dangling_raises(self):
+        """revision_id ref must have on_delete=dangling."""
+        with pytest.raises(ValueError, match="on_delete"):
+            Ref("zone", ref_type=RefType.revision_id, on_delete=OnDelete.cascade)
+
+    def test_revision_id_with_set_null_raises(self):
+        with pytest.raises(ValueError, match="on_delete"):
+            Ref("zone", ref_type=RefType.revision_id, on_delete=OnDelete.set_null)
+
+    def test_repr_default(self):
+        r = Ref("zone")
+        # Default ref_type should not clutter repr
+        rr = repr(r)
+        assert "Ref(" in rr
+        assert "'zone'" in rr
+
+    def test_repr_revision_id(self):
+        r = Ref("zone", ref_type=RefType.revision_id)
+        rr = repr(r)
+        assert "ref_type=" in rr
+        assert "revision_id" in rr
+
+    def test_eq_same_ref_type(self):
+        a = Ref("zone", ref_type=RefType.revision_id)
+        b = Ref("zone", ref_type=RefType.revision_id)
+        assert a == b
+
+    def test_eq_different_ref_type(self):
+        a = Ref("zone", ref_type=RefType.resource_id)
+        b = Ref("zone", ref_type=RefType.revision_id)
+        assert a != b
+
+    def test_hash_includes_ref_type(self):
+        a = Ref("zone", ref_type=RefType.resource_id)
+        b = Ref("zone", ref_type=RefType.revision_id)
+        assert hash(a) != hash(b)
+
+    def test_hash_same_ref_type(self):
+        a = Ref("zone", ref_type=RefType.revision_id)
+        b = Ref("zone", ref_type=RefType.revision_id)
+        assert hash(a) == hash(b)
+
+    def test_backward_compat_existing_ref(self):
+        """Existing Ref('zone') usage must remain unchanged."""
+        r = Ref("zone")
+        assert r.resource == "zone"
+        assert r.on_delete == OnDelete.dangling
+        assert r.ref_type == RefType.resource_id
+
+    def test_backward_compat_with_on_delete(self):
+        """Existing Ref('x', on_delete=cascade) usage must remain unchanged."""
+        r = Ref("x", on_delete=OnDelete.cascade)
+        assert r.ref_type == RefType.resource_id
+        assert r.on_delete == OnDelete.cascade
+
+
+# ---------------------------------------------------------------------------
+# RefRevision deprecation
+# ---------------------------------------------------------------------------
+
+
+class TestRefRevisionDeprecation:
+    def test_deprecation_warning(self):
+        """RefRevision should emit a DeprecationWarning."""
+        with warnings.catch_warnings(record=True) as w:
+            warnings.simplefilter("always")
+            RefRevision("zone")
+            assert len(w) == 1
+            assert issubclass(w[0].category, DeprecationWarning)
+            assert "Ref" in str(w[0].message)
+
+    def test_still_works(self):
+        """RefRevision should still return a usable object."""
+        with warnings.catch_warnings():
+            warnings.simplefilter("ignore", DeprecationWarning)
+            r = RefRevision("zone")
+            assert r.resource == "zone"
+
+    def test_extract_refs_still_works_with_refrevision(self):
+        """extract_refs should still handle RefRevision in existing models."""
+        refs = extract_refs(Monster, "monster")
+        rev_refs = [r for r in refs if r.source_field == "zone_revision_id"]
+        assert len(rev_refs) == 1
+        assert rev_refs[0].ref_type == "revision_id"
+        assert rev_refs[0].on_delete == OnDelete.dangling
+
+
+# ---------------------------------------------------------------------------
+# extract_refs with RefType
+# ---------------------------------------------------------------------------
+
+
+class TestExtractRefsWithRefType:
+    def test_ref_with_revision_id_type(self):
+        """Ref(ref_type=revision_id) should produce ref_type='revision_id' in _RefInfo."""
+        refs = extract_refs(MonsterWithRefType, "monster")
+        snap_refs = [r for r in refs if r.source_field == "zone_snapshot_id"]
+        assert len(snap_refs) == 1
+        r = snap_refs[0]
+        assert r.target == "zone"
+        assert r.ref_type == "revision_id"
+        assert r.on_delete == OnDelete.dangling
+        assert r.nullable is False
+
+    def test_ref_default_still_resource_id(self):
+        """Ref() without ref_type should still be resource_id."""
+        refs = extract_refs(MonsterWithRefType, "monster")
+        zone_refs = [r for r in refs if r.source_field == "zone_id"]
+        assert len(zone_refs) == 1
+        assert zone_refs[0].ref_type == "resource_id"
+
+    def test_nullable_revision_id_ref(self):
+        refs = extract_refs(RevisionRefOnly, "test")
+        assert len(refs) == 1
+        assert refs[0].ref_type == "revision_id"
+        assert refs[0].nullable is True
+
+    def test_all_refs_from_monster_with_ref_type(self):
+        refs = extract_refs(MonsterWithRefType, "monster")
+        assert len(refs) == 3  # zone_id, zone_snapshot_id, guild_id
+
+
+# ---------------------------------------------------------------------------
+# add_model / apply with RefType
+# ---------------------------------------------------------------------------
+
+
+class TestAddModelRefType:
+    def test_revision_id_ref_not_indexed(self):
+        """revision_id ref should NOT be auto-indexed."""
+        crud = AutoCRUD()
+        crud.add_model(Zone, name="zone")
+        crud.add_model(RevisionRefOnly, name="snapshot-holder")
+        # Check that the ref is collected
+        rev_refs = [r for r in crud.relationships if r.ref_type == "revision_id"]
+        assert len(rev_refs) == 1
+        # Check that indexed fields do NOT include the revision_id ref
+        rm = crud.resource_managers["snapshot-holder"]
+        indexed_paths = [f.field_path for f in rm.indexed_fields]
+        assert "snapshot_id" not in indexed_paths
+
+    def test_resource_id_ref_still_indexed(self):
+        """resource_id ref should be auto-indexed (backward compat)."""
+        crud = AutoCRUD()
+        crud.add_model(Zone, name="zone")
+        crud.add_model(MonsterWithRefType, name="monster")
+        rm = crud.resource_managers["monster"]
+        indexed_paths = [f.field_path for f in rm.indexed_fields]
+        assert "zone_id" in indexed_paths
+        assert "zone_snapshot_id" not in indexed_paths
+
+    def test_revision_id_ref_on_delete_non_dangling_raises(self):
+        """add_model should raise if revision_id ref has non-dangling on_delete.
+
+        However this is caught at Ref() construction time already."""
+        with pytest.raises(ValueError, match="on_delete"):
+            Ref("zone", ref_type=RefType.revision_id, on_delete=OnDelete.cascade)
+
+    def test_referrers_excludes_revision_id_ref(self):
+        """Referrers endpoint should not include revision_id refs."""
+        crud = AutoCRUD()
+        crud.add_model(Zone, name="zone")
+        crud.add_model(Guild, name="guild")
+        crud.add_model(MonsterWithRefType, name="monster")
+        app = FastAPI()
+        crud.apply(app)
+
+        client = TestClient(app)
+        # Create a zone first
+        with crud.resource_managers["zone"].meta_provide(
+            user="test", now=dt.datetime.now()
+        ):
+            info = crud.resource_managers["zone"].create(Zone(name="Forest"))
+
+        resp = client.get(f"/zone/{info.resource_id}/referrers")
+        assert resp.status_code == 200
+        data = resp.json()
+        # Should only have resource_id refs (zone_id), not revision_id refs
+        for item in data:
+            assert item["ref_type"] != "revision_id"
+
+
+class TestOpenAPIRefType:
+    """Test that x-ref-type is correctly injected for Ref(ref_type=...)."""
+
+    def _build_app(self, *models_and_names):
+        app = FastAPI()
+        c = AutoCRUD()
+        for model, name in models_and_names:
+            c.add_model(model, name=name)
+        c.apply(app)
+        c.openapi(app)
+        return app
+
+    def test_revision_id_ref_type_in_schema(self):
+        app = self._build_app(
+            (Zone, "zone"),
+            (Guild, "guild"),
+            (MonsterWithRefType, "monster"),
+        )
+        schema = app.openapi_schema
+        comp = schema["components"]["schemas"]["MonsterWithRefType"]
+        props = comp["properties"]
+        # zone_snapshot_id should have x-ref-type = revision_id
+        assert props["zone_snapshot_id"]["x-ref-type"] == "revision_id"
+        # zone_id should have x-ref-type = resource_id
+        assert props["zone_id"]["x-ref-type"] == "resource_id"
+
+    def test_revision_id_ref_no_on_delete_in_schema(self):
+        """revision_id ref should NOT have x-ref-on-delete in schema."""
+        app = self._build_app(
+            (Zone, "zone"),
+            (Guild, "guild"),
+            (MonsterWithRefType, "monster"),
+        )
+        schema = app.openapi_schema
+        comp = schema["components"]["schemas"]["MonsterWithRefType"]
+        props = comp["properties"]
+        # revision_id ref should not have on_delete
+        assert "x-ref-on-delete" not in props["zone_snapshot_id"]
+        # resource_id ref should have on_delete
+        assert "x-ref-on-delete" in props["zone_id"]
+
+    def test_relationships_include_ref_type(self):
+        """GET /_relationships should include revision_id ref entries."""
+        crud = AutoCRUD()
+        crud.add_model(Zone, name="zone")
+        crud.add_model(Guild, name="guild")
+        crud.add_model(MonsterWithRefType, name="monster")
+        app = FastAPI()
+        crud.apply(app)
+
+        client = TestClient(app)
+        resp = client.get("/_relationships")
+        assert resp.status_code == 200
+        data = resp.json()
+        # Find the revision_id ref
+        rev_refs = [r for r in data if r.get("ref_type") == "revision_id"]
+        assert len(rev_refs) >= 1
+        assert rev_refs[0]["source_field"] == "zone_snapshot_id"
