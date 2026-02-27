@@ -172,9 +172,7 @@ export function ResourceTable<T extends MRT_RowData>({
     } else {
       baseParams.limit = CLIENT_FETCH_LIMIT;
       // Sort by updated_time desc to fetch the most recently updated items
-      baseParams.sorts = JSON.stringify([
-        { type: 'meta', key: 'updated_time', direction: '-' },
-      ]);
+      baseParams.sorts = JSON.stringify([{ type: 'meta', key: 'updated_time', direction: '-' }]);
     }
 
     // --- AdvancedSearchPanel conditions ---

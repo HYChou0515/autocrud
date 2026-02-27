@@ -111,10 +111,7 @@ export function computeTableMode({
  * Only includes server-sortable columns; non-sortable ones are omitted
  * (they'll be handled client-side by MRT).
  */
-export function mrtSortingToSorts(
-  sorting: MRT_SortingState,
-  indexedFields?: string[],
-): string {
+export function mrtSortingToSorts(sorting: MRT_SortingState, indexedFields?: string[]): string {
   const serverSorts = sorting.filter((s) => isServerSortable(s.id, indexedFields));
   if (serverSorts.length === 0) return '';
 
@@ -140,7 +137,10 @@ export function mrtSortingToSorts(
 export function mrtFiltersToParams(
   columnFilters: MRT_ColumnFiltersState,
   indexedFields?: string[],
-): { serverParams: Record<string, unknown>; dataConditions: Array<{ field_path: string; operator: string; value: unknown }> } {
+): {
+  serverParams: Record<string, unknown>;
+  dataConditions: Array<{ field_path: string; operator: string; value: unknown }>;
+} {
   const serverParams: Record<string, unknown> = {};
   const dataConditions: Array<{ field_path: string; operator: string; value: unknown }> = [];
 
