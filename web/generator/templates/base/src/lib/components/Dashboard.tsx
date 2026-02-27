@@ -21,15 +21,8 @@ interface ResourceSummary {
   loading: boolean;
 }
 
-const DISPLAY_MAX = 1000;
-
-function formatCount(count: number): string {
-  if (count > DISPLAY_MAX) return `${DISPLAY_MAX}+`;
-  return String(count);
-}
-
 /**
- * Generic dashboard showing all resources with counts
+ * Generic dashboard showing all resources with total counts
  */
 export function Dashboard() {
   const resourceNames = getResourceNames();
@@ -90,7 +83,7 @@ export function Dashboard() {
                   <Loader size="sm" />
                 ) : (
                   <Badge size="lg" variant="light">
-                    {formatCount(s.count)} resources
+                    {s.count} resources
                   </Badge>
                 )}
               </Group>

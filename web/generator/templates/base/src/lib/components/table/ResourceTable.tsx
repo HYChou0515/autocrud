@@ -1,8 +1,15 @@
 /**
- * ResourceTable - Generic resource list table with server-side pagination and sorting
+ * ResourceTable - Generic resource list table with lazy upgrade between
+ * server-side and client-side modes.
+ *
+ * Default: **server mode** — pagination, sorting, and filtering are delegated
+ * to the backend API.  When the user triggers an operation the backend cannot
+ * handle (global free-text search, non-indexed column sort/filter) the table
+ * automatically upgrades to **client mode** — fetches up to CLIENT_FETCH_LIMIT
+ * items and lets MRT handle everything locally.
  */
 
-import { useCallback, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useNavigate } from '@tanstack/react-router';
 import {
   Container,
@@ -14,21 +21,37 @@ import {
   ActionIcon,
   TextInput,
   Alert,
+  Badge,
 } from '@mantine/core';
+import { useDebouncedValue } from '@mantine/hooks';
 import { IconPlus, IconRefresh, IconSearch, IconX, IconAlertCircle } from '@tabler/icons-react';
 import {
   MantineReactTable,
   useMantineReactTable,
-  type MRT_PaginationState,
   type MRT_SortingState,
+  type MRT_ColumnFiltersState,
+  type MRT_PaginationState,
   type MRT_RowData,
 } from 'mantine-react-table';
 import { useResourceList } from '../../hooks/useResourceList';
+import { formatTime } from '../common/TimeDisplay';
 import { AdvancedSearchPanel } from './AdvancedSearchPanel';
 import { buildTableColumns } from './buildColumns';
 import type { ActiveSearchState } from './searchUtils';
 import type { ResourceTableProps } from './types';
-import { sortByToSorts } from './utils';
+import {
+  sortByToSorts,
+  computeTableMode,
+  mrtSortingToSorts,
+  mrtFiltersToParams,
+  type TableMode,
+} from './utils';
+
+/** Maximum number of items fetched from the backend for client-side operations */
+const CLIENT_FETCH_LIMIT = 50;
+
+/** Debounce delay (ms) for globalFilter before triggering client mode */
+const GLOBAL_FILTER_DEBOUNCE_MS = 1000;
 
 /**
  * Generic resource list table with server-side pagination and sorting
@@ -91,13 +114,20 @@ export function ResourceTable<T extends MRT_RowData>({
   disableQB = true,
 }: ResourceTableProps<T>) {
   const navigate = useNavigate();
-  const [pagination, setPagination] = useState<MRT_PaginationState>({ pageIndex: 0, pageSize: 20 });
+
+  // ── MRT state ──
   const [sorting, setSorting] = useState<MRT_SortingState>([]);
+  const [columnFilters, setColumnFilters] = useState<MRT_ColumnFiltersState>([]);
+  const [pagination, setPagination] = useState<MRT_PaginationState>({
+    pageIndex: 0,
+    pageSize: 20,
+  });
 
-  // 即時篩選（client-side）- 只篩當前頁面已載入的資料
+  // ── Global filter with debounce (triggers client mode after delay) ──
   const [globalFilter, setGlobalFilter] = useState('');
+  const [debouncedGlobalFilter] = useDebouncedValue(globalFilter, GLOBAL_FILTER_DEBOUNCE_MS);
 
-  // 已提交的搜尋狀態（由 AdvancedSearchPanel 管理，透過 callback 回傳）
+  // ── AdvancedSearchPanel state ──
   const [activeSearch, setActiveSearch] = useState<ActiveSearchState>({
     mode: 'condition',
     condition: { meta: {}, data: [] },
@@ -106,63 +136,138 @@ export function ResourceTable<T extends MRT_RowData>({
     sortBy: undefined,
   });
 
-  // AdvancedSearchPanel 搜尋狀態變更 — 重置分頁
   const handleSearchChange = useCallback((search: ActiveSearchState) => {
     setActiveSearch(search);
-    setPagination((prev) => ({ ...prev, pageIndex: 0 }));
   }, []);
 
-  const params = useMemo(() => {
-    const baseParams: Record<string, unknown> = {
-      limit: pagination.pageSize,
-      offset: pagination.pageIndex * pagination.pageSize,
-    };
+  // ── Compute table mode (server vs client) ──
+  const mode: TableMode = useMemo(
+    () =>
+      computeTableMode({
+        debouncedGlobalFilter,
+        sorting,
+        columnFilters,
+        indexedFields: config.indexedFields,
+      }),
+    [debouncedGlobalFilter, sorting, columnFilters, config.indexedFields],
+  );
 
-    // 根據 activeSearch 的模式設定參數
+  // Reset page index when mode changes
+  const prevModeRef = useRef(mode);
+  useEffect(() => {
+    if (prevModeRef.current !== mode) {
+      prevModeRef.current = mode;
+      setPagination((prev) => ({ ...prev, pageIndex: 0 }));
+    }
+  }, [mode]);
+
+  // ── Build request params ──
+  const params = useMemo(() => {
+    const baseParams: Record<string, unknown> = {};
+
+    // --- Pagination ---
+    if (mode === 'server') {
+      baseParams.limit = pagination.pageSize;
+      baseParams.offset = pagination.pageIndex * pagination.pageSize;
+    } else {
+      baseParams.limit = CLIENT_FETCH_LIMIT;
+      // Sort by updated_time desc to fetch the most recently updated items
+      baseParams.sorts = JSON.stringify([
+        { type: 'meta', key: 'updated_time', direction: '-' },
+      ]);
+    }
+
+    // --- AdvancedSearchPanel conditions ---
     if (activeSearch.mode === 'qb' && activeSearch.qb) {
-      // QB 模式：只傳 qb 字串（limit 和 sorts 已包含在 QB 中）
+      // QB mode: just send the QB string
       baseParams.qb = activeSearch.qb;
     } else {
-      // Condition 模式：傳遞各別參數
-      const { meta, data } = activeSearch.condition;
+      // Condition mode
+      const { meta, data: advancedData } = activeSearch.condition;
 
-      // 後端結果數量限制（優先於 pagination.pageSize）
+      // Advanced panel result limit (cap at CLIENT_FETCH_LIMIT)
       if (activeSearch.resultLimit) {
-        baseParams.limit = activeSearch.resultLimit;
+        baseParams.limit = Math.min(
+          activeSearch.resultLimit,
+          mode === 'server' ? activeSearch.resultLimit : CLIENT_FETCH_LIMIT,
+        );
       }
 
-      // 後端排序（優先於前端 table sorting）
-      if (activeSearch.sortBy && activeSearch.sortBy.length > 0) {
+      // Advanced panel sorts (only in server mode — in client mode MRT handles sorting)
+      if (mode === 'server' && activeSearch.sortBy && activeSearch.sortBy.length > 0) {
         const sortsStr = sortByToSorts(activeSearch.sortBy);
-        if (sortsStr) {
-          baseParams.sorts = sortsStr;
-        }
+        if (sortsStr) baseParams.sorts = sortsStr;
       }
 
-      // 後端篩選參數（data_conditions）
-      if (data.length > 0) {
-        const dataConditions = data.map((condition) => ({
-          field_path: condition.field,
-          operator: condition.operator,
-          value: condition.value,
-        }));
-        baseParams.data_conditions = JSON.stringify(dataConditions);
-      }
+      // Advanced panel data_conditions
+      const advancedConditions = advancedData.map((condition) => ({
+        field_path: condition.field,
+        operator: condition.operator,
+        value: condition.value,
+      }));
 
-      // Meta 篩選參數
+      // Advanced panel meta filters
       if (meta.created_time_start) baseParams.created_time_start = meta.created_time_start;
       if (meta.created_time_end) baseParams.created_time_end = meta.created_time_end;
       if (meta.updated_time_start) baseParams.updated_time_start = meta.updated_time_start;
       if (meta.updated_time_end) baseParams.updated_time_end = meta.updated_time_end;
       if (meta.created_by) baseParams.created_bys = [meta.created_by];
       if (meta.updated_by) baseParams.updated_bys = [meta.updated_by];
+
+      // --- MRT column filters (server-filterable ones sent to backend in both modes) ---
+      const { serverParams, dataConditions: mrtDataConditions } = mrtFiltersToParams(
+        columnFilters,
+        config.indexedFields,
+      );
+      Object.assign(baseParams, serverParams);
+
+      // Merge advanced + MRT data_conditions
+      const allDataConditions = [...advancedConditions, ...mrtDataConditions];
+      if (allDataConditions.length > 0) {
+        baseParams.data_conditions = JSON.stringify(allDataConditions);
+      }
+    }
+
+    // --- MRT column sorting (server mode only — send sortable columns to backend) ---
+    if (mode === 'server' && sorting.length > 0 && !baseParams.sorts) {
+      const sortsStr = mrtSortingToSorts(sorting, config.indexedFields);
+      if (sortsStr) baseParams.sorts = sortsStr;
     }
 
     return baseParams;
-  }, [pagination.pageSize, pagination.pageIndex, activeSearch]);
+  }, [mode, pagination, activeSearch, sorting, columnFilters, config.indexedFields]);
 
   const { data, total, loading, error, refresh } = useResourceList(config, params);
 
+  // ── Client mode overflow info (cutoff timestamp) ──
+  const clientOverflowInfo = useMemo(() => {
+    if (mode !== 'client' || total <= data.length || data.length === 0) return null;
+
+    // Find the oldest updated_time in the loaded data set
+    let oldestTime: string | null = null;
+    for (const item of data) {
+      const ut = (item as Record<string, unknown> & { meta?: { updated_time?: string } })?.meta
+        ?.updated_time;
+      if (ut && (!oldestTime || ut < oldestTime)) {
+        oldestTime = ut;
+      }
+    }
+
+    if (!oldestTime) return null;
+    return {
+      cutoffTime: oldestTime,
+      unfetchedCount: total - data.length,
+    };
+  }, [mode, total, data]);
+
+  // ── Count label ──
+  const countLabel = useMemo(() => {
+    if (mode === 'server') return `${total} total resources`;
+    if (clientOverflowInfo) return `${data.length} / ${total} total resources`;
+    return `${total} total resources`;
+  }, [mode, total, data.length, clientOverflowInfo]);
+
+  // ── Columns ──
   const tableColumns = useMemo(
     () =>
       buildTableColumns(config, {
@@ -172,16 +277,41 @@ export function ResourceTable<T extends MRT_RowData>({
     [config.fields, columns],
   );
 
+  // ── MRT instance ──
+  const isServer = mode === 'server';
+
   const table = useMantineReactTable({
     columns: tableColumns,
     data,
-    manualPagination: true,
-    rowCount: total,
+
+    // Global filter
     enableGlobalFilter: true,
-    state: { isLoading: loading, pagination, sorting, globalFilter },
     onGlobalFilterChange: setGlobalFilter,
-    onPaginationChange: setPagination,
+
+    // Column filters
+    enableColumnFilters: true,
+    onColumnFiltersChange: setColumnFilters,
+
+    // Sorting
     onSortingChange: setSorting,
+
+    // Pagination
+    onPaginationChange: setPagination,
+
+    // Server / client mode toggle
+    manualPagination: isServer,
+    manualSorting: isServer,
+    manualFiltering: isServer,
+    rowCount: isServer ? total : undefined,
+
+    state: {
+      isLoading: loading,
+      sorting,
+      globalFilter,
+      columnFilters,
+      pagination,
+    },
+
     mantineTableBodyRowProps: ({ row }) => ({
       onClick: () =>
         navigate({
@@ -199,9 +329,20 @@ export function ResourceTable<T extends MRT_RowData>({
         <Group justify="space-between">
           <div>
             <Title order={2}>{config.label}</Title>
-            <Text c="dimmed" size="sm">
-              {total} total resources
-            </Text>
+            <Group gap="xs">
+              <Text c="dimmed" size="sm">
+                {countLabel}
+              </Text>
+              <Badge size="xs" variant="light" color={isServer ? 'blue' : 'orange'}>
+                {isServer ? 'Server' : 'Client'}
+              </Badge>
+              {clientOverflowInfo && (
+                <Text c="orange" size="xs">
+                  僅載入 {formatTime(clientOverflowInfo.cutoffTime, 'full')} 之後更新的資料，尚有{' '}
+                  {clientOverflowInfo.unfetchedCount} 筆未載入
+                </Text>
+              )}
+            </Group>
           </div>
           <Group>
             <Button variant="light" leftSection={<IconRefresh size={16} />} onClick={refresh}>
@@ -216,9 +357,9 @@ export function ResourceTable<T extends MRT_RowData>({
           </Group>
         </Group>
 
-        {/* 即時篩選 - 只篩當前頁面的資料 */}
+        {/* 即時篩選 - client-side free text search (triggers client mode after debounce) */}
         <TextInput
-          placeholder="在此頁中篩選..."
+          placeholder="Search all loaded resources..."
           value={globalFilter ?? ''}
           onChange={(e) => setGlobalFilter(e.currentTarget.value)}
           leftSection={<IconSearch size={16} />}
