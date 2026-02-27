@@ -200,7 +200,7 @@ export function RevisionHistorySection({
     const ensureSelectedRevisions = async () => {
       for (const revisionId of missingIds) {
         try {
-          const response = await config.apiClient.getFull(resourceId, {
+          const response = await config.apiClient.get(resourceId, {
             revision_id: revisionId,
           });
           if (cancelled) {

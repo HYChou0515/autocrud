@@ -126,9 +126,9 @@ export interface ResourceConfig<T = any> {
   customCreateActions?: CustomCreateAction[];
   apiClient: {
     create: (data: T) => Promise<{ data: RevisionInfo }>;
-    listFull: (params?: any) => Promise<{ data: FullResource<T>[] }>;
+    list: (params?: any) => Promise<{ data: FullResource<T>[] }>;
     count: (params?: any) => Promise<{ data: number }>;
-    getFull: (id: string, params?: any) => Promise<{ data: FullResource<T> }>;
+    get: (id: string, params?: any) => Promise<{ data: FullResource<T> }>;
     update: (id: string, data: T, params?: any) => Promise<{ data: RevisionInfo }>;
     delete: (id: string) => Promise<{ data: ResourceMeta }>;
     restore: (id: string) => Promise<{ data: ResourceMeta }>;

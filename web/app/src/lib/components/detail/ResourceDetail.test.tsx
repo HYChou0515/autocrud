@@ -99,9 +99,9 @@ function makeConfig(overrides?: Partial<ResourceConfig<any>>): ResourceConfig<an
     fields: [makeField('payload.command')],
     apiClient: {
       create: vi.fn(),
-      listFull: vi.fn(),
+      list: vi.fn(),
       count: vi.fn(),
-      getFull: vi.fn(),
+      get: vi.fn(),
       update: vi.fn(),
       delete: vi.fn(),
       restore: vi.fn(),

@@ -39,7 +39,7 @@ export function useResourceDetail<T>(
       setError(null);
       try {
         const params = revisionId ? { revision_id: revisionId } : undefined;
-        const res = await config.apiClient.getFull(resourceId, params);
+        const res = await config.apiClient.get(resourceId, params);
         if (!cancelled) {
           setResource(res.data);
         }

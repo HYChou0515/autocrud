@@ -5,7 +5,15 @@
  * 2. `FIELD_RENDERERS` map dispatches to the appropriate render function.
  */
 
-import { TextInput, NumberInput, Textarea, Checkbox, Select, Switch, FileInput } from '@mantine/core';
+import {
+  TextInput,
+  NumberInput,
+  Textarea,
+  Checkbox,
+  Select,
+  Switch,
+  FileInput,
+} from '@mantine/core';
 import { DateTimePicker } from '@mantine/dates';
 import type { UseFormReturnType } from '@mantine/form';
 import type { ResourceField, FieldVariant } from '../../../resources';
