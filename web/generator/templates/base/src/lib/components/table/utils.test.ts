@@ -104,27 +104,25 @@ describe('computeTableMode', () => {
   });
 
   it('returns "server" when sorting on server-sortable meta column', () => {
-    expect(
-      computeTableMode({ ...base, sorting: [{ id: 'created_time', desc: false }] }),
-    ).toBe('server');
+    expect(computeTableMode({ ...base, sorting: [{ id: 'created_time', desc: false }] })).toBe(
+      'server',
+    );
   });
 
   it('returns "server" when sorting on indexed data field', () => {
-    expect(
-      computeTableMode({ ...base, sorting: [{ id: 'level', desc: true }] }),
-    ).toBe('server');
+    expect(computeTableMode({ ...base, sorting: [{ id: 'level', desc: true }] })).toBe('server');
   });
 
   it('returns "client" when sorting on non-server-sortable column', () => {
-    expect(
-      computeTableMode({ ...base, sorting: [{ id: 'created_by', desc: false }] }),
-    ).toBe('client');
+    expect(computeTableMode({ ...base, sorting: [{ id: 'created_by', desc: false }] })).toBe(
+      'client',
+    );
   });
 
   it('returns "client" when sorting on non-indexed data field', () => {
-    expect(
-      computeTableMode({ ...base, sorting: [{ id: 'description', desc: false }] }),
-    ).toBe('client');
+    expect(computeTableMode({ ...base, sorting: [{ id: 'description', desc: false }] })).toBe(
+      'client',
+    );
   });
 
   it('returns "client" when mixed sorts include a non-sortable column', () => {
@@ -146,9 +144,9 @@ describe('computeTableMode', () => {
   });
 
   it('returns "server" when column filter targets indexed data field', () => {
-    expect(
-      computeTableMode({ ...base, columnFilters: [{ id: 'level', value: '5' }] }),
-    ).toBe('server');
+    expect(computeTableMode({ ...base, columnFilters: [{ id: 'level', value: '5' }] })).toBe(
+      'server',
+    );
   });
 
   it('returns "client" when column filter targets non-filterable column', () => {

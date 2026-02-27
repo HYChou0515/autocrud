@@ -629,7 +629,7 @@ describe('genTypes — union types', () => {
 // genApiClient — union type imports
 // ============================================================================
 describe('genApiClient — union types', () => {
-  it('imports union type alias and all variant types', () => {
+  it('imports only the union type alias, not individual variant types', () => {
     const spec = buildUnionSpec();
     const gen = createTestGenerator(spec);
     (gen as any).extractResources();
@@ -637,7 +637,10 @@ describe('genApiClient — union types', () => {
     const union = gen.resources.find((r) => r.name === 'cat-or-dog')!;
     const client = (gen as any).genApiClient(union) as string;
 
-    expect(client).toContain('import type { CatOrDog, Cat, Dog }');
+    expect(client).toContain("import type { CatOrDog } from '../types';");
+    // Should NOT import individual variant types (Cat, Dog) separately
+    expect(client).not.toMatch(/import type \{[^}]*\bCat\b/);
+    expect(client).not.toMatch(/import type \{[^}]*\bDog\b/);
   });
 
   it('normal resource only imports its own type', () => {

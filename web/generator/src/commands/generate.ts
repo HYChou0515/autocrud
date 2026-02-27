@@ -1109,13 +1109,9 @@ export { registry as resources };
 
   private genApiClient(r: Resource): string {
     const base = `${this.basePath}/${r.name}`;
-    // For union types, import the union alias + all variant types
-    const allTypeImports: string[] = [];
-    if (r.isUnion && r.unionVariantSchemaNames) {
-      allTypeImports.push(r.schemaName, ...r.unionVariantSchemaNames);
-    } else {
-      allTypeImports.push(r.schemaName);
-    }
+    // Only import the main schema name; union variant types are not directly
+    // referenced in the API client and would cause unused-import lint errors.
+    const allTypeImports: string[] = [r.schemaName];
     // Add custom action body schema imports (body-based actions only)
     if (r.customCreateActions) {
       for (const action of r.customCreateActions) {
