@@ -40,7 +40,14 @@ from autocrud.message_queue.rabbitmq import RabbitMQMessageQueueFactory
 from autocrud.message_queue.simple import SimpleMessageQueueFactory
 from autocrud.query import QB
 from autocrud.resource_manager.storage_factory import DiskStorageFactory
-from autocrud.types import Binary, DisplayName, Job, RefRevision, Resource, Unique
+from autocrud.types import (
+    Binary,
+    DisplayName,
+    Job,
+    RefType,
+    Resource,
+    Unique,
+)
 
 
 class CharacterClass(Enum):
@@ -201,7 +208,9 @@ class GameEventPayload(Struct):
 
     event_type: GameEventType
     character_name: str
-    character_id: Annotated[Optional[str], RefRevision("character")]
+    character_id: Annotated[
+        Optional[str], Ref("character", ref_type=RefType.revision_id)
+    ]
     description: str
     reward_gold: int = 0
     reward_exp: int = 0
@@ -1182,7 +1191,7 @@ def create_sample_events():
         GameEventPayload(
             event_type=GameEventType.LEVEL_UP,
             character_name="新手小白",
-            character_id=character_revs.get("新手小白"),
+            character_id=character_revs.get("新手小白").rpartition(":")[0],
             description="角色升級到 6 級",
             reward_exp=500,
             reward_gold=100,
@@ -1197,7 +1206,7 @@ def create_sample_events():
         GameEventPayload(
             event_type=GameEventType.DAILY_LOGIN,
             character_name="API 魔法師",
-            character_id=character_revs.get("API 魔法師"),
+            character_id=character_revs.get("API 魔法師").rpartition(":")[0],
             description="每日登入獎勵",
             reward_exp=200,
             reward_gold=50,
@@ -1213,7 +1222,7 @@ def create_sample_events():
         GameEventPayload(
             event_type=GameEventType.EQUIPMENT_ENHANCE,
             character_name="Schema 設計師",
-            character_id=character_revs.get("Schema 設計師"),
+            character_id=character_revs.get("Schema 設計師").rpartition(":")[0],
             description="裝備強化成功",
             reward_gold=0,
             extra_data={"equipment_name": "精準查詢弓", "enhance_level": 5},

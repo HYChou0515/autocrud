@@ -40,11 +40,33 @@ class OnDelete(StrEnum):
     """Delete the referencing resource as well."""
 
 
+class RefType(StrEnum):
+    """Defines the type of reference a field holds."""
+
+    resource_id = "resource_id"
+    """The field stores a resource_id. The reference targets the resource as
+    a whole and participates in referential integrity (on_delete), auto-indexing,
+    and referrers queries."""
+
+    revision_id = "revision_id"
+    """The field stores a version-aware reference: either a revision_id
+    (pinned to a specific revision) or a resource_id (meaning *latest*).
+    Revision refs are always ``on_delete=dangling``, are not auto-indexed,
+    and are excluded from referrers queries."""
+
+
 class Ref:
-    """Metadata marker for a field that references another resource's resource_id.
+    """Metadata marker for a field that references another AutoCRUD resource.
 
     Use with ``Annotated`` to annotate a ``str`` field that holds a reference
     to another AutoCRUD resource.
+
+    By default ``ref_type`` is ``RefType.resource_id``, meaning the field
+    stores a ``resource_id`` and participates in referential integrity.
+
+    Set ``ref_type=RefType.revision_id`` for version-aware references where
+    the field may store either a ``revision_id`` (pinned) or a ``resource_id``
+    (meaning *latest*).  Revision refs are always ``on_delete=dangling``.
 
     Example::
 
@@ -54,30 +76,52 @@ class Ref:
                 str | None, Ref("guild", on_delete=OnDelete.set_null)
             ] = None
             owner_id: Annotated[str, Ref("character", on_delete=OnDelete.cascade)]
+            zone_snapshot_id: Annotated[str, Ref("zone", ref_type=RefType.revision_id)]
     """
 
-    __slots__ = ("resource", "on_delete")
+    __slots__ = ("resource", "on_delete", "ref_type")
 
     def __init__(
-        self, resource: str, *, on_delete: OnDelete = OnDelete.dangling
+        self,
+        resource: str,
+        *,
+        on_delete: OnDelete = OnDelete.dangling,
+        ref_type: RefType = RefType.resource_id,
     ) -> None:
         self.resource = resource
         self.on_delete = OnDelete(on_delete)
+        self.ref_type = RefType(ref_type)
+        if self.ref_type != RefType.resource_id and self.on_delete != OnDelete.dangling:
+            raise ValueError(
+                f"Ref({resource!r}) with ref_type={self.ref_type!r} "
+                f"requires on_delete=OnDelete.dangling, "
+                f"got on_delete={self.on_delete!r}."
+            )
 
     def __repr__(self) -> str:
-        return f"Ref({self.resource!r}, on_delete={self.on_delete!r})"
+        parts = [repr(self.resource), f"on_delete={self.on_delete!r}"]
+        if self.ref_type != RefType.resource_id:
+            parts.append(f"ref_type={self.ref_type!r}")
+        return f"Ref({', '.join(parts)})"
 
     def __eq__(self, other: object) -> bool:
         if not isinstance(other, Ref):
             return NotImplemented
-        return self.resource == other.resource and self.on_delete == other.on_delete
+        return (
+            self.resource == other.resource
+            and self.on_delete == other.on_delete
+            and self.ref_type == other.ref_type
+        )
 
     def __hash__(self) -> int:
-        return hash((self.resource, self.on_delete))
+        return hash((self.resource, self.on_delete, self.ref_type))
 
 
 class RefRevision:
     """Metadata marker for a field that references another resource's revision_id.
+
+    .. deprecated:: 0.9.0
+        Use ``Ref(resource, ref_type=RefType.revision_id)`` instead.
 
     Example::
 
@@ -88,6 +132,14 @@ class RefRevision:
     __slots__ = ("resource",)
 
     def __init__(self, resource: str) -> None:
+        import warnings
+
+        warnings.warn(
+            "RefRevision is deprecated. "
+            "Use Ref(resource, ref_type=RefType.revision_id) instead.",
+            DeprecationWarning,
+            stacklevel=2,
+        )
         self.resource = resource
 
     def __repr__(self) -> str:
@@ -166,7 +218,7 @@ def _extract_from_hint(
                         source=source_name,
                         source_field=field_name,
                         target=meta.resource,
-                        ref_type="resource_id",
+                        ref_type=meta.ref_type.value,
                         on_delete=meta.on_delete,
                         nullable=nullable,
                         is_list=is_list,

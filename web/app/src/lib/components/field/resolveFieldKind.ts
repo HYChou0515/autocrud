@@ -122,12 +122,12 @@ export function resolveFieldKind(field: ResourceField): FieldKind {
     return 'refResourceId';
   }
 
-  // 17. Ref revision_id (array)
+  // 17. Ref revision_id (array) — version-aware ref (resource_id=latest or revision_id=pinned)
   if (field.ref?.type === 'revision_id' && field.isArray) {
     return 'refRevisionIdMulti';
   }
 
-  // 18. Ref revision_id (single)
+  // 18. Ref revision_id (single) — version-aware ref (resource_id=latest or revision_id=pinned)
   if (field.ref?.type === 'revision_id') {
     return 'refRevisionId';
   }

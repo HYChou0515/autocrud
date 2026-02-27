@@ -29,7 +29,13 @@ export type FieldVariant =
   | { type: 'union'; variant?: 'radio.group' | 'radio.card' };
 
 /**
- * Reference metadata for fields that point to another resource
+ * Reference metadata for fields that point to another resource.
+ *
+ * - `type: 'resource_id'` — the field stores a resource_id and participates
+ *   in referential integrity (on_delete), auto-indexing, and referrers queries.
+ * - `type: 'revision_id'` — version-aware reference.  The field may store
+ *   either a revision_id (pinned to a specific revision) or a resource_id
+ *   (meaning "latest").  Always `on_delete: 'dangling'`, not indexed.
  */
 export interface FieldRef {
   resource: string;
