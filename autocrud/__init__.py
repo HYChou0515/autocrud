@@ -1,4 +1,5 @@
 from autocrud.crud.core import AutoCRUD
+from autocrud.resource_manager.pydantic_converter import struct_to_pydantic
 from autocrud.schema import Schema
 from autocrud.types import (
     DisplayName,
@@ -34,5 +35,6 @@ __all__ = [
     "UniqueConstraintError",
     "ValidationError",
     "crud",
+    "struct_to_pydantic",
 ]
 __version__ = "0.8.3a4"

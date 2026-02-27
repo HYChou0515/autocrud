@@ -146,6 +146,7 @@ export class Generator {
 
   async run() {
     this.extractResources();
+    this.extractCustomCreateActions();
     console.log(`📦 Resources: ${this.resources.map((r) => r.name).join(', ')}\n`);
     console.log('📝 Generating files...');
 
@@ -247,6 +248,148 @@ export class Generator {
         unionVariantSchemaNames: unionField.unionMeta!.variants.map((v) => v.schemaName).filter(Boolean) as string[],
       });
     }
+  }
+
+  /**
+   * Discover custom create actions from the x-autocrud-custom-create-actions
+   * OpenAPI extension and attach them to the corresponding Resource entries.
+   */
+  private extractCustomCreateActions() {
+    const actionsMap: Record<string, any[]> = this.spec['x-autocrud-custom-create-actions'] ?? {};
+    if (Object.keys(actionsMap).length === 0) return;
+
+    for (const resource of this.resources) {
+      const rawActions = actionsMap[resource.name];
+      if (!rawActions || rawActions.length === 0) continue;
+
+      const actions: CustomCreateAction[] = [];
+      for (const raw of rawActions) {
+        // Derive the path segment name (last part of action path)
+        const fullPath: string = raw.path;
+        const pathSegment = fullPath.split('/').pop() || raw.operationId;
+
+        if (raw.bodySchema) {
+          // Body-based action: build form fields from body schema
+          const bodySchemaName: string = raw.bodySchema;
+          const schema = this.spec.components?.schemas?.[bodySchemaName];
+          if (!schema?.properties) {
+            console.warn(`⚠️  Custom action '${raw.label}': schema '${bodySchemaName}' not found, skipping`);
+            continue;
+          }
+          const fields = this.extractFields(schema, '', 1, 10);
+          actions.push({
+            name: pathSegment,
+            path: fullPath,
+            label: raw.label,
+            operationId: raw.operationId,
+            bodySchemaName,
+            fields,
+          });
+        } else {
+          // Compositional: independently collect fields from each parameter source
+          const fields: Field[] = [];
+          const actionMeta: any = {
+            name: pathSegment,
+            path: fullPath,
+            label: raw.label,
+            operationId: raw.operationId,
+          };
+
+          if (raw.pathParams?.length > 0) {
+            const ppFields = (raw.pathParams as any[]).map((p: any) => this.queryParamToField(p));
+            fields.push(...ppFields);
+            actionMeta.pathParams = raw.pathParams;
+          }
+          if (raw.queryParams?.length > 0) {
+            const qpFields = (raw.queryParams as any[]).map((p: any) => this.queryParamToField(p));
+            fields.push(...qpFields);
+            actionMeta.queryParams = raw.queryParams;
+          }
+          if (raw.inlineBodyParams?.length > 0) {
+            const ibpFields = (raw.inlineBodyParams as any[]).map((p: any) => this.queryParamToField(p));
+            fields.push(...ibpFields);
+            actionMeta.inlineBodyParams = raw.inlineBodyParams;
+          }
+          if (raw.fileParams?.length > 0) {
+            const fpFields = (raw.fileParams as any[]).map((p: any) => this.fileParamToField(p));
+            fields.push(...fpFields);
+            actionMeta.fileParams = raw.fileParams;
+          }
+
+          if (fields.length === 0) {
+            console.warn(
+              `⚠️  Custom action '${raw.label}' for ${resource.name}: no bodySchema, pathParams, queryParams, inlineBodyParams, or fileParams, skipping`,
+            );
+            continue;
+          }
+
+          actionMeta.fields = fields;
+          actions.push(actionMeta);
+        }
+      }
+
+      // Deduplicate labels to prevent React key collisions and UI confusion.
+      // If two actions share the same label, rename the later occurrences: "Foo (2)", "Foo (3)", …
+      const seenOriginalLabels = new Map<string, number>();
+      for (const action of actions) {
+        const originalLabel = action.label;
+        const count = seenOriginalLabels.get(originalLabel) ?? 0;
+        seenOriginalLabels.set(originalLabel, count + 1);
+        if (count > 0) {
+          const newLabel = `${originalLabel} (${count + 1})`;
+          console.warn(
+            `⚠️  Duplicate action label '${originalLabel}' for resource '${resource.name}' ` +
+              `(operationId: '${action.operationId}'). Renaming to '${newLabel}' to prevent frontend crash.`,
+          );
+          action.label = newLabel;
+        }
+      }
+
+      if (actions.length > 0) {
+        resource.customCreateActions = actions;
+      }
+    }
+  }
+
+  /**
+   * Convert an OpenAPI query/path/inline-body parameter to a Field.
+   * Delegates to parseField() — param.schema IS an OpenAPI property object.
+   */
+  private queryParamToField(param: { name: string; required: boolean; schema?: Record<string, any> }): Field {
+    const field = this.parseField(param.name, param.schema ?? { type: 'string' }, param.required);
+    if (field) return field;
+    // Fallback (should not happen for simple scalar schemas)
+    return {
+      name: param.name,
+      label: toLabel(param.name),
+      type: 'string',
+      tsType: 'string',
+      isArray: false,
+      isRequired: param.required,
+      isNullable: false,
+      zodType: param.required ? 'z.string()' : 'z.string().optional()',
+    };
+  }
+
+  /**
+   * Convert an OpenAPI file-parameter (format=binary) to a Field for form generation.
+   */
+  private fileParamToField(param: {
+    name: string;
+    required: boolean;
+    schema?: { type?: string; format?: string };
+  }): Field {
+    const zodType = param.required ? 'z.instanceof(File)' : 'z.instanceof(File).optional()';
+    return {
+      name: param.name,
+      label: toLabel(param.name),
+      type: 'file',
+      tsType: 'File',
+      isArray: false,
+      isRequired: param.required,
+      isNullable: false,
+      zodType,
+    };
   }
 
   /**
@@ -835,6 +978,29 @@ export class Generator {
 
       const displayNameLine = r.displayNameField ? `    displayNameField: '${r.displayNameField}',\n` : '';
 
+      // Generate customCreateActions if present
+      let customActionsBlock = '';
+      if (r.customCreateActions && r.customCreateActions.length > 0) {
+        const actionEntries = r.customCreateActions.map((action) => {
+          const actionFields = action.fields.map((f) => serializeField(f));
+          const actionZodFields = buildNestedZodFields(action.fields);
+          const methodName = toCamel(action.operationId);
+          return `      {
+        name: '${action.name}',
+        label: '${action.label}',
+        fields: ${JSON.stringify(actionFields, null, 10).replace(/"([^"]+)":/g, '$1:')},
+        zodSchema: z.object({
+${actionZodFields}
+        }),
+        apiMethod: ${r.camel}Api.${methodName},
+      }`;
+        });
+        customActionsBlock = `
+    customCreateActions: [
+${actionEntries.join(',\n')}
+    ],`;
+      }
+
       return `  '${r.name}': {
     name: '${r.name}',
     label: '${r.label}',
@@ -851,7 +1017,7 @@ ${zodFields}
         ? `
     isUnion: true,`
         : ''
-    }
+    }${customActionsBlock}
   }`;
     });
 
@@ -944,14 +1110,110 @@ export { registry as resources };
   private genApiClient(r: Resource): string {
     const base = `${this.basePath}/${r.name}`;
     // For union types, import the union alias + all variant types
-    const typeImports =
-      r.isUnion && r.unionVariantSchemaNames ? [r.schemaName, ...r.unionVariantSchemaNames].join(', ') : r.schemaName;
+    const allTypeImports: string[] = [];
+    if (r.isUnion && r.unionVariantSchemaNames) {
+      allTypeImports.push(r.schemaName, ...r.unionVariantSchemaNames);
+    } else {
+      allTypeImports.push(r.schemaName);
+    }
+    // Add custom action body schema imports (body-based actions only)
+    if (r.customCreateActions) {
+      for (const action of r.customCreateActions) {
+        if (action.bodySchemaName && !allTypeImports.includes(action.bodySchemaName)) {
+          allTypeImports.push(action.bodySchemaName);
+        }
+      }
+    }
+    const typeImports = allTypeImports.join(', ');
+
     const rerunMethod = r.isJob
       ? `
   rerun: (id: string) =>
     client.post<RevisionInfo>(\`\${BASE}/\${id}/rerun\`),
 `
       : '';
+
+    // Generate custom create action methods
+    let customActionMethods = '';
+    if (r.customCreateActions) {
+      for (const action of r.customCreateActions) {
+        const methodName = toCamel(action.operationId);
+
+        // Body-schema-based: typed body, no FormData needed
+        if (action.bodySchemaName) {
+          customActionMethods += `
+  ${methodName}: (data: ${action.bodySchemaName}) =>
+    client.post<RevisionInfo>('${action.path}', data),
+`;
+          continue;
+        }
+
+        // Compositional: build URL, body, and config independently
+        const hasPath = !!action.pathParams?.length;
+        const hasQuery = !!action.queryParams?.length;
+        const hasInlineBody = !!action.inlineBodyParams;
+        const hasFile = !!action.fileParams?.length;
+
+        // Step 1: URL expression
+        const urlExpr = hasPath
+          ? '`' + action.path.replace(/\{(\w+)\}/g, (_, pname) => `\${allParams['${pname}'] as string}`) + '`'
+          : `'${action.path}'`;
+
+        // Step 2: Body — FormData when files present, JSON object for inline body, null otherwise
+        const bodyLines: string[] = [];
+        let bodyVar = 'null';
+        if (hasFile) {
+          bodyLines.push('    const formData = new FormData();');
+          // Append inline body params as form fields
+          if (hasInlineBody) {
+            for (const p of action.inlineBodyParams as any[]) {
+              bodyLines.push(`    formData.append('${p.name}', String(allParams['${p.name}']));`);
+            }
+          }
+          // Append file params
+          for (const p of action.fileParams as any[]) {
+            bodyLines.push(
+              `    if (allParams['${p.name}'] instanceof File) formData.append('${p.name}', allParams['${p.name}'] as File);`,
+            );
+          }
+          bodyVar = 'formData';
+        } else if (hasInlineBody) {
+          const ibpEntries = (action.inlineBodyParams as any[])
+            .map((p: any) => `${p.name}: allParams['${p.name}']`)
+            .join(', ');
+          bodyLines.push(`    const data = { ${ibpEntries} };`);
+          bodyVar = 'data';
+        }
+
+        // Step 3: Query params config
+        const configLines: string[] = [];
+        let configArg = '';
+        if (hasQuery) {
+          const qpEntries = action.queryParams!.map((p: any) => `${p.name}: allParams['${p.name}']`).join(', ');
+          configLines.push(`    const params = { ${qpEntries} };`);
+          configArg = ', { params }';
+        }
+
+        // Step 4: Assemble method
+        const allSetupLines = [...bodyLines, ...configLines];
+        if (allSetupLines.length === 0) {
+          // Simple one-liner
+          customActionMethods += `
+  ${methodName}: (allParams: Record<string, unknown>) =>
+    client.post<RevisionInfo>(${urlExpr}, ${bodyVar}${configArg}),
+`;
+        } else {
+          const postArgs = `${urlExpr}, ${bodyVar}${configArg}`;
+          customActionMethods += `
+  ${methodName}: (allParams: Record<string, unknown>) => {
+${allSetupLines.join('\n')}
+    return client.post<RevisionInfo>(${postArgs});
+  },
+`;
+        }
+      }
+    }
+
     return `// Auto-generated by AutoCRUD Web Generator
 import { client } from '../../lib/client';
 import type { ${typeImports} } from '../types';
@@ -986,7 +1248,7 @@ export const ${r.camel}Api = {
 
   switchRevision: (id: string, revisionId: string) =>
     client.post<ResourceMeta>(\`\${BASE}/\${id}/switch/\${revisionId}\`),
-${rerunMethod}};
+${rerunMethod}${customActionMethods}};
 `;
   }
 
@@ -1229,6 +1491,34 @@ interface Resource {
   maxFormDepth: number;
   isUnion?: boolean;
   unionVariantSchemaNames?: string[];
+  customCreateActions?: CustomCreateAction[];
+}
+
+/**
+ * Custom create action discovered from x-autocrud-custom-create-actions.
+ * Each action represents an alternative POST endpoint for creating a resource.
+ */
+interface CustomCreateAction {
+  /** URL path segment after the resource name, e.g. "import-from-url" */
+  name: string;
+  /** Full API path, e.g. "/article/import-from-url" */
+  path: string;
+  /** Human-readable label, e.g. "Import from URL" */
+  label: string;
+  /** Python function name / OpenAPI operationId */
+  operationId: string;
+  /** Request body schema name in components (body-based actions) */
+  bodySchemaName?: string;
+  /** Path parameters (path-param-based actions, e.g. /{name}/new) */
+  pathParams?: Array<{ name: string; required: boolean; schema: { type?: string } }>;
+  /** Query parameters (query-param-based actions) */
+  queryParams?: Array<{ name: string; required: boolean; schema: { type?: string } }>;
+  /** Inline body params from Body(embed=True) style (flat JSON body) */
+  inlineBodyParams?: Array<{ name: string; required: boolean; schema: { type?: string } }>;
+  /** File upload params from UploadFile (multipart/form-data) */
+  fileParams?: Array<{ name: string; required: boolean; schema: { type?: string; format?: string } }>;
+  /** Extracted fields from the body schema, path/query/inline-body/file params */
+  fields: Field[];
 }
 
 interface FieldRef {

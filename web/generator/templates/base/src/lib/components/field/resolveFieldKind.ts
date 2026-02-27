@@ -16,6 +16,7 @@ export type FieldKind =
   | 'itemFields'
   | 'union'
   | 'binary'
+  | 'file'
   | 'json'
   | 'markdown'
   | 'arrayString'
@@ -55,6 +56,11 @@ export function resolveFieldKind(field: ResourceField): FieldKind {
   // 3. Binary
   if (field.type === 'binary') {
     return 'binary';
+  }
+
+  // 3b. File upload (UploadFile)
+  if (field.type === 'file') {
+    return 'file';
   }
 
   // 4. JSON / Object

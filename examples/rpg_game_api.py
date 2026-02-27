@@ -27,11 +27,15 @@ from typing import Annotated, Optional
 
 import msgspec
 import uvicorn
-from fastapi import FastAPI
+from fastapi import Body, FastAPI, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
 from msgspec import Struct
+from pydantic_core import Url
 
-from autocrud import IValidator, OnDelete, Ref, Schema, crud
+from autocrud import IValidator, OnDelete, Ref, Schema, crud, struct_to_pydantic
+
+# 預先將 Struct 轉為 Pydantic Model，供 FastAPI 端點作為型別標註使用
+# 直接在 annotation 寫 struct_to_pydantic(Skill) 會被 Pylance 報 reportInvalidTypeForm
 from autocrud.crud.route_templates.blob import BlobRouteTemplate
 from autocrud.crud.route_templates.graphql import GraphQLRouteTemplate
 from autocrud.crud.route_templates.migrate import MigrateRouteTemplate
@@ -133,7 +137,7 @@ class Character(Struct):
 
     name: Annotated[str, DisplayName(), Unique()]
     character_class: CharacterClass
-    valueAD__x: int = 12
+    valueAD__x: int | str = 12
     level: int = 1
     hp: int = 100
     mp: int = 50
@@ -1084,6 +1088,37 @@ def configure_crud():
         indexed_fields=[("status", str)],
         job_handler=process_game_event,
     )
+
+    @crud.create_action("character", label="New Character1", path="/{name}/new")
+    async def create_new_character1(
+        name: str,
+    ):
+        return Character(
+            name=name,
+            character_class=CharacterClass.WARRIOR,
+        )
+
+    @crud.create_action("character", label="New Character2")
+    async def create_new_character2(
+        name: str,
+    ):
+        return Character(
+            name=name,
+            character_class=CharacterClass.WARRIOR,
+        )
+
+    @crud.create_action("character", label="New Character3")
+    async def create_new_character4(
+        x: int | str,
+        y: Url,
+        name: Annotated[str, Body(embed=True)],
+        z: UploadFile,
+        f: struct_to_pydantic(Skill),  # type: ignore[reportInvalidTypeForm]
+    ):
+        return Character(
+            name=f"{name} ({x}, {y} {z.size} {f})",
+            character_class=CharacterClass.WARRIOR,
+        )
 
 
 def process_game_event(event_resource: Resource[GameEvent]):

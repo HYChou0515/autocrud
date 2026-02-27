@@ -11,7 +11,7 @@ Supports both Pydantic v1 (1.x) and v2 (2.x).
 """
 
 from collections.abc import Callable
-from typing import Annotated, Any, Union
+from typing import Annotated, Any, Literal, Union
 
 import msgspec
 
@@ -405,3 +405,250 @@ def _pydantic_to_struct_recursive(pydantic_model: type, cache: dict) -> type:
     result = msgspec.defstruct(pydantic_model.__name__, struct_fields, kw_only=True)
     cache[pydantic_model] = result
     return result
+
+
+# ---------------------------------------------------------------------------
+# msgspec Struct → Pydantic BaseModel
+# ---------------------------------------------------------------------------
+
+
+def struct_to_pydantic(struct_cls: type) -> type:
+    """Convert a msgspec Struct class to a Pydantic BaseModel class.
+
+    This is the reverse of ``pydantic_to_struct``.  It allows using a
+    Struct-based type as a FastAPI request body parameter by generating an
+    equivalent Pydantic model that FastAPI can introspect for OpenAPI schema
+    generation and validation.
+
+    Usage::
+
+        @app.post("/action")
+        async def my_action(body: struct_to_pydantic(MyStruct) = Body(...)): ...
+
+    Handles:
+    - Simple scalar types (str, int, float, bool, datetime …)
+    - ``Optional[X]``
+    - ``Enum`` types
+    - ``list[X]``, ``dict[K, V]``
+    - Nested Structs (recursively converted)
+    - Tagged unions (``A | B`` where both have ``tag``) → Pydantic
+      discriminated unions with ``Literal`` discriminator field
+    - ``Annotated`` metadata is **stripped** (AutoCRUD-specific markers
+      like ``Ref``, ``DisplayName``, ``Unique`` are not meaningful for
+      Pydantic).
+    """
+
+    if not (isinstance(struct_cls, type) and issubclass(struct_cls, msgspec.Struct)):
+        raise TypeError(f"Expected a msgspec Struct class, got {struct_cls}")
+
+    cache: dict[type, type] = {}
+    return _struct_to_pydantic_recursive(struct_cls, cache)
+
+
+def _is_tagged_struct(cls: Any) -> bool:
+    """Return True if *cls* is a Struct with an explicit tag."""
+    return (
+        isinstance(cls, type)
+        and issubclass(cls, msgspec.Struct)
+        and cls.__struct_config__.tag is not None
+    )
+
+
+# msgspec types that Pydantic cannot generate schemas for.
+# We detect these early and raise a clear error.
+_UNSUPPORTED_TYPES: dict[type, str] = {
+    msgspec.UnsetType: "msgspec.UnsetType",
+    msgspec.Raw: "msgspec.Raw",
+}
+
+try:
+    from msgspec.msgpack import Ext as _MsgpackExt
+
+    _UNSUPPORTED_TYPES[_MsgpackExt] = "msgspec.msgpack.Ext"
+except ImportError:  # pragma: no cover
+    pass
+
+
+def _check_unsupported_types(
+    annotation: Any, struct_name: str, field_name: str
+) -> None:
+    """Raise TypeError if *annotation* contains a msgspec-specific type
+    that Pydantic cannot handle.
+
+    Currently unsupported: ``msgspec.UnsetType``, ``msgspec.Raw``,
+    ``msgspec.msgpack.Ext``.
+
+    We detect these early and provide a clear error message instead of
+    letting Pydantic crash with an opaque PydanticSchemaGenerationError.
+    """
+    if isinstance(annotation, type):
+        for unsupported, label in _UNSUPPORTED_TYPES.items():
+            if issubclass(annotation, unsupported):
+                raise TypeError(
+                    f"{struct_name}.{field_name} contains unsupported type "
+                    f"'{label}'. {label} is not compatible with Pydantic. "
+                    f"Consider removing it from the annotation before calling "
+                    f"struct_to_pydantic()."
+                )
+    if is_union_type(annotation):
+        for arg in get_union_args(annotation):
+            _check_unsupported_types(arg, struct_name, field_name)
+    origin = get_generic_origin(annotation)
+    if origin is not None:
+        for arg in get_generic_args(annotation):
+            _check_unsupported_types(arg, struct_name, field_name)
+
+
+def _struct_to_pydantic_annotation(annotation: Any, cache: dict) -> Any:
+    """Recursively convert a type annotation, replacing Structs with Pydantic models.
+
+    Tagged unions are converted to Pydantic discriminated unions with a
+    ``Literal`` discriminator field on each variant.
+    """
+
+    # 1. Annotated[T, meta…] — strip metadata, convert inner type
+    if is_annotated_type(annotation):
+        inner, _meta = unwrap_annotated(annotation)
+        return _struct_to_pydantic_annotation(inner, cache)
+
+    # 2. Direct Struct reference
+    if isinstance(annotation, type) and issubclass(annotation, msgspec.Struct):
+        return _struct_to_pydantic_recursive(annotation, cache)
+
+    # 3. Union / Optional (including PEP 604 ``A | B``)
+    if is_union_type(annotation):
+        args = get_union_args(annotation)
+        none_included = type(None) in args
+        real_args = [a for a in args if a is not type(None)]
+
+        # Check if this is a tagged struct union
+        all_tagged = all(_is_tagged_struct(a) for a in real_args) and len(real_args) > 1
+        if all_tagged:
+            return _convert_tagged_union_to_pydantic(real_args, none_included, cache)
+
+        # Normal union — convert each arm
+        converted = tuple(_struct_to_pydantic_annotation(a, cache) for a in args)
+        return Union[converted]
+
+    # 4. Generic containers: list[X], dict[K, V], etc.
+    origin = get_generic_origin(annotation)
+    if origin is not None:
+        args = get_generic_args(annotation)
+        if not args:
+            return annotation
+        converted = tuple(_struct_to_pydantic_annotation(a, cache) for a in args)
+        if converted == args:
+            return annotation
+        if is_union_type(annotation):
+            return Union[converted]
+        return origin[converted]
+
+    return annotation
+
+
+def _convert_tagged_union_to_pydantic(
+    members: list[type], none_included: bool, cache: dict
+) -> Any:
+    """Convert tagged Struct union members to Pydantic discriminated union.
+
+    Each tagged Struct gets a ``Literal`` discriminator field added.
+    The resulting union uses ``Annotated[Union[...], Field(discriminator=...)]``.
+    """
+    from pydantic import Field as PydanticField  # noqa: F811
+
+    # Determine the tag_field name (all members in a union share the same one)
+    tag_field = members[0].__struct_config__.tag_field or "type"
+
+    converted = []
+    for member in members:
+        converted.append(_struct_to_pydantic_tagged(member, tag_field, cache))
+
+    union_type = Union[tuple(converted)]
+    if none_included:
+        union_type = Union[tuple([*converted, type(None)])]
+
+    return Annotated[union_type, PydanticField(discriminator=tag_field)]
+
+
+def _struct_to_pydantic_tagged(struct_cls: type, tag_field: str, cache: dict) -> type:
+    """Convert a single tagged Struct to a Pydantic model with Literal discriminator."""
+    if struct_cls in cache:
+        return cache[struct_cls]
+
+    from pydantic import BaseModel  # noqa: F811
+    from pydantic import Field as PydanticField
+
+    tag_value = struct_cls.__struct_config__.tag
+
+    # Build field annotations and defaults
+    field_annotations: dict[str, Any] = {}
+    field_defaults: dict[str, Any] = {}
+
+    # Add discriminator field as Literal
+    field_annotations[tag_field] = Literal[tag_value]
+    field_defaults[tag_field] = tag_value
+
+    # Convert remaining fields
+    hints = _get_struct_type_hints(struct_cls)
+    for fi in msgspec.structs.fields(struct_cls):
+        ann = hints.get(fi.name, fi.type)
+        _check_unsupported_types(ann, struct_cls.__name__, fi.name)
+        ann = _struct_to_pydantic_annotation(ann, cache)
+        field_annotations[fi.name] = ann
+        if fi.default is not msgspec.NODEFAULT:
+            field_defaults[fi.name] = fi.default
+        elif fi.default_factory is not msgspec.NODEFAULT:
+            field_defaults[fi.name] = PydanticField(default_factory=fi.default_factory)
+
+    ns = {
+        "__annotations__": field_annotations,
+        "__module__": struct_cls.__module__,
+        **field_defaults,
+    }
+    model = type(struct_cls.__name__, (BaseModel,), ns)
+    cache[struct_cls] = model
+    return model
+
+
+def _struct_to_pydantic_recursive(struct_cls: type, cache: dict) -> type:
+    """Convert a (non-tagged) Struct to a Pydantic BaseModel."""
+    if struct_cls in cache:
+        return cache[struct_cls]
+
+    from pydantic import BaseModel  # noqa: F811
+    from pydantic import Field as PydanticField
+
+    hints = _get_struct_type_hints(struct_cls)
+
+    field_annotations: dict[str, Any] = {}
+    field_defaults: dict[str, Any] = {}
+
+    for fi in msgspec.structs.fields(struct_cls):
+        ann = hints.get(fi.name, fi.type)
+        _check_unsupported_types(ann, struct_cls.__name__, fi.name)
+        ann = _struct_to_pydantic_annotation(ann, cache)
+        field_annotations[fi.name] = ann
+        if fi.default is not msgspec.NODEFAULT:
+            field_defaults[fi.name] = fi.default
+        elif fi.default_factory is not msgspec.NODEFAULT:
+            field_defaults[fi.name] = PydanticField(default_factory=fi.default_factory)
+
+    ns = {
+        "__annotations__": field_annotations,
+        "__module__": struct_cls.__module__,
+        **field_defaults,
+    }
+    model = type(struct_cls.__name__, (BaseModel,), ns)
+    cache[struct_cls] = model
+    return model
+
+
+def _get_struct_type_hints(struct_cls: type) -> dict[str, Any]:
+    """Get type hints for a Struct, including Annotated metadata."""
+    from typing import get_type_hints
+
+    try:
+        return get_type_hints(struct_cls, include_extras=True)
+    except Exception:
+        # Fallback: use FieldInfo.type
+        return {fi.name: fi.type for fi in msgspec.structs.fields(struct_cls)}

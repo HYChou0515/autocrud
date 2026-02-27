@@ -360,6 +360,9 @@ export function processSubmitValues(
     } else if (field.type === 'binary') {
       skippedBinaryFields.push(field.name);
       continue;
+    } else if (field.type === 'file') {
+      // File fields are preserved by useResourceForm (backup/restore around JSON deep copy)
+      continue;
     } else {
       const handler = getHandler(field.type);
       const submitFn = handler.submitValue ?? handler.toApiValue;

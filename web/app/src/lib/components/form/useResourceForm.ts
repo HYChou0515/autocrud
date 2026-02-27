@@ -257,10 +257,16 @@ export function useResourceForm<T extends Record<string, any>>({
   const handleSubmit = async (values: T) => {
     const binaryFieldValues = new Map<string, BinaryFormValue | null>();
     const arrayItemBinaryValues = new Map<string, BinaryFormValue | null>();
+    // Preserve File objects before JSON deep copy destroys them
+    const fileFieldValues = new Map<string, File | null>();
     for (const field of config.fields) {
       if (field.type === 'binary') {
         const bv = getByPath(values as Record<string, any>, field.name) as BinaryFormValue | null;
         binaryFieldValues.set(field.name, bv);
+      }
+      if (field.type === 'file') {
+        const fv = getByPath(values as Record<string, any>, field.name) as File | null;
+        fileFieldValues.set(field.name, fv);
       }
       if (field.itemFields) {
         const items = (values as Record<string, any>)[field.name];
@@ -292,6 +298,10 @@ export function useResourceForm<T extends Record<string, any>>({
     for (const fieldName of skippedBinaryFields) {
       const bv = binaryFieldValues.get(fieldName);
       setByPath(processed, fieldName, await binaryFormValueToApi(bv));
+    }
+    // Restore File objects after JSON deep copy
+    for (const [fieldName, file] of fileFieldValues) {
+      setByPath(processed, fieldName, file);
     }
 
     if (config.zodSchema) {

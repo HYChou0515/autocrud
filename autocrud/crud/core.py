@@ -1,11 +1,15 @@
 from __future__ import annotations
 
+import asyncio
 import datetime as dt
+import inspect
 import io
 import logging
 import tarfile
+import warnings
 from collections import OrderedDict
 from collections.abc import Callable, Sequence
+from dataclasses import dataclass
 from typing import (
     IO,
     Any,
@@ -15,6 +19,7 @@ from typing import (
 
 from fastapi import APIRouter, FastAPI, HTTPException
 from fastapi.openapi.utils import get_openapi
+from fastapi.params import Body
 from msgspec import UNSET, UnsetType
 
 from autocrud.crud.route_templates.basic import (
@@ -99,10 +104,21 @@ from autocrud.util.type_utils import (
     get_union_args,
     is_generic_subclass,
     is_union_type,
+    unwrap_annotated,
 )
 
 logger = logging.getLogger(__name__)
 T = TypeVar("T")
+
+
+@dataclass
+class _PendingCreateAction:
+    """Metadata for a custom create action registered via @crud.create_action()."""
+
+    resource_name: str
+    path: str
+    label: str
+    handler: Callable
 
 
 class LazyJobHandler:
@@ -323,6 +339,7 @@ class AutoCRUD:
         self.default_encoding = Encoding.json
         self.default_user = UNSET
         self.default_now = UNSET
+        self._pending_create_actions: list[_PendingCreateAction] = []
 
         # Apply configuration using shared logic
         self._apply_configuration(
@@ -671,6 +688,64 @@ class AutoCRUD:
         """
         self.route_templates.append(template)
 
+    def create_action(
+        self,
+        resource_name: str,
+        *,
+        path: str | None = None,
+        label: str | None = None,
+    ) -> Callable:
+        """Decorator to register a custom create action for a resource.
+
+        The decorated function is a standard FastAPI endpoint handler — all input
+        parsing (``Body``, ``Query``, ``Path``, ``Depends``, etc.) is handled by
+        FastAPI.  If the handler returns a resource-type object, AutoCRUD will
+        automatically call ``resource_manager.create()`` and respond with
+        ``RevisionInfo``.  If it returns ``None``, no automatic creation occurs.
+
+        Args:
+            resource_name: The name of the resource this action belongs to.
+            path: URL path suffix (e.g. ``"import-from-url"``).  If ``None``,
+                inferred from the function name (underscores → hyphens).
+            label: Human-friendly label shown in the UI.  If ``None``,
+                inferred from *path* (hyphens → spaces, title-cased).
+
+        Returns:
+            A decorator that registers the handler and returns it unchanged.
+
+        Example:
+            ```python
+            class ImportFromUrl(Struct):
+                url: str
+
+
+            @crud.create_action("article", label="Import from URL")
+            async def import_from_url(body: ImportFromUrl = Body(...)):
+                content = await fetch_and_parse(body.url)
+                return Article(content=content)  # auto-created
+            ```
+
+        Note:
+            This decorator is lazy — it stores metadata without registering any
+            route.  Routes are created when ``apply()`` is called, so the
+            decorator can be used before or after ``add_model()``.
+        """
+
+        def decorator(func: Callable) -> Callable:
+            action_path = path or func.__name__.replace("_", "-")
+            action_label = label or action_path.replace("-", " ").title()
+            self._pending_create_actions.append(
+                _PendingCreateAction(
+                    resource_name=resource_name,
+                    path=action_path,
+                    label=action_label,
+                    handler=func,
+                )
+            )
+            return func
+
+        return decorator
+
     def add_model(
         self,
         model: "type[T] | Schema[T]",
@@ -1005,8 +1080,39 @@ class AutoCRUD:
             ],
         )[1]
 
+        # Include custom create action body schemas in components
+        import msgspec as _msgspec
+
+        action_body_structs = []
+        for action in self._pending_create_actions:
+            if action.resource_name not in self.resource_managers:
+                warnings.warn(
+                    f"Resource '{action.resource_name}' not found in resource managers. "
+                    f"Skipping action '{action.handler.__name__}'.",
+                    stacklevel=2,
+                )
+                continue
+            # Inspect handler's parameters to find Body-typed Struct/Pydantic types
+            sig = inspect.signature(action.handler)
+            for param in sig.parameters.values():
+                ann = param.annotation
+                if ann is inspect.Parameter.empty:
+                    continue
+                # Unwrap Annotated[T, ...] → T
+                ann, _ = unwrap_annotated(ann)
+                # Only include msgspec Structs
+                if isinstance(ann, type) and issubclass(ann, _msgspec.Struct):
+                    action_body_structs.append(ann)
+        if action_body_structs:
+            app.openapi_schema["components"]["schemas"] |= jsonschema_to_openapi(
+                action_body_structs,
+            )[1]
+
         # Inject x-ref-* / x-ref-revision-* metadata into schema properties
         self._inject_ref_metadata(app.openapi_schema)
+
+        # Inject x-autocrud-custom-create-actions top-level extension
+        self._inject_custom_create_actions(app.openapi_schema)
 
     def _inject_ref_metadata(self, schema: dict) -> None:
         """Post-process OpenAPI schema to inject ``x-ref-*`` extensions.
@@ -1124,6 +1230,156 @@ class AutoCRUD:
                 for r in all_refs
             ]
 
+    @staticmethod
+    def _get_body_schema_name(handler: Any) -> str | None:
+        """Extract the body parameter's schema name from a handler signature.
+
+        Scans the handler's parameters for the first ``msgspec.Struct`` or
+        Pydantic ``BaseModel`` type annotation and returns its ``__name__``.
+        """
+        import msgspec
+
+        sig = inspect.signature(handler)
+        for param in sig.parameters.values():
+            ann = param.annotation
+            if ann is inspect.Parameter.empty:
+                continue
+            # Unwrap Annotated[T, ...] → T
+            ann, _ = unwrap_annotated(ann)
+            if isinstance(ann, type) and issubclass(ann, msgspec.Struct):
+                return ann.__name__
+            # Pydantic BaseModel check
+            if isinstance(ann, type):
+                try:
+                    from pydantic import BaseModel
+
+                    if issubclass(ann, BaseModel):
+                        return ann.__name__
+                except ImportError:
+                    pass
+        return None
+
+    def _inject_custom_create_actions(self, schema: dict) -> None:
+        """Inject ``x-autocrud-custom-create-actions`` top-level extension.
+
+        Groups all registered create actions by resource name and writes a
+        lookup table into the OpenAPI schema so the web generator can
+        discover custom create actions for each resource.
+        """
+        if not self._pending_create_actions:
+            return
+
+        from collections import defaultdict
+
+        actions_by_resource: dict[str, list[dict]] = defaultdict(list)
+        for action in self._pending_create_actions:
+            if action.resource_name not in self.resource_managers:
+                continue
+            # Strip leading slash from action.path to avoid double-slash
+            # when the user writes path="/{name}/new".
+            action_path_segment = action.path.lstrip("/")
+            info: dict[str, str] = {
+                "path": f"/{action.resource_name}/{action_path_segment}",
+                "label": action.label,
+                "operationId": action.handler.__name__,
+            }
+            body_schema = self._get_body_schema_name(action.handler)
+            if body_schema:
+                info["bodySchema"] = body_schema
+            # Expose path / query parameters from the generated spec
+            # so the frontend generator can produce form fields for them.
+            paths = schema.get("paths", {})
+            operation_path = f"/{action.resource_name}/{action_path_segment}"
+            operation = paths.get(operation_path, {}).get("post", {})
+            parameters = operation.get("parameters", [])
+            pp = [
+                {
+                    "name": p["name"],
+                    "required": p.get("required", True),
+                    "schema": p.get("schema", {}),
+                }
+                for p in parameters
+                if p.get("in") == "path"
+            ]
+            qp = [
+                {
+                    "name": p["name"],
+                    "required": p.get("required", False),
+                    "schema": p.get("schema", {}),
+                }
+                for p in parameters
+                if p.get("in") == "query"
+            ]
+            if pp:
+                info["pathParams"] = pp
+            if qp:
+                info["queryParams"] = qp
+            # If no Struct body schema was detected, check for inline body params
+            # produced by FastAPI's Body(embed=True) pattern.
+            # When UploadFile is present, FastAPI uses multipart/form-data instead
+            # of application/json, so we check both content types.
+            if not body_schema:
+                # Try application/json first (Body(embed=True) without UploadFile)
+                content = operation.get("requestBody", {}).get("content", {})
+                rb = content.get("application/json", {}).get("schema", {})
+                # Fall back to multipart/form-data (when UploadFile is present)
+                if not rb:
+                    rb = content.get("multipart/form-data", {}).get("schema", {})
+                # Resolve $ref to components/schemas
+                if "$ref" in rb:
+                    ref_name = rb["$ref"].split("/")[-1]
+                    rb = (
+                        schema.get("components", {})
+                        .get("schemas", {})
+                        .get(ref_name, {})
+                    )
+                props: dict = rb.get("properties", {})
+                required_list: list = rb.get("required", [])
+                # Separate file params (format=binary) from inline body params
+                file_params = []
+                inline_params = []
+                for pname, pschema in props.items():
+                    if pschema.get("format") == "binary":
+                        file_params.append(
+                            {
+                                "name": pname,
+                                "required": pname in required_list,
+                                "schema": {
+                                    "type": pschema.get("type", "string"),
+                                    "format": "binary",
+                                },
+                            }
+                        )
+                    else:
+                        inline_params.append(
+                            {
+                                "name": pname,
+                                "required": pname in required_list,
+                                "schema": pschema,
+                            }
+                        )
+                if inline_params:
+                    info["inlineBodyParams"] = inline_params
+                if file_params:
+                    info["fileParams"] = file_params
+            # Warn when two actions for the same resource share the same label —
+            # duplicate labels cause frontend key collisions and confuse users.
+            existing_labels = {
+                a["label"] for a in actions_by_resource[action.resource_name]
+            }
+            if action.label in existing_labels:
+                warnings.warn(
+                    f"Resource '{action.resource_name}' already has a create action "
+                    f"with label '{action.label}' "
+                    f"(duplicate handler: '{action.handler.__name__}'). "
+                    f"Duplicate labels will cause frontend key collisions.",
+                    stacklevel=2,
+                )
+            actions_by_resource[action.resource_name].append(info)
+
+        if actions_by_resource:
+            schema["x-autocrud-custom-create-actions"] = dict(actions_by_resource)
+
     def _install_ref_integrity_handlers(self) -> None:
         """Install event handlers for referential integrity (cascade / set_null).
 
@@ -1221,10 +1477,142 @@ class AutoCRUD:
                 except Exception:
                     pass
 
+        # Register custom create action routes
+        self._apply_create_actions(router)
+
         # Add ref-specific routes (referrers + relationships)
         self._apply_ref_routes(router)
 
         return router
+
+    def _apply_create_actions(self, router: APIRouter) -> None:
+        """Register routes for all pending custom create actions."""
+        import msgspec as _msgspec
+
+        from autocrud.crud.route_templates.basic import (
+            MsgspecResponse,
+            jsonschema_to_json_schema_extra,
+            struct_to_responses_type,
+        )
+
+        def _is_msgspec_struct_type(ann: type) -> bool:
+            """Check if *ann* is a msgspec.Struct subclass."""
+            return isinstance(ann, type) and issubclass(ann, _msgspec.Struct)
+
+        def _build_fastapi_compatible_handler(handler, resource_manager):
+            """Build a FastAPI-compatible endpoint function.
+
+            The user-provided handler may use ``msgspec.Struct`` type hints on
+            ``Body()`` parameters.  FastAPI cannot introspect those directly
+            (it requires Pydantic), so we build a new function whose signature
+            replaces Struct-annotated Body parameters with un-typed
+            ``Body(json_schema_extra=...)`` — the same pattern used by
+            ``CreateRouteTemplate``.  Inside the wrapper we convert the raw
+            dict back to the Struct via ``msgspec.convert`` before calling
+            the user handler.
+
+            Plain scalar parameters (``str``, ``int``, etc.) without any
+            FastAPI decorator are left as-is — FastAPI will treat them as
+            query parameters, which is the correct behaviour.
+            """
+            sig = inspect.signature(handler)
+            # Identify parameters whose annotation is a msgspec.Struct subclass
+            # so we can convert them from raw dicts.
+            struct_params: dict[str, type] = {}
+            new_params: list[inspect.Parameter] = []
+            new_annotations: dict[str, Any] = {}
+
+            for name, param in sig.parameters.items():
+                ann = param.annotation
+                if ann is inspect.Parameter.empty:
+                    new_params.append(param)
+                    continue
+
+                # Unwrap Annotated[T, Body(...)] → check T
+                raw_ann, _ = unwrap_annotated(ann)
+
+                if _is_msgspec_struct_type(raw_ann):
+                    # Replace with untyped Body(json_schema_extra=...)
+                    struct_params[name] = raw_ann
+                    new_default = Body(
+                        json_schema_extra=jsonschema_to_json_schema_extra(raw_ann),
+                    )
+                    new_param = param.replace(
+                        annotation=inspect.Parameter.empty,
+                        default=new_default,
+                    )
+                    new_params.append(new_param)
+                else:
+                    new_params.append(param)
+                    if ann is not inspect.Parameter.empty:
+                        new_annotations[name] = ann
+
+            new_sig = sig.replace(
+                parameters=new_params, return_annotation=inspect.Parameter.empty
+            )
+
+            if asyncio.iscoroutinefunction(handler):
+
+                async def wrapper(*args, **kwargs):
+                    # Convert raw dicts to Struct instances
+                    for pname, struct_type in struct_params.items():
+                        if pname in kwargs:
+                            kwargs[pname] = _msgspec.convert(kwargs[pname], struct_type)
+                    result = await handler(*args, **kwargs)
+                    if result is None:
+                        return None
+                    with resource_manager.meta_provide("system", dt.datetime.now()):
+                        info = resource_manager.create(result)
+                    return MsgspecResponse(info)
+
+            else:
+
+                def wrapper(*args, **kwargs):
+                    for pname, struct_type in struct_params.items():
+                        if pname in kwargs:
+                            kwargs[pname] = _msgspec.convert(kwargs[pname], struct_type)
+                    result = handler(*args, **kwargs)
+                    if result is None:
+                        return None
+                    with resource_manager.meta_provide("system", dt.datetime.now()):
+                        info = resource_manager.create(result)
+                    return MsgspecResponse(info)
+
+            wrapper.__name__ = handler.__name__
+            wrapper.__qualname__ = handler.__qualname__
+            wrapper.__module__ = handler.__module__
+            wrapper.__doc__ = handler.__doc__
+            wrapper.__signature__ = new_sig
+            wrapper.__annotations__ = new_annotations
+            return wrapper
+
+        for action in self._pending_create_actions:
+            rm = self.resource_managers.get(action.resource_name)
+            if rm is None:
+                logger.warning(
+                    f"create_action '{action.path}' targets resource "
+                    f"'{action.resource_name}' which is not registered. Skipping."
+                )
+                continue
+
+            # Strip leading slash from action.path to avoid double-slash
+            action_path_segment = action.path.lstrip("/")
+            route_path = f"/{action.resource_name}/{action_path_segment}"
+            _wrapper = _build_fastapi_compatible_handler(action.handler, rm)
+
+            router.post(
+                route_path,
+                response_model=None,
+                responses=struct_to_responses_type(RevisionInfo),
+                summary=f"{action.label} ({action.resource_name})",
+                tags=[f"{action.resource_name}"],
+                openapi_extra={
+                    "x-autocrud-create-action": {
+                        "resource": action.resource_name,
+                        "label": action.label,
+                    },
+                },
+            )(_wrapper)
 
     # ------------------------------------------------------------------
     # Ref query routes

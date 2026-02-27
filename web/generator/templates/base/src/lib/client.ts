@@ -5,9 +5,6 @@ console.log('🔧 Axios baseURL:', baseURL);
 
 export const client = axios.create({
   baseURL,
-  headers: {
-    'Content-Type': 'application/json',
-  },
 });
 
 // Response interceptor for error handling

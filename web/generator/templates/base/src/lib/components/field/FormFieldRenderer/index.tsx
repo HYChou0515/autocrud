@@ -5,7 +5,7 @@
  * 2. `FIELD_RENDERERS` map dispatches to the appropriate render function.
  */
 
-import { TextInput, NumberInput, Textarea, Checkbox, Select, Switch } from '@mantine/core';
+import { TextInput, NumberInput, Textarea, Checkbox, Select, Switch, FileInput } from '@mantine/core';
 import { DateTimePicker } from '@mantine/dates';
 import type { UseFormReturnType } from '@mantine/form';
 import type { ResourceField, FieldVariant } from '../../../resources';
@@ -59,6 +59,20 @@ const FIELD_RENDERERS: Record<FieldKind, (ctx: FieldRenderContext) => React.Reac
         value={binaryVal}
         onChange={(val) => form.setFieldValue(field.name as any, val as any)}
         apiUrl={apiUrl}
+      />
+    );
+  },
+
+  file: ({ field, form }) => {
+    const fileVariant = field.variant as Extract<FieldVariant, { type: 'file' }> | undefined;
+    return (
+      <FileInput
+        key={field.name}
+        label={field.label}
+        required={field.isRequired}
+        placeholder="Choose file…"
+        accept={fileVariant?.accept}
+        {...form.getInputProps(field.name)}
       />
     );
   },

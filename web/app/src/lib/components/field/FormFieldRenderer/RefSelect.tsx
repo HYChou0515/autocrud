@@ -6,9 +6,8 @@
  *
  * RefMultiSelect — same but for list[Annotated[str, Ref(...)]] (N:N relationships).
  *
- * RefRevisionSelect — version-aware reference select that lets users pick either
- * a resource_id (meaning "latest") or a specific revision_id (pinned).
- * RefRevisionMultiSelect — same but for list fields.
+ * RefRevisionSelect — used for RefRevision fields, lists current_revision_id of all resources.
+ * RefRevisionMultiSelect — same but for list[Annotated[str, RefRevision(...)]].
  */
 import { useCallback, useEffect, useState } from 'react';
 import { Select, MultiSelect, Loader, ActionIcon, Group, Tooltip } from '@mantine/core';
@@ -224,17 +223,8 @@ interface RefRevisionSelectProps {
   clearable?: boolean;
 }
 
-interface GroupedSelectOption {
-  group: string;
-  items: SelectOption[];
-}
-
-/**
- * Hook to fetch version-aware reference options.
- * Returns two groups: "Latest" (resource_id) and "Specific Revision" (revision_id).
- */
 function useRefRevisionOptions(resource: string) {
-  const [options, setOptions] = useState<GroupedSelectOption[]>([]);
+  const [options, setOptions] = useState<SelectOption[]>([]);
   const [loading, setLoading] = useState(false);
 
   const fetchOptions = useCallback(async () => {
@@ -245,42 +235,24 @@ function useRefRevisionOptions(resource: string) {
     try {
       const resp = await targetResource.apiClient.listFull({ limit: 100, is_deleted: false });
       const items = resp.data || [];
-
-      const latestItems: SelectOption[] = [];
-      const revisionItems: SelectOption[] = [];
-
-      for (const item of items) {
-        const meta = (item as any).meta ?? {};
-        const data = (item as any).data ?? {};
-        const resourceId: string = meta.resource_id ?? '';
-        const revisionId: string = meta.current_revision_id ?? '';
+      const newOptions: SelectOption[] = items.map((item: any) => {
+        const meta = item.meta ?? {};
+        const data = item.data ?? {};
+        const resourceId = meta.resource_id ?? '';
+        const revisionId = meta.current_revision_id ?? '';
         const preferred = getByPath(data, targetResource.displayNameField);
         const displayName =
           typeof preferred === 'string' && preferred.trim().length > 0
             ? preferred
             : data.name || data.title || data.label || resourceId;
-
-        // "Latest" option — stores resource_id
-        const shortResId =
-          resourceId.length > 12 ? `${resourceId.slice(0, 4)}…${resourceId.slice(-4)}` : resourceId;
-        latestItems.push({
-          value: resourceId,
-          label: `${displayName} (${shortResId})`,
-        });
-
-        // "Specific Revision" option — stores revision_id
         const shortRevision =
           revisionId.length > 12 ? `${revisionId.slice(0, 4)}…${revisionId.slice(-4)}` : revisionId;
-        revisionItems.push({
+        return {
           value: revisionId,
           label: `${displayName} (rev: ${shortRevision})`,
-        });
-      }
-
-      setOptions([
-        { group: 'Latest', items: latestItems },
-        { group: 'Pinned Revision', items: revisionItems },
-      ]);
+        };
+      });
+      setOptions(newOptions);
     } catch (err) {
       console.error(`RefRevisionSelect: failed to fetch ${resource}`, err);
       setOptions([]);
@@ -297,8 +269,8 @@ function useRefRevisionOptions(resource: string) {
 }
 
 /**
- * Select for version-aware reference fields (Ref with ref_type='revision_id').
- * Lets users pick either a resource_id (latest) or a specific revision_id (pinned).
+ * Select for Annotated[str, RefRevision(...)] fields.
+ * Lists all resources' current_revision_id from the target resource type.
  */
 export function RefRevisionSelect({
   label,
@@ -319,7 +291,7 @@ export function RefRevisionSelect({
         <Select
           label={label}
           required={required}
-          placeholder={`Select ${fieldRef.resource} (latest or revision)…`}
+          placeholder={`Select ${fieldRef.resource} revision…`}
           data={options}
           value={value}
           onChange={onChange}
@@ -367,7 +339,7 @@ interface RefRevisionMultiSelectProps {
 }
 
 /**
- * Multi-select for version-aware reference list fields.
+ * Multi-select for list[Annotated[str, RefRevision(...)]] fields.
  */
 export function RefRevisionMultiSelect({
   label,
@@ -387,7 +359,7 @@ export function RefRevisionMultiSelect({
         <MultiSelect
           label={label}
           required={required}
-          placeholder={`Select ${fieldRef.resource} (latest or revisions)…`}
+          placeholder={`Select ${fieldRef.resource} revisions…`}
           data={options}
           value={value}
           onChange={onChange}

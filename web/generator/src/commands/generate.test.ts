@@ -859,3 +859,882 @@ describe('parseField — array of union', () => {
     expect(config).toContain('isArray: true');
   });
 });
+
+// ============================================================================
+// Custom Create Actions
+// ============================================================================
+
+/** Build a spec with custom create actions */
+function buildCustomActionSpec() {
+  return {
+    paths: {
+      '/article': {
+        post: {
+          requestBody: {
+            content: {
+              'application/json': {
+                schema: { $ref: '#/components/schemas/Article' },
+              },
+            },
+          },
+        },
+      },
+      '/article/import-from-url': {
+        post: {
+          summary: 'Import from URL (article)',
+          'x-autocrud-create-action': {
+            resource: 'article',
+            label: 'Import from URL',
+          },
+          requestBody: {
+            content: {
+              'application/json': {
+                schema: {
+                  type: 'object',
+                  properties: { url: { type: 'string' } },
+                  required: ['url'],
+                  title: 'ImportFromUrl',
+                },
+              },
+            },
+          },
+        },
+      },
+      '/article/import-from-multiple': {
+        post: {
+          summary: 'Import from Multiple (article)',
+          'x-autocrud-create-action': {
+            resource: 'article',
+            label: 'Import from Multiple',
+          },
+          requestBody: {
+            content: {
+              'application/json': {
+                schema: {
+                  type: 'object',
+                  properties: { urls: { type: 'array', items: { type: 'string' } } },
+                  required: ['urls'],
+                  title: 'ImportFromMultiple',
+                },
+              },
+            },
+          },
+        },
+      },
+    },
+    'x-autocrud-custom-create-actions': {
+      article: [
+        {
+          path: '/article/import-from-url',
+          label: 'Import from URL',
+          operationId: 'import_from_url',
+          bodySchema: 'ImportFromUrl',
+        },
+        {
+          path: '/article/import-from-multiple',
+          label: 'Import from Multiple',
+          operationId: 'import_from_multiple',
+          bodySchema: 'ImportFromMultiple',
+        },
+      ],
+    },
+    components: {
+      schemas: {
+        Article: {
+          type: 'object',
+          properties: {
+            content: { type: 'string' },
+          },
+          required: ['content'],
+        },
+        ImportFromUrl: {
+          type: 'object',
+          properties: {
+            url: { type: 'string' },
+          },
+          required: ['url'],
+        },
+        ImportFromMultiple: {
+          type: 'object',
+          properties: {
+            urls: { type: 'array', items: { type: 'string' } },
+            separator: { type: 'string' },
+          },
+          required: ['urls'],
+        },
+      },
+    },
+  };
+}
+
+// ============================================================================
+// Custom Create Actions — comprehensive compositional tests
+// ============================================================================
+
+// Helper: builds a character-resource spec with arbitrary custom action params
+function buildCharacterSpec(actionOverrides: Record<string, any>) {
+  return {
+    paths: {
+      '/character': {
+        post: {
+          requestBody: { content: { 'application/json': { schema: { $ref: '#/components/schemas/Character' } } } },
+        },
+      },
+      '/character/{id}': { get: {} },
+    },
+    'x-autocrud-custom-create-actions': {
+      character: [
+        {
+          path: '/character/action',
+          label: 'Test Action',
+          operationId: 'test_action',
+          ...actionOverrides,
+        },
+      ],
+    },
+    components: {
+      schemas: {
+        Character: { type: 'object', properties: { name: { type: 'string' } }, required: ['name'] },
+      },
+    },
+  };
+}
+
+// ── extractCustomCreateActions — body schema ────────────────────────────────
+describe('extractCustomCreateActions — bodySchema', () => {
+  it('attaches custom actions with body schema to matching resource', () => {
+    const spec = buildCustomActionSpec();
+    const gen = createTestGenerator(spec);
+    (gen as any).extractResources();
+    (gen as any).extractCustomCreateActions();
+
+    const article = gen.resources.find((r) => r.name === 'article');
+    expect(article).toBeDefined();
+    expect(article!.customCreateActions).toBeDefined();
+    expect(article!.customCreateActions!.length).toBe(2);
+  });
+
+  it('populates action name, label, path, bodySchemaName', () => {
+    const spec = buildCustomActionSpec();
+    const gen = createTestGenerator(spec);
+    (gen as any).extractResources();
+    (gen as any).extractCustomCreateActions();
+
+    const actions = gen.resources.find((r) => r.name === 'article')!.customCreateActions!;
+    expect(actions[0].name).toBe('import-from-url');
+    expect(actions[0].label).toBe('Import from URL');
+    expect(actions[0].path).toBe('/article/import-from-url');
+    expect(actions[0].bodySchemaName).toBe('ImportFromUrl');
+    expect(actions[0].operationId).toBe('import_from_url');
+  });
+
+  it('extracts fields from action body schema', () => {
+    const spec = buildCustomActionSpec();
+    const gen = createTestGenerator(spec);
+    (gen as any).extractResources();
+    (gen as any).extractCustomCreateActions();
+
+    const actions = gen.resources.find((r) => r.name === 'article')!.customCreateActions!;
+    expect(actions[0].fields.length).toBe(1);
+    expect(actions[0].fields[0].name).toBe('url');
+    expect(actions[0].fields[0].isRequired).toBe(true);
+    expect(actions[1].fields.length).toBe(2);
+    const urlsField = actions[1].fields.find((f) => f.name === 'urls');
+    expect(urlsField).toBeDefined();
+    expect(urlsField!.isArray).toBe(true);
+  });
+
+  it('does nothing when no x-autocrud-custom-create-actions', () => {
+    const spec = {
+      paths: {
+        '/article': {
+          post: {
+            requestBody: {
+              content: { 'application/json': { schema: { $ref: '#/components/schemas/Article' } } },
+            },
+          },
+        },
+      },
+      components: {
+        schemas: {
+          Article: { type: 'object', properties: { content: { type: 'string' } }, required: ['content'] },
+        },
+      },
+    };
+    const gen = createTestGenerator(spec);
+    (gen as any).extractResources();
+    (gen as any).extractCustomCreateActions();
+
+    const article = gen.resources.find((r) => r.name === 'article');
+    expect(article).toBeDefined();
+    expect(article!.customCreateActions).toBeUndefined();
+  });
+
+  it('skips actions without any recognised param types', () => {
+    const spec = buildCharacterSpec({});
+    // Remove the default overrides — action has no params at all
+    const action = spec['x-autocrud-custom-create-actions'].character[0];
+    delete action.path;
+    spec['x-autocrud-custom-create-actions'].character[0] = {
+      path: '/character/no-params',
+      label: 'No Params',
+      operationId: 'no_params',
+    };
+    const gen = createTestGenerator(spec);
+    (gen as any).extractResources();
+    (gen as any).extractCustomCreateActions();
+    const character = gen.resources.find((r) => r.name === 'character')!;
+    expect(character.customCreateActions).toBeUndefined();
+  });
+});
+
+// ── extractCustomCreateActions — compositional param combos ─────────────────
+describe('extractCustomCreateActions — compositional', () => {
+  it('handles Q only', () => {
+    const spec = buildCharacterSpec({
+      queryParams: [{ name: 'name', required: true, schema: { type: 'string' } }],
+    });
+    const gen = createTestGenerator(spec);
+    (gen as any).extractResources();
+    (gen as any).extractCustomCreateActions();
+    const action = gen.resources.find((r) => r.name === 'character')!.customCreateActions![0];
+    expect(action.fields.length).toBe(1);
+    expect(action.fields[0].name).toBe('name');
+    expect(action.queryParams).toBeDefined();
+    expect(action.pathParams).toBeUndefined();
+    expect(action.inlineBodyParams).toBeUndefined();
+    expect(action.fileParams).toBeUndefined();
+  });
+
+  it('handles P only', () => {
+    const spec = buildCharacterSpec({
+      path: '/character/{name}/new',
+      pathParams: [{ name: 'name', required: true, schema: { type: 'string' } }],
+    });
+    const gen = createTestGenerator(spec);
+    (gen as any).extractResources();
+    (gen as any).extractCustomCreateActions();
+    const action = gen.resources.find((r) => r.name === 'character')!.customCreateActions![0];
+    expect(action.fields.length).toBe(1);
+    expect(action.fields[0].name).toBe('name');
+    expect(action.pathParams).toBeDefined();
+  });
+
+  it('handles IB only', () => {
+    const spec = buildCharacterSpec({
+      inlineBodyParams: [
+        { name: 'name', required: true, schema: { type: 'string' } },
+        { name: 'age', required: false, schema: { type: 'integer' } },
+      ],
+    });
+    const gen = createTestGenerator(spec);
+    (gen as any).extractResources();
+    (gen as any).extractCustomCreateActions();
+    const action = gen.resources.find((r) => r.name === 'character')!.customCreateActions![0];
+    expect(action.fields.length).toBe(2);
+    expect(action.inlineBodyParams).toBeDefined();
+  });
+
+  it('handles F only', () => {
+    const spec = buildCharacterSpec({
+      fileParams: [{ name: 'avatar', required: true, schema: { type: 'string', format: 'binary' } }],
+    });
+    const gen = createTestGenerator(spec);
+    (gen as any).extractResources();
+    (gen as any).extractCustomCreateActions();
+    const action = gen.resources.find((r) => r.name === 'character')!.customCreateActions![0];
+    expect(action.fields.length).toBe(1);
+    expect(action.fields[0].name).toBe('avatar');
+    expect(action.fields[0].type).toBe('file');
+    expect(action.fields[0].tsType).toBe('File');
+    expect(action.fileParams).toBeDefined();
+  });
+
+  it('handles P + Q', () => {
+    const spec = buildCharacterSpec({
+      path: '/character/{name}/new',
+      pathParams: [{ name: 'name', required: true, schema: { type: 'string' } }],
+      queryParams: [{ name: 'level', required: false, schema: { type: 'integer' } }],
+    });
+    const gen = createTestGenerator(spec);
+    (gen as any).extractResources();
+    (gen as any).extractCustomCreateActions();
+    const action = gen.resources.find((r) => r.name === 'character')!.customCreateActions![0];
+    expect(action.fields.length).toBe(2);
+    expect(action.pathParams).toBeDefined();
+    expect(action.queryParams).toBeDefined();
+  });
+
+  it('handles Q + IB', () => {
+    const spec = buildCharacterSpec({
+      queryParams: [{ name: 'x', required: true, schema: { type: 'integer' } }],
+      inlineBodyParams: [{ name: 'name', required: true, schema: { type: 'string' } }],
+    });
+    const gen = createTestGenerator(spec);
+    (gen as any).extractResources();
+    (gen as any).extractCustomCreateActions();
+    const action = gen.resources.find((r) => r.name === 'character')!.customCreateActions![0];
+    expect(action.fields.length).toBe(2);
+    expect(action.queryParams).toBeDefined();
+    expect(action.inlineBodyParams).toBeDefined();
+  });
+
+  it('handles Q + F', () => {
+    const spec = buildCharacterSpec({
+      queryParams: [{ name: 'x', required: true, schema: { type: 'integer' } }],
+      fileParams: [{ name: 'doc', required: true, schema: { type: 'string', format: 'binary' } }],
+    });
+    const gen = createTestGenerator(spec);
+    (gen as any).extractResources();
+    (gen as any).extractCustomCreateActions();
+    const action = gen.resources.find((r) => r.name === 'character')!.customCreateActions![0];
+    expect(action.fields.length).toBe(2);
+    expect(action.fields[0].type).toBe('number');
+    expect(action.fields[1].type).toBe('file');
+    expect(action.queryParams).toBeDefined();
+    expect(action.fileParams).toBeDefined();
+  });
+
+  it('handles IB + F', () => {
+    const spec = buildCharacterSpec({
+      inlineBodyParams: [{ name: 'title', required: true, schema: { type: 'string' } }],
+      fileParams: [{ name: 'attachment', required: true, schema: { type: 'string', format: 'binary' } }],
+    });
+    const gen = createTestGenerator(spec);
+    (gen as any).extractResources();
+    (gen as any).extractCustomCreateActions();
+    const action = gen.resources.find((r) => r.name === 'character')!.customCreateActions![0];
+    expect(action.fields.length).toBe(2);
+    expect(action.inlineBodyParams).toBeDefined();
+    expect(action.fileParams).toBeDefined();
+  });
+
+  it('handles Q + IB + F (the create_new_character4 case)', () => {
+    const spec = buildCharacterSpec({
+      queryParams: [
+        { name: 'x', required: true, schema: { type: 'integer' } },
+        { name: 'y', required: true, schema: { type: 'string' } },
+      ],
+      inlineBodyParams: [{ name: 'name', required: true, schema: { type: 'string' } }],
+      fileParams: [{ name: 'z', required: true, schema: { type: 'string', format: 'binary' } }],
+    });
+    const gen = createTestGenerator(spec);
+    (gen as any).extractResources();
+    (gen as any).extractCustomCreateActions();
+    const action = gen.resources.find((r) => r.name === 'character')!.customCreateActions![0];
+    expect(action.fields.length).toBe(4);
+    expect(action.queryParams).toBeDefined();
+    expect(action.inlineBodyParams).toBeDefined();
+    expect(action.fileParams).toBeDefined();
+    // Verify field types
+    expect(action.fields.find((f: any) => f.name === 'x')!.type).toBe('number');
+    expect(action.fields.find((f: any) => f.name === 'name')!.type).toBe('string');
+    expect(action.fields.find((f: any) => f.name === 'z')!.type).toBe('file');
+  });
+
+  it('handles P + Q + IB + F', () => {
+    const spec = buildCharacterSpec({
+      path: '/character/{id}/upload',
+      pathParams: [{ name: 'id', required: true, schema: { type: 'string' } }],
+      queryParams: [{ name: 'x', required: true, schema: { type: 'integer' } }],
+      inlineBodyParams: [{ name: 'desc', required: false, schema: { type: 'string' } }],
+      fileParams: [{ name: 'img', required: true, schema: { type: 'string', format: 'binary' } }],
+    });
+    const gen = createTestGenerator(spec);
+    (gen as any).extractResources();
+    (gen as any).extractCustomCreateActions();
+    const action = gen.resources.find((r) => r.name === 'character')!.customCreateActions![0];
+    expect(action.fields.length).toBe(4);
+    expect(action.pathParams).toBeDefined();
+    expect(action.queryParams).toBeDefined();
+    expect(action.inlineBodyParams).toBeDefined();
+    expect(action.fileParams).toBeDefined();
+  });
+
+  it('file field has zodType z.instanceof(File)', () => {
+    const spec = buildCharacterSpec({
+      fileParams: [{ name: 'doc', required: true, schema: { type: 'string', format: 'binary' } }],
+    });
+    const gen = createTestGenerator(spec);
+    (gen as any).extractResources();
+    (gen as any).extractCustomCreateActions();
+    const action = gen.resources.find((r) => r.name === 'character')!.customCreateActions![0];
+    expect(action.fields[0].zodType).toBe('z.instanceof(File)');
+  });
+
+  it('query field has zodType with z.number for numbers (delegates to parseField)', () => {
+    const spec = buildCharacterSpec({
+      queryParams: [
+        { name: 'count', required: true, schema: { type: 'integer' } },
+        { name: 'name', required: false, schema: { type: 'string' } },
+      ],
+    });
+    const gen = createTestGenerator(spec);
+    (gen as any).extractResources();
+    (gen as any).extractCustomCreateActions();
+    const action = gen.resources.find((r) => r.name === 'character')!.customCreateActions![0];
+    expect(action.fields[0].zodType).toBe('z.number().int()');
+    expect(action.fields[1].zodType).toBe('z.string().optional()');
+  });
+});
+
+// ── genApiClient — compositional ────────────────────────────────────────────
+describe('genApiClient — compositional', () => {
+  it('bodySchema → typed body POST', () => {
+    const spec = buildCustomActionSpec();
+    const gen = createTestGenerator(spec);
+    (gen as any).extractResources();
+    (gen as any).extractCustomCreateActions();
+    const article = gen.resources.find((r) => r.name === 'article')!;
+    const api = (gen as any).genApiClient(article) as string;
+    expect(api).toContain('importFromUrl');
+    expect(api).toContain('(data: ImportFromUrl)');
+    expect(api).toContain("'/article/import-from-url', data");
+  });
+
+  it('Q only → null body + params', () => {
+    const spec = buildCharacterSpec({
+      queryParams: [{ name: 'name', required: true, schema: { type: 'string' } }],
+    });
+    const gen = createTestGenerator(spec);
+    (gen as any).extractResources();
+    (gen as any).extractCustomCreateActions();
+    const api = (gen as any).genApiClient(gen.resources.find((r) => r.name === 'character')!) as string;
+    expect(api).toContain('null, { params }');
+    expect(api).toContain("allParams['name']");
+  });
+
+  it('P only → URL interpolation + null body', () => {
+    const spec = buildCharacterSpec({
+      path: '/character/{name}/new',
+      pathParams: [{ name: 'name', required: true, schema: { type: 'string' } }],
+    });
+    const gen = createTestGenerator(spec);
+    (gen as any).extractResources();
+    (gen as any).extractCustomCreateActions();
+    const api = (gen as any).genApiClient(gen.resources.find((r) => r.name === 'character')!) as string;
+    expect(api).toContain("allParams['name'] as string");
+    expect(api).toContain('null');
+    expect(api).not.toContain('{name}');
+  });
+
+  it('IB only → data body POST', () => {
+    const spec = buildCharacterSpec({
+      inlineBodyParams: [
+        { name: 'name', required: true, schema: { type: 'string' } },
+        { name: 'age', required: false, schema: { type: 'integer' } },
+      ],
+    });
+    const gen = createTestGenerator(spec);
+    (gen as any).extractResources();
+    (gen as any).extractCustomCreateActions();
+    const api = (gen as any).genApiClient(gen.resources.find((r) => r.name === 'character')!) as string;
+    expect(api).toContain("data = { name: allParams['name'], age: allParams['age'] }");
+    expect(api).toContain("'/character/action', data");
+    expect(api).not.toContain('null');
+  });
+
+  it('F only → FormData POST', () => {
+    const spec = buildCharacterSpec({
+      fileParams: [{ name: 'avatar', required: true, schema: { type: 'string', format: 'binary' } }],
+    });
+    const gen = createTestGenerator(spec);
+    (gen as any).extractResources();
+    (gen as any).extractCustomCreateActions();
+    const api = (gen as any).genApiClient(gen.resources.find((r) => r.name === 'character')!) as string;
+    expect(api).toContain('new FormData()');
+    expect(api).toContain("formData.append('avatar'");
+    expect(api).toContain('formData)');
+    expect(api).not.toContain('null');
+  });
+
+  it('P + Q → URL interpolation + null body + query params', () => {
+    const spec = buildCharacterSpec({
+      path: '/character/{name}/new',
+      pathParams: [{ name: 'name', required: true, schema: { type: 'string' } }],
+      queryParams: [{ name: 'level', required: false, schema: { type: 'integer' } }],
+    });
+    const gen = createTestGenerator(spec);
+    (gen as any).extractResources();
+    (gen as any).extractCustomCreateActions();
+    const api = (gen as any).genApiClient(gen.resources.find((r) => r.name === 'character')!) as string;
+    expect(api).toContain("allParams['name'] as string");
+    expect(api).toContain("allParams['level']");
+    expect(api).toContain('null, { params }');
+  });
+
+  it('Q + IB → data body + query params', () => {
+    const spec = buildCharacterSpec({
+      queryParams: [{ name: 'x', required: true, schema: { type: 'integer' } }],
+      inlineBodyParams: [{ name: 'name', required: true, schema: { type: 'string' } }],
+    });
+    const gen = createTestGenerator(spec);
+    (gen as any).extractResources();
+    (gen as any).extractCustomCreateActions();
+    const api = (gen as any).genApiClient(gen.resources.find((r) => r.name === 'character')!) as string;
+    expect(api).toContain("data = { name: allParams['name'] }");
+    expect(api).toContain("params = { x: allParams['x'] }");
+    expect(api).toContain('data, { params }');
+    expect(api).not.toContain('null');
+  });
+
+  it('Q + F → FormData body + query params', () => {
+    const spec = buildCharacterSpec({
+      queryParams: [{ name: 'x', required: true, schema: { type: 'integer' } }],
+      fileParams: [{ name: 'doc', required: true, schema: { type: 'string', format: 'binary' } }],
+    });
+    const gen = createTestGenerator(spec);
+    (gen as any).extractResources();
+    (gen as any).extractCustomCreateActions();
+    const api = (gen as any).genApiClient(gen.resources.find((r) => r.name === 'character')!) as string;
+    expect(api).toContain('new FormData()');
+    expect(api).toContain("formData.append('doc'");
+    expect(api).toContain("params = { x: allParams['x'] }");
+    expect(api).toContain('formData, { params }');
+  });
+
+  it('IB + F → FormData with inline body appended', () => {
+    const spec = buildCharacterSpec({
+      inlineBodyParams: [{ name: 'title', required: true, schema: { type: 'string' } }],
+      fileParams: [{ name: 'file', required: true, schema: { type: 'string', format: 'binary' } }],
+    });
+    const gen = createTestGenerator(spec);
+    (gen as any).extractResources();
+    (gen as any).extractCustomCreateActions();
+    const api = (gen as any).genApiClient(gen.resources.find((r) => r.name === 'character')!) as string;
+    expect(api).toContain('new FormData()');
+    expect(api).toContain("formData.append('title', String(allParams['title']))");
+    expect(api).toContain("formData.append('file'");
+    expect(api).toContain('formData)');
+    // No data = { ... } — everything goes in FormData
+    expect(api).not.toContain('const data =');
+  });
+
+  it('Q + IB + F → FormData with inline body + query params (create_new_character4 case)', () => {
+    const spec = buildCharacterSpec({
+      queryParams: [
+        { name: 'x', required: true, schema: { type: 'integer' } },
+        { name: 'y', required: true, schema: { type: 'string' } },
+      ],
+      inlineBodyParams: [{ name: 'name', required: true, schema: { type: 'string' } }],
+      fileParams: [{ name: 'z', required: true, schema: { type: 'string', format: 'binary' } }],
+    });
+    const gen = createTestGenerator(spec);
+    (gen as any).extractResources();
+    (gen as any).extractCustomCreateActions();
+    const api = (gen as any).genApiClient(gen.resources.find((r) => r.name === 'character')!) as string;
+    expect(api).toContain('new FormData()');
+    expect(api).toContain("formData.append('name', String(allParams['name']))");
+    expect(api).toContain("formData.append('z'");
+    expect(api).toContain("params = { x: allParams['x'], y: allParams['y'] }");
+    expect(api).toContain('formData, { params }');
+    expect(api).not.toContain('null');
+  });
+
+  it('P + Q + IB + F → URL interpolation + FormData + query params', () => {
+    const spec = buildCharacterSpec({
+      path: '/character/{id}/upload',
+      pathParams: [{ name: 'id', required: true, schema: { type: 'string' } }],
+      queryParams: [{ name: 'x', required: true, schema: { type: 'integer' } }],
+      inlineBodyParams: [{ name: 'desc', required: false, schema: { type: 'string' } }],
+      fileParams: [{ name: 'img', required: true, schema: { type: 'string', format: 'binary' } }],
+    });
+    const gen = createTestGenerator(spec);
+    (gen as any).extractResources();
+    (gen as any).extractCustomCreateActions();
+    const api = (gen as any).genApiClient(gen.resources.find((r) => r.name === 'character')!) as string;
+    expect(api).toContain("allParams['id'] as string");
+    expect(api).toContain('new FormData()');
+    expect(api).toContain("formData.append('desc'");
+    expect(api).toContain("formData.append('img'");
+    expect(api).toContain("params = { x: allParams['x'] }");
+    expect(api).toContain('formData, { params }');
+  });
+});
+
+// ── genResourcesConfig with custom actions ──────────────────────────────────
+describe('genResourcesConfig with custom actions', () => {
+  it('includes customCreateActions in resource config', () => {
+    const spec = buildCustomActionSpec();
+    const gen = createTestGenerator(spec);
+    (gen as any).extractResources();
+    (gen as any).extractCustomCreateActions();
+    const config = (gen as any).genResourcesConfig() as string;
+    expect(config).toContain('customCreateActions');
+    expect(config).toContain("name: 'import-from-url'");
+    expect(config).toContain("label: 'Import from URL'");
+    expect(config).toContain('articleApi.importFromUrl');
+    expect(config).toContain('articleApi.importFromMultiple');
+  });
+
+  it('generates zod schemas for custom action fields', () => {
+    const spec = buildCustomActionSpec();
+    const gen = createTestGenerator(spec);
+    (gen as any).extractResources();
+    (gen as any).extractCustomCreateActions();
+    const config = (gen as any).genResourcesConfig() as string;
+    expect(config).toContain('z.object');
+    expect(config).toContain('z.string()');
+    expect(config).toContain('z.array(z.string())');
+  });
+
+  it('generates zod with z.instanceof(File) for file fields', () => {
+    const spec = buildCharacterSpec({
+      queryParams: [{ name: 'x', required: true, schema: { type: 'integer' } }],
+      fileParams: [{ name: 'z', required: true, schema: { type: 'string', format: 'binary' } }],
+    });
+    const gen = createTestGenerator(spec);
+    (gen as any).extractResources();
+    (gen as any).extractCustomCreateActions();
+    const config = (gen as any).genResourcesConfig() as string;
+    expect(config).toContain('z.instanceof(File)');
+    expect(config).toContain('z.number().int()');
+  });
+
+  it('serializes file fields with type "file"', () => {
+    const spec = buildCharacterSpec({
+      fileParams: [{ name: 'avatar', required: true, schema: { type: 'string', format: 'binary' } }],
+    });
+    const gen = createTestGenerator(spec);
+    (gen as any).extractResources();
+    (gen as any).extractCustomCreateActions();
+    const config = (gen as any).genResourcesConfig() as string;
+    expect(config).toContain('type: "file"');
+  });
+});
+
+// ── duplicate label deduplication ───────────────────────────────────────────
+describe('extractCustomCreateActions — duplicate label deduplication', () => {
+  function buildDuplicateLabelSpec() {
+    return {
+      info: { title: 'Test', version: '1.0' },
+      paths: {
+        '/character': {
+          post: {
+            requestBody: { content: { 'application/json': { schema: { $ref: '#/components/schemas/Character' } } } },
+          },
+        },
+        '/character/import-a': {
+          post: {
+            operationId: 'import_a',
+            parameters: [{ name: 'url', in: 'query', required: true, schema: { type: 'string' } }],
+          },
+        },
+        '/character/import-b': {
+          post: {
+            operationId: 'import_b',
+            parameters: [{ name: 'url', in: 'query', required: true, schema: { type: 'string' } }],
+          },
+        },
+        '/character/import-c': {
+          post: {
+            operationId: 'import_c',
+            parameters: [{ name: 'url', in: 'query', required: true, schema: { type: 'string' } }],
+          },
+        },
+        '/character/{id}': { get: {} },
+      },
+      'x-autocrud-custom-create-actions': {
+        character: [
+          {
+            path: '/character/import-a',
+            label: 'Import',
+            operationId: 'import_a',
+            queryParams: [{ name: 'url', required: true, schema: { type: 'string' } }],
+          },
+          {
+            path: '/character/import-b',
+            label: 'Import',
+            operationId: 'import_b',
+            queryParams: [{ name: 'url', required: true, schema: { type: 'string' } }],
+          },
+          {
+            path: '/character/import-c',
+            label: 'Import',
+            operationId: 'import_c',
+            queryParams: [{ name: 'url', required: true, schema: { type: 'string' } }],
+          },
+        ],
+      },
+      components: {
+        schemas: {
+          Character: { type: 'object', properties: { name: { type: 'string' } }, required: ['name'] },
+        },
+      },
+    };
+  }
+
+  it('renames second duplicate label to "<label> (2)"', () => {
+    const spec = buildDuplicateLabelSpec();
+    const gen = createTestGenerator(spec);
+    (gen as any).extractResources();
+    (gen as any).extractCustomCreateActions();
+    const labels = gen.resources.find((r) => r.name === 'character')!.customCreateActions!.map((a) => a.label);
+    expect(labels).toContain('Import');
+    expect(labels).toContain('Import (2)');
+  });
+
+  it('renames third duplicate label to "<label> (3)"', () => {
+    const spec = buildDuplicateLabelSpec();
+    const gen = createTestGenerator(spec);
+    (gen as any).extractResources();
+    (gen as any).extractCustomCreateActions();
+    const labels = gen.resources.find((r) => r.name === 'character')!.customCreateActions!.map((a) => a.label);
+    expect(labels).toContain('Import (3)');
+  });
+
+  it('all three actions are preserved (not dropped)', () => {
+    const spec = buildDuplicateLabelSpec();
+    const gen = createTestGenerator(spec);
+    (gen as any).extractResources();
+    (gen as any).extractCustomCreateActions();
+    expect(gen.resources.find((r) => r.name === 'character')!.customCreateActions).toHaveLength(3);
+  });
+
+  it('unique labels are not renamed', () => {
+    const spec = {
+      ...buildDuplicateLabelSpec(),
+      'x-autocrud-custom-create-actions': {
+        character: [
+          {
+            path: '/character/import-a',
+            label: 'Import A',
+            operationId: 'import_a',
+            queryParams: [{ name: 'url', required: true, schema: { type: 'string' } }],
+          },
+          {
+            path: '/character/import-b',
+            label: 'Import B',
+            operationId: 'import_b',
+            queryParams: [{ name: 'url', required: true, schema: { type: 'string' } }],
+          },
+        ],
+      },
+    };
+    const gen = createTestGenerator(spec);
+    (gen as any).extractResources();
+    (gen as any).extractCustomCreateActions();
+    const labels = gen.resources.find((r) => r.name === 'character')!.customCreateActions!.map((a) => a.label);
+    expect(labels).toEqual(['Import A', 'Import B']);
+  });
+});
+
+// ── extractCustomCreateActions — enum support ───────────────────────────────
+describe('extractCustomCreateActions — enum support', () => {
+  it('queryParam with enum produces enumValues and z.enum zodType', () => {
+    const spec = buildCharacterSpec({
+      queryParams: [{ name: 'role', required: true, schema: { type: 'string', enum: ['warrior', 'mage', 'archer'] } }],
+    });
+    const gen = createTestGenerator(spec);
+    (gen as any).extractResources();
+    (gen as any).extractCustomCreateActions();
+    const action = gen.resources.find((r) => r.name === 'character')!.customCreateActions![0];
+    const roleField = action.fields.find((f: any) => f.name === 'role');
+    expect(roleField).toBeDefined();
+    expect(roleField!.enumValues).toEqual(['warrior', 'mage', 'archer']);
+    expect(roleField!.type).toBe('string');
+    expect(roleField!.zodType).toBe('z.enum(["warrior", "mage", "archer"])');
+  });
+
+  it('inlineBodyParam with enum produces enumValues and z.enum zodType', () => {
+    const spec = buildCharacterSpec({
+      inlineBodyParams: [
+        { name: 'role', required: true, schema: { type: 'string', enum: ['warrior', 'mage', 'archer'] } },
+      ],
+    });
+    const gen = createTestGenerator(spec);
+    (gen as any).extractResources();
+    (gen as any).extractCustomCreateActions();
+    const action = gen.resources.find((r) => r.name === 'character')!.customCreateActions![0];
+    const roleField = action.fields.find((f: any) => f.name === 'role');
+    expect(roleField).toBeDefined();
+    expect(roleField!.enumValues).toEqual(['warrior', 'mage', 'archer']);
+    expect(roleField!.zodType).toBe('z.enum(["warrior", "mage", "archer"])');
+  });
+
+  it('pathParam with enum produces enumValues and z.enum zodType', () => {
+    const spec = buildCharacterSpec({
+      path: '/character/{role}/new',
+      pathParams: [{ name: 'role', required: true, schema: { type: 'string', enum: ['warrior', 'mage', 'archer'] } }],
+    });
+    const gen = createTestGenerator(spec);
+    (gen as any).extractResources();
+    (gen as any).extractCustomCreateActions();
+    const action = gen.resources.find((r) => r.name === 'character')!.customCreateActions![0];
+    const roleField = action.fields.find((f: any) => f.name === 'role');
+    expect(roleField).toBeDefined();
+    expect(roleField!.enumValues).toEqual(['warrior', 'mage', 'archer']);
+    expect(roleField!.zodType).toBe('z.enum(["warrior", "mage", "archer"])');
+  });
+
+  it('optional enum param produces z.enum().optional()', () => {
+    const spec = buildCharacterSpec({
+      queryParams: [{ name: 'role', required: false, schema: { type: 'string', enum: ['warrior', 'mage', 'archer'] } }],
+    });
+    const gen = createTestGenerator(spec);
+    (gen as any).extractResources();
+    (gen as any).extractCustomCreateActions();
+    const action = gen.resources.find((r) => r.name === 'character')!.customCreateActions![0];
+    const roleField = action.fields.find((f: any) => f.name === 'role');
+    expect(roleField!.zodType).toBe('z.enum(["warrior", "mage", "archer"]).optional()');
+    expect(roleField!.isRequired).toBe(false);
+  });
+
+  it('genResourcesConfig serializes enum field with enumValues', () => {
+    const spec = buildCharacterSpec({
+      queryParams: [{ name: 'role', required: true, schema: { type: 'string', enum: ['warrior', 'mage', 'archer'] } }],
+    });
+    const gen = createTestGenerator(spec);
+    (gen as any).extractResources();
+    (gen as any).extractCustomCreateActions();
+    const config = (gen as any).genResourcesConfig() as string;
+    expect(config).toContain('enumValues');
+    expect(config).toContain('warrior');
+    expect(config).toContain('mage');
+    expect(config).toContain('archer');
+    expect(config).toContain('z.enum(["warrior", "mage", "archer"])');
+  });
+
+  it('date-time format in queryParam produces type "date" and z.union', () => {
+    const spec = buildCharacterSpec({
+      queryParams: [{ name: 'created_at', required: true, schema: { type: 'string', format: 'date-time' } }],
+    });
+    const gen = createTestGenerator(spec);
+    (gen as any).extractResources();
+    (gen as any).extractCustomCreateActions();
+    const action = gen.resources.find((r) => r.name === 'character')!.customCreateActions![0];
+    const field = action.fields.find((f: any) => f.name === 'created_at');
+    expect(field!.type).toBe('date');
+    expect(field!.zodType).toBe('z.union([z.string(), z.date()])');
+  });
+
+  it('enum + non-enum mixed params all handled correctly', () => {
+    const spec = buildCharacterSpec({
+      queryParams: [
+        { name: 'name', required: true, schema: { type: 'string' } },
+        { name: 'role', required: true, schema: { type: 'string', enum: ['warrior', 'mage'] } },
+        { name: 'level', required: false, schema: { type: 'integer' } },
+      ],
+    });
+    const gen = createTestGenerator(spec);
+    (gen as any).extractResources();
+    (gen as any).extractCustomCreateActions();
+    const action = gen.resources.find((r) => r.name === 'character')!.customCreateActions![0];
+    expect(action.fields.length).toBe(3);
+
+    const nameField = action.fields.find((f: any) => f.name === 'name');
+    expect(nameField!.type).toBe('string');
+    expect(nameField!.enumValues).toBeUndefined();
+    expect(nameField!.zodType).toBe('z.string()');
+
+    const roleField = action.fields.find((f: any) => f.name === 'role');
+    expect(roleField!.type).toBe('string');
+    expect(roleField!.enumValues).toEqual(['warrior', 'mage']);
+    expect(roleField!.zodType).toBe('z.enum(["warrior", "mage"])');
+
+    const levelField = action.fields.find((f: any) => f.name === 'level');
+    expect(levelField!.type).toBe('number');
+    expect(levelField!.enumValues).toBeUndefined();
+    expect(levelField!.zodType).toBe('z.number().int().optional()');
+  });
+});
