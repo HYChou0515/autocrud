@@ -2,6 +2,7 @@ import datetime as dt
 import textwrap
 from typing import TypeVar
 
+import msgspec
 from fastapi import APIRouter, Depends, HTTPException, Query, Request
 
 from autocrud.crud.route_templates.basic import (
@@ -445,6 +446,8 @@ class ListRouteTemplate(BaseRouteTemplate):
             try:
                 # 構建查詢對象
                 query = build_query(query_params)
+                # count 不應受 limit/offset 影響，移除分頁限制以回傳真實總數
+                query = msgspec.structs.replace(query, limit=2**63 - 1, offset=0)
                 with resource_manager.meta_provide(current_user, current_time):
                     count = resource_manager.count_resources(query)
                 return count
