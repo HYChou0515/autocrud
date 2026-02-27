@@ -45,8 +45,7 @@ export function ResourceCreate<T extends Record<string, any>>({
   };
 
   const makeCustomActionSubmit =
-    (action: CustomCreateAction) =>
-    async (values: Record<string, any>) => {
+    (action: CustomCreateAction) => async (values: Record<string, any>) => {
       try {
         await action.apiMethod(values);
         navigate({ to: basePath });

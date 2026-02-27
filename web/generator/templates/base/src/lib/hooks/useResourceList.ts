@@ -42,7 +42,7 @@ export function useResourceList<T>(
       setError(null);
       try {
         const [list, cnt] = await Promise.all([
-          config.apiClient.listFull(params),
+          config.apiClient.list(params),
           config.apiClient.count(params),
         ]);
         if (!cancelled) {

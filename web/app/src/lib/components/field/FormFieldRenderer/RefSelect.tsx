@@ -54,7 +54,7 @@ function useRefOptions(resource: string) {
 
     setLoading(true);
     try {
-      const resp = await targetResource.apiClient.listFull({ limit: 100, is_deleted: false });
+      const resp = await targetResource.apiClient.list({ limit: 100, is_deleted: false });
       const items = resp.data || [];
       const newOptions: SelectOption[] = items.map((item: any) => {
         const resourceId = item.meta?.resource_id ?? '';
@@ -233,7 +233,7 @@ function useRefRevisionOptions(resource: string) {
 
     setLoading(true);
     try {
-      const resp = await targetResource.apiClient.listFull({ limit: 100, is_deleted: false });
+      const resp = await targetResource.apiClient.list({ limit: 100, is_deleted: false });
       const items = resp.data || [];
       const newOptions: SelectOption[] = items.map((item: any) => {
         const meta = item.meta ?? {};

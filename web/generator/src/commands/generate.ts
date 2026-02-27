@@ -1225,14 +1225,14 @@ export const ${r.camel}Api = {
   create: (data: ${r.schemaName}) =>
     client.post<RevisionInfo>(BASE, data),
 
-  listFull: (params?: SearchParams & { returns?: string }) =>
-    client.get<FullResource<${r.schemaName}>[]>(\`\${BASE}/full\`, { params }),
+  list: (params?: SearchParams & { returns?: string }) =>
+    client.get<FullResource<${r.schemaName}>[]>(BASE, { params }),
 
   count: (params?: SearchParams) =>
     client.get<number>(\`\${BASE}/count\`, { params }),
 
-  getFull: (id: string, params?: { revision_id?: string; partial?: string[]; returns?: string }) =>
-    client.get<FullResource<${r.schemaName}>>(\`\${BASE}/\${id}/full\`, { params }),
+  get: (id: string, params?: { revision_id?: string; partial?: string[]; returns?: string }) =>
+    client.get<FullResource<${r.schemaName}>>(\`\${BASE}/\${id}\`, { params }),
 
   update: (id: string, data: ${r.schemaName}, params?: { change_status?: string; mode?: string }) =>
     client.put<RevisionInfo>(\`\${BASE}/\${id}\`, data, { params }),
