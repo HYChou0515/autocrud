@@ -25,6 +25,7 @@ import {
   IconAlertCircle,
   IconLayersSubtract,
   IconHistory,
+  IconRefresh,
 } from '@tabler/icons-react';
 import type { ResourceConfig } from '../../resources';
 import { useResourceDetail } from '../../hooks/useResourceDetail';
@@ -87,6 +88,7 @@ export function ResourceDetail<T extends Record<string, any>>({
     deleteResource,
     restore,
     switchRevision,
+    rerun,
     error,
   } = useResourceDetail(config, resourceId, selectedRevision);
 
@@ -186,6 +188,14 @@ export function ResourceDetail<T extends Record<string, any>>({
     }
   };
 
+  const handleRerun = async () => {
+    try {
+      await rerun();
+    } catch (error) {
+      showErrorNotification(error, 'Rerun Failed');
+    }
+  };
+
   return (
     <Container size="lg" py="xl">
       <Stack gap="lg">
@@ -219,6 +229,18 @@ export function ResourceDetail<T extends Record<string, any>>({
           <Group>
             {!isViewingHistorical && !meta.is_deleted && (
               <>
+                {isJob &&
+                  (jobStatus === 'completed' || jobStatus === 'failed') &&
+                  config.apiClient.rerun && (
+                    <Button
+                      variant="light"
+                      color="blue"
+                      leftSection={<IconRefresh size={16} />}
+                      onClick={handleRerun}
+                    >
+                      Rerun
+                    </Button>
+                  )}
                 <Button
                   variant="light"
                   leftSection={<IconEdit size={16} />}

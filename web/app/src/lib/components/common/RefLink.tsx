@@ -196,7 +196,8 @@ export function RefRevisionLink({ value, fieldRef }: RefRevisionLinkProps) {
         >
           <Group gap={4} wrap="nowrap">
             <Code style={{ cursor: 'pointer' }}>
-              {shortId(value)}{!isRevision && ' ⟨latest⟩'}
+              {shortId(value)}
+              {!isRevision && ' ⟨latest⟩'}
             </Code>
             <IconExternalLink size={14} />
           </Group>

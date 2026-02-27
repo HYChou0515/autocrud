@@ -11,6 +11,7 @@ export interface UseResourceDetailResult<T> {
   deleteResource: () => Promise<void>;
   restore: () => Promise<void>;
   switchRevision: (revisionId: string) => Promise<void>;
+  rerun: () => Promise<void>;
 }
 
 /**
@@ -87,5 +88,20 @@ export function useResourceDetail<T>(
     [config.apiClient, resourceId, refresh],
   );
 
-  return { resource, loading, error, refresh, update, deleteResource, restore, switchRevision };
+  const rerun = useCallback(async () => {
+    await config.apiClient.rerun?.(resourceId);
+    refresh();
+  }, [config.apiClient, resourceId, refresh]);
+
+  return {
+    resource,
+    loading,
+    error,
+    refresh,
+    update,
+    deleteResource,
+    restore,
+    switchRevision,
+    rerun,
+  };
 }

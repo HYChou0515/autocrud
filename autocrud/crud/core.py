@@ -42,6 +42,7 @@ from autocrud.crud.route_templates.patch import (
     RFC6902_Replace,
     RFC6902_Test,
 )
+from autocrud.crud.route_templates.rerun import RerunRouteTemplate
 from autocrud.crud.route_templates.search import ListRouteTemplate
 from autocrud.crud.route_templates.switch import SwitchRevisionRouteTemplate
 from autocrud.crud.route_templates.update import UpdateRouteTemplate
@@ -418,6 +419,7 @@ class AutoCRUD:
                     UpdateRouteTemplate,
                     PatchRouteTemplate,
                     SwitchRevisionRouteTemplate,
+                    RerunRouteTemplate,
                     DeleteRouteTemplate,
                     RestoreRouteTemplate,
                     BatchDeleteRouteTemplate,
