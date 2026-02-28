@@ -17,7 +17,4 @@ export const customizations: ResourceCustomizations = {
   //     'my_field': { variant: { type: 'textarea', rows: 5 } },
   //   },
   // },
-    'game-event': {
-      'showHiddenFields': ['errmsg', 'periodic_max_runs'],
-    }
 };

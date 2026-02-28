@@ -5,7 +5,7 @@
  * Pure orchestration: delegates to formUtils for all data transformations.
  */
 
-import { useState, useMemo, useEffect, useRef } from 'react';
+import { useState, useMemo, useCallback, useRef } from 'react';
 import { useForm, type UseFormReturnType } from '@mantine/form';
 import { zodResolver } from 'mantine-form-zod-resolver';
 import type { ResourceConfig, ResourceField } from '../../resources';
@@ -156,33 +156,56 @@ export function useResourceForm<T extends Record<string, any>>({
     validate: combinedValidate,
   });
 
-  // ── Depth transition effect ──
-  const prevCollapsedGroupPathsRef = useRef<Set<string>>(new Set());
-  useEffect(() => {
-    const prevPaths = prevCollapsedGroupPathsRef.current;
-    const currPaths = new Set(collapsedGroups.map((g) => g.path));
-    if (prevPaths.size === 0 && currPaths.size === 0) {
-      prevCollapsedGroupPathsRef.current = currPaths;
-      return;
-    }
-    const values = form.getValues() as Record<string, any>;
+  // ── Depth transition (synchronous, no useEffect) ──
+  // Tracks the previous collapsed group paths. Initialised lazily to match
+  // the initial formDepth so that the first handleSetFormDepth call can
+  // compute the correct diff.
+  const prevCollapsedGroupPathsRef = useRef<Set<string>>(
+    new Set(collapsedGroups.map((g) => g.path)),
+  );
 
-    const { expands, collapses } = computeDepthTransitionUpdates(
-      values,
-      prevPaths,
-      collapsedGroups,
-      config.fields,
-    );
+  /**
+   * Synchronous depth-change handler.
+   *
+   * Updates form values BEFORE calling setFormDepth so that React's
+   * batched re-render sees both the new depth AND the correct form values
+   * on the very first render frame.  This eliminates the "uncontrolled →
+   * controlled" React warning caused by the old useEffect approach.
+   */
+  const handleSetFormDepth = useCallback(
+    (newDepth: number) => {
+      // Compute what the collapsed groups will look like at the new depth
+      const { collapsedGroups: nextCollapsedGroups } = computeVisibleFieldsAndGroups(
+        config.fields,
+        newDepth,
+      );
 
-    for (const { path, value } of expands) {
-      form.setFieldValue(path as any, value as any);
-    }
-    for (const { path, value } of collapses) {
-      form.setFieldValue(path as any, value as any);
-    }
+      const prevPaths = prevCollapsedGroupPathsRef.current;
+      const values = form.getValues() as Record<string, any>;
 
-    prevCollapsedGroupPathsRef.current = currPaths;
-  }, [collapsedGroups]);
+      const { expands, collapses } = computeDepthTransitionUpdates(
+        values,
+        prevPaths,
+        nextCollapsedGroups,
+        config.fields,
+      );
+
+      // Apply expand/collapse synchronously
+      for (const { path, value } of expands) {
+        form.setFieldValue(path as any, value as any);
+      }
+      for (const { path, value } of collapses) {
+        form.setFieldValue(path as any, value as any);
+      }
+
+      prevCollapsedGroupPathsRef.current = new Set(nextCollapsedGroups.map((g) => g.path));
+
+      // Finally change depth — React batches this with the setFieldValue
+      // calls above, producing a single re-render with consistent values.
+      setFormDepth(newDepth);
+    },
+    [config.fields, form],
+  );
 
   // ── Mode switching helpers ──
   const handleSwitchToJson = () => {
@@ -325,7 +348,7 @@ export function useResourceForm<T extends Record<string, any>>({
     handleJsonSubmit,
     maxAvailableDepth,
     formDepth,
-    setFormDepth,
+    setFormDepth: handleSetFormDepth,
     visibleFields,
     collapsedGroups,
     simpleUnionTypes,
