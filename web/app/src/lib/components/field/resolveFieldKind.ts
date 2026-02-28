@@ -13,6 +13,7 @@ import { getDefaultVariant } from '@/lib/utils/formUtils';
  * Exhaustive list of field kinds recognised by the renderer map.
  */
 export type FieldKind =
+  | 'hidden'
   | 'itemFields'
   | 'union'
   | 'binary'
@@ -41,6 +42,11 @@ export type FieldKind =
  * so behaviour is preserved exactly.
  */
 export function resolveFieldKind(field: ResourceField): FieldKind {
+  // 0. Hidden — const value from tagged struct discriminator (auto-filled, not user-editable)
+  if (field.constValue !== undefined) {
+    return 'hidden';
+  }
+
   // 1. Array of typed objects (itemFields)
   if (field.itemFields && field.itemFields.length > 0) {
     return 'itemFields';

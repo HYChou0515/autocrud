@@ -585,6 +585,24 @@ export class Generator {
       }
     }
 
+    // Detect const value (from tagged struct discriminator field)
+    // prop.const is used by msgspec for tag=True structs
+    if (prop.const !== undefined) {
+      const constVal = String(prop.const);
+      const labelSource = name.includes('.') ? name.split('.').pop()! : name;
+      return {
+        name,
+        label: toLabel(labelSource),
+        type: 'string',
+        tsType: 'string',
+        isArray: false,
+        isRequired,
+        isNullable: false,
+        zodType: `z.literal('${constVal}')`,
+        constValue: constVal,
+      };
+    }
+
     // Extract x-unique metadata (from Unique() annotation)
     const isUnique = !!prop['x-unique'];
 
@@ -869,6 +887,38 @@ export class Generator {
       tsType = 'string';
       const enumLiterals = enumValues!.map((v) => `"${v}"`).join(', ');
       zodType = `z.enum([${enumLiterals}])`;
+
+      // Single-element enum from tagged struct discriminator → treat as const
+      if (enumValues!.length === 1) {
+        const constVal = enumValues![0];
+        zodType = `z.literal('${constVal}')`;
+
+        if (isNullable || !isRequired) {
+          if (isNullable && !isRequired) {
+            tsType += ' | null';
+            zodType = `${zodType}.nullable().optional()`;
+          } else if (isNullable) {
+            tsType += ' | null';
+            zodType = `${zodType}.nullable()`;
+          } else {
+            zodType = `${zodType}.optional()`;
+          }
+        }
+
+        const labelSource = name.includes('.') ? name.split('.').pop()! : name;
+        return {
+          name,
+          label: toLabel(labelSource),
+          type: 'string',
+          tsType,
+          isArray: false,
+          isRequired,
+          isNullable,
+          enumValues,
+          zodType,
+          constValue: constVal,
+        };
+      }
     } else if (type === 'string') {
       if (prop.format === 'date-time' || prop.format === 'date') {
         type = 'date'; // Mark as date type for ResourceForm to use DateTimePicker
@@ -1550,6 +1600,7 @@ interface Field {
   ref?: FieldRef; // Reference to another resource
   unionMeta?: UnionMeta; // For union fields: discriminator + variant info
   isUnique?: boolean; // Field has a unique constraint (from x-unique OpenAPI extension)
+  constValue?: string; // Field has a const value (from tagged struct discriminator)
 }
 
 /**
@@ -1580,6 +1631,9 @@ function serializeField(f: Field): any {
   }
   if (f.isUnique) {
     out.isUnique = true;
+  }
+  if (f.constValue !== undefined) {
+    out.constValue = f.constValue;
   }
   if (f.unionMeta) {
     out.unionMeta = {

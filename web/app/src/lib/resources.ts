@@ -85,6 +85,8 @@ export interface ResourceField {
   unionMeta?: UnionMeta;
   // Whether this field has a unique constraint (from Unique() annotation)
   isUnique?: boolean;
+  // Const value for tagged struct discriminator fields (auto-filled, hidden in form)
+  constValue?: string;
 }
 
 /**

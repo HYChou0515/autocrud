@@ -16,6 +16,7 @@ import {
 } from '@mantine/core';
 import type { UseFormReturnType } from '@mantine/form';
 import type { ResourceField, UnionMeta } from '../../../resources';
+import { getByPath } from '@/lib/utils/formUtils';
 
 interface UnionFieldRendererProps {
   field: ResourceField;
@@ -34,7 +35,7 @@ export function UnionFieldRenderer({
 }: UnionFieldRendererProps) {
   const { name, label, isRequired } = field;
   const isDiscriminated = unionMeta.discriminatorField !== '__type';
-  const currentValue = (form.getValues() as Record<string, any>)[name];
+  const currentValue = getByPath(form.getValues() as Record<string, any>, name);
 
   if (isDiscriminated) {
     const discField = unionMeta.discriminatorField;

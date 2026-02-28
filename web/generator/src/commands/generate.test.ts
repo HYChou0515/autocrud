@@ -1741,3 +1741,132 @@ describe('extractCustomCreateActions — enum support', () => {
     expect(levelField!.zodType).toBe('z.number().int().optional()');
   });
 });
+
+// ============================================================================
+// parseField — constValue detection for tagged struct discriminators
+// ============================================================================
+describe('parseField — constValue for tagged struct discriminators', () => {
+  /** Spec with tagged structs (tag=True) producing const and single-element enum */
+  function buildTaggedStructSpec() {
+    return {
+      info: { title: 'Test', version: '1.0' },
+      paths: {
+        '/job': {
+          post: {
+            requestBody: {
+              content: {
+                'application/json': {
+                  schema: { $ref: '#/components/schemas/Job' },
+                },
+              },
+            },
+          },
+        },
+        '/job/{id}': { get: {} },
+      },
+      components: {
+        schemas: {
+          Job: {
+            type: 'object',
+            properties: {
+              name: { type: 'string' },
+              fruit: {
+                anyOf: [{ $ref: '#/components/schemas/Apple' }, { $ref: '#/components/schemas/Banana' }],
+                discriminator: {
+                  propertyName: 'type',
+                  mapping: {
+                    Apple: '#/components/schemas/Apple',
+                    Banana: '#/components/schemas/Banana',
+                  },
+                },
+              },
+              carrot: { $ref: '#/components/schemas/Carrot' },
+            },
+            required: ['name', 'fruit', 'carrot'],
+          },
+          Apple: {
+            type: 'object',
+            properties: {
+              type: { const: 'Apple' },
+              color: { type: 'string' },
+            },
+            required: ['type', 'color'],
+          },
+          Banana: {
+            type: 'object',
+            properties: {
+              type: { const: 'Banana' },
+              length: { type: 'number' },
+            },
+            required: ['type', 'length'],
+          },
+          Carrot: {
+            type: 'object',
+            properties: {
+              type: { type: 'string', enum: ['Carrot'] },
+              weight: { type: 'number' },
+            },
+            required: ['type', 'weight'],
+          },
+        },
+      },
+    };
+  }
+
+  it('parseField detects prop.const and returns constValue', () => {
+    const spec = buildTaggedStructSpec();
+    const gen = createTestGenerator(spec);
+    const typeProp = { const: 'Apple' };
+    const field = (gen as any).parseField('type', typeProp, true);
+
+    expect(field).toBeDefined();
+    expect(field.constValue).toBe('Apple');
+    expect(field.type).toBe('string');
+    expect(field.zodType).toBe("z.literal('Apple')");
+  });
+
+  it('parseField detects single-element enum and returns constValue', () => {
+    const spec = buildTaggedStructSpec();
+    const gen = createTestGenerator(spec);
+    const typeProp = { type: 'string', enum: ['Carrot'] };
+    const field = (gen as any).parseField('type', typeProp, true);
+
+    expect(field).toBeDefined();
+    expect(field.constValue).toBe('Carrot');
+    expect(field.type).toBe('string');
+    expect(field.zodType).toBe("z.literal('Carrot')");
+  });
+
+  it('parseField does NOT set constValue for multi-element enum', () => {
+    const spec = buildTaggedStructSpec();
+    const gen = createTestGenerator(spec);
+    const typeProp = { type: 'string', enum: ['warrior', 'mage'] };
+    const field = (gen as any).parseField('role', typeProp, true);
+
+    expect(field).toBeDefined();
+    expect(field.constValue).toBeUndefined();
+    expect(field.enumValues).toEqual(['warrior', 'mage']);
+  });
+
+  it('extractFields expands tagged struct ($ref) and produces constValue on discriminator field', () => {
+    const spec = buildTaggedStructSpec();
+    const gen = createTestGenerator(spec);
+    const carrotSchema = spec.components.schemas.Job.properties.carrot;
+    // Simulate extracting fields for the carrot $ref — we call extractFields on the Carrot schema
+    const carrotFields = (gen as any).extractFields(spec.components.schemas.Carrot, 'carrot', 1, 2);
+    const typeField = carrotFields.find((f: any) => f.name === 'carrot.type');
+
+    expect(typeField).toBeDefined();
+    expect(typeField.constValue).toBe('Carrot');
+  });
+
+  it('serializeField preserves constValue in genResourcesConfig output', () => {
+    const spec = buildTaggedStructSpec();
+    const gen = createTestGenerator(spec);
+    (gen as any).extractResources();
+    const code = (gen as any).genResourcesConfig();
+
+    // The Carrot struct's type field (single-element enum) should produce constValue
+    expect(code).toContain('constValue: "Carrot"');
+  });
+});

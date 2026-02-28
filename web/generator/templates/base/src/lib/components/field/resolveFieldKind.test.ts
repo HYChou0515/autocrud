@@ -16,6 +16,35 @@ function makeField(overrides: Partial<ResourceField> & { name: string }): Resour
 
 describe('resolveFieldKind', () => {
   // -------------------------------------------------------------------
+  // 0. hidden (constValue)
+  // -------------------------------------------------------------------
+  it('returns "hidden" when field has constValue', () => {
+    const field = makeField({ name: 'payload.carrot.type', type: 'string', constValue: 'Carrot' });
+    expect(resolveFieldKind(field)).toBe('hidden');
+  });
+
+  it('constValue takes precedence over all other types', () => {
+    const field = makeField({
+      name: 'type',
+      type: 'union',
+      unionMeta: { discriminatorField: 'kind', variants: [] },
+      constValue: 'SomeTag',
+    });
+    expect(resolveFieldKind(field)).toBe('hidden');
+  });
+
+  it('constValue takes precedence over itemFields', () => {
+    const field = makeField({
+      name: 'items',
+      type: 'array',
+      isArray: true,
+      itemFields: [makeField({ name: 'sub', type: 'string' })],
+      constValue: 'FixedTag',
+    });
+    expect(resolveFieldKind(field)).toBe('hidden');
+  });
+
+  // -------------------------------------------------------------------
   // 1. itemFields
   // -------------------------------------------------------------------
   it('returns "itemFields" when field has non-empty itemFields', () => {
