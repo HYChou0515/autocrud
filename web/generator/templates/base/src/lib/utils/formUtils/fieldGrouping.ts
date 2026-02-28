@@ -155,6 +155,8 @@ export interface FieldParentGroup<T extends ResourceFieldMinimal = ResourceField
   parentLabel: string | null;
   /** Fields belonging to this group */
   fields: T[];
+  /** Nested child groups (sub-structs whose parentPath is a child of this group's parentPath) */
+  children: FieldParentGroup<T>[];
 }
 
 /**
@@ -184,30 +186,52 @@ export function groupFieldsByParent<T extends ResourceFieldMinimal>(
 ): FieldParentGroup<T>[] {
   if (fields.length === 0) return [];
 
-  const groups: FieldParentGroup<T>[] = [];
-  let currentParent: string | null | undefined = undefined; // sentinel: not yet assigned
-  let currentGroup: T[] = [];
-
-  const flush = () => {
-    if (currentGroup.length > 0) {
-      const parentLabel = currentParent != null ? toLabel(currentParent.split('.').pop()!) : null;
-      groups.push({ parentPath: currentParent ?? null, parentLabel, fields: currentGroup });
-    }
-  };
+  // Use a Map to accumulate fields by parent, preserving first-appearance order.
+  // This merges non-consecutive fields sharing the same parent into one group,
+  // preventing duplicate React keys (e.g. payload.* split by payload.event_body.*).
+  const groupMap = new Map<string | null, FieldParentGroup<T>>();
+  const insertionOrder: (string | null)[] = [];
 
   for (const field of fields) {
     const dotIdx = field.name.lastIndexOf('.');
-    const parent = dotIdx > 0 ? field.name.substring(0, dotIdx) : null;
+    const parent: string | null = dotIdx > 0 ? field.name.substring(0, dotIdx) : null;
 
-    if (parent !== currentParent) {
-      flush();
-      currentParent = parent;
-      currentGroup = [field];
+    const existing = groupMap.get(parent);
+    if (existing) {
+      existing.fields.push(field);
     } else {
-      currentGroup.push(field);
+      const parentLabel = parent != null ? toLabel(parent.split('.').pop()!) : null;
+      const group: FieldParentGroup<T> = {
+        parentPath: parent,
+        parentLabel,
+        fields: [field],
+        children: [],
+      };
+      groupMap.set(parent, group);
+      insertionOrder.push(parent);
     }
   }
-  flush();
 
-  return groups;
+  // Build tree: nest child groups under their parent group if it exists.
+  // Process from deepest to shallowest so multi-level nesting works correctly.
+  const nonNullKeys = insertionOrder
+    .filter((k): k is string => k != null)
+    .sort((a, b) => b.split('.').length - a.split('.').length);
+
+  const nestedKeys = new Set<string | null>();
+
+  for (const key of nonNullKeys) {
+    const lastDot = key.lastIndexOf('.');
+    if (lastDot > 0) {
+      const ancestorKey = key.substring(0, lastDot);
+      const ancestorGroup = groupMap.get(ancestorKey);
+      if (ancestorGroup) {
+        ancestorGroup.children.push(groupMap.get(key)!);
+        nestedKeys.add(key);
+      }
+    }
+  }
+
+  // Return only root-level groups (not nested) in first-appearance order.
+  return insertionOrder.filter((key) => !nestedKeys.has(key)).map((key) => groupMap.get(key)!);
 }

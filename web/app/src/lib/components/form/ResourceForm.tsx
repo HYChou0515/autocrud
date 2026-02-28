@@ -136,7 +136,8 @@ export function ResourceForm<T extends Record<string, any>>({
           <Stack gap="md">
             {(() => {
               const fieldGroups = groupFieldsByParent(visibleFields);
-              return fieldGroups.map((group, gi) => {
+
+              const renderGroup = (group: (typeof fieldGroups)[number]): React.ReactNode => {
                 const renderedFields = group.fields.map((field) => (
                   <FieldRenderer
                     key={field.name}
@@ -146,19 +147,26 @@ export function ResourceForm<T extends Record<string, any>>({
                     setSimpleUnionTypes={setSimpleUnionTypes}
                   />
                 ));
+                const renderedChildren = group.children.map((child) => renderGroup(child));
+
                 if (group.parentPath != null) {
                   return (
                     <Fieldset
                       key={`group-${group.parentPath}`}
                       legend={group.parentLabel ?? group.parentPath}
                     >
-                      <Stack gap="md">{renderedFields}</Stack>
+                      <Stack gap="md">
+                        {renderedFields}
+                        {renderedChildren}
+                      </Stack>
                     </Fieldset>
                   );
                 }
-                // Top-level fields: render directly without wrapper
-                return renderedFields;
-              });
+                // Top-level fields: render directly as a flat list (no wrapper needed)
+                return [...renderedFields, ...renderedChildren];
+              };
+
+              return fieldGroups.flatMap((group) => renderGroup(group));
             })()}
             {collapsedGroups.map(renderCollapsedGroup)}
             <Group justify="flex-end" mt="md">
