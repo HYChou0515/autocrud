@@ -137,6 +137,22 @@ export function ResourceForm<T extends Record<string, any>>({
             {(() => {
               const fieldGroups = groupFieldsByParent(visibleFields);
 
+              // Partition collapsed groups: those that belong inside a visible
+              // fieldset vs. top-level ones rendered at the bottom.
+              const nestedCollapsedPaths = new Set<string>();
+              const getChildCollapsed = (parentPath: string | null) => {
+                if (parentPath == null) return [];
+                return collapsedGroups.filter((cg) => {
+                  const lastDot = cg.path.lastIndexOf('.');
+                  const cgParent = lastDot > 0 ? cg.path.substring(0, lastDot) : null;
+                  if (cgParent === parentPath) {
+                    nestedCollapsedPaths.add(cg.path);
+                    return true;
+                  }
+                  return false;
+                });
+              };
+
               const renderGroup = (group: (typeof fieldGroups)[number]): React.ReactNode => {
                 const renderedFields = group.fields.map((field) => (
                   <FieldRenderer
@@ -148,6 +164,8 @@ export function ResourceForm<T extends Record<string, any>>({
                   />
                 ));
                 const renderedChildren = group.children.map((child) => renderGroup(child));
+                const childCollapsed = getChildCollapsed(group.parentPath);
+                const renderedCollapsed = childCollapsed.map(renderCollapsedGroup);
 
                 if (group.parentPath != null) {
                   return (
@@ -158,17 +176,24 @@ export function ResourceForm<T extends Record<string, any>>({
                       <Stack gap="md">
                         {renderedFields}
                         {renderedChildren}
+                        {renderedCollapsed}
                       </Stack>
                     </Fieldset>
                   );
                 }
                 // Top-level fields: render directly as a flat list (no wrapper needed)
-                return [...renderedFields, ...renderedChildren];
+                return [...renderedFields, ...renderedChildren, ...renderedCollapsed];
               };
 
-              return fieldGroups.flatMap((group) => renderGroup(group));
+              // Render field groups first (this also populates nestedCollapsedPaths)
+              const renderedGroups = fieldGroups.flatMap((group) => renderGroup(group));
+              // Then render remaining top-level collapsed groups
+              const topLevelCollapsed = collapsedGroups
+                .filter((cg) => !nestedCollapsedPaths.has(cg.path))
+                .map(renderCollapsedGroup);
+
+              return [...renderedGroups, ...topLevelCollapsed];
             })()}
-            {collapsedGroups.map(renderCollapsedGroup)}
             <Group justify="flex-end" mt="md">
               {onCancel && (
                 <Button variant="subtle" onClick={onCancel}>

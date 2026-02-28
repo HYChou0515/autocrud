@@ -24,9 +24,7 @@ import {
   parseAndValidateJson,
   processSubmitValues,
   computeValidationSuppressPaths,
-  collapseFieldToJson,
-  expandFieldFromJson,
-  restoreCollapsedChildren,
+  computeDepthTransitionUpdates,
   type BinaryFormValue,
 } from '@/lib/utils/formUtils';
 
@@ -169,35 +167,18 @@ export function useResourceForm<T extends Record<string, any>>({
     }
     const values = form.getValues() as Record<string, any>;
 
-    for (const group of collapsedGroups) {
-      if (!prevPaths.has(group.path)) {
-        const val = getByPath(values, group.path);
-        if (typeof val !== 'string') {
-          // Restore any previously-collapsed children to prevent double-encoding
-          const cleanVal = restoreCollapsedChildren(val, group.path, prevPaths);
-          const field = config.fields.find((f) => f.name === group.path);
-          const jsonStr = collapseFieldToJson(
-            cleanVal,
-            field ?? { name: group.path, label: group.label },
-          );
-          form.setFieldValue(group.path as any, jsonStr as any);
-        }
-      }
-    }
+    const { expands, collapses } = computeDepthTransitionUpdates(
+      values,
+      prevPaths,
+      collapsedGroups,
+      config.fields,
+    );
 
-    for (const prevPath of prevPaths) {
-      if (!currPaths.has(prevPath)) {
-        const val = getByPath(values, prevPath);
-        if (typeof val === 'string') {
-          const field = config.fields.find((f) => f.name === prevPath);
-          if (field) {
-            const expanded = expandFieldFromJson(val, field);
-            if (expanded !== undefined) {
-              form.setFieldValue(prevPath as any, expanded as any);
-            }
-          }
-        }
-      }
+    for (const { path, value } of expands) {
+      form.setFieldValue(path as any, value as any);
+    }
+    for (const { path, value } of collapses) {
+      form.setFieldValue(path as any, value as any);
     }
 
     prevCollapsedGroupPathsRef.current = currPaths;

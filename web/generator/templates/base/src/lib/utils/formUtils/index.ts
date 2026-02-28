@@ -87,4 +87,5 @@ export {
   safeGetArrayItems,
   safeGetJsonString,
   restoreCollapsedChildren,
+  computeDepthTransitionUpdates,
 } from './depthTransition';
