@@ -232,6 +232,7 @@ class GameEventPayload(Struct):
     character_id: Annotated[
         Optional[str], Ref("character", ref_type=RefType.revision_id)
     ]
+    event_x2: EventBodyX
     description: str
     reward_gold: int = 0
     reward_exp: int = 0

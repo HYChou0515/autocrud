@@ -26,6 +26,7 @@ import {
   computeValidationSuppressPaths,
   collapseFieldToJson,
   expandFieldFromJson,
+  restoreCollapsedChildren,
   type BinaryFormValue,
 } from '@/lib/utils/formUtils';
 
@@ -172,9 +173,11 @@ export function useResourceForm<T extends Record<string, any>>({
       if (!prevPaths.has(group.path)) {
         const val = getByPath(values, group.path);
         if (typeof val !== 'string') {
+          // Restore any previously-collapsed children to prevent double-encoding
+          const cleanVal = restoreCollapsedChildren(val, group.path, prevPaths);
           const field = config.fields.find((f) => f.name === group.path);
           const jsonStr = collapseFieldToJson(
-            val,
+            cleanVal,
             field ?? { name: group.path, label: group.label },
           );
           form.setFieldValue(group.path as any, jsonStr as any);

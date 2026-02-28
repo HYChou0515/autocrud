@@ -1,5 +1,9 @@
 import { describe, expect, it } from 'vitest';
-import { computeVisibleFieldsAndGroups, computeMaxAvailableDepth } from './fieldGrouping';
+import {
+  computeVisibleFieldsAndGroups,
+  computeMaxAvailableDepth,
+  groupFieldsByParent,
+} from './fieldGrouping';
 
 describe('computeVisibleFieldsAndGroups', () => {
   it('should return all fields as visible when formDepth is max', () => {
@@ -204,5 +208,102 @@ describe('computeMaxAvailableDepth', () => {
     ];
 
     expect(computeMaxAvailableDepth(fields)).toBe(3);
+  });
+});
+
+// ============================================================================
+// groupFieldsByParent
+// ============================================================================
+describe('groupFieldsByParent', () => {
+  it('should return single null-parent group for flat fields (no dots)', () => {
+    const fields = [
+      { name: 'id', label: 'ID' },
+      { name: 'name', label: 'Name' },
+      { name: 'email', label: 'Email' },
+    ];
+
+    const groups = groupFieldsByParent(fields);
+
+    expect(groups).toHaveLength(1);
+    expect(groups[0].parentPath).toBeNull();
+    expect(groups[0].parentLabel).toBeNull();
+    expect(groups[0].fields).toHaveLength(3);
+  });
+
+  it('should group nested fields by shared parent', () => {
+    const fields = [
+      { name: 'id', label: 'ID' },
+      { name: 'user.email', label: 'Email' },
+      { name: 'user.name', label: 'Name' },
+      { name: 'address.city', label: 'City' },
+      { name: 'address.zip', label: 'Zip' },
+    ];
+
+    const groups = groupFieldsByParent(fields);
+
+    expect(groups).toHaveLength(3);
+    // First group: flat fields
+    expect(groups[0].parentPath).toBeNull();
+    expect(groups[0].fields.map((f: any) => f.name)).toEqual(['id']);
+    // Second group: user.*
+    expect(groups[1].parentPath).toBe('user');
+    expect(groups[1].parentLabel).toBe('User');
+    expect(groups[1].fields.map((f: any) => f.name)).toEqual(['user.email', 'user.name']);
+    // Third group: address.*
+    expect(groups[2].parentPath).toBe('address');
+    expect(groups[2].parentLabel).toBe('Address');
+    expect(groups[2].fields.map((f: any) => f.name)).toEqual(['address.city', 'address.zip']);
+  });
+
+  it('should handle deeply nested fields — groups by immediate parent', () => {
+    const fields = [
+      { name: 'payload.event_x2.type', label: 'Type' },
+      { name: 'payload.event_x2.good', label: 'Good' },
+      { name: 'payload.event_x2.great', label: 'Great' },
+      { name: 'payload.event_x.good', label: 'Good' },
+      { name: 'payload.event_x.great', label: 'Great' },
+    ];
+
+    const groups = groupFieldsByParent(fields);
+
+    expect(groups).toHaveLength(2);
+    expect(groups[0].parentPath).toBe('payload.event_x2');
+    expect(groups[0].parentLabel).toBe('Event X2');
+    expect(groups[0].fields).toHaveLength(3);
+    expect(groups[1].parentPath).toBe('payload.event_x');
+    expect(groups[1].parentLabel).toBe('Event X');
+    expect(groups[1].fields).toHaveLength(2);
+  });
+
+  it('should handle interleaved flat and nested fields', () => {
+    const fields = [
+      { name: 'title', label: 'Title' },
+      { name: 'user.name', label: 'Name' },
+      { name: 'description', label: 'Description' },
+    ];
+
+    const groups = groupFieldsByParent(fields);
+
+    // 3 groups: flat, user.*, flat
+    expect(groups).toHaveLength(3);
+    expect(groups[0].parentPath).toBeNull();
+    expect(groups[0].fields.map((f: any) => f.name)).toEqual(['title']);
+    expect(groups[1].parentPath).toBe('user');
+    expect(groups[1].fields.map((f: any) => f.name)).toEqual(['user.name']);
+    expect(groups[2].parentPath).toBeNull();
+    expect(groups[2].fields.map((f: any) => f.name)).toEqual(['description']);
+  });
+
+  it('should return empty array for empty fields', () => {
+    const groups = groupFieldsByParent([]);
+    expect(groups).toHaveLength(0);
+  });
+
+  it('should use toLabel for parent label from snake_case', () => {
+    const fields = [{ name: 'api_key.secret_value', label: 'Secret Value' }];
+
+    const groups = groupFieldsByParent(fields);
+
+    expect(groups[0].parentLabel).toBe('Api Key');
   });
 });

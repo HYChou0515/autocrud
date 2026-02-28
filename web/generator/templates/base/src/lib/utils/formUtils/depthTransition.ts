@@ -145,3 +145,55 @@ export function safeGetJsonString(rawVal: any): string {
   }
   return JSON.stringify(rawVal ?? [], null, 2);
 }
+
+/**
+ * Restore previously-collapsed children within a parent object before collapsing the parent.
+ *
+ * When decreasing form depth, a parent group (e.g. `payload`) gets collapsed into JSON.
+ * If child paths (e.g. `payload.event_x2`) were already collapsed to JSON strings from
+ * a previous depth change, the parent object contains stringified children.
+ * Collapsing the parent would then produce double-encoded JSON.
+ *
+ * This function parses those string children back to objects so the parent can be
+ * cleanly serialized.
+ *
+ * @param parentValue - The parent object value from form state
+ * @param parentPath - The dot-notation path of the parent being collapsed
+ * @param prevCollapsedPaths - Set of paths that were previously collapsed (may contain children)
+ * @returns A shallow clone of parentValue with string children parsed back to objects
+ *
+ * @example
+ * restoreCollapsedChildren(
+ *   { event_x2: '{"type":"EventBodyX","good":"foo"}', name: 'test' },
+ *   'payload',
+ *   new Set(['payload.event_x2'])
+ * )
+ * // Returns: { event_x2: { type: 'EventBodyX', good: 'foo' }, name: 'test' }
+ */
+export function restoreCollapsedChildren(
+  parentValue: any,
+  parentPath: string,
+  prevCollapsedPaths: Set<string>,
+): any {
+  if (parentValue == null || typeof parentValue !== 'object') return parentValue;
+
+  const restored = { ...parentValue };
+  const prefix = parentPath + '.';
+
+  for (const childPath of prevCollapsedPaths) {
+    if (!childPath.startsWith(prefix)) continue;
+    const relativePath = childPath.slice(prefix.length);
+    // Only handle direct children (single segment) — deeper paths are nested within them
+    if (relativePath.includes('.')) continue;
+    const childVal = restored[relativePath];
+    if (typeof childVal === 'string') {
+      try {
+        restored[relativePath] = JSON.parse(childVal);
+      } catch {
+        // Invalid JSON — leave as-is
+      }
+    }
+  }
+
+  return restored;
+}

@@ -549,6 +549,20 @@ export class Generator {
         if (resolved) prop = resolved;
       }
 
+      // Handle nullable $ref struct: anyOf: [$ref, {type:'null'}]
+      // If this is a nullable reference to an expandable object, recurse to expand sub-fields
+      if (rawProp.anyOf && !rawProp.discriminator && currentDepth < maxDepth) {
+        const nonNullTypes = (rawProp.anyOf as any[]).filter((t: any) => t.type !== 'null');
+        if (nonNullTypes.length === 1 && nonNullTypes[0].$ref) {
+          const resolved = this.resolveRef(nonNullTypes[0].$ref);
+          if (resolved && resolved.type === 'object' && resolved.properties && !this.isBinarySchema(resolved)) {
+            const subFields = this.extractFields(resolved, fullName, currentDepth + 1, maxDepth);
+            fields.push(...subFields);
+            continue;
+          }
+        }
+      }
+
       // If this is a typed object (has properties) and we haven't exceeded max depth,
       // expand its sub-fields recursively instead of treating as opaque JSON
       // But skip Binary schemas — they should be treated as atomic binary fields

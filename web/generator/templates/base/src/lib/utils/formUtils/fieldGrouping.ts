@@ -144,3 +144,70 @@ export function computeMaxAvailableDepth(fields: ResourceFieldMinimal[]): number
   }
   return max;
 }
+
+/**
+ * Result of parent-based field grouping for Fieldset rendering
+ */
+export interface FieldParentGroup<T extends ResourceFieldMinimal = ResourceFieldMinimal> {
+  /** Parent path (dot-notation prefix excluding leaf), or null for top-level fields */
+  parentPath: string | null;
+  /** Human-readable label for the parent, or null for top-level fields */
+  parentLabel: string | null;
+  /** Fields belonging to this group */
+  fields: T[];
+}
+
+/**
+ * Group visible fields by their immediate parent path for Fieldset rendering.
+ *
+ * Fields are grouped by stripping the last segment from their dot-notation name.
+ * Consecutive fields sharing the same parent are merged into one group.
+ * Fields without dots (top-level) get parentPath=null.
+ *
+ * @param fields - Visible fields (already filtered by depth)
+ * @returns Array of groups, each with parentPath, parentLabel, and fields
+ *
+ * @example
+ * groupFieldsByParent([
+ *   { name: 'id', label: 'ID' },
+ *   { name: 'user.email', label: 'Email' },
+ *   { name: 'user.name', label: 'Name' },
+ * ])
+ * // Returns:
+ * // [
+ * //   { parentPath: null, parentLabel: null, fields: [{ name: 'id' }] },
+ * //   { parentPath: 'user', parentLabel: 'User', fields: [{ name: 'user.email' }, { name: 'user.name' }] },
+ * // ]
+ */
+export function groupFieldsByParent<T extends ResourceFieldMinimal>(
+  fields: T[],
+): FieldParentGroup<T>[] {
+  if (fields.length === 0) return [];
+
+  const groups: FieldParentGroup<T>[] = [];
+  let currentParent: string | null | undefined = undefined; // sentinel: not yet assigned
+  let currentGroup: T[] = [];
+
+  const flush = () => {
+    if (currentGroup.length > 0) {
+      const parentLabel = currentParent != null ? toLabel(currentParent.split('.').pop()!) : null;
+      groups.push({ parentPath: currentParent ?? null, parentLabel, fields: currentGroup });
+    }
+  };
+
+  for (const field of fields) {
+    const dotIdx = field.name.lastIndexOf('.');
+    const parent = dotIdx > 0 ? field.name.substring(0, dotIdx) : null;
+
+    if (parent !== currentParent) {
+      flush();
+      currentParent = parent;
+      currentGroup = [field];
+    } else {
+      currentGroup.push(field);
+    }
+  }
+  flush();
+
+  return groups;
+}

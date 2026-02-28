@@ -8,10 +8,11 @@ import {
   Alert,
   Text,
   Tooltip,
+  Fieldset,
 } from '@mantine/core';
 import { IconLayersSubtract } from '@tabler/icons-react';
 import type { ResourceConfig } from '../../resources';
-import { safeGetJsonString } from '@/lib/utils/formUtils';
+import { getByPath, collapseFieldToJson, groupFieldsByParent } from '@/lib/utils/formUtils';
 import { useResourceForm } from './useResourceForm';
 import { FieldRenderer } from '../field/FormFieldRenderer';
 
@@ -73,8 +74,9 @@ export function ResourceForm<T extends Record<string, any>>({
 
   /** Render a collapsed group as a JSON textarea */
   const renderCollapsedGroup = (group: { path: string; label: string }) => {
-    const rawVal = (form.getValues() as Record<string, any>)[group.path];
-    const strVal = safeGetJsonString(rawVal);
+    const rawVal = getByPath(form.getValues() as Record<string, any>, group.path);
+    const field = config.fields.find((f) => f.name === group.path);
+    const strVal = collapseFieldToJson(rawVal, field ?? { name: group.path, label: group.label });
     return (
       <Textarea
         key={`collapsed-${group.path}`}
@@ -132,15 +134,32 @@ export function ResourceForm<T extends Record<string, any>>({
       {editMode === 'form' && (
         <form onSubmit={form.onSubmit(handleSubmit)}>
           <Stack gap="md">
-            {visibleFields.map((field) => (
-              <FieldRenderer
-                key={field.name}
-                field={field}
-                form={form}
-                simpleUnionTypes={simpleUnionTypes}
-                setSimpleUnionTypes={setSimpleUnionTypes}
-              />
-            ))}
+            {(() => {
+              const fieldGroups = groupFieldsByParent(visibleFields);
+              return fieldGroups.map((group, gi) => {
+                const renderedFields = group.fields.map((field) => (
+                  <FieldRenderer
+                    key={field.name}
+                    field={field}
+                    form={form}
+                    simpleUnionTypes={simpleUnionTypes}
+                    setSimpleUnionTypes={setSimpleUnionTypes}
+                  />
+                ));
+                if (group.parentPath != null) {
+                  return (
+                    <Fieldset
+                      key={`group-${group.parentPath}`}
+                      legend={group.parentLabel ?? group.parentPath}
+                    >
+                      <Stack gap="md">{renderedFields}</Stack>
+                    </Fieldset>
+                  );
+                }
+                // Top-level fields: render directly without wrapper
+                return renderedFields;
+              });
+            })()}
             {collapsedGroups.map(renderCollapsedGroup)}
             <Group justify="flex-end" mt="md">
               {onCancel && (

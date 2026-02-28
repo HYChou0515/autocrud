@@ -1988,3 +1988,117 @@ describe('Job resource — defaultHiddenFields', () => {
     expect(code).not.toContain('isJob:');
   });
 });
+
+// ============================================================================
+// extractFields — nullable $ref struct expansion
+// ============================================================================
+describe('extractFields — nullable $ref struct expansion', () => {
+  /** Spec with a nullable struct field: EventBodyX | None → anyOf: [$ref, {type:'null'}] */
+  function buildNullableRefSpec() {
+    return {
+      info: { title: 'Test', version: '1.0' },
+      paths: {
+        '/game-event': {
+          post: {
+            requestBody: {
+              content: {
+                'application/json': {
+                  schema: { $ref: '#/components/schemas/GameEventPayload' },
+                },
+              },
+            },
+          },
+        },
+        '/game-event/{id}': { get: {} },
+      },
+      components: {
+        schemas: {
+          EventBodyX: {
+            type: 'object',
+            properties: {
+              type: { type: 'string', enum: ['EventBodyX'] },
+              good: { type: 'string' },
+              great: { type: 'integer' },
+            },
+            required: ['type', 'good', 'great'],
+          },
+          GameEventPayload: {
+            type: 'object',
+            properties: {
+              name: { type: 'string' },
+              // Non-nullable struct — should be expanded
+              event_x2: { $ref: '#/components/schemas/EventBodyX' },
+              // Nullable struct — anyOf [$ref, null] — should ALSO be expanded
+              event_x: {
+                anyOf: [{ $ref: '#/components/schemas/EventBodyX' }, { type: 'null' }],
+              },
+            },
+            required: ['name', 'event_x2'],
+          },
+        },
+      },
+    };
+  }
+
+  it('expands non-nullable $ref struct into dot-notation sub-fields', () => {
+    const spec = buildNullableRefSpec();
+    const gen = createTestGenerator(spec);
+    const schema = spec.components.schemas.GameEventPayload;
+    const fields = (gen as any).extractFields(schema, '', 1, 2);
+
+    // event_x2 should be expanded to event_x2.type, event_x2.good, event_x2.great
+    const x2Fields = fields.filter((f: any) => f.name.startsWith('event_x2.'));
+    expect(x2Fields.length).toBe(3);
+    expect(x2Fields.map((f: any) => f.name).sort()).toEqual(['event_x2.good', 'event_x2.great', 'event_x2.type']);
+  });
+
+  it('expands nullable $ref struct (anyOf [$ref, null]) into dot-notation sub-fields', () => {
+    const spec = buildNullableRefSpec();
+    const gen = createTestGenerator(spec);
+    const schema = spec.components.schemas.GameEventPayload;
+    const fields = (gen as any).extractFields(schema, '', 1, 2);
+
+    // event_x (nullable) should ALSO be expanded to event_x.type, event_x.good, event_x.great
+    const xFields = fields.filter((f: any) => f.name.startsWith('event_x.'));
+    expect(xFields.length).toBe(3);
+    expect(xFields.map((f: any) => f.name).sort()).toEqual(['event_x.good', 'event_x.great', 'event_x.type']);
+  });
+
+  it('does NOT expand nullable $ref struct when depth exceeds maxDepth', () => {
+    const spec = buildNullableRefSpec();
+    const gen = createTestGenerator(spec);
+    const schema = spec.components.schemas.GameEventPayload;
+    // maxDepth=1 means we can only go 1 level deep — nested struct should collapse
+    const fields = (gen as any).extractFields(schema, '', 1, 1);
+
+    // event_x should NOT be expanded — should remain as a single field
+    const xDotFields = fields.filter((f: any) => f.name.startsWith('event_x.'));
+    expect(xDotFields.length).toBe(0);
+
+    // But it should still exist as a single field
+    const xField = fields.find((f: any) => f.name === 'event_x');
+    expect(xField).toBeDefined();
+  });
+
+  it('does NOT expand nullable $ref when resolved schema has no properties (not a struct)', () => {
+    const spec = buildNullableRefSpec();
+    // Add a non-struct schema (e.g. enum)
+    spec.components.schemas.GameEventPayload.properties.status = {
+      anyOf: [{ $ref: '#/components/schemas/MyEnum' }, { type: 'null' }],
+    };
+    (spec.components.schemas as any).MyEnum = {
+      type: 'string',
+      enum: ['active', 'inactive'],
+    };
+
+    const gen = createTestGenerator(spec);
+    const schema = spec.components.schemas.GameEventPayload;
+    const fields = (gen as any).extractFields(schema, '', 1, 2);
+
+    // status should NOT be expanded — it's an enum, not a struct
+    const statusDotFields = fields.filter((f: any) => f.name.startsWith('status.'));
+    expect(statusDotFields.length).toBe(0);
+    const statusField = fields.find((f: any) => f.name === 'status');
+    expect(statusField).toBeDefined();
+  });
+});

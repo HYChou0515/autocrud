@@ -4,6 +4,7 @@ import {
   expandFieldFromJson,
   safeGetArrayItems,
   safeGetJsonString,
+  restoreCollapsedChildren,
 } from './depthTransition';
 import type { ResourceFieldMinimal } from './fieldTypeRegistry';
 
@@ -387,5 +388,90 @@ describe('safeGetJsonString', () => {
 
   it('should handle empty object', () => {
     expect(safeGetJsonString({})).toBe('{}');
+  });
+});
+
+// ============================================================================
+// restoreCollapsedChildren (double-encoding prevention)
+// ============================================================================
+describe('restoreCollapsedChildren', () => {
+  it('should parse string children back to objects under parent path', () => {
+    const parentValue = {
+      event_type: 'level_up',
+      event_x2: '{\n  "type": "EventBodyX",\n  "good": "foo",\n  "great": 42\n}',
+      description: 'test',
+    };
+    const prevCollapsedPaths = new Set(['payload.event_x2']);
+
+    const restored = restoreCollapsedChildren(parentValue, 'payload', prevCollapsedPaths);
+
+    expect(restored.event_x2).toEqual({ type: 'EventBodyX', good: 'foo', great: 42 });
+    expect(restored.event_type).toBe('level_up');
+    expect(restored.description).toBe('test');
+  });
+
+  it('should not mutate the original object', () => {
+    const original = {
+      child: '{"key":"val"}',
+    };
+    const prevPaths = new Set(['parent.child']);
+
+    const restored = restoreCollapsedChildren(original, 'parent', prevPaths);
+
+    expect(restored.child).toEqual({ key: 'val' });
+    expect(original.child).toBe('{"key":"val"}'); // original unchanged
+  });
+
+  it('should handle multiple collapsed children', () => {
+    const parentValue = {
+      event_x: '{"good":"a","great":1}',
+      event_x2: '{"good":"b","great":2}',
+      name: 'test',
+    };
+    const prevPaths = new Set(['payload.event_x', 'payload.event_x2']);
+
+    const restored = restoreCollapsedChildren(parentValue, 'payload', prevPaths);
+
+    expect(restored.event_x).toEqual({ good: 'a', great: 1 });
+    expect(restored.event_x2).toEqual({ good: 'b', great: 2 });
+    expect(restored.name).toBe('test');
+  });
+
+  it('should ignore prevPaths not under parent', () => {
+    const parentValue = {
+      name: 'test',
+    };
+    const prevPaths = new Set(['other.child']);
+
+    const restored = restoreCollapsedChildren(parentValue, 'payload', prevPaths);
+
+    expect(restored).toEqual({ name: 'test' });
+  });
+
+  it('should skip non-string children (already objects)', () => {
+    const parentValue = {
+      event_x: { good: 'a', great: 1 },
+    };
+    const prevPaths = new Set(['payload.event_x']);
+
+    const restored = restoreCollapsedChildren(parentValue, 'payload', prevPaths);
+
+    expect(restored.event_x).toEqual({ good: 'a', great: 1 });
+  });
+
+  it('should handle invalid JSON strings gracefully', () => {
+    const parentValue = {
+      event_x: 'not valid json',
+    };
+    const prevPaths = new Set(['payload.event_x']);
+
+    const restored = restoreCollapsedChildren(parentValue, 'payload', prevPaths);
+
+    expect(restored.event_x).toBe('not valid json'); // unchanged
+  });
+
+  it('should return null/undefined as-is', () => {
+    expect(restoreCollapsedChildren(null, 'p', new Set(['p.child']))).toBeNull();
+    expect(restoreCollapsedChildren(undefined, 'p', new Set(['p.child']))).toBeUndefined();
   });
 });
