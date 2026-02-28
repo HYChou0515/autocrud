@@ -31,8 +31,8 @@ export function ResourceCreate<T extends Record<string, any>>({
     try {
       // Union resource: form wraps in { data: ... }, API expects the unwrapped union object
       const submitValues = config.isUnion ? ((values as any).data as T) : values;
-      await config.apiClient.create(submitValues);
-      navigate({ to: basePath });
+      const result = await config.apiClient.create(submitValues);
+      navigate({ to: `${basePath}/${result.data.resource_id}` });
     } catch (error) {
       const conflict = extractUniqueConflict(error);
       if (conflict && formRef.current) {

@@ -1870,3 +1870,121 @@ describe('parseField — constValue for tagged struct discriminators', () => {
     expect(code).toContain('constValue: "Carrot"');
   });
 });
+
+// ============================================================================
+// Job resource — defaultHiddenFields & unified ResourceCreate route
+// ============================================================================
+describe('Job resource — defaultHiddenFields', () => {
+  function buildJobSpec() {
+    return {
+      info: { title: 'Test', version: '1.0' },
+      paths: {
+        '/game-event': {
+          post: {
+            requestBody: {
+              content: {
+                'application/json': {
+                  schema: { $ref: '#/components/schemas/GameEvent' },
+                },
+              },
+            },
+          },
+        },
+        '/game-event/{id}': { get: {} },
+      },
+      components: {
+        schemas: {
+          GameEvent: {
+            type: 'object',
+            properties: {
+              payload: { type: 'object' },
+              status: { type: 'string', default: 'pending' },
+              errmsg: { type: 'string', default: '' },
+              retries: { type: 'integer', default: 0 },
+              periodic_interval_seconds: { type: 'number', default: 0 },
+              periodic_max_runs: { type: 'integer', default: 0 },
+              periodic_runs: { type: 'integer', default: 0 },
+              periodic_initial_delay_seconds: { type: 'number', default: 0 },
+            },
+            required: ['payload'],
+          },
+        },
+      },
+    };
+  }
+
+  it('detects Job schema and sets isJob=true', () => {
+    const spec = buildJobSpec();
+    const gen = createTestGenerator(spec);
+    (gen as any).extractResources();
+    const r = gen.resources[0];
+    expect(r.isJob).toBe(true);
+    expect(r.maxFormDepth).toBe(3);
+  });
+
+  it('genCreateRoute generates ResourceCreate (not JobEnqueue) for Job', () => {
+    const spec = buildJobSpec();
+    const gen = createTestGenerator(spec);
+    (gen as any).extractResources();
+    const code = (gen as any).genCreateRoute(gen.resources[0]);
+
+    expect(code).toContain('ResourceCreate');
+    expect(code).not.toContain('JobEnqueue');
+  });
+
+  it('genResourcesConfig includes defaultHiddenFields for Job resource', () => {
+    const spec = buildJobSpec();
+    const gen = createTestGenerator(spec);
+    (gen as any).extractResources();
+    const code = (gen as any).genResourcesConfig();
+
+    expect(code).toContain('defaultHiddenFields:');
+    expect(code).toContain('status');
+    expect(code).toContain('errmsg');
+    expect(code).toContain('retries');
+  });
+
+  it('genResourcesConfig does NOT include defaultHiddenFields for non-Job resource', () => {
+    // Use a simple non-job spec
+    const spec = {
+      info: { title: 'Test', version: '1.0' },
+      paths: {
+        '/user': {
+          post: {
+            requestBody: {
+              content: {
+                'application/json': {
+                  schema: { $ref: '#/components/schemas/User' },
+                },
+              },
+            },
+          },
+        },
+        '/user/{id}': { get: {} },
+      },
+      components: {
+        schemas: {
+          User: {
+            type: 'object',
+            properties: { name: { type: 'string' } },
+            required: ['name'],
+          },
+        },
+      },
+    };
+    const gen = createTestGenerator(spec);
+    (gen as any).extractResources();
+    const code = (gen as any).genResourcesConfig();
+
+    expect(code).not.toContain('defaultHiddenFields');
+  });
+
+  it('genResourcesConfig does NOT include isJob property', () => {
+    const spec = buildJobSpec();
+    const gen = createTestGenerator(spec);
+    (gen as any).extractResources();
+    const code = (gen as any).genResourcesConfig();
+
+    expect(code).not.toContain('isJob:');
+  });
+});

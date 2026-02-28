@@ -73,13 +73,25 @@ export function useResourceForm<T extends Record<string, any>>({
   const [simpleUnionTypes, setSimpleUnionTypes] = useState<Record<string, string>>({});
 
   // ── Visible fields & collapsed groups ──
+  const hiddenFieldSet = useMemo(
+    () => new Set(config.defaultHiddenFields ?? []),
+    [config.defaultHiddenFields],
+  );
   const {
-    visibleFields,
+    visibleFields: rawVisibleFields,
     collapsedGroups,
     collapsedGroupFields: _collapsedGroupFields,
   } = useMemo(
     () => computeVisibleFieldsAndGroups(config.fields, formDepth),
     [config.fields, formDepth],
+  );
+  // Filter out defaultHiddenFields — they still participate in form data but are not rendered
+  const visibleFields = useMemo(
+    () =>
+      hiddenFieldSet.size > 0
+        ? rawVisibleFields.filter((f) => !hiddenFieldSet.has(f.name))
+        : rawVisibleFields,
+    [rawVisibleFields, hiddenFieldSet],
   );
 
   // ── Date fields ──

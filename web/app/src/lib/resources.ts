@@ -124,6 +124,10 @@ export interface ResourceConfig<T = any> {
   isUnion?: boolean;
   // Zod schema for validation (generated from OpenAPI)
   zodSchema?: z.ZodObject<any>;
+  /** Fields to hide by default in create/edit forms (e.g. job management fields).
+   *  Hidden fields still participate in form submission with their default/initial values.
+   *  Use `showHiddenFields` in customization to selectively reveal them. */
+  defaultHiddenFields?: string[];
   /** Custom create actions — alternative ways to create this resource */
   customCreateActions?: CustomCreateAction[];
   apiClient: {
@@ -178,6 +182,8 @@ export interface ResourceCustomizationConfig<F extends string = string> {
   label?: string;
   /** Override resource plural label */
   pluralLabel?: string;
+  /** Reveal fields that are in `defaultHiddenFields` — makes them visible in forms again */
+  showHiddenFields?: F[];
 }
 
 /**
@@ -221,6 +227,12 @@ export function applyCustomizations(
     if (config.maxFormDepth !== undefined) resource.maxFormDepth = config.maxFormDepth;
     if (config.zodSchema && resource.zodSchema) {
       resource.zodSchema = config.zodSchema(resource.zodSchema);
+    }
+
+    // showHiddenFields: remove listed fields from defaultHiddenFields
+    if (config.showHiddenFields && resource.defaultHiddenFields) {
+      const showSet = new Set(config.showHiddenFields);
+      resource.defaultHiddenFields = resource.defaultHiddenFields.filter((f) => !showSet.has(f));
     }
 
     // Field-level overrides
