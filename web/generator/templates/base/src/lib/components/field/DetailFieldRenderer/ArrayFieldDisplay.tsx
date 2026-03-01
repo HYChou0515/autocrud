@@ -20,7 +20,7 @@ export function ArrayFieldDisplay({ value, itemFields, renderValue }: ArrayField
   if (value.length === 0) {
     return (
       <Text c="dimmed" size="sm">
-        []
+        No items
       </Text>
     );
   }

@@ -407,12 +407,13 @@ function StructuralVariantBody({
     );
   }
 
-  // ── Object variant: inline sub-fields ──
+  // ── Object variant: inline sub-fields (skip constValue fields — auto-injected) ──
   if (variant.fields && variant.fields.length > 0) {
+    const editableFields = variant.fields.filter((sf) => sf.constValue === undefined);
     return (
       <Paper withBorder p="sm" radius="sm">
         <Stack gap="xs">
-          {variant.fields.map((sf) => renderSubField(sf, `${name}.${sf.name}`, form))}
+          {editableFields.map((sf) => renderSubField(sf, `${name}.${sf.name}`, form))}
         </Stack>
       </Paper>
     );
@@ -480,7 +481,8 @@ export function UnionFieldRenderer({
       if (variant.fields && variant.fields.length > 0) {
         const newValue: Record<string, any> = { __variant: tag };
         for (const sf of variant.fields) {
-          if (sf.type === 'number') newValue[sf.name] = '';
+          if (sf.constValue !== undefined) newValue[sf.name] = sf.constValue;
+          else if (sf.type === 'number') newValue[sf.name] = '';
           else if (sf.type === 'boolean') newValue[sf.name] = false;
           else newValue[sf.name] = '';
         }

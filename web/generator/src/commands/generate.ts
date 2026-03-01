@@ -689,17 +689,8 @@ export class Generator {
    * Try to parse a simple union (multiple non-null primitive types, no $ref, no arrays).
    * Returns null if not applicable.
    */
-  private tryParseSimpleUnion(
-    name: string,
-    types: any[],
-    isNullable: boolean,
-    isRequired: boolean,
-  ): Field | null {
-    if (
-      types.length <= 1 ||
-      types.some((t: any) => t.$ref) ||
-      types.some((t: any) => t.type === 'array')
-    ) {
+  private tryParseSimpleUnion(name: string, types: any[], isNullable: boolean, isRequired: boolean): Field | null {
+    if (types.length <= 1 || types.some((t: any) => t.$ref) || types.some((t: any) => t.type === 'array')) {
       return null;
     }
 
@@ -875,11 +866,22 @@ export class Generator {
         if (innerMeta) {
           for (const iv of innerMeta.variants) {
             const tag = makeUniqueTag(iv.schemaName || iv.tag);
+            // Inject discriminator field with constValue so the backend receives it on submit
+            const discField: Field = {
+              name: innerMeta.discriminatorField,
+              label: toLabel(innerMeta.discriminatorField),
+              type: 'string',
+              tsType: 'string',
+              isRequired: true,
+              isNullable: false,
+              isArray: false,
+              constValue: iv.tag,
+            };
             variants.push({
               tag,
               label: iv.label,
               schemaName: iv.schemaName,
-              fields: iv.fields || [],
+              fields: [discField, ...(iv.fields || [])],
             });
             variantTsTypes.push(iv.schemaName || iv.tag);
           }
@@ -912,7 +914,7 @@ export class Generator {
         });
         variantTsTypes.push(`Record<string, ${valueName}>`);
       } else {
-        const primitiveType = t.type === 'integer' ? 'number' : (t.type || 'json');
+        const primitiveType = t.type === 'integer' ? 'number' : t.type || 'json';
         const tag = makeUniqueTag(primitiveType);
         variants.push({ tag, label: toLabel(primitiveType), type: primitiveType });
         variantTsTypes.push(primitiveType);

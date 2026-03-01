@@ -77,6 +77,7 @@ vi.mock('@tanstack/react-router', () => ({
 import { render, screen, fireEvent, waitFor, cleanup } from '@testing-library/react';
 import { MantineProvider } from '@mantine/core';
 import { ResourceDetail } from './ResourceDetail';
+import { groupFieldsForDisplay, type DisplayGroup } from './ResourceDetail';
 import { showErrorNotification } from '../../utils/errorNotification';
 
 function makeField(name: string): ResourceField {
@@ -233,5 +234,125 @@ describe('ResourceDetail — Rerun button', () => {
     await waitFor(() => {
       expect(showErrorNotification).toHaveBeenCalledWith(rerunError, 'Rerun Failed');
     });
+  });
+});
+
+// ============================================================================
+// groupFieldsForDisplay — pure function tests
+// ============================================================================
+
+describe('groupFieldsForDisplay', () => {
+  it('returns empty array for empty input', () => {
+    expect(groupFieldsForDisplay([])).toEqual([]);
+  });
+
+  it('renders all top-level fields as single groups', () => {
+    const fields = [
+      makeField('name'),
+      makeField('age'),
+      makeField('email'),
+    ];
+    const groups = groupFieldsForDisplay(fields);
+    expect(groups).toHaveLength(3);
+    expect(groups.every((g) => g.kind === 'single')).toBe(true);
+  });
+
+  it('groups dot-notation sub-fields under their parent', () => {
+    const fields = [
+      makeField('payload.event_type'),
+      makeField('payload.event_x2.type'),
+      makeField('payload.event_x2.good'),
+      makeField('payload.event_x2.great'),
+      makeField('payload.event_x3'),
+    ];
+    const groups = groupFieldsForDisplay(fields);
+
+    // payload.event_type → single
+    expect(groups[0]).toEqual({ kind: 'single', field: fields[0] });
+    // payload.event_x2.* → nested group
+    expect(groups[1].kind).toBe('nested');
+    const nested = groups[1] as Extract<DisplayGroup, { kind: 'nested' }>;
+    expect(nested.parentPath).toBe('payload.event_x2');
+    expect(nested.parentLabel).toBe('Event X2');
+    expect(nested.children).toHaveLength(3);
+    expect(nested.children[0].name).toBe('payload.event_x2.type');
+    // payload.event_x3 → single
+    expect(groups[2]).toEqual({ kind: 'single', field: fields[4] });
+  });
+
+  it('handles multiple separate nested groups', () => {
+    const fields = [
+      makeField('payload.event_type'),
+      makeField('payload.event_x2.type'),
+      makeField('payload.event_x2.good'),
+      makeField('payload.event_x3'),
+      makeField('payload.event_x.type'),
+      makeField('payload.event_x.good'),
+      makeField('payload.event_x.great'),
+      makeField('payload.extra_data'),
+    ];
+    const groups = groupFieldsForDisplay(fields);
+
+    expect(groups).toHaveLength(5);
+    expect(groups[0].kind).toBe('single');  // event_type
+    expect(groups[1].kind).toBe('nested');  // event_x2.*
+    expect(groups[2].kind).toBe('single');  // event_x3
+    expect(groups[3].kind).toBe('nested');  // event_x.*
+    expect(groups[4].kind).toBe('single');  // extra_data
+
+    const g1 = groups[1] as Extract<DisplayGroup, { kind: 'nested' }>;
+    expect(g1.parentLabel).toBe('Event X2');
+    expect(g1.children).toHaveLength(2);
+
+    const g3 = groups[3] as Extract<DisplayGroup, { kind: 'nested' }>;
+    expect(g3.parentLabel).toBe('Event X');
+    expect(g3.children).toHaveLength(3);
+  });
+
+  it('works for regular resource (no payload prefix)', () => {
+    const fields = [
+      makeField('name'),
+      makeField('address.street'),
+      makeField('address.city'),
+      makeField('address.zip'),
+      makeField('email'),
+    ];
+    const groups = groupFieldsForDisplay(fields);
+
+    expect(groups).toHaveLength(3);
+    expect(groups[0]).toEqual({ kind: 'single', field: fields[0] });
+    expect(groups[1].kind).toBe('nested');
+    const nested = groups[1] as Extract<DisplayGroup, { kind: 'nested' }>;
+    expect(nested.parentLabel).toBe('Address');
+    expect(nested.children).toHaveLength(3);
+    expect(groups[2]).toEqual({ kind: 'single', field: fields[4] });
+  });
+
+  it('single deeper field still forms a nested group', () => {
+    const fields = [
+      makeField('payload.name'),
+      makeField('payload.config.timeout'),
+      makeField('payload.enabled'),
+    ];
+    const groups = groupFieldsForDisplay(fields);
+
+    expect(groups).toHaveLength(3);
+    expect(groups[0].kind).toBe('single');
+    expect(groups[1].kind).toBe('nested');
+    const nested = groups[1] as Extract<DisplayGroup, { kind: 'nested' }>;
+    expect(nested.parentLabel).toBe('Config');
+    expect(nested.children).toHaveLength(1);
+    expect(groups[2].kind).toBe('single');
+  });
+
+  it('all fields at same depth → all single', () => {
+    const fields = [
+      makeField('payload.a'),
+      makeField('payload.b'),
+      makeField('payload.c'),
+    ];
+    const groups = groupFieldsForDisplay(fields);
+    expect(groups).toHaveLength(3);
+    expect(groups.every((g) => g.kind === 'single')).toBe(true);
   });
 });

@@ -37,7 +37,7 @@ export function renderSimpleValue(value: unknown): React.ReactNode {
     if (value.length === 0)
       return (
         <Text c="dimmed" size="sm">
-          []
+          No items
         </Text>
       );
     if (typeof value[0] === 'object' && value[0] !== null) {

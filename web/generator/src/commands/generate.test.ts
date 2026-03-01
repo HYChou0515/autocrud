@@ -2276,10 +2276,7 @@ describe('parseField — structural union', () => {
   it('parses A | B (two $ref, no discriminator) as structural union', () => {
     const spec = buildStructuralUnionSpec();
     const prop = {
-      anyOf: [
-        { $ref: '#/components/schemas/EventBodyX' },
-        { $ref: '#/components/schemas/EventBodyA' },
-      ],
+      anyOf: [{ $ref: '#/components/schemas/EventBodyX' }, { $ref: '#/components/schemas/EventBodyA' }],
     };
     const gen = createTestGenerator(spec);
     const field = (gen as any).parseField('mixed_obj', prop, true);
@@ -2327,10 +2324,7 @@ describe('parseField — structural union', () => {
   it('parses $ref | string as structural union with object + primitive variants', () => {
     const spec = buildStructuralUnionSpec();
     const prop = {
-      anyOf: [
-        { $ref: '#/components/schemas/EventBodyX' },
-        { type: 'string' },
-      ],
+      anyOf: [{ $ref: '#/components/schemas/EventBodyX' }, { type: 'string' }],
     };
     const gen = createTestGenerator(spec);
     const field = (gen as any).parseField('mixed_prim', prop, true);
@@ -2468,10 +2462,7 @@ describe('parseField — structural union', () => {
         {
           type: 'array',
           items: {
-            anyOf: [
-              { $ref: '#/components/schemas/EventBodyX' },
-              { $ref: '#/components/schemas/EventBodyB' },
-            ],
+            anyOf: [{ $ref: '#/components/schemas/EventBodyX' }, { $ref: '#/components/schemas/EventBodyB' }],
             discriminator: {
               propertyName: 'type',
               mapping: {
@@ -2509,10 +2500,7 @@ describe('parseField — structural union', () => {
         {
           type: 'array',
           items: {
-            anyOf: [
-              { $ref: '#/components/schemas/EventBodyX' },
-              { $ref: '#/components/schemas/EventBodyB' },
-            ],
+            anyOf: [{ $ref: '#/components/schemas/EventBodyX' }, { $ref: '#/components/schemas/EventBodyB' }],
             discriminator: {
               propertyName: 'type',
               mapping: {
@@ -2575,10 +2563,7 @@ describe('parseField — structural union', () => {
           },
         },
         {
-          anyOf: [
-            { $ref: '#/components/schemas/EventBodyX' },
-            { $ref: '#/components/schemas/EventBodyB' },
-          ],
+          anyOf: [{ $ref: '#/components/schemas/EventBodyX' }, { $ref: '#/components/schemas/EventBodyB' }],
           discriminator: {
             propertyName: 'type',
             mapping: {
@@ -2658,9 +2643,7 @@ describe('parseField — structural union', () => {
     expect(nullVariant.label).toBe('None');
 
     // Object variant
-    const objVariant = field.unionMeta.variants.find(
-      (v: any) => v.schemaName === 'EventBodyX',
-    );
+    const objVariant = field.unionMeta.variants.find((v: any) => v.schemaName === 'EventBodyX');
     expect(objVariant).toBeDefined();
     expect(objVariant.fields.length).toBeGreaterThan(0);
 

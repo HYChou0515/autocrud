@@ -394,7 +394,10 @@ export const unionHandler: FieldTypeHandler = {
       if (first.fields && first.fields.length > 0) {
         const obj: Record<string, any> = { __variant: first.tag };
         for (const sf of first.fields) {
-          obj[sf.name] = '';
+          if (sf.constValue !== undefined) obj[sf.name] = sf.constValue;
+          else if (sf.type === 'number') obj[sf.name] = '';
+          else if (sf.type === 'boolean') obj[sf.name] = false;
+          else obj[sf.name] = '';
         }
         return obj;
       }
@@ -444,14 +447,26 @@ export const unionHandler: FieldTypeHandler = {
           }
         }
 
-        // Match object variant by checking fields overlap or schemaName
+        // Match object variant by scoring key overlap, preferring constValue matches
         const objVariants = meta.variants.filter((v: any) => v.fields && !v.isArray && !v.isDict);
+        let bestObj: any = null;
+        let bestObjScore = -1;
         for (const v of objVariants) {
-          // Simple heuristic: if val has overlapping keys with variant fields, pick it
-          const vFieldNames = (v.fields || []).map((f: any) => f.name);
-          if (vFieldNames.some((fn: string) => fn in val)) {
-            return { __variant: v.tag, ...val };
+          let score = 0;
+          for (const f of (v.fields || [])) {
+            if (f.name in val) {
+              score++;
+              // Strong signal: constValue field matches data value exactly
+              if (f.constValue !== undefined && (val as any)[f.name] === f.constValue) score += 10;
+            }
           }
+          if (score > bestObjScore) {
+            bestObjScore = score;
+            bestObj = v;
+          }
+        }
+        if (bestObj && bestObjScore > 0) {
+          return { __variant: bestObj.tag, ...val };
         }
         // Fallback: first non-array variant
         const firstObj = objVariants[0];

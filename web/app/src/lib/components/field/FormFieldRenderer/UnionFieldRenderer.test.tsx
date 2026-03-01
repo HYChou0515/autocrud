@@ -681,3 +681,161 @@ describe('UnionFieldRenderer — dict variant', () => {
     expect(capturedValues.event_x7.__entries).toEqual([]);
   });
 });
+
+// ---------------------------------------------------------------------------
+// constValue fields — discriminator injection for structural union
+// ---------------------------------------------------------------------------
+
+/**
+ * When a structural union variant has a field with `constValue`,
+ * the form should:
+ * 1. Auto-set the constValue when switching to that variant
+ * 2. NOT render a user-editable input for constValue fields
+ * 3. Include the constValue in submitted data
+ */
+
+const constValueVariantMeta: UnionMeta = {
+  discriminatorField: '__variant',
+  variants: [
+    {
+      tag: 'list_union',
+      label: '(EventBodyX | EventBodyB)[]',
+      isArray: true,
+      itemUnionMeta: {
+        discriminatorField: 'type',
+        variants: [
+          {
+            tag: 'EventBodyX',
+            label: 'EventBodyX',
+            schemaName: 'EventBodyX',
+            fields: [
+              makeField({ name: 'good', type: 'string', isRequired: true }),
+              makeField({ name: 'great', type: 'number', isRequired: true }),
+            ],
+          },
+          {
+            tag: 'EventBodyB',
+            label: 'EventBodyB',
+            schemaName: 'EventBodyB',
+            fields: [
+              makeField({ name: 'some_field', type: 'string', isRequired: true }),
+              makeField({ name: 'cooldown_seconds', type: 'number', isRequired: true }),
+            ],
+          },
+        ],
+      },
+    },
+    {
+      tag: 'EventBodyX',
+      label: 'EventBodyX',
+      schemaName: 'EventBodyX',
+      fields: [
+        makeField({ name: 'type', type: 'string', isRequired: true, constValue: 'EventBodyX' }),
+        makeField({ name: 'good', type: 'string', isRequired: true }),
+        makeField({ name: 'great', type: 'number', isRequired: true }),
+      ],
+    },
+    {
+      tag: 'EventBodyB',
+      label: 'EventBodyB',
+      schemaName: 'EventBodyB',
+      fields: [
+        makeField({ name: 'type', type: 'string', isRequired: true, constValue: 'EventBodyB' }),
+        makeField({ name: 'some_field', type: 'string', isRequired: true }),
+        makeField({ name: 'cooldown_seconds', type: 'number', isRequired: true }),
+      ],
+    },
+  ],
+};
+
+const constValueField: ResourceField = makeField({
+  name: 'event_x3',
+  label: 'Event X3',
+  type: 'union',
+  unionMeta: constValueVariantMeta,
+});
+
+describe('UnionFieldRenderer — constValue fields in structural union', () => {
+  it('auto-sets constValue when switching to object variant', () => {
+    let capturedValues: Record<string, any> = {};
+    renderWithMantine(
+      <FormWrapper
+        field={constValueField}
+        unionMeta={constValueVariantMeta}
+        initialValues={{ event_x3: { __variant: 'list_union', __items: [] } }}
+        onValuesChange={(v) => {
+          capturedValues = v;
+        }}
+      />,
+    );
+
+    // Switch to EventBodyB variant by clicking its radio card
+    const cards = screen.getAllByText('EventBodyB');
+    fireEvent.click(cards[0]);
+
+    // The form value should include type with constValue
+    expect(capturedValues.event_x3.__variant).toBe('EventBodyB');
+    expect(capturedValues.event_x3.type).toBe('EventBodyB');
+    expect(capturedValues.event_x3.some_field).toBe('');
+    expect(capturedValues.event_x3.cooldown_seconds).toBe('');
+  });
+
+  it('does not render input for constValue fields', () => {
+    const { container } = renderWithMantine(
+      <FormWrapper
+        field={constValueField}
+        unionMeta={constValueVariantMeta}
+        initialValues={{
+          event_x3: {
+            __variant: 'EventBodyB',
+            type: 'EventBodyB',
+            some_field: '',
+            cooldown_seconds: '',
+          },
+        }}
+      />,
+    );
+
+    // The "Some Field" and "Cooldown Seconds" inputs should be rendered
+    const inputs = container.querySelectorAll('input');
+    const inputLabels = Array.from(inputs).map((el) => el.getAttribute('aria-label') ?? '');
+    const labels = Array.from(container.querySelectorAll('label')).map((el) => el.textContent);
+
+    // constValue field "type" should NOT have a visible input
+    // Only "Some Field" and "Cooldown Seconds" should be rendered as inputs
+    const typeInputs = Array.from(inputs).filter((input) => {
+      // Check the label associated with this input
+      const id = input.getAttribute('id');
+      if (!id) return false;
+      const label = container.querySelector(`label[for="${id}"]`);
+      return label?.textContent === 'type';
+    });
+    expect(typeInputs.length).toBe(0);
+  });
+
+  it('preserves constValue through form lifecycle', () => {
+    let capturedValues: Record<string, any> = {};
+    renderWithMantine(
+      <FormWrapper
+        field={constValueField}
+        unionMeta={constValueVariantMeta}
+        initialValues={{
+          event_x3: {
+            __variant: 'EventBodyX',
+            type: 'EventBodyX',
+            good: 'hello',
+            great: 42,
+          },
+        }}
+        onValuesChange={(v) => {
+          capturedValues = v;
+        }}
+      />,
+    );
+
+    // The constValue should be preserved
+    expect(capturedValues.event_x3.type).toBe('EventBodyX');
+    expect(capturedValues.event_x3.good).toBe('hello');
+    expect(capturedValues.event_x3.great).toBe(42);
+  });
+});

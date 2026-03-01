@@ -21,6 +21,8 @@ import { isBlobObject, renderSimpleValue, NA } from '../../../utils/displayHelpe
 import { BinaryFieldDisplay } from './BinaryFieldDisplay';
 import { ArrayFieldDisplay } from './ArrayFieldDisplay';
 import { UnionFieldDisplay } from './UnionFieldDisplay';
+import { StructuralUnionFieldDisplay } from './StructuralUnionFieldDisplay';
+import { CollapsibleJson } from './CollapsibleJson';
 
 // ---------------------------------------------------------------------------
 // Context passed to every detail renderer function
@@ -60,7 +62,7 @@ const renderArrayJoin: Renderer = ({ value }) => {
   if (Array.isArray(value)) {
     return value.length === 0 ? (
       <Text c="dimmed" size="sm">
-        []
+        No items
       </Text>
     ) : (
       value.join(', ')
@@ -106,39 +108,55 @@ const DETAIL_RENDERERS: Record<FieldKind, (ctx: DetailRenderContext) => React.Re
   },
 
   union: ({ field, value }) => {
-    if (field.unionMeta && field.unionMeta.discriminatorField !== '__type') {
-      // Array of discriminated union items
-      if (field.isArray && Array.isArray(value)) {
-        if (value.length === 0) return NA;
-        return (
-          <Stack gap="xs">
-            {value.map((item, idx) => (
-              <div key={idx}>
-                {idx > 0 && <Divider my="xs" />}
-                <UnionFieldDisplay
-                  value={item as Record<string, any>}
-                  unionMeta={field.unionMeta!}
-                  renderValue={renderDetailValue}
-                />
-              </div>
-            ))}
-          </Stack>
-        );
-      }
+    if (field.unionMeta) {
+      const disc = field.unionMeta.discriminatorField;
 
-      // Single discriminated union value
-      if (typeof value === 'object' && value !== null) {
+      // Structural union (__variant): infer variant from data shape
+      if (disc === '__variant') {
         return (
-          <UnionFieldDisplay
-            value={value as Record<string, any>}
+          <StructuralUnionFieldDisplay
+            value={value}
             unionMeta={field.unionMeta}
             renderValue={renderDetailValue}
           />
         );
       }
+
+      // Discriminated union (real discriminator field in data)
+      if (disc !== '__type') {
+        // Array of discriminated union items
+        if (field.isArray && Array.isArray(value)) {
+          if (value.length === 0) return NA;
+          return (
+            <Stack gap="xs">
+              {value.map((item, idx) => (
+                <div key={idx}>
+                  {idx > 0 && <Divider my="xs" />}
+                  <UnionFieldDisplay
+                    value={item as Record<string, any>}
+                    unionMeta={field.unionMeta!}
+                    renderValue={renderDetailValue}
+                  />
+                </div>
+              ))}
+            </Stack>
+          );
+        }
+
+        // Single discriminated union value
+        if (typeof value === 'object' && value !== null) {
+          return (
+            <UnionFieldDisplay
+              value={value as Record<string, any>}
+              unionMeta={field.unionMeta}
+              renderValue={renderDetailValue}
+            />
+          );
+        }
+      }
     }
-    // Simple union or fallback: show as JSON
-    return <Code block>{JSON.stringify(value, null, 2)}</Code>;
+    // Simple union or fallback: show as collapsible JSON
+    return <CollapsibleJson value={value} />;
   },
 
   binary: ({ value }) => {
@@ -156,7 +174,7 @@ const DETAIL_RENDERERS: Record<FieldKind, (ctx: DetailRenderContext) => React.Re
 
   json: ({ value }) => {
     if (typeof value === 'object' && value !== null) {
-      return <Code block>{JSON.stringify(value, null, 2)}</Code>;
+      return <CollapsibleJson value={value} />;
     }
     return String(value);
   },

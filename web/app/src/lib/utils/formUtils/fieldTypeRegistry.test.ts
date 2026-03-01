@@ -961,6 +961,91 @@ describe('unionHandler', () => {
       });
     });
   });
+
+  // ── constValue fields in structural union ──
+  describe('structural union with constValue fields', () => {
+    /** Variant fields include a `type` field with constValue */
+    const constStructField = (): ResourceFieldMinimal => ({
+      name: 'event_x3',
+      type: 'union',
+      unionMeta: {
+        discriminatorField: '__variant',
+        variants: [
+          {
+            tag: 'list_union',
+            label: '(EventBodyX | EventBodyB)[]',
+            isArray: true,
+            itemUnionMeta: {
+              discriminatorField: 'type',
+              variants: [
+                { tag: 'EventBodyX', label: 'EventBodyX', fields: [{ name: 'good', type: 'string' }] },
+                { tag: 'EventBodyB', label: 'EventBodyB', fields: [{ name: 'some_field', type: 'string' }] },
+              ],
+            },
+          },
+          {
+            tag: 'EventBodyX',
+            label: 'EventBodyX',
+            schemaName: 'EventBodyX',
+            fields: [
+              { name: 'type', type: 'string', constValue: 'EventBodyX' },
+              { name: 'good', type: 'string' },
+              { name: 'great', type: 'number' },
+            ],
+          },
+          {
+            tag: 'EventBodyB',
+            label: 'EventBodyB',
+            schemaName: 'EventBodyB',
+            fields: [
+              { name: 'type', type: 'string', constValue: 'EventBodyB' },
+              { name: 'some_field', type: 'string' },
+              { name: 'cooldown_seconds', type: 'number' },
+            ],
+          },
+        ],
+      },
+    });
+
+    describe('emptyValue', () => {
+      it('uses constValue for fields that have it', () => {
+        const f = constStructField();
+        // Reorder so EventBodyB is first (object variant)
+        f.unionMeta.variants = [f.unionMeta.variants[2]];
+        const result = unionHandler.emptyValue(f);
+        expect(result.__variant).toBe('EventBodyB');
+        expect(result.type).toBe('EventBodyB');  // constValue, not ''
+        expect(result.some_field).toBe('');
+        expect(result.cooldown_seconds).toBe('');
+      });
+    });
+
+    describe('toApiValue', () => {
+      it('includes constValue field in object variant output', () => {
+        const formVal = {
+          __variant: 'EventBodyB',
+          type: 'EventBodyB',
+          some_field: 'test',
+          cooldown_seconds: 5,
+        };
+        const result = unionHandler.toApiValue(formVal, constStructField());
+        expect(result).toEqual({
+          type: 'EventBodyB',
+          some_field: 'test',
+          cooldown_seconds: 5,
+        });
+      });
+    });
+
+    describe('toFormValue', () => {
+      it('wraps API object with constValue field preserved', () => {
+        const apiVal = { type: 'EventBodyB', some_field: 'hi', cooldown_seconds: 3 };
+        const result = unionHandler.toFormValue(apiVal, constStructField());
+        expect(result.__variant).toBe('EventBodyB');
+        expect(result.type).toBe('EventBodyB');
+      });
+    });
+  });
 });
 
 // ============================================================================
