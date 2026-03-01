@@ -49,7 +49,12 @@ export { toLabel, fileToBase64, binaryFormValueToApi } from './converters';
 // ============================================================================
 // Field Grouping (depth-based visibility computation)
 // ============================================================================
-export { computeVisibleFieldsAndGroups, computeMaxAvailableDepth } from './fieldGrouping';
+export {
+  computeVisibleFieldsAndGroups,
+  computeMaxAvailableDepth,
+  groupFieldsByParent,
+} from './fieldGrouping';
+export type { FieldParentGroup } from './fieldGrouping';
 
 // ============================================================================
 // Data Transformers (bidirectional API ↔ Form conversions)
@@ -81,4 +86,6 @@ export {
   expandFieldFromJson,
   safeGetArrayItems,
   safeGetJsonString,
+  restoreCollapsedChildren,
+  computeDepthTransitionUpdates,
 } from './depthTransition';

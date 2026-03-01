@@ -70,6 +70,12 @@ export function processInitialValues(
   for (const field of fields) {
     const val = getByPath(processed, field.name);
 
+    // Const value from tagged struct discriminator — always set the fixed value
+    if (field.constValue !== undefined) {
+      setByPath(processed, field.name, field.constValue);
+      continue;
+    }
+
     // Array of typed objects (has itemFields) — keep as actual array for list form
     if (field.itemFields && field.itemFields.length > 0) {
       if (Array.isArray(val)) {

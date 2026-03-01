@@ -206,6 +206,23 @@ class GameEventType(Enum):
     RAID_BOSS = "raid_boss"  # 團隊 BOSS 戰（需要等待隊伍集結）
     SERVER_MAINTENANCE = "server_maintenance"  # 伺服器維護（需要延遲處理）
 
+class EventBodyA(Struct, tag=True):
+    """事件類型 A 的專屬數據"""
+
+    extra_info_a: str
+    extra_value_a: int
+
+class EventBodyB(Struct, tag=True):
+    """事件類型 B 的專屬數據"""
+
+    some_field: str
+    cooldown_seconds: int
+
+class EventBodyX(Struct, tag=True):
+    """事件類型 X 的專屬數據"""
+
+    good: str
+    great: int
 
 class GameEventPayload(Struct):
     """遊戲事件載荷數據"""
@@ -215,10 +232,18 @@ class GameEventPayload(Struct):
     character_id: Annotated[
         Optional[str], Ref("character", ref_type=RefType.revision_id)
     ]
+    event_x2: EventBodyX
+    event_x3: list[EventBodyX | EventBodyB | EventBodyA] | EventBodyX | EventBodyB
+    event_x4: list[EventBodyX | EventBodyB | EventBodyA] | EventBodyX 
+    event_x5: list[EventBodyA] | EventBodyX
+    event_x6: list[EventBodyA] | EventBodyX | EventBodyX  | None
+    event_x7: list[EventBodyA] | dict[str, EventBodyX]
     description: str
     reward_gold: int = 0
     reward_exp: int = 0
     extra_data: dict = {}
+    event_body: EventBodyA | EventBodyB | None=None
+    event_x: EventBodyX | None=None
 
 
 class GameEvent(Job[GameEventPayload]):
@@ -1078,6 +1103,10 @@ def configure_crud():
             ("name", str),
             ("level", int),
         ],
+    )
+    crud.add_model(
+        Schema(Job[Pet], "v1"),
+        name="pet-job",
     )
 
     # 註冊遊戲事件任務模型（使用 Message Queue）

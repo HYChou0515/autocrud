@@ -37,7 +37,7 @@ interface ArrayFieldRendererProps {
 
 export function ArrayFieldRenderer({ field, form }: ArrayFieldRendererProps) {
   const { name, label } = field;
-  const rawItems = (form.getValues() as Record<string, any>)[name];
+  const rawItems = getByPath(form.getValues() as Record<string, any>, name);
   const items = safeGetArrayItems(rawItems);
   const emptyItemFactory = () => createEmptyItem(field.itemFields!);
 

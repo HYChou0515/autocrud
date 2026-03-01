@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect, useRef, useMemo } from 'react';
 import { Link } from '@tanstack/react-router';
 import {
   Container,
@@ -13,7 +13,6 @@ import {
   Text,
   Modal,
   Table,
-  Code,
   NumberInput,
   Tooltip,
 } from '@mantine/core';
@@ -27,7 +26,7 @@ import {
   IconHistory,
   IconRefresh,
 } from '@tabler/icons-react';
-import type { ResourceConfig } from '../../resources';
+import type { ResourceConfig, ResourceField } from '../../resources';
 import { useResourceDetail } from '../../hooks/useResourceDetail';
 import { useFieldDepth } from '../../hooks/useFieldDepth';
 import { ResourceForm, type ResourceFormHandle } from '../form/ResourceForm';
@@ -36,11 +35,76 @@ import { RevisionHistorySection } from './RevisionHistorySection';
 import { ResourceIdCell } from '../common/ResourceIdCell';
 import { RevisionIdCell } from '../common/RevisionIdCell';
 import { DetailFieldRenderer } from '../field/DetailFieldRenderer';
+import { CollapsibleJson } from '../field/DetailFieldRenderer/CollapsibleJson';
 import { JobStatusSection, JOB_STATUS_FIELDS, JOB_STATUS_COLORS } from '../job/JobStatusSection';
 import { JobFieldsSection } from '../job/JobFieldsSection';
 import type { ResourceListRoute } from '../../../generated/resources';
 import { showErrorNotification, extractUniqueConflict } from '../../utils/errorNotification';
 import { getByPath } from '@/lib/utils/formUtils';
+
+// ---------------------------------------------------------------------------
+// Field grouping — groups dot-notation sub-fields under their parent
+// ---------------------------------------------------------------------------
+
+export type DisplayGroup =
+  | { kind: 'single'; field: ResourceField }
+  | { kind: 'nested'; parentPath: string; parentLabel: string; children: ResourceField[] };
+
+/**
+ * Group flat dot-notation fields by their parent path for hierarchical display.
+ *
+ * Fields at the shallowest depth become standalone rows.
+ * Deeper fields that share the same parent path are grouped into a single
+ * nested row labelled with the parent's name.
+ */
+export function groupFieldsForDisplay(fields: ResourceField[]): DisplayGroup[] {
+  if (fields.length === 0) return [];
+
+  const minDepth = Math.min(...fields.map((f) => f.name.split('.').length));
+
+  function parentOf(name: string): string {
+    const lastDot = name.lastIndexOf('.');
+    return lastDot >= 0 ? name.substring(0, lastDot) : '';
+  }
+
+  function toGroupLabel(parentPath: string): string {
+    const lastSeg = parentPath.split('.').pop() || parentPath;
+    return lastSeg.replace(/_/g, ' ').replace(/\b\w/g, (c) => c.toUpperCase());
+  }
+
+  const groups: DisplayGroup[] = [];
+  let i = 0;
+
+  while (i < fields.length) {
+    const field = fields[i];
+    const depth = field.name.split('.').length;
+
+    if (depth <= minDepth) {
+      groups.push({ kind: 'single', field });
+      i++;
+      continue;
+    }
+
+    // Deeper field — collect consecutive siblings with same parent
+    const parent = parentOf(field.name);
+    const children: ResourceField[] = [field];
+    let j = i + 1;
+    while (j < fields.length && parentOf(fields[j].name) === parent) {
+      children.push(fields[j]);
+      j++;
+    }
+
+    groups.push({
+      kind: 'nested',
+      parentPath: parent,
+      parentLabel: toGroupLabel(parent),
+      children,
+    });
+    i = j;
+  }
+
+  return groups;
+}
 
 export interface ResourceDetailProps<T> {
   config: ResourceConfig<T>;
@@ -104,6 +168,14 @@ export function ResourceDetail<T extends Record<string, any>>({
     maxFormDepth: config.maxFormDepth,
     stripItemFields: true,
   });
+
+  // Group dot-notation fields by parent for hierarchical display
+  const displayGroups = useMemo(() => {
+    const filtered = isJob
+      ? visibleFields.filter((f) => !JOB_STATUS_FIELDS.has(f.name))
+      : visibleFields;
+    return groupFieldsForDisplay(filtered);
+  }, [visibleFields, isJob]);
 
   if (loading) {
     return (
@@ -330,22 +402,57 @@ export function ResourceDetail<T extends Record<string, any>>({
           </Group>
           <Table>
             <Table.Tbody>
-              {(isJob
-                ? visibleFields.filter((f) => !JOB_STATUS_FIELDS.has(f.name))
-                : visibleFields
-              ).map((field) => {
-                // Union resource: the "data" wrapper field maps to the entire data object
-                const value =
-                  config.isUnion && field.type === 'union' && field.name === 'data'
-                    ? data
-                    : getByPath(data, field.name);
+              {displayGroups.map((group) => {
+                if (group.kind === 'single') {
+                  const field = group.field;
+                  const value =
+                    config.isUnion && field.type === 'union' && field.name === 'data'
+                      ? data
+                      : getByPath(data, field.name);
+                  return (
+                    <Table.Tr key={field.name}>
+                      <Table.Td style={{ fontWeight: 500, width: '30%', verticalAlign: 'top' }}>
+                        {field.label}
+                      </Table.Td>
+                      <Table.Td>
+                        <DetailFieldRenderer field={field} value={value} data={data} />
+                      </Table.Td>
+                    </Table.Tr>
+                  );
+                }
+
+                // Nested group — render children in a sub-table
+                const parentValue = getByPath(data, group.parentPath);
                 return (
-                  <Table.Tr key={field.name}>
+                  <Table.Tr key={group.parentPath}>
                     <Table.Td style={{ fontWeight: 500, width: '30%', verticalAlign: 'top' }}>
-                      {field.label}
+                      {group.parentLabel}
                     </Table.Td>
                     <Table.Td>
-                      <DetailFieldRenderer field={field} value={value} data={data} />
+                      {parentValue == null ? (
+                        <Text c="dimmed" size="sm">
+                          N/A
+                        </Text>
+                      ) : (
+                        <Table fz="sm">
+                          <Table.Tbody>
+                            {group.children.map((child) => (
+                              <Table.Tr key={child.name}>
+                                <Table.Td style={{ fontWeight: 500, width: '35%' }}>
+                                  {child.label}
+                                </Table.Td>
+                                <Table.Td>
+                                  <DetailFieldRenderer
+                                    field={child}
+                                    value={getByPath(data, child.name)}
+                                    data={data}
+                                  />
+                                </Table.Td>
+                              </Table.Tr>
+                            ))}
+                          </Table.Tbody>
+                        </Table>
+                      )}
                     </Table.Td>
                   </Table.Tr>
                 );
@@ -360,7 +467,7 @@ export function ResourceDetail<T extends Record<string, any>>({
                     <Table.Td style={{ fontWeight: 500, width: '30%' }}>{group.label}</Table.Td>
                     <Table.Td>
                       {value != null ? (
-                        <Code block>{JSON.stringify(value, null, 2)}</Code>
+                        <CollapsibleJson value={value} />
                       ) : (
                         <Text c="dimmed" size="sm">
                           N/A

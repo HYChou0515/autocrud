@@ -1741,3 +1741,1233 @@ describe('extractCustomCreateActions — enum support', () => {
     expect(levelField!.zodType).toBe('z.number().int().optional()');
   });
 });
+
+// ============================================================================
+// parseField — constValue detection for tagged struct discriminators
+// ============================================================================
+describe('parseField — constValue for tagged struct discriminators', () => {
+  /** Spec with tagged structs (tag=True) producing const and single-element enum */
+  function buildTaggedStructSpec() {
+    return {
+      info: { title: 'Test', version: '1.0' },
+      paths: {
+        '/job': {
+          post: {
+            requestBody: {
+              content: {
+                'application/json': {
+                  schema: { $ref: '#/components/schemas/Job' },
+                },
+              },
+            },
+          },
+        },
+        '/job/{id}': { get: {} },
+      },
+      components: {
+        schemas: {
+          Job: {
+            type: 'object',
+            properties: {
+              name: { type: 'string' },
+              fruit: {
+                anyOf: [{ $ref: '#/components/schemas/Apple' }, { $ref: '#/components/schemas/Banana' }],
+                discriminator: {
+                  propertyName: 'type',
+                  mapping: {
+                    Apple: '#/components/schemas/Apple',
+                    Banana: '#/components/schemas/Banana',
+                  },
+                },
+              },
+              carrot: { $ref: '#/components/schemas/Carrot' },
+            },
+            required: ['name', 'fruit', 'carrot'],
+          },
+          Apple: {
+            type: 'object',
+            properties: {
+              type: { const: 'Apple' },
+              color: { type: 'string' },
+            },
+            required: ['type', 'color'],
+          },
+          Banana: {
+            type: 'object',
+            properties: {
+              type: { const: 'Banana' },
+              length: { type: 'number' },
+            },
+            required: ['type', 'length'],
+          },
+          Carrot: {
+            type: 'object',
+            properties: {
+              type: { type: 'string', enum: ['Carrot'] },
+              weight: { type: 'number' },
+            },
+            required: ['type', 'weight'],
+          },
+        },
+      },
+    };
+  }
+
+  it('parseField detects prop.const and returns constValue', () => {
+    const spec = buildTaggedStructSpec();
+    const gen = createTestGenerator(spec);
+    const typeProp = { const: 'Apple' };
+    const field = (gen as any).parseField('type', typeProp, true);
+
+    expect(field).toBeDefined();
+    expect(field.constValue).toBe('Apple');
+    expect(field.type).toBe('string');
+    expect(field.zodType).toBe("z.literal('Apple')");
+  });
+
+  it('parseField detects single-element enum and returns constValue', () => {
+    const spec = buildTaggedStructSpec();
+    const gen = createTestGenerator(spec);
+    const typeProp = { type: 'string', enum: ['Carrot'] };
+    const field = (gen as any).parseField('type', typeProp, true);
+
+    expect(field).toBeDefined();
+    expect(field.constValue).toBe('Carrot');
+    expect(field.type).toBe('string');
+    expect(field.zodType).toBe("z.literal('Carrot')");
+  });
+
+  it('parseField does NOT set constValue for multi-element enum', () => {
+    const spec = buildTaggedStructSpec();
+    const gen = createTestGenerator(spec);
+    const typeProp = { type: 'string', enum: ['warrior', 'mage'] };
+    const field = (gen as any).parseField('role', typeProp, true);
+
+    expect(field).toBeDefined();
+    expect(field.constValue).toBeUndefined();
+    expect(field.enumValues).toEqual(['warrior', 'mage']);
+  });
+
+  it('extractFields expands tagged struct ($ref) and produces constValue on discriminator field', () => {
+    const spec = buildTaggedStructSpec();
+    const gen = createTestGenerator(spec);
+    const carrotSchema = spec.components.schemas.Job.properties.carrot;
+    // Simulate extracting fields for the carrot $ref — we call extractFields on the Carrot schema
+    const carrotFields = (gen as any).extractFields(spec.components.schemas.Carrot, 'carrot', 1, 2);
+    const typeField = carrotFields.find((f: any) => f.name === 'carrot.type');
+
+    expect(typeField).toBeDefined();
+    expect(typeField.constValue).toBe('Carrot');
+  });
+
+  it('serializeField preserves constValue in genResourcesConfig output', () => {
+    const spec = buildTaggedStructSpec();
+    const gen = createTestGenerator(spec);
+    (gen as any).extractResources();
+    const code = (gen as any).genResourcesConfig();
+
+    // The Carrot struct's type field (single-element enum) should produce constValue
+    expect(code).toContain('constValue: "Carrot"');
+  });
+});
+
+// ============================================================================
+// Job resource — defaultHiddenFields & unified ResourceCreate route
+// ============================================================================
+describe('Job resource — defaultHiddenFields', () => {
+  function buildJobSpec() {
+    return {
+      info: { title: 'Test', version: '1.0' },
+      paths: {
+        '/game-event': {
+          post: {
+            requestBody: {
+              content: {
+                'application/json': {
+                  schema: { $ref: '#/components/schemas/GameEvent' },
+                },
+              },
+            },
+          },
+        },
+        '/game-event/{id}': { get: {} },
+      },
+      components: {
+        schemas: {
+          GameEvent: {
+            type: 'object',
+            properties: {
+              payload: { type: 'object' },
+              status: { type: 'string', default: 'pending' },
+              errmsg: { type: 'string', default: '' },
+              retries: { type: 'integer', default: 0 },
+              periodic_interval_seconds: { type: 'number', default: 0 },
+              periodic_max_runs: { type: 'integer', default: 0 },
+              periodic_runs: { type: 'integer', default: 0 },
+              periodic_initial_delay_seconds: { type: 'number', default: 0 },
+            },
+            required: ['payload'],
+          },
+        },
+      },
+    };
+  }
+
+  it('detects Job schema and sets isJob=true', () => {
+    const spec = buildJobSpec();
+    const gen = createTestGenerator(spec);
+    (gen as any).extractResources();
+    const r = gen.resources[0];
+    expect(r.isJob).toBe(true);
+    expect(r.maxFormDepth).toBe(3);
+  });
+
+  it('genCreateRoute generates ResourceCreate (not JobEnqueue) for Job', () => {
+    const spec = buildJobSpec();
+    const gen = createTestGenerator(spec);
+    (gen as any).extractResources();
+    const code = (gen as any).genCreateRoute(gen.resources[0]);
+
+    expect(code).toContain('ResourceCreate');
+    expect(code).not.toContain('JobEnqueue');
+  });
+
+  it('genResourcesConfig includes defaultHiddenFields for Job resource', () => {
+    const spec = buildJobSpec();
+    const gen = createTestGenerator(spec);
+    (gen as any).extractResources();
+    const code = (gen as any).genResourcesConfig();
+
+    expect(code).toContain('defaultHiddenFields:');
+    expect(code).toContain('status');
+    expect(code).toContain('errmsg');
+    expect(code).toContain('retries');
+  });
+
+  it('genResourcesConfig does NOT include defaultHiddenFields for non-Job resource', () => {
+    // Use a simple non-job spec
+    const spec = {
+      info: { title: 'Test', version: '1.0' },
+      paths: {
+        '/user': {
+          post: {
+            requestBody: {
+              content: {
+                'application/json': {
+                  schema: { $ref: '#/components/schemas/User' },
+                },
+              },
+            },
+          },
+        },
+        '/user/{id}': { get: {} },
+      },
+      components: {
+        schemas: {
+          User: {
+            type: 'object',
+            properties: { name: { type: 'string' } },
+            required: ['name'],
+          },
+        },
+      },
+    };
+    const gen = createTestGenerator(spec);
+    (gen as any).extractResources();
+    const code = (gen as any).genResourcesConfig();
+
+    expect(code).not.toContain('defaultHiddenFields');
+  });
+
+  it('genResourcesConfig does NOT include isJob property', () => {
+    const spec = buildJobSpec();
+    const gen = createTestGenerator(spec);
+    (gen as any).extractResources();
+    const code = (gen as any).genResourcesConfig();
+
+    expect(code).not.toContain('isJob:');
+  });
+});
+
+// ============================================================================
+// extractFields — nullable $ref struct expansion
+// ============================================================================
+describe('extractFields — nullable $ref struct expansion', () => {
+  /** Spec with a nullable struct field: EventBodyX | None → anyOf: [$ref, {type:'null'}] */
+  function buildNullableRefSpec() {
+    return {
+      info: { title: 'Test', version: '1.0' },
+      paths: {
+        '/game-event': {
+          post: {
+            requestBody: {
+              content: {
+                'application/json': {
+                  schema: { $ref: '#/components/schemas/GameEventPayload' },
+                },
+              },
+            },
+          },
+        },
+        '/game-event/{id}': { get: {} },
+      },
+      components: {
+        schemas: {
+          EventBodyX: {
+            type: 'object',
+            properties: {
+              type: { type: 'string', enum: ['EventBodyX'] },
+              good: { type: 'string' },
+              great: { type: 'integer' },
+            },
+            required: ['type', 'good', 'great'],
+          },
+          GameEventPayload: {
+            type: 'object',
+            properties: {
+              name: { type: 'string' },
+              // Non-nullable struct — should be expanded
+              event_x2: { $ref: '#/components/schemas/EventBodyX' },
+              // Nullable struct — anyOf [$ref, null] — should ALSO be expanded
+              event_x: {
+                anyOf: [{ $ref: '#/components/schemas/EventBodyX' }, { type: 'null' }],
+              },
+            },
+            required: ['name', 'event_x2'],
+          },
+        },
+      },
+    };
+  }
+
+  it('expands non-nullable $ref struct into dot-notation sub-fields', () => {
+    const spec = buildNullableRefSpec();
+    const gen = createTestGenerator(spec);
+    const schema = spec.components.schemas.GameEventPayload;
+    const fields = (gen as any).extractFields(schema, '', 1, 2);
+
+    // event_x2 should be expanded to event_x2.type, event_x2.good, event_x2.great
+    const x2Fields = fields.filter((f: any) => f.name.startsWith('event_x2.'));
+    expect(x2Fields.length).toBe(3);
+    expect(x2Fields.map((f: any) => f.name).sort()).toEqual(['event_x2.good', 'event_x2.great', 'event_x2.type']);
+  });
+
+  it('expands nullable $ref struct (anyOf [$ref, null]) into dot-notation sub-fields', () => {
+    const spec = buildNullableRefSpec();
+    const gen = createTestGenerator(spec);
+    const schema = spec.components.schemas.GameEventPayload;
+    const fields = (gen as any).extractFields(schema, '', 1, 2);
+
+    // event_x (nullable) should ALSO be expanded to event_x.type, event_x.good, event_x.great
+    const xFields = fields.filter((f: any) => f.name.startsWith('event_x.'));
+    expect(xFields.length).toBe(3);
+    expect(xFields.map((f: any) => f.name).sort()).toEqual(['event_x.good', 'event_x.great', 'event_x.type']);
+  });
+
+  it('does NOT expand nullable $ref struct when depth exceeds maxDepth', () => {
+    const spec = buildNullableRefSpec();
+    const gen = createTestGenerator(spec);
+    const schema = spec.components.schemas.GameEventPayload;
+    // maxDepth=1 means we can only go 1 level deep — nested struct should collapse
+    const fields = (gen as any).extractFields(schema, '', 1, 1);
+
+    // event_x should NOT be expanded — should remain as a single field
+    const xDotFields = fields.filter((f: any) => f.name.startsWith('event_x.'));
+    expect(xDotFields.length).toBe(0);
+
+    // But it should still exist as a single field
+    const xField = fields.find((f: any) => f.name === 'event_x');
+    expect(xField).toBeDefined();
+  });
+
+  it('does NOT expand nullable $ref when resolved schema has no properties (not a struct)', () => {
+    const spec = buildNullableRefSpec();
+    // Add a non-struct schema (e.g. enum)
+    spec.components.schemas.GameEventPayload.properties.status = {
+      anyOf: [{ $ref: '#/components/schemas/MyEnum' }, { type: 'null' }],
+    };
+    (spec.components.schemas as any).MyEnum = {
+      type: 'string',
+      enum: ['active', 'inactive'],
+    };
+
+    const gen = createTestGenerator(spec);
+    const schema = spec.components.schemas.GameEventPayload;
+    const fields = (gen as any).extractFields(schema, '', 1, 2);
+
+    // status should NOT be expanded — it's an enum, not a struct
+    const statusDotFields = fields.filter((f: any) => f.name.startsWith('status.'));
+    expect(statusDotFields.length).toBe(0);
+    const statusField = fields.find((f: any) => f.name === 'status');
+    expect(statusField).toBeDefined();
+  });
+});
+
+// ============================================================================
+// parseField — structural union (anyOf with $ref / array members, no discriminator)
+// e.g. list[EventBodyX] | EventBodyX, list[A] | B, list[A] | list[B]
+// ============================================================================
+describe('parseField — structural union', () => {
+  /** Helper: build spec with EventBodyX schema */
+  function buildStructuralUnionSpec() {
+    return {
+      info: { title: 'Test', version: '1.0' },
+      paths: {
+        '/payload': {
+          post: {
+            requestBody: {
+              content: {
+                'application/json': {
+                  schema: { $ref: '#/components/schemas/Payload' },
+                },
+              },
+            },
+          },
+        },
+        '/payload/{id}': { get: {} },
+      },
+      components: {
+        schemas: {
+          EventBodyX: {
+            type: 'object',
+            properties: {
+              type: { type: 'string', enum: ['EventBodyX'], const: 'EventBodyX' },
+              good: { type: 'string' },
+              great: { type: 'integer' },
+            },
+            required: ['type', 'good', 'great'],
+          },
+          EventBodyA: {
+            type: 'object',
+            properties: {
+              type: { type: 'string', enum: ['EventBodyA'], const: 'EventBodyA' },
+              extra_info_a: { type: 'string' },
+              extra_value_a: { type: 'integer' },
+            },
+            required: ['type', 'extra_info_a', 'extra_value_a'],
+          },
+          Payload: {
+            type: 'object',
+            properties: {
+              name: { type: 'string' },
+            },
+            required: ['name'],
+          },
+        },
+      },
+    };
+  }
+
+  // ---- Pattern 1: list[A] | A ----
+  it('parses list[A] | A as structural union with 2 variants', () => {
+    const spec = buildStructuralUnionSpec();
+    const prop = {
+      anyOf: [
+        { type: 'array', items: { $ref: '#/components/schemas/EventBodyX' } },
+        { $ref: '#/components/schemas/EventBodyX' },
+      ],
+    };
+    const gen = createTestGenerator(spec);
+    const field = (gen as any).parseField('event_x3', prop, true);
+
+    expect(field).toBeDefined();
+    expect(field.type).toBe('union');
+    expect(field.isArray).toBe(false); // The union itself is not an array
+    expect(field.unionMeta).toBeDefined();
+    expect(field.unionMeta.discriminatorField).toBe('__variant');
+    expect(field.unionMeta.variants).toHaveLength(2);
+  });
+
+  it('list[A] | A: array variant has isArray=true and correct fields', () => {
+    const spec = buildStructuralUnionSpec();
+    const prop = {
+      anyOf: [
+        { type: 'array', items: { $ref: '#/components/schemas/EventBodyX' } },
+        { $ref: '#/components/schemas/EventBodyX' },
+      ],
+    };
+    const gen = createTestGenerator(spec);
+    const field = (gen as any).parseField('event_x3', prop, true);
+
+    const arrayVariant = field.unionMeta.variants.find((v: any) => v.isArray);
+    expect(arrayVariant).toBeDefined();
+    expect(arrayVariant.tag).toContain('EventBodyX');
+    expect(arrayVariant.label).toContain('[]');
+    expect(arrayVariant.fields).toBeDefined();
+    expect(arrayVariant.fields.length).toBeGreaterThan(0);
+    // Should have good, great fields (type is constValue, skipped or included)
+    const fieldNames = arrayVariant.fields.map((f: any) => f.name);
+    expect(fieldNames).toContain('good');
+    expect(fieldNames).toContain('great');
+  });
+
+  it('list[A] | A: single variant has isArray=false/undefined and correct fields', () => {
+    const spec = buildStructuralUnionSpec();
+    const prop = {
+      anyOf: [
+        { type: 'array', items: { $ref: '#/components/schemas/EventBodyX' } },
+        { $ref: '#/components/schemas/EventBodyX' },
+      ],
+    };
+    const gen = createTestGenerator(spec);
+    const field = (gen as any).parseField('event_x3', prop, true);
+
+    const singleVariant = field.unionMeta.variants.find((v: any) => !v.isArray);
+    expect(singleVariant).toBeDefined();
+    expect(singleVariant.tag).toBe('EventBodyX');
+    expect(singleVariant.schemaName).toBe('EventBodyX');
+    expect(singleVariant.fields).toBeDefined();
+    const fieldNames = singleVariant.fields.map((f: any) => f.name);
+    expect(fieldNames).toContain('good');
+    expect(fieldNames).toContain('great');
+  });
+
+  // ---- Pattern 2: list[A] | B (different schemas) ----
+  it('parses list[A] | B as structural union with 2 variants', () => {
+    const spec = buildStructuralUnionSpec();
+    const prop = {
+      anyOf: [
+        { type: 'array', items: { $ref: '#/components/schemas/EventBodyX' } },
+        { $ref: '#/components/schemas/EventBodyA' },
+      ],
+    };
+    const gen = createTestGenerator(spec);
+    const field = (gen as any).parseField('mixed', prop, true);
+
+    expect(field.type).toBe('union');
+    expect(field.unionMeta.discriminatorField).toBe('__variant');
+    expect(field.unionMeta.variants).toHaveLength(2);
+
+    const arrayVariant = field.unionMeta.variants.find((v: any) => v.isArray);
+    expect(arrayVariant).toBeDefined();
+    expect(arrayVariant.fields.map((f: any) => f.name)).toContain('good');
+
+    const singleVariant = field.unionMeta.variants.find((v: any) => !v.isArray);
+    expect(singleVariant).toBeDefined();
+    expect(singleVariant.schemaName).toBe('EventBodyA');
+    expect(singleVariant.fields.map((f: any) => f.name)).toContain('extra_info_a');
+  });
+
+  // ---- Pattern 3: list[A] | A | null (nullable) ----
+  it('parses list[A] | A | null as nullable structural union', () => {
+    const spec = buildStructuralUnionSpec();
+    const prop = {
+      anyOf: [
+        { type: 'array', items: { $ref: '#/components/schemas/EventBodyX' } },
+        { $ref: '#/components/schemas/EventBodyX' },
+        { type: 'null' },
+      ],
+    };
+    const gen = createTestGenerator(spec);
+    const field = (gen as any).parseField('event_x3', prop, false);
+
+    expect(field.type).toBe('union');
+    expect(field.isNullable).toBe(true);
+    expect(field.unionMeta.variants).toHaveLength(3); // list_EventBodyX, EventBodyX, null
+
+    // Null variant should be selectable
+    const nullVariant = field.unionMeta.variants.find((v: any) => v.type === 'null');
+    expect(nullVariant).toBeDefined();
+    expect(nullVariant.tag).toBe('null');
+    expect(nullVariant.label).toBe('None');
+  });
+
+  // ---- Pattern 4: A | B (two $ref, no discriminator) ----
+  it('parses A | B (two $ref, no discriminator) as structural union', () => {
+    const spec = buildStructuralUnionSpec();
+    const prop = {
+      anyOf: [{ $ref: '#/components/schemas/EventBodyX' }, { $ref: '#/components/schemas/EventBodyA' }],
+    };
+    const gen = createTestGenerator(spec);
+    const field = (gen as any).parseField('mixed_obj', prop, true);
+
+    expect(field.type).toBe('union');
+    expect(field.unionMeta.discriminatorField).toBe('__variant');
+    expect(field.unionMeta.variants).toHaveLength(2);
+
+    const variantTags = field.unionMeta.variants.map((v: any) => v.tag);
+    expect(variantTags).toContain('EventBodyX');
+    expect(variantTags).toContain('EventBodyA');
+
+    // Each variant should have fields
+    for (const v of field.unionMeta.variants) {
+      expect(v.fields).toBeDefined();
+      expect(v.fields.length).toBeGreaterThan(0);
+    }
+  });
+
+  // ---- Pattern 5: list[A] | list[B] ----
+  it('parses list[A] | list[B] as structural union with 2 array variants', () => {
+    const spec = buildStructuralUnionSpec();
+    const prop = {
+      anyOf: [
+        { type: 'array', items: { $ref: '#/components/schemas/EventBodyX' } },
+        { type: 'array', items: { $ref: '#/components/schemas/EventBodyA' } },
+      ],
+    };
+    const gen = createTestGenerator(spec);
+    const field = (gen as any).parseField('lists', prop, true);
+
+    expect(field.type).toBe('union');
+    expect(field.unionMeta.discriminatorField).toBe('__variant');
+    expect(field.unionMeta.variants).toHaveLength(2);
+
+    // Both variants should be arrays
+    for (const v of field.unionMeta.variants) {
+      expect(v.isArray).toBe(true);
+      expect(v.fields).toBeDefined();
+      expect(v.fields.length).toBeGreaterThan(0);
+    }
+  });
+
+  // ---- Pattern 6: mixed $ref + primitive ----
+  it('parses $ref | string as structural union with object + primitive variants', () => {
+    const spec = buildStructuralUnionSpec();
+    const prop = {
+      anyOf: [{ $ref: '#/components/schemas/EventBodyX' }, { type: 'string' }],
+    };
+    const gen = createTestGenerator(spec);
+    const field = (gen as any).parseField('mixed_prim', prop, true);
+
+    expect(field.type).toBe('union');
+    expect(field.unionMeta.discriminatorField).toBe('__variant');
+    expect(field.unionMeta.variants).toHaveLength(2);
+
+    const objVariant = field.unionMeta.variants.find((v: any) => v.schemaName === 'EventBodyX');
+    expect(objVariant).toBeDefined();
+    expect(objVariant.fields.length).toBeGreaterThan(0);
+
+    const primVariant = field.unionMeta.variants.find((v: any) => v.type === 'string');
+    expect(primVariant).toBeDefined();
+    expect(primVariant.tag).toBe('string');
+  });
+
+  // ---- serializeField preserves isArray on variants ----
+  it('serializeField preserves isArray on union variants', () => {
+    const spec = buildStructuralUnionSpec();
+    const prop = {
+      anyOf: [
+        { type: 'array', items: { $ref: '#/components/schemas/EventBodyX' } },
+        { $ref: '#/components/schemas/EventBodyX' },
+      ],
+    };
+    const gen = createTestGenerator(spec);
+    const field = (gen as any).parseField('event_x3', prop, true);
+
+    // Access the private serializeField function via genResourcesConfig integration
+    // We verify isArray survives serialization by checking the config output
+    spec.components.schemas.Payload.properties.event_x3 = prop;
+    spec.components.schemas.Payload.required = ['name', 'event_x3'];
+    (gen as any).extractResources();
+    const config = (gen as any).genResourcesConfig() as string;
+
+    expect(config).toContain('isArray: true');
+    expect(config).toContain('__variant');
+  });
+
+  // ---- Pattern 7: list[DiscriminatedUnion] | SingleRef ----
+  // This is the bug scenario: list[EventBodyX | EventBodyB | EventBodyA] | EventBodyX | EventBodyB
+  // The array items form a discriminated union (anyOf + discriminator)
+  it('parses list[DiscriminatedUnion] | SingleRef as structural union with itemUnionMeta', () => {
+    const spec = buildStructuralUnionSpec();
+    // Add EventBodyB schema
+    spec.components.schemas.EventBodyB = {
+      type: 'object',
+      properties: {
+        type: { type: 'string', enum: ['EventBodyB'], const: 'EventBodyB' },
+        beta_info: { type: 'string' },
+      },
+      required: ['type', 'beta_info'],
+    };
+
+    const prop = {
+      anyOf: [
+        {
+          type: 'array',
+          items: {
+            anyOf: [
+              { $ref: '#/components/schemas/EventBodyX' },
+              { $ref: '#/components/schemas/EventBodyB' },
+              { $ref: '#/components/schemas/EventBodyA' },
+            ],
+            discriminator: {
+              propertyName: 'type',
+              mapping: {
+                EventBodyX: '#/components/schemas/EventBodyX',
+                EventBodyB: '#/components/schemas/EventBodyB',
+                EventBodyA: '#/components/schemas/EventBodyA',
+              },
+            },
+          },
+        },
+        { $ref: '#/components/schemas/EventBodyX' },
+        { $ref: '#/components/schemas/EventBodyB' },
+      ],
+    };
+    const gen = createTestGenerator(spec);
+    const field = (gen as any).parseField('event_x3', prop, true);
+
+    expect(field).toBeDefined();
+    expect(field.type).toBe('union');
+    expect(field.unionMeta.discriminatorField).toBe('__variant');
+    expect(field.unionMeta.variants).toHaveLength(3);
+
+    // First variant: array with discriminated union items
+    const arrayVariant = field.unionMeta.variants.find((v: any) => v.isArray);
+    expect(arrayVariant).toBeDefined();
+    expect(arrayVariant.tag).toBe('list_union');
+    expect(arrayVariant.fields).toEqual([]); // No direct fields — fields are in itemUnionMeta
+    expect(arrayVariant.itemUnionMeta).toBeDefined();
+    expect(arrayVariant.itemUnionMeta.discriminatorField).toBe('type');
+    expect(arrayVariant.itemUnionMeta.variants).toHaveLength(3);
+
+    // Verify inner variants
+    const innerTags = arrayVariant.itemUnionMeta.variants.map((v: any) => v.tag);
+    expect(innerTags).toContain('EventBodyX');
+    expect(innerTags).toContain('EventBodyB');
+    expect(innerTags).toContain('EventBodyA');
+
+    // Each inner variant should have fields (minus discriminator field)
+    const xVariant = arrayVariant.itemUnionMeta.variants.find((v: any) => v.tag === 'EventBodyX');
+    expect(xVariant).toBeDefined();
+    expect(xVariant.fields.map((f: any) => f.name)).toContain('good');
+    expect(xVariant.fields.map((f: any) => f.name)).toContain('great');
+    expect(xVariant.fields.map((f: any) => f.name)).not.toContain('type'); // discriminator excluded
+
+    const bVariant = arrayVariant.itemUnionMeta.variants.find((v: any) => v.tag === 'EventBodyB');
+    expect(bVariant).toBeDefined();
+    expect(bVariant.fields.map((f: any) => f.name)).toContain('beta_info');
+
+    // Non-array variants
+    const nonArrayVariants = field.unionMeta.variants.filter((v: any) => !v.isArray);
+    expect(nonArrayVariants).toHaveLength(2);
+    const nonArrayTags = nonArrayVariants.map((v: any) => v.tag);
+    expect(nonArrayTags).toContain('EventBodyX');
+    expect(nonArrayTags).toContain('EventBodyB');
+  });
+
+  it('list[DiscriminatedUnion] label contains all inner variant names', () => {
+    const spec = buildStructuralUnionSpec();
+    spec.components.schemas.EventBodyB = {
+      type: 'object',
+      properties: {
+        type: { type: 'string', enum: ['EventBodyB'], const: 'EventBodyB' },
+        beta_info: { type: 'string' },
+      },
+      required: ['type', 'beta_info'],
+    };
+
+    const prop = {
+      anyOf: [
+        {
+          type: 'array',
+          items: {
+            anyOf: [{ $ref: '#/components/schemas/EventBodyX' }, { $ref: '#/components/schemas/EventBodyB' }],
+            discriminator: {
+              propertyName: 'type',
+              mapping: {
+                EventBodyX: '#/components/schemas/EventBodyX',
+                EventBodyB: '#/components/schemas/EventBodyB',
+              },
+            },
+          },
+        },
+        { $ref: '#/components/schemas/EventBodyA' },
+      ],
+    };
+    const gen = createTestGenerator(spec);
+    const field = (gen as any).parseField('event_x3', prop, true);
+
+    const arrayVariant = field.unionMeta.variants.find((v: any) => v.isArray);
+    expect(arrayVariant.label).toContain('EventBodyX');
+    expect(arrayVariant.label).toContain('EventBodyB');
+    expect(arrayVariant.label).toContain('[]');
+  });
+
+  it('serializeField preserves itemUnionMeta on array variants', () => {
+    const spec = buildStructuralUnionSpec();
+    spec.components.schemas.EventBodyB = {
+      type: 'object',
+      properties: {
+        type: { type: 'string', enum: ['EventBodyB'], const: 'EventBodyB' },
+        beta_info: { type: 'string' },
+      },
+      required: ['type', 'beta_info'],
+    };
+
+    spec.components.schemas.Payload.properties.event_x3 = {
+      anyOf: [
+        {
+          type: 'array',
+          items: {
+            anyOf: [{ $ref: '#/components/schemas/EventBodyX' }, { $ref: '#/components/schemas/EventBodyB' }],
+            discriminator: {
+              propertyName: 'type',
+              mapping: {
+                EventBodyX: '#/components/schemas/EventBodyX',
+                EventBodyB: '#/components/schemas/EventBodyB',
+              },
+            },
+          },
+        },
+        { $ref: '#/components/schemas/EventBodyX' },
+      ],
+    };
+    spec.components.schemas.Payload.required = ['name', 'event_x3'];
+
+    const gen = createTestGenerator(spec);
+    (gen as any).extractResources();
+    const config = (gen as any).genResourcesConfig() as string;
+
+    expect(config).toContain('itemUnionMeta');
+    expect(config).toContain('discriminatorField');
+    expect(config).toContain('EventBodyX');
+    expect(config).toContain('EventBodyB');
+  });
+
+  // ---- Pattern 8: Actual msgspec output for list[X|B|A] | X | B ----
+  // msgspec wraps |X|B as a nested discriminated union, NOT as separate $refs!
+  // Real OpenAPI: anyOf: [ {type:array, items:{anyOf+disc}}, {anyOf+disc} ]
+  it('parses nested discriminated union (actual msgspec output) and flattens variants', () => {
+    const spec = buildStructuralUnionSpec();
+    spec.components.schemas.EventBodyB = {
+      type: 'object',
+      properties: {
+        type: { type: 'string', enum: ['EventBodyB'], const: 'EventBodyB' },
+        some_field: { type: 'string' },
+        cooldown_seconds: { type: 'integer' },
+      },
+      required: ['type', 'some_field', 'cooldown_seconds'],
+    };
+
+    // This is the ACTUAL OpenAPI from msgspec for:
+    // event_x3: list[EventBodyX | EventBodyB | EventBodyA] | EventBodyX | EventBodyB
+    const prop = {
+      anyOf: [
+        {
+          type: 'array',
+          items: {
+            anyOf: [
+              { $ref: '#/components/schemas/EventBodyX' },
+              { $ref: '#/components/schemas/EventBodyB' },
+              { $ref: '#/components/schemas/EventBodyA' },
+            ],
+            discriminator: {
+              propertyName: 'type',
+              mapping: {
+                EventBodyX: '#/components/schemas/EventBodyX',
+                EventBodyB: '#/components/schemas/EventBodyB',
+                EventBodyA: '#/components/schemas/EventBodyA',
+              },
+            },
+          },
+        },
+        {
+          anyOf: [{ $ref: '#/components/schemas/EventBodyX' }, { $ref: '#/components/schemas/EventBodyB' }],
+          discriminator: {
+            propertyName: 'type',
+            mapping: {
+              EventBodyX: '#/components/schemas/EventBodyX',
+              EventBodyB: '#/components/schemas/EventBodyB',
+            },
+          },
+        },
+      ],
+    };
+    const gen = createTestGenerator(spec);
+    const field = (gen as any).parseField('event_x3', prop, true);
+
+    expect(field).toBeDefined();
+    expect(field.type).toBe('union');
+    expect(field.unionMeta.discriminatorField).toBe('__variant');
+
+    // Should have 3 variants: list_union, EventBodyX, EventBodyB
+    // The nested discriminated union should be FLATTENED into separate variants
+    expect(field.unionMeta.variants).toHaveLength(3);
+
+    // Array variant with itemUnionMeta
+    const arrayVariant = field.unionMeta.variants.find((v: any) => v.isArray);
+    expect(arrayVariant).toBeDefined();
+    expect(arrayVariant.itemUnionMeta).toBeDefined();
+    expect(arrayVariant.itemUnionMeta.variants).toHaveLength(3);
+
+    // Flattened non-array variants from the nested discriminated union
+    const nonArrayVariants = field.unionMeta.variants.filter((v: any) => !v.isArray);
+    expect(nonArrayVariants).toHaveLength(2);
+    const tags = nonArrayVariants.map((v: any) => v.tag);
+    expect(tags).toContain('EventBodyX');
+    expect(tags).toContain('EventBodyB');
+
+    // Each flattened variant should have fields
+    const xVariant = nonArrayVariants.find((v: any) => v.tag === 'EventBodyX');
+    expect(xVariant.fields.length).toBeGreaterThan(0);
+    expect(xVariant.fields.map((f: any) => f.name)).toContain('good');
+
+    const bVariant = nonArrayVariants.find((v: any) => v.tag === 'EventBodyB');
+    expect(bVariant.fields.length).toBeGreaterThan(0);
+    expect(bVariant.fields.map((f: any) => f.name)).toContain('some_field');
+  });
+
+  // ---- Pattern 9: list[EventBodyA] | EventBodyX | None ----
+  // Null is a legitimate selectable variant, not just a nullable marker
+  it('parses null as a selectable variant in structural union', () => {
+    const spec = buildStructuralUnionSpec();
+    // event_x6: list[EventBodyA] | EventBodyX | EventBodyX | None
+    // OpenAPI: anyOf: [{type:array, items:{$ref:A}}, {type:null}, {$ref:X}]
+    const prop = {
+      anyOf: [
+        { type: 'array', items: { $ref: '#/components/schemas/EventBodyA' } },
+        { type: 'null' },
+        { $ref: '#/components/schemas/EventBodyX' },
+      ],
+    };
+    const gen = createTestGenerator(spec);
+    const field = (gen as any).parseField('event_x6', prop, false);
+
+    expect(field).toBeDefined();
+    expect(field.type).toBe('union');
+    expect(field.unionMeta.discriminatorField).toBe('__variant');
+
+    // Should have 3 variants: list_EventBodyA (array), null, EventBodyX (object)
+    expect(field.unionMeta.variants).toHaveLength(3);
+
+    // Array variant
+    const arrayVariant = field.unionMeta.variants.find((v: any) => v.isArray);
+    expect(arrayVariant).toBeDefined();
+    expect(arrayVariant.label).toContain('EventBodyA');
+
+    // Null variant — must be selectable
+    const nullVariant = field.unionMeta.variants.find((v: any) => v.type === 'null');
+    expect(nullVariant).toBeDefined();
+    expect(nullVariant.tag).toBe('null');
+    expect(nullVariant.label).toBe('None');
+
+    // Object variant
+    const objVariant = field.unionMeta.variants.find((v: any) => v.schemaName === 'EventBodyX');
+    expect(objVariant).toBeDefined();
+    expect(objVariant.fields.length).toBeGreaterThan(0);
+
+    // Field should also be marked nullable
+    expect(field.isNullable).toBe(true);
+  });
+
+  // ---- Pattern 10: list[EventBodyA] | dict[str, EventBodyX] ----
+  // dict (additionalProperties) should be a recognized variant
+  it('parses dict (additionalProperties) as a variant in structural union', () => {
+    const spec = buildStructuralUnionSpec();
+    // event_x7: list[EventBodyA] | dict[str, EventBodyX]
+    // OpenAPI: anyOf: [{type:array, items:{$ref:A}}, {type:object, additionalProperties:{$ref:X}}]
+    const prop = {
+      anyOf: [
+        { type: 'array', items: { $ref: '#/components/schemas/EventBodyA' } },
+        {
+          type: 'object',
+          additionalProperties: { $ref: '#/components/schemas/EventBodyX' },
+        },
+      ],
+    };
+    const gen = createTestGenerator(spec);
+    const field = (gen as any).parseField('event_x7', prop, true);
+
+    expect(field).toBeDefined();
+    expect(field.type).toBe('union');
+    expect(field.unionMeta.discriminatorField).toBe('__variant');
+
+    // Should have 2 variants: list_EventBodyA (array), dict_EventBodyX (dict)
+    expect(field.unionMeta.variants).toHaveLength(2);
+
+    // Array variant
+    const arrayVariant = field.unionMeta.variants.find((v: any) => v.isArray);
+    expect(arrayVariant).toBeDefined();
+
+    // Dict variant
+    const dictVariant = field.unionMeta.variants.find((v: any) => v.isDict);
+    expect(dictVariant).toBeDefined();
+    expect(dictVariant.tag).toBe('dict_EventBodyX');
+    expect(dictVariant.label).toContain('EventBodyX');
+    // Dict variant should carry value fields (the schema of dict values)
+    expect(dictVariant.dictValueFields).toBeDefined();
+    expect(dictVariant.dictValueFields.length).toBeGreaterThan(0);
+    expect(dictVariant.dictValueFields.map((f: any) => f.name)).toContain('good');
+  });
+});
+
+// ============================================================================
+// parseField — nested arrays (list[list[...]])
+// ============================================================================
+describe('parseField — nested arrays', () => {
+  function buildNestedArraySpec() {
+    return {
+      info: { title: 'Test', version: '1.0' },
+      paths: {
+        '/payload': {
+          post: {
+            requestBody: {
+              content: {
+                'application/json': {
+                  schema: { $ref: '#/components/schemas/Payload' },
+                },
+              },
+            },
+          },
+        },
+        '/payload/{id}': { get: {} },
+      },
+      components: {
+        schemas: {
+          EventBodyX: {
+            type: 'object',
+            properties: {
+              type: { type: 'string', enum: ['EventBodyX'], const: 'EventBodyX' },
+              good: { type: 'string' },
+              great: { type: 'integer' },
+            },
+            required: ['type', 'good', 'great'],
+          },
+          EventBodyA: {
+            type: 'object',
+            properties: {
+              type: { type: 'string', enum: ['EventBodyA'], const: 'EventBodyA' },
+              extra_info_a: { type: 'string' },
+              extra_value_a: { type: 'integer' },
+            },
+            required: ['type', 'extra_info_a', 'extra_value_a'],
+          },
+          EventBodyB: {
+            type: 'object',
+            properties: {
+              type: { type: 'string', enum: ['EventBodyB'], const: 'EventBodyB' },
+              some_field: { type: 'string' },
+              cooldown_seconds: { type: 'integer' },
+            },
+            required: ['type', 'some_field', 'cooldown_seconds'],
+          },
+          Payload: {
+            type: 'object',
+            properties: { name: { type: 'string' } },
+            required: ['name'],
+          },
+        },
+      },
+    };
+  }
+
+  // ---- Pattern: list[list[string]] ----
+  // Nested arrays (depth > 1) fall back to JSON-editor field since the form UI
+  // only supports a single level of array nesting.
+  it('parses list[list[string]] as JSON fallback with correct tsType/zodType', () => {
+    const spec = buildNestedArraySpec();
+    const prop = {
+      type: 'array',
+      items: {
+        type: 'array',
+        items: { type: 'string' },
+      },
+    };
+    const gen = createTestGenerator(spec);
+    const field = (gen as any).parseField('nested_strings', prop, true);
+
+    expect(field).toBeDefined();
+    expect(field.tsType).toBe('string[][]');
+    expect(field.zodType).toBe('z.array(z.array(z.string()))');
+    // Falls back to JSON editor (type=object, isArray=false)
+    expect(field.type).toBe('object');
+    expect(field.isArray).toBe(false);
+  });
+
+  // ---- Pattern: list[list[int]] ----
+  it('parses list[list[int]] as JSON fallback with correct tsType/zodType', () => {
+    const spec = buildNestedArraySpec();
+    const prop = {
+      type: 'array',
+      items: {
+        type: 'array',
+        items: { type: 'integer' },
+      },
+    };
+    const gen = createTestGenerator(spec);
+    const field = (gen as any).parseField('matrix', prop, true);
+
+    expect(field).toBeDefined();
+    expect(field.tsType).toBe('number[][]');
+    expect(field.zodType).toBe('z.array(z.array(z.number().int()))');
+    expect(field.type).toBe('object');
+    expect(field.isArray).toBe(false);
+  });
+
+  // ---- Pattern: list[list[list[string]]] (triple nesting) ----
+  it('parses list[list[list[string]]] as JSON fallback with correct tsType/zodType', () => {
+    const spec = buildNestedArraySpec();
+    const prop = {
+      type: 'array',
+      items: {
+        type: 'array',
+        items: {
+          type: 'array',
+          items: { type: 'string' },
+        },
+      },
+    };
+    const gen = createTestGenerator(spec);
+    const field = (gen as any).parseField('cube', prop, true);
+
+    expect(field).toBeDefined();
+    expect(field.tsType).toBe('string[][][]');
+    expect(field.zodType).toBe('z.array(z.array(z.array(z.string())))');
+    expect(field.type).toBe('object');
+    expect(field.isArray).toBe(false);
+  });
+
+  // ---- Pattern: list[list[DiscriminatedUnion]] ----
+  it('parses list[list[X | Y]] as JSON fallback with correct tsType', () => {
+    const spec = buildNestedArraySpec();
+    // list[list[EventBodyX | EventBodyB]]
+    const prop = {
+      type: 'array',
+      items: {
+        type: 'array',
+        items: {
+          anyOf: [
+            { $ref: '#/components/schemas/EventBodyX' },
+            { $ref: '#/components/schemas/EventBodyB' },
+          ],
+          discriminator: {
+            propertyName: 'type',
+            mapping: {
+              EventBodyX: '#/components/schemas/EventBodyX',
+              EventBodyB: '#/components/schemas/EventBodyB',
+            },
+          },
+        },
+      },
+    };
+    const gen = createTestGenerator(spec);
+    const field = (gen as any).parseField('nested_union', prop, true);
+
+    expect(field).toBeDefined();
+    // Falls back to JSON editor for nested arrays
+    expect(field.type).toBe('object');
+    expect(field.isArray).toBe(false);
+    // tsType should still contain double array notation
+    expect(field.tsType).toContain('[][]');
+    expect(field.tsType).not.toBe('string[]');
+  });
+
+  // ---- Pattern: event_x8: list[list[list[EventBodyX | EventBodyB] | EventBodyB | EventBodyA]] ----
+  // This is the actual msgspec output for the deeply nested type
+  it('parses event_x8: list[list[list[X|B] | B | A]] as JSON fallback (the actual bug scenario)', () => {
+    const spec = buildNestedArraySpec();
+    const prop = {
+      type: 'array',
+      items: {
+        type: 'array',
+        items: {
+          anyOf: [
+            {
+              type: 'array',
+              items: {
+                anyOf: [
+                  { $ref: '#/components/schemas/EventBodyX' },
+                  { $ref: '#/components/schemas/EventBodyB' },
+                ],
+                discriminator: {
+                  propertyName: 'type',
+                  mapping: {
+                    EventBodyX: '#/components/schemas/EventBodyX',
+                    EventBodyB: '#/components/schemas/EventBodyB',
+                  },
+                },
+              },
+            },
+            {
+              anyOf: [
+                { $ref: '#/components/schemas/EventBodyB' },
+                { $ref: '#/components/schemas/EventBodyA' },
+              ],
+              discriminator: {
+                propertyName: 'type',
+                mapping: {
+                  EventBodyB: '#/components/schemas/EventBodyB',
+                  EventBodyA: '#/components/schemas/EventBodyA',
+                },
+              },
+            },
+          ],
+        },
+      },
+    };
+    const gen = createTestGenerator(spec);
+    const field = (gen as any).parseField('event_x8', prop, true);
+
+    expect(field).toBeDefined();
+    // Should NOT be 'string' — that was the original bug
+    expect(field.tsType).not.toBe('string[]');
+    expect(field.tsType).not.toBe('string[][]');
+    // Falls back to JSON editor for multi-dimensional arrays
+    expect(field.type).toBe('object');
+    expect(field.isArray).toBe(false);
+    // tsType should still be correctly computed with nested arrays
+    expect(field.tsType).toContain('[][]');
+  });
+
+  // ---- Pattern: list[list[$ref]] (nested array of objects) ----
+  it('parses list[list[$ref]] as JSON fallback with correct tsType', () => {
+    const spec = buildNestedArraySpec();
+    const prop = {
+      type: 'array',
+      items: {
+        type: 'array',
+        items: { $ref: '#/components/schemas/EventBodyX' },
+      },
+    };
+    const gen = createTestGenerator(spec);
+    const field = (gen as any).parseField('nested_objects', prop, true);
+
+    expect(field).toBeDefined();
+    // Falls back to JSON editor
+    expect(field.type).toBe('object');
+    expect(field.isArray).toBe(false);
+    expect(field.tsType).toContain('[][]');
+    expect(field.tsType).not.toBe('string[]');
+  });
+
+  // ---- Single-depth array of non-discriminated union is still supported ----
+  it('list[X | Y] (single-depth anyOf without discriminator) still becomes union array', () => {
+    const spec = buildNestedArraySpec();
+    // list[EventBodyX | EventBodyA] — structural union at depth 1
+    const prop = {
+      type: 'array',
+      items: {
+        anyOf: [
+          { $ref: '#/components/schemas/EventBodyX' },
+          { $ref: '#/components/schemas/EventBodyA' },
+        ],
+      },
+    };
+    const gen = createTestGenerator(spec);
+    const field = (gen as any).parseField('single_depth', prop, true);
+
+    expect(field).toBeDefined();
+    expect(field.isArray).toBe(true);
+    expect(field.type).toBe('union');
+    expect(field.unionMeta).toBeDefined();
+    expect(field.unionMeta.discriminatorField).toBe('__variant');
+    expect(field.unionMeta.variants).toHaveLength(2);
+  });
+
+  // ---- Fallback: parseField should produce 'any' for unrecognized schemas ----
+  it('falls back to any for unrecognized schema type instead of string', () => {
+    const spec = buildNestedArraySpec();
+    // A schema with unknown type that doesn't match any known pattern
+    const prop = {
+      type: 'foobar',  // Not a real OpenAPI type
+    };
+    const gen = createTestGenerator(spec);
+    const field = (gen as any).parseField('unknown_field', prop, true);
+
+    expect(field).toBeDefined();
+    // Should be 'any' rather than 'string' for unrecognized types
+    expect(field.tsType).toBe('any');
+    expect(field.zodType).toBe('z.any()');
+  });
+});

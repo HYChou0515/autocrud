@@ -144,3 +144,94 @@ export function computeMaxAvailableDepth(fields: ResourceFieldMinimal[]): number
   }
   return max;
 }
+
+/**
+ * Result of parent-based field grouping for Fieldset rendering
+ */
+export interface FieldParentGroup<T extends ResourceFieldMinimal = ResourceFieldMinimal> {
+  /** Parent path (dot-notation prefix excluding leaf), or null for top-level fields */
+  parentPath: string | null;
+  /** Human-readable label for the parent, or null for top-level fields */
+  parentLabel: string | null;
+  /** Fields belonging to this group */
+  fields: T[];
+  /** Nested child groups (sub-structs whose parentPath is a child of this group's parentPath) */
+  children: FieldParentGroup<T>[];
+}
+
+/**
+ * Group visible fields by their immediate parent path for Fieldset rendering.
+ *
+ * Fields are grouped by stripping the last segment from their dot-notation name.
+ * Consecutive fields sharing the same parent are merged into one group.
+ * Fields without dots (top-level) get parentPath=null.
+ *
+ * @param fields - Visible fields (already filtered by depth)
+ * @returns Array of groups, each with parentPath, parentLabel, and fields
+ *
+ * @example
+ * groupFieldsByParent([
+ *   { name: 'id', label: 'ID' },
+ *   { name: 'user.email', label: 'Email' },
+ *   { name: 'user.name', label: 'Name' },
+ * ])
+ * // Returns:
+ * // [
+ * //   { parentPath: null, parentLabel: null, fields: [{ name: 'id' }] },
+ * //   { parentPath: 'user', parentLabel: 'User', fields: [{ name: 'user.email' }, { name: 'user.name' }] },
+ * // ]
+ */
+export function groupFieldsByParent<T extends ResourceFieldMinimal>(
+  fields: T[],
+): FieldParentGroup<T>[] {
+  if (fields.length === 0) return [];
+
+  // Use a Map to accumulate fields by parent, preserving first-appearance order.
+  // This merges non-consecutive fields sharing the same parent into one group,
+  // preventing duplicate React keys (e.g. payload.* split by payload.event_body.*).
+  const groupMap = new Map<string | null, FieldParentGroup<T>>();
+  const insertionOrder: (string | null)[] = [];
+
+  for (const field of fields) {
+    const dotIdx = field.name.lastIndexOf('.');
+    const parent: string | null = dotIdx > 0 ? field.name.substring(0, dotIdx) : null;
+
+    const existing = groupMap.get(parent);
+    if (existing) {
+      existing.fields.push(field);
+    } else {
+      const parentLabel = parent != null ? toLabel(parent.split('.').pop()!) : null;
+      const group: FieldParentGroup<T> = {
+        parentPath: parent,
+        parentLabel,
+        fields: [field],
+        children: [],
+      };
+      groupMap.set(parent, group);
+      insertionOrder.push(parent);
+    }
+  }
+
+  // Build tree: nest child groups under their parent group if it exists.
+  // Process from deepest to shallowest so multi-level nesting works correctly.
+  const nonNullKeys = insertionOrder
+    .filter((k): k is string => k != null)
+    .sort((a, b) => b.split('.').length - a.split('.').length);
+
+  const nestedKeys = new Set<string | null>();
+
+  for (const key of nonNullKeys) {
+    const lastDot = key.lastIndexOf('.');
+    if (lastDot > 0) {
+      const ancestorKey = key.substring(0, lastDot);
+      const ancestorGroup = groupMap.get(ancestorKey);
+      if (ancestorGroup) {
+        ancestorGroup.children.push(groupMap.get(key)!);
+        nestedKeys.add(key);
+      }
+    }
+  }
+
+  // Return only root-level groups (not nested) in first-appearance order.
+  return insertionOrder.filter((key) => !nestedKeys.has(key)).map((key) => groupMap.get(key)!);
+}

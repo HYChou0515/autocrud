@@ -520,6 +520,21 @@ export class Generator {
     return matchedFields.length >= 3;
   }
 
+  /** Get the list of job management field names that actually exist in this resource's fields */
+  private getJobHiddenFields(r: Resource): string[] {
+    const jobMgmtFields = new Set([
+      'status',
+      'errmsg',
+      'retries',
+      'periodic_interval_seconds',
+      'periodic_max_runs',
+      'periodic_runs',
+      'periodic_initial_delay_seconds',
+    ]);
+    // Only include fields that actually exist in the resource
+    return r.fields.filter((f) => jobMgmtFields.has(f.name)).map((f) => f.name);
+  }
+
   private extractFields(schema: any, parentPath: string = '', currentDepth: number = 1, maxDepth: number = 2): Field[] {
     const fields: Field[] = [];
     const required = new Set(schema.required ?? []);
@@ -532,6 +547,20 @@ export class Generator {
       if (prop.$ref) {
         const resolved = this.resolveRef(prop.$ref);
         if (resolved) prop = resolved;
+      }
+
+      // Handle nullable $ref struct: anyOf: [$ref, {type:'null'}]
+      // If this is a nullable reference to an expandable object, recurse to expand sub-fields
+      if (rawProp.anyOf && !rawProp.discriminator && currentDepth < maxDepth) {
+        const nonNullTypes = (rawProp.anyOf as any[]).filter((t: any) => t.type !== 'null');
+        if (nonNullTypes.length === 1 && nonNullTypes[0].$ref) {
+          const resolved = this.resolveRef(nonNullTypes[0].$ref);
+          if (resolved && resolved.type === 'object' && resolved.properties && !this.isBinarySchema(resolved)) {
+            const subFields = this.extractFields(resolved, fullName, currentDepth + 1, maxDepth);
+            fields.push(...subFields);
+            continue;
+          }
+        }
       }
 
       // If this is a typed object (has properties) and we haven't exceeded max depth,
@@ -568,6 +597,355 @@ export class Generator {
     return dataProp?.contentEncoding === 'base64';
   }
 
+  /**
+   * Apply nullable/optional zod and TS type modifiers.
+   */
+  private applyNullableOptional(
+    tsType: string,
+    zodType: string,
+    isNullable: boolean,
+    isRequired: boolean,
+  ): { tsType: string; zodType: string } {
+    if (isNullable || !isRequired) {
+      if (isNullable && !isRequired) {
+        tsType += ' | null';
+        zodType = `${zodType}.nullable().optional()`;
+      } else if (isNullable) {
+        tsType += ' | null';
+        zodType = `${zodType}.nullable()`;
+      } else {
+        zodType = `${zodType}.optional()`;
+      }
+    }
+    return { tsType, zodType };
+  }
+
+  /**
+   * Try to parse a discriminated union (anyOf + discriminator with mapping).
+   * Returns null if this is not a discriminated union pattern.
+   */
+  private tryParseDiscriminatedUnion(
+    name: string,
+    prop: any,
+    types: any[],
+    isNullable: boolean,
+    isRequired: boolean,
+  ): Field | null {
+    // Resolve the union source: direct or nested inside nullable
+    let unionSource = prop;
+    if (prop.discriminator) {
+      unionSource = prop;
+    } else if (types.length === 1 && types[0].anyOf && types[0].discriminator) {
+      unionSource = types[0];
+    }
+    if (!unionSource.discriminator) return null;
+
+    const disc = unionSource.discriminator;
+    const discriminatorField = disc.propertyName || 'type';
+    const variants: UnionVariant[] = [];
+    const variantTsTypes: string[] = [];
+
+    for (const [tag, refPath] of Object.entries<string>(disc.mapping || {})) {
+      const schemaName = refPath.split('/').pop()!;
+      const schema = this.resolveRef(refPath);
+      const variantFields: Field[] = [];
+
+      if (schema?.properties) {
+        const variantRequired = new Set(schema.required ?? []);
+        for (const [subName, subProp] of Object.entries<any>(schema.properties)) {
+          if (subName === discriminatorField) continue;
+          const subField = this.parseField(subName, subProp, variantRequired.has(subName));
+          if (subField) variantFields.push(subField);
+        }
+      }
+
+      variants.push({ tag, label: toLabel(tag), schemaName, fields: variantFields });
+      variantTsTypes.push(schemaName);
+    }
+
+    let tsType = variantTsTypes.join(' | ');
+    const zodVariants = variants.map((v) => {
+      const zodFields = v.fields?.map((f) => `${f.name}: ${f.zodType}`).join(', ') || '';
+      return `z.object({ ${discriminatorField}: z.literal('${v.tag}'), ${zodFields} })`;
+    });
+    let zodType = `z.discriminatedUnion('${discriminatorField}', [${zodVariants.join(', ')}])`;
+    ({ tsType, zodType } = this.applyNullableOptional(tsType, zodType, isNullable, isRequired));
+
+    const labelSource = name.includes('.') ? name.split('.').pop()! : name;
+    return {
+      name,
+      label: toLabel(labelSource),
+      type: 'union',
+      tsType,
+      isArray: false,
+      isRequired,
+      isNullable,
+      zodType,
+      unionMeta: { discriminatorField, variants },
+    };
+  }
+
+  /**
+   * Try to parse a simple union (multiple non-null primitive types, no $ref, no arrays).
+   * Returns null if not applicable.
+   */
+  private tryParseSimpleUnion(name: string, types: any[], isNullable: boolean, isRequired: boolean): Field | null {
+    if (types.length <= 1 || types.some((t: any) => t.$ref) || types.some((t: any) => t.type === 'array')) {
+      return null;
+    }
+
+    const variants: UnionVariant[] = [];
+    const variantTsTypes: string[] = [];
+
+    for (const t of types) {
+      const primitiveType = t.type === 'integer' ? 'number' : t.type;
+      variants.push({ tag: primitiveType, label: toLabel(primitiveType), type: primitiveType });
+      variantTsTypes.push(primitiveType === 'integer' ? 'number' : primitiveType);
+    }
+
+    let tsType = variantTsTypes.join(' | ');
+    const zodVariants = types.map((t: any) => {
+      if (t.type === 'string') return 'z.string()';
+      if (t.type === 'integer') return 'z.number().int()';
+      if (t.type === 'number') return 'z.number()';
+      if (t.type === 'boolean') return 'z.boolean()';
+      return 'z.any()';
+    });
+    let zodType = `z.union([${zodVariants.join(', ')}])`;
+    ({ tsType, zodType } = this.applyNullableOptional(tsType, zodType, isNullable, isRequired));
+
+    const labelSource = name.includes('.') ? name.split('.').pop()! : name;
+    return {
+      name,
+      label: toLabel(labelSource),
+      type: 'union',
+      tsType,
+      isArray: false,
+      isRequired,
+      isNullable,
+      zodType,
+      unionMeta: { discriminatorField: '__type', variants },
+    };
+  }
+
+  /**
+   * Build discriminated union metadata from an items schema that contains anyOf/oneOf + discriminator.
+   * Used by structural union array variants and array-of-discriminated-union fields.
+   */
+  private buildDiscriminatedUnionMeta(
+    itemsSchema: any,
+  ): { discriminatorField: string; variants: UnionVariant[] } | null {
+    const disc = itemsSchema?.discriminator;
+    if (!disc) return null;
+    const anyOfItems = itemsSchema.anyOf || itemsSchema.oneOf;
+    if (!anyOfItems) return null;
+
+    const discriminatorField = disc.propertyName || 'type';
+    const variants: UnionVariant[] = [];
+
+    for (const [tag, refPath] of Object.entries<string>(disc.mapping || {})) {
+      const schemaName = refPath.split('/').pop()!;
+      const schema = this.resolveRef(refPath);
+      const variantFields: Field[] = [];
+
+      if (schema?.properties) {
+        const variantRequired = new Set(schema.required ?? []);
+        for (const [subName, subProp] of Object.entries<any>(schema.properties)) {
+          if (subName === discriminatorField) continue;
+          const subField = this.parseField(subName, subProp, variantRequired.has(subName));
+          if (subField) variantFields.push(subField);
+        }
+      }
+
+      variants.push({ tag, label: toLabel(tag), schemaName, fields: variantFields });
+    }
+
+    return { discriminatorField, variants };
+  }
+
+  /**
+   * Try to parse a structural union (mixed: $ref, array, primitive without common discriminator).
+   * Handles list[DiscriminatedUnion] by detecting items.anyOf + items.discriminator → itemUnionMeta.
+   * Returns null if not applicable.
+   */
+  private tryParseStructuralUnion(
+    name: string,
+    types: any[],
+    isNullable: boolean,
+    isRequired: boolean,
+    hasNullVariant: boolean = false,
+  ): Field | null {
+    if (types.length <= 1) return null;
+
+    const variants: UnionVariant[] = [];
+    const variantTsTypes: string[] = [];
+    const usedTags = new Set<string>();
+
+    const makeUniqueTag = (base: string): string => {
+      let tag = base;
+      let counter = 2;
+      while (usedTags.has(tag)) {
+        tag = `${base}_${counter++}`;
+      }
+      usedTags.add(tag);
+      return tag;
+    };
+
+    for (const t of types) {
+      if (t.type === 'array') {
+        const itemSchema = t.items ?? {};
+
+        // Check if array items form a discriminated union
+        const innerUnionMeta = this.buildDiscriminatedUnionMeta(itemSchema);
+        if (innerUnionMeta) {
+          // list[DiscriminatedUnion] — e.g. list[EventBodyX | EventBodyB | EventBodyA]
+          const innerNames = innerUnionMeta.variants.map((v) => v.schemaName).filter(Boolean);
+          const unionLabel = `(${innerNames.join(' | ')})[]`;
+          const tag = makeUniqueTag(`list_union`);
+          variants.push({
+            tag,
+            label: unionLabel,
+            fields: [],
+            isArray: true,
+            itemUnionMeta: {
+              discriminatorField: innerUnionMeta.discriminatorField,
+              variants: innerUnionMeta.variants,
+            },
+          });
+          variantTsTypes.push(unionLabel);
+        } else {
+          // Regular array variant: list[X]
+          let resolvedItems = itemSchema;
+          let schemaName = 'Array';
+          if (itemSchema.$ref) {
+            schemaName = itemSchema.$ref.split('/').pop()!;
+            const resolved = this.resolveRef(itemSchema.$ref);
+            if (resolved) resolvedItems = resolved;
+          }
+          const variantFields: Field[] = [];
+          if (resolvedItems.properties) {
+            const reqSet = new Set(resolvedItems.required ?? []);
+            for (const [subName, subProp] of Object.entries<any>(resolvedItems.properties)) {
+              const subField = this.parseField(subName, subProp, reqSet.has(subName));
+              if (subField) variantFields.push(subField);
+            }
+          }
+          const tag = makeUniqueTag(`list_${schemaName}`);
+          variants.push({
+            tag,
+            label: `${schemaName}[]`,
+            schemaName,
+            fields: variantFields,
+            isArray: true,
+          });
+          variantTsTypes.push(`${schemaName}[]`);
+        }
+      } else if (t.$ref) {
+        const schemaName = t.$ref.split('/').pop()!;
+        const resolved = this.resolveRef(t.$ref);
+        const variantFields: Field[] = [];
+        if (resolved?.properties) {
+          const reqSet = new Set(resolved.required ?? []);
+          for (const [subName, subProp] of Object.entries<any>(resolved.properties)) {
+            const subField = this.parseField(subName, subProp, reqSet.has(subName));
+            if (subField) variantFields.push(subField);
+          }
+        }
+        const tag = makeUniqueTag(schemaName);
+        variants.push({
+          tag,
+          label: toLabel(schemaName),
+          schemaName,
+          fields: variantFields,
+        });
+        variantTsTypes.push(schemaName);
+      } else if ((t.anyOf || t.oneOf) && t.discriminator) {
+        // Nested discriminated union (e.g. msgspec wraps `X | B` as { anyOf+disc })
+        // Flatten each inner variant as a separate structural union choice
+        const innerMeta = this.buildDiscriminatedUnionMeta(t);
+        if (innerMeta) {
+          for (const iv of innerMeta.variants) {
+            const tag = makeUniqueTag(iv.schemaName || iv.tag);
+            // Inject discriminator field with constValue so the backend receives it on submit
+            const discField: Field = {
+              name: innerMeta.discriminatorField,
+              label: toLabel(innerMeta.discriminatorField),
+              type: 'string',
+              tsType: 'string',
+              isRequired: true,
+              isNullable: false,
+              isArray: false,
+              constValue: iv.tag,
+            };
+            variants.push({
+              tag,
+              label: iv.label,
+              schemaName: iv.schemaName,
+              fields: [discField, ...(iv.fields || [])],
+            });
+            variantTsTypes.push(iv.schemaName || iv.tag);
+          }
+        }
+      } else if (t.type === 'object' && t.additionalProperties) {
+        // Dict/map variant: dict[str, ValueType]
+        let valueSchema = t.additionalProperties;
+        let valueName = 'Any';
+        if (valueSchema.$ref) {
+          valueName = valueSchema.$ref.split('/').pop()!;
+          const resolved = this.resolveRef(valueSchema.$ref);
+          if (resolved) valueSchema = resolved;
+        } else if (valueSchema.type) {
+          valueName = valueSchema.type === 'integer' ? 'number' : valueSchema.type;
+        }
+        const dictValueFields: Field[] = [];
+        if (valueSchema.properties) {
+          const reqSet = new Set(valueSchema.required ?? []);
+          for (const [subName, subProp] of Object.entries<any>(valueSchema.properties)) {
+            const subField = this.parseField(subName, subProp, reqSet.has(subName));
+            if (subField) dictValueFields.push(subField);
+          }
+        }
+        const tag = makeUniqueTag(`dict_${valueName}`);
+        variants.push({
+          tag,
+          label: `Dict[str, ${valueName}]`,
+          isDict: true,
+          dictValueFields,
+        });
+        variantTsTypes.push(`Record<string, ${valueName}>`);
+      } else {
+        const primitiveType = t.type === 'integer' ? 'number' : t.type || 'json';
+        const tag = makeUniqueTag(primitiveType);
+        variants.push({ tag, label: toLabel(primitiveType), type: primitiveType });
+        variantTsTypes.push(primitiveType);
+      }
+    }
+
+    // Add null as a selectable variant if the union contains {type:'null'}
+    if (hasNullVariant) {
+      const tag = makeUniqueTag('null');
+      variants.push({ tag, label: 'None', type: 'null' });
+      variantTsTypes.push('null');
+    }
+
+    let tsType = variantTsTypes.join(' | ');
+    let zodType = 'z.any()';
+    ({ tsType, zodType } = this.applyNullableOptional(tsType, zodType, isNullable, isRequired));
+
+    const labelSource = name.includes('.') ? name.split('.').pop()! : name;
+    return {
+      name,
+      label: toLabel(labelSource),
+      type: 'union',
+      tsType,
+      isArray: false,
+      isRequired,
+      isNullable,
+      zodType,
+      unionMeta: { discriminatorField: '__variant', variants },
+    };
+  }
+
   private parseField(name: string, prop: any, isRequired: boolean): Field | null {
     let type = prop.type;
     let isArray = false;
@@ -583,6 +961,24 @@ export class Generator {
         prop = refSchema;
         type = prop.type;
       }
+    }
+
+    // Detect const value (from tagged struct discriminator field)
+    // prop.const is used by msgspec for tag=True structs
+    if (prop.const !== undefined) {
+      const constVal = String(prop.const);
+      const labelSource = name.includes('.') ? name.split('.').pop()! : name;
+      return {
+        name,
+        label: toLabel(labelSource),
+        type: 'string',
+        tsType: 'string',
+        isArray: false,
+        isRequired,
+        isNullable: false,
+        zodType: `z.literal('${constVal}')`,
+        constValue: constVal,
+      };
     }
 
     // Extract x-unique metadata (from Unique() annotation)
@@ -602,132 +998,17 @@ export class Generator {
       const types = prop.anyOf.filter((t: any) => t.type !== 'null');
       isNullable = prop.anyOf.some((t: any) => t.type === 'null');
 
-      // Check for discriminated union (anyOf + discriminator)
-      // This can be at prop level, or nested inside a nullable anyOf
-      let unionSource = prop;
-      if (prop.discriminator) {
-        // Direct: { anyOf: [{$ref: Cat}, {$ref: Dog}], discriminator: {...} }
-        unionSource = prop;
-      } else if (types.length === 1 && types[0].anyOf && types[0].discriminator) {
-        // Nullable: { anyOf: [{type: null}, {anyOf: [...], discriminator: {...}}] }
-        unionSource = types[0];
-      }
+      // Step 1: Discriminated union? (anyOf + discriminator)
+      const discResult = this.tryParseDiscriminatedUnion(name, prop, types, isNullable, isRequired);
+      if (discResult) return discResult;
 
-      if (unionSource.discriminator) {
-        // Discriminated union (tagged struct union)
-        const disc = unionSource.discriminator;
-        const discriminatorField = disc.propertyName || 'type';
-        const variants: UnionVariant[] = [];
-        const variantTsTypes: string[] = [];
+      // Step 2: Simple union? (all primitives, no $ref, no array)
+      const simpleResult = this.tryParseSimpleUnion(name, types, isNullable, isRequired);
+      if (simpleResult) return simpleResult;
 
-        for (const [tag, refPath] of Object.entries<string>(disc.mapping || {})) {
-          const schemaName = refPath.split('/').pop()!;
-          const schema = this.resolveRef(refPath);
-          const variantFields: Field[] = [];
-
-          if (schema?.properties) {
-            const variantRequired = new Set(schema.required ?? []);
-            for (const [subName, subProp] of Object.entries<any>(schema.properties)) {
-              // Skip the discriminator field itself
-              if (subName === discriminatorField) continue;
-              const subField = this.parseField(subName, subProp, variantRequired.has(subName));
-              if (subField) variantFields.push(subField);
-            }
-          }
-
-          variants.push({
-            tag,
-            label: toLabel(tag),
-            schemaName,
-            fields: variantFields,
-          });
-          variantTsTypes.push(schemaName);
-        }
-
-        tsType = variantTsTypes.join(' | ');
-        // Build zod discriminated union
-        const zodVariants = variants.map((v) => {
-          const zodFields = v.fields?.map((f) => `${f.name}: ${f.zodType}`).join(', ') || '';
-          return `z.object({ ${discriminatorField}: z.literal('${v.tag}'), ${zodFields} })`;
-        });
-        zodType = `z.discriminatedUnion('${discriminatorField}', [${zodVariants.join(', ')}])`;
-
-        if (isNullable || !isRequired) {
-          if (isNullable && !isRequired) {
-            tsType += ' | null';
-            zodType = `${zodType}.nullable().optional()`;
-          } else if (isNullable) {
-            tsType += ' | null';
-            zodType = `${zodType}.nullable()`;
-          } else {
-            zodType = `${zodType}.optional()`;
-          }
-        }
-
-        const labelSource = name.includes('.') ? name.split('.').pop()! : name;
-        return {
-          name,
-          label: toLabel(labelSource),
-          type: 'union',
-          tsType,
-          isArray: false,
-          isRequired,
-          isNullable,
-          zodType,
-          unionMeta: { discriminatorField, variants },
-        };
-      }
-
-      // Check for simple union (multiple non-null primitive types without discriminator)
-      if (types.length > 1 && !types.some((t: any) => t.$ref)) {
-        const variants: UnionVariant[] = [];
-        const variantTsTypes: string[] = [];
-
-        for (const t of types) {
-          const primitiveType = t.type === 'integer' ? 'number' : t.type;
-          variants.push({
-            tag: primitiveType,
-            label: toLabel(primitiveType),
-            type: primitiveType,
-          });
-          variantTsTypes.push(primitiveType === 'integer' ? 'number' : primitiveType);
-        }
-
-        tsType = variantTsTypes.join(' | ');
-        const zodVariants = types.map((t: any) => {
-          if (t.type === 'string') return 'z.string()';
-          if (t.type === 'integer') return 'z.number().int()';
-          if (t.type === 'number') return 'z.number()';
-          if (t.type === 'boolean') return 'z.boolean()';
-          return 'z.any()';
-        });
-        zodType = `z.union([${zodVariants.join(', ')}])`;
-
-        if (isNullable || !isRequired) {
-          if (isNullable && !isRequired) {
-            tsType += ' | null';
-            zodType = `${zodType}.nullable().optional()`;
-          } else if (isNullable) {
-            tsType += ' | null';
-            zodType = `${zodType}.nullable()`;
-          } else {
-            zodType = `${zodType}.optional()`;
-          }
-        }
-
-        const labelSource = name.includes('.') ? name.split('.').pop()! : name;
-        return {
-          name,
-          label: toLabel(labelSource),
-          type: 'union',
-          tsType,
-          isArray: false,
-          isRequired,
-          isNullable,
-          zodType,
-          unionMeta: { discriminatorField: '__type', variants },
-        };
-      }
+      // Step 3: Structural union? (mixed: $ref, array, primitive)
+      const structResult = this.tryParseStructuralUnion(name, types, isNullable, isRequired, isNullable);
+      if (structResult) return structResult;
 
       // Simple nullable (single non-null type) — original logic
       if (types.length > 0) {
@@ -759,6 +1040,49 @@ export class Generator {
         const refSchema = this.resolveRef(prop.$ref);
         if (refSchema) {
           prop = refSchema;
+        }
+      }
+
+      // Handle nested arrays: list[list[...]] — the Field/form UI only supports
+      // a single array depth, so deeply nested arrays fall back to JSON editing.
+      if (prop.type === 'array') {
+        // Recurse to compute the correct tsType / zodType for type generation,
+        // but expose the field as a JSON editor since the form can't render
+        // multi-dimensional arrays with structured controls.
+        const innerField = this.parseField(name, prop, isRequired);
+        if (innerField) {
+          const wrappedTsType = `${innerField.tsType}[]`;
+          const wrappedZodType = `z.array(${innerField.zodType})`;
+          const labelSource = name.includes('.') ? name.split('.').pop()! : name;
+          return {
+            name,
+            label: toLabel(labelSource),
+            type: 'object',
+            tsType: wrappedTsType,
+            isArray: false,
+            isRequired,
+            isNullable,
+            zodType: wrappedZodType,
+          };
+        }
+      }
+
+      // Handle array items that are a non-discriminated union (anyOf without discriminator).
+      // Since a single-depth array of structural union IS supported by the form UI,
+      // we let this fall through to `tryParseStructuralUnion` via the anyOf block below.
+      if ((prop.anyOf || prop.oneOf) && !prop.discriminator) {
+        // Re-enter parseField so that the anyOf/oneOf logic handles the union parsing,
+        // then wrap the result with the outer array layer.
+        const innerField = this.parseField(name, prop, isRequired);
+        if (innerField) {
+          const wrappedTsType = `(${innerField.tsType})[]`;
+          const wrappedZodType = `z.array(${innerField.zodType})`;
+          return {
+            ...innerField,
+            tsType: wrappedTsType,
+            zodType: wrappedZodType,
+            isArray: true,
+          };
         }
       }
 
@@ -869,6 +1193,38 @@ export class Generator {
       tsType = 'string';
       const enumLiterals = enumValues!.map((v) => `"${v}"`).join(', ');
       zodType = `z.enum([${enumLiterals}])`;
+
+      // Single-element enum from tagged struct discriminator → treat as const
+      if (enumValues!.length === 1) {
+        const constVal = enumValues![0];
+        zodType = `z.literal('${constVal}')`;
+
+        if (isNullable || !isRequired) {
+          if (isNullable && !isRequired) {
+            tsType += ' | null';
+            zodType = `${zodType}.nullable().optional()`;
+          } else if (isNullable) {
+            tsType += ' | null';
+            zodType = `${zodType}.nullable()`;
+          } else {
+            zodType = `${zodType}.optional()`;
+          }
+        }
+
+        const labelSource = name.includes('.') ? name.split('.').pop()! : name;
+        return {
+          name,
+          label: toLabel(labelSource),
+          type: 'string',
+          tsType,
+          isArray: false,
+          isRequired,
+          isNullable,
+          enumValues,
+          zodType,
+          constValue: constVal,
+        };
+      }
     } else if (type === 'string') {
       if (prop.format === 'date-time' || prop.format === 'date') {
         type = 'date'; // Mark as date type for ResourceForm to use DateTimePicker
@@ -894,6 +1250,11 @@ export class Generator {
     } else if (type === 'object') {
       tsType = 'Record<string, any>';
       zodType = 'z.record(z.string(), z.any())';
+    } else if (type && type !== 'string' && type !== 'integer' && type !== 'number' && type !== 'boolean' && type !== 'object' && type !== 'array' && !prop.enum) {
+      // Fallback for unrecognized schema types — use 'any' instead of silently defaulting to 'string'
+      console.warn(`[autocrud-web-generator] Unrecognized schema type "${type}" for field "${name}", falling back to 'any'.`);
+      tsType = 'any';
+      zodType = 'z.any()';
     }
 
     if (isArray) {
@@ -1011,8 +1372,12 @@ ${displayNameLine}    schema: '${r.schemaName}',
 ${zodFields}
     }),
     apiClient: ${r.camel}Api,
-    isJob: ${r.isJob},
     maxFormDepth: ${r.maxFormDepth},${
+      r.isJob
+        ? `
+    defaultHiddenFields: ${JSON.stringify(this.getJobHiddenFields(r))},`
+        : ''
+    }${
       r.isUnion
         ? `
     isUnion: true,`
@@ -1345,24 +1710,6 @@ function ListPage() {
   }
 
   private genCreateRoute(r: Resource): string {
-    if (r.isJob) {
-      return `// Auto-generated by AutoCRUD Web Generator
-import { createFileRoute } from '@tanstack/react-router';
-import { JobEnqueue } from '../../../lib/components/JobEnqueue';
-import { getResource } from '../../../lib/resources';
-import type { ${r.schemaName} } from '../../../generated/types';
-
-export const Route = createFileRoute('/autocrud-admin/${r.name}/create')({
-  component: CreatePage,
-});
-
-function CreatePage() {
-  const config = getResource('${r.name}')!;
-  return <JobEnqueue<${r.schemaName}> config={config} basePath="/autocrud-admin/${r.name}" />;
-}
-`;
-    }
-
     return `// Auto-generated by AutoCRUD Web Generator
 import { createFileRoute } from '@tanstack/react-router';
 import { ResourceCreate } from '../../../lib/components/ResourceCreate';
@@ -1529,6 +1876,10 @@ interface UnionVariant {
   schemaName?: string; // For discriminated unions: schema name
   fields?: Field[]; // For discriminated unions: sub-fields of this variant
   type?: string; // For simple unions: primitive type ('string', 'number', 'boolean')
+  isArray?: boolean; // For structural unions: variant is an array of items
+  itemUnionMeta?: UnionMeta; // For structural unions: array items are a discriminated union
+  isDict?: boolean; // For structural unions: variant is a dict/map
+  dictValueFields?: Field[]; // For structural union dict variants: value schema fields
 }
 
 interface UnionMeta {
@@ -1550,6 +1901,7 @@ interface Field {
   ref?: FieldRef; // Reference to another resource
   unionMeta?: UnionMeta; // For union fields: discriminator + variant info
   isUnique?: boolean; // Field has a unique constraint (from x-unique OpenAPI extension)
+  constValue?: string; // Field has a const value (from tagged struct discriminator)
 }
 
 /**
@@ -1581,6 +1933,9 @@ function serializeField(f: Field): any {
   if (f.isUnique) {
     out.isUnique = true;
   }
+  if (f.constValue !== undefined) {
+    out.constValue = f.constValue;
+  }
   if (f.unionMeta) {
     out.unionMeta = {
       discriminatorField: f.unionMeta.discriminatorField,
@@ -1588,8 +1943,28 @@ function serializeField(f: Field): any {
         const variant: any = { tag: v.tag, label: v.label };
         if (v.schemaName) variant.schemaName = v.schemaName;
         if (v.type) variant.type = v.type;
+        if (v.isArray) variant.isArray = true;
         if (v.fields && v.fields.length > 0) {
           variant.fields = v.fields.map(serializeField);
+        }
+        if (v.itemUnionMeta) {
+          variant.itemUnionMeta = {
+            discriminatorField: v.itemUnionMeta.discriminatorField,
+            variants: v.itemUnionMeta.variants.map((iv) => {
+              const innerVariant: any = { tag: iv.tag, label: iv.label };
+              if (iv.schemaName) innerVariant.schemaName = iv.schemaName;
+              if (iv.type) innerVariant.type = iv.type;
+              if (iv.isArray) innerVariant.isArray = true;
+              if (iv.fields && iv.fields.length > 0) {
+                innerVariant.fields = iv.fields.map(serializeField);
+              }
+              return innerVariant;
+            }),
+          };
+        }
+        if (v.isDict) variant.isDict = true;
+        if (v.dictValueFields && v.dictValueFields.length > 0) {
+          variant.dictValueFields = v.dictValueFields.map(serializeField);
         }
         return variant;
       }),

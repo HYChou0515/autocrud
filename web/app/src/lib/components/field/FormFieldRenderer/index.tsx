@@ -18,12 +18,13 @@ import { DateTimePicker } from '@mantine/dates';
 import type { UseFormReturnType } from '@mantine/form';
 import type { ResourceField, FieldVariant } from '../../../resources';
 import { RefSelect, RefMultiSelect, RefRevisionSelect, RefRevisionMultiSelect } from './RefSelect';
+import { JsonEditor } from './JsonEditor';
 import { MarkdownEditor } from './MarkdownEditor';
 import { BinaryFieldEditor } from './BinaryFieldEditor';
 import { UnionFieldRenderer } from './UnionFieldRenderer';
 import { ArrayFieldRenderer } from './ArrayFieldRenderer';
 import { resolveFieldKind, type FieldKind } from '../resolveFieldKind';
-import { getDefaultVariant, type BinaryFormValue } from '@/lib/utils/formUtils';
+import { getDefaultVariant, getByPath, type BinaryFormValue } from '@/lib/utils/formUtils';
 
 // ---------------------------------------------------------------------------
 // Shared context passed to every renderer function
@@ -41,7 +42,10 @@ export interface FieldRenderContext {
 // Renderer map — one entry per FieldKind
 // ---------------------------------------------------------------------------
 
-const FIELD_RENDERERS: Record<FieldKind, (ctx: FieldRenderContext) => React.ReactElement> = {
+const FIELD_RENDERERS: Record<FieldKind, (ctx: FieldRenderContext) => React.ReactElement | null> = {
+  /* ---- Hidden (const value from tagged struct discriminator) ---- */
+  hidden: () => null,
+
   /* ---- Complex / delegate ---- */
 
   itemFields: ({ field, form }) => <ArrayFieldRenderer field={field} form={form} />,
@@ -58,7 +62,7 @@ const FIELD_RENDERERS: Record<FieldKind, (ctx: FieldRenderContext) => React.Reac
 
   binary: ({ field, form }) => {
     const apiUrl = (typeof window !== 'undefined' && (import.meta as any).env?.VITE_API_URL) || '';
-    const binaryVal = form.getValues()[field.name as string] as unknown as BinaryFormValue | null;
+    const binaryVal = getByPath(form.getValues(), field.name) as unknown as BinaryFormValue | null;
     return (
       <BinaryFieldEditor
         key={field.name}
@@ -89,15 +93,16 @@ const FIELD_RENDERERS: Record<FieldKind, (ctx: FieldRenderContext) => React.Reac
 
   json: ({ field, form, effectiveVariant }) => {
     const v = effectiveVariant as Extract<FieldVariant, { type: 'json' }>;
+    const inputProps = form.getInputProps(field.name);
     return (
-      <Textarea
+      <JsonEditor
         key={field.name}
         label={field.label}
         required={field.isRequired}
-        placeholder="JSON object"
-        minRows={3}
-        maxRows={v.height ? v.height / 24 : undefined}
-        {...form.getInputProps(field.name)}
+        value={inputProps.value ?? ''}
+        onChange={(val) => form.setFieldValue(field.name as any, val as any)}
+        height={v.height ?? 200}
+        error={inputProps.error as string | undefined}
       />
     );
   },
@@ -240,7 +245,7 @@ const FIELD_RENDERERS: Record<FieldKind, (ctx: FieldRenderContext) => React.Reac
       label={field.label}
       required={field.isRequired}
       fieldRef={field.ref!}
-      value={form.getValues()[field.name as string] as string | null}
+      value={getByPath(form.getValues(), field.name) as string | null}
       onChange={(val) => form.setFieldValue(field.name as any, val as any)}
       error={form.errors[field.name as string] as string | undefined}
       clearable={field.isNullable}
@@ -253,7 +258,7 @@ const FIELD_RENDERERS: Record<FieldKind, (ctx: FieldRenderContext) => React.Reac
       label={field.label}
       required={field.isRequired}
       fieldRef={field.ref!}
-      value={(form.getValues()[field.name as string] as string[] | undefined) ?? []}
+      value={(getByPath(form.getValues(), field.name) as string[] | undefined) ?? []}
       onChange={(val) => form.setFieldValue(field.name as any, val as any)}
       error={form.errors[field.name as string] as string | undefined}
     />
@@ -265,7 +270,7 @@ const FIELD_RENDERERS: Record<FieldKind, (ctx: FieldRenderContext) => React.Reac
       label={field.label}
       required={field.isRequired}
       fieldRef={field.ref!}
-      value={form.getValues()[field.name as string] as string | null}
+      value={getByPath(form.getValues(), field.name) as string | null}
       onChange={(val) => form.setFieldValue(field.name as any, val as any)}
       error={form.errors[field.name as string] as string | undefined}
       clearable={field.isNullable}
@@ -278,7 +283,7 @@ const FIELD_RENDERERS: Record<FieldKind, (ctx: FieldRenderContext) => React.Reac
       label={field.label}
       required={field.isRequired}
       fieldRef={field.ref!}
-      value={(form.getValues()[field.name as string] as string[] | undefined) ?? []}
+      value={(getByPath(form.getValues(), field.name) as string[] | undefined) ?? []}
       onChange={(val) => form.setFieldValue(field.name as any, val as any)}
       error={form.errors[field.name as string] as string | undefined}
     />

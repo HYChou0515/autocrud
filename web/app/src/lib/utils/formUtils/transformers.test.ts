@@ -447,6 +447,45 @@ describe('processInitialValues', () => {
 
     expect(result.metadata).toBe('');
   });
+
+  // -------------------------------------------------------------------
+  // constValue — tagged struct discriminator auto-fill
+  // -------------------------------------------------------------------
+  it('should set constValue as initial value for tagged struct discriminator', () => {
+    const fields = [
+      { name: 'payload.carrot.type', type: 'string' as const, constValue: 'Carrot' },
+      { name: 'payload.carrot.weight', type: 'number' as const },
+    ];
+
+    const result = processInitialValues({}, fields, [], []);
+
+    expect(result.payload.carrot.type).toBe('Carrot');
+    expect(result.payload.carrot.weight).toBe('');
+  });
+
+  it('should override existing value with constValue', () => {
+    const fields = [{ name: 'payload.carrot.type', type: 'string' as const, constValue: 'Carrot' }];
+
+    const result = processInitialValues({ payload: { carrot: { type: 'wrong' } } }, fields, [], []);
+
+    expect(result.payload.carrot.type).toBe('Carrot');
+  });
+
+  it('should handle multiple constValue fields from different tagged structs', () => {
+    const fields = [
+      { name: 'payload.apple.type', type: 'string' as const, constValue: 'Apple' },
+      { name: 'payload.apple.color', type: 'string' as const },
+      { name: 'payload.banana.type', type: 'string' as const, constValue: 'Banana' },
+      { name: 'payload.banana.length', type: 'number' as const },
+    ];
+
+    const result = processInitialValues({}, fields, [], []);
+
+    expect(result.payload.apple.type).toBe('Apple');
+    expect(result.payload.apple.color).toBe('');
+    expect(result.payload.banana.type).toBe('Banana');
+    expect(result.payload.banana.length).toBe('');
+  });
 });
 
 describe('formValuesToApiObject', () => {

@@ -48,7 +48,7 @@ import {
 } from './utils';
 
 /** Maximum number of items fetched from the backend for client-side operations */
-const CLIENT_FETCH_LIMIT = 50;
+const CLIENT_FETCH_LIMIT = 1000;
 
 /** Debounce delay (ms) for globalFilter before triggering client mode */
 const GLOBAL_FILTER_DEBOUNCE_MS = 1000;

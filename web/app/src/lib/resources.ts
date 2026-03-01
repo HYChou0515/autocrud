@@ -51,6 +51,14 @@ export interface UnionVariant {
   fields?: ResourceField[];
   /** For simple unions: primitive type ('string', 'number', 'boolean') */
   type?: string;
+  /** For structural unions: this variant is an array of items */
+  isArray?: boolean;
+  /** For structural union array variants: each item is a discriminated union */
+  itemUnionMeta?: UnionMeta;
+  /** For structural unions: this variant is a dict (key-value map) */
+  isDict?: boolean;
+  /** For structural union dict variants: fields describing each dict value */
+  dictValueFields?: ResourceField[];
 }
 
 /**
@@ -85,6 +93,8 @@ export interface ResourceField {
   unionMeta?: UnionMeta;
   // Whether this field has a unique constraint (from Unique() annotation)
   isUnique?: boolean;
+  // Const value for tagged struct discriminator fields (auto-filled, hidden in form)
+  constValue?: string;
 }
 
 /**
@@ -122,6 +132,10 @@ export interface ResourceConfig<T = any> {
   isUnion?: boolean;
   // Zod schema for validation (generated from OpenAPI)
   zodSchema?: z.ZodObject<any>;
+  /** Fields to hide by default in create/edit forms (e.g. job management fields).
+   *  Hidden fields still participate in form submission with their default/initial values.
+   *  Use `showHiddenFields` in customization to selectively reveal them. */
+  defaultHiddenFields?: string[];
   /** Custom create actions — alternative ways to create this resource */
   customCreateActions?: CustomCreateAction[];
   apiClient: {
@@ -176,6 +190,8 @@ export interface ResourceCustomizationConfig<F extends string = string> {
   label?: string;
   /** Override resource plural label */
   pluralLabel?: string;
+  /** Reveal fields that are in `defaultHiddenFields` — makes them visible in forms again */
+  showHiddenFields?: F[];
 }
 
 /**
@@ -201,10 +217,7 @@ export type ResourceCustomizations<FieldMap = Record<string, string>> = {
  * Apply customizations to the registered resources.
  * Merges field-level and resource-level overrides into the registry.
  */
-export function applyCustomizations(
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  customizations: ResourceCustomizations<any>,
-): void {
+export function applyCustomizations(customizations: ResourceCustomizations<any>): void {
   for (const [resourceName, config] of Object.entries(customizations)) {
     if (!config) continue;
     const resource = resources[resourceName];
@@ -219,6 +232,12 @@ export function applyCustomizations(
     if (config.maxFormDepth !== undefined) resource.maxFormDepth = config.maxFormDepth;
     if (config.zodSchema && resource.zodSchema) {
       resource.zodSchema = config.zodSchema(resource.zodSchema);
+    }
+
+    // showHiddenFields: remove listed fields from defaultHiddenFields
+    if (config.showHiddenFields && resource.defaultHiddenFields) {
+      const showSet = new Set(config.showHiddenFields);
+      resource.defaultHiddenFields = resource.defaultHiddenFields.filter((f) => !showSet.has(f));
     }
 
     // Field-level overrides

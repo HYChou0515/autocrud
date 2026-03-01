@@ -37,9 +37,11 @@ function makeField(overrides: Partial<ResourceField> & { name: string }): Resour
  * resolveFieldKind.ts, a test here will catch missing entries.
  */
 const ALL_FIELD_KINDS: FieldKind[] = [
+  'hidden',
   'itemFields',
   'union',
   'binary',
+  'file',
   'json',
   'markdown',
   'arrayString',
@@ -63,6 +65,14 @@ describe('DetailFieldRenderer dispatch coverage', () => {
     // Test a representative field for each kind to ensure resolveFieldKind
     // produces every kind that DETAIL_RENDERERS needs to handle
     const fieldConfigs: Array<{ kind: FieldKind; field: ResourceField }> = [
+      {
+        kind: 'hidden',
+        field: makeField({ name: 'type', constValue: 'EventBodyX' }),
+      },
+      {
+        kind: 'file',
+        field: makeField({ name: 'upload', type: 'file' }),
+      },
       {
         kind: 'itemFields',
         field: makeField({
@@ -189,7 +199,7 @@ describe('DetailFieldRenderer dispatch coverage', () => {
     // this test verifies it's added to our ALL_FIELD_KINDS list.
     // We do this by testing a "plain text" field returns 'text' (the default),
     // confirming the type union is complete.
-    expect(ALL_FIELD_KINDS.length).toBe(19);
+    expect(ALL_FIELD_KINDS.length).toBe(21);
   });
 });
 

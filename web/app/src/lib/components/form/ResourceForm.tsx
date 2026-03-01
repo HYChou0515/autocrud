@@ -8,10 +8,11 @@ import {
   Alert,
   Text,
   Tooltip,
+  Fieldset,
 } from '@mantine/core';
 import { IconLayersSubtract } from '@tabler/icons-react';
 import type { ResourceConfig } from '../../resources';
-import { safeGetJsonString } from '@/lib/utils/formUtils';
+import { getByPath, collapseFieldToJson, groupFieldsByParent } from '@/lib/utils/formUtils';
 import { useResourceForm } from './useResourceForm';
 import { FieldRenderer } from '../field/FormFieldRenderer';
 
@@ -73,8 +74,9 @@ export function ResourceForm<T extends Record<string, any>>({
 
   /** Render a collapsed group as a JSON textarea */
   const renderCollapsedGroup = (group: { path: string; label: string }) => {
-    const rawVal = (form.getValues() as Record<string, any>)[group.path];
-    const strVal = safeGetJsonString(rawVal);
+    const rawVal = getByPath(form.getValues() as Record<string, any>, group.path);
+    const field = config.fields.find((f) => f.name === group.path);
+    const strVal = collapseFieldToJson(rawVal, field ?? { name: group.path, label: group.label });
     return (
       <Textarea
         key={`collapsed-${group.path}`}
@@ -132,16 +134,66 @@ export function ResourceForm<T extends Record<string, any>>({
       {editMode === 'form' && (
         <form onSubmit={form.onSubmit(handleSubmit)}>
           <Stack gap="md">
-            {visibleFields.map((field) => (
-              <FieldRenderer
-                key={field.name}
-                field={field}
-                form={form}
-                simpleUnionTypes={simpleUnionTypes}
-                setSimpleUnionTypes={setSimpleUnionTypes}
-              />
-            ))}
-            {collapsedGroups.map(renderCollapsedGroup)}
+            {(() => {
+              const fieldGroups = groupFieldsByParent(visibleFields);
+
+              // Partition collapsed groups: those that belong inside a visible
+              // fieldset vs. top-level ones rendered at the bottom.
+              const nestedCollapsedPaths = new Set<string>();
+              const getChildCollapsed = (parentPath: string | null) => {
+                if (parentPath == null) return [];
+                return collapsedGroups.filter((cg) => {
+                  const lastDot = cg.path.lastIndexOf('.');
+                  const cgParent = lastDot > 0 ? cg.path.substring(0, lastDot) : null;
+                  if (cgParent === parentPath) {
+                    nestedCollapsedPaths.add(cg.path);
+                    return true;
+                  }
+                  return false;
+                });
+              };
+
+              const renderGroup = (group: (typeof fieldGroups)[number]): React.ReactNode => {
+                const renderedFields = group.fields.map((field) => (
+                  <FieldRenderer
+                    key={field.name}
+                    field={field}
+                    form={form}
+                    simpleUnionTypes={simpleUnionTypes}
+                    setSimpleUnionTypes={setSimpleUnionTypes}
+                  />
+                ));
+                const renderedChildren = group.children.map((child) => renderGroup(child));
+                const childCollapsed = getChildCollapsed(group.parentPath);
+                const renderedCollapsed = childCollapsed.map(renderCollapsedGroup);
+
+                if (group.parentPath != null) {
+                  return (
+                    <Fieldset
+                      key={`group-${group.parentPath}`}
+                      legend={group.parentLabel ?? group.parentPath}
+                    >
+                      <Stack gap="md">
+                        {renderedFields}
+                        {renderedChildren}
+                        {renderedCollapsed}
+                      </Stack>
+                    </Fieldset>
+                  );
+                }
+                // Top-level fields: render directly as a flat list (no wrapper needed)
+                return [...renderedFields, ...renderedChildren, ...renderedCollapsed];
+              };
+
+              // Render field groups first (this also populates nestedCollapsedPaths)
+              const renderedGroups = fieldGroups.flatMap((group) => renderGroup(group));
+              // Then render remaining top-level collapsed groups
+              const topLevelCollapsed = collapsedGroups
+                .filter((cg) => !nestedCollapsedPaths.has(cg.path))
+                .map(renderCollapsedGroup);
+
+              return [...renderedGroups, ...topLevelCollapsed];
+            })()}
             <Group justify="flex-end" mt="md">
               {onCancel && (
                 <Button variant="subtle" onClick={onCancel}>

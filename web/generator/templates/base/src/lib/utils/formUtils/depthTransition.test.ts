@@ -4,6 +4,8 @@ import {
   expandFieldFromJson,
   safeGetArrayItems,
   safeGetJsonString,
+  restoreCollapsedChildren,
+  computeDepthTransitionUpdates,
 } from './depthTransition';
 import type { ResourceFieldMinimal } from './fieldTypeRegistry';
 
@@ -387,5 +389,297 @@ describe('safeGetJsonString', () => {
 
   it('should handle empty object', () => {
     expect(safeGetJsonString({})).toBe('{}');
+  });
+});
+
+// ============================================================================
+// restoreCollapsedChildren (double-encoding prevention)
+// ============================================================================
+describe('restoreCollapsedChildren', () => {
+  it('should parse string children back to objects under parent path', () => {
+    const parentValue = {
+      event_type: 'level_up',
+      event_x2: '{\n  "type": "EventBodyX",\n  "good": "foo",\n  "great": 42\n}',
+      description: 'test',
+    };
+    const prevCollapsedPaths = new Set(['payload.event_x2']);
+
+    const restored = restoreCollapsedChildren(parentValue, 'payload', prevCollapsedPaths);
+
+    expect(restored.event_x2).toEqual({ type: 'EventBodyX', good: 'foo', great: 42 });
+    expect(restored.event_type).toBe('level_up');
+    expect(restored.description).toBe('test');
+  });
+
+  it('should not mutate the original object', () => {
+    const original = {
+      child: '{"key":"val"}',
+    };
+    const prevPaths = new Set(['parent.child']);
+
+    const restored = restoreCollapsedChildren(original, 'parent', prevPaths);
+
+    expect(restored.child).toEqual({ key: 'val' });
+    expect(original.child).toBe('{"key":"val"}'); // original unchanged
+  });
+
+  it('should handle multiple collapsed children', () => {
+    const parentValue = {
+      event_x: '{"good":"a","great":1}',
+      event_x2: '{"good":"b","great":2}',
+      name: 'test',
+    };
+    const prevPaths = new Set(['payload.event_x', 'payload.event_x2']);
+
+    const restored = restoreCollapsedChildren(parentValue, 'payload', prevPaths);
+
+    expect(restored.event_x).toEqual({ good: 'a', great: 1 });
+    expect(restored.event_x2).toEqual({ good: 'b', great: 2 });
+    expect(restored.name).toBe('test');
+  });
+
+  it('should ignore prevPaths not under parent', () => {
+    const parentValue = {
+      name: 'test',
+    };
+    const prevPaths = new Set(['other.child']);
+
+    const restored = restoreCollapsedChildren(parentValue, 'payload', prevPaths);
+
+    expect(restored).toEqual({ name: 'test' });
+  });
+
+  it('should skip non-string children (already objects)', () => {
+    const parentValue = {
+      event_x: { good: 'a', great: 1 },
+    };
+    const prevPaths = new Set(['payload.event_x']);
+
+    const restored = restoreCollapsedChildren(parentValue, 'payload', prevPaths);
+
+    expect(restored.event_x).toEqual({ good: 'a', great: 1 });
+  });
+
+  it('should handle invalid JSON strings gracefully', () => {
+    const parentValue = {
+      event_x: 'not valid json',
+    };
+    const prevPaths = new Set(['payload.event_x']);
+
+    const restored = restoreCollapsedChildren(parentValue, 'payload', prevPaths);
+
+    expect(restored.event_x).toBe('not valid json'); // unchanged
+  });
+
+  it('should return null/undefined as-is', () => {
+    expect(restoreCollapsedChildren(null, 'p', new Set(['p.child']))).toBeNull();
+    expect(restoreCollapsedChildren(undefined, 'p', new Set(['p.child']))).toBeUndefined();
+  });
+});
+
+// ============================================================================
+// computeDepthTransitionUpdates
+// ============================================================================
+describe('computeDepthTransitionUpdates', () => {
+  it('should expand parent before collapsing children (depth 1→2)', () => {
+    // Simulates: depth=1 had collapsedGroups=[{path:'payload'}]
+    //            depth=2 has collapsedGroups=[{path:'payload.event_x2'},{path:'payload.event_x'}]
+    const payloadJson = JSON.stringify({
+      event_type: 'quest',
+      character_name: 'Alice',
+      event_x2: { type: 'EventBodyX', good: 'a', great: 'b' },
+      event_x: { type: 'EventBodyX', good: 'c', great: 'd' },
+      description: 'desc',
+    });
+    const formValues = { payload: payloadJson };
+    const prevPaths = new Set(['payload']);
+    const currCollapsedGroups = [
+      { path: 'payload.event_x2', label: 'Event X2' },
+      { path: 'payload.event_x', label: 'Event X' },
+    ];
+    const fields: ResourceFieldMinimal[] = []; // 'payload' is virtual ancestor, NOT in fields
+
+    const updates = computeDepthTransitionUpdates(
+      formValues,
+      prevPaths,
+      currCollapsedGroups,
+      fields,
+    );
+
+    // Should expand payload first
+    expect(updates.expands).toHaveLength(1);
+    expect(updates.expands[0].path).toBe('payload');
+    expect(updates.expands[0].value).toEqual({
+      event_type: 'quest',
+      character_name: 'Alice',
+      event_x2: { type: 'EventBodyX', good: 'a', great: 'b' },
+      event_x: { type: 'EventBodyX', good: 'c', great: 'd' },
+      description: 'desc',
+    });
+
+    // Should collapse event_x2 and event_x
+    expect(updates.collapses).toHaveLength(2);
+    expect(updates.collapses[0].path).toBe('payload.event_x2');
+    expect(JSON.parse(updates.collapses[0].value)).toEqual({
+      type: 'EventBodyX',
+      good: 'a',
+      great: 'b',
+    });
+    expect(updates.collapses[1].path).toBe('payload.event_x');
+    expect(JSON.parse(updates.collapses[1].value)).toEqual({
+      type: 'EventBodyX',
+      good: 'c',
+      great: 'd',
+    });
+  });
+
+  it('should collapse parent with restoreCollapsedChildren (depth 2→1)', () => {
+    // depth=2 had collapsedGroups=[{path:'payload.event_x2'},{path:'payload.event_x'}]
+    // depth=1 has collapsedGroups=[{path:'payload'}]
+    const formValues = {
+      payload: {
+        event_type: 'quest',
+        character_name: 'Alice',
+        event_x2: '{"type":"EventBodyX","good":"a","great":"b"}', // already-collapsed string
+        event_x: '{"type":"EventBodyX","good":"c","great":"d"}', // already-collapsed string
+        description: 'desc',
+      },
+    };
+    const prevPaths = new Set(['payload.event_x2', 'payload.event_x']);
+    const currCollapsedGroups = [{ path: 'payload', label: 'Payload' }];
+    const fields: ResourceFieldMinimal[] = [];
+
+    const updates = computeDepthTransitionUpdates(
+      formValues,
+      prevPaths,
+      currCollapsedGroups,
+      fields,
+    );
+
+    // event_x2 and event_x were previously collapsed (strings) but no longer in currCollapsedGroups,
+    // so they get expanded back to objects first
+    expect(updates.expands).toHaveLength(2);
+    expect(updates.expands.map((e) => e.path).sort()).toEqual([
+      'payload.event_x',
+      'payload.event_x2',
+    ]);
+
+    // Should collapse payload, with children already restored to objects by expansion
+    expect(updates.collapses).toHaveLength(1);
+    expect(updates.collapses[0].path).toBe('payload');
+    const collapsed = JSON.parse(updates.collapses[0].value);
+    expect(collapsed.event_type).toBe('quest');
+    expect(collapsed.event_x2).toEqual({ type: 'EventBodyX', good: 'a', great: 'b' });
+    expect(collapsed.event_x).toEqual({ type: 'EventBodyX', good: 'c', great: 'd' });
+  });
+
+  it('should return empty updates when nothing changed', () => {
+    const formValues = { payload: '{"x":1}' };
+    const prevPaths = new Set(['payload']);
+    const currCollapsedGroups = [{ path: 'payload', label: 'Payload' }];
+    const fields: ResourceFieldMinimal[] = [];
+
+    const updates = computeDepthTransitionUpdates(
+      formValues,
+      prevPaths,
+      currCollapsedGroups,
+      fields,
+    );
+
+    expect(updates.expands).toHaveLength(0);
+    expect(updates.collapses).toHaveLength(0);
+  });
+
+  it('should expand with field definition if available (with itemFields)', () => {
+    const items = [{ id: 1, name: 'a', created: '2024-01-01' }];
+    const formValues = { items: JSON.stringify(items) };
+    const prevPaths = new Set(['items']);
+    const currCollapsedGroups: { path: string; label: string }[] = [];
+    const fields: ResourceFieldMinimal[] = [
+      {
+        name: 'items',
+        label: 'Items',
+        itemFields: [
+          { name: 'id', label: 'ID', type: 'number' },
+          { name: 'name', label: 'Name', type: 'string' },
+          { name: 'created', label: 'Created', type: 'string' },
+        ],
+      },
+    ];
+
+    const updates = computeDepthTransitionUpdates(
+      formValues,
+      prevPaths,
+      currCollapsedGroups,
+      fields,
+    );
+
+    expect(updates.expands).toHaveLength(1);
+    expect(updates.expands[0].path).toBe('items');
+    // With itemFields, expandFieldFromJson processes sub-fields through handlers
+    expect(updates.expands[0].value).toEqual([{ id: 1, name: 'a', created: '2024-01-01' }]);
+  });
+
+  it('should handle depth 3→2→1 multi-step without double encoding', () => {
+    // At depth=2, payload.event_x2 is collapsed, payload isn't
+    // Now going to depth=1: collapse payload, restore event_x2 from string
+    const formValues = {
+      payload: {
+        name: 'test',
+        event_x2: '{"good":"val"}', // already a string from depth=3→2
+      },
+    };
+    const prevPaths = new Set(['payload.event_x2']);
+    const currCollapsedGroups = [{ path: 'payload', label: 'Payload' }];
+    const fields: ResourceFieldMinimal[] = [];
+
+    const updates = computeDepthTransitionUpdates(
+      formValues,
+      prevPaths,
+      currCollapsedGroups,
+      fields,
+    );
+
+    expect(updates.collapses).toHaveLength(1);
+    const collapsed = JSON.parse(updates.collapses[0].value);
+    // event_x2 should be an object, not a double-encoded string
+    expect(collapsed.event_x2).toEqual({ good: 'val' });
+    expect(collapsed.name).toBe('test');
+  });
+
+  it('should skip expand when value is not a string', () => {
+    // prevPath was collapsed but value is already an object (e.g., user manually mutated)
+    const formValues = { payload: { name: 'test' } };
+    const prevPaths = new Set(['payload']);
+    const currCollapsedGroups: { path: string; label: string }[] = [];
+    const fields: ResourceFieldMinimal[] = [];
+
+    const updates = computeDepthTransitionUpdates(
+      formValues,
+      prevPaths,
+      currCollapsedGroups,
+      fields,
+    );
+
+    // No expand needed — already an object
+    expect(updates.expands).toHaveLength(0);
+  });
+
+  it('should skip collapse when value is already a string', () => {
+    // Currently-collapsed group is already a string (e.g., from stable state)
+    const formValues = { payload: '{"name":"test"}' };
+    const prevPaths = new Set(['payload']);
+    const currCollapsedGroups = [{ path: 'payload', label: 'Payload' }];
+    const fields: ResourceFieldMinimal[] = [];
+
+    const updates = computeDepthTransitionUpdates(
+      formValues,
+      prevPaths,
+      currCollapsedGroups,
+      fields,
+    );
+
+    expect(updates.expands).toHaveLength(0);
+    expect(updates.collapses).toHaveLength(0);
   });
 });

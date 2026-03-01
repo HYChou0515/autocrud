@@ -810,6 +810,252 @@ describe('unionHandler', () => {
       expect(unionHandler.fromJsonValue(undefined, field())).toBe(null);
     });
   });
+
+  // ── Structural union (__variant mode) ──
+  describe('structural union (__variant)', () => {
+    const structuralField = (
+      overrides: Partial<ResourceFieldMinimal> = {},
+    ): ResourceFieldMinimal => ({
+      name: 'event_x3',
+      type: 'union',
+      unionMeta: {
+        discriminatorField: '__variant',
+        variants: [
+          {
+            tag: 'list_EventBodyX',
+            label: 'EventBodyX[]',
+            schemaName: 'EventBodyX',
+            isArray: true,
+            fields: [
+              { name: 'good', type: 'string' },
+              { name: 'great', type: 'number' },
+            ],
+          },
+          {
+            tag: 'EventBodyX',
+            label: 'Event Body X',
+            schemaName: 'EventBodyX',
+            fields: [
+              { name: 'good', type: 'string' },
+              { name: 'great', type: 'number' },
+            ],
+          },
+        ],
+      },
+      ...overrides,
+    });
+
+    const primStructField = (): ResourceFieldMinimal => ({
+      name: 'mixed',
+      type: 'union',
+      unionMeta: {
+        discriminatorField: '__variant',
+        variants: [
+          {
+            tag: 'EventBodyX',
+            label: 'Event Body X',
+            schemaName: 'EventBodyX',
+            fields: [{ name: 'good', type: 'string' }],
+          },
+          {
+            tag: 'string',
+            label: 'String',
+            type: 'string',
+          },
+        ],
+      },
+    });
+
+    describe('emptyValue', () => {
+      it('returns __variant + __items for array-first variant', () => {
+        const result = unionHandler.emptyValue(structuralField());
+        expect(result).toEqual({ __variant: 'list_EventBodyX', __items: [] });
+      });
+
+      it('returns __variant + empty fields for object-first variant', () => {
+        // Reorder so object variant is first
+        const f = structuralField();
+        f.unionMeta.variants = [...f.unionMeta.variants].reverse();
+        const result = unionHandler.emptyValue(f);
+        expect(result.__variant).toBe('EventBodyX');
+        expect(result.good).toBe('');
+        expect(result.great).toBe('');
+      });
+
+      it('returns __variant + value for primitive-first variant', () => {
+        const f = primStructField();
+        f.unionMeta.variants = [...f.unionMeta.variants].reverse(); // string first
+        const result = unionHandler.emptyValue(f);
+        expect(result).toEqual({ __variant: 'string', value: '' });
+      });
+    });
+
+    describe('toFormValue', () => {
+      it('wraps API array value into __variant + __items', () => {
+        const apiVal = [{ good: 'hi', great: 5 }];
+        const result = unionHandler.toFormValue(apiVal, structuralField());
+        expect(result).toEqual({ __variant: 'list_EventBodyX', __items: apiVal });
+      });
+
+      it('wraps API object value into __variant + fields', () => {
+        const apiVal = { good: 'hi', great: 5 };
+        const result = unionHandler.toFormValue(apiVal, structuralField());
+        expect(result.__variant).toBe('EventBodyX');
+        expect(result.good).toBe('hi');
+        expect(result.great).toBe(5);
+      });
+
+      it('passes through already-wrapped form value', () => {
+        const formVal = { __variant: 'EventBodyX', good: 'hi', great: 5 };
+        const result = unionHandler.toFormValue(formVal, structuralField());
+        expect(result).toBe(formVal); // same reference
+      });
+
+      it('wraps primitive value with matching variant', () => {
+        const result = unionHandler.toFormValue('hello', primStructField());
+        expect(result).toEqual({ __variant: 'string', value: 'hello' });
+      });
+
+      it('returns emptyValue for null', () => {
+        const result = unionHandler.toFormValue(null, structuralField());
+        expect(result).toEqual({ __variant: 'list_EventBodyX', __items: [] });
+      });
+    });
+
+    describe('toApiValue', () => {
+      it('unwraps array variant: returns __items', () => {
+        const formVal = { __variant: 'list_EventBodyX', __items: [{ good: 'hi', great: 5 }] };
+        const result = unionHandler.toApiValue(formVal, structuralField());
+        expect(result).toEqual([{ good: 'hi', great: 5 }]);
+      });
+
+      it('unwraps object variant: strips __variant', () => {
+        const formVal = { __variant: 'EventBodyX', good: 'hi', great: 5 };
+        const result = unionHandler.toApiValue(formVal, structuralField());
+        expect(result).toEqual({ good: 'hi', great: 5 });
+      });
+
+      it('unwraps primitive variant: returns value', () => {
+        const formVal = { __variant: 'string', value: 'hello' };
+        const result = unionHandler.toApiValue(formVal, primStructField());
+        expect(result).toBe('hello');
+      });
+
+      it('returns empty array when __items is missing for array variant', () => {
+        const formVal = { __variant: 'list_EventBodyX' };
+        const result = unionHandler.toApiValue(formVal, structuralField());
+        expect(result).toEqual([]);
+      });
+    });
+
+    describe('fromJsonValue', () => {
+      it('wraps array from JSON same as toFormValue', () => {
+        const val = [{ good: 'a', great: 1 }];
+        const result = unionHandler.fromJsonValue(val, structuralField());
+        expect(result).toEqual({ __variant: 'list_EventBodyX', __items: val });
+      });
+
+      it('wraps object from JSON same as toFormValue', () => {
+        const val = { good: 'b', great: 2 };
+        const result = unionHandler.fromJsonValue(val, structuralField());
+        expect(result.__variant).toBe('EventBodyX');
+        expect(result.good).toBe('b');
+      });
+    });
+  });
+
+  // ── constValue fields in structural union ──
+  describe('structural union with constValue fields', () => {
+    /** Variant fields include a `type` field with constValue */
+    const constStructField = (): ResourceFieldMinimal => ({
+      name: 'event_x3',
+      type: 'union',
+      unionMeta: {
+        discriminatorField: '__variant',
+        variants: [
+          {
+            tag: 'list_union',
+            label: '(EventBodyX | EventBodyB)[]',
+            isArray: true,
+            itemUnionMeta: {
+              discriminatorField: 'type',
+              variants: [
+                {
+                  tag: 'EventBodyX',
+                  label: 'EventBodyX',
+                  fields: [{ name: 'good', type: 'string' }],
+                },
+                {
+                  tag: 'EventBodyB',
+                  label: 'EventBodyB',
+                  fields: [{ name: 'some_field', type: 'string' }],
+                },
+              ],
+            },
+          },
+          {
+            tag: 'EventBodyX',
+            label: 'EventBodyX',
+            schemaName: 'EventBodyX',
+            fields: [
+              { name: 'type', type: 'string', constValue: 'EventBodyX' },
+              { name: 'good', type: 'string' },
+              { name: 'great', type: 'number' },
+            ],
+          },
+          {
+            tag: 'EventBodyB',
+            label: 'EventBodyB',
+            schemaName: 'EventBodyB',
+            fields: [
+              { name: 'type', type: 'string', constValue: 'EventBodyB' },
+              { name: 'some_field', type: 'string' },
+              { name: 'cooldown_seconds', type: 'number' },
+            ],
+          },
+        ],
+      },
+    });
+
+    describe('emptyValue', () => {
+      it('uses constValue for fields that have it', () => {
+        const f = constStructField();
+        // Reorder so EventBodyB is first (object variant)
+        f.unionMeta.variants = [f.unionMeta.variants[2]];
+        const result = unionHandler.emptyValue(f);
+        expect(result.__variant).toBe('EventBodyB');
+        expect(result.type).toBe('EventBodyB'); // constValue, not ''
+        expect(result.some_field).toBe('');
+        expect(result.cooldown_seconds).toBe('');
+      });
+    });
+
+    describe('toApiValue', () => {
+      it('includes constValue field in object variant output', () => {
+        const formVal = {
+          __variant: 'EventBodyB',
+          type: 'EventBodyB',
+          some_field: 'test',
+          cooldown_seconds: 5,
+        };
+        const result = unionHandler.toApiValue(formVal, constStructField());
+        expect(result).toEqual({
+          type: 'EventBodyB',
+          some_field: 'test',
+          cooldown_seconds: 5,
+        });
+      });
+    });
+
+    describe('toFormValue', () => {
+      it('wraps API object with constValue field preserved', () => {
+        const apiVal = { type: 'EventBodyB', some_field: 'hi', cooldown_seconds: 3 };
+        const result = unionHandler.toFormValue(apiVal, constStructField());
+        expect(result.__variant).toBe('EventBodyB');
+        expect(result.type).toBe('EventBodyB');
+      });
+    });
+  });
 });
 
 // ============================================================================
