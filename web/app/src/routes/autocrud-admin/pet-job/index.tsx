@@ -10,10 +10,5 @@ export const Route = createFileRoute('/autocrud-admin/pet-job/')({
 
 function ListPage() {
   const config = getResource('pet-job')!;
-  return (
-    <JobTable<Job___main___Mount_____main___Dog_>
-      config={config}
-      basePath="/autocrud-admin/pet-job"
-    />
-  );
+  return <JobTable<Job___main___Mount_____main___Dog_> config={config} basePath="/autocrud-admin/pet-job" />;
 }
