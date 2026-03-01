@@ -233,6 +233,11 @@ class GameEventPayload(Struct):
         Optional[str], Ref("character", ref_type=RefType.revision_id)
     ]
     event_x2: EventBodyX
+    event_x3: list[EventBodyX | EventBodyB | EventBodyA] | EventBodyX | EventBodyB
+    event_x4: list[EventBodyX | EventBodyB | EventBodyA] | EventBodyX 
+    event_x5: list[EventBodyA] | EventBodyX
+    event_x6: list[EventBodyA] | EventBodyX | EventBodyX  | None
+    event_x7: list[EventBodyA] | dict[str, EventBodyX]
     description: str
     reward_gold: int = 0
     reward_exp: int = 0

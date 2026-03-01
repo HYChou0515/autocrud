@@ -51,6 +51,14 @@ export interface UnionVariant {
   fields?: ResourceField[];
   /** For simple unions: primitive type ('string', 'number', 'boolean') */
   type?: string;
+  /** For structural unions: this variant is an array of items */
+  isArray?: boolean;
+  /** For structural union array variants: each item is a discriminated union */
+  itemUnionMeta?: UnionMeta;
+  /** For structural unions: this variant is a dict (key-value map) */
+  isDict?: boolean;
+  /** For structural union dict variants: fields describing each dict value */
+  dictValueFields?: ResourceField[];
 }
 
 /**

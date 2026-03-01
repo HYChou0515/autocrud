@@ -74,6 +74,24 @@ const renderArrayJoin: Renderer = ({ value }) => {
 // ---------------------------------------------------------------------------
 
 const DETAIL_RENDERERS: Record<FieldKind, (ctx: DetailRenderContext) => React.ReactNode> = {
+  /* ---- Hidden (const value from discriminator — auto-filled, not editable) ---- */
+
+  hidden: ({ field }) => {
+    if (field.constValue !== undefined) {
+      return <Code>{String(field.constValue)}</Code>;
+    }
+    return NA;
+  },
+
+  /* ---- File upload ---- */
+
+  file: ({ value }) => {
+    if (typeof value === 'object' && value !== null) {
+      return <Code block>{JSON.stringify(value, null, 2)}</Code>;
+    }
+    return NA;
+  },
+
   /* ---- Complex / structured ---- */
 
   itemFields: ({ field, value }) => {

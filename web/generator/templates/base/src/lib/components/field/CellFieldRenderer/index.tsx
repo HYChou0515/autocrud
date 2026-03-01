@@ -78,6 +78,22 @@ const NA = (
 // ---------------------------------------------------------------------------
 
 export const CELL_RENDERERS: Record<FieldKind, CellRenderer> = {
+  /* ---- Hidden (const value from discriminator — auto-filled, not editable) ---- */
+
+  hidden: ({ field }) => {
+    if (field.constValue !== undefined) return String(field.constValue);
+    return NA;
+  },
+
+  /* ---- File upload ---- */
+
+  file: ({ value }) => {
+    if (value && typeof value === 'object' && 'filename' in (value as Record<string, unknown>)) {
+      return String((value as Record<string, unknown>).filename);
+    }
+    return NA;
+  },
+
   /* ---- Complex / structured ---- */
 
   itemFields: ({ value }) => {

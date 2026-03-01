@@ -1013,43 +1013,43 @@ class IStorage(ABC):
         requiring full data loading for each resource.
         """
 
+    def iter_search(self, query: ResourceMetaSearchQuery) -> Generator[ResourceMeta]:
+        """Streaming variant of :meth:`search`.
+
+        Yields one :class:`ResourceMeta` at a time so callers can avoid
+        materialising the full result list in memory.  The default
+        implementation simply delegates to :meth:`search`; backends that
+        support true streaming should override this method.
+        """
+        yield from self.search(query)
+
     @abstractmethod
-    def dump_meta(self) -> Generator[ResourceMeta]:
-        """Export all resource metadata for backup or migration.
+    def dump_meta(
+        self, resource_ids: frozenset[str] | None = None
+    ) -> Generator[ResourceMeta]:
+        """Export resource metadata for backup or migration.
+
+        Args:
+            resource_ids: If provided, only yield metadata for these resource IDs.
+                If ``None``, yield all metadata.
 
         Returns:
-            Generator[ResourceMeta]: A generator yielding all metadata
-                objects in the storage system.
-
-        ---
-        This method provides a way to export all resource metadata for backup,
-        migration, or analysis purposes. It iterates through all resources
-        regardless of their deletion status, providing complete metadata
-        coverage.
-
-        The generator approach allows for memory-efficient processing of large
-        datasets without loading all metadata into memory simultaneously.
+            Generator[ResourceMeta]: A generator yielding metadata objects.
         """
 
     @abstractmethod
     def dump_resource(
         self,
+        resource_id: str,
     ) -> Generator[tuple[RevisionInfo, IO[bytes]]]:
-        """Export all resource data including complete revision information.
+        """Export all revisions for a single resource.
 
-        This method yields tuples containing revision information and the corresponding
-        resource data as a binary stream. The returned IO[bytes] object contains the
-        serialized resource data and should be ready for reading.
+        Args:
+            resource_id: The resource ID whose revisions to export.
 
         Returns:
-            Generator[tuple[RevisionInfo, IO[bytes]]]: A generator that yields tuples
-            where each tuple contains:
-            - RevisionInfo: Complete revision metadata
-            - IO[bytes]: Binary stream containing the serialized resource data
-
-        Note:
-            The IO[bytes] objects returned are ready for immediate reading and do not
-            require context manager handling.
+            Generator[tuple[RevisionInfo, IO[bytes]]]: A generator that yields
+            tuples of (RevisionInfo, data bytes).
         """
 
 

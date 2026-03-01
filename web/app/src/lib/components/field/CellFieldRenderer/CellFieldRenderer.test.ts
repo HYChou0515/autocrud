@@ -30,9 +30,11 @@ function makeField(overrides: Partial<ResourceField> & { name: string }): Resour
  * All FieldKind values that CELL_RENDERERS must cover.
  */
 const ALL_FIELD_KINDS: FieldKind[] = [
+  'hidden',
   'itemFields',
   'union',
   'binary',
+  'file',
   'json',
   'markdown',
   'arrayString',
@@ -65,7 +67,7 @@ describe('CELL_RENDERERS registry completeness', () => {
   });
 
   it('ALL_FIELD_KINDS contains every FieldKind value', () => {
-    expect(ALL_FIELD_KINDS.length).toBe(19);
+    expect(ALL_FIELD_KINDS.length).toBe(21);
   });
 });
 
@@ -89,6 +91,18 @@ describe('renderCellValue dispatch correctness', () => {
     value: unknown;
     check: (result: React.ReactNode) => void;
   }> = [
+    {
+      kind: 'hidden',
+      field: makeField({ name: 'type', constValue: 'EventBodyX' }),
+      value: 'EventBodyX',
+      check: (r) => expect(r).toBe('EventBodyX'),
+    },
+    {
+      kind: 'file',
+      field: makeField({ name: 'upload', type: 'file' }),
+      value: { filename: 'photo.png', size: 1024 },
+      check: (r) => expect(r).toBe('photo.png'),
+    },
     {
       kind: 'text',
       field: makeField({ name: 'name' }),

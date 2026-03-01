@@ -378,19 +378,145 @@ export const unionHandler: FieldTypeHandler = {
     return { type: 'union' };
   },
 
-  emptyValue() {
+  emptyValue(field) {
+    const meta = field.unionMeta;
+    if (meta?.discriminatorField === '__variant' && meta.variants?.length > 0) {
+      const first = meta.variants[0];
+      if (first.type === 'null') {
+        return { __variant: first.tag };
+      }
+      if (first.isArray) {
+        return { __variant: first.tag, __items: [] };
+      }
+      if (first.isDict) {
+        return { __variant: first.tag, __entries: [] };
+      }
+      if (first.fields && first.fields.length > 0) {
+        const obj: Record<string, any> = { __variant: first.tag };
+        for (const sf of first.fields) {
+          obj[sf.name] = '';
+        }
+        return obj;
+      }
+      return { __variant: first.tag, value: '' };
+    }
     return null;
   },
 
-  toFormValue(val) {
+  toFormValue(val, field) {
+    const meta = field.unionMeta;
+    if (meta?.discriminatorField === '__variant' && meta.variants?.length > 0) {
+      // Already in form format
+      if (val && typeof val === 'object' && '__variant' in val) return val;
+
+      // Null value → match null variant
+      if (val === null || val === undefined) {
+        const nullVariant = meta.variants.find((v: any) => v.type === 'null');
+        if (nullVariant) return { __variant: nullVariant.tag };
+        return this.emptyValue(field);
+      }
+
+      // Detect API shape and wrap
+      if (Array.isArray(val)) {
+        // Match first array variant
+        const arrayVariant = meta.variants.find((v: any) => v.isArray);
+        if (arrayVariant) return { __variant: arrayVariant.tag, __items: val };
+      }
+      if (val && typeof val === 'object') {
+        // Dict variant: object without matching object-variant fields → could be dict
+        const dictVariant = meta.variants.find((v: any) => v.isDict);
+        if (dictVariant) {
+          // Check if val looks like a plain dict (no matching object variant fields)
+          const objVariants = meta.variants.filter((v: any) => v.fields && v.fields.length > 0 && !v.isArray && !v.isDict);
+          const matchesObj = objVariants.some((v: any) => {
+            const vFieldNames = (v.fields || []).map((f: any) => f.name);
+            return vFieldNames.some((fn: string) => fn in val);
+          });
+          if (!matchesObj) {
+            // Convert dict to entries: { key1: val1, key2: val2 } → [{ __key: 'key1', ...val1 }, ...]
+            const entries = Object.entries(val).map(([k, v]: [string, any]) => {
+              if (v && typeof v === 'object') {
+                return { __key: k, ...v };
+              }
+              return { __key: k, __value: v };
+            });
+            return { __variant: dictVariant.tag, __entries: entries };
+          }
+        }
+
+        // Match object variant by checking fields overlap or schemaName
+        const objVariants = meta.variants.filter((v: any) => v.fields && !v.isArray && !v.isDict);
+        for (const v of objVariants) {
+          // Simple heuristic: if val has overlapping keys with variant fields, pick it
+          const vFieldNames = (v.fields || []).map((f: any) => f.name);
+          if (vFieldNames.some((fn: string) => fn in val)) {
+            return { __variant: v.tag, ...val };
+          }
+        }
+        // Fallback: first non-array variant
+        const firstObj = objVariants[0];
+        if (firstObj) return { __variant: firstObj.tag, ...val };
+      }
+      if (val !== null && val !== undefined) {
+        // Primitive
+        const primType = typeof val;
+        const primVariant = meta.variants.find((v: any) => v.type === primType);
+        if (primVariant) return { __variant: primVariant.tag, value: val };
+      }
+      // Null or unrecognized — default to first variant's empty
+      return this.emptyValue(field);
+    }
     return val;
   },
 
-  toApiValue(val) {
+  toApiValue(val, field) {
+    const meta = field.unionMeta;
+    if (meta?.discriminatorField === '__variant' && val && typeof val === 'object' && '__variant' in val) {
+      const tag = val.__variant;
+      const variant = meta.variants?.find((v: any) => v.tag === tag);
+      // Null variant → return null
+      if (variant?.type === 'null') {
+        return null;
+      }
+      if (variant?.isArray) {
+        return val.__items ?? [];
+      }
+      // Dict variant → convert __entries to dict object
+      if (variant?.isDict) {
+        const entries: any[] = val.__entries ?? [];
+        const dict: Record<string, any> = {};
+        for (const entry of entries) {
+          const key = entry.__key;
+          if (!key) continue;
+          if ('__value' in entry) {
+            dict[key] = entry.__value;
+          } else {
+            const { __key, ...rest } = entry;
+            dict[key] = rest;
+          }
+        }
+        return dict;
+      }
+      if (variant?.type) {
+        // Primitive variant — attempt JSON parse for complex fallback types (json/any)
+        const raw = val.value;
+        if (variant.type !== 'string' && variant.type !== 'number' && variant.type !== 'boolean' && typeof raw === 'string') {
+          try { return JSON.parse(raw); } catch { return raw; }
+        }
+        return raw;
+      }
+      // Object variant — strip __variant and __items
+      const { __variant, __items, ...rest } = val;
+      return rest;
+    }
     return val;
   },
 
-  fromJsonValue(val) {
+  fromJsonValue(val, field) {
+    const meta = field.unionMeta;
+    if (meta?.discriminatorField === '__variant' && meta.variants?.length > 0) {
+      return this.toFormValue(val, field);
+    }
     return val ?? null;
   },
 };
