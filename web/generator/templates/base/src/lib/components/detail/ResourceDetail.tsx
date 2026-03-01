@@ -69,9 +69,7 @@ export function groupFieldsForDisplay(fields: ResourceField[]): DisplayGroup[] {
 
   function toGroupLabel(parentPath: string): string {
     const lastSeg = parentPath.split('.').pop() || parentPath;
-    return lastSeg
-      .replace(/_/g, ' ')
-      .replace(/\b\w/g, (c) => c.toUpperCase());
+    return lastSeg.replace(/_/g, ' ').replace(/\b\w/g, (c) => c.toUpperCase());
   }
 
   const groups: DisplayGroup[] = [];
@@ -432,7 +430,9 @@ export function ResourceDetail<T extends Record<string, any>>({
                     </Table.Td>
                     <Table.Td>
                       {parentValue == null ? (
-                        <Text c="dimmed" size="sm">N/A</Text>
+                        <Text c="dimmed" size="sm">
+                          N/A
+                        </Text>
                       ) : (
                         <Table fz="sm">
                           <Table.Tbody>

@@ -8,7 +8,7 @@
  * consistently use getAllByText(...).length checks instead of getByText.
  */
 
-import { describe, it, expect, vi } from 'vitest';
+import { describe, it, expect } from 'vitest';
 import { render, screen, fireEvent } from '@testing-library/react';
 import { MantineProvider } from '@mantine/core';
 import { useForm } from '@mantine/form';
@@ -191,8 +191,8 @@ describe('UnionFieldRenderer — structural union (__variant)', () => {
     expectText('damage');
     // Should NOT have Add button (which is an array-only control)
     // Use container.querySelectorAll to avoid Mantine double-text-node issues
-    const addButtons = Array.from(container.querySelectorAll('button')).filter(
-      (btn) => btn.textContent?.includes('Add'),
+    const addButtons = Array.from(container.querySelectorAll('button')).filter((btn) =>
+      btn.textContent?.includes('Add'),
     );
     expect(addButtons.length).toBe(0);
   });
@@ -341,9 +341,7 @@ const itemUnionVariantFields = {
     makeField({ name: 'good', type: 'string', isRequired: true }),
     makeField({ name: 'great', type: 'number', isRequired: true }),
   ],
-  EventBodyB: [
-    makeField({ name: 'beta_info', type: 'string', isRequired: true }),
-  ],
+  EventBodyB: [makeField({ name: 'beta_info', type: 'string', isRequired: true })],
 };
 
 const itemUnionMeta: UnionMeta = {
@@ -798,8 +796,8 @@ describe('UnionFieldRenderer — constValue fields in structural union', () => {
 
     // The "Some Field" and "Cooldown Seconds" inputs should be rendered
     const inputs = container.querySelectorAll('input');
-    const inputLabels = Array.from(inputs).map((el) => el.getAttribute('aria-label') ?? '');
-    const labels = Array.from(container.querySelectorAll('label')).map((el) => el.textContent);
+    const _inputLabels = Array.from(inputs).map((el) => el.getAttribute('aria-label') ?? '');
+    const _labels = Array.from(container.querySelectorAll('label')).map((el) => el.textContent);
 
     // constValue field "type" should NOT have a visible input
     // Only "Some Field" and "Cooldown Seconds" should be rendered as inputs
@@ -837,5 +835,128 @@ describe('UnionFieldRenderer — constValue fields in structural union', () => {
     expect(capturedValues.event_x3.type).toBe('EventBodyX');
     expect(capturedValues.event_x3.good).toBe('hello');
     expect(capturedValues.event_x3.great).toBe(42);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Nullable discriminated union: EventBodyA | EventBodyB | None
+// ---------------------------------------------------------------------------
+
+const nullableDiscriminatedUnionMeta: UnionMeta = {
+  discriminatorField: 'type',
+  variants: [
+    {
+      tag: 'EventBodyA',
+      label: 'Event Body A',
+      schemaName: 'EventBodyA',
+      fields: [
+        makeField({ name: 'extra_info_a', type: 'string', isRequired: true }),
+        makeField({ name: 'extra_value_a', type: 'number', isRequired: true }),
+      ],
+    },
+    {
+      tag: 'EventBodyB',
+      label: 'Event Body B',
+      schemaName: 'EventBodyB',
+      fields: [
+        makeField({ name: 'some_field', type: 'string', isRequired: true }),
+        makeField({ name: 'cooldown_seconds', type: 'number', isRequired: true }),
+      ],
+    },
+  ],
+};
+
+const nullableDiscriminatedField: ResourceField = makeField({
+  name: 'event_body',
+  label: 'Event Body',
+  type: 'union',
+  isNullable: true,
+  isRequired: false,
+  unionMeta: nullableDiscriminatedUnionMeta,
+});
+
+describe('UnionFieldRenderer — nullable discriminated union', () => {
+  it('renders a None option for nullable discriminated union', () => {
+    const { container } = renderWithMantine(
+      <FormWrapper
+        field={nullableDiscriminatedField}
+        unionMeta={nullableDiscriminatedUnionMeta}
+        initialValues={{ event_body: null }}
+      />,
+    );
+
+    // Should show all variant options AND a None option
+    expectText('Event Body A');
+    expectText('Event Body B');
+    expect(container.textContent).toContain('None');
+  });
+
+  it('selects None by default when value is null', () => {
+    let capturedValues: any = {};
+    const { container } = renderWithMantine(
+      <FormWrapper
+        field={nullableDiscriminatedField}
+        unionMeta={nullableDiscriminatedUnionMeta}
+        initialValues={{ event_body: null }}
+        onValuesChange={(v) => {
+          capturedValues = v;
+        }}
+      />,
+    );
+
+    // The None radio card should be selected (value is null)
+    expect(container.textContent).toContain('None');
+    expect(capturedValues.event_body).toBeNull();
+  });
+
+  it('sets value to null when None is clicked', () => {
+    let capturedValues: any = {};
+    const { container } = renderWithMantine(
+      <FormWrapper
+        field={nullableDiscriminatedField}
+        unionMeta={nullableDiscriminatedUnionMeta}
+        initialValues={{
+          event_body: { type: 'EventBodyA', extra_info_a: 'test', extra_value_a: 42 },
+        }}
+        onValuesChange={(v) => {
+          capturedValues = v;
+        }}
+      />,
+    );
+
+    // Initially should show EventBodyA fields
+    expectText('Event Body A');
+
+    // Find the None radio input within our rendered container and click it
+    const radios = container.querySelectorAll<HTMLElement>('[role="radio"]');
+    // The None radio should be the first one (isNullable adds it at the top)
+    const noneRadio = Array.from(radios).find((r) => r.textContent?.includes('None'));
+    expect(noneRadio).toBeTruthy();
+    fireEvent.click(noneRadio!);
+    expect(capturedValues.event_body).toBeNull();
+  });
+
+  it('switches from None to a variant', () => {
+    let capturedValues: any = {};
+    const { container } = renderWithMantine(
+      <FormWrapper
+        field={nullableDiscriminatedField}
+        unionMeta={nullableDiscriminatedUnionMeta}
+        initialValues={{ event_body: null }}
+        onValuesChange={(v) => {
+          capturedValues = v;
+        }}
+      />,
+    );
+
+    // Find the EventBodyA radio card within our rendered container
+    const radios = container.querySelectorAll<HTMLElement>('[role="radio"]');
+    const bodyARadio = Array.from(radios).find((r) => r.textContent?.includes('Event Body A'));
+    expect(bodyARadio).toBeTruthy();
+    fireEvent.click(bodyARadio!);
+
+    // Value should now have the discriminator set
+    expect(capturedValues.event_body).not.toBeNull();
+    expect(capturedValues.event_body?.type).toBe('EventBodyA');
   });
 });

@@ -45,10 +45,7 @@ export interface StructuralUnionFieldDisplayProps {
  *  3. Plain object → try object variants (those with `fields`) ranked by key-overlap
  *  4. Null / unmatched → return null (caller should show JSON fallback)
  */
-export function inferVariant(
-  value: unknown,
-  variants: UnionVariant[],
-): UnionVariant | null {
+export function inferVariant(value: unknown, variants: UnionVariant[]): UnionVariant | null {
   if (value == null) return null;
 
   // 1. Array
@@ -56,10 +53,7 @@ export function inferVariant(
     const arrayVariants = variants.filter((v) => v.isArray);
     if (arrayVariants.length === 0) return null;
     // prefer itemUnionMeta (nested discriminated union array)
-    return (
-      arrayVariants.find((v) => v.itemUnionMeta) ??
-      arrayVariants[0]
-    );
+    return arrayVariants.find((v) => v.itemUnionMeta) ?? arrayVariants[0];
   }
 
   if (typeof value !== 'object') return null;
@@ -167,11 +161,7 @@ function VariantRenderer({
     // Array of fixed-schema items
     if (variant.fields && variant.fields.length > 0) {
       return (
-        <ArrayFieldDisplay
-          value={value}
-          itemFields={variant.fields}
-          renderValue={renderValue}
-        />
+        <ArrayFieldDisplay value={value} itemFields={variant.fields} renderValue={renderValue} />
       );
     }
 

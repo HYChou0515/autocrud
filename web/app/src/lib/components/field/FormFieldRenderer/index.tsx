@@ -18,6 +18,7 @@ import { DateTimePicker } from '@mantine/dates';
 import type { UseFormReturnType } from '@mantine/form';
 import type { ResourceField, FieldVariant } from '../../../resources';
 import { RefSelect, RefMultiSelect, RefRevisionSelect, RefRevisionMultiSelect } from './RefSelect';
+import { JsonEditor } from './JsonEditor';
 import { MarkdownEditor } from './MarkdownEditor';
 import { BinaryFieldEditor } from './BinaryFieldEditor';
 import { UnionFieldRenderer } from './UnionFieldRenderer';
@@ -92,15 +93,16 @@ const FIELD_RENDERERS: Record<FieldKind, (ctx: FieldRenderContext) => React.Reac
 
   json: ({ field, form, effectiveVariant }) => {
     const v = effectiveVariant as Extract<FieldVariant, { type: 'json' }>;
+    const inputProps = form.getInputProps(field.name);
     return (
-      <Textarea
+      <JsonEditor
         key={field.name}
         label={field.label}
         required={field.isRequired}
-        placeholder="JSON object"
-        minRows={3}
-        maxRows={v.height ? v.height / 24 : undefined}
-        {...form.getInputProps(field.name)}
+        value={inputProps.value ?? ''}
+        onChange={(val) => form.setFieldValue(field.name as any, val as any)}
+        height={v.height ?? 200}
+        error={inputProps.error as string | undefined}
       />
     );
   },

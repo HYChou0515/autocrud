@@ -2691,3 +2691,283 @@ describe('parseField — structural union', () => {
     expect(dictVariant.dictValueFields.map((f: any) => f.name)).toContain('good');
   });
 });
+
+// ============================================================================
+// parseField — nested arrays (list[list[...]])
+// ============================================================================
+describe('parseField — nested arrays', () => {
+  function buildNestedArraySpec() {
+    return {
+      info: { title: 'Test', version: '1.0' },
+      paths: {
+        '/payload': {
+          post: {
+            requestBody: {
+              content: {
+                'application/json': {
+                  schema: { $ref: '#/components/schemas/Payload' },
+                },
+              },
+            },
+          },
+        },
+        '/payload/{id}': { get: {} },
+      },
+      components: {
+        schemas: {
+          EventBodyX: {
+            type: 'object',
+            properties: {
+              type: { type: 'string', enum: ['EventBodyX'], const: 'EventBodyX' },
+              good: { type: 'string' },
+              great: { type: 'integer' },
+            },
+            required: ['type', 'good', 'great'],
+          },
+          EventBodyA: {
+            type: 'object',
+            properties: {
+              type: { type: 'string', enum: ['EventBodyA'], const: 'EventBodyA' },
+              extra_info_a: { type: 'string' },
+              extra_value_a: { type: 'integer' },
+            },
+            required: ['type', 'extra_info_a', 'extra_value_a'],
+          },
+          EventBodyB: {
+            type: 'object',
+            properties: {
+              type: { type: 'string', enum: ['EventBodyB'], const: 'EventBodyB' },
+              some_field: { type: 'string' },
+              cooldown_seconds: { type: 'integer' },
+            },
+            required: ['type', 'some_field', 'cooldown_seconds'],
+          },
+          Payload: {
+            type: 'object',
+            properties: { name: { type: 'string' } },
+            required: ['name'],
+          },
+        },
+      },
+    };
+  }
+
+  // ---- Pattern: list[list[string]] ----
+  // Nested arrays (depth > 1) fall back to JSON-editor field since the form UI
+  // only supports a single level of array nesting.
+  it('parses list[list[string]] as JSON fallback with correct tsType/zodType', () => {
+    const spec = buildNestedArraySpec();
+    const prop = {
+      type: 'array',
+      items: {
+        type: 'array',
+        items: { type: 'string' },
+      },
+    };
+    const gen = createTestGenerator(spec);
+    const field = (gen as any).parseField('nested_strings', prop, true);
+
+    expect(field).toBeDefined();
+    expect(field.tsType).toBe('string[][]');
+    expect(field.zodType).toBe('z.array(z.array(z.string()))');
+    // Falls back to JSON editor (type=object, isArray=false)
+    expect(field.type).toBe('object');
+    expect(field.isArray).toBe(false);
+  });
+
+  // ---- Pattern: list[list[int]] ----
+  it('parses list[list[int]] as JSON fallback with correct tsType/zodType', () => {
+    const spec = buildNestedArraySpec();
+    const prop = {
+      type: 'array',
+      items: {
+        type: 'array',
+        items: { type: 'integer' },
+      },
+    };
+    const gen = createTestGenerator(spec);
+    const field = (gen as any).parseField('matrix', prop, true);
+
+    expect(field).toBeDefined();
+    expect(field.tsType).toBe('number[][]');
+    expect(field.zodType).toBe('z.array(z.array(z.number().int()))');
+    expect(field.type).toBe('object');
+    expect(field.isArray).toBe(false);
+  });
+
+  // ---- Pattern: list[list[list[string]]] (triple nesting) ----
+  it('parses list[list[list[string]]] as JSON fallback with correct tsType/zodType', () => {
+    const spec = buildNestedArraySpec();
+    const prop = {
+      type: 'array',
+      items: {
+        type: 'array',
+        items: {
+          type: 'array',
+          items: { type: 'string' },
+        },
+      },
+    };
+    const gen = createTestGenerator(spec);
+    const field = (gen as any).parseField('cube', prop, true);
+
+    expect(field).toBeDefined();
+    expect(field.tsType).toBe('string[][][]');
+    expect(field.zodType).toBe('z.array(z.array(z.array(z.string())))');
+    expect(field.type).toBe('object');
+    expect(field.isArray).toBe(false);
+  });
+
+  // ---- Pattern: list[list[DiscriminatedUnion]] ----
+  it('parses list[list[X | Y]] as JSON fallback with correct tsType', () => {
+    const spec = buildNestedArraySpec();
+    // list[list[EventBodyX | EventBodyB]]
+    const prop = {
+      type: 'array',
+      items: {
+        type: 'array',
+        items: {
+          anyOf: [
+            { $ref: '#/components/schemas/EventBodyX' },
+            { $ref: '#/components/schemas/EventBodyB' },
+          ],
+          discriminator: {
+            propertyName: 'type',
+            mapping: {
+              EventBodyX: '#/components/schemas/EventBodyX',
+              EventBodyB: '#/components/schemas/EventBodyB',
+            },
+          },
+        },
+      },
+    };
+    const gen = createTestGenerator(spec);
+    const field = (gen as any).parseField('nested_union', prop, true);
+
+    expect(field).toBeDefined();
+    // Falls back to JSON editor for nested arrays
+    expect(field.type).toBe('object');
+    expect(field.isArray).toBe(false);
+    // tsType should still contain double array notation
+    expect(field.tsType).toContain('[][]');
+    expect(field.tsType).not.toBe('string[]');
+  });
+
+  // ---- Pattern: event_x8: list[list[list[EventBodyX | EventBodyB] | EventBodyB | EventBodyA]] ----
+  // This is the actual msgspec output for the deeply nested type
+  it('parses event_x8: list[list[list[X|B] | B | A]] as JSON fallback (the actual bug scenario)', () => {
+    const spec = buildNestedArraySpec();
+    const prop = {
+      type: 'array',
+      items: {
+        type: 'array',
+        items: {
+          anyOf: [
+            {
+              type: 'array',
+              items: {
+                anyOf: [
+                  { $ref: '#/components/schemas/EventBodyX' },
+                  { $ref: '#/components/schemas/EventBodyB' },
+                ],
+                discriminator: {
+                  propertyName: 'type',
+                  mapping: {
+                    EventBodyX: '#/components/schemas/EventBodyX',
+                    EventBodyB: '#/components/schemas/EventBodyB',
+                  },
+                },
+              },
+            },
+            {
+              anyOf: [
+                { $ref: '#/components/schemas/EventBodyB' },
+                { $ref: '#/components/schemas/EventBodyA' },
+              ],
+              discriminator: {
+                propertyName: 'type',
+                mapping: {
+                  EventBodyB: '#/components/schemas/EventBodyB',
+                  EventBodyA: '#/components/schemas/EventBodyA',
+                },
+              },
+            },
+          ],
+        },
+      },
+    };
+    const gen = createTestGenerator(spec);
+    const field = (gen as any).parseField('event_x8', prop, true);
+
+    expect(field).toBeDefined();
+    // Should NOT be 'string' — that was the original bug
+    expect(field.tsType).not.toBe('string[]');
+    expect(field.tsType).not.toBe('string[][]');
+    // Falls back to JSON editor for multi-dimensional arrays
+    expect(field.type).toBe('object');
+    expect(field.isArray).toBe(false);
+    // tsType should still be correctly computed with nested arrays
+    expect(field.tsType).toContain('[][]');
+  });
+
+  // ---- Pattern: list[list[$ref]] (nested array of objects) ----
+  it('parses list[list[$ref]] as JSON fallback with correct tsType', () => {
+    const spec = buildNestedArraySpec();
+    const prop = {
+      type: 'array',
+      items: {
+        type: 'array',
+        items: { $ref: '#/components/schemas/EventBodyX' },
+      },
+    };
+    const gen = createTestGenerator(spec);
+    const field = (gen as any).parseField('nested_objects', prop, true);
+
+    expect(field).toBeDefined();
+    // Falls back to JSON editor
+    expect(field.type).toBe('object');
+    expect(field.isArray).toBe(false);
+    expect(field.tsType).toContain('[][]');
+    expect(field.tsType).not.toBe('string[]');
+  });
+
+  // ---- Single-depth array of non-discriminated union is still supported ----
+  it('list[X | Y] (single-depth anyOf without discriminator) still becomes union array', () => {
+    const spec = buildNestedArraySpec();
+    // list[EventBodyX | EventBodyA] — structural union at depth 1
+    const prop = {
+      type: 'array',
+      items: {
+        anyOf: [
+          { $ref: '#/components/schemas/EventBodyX' },
+          { $ref: '#/components/schemas/EventBodyA' },
+        ],
+      },
+    };
+    const gen = createTestGenerator(spec);
+    const field = (gen as any).parseField('single_depth', prop, true);
+
+    expect(field).toBeDefined();
+    expect(field.isArray).toBe(true);
+    expect(field.type).toBe('union');
+    expect(field.unionMeta).toBeDefined();
+    expect(field.unionMeta.discriminatorField).toBe('__variant');
+    expect(field.unionMeta.variants).toHaveLength(2);
+  });
+
+  // ---- Fallback: parseField should produce 'any' for unrecognized schemas ----
+  it('falls back to any for unrecognized schema type instead of string', () => {
+    const spec = buildNestedArraySpec();
+    // A schema with unknown type that doesn't match any known pattern
+    const prop = {
+      type: 'foobar',  // Not a real OpenAPI type
+    };
+    const gen = createTestGenerator(spec);
+    const field = (gen as any).parseField('unknown_field', prop, true);
+
+    expect(field).toBeDefined();
+    // Should be 'any' rather than 'string' for unrecognized types
+    expect(field.tsType).toBe('any');
+    expect(field.zodType).toBe('z.any()');
+  });
+});

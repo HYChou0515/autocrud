@@ -1043,6 +1043,49 @@ export class Generator {
         }
       }
 
+      // Handle nested arrays: list[list[...]] — the Field/form UI only supports
+      // a single array depth, so deeply nested arrays fall back to JSON editing.
+      if (prop.type === 'array') {
+        // Recurse to compute the correct tsType / zodType for type generation,
+        // but expose the field as a JSON editor since the form can't render
+        // multi-dimensional arrays with structured controls.
+        const innerField = this.parseField(name, prop, isRequired);
+        if (innerField) {
+          const wrappedTsType = `${innerField.tsType}[]`;
+          const wrappedZodType = `z.array(${innerField.zodType})`;
+          const labelSource = name.includes('.') ? name.split('.').pop()! : name;
+          return {
+            name,
+            label: toLabel(labelSource),
+            type: 'object',
+            tsType: wrappedTsType,
+            isArray: false,
+            isRequired,
+            isNullable,
+            zodType: wrappedZodType,
+          };
+        }
+      }
+
+      // Handle array items that are a non-discriminated union (anyOf without discriminator).
+      // Since a single-depth array of structural union IS supported by the form UI,
+      // we let this fall through to `tryParseStructuralUnion` via the anyOf block below.
+      if ((prop.anyOf || prop.oneOf) && !prop.discriminator) {
+        // Re-enter parseField so that the anyOf/oneOf logic handles the union parsing,
+        // then wrap the result with the outer array layer.
+        const innerField = this.parseField(name, prop, isRequired);
+        if (innerField) {
+          const wrappedTsType = `(${innerField.tsType})[]`;
+          const wrappedZodType = `z.array(${innerField.zodType})`;
+          return {
+            ...innerField,
+            tsType: wrappedTsType,
+            zodType: wrappedZodType,
+            isArray: true,
+          };
+        }
+      }
+
       // Detect array of discriminated union: items has anyOf/oneOf + discriminator
       const unionItems = (prop.anyOf || prop.oneOf) && prop.discriminator ? prop : null;
       if (unionItems) {
@@ -1207,6 +1250,11 @@ export class Generator {
     } else if (type === 'object') {
       tsType = 'Record<string, any>';
       zodType = 'z.record(z.string(), z.any())';
+    } else if (type && type !== 'string' && type !== 'integer' && type !== 'number' && type !== 'boolean' && type !== 'object' && type !== 'array' && !prop.enum) {
+      // Fallback for unrecognized schema types — use 'any' instead of silently defaulting to 'string'
+      console.warn(`[autocrud-web-generator] Unrecognized schema type "${type}" for field "${name}", falling back to 'any'.`);
+      tsType = 'any';
+      zodType = 'z.any()';
     }
 
     if (isArray) {

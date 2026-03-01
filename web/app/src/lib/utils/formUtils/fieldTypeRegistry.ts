@@ -430,7 +430,9 @@ export const unionHandler: FieldTypeHandler = {
         const dictVariant = meta.variants.find((v: any) => v.isDict);
         if (dictVariant) {
           // Check if val looks like a plain dict (no matching object variant fields)
-          const objVariants = meta.variants.filter((v: any) => v.fields && v.fields.length > 0 && !v.isArray && !v.isDict);
+          const objVariants = meta.variants.filter(
+            (v: any) => v.fields && v.fields.length > 0 && !v.isArray && !v.isDict,
+          );
           const matchesObj = objVariants.some((v: any) => {
             const vFieldNames = (v.fields || []).map((f: any) => f.name);
             return vFieldNames.some((fn: string) => fn in val);
@@ -453,7 +455,7 @@ export const unionHandler: FieldTypeHandler = {
         let bestObjScore = -1;
         for (const v of objVariants) {
           let score = 0;
-          for (const f of (v.fields || [])) {
+          for (const f of v.fields || []) {
             if (f.name in val) {
               score++;
               // Strong signal: constValue field matches data value exactly
@@ -486,7 +488,12 @@ export const unionHandler: FieldTypeHandler = {
 
   toApiValue(val, field) {
     const meta = field.unionMeta;
-    if (meta?.discriminatorField === '__variant' && val && typeof val === 'object' && '__variant' in val) {
+    if (
+      meta?.discriminatorField === '__variant' &&
+      val &&
+      typeof val === 'object' &&
+      '__variant' in val
+    ) {
       const tag = val.__variant;
       const variant = meta.variants?.find((v: any) => v.tag === tag);
       // Null variant → return null
@@ -515,8 +522,17 @@ export const unionHandler: FieldTypeHandler = {
       if (variant?.type) {
         // Primitive variant — attempt JSON parse for complex fallback types (json/any)
         const raw = val.value;
-        if (variant.type !== 'string' && variant.type !== 'number' && variant.type !== 'boolean' && typeof raw === 'string') {
-          try { return JSON.parse(raw); } catch { return raw; }
+        if (
+          variant.type !== 'string' &&
+          variant.type !== 'number' &&
+          variant.type !== 'boolean' &&
+          typeof raw === 'string'
+        ) {
+          try {
+            return JSON.parse(raw);
+          } catch {
+            return raw;
+          }
         }
         return raw;
       }

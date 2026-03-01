@@ -813,7 +813,9 @@ describe('unionHandler', () => {
 
   // ── Structural union (__variant mode) ──
   describe('structural union (__variant)', () => {
-    const structuralField = (overrides: Partial<ResourceFieldMinimal> = {}): ResourceFieldMinimal => ({
+    const structuralField = (
+      overrides: Partial<ResourceFieldMinimal> = {},
+    ): ResourceFieldMinimal => ({
       name: 'event_x3',
       type: 'union',
       unionMeta: {
@@ -978,8 +980,16 @@ describe('unionHandler', () => {
             itemUnionMeta: {
               discriminatorField: 'type',
               variants: [
-                { tag: 'EventBodyX', label: 'EventBodyX', fields: [{ name: 'good', type: 'string' }] },
-                { tag: 'EventBodyB', label: 'EventBodyB', fields: [{ name: 'some_field', type: 'string' }] },
+                {
+                  tag: 'EventBodyX',
+                  label: 'EventBodyX',
+                  fields: [{ name: 'good', type: 'string' }],
+                },
+                {
+                  tag: 'EventBodyB',
+                  label: 'EventBodyB',
+                  fields: [{ name: 'some_field', type: 'string' }],
+                },
               ],
             },
           },
@@ -1014,7 +1024,7 @@ describe('unionHandler', () => {
         f.unionMeta.variants = [f.unionMeta.variants[2]];
         const result = unionHandler.emptyValue(f);
         expect(result.__variant).toBe('EventBodyB');
-        expect(result.type).toBe('EventBodyB');  // constValue, not ''
+        expect(result.type).toBe('EventBodyB'); // constValue, not ''
         expect(result.some_field).toBe('');
         expect(result.cooldown_seconds).toBe('');
       });

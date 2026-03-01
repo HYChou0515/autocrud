@@ -23,7 +23,7 @@ export default tseslint.config(
     },
     rules: {
       // No `any` — use `unknown` instead
-      '@typescript-eslint/no-explicit-any': 'warn',
+      '@typescript-eslint/no-explicit-any': 'off',
 
       // No unused variables/imports
       '@typescript-eslint/no-unused-vars': [

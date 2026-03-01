@@ -10,5 +10,10 @@ export const Route = createFileRoute('/autocrud-admin/pet-job/create')({
 
 function CreatePage() {
   const config = getResource('pet-job')!;
-  return <ResourceCreate<Job___main___Mount_____main___Dog_> config={config} basePath="/autocrud-admin/pet-job" />;
+  return (
+    <ResourceCreate<Job___main___Mount_____main___Dog_>
+      config={config}
+      basePath="/autocrud-admin/pet-job"
+    />
+  );
 }

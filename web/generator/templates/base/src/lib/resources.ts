@@ -217,10 +217,7 @@ export type ResourceCustomizations<FieldMap = Record<string, string>> = {
  * Apply customizations to the registered resources.
  * Merges field-level and resource-level overrides into the registry.
  */
-export function applyCustomizations(
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  customizations: ResourceCustomizations<any>,
-): void {
+export function applyCustomizations(customizations: ResourceCustomizations<any>): void {
   for (const [resourceName, config] of Object.entries(customizations)) {
     if (!config) continue;
     const resource = resources[resourceName];

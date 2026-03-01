@@ -43,11 +43,7 @@ interface UnionFieldRendererProps {
 // ---------------------------------------------------------------------------
 
 /** Render a single sub-field at the given form path. */
-function renderSubField(
-  sf: ResourceField,
-  subPath: string,
-  form: UseFormReturnType<any>,
-) {
+function renderSubField(sf: ResourceField, subPath: string, form: UseFormReturnType<any>) {
   if (sf.enumValues && sf.enumValues.length > 0) {
     return (
       <Select
@@ -194,10 +190,7 @@ function DiscriminatedArrayBody({
                     if (!tag) return;
                     lastVariantRef.current = tag;
                     // Replace the whole item with empty fields for the new variant
-                    form.setFieldValue(
-                      `${itemPath}` as any,
-                      createEmptyItemForVariant(tag) as any,
-                    );
+                    form.setFieldValue(`${itemPath}` as any, createEmptyItemForVariant(tag) as any);
                   }}
                   allowDeselect={false}
                 />
@@ -549,10 +542,17 @@ export function UnionFieldRenderer({
 
   if (isDiscriminated) {
     const discField = unionMeta.discriminatorField;
-    const selectedTag = currentValue?.[discField] ?? '';
+    const isValueNull = currentValue === null || currentValue === undefined;
+    const selectedTag =
+      isValueNull && field.isNullable ? '__none__' : (currentValue?.[discField] ?? '');
     const selectedVariant = unionMeta.variants.find((v) => v.tag === selectedTag);
 
     const handleVariantChange = (tag: string) => {
+      // Handle None option for nullable discriminated unions
+      if (tag === '__none__') {
+        form.setFieldValue(name as any, null as any);
+        return;
+      }
       const variant = unionMeta.variants.find((v) => v.tag === tag);
       if (!variant) return;
       const newValue: Record<string, any> = { [discField]: tag };
@@ -576,6 +576,21 @@ export function UnionFieldRenderer({
           onChange={handleVariantChange}
         >
           <Stack gap="xs" mt="xs">
+            {field.isNullable && (
+              <Radio.Card key="__none__" value="__none__" radius="md" withBorder p="md">
+                <Group wrap="nowrap" align="flex-start">
+                  <Radio.Indicator />
+                  <div>
+                    <Text fw={500} size="sm">
+                      None
+                    </Text>
+                    <Text size="xs" c="dimmed">
+                      (null)
+                    </Text>
+                  </div>
+                </Group>
+              </Radio.Card>
+            )}
             {unionMeta.variants.map((v) => (
               <Radio.Card key={v.tag} value={v.tag} radius="md" withBorder p="md">
                 <Group wrap="nowrap" align="flex-start">
@@ -596,12 +611,16 @@ export function UnionFieldRenderer({
           </Stack>
         </Radio.Group>
 
+        {selectedTag === '__none__' && (
+          <Text size="sm" c="dimmed" fs="italic">
+            This field will be set to null
+          </Text>
+        )}
+
         {selectedVariant?.fields && selectedVariant.fields.length > 0 && (
           <Paper withBorder p="sm" radius="sm">
             <Stack gap="xs">
-              {selectedVariant.fields.map((sf) =>
-                renderSubField(sf, `${name}.${sf.name}`, form),
-              )}
+              {selectedVariant.fields.map((sf) => renderSubField(sf, `${name}.${sf.name}`, form))}
             </Stack>
           </Paper>
         )}

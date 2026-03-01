@@ -247,11 +247,7 @@ describe('groupFieldsForDisplay', () => {
   });
 
   it('renders all top-level fields as single groups', () => {
-    const fields = [
-      makeField('name'),
-      makeField('age'),
-      makeField('email'),
-    ];
+    const fields = [makeField('name'), makeField('age'), makeField('email')];
     const groups = groupFieldsForDisplay(fields);
     expect(groups).toHaveLength(3);
     expect(groups.every((g) => g.kind === 'single')).toBe(true);
@@ -294,11 +290,11 @@ describe('groupFieldsForDisplay', () => {
     const groups = groupFieldsForDisplay(fields);
 
     expect(groups).toHaveLength(5);
-    expect(groups[0].kind).toBe('single');  // event_type
-    expect(groups[1].kind).toBe('nested');  // event_x2.*
-    expect(groups[2].kind).toBe('single');  // event_x3
-    expect(groups[3].kind).toBe('nested');  // event_x.*
-    expect(groups[4].kind).toBe('single');  // extra_data
+    expect(groups[0].kind).toBe('single'); // event_type
+    expect(groups[1].kind).toBe('nested'); // event_x2.*
+    expect(groups[2].kind).toBe('single'); // event_x3
+    expect(groups[3].kind).toBe('nested'); // event_x.*
+    expect(groups[4].kind).toBe('single'); // extra_data
 
     const g1 = groups[1] as Extract<DisplayGroup, { kind: 'nested' }>;
     expect(g1.parentLabel).toBe('Event X2');
@@ -346,11 +342,7 @@ describe('groupFieldsForDisplay', () => {
   });
 
   it('all fields at same depth → all single', () => {
-    const fields = [
-      makeField('payload.a'),
-      makeField('payload.b'),
-      makeField('payload.c'),
-    ];
+    const fields = [makeField('payload.a'), makeField('payload.b'), makeField('payload.c')];
     const groups = groupFieldsForDisplay(fields);
     expect(groups).toHaveLength(3);
     expect(groups.every((g) => g.kind === 'single')).toBe(true);

@@ -9,7 +9,7 @@
  */
 
 import { describe, it, expect } from 'vitest';
-import { render, screen, fireEvent, within } from '@testing-library/react';
+import { render, screen, fireEvent } from '@testing-library/react';
 import { MantineProvider } from '@mantine/core';
 import type { ResourceField, UnionVariant, UnionMeta } from '../../../resources';
 import { inferVariant, StructuralUnionFieldDisplay } from './StructuralUnionFieldDisplay';
@@ -53,20 +53,14 @@ describe('inferVariant', () => {
     tag: 'list_EventBodyA',
     label: 'List EventBodyA',
     isArray: true,
-    fields: [
-      makeField({ name: 'event_type' }),
-      makeField({ name: 'damage', type: 'number' }),
-    ],
+    fields: [makeField({ name: 'event_type' }), makeField({ name: 'damage', type: 'number' })],
   };
 
   const dictVariant: UnionVariant = {
     tag: 'dict_EventBodyX',
     label: 'Dict EventBodyX',
     isDict: true,
-    dictValueFields: [
-      makeField({ name: 'good' }),
-      makeField({ name: 'great', type: 'number' }),
-    ],
+    dictValueFields: [makeField({ name: 'good' }), makeField({ name: 'great', type: 'number' })],
   };
 
   const objectVariantX: UnionVariant = {
@@ -84,17 +78,10 @@ describe('inferVariant', () => {
     tag: 'EventBodyB',
     label: 'EventBodyB',
     schemaName: 'EventBodyB',
-    fields: [
-      makeField({ name: 'type', constValue: 'EventBodyB' }),
-      makeField({ name: 'quality' }),
-    ],
+    fields: [makeField({ name: 'type', constValue: 'EventBodyB' }), makeField({ name: 'quality' })],
   };
 
-  const allVariants = [
-    arrayVariantWithUnionMeta,
-    objectVariantX,
-    objectVariantB,
-  ];
+  const allVariants = [arrayVariantWithUnionMeta, objectVariantX, objectVariantB];
 
   it('returns null for null/undefined value', () => {
     expect(inferVariant(null, allVariants)).toBeNull();
@@ -189,7 +176,7 @@ describe('CollapsibleJson', () => {
   it('renders small object directly (no collapse)', () => {
     wrap(<CollapsibleJson value={{ a: 1 }} />);
     // Should show the JSON inline (small enough)
-    expect(screen.getByText(/\"a\": 1/)).toBeTruthy();
+    expect(screen.getByText(/"a": 1/)).toBeTruthy();
   });
 
   it('renders large object collapsed by default with summary', () => {
@@ -235,7 +222,12 @@ describe('CollapsibleJson', () => {
   });
 
   it('singular item text for single-element array', () => {
-    const arr = [{ id: 1, data: 'some_long_string_to_make_over_120_chars_padding_padding_padding_padding_padding_padding_padding_padding' }];
+    const arr = [
+      {
+        id: 1,
+        data: 'some_long_string_to_make_over_120_chars_padding_padding_padding_padding_padding_padding_padding_padding',
+      },
+    ];
     wrap(<CollapsibleJson value={arr} />);
     expect(screen.getByText('[1 item]')).toBeTruthy();
   });
@@ -249,18 +241,13 @@ describe('StructuralUnionFieldDisplay', () => {
   const objectVariantX: UnionVariant = {
     tag: 'EventBodyX',
     label: 'EventBodyX',
-    fields: [
-      makeField({ name: 'good' }),
-      makeField({ name: 'great', type: 'number' }),
-    ],
+    fields: [makeField({ name: 'good' }), makeField({ name: 'great', type: 'number' })],
   };
 
   const objectVariantB: UnionVariant = {
     tag: 'EventBodyB',
     label: 'EventBodyB',
-    fields: [
-      makeField({ name: 'quality' }),
-    ],
+    fields: [makeField({ name: 'quality' })],
   };
 
   const arrayVariantWithUnionMeta: UnionVariant = {
@@ -280,20 +267,14 @@ describe('StructuralUnionFieldDisplay', () => {
     tag: 'list_EventBodyA',
     label: 'List EventBodyA',
     isArray: true,
-    fields: [
-      makeField({ name: 'event_type' }),
-      makeField({ name: 'damage', type: 'number' }),
-    ],
+    fields: [makeField({ name: 'event_type' }), makeField({ name: 'damage', type: 'number' })],
   };
 
   const dictVariant: UnionVariant = {
     tag: 'dict_EventBodyX',
     label: 'Dict EventBodyX',
     isDict: true,
-    dictValueFields: [
-      makeField({ name: 'good' }),
-      makeField({ name: 'great', type: 'number' }),
-    ],
+    dictValueFields: [makeField({ name: 'good' }), makeField({ name: 'great', type: 'number' })],
   };
 
   const unionMeta: UnionMeta = {
@@ -453,10 +434,7 @@ describe('DetailFieldRenderer — structural union (__variant)', () => {
         {
           tag: 'EventBodyX',
           label: 'EventBodyX',
-          fields: [
-            makeField({ name: 'good' }),
-            makeField({ name: 'great', type: 'number' }),
-          ],
+          fields: [makeField({ name: 'good' }), makeField({ name: 'great', type: 'number' })],
         },
       ],
     },
@@ -464,7 +442,9 @@ describe('DetailFieldRenderer — structural union (__variant)', () => {
 
   it('dispatches __variant union to StructuralUnionFieldDisplay', () => {
     const value = { good: 'hello', great: 42 };
-    const { container } = wrap(<DetailFieldRenderer field={structuralUnionField} value={value} data={{}} />);
+    const { container } = wrap(
+      <DetailFieldRenderer field={structuralUnionField} value={value} data={{}} />,
+    );
 
     // Should render sub-field values (no Badge label)
     expect(container.textContent).toContain('hello');
@@ -476,7 +456,9 @@ describe('DetailFieldRenderer — structural union (__variant)', () => {
       { event_type: 'explosion', damage: 100 },
       { event_type: 'heal', damage: -50 },
     ];
-    const { container } = wrap(<DetailFieldRenderer field={structuralUnionField} value={value} data={{}} />);
+    const { container } = wrap(
+      <DetailFieldRenderer field={structuralUnionField} value={value} data={{}} />,
+    );
 
     expect(container.textContent).toContain('explosion');
   });
@@ -493,7 +475,9 @@ describe('DetailFieldRenderer — structural union (__variant)', () => {
         ],
       },
     });
-    const { container } = wrap(<DetailFieldRenderer field={simpleUnionField} value="hello world" data={{}} />);
+    const { container } = wrap(
+      <DetailFieldRenderer field={simpleUnionField} value="hello world" data={{}} />,
+    );
     // Should render as string fallback, not crash
     expect(container.textContent).toContain('hello world');
   });

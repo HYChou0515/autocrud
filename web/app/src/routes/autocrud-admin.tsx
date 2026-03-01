@@ -47,7 +47,10 @@ function AutoCRUDLayout() {
                 to={`/autocrud-admin/${name}`}
                 label={config.label}
                 leftSection={<IconDatabase size={16} />}
-                active={location.pathname.startsWith(`/autocrud-admin/${name}`)}
+                active={
+                  location.pathname === `/autocrud-admin/${name}` ||
+                  location.pathname.startsWith(`/autocrud-admin/${name}/`)
+                }
               />
             );
           })}
