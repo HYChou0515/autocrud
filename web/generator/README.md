@@ -65,17 +65,22 @@ autocrud-web init my-game-admin
 Generate code from AutoCRUD API OpenAPI spec.
 
 Options:
-- `-u, --url <api-url>`: API base URL (default: `http://localhost:8000`)
+- `-u, --url <api-url>`: Backend API URL — used to fetch the OpenAPI spec and written to `.env` as the Vite dev proxy target (default: `http://localhost:8000`)
 - `-o, --output <directory>`: Output directory (default: `src`)
 - `--openapi-path <path>`: Path to OpenAPI spec endpoint (default: `/openapi.json`)
 - `--base-path <path>`: API base path prefix, auto-detected if omitted
-- `--api-base-url <url>`: Runtime API base URL written to `.env` (defaults to `--url` + detected base path)
 
 Example:
 ```bash
 autocrud-web generate --url http://localhost:8000
 # With non-root API prefix:
 autocrud-web generate --url http://localhost:8000 --base-path /api/v1
+```
+
+After running, `.env` will contain:
+```env
+VITE_API_URL=/api
+API_PROXY_TARGET=http://localhost:8000
 ```
 
 ### `autocrud-web integrate`
@@ -140,16 +145,78 @@ my-app/
 - Node.js >= 18.0.0
 - AutoCRUD backend with OpenAPI spec at `/openapi.json`
 
-## CORS Configuration
+## API Proxy & Environment Variables
 
-Your AutoCRUD backend needs CORS middleware. For FastAPI:
+The generated app uses a **Vite dev server proxy** to avoid CORS issues during development.
+
+### How It Works
+
+| Environment | `VITE_API_URL` | Request Path | Actual Target |
+|-------------|----------------|-------------|---------------|
+| **Dev** | `/api` (default) | `/api/character` → Vite proxy | `http://localhost:8000/character` |
+| **Prod** | `http://server:port` | `http://server:port/character` | Direct to backend |
+
+All API requests go through the Axios client in `src/lib/client.ts`, which reads `VITE_API_URL` as its base URL.
+
+In dev mode, requests to `/api/*` are intercepted by the Vite dev server and forwarded to the backend (with the `/api` prefix stripped). This means **no CORS configuration is needed** on the backend for development.
+
+### Environment Variables
+
+The generator writes a `.env` file (git-ignored) with these variables:
+
+| Variable | Scope | Default | Description |
+|----------|-------|---------|-------------|
+| `VITE_API_URL` | Browser (runtime) | `/api` | Base URL for Axios requests. Use `/api` for dev (proxy), or a full URL for prod. |
+| `API_PROXY_TARGET` | Vite dev server only | `http://localhost:8000` | Backend URL that `/api` requests are proxied to. **Not exposed to the browser.** |
+
+See `.env.example` for reference.
+
+### Development (Default)
+
+No extra config needed — just start the backend and the dev server:
+
+```bash
+# Terminal 1: Start your AutoCRUD backend
+uv run python examples/rpg_game_api.py
+
+# Terminal 2: Start the frontend dev server
+cd app && pnpm dev
+```
+
+The Vite dev server will proxy `/api/*` → `http://localhost:8000/*`.
+
+If your backend runs on a different host or port, edit `.env`:
+
+```env
+API_PROXY_TARGET=http://192.168.1.100:9000
+```
+
+### Production
+
+For production builds, set `VITE_API_URL` to the actual backend URL:
+
+```env
+VITE_API_URL=http://your-server:8000
+```
+
+Then build:
+
+```bash
+pnpm build
+```
+
+The proxy is only active during `pnpm dev` — production builds use `VITE_API_URL` directly.
+
+### CORS (Optional)
+
+With the dev proxy, you generally **don't need** CORS on the backend. However, if you prefer direct browser-to-backend requests (e.g., set `VITE_API_URL=http://localhost:8000` without proxy), configure CORS:
 
 ```python
 from fastapi.middleware.cors import CORSMiddleware
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],  # or ["http://localhost:5173"] for development
+    allow_origins=["http://localhost:5173"],
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],

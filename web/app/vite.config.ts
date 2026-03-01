@@ -1,11 +1,17 @@
 /// <reference types="vitest" />
 
 import { defineConfig } from 'vitest/config'
+import { loadEnv } from 'vite'
 import react from '@vitejs/plugin-react'
 import { TanStackRouterVite } from '@tanstack/router-plugin/vite'
 import path from 'path'
 
-export default defineConfig({
+export default defineConfig(({ mode }) => {
+  // Load all env vars (including non-VITE_ prefixed) for proxy config
+  const env = loadEnv(mode, process.cwd(), '')
+  const proxyTarget = env.API_PROXY_TARGET || 'http://localhost:8000'
+
+  return {
   plugins: [
     TanStackRouterVite({ quoteStyle: 'single' }),
     react(),
@@ -56,5 +62,13 @@ export default defineConfig({
     host: true,
     port: 5173,
     strictPort: true,
+    proxy: {
+      '/api': {
+        target: proxyTarget,
+        changeOrigin: true,
+        rewrite: (path) => path.replace(/^\/api/, ''),
+      },
+    },
   },
+}
 })

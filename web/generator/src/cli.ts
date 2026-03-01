@@ -23,37 +23,37 @@ program
 program
   .command('generate')
   .description('Generate code from AutoCRUD API OpenAPI spec')
-  .option('-u, --url <api-url>', 'API base URL', 'http://localhost:8000')
+  .option(
+    '-u, --url <api-url>',
+    'Backend API URL (used to fetch OpenAPI spec and as dev proxy target)',
+    'http://localhost:8000',
+  )
   .option('-o, --output <directory>', 'Output directory', 'src')
   .option('--openapi-path <path>', 'Path to OpenAPI spec endpoint', '/openapi.json')
   .option('--base-path <path>', 'API base path prefix (auto-detected if omitted)')
-  .option('--api-base-url <url>', 'Runtime API base URL for .env (defaults to --url + base-path)')
-  .action(
-    async (options: { url: string; output: string; openapiPath: string; basePath?: string; apiBaseUrl?: string }) => {
-      await generateCode(options.url, options.output, {
-        openapiPath: options.openapiPath,
-        basePath: options.basePath,
-        apiBaseUrl: options.apiBaseUrl,
-      });
-    },
-  );
+  .action(async (options: { url: string; output: string; openapiPath: string; basePath?: string }) => {
+    await generateCode(options.url, options.output, {
+      openapiPath: options.openapiPath,
+      basePath: options.basePath,
+    });
+  });
 
 program
   .command('integrate')
   .description('Integrate AutoCRUD generated code into an existing React project')
-  .option('-u, --url <api-url>', 'API base URL', 'http://localhost:8000')
+  .option(
+    '-u, --url <api-url>',
+    'Backend API URL (used to fetch OpenAPI spec and as dev proxy target)',
+    'http://localhost:8000',
+  )
   .option('-o, --output <directory>', 'Output directory (your src/)', 'src')
   .option('--openapi-path <path>', 'Path to OpenAPI spec endpoint', '/openapi.json')
   .option('--base-path <path>', 'API base path prefix (auto-detected if omitted)')
-  .option('--api-base-url <url>', 'Runtime API base URL for .env (defaults to --url + base-path)')
-  .action(
-    async (options: { url: string; output: string; openapiPath: string; basePath?: string; apiBaseUrl?: string }) => {
-      await integrateProject(options.url, options.output, {
-        openapiPath: options.openapiPath,
-        basePath: options.basePath,
-        apiBaseUrl: options.apiBaseUrl,
-      });
-    },
-  );
+  .action(async (options: { url: string; output: string; openapiPath: string; basePath?: string }) => {
+    await integrateProject(options.url, options.output, {
+      openapiPath: options.openapiPath,
+      basePath: options.basePath,
+    });
+  });
 
 program.parse();

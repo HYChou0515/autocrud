@@ -13,7 +13,6 @@ import path from 'node:path';
 export interface GenerateOptions {
   openapiPath?: string;
   basePath?: string;
-  apiBaseUrl?: string;
 }
 
 export async function generateCode(apiUrl: string, outputRoot: string, options: GenerateOptions = {}): Promise<void> {
@@ -43,9 +42,8 @@ export async function generateCode(apiUrl: string, outputRoot: string, options: 
   const generator = new Generator(spec, ROOT, SRC, GEN, ROUTES, basePath);
   await generator.run();
 
-  // Write .env file with VITE_API_URL
-  const runtimeUrl = options.apiBaseUrl ?? `${apiUrl}${basePath}`;
-  writeEnvFile(ROOT, runtimeUrl);
+  // Write .env file with proxy config
+  writeEnvFile(ROOT, apiUrl);
 }
 
 /**
@@ -101,27 +99,39 @@ export function detectBasePath(spec: any): string {
 }
 
 /**
- * Write or update .env file with VITE_API_URL.
- * If .env exists, only updates/adds the VITE_API_URL line.
+ * Write or update .env file with API configuration.
+ *
+ * Sets:
+ * - VITE_API_URL=/api  (relative path, proxied by Vite dev server; override for prod)
+ * - API_PROXY_TARGET=<backendUrl>  (Vite dev server proxy target, not exposed to browser)
  */
-export function writeEnvFile(rootDir: string, apiUrl: string): void {
+export function writeEnvFile(rootDir: string, backendUrl: string): void {
   const envPath = path.join(rootDir, '.env');
-  const envLine = `VITE_API_URL=${apiUrl}`;
+  const envVars: Record<string, string> = {
+    VITE_API_URL: '/api',
+    API_PROXY_TARGET: backendUrl,
+  };
 
   if (fs.existsSync(envPath)) {
     const content = fs.readFileSync(envPath, 'utf-8');
     const lines = content.split('\n');
-    const idx = lines.findIndex((l) => l.startsWith('VITE_API_URL='));
-    if (idx >= 0) {
-      lines[idx] = envLine;
-    } else {
-      lines.push(envLine);
+    for (const [key, value] of Object.entries(envVars)) {
+      const idx = lines.findIndex((l) => l.startsWith(`${key}=`));
+      if (idx >= 0) {
+        lines[idx] = `${key}=${value}`;
+      } else {
+        lines.push(`${key}=${value}`);
+      }
     }
     fs.writeFileSync(envPath, lines.join('\n'), 'utf-8');
   } else {
-    fs.writeFileSync(envPath, envLine + '\n', 'utf-8');
+    const content = Object.entries(envVars)
+      .map(([key, value]) => `${key}=${value}`)
+      .join('\n');
+    fs.writeFileSync(envPath, content + '\n', 'utf-8');
   }
-  console.log(`📝 .env: VITE_API_URL=${apiUrl}`);
+  console.log(`📝 .env: VITE_API_URL=/api`);
+  console.log(`📝 .env: API_PROXY_TARGET=${backendUrl}`);
 }
 
 /** @internal Exported for testing */

@@ -1,8 +1,9 @@
 # AutoCRUD Web - Makefile
 # 常用開發指令
 
-# Configurable API URL (override with: make gen-app API_URL=http://myhost:9000)
-API_URL ?= http://0.0.0.0:8000
+# Configurable backend API URL (override with: make gen-app API_URL=http://myhost:9000)
+# Used to fetch OpenAPI spec during generation and as Vite dev proxy target
+API_URL ?= http://localhost:8000
 
 .PHONY: help build-gen gen dev dev-app dev-gen install clean test clean-app gen-app reset-app regen-app style publish
 
