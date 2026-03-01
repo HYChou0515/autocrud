@@ -232,12 +232,13 @@ class GameEventPayload(Struct):
     character_id: Annotated[
         Optional[str], Ref("character", ref_type=RefType.revision_id)
     ]
-    event_x2: EventBodyX
-    event_x3: list[EventBodyX | EventBodyB | EventBodyA] | EventBodyX | EventBodyB
-    event_x4: list[EventBodyX | EventBodyB | EventBodyA] | EventBodyX 
-    event_x5: list[EventBodyA] | EventBodyX
-    event_x6: list[EventBodyA] | EventBodyX | EventBodyX  | None
-    event_x7: list[EventBodyA] | dict[str, EventBodyX]
+    # event_x2: EventBodyX
+    # event_x3: list[EventBodyX | EventBodyB | EventBodyA] | EventBodyX | EventBodyB
+    # event_x4: list[EventBodyX | EventBodyB | EventBodyA] | EventBodyX 
+    # event_x5: list[EventBodyA] | EventBodyX
+    # event_x6: list[EventBodyA] | EventBodyX | EventBodyX  | None
+    # event_x7: list[EventBodyA] | dict[str, EventBodyX]
+    # event_x8: list[list[list[EventBodyX | EventBodyB] | EventBodyB | EventBodyA]]
     description: str
     reward_gold: int = 0
     reward_exp: int = 0

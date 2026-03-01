@@ -212,7 +212,8 @@ export class Generator {
         typeof schema['x-display-name-field'] === 'string' ? schema['x-display-name-field'] : undefined;
 
       const isJob = this.detectJobSchema(schema);
-      const maxFormDepth = isJob ? 3 : 2;
+      const fields = this.extractFields(schema, '', 1, 10);
+      const maxFormDepth = computeMaxFieldDepth(fields);
 
       this.resources.push({
         name,
@@ -221,7 +222,7 @@ export class Generator {
         camel: toCamel(name),
         schemaName,
         displayNameField,
-        fields: this.extractFields(schema, '', 1, 10),
+        fields,
         isJob,
         maxFormDepth,
       });
@@ -235,15 +236,16 @@ export class Generator {
       // schemaName for the union type alias (e.g. "CatOrDog")
       const schemaName = toPascal(name);
 
+      const unionFields = [unionField];
       this.resources.push({
         name,
         label: toLabel(name),
         pascal: toPascal(name),
         camel: toCamel(name),
         schemaName,
-        fields: [unionField],
+        fields: unionFields,
         isJob: false,
-        maxFormDepth: 2,
+        maxFormDepth: computeMaxFieldDepth(unionFields),
         isUnion: true,
         unionVariantSchemaNames: unionField.unionMeta!.variants.map((v) => v.schemaName).filter(Boolean) as string[],
       });
@@ -1250,9 +1252,20 @@ export class Generator {
     } else if (type === 'object') {
       tsType = 'Record<string, any>';
       zodType = 'z.record(z.string(), z.any())';
-    } else if (type && type !== 'string' && type !== 'integer' && type !== 'number' && type !== 'boolean' && type !== 'object' && type !== 'array' && !prop.enum) {
+    } else if (
+      type &&
+      type !== 'string' &&
+      type !== 'integer' &&
+      type !== 'number' &&
+      type !== 'boolean' &&
+      type !== 'object' &&
+      type !== 'array' &&
+      !prop.enum
+    ) {
       // Fallback for unrecognized schema types — use 'any' instead of silently defaulting to 'string'
-      console.warn(`[autocrud-web-generator] Unrecognized schema type "${type}" for field "${name}", falling back to 'any'.`);
+      console.warn(
+        `[autocrud-web-generator] Unrecognized schema type "${type}" for field "${name}", falling back to 'any'.`,
+      );
       tsType = 'any';
       zodType = 'z.any()';
     }
@@ -1809,6 +1822,22 @@ function hasRefMembers(arr: any[] | undefined): boolean {
 
 /** ISO 8601 datetime pattern */
 const ISO_DATETIME_RE = /^\d{4}-\d{2}-\d{2}[T ]\d{2}:\d{2}:\d{2}/;
+
+/**
+ * Compute max available depth from field name paths.
+ * Mirrors the frontend computeMaxAvailableDepth logic: the deepest
+ * dot-separated field name determines the depth, and fields with
+ * itemFields add an extra level.  Minimum is 1.
+ */
+function computeMaxFieldDepth(fields: Field[]): number {
+  let max = 1;
+  for (const f of fields) {
+    const d = f.name.split('.').length;
+    if (d > max) max = d;
+    if (f.itemFields && f.itemFields.length > 0 && d + 1 > max) max = d + 1;
+  }
+  return max;
+}
 
 /**
  * Heuristic: detect if a string field is actually a datetime

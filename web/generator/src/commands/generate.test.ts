@@ -1919,7 +1919,8 @@ describe('Job resource — defaultHiddenFields', () => {
     (gen as any).extractResources();
     const r = gen.resources[0];
     expect(r.isJob).toBe(true);
-    expect(r.maxFormDepth).toBe(3);
+    // Simple payload (no nested fields) → maxFormDepth computed from actual fields (depth 1)
+    expect(r.maxFormDepth).toBe(1);
   });
 
   it('genCreateRoute generates ResourceCreate (not JobEnqueue) for Job', () => {
@@ -1930,6 +1931,59 @@ describe('Job resource — defaultHiddenFields', () => {
 
     expect(code).toContain('ResourceCreate');
     expect(code).not.toContain('JobEnqueue');
+  });
+
+  it('computes maxFormDepth from nested payload struct fields', () => {
+    // Job whose payload is a nested struct with depth-2 fields (payload.x)
+    const spec = {
+      info: { title: 'Test', version: '1.0' },
+      paths: {
+        '/my-job': {
+          post: {
+            requestBody: {
+              content: {
+                'application/json': {
+                  schema: { $ref: '#/components/schemas/MyJob' },
+                },
+              },
+            },
+          },
+        },
+        '/my-job/{id}': { get: {} },
+      },
+      components: {
+        schemas: {
+          MyJob: {
+            type: 'object',
+            properties: {
+              payload: { $ref: '#/components/schemas/MyPayload' },
+              status: { type: 'string', default: 'pending' },
+              errmsg: { type: 'string', default: '' },
+              retries: { type: 'integer', default: 0 },
+              periodic_interval_seconds: { type: 'number', default: 0 },
+              periodic_max_runs: { type: 'integer', default: 0 },
+              periodic_runs: { type: 'integer', default: 0 },
+              periodic_initial_delay_seconds: { type: 'number', default: 0 },
+            },
+            required: ['payload'],
+          },
+          MyPayload: {
+            type: 'object',
+            properties: {
+              event_type: { type: 'string' },
+              description: { type: 'string' },
+            },
+            required: ['event_type'],
+          },
+        },
+      },
+    };
+    const gen = createTestGenerator(spec);
+    (gen as any).extractResources();
+    const r = gen.resources[0];
+    expect(r.isJob).toBe(true);
+    // payload.event_type and payload.description are depth 2
+    expect(r.maxFormDepth).toBe(2);
   });
 
   it('genResourcesConfig includes defaultHiddenFields for Job resource', () => {
@@ -2827,10 +2881,7 @@ describe('parseField — nested arrays', () => {
       items: {
         type: 'array',
         items: {
-          anyOf: [
-            { $ref: '#/components/schemas/EventBodyX' },
-            { $ref: '#/components/schemas/EventBodyB' },
-          ],
+          anyOf: [{ $ref: '#/components/schemas/EventBodyX' }, { $ref: '#/components/schemas/EventBodyB' }],
           discriminator: {
             propertyName: 'type',
             mapping: {
@@ -2866,10 +2917,7 @@ describe('parseField — nested arrays', () => {
             {
               type: 'array',
               items: {
-                anyOf: [
-                  { $ref: '#/components/schemas/EventBodyX' },
-                  { $ref: '#/components/schemas/EventBodyB' },
-                ],
+                anyOf: [{ $ref: '#/components/schemas/EventBodyX' }, { $ref: '#/components/schemas/EventBodyB' }],
                 discriminator: {
                   propertyName: 'type',
                   mapping: {
@@ -2880,10 +2928,7 @@ describe('parseField — nested arrays', () => {
               },
             },
             {
-              anyOf: [
-                { $ref: '#/components/schemas/EventBodyB' },
-                { $ref: '#/components/schemas/EventBodyA' },
-              ],
+              anyOf: [{ $ref: '#/components/schemas/EventBodyB' }, { $ref: '#/components/schemas/EventBodyA' }],
               discriminator: {
                 propertyName: 'type',
                 mapping: {
@@ -2938,10 +2983,7 @@ describe('parseField — nested arrays', () => {
     const prop = {
       type: 'array',
       items: {
-        anyOf: [
-          { $ref: '#/components/schemas/EventBodyX' },
-          { $ref: '#/components/schemas/EventBodyA' },
-        ],
+        anyOf: [{ $ref: '#/components/schemas/EventBodyX' }, { $ref: '#/components/schemas/EventBodyA' }],
       },
     };
     const gen = createTestGenerator(spec);
@@ -2960,7 +3002,7 @@ describe('parseField — nested arrays', () => {
     const spec = buildNestedArraySpec();
     // A schema with unknown type that doesn't match any known pattern
     const prop = {
-      type: 'foobar',  // Not a real OpenAPI type
+      type: 'foobar', // Not a real OpenAPI type
     };
     const gen = createTestGenerator(spec);
     const field = (gen as any).parseField('unknown_field', prop, true);
