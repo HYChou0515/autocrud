@@ -12,7 +12,10 @@
 
 import { useState, useMemo } from 'react';
 import type { ResourceField } from '../resources';
-import { computeMaxAvailableDepth, computeVisibleFieldsAndGroups } from '@/autocrud/lib/utils/formUtils';
+import {
+  computeMaxAvailableDepth,
+  computeVisibleFieldsAndGroups,
+} from '@/autocrud/lib/utils/formUtils';
 
 export interface UseFieldDepthOptions {
   fields: ResourceField[];

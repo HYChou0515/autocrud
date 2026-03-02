@@ -12,7 +12,11 @@ import {
 } from '@mantine/core';
 import { IconLayersSubtract } from '@tabler/icons-react';
 import type { ResourceConfig } from '../../resources';
-import { getByPath, collapseFieldToJson, groupFieldsByParent } from '@/autocrud/lib/utils/formUtils';
+import {
+  getByPath,
+  collapseFieldToJson,
+  groupFieldsByParent,
+} from '@/autocrud/lib/utils/formUtils';
 import { useResourceForm } from './useResourceForm';
 import { FieldRenderer } from '../field/FormFieldRenderer';
 

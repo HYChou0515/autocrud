@@ -17,6 +17,7 @@ import {
   Text,
   ActionIcon,
   Paper,
+  TagsInput,
 } from '@mantine/core';
 import { IconTrash, IconPlus } from '@tabler/icons-react';
 import type { UseFormReturnType } from '@mantine/form';
@@ -145,11 +146,12 @@ export function ArrayFieldRenderer({ field, form }: ArrayFieldRendererProps) {
               }
               if (sf.isArray && sf.type === 'string') {
                 return (
-                  <TextInput
+                  <TagsInput
                     key={itemPath}
-                    label={`${sf.label} (comma-separated)`}
+                    label={sf.label}
                     required={sf.isRequired}
-                    placeholder="value1, value2, value3"
+                    placeholder="Type and press Enter"
+                    clearable
                     {...form.getInputProps(itemPath)}
                   />
                 );

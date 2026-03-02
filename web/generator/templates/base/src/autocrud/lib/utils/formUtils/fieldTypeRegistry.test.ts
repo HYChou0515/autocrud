@@ -199,12 +199,20 @@ describe('stringHandler', () => {
       expect(stringHandler.toFormValue('hello', field())).toBe('hello');
     });
 
-    it('joins array to comma-separated string for isArray', () => {
-      expect(stringHandler.toFormValue(['a', 'b', 'c'], field({ isArray: true }))).toBe('a, b, c');
+    it('keeps array as string[] for isArray (TagsInput)', () => {
+      expect(stringHandler.toFormValue(['a', 'b', 'c'], field({ isArray: true }))).toEqual([
+        'a',
+        'b',
+        'c',
+      ]);
     });
 
-    it('handles empty array for isArray', () => {
-      expect(stringHandler.toFormValue([], field({ isArray: true }))).toBe('');
+    it('returns empty array for empty array isArray', () => {
+      expect(stringHandler.toFormValue([], field({ isArray: true }))).toEqual([]);
+    });
+
+    it('returns empty array for non-array isArray', () => {
+      expect(stringHandler.toFormValue(null, field({ isArray: true }))).toEqual([]);
     });
   });
 
@@ -221,23 +229,19 @@ describe('stringHandler', () => {
       expect(stringHandler.toApiValue('', field())).toBe('');
     });
 
-    it('splits comma-separated string for isArray', () => {
-      expect(stringHandler.toApiValue('a, b, c', field({ isArray: true }))).toEqual([
+    it('returns array as-is for isArray (TagsInput value)', () => {
+      expect(stringHandler.toApiValue(['a', 'b', 'c'], field({ isArray: true }))).toEqual([
         'a',
         'b',
         'c',
       ]);
     });
 
-    it('returns empty array for empty string isArray', () => {
-      expect(stringHandler.toApiValue('', field({ isArray: true }))).toEqual([]);
+    it('returns empty array for empty array isArray', () => {
+      expect(stringHandler.toApiValue([], field({ isArray: true }))).toEqual([]);
     });
 
-    it('returns array as-is for isArray when value is already array', () => {
-      expect(stringHandler.toApiValue(['a', 'b'], field({ isArray: true }))).toEqual(['a', 'b']);
-    });
-
-    it('returns empty array for non-string non-array isArray', () => {
+    it('returns empty array for non-array isArray', () => {
       expect(stringHandler.toApiValue(42, field({ isArray: true }))).toEqual([]);
     });
 
@@ -271,12 +275,12 @@ describe('stringHandler', () => {
       expect(stringHandler.fromJsonValue(undefined, field())).toBe('');
     });
 
-    it('joins array to comma-separated for isArray', () => {
-      expect(stringHandler.fromJsonValue(['x', 'y'], field({ isArray: true }))).toBe('x, y');
+    it('keeps array as string[] for isArray (TagsInput)', () => {
+      expect(stringHandler.fromJsonValue(['x', 'y'], field({ isArray: true }))).toEqual(['x', 'y']);
     });
 
-    it('returns value for non-array isArray', () => {
-      expect(stringHandler.fromJsonValue('not_array', field({ isArray: true }))).toBe('not_array');
+    it('returns empty array for non-array isArray', () => {
+      expect(stringHandler.fromJsonValue('not_array', field({ isArray: true }))).toEqual([]);
     });
   });
 });

@@ -137,8 +137,8 @@ export const stringHandler: FieldTypeHandler = {
   },
 
   toFormValue(val, field) {
-    // Array of strings → comma-separated for form display
-    if (field.isArray && Array.isArray(val)) return val.join(', ');
+    // Array of strings → keep as string[] for TagsInput
+    if (field.isArray) return Array.isArray(val) ? val : [];
     if (val == null) {
       // Nullable enum: keep null so Zod z.enum().nullable() is satisfied
       if (field.enumValues && field.enumValues.length > 0) return null;
@@ -148,16 +148,9 @@ export const stringHandler: FieldTypeHandler = {
   },
 
   toApiValue(val, field) {
-    // Array of strings → split comma-separated string
+    // Array of strings → already string[] from TagsInput
     if (field.isArray) {
-      return typeof val === 'string'
-        ? val
-            .split(',')
-            .map((s: string) => s.trim())
-            .filter(Boolean)
-        : Array.isArray(val)
-          ? val
-          : [];
+      return Array.isArray(val) ? val : [];
     }
     // Enum empty value → null/undefined based on nullable
     if (field.enumValues && field.enumValues.length > 0 && (val === '' || val == null)) {
@@ -169,7 +162,8 @@ export const stringHandler: FieldTypeHandler = {
   },
 
   fromJsonValue(val, field) {
-    if (field.isArray && Array.isArray(val)) return val.join(', ');
+    // Array of strings → keep as string[] for TagsInput
+    if (field.isArray) return Array.isArray(val) ? val : [];
     return val ?? '';
   },
 };

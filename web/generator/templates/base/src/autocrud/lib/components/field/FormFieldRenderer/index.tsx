@@ -13,6 +13,7 @@ import {
   Select,
   Switch,
   FileInput,
+  TagsInput,
 } from '@mantine/core';
 import { DateTimePicker } from '@mantine/dates';
 import type { UseFormReturnType } from '@mantine/form';
@@ -124,21 +125,23 @@ const FIELD_RENDERERS: Record<FieldKind, (ctx: FieldRenderContext) => React.Reac
   },
 
   arrayString: ({ field, form }) => (
-    <TextInput
+    <TagsInput
       key={field.name}
-      label={`${field.label} (comma-separated)`}
+      label={field.label}
       required={field.isRequired}
-      placeholder="value1, value2, value3"
+      placeholder="Type and press Enter"
+      clearable
       {...form.getInputProps(field.name)}
     />
   ),
 
   tags: ({ field, form }) => (
-    <TextInput
+    <TagsInput
       key={field.name}
       label={field.label}
       required={field.isRequired}
-      placeholder="tag1, tag2, tag3"
+      placeholder="Type and press Enter"
+      clearable
       {...form.getInputProps(field.name)}
     />
   ),

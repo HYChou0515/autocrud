@@ -1,7 +1,7 @@
 import { createFileRoute, Outlet, Link, useLocation } from '@tanstack/react-router';
 import { AppShell, NavLink, Title, Group, ScrollArea, Text } from '@mantine/core';
 import { IconHome, IconDatabase } from '@tabler/icons-react';
-import { getResourceNames, getResource } from '../lib/resources';
+import { getResourceNames, getResource } from '../autocrud/lib/resources';
 
 export const Route = createFileRoute('/autocrud-admin')({
   component: AutoCRUDLayout,

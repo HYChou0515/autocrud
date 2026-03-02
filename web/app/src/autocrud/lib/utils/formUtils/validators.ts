@@ -134,7 +134,7 @@ export function parseAndValidateJson(jsonText: string): {
  *
  * @example
  * preprocessArrayFields(
- *   { tags: 'a, b, c', items: [{ id: 1 }] },
+ *   { tags: ['a', 'b', 'c'], items: [{ id: 1 }] },
  *   [
  *     { name: 'tags', isArray: true },
  *     { name: 'items', itemFields: [{ name: 'id' }] }
@@ -149,20 +149,16 @@ export function preprocessArrayFields(
   const processed = { ...(values as Record<string, any>) };
 
   for (const field of fields) {
-    // Simple array fields (comma-separated string) need conversion
+    // Simple array fields — form state is already string[] (TagsInput),
+    // ensure the value is a proper array for Zod validation
     if (
       field.isArray &&
       !(field.itemFields && field.itemFields.length > 0) &&
       !(field.ref && field.ref.type === 'resource_id')
     ) {
       const val = processed[field.name];
-      if (typeof val === 'string') {
-        processed[field.name] = val
-          ? val
-              .split(',')
-              .map((s: string) => s.trim())
-              .filter(Boolean)
-          : [];
+      if (!Array.isArray(val)) {
+        processed[field.name] = [];
       }
     }
 
@@ -172,13 +168,8 @@ export function preprocessArrayFields(
         if (!item || typeof item !== 'object') return item;
         const processedItem = { ...item };
         for (const sf of field.itemFields!) {
-          if (sf.isArray && typeof processedItem[sf.name] === 'string') {
-            processedItem[sf.name] = processedItem[sf.name]
-              ? processedItem[sf.name]
-                  .split(',')
-                  .map((s: string) => s.trim())
-                  .filter(Boolean)
-              : [];
+          if (sf.isArray && !Array.isArray(processedItem[sf.name])) {
+            processedItem[sf.name] = [];
           }
         }
         return processedItem;
@@ -195,7 +186,6 @@ export function preprocessArrayFields(
  * These are fields whose form representation differs from the zod schema expectation:
  * - Object fields (stored as JSON strings, zod expects objects)
  * - Binary fields (stored as BinaryFormValue, zod expects binary struct)
- * - Simple array fields (stored as comma-separated strings, zod expects arrays)
  * - Collapsed group paths (stored as JSON strings)
  * - Nested array/binary sub-fields within itemFields parents
  *
@@ -215,7 +205,7 @@ export function preprocessArrayFields(
  * )
  * // Returns:
  * // {
- * //   suppressPaths: Set(['metadata', 'avatar', 'tags', 'nested.obj']),
+ * //   suppressPaths: Set(['metadata', 'avatar', 'nested.obj']),
  * //   nestedArraySubFields: [{ parent: 'items', sub: 'effects' }]
  * // }
  */
@@ -233,16 +223,6 @@ export function computeValidationSuppressPaths(
       .map((f) => f.name),
     // Binary fields (form uses BinaryFormValue, zod expects binary struct)
     ...fields.filter((f) => f.type === 'binary').map((f) => f.name),
-    // Simple array fields (comma-separated string, zod expects array)
-    // Exclude array ref fields (they use actual arrays via MultiSelect)
-    ...fields
-      .filter(
-        (f) =>
-          f.isArray &&
-          !(f.itemFields && f.itemFields.length > 0) &&
-          !(f.ref && f.ref.type === 'resource_id'),
-      )
-      .map((f) => f.name),
     // Collapsed group paths (JSON string in form)
     ...collapsedGroups.map((g) => g.path),
   ]);
