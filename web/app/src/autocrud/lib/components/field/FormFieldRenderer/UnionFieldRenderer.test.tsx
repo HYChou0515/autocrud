@@ -1472,3 +1472,178 @@ describe('UnionFieldRenderer — dict variant emptyValueForSubField', () => {
     expect(container.textContent).toContain('tags');
   });
 });
+
+// ---------------------------------------------------------------------------
+// Nullable fields should NOT show required indicator (isRequired && isNullable)
+// ---------------------------------------------------------------------------
+
+describe('UnionFieldRenderer — nullable sub-fields should not be required', () => {
+  it('nullable binary sub-field in discriminated union does not show required', () => {
+    const meta: UnionMeta = {
+      discriminatorField: 'type',
+      variants: [
+        {
+          tag: 'EventBodyA',
+          label: 'EventBodyA',
+          schemaName: 'EventBodyA',
+          fields: [
+            makeField({
+              name: 'extra_info_a',
+              type: 'string',
+              isRequired: true,
+              isNullable: false,
+            }),
+            makeField({ name: 'content', type: 'binary', isRequired: true, isNullable: true }),
+          ],
+        },
+      ],
+    };
+    const field = makeField({
+      name: 'event_body',
+      label: 'Event Body',
+      type: 'union',
+      unionMeta: meta,
+    });
+
+    const { container } = renderWithMantine(
+      <FormWrapper
+        field={field}
+        unionMeta={meta}
+        initialValues={{
+          event_body: { type: 'EventBodyA', extra_info_a: '', content: { _mode: 'empty' } },
+        }}
+      />,
+    );
+
+    // extra_info_a is required (isRequired=true, isNullable=false) → should have required
+    const _extraInfoInput = container.querySelector(
+      'input[aria-label="extra_info_a"],input',
+    ) as HTMLInputElement;
+    // Find all labels to verify required indicator
+    const labels = Array.from(container.querySelectorAll('label'));
+    const extraInfoLabel = labels.find((l) => l.textContent?.includes('extra_info_a'));
+    const contentLabel = labels.find((l) => l.textContent?.includes('content'));
+
+    // extra_info_a: isRequired=true, isNullable=false → should show required (asterisk)
+    expect(
+      extraInfoLabel?.querySelector('[data-required]') ?? extraInfoLabel?.innerHTML,
+    ).toBeTruthy();
+    // content: isRequired=true, isNullable=true → should NOT show required
+    // Binary field renders with "Upload" / "URL" tabs, check no required indicator on its label
+    const contentContainer = container.textContent || '';
+    expect(contentContainer).toContain('content');
+    // The BinaryFieldEditor receives required prop — check that it is NOT required
+    // We test by checking the rendered required indicators
+    if (contentLabel) {
+      const asterisk = contentLabel.querySelector('.mantine-InputWrapper-required');
+      expect(asterisk).toBeNull();
+    }
+  });
+
+  it('nullable text sub-field in discriminated union does not show required asterisk', () => {
+    const meta: UnionMeta = {
+      discriminatorField: 'type',
+      variants: [
+        {
+          tag: 'A',
+          label: 'Type A',
+          schemaName: 'A',
+          fields: [
+            makeField({
+              name: 'required_field',
+              type: 'string',
+              isRequired: true,
+              isNullable: false,
+            }),
+            makeField({
+              name: 'nullable_field',
+              type: 'string',
+              isRequired: true,
+              isNullable: true,
+            }),
+            makeField({
+              name: 'optional_field',
+              type: 'string',
+              isRequired: false,
+              isNullable: false,
+            }),
+          ],
+        },
+      ],
+    };
+    const field = makeField({
+      name: 'data',
+      label: 'Data',
+      type: 'union',
+      unionMeta: meta,
+    });
+
+    const { container } = renderWithMantine(
+      <FormWrapper
+        field={field}
+        unionMeta={meta}
+        initialValues={{
+          data: { type: 'A', required_field: '', nullable_field: '', optional_field: '' },
+        }}
+      />,
+    );
+
+    // Find all TextInputs by checking labels
+    const _allInputs = container.querySelectorAll('.mantine-TextInput-root');
+    // required_field: isRequired=true, isNullable=false → should be required
+    // nullable_field: isRequired=true, isNullable=true → should NOT be required
+    // optional_field: isRequired=false → should NOT be required
+
+    // Check by looking for required inputs
+    const requiredInputs = container.querySelectorAll('input[required]');
+    const requiredLabels = Array.from(requiredInputs).map((inp) => {
+      const wrapper = inp.closest('.mantine-TextInput-root');
+      return wrapper?.querySelector('label')?.textContent?.replace(' *', '');
+    });
+
+    // Only required_field should be marked as required
+    expect(requiredLabels).toContain('required_field');
+    expect(requiredLabels).not.toContain('nullable_field');
+    expect(requiredLabels).not.toContain('optional_field');
+  });
+
+  it('nullable number sub-field in structural union variant does not show required', () => {
+    const meta: UnionMeta = {
+      discriminatorField: '__variant',
+      variants: [
+        {
+          tag: 'MyStruct',
+          label: 'My Struct',
+          schemaName: 'MyStruct',
+          fields: [
+            makeField({ name: 'score', type: 'number', isRequired: true, isNullable: false }),
+            makeField({ name: 'bonus', type: 'number', isRequired: true, isNullable: true }),
+          ],
+        },
+      ],
+    };
+    const field = makeField({
+      name: 'val',
+      label: 'Value',
+      type: 'union',
+      unionMeta: meta,
+    });
+
+    const { container } = renderWithMantine(
+      <FormWrapper
+        field={field}
+        unionMeta={meta}
+        initialValues={{ val: { __variant: 'MyStruct', score: 0, bonus: 0 } }}
+      />,
+    );
+
+    const requiredInputs = container.querySelectorAll('input[required]');
+    const requiredLabels = Array.from(requiredInputs).map((inp) => {
+      const wrapper = inp.closest('.mantine-NumberInput-root');
+      return wrapper?.querySelector('label')?.textContent?.replace(' *', '');
+    });
+
+    expect(requiredLabels).toContain('score');
+    expect(requiredLabels).not.toContain('bonus');
+  });
+});

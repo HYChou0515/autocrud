@@ -115,7 +115,7 @@ export function ArrayFieldRenderer({ field, form }: ArrayFieldRendererProps) {
                   <Select
                     key={itemPath}
                     label={sf.label}
-                    required={sf.isRequired}
+                    required={sf.isRequired && !sf.isNullable}
                     data={sf.enumValues.map((v) => ({ value: v, label: v }))}
                     clearable={sf.isNullable}
                     {...form.getInputProps(itemPath)}
@@ -127,7 +127,7 @@ export function ArrayFieldRenderer({ field, form }: ArrayFieldRendererProps) {
                   <Textarea
                     key={itemPath}
                     label={sf.label}
-                    required={sf.isRequired}
+                    required={sf.isRequired && !sf.isNullable}
                     placeholder="{}"
                     minRows={2}
                     styles={{ input: { fontFamily: 'monospace', fontSize: '13px' } }}
@@ -146,7 +146,7 @@ export function ArrayFieldRenderer({ field, form }: ArrayFieldRendererProps) {
                   <BinaryFieldEditor
                     key={itemPath}
                     label={sf.label}
-                    required={sf.isRequired}
+                    required={sf.isRequired && !sf.isNullable}
                     value={itemBv}
                     onChange={(val) => form.setFieldValue(itemPath as any, val as any)}
                     apiUrl={itemApiUrl}
@@ -167,7 +167,7 @@ export function ArrayFieldRenderer({ field, form }: ArrayFieldRendererProps) {
                   <NumberInput
                     key={itemPath}
                     label={sf.label}
-                    required={sf.isRequired}
+                    required={sf.isRequired && !sf.isNullable}
                     {...form.getInputProps(itemPath)}
                   />
                 );
@@ -177,7 +177,7 @@ export function ArrayFieldRenderer({ field, form }: ArrayFieldRendererProps) {
                   <TagsInput
                     key={itemPath}
                     label={sf.label}
-                    required={sf.isRequired}
+                    required={sf.isRequired && !sf.isNullable}
                     placeholder="Type and press Enter"
                     clearable
                     {...form.getInputProps(itemPath)}
@@ -190,7 +190,7 @@ export function ArrayFieldRenderer({ field, form }: ArrayFieldRendererProps) {
                   <DateTimePicker
                     key={itemPath}
                     label={sf.label}
-                    required={sf.isRequired}
+                    required={sf.isRequired && !sf.isNullable}
                     valueFormat="YYYY-MM-DD HH:mm:ss"
                     clearable
                     {...form.getInputProps(itemPath)}
@@ -215,7 +215,7 @@ export function ArrayFieldRenderer({ field, form }: ArrayFieldRendererProps) {
                 <TextInput
                   key={itemPath}
                   label={sf.label}
-                  required={sf.isRequired}
+                  required={sf.isRequired && !sf.isNullable}
                   {...form.getInputProps(itemPath)}
                 />
               );

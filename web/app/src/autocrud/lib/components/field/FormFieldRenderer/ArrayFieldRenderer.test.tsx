@@ -300,3 +300,46 @@ describe('ArrayFieldRenderer — TagsInput sub-field', () => {
     expect(container.textContent).toContain('tags');
   });
 });
+
+// ---------------------------------------------------------------------------
+// Nullable sub-fields in array items should NOT show required indicator
+// ---------------------------------------------------------------------------
+
+const nullableSubFieldArrayField: ResourceField = makeField({
+  name: 'items',
+  label: 'Items',
+  type: 'array',
+  isArray: true,
+  itemFields: [
+    makeField({ name: 'title', type: 'string', isRequired: true, isNullable: false }),
+    makeField({ name: 'subtitle', type: 'string', isRequired: true, isNullable: true }),
+    makeField({ name: 'count', type: 'number', isRequired: true, isNullable: true }),
+    makeField({ name: 'avatar', type: 'binary', isRequired: true, isNullable: true }),
+  ],
+});
+
+describe('ArrayFieldRenderer — nullable sub-fields not required', () => {
+  it('nullable sub-fields (isRequired=true, isNullable=true) should not show required', () => {
+    const { container } = renderWithMantine(
+      <FormWrapper
+        field={nullableSubFieldArrayField}
+        initialValues={{
+          items: [{ title: '', subtitle: '', count: 0, avatar: { _mode: 'empty' } }],
+        }}
+      />,
+    );
+
+    // Collect all required inputs
+    const requiredInputs = container.querySelectorAll('input[required]');
+    const requiredLabels = Array.from(requiredInputs).map((inp) => {
+      const wrapper = inp.closest('.mantine-TextInput-root, .mantine-NumberInput-root');
+      return wrapper?.querySelector('label')?.textContent?.replace(' *', '');
+    });
+
+    // Only title should be required (isRequired=true, isNullable=false)
+    expect(requiredLabels).toContain('title');
+    // subtitle and count are isRequired=true but isNullable=true → NOT required in form
+    expect(requiredLabels).not.toContain('subtitle');
+    expect(requiredLabels).not.toContain('count');
+  });
+});

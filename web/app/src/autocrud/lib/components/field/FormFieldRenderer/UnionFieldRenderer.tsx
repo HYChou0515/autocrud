@@ -58,7 +58,7 @@ function renderSubField(sf: ResourceField, subPath: string, form: UseFormReturnT
       <Select
         key={subPath}
         label={sf.label}
-        required={sf.isRequired}
+        required={sf.isRequired && !sf.isNullable}
         data={sf.enumValues.map((v) => ({ value: v, label: v }))}
         clearable={sf.isNullable}
         {...form.getInputProps(subPath)}
@@ -75,7 +75,7 @@ function renderSubField(sf: ResourceField, subPath: string, form: UseFormReturnT
       <BinaryFieldEditor
         key={subPath}
         label={sf.label}
-        required={sf.isRequired}
+        required={sf.isRequired && !sf.isNullable}
         value={binaryVal}
         onChange={(val) => form.setFieldValue(subPath as any, val as any)}
         apiUrl={apiUrl}
@@ -96,7 +96,7 @@ function renderSubField(sf: ResourceField, subPath: string, form: UseFormReturnT
       <NumberInput
         key={subPath}
         label={sf.label}
-        required={sf.isRequired}
+        required={sf.isRequired && !sf.isNullable}
         {...form.getInputProps(subPath)}
       />
     );
@@ -106,7 +106,7 @@ function renderSubField(sf: ResourceField, subPath: string, form: UseFormReturnT
       <Textarea
         key={subPath}
         label={sf.label}
-        required={sf.isRequired}
+        required={sf.isRequired && !sf.isNullable}
         placeholder="{}"
         minRows={2}
         styles={{ input: { fontFamily: 'monospace', fontSize: '13px' } }}
@@ -119,7 +119,7 @@ function renderSubField(sf: ResourceField, subPath: string, form: UseFormReturnT
       <TagsInput
         key={subPath}
         label={sf.label}
-        required={sf.isRequired}
+        required={sf.isRequired && !sf.isNullable}
         placeholder="Type and press Enter"
         clearable
         {...form.getInputProps(subPath)}
@@ -132,7 +132,7 @@ function renderSubField(sf: ResourceField, subPath: string, form: UseFormReturnT
       <DateTimePicker
         key={subPath}
         label={sf.label}
-        required={sf.isRequired}
+        required={sf.isRequired && !sf.isNullable}
         valueFormat="YYYY-MM-DD HH:mm:ss"
         clearable
         {...form.getInputProps(subPath)}
@@ -151,7 +151,7 @@ function renderSubField(sf: ResourceField, subPath: string, form: UseFormReturnT
     <TextInput
       key={subPath}
       label={sf.label}
-      required={sf.isRequired}
+      required={sf.isRequired && !sf.isNullable}
       {...form.getInputProps(subPath)}
     />
   );
@@ -583,7 +583,7 @@ export function UnionFieldRenderer({
       <Stack key={name} gap="xs">
         <Radio.Group
           label={label}
-          required={isRequired}
+          required={isRequired && !field.isNullable}
           value={selectedTag}
           onChange={handleVariantChange}
         >
@@ -661,7 +661,7 @@ export function UnionFieldRenderer({
       <Stack key={name} gap="xs">
         <Radio.Group
           label={label}
-          required={isRequired}
+          required={isRequired && !field.isNullable}
           value={selectedTag}
           onChange={handleVariantChange}
         >
@@ -752,11 +752,19 @@ export function UnionFieldRenderer({
     }
     if (variant.type === 'number' || variant.type === 'integer') {
       return (
-        <NumberInput label={`${label} value`} required={isRequired} {...form.getInputProps(name)} />
+        <NumberInput
+          label={`${label} value`}
+          required={isRequired && !field.isNullable}
+          {...form.getInputProps(name)}
+        />
       );
     }
     return (
-      <TextInput label={`${label} value`} required={isRequired} {...form.getInputProps(name)} />
+      <TextInput
+        label={`${label} value`}
+        required={isRequired && !field.isNullable}
+        {...form.getInputProps(name)}
+      />
     );
   };
 
@@ -764,7 +772,7 @@ export function UnionFieldRenderer({
     <Stack key={name} gap="xs">
       <Radio.Group
         label={label}
-        required={isRequired}
+        required={isRequired && !field.isNullable}
         value={selectedType}
         onChange={(val) => handleTypeChange(val)}
       >
