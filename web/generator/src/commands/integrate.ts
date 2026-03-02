@@ -9,11 +9,16 @@
  * - src/autocrud/types/ (api.ts)
  * - src/routes/__root.tsx, src/routes/autocrud-admin.tsx (layout routes)
  * Then runs generate to produce autocrud/generated/ and route files.
+ *
+ * When a target file already exists and differs from the template, an
+ * interactive prompt lets the user choose: skip, overwrite, or show diff
+ * before deciding.  Use --force to skip all prompts and overwrite.
  */
 
 import * as fs from 'fs/promises';
 import * as path from 'path';
 import { fileURLToPath } from 'url';
+import { select } from '@inquirer/prompts';
 import { generateCode, type GenerateOptions } from './generate.js';
 
 const __filename = fileURLToPath(import.meta.url);
@@ -21,6 +26,8 @@ const __dirname = path.dirname(__filename);
 
 export interface IntegrateOptions extends GenerateOptions {
   includeTests?: boolean;
+  /** Skip all interactive prompts and overwrite changed files. */
+  force?: boolean;
 }
 
 export async function integrateProject(
@@ -44,7 +51,11 @@ export async function integrateProject(
     process.exit(1);
   }
 
-  await copyIntegrationFiles(templateSrc, SRC, { includeTests: options.includeTests ?? false });
+  await copyIntegrationFiles(templateSrc, SRC, {
+    includeTests: options.includeTests ?? false,
+    force: options.force ?? false,
+    baseDir: SRC,
+  });
 
   console.log('\n🚀 Running code generation...\n');
 
@@ -55,30 +66,153 @@ export async function integrateProject(
   printChecklist();
 }
 
+// ---------------------------------------------------------------------------
+// File conflict resolution
+// ---------------------------------------------------------------------------
+
+type ConflictAction = 'skip' | 'overwrite';
+
 /**
- * Copy only the essential library/type/layout files from template into target SRC dir.
- * Does NOT overwrite essential app files (App.tsx, main.tsx, etc.) if they already exist.
+ * Check whether `src` and `dest` have identical content.
+ * Returns true when dest does not exist or content is identical.
  */
+async function filesAreEqual(src: string, dest: string): Promise<boolean> {
+  try {
+    await fs.access(dest);
+  } catch {
+    return false; // dest doesn't exist → not "equal", needs copy
+  }
+  const [srcBuf, destBuf] = await Promise.all([fs.readFile(src), fs.readFile(dest)]);
+  return srcBuf.equals(destBuf);
+}
+
+/**
+ * Produce a simple unified-style diff between two strings.
+ */
+export function simpleDiff(oldContent: string, newContent: string, label: string): string {
+  const oldLines = oldContent.split('\n');
+  const newLines = newContent.split('\n');
+  const lines: string[] = [`--- existing ${label}`, `+++ template ${label}`, ''];
+
+  const maxLen = Math.max(oldLines.length, newLines.length);
+  for (let i = 0; i < maxLen; i++) {
+    const oldLine = i < oldLines.length ? oldLines[i] : undefined;
+    const newLine = i < newLines.length ? newLines[i] : undefined;
+
+    if (oldLine === newLine) {
+      lines.push(`  ${oldLine}`);
+    } else {
+      if (oldLine !== undefined) lines.push(`\x1b[31m- ${oldLine}\x1b[0m`);
+      if (newLine !== undefined) lines.push(`\x1b[32m+ ${newLine}\x1b[0m`);
+    }
+  }
+  return lines.join('\n');
+}
+
+/**
+ * Prompt the user to decide how to handle a file conflict.
+ * When `force` is true the prompt is skipped and 'overwrite' is returned.
+ */
+export async function promptFileConflict(
+  relPath: string,
+  srcPath: string,
+  destPath: string,
+  force: boolean,
+): Promise<ConflictAction> {
+  if (force) return 'overwrite';
+
+  // First ask: skip / overwrite / show diff
+  const action = await select<'skip' | 'overwrite' | 'diff'>({
+    message: `File "${relPath}" has been modified. What would you like to do?`,
+    choices: [
+      { name: 'Skip — keep your version', value: 'skip' },
+      { name: 'Overwrite — use template version', value: 'overwrite' },
+      { name: 'Show diff — then decide', value: 'diff' },
+    ],
+  });
+
+  if (action !== 'diff') return action;
+
+  // Show diff, then ask again (skip or overwrite only)
+  const [srcContent, destContent] = await Promise.all([fs.readFile(srcPath, 'utf-8'), fs.readFile(destPath, 'utf-8')]);
+  console.log('\n' + simpleDiff(destContent, srcContent, relPath) + '\n');
+
+  return select<ConflictAction>({
+    message: `After reviewing the diff for "${relPath}":`,
+    choices: [
+      { name: 'Skip — keep your version', value: 'skip' },
+      { name: 'Overwrite — use template version', value: 'overwrite' },
+    ],
+  });
+}
+
+/**
+ * Copy a single file from `src` to `dest`, prompting on conflict.
+ * Returns the action taken: 'copied', 'skipped' (unchanged), 'skip' or 'overwrite'.
+ */
+async function copyFileWithConflictCheck(
+  srcPath: string,
+  destPath: string,
+  relPath: string,
+  force: boolean,
+): Promise<'created' | 'unchanged' | 'skipped' | 'overwritten'> {
+  // Dest doesn't exist → always copy
+  let destExists = true;
+  try {
+    await fs.access(destPath);
+  } catch {
+    destExists = false;
+  }
+
+  if (!destExists) {
+    await fs.copyFile(srcPath, destPath);
+    return 'created';
+  }
+
+  // Content identical → skip silently
+  if (await filesAreEqual(srcPath, destPath)) {
+    return 'unchanged';
+  }
+
+  // Content differs → prompt (or force)
+  const action = await promptFileConflict(relPath, srcPath, destPath, force);
+  if (action === 'overwrite') {
+    await fs.copyFile(srcPath, destPath);
+    return 'overwritten';
+  }
+  return 'skipped';
+}
+
+// ---------------------------------------------------------------------------
+// Copy integration files with conflict resolution
+// ---------------------------------------------------------------------------
+
 interface CopyOptions {
   includeTests?: boolean;
+  force?: boolean;
+  /** Absolute path used to derive relative display paths. */
+  baseDir?: string;
 }
 
 export async function copyIntegrationFiles(templateSrc: string, SRC: string, options: CopyOptions = {}): Promise<void> {
+  const force = options.force ?? false;
+  const baseDir = options.baseDir ?? SRC;
+
   console.log('📂 Copying AutoCRUD library files...');
 
   // 1. Copy src/autocrud/lib/ directory
   const libSrc = path.join(templateSrc, 'autocrud/lib');
   const libDest = path.join(SRC, 'autocrud/lib');
-  await copyDir(libSrc, libDest, { includeTests: options.includeTests });
+  await copyDir(libSrc, libDest, { includeTests: options.includeTests, force, baseDir });
   console.log('  ✅ autocrud/lib/ (components, hooks, utils, client)');
 
   // 2. Copy src/autocrud/types/ directory
   const typesSrc = path.join(templateSrc, 'autocrud/types');
   const typesDest = path.join(SRC, 'autocrud/types');
-  await copyDir(typesSrc, typesDest, { includeTests: options.includeTests });
+  await copyDir(typesSrc, typesDest, { includeTests: options.includeTests, force, baseDir });
   console.log('  ✅ autocrud/types/ (API type definitions)');
 
-  // 3. Copy layout route files
+  // 3. Copy layout route files (with conflict check)
   const routesSrc = path.join(templateSrc, 'routes');
   const routesDest = path.join(SRC, 'routes');
   await fs.mkdir(routesDest, { recursive: true });
@@ -89,11 +223,13 @@ export async function copyIntegrationFiles(templateSrc: string, SRC: string, opt
     const dest = path.join(routesDest, file);
     try {
       await fs.access(src);
-      await fs.copyFile(src, dest);
-      console.log(`  ✅ routes/${file}`);
     } catch {
       console.warn(`  ⚠️  Template routes/${file} not found, skipping`);
+      continue;
     }
+    const relPath = path.relative(baseDir, dest);
+    const result = await copyFileWithConflictCheck(src, dest, relPath, force);
+    logCopyResult(`routes/${file}`, result);
   }
 
   // 4. Copy essential app files (only if they don't already exist)
@@ -115,6 +251,23 @@ export async function copyIntegrationFiles(templateSrc: string, SRC: string, opt
         // Template file doesn't exist either, skip
       }
     }
+  }
+}
+
+function logCopyResult(label: string, result: 'created' | 'unchanged' | 'skipped' | 'overwritten'): void {
+  switch (result) {
+    case 'created':
+      console.log(`  ✅ ${label}`);
+      break;
+    case 'unchanged':
+      console.log(`  ⏭️  ${label} (unchanged)`);
+      break;
+    case 'skipped':
+      console.log(`  ⏭️  ${label} (skipped by user)`);
+      break;
+    case 'overwritten':
+      console.log(`  🔄 ${label} (overwritten)`);
+      break;
   }
 }
 
@@ -178,13 +331,23 @@ Please verify the following manual steps:
 `);
 }
 
+// ---------------------------------------------------------------------------
+// Recursive directory copy with conflict resolution
+// ---------------------------------------------------------------------------
+
 const TEST_FILE_RE = /\.(test|spec)\.[^.]+$/;
 
 interface CopyDirOptions {
   includeTests?: boolean;
+  force?: boolean;
+  /** Absolute base path for computing relative display paths. */
+  baseDir?: string;
 }
 
 async function copyDir(src: string, dest: string, options: CopyDirOptions = {}): Promise<void> {
+  const force = options.force ?? false;
+  const baseDir = options.baseDir ?? dest;
+
   await fs.mkdir(dest, { recursive: true });
   const entries = await fs.readdir(src, { withFileTypes: true });
 
@@ -200,7 +363,12 @@ async function copyDir(src: string, dest: string, options: CopyDirOptions = {}):
     if (entry.isDirectory()) {
       await copyDir(srcPath, destPath, options);
     } else {
-      await fs.copyFile(srcPath, destPath);
+      const relPath = path.relative(baseDir, destPath);
+      const result = await copyFileWithConflictCheck(srcPath, destPath, relPath, force);
+      // Only log non-trivial results to avoid spamming for large dirs
+      if (result === 'skipped' || result === 'overwritten') {
+        logCopyResult(relPath, result);
+      }
     }
   }
 }

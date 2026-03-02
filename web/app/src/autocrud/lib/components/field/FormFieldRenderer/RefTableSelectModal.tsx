@@ -26,11 +26,11 @@ import {
   MRT_ToggleGlobalFilterButton,
   useMantineReactTable,
   type MRT_PaginationState,
-  type MRT_RowData,
   type MRT_RowSelectionState,
   type MRT_SortingState,
 } from 'mantine-react-table';
 import { getResource } from '../../../resources';
+import type { FullResourceRow } from '../../../../types/api';
 import { useResourceList } from '../../../hooks/useResourceList';
 import { buildTableColumns } from '../../table/buildColumns';
 import { AdvancedSearchPanel } from '../../table/AdvancedSearchPanel';
@@ -177,13 +177,13 @@ export function RefTableSelectModal({
   }, [config]);
 
   // Map data rows to use valueField as the row ID for MRT selection
-  const getRowId = (row: MRT_RowData) => {
+  const getRowId = (row: FullResourceRow<unknown>) => {
     return row?.meta?.[valueField] ?? '';
   };
 
   const table = useMantineReactTable({
     columns: tableColumns,
-    data: data as MRT_RowData[],
+    data: data as FullResourceRow<unknown>[],
     manualPagination: true,
     rowCount: total,
     getRowId,

@@ -34,6 +34,7 @@ import {
   type MRT_RowData,
 } from 'mantine-react-table';
 import { useResourceList } from '../../hooks/useResourceList';
+import type { FullResourceRow } from '../../../types/api';
 import { formatTime } from '../common/TimeDisplay';
 import { AdvancedSearchPanel } from './AdvancedSearchPanel';
 import { buildTableColumns } from './buildColumns';
@@ -244,8 +245,7 @@ export function ResourceTable<T extends MRT_RowData>({
     // Find the oldest updated_time in the loaded data set
     let oldestTime: string | null = null;
     for (const item of data) {
-      const ut = (item as Record<string, unknown> & { meta?: { updated_time?: string } })?.meta
-        ?.updated_time;
+      const ut = item?.meta?.updated_time;
       if (ut && (!oldestTime || ut < oldestTime)) {
         oldestTime = ut;
       }
@@ -280,7 +280,7 @@ export function ResourceTable<T extends MRT_RowData>({
 
   const table = useMantineReactTable({
     columns: tableColumns,
-    data,
+    data: data as FullResourceRow<T>[],
 
     // Global filter
     enableGlobalFilter: true,

@@ -1,9 +1,16 @@
-import { describe, it, expect, beforeEach, afterEach } from 'vitest';
+import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import * as fs from 'fs/promises';
 import * as fsSync from 'fs';
 import * as path from 'path';
 import * as os from 'os';
-import { copyIntegrationFiles } from './integrate.js';
+import { copyIntegrationFiles, simpleDiff, promptFileConflict } from './integrate.js';
+
+// Mock @inquirer/prompts — we don't want real interactive prompts in tests
+vi.mock('@inquirer/prompts', () => ({
+  select: vi.fn(),
+}));
+import { select } from '@inquirer/prompts';
+const mockSelect = vi.mocked(select);
 
 // We test copyIntegrationFiles directly — the pure file-copy logic —
 // without needing a running backend (which integrateProject requires via generateCode).
@@ -43,7 +50,7 @@ describe('copyIntegrationFiles', () => {
   });
 
   it('copies autocrud/lib/ directory', async () => {
-    await copyIntegrationFiles(templateSrc, targetSrc);
+    await copyIntegrationFiles(templateSrc, targetSrc, { force: true });
 
     const client = await fs.readFile(path.join(targetSrc, 'autocrud', 'lib', 'client.ts'), 'utf-8');
     expect(client).toBe('export const client = {};');
@@ -53,14 +60,14 @@ describe('copyIntegrationFiles', () => {
   });
 
   it('copies autocrud/types/ directory', async () => {
-    await copyIntegrationFiles(templateSrc, targetSrc);
+    await copyIntegrationFiles(templateSrc, targetSrc, { force: true });
 
     const api = await fs.readFile(path.join(targetSrc, 'autocrud', 'types', 'api.ts'), 'utf-8');
     expect(api).toBe('export type FullResource = {};');
   });
 
   it('copies layout route files', async () => {
-    await copyIntegrationFiles(templateSrc, targetSrc);
+    await copyIntegrationFiles(templateSrc, targetSrc, { force: true });
 
     const root = await fs.readFile(path.join(targetSrc, 'routes', '__root.tsx'), 'utf-8');
     expect(root).toBe('<Root />');
@@ -70,7 +77,7 @@ describe('copyIntegrationFiles', () => {
   });
 
   it('copies essential app files when they do not exist', async () => {
-    await copyIntegrationFiles(templateSrc, targetSrc);
+    await copyIntegrationFiles(templateSrc, targetSrc, { force: true });
 
     const app = await fs.readFile(path.join(targetSrc, 'App.tsx'), 'utf-8');
     expect(app).toBe('function App() {}');
@@ -87,7 +94,7 @@ describe('copyIntegrationFiles', () => {
     await fs.writeFile(path.join(targetSrc, 'App.tsx'), 'MY CUSTOM APP');
     await fs.writeFile(path.join(targetSrc, 'main.tsx'), 'MY CUSTOM MAIN');
 
-    await copyIntegrationFiles(templateSrc, targetSrc);
+    await copyIntegrationFiles(templateSrc, targetSrc, { force: true });
 
     // Should preserve existing content
     const app = await fs.readFile(path.join(targetSrc, 'App.tsx'), 'utf-8');
@@ -102,12 +109,8 @@ describe('copyIntegrationFiles', () => {
   });
 
   it('does NOT create or copy top-level config files', async () => {
-    // copyIntegrationFiles only operates within the SRC directory.
-    // Verify that no package.json, tsconfig.json, or vite.config.ts
-    // are created inside targetSrc (or its children).
-    await copyIntegrationFiles(templateSrc, targetSrc);
+    await copyIntegrationFiles(templateSrc, targetSrc, { force: true });
 
-    // These config files should NOT appear inside the target src/ directory
     await expect(fs.access(path.join(targetSrc, 'package.json'))).rejects.toThrow();
     await expect(fs.access(path.join(targetSrc, 'tsconfig.json'))).rejects.toThrow();
     await expect(fs.access(path.join(targetSrc, 'vite.config.ts'))).rejects.toThrow();
@@ -119,7 +122,7 @@ describe('copyIntegrationFiles', () => {
     await fs.mkdir(path.join(templateSrc, 'autocrud', 'lib', 'components'), { recursive: true });
     await fs.writeFile(path.join(templateSrc, 'autocrud', 'lib', 'components', 'Dashboard.tsx'), '<Dashboard />');
 
-    await copyIntegrationFiles(templateSrc, targetSrc);
+    await copyIntegrationFiles(templateSrc, targetSrc, { force: true });
 
     const dashboard = await fs.readFile(
       path.join(targetSrc, 'autocrud', 'lib', 'components', 'Dashboard.tsx'),
@@ -129,23 +132,18 @@ describe('copyIntegrationFiles', () => {
   });
 
   it('gracefully handles missing template layout files', async () => {
-    // Remove one layout file from template
     await fs.unlink(path.join(templateSrc, 'routes', 'autocrud-admin.tsx'));
 
-    // Should not throw
-    await copyIntegrationFiles(templateSrc, targetSrc);
+    await copyIntegrationFiles(templateSrc, targetSrc, { force: true });
 
-    // The existing one should still be copied
     const root = await fs.readFile(path.join(targetSrc, 'routes', '__root.tsx'), 'utf-8');
     expect(root).toBe('<Root />');
 
-    // Missing one should not exist
     await expect(fs.access(path.join(targetSrc, 'routes', 'autocrud-admin.tsx'))).rejects.toThrow();
   });
 
   describe('test file filtering', () => {
     beforeEach(async () => {
-      // Add test files to autocrud/lib/ template (matching actual template structure)
       await fs.mkdir(path.join(templateSrc, 'autocrud', 'lib'), { recursive: true });
       await fs.writeFile(path.join(templateSrc, 'autocrud', 'lib', 'client.ts'), 'export const client = {};');
       await fs.writeFile(path.join(templateSrc, 'autocrud', 'lib', 'client.test.ts'), 'test("client")');
@@ -158,29 +156,25 @@ describe('copyIntegrationFiles', () => {
     });
 
     it('excludes test files by default', async () => {
-      await copyIntegrationFiles(templateSrc, targetSrc);
+      await copyIntegrationFiles(templateSrc, targetSrc, { force: true });
 
-      // Source files should exist
       const client = await fs.readFile(path.join(targetSrc, 'autocrud', 'lib', 'client.ts'), 'utf-8');
       expect(client).toBe('export const client = {};');
 
       const foo = await fs.readFile(path.join(targetSrc, 'autocrud', 'lib', 'components', 'Foo.tsx'), 'utf-8');
       expect(foo).toBe('<Foo />');
 
-      // Test files should NOT exist
       await expect(fs.access(path.join(targetSrc, 'autocrud', 'lib', 'client.test.ts'))).rejects.toThrow();
       await expect(fs.access(path.join(targetSrc, 'autocrud', 'lib', 'resources.spec.ts'))).rejects.toThrow();
       await expect(fs.access(path.join(targetSrc, 'autocrud', 'lib', 'components', 'Foo.test.tsx'))).rejects.toThrow();
     });
 
     it('includes test files when includeTests is true', async () => {
-      await copyIntegrationFiles(templateSrc, targetSrc, { includeTests: true });
+      await copyIntegrationFiles(templateSrc, targetSrc, { includeTests: true, force: true });
 
-      // Source files should exist
       const client = await fs.readFile(path.join(targetSrc, 'autocrud', 'lib', 'client.ts'), 'utf-8');
       expect(client).toBe('export const client = {};');
 
-      // Test files should also exist
       const testClient = await fs.readFile(path.join(targetSrc, 'autocrud', 'lib', 'client.test.ts'), 'utf-8');
       expect(testClient).toBe('test("client")');
 
@@ -190,5 +184,217 @@ describe('copyIntegrationFiles', () => {
       const testFoo = await fs.readFile(path.join(targetSrc, 'autocrud', 'lib', 'components', 'Foo.test.tsx'), 'utf-8');
       expect(testFoo).toBe('test("Foo")');
     });
+  });
+
+  // ---------------------------------------------------------------------------
+  // Conflict resolution tests
+  // ---------------------------------------------------------------------------
+
+  describe('conflict resolution', () => {
+    beforeEach(() => {
+      mockSelect.mockReset();
+    });
+
+    it('silently skips files with identical content (no prompt)', async () => {
+      // Pre-create target with same content as template
+      await fs.mkdir(path.join(targetSrc, 'routes'), { recursive: true });
+      await fs.writeFile(path.join(targetSrc, 'routes', '__root.tsx'), '<Root />');
+
+      await copyIntegrationFiles(templateSrc, targetSrc);
+
+      // Should not have been prompted
+      expect(mockSelect).not.toHaveBeenCalled();
+
+      // Content should remain the same
+      const root = await fs.readFile(path.join(targetSrc, 'routes', '__root.tsx'), 'utf-8');
+      expect(root).toBe('<Root />');
+    });
+
+    it('prompts when layout file content differs', async () => {
+      // Pre-create target with DIFFERENT content
+      await fs.mkdir(path.join(targetSrc, 'routes'), { recursive: true });
+      await fs.writeFile(path.join(targetSrc, 'routes', '__root.tsx'), '<MyCustomRoot />');
+
+      // User chooses to skip
+      mockSelect.mockResolvedValueOnce('skip');
+
+      await copyIntegrationFiles(templateSrc, targetSrc);
+
+      // Should have prompted at least once
+      expect(mockSelect).toHaveBeenCalled();
+
+      // Content should remain the user's version
+      const root = await fs.readFile(path.join(targetSrc, 'routes', '__root.tsx'), 'utf-8');
+      expect(root).toBe('<MyCustomRoot />');
+    });
+
+    it('overwrites when user chooses overwrite on changed layout file', async () => {
+      await fs.mkdir(path.join(targetSrc, 'routes'), { recursive: true });
+      await fs.writeFile(path.join(targetSrc, 'routes', '__root.tsx'), '<MyCustomRoot />');
+
+      // User chooses to overwrite
+      mockSelect.mockResolvedValueOnce('overwrite');
+
+      await copyIntegrationFiles(templateSrc, targetSrc);
+
+      // Content should be the template version
+      const root = await fs.readFile(path.join(targetSrc, 'routes', '__root.tsx'), 'utf-8');
+      expect(root).toBe('<Root />');
+    });
+
+    it('shows diff then asks again when user chooses diff', async () => {
+      await fs.mkdir(path.join(targetSrc, 'routes'), { recursive: true });
+      await fs.writeFile(path.join(targetSrc, 'routes', '__root.tsx'), '<MyCustomRoot />');
+
+      // First select: show diff, second select: overwrite
+      mockSelect.mockResolvedValueOnce('diff').mockResolvedValueOnce('overwrite');
+
+      await copyIntegrationFiles(templateSrc, targetSrc);
+
+      // Should have been prompted twice (diff then final decision)
+      expect(mockSelect).toHaveBeenCalledTimes(2);
+
+      // Content should be the template version (user chose overwrite after diff)
+      const root = await fs.readFile(path.join(targetSrc, 'routes', '__root.tsx'), 'utf-8');
+      expect(root).toBe('<Root />');
+    });
+
+    it('force mode skips all prompts and overwrites', async () => {
+      await fs.mkdir(path.join(targetSrc, 'routes'), { recursive: true });
+      await fs.writeFile(path.join(targetSrc, 'routes', '__root.tsx'), '<MyCustomRoot />');
+
+      await copyIntegrationFiles(templateSrc, targetSrc, { force: true });
+
+      // No prompts
+      expect(mockSelect).not.toHaveBeenCalled();
+
+      // Content should be overwritten
+      const root = await fs.readFile(path.join(targetSrc, 'routes', '__root.tsx'), 'utf-8');
+      expect(root).toBe('<Root />');
+    });
+
+    it('prompts for changed lib files too', async () => {
+      // Pre-create lib file with different content
+      await fs.mkdir(path.join(targetSrc, 'autocrud', 'lib'), { recursive: true });
+      await fs.writeFile(path.join(targetSrc, 'autocrud', 'lib', 'client.ts'), 'MY CUSTOM CLIENT');
+
+      // User chooses to skip
+      mockSelect.mockResolvedValue('skip');
+
+      await copyIntegrationFiles(templateSrc, targetSrc);
+
+      // Should have been prompted
+      expect(mockSelect).toHaveBeenCalled();
+
+      // Content should remain custom
+      const client = await fs.readFile(path.join(targetSrc, 'autocrud', 'lib', 'client.ts'), 'utf-8');
+      expect(client).toBe('MY CUSTOM CLIENT');
+    });
+
+    it('creates new files without prompting even without force', async () => {
+      // Target directory is empty — all files are new
+      await copyIntegrationFiles(templateSrc, targetSrc);
+
+      // No prompts needed for new files
+      expect(mockSelect).not.toHaveBeenCalled();
+
+      // Files should be created
+      const root = await fs.readFile(path.join(targetSrc, 'routes', '__root.tsx'), 'utf-8');
+      expect(root).toBe('<Root />');
+    });
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Unit tests for simpleDiff
+// ---------------------------------------------------------------------------
+
+describe('simpleDiff', () => {
+  it('shows no changes for identical content', () => {
+    const diff = simpleDiff('line1\nline2', 'line1\nline2', 'test.ts');
+    expect(diff).toContain('  line1');
+    expect(diff).toContain('  line2');
+    // Only header lines start with --- / +++ ; no content lines should be prefixed
+    const contentLines = diff.split('\n').slice(3); // skip header (---, +++, blank)
+    for (const line of contentLines) {
+      expect(line).not.toMatch(/^[+-] /);
+    }
+  });
+
+  it('shows added and removed lines', () => {
+    const diff = simpleDiff('old line', 'new line', 'test.ts');
+    expect(diff).toContain('- old line');
+    expect(diff).toContain('+ new line');
+  });
+
+  it('includes file label in header', () => {
+    const diff = simpleDiff('a', 'b', 'routes/__root.tsx');
+    expect(diff).toContain('--- existing routes/__root.tsx');
+    expect(diff).toContain('+++ template routes/__root.tsx');
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Unit tests for promptFileConflict
+// ---------------------------------------------------------------------------
+
+describe('promptFileConflict', () => {
+  let tmpDir: string;
+
+  beforeEach(async () => {
+    tmpDir = fsSync.mkdtempSync(path.join(os.tmpdir(), 'autocrud-prompt-test-'));
+    mockSelect.mockReset();
+  });
+
+  afterEach(async () => {
+    await fs.rm(tmpDir, { recursive: true, force: true });
+  });
+
+  it('returns overwrite immediately when force is true', async () => {
+    const src = path.join(tmpDir, 'src.ts');
+    const dest = path.join(tmpDir, 'dest.ts');
+    await fs.writeFile(src, 'template');
+    await fs.writeFile(dest, 'custom');
+
+    const action = await promptFileConflict('test.ts', src, dest, true);
+    expect(action).toBe('overwrite');
+    expect(mockSelect).not.toHaveBeenCalled();
+  });
+
+  it('returns skip when user selects skip', async () => {
+    const src = path.join(tmpDir, 'src.ts');
+    const dest = path.join(tmpDir, 'dest.ts');
+    await fs.writeFile(src, 'template');
+    await fs.writeFile(dest, 'custom');
+
+    mockSelect.mockResolvedValueOnce('skip');
+
+    const action = await promptFileConflict('test.ts', src, dest, false);
+    expect(action).toBe('skip');
+  });
+
+  it('returns overwrite when user selects overwrite', async () => {
+    const src = path.join(tmpDir, 'src.ts');
+    const dest = path.join(tmpDir, 'dest.ts');
+    await fs.writeFile(src, 'template');
+    await fs.writeFile(dest, 'custom');
+
+    mockSelect.mockResolvedValueOnce('overwrite');
+
+    const action = await promptFileConflict('test.ts', src, dest, false);
+    expect(action).toBe('overwrite');
+  });
+
+  it('shows diff then asks again when user selects diff', async () => {
+    const src = path.join(tmpDir, 'src.ts');
+    const dest = path.join(tmpDir, 'dest.ts');
+    await fs.writeFile(src, 'template content');
+    await fs.writeFile(dest, 'custom content');
+
+    mockSelect.mockResolvedValueOnce('diff').mockResolvedValueOnce('skip');
+
+    const action = await promptFileConflict('test.ts', src, dest, false);
+    expect(action).toBe('skip');
+    expect(mockSelect).toHaveBeenCalledTimes(2);
   });
 });

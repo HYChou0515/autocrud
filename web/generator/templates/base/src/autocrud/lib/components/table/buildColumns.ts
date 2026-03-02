@@ -7,7 +7,7 @@
  */
 
 import type { MRT_ColumnDef, MRT_RowData } from 'mantine-react-table';
-import type { FullResource } from '../../../types/api';
+import type { FullResourceRow } from '../../../types/api';
 import type { ResourceConfig, ResourceField } from '../../resources';
 import { formatTime } from '../common/TimeDisplay';
 import { renderCellValue } from '../field/CellFieldRenderer';
@@ -21,7 +21,7 @@ import type { ColumnVariant, ColumnOverride } from './types';
 export interface InternalColumnDef<T> {
   id: string;
   header: string;
-  accessorFn: (row: FullResource<T>) => unknown;
+  accessorFn: (row: FullResourceRow<T>) => unknown;
   size?: number;
   /** Meta-column display variant (used only when field is absent). */
   variant?: ColumnVariant;
@@ -206,7 +206,7 @@ export interface BuildTableColumnsOptions {
 export function buildTableColumns<T extends MRT_RowData>(
   config: ResourceConfig<T>,
   options?: BuildTableColumnsOptions,
-): MRT_ColumnDef<FullResource<T>, unknown>[] {
+): MRT_ColumnDef<FullResourceRow<T>, unknown>[] {
   const allColumns = buildRawColumns(config);
   const overrides = options?.overrides ?? {};
 

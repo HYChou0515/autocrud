@@ -1516,7 +1516,7 @@ describe('UnionFieldRenderer — nullable sub-fields should not be required', ()
     );
 
     // extra_info_a is required (isRequired=true, isNullable=false) → should have required
-    const extraInfoInput = container.querySelector(
+    const _extraInfoInput = container.querySelector(
       'input[aria-label="extra_info_a"],input',
     ) as HTMLInputElement;
     // Find all labels to verify required indicator
@@ -1589,7 +1589,7 @@ describe('UnionFieldRenderer — nullable sub-fields should not be required', ()
     );
 
     // Find all TextInputs by checking labels
-    const allInputs = container.querySelectorAll('.mantine-TextInput-root');
+    const _allInputs = container.querySelectorAll('.mantine-TextInput-root');
     // required_field: isRequired=true, isNullable=false → should be required
     // nullable_field: isRequired=true, isNullable=true → should NOT be required
     // optional_field: isRequired=false → should NOT be required

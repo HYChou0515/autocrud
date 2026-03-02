@@ -51,12 +51,21 @@ program
   .option('--openapi-path <path>', 'Path to OpenAPI spec endpoint', '/openapi.json')
   .option('--base-path <path>', 'API base path prefix (auto-detected if omitted)')
   .option('--include-tests', 'Include test files in generated output', false)
+  .option('--force', 'Overwrite all changed files without prompting', false)
   .action(
-    async (options: { url: string; output: string; openapiPath: string; basePath?: string; includeTests: boolean }) => {
+    async (options: {
+      url: string;
+      output: string;
+      openapiPath: string;
+      basePath?: string;
+      includeTests: boolean;
+      force: boolean;
+    }) => {
       await integrateProject(options.url, options.output, {
         openapiPath: options.openapiPath,
         basePath: options.basePath,
         includeTests: options.includeTests,
+        force: options.force,
       });
     },
   );
