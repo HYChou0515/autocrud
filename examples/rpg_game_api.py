@@ -206,11 +206,13 @@ class GameEventType(Enum):
     RAID_BOSS = "raid_boss"  # 團隊 BOSS 戰（需要等待隊伍集結）
     SERVER_MAINTENANCE = "server_maintenance"  # 伺服器維護（需要延遲處理）
 
+
 class EventBodyA(Struct, tag=True):
     """事件類型 A 的專屬數據"""
 
     extra_info_a: str
     extra_value_a: int
+
 
 class EventBodyB(Struct, tag=True):
     """事件類型 B 的專屬數據"""
@@ -218,11 +220,13 @@ class EventBodyB(Struct, tag=True):
     some_field: str
     cooldown_seconds: int
 
+
 class EventBodyX(Struct, tag=True):
     """事件類型 X 的專屬數據"""
 
     good: str
     great: int
+
 
 class GameEventPayload(Struct):
     """遊戲事件載荷數據"""
@@ -234,7 +238,7 @@ class GameEventPayload(Struct):
     ]
     # event_x2: EventBodyX
     # event_x3: list[EventBodyX | EventBodyB | EventBodyA] | EventBodyX | EventBodyB
-    # event_x4: list[EventBodyX | EventBodyB | EventBodyA] | EventBodyX 
+    # event_x4: list[EventBodyX | EventBodyB | EventBodyA] | EventBodyX
     # event_x5: list[EventBodyA] | EventBodyX
     # event_x6: list[EventBodyA] | EventBodyX | EventBodyX  | None
     # event_x7: list[EventBodyA] | dict[str, EventBodyX]
@@ -243,8 +247,8 @@ class GameEventPayload(Struct):
     reward_gold: int = 0
     reward_exp: int = 0
     extra_data: dict = {}
-    event_body: EventBodyA | EventBodyB | None=None
-    event_x: EventBodyX | None=None
+    event_body: EventBodyA | EventBodyB | None = None
+    event_x: EventBodyX | None = None
 
 
 class GameEvent(Job[GameEventPayload]):
@@ -335,7 +339,7 @@ def validate_equipment(data: Equipment) -> None:
 def get_random_image():
     import httpx
 
-    r = httpx.get("https://picsum.photos/200", follow_redirects=True)
+    r = httpx.get("https://picsum.photos/200", follow_redirects=True, timeout=2)
     return r.content
 
 
@@ -1121,7 +1125,7 @@ def configure_crud():
 
     @crud.create_action("character", label="New Character1", path="/{name}/new")
     async def create_new_character1(
-        name: str,
+        name: Annotated[str, Ref("equipment")],
     ):
         return Character(
             name=name,
@@ -1130,7 +1134,7 @@ def configure_crud():
 
     @crud.create_action("character", label="New Character2")
     async def create_new_character2(
-        name: str,
+        name: Annotated[str, Ref("equipment")],
     ):
         return Character(
             name=name,
@@ -1141,7 +1145,7 @@ def configure_crud():
     async def create_new_character4(
         x: int | str,
         y: Url,
-        name: Annotated[str, Body(embed=True)],
+        name: Annotated[str, Body(embed=True), Ref("equipment")],
         z: UploadFile,
         f: struct_to_pydantic(Skill),  # type: ignore[reportInvalidTypeForm]
     ):

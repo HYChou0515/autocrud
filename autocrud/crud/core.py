@@ -85,6 +85,9 @@ from autocrud.types import (
     IValidator,
     Job,
     OnDelete,
+    Ref,
+    RefRevision,
+    RefType,
     Resource,
     ResourceAction,
     ResourceIDNotFoundError,
@@ -1081,8 +1084,6 @@ class AutoCRUD:
         )[1]
 
         # Include custom create action body schemas in components
-        import msgspec as _msgspec
-
         action_body_structs = []
         for action in self._pending_create_actions:
             if action.resource_name not in self.resource_managers:
@@ -1092,17 +1093,7 @@ class AutoCRUD:
                     stacklevel=2,
                 )
                 continue
-            # Inspect handler's parameters to find Body-typed Struct/Pydantic types
-            sig = inspect.signature(action.handler)
-            for param in sig.parameters.values():
-                ann = param.annotation
-                if ann is inspect.Parameter.empty:
-                    continue
-                # Unwrap Annotated[T, ...] → T
-                ann, _ = unwrap_annotated(ann)
-                # Only include msgspec Structs
-                if isinstance(ann, type) and issubclass(ann, _msgspec.Struct):
-                    action_body_structs.append(ann)
+            action_body_structs.extend(self._collect_action_body_structs(action))
         if action_body_structs:
             app.openapi_schema["components"]["schemas"] |= jsonschema_to_openapi(
                 action_body_structs,
@@ -1216,6 +1207,23 @@ class AutoCRUD:
                 rm.resource_type, model_name, inject_unique=True, rm=rm
             )
 
+        # Also process custom create action body schemas so that Ref /
+        # RefRevision annotations in action body Structs get x-ref-*
+        # extensions injected into their OpenAPI components.
+        for action in self._pending_create_actions:
+            if action.resource_name not in self.resource_managers:
+                continue
+            for body_struct in self._collect_action_body_structs(action):
+                if body_struct in processed_structs:
+                    continue
+                processed_structs.add(body_struct)
+                _process_single_struct(
+                    body_struct,
+                    action.resource_name,
+                    inject_unique=False,
+                    rm=None,
+                )
+
         # Also inject a top-level x-autocrud-relationships extension
         if all_refs:
             schema["x-autocrud-relationships"] = [
@@ -1258,6 +1266,61 @@ class AutoCRUD:
                 except ImportError:
                     pass
         return None
+
+    @staticmethod
+    def _collect_action_body_structs(action: Any) -> list[type]:
+        """Return all ``msgspec.Struct`` types found in *action* handler params.
+
+        Used by both ``_customize_openapi()`` (to register component schemas)
+        and ``_inject_ref_metadata()`` (to inject ``x-ref-*`` extensions).
+        """
+        import msgspec
+
+        structs: list[type] = []
+        sig = inspect.signature(action.handler)
+        for param in sig.parameters.values():
+            ann = param.annotation
+            if ann is inspect.Parameter.empty:
+                continue
+            ann, _ = unwrap_annotated(ann)
+            if isinstance(ann, type) and issubclass(ann, msgspec.Struct):
+                structs.append(ann)
+        return structs
+
+    @staticmethod
+    def _extract_handler_ref_map(handler: Any) -> dict[str, dict[str, str]]:
+        """Scan *handler* parameter annotations for ``Ref`` / ``RefRevision``
+        markers and return a mapping of ``{param_name: x-ref-* extensions}``.
+
+        This enables path / query / inline-body parameters annotated with
+        ``Annotated[str, Ref(...)]`` to carry ``x-ref-resource``, ``x-ref-type``,
+        and ``x-ref-on-delete`` metadata into the OpenAPI extension so the web
+        generator can render them as RefSelect / RefRevisionSelect.
+        """
+        ref_map: dict[str, dict[str, str]] = {}
+        sig = inspect.signature(handler)
+        for param in sig.parameters.values():
+            ann = param.annotation
+            if ann is inspect.Parameter.empty:
+                continue
+            _, metadata = unwrap_annotated(ann)
+            for meta in metadata:
+                if isinstance(meta, Ref):
+                    ext: dict[str, str] = {
+                        "x-ref-resource": meta.resource,
+                        "x-ref-type": meta.ref_type.value,
+                    }
+                    if meta.ref_type == RefType.resource_id:
+                        ext["x-ref-on-delete"] = meta.on_delete.value
+                    ref_map[param.name] = ext
+                    break
+                if isinstance(meta, RefRevision):
+                    ref_map[param.name] = {
+                        "x-ref-resource": meta.resource,
+                        "x-ref-type": "revision_id",
+                    }
+                    break
+        return ref_map
 
     def _inject_custom_create_actions(self, schema: dict) -> None:
         """Inject ``x-autocrud-custom-create-actions`` top-level extension.
@@ -1310,6 +1373,15 @@ class AutoCRUD:
                 for p in parameters
                 if p.get("in") == "query"
             ]
+            # Inject x-ref-* metadata from handler annotations into
+            # path / query param schemas so the frontend generator can
+            # render RefSelect / RefRevisionSelect for these params.
+            ref_map = self._extract_handler_ref_map(action.handler)
+            for param_list in (pp, qp):
+                for p in param_list:
+                    ref_ext = ref_map.get(p["name"])
+                    if ref_ext:
+                        p["schema"].update(ref_ext)
             if pp:
                 info["pathParams"] = pp
             if qp:
@@ -1358,6 +1430,11 @@ class AutoCRUD:
                                 "schema": pschema,
                             }
                         )
+                # Inject x-ref-* into inline body param schemas
+                for p in inline_params:
+                    ref_ext = ref_map.get(p["name"])
+                    if ref_ext:
+                        p["schema"].update(ref_ext)
                 if inline_params:
                     info["inlineBodyParams"] = inline_params
                 if file_params:
