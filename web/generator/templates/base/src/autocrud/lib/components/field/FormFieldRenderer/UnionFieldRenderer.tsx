@@ -23,12 +23,14 @@ import {
   Paper,
   Radio,
   ActionIcon,
+  TagsInput,
 } from '@mantine/core';
 import { IconTrash, IconPlus } from '@tabler/icons-react';
 import { useRef } from 'react';
 import type { UseFormReturnType } from '@mantine/form';
 import type { ResourceField, UnionMeta, UnionVariant } from '../../../resources';
-import { getByPath, createEmptyItem } from '@/autocrud/lib/utils/formUtils';
+import { BinaryFieldEditor } from './BinaryFieldEditor';
+import { getByPath, createEmptyItem, type BinaryFormValue } from '@/autocrud/lib/utils/formUtils';
 
 interface UnionFieldRendererProps {
   field: ResourceField;
@@ -53,6 +55,23 @@ function renderSubField(sf: ResourceField, subPath: string, form: UseFormReturnT
         data={sf.enumValues.map((v) => ({ value: v, label: v }))}
         clearable={sf.isNullable}
         {...form.getInputProps(subPath)}
+      />
+    );
+  }
+  if (sf.type === 'binary') {
+    const apiUrl = (typeof window !== 'undefined' && (import.meta as any).env?.VITE_API_URL) || '';
+    const binaryVal = getByPath(
+      form.getValues() as Record<string, any>,
+      subPath,
+    ) as unknown as BinaryFormValue | null;
+    return (
+      <BinaryFieldEditor
+        key={subPath}
+        label={sf.label}
+        required={sf.isRequired}
+        value={binaryVal}
+        onChange={(val) => form.setFieldValue(subPath as any, val as any)}
+        apiUrl={apiUrl}
       />
     );
   }
@@ -88,6 +107,18 @@ function renderSubField(sf: ResourceField, subPath: string, form: UseFormReturnT
       />
     );
   }
+  if (sf.isArray && sf.type === 'string') {
+    return (
+      <TagsInput
+        key={subPath}
+        label={sf.label}
+        required={sf.isRequired}
+        placeholder="Type and press Enter"
+        clearable
+        {...form.getInputProps(subPath)}
+      />
+    );
+  }
   return (
     <TextInput
       key={subPath}
@@ -96,6 +127,20 @@ function renderSubField(sf: ResourceField, subPath: string, form: UseFormReturnT
       {...form.getInputProps(subPath)}
     />
   );
+}
+
+// ---------------------------------------------------------------------------
+// Helper: empty value for a sub-field based on its type
+// ---------------------------------------------------------------------------
+
+/** Return an appropriate empty/default value for a sub-field within a union variant. */
+function emptyValueForSubField(sf: ResourceField): any {
+  if (sf.constValue !== undefined) return sf.constValue;
+  if (sf.type === 'binary') return { _mode: 'empty' };
+  if (sf.type === 'boolean') return false;
+  if (sf.type === 'number') return '';
+  if (sf.isArray) return [];
+  return '';
 }
 
 // ---------------------------------------------------------------------------
@@ -126,9 +171,7 @@ function DiscriminatedArrayBody({
     const item: Record<string, any> = { [discriminatorField]: tag };
     if (variant?.fields) {
       for (const sf of variant.fields) {
-        if (sf.type === 'number') item[sf.name] = '';
-        else if (sf.type === 'boolean') item[sf.name] = false;
-        else item[sf.name] = '';
+        item[sf.name] = emptyValueForSubField(sf);
       }
     }
     return item;
@@ -474,10 +517,7 @@ export function UnionFieldRenderer({
       if (variant.fields && variant.fields.length > 0) {
         const newValue: Record<string, any> = { __variant: tag };
         for (const sf of variant.fields) {
-          if (sf.constValue !== undefined) newValue[sf.name] = sf.constValue;
-          else if (sf.type === 'number') newValue[sf.name] = '';
-          else if (sf.type === 'boolean') newValue[sf.name] = false;
-          else newValue[sf.name] = '';
+          newValue[sf.name] = emptyValueForSubField(sf);
         }
         form.setFieldValue(name as any, newValue as any);
         return;
@@ -558,10 +598,7 @@ export function UnionFieldRenderer({
       const newValue: Record<string, any> = { [discField]: tag };
       if (variant.fields) {
         for (const sf of variant.fields) {
-          if (sf.type === 'number') newValue[sf.name] = '';
-          else if (sf.type === 'boolean') newValue[sf.name] = false;
-          else if (sf.type === 'object') newValue[sf.name] = '';
-          else newValue[sf.name] = '';
+          newValue[sf.name] = emptyValueForSubField(sf);
         }
       }
       form.setFieldValue(name as any, newValue as any);

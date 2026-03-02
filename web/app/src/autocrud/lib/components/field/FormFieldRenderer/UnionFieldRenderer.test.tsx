@@ -960,3 +960,236 @@ describe('UnionFieldRenderer — nullable discriminated union', () => {
     expect(capturedValues.event_body?.type).toBe('EventBodyA');
   });
 });
+
+// ---------------------------------------------------------------------------
+// Binary sub-field in structural union variant
+// ---------------------------------------------------------------------------
+
+const binaryVariantFields: ResourceField[] = [
+  makeField({ name: 'caption', type: 'string', isRequired: true }),
+  makeField({ name: 'avatar', type: 'binary', isRequired: false }),
+];
+
+const binaryStructuralUnionMeta: UnionMeta = {
+  discriminatorField: '__variant',
+  variants: [
+    {
+      tag: 'WithBinary',
+      label: 'With Binary',
+      schemaName: 'WithBinary',
+      fields: binaryVariantFields,
+    },
+    {
+      tag: 'Simple',
+      label: 'Simple Text',
+      type: 'string',
+    },
+  ],
+};
+
+const binaryStructuralField: ResourceField = makeField({
+  name: 'media_field',
+  label: 'Media Field',
+  type: 'union',
+  unionMeta: binaryStructuralUnionMeta,
+});
+
+describe('UnionFieldRenderer — binary sub-field in structural union', () => {
+  it('renders BinaryFieldEditor for binary sub-field in object variant', () => {
+    const { container } = renderWithMantine(
+      <FormWrapper
+        field={binaryStructuralField}
+        unionMeta={binaryStructuralUnionMeta}
+        initialValues={{
+          media_field: { __variant: 'WithBinary', caption: '', avatar: { _mode: 'empty' } },
+        }}
+      />,
+    );
+
+    // BinaryFieldEditor renders a SegmentedControl with Upload/URL options
+    expect(container.textContent).toContain('Upload');
+    expect(container.textContent).toContain('URL');
+    // The label "avatar" should appear
+    expect(container.textContent).toContain('avatar');
+  });
+
+  it('initialises binary sub-field with { _mode: "empty" } when switching variant', () => {
+    let capturedValues: Record<string, any> = {};
+    const { container } = renderWithMantine(
+      <FormWrapper
+        field={binaryStructuralField}
+        unionMeta={binaryStructuralUnionMeta}
+        initialValues={{ media_field: { __variant: 'Simple', value: 'abc' } }}
+        onValuesChange={(v) => {
+          capturedValues = v;
+        }}
+      />,
+    );
+
+    // Switch to WithBinary variant
+    const radios = container.querySelectorAll<HTMLElement>('[role="radio"]');
+    const withBinaryRadio = Array.from(radios).find((r) => r.textContent?.includes('With Binary'));
+    expect(withBinaryRadio).toBeTruthy();
+    fireEvent.click(withBinaryRadio!);
+
+    // Binary sub-field should have { _mode: 'empty' }
+    expect(capturedValues.media_field.__variant).toBe('WithBinary');
+    expect(capturedValues.media_field.avatar).toEqual({ _mode: 'empty' });
+    expect(capturedValues.media_field.caption).toBe('');
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Binary sub-field in discriminated union variant
+// ---------------------------------------------------------------------------
+
+const binaryDiscriminatedUnionMeta: UnionMeta = {
+  discriminatorField: 'type',
+  variants: [
+    {
+      tag: 'MediaA',
+      label: 'Media A',
+      schemaName: 'MediaA',
+      fields: [
+        makeField({ name: 'file_data', type: 'binary', isRequired: true }),
+        makeField({ name: 'description', type: 'string' }),
+      ],
+    },
+    {
+      tag: 'MediaB',
+      label: 'Media B',
+      schemaName: 'MediaB',
+      fields: [
+        makeField({ name: 'url', type: 'string', isRequired: true }),
+        makeField({ name: 'quality', type: 'number' }),
+      ],
+    },
+  ],
+};
+
+const binaryDiscriminatedField: ResourceField = makeField({
+  name: 'media',
+  label: 'Media',
+  type: 'union',
+  unionMeta: binaryDiscriminatedUnionMeta,
+});
+
+describe('UnionFieldRenderer — binary sub-field in discriminated union', () => {
+  it('renders BinaryFieldEditor when variant has binary sub-field', () => {
+    const { container } = renderWithMantine(
+      <FormWrapper
+        field={binaryDiscriminatedField}
+        unionMeta={binaryDiscriminatedUnionMeta}
+        initialValues={{
+          media: { type: 'MediaA', file_data: { _mode: 'empty' }, description: '' },
+        }}
+      />,
+    );
+
+    // BinaryFieldEditor should render Upload/URL controls
+    expect(container.textContent).toContain('Upload');
+    expect(container.textContent).toContain('URL');
+    expect(container.textContent).toContain('file_data');
+  });
+
+  it('initialises binary sub-field correctly when switching to binary variant', () => {
+    let capturedValues: Record<string, any> = {};
+    const { container } = renderWithMantine(
+      <FormWrapper
+        field={binaryDiscriminatedField}
+        unionMeta={binaryDiscriminatedUnionMeta}
+        initialValues={{ media: { type: 'MediaB', url: 'https://example.com', quality: 90 } }}
+        onValuesChange={(v) => {
+          capturedValues = v;
+        }}
+      />,
+    );
+
+    // Switch to MediaA variant
+    const radios = container.querySelectorAll<HTMLElement>('[role="radio"]');
+    const mediaARadio = Array.from(radios).find((r) => r.textContent?.includes('Media A'));
+    expect(mediaARadio).toBeTruthy();
+    fireEvent.click(mediaARadio!);
+
+    expect(capturedValues.media.type).toBe('MediaA');
+    expect(capturedValues.media.file_data).toEqual({ _mode: 'empty' });
+    expect(capturedValues.media.description).toBe('');
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Array-string (list[str]) sub-field in union variant
+// ---------------------------------------------------------------------------
+
+const tagsVariantFields: ResourceField[] = [
+  makeField({ name: 'name', type: 'string', isRequired: true }),
+  makeField({ name: 'tags', type: 'string', isArray: true }),
+];
+
+const tagsStructuralUnionMeta: UnionMeta = {
+  discriminatorField: '__variant',
+  variants: [
+    {
+      tag: 'WithTags',
+      label: 'With Tags',
+      schemaName: 'WithTags',
+      fields: tagsVariantFields,
+    },
+    {
+      tag: 'PlainText',
+      label: 'Plain Text',
+      type: 'string',
+    },
+  ],
+};
+
+const tagsStructuralField: ResourceField = makeField({
+  name: 'tagged_field',
+  label: 'Tagged Field',
+  type: 'union',
+  unionMeta: tagsStructuralUnionMeta,
+});
+
+describe('UnionFieldRenderer — array-string sub-field in structural union', () => {
+  it('renders TagsInput for isArray+string sub-field in object variant', () => {
+    const { container } = renderWithMantine(
+      <FormWrapper
+        field={tagsStructuralField}
+        unionMeta={tagsStructuralUnionMeta}
+        initialValues={{
+          tagged_field: { __variant: 'WithTags', name: '', tags: [] },
+        }}
+      />,
+    );
+
+    // TagsInput has a placeholder "Type and press Enter"
+    const placeholderInput = container.querySelector('input[placeholder="Type and press Enter"]');
+    expect(placeholderInput).toBeTruthy();
+    // The tags label should be visible
+    expect(container.textContent).toContain('tags');
+  });
+
+  it('initialises array sub-field with [] when switching variant', () => {
+    let capturedValues: Record<string, any> = {};
+    const { container } = renderWithMantine(
+      <FormWrapper
+        field={tagsStructuralField}
+        unionMeta={tagsStructuralUnionMeta}
+        initialValues={{ tagged_field: { __variant: 'PlainText', value: 'hello' } }}
+        onValuesChange={(v) => {
+          capturedValues = v;
+        }}
+      />,
+    );
+
+    // Switch to WithTags variant
+    const radios = container.querySelectorAll<HTMLElement>('[role="radio"]');
+    const withTagsRadio = Array.from(radios).find((r) => r.textContent?.includes('With Tags'));
+    expect(withTagsRadio).toBeTruthy();
+    fireEvent.click(withTagsRadio!);
+
+    expect(capturedValues.tagged_field.__variant).toBe('WithTags');
+    expect(capturedValues.tagged_field.tags).toEqual([]);
+    expect(capturedValues.tagged_field.name).toBe('');
+  });
+});

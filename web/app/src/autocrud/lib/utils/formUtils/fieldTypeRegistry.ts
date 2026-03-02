@@ -391,8 +391,10 @@ export const unionHandler: FieldTypeHandler = {
         const obj: Record<string, any> = { __variant: first.tag };
         for (const sf of first.fields) {
           if (sf.constValue !== undefined) obj[sf.name] = sf.constValue;
-          else if (sf.type === 'number') obj[sf.name] = '';
+          else if (sf.type === 'binary') obj[sf.name] = { _mode: 'empty' };
           else if (sf.type === 'boolean') obj[sf.name] = false;
+          else if (sf.isArray) obj[sf.name] = [];
+          else if (sf.type === 'number') obj[sf.name] = '';
           else obj[sf.name] = '';
         }
         return obj;
