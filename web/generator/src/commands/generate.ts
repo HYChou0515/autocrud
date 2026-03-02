@@ -280,64 +280,76 @@ export class Generator {
         const fullPath: string = raw.path;
         const pathSegment = fullPath.split('/').pop() || raw.operationId;
 
+        // Build a unified action metadata object.  When bodySchema is set
+        // we extract fields from the referenced schema.  Regardless of
+        // whether bodySchema exists, we always collect path / query /
+        // inline-body / file params so that mixed-parameter actions
+        // (e.g. Pydantic model + Body(embed=True) + UploadFile + Query)
+        // produce a single combined field list.
+        const actionMeta: any = {
+          name: pathSegment,
+          path: fullPath,
+          label: raw.label,
+          operationId: raw.operationId,
+        };
+        const fields: Field[] = [];
+
+        // --- Body-schema fields (Struct / Pydantic model) ---
+        let bodySchemaName: string | undefined;
         if (raw.bodySchema) {
-          // Body-based action: build form fields from body schema
-          const bodySchemaName: string = raw.bodySchema;
-          const schema = this.spec.components?.schemas?.[bodySchemaName];
+          bodySchemaName = raw.bodySchema as string;
+          const schema = this.spec.components?.schemas?.[bodySchemaName!];
           if (!schema?.properties) {
             console.warn(`⚠️  Custom action '${raw.label}': schema '${bodySchemaName}' not found, skipping`);
             continue;
           }
-          const fields = this.extractFields(schema, '', 1, 10);
-          actions.push({
-            name: pathSegment,
-            path: fullPath,
-            label: raw.label,
-            operationId: raw.operationId,
-            bodySchemaName,
-            fields,
-          });
-        } else {
-          // Compositional: independently collect fields from each parameter source
-          const fields: Field[] = [];
-          const actionMeta: any = {
-            name: pathSegment,
-            path: fullPath,
-            label: raw.label,
-            operationId: raw.operationId,
-          };
-
-          if (raw.pathParams?.length > 0) {
-            const ppFields = (raw.pathParams as any[]).map((p: any) => this.queryParamToField(p));
-            fields.push(...ppFields);
-            actionMeta.pathParams = raw.pathParams;
+          actionMeta.bodySchemaName = bodySchemaName;
+          actionMeta.bodySchemaFieldNames = Object.keys(schema.properties);
+          if (raw.bodySchemaParamName) {
+            actionMeta.bodySchemaParamName = raw.bodySchemaParamName;
           }
-          if (raw.queryParams?.length > 0) {
-            const qpFields = (raw.queryParams as any[]).map((p: any) => this.queryParamToField(p));
-            fields.push(...qpFields);
-            actionMeta.queryParams = raw.queryParams;
-          }
-          if (raw.inlineBodyParams?.length > 0) {
-            const ibpFields = (raw.inlineBodyParams as any[]).map((p: any) => this.queryParamToField(p));
-            fields.push(...ibpFields);
-            actionMeta.inlineBodyParams = raw.inlineBodyParams;
-          }
-          if (raw.fileParams?.length > 0) {
-            const fpFields = (raw.fileParams as any[]).map((p: any) => this.fileParamToField(p));
-            fields.push(...fpFields);
-            actionMeta.fileParams = raw.fileParams;
-          }
-
-          if (fields.length === 0) {
-            console.warn(
-              `⚠️  Custom action '${raw.label}' for ${resource.name}: no bodySchema, pathParams, queryParams, inlineBodyParams, or fileParams, skipping`,
-            );
-            continue;
-          }
-
-          actionMeta.fields = fields;
-          actions.push(actionMeta);
         }
+
+        // --- Path / query params come first (they're typically IDs / selectors) ---
+        if (raw.pathParams?.length > 0) {
+          const ppFields = (raw.pathParams as any[]).map((p: any) => this.queryParamToField(p));
+          fields.push(...ppFields);
+          actionMeta.pathParams = raw.pathParams;
+        }
+        if (raw.queryParams?.length > 0) {
+          const qpFields = (raw.queryParams as any[]).map((p: any) => this.queryParamToField(p));
+          fields.push(...qpFields);
+          actionMeta.queryParams = raw.queryParams;
+        }
+
+        // --- Body schema fields in the middle ---
+        if (bodySchemaName) {
+          const schema = this.spec.components?.schemas?.[bodySchemaName];
+          const bodyFields = this.extractFields(schema!, '', 1, 10);
+          fields.push(...bodyFields);
+        }
+
+        // --- Inline body / file params come last ---
+        if (raw.inlineBodyParams?.length > 0) {
+          const ibpFields = (raw.inlineBodyParams as any[]).map((p: any) => this.queryParamToField(p));
+          fields.push(...ibpFields);
+          actionMeta.inlineBodyParams = raw.inlineBodyParams;
+        }
+        if (raw.fileParams?.length > 0) {
+          const fpFields = (raw.fileParams as any[]).map((p: any) => this.fileParamToField(p));
+          fields.push(...fpFields);
+          actionMeta.fileParams = raw.fileParams;
+        }
+
+        if (fields.length === 0) {
+          console.warn(
+            `⚠️  Custom action '${raw.label}' for ${resource.name}: no bodySchema, pathParams, queryParams, inlineBodyParams, or fileParams, skipping`,
+          );
+          continue;
+        }
+
+        actionMeta.fields = fields;
+        actions.push(actionMeta);
       }
 
       // Deduplicate labels to prevent React key collisions and UI confusion.
@@ -1555,11 +1567,85 @@ export { registry as resources };
       for (const action of r.customCreateActions) {
         const methodName = toCamel(action.operationId);
 
-        // Body-schema-based: typed body, no FormData needed
         if (action.bodySchemaName) {
-          customActionMethods += `
+          // Check if there are additional param types alongside the body schema
+          const hasOtherParams =
+            !!action.pathParams?.length ||
+            !!action.queryParams?.length ||
+            !!action.inlineBodyParams?.length ||
+            !!action.fileParams?.length;
+
+          if (!hasOtherParams) {
+            // Pure body schema: simple typed method
+            customActionMethods += `
   ${methodName}: (data: ${action.bodySchemaName}) =>
     client.post<RevisionInfo>('${action.path}', data),
+`;
+            continue;
+          }
+
+          // Mixed case: body schema + other param types.
+          // We need to split allParams into: body schema fields (nested under
+          // the handler param name), path/query params, inline body, and files.
+          const hasPath = !!action.pathParams?.length;
+          const hasQuery = !!action.queryParams?.length;
+          const hasInlineBody = !!action.inlineBodyParams?.length;
+          const hasFile = !!action.fileParams?.length;
+          const bodySchemaParamName = action.bodySchemaParamName || 'body';
+          const bodyFieldNames = action.bodySchemaFieldNames || [];
+
+          const urlExpr = hasPath
+            ? '`' + action.path.replace(/\{(\w+)\}/g, (_, pname) => `\${allParams['${pname}'] as string}`) + '`'
+            : `'${action.path}'`;
+
+          const setupLines: string[] = [];
+          let bodyVar = 'null';
+
+          // Collect body schema fields into an object
+          const bodyEntries = bodyFieldNames.map((k: string) => `'${k}': allParams['${k}']`).join(', ');
+          setupLines.push(`    const bodyObj: Record<string, unknown> = { ${bodyEntries} };`);
+
+          if (hasFile) {
+            // Multipart/form-data: body schema as JSON string field
+            setupLines.push('    const formData = new FormData();');
+            setupLines.push(`    formData.append('${bodySchemaParamName}', JSON.stringify(bodyObj));`);
+            if (hasInlineBody) {
+              for (const p of action.inlineBodyParams!) {
+                setupLines.push(`    formData.append('${p.name}', String(allParams['${p.name}']));`);
+              }
+            }
+            for (const p of action.fileParams!) {
+              setupLines.push(
+                `    if (allParams['${p.name}'] instanceof File) formData.append('${p.name}', allParams['${p.name}'] as File);`,
+              );
+            }
+            bodyVar = 'formData';
+          } else if (hasInlineBody) {
+            // JSON body: nest body schema + inline fields at top level
+            const ibpEntries = action
+              .inlineBodyParams!.map((p: any) => `'${p.name}': allParams['${p.name}']`)
+              .join(', ');
+            setupLines.push(`    const data = { '${bodySchemaParamName}': bodyObj, ${ibpEntries} };`);
+            bodyVar = 'data';
+          } else {
+            // JSON body: just the body schema nested under param name
+            setupLines.push(`    const data = { '${bodySchemaParamName}': bodyObj };`);
+            bodyVar = 'data';
+          }
+
+          let configArg = '';
+          if (hasQuery) {
+            const qpEntries = action.queryParams!.map((p: any) => `${p.name}: allParams['${p.name}']`).join(', ');
+            setupLines.push(`    const params = { ${qpEntries} };`);
+            configArg = ', { params }';
+          }
+
+          const postArgs = `${urlExpr}, ${bodyVar}${configArg}`;
+          customActionMethods += `
+  ${methodName}: (allParams: Record<string, unknown>) => {
+${setupLines.join('\n')}
+    return client.post<RevisionInfo>(${postArgs});
+  },
 `;
           continue;
         }
@@ -1923,6 +2009,10 @@ interface CustomCreateAction {
   operationId: string;
   /** Request body schema name in components (body-based actions) */
   bodySchemaName?: string;
+  /** Handler parameter name for the body schema (e.g. 'f' when `f: Skill`) */
+  bodySchemaParamName?: string;
+  /** Property names belonging to the body schema (for API client body construction) */
+  bodySchemaFieldNames?: string[];
   /** Path parameters (path-param-based actions, e.g. /{name}/new) */
   pathParams?: Array<{ name: string; required: boolean; schema: { type?: string } }>;
   /** Query parameters (query-param-based actions) */

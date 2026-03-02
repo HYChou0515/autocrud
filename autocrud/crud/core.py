@@ -1386,59 +1386,76 @@ class AutoCRUD:
                 info["pathParams"] = pp
             if qp:
                 info["queryParams"] = qp
-            # If no Struct body schema was detected, check for inline body params
-            # produced by FastAPI's Body(embed=True) pattern.
-            # When UploadFile is present, FastAPI uses multipart/form-data instead
-            # of application/json, so we check both content types.
-            if not body_schema:
-                # Try application/json first (Body(embed=True) without UploadFile)
-                content = operation.get("requestBody", {}).get("content", {})
-                rb = content.get("application/json", {}).get("schema", {})
-                # Fall back to multipart/form-data (when UploadFile is present)
-                if not rb:
-                    rb = content.get("multipart/form-data", {}).get("schema", {})
-                # Resolve $ref to components/schemas
-                if "$ref" in rb:
-                    ref_name = rb["$ref"].split("/")[-1]
-                    rb = (
-                        schema.get("components", {})
-                        .get("schemas", {})
-                        .get(ref_name, {})
-                    )
-                props: dict = rb.get("properties", {})
-                required_list: list = rb.get("required", [])
-                # Separate file params (format=binary) from inline body params
-                file_params = []
-                inline_params = []
+            # Extract inline body params and file params from the request body
+            # schema.  This works both when bodySchema is set (mixed case with
+            # additional Body(embed=True) / UploadFile params) and when there is
+            # no body schema (pure compositional case).
+            # When UploadFile is present, FastAPI uses multipart/form-data
+            # instead of application/json, so we check both content types.
+            content = operation.get("requestBody", {}).get("content", {})
+            rb = content.get("application/json", {}).get("schema", {})
+            # Fall back to multipart/form-data (when UploadFile is present)
+            if not rb:
+                rb = content.get("multipart/form-data", {}).get("schema", {})
+            # Resolve $ref to components/schemas
+            if "$ref" in rb:
+                ref_name = rb["$ref"].split("/")[-1]
+                rb = schema.get("components", {}).get("schemas", {}).get(ref_name, {})
+            props: dict = rb.get("properties", {})
+            required_list: list = rb.get("required", [])
+            # When bodySchema is set, identify the property that IS the body
+            # schema (via $ref or allOf.$ref) so we can exclude it from inline
+            # params and avoid duplication.
+            body_schema_prop_names: set[str] = set()
+            if body_schema:
                 for pname, pschema in props.items():
-                    if pschema.get("format") == "binary":
-                        file_params.append(
-                            {
-                                "name": pname,
-                                "required": pname in required_list,
-                                "schema": {
-                                    "type": pschema.get("type", "string"),
-                                    "format": "binary",
-                                },
-                            }
-                        )
-                    else:
-                        inline_params.append(
-                            {
-                                "name": pname,
-                                "required": pname in required_list,
-                                "schema": pschema,
-                            }
-                        )
-                # Inject x-ref-* into inline body param schemas
-                for p in inline_params:
-                    ref_ext = ref_map.get(p["name"])
-                    if ref_ext:
-                        p["schema"].update(ref_ext)
-                if inline_params:
-                    info["inlineBodyParams"] = inline_params
-                if file_params:
-                    info["fileParams"] = file_params
+                    ref_target = pschema.get("$ref", "")
+                    if not ref_target and "allOf" in pschema:
+                        for item in pschema["allOf"]:
+                            if "$ref" in item:
+                                ref_target = item["$ref"]
+                                break
+                    if ref_target and ref_target.split("/")[-1] == body_schema:
+                        body_schema_prop_names.add(pname)
+            # Record the handler parameter name for the body schema so
+            # the frontend generator can build the correct FormData /
+            # JSON body key when mixing body-schema + other param types.
+            if body_schema_prop_names:
+                info["bodySchemaParamName"] = next(iter(body_schema_prop_names))
+            # Separate file params (format=binary) from inline body params
+            file_params: list[dict] = []
+            inline_params: list[dict] = []
+            for pname, pschema in props.items():
+                if pname in body_schema_prop_names:
+                    continue  # Skip the body schema field itself
+                if pschema.get("format") == "binary":
+                    file_params.append(
+                        {
+                            "name": pname,
+                            "required": pname in required_list,
+                            "schema": {
+                                "type": pschema.get("type", "string"),
+                                "format": "binary",
+                            },
+                        }
+                    )
+                else:
+                    inline_params.append(
+                        {
+                            "name": pname,
+                            "required": pname in required_list,
+                            "schema": pschema,
+                        }
+                    )
+            # Inject x-ref-* into inline body param schemas
+            for p in inline_params:
+                ref_ext = ref_map.get(p["name"])
+                if ref_ext:
+                    p["schema"].update(ref_ext)
+            if inline_params:
+                info["inlineBodyParams"] = inline_params
+            if file_params:
+                info["fileParams"] = file_params
             # Warn when two actions for the same resource share the same label —
             # duplicate labels cause frontend key collisions and confuse users.
             existing_labels = {

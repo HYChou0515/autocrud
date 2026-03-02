@@ -22,6 +22,7 @@ from fastapi import Body, FastAPI, Query, UploadFile
 from fastapi.testclient import TestClient
 from msgspec import Struct
 
+from autocrud import struct_to_pydantic
 from autocrud.crud.core import AutoCRUD
 from autocrud.types import OnDelete, Ref, RefType
 
@@ -1181,3 +1182,109 @@ class TestCreateActionParamRefMetadata:
         assert eq_param["schema"]["x-ref-resource"] == "pequipment"
         assert eq_param["schema"]["x-ref-type"] == "resource_id"
         assert eq_param["schema"]["x-ref-on-delete"] == "dangling"
+
+
+# ---------------------------------------------------------------------------
+# 11. Mixed body schema + inline/file params: coexistence
+# ---------------------------------------------------------------------------
+
+
+class _MixedItem(Struct):
+    label: str
+    value: int = 0
+
+
+class _MixedResource(Struct):
+    name: str
+
+
+class TestCreateActionMixedParams:
+    """When action has BOTH a Struct/Pydantic body AND inline body/file params,
+    all param types should be extracted into the action extension."""
+
+    def _build_app(self):
+        crud = AutoCRUD()
+        crud.add_model(_PEquipment, name="pequipment")
+        crud.add_model(_MixedResource, name="mresource")
+
+        _MixedItemPydantic = struct_to_pydantic(_MixedItem)
+
+        @crud.create_action("mresource", label="Mixed Action")
+        async def mixed_action(
+            q: str,
+            name: Annotated[str, Body(embed=True), Ref("pequipment")],
+            pic: UploadFile,
+            item: _MixedItemPydantic,  # type: ignore[reportInvalidTypeForm]
+        ):
+            return _MixedResource(name=name)
+
+        app = FastAPI()
+        crud.apply(app)
+        crud.openapi(app)
+        return app
+
+    def test_body_schema_present(self):
+        """bodySchema should be detected for the Pydantic model param."""
+        app = self._build_app()
+        schema = app.openapi_schema
+        actions = schema["x-autocrud-custom-create-actions"]["mresource"]
+        action = actions[0]
+        assert "bodySchema" in action
+
+    def test_inline_body_params_extracted_with_body_schema(self):
+        """Inline body params should still be extracted even when bodySchema exists."""
+        app = self._build_app()
+        schema = app.openapi_schema
+        actions = schema["x-autocrud-custom-create-actions"]["mresource"]
+        action = actions[0]
+        assert "inlineBodyParams" in action
+        ibp_names = {p["name"] for p in action["inlineBodyParams"]}
+        assert "name" in ibp_names
+
+    def test_file_params_extracted_with_body_schema(self):
+        """File params should still be extracted even when bodySchema exists."""
+        app = self._build_app()
+        schema = app.openapi_schema
+        actions = schema["x-autocrud-custom-create-actions"]["mresource"]
+        action = actions[0]
+        assert "fileParams" in action
+        fp_names = {p["name"] for p in action["fileParams"]}
+        assert "pic" in fp_names
+
+    def test_inline_body_param_ref_with_body_schema(self):
+        """Inline body param Ref should work even when bodySchema coexists."""
+        app = self._build_app()
+        schema = app.openapi_schema
+        actions = schema["x-autocrud-custom-create-actions"]["mresource"]
+        action = actions[0]
+        name_param = next(p for p in action["inlineBodyParams"] if p["name"] == "name")
+        assert name_param["schema"]["x-ref-resource"] == "pequipment"
+        assert name_param["schema"]["x-ref-type"] == "resource_id"
+
+    def test_query_params_still_present(self):
+        """Query params should still work alongside bodySchema."""
+        app = self._build_app()
+        schema = app.openapi_schema
+        actions = schema["x-autocrud-custom-create-actions"]["mresource"]
+        action = actions[0]
+        assert "queryParams" in action
+        qp_names = {p["name"] for p in action["queryParams"]}
+        assert "q" in qp_names
+
+    def test_body_schema_field_not_in_inline_params(self):
+        """The Pydantic model field should NOT appear in inlineBodyParams (avoid duplication)."""
+        app = self._build_app()
+        schema = app.openapi_schema
+        actions = schema["x-autocrud-custom-create-actions"]["mresource"]
+        action = actions[0]
+        ibp_names = {p["name"] for p in action.get("inlineBodyParams", [])}
+        assert "item" not in ibp_names
+
+    def test_body_schema_param_name(self):
+        """bodySchemaParamName should record the handler parameter name (not schema name)."""
+        app = self._build_app()
+        schema = app.openapi_schema
+        actions = schema["x-autocrud-custom-create-actions"]["mresource"]
+        action = actions[0]
+        # The handler parameter for the Pydantic model is called 'item'
+        assert action.get("bodySchemaParamName") == "item"
