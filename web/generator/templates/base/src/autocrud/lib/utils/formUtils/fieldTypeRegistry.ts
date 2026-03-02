@@ -132,7 +132,8 @@ export const stringHandler: FieldTypeHandler = {
     return { type: 'text' };
   },
 
-  emptyValue() {
+  emptyValue(field) {
+    if (field.isArray) return [];
     return '';
   },
 
@@ -173,7 +174,8 @@ export const numberHandler: FieldTypeHandler = {
     return { type: 'number' };
   },
 
-  emptyValue() {
+  emptyValue(field) {
+    if (field.isArray) return [];
     return '';
   },
 

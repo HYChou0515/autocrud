@@ -180,6 +180,10 @@ describe('stringHandler', () => {
     it('returns empty string', () => {
       expect(stringHandler.emptyValue(field())).toBe('');
     });
+
+    it('returns empty array for isArray', () => {
+      expect(stringHandler.emptyValue(field({ isArray: true }))).toEqual([]);
+    });
   });
 
   describe('toFormValue', () => {
@@ -298,6 +302,10 @@ describe('numberHandler', () => {
   describe('emptyValue', () => {
     it('returns empty string', () => {
       expect(numberHandler.emptyValue(field())).toBe('');
+    });
+
+    it('returns empty array for isArray', () => {
+      expect(numberHandler.emptyValue(field({ isArray: true }))).toEqual([]);
     });
   });
 

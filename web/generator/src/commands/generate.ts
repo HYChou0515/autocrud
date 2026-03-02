@@ -708,11 +708,43 @@ export class Generator {
 
     const variants: UnionVariant[] = [];
     const variantTsTypes: string[] = [];
+    const seenTags = new Set<string>();
 
     for (const t of types) {
       const primitiveType = t.type === 'integer' ? 'number' : t.type;
+      // Deduplicate variants with the same normalized type (e.g. int|float both → number)
+      if (seenTags.has(primitiveType)) continue;
+      seenTags.add(primitiveType);
       variants.push({ tag: primitiveType, label: toLabel(primitiveType), type: primitiveType });
       variantTsTypes.push(primitiveType === 'integer' ? 'number' : primitiveType);
+    }
+
+    // After dedup, if only one variant remains, it's not really a union — return as plain field
+    if (variants.length <= 1) {
+      const singleType = variants[0]?.type ?? 'string';
+      const singleZod = types.map((t: any) => {
+        if (t.type === 'string') return 'z.string()';
+        if (t.type === 'integer') return 'z.number().int()';
+        if (t.type === 'number') return 'z.number()';
+        if (t.type === 'boolean') return 'z.boolean()';
+        return 'z.any()';
+      });
+      // Use z.union if multiple zod types (e.g. z.number().int() | z.number()), else single
+      let zodType = singleZod.length > 1 ? `z.union([${singleZod.join(', ')}])` : (singleZod[0] ?? 'z.any()');
+      let tsType = variantTsTypes[0] ?? 'any';
+      ({ tsType, zodType } = this.applyNullableOptional(tsType, zodType, isNullable, isRequired));
+
+      const labelSource = name.includes('.') ? name.split('.').pop()! : name;
+      return {
+        name,
+        label: toLabel(labelSource),
+        type: singleType,
+        tsType,
+        isArray: false,
+        isRequired,
+        isNullable,
+        zodType,
+      };
     }
 
     let tsType = variantTsTypes.join(' | ');
