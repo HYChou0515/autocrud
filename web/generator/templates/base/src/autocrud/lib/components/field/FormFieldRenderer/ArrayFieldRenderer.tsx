@@ -19,10 +19,13 @@ import {
   Paper,
   TagsInput,
 } from '@mantine/core';
+import { DateTimePicker } from '@mantine/dates';
 import { IconTrash, IconPlus } from '@tabler/icons-react';
+import { useState } from 'react';
 import type { UseFormReturnType } from '@mantine/form';
 import type { ResourceField } from '../../../resources';
 import { BinaryFieldEditor } from './BinaryFieldEditor';
+import { UnionFieldRenderer } from './UnionFieldRenderer';
 import {
   getByPath,
   getDefaultVariant,
@@ -34,6 +37,31 @@ import {
 interface ArrayFieldRendererProps {
   field: ResourceField;
   form: UseFormReturnType<any>;
+}
+
+/**
+ * Wrapper component for rendering a nested union sub-field inside an array item.
+ * Manages its own simpleUnionTypes state (needed for simple unions).
+ */
+function NestedUnionField({
+  field,
+  path,
+  form,
+}: {
+  field: ResourceField;
+  path: string;
+  form: UseFormReturnType<any>;
+}) {
+  const [sut, setSut] = useState<Record<string, string>>({});
+  return (
+    <UnionFieldRenderer
+      field={{ ...field, name: path }}
+      unionMeta={field.unionMeta!}
+      form={form}
+      simpleUnionTypes={sut}
+      setSimpleUnionTypes={setSut}
+    />
+  );
 }
 
 export function ArrayFieldRenderer({ field, form }: ArrayFieldRendererProps) {
@@ -87,7 +115,7 @@ export function ArrayFieldRenderer({ field, form }: ArrayFieldRendererProps) {
                   <Select
                     key={itemPath}
                     label={sf.label}
-                    required={sf.isRequired}
+                    required={sf.isRequired && !sf.isNullable}
                     data={sf.enumValues.map((v) => ({ value: v, label: v }))}
                     clearable={sf.isNullable}
                     {...form.getInputProps(itemPath)}
@@ -99,7 +127,7 @@ export function ArrayFieldRenderer({ field, form }: ArrayFieldRendererProps) {
                   <Textarea
                     key={itemPath}
                     label={sf.label}
-                    required={sf.isRequired}
+                    required={sf.isRequired && !sf.isNullable}
                     placeholder="{}"
                     minRows={2}
                     styles={{ input: { fontFamily: 'monospace', fontSize: '13px' } }}
@@ -118,7 +146,7 @@ export function ArrayFieldRenderer({ field, form }: ArrayFieldRendererProps) {
                   <BinaryFieldEditor
                     key={itemPath}
                     label={sf.label}
-                    required={sf.isRequired}
+                    required={sf.isRequired && !sf.isNullable}
                     value={itemBv}
                     onChange={(val) => form.setFieldValue(itemPath as any, val as any)}
                     apiUrl={itemApiUrl}
@@ -139,7 +167,7 @@ export function ArrayFieldRenderer({ field, form }: ArrayFieldRendererProps) {
                   <NumberInput
                     key={itemPath}
                     label={sf.label}
-                    required={sf.isRequired}
+                    required={sf.isRequired && !sf.isNullable}
                     {...form.getInputProps(itemPath)}
                   />
                 );
@@ -149,10 +177,37 @@ export function ArrayFieldRenderer({ field, form }: ArrayFieldRendererProps) {
                   <TagsInput
                     key={itemPath}
                     label={sf.label}
-                    required={sf.isRequired}
+                    required={sf.isRequired && !sf.isNullable}
                     placeholder="Type and press Enter"
                     clearable
                     {...form.getInputProps(itemPath)}
+                  />
+                );
+              }
+              // Date sub-field
+              if (sf.type === 'date') {
+                return (
+                  <DateTimePicker
+                    key={itemPath}
+                    label={sf.label}
+                    required={sf.isRequired && !sf.isNullable}
+                    valueFormat="YYYY-MM-DD HH:mm:ss"
+                    clearable
+                    {...form.getInputProps(itemPath)}
+                  />
+                );
+              }
+              // Nested union sub-field (recursive)
+              if (sf.type === 'union' && sf.unionMeta) {
+                return <NestedUnionField key={itemPath} field={sf} path={itemPath} form={form} />;
+              }
+              // Nested array of typed objects (recursive)
+              if (sf.itemFields && sf.itemFields.length > 0) {
+                return (
+                  <ArrayFieldRenderer
+                    key={itemPath}
+                    field={{ ...sf, name: itemPath }}
+                    form={form}
                   />
                 );
               }
@@ -160,7 +215,7 @@ export function ArrayFieldRenderer({ field, form }: ArrayFieldRendererProps) {
                 <TextInput
                   key={itemPath}
                   label={sf.label}
-                  required={sf.isRequired}
+                  required={sf.isRequired && !sf.isNullable}
                   {...form.getInputProps(itemPath)}
                 />
               );

@@ -68,7 +68,7 @@ const FIELD_RENDERERS: Record<FieldKind, (ctx: FieldRenderContext) => React.Reac
       <BinaryFieldEditor
         key={field.name}
         label={field.label}
-        required={field.isRequired}
+        required={field.isRequired && !field.isNullable}
         value={binaryVal}
         onChange={(val) => form.setFieldValue(field.name as any, val as any)}
         apiUrl={apiUrl}
@@ -82,7 +82,7 @@ const FIELD_RENDERERS: Record<FieldKind, (ctx: FieldRenderContext) => React.Reac
       <FileInput
         key={field.name}
         label={field.label}
-        required={field.isRequired}
+        required={field.isRequired && !field.isNullable}
         placeholder="Choose file…"
         accept={fileVariant?.accept}
         {...form.getInputProps(field.name)}
@@ -99,7 +99,7 @@ const FIELD_RENDERERS: Record<FieldKind, (ctx: FieldRenderContext) => React.Reac
       <JsonEditor
         key={field.name}
         label={field.label}
-        required={field.isRequired}
+        required={field.isRequired && !field.isNullable}
         value={inputProps.value ?? ''}
         onChange={(val) => form.setFieldValue(field.name as any, val as any)}
         height={v.height ?? 200}
@@ -115,7 +115,7 @@ const FIELD_RENDERERS: Record<FieldKind, (ctx: FieldRenderContext) => React.Reac
       <MarkdownEditor
         key={field.name}
         label={field.label}
-        required={field.isRequired}
+        required={field.isRequired && !field.isNullable}
         value={inputProps.value ?? ''}
         onChange={(val) => form.setFieldValue(field.name as any, val as any)}
         height={v.height ?? 300}
@@ -128,7 +128,7 @@ const FIELD_RENDERERS: Record<FieldKind, (ctx: FieldRenderContext) => React.Reac
     <TagsInput
       key={field.name}
       label={field.label}
-      required={field.isRequired}
+      required={field.isRequired && !field.isNullable}
       placeholder="Type and press Enter"
       clearable
       {...form.getInputProps(field.name)}
@@ -139,7 +139,7 @@ const FIELD_RENDERERS: Record<FieldKind, (ctx: FieldRenderContext) => React.Reac
     <TagsInput
       key={field.name}
       label={field.label}
-      required={field.isRequired}
+      required={field.isRequired && !field.isNullable}
       placeholder="Type and press Enter"
       clearable
       {...form.getInputProps(field.name)}
@@ -152,7 +152,7 @@ const FIELD_RENDERERS: Record<FieldKind, (ctx: FieldRenderContext) => React.Reac
       <Textarea
         key={field.name}
         label={field.label}
-        required={field.isRequired}
+        required={field.isRequired && !field.isNullable}
         rows={v.rows || 3}
         {...form.getInputProps(field.name)}
       />
@@ -168,7 +168,7 @@ const FIELD_RENDERERS: Record<FieldKind, (ctx: FieldRenderContext) => React.Reac
       <Select
         key={field.name}
         label={field.label}
-        required={field.isRequired}
+        required={field.isRequired && !field.isNullable}
         data={v.options || []}
         clearable={field.isNullable}
         {...inputProps}
@@ -201,7 +201,7 @@ const FIELD_RENDERERS: Record<FieldKind, (ctx: FieldRenderContext) => React.Reac
     <DateTimePicker
       key={field.name}
       label={field.label}
-      required={field.isRequired}
+      required={field.isRequired && !field.isNullable}
       valueFormat="YYYY-MM-DD HH:mm:ss"
       clearable
       {...form.getInputProps(field.name)}
@@ -216,7 +216,7 @@ const FIELD_RENDERERS: Record<FieldKind, (ctx: FieldRenderContext) => React.Reac
       <NumberInput
         key={field.name}
         label={field.label}
-        required={field.isRequired}
+        required={field.isRequired && !field.isNullable}
         min={v.sliderMin}
         max={v.sliderMax}
         step={v.step}
@@ -231,7 +231,7 @@ const FIELD_RENDERERS: Record<FieldKind, (ctx: FieldRenderContext) => React.Reac
       <NumberInput
         key={field.name}
         label={field.label}
-        required={field.isRequired}
+        required={field.isRequired && !field.isNullable}
         min={v.min}
         max={v.max}
         step={v.step}
@@ -246,7 +246,7 @@ const FIELD_RENDERERS: Record<FieldKind, (ctx: FieldRenderContext) => React.Reac
     <RefSelect
       key={field.name}
       label={field.label}
-      required={field.isRequired}
+      required={field.isRequired && !field.isNullable}
       fieldRef={field.ref!}
       value={getByPath(form.getValues(), field.name) as string | null}
       onChange={(val) => form.setFieldValue(field.name as any, val as any)}
@@ -259,7 +259,7 @@ const FIELD_RENDERERS: Record<FieldKind, (ctx: FieldRenderContext) => React.Reac
     <RefMultiSelect
       key={field.name}
       label={field.label}
-      required={field.isRequired}
+      required={field.isRequired && !field.isNullable}
       fieldRef={field.ref!}
       value={(getByPath(form.getValues(), field.name) as string[] | undefined) ?? []}
       onChange={(val) => form.setFieldValue(field.name as any, val as any)}
@@ -271,7 +271,7 @@ const FIELD_RENDERERS: Record<FieldKind, (ctx: FieldRenderContext) => React.Reac
     <RefRevisionSelect
       key={field.name}
       label={field.label}
-      required={field.isRequired}
+      required={field.isRequired && !field.isNullable}
       fieldRef={field.ref!}
       value={getByPath(form.getValues(), field.name) as string | null}
       onChange={(val) => form.setFieldValue(field.name as any, val as any)}
@@ -284,7 +284,7 @@ const FIELD_RENDERERS: Record<FieldKind, (ctx: FieldRenderContext) => React.Reac
     <RefRevisionMultiSelect
       key={field.name}
       label={field.label}
-      required={field.isRequired}
+      required={field.isRequired && !field.isNullable}
       fieldRef={field.ref!}
       value={(getByPath(form.getValues(), field.name) as string[] | undefined) ?? []}
       onChange={(val) => form.setFieldValue(field.name as any, val as any)}
@@ -298,7 +298,7 @@ const FIELD_RENDERERS: Record<FieldKind, (ctx: FieldRenderContext) => React.Reac
     <TextInput
       key={field.name}
       label={field.label}
-      required={field.isRequired}
+      required={field.isRequired && !field.isNullable}
       {...form.getInputProps(field.name)}
     />
   ),

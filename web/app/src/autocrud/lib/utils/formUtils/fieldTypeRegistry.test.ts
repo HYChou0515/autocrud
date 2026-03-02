@@ -900,6 +900,54 @@ describe('unionHandler', () => {
         const result = unionHandler.emptyValue(f);
         expect(result).toEqual({ __variant: 'string', value: '' });
       });
+
+      it('returns { _mode: "empty" } for binary sub-field', () => {
+        const f: ResourceFieldMinimal = {
+          name: 'media',
+          type: 'union',
+          unionMeta: {
+            discriminatorField: '__variant',
+            variants: [
+              {
+                tag: 'WithBinary',
+                label: 'With Binary',
+                fields: [
+                  { name: 'caption', type: 'string' },
+                  { name: 'avatar', type: 'binary' },
+                ],
+              },
+            ],
+          },
+        };
+        const result = unionHandler.emptyValue(f);
+        expect(result.__variant).toBe('WithBinary');
+        expect(result.caption).toBe('');
+        expect(result.avatar).toEqual({ _mode: 'empty' });
+      });
+
+      it('returns [] for isArray sub-field', () => {
+        const f: ResourceFieldMinimal = {
+          name: 'tagged',
+          type: 'union',
+          unionMeta: {
+            discriminatorField: '__variant',
+            variants: [
+              {
+                tag: 'WithTags',
+                label: 'With Tags',
+                fields: [
+                  { name: 'name', type: 'string' },
+                  { name: 'tags', type: 'string', isArray: true },
+                ],
+              },
+            ],
+          },
+        };
+        const result = unionHandler.emptyValue(f);
+        expect(result.__variant).toBe('WithTags');
+        expect(result.name).toBe('');
+        expect(result.tags).toEqual([]);
+      });
     });
 
     describe('toFormValue', () => {

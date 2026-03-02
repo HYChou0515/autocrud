@@ -23,12 +23,21 @@ import {
   Paper,
   Radio,
   ActionIcon,
+  TagsInput,
 } from '@mantine/core';
+import { DateTimePicker } from '@mantine/dates';
 import { IconTrash, IconPlus } from '@tabler/icons-react';
-import { useRef } from 'react';
+import { useRef, useState } from 'react';
 import type { UseFormReturnType } from '@mantine/form';
 import type { ResourceField, UnionMeta, UnionVariant } from '../../../resources';
-import { getByPath, createEmptyItem } from '@/autocrud/lib/utils/formUtils';
+import { BinaryFieldEditor } from './BinaryFieldEditor';
+import { ArrayFieldRenderer } from './ArrayFieldRenderer';
+import {
+  getByPath,
+  createEmptyItem,
+  getEmptyValue,
+  type BinaryFormValue,
+} from '@/autocrud/lib/utils/formUtils';
 
 interface UnionFieldRendererProps {
   field: ResourceField;
@@ -49,10 +58,27 @@ function renderSubField(sf: ResourceField, subPath: string, form: UseFormReturnT
       <Select
         key={subPath}
         label={sf.label}
-        required={sf.isRequired}
+        required={sf.isRequired && !sf.isNullable}
         data={sf.enumValues.map((v) => ({ value: v, label: v }))}
         clearable={sf.isNullable}
         {...form.getInputProps(subPath)}
+      />
+    );
+  }
+  if (sf.type === 'binary') {
+    const apiUrl = (typeof window !== 'undefined' && (import.meta as any).env?.VITE_API_URL) || '';
+    const binaryVal = getByPath(
+      form.getValues() as Record<string, any>,
+      subPath,
+    ) as unknown as BinaryFormValue | null;
+    return (
+      <BinaryFieldEditor
+        key={subPath}
+        label={sf.label}
+        required={sf.isRequired && !sf.isNullable}
+        value={binaryVal}
+        onChange={(val) => form.setFieldValue(subPath as any, val as any)}
+        apiUrl={apiUrl}
       />
     );
   }
@@ -70,7 +96,7 @@ function renderSubField(sf: ResourceField, subPath: string, form: UseFormReturnT
       <NumberInput
         key={subPath}
         label={sf.label}
-        required={sf.isRequired}
+        required={sf.isRequired && !sf.isNullable}
         {...form.getInputProps(subPath)}
       />
     );
@@ -80,7 +106,7 @@ function renderSubField(sf: ResourceField, subPath: string, form: UseFormReturnT
       <Textarea
         key={subPath}
         label={sf.label}
-        required={sf.isRequired}
+        required={sf.isRequired && !sf.isNullable}
         placeholder="{}"
         minRows={2}
         styles={{ input: { fontFamily: 'monospace', fontSize: '13px' } }}
@@ -88,12 +114,86 @@ function renderSubField(sf: ResourceField, subPath: string, form: UseFormReturnT
       />
     );
   }
+  if (sf.isArray && sf.type === 'string') {
+    return (
+      <TagsInput
+        key={subPath}
+        label={sf.label}
+        required={sf.isRequired && !sf.isNullable}
+        placeholder="Type and press Enter"
+        clearable
+        {...form.getInputProps(subPath)}
+      />
+    );
+  }
+  // Date sub-field
+  if (sf.type === 'date') {
+    return (
+      <DateTimePicker
+        key={subPath}
+        label={sf.label}
+        required={sf.isRequired && !sf.isNullable}
+        valueFormat="YYYY-MM-DD HH:mm:ss"
+        clearable
+        {...form.getInputProps(subPath)}
+      />
+    );
+  }
+  // Nested union sub-field (recursive)
+  if (sf.type === 'union' && sf.unionMeta) {
+    return <NestedUnionWrapper key={subPath} field={sf} path={subPath} form={form} />;
+  }
+  // Nested array of typed objects
+  if (sf.itemFields && sf.itemFields.length > 0) {
+    return <ArrayFieldRenderer key={subPath} field={{ ...sf, name: subPath }} form={form} />;
+  }
   return (
     <TextInput
       key={subPath}
       label={sf.label}
-      required={sf.isRequired}
+      required={sf.isRequired && !sf.isNullable}
       {...form.getInputProps(subPath)}
+    />
+  );
+}
+
+// ---------------------------------------------------------------------------
+// Helper: empty value for a sub-field based on its type
+// ---------------------------------------------------------------------------
+
+/** Return an appropriate empty/default value for a sub-field within a union variant. */
+function emptyValueForSubField(sf: ResourceField): any {
+  if (sf.constValue !== undefined) return sf.constValue;
+  if (sf.type === 'binary') return { _mode: 'empty' };
+  if (sf.type === 'boolean') return false;
+  if (sf.type === 'union' && sf.unionMeta) return getEmptyValue(sf);
+  if (sf.itemFields && sf.itemFields.length > 0) return [];
+  if (sf.type === 'number') return '';
+  if (sf.isArray) return [];
+  return '';
+}
+
+/**
+ * Wrapper component for rendering a nested union sub-field.
+ * Manages its own simpleUnionTypes state (needed for simple unions).
+ */
+function NestedUnionWrapper({
+  field,
+  path,
+  form,
+}: {
+  field: ResourceField;
+  path: string;
+  form: UseFormReturnType<any>;
+}) {
+  const [sut, setSut] = useState<Record<string, string>>({});
+  return (
+    <UnionFieldRenderer
+      field={{ ...field, name: path }}
+      unionMeta={field.unionMeta!}
+      form={form}
+      simpleUnionTypes={sut}
+      setSimpleUnionTypes={setSut}
     />
   );
 }
@@ -126,9 +226,7 @@ function DiscriminatedArrayBody({
     const item: Record<string, any> = { [discriminatorField]: tag };
     if (variant?.fields) {
       for (const sf of variant.fields) {
-        if (sf.type === 'number') item[sf.name] = '';
-        else if (sf.type === 'boolean') item[sf.name] = false;
-        else item[sf.name] = '';
+        item[sf.name] = emptyValueForSubField(sf);
       }
     }
     return item;
@@ -332,9 +430,7 @@ function StructuralVariantBody({
     const emptyEntry: Record<string, any> = { __key: '' };
     if (hasValueFields) {
       for (const sf of variant.dictValueFields!) {
-        if (sf.type === 'number') emptyEntry[sf.name] = '';
-        else if (sf.type === 'boolean') emptyEntry[sf.name] = false;
-        else emptyEntry[sf.name] = '';
+        emptyEntry[sf.name] = emptyValueForSubField(sf);
       }
     } else {
       emptyEntry.__value = '';
@@ -474,10 +570,7 @@ export function UnionFieldRenderer({
       if (variant.fields && variant.fields.length > 0) {
         const newValue: Record<string, any> = { __variant: tag };
         for (const sf of variant.fields) {
-          if (sf.constValue !== undefined) newValue[sf.name] = sf.constValue;
-          else if (sf.type === 'number') newValue[sf.name] = '';
-          else if (sf.type === 'boolean') newValue[sf.name] = false;
-          else newValue[sf.name] = '';
+          newValue[sf.name] = emptyValueForSubField(sf);
         }
         form.setFieldValue(name as any, newValue as any);
         return;
@@ -490,7 +583,7 @@ export function UnionFieldRenderer({
       <Stack key={name} gap="xs">
         <Radio.Group
           label={label}
-          required={isRequired}
+          required={isRequired && !field.isNullable}
           value={selectedTag}
           onChange={handleVariantChange}
         >
@@ -558,10 +651,7 @@ export function UnionFieldRenderer({
       const newValue: Record<string, any> = { [discField]: tag };
       if (variant.fields) {
         for (const sf of variant.fields) {
-          if (sf.type === 'number') newValue[sf.name] = '';
-          else if (sf.type === 'boolean') newValue[sf.name] = false;
-          else if (sf.type === 'object') newValue[sf.name] = '';
-          else newValue[sf.name] = '';
+          newValue[sf.name] = emptyValueForSubField(sf);
         }
       }
       form.setFieldValue(name as any, newValue as any);
@@ -571,7 +661,7 @@ export function UnionFieldRenderer({
       <Stack key={name} gap="xs">
         <Radio.Group
           label={label}
-          required={isRequired}
+          required={isRequired && !field.isNullable}
           value={selectedTag}
           onChange={handleVariantChange}
         >
@@ -662,11 +752,19 @@ export function UnionFieldRenderer({
     }
     if (variant.type === 'number' || variant.type === 'integer') {
       return (
-        <NumberInput label={`${label} value`} required={isRequired} {...form.getInputProps(name)} />
+        <NumberInput
+          label={`${label} value`}
+          required={isRequired && !field.isNullable}
+          {...form.getInputProps(name)}
+        />
       );
     }
     return (
-      <TextInput label={`${label} value`} required={isRequired} {...form.getInputProps(name)} />
+      <TextInput
+        label={`${label} value`}
+        required={isRequired && !field.isNullable}
+        {...form.getInputProps(name)}
+      />
     );
   };
 
@@ -674,7 +772,7 @@ export function UnionFieldRenderer({
     <Stack key={name} gap="xs">
       <Radio.Group
         label={label}
-        required={isRequired}
+        required={isRequired && !field.isNullable}
         value={selectedType}
         onChange={(val) => handleTypeChange(val)}
       >

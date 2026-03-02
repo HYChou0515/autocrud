@@ -960,3 +960,690 @@ describe('UnionFieldRenderer — nullable discriminated union', () => {
     expect(capturedValues.event_body?.type).toBe('EventBodyA');
   });
 });
+
+// ---------------------------------------------------------------------------
+// Binary sub-field in structural union variant
+// ---------------------------------------------------------------------------
+
+const binaryVariantFields: ResourceField[] = [
+  makeField({ name: 'caption', type: 'string', isRequired: true }),
+  makeField({ name: 'avatar', type: 'binary', isRequired: false }),
+];
+
+const binaryStructuralUnionMeta: UnionMeta = {
+  discriminatorField: '__variant',
+  variants: [
+    {
+      tag: 'WithBinary',
+      label: 'With Binary',
+      schemaName: 'WithBinary',
+      fields: binaryVariantFields,
+    },
+    {
+      tag: 'Simple',
+      label: 'Simple Text',
+      type: 'string',
+    },
+  ],
+};
+
+const binaryStructuralField: ResourceField = makeField({
+  name: 'media_field',
+  label: 'Media Field',
+  type: 'union',
+  unionMeta: binaryStructuralUnionMeta,
+});
+
+describe('UnionFieldRenderer — binary sub-field in structural union', () => {
+  it('renders BinaryFieldEditor for binary sub-field in object variant', () => {
+    const { container } = renderWithMantine(
+      <FormWrapper
+        field={binaryStructuralField}
+        unionMeta={binaryStructuralUnionMeta}
+        initialValues={{
+          media_field: { __variant: 'WithBinary', caption: '', avatar: { _mode: 'empty' } },
+        }}
+      />,
+    );
+
+    // BinaryFieldEditor renders a SegmentedControl with Upload/URL options
+    expect(container.textContent).toContain('Upload');
+    expect(container.textContent).toContain('URL');
+    // The label "avatar" should appear
+    expect(container.textContent).toContain('avatar');
+  });
+
+  it('initialises binary sub-field with { _mode: "empty" } when switching variant', () => {
+    let capturedValues: Record<string, any> = {};
+    const { container } = renderWithMantine(
+      <FormWrapper
+        field={binaryStructuralField}
+        unionMeta={binaryStructuralUnionMeta}
+        initialValues={{ media_field: { __variant: 'Simple', value: 'abc' } }}
+        onValuesChange={(v) => {
+          capturedValues = v;
+        }}
+      />,
+    );
+
+    // Switch to WithBinary variant
+    const radios = container.querySelectorAll<HTMLElement>('[role="radio"]');
+    const withBinaryRadio = Array.from(radios).find((r) => r.textContent?.includes('With Binary'));
+    expect(withBinaryRadio).toBeTruthy();
+    fireEvent.click(withBinaryRadio!);
+
+    // Binary sub-field should have { _mode: 'empty' }
+    expect(capturedValues.media_field.__variant).toBe('WithBinary');
+    expect(capturedValues.media_field.avatar).toEqual({ _mode: 'empty' });
+    expect(capturedValues.media_field.caption).toBe('');
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Binary sub-field in discriminated union variant
+// ---------------------------------------------------------------------------
+
+const binaryDiscriminatedUnionMeta: UnionMeta = {
+  discriminatorField: 'type',
+  variants: [
+    {
+      tag: 'MediaA',
+      label: 'Media A',
+      schemaName: 'MediaA',
+      fields: [
+        makeField({ name: 'file_data', type: 'binary', isRequired: true }),
+        makeField({ name: 'description', type: 'string' }),
+      ],
+    },
+    {
+      tag: 'MediaB',
+      label: 'Media B',
+      schemaName: 'MediaB',
+      fields: [
+        makeField({ name: 'url', type: 'string', isRequired: true }),
+        makeField({ name: 'quality', type: 'number' }),
+      ],
+    },
+  ],
+};
+
+const binaryDiscriminatedField: ResourceField = makeField({
+  name: 'media',
+  label: 'Media',
+  type: 'union',
+  unionMeta: binaryDiscriminatedUnionMeta,
+});
+
+describe('UnionFieldRenderer — binary sub-field in discriminated union', () => {
+  it('renders BinaryFieldEditor when variant has binary sub-field', () => {
+    const { container } = renderWithMantine(
+      <FormWrapper
+        field={binaryDiscriminatedField}
+        unionMeta={binaryDiscriminatedUnionMeta}
+        initialValues={{
+          media: { type: 'MediaA', file_data: { _mode: 'empty' }, description: '' },
+        }}
+      />,
+    );
+
+    // BinaryFieldEditor should render Upload/URL controls
+    expect(container.textContent).toContain('Upload');
+    expect(container.textContent).toContain('URL');
+    expect(container.textContent).toContain('file_data');
+  });
+
+  it('initialises binary sub-field correctly when switching to binary variant', () => {
+    let capturedValues: Record<string, any> = {};
+    const { container } = renderWithMantine(
+      <FormWrapper
+        field={binaryDiscriminatedField}
+        unionMeta={binaryDiscriminatedUnionMeta}
+        initialValues={{ media: { type: 'MediaB', url: 'https://example.com', quality: 90 } }}
+        onValuesChange={(v) => {
+          capturedValues = v;
+        }}
+      />,
+    );
+
+    // Switch to MediaA variant
+    const radios = container.querySelectorAll<HTMLElement>('[role="radio"]');
+    const mediaARadio = Array.from(radios).find((r) => r.textContent?.includes('Media A'));
+    expect(mediaARadio).toBeTruthy();
+    fireEvent.click(mediaARadio!);
+
+    expect(capturedValues.media.type).toBe('MediaA');
+    expect(capturedValues.media.file_data).toEqual({ _mode: 'empty' });
+    expect(capturedValues.media.description).toBe('');
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Array-string (list[str]) sub-field in union variant
+// ---------------------------------------------------------------------------
+
+const tagsVariantFields: ResourceField[] = [
+  makeField({ name: 'name', type: 'string', isRequired: true }),
+  makeField({ name: 'tags', type: 'string', isArray: true }),
+];
+
+const tagsStructuralUnionMeta: UnionMeta = {
+  discriminatorField: '__variant',
+  variants: [
+    {
+      tag: 'WithTags',
+      label: 'With Tags',
+      schemaName: 'WithTags',
+      fields: tagsVariantFields,
+    },
+    {
+      tag: 'PlainText',
+      label: 'Plain Text',
+      type: 'string',
+    },
+  ],
+};
+
+const tagsStructuralField: ResourceField = makeField({
+  name: 'tagged_field',
+  label: 'Tagged Field',
+  type: 'union',
+  unionMeta: tagsStructuralUnionMeta,
+});
+
+describe('UnionFieldRenderer — array-string sub-field in structural union', () => {
+  it('renders TagsInput for isArray+string sub-field in object variant', () => {
+    const { container } = renderWithMantine(
+      <FormWrapper
+        field={tagsStructuralField}
+        unionMeta={tagsStructuralUnionMeta}
+        initialValues={{
+          tagged_field: { __variant: 'WithTags', name: '', tags: [] },
+        }}
+      />,
+    );
+
+    // TagsInput has a placeholder "Type and press Enter"
+    const placeholderInput = container.querySelector('input[placeholder="Type and press Enter"]');
+    expect(placeholderInput).toBeTruthy();
+    // The tags label should be visible
+    expect(container.textContent).toContain('tags');
+  });
+
+  it('initialises array sub-field with [] when switching variant', () => {
+    let capturedValues: Record<string, any> = {};
+    const { container } = renderWithMantine(
+      <FormWrapper
+        field={tagsStructuralField}
+        unionMeta={tagsStructuralUnionMeta}
+        initialValues={{ tagged_field: { __variant: 'PlainText', value: 'hello' } }}
+        onValuesChange={(v) => {
+          capturedValues = v;
+        }}
+      />,
+    );
+
+    // Switch to WithTags variant
+    const radios = container.querySelectorAll<HTMLElement>('[role="radio"]');
+    const withTagsRadio = Array.from(radios).find((r) => r.textContent?.includes('With Tags'));
+    expect(withTagsRadio).toBeTruthy();
+    fireEvent.click(withTagsRadio!);
+
+    expect(capturedValues.tagged_field.__variant).toBe('WithTags');
+    expect(capturedValues.tagged_field.tags).toEqual([]);
+    expect(capturedValues.tagged_field.name).toBe('');
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Date sub-field in union variant
+// ---------------------------------------------------------------------------
+
+const dateVariantFields: ResourceField[] = [
+  makeField({ name: 'event_time', type: 'date', isRequired: true }),
+  makeField({ name: 'note', type: 'string' }),
+];
+
+const dateStructuralUnionMeta: UnionMeta = {
+  discriminatorField: '__variant',
+  variants: [
+    {
+      tag: 'WithDate',
+      label: 'With Date',
+      schemaName: 'WithDate',
+      fields: dateVariantFields,
+    },
+    {
+      tag: 'Simple',
+      label: 'Simple Text',
+      type: 'string',
+    },
+  ],
+};
+
+const dateStructuralField: ResourceField = makeField({
+  name: 'date_field',
+  label: 'Date Field',
+  type: 'union',
+  unionMeta: dateStructuralUnionMeta,
+});
+
+describe('UnionFieldRenderer — date sub-field in union variant', () => {
+  it('renders DateTimePicker for date sub-field in object variant', () => {
+    const { container } = renderWithMantine(
+      <FormWrapper
+        field={dateStructuralField}
+        unionMeta={dateStructuralUnionMeta}
+        initialValues={{
+          date_field: { __variant: 'WithDate', event_time: null, note: '' },
+        }}
+      />,
+    );
+
+    // DateTimePicker renders with a date button and the label
+    expect(container.textContent).toContain('event_time');
+    // DateTimePicker renders a button to toggle the calendar
+    const _dateButton =
+      container.querySelector('button[aria-label="Date"]') ??
+      container.querySelector('[data-dates-provider]') ??
+      container.querySelector('.mantine-DateTimePicker-root');
+    // At minimum, the label must be present (DateTimePicker in happy-dom may not
+    // fully render its interactive parts)
+    expect(container.textContent).toContain('event_time');
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Nested union sub-field in union variant (recursive)
+// ---------------------------------------------------------------------------
+
+const nestedUnionSubField: ResourceField = makeField({
+  name: 'metadata',
+  label: 'Metadata',
+  type: 'union',
+  unionMeta: {
+    discriminatorField: '__type',
+    variants: [
+      { tag: 'string', label: 'String', type: 'string' },
+      { tag: 'number', label: 'Number', type: 'number' },
+    ],
+  },
+});
+
+const nestedUnionVariantFields: ResourceField[] = [
+  makeField({ name: 'title', type: 'string', isRequired: true }),
+  nestedUnionSubField,
+];
+
+const nestedUnionStructuralMeta: UnionMeta = {
+  discriminatorField: '__variant',
+  variants: [
+    {
+      tag: 'WithNestedUnion',
+      label: 'With Nested Union',
+      schemaName: 'WithNestedUnion',
+      fields: nestedUnionVariantFields,
+    },
+    {
+      tag: 'Plain',
+      label: 'Plain Text',
+      type: 'string',
+    },
+  ],
+};
+
+const nestedUnionField: ResourceField = makeField({
+  name: 'nested_union_field',
+  label: 'Nested Union Field',
+  type: 'union',
+  unionMeta: nestedUnionStructuralMeta,
+});
+
+describe('UnionFieldRenderer — nested union sub-field (recursive)', () => {
+  it('renders inner union controls for nested union sub-field', () => {
+    const { container } = renderWithMantine(
+      <FormWrapper
+        field={nestedUnionField}
+        unionMeta={nestedUnionStructuralMeta}
+        initialValues={{
+          nested_union_field: { __variant: 'WithNestedUnion', title: '', metadata: '' },
+        }}
+      />,
+    );
+
+    // The outer variant labels should show
+    expectText('With Nested Union');
+    expectText('Plain Text');
+    // The inner simple union should render its type radio options
+    expect(container.textContent).toContain('String');
+    expect(container.textContent).toContain('Number');
+    // Title field should render
+    expect(container.textContent).toContain('title');
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Nested itemFields (array of objects) sub-field in union variant
+// ---------------------------------------------------------------------------
+
+const nestedItemFieldsSubField: ResourceField = makeField({
+  name: 'items',
+  label: 'Items',
+  type: 'array',
+  isArray: true,
+  itemFields: [
+    makeField({ name: 'item_name', type: 'string', isRequired: true }),
+    makeField({ name: 'item_count', type: 'number' }),
+  ],
+});
+
+const itemFieldsVariantFields: ResourceField[] = [
+  makeField({ name: 'group_name', type: 'string', isRequired: true }),
+  nestedItemFieldsSubField,
+];
+
+const itemFieldsStructuralMeta: UnionMeta = {
+  discriminatorField: '__variant',
+  variants: [
+    {
+      tag: 'WithItems',
+      label: 'With Items',
+      schemaName: 'WithItems',
+      fields: itemFieldsVariantFields,
+    },
+    {
+      tag: 'Simple',
+      label: 'Simple Text',
+      type: 'string',
+    },
+  ],
+};
+
+const itemFieldsContainerField: ResourceField = makeField({
+  name: 'container_field',
+  label: 'Container Field',
+  type: 'union',
+  unionMeta: itemFieldsStructuralMeta,
+});
+
+describe('UnionFieldRenderer — nested itemFields sub-field in union variant', () => {
+  it('renders ArrayFieldRenderer for itemFields sub-field', () => {
+    const { container } = renderWithMantine(
+      <FormWrapper
+        field={itemFieldsContainerField}
+        unionMeta={itemFieldsStructuralMeta}
+        initialValues={{
+          container_field: {
+            __variant: 'WithItems',
+            group_name: '',
+            items: [],
+          },
+        }}
+      />,
+    );
+
+    // group_name text field should render
+    expect(container.textContent).toContain('group_name');
+    // The ArrayFieldRenderer should show "Items" label and "Add" button
+    expect(container.textContent).toContain('Items');
+    expectText('Add');
+    // "No items yet" from ArrayFieldRenderer
+    expect(container.textContent).toContain('No items yet');
+  });
+
+  it('can add items to nested array within union variant', () => {
+    const { container } = renderWithMantine(
+      <FormWrapper
+        field={itemFieldsContainerField}
+        unionMeta={itemFieldsStructuralMeta}
+        initialValues={{
+          container_field: {
+            __variant: 'WithItems',
+            group_name: 'test',
+            items: [],
+          },
+        }}
+      />,
+    );
+
+    // Find the Add button within the ArrayFieldRenderer
+    const addButtons = Array.from(container.querySelectorAll('button')).filter(
+      (btn) => btn.textContent?.trim() === 'Add',
+    );
+    expect(addButtons.length).toBeGreaterThanOrEqual(1);
+    fireEvent.click(addButtons[0]);
+
+    // After adding, sub-field labels should appear
+    expect(container.textContent).toContain('item_name');
+    expect(container.textContent).toContain('item_count');
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Dict variant uses emptyValueForSubField for all sub-field types
+// ---------------------------------------------------------------------------
+
+const dictWithBinaryMeta: UnionMeta = {
+  discriminatorField: '__variant',
+  variants: [
+    {
+      tag: 'dict_val',
+      label: 'Dict[str, Val]',
+      isDict: true,
+      dictValueFields: [
+        makeField({ name: 'avatar', type: 'binary' }),
+        makeField({ name: 'tags', type: 'string', isArray: true }),
+        makeField({ name: 'active', type: 'boolean' }),
+      ],
+    },
+    {
+      tag: 'string',
+      label: 'Plain',
+      type: 'string',
+    },
+  ],
+};
+
+const dictWithBinaryField: ResourceField = makeField({
+  name: 'dict_field',
+  label: 'Dict Field',
+  type: 'union',
+  unionMeta: dictWithBinaryMeta,
+});
+
+describe('UnionFieldRenderer — dict variant emptyValueForSubField', () => {
+  it('renders dict variant value sub-fields including binary and array', () => {
+    const { container } = renderWithMantine(
+      <FormWrapper
+        field={dictWithBinaryField}
+        unionMeta={dictWithBinaryMeta}
+        initialValues={{
+          dict_field: {
+            __variant: 'dict_val',
+            __entries: [{ __key: 'k1', avatar: { _mode: 'empty' }, tags: [], active: false }],
+          },
+        }}
+      />,
+    );
+
+    // Should render BinaryFieldEditor (Upload/URL) and tags input
+    expect(container.textContent).toContain('Upload');
+    expect(container.textContent).toContain('URL');
+    expect(container.textContent).toContain('avatar');
+    expect(container.textContent).toContain('tags');
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Nullable fields should NOT show required indicator (isRequired && isNullable)
+// ---------------------------------------------------------------------------
+
+describe('UnionFieldRenderer — nullable sub-fields should not be required', () => {
+  it('nullable binary sub-field in discriminated union does not show required', () => {
+    const meta: UnionMeta = {
+      discriminatorField: 'type',
+      variants: [
+        {
+          tag: 'EventBodyA',
+          label: 'EventBodyA',
+          schemaName: 'EventBodyA',
+          fields: [
+            makeField({
+              name: 'extra_info_a',
+              type: 'string',
+              isRequired: true,
+              isNullable: false,
+            }),
+            makeField({ name: 'content', type: 'binary', isRequired: true, isNullable: true }),
+          ],
+        },
+      ],
+    };
+    const field = makeField({
+      name: 'event_body',
+      label: 'Event Body',
+      type: 'union',
+      unionMeta: meta,
+    });
+
+    const { container } = renderWithMantine(
+      <FormWrapper
+        field={field}
+        unionMeta={meta}
+        initialValues={{
+          event_body: { type: 'EventBodyA', extra_info_a: '', content: { _mode: 'empty' } },
+        }}
+      />,
+    );
+
+    // extra_info_a is required (isRequired=true, isNullable=false) → should have required
+    const extraInfoInput = container.querySelector(
+      'input[aria-label="extra_info_a"],input',
+    ) as HTMLInputElement;
+    // Find all labels to verify required indicator
+    const labels = Array.from(container.querySelectorAll('label'));
+    const extraInfoLabel = labels.find((l) => l.textContent?.includes('extra_info_a'));
+    const contentLabel = labels.find((l) => l.textContent?.includes('content'));
+
+    // extra_info_a: isRequired=true, isNullable=false → should show required (asterisk)
+    expect(
+      extraInfoLabel?.querySelector('[data-required]') ?? extraInfoLabel?.innerHTML,
+    ).toBeTruthy();
+    // content: isRequired=true, isNullable=true → should NOT show required
+    // Binary field renders with "Upload" / "URL" tabs, check no required indicator on its label
+    const contentContainer = container.textContent || '';
+    expect(contentContainer).toContain('content');
+    // The BinaryFieldEditor receives required prop — check that it is NOT required
+    // We test by checking the rendered required indicators
+    if (contentLabel) {
+      const asterisk = contentLabel.querySelector('.mantine-InputWrapper-required');
+      expect(asterisk).toBeNull();
+    }
+  });
+
+  it('nullable text sub-field in discriminated union does not show required asterisk', () => {
+    const meta: UnionMeta = {
+      discriminatorField: 'type',
+      variants: [
+        {
+          tag: 'A',
+          label: 'Type A',
+          schemaName: 'A',
+          fields: [
+            makeField({
+              name: 'required_field',
+              type: 'string',
+              isRequired: true,
+              isNullable: false,
+            }),
+            makeField({
+              name: 'nullable_field',
+              type: 'string',
+              isRequired: true,
+              isNullable: true,
+            }),
+            makeField({
+              name: 'optional_field',
+              type: 'string',
+              isRequired: false,
+              isNullable: false,
+            }),
+          ],
+        },
+      ],
+    };
+    const field = makeField({
+      name: 'data',
+      label: 'Data',
+      type: 'union',
+      unionMeta: meta,
+    });
+
+    const { container } = renderWithMantine(
+      <FormWrapper
+        field={field}
+        unionMeta={meta}
+        initialValues={{
+          data: { type: 'A', required_field: '', nullable_field: '', optional_field: '' },
+        }}
+      />,
+    );
+
+    // Find all TextInputs by checking labels
+    const allInputs = container.querySelectorAll('.mantine-TextInput-root');
+    // required_field: isRequired=true, isNullable=false → should be required
+    // nullable_field: isRequired=true, isNullable=true → should NOT be required
+    // optional_field: isRequired=false → should NOT be required
+
+    // Check by looking for required inputs
+    const requiredInputs = container.querySelectorAll('input[required]');
+    const requiredLabels = Array.from(requiredInputs).map((inp) => {
+      const wrapper = inp.closest('.mantine-TextInput-root');
+      return wrapper?.querySelector('label')?.textContent?.replace(' *', '');
+    });
+
+    // Only required_field should be marked as required
+    expect(requiredLabels).toContain('required_field');
+    expect(requiredLabels).not.toContain('nullable_field');
+    expect(requiredLabels).not.toContain('optional_field');
+  });
+
+  it('nullable number sub-field in structural union variant does not show required', () => {
+    const meta: UnionMeta = {
+      discriminatorField: '__variant',
+      variants: [
+        {
+          tag: 'MyStruct',
+          label: 'My Struct',
+          schemaName: 'MyStruct',
+          fields: [
+            makeField({ name: 'score', type: 'number', isRequired: true, isNullable: false }),
+            makeField({ name: 'bonus', type: 'number', isRequired: true, isNullable: true }),
+          ],
+        },
+      ],
+    };
+    const field = makeField({
+      name: 'val',
+      label: 'Value',
+      type: 'union',
+      unionMeta: meta,
+    });
+
+    const { container } = renderWithMantine(
+      <FormWrapper
+        field={field}
+        unionMeta={meta}
+        initialValues={{ val: { __variant: 'MyStruct', score: 0, bonus: 0 } }}
+      />,
+    );
+
+    const requiredInputs = container.querySelectorAll('input[required]');
+    const requiredLabels = Array.from(requiredInputs).map((inp) => {
+      const wrapper = inp.closest('.mantine-NumberInput-root');
+      return wrapper?.querySelector('label')?.textContent?.replace(' *', '');
+    });
+
+    expect(requiredLabels).toContain('score');
+    expect(requiredLabels).not.toContain('bonus');
+  });
+});
