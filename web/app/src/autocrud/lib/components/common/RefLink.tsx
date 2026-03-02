@@ -51,9 +51,9 @@ export function RefLink({ value, fieldRef }: RefLinkProps) {
         <Link
           to={detailRoute}
           params={{ resourceId: value }}
-          onClick={(e) => e.stopPropagation()}
-          onPointerDownCapture={(e) => e.stopPropagation()}
-          onClickCapture={(e) => e.stopPropagation()}
+          onClick={(e: React.MouseEvent) => e.stopPropagation()}
+          onPointerDownCapture={(e: React.MouseEvent) => e.stopPropagation()}
+          onClickCapture={(e: React.MouseEvent) => e.stopPropagation()}
           style={{ textDecoration: 'none' }}
         >
           <Group gap={4} wrap="nowrap">
@@ -172,9 +172,9 @@ export function RefRevisionLink({ value, fieldRef }: RefRevisionLinkProps) {
           to={detailRoute}
           params={{ resourceId }}
           search={{ revision: value }}
-          onClick={(e) => e.stopPropagation()}
-          onPointerDownCapture={(e) => e.stopPropagation()}
-          onClickCapture={(e) => e.stopPropagation()}
+          onClick={(e: React.MouseEvent) => e.stopPropagation()}
+          onPointerDownCapture={(e: React.MouseEvent) => e.stopPropagation()}
+          onClickCapture={(e: React.MouseEvent) => e.stopPropagation()}
           style={{ textDecoration: 'none' }}
         >
           <Group gap={4} wrap="nowrap">

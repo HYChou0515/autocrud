@@ -131,36 +131,40 @@ describe('writeEnvFile', () => {
     fs.rmSync(tmpDir, { recursive: true, force: true });
   });
 
-  it('creates .env with VITE_API_URL when file does not exist', () => {
+  it('creates .env with VITE_API_URL and API_PROXY_TARGET when file does not exist', () => {
     writeEnvFile(tmpDir, 'http://localhost:8000');
     const content = fs.readFileSync(path.join(tmpDir, '.env'), 'utf-8');
-    expect(content).toBe('VITE_API_URL=http://localhost:8000\n');
+    expect(content).toContain('VITE_API_URL=/api');
+    expect(content).toContain('API_PROXY_TARGET=http://localhost:8000');
   });
 
-  it('creates .env with base path in URL', () => {
+  it('creates .env with proxy target including base path', () => {
     writeEnvFile(tmpDir, 'http://localhost:8000/foo/bar');
     const content = fs.readFileSync(path.join(tmpDir, '.env'), 'utf-8');
-    expect(content).toBe('VITE_API_URL=http://localhost:8000/foo/bar\n');
+    expect(content).toContain('VITE_API_URL=/api');
+    expect(content).toContain('API_PROXY_TARGET=http://localhost:8000/foo/bar');
   });
 
-  it('updates existing VITE_API_URL line without removing other vars', () => {
+  it('updates existing VITE_API_URL and API_PROXY_TARGET without removing other vars', () => {
     const envPath = path.join(tmpDir, '.env');
     fs.writeFileSync(envPath, 'MY_VAR=hello\nVITE_API_URL=http://old:3000\nOTHER=world\n');
     writeEnvFile(tmpDir, 'http://localhost:9000/api');
     const content = fs.readFileSync(envPath, 'utf-8');
-    expect(content).toContain('VITE_API_URL=http://localhost:9000/api');
+    expect(content).toContain('VITE_API_URL=/api');
+    expect(content).toContain('API_PROXY_TARGET=http://localhost:9000/api');
     expect(content).toContain('MY_VAR=hello');
     expect(content).toContain('OTHER=world');
     // Should not have duplicate VITE_API_URL
     expect(content.match(/VITE_API_URL/g)?.length).toBe(1);
   });
 
-  it('adds VITE_API_URL to existing .env that does not have it', () => {
+  it('adds VITE_API_URL and API_PROXY_TARGET to existing .env', () => {
     const envPath = path.join(tmpDir, '.env');
     fs.writeFileSync(envPath, 'MY_VAR=hello\nOTHER=world');
     writeEnvFile(tmpDir, 'http://localhost:8000');
     const content = fs.readFileSync(envPath, 'utf-8');
-    expect(content).toContain('VITE_API_URL=http://localhost:8000');
+    expect(content).toContain('VITE_API_URL=/api');
+    expect(content).toContain('API_PROXY_TARGET=http://localhost:8000');
     expect(content).toContain('MY_VAR=hello');
     expect(content).toContain('OTHER=world');
   });

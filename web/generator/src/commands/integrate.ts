@@ -20,6 +20,7 @@ import * as path from 'path';
 import { fileURLToPath } from 'url';
 import { select } from '@inquirer/prompts';
 import { generateCode, type GenerateOptions } from './generate.js';
+import { type MantineVersion, patchPackageJson, patchSourceFiles, writeVersionConfig } from '../mantineVersion.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -28,6 +29,8 @@ export interface IntegrateOptions extends GenerateOptions {
   includeTests?: boolean;
   /** Skip all interactive prompts and overwrite changed files. */
   force?: boolean;
+  /** Mantine major version (7 or 8). Defaults to 7. */
+  mantineVersion?: MantineVersion;
 }
 
 export async function integrateProject(
@@ -35,7 +38,8 @@ export async function integrateProject(
   outputRoot: string,
   options: IntegrateOptions = {},
 ): Promise<void> {
-  console.log('\n🔗 AutoCRUD Web Integration Mode\n');
+  const mantineVersion = options.mantineVersion ?? '7';
+  console.log(`\n🔗 AutoCRUD Web Integration Mode (Mantine ${mantineVersion})\n`);
 
   const ROOT = process.cwd();
   const SRC = path.join(ROOT, outputRoot);
@@ -62,8 +66,13 @@ export async function integrateProject(
   // Run generate
   await generateCode(apiUrl, outputRoot, options);
 
+  // Apply Mantine version-specific patches
+  await patchPackageJson(ROOT, mantineVersion);
+  await patchSourceFiles(SRC, mantineVersion);
+  await writeVersionConfig(ROOT, mantineVersion);
+
   // Print integration checklist
-  printChecklist();
+  printChecklist(mantineVersion);
 }
 
 // ---------------------------------------------------------------------------
@@ -271,22 +280,31 @@ function logCopyResult(label: string, result: 'created' | 'unchanged' | 'skipped
   }
 }
 
-function printChecklist(): void {
+function printChecklist(mantineVersion: MantineVersion = '7'): void {
+  const isV8 = mantineVersion === '8';
+
+  const mantinePkgs = isV8
+    ? '@mantine/core@^8 @mantine/dates@^8 @mantine/form@^8 @mantine/hooks@^8 @mantine/notifications@^8'
+    : '@mantine/core @mantine/dates @mantine/form @mantine/hooks @mantine/notifications';
+
+  const zodResolverPkg = isV8 ? '' : 'mantine-form-zod-resolver \\';
+  const reactPkgs = isV8 ? 'react@^19 react-dom@^19' : '';
+
   console.log('\n' + '='.repeat(60));
-  console.log('📋 Integration Checklist');
+  console.log(`📋 Integration Checklist (Mantine ${mantineVersion})`);
   console.log('='.repeat(60));
   console.log(`
 Please verify the following manual steps:
 
 1. 📦 Dependencies — Add required packages:
-   pnpm add @mantine/core @mantine/dates @mantine/form @mantine/hooks \\
-     @mantine/notifications @tabler/icons-react @tanstack/react-router \\
-     @tanstack/react-virtual axios clsx dayjs mantine-form-zod-resolver \\
+   pnpm add ${mantinePkgs} \\
+     @tabler/icons-react @tanstack/react-router \\
+     @tanstack/react-virtual axios clsx dayjs ${zodResolverPkg}
      mantine-react-table@2.0.0-beta.9 react-markdown remark-gfm zod \\
-     @monaco-editor/react
+     @monaco-editor/react${reactPkgs ? ' \\\n     ' + reactPkgs : ''}
 
    pnpm add -D @tanstack/router-plugin postcss-preset-mantine \\
-     postcss-simple-vars
+     postcss-simple-vars${isV8 ? ' @types/react@^19 @types/react-dom@^19' : ''}
 
 2. ⚙️  tsconfig.app.json — Add path alias:
    {
@@ -326,9 +344,19 @@ Please verify the following manual steps:
    import '@mantine/core/styles.css'
    import '@mantine/notifications/styles.css'
    import '@mantine/dates/styles.css'
+${
+  isV8
+    ? `
+6. ⚠️  Note: Mantine 8 requires React 19. zodResolver is now built into
+   @mantine/form — no need for mantine-form-zod-resolver.
+   mantine-react-table peer dependency warnings can be safely ignored.
 
+7. 📄 See INTEGRATION.md for detailed step-by-step guide.
+`
+    : `
 6. 📄 See INTEGRATION.md for detailed step-by-step guide.
-`);
+`
+}`);
 }
 
 // ---------------------------------------------------------------------------

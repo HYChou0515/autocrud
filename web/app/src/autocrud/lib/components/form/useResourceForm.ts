@@ -7,7 +7,7 @@
 
 import { useState, useMemo, useCallback, useRef } from 'react';
 import { useForm, type UseFormReturnType } from '@mantine/form';
-import { zodResolver } from 'mantine-form-zod-resolver';
+import { zodResolver } from '@mantine/form';
 import type { ResourceConfig, ResourceField } from '../../resources';
 import {
   getByPath,
@@ -111,7 +111,7 @@ export function useResourceForm<T extends Record<string, any>>({
   );
 
   // ── Validation ──
-  const zodValidate = config.zodSchema ? zodResolver(config.zodSchema) : undefined;
+  const zodValidate = config.zodSchema ? zodResolver(config.zodSchema as any) : undefined;
 
   const combinedValidate = (values: T) => {
     const errors = validateJsonFields(

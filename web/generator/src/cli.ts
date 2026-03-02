@@ -3,6 +3,7 @@ import { Command } from 'commander';
 import { initProject } from './commands/init.js';
 import { generateCode } from './commands/generate.js';
 import { integrateProject } from './commands/integrate.js';
+import { validateMantineVersion } from './mantineVersion.js';
 
 const program = new Command();
 
@@ -17,8 +18,10 @@ program
   .argument('<project-name>', 'Project name')
   .option('-d, --dir <directory>', 'Target directory', '.')
   .option('--include-tests', 'Include test files in generated output', false)
-  .action(async (projectName: string, options: { dir: string; includeTests: boolean }) => {
-    await initProject(projectName, options.dir, { includeTests: options.includeTests });
+  .option('--mantine <version>', 'Mantine major version to use (7 or 8)', '7')
+  .action(async (projectName: string, options: { dir: string; includeTests: boolean; mantine: string }) => {
+    const mantineVersion = validateMantineVersion(options.mantine);
+    await initProject(projectName, options.dir, { includeTests: options.includeTests, mantineVersion });
   });
 
 program
@@ -52,6 +55,7 @@ program
   .option('--base-path <path>', 'API base path prefix (auto-detected if omitted)')
   .option('--include-tests', 'Include test files in generated output', false)
   .option('--force', 'Overwrite all changed files without prompting', false)
+  .option('--mantine <version>', 'Mantine major version to use (7 or 8)', '7')
   .action(
     async (options: {
       url: string;
@@ -60,12 +64,15 @@ program
       basePath?: string;
       includeTests: boolean;
       force: boolean;
+      mantine: string;
     }) => {
+      const mantineVersion = validateMantineVersion(options.mantine);
       await integrateProject(options.url, options.output, {
         openapiPath: options.openapiPath,
         basePath: options.basePath,
         includeTests: options.includeTests,
         force: options.force,
+        mantineVersion,
       });
     },
   );
