@@ -169,8 +169,8 @@ src/routes/
 你需要手動把生成的頁面組件整合到你的 router 設定中。生成的頁面組件都可以獨立使用：
 
 ```tsx
-import { ResourceTable } from '@/lib/components/ResourceTable'
-import { getResource } from '@/lib/resources'
+import { ResourceTable } from '@/autocrud/lib/components/ResourceTable'
+import { getResource } from '@/autocrud/lib/resources'
 
 // 在你的路由中使用
 function UsersPage() {
