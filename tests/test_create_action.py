@@ -22,7 +22,9 @@ from fastapi import Body, FastAPI, Query, UploadFile
 from fastapi.testclient import TestClient
 from msgspec import Struct
 
+from autocrud import struct_to_pydantic
 from autocrud.crud.core import AutoCRUD
+from autocrud.types import OnDelete, Ref, RefType
 
 # ---------------------------------------------------------------------------
 # Test Models
@@ -976,3 +978,313 @@ class TestCreateActionEnumParams:
         rm = crud.resource_managers["character"]
         resource = rm.get(data["resource_id"])
         assert resource.data.role == "mage"
+
+
+# ---------------------------------------------------------------------------
+# 9. Ref metadata injection for custom create action body schemas
+# ---------------------------------------------------------------------------
+
+
+class _RefZone(Struct):
+    name: str
+
+
+class _RefGuild(Struct):
+    name: str
+
+
+class _RefMonster(Struct):
+    name: str
+    zone_id: Annotated[str, Ref("zone")]
+    guild_id: Annotated[str | None, Ref("guild", on_delete=OnDelete.set_null)]
+
+
+class _RefImportMonster(Struct):
+    """Action body schema with Ref annotations."""
+
+    url: str
+    zone_id: Annotated[str, Ref("zone")]
+    guild_id: Annotated[str | None, Ref("guild", on_delete=OnDelete.set_null)]
+    zone_revision_id: Annotated[str, Ref("zone", ref_type=RefType.revision_id)]
+
+
+class TestCreateActionRefMetadata:
+    """x-ref-* metadata should be injected into custom action body schemas."""
+
+    def _build_app(self):
+        crud = AutoCRUD()
+        crud.add_model(_RefZone, name="zone")
+        crud.add_model(_RefGuild, name="guild")
+        crud.add_model(_RefMonster, name="monster")
+
+        @crud.create_action("monster", label="Import Monster")
+        async def import_monster(body: _RefImportMonster = Body(...)):
+            return _RefMonster(
+                name="imported",
+                zone_id=body.zone_id,
+                guild_id=body.guild_id,
+            )
+
+        app = FastAPI()
+        crud.apply(app)
+        crud.openapi(app)
+        return app
+
+    def test_action_body_schema_has_x_ref_resource(self):
+        """Action body schema properties should have x-ref-resource."""
+        app = self._build_app()
+        schema = app.openapi_schema
+        body_schema = schema["components"]["schemas"]["_RefImportMonster"]
+        props = body_schema["properties"]
+
+        assert props["zone_id"]["x-ref-resource"] == "zone"
+        assert props["zone_id"]["x-ref-type"] == "resource_id"
+        assert props["zone_id"]["x-ref-on-delete"] == "dangling"
+
+    def test_action_body_schema_nullable_ref(self):
+        """Nullable Ref in action body should still get x-ref-* extensions."""
+        app = self._build_app()
+        schema = app.openapi_schema
+        body_schema = schema["components"]["schemas"]["_RefImportMonster"]
+        props = body_schema["properties"]
+
+        assert props["guild_id"]["x-ref-resource"] == "guild"
+        assert props["guild_id"]["x-ref-type"] == "resource_id"
+        assert props["guild_id"]["x-ref-on-delete"] == "set_null"
+
+    def test_action_body_schema_revision_ref(self):
+        """Revision ref in action body should get correct x-ref-type."""
+        app = self._build_app()
+        schema = app.openapi_schema
+        body_schema = schema["components"]["schemas"]["_RefImportMonster"]
+        props = body_schema["properties"]
+
+        assert props["zone_revision_id"]["x-ref-resource"] == "zone"
+        assert props["zone_revision_id"]["x-ref-type"] == "revision_id"
+        assert "x-ref-on-delete" not in props["zone_revision_id"]
+
+    def test_action_body_refs_included_in_relationships(self):
+        """Refs from action body schemas should appear in x-autocrud-relationships."""
+        app = self._build_app()
+        schema = app.openapi_schema
+        rels = schema.get("x-autocrud-relationships", [])
+
+        # Find refs from action body (source = "monster" since action belongs to monster)
+        action_ref_fields = {r["sourceField"] for r in rels if r["source"] == "monster"}
+        # Should include refs from both the resource model AND the action body
+        assert "zone_id" in action_ref_fields
+        assert "guild_id" in action_ref_fields
+        assert "zone_revision_id" in action_ref_fields
+
+
+# ---------------------------------------------------------------------------
+# 10. Ref metadata injection for path / query / inline-body params
+# ---------------------------------------------------------------------------
+
+
+class _PEquipment(Struct):
+    name: str
+
+
+class _PCharacter(Struct):
+    name: str
+    equipment_id: Annotated[
+        str | None, Ref("pequipment", on_delete=OnDelete.set_null)
+    ] = None
+
+
+class TestCreateActionParamRefMetadata:
+    """x-ref-* should be injected into path/query/inline-body param schemas."""
+
+    def _build_app_path_param(self):
+        crud = AutoCRUD()
+        crud.add_model(_PEquipment, name="pequipment")
+        crud.add_model(_PCharacter, name="pcharacter")
+
+        @crud.create_action("pcharacter", label="Quick Create", path="/{eq_id}/quick")
+        async def quick_create(
+            eq_id: Annotated[str, Ref("pequipment")],
+        ):
+            return _PCharacter(name="test", equipment_id=eq_id)
+
+        app = FastAPI()
+        crud.apply(app)
+        crud.openapi(app)
+        return app
+
+    def test_path_param_has_x_ref(self):
+        """Path param with Ref annotation should have x-ref-* in its schema."""
+        app = self._build_app_path_param()
+        schema = app.openapi_schema
+        actions = schema["x-autocrud-custom-create-actions"]["pcharacter"]
+        action = actions[0]
+        pp = action["pathParams"]
+        eq_param = next(p for p in pp if p["name"] == "eq_id")
+        assert eq_param["schema"]["x-ref-resource"] == "pequipment"
+        assert eq_param["schema"]["x-ref-type"] == "resource_id"
+        assert eq_param["schema"]["x-ref-on-delete"] == "dangling"
+
+    def _build_app_query_param(self):
+        crud = AutoCRUD()
+        crud.add_model(_PEquipment, name="pequipment")
+        crud.add_model(_PCharacter, name="pcharacter")
+
+        @crud.create_action("pcharacter", label="Query Create")
+        async def query_create(
+            name: str,
+            eq_id: Annotated[str, Ref("pequipment", ref_type=RefType.revision_id)],
+        ):
+            return _PCharacter(name=name, equipment_id=eq_id)
+
+        app = FastAPI()
+        crud.apply(app)
+        crud.openapi(app)
+        return app
+
+    def test_query_param_has_x_ref(self):
+        """Query param with Ref annotation should have x-ref-* in its schema."""
+        app = self._build_app_query_param()
+        schema = app.openapi_schema
+        actions = schema["x-autocrud-custom-create-actions"]["pcharacter"]
+        action = actions[0]
+        qp = action["queryParams"]
+        eq_param = next(p for p in qp if p["name"] == "eq_id")
+        assert eq_param["schema"]["x-ref-resource"] == "pequipment"
+        assert eq_param["schema"]["x-ref-type"] == "revision_id"
+        # revision_id refs should not have x-ref-on-delete
+        assert "x-ref-on-delete" not in eq_param["schema"]
+
+    def _build_app_inline_body_param(self):
+        crud = AutoCRUD()
+        crud.add_model(_PEquipment, name="pequipment")
+        crud.add_model(_PCharacter, name="pcharacter")
+
+        @crud.create_action("pcharacter", label="Inline Create")
+        async def inline_create(
+            name: Annotated[str, Body(embed=True)],
+            eq_id: Annotated[str, Ref("pequipment"), Body(embed=True)],
+        ):
+            return _PCharacter(name=name, equipment_id=eq_id)
+
+        app = FastAPI()
+        crud.apply(app)
+        crud.openapi(app)
+        return app
+
+    def test_inline_body_param_has_x_ref(self):
+        """Inline body param with Ref annotation should have x-ref-* in its schema."""
+        app = self._build_app_inline_body_param()
+        schema = app.openapi_schema
+        actions = schema["x-autocrud-custom-create-actions"]["pcharacter"]
+        action = actions[0]
+        ibp = action["inlineBodyParams"]
+        eq_param = next(p for p in ibp if p["name"] == "eq_id")
+        assert eq_param["schema"]["x-ref-resource"] == "pequipment"
+        assert eq_param["schema"]["x-ref-type"] == "resource_id"
+        assert eq_param["schema"]["x-ref-on-delete"] == "dangling"
+
+
+# ---------------------------------------------------------------------------
+# 11. Mixed body schema + inline/file params: coexistence
+# ---------------------------------------------------------------------------
+
+
+class _MixedItem(Struct):
+    label: str
+    value: int = 0
+
+
+class _MixedResource(Struct):
+    name: str
+
+
+class TestCreateActionMixedParams:
+    """When action has BOTH a Struct/Pydantic body AND inline body/file params,
+    all param types should be extracted into the action extension."""
+
+    def _build_app(self):
+        crud = AutoCRUD()
+        crud.add_model(_PEquipment, name="pequipment")
+        crud.add_model(_MixedResource, name="mresource")
+
+        _MixedItemPydantic = struct_to_pydantic(_MixedItem)
+
+        @crud.create_action("mresource", label="Mixed Action")
+        async def mixed_action(
+            q: str,
+            name: Annotated[str, Body(embed=True), Ref("pequipment")],
+            pic: UploadFile,
+            item: _MixedItemPydantic,  # type: ignore[reportInvalidTypeForm]
+        ):
+            return _MixedResource(name=name)
+
+        app = FastAPI()
+        crud.apply(app)
+        crud.openapi(app)
+        return app
+
+    def test_body_schema_present(self):
+        """bodySchema should be detected for the Pydantic model param."""
+        app = self._build_app()
+        schema = app.openapi_schema
+        actions = schema["x-autocrud-custom-create-actions"]["mresource"]
+        action = actions[0]
+        assert "bodySchema" in action
+
+    def test_inline_body_params_extracted_with_body_schema(self):
+        """Inline body params should still be extracted even when bodySchema exists."""
+        app = self._build_app()
+        schema = app.openapi_schema
+        actions = schema["x-autocrud-custom-create-actions"]["mresource"]
+        action = actions[0]
+        assert "inlineBodyParams" in action
+        ibp_names = {p["name"] for p in action["inlineBodyParams"]}
+        assert "name" in ibp_names
+
+    def test_file_params_extracted_with_body_schema(self):
+        """File params should still be extracted even when bodySchema exists."""
+        app = self._build_app()
+        schema = app.openapi_schema
+        actions = schema["x-autocrud-custom-create-actions"]["mresource"]
+        action = actions[0]
+        assert "fileParams" in action
+        fp_names = {p["name"] for p in action["fileParams"]}
+        assert "pic" in fp_names
+
+    def test_inline_body_param_ref_with_body_schema(self):
+        """Inline body param Ref should work even when bodySchema coexists."""
+        app = self._build_app()
+        schema = app.openapi_schema
+        actions = schema["x-autocrud-custom-create-actions"]["mresource"]
+        action = actions[0]
+        name_param = next(p for p in action["inlineBodyParams"] if p["name"] == "name")
+        assert name_param["schema"]["x-ref-resource"] == "pequipment"
+        assert name_param["schema"]["x-ref-type"] == "resource_id"
+
+    def test_query_params_still_present(self):
+        """Query params should still work alongside bodySchema."""
+        app = self._build_app()
+        schema = app.openapi_schema
+        actions = schema["x-autocrud-custom-create-actions"]["mresource"]
+        action = actions[0]
+        assert "queryParams" in action
+        qp_names = {p["name"] for p in action["queryParams"]}
+        assert "q" in qp_names
+
+    def test_body_schema_field_not_in_inline_params(self):
+        """The Pydantic model field should NOT appear in inlineBodyParams (avoid duplication)."""
+        app = self._build_app()
+        schema = app.openapi_schema
+        actions = schema["x-autocrud-custom-create-actions"]["mresource"]
+        action = actions[0]
+        ibp_names = {p["name"] for p in action.get("inlineBodyParams", [])}
+        assert "item" not in ibp_names
+
+    def test_body_schema_param_name(self):
+        """bodySchemaParamName should record the handler parameter name (not schema name)."""
+        app = self._build_app()
+        schema = app.openapi_schema
+        actions = schema["x-autocrud-custom-create-actions"]["mresource"]
+        action = actions[0]
+        # The handler parameter for the Pydantic model is called 'item'
+        assert action.get("bodySchemaParamName") == "item"
