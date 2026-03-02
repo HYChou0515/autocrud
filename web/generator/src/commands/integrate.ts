@@ -19,10 +19,14 @@ import { generateCode, type GenerateOptions } from './generate.js';
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
+export interface IntegrateOptions extends GenerateOptions {
+  includeTests?: boolean;
+}
+
 export async function integrateProject(
   apiUrl: string,
   outputRoot: string,
-  options: GenerateOptions = {},
+  options: IntegrateOptions = {},
 ): Promise<void> {
   console.log('\n🔗 AutoCRUD Web Integration Mode\n');
 
@@ -40,7 +44,7 @@ export async function integrateProject(
     process.exit(1);
   }
 
-  await copyIntegrationFiles(templateSrc, SRC);
+  await copyIntegrationFiles(templateSrc, SRC, { includeTests: options.includeTests ?? false });
 
   console.log('\n🚀 Running code generation...\n');
 
@@ -55,19 +59,23 @@ export async function integrateProject(
  * Copy only the essential library/type/layout files from template into target SRC dir.
  * Does NOT overwrite essential app files (App.tsx, main.tsx, etc.) if they already exist.
  */
-export async function copyIntegrationFiles(templateSrc: string, SRC: string): Promise<void> {
+interface CopyOptions {
+  includeTests?: boolean;
+}
+
+export async function copyIntegrationFiles(templateSrc: string, SRC: string, options: CopyOptions = {}): Promise<void> {
   console.log('📂 Copying AutoCRUD library files...');
 
   // 1. Copy src/autocrud/lib/ directory
   const libSrc = path.join(templateSrc, 'autocrud/lib');
   const libDest = path.join(SRC, 'autocrud/lib');
-  await copyDir(libSrc, libDest);
+  await copyDir(libSrc, libDest, { includeTests: options.includeTests });
   console.log('  ✅ autocrud/lib/ (components, hooks, utils, client)');
 
   // 2. Copy src/autocrud/types/ directory
   const typesSrc = path.join(templateSrc, 'autocrud/types');
   const typesDest = path.join(SRC, 'autocrud/types');
-  await copyDir(typesSrc, typesDest);
+  await copyDir(typesSrc, typesDest, { includeTests: options.includeTests });
   console.log('  ✅ autocrud/types/ (API type definitions)');
 
   // 3. Copy layout route files
@@ -170,7 +178,13 @@ Please verify the following manual steps:
 `);
 }
 
-async function copyDir(src: string, dest: string): Promise<void> {
+const TEST_FILE_RE = /\.(test|spec)\.[^.]+$/;
+
+interface CopyDirOptions {
+  includeTests?: boolean;
+}
+
+async function copyDir(src: string, dest: string, options: CopyDirOptions = {}): Promise<void> {
   await fs.mkdir(dest, { recursive: true });
   const entries = await fs.readdir(src, { withFileTypes: true });
 
@@ -178,8 +192,13 @@ async function copyDir(src: string, dest: string): Promise<void> {
     const srcPath = path.join(src, entry.name);
     const destPath = path.join(dest, entry.name);
 
+    // Skip test files unless explicitly included
+    if (!options.includeTests && TEST_FILE_RE.test(entry.name)) {
+      continue;
+    }
+
     if (entry.isDirectory()) {
-      await copyDir(srcPath, destPath);
+      await copyDir(srcPath, destPath, options);
     } else {
       await fs.copyFile(srcPath, destPath);
     }

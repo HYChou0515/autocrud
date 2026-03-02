@@ -16,8 +16,9 @@ program
   .description('Initialize a new AutoCRUD Web project')
   .argument('<project-name>', 'Project name')
   .option('-d, --dir <directory>', 'Target directory', '.')
-  .action(async (projectName: string, options: { dir: string }) => {
-    await initProject(projectName, options.dir);
+  .option('--include-tests', 'Include test files in generated output', false)
+  .action(async (projectName: string, options: { dir: string; includeTests: boolean }) => {
+    await initProject(projectName, options.dir, { includeTests: options.includeTests });
   });
 
 program
@@ -49,11 +50,15 @@ program
   .option('-o, --output <directory>', 'Output directory (your src/)', 'src')
   .option('--openapi-path <path>', 'Path to OpenAPI spec endpoint', '/openapi.json')
   .option('--base-path <path>', 'API base path prefix (auto-detected if omitted)')
-  .action(async (options: { url: string; output: string; openapiPath: string; basePath?: string }) => {
-    await integrateProject(options.url, options.output, {
-      openapiPath: options.openapiPath,
-      basePath: options.basePath,
-    });
-  });
+  .option('--include-tests', 'Include test files in generated output', false)
+  .action(
+    async (options: { url: string; output: string; openapiPath: string; basePath?: string; includeTests: boolean }) => {
+      await integrateProject(options.url, options.output, {
+        openapiPath: options.openapiPath,
+        basePath: options.basePath,
+        includeTests: options.includeTests,
+      });
+    },
+  );
 
 program.parse();

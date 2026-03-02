@@ -18,15 +18,15 @@ describe('copyIntegrationFiles', () => {
     templateSrc = path.join(tmpDir, 'template-src');
     targetSrc = path.join(tmpDir, 'target-src');
 
-    // Create a minimal template structure
-    await fs.mkdir(path.join(templateSrc, 'lib'), { recursive: true });
-    await fs.mkdir(path.join(templateSrc, 'types'), { recursive: true });
+    // Create a minimal template structure (matching autocrud/ prefix used by copyIntegrationFiles)
+    await fs.mkdir(path.join(templateSrc, 'autocrud', 'lib'), { recursive: true });
+    await fs.mkdir(path.join(templateSrc, 'autocrud', 'types'), { recursive: true });
     await fs.mkdir(path.join(templateSrc, 'routes'), { recursive: true });
 
     // Template files
-    await fs.writeFile(path.join(templateSrc, 'lib', 'client.ts'), 'export const client = {};');
-    await fs.writeFile(path.join(templateSrc, 'lib', 'resources.ts'), 'export const registry = {};');
-    await fs.writeFile(path.join(templateSrc, 'types', 'api.ts'), 'export type FullResource = {};');
+    await fs.writeFile(path.join(templateSrc, 'autocrud', 'lib', 'client.ts'), 'export const client = {};');
+    await fs.writeFile(path.join(templateSrc, 'autocrud', 'lib', 'resources.ts'), 'export const registry = {};');
+    await fs.writeFile(path.join(templateSrc, 'autocrud', 'types', 'api.ts'), 'export type FullResource = {};');
     await fs.writeFile(path.join(templateSrc, 'routes', '__root.tsx'), '<Root />');
     await fs.writeFile(path.join(templateSrc, 'routes', 'autocrud-admin.tsx'), '<Admin />');
     await fs.writeFile(path.join(templateSrc, 'App.tsx'), 'function App() {}');
@@ -42,20 +42,20 @@ describe('copyIntegrationFiles', () => {
     await fs.rm(tmpDir, { recursive: true, force: true });
   });
 
-  it('copies lib/ directory', async () => {
+  it('copies autocrud/lib/ directory', async () => {
     await copyIntegrationFiles(templateSrc, targetSrc);
 
-    const client = await fs.readFile(path.join(targetSrc, 'lib', 'client.ts'), 'utf-8');
+    const client = await fs.readFile(path.join(targetSrc, 'autocrud', 'lib', 'client.ts'), 'utf-8');
     expect(client).toBe('export const client = {};');
 
-    const resources = await fs.readFile(path.join(targetSrc, 'lib', 'resources.ts'), 'utf-8');
+    const resources = await fs.readFile(path.join(targetSrc, 'autocrud', 'lib', 'resources.ts'), 'utf-8');
     expect(resources).toBe('export const registry = {};');
   });
 
-  it('copies types/ directory', async () => {
+  it('copies autocrud/types/ directory', async () => {
     await copyIntegrationFiles(templateSrc, targetSrc);
 
-    const api = await fs.readFile(path.join(targetSrc, 'types', 'api.ts'), 'utf-8');
+    const api = await fs.readFile(path.join(targetSrc, 'autocrud', 'types', 'api.ts'), 'utf-8');
     expect(api).toBe('export type FullResource = {};');
   });
 
@@ -115,13 +115,16 @@ describe('copyIntegrationFiles', () => {
     await expect(fs.access(path.join(targetSrc, 'index.html'))).rejects.toThrow();
   });
 
-  it('handles nested lib/ subdirectories', async () => {
-    await fs.mkdir(path.join(templateSrc, 'lib', 'components'), { recursive: true });
-    await fs.writeFile(path.join(templateSrc, 'lib', 'components', 'Dashboard.tsx'), '<Dashboard />');
+  it('handles nested autocrud/lib/ subdirectories', async () => {
+    await fs.mkdir(path.join(templateSrc, 'autocrud', 'lib', 'components'), { recursive: true });
+    await fs.writeFile(path.join(templateSrc, 'autocrud', 'lib', 'components', 'Dashboard.tsx'), '<Dashboard />');
 
     await copyIntegrationFiles(templateSrc, targetSrc);
 
-    const dashboard = await fs.readFile(path.join(targetSrc, 'lib', 'components', 'Dashboard.tsx'), 'utf-8');
+    const dashboard = await fs.readFile(
+      path.join(targetSrc, 'autocrud', 'lib', 'components', 'Dashboard.tsx'),
+      'utf-8',
+    );
     expect(dashboard).toBe('<Dashboard />');
   });
 
@@ -138,5 +141,54 @@ describe('copyIntegrationFiles', () => {
 
     // Missing one should not exist
     await expect(fs.access(path.join(targetSrc, 'routes', 'autocrud-admin.tsx'))).rejects.toThrow();
+  });
+
+  describe('test file filtering', () => {
+    beforeEach(async () => {
+      // Add test files to autocrud/lib/ template (matching actual template structure)
+      await fs.mkdir(path.join(templateSrc, 'autocrud', 'lib'), { recursive: true });
+      await fs.writeFile(path.join(templateSrc, 'autocrud', 'lib', 'client.ts'), 'export const client = {};');
+      await fs.writeFile(path.join(templateSrc, 'autocrud', 'lib', 'client.test.ts'), 'test("client")');
+      await fs.writeFile(path.join(templateSrc, 'autocrud', 'lib', 'resources.spec.ts'), 'test("resources")');
+      await fs.mkdir(path.join(templateSrc, 'autocrud', 'lib', 'components'), { recursive: true });
+      await fs.writeFile(path.join(templateSrc, 'autocrud', 'lib', 'components', 'Foo.tsx'), '<Foo />');
+      await fs.writeFile(path.join(templateSrc, 'autocrud', 'lib', 'components', 'Foo.test.tsx'), 'test("Foo")');
+      await fs.mkdir(path.join(templateSrc, 'autocrud', 'types'), { recursive: true });
+      await fs.writeFile(path.join(templateSrc, 'autocrud', 'types', 'api.ts'), 'export type A = {};');
+    });
+
+    it('excludes test files by default', async () => {
+      await copyIntegrationFiles(templateSrc, targetSrc);
+
+      // Source files should exist
+      const client = await fs.readFile(path.join(targetSrc, 'autocrud', 'lib', 'client.ts'), 'utf-8');
+      expect(client).toBe('export const client = {};');
+
+      const foo = await fs.readFile(path.join(targetSrc, 'autocrud', 'lib', 'components', 'Foo.tsx'), 'utf-8');
+      expect(foo).toBe('<Foo />');
+
+      // Test files should NOT exist
+      await expect(fs.access(path.join(targetSrc, 'autocrud', 'lib', 'client.test.ts'))).rejects.toThrow();
+      await expect(fs.access(path.join(targetSrc, 'autocrud', 'lib', 'resources.spec.ts'))).rejects.toThrow();
+      await expect(fs.access(path.join(targetSrc, 'autocrud', 'lib', 'components', 'Foo.test.tsx'))).rejects.toThrow();
+    });
+
+    it('includes test files when includeTests is true', async () => {
+      await copyIntegrationFiles(templateSrc, targetSrc, { includeTests: true });
+
+      // Source files should exist
+      const client = await fs.readFile(path.join(targetSrc, 'autocrud', 'lib', 'client.ts'), 'utf-8');
+      expect(client).toBe('export const client = {};');
+
+      // Test files should also exist
+      const testClient = await fs.readFile(path.join(targetSrc, 'autocrud', 'lib', 'client.test.ts'), 'utf-8');
+      expect(testClient).toBe('test("client")');
+
+      const specResources = await fs.readFile(path.join(targetSrc, 'autocrud', 'lib', 'resources.spec.ts'), 'utf-8');
+      expect(specResources).toBe('test("resources")');
+
+      const testFoo = await fs.readFile(path.join(targetSrc, 'autocrud', 'lib', 'components', 'Foo.test.tsx'), 'utf-8');
+      expect(testFoo).toBe('test("Foo")');
+    });
   });
 });

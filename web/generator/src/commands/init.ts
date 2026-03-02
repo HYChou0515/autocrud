@@ -5,7 +5,11 @@ import { fileURLToPath } from 'url';
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
-export async function initProject(projectName: string, targetDir: string): Promise<void> {
+export interface InitOptions {
+  includeTests?: boolean;
+}
+
+export async function initProject(projectName: string, targetDir: string, options: InitOptions = {}): Promise<void> {
   console.log(`\n🚀 Initializing AutoCRUD Web project: ${projectName}\n`);
 
   const projectPath = path.join(targetDir, projectName);
@@ -23,7 +27,7 @@ export async function initProject(projectName: string, targetDir: string): Promi
 
     // 複製模板
     console.log('📂 Copying template files...');
-    await copyDir(templatePath, projectPath);
+    await copyDir(templatePath, projectPath, { includeTests: options.includeTests ?? false });
 
     // 更新 package.json 的 name
     const pkgPath = path.join(projectPath, 'package.json');
@@ -43,7 +47,13 @@ export async function initProject(projectName: string, targetDir: string): Promi
   }
 }
 
-async function copyDir(src: string, dest: string): Promise<void> {
+const TEST_FILE_RE = /\.(test|spec)\.[^.]+$/;
+
+interface CopyDirOptions {
+  includeTests?: boolean;
+}
+
+async function copyDir(src: string, dest: string, options: CopyDirOptions = {}): Promise<void> {
   await fs.mkdir(dest, { recursive: true });
   const entries = await fs.readdir(src, { withFileTypes: true });
 
@@ -51,8 +61,13 @@ async function copyDir(src: string, dest: string): Promise<void> {
     const srcPath = path.join(src, entry.name);
     const destPath = path.join(dest, entry.name);
 
+    // Skip test files unless explicitly included
+    if (!options.includeTests && TEST_FILE_RE.test(entry.name)) {
+      continue;
+    }
+
     if (entry.isDirectory()) {
-      await copyDir(srcPath, destPath);
+      await copyDir(srcPath, destPath, options);
     } else {
       await fs.copyFile(srcPath, destPath);
     }

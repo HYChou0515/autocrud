@@ -5,6 +5,14 @@
 # Used to fetch OpenAPI spec during generation and as Vite dev proxy target
 API_URL ?= http://localhost:8000
 
+# Include test files in generated app (override with: make gen-app INCLUDE_TESTS=1)
+INCLUDE_TESTS ?=
+ifneq ($(INCLUDE_TESTS),)
+  INIT_TEST_FLAG := --include-tests
+else
+  INIT_TEST_FLAG :=
+endif
+
 .PHONY: help build-gen gen dev dev-app dev-gen install clean test clean-app gen-app reset-app regen-app style publish
 
 # 預設目標：顯示幫助
@@ -132,7 +140,7 @@ gen-app: build-gen
 		exit 1; \
 	fi
 	@echo "📂 從模板創建新的 app..."
-	cd generator && node dist/cli.js init app --dir ..
+	cd generator && node dist/cli.js init app --dir .. $(INIT_TEST_FLAG)
 	@echo "📦 安裝 app 依賴..."
 	cd app && pnpm install
 	@echo "🔧 從 AutoCRUD 後端生成代碼... ($(API_URL))"
@@ -143,8 +151,10 @@ gen-app: build-gen
 	@echo "   cd app"
 	@echo "   pnpm dev"
 
-# 完全重置 app：刪除 + 重新生成 + 安裝依賴
-reset-app: clean-app gen-app
+# 完全重置 app：刪除 + 重新生成 + 安裝依賴（含 test 檔案）
+reset-app:
+	$(MAKE) clean-app
+	$(MAKE) gen-app INCLUDE_TESTS=1
 	@echo "✅ App 完全重置完成！"
 
 # 從 AutoCRUD 後端生成前端代碼
