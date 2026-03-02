@@ -1,8 +1,8 @@
 import { StrictMode } from 'react';
 import { createRoot } from 'react-dom/client';
 import './index.css';
-import { applyCustomizations } from './generated/resources';
-import { customizations } from './lib/resourceCustomization';
+import { applyCustomizations } from './autocrud/generated/resources';
+import { customizations } from './autocrud/lib/resourceCustomization';
 import App from './App';
 
 applyCustomizations(customizations);

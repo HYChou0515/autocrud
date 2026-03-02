@@ -100,25 +100,34 @@ See [INTEGRATION.md](INTEGRATION.md) for a detailed step-by-step guide.
 ```
 my-app/
 ├── src/
-│   ├── generated/
-│   │   ├── types.ts           # TypeScript interfaces
-│   │   ├── resources.ts       # Resource registry
-│   │   └── api/
-│   │       ├── characterApi.ts
-│   │       ├── guildApi.ts
-│   │       └── ...
+│   ├── autocrud/
+│   │   ├── generated/           # Auto-generated (gitignored)
+│   │   │   ├── types.ts         # TypeScript interfaces
+│   │   │   ├── resources.ts     # Resource registry
+│   │   │   └── api/
+│   │   │       ├── characterApi.ts
+│   │   │       ├── guildApi.ts
+│   │   │       └── ...
+│   │   ├── lib/                 # Template components (tracked)
+│   │   │   ├── client.ts        # Axios instance
+│   │   │   ├── resources.ts     # Resource config helpers
+│   │   │   ├── components/      # Reusable UI components
+│   │   │   ├── hooks/           # Custom React hooks
+│   │   │   └── utils/           # Utility functions
+│   │   └── types/               # Shared types (tracked)
+│   │       └── api.ts
 │   ├── routes/
-│   │   ├── __root.tsx         # Root layout
-│   │   ├── index.tsx          # Dashboard
-│   │   ├── character/
-│   │   │   ├── index.tsx      # List page
-│   │   │   ├── create.tsx     # Create page
-│   │   │   └── $resourceId.tsx # Detail page
+│   │   ├── __root.tsx           # Root layout
+│   │   ├── index.tsx            # Dashboard
+│   │   ├── autocrud-admin/
+│   │   │   ├── character/
+│   │   │   │   ├── index.tsx    # List page
+│   │   │   │   ├── create.tsx   # Create page
+│   │   │   │   └── $resourceId.tsx # Detail page
+│   │   │   └── ...
 │   │   └── ...
-│   ├── lib/
-│   │   └── client.ts          # Axios instance
-│   └── types/
-│       └── api.ts             # Shared types
+│   ├── App.tsx
+│   └── main.tsx
 ├── package.json
 └── vite.config.ts
 ```

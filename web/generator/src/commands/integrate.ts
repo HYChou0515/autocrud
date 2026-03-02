@@ -5,10 +5,10 @@
  * overwriting top-level config files (package.json, tsconfig, vite.config, etc.).
  *
  * Only copies:
- * - src/lib/ (components, hooks, utils, client.ts, resources.ts, etc.)
- * - src/types/ (api.ts)
+ * - src/autocrud/lib/ (components, hooks, utils, client.ts, resources.ts, etc.)
+ * - src/autocrud/types/ (api.ts)
  * - src/routes/__root.tsx, src/routes/autocrud-admin.tsx (layout routes)
- * Then runs generate to produce generated/ and route files.
+ * Then runs generate to produce autocrud/generated/ and route files.
  */
 
 import * as fs from 'fs/promises';
@@ -58,17 +58,17 @@ export async function integrateProject(
 export async function copyIntegrationFiles(templateSrc: string, SRC: string): Promise<void> {
   console.log('📂 Copying AutoCRUD library files...');
 
-  // 1. Copy src/lib/ directory
-  const libSrc = path.join(templateSrc, 'lib');
-  const libDest = path.join(SRC, 'lib');
+  // 1. Copy src/autocrud/lib/ directory
+  const libSrc = path.join(templateSrc, 'autocrud/lib');
+  const libDest = path.join(SRC, 'autocrud/lib');
   await copyDir(libSrc, libDest);
-  console.log('  ✅ lib/ (components, hooks, utils, client)');
+  console.log('  ✅ autocrud/lib/ (components, hooks, utils, client)');
 
-  // 2. Copy src/types/ directory
-  const typesSrc = path.join(templateSrc, 'types');
-  const typesDest = path.join(SRC, 'types');
+  // 2. Copy src/autocrud/types/ directory
+  const typesSrc = path.join(templateSrc, 'autocrud/types');
+  const typesDest = path.join(SRC, 'autocrud/types');
   await copyDir(typesSrc, typesDest);
-  console.log('  ✅ types/ (API type definitions)');
+  console.log('  ✅ autocrud/types/ (API type definitions)');
 
   // 3. Copy layout route files
   const routesSrc = path.join(templateSrc, 'routes');
