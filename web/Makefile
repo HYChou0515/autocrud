@@ -58,7 +58,7 @@ build-gen:
 # 重新生成前端代碼
 gen:
 	@echo "🚀 重新生成前端代碼..."
-	cd app && rm -rf src/generated
+	cd app && rm -rf src/autocrud/generated
 	cd app && node ../generator/dist/cli.js generate
 	@echo "✅ 代碼生成完成"
 
@@ -85,7 +85,7 @@ clean:
 	@echo "🧹 清理生成的檔案..."
 	rm -rf generator/dist
 	rm -rf generator/node_modules
-	rm -rf app/src/generated
+	rm -rf app/src/autocrud/generated
 	rm -rf app/node_modules
 	rm -rf app/dist
 	@echo "✅ 清理完成"
@@ -111,8 +111,10 @@ sync-templates:
 		--exclude='.tanstack' \
 		--exclude='dist' \
 		--exclude='.env' \
+		--exclude='.mantine-version' \
+		--exclude='coverage' \
 		--exclude='pnpm-lock.yaml' \
-		--exclude='src/generated' \
+		--exclude='src/autocrud/generated' \
 		--exclude='src/routes/autocrud-admin' \
 		--exclude='src/routeTree.gen.ts' \
 		app/ generator/templates/base/
@@ -165,7 +167,7 @@ regen-app: build-gen
 		exit 1; \
 	fi
 	@echo "🔧 清除舊的生成代碼..."
-	rm -rf app/src/generated app/src/routes/autocrud-admin
+	rm -rf app/src/autocrud/generated app/src/routes/autocrud-admin
 	@echo "📡 連接到 $(API_URL)..."
 	cd app && node ../generator/dist/cli.js generate --url $(API_URL)
 	@echo "✅ 代碼生成完成"

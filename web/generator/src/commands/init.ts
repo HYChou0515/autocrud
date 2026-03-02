@@ -1,16 +1,19 @@
 import * as fs from 'fs/promises';
 import * as path from 'path';
 import { fileURLToPath } from 'url';
+import { type MantineVersion, patchPackageJson, patchSourceFiles, writeVersionConfig } from '../mantineVersion.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
 export interface InitOptions {
   includeTests?: boolean;
+  mantineVersion?: MantineVersion;
 }
 
 export async function initProject(projectName: string, targetDir: string, options: InitOptions = {}): Promise<void> {
-  console.log(`\n🚀 Initializing AutoCRUD Web project: ${projectName}\n`);
+  const mantineVersion = options.mantineVersion ?? '7';
+  console.log(`\n🚀 Initializing AutoCRUD Web project: ${projectName} (Mantine ${mantineVersion})\n`);
 
   const projectPath = path.join(targetDir, projectName);
   const templatePath = path.join(__dirname, '../../templates/base');
@@ -34,6 +37,11 @@ export async function initProject(projectName: string, targetDir: string, option
     const pkg = JSON.parse(await fs.readFile(pkgPath, 'utf-8'));
     pkg.name = projectName;
     await fs.writeFile(pkgPath, JSON.stringify(pkg, null, 2));
+
+    // Apply Mantine version-specific patches
+    await patchPackageJson(projectPath, mantineVersion);
+    await patchSourceFiles(path.join(projectPath, 'src'), mantineVersion);
+    await writeVersionConfig(projectPath, mantineVersion);
 
     console.log('\n✅ Project initialized successfully!\n');
     console.log('📝 Next steps:');

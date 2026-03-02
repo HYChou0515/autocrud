@@ -34,6 +34,13 @@ export interface FullResource<T> {
   revision_info: RevisionInfo;
 }
 
+/**
+ * FullResource that also satisfies MRT_RowData (Record<string, any>).
+ * Use this in MRT_ColumnDef / useMantineReactTable generics so TypeScript
+ * does not complain about the `extends MRT_RowData` constraint.
+ */
+export type FullResourceRow<T> = FullResource<T> & Record<string, unknown>;
+
 export interface RevisionListResponse {
   meta: ResourceMeta;
   revisions: RevisionInfo[];

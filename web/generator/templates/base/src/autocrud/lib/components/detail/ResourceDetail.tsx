@@ -503,7 +503,7 @@ export function ResourceDetail<T extends Record<string, any>>({
         {editOpen && (
           <ResourceForm
             config={config}
-            initialValues={config.isUnion ? ({ data } as Partial<T>) : data}
+            initialValues={config.isUnion ? ({ data } as unknown as Partial<T>) : data}
             onSubmit={handleEdit}
             onCancel={() => setEditOpen(false)}
             submitLabel="Update"

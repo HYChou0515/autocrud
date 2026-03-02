@@ -36,6 +36,14 @@ function parseISO(isoStr: string | undefined): Date | null {
   return isNaN(d.getTime()) ? null : d;
 }
 
+/** Normalize DateTimePicker onChange value (Mantine 7: Date | null, Mantine 8: string | null) */
+function toDate(v: Date | string | null): Date | null {
+  if (v === null) return null;
+  if (v instanceof Date) return v;
+  const d = new Date(v);
+  return isNaN(d.getTime()) ? null : d;
+}
+
 interface MetaSearchFormProps {
   onSubmit: (filters: MetaFilters) => void;
   initialValues?: MetaFilters;
@@ -144,7 +152,7 @@ export function MetaSearchForm({
           placeholder="選擇起始時間"
           value={createdStart}
           onChange={(v) => {
-            setCreatedStart(v);
+            setCreatedStart(toDate(v));
             markDirty();
           }}
           clearable
@@ -160,7 +168,7 @@ export function MetaSearchForm({
           placeholder="選擇結束時間"
           value={createdEnd}
           onChange={(v) => {
-            setCreatedEnd(adjustEndTime(v));
+            setCreatedEnd(adjustEndTime(toDate(v)));
             markDirty();
           }}
           clearable
@@ -178,7 +186,7 @@ export function MetaSearchForm({
           placeholder="選擇起始時間"
           value={updatedStart}
           onChange={(v) => {
-            setUpdatedStart(v);
+            setUpdatedStart(toDate(v));
             markDirty();
           }}
           clearable
@@ -194,7 +202,7 @@ export function MetaSearchForm({
           placeholder="選擇結束時間"
           value={updatedEnd}
           onChange={(v) => {
-            setUpdatedEnd(adjustEndTime(v));
+            setUpdatedEnd(adjustEndTime(toDate(v)));
             markDirty();
           }}
           clearable

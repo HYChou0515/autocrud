@@ -63,6 +63,67 @@ describe('initProject', () => {
     await initProject('existing-app', tmpDir);
     expect(exitSpy).toHaveBeenCalledWith(1);
   });
+
+  // ---------------------------------------------------------------------------
+  // Mantine version selection
+  // ---------------------------------------------------------------------------
+
+  it('defaults to Mantine 7 (no version-specific changes)', async () => {
+    await initProject('test-app', tmpDir);
+
+    const projectPath = path.join(tmpDir, 'test-app');
+    const pkg = JSON.parse(await fs.readFile(path.join(projectPath, 'package.json'), 'utf-8'));
+
+    // Should keep original v7 deps
+    expect(pkg.dependencies['@mantine/core']).toMatch(/^\^7/);
+    // Should still have mantine-form-zod-resolver
+    expect(pkg.dependencies['mantine-form-zod-resolver']).toBeDefined();
+    // Should NOT have pnpm overrides
+    expect(pkg.pnpm).toBeUndefined();
+
+    // .autocrudrc.json should exist with version 7
+    const rc = JSON.parse(await fs.readFile(path.join(projectPath, '.autocrudrc.json'), 'utf-8'));
+    expect(rc.mantineVersion).toBe('7');
+  });
+
+  it('applies Mantine 8 patches when mantineVersion is 8', async () => {
+    await initProject('test-app', tmpDir, { mantineVersion: '8' });
+
+    const projectPath = path.join(tmpDir, 'test-app');
+    const pkg = JSON.parse(await fs.readFile(path.join(projectPath, 'package.json'), 'utf-8'));
+
+    // Should have upgraded Mantine deps
+    expect(pkg.dependencies['@mantine/core']).toMatch(/^\^8/);
+    expect(pkg.dependencies['@mantine/form']).toMatch(/^\^8/);
+    // React should be upgraded
+    expect(pkg.dependencies['react']).toMatch(/^\^19/);
+    // mantine-form-zod-resolver should be removed
+    expect(pkg.dependencies['mantine-form-zod-resolver']).toBeUndefined();
+    // Should have pnpm overrides
+    expect(pkg.pnpm?.overrides?.['@mantine/core']).toMatch(/^\^8/);
+
+    // .autocrudrc.json should record version 8
+    const rc = JSON.parse(await fs.readFile(path.join(projectPath, '.autocrudrc.json'), 'utf-8'));
+    expect(rc.mantineVersion).toBe('8');
+  });
+
+  it('patches zodResolver import for Mantine 8', async () => {
+    await initProject('test-app', tmpDir, { mantineVersion: '8' });
+
+    const formPath = path.join(
+      tmpDir,
+      'test-app',
+      'src',
+      'autocrud',
+      'lib',
+      'components',
+      'form',
+      'useResourceForm.ts',
+    );
+    const content = await fs.readFile(formPath, 'utf-8');
+    expect(content).toContain("from '@mantine/form'");
+    expect(content).not.toContain('mantine-form-zod-resolver');
+  });
 });
 
 async function findTestFiles(dir: string): Promise<string[]> {
