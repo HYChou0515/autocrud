@@ -25,12 +25,19 @@ import {
   ActionIcon,
   TagsInput,
 } from '@mantine/core';
+import { DateTimePicker } from '@mantine/dates';
 import { IconTrash, IconPlus } from '@tabler/icons-react';
-import { useRef } from 'react';
+import { useRef, useState } from 'react';
 import type { UseFormReturnType } from '@mantine/form';
 import type { ResourceField, UnionMeta, UnionVariant } from '../../../resources';
 import { BinaryFieldEditor } from './BinaryFieldEditor';
-import { getByPath, createEmptyItem, type BinaryFormValue } from '@/autocrud/lib/utils/formUtils';
+import { ArrayFieldRenderer } from './ArrayFieldRenderer';
+import {
+  getByPath,
+  createEmptyItem,
+  getEmptyValue,
+  type BinaryFormValue,
+} from '@/autocrud/lib/utils/formUtils';
 
 interface UnionFieldRendererProps {
   field: ResourceField;
@@ -119,6 +126,27 @@ function renderSubField(sf: ResourceField, subPath: string, form: UseFormReturnT
       />
     );
   }
+  // Date sub-field
+  if (sf.type === 'date') {
+    return (
+      <DateTimePicker
+        key={subPath}
+        label={sf.label}
+        required={sf.isRequired}
+        valueFormat="YYYY-MM-DD HH:mm:ss"
+        clearable
+        {...form.getInputProps(subPath)}
+      />
+    );
+  }
+  // Nested union sub-field (recursive)
+  if (sf.type === 'union' && sf.unionMeta) {
+    return <NestedUnionWrapper key={subPath} field={sf} path={subPath} form={form} />;
+  }
+  // Nested array of typed objects
+  if (sf.itemFields && sf.itemFields.length > 0) {
+    return <ArrayFieldRenderer key={subPath} field={{ ...sf, name: subPath }} form={form} />;
+  }
   return (
     <TextInput
       key={subPath}
@@ -138,9 +166,36 @@ function emptyValueForSubField(sf: ResourceField): any {
   if (sf.constValue !== undefined) return sf.constValue;
   if (sf.type === 'binary') return { _mode: 'empty' };
   if (sf.type === 'boolean') return false;
+  if (sf.type === 'union' && sf.unionMeta) return getEmptyValue(sf);
+  if (sf.itemFields && sf.itemFields.length > 0) return [];
   if (sf.type === 'number') return '';
   if (sf.isArray) return [];
   return '';
+}
+
+/**
+ * Wrapper component for rendering a nested union sub-field.
+ * Manages its own simpleUnionTypes state (needed for simple unions).
+ */
+function NestedUnionWrapper({
+  field,
+  path,
+  form,
+}: {
+  field: ResourceField;
+  path: string;
+  form: UseFormReturnType<any>;
+}) {
+  const [sut, setSut] = useState<Record<string, string>>({});
+  return (
+    <UnionFieldRenderer
+      field={{ ...field, name: path }}
+      unionMeta={field.unionMeta!}
+      form={form}
+      simpleUnionTypes={sut}
+      setSimpleUnionTypes={setSut}
+    />
+  );
 }
 
 // ---------------------------------------------------------------------------
@@ -375,9 +430,7 @@ function StructuralVariantBody({
     const emptyEntry: Record<string, any> = { __key: '' };
     if (hasValueFields) {
       for (const sf of variant.dictValueFields!) {
-        if (sf.type === 'number') emptyEntry[sf.name] = '';
-        else if (sf.type === 'boolean') emptyEntry[sf.name] = false;
-        else emptyEntry[sf.name] = '';
+        emptyEntry[sf.name] = emptyValueForSubField(sf);
       }
     } else {
       emptyEntry.__value = '';
