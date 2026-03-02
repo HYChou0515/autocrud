@@ -7,7 +7,10 @@
  */
 
 import { describe, it, expect } from 'vitest';
-import { computeMaxAvailableDepth, computeVisibleFieldsAndGroups } from '@/autocrud/lib/utils/formUtils';
+import {
+  computeMaxAvailableDepth,
+  computeVisibleFieldsAndGroups,
+} from '@/autocrud/lib/utils/formUtils';
 import type { ResourceField } from '@/autocrud/lib/resources';
 
 /** Minimal helper to create a ResourceField. */

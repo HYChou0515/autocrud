@@ -190,36 +190,45 @@ describe('parseAndValidateJson', () => {
 });
 
 describe('preprocessArrayFields', () => {
-  it('should convert comma-separated string to array for isArray fields', () => {
+  it('should keep string[] array as-is for isArray fields (TagsInput)', () => {
     const fields = [{ name: 'tags', isArray: true }];
-    const values = { tags: 'a, b, c' };
+    const values = { tags: ['a', 'b', 'c'] };
 
     const result = preprocessArrayFields(values, fields);
 
     expect(result.tags).toEqual(['a', 'b', 'c']);
   });
 
-  it('should filter empty strings from comma-separated', () => {
+  it('should convert non-array value to empty array for isArray fields', () => {
     const fields = [{ name: 'tags', isArray: true }];
-    const values = { tags: 'a, , b, , c' };
+    const values = { tags: 'not-an-array' };
 
     const result = preprocessArrayFields(values, fields);
 
-    expect(result.tags).toEqual(['a', 'b', 'c']);
+    expect(result.tags).toEqual([]);
   });
 
-  it('should trim whitespace from array elements', () => {
+  it('should convert undefined to empty array for isArray fields', () => {
     const fields = [{ name: 'tags', isArray: true }];
-    const values = { tags: '  a  ,  b  ,  c  ' };
+    const values = { tags: undefined };
 
     const result = preprocessArrayFields(values, fields);
 
-    expect(result.tags).toEqual(['a', 'b', 'c']);
+    expect(result.tags).toEqual([]);
   });
 
   it('should handle empty comma-separated string', () => {
     const fields = [{ name: 'tags', isArray: true }];
     const values = { tags: '' };
+
+    const result = preprocessArrayFields(values, fields);
+
+    expect(result.tags).toEqual([]);
+  });
+
+  it('should handle null for isArray fields', () => {
+    const fields = [{ name: 'tags', isArray: true }];
+    const values = { tags: null };
 
     const result = preprocessArrayFields(values, fields);
 
@@ -253,8 +262,8 @@ describe('preprocessArrayFields', () => {
     ];
     const values = {
       items: [
-        { id: 1, tags: 'a, b' },
-        { id: 2, tags: 'c, d, e' },
+        { id: 1, tags: ['a', 'b'] },
+        { id: 2, tags: ['c', 'd', 'e'] },
       ],
     };
 
@@ -266,13 +275,35 @@ describe('preprocessArrayFields', () => {
     ]);
   });
 
+  it('should convert non-array nested sub-fields to empty array', () => {
+    const fields = [
+      {
+        name: 'items',
+        itemFields: [{ name: 'id' }, { name: 'tags', isArray: true }],
+      },
+    ];
+    const values = {
+      items: [
+        { id: 1, tags: 'not-array' },
+        { id: 2, tags: null },
+      ],
+    };
+
+    const result = preprocessArrayFields(values, fields);
+
+    expect(result.items).toEqual([
+      { id: 1, tags: [] },
+      { id: 2, tags: [] },
+    ]);
+  });
+
   it('should handle non-array values for isArray fields', () => {
     const fields = [{ name: 'tags', isArray: true }];
     const values = { tags: null };
 
     const result = preprocessArrayFields(values, fields);
 
-    expect(result.tags).toBeNull(); // Keep as-is if not string
+    expect(result.tags).toEqual([]); // Converted to empty array
   });
 
   it('should handle multiple fields', () => {
@@ -282,8 +313,8 @@ describe('preprocessArrayFields', () => {
       { name: 'name', type: 'string' },
     ];
     const values = {
-      tags: 'a, b',
-      categories: 'x, y, z',
+      tags: ['a', 'b'],
+      categories: ['x', 'y', 'z'],
       name: 'Test',
     };
 
@@ -326,10 +357,10 @@ describe('computeValidationSuppressPaths', () => {
     expect(suppressPaths.has('avatar')).toBe(true);
   });
 
-  it('should include simple isArray fields in suppressPaths', () => {
+  it('should NOT include simple isArray fields in suppressPaths (TagsInput uses string[])', () => {
     const fields = [{ name: 'tags', isArray: true }];
     const { suppressPaths } = computeValidationSuppressPaths(fields, []);
-    expect(suppressPaths.has('tags')).toBe(true);
+    expect(suppressPaths.has('tags')).toBe(false);
   });
 
   it('should NOT include isArray fields with itemFields in suppressPaths', () => {
@@ -458,10 +489,10 @@ describe('computeValidationSuppressPaths', () => {
     // Should be suppressed
     expect(suppressPaths.has('metadata')).toBe(true);
     expect(suppressPaths.has('avatar')).toBe(true);
-    expect(suppressPaths.has('tags')).toBe(true);
     expect(suppressPaths.has('nested.deep')).toBe(true);
 
-    // Should NOT be suppressed
+    // Should NOT be suppressed (TagsInput uses string[], no longer needs suppression)
+    expect(suppressPaths.has('tags')).toBe(false);
     expect(suppressPaths.has('skill_ids')).toBe(false);
     expect(suppressPaths.has('equipments')).toBe(false);
     expect(suppressPaths.has('title')).toBe(false);

@@ -185,7 +185,7 @@ describe('processInitialValues', () => {
     expect(result.items[1].image).toEqual({ _mode: 'empty' });
   });
 
-  it('should convert array string sub-fields to comma-separated', () => {
+  it('should keep array string sub-fields as string[] (TagsInput)', () => {
     const fields = [
       {
         name: 'items',
@@ -195,7 +195,7 @@ describe('processInitialValues', () => {
 
     const result = processInitialValues({ items: [{ tags: ['a', 'b', 'c'] }] }, fields, [], []);
 
-    expect(result.items[0].tags).toBe('a, b, c');
+    expect(result.items[0].tags).toEqual(['a', 'b', 'c']);
   });
 
   it('should handle collapsed groups', () => {
@@ -571,7 +571,7 @@ describe('formValuesToApiObject', () => {
 
     const result = formValuesToApiObject(
       {
-        items: [{ name: 'Item 1', tags: 'a, b, c', count: '' }],
+        items: [{ name: 'Item 1', tags: ['a', 'b', 'c'], count: '' }],
       },
       fields,
       [],
@@ -940,7 +940,7 @@ describe('applyJsonToForm', () => {
 
     const result = applyJsonToForm({ items: [{ tags: ['a', 'b', 'c'] }] }, fields, [], []);
 
-    expect(result.items[0].tags).toBe('a, b, c');
+    expect(result.items[0].tags).toEqual(['a', 'b', 'c']);
   });
 
   it('should handle collapsed groups', () => {
