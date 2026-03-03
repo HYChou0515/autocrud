@@ -46,6 +46,7 @@ from autocrud.types import (
     AfterMigrate,
     AfterModify,
     AfterPatch,
+    AfterPermanentlyDelete,
     AfterRestore,
     AfterSearchResources,
     AfterSwitch,
@@ -61,6 +62,7 @@ from autocrud.types import (
     BeforeMigrate,
     BeforeModify,
     BeforePatch,
+    BeforePermanentlyDelete,
     BeforeRestore,
     BeforeSearchResources,
     BeforeSwitch,
@@ -86,6 +88,7 @@ from autocrud.types import (
     OnFailureMigrate,
     OnFailureModify,
     OnFailurePatch,
+    OnFailurePermanentlyDelete,
     OnFailureRestore,
     OnFailureSearchResources,
     OnFailureSwitch,
@@ -101,6 +104,7 @@ from autocrud.types import (
     OnSuccessMigrate,
     OnSuccessModify,
     OnSuccessPatch,
+    OnSuccessPermanentlyDelete,
     OnSuccessRestore,
     OnSuccessSearchResources,
     OnSuccessSwitch,
@@ -273,6 +277,15 @@ class SimpleStorage(IStorage):
         rollback.  Removes the entry from the meta store directly.
         """
         del self._meta_store[resource_id]
+
+    def purge_resource(self, resource_id: str) -> None:
+        """Hard-delete metadata and all revision data for a resource.
+
+        Used by ``permanently_delete`` to physically remove all traces of a
+        resource from storage.
+        """
+        del self._meta_store[resource_id]
+        self._resource_store.purge_resource(resource_id)
 
     def dump_meta(self) -> Generator[ResourceMeta]:
         yield from self._meta_store.values()
@@ -971,23 +984,27 @@ class ResourceManager(IResourceManager[T], Generic[T]):
             OnFailureGetMeta,
         ),
         "meta",
+        inputs={"include_deleted": UNSET},
     )
-    def get_meta(self, resource_id: str) -> ResourceMeta:
+    def get_meta(self, resource_id: str, include_deleted: bool = False) -> ResourceMeta:
         """
         Get the metadata of a resource.
 
         Arguments:
             resource_id (str): The ID of the resource.
+            include_deleted (bool): If True, return metadata even for
+                soft-deleted resources. Defaults to False.
 
         Returns:
             meta (ResourceMeta): The metadata object.
 
         Raises:
             ResourceIDNotFoundError: If the resource ID does not exist.
-            ResourceIsDeletedError: If the resource has been soft-deleted.
+            ResourceIsDeletedError: If the resource has been soft-deleted
+                and *include_deleted* is False.
         """
         meta = self._get_meta_no_check_is_deleted(resource_id)
-        if meta.is_deleted:
+        if meta.is_deleted and not include_deleted:
             raise ResourceIsDeletedError(resource_id)
         return meta
 
@@ -1582,6 +1599,35 @@ class ResourceManager(IResourceManager[T], Generic[T]):
             meta.updated_by = self.user_ctx.get()
             meta.updated_time = self.now_ctx.get()
             self.storage.save_meta(meta)
+        return meta
+
+    @execute_with_events(
+        (
+            BeforePermanentlyDelete,
+            AfterPermanentlyDelete,
+            OnSuccessPermanentlyDelete,
+            OnFailurePermanentlyDelete,
+        ),
+        "meta",
+    )
+    def permanently_delete(self, resource_id: str) -> ResourceMeta:
+        """
+        Permanently delete a resource and all its revision data.
+
+        This is an irreversible operation that removes the resource metadata
+        and all associated revision data from storage.
+
+        Arguments:
+            resource_id (str): The ID of the resource to permanently delete.
+
+        Returns:
+            meta (ResourceMeta): The metadata of the resource before deletion.
+
+        Raises:
+            ResourceIDNotFoundError: If the resource ID does not exist.
+        """
+        meta = self._get_meta_no_check_is_deleted(resource_id)
+        self.storage.purge_resource(resource_id)
         return meta
 
     @execute_with_events(

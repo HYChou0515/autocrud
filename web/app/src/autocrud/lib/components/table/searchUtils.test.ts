@@ -108,6 +108,24 @@ describe('parseSearchFromURL', () => {
     expect(result.search.sortBy).toBeUndefined();
   });
 
+  it('handles double-encoded sort_by (string instead of array)', () => {
+    // When sort_by is double-encoded, JSON.parse returns a string, not an array
+    const sortBy = [{ field: 'created_time', order: 'asc' }];
+    const doubleEncoded = JSON.stringify(JSON.stringify(sortBy));
+    const qs = `sort_by=${encodeURIComponent(doubleEncoded)}`;
+    const result = parseSearchFromURL(qs);
+    // Should unwrap the double encoding and return the array
+    expect(result.search.sortBy).toEqual(sortBy);
+    expect(result.editing.sortBy).toEqual(sortBy);
+  });
+
+  it('treats non-array sort_by as undefined', () => {
+    // If sort_by parses to a non-array value (e.g. a number or object), treat as undefined
+    const qs = `sort_by=${encodeURIComponent('42')}`;
+    const result = parseSearchFromURL(qs);
+    expect(result.search.sortBy).toBeUndefined();
+  });
+
   it('mirrors search into editing state', () => {
     const qs = 'qb=QB.all()&result_limit=100';
     const result = parseSearchFromURL(qs);

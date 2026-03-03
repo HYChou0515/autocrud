@@ -56,6 +56,7 @@ export interface RevisionListParams {
   created_time_end?: string;
   from_revision_id?: string;
   chain_only?: boolean;
+  include_deleted?: boolean;
 }
 
 export interface SearchParams {

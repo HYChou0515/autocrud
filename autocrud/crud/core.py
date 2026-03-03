@@ -34,6 +34,7 @@ from autocrud.crud.route_templates.delete import (
     BatchDeleteRouteTemplate,
     BatchRestoreRouteTemplate,
     DeleteRouteTemplate,
+    PermanentlyDeleteRouteTemplate,
     RestoreRouteTemplate,
 )
 from autocrud.crud.route_templates.get import ReadRouteTemplate
@@ -441,6 +442,7 @@ class AutoCRUD:
                     SwitchRevisionRouteTemplate,
                     RerunRouteTemplate,
                     DeleteRouteTemplate,
+                    PermanentlyDeleteRouteTemplate,
                     RestoreRouteTemplate,
                     BatchDeleteRouteTemplate,
                     BatchRestoreRouteTemplate,

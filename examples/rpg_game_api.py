@@ -1323,7 +1323,7 @@ def create_sample_events():
                 ).isoformat(),
             },
         ),
-    ]
+    ] * 30
 
     with event_manager.meta_provide(user="game_admin", now=current_time):
         for event_payload in sample_events:

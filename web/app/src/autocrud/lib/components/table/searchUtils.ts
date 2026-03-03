@@ -116,7 +116,14 @@ export function parseSearchFromURL(searchString: string): ParseSearchResult {
   const sortByStr = urlParams.get('sort_by');
   if (sortByStr) {
     try {
-      sortBy = JSON.parse(sortByStr) as { field: string; order: 'asc' | 'desc' }[];
+      let parsed: unknown = JSON.parse(sortByStr);
+      // Handle double-encoded JSON (string instead of array)
+      if (typeof parsed === 'string') {
+        parsed = JSON.parse(parsed);
+      }
+      if (Array.isArray(parsed)) {
+        sortBy = parsed as { field: string; order: 'asc' | 'desc' }[];
+      }
     } catch {
       /* ignore parse error */
     }

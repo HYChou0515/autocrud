@@ -105,6 +105,7 @@ export function RevisionHistorySection({
             chain_only: true,
             limit: 1000,
             sort: '-created_time',
+            include_deleted: true,
           };
           if (fromRevisionId) {
             params.from_revision_id = fromRevisionId;
@@ -127,6 +128,7 @@ export function RevisionHistorySection({
           chain_only: true,
           limit: 1000,
           sort: '-created_time',
+          include_deleted: true,
         };
         if (fromRevisionId) {
           chainParams.from_revision_id = fromRevisionId;
@@ -138,6 +140,7 @@ export function RevisionHistorySection({
           chain_only: false,
           limit: 1000,
           sort: '-created_time',
+          include_deleted: true,
         };
         if (offset !== undefined) {
           listParams.offset = offset;
@@ -202,6 +205,7 @@ export function RevisionHistorySection({
         try {
           const response = await config.apiClient.get(resourceId, {
             revision_id: revisionId,
+            include_deleted: true,
           });
           if (cancelled) {
             return;

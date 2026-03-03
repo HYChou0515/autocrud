@@ -1762,7 +1762,7 @@ export const ${r.camel}Api = {
   count: (params?: SearchParams) =>
     client.get<number>(\`\${BASE}/count\`, { params }),
 
-  get: (id: string, params?: { revision_id?: string; partial?: string[]; returns?: string }) =>
+  get: (id: string, params?: { revision_id?: string; partial?: string[]; returns?: string; include_deleted?: boolean }) =>
     client.get<FullResource<${r.schemaName}>>(\`\${BASE}/\${id}\`, { params }),
 
   update: (id: string, data: ${r.schemaName}, params?: { change_status?: string; mode?: string }) =>
@@ -1770,6 +1770,9 @@ export const ${r.camel}Api = {
 
   delete: (id: string) =>
     client.delete<ResourceMeta>(\`\${BASE}/\${id}\`),
+
+  permanentlyDelete: (id: string) =>
+    client.delete<ResourceMeta>(\`\${BASE}/\${id}/permanently\`),
 
   restore: (id: string) =>
     client.post<ResourceMeta>(\`\${BASE}/\${id}/restore\`),
