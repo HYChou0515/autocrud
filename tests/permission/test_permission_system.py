@@ -156,7 +156,7 @@ class TestRootUserPermissions(TestCaseUtil):
                     user="root",
                     now=self.current_time,
                     resource_name="test_document",
-                    key="some_key",
+                    record_type="meta",
                 ),
             )
             is PermissionResult.allow

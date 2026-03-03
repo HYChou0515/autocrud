@@ -69,6 +69,7 @@ from autocrud.types import (
     BeforeUpdate,
     Binary,
     CannotModifyResourceError,
+    DuplicateResourceError,
     EventContext,
     IConstraintChecker,
     IEventHandler,
@@ -77,6 +78,7 @@ from autocrud.types import (
     IndexableField,
     IResourceManager,
     IValidator,
+    OnDuplicate,
     OnFailureCreate,
     OnFailureDelete,
     OnFailureDump,
@@ -1797,6 +1799,86 @@ class ResourceManager(IResourceManager[T], Generic[T]):
                 self.blob_store.put(
                     blob_entry.data, content_type=blob_entry.content_type
                 )
+
+    def load_record(
+        self,
+        record: "MetaRecord | RevisionRecord | BlobRecord",
+        on_duplicate: "OnDuplicate" = OnDuplicate.raise_error,
+    ) -> bool:
+        """Load a single :class:`DumpRecord` into storage.
+
+        Args:
+            record: A :class:`MetaRecord`, :class:`RevisionRecord`, or
+                :class:`BlobRecord` instance (typically produced by
+                :meth:`dump`).
+            on_duplicate: Strategy when a resource with the same ID already
+                exists.  Only meaningful for :class:`MetaRecord`; revision
+                and blob records are always written.
+
+        Returns:
+            ``True`` if the record was stored, ``False`` if it was skipped
+            (only possible when *on_duplicate* is :attr:`OnDuplicate.skip`).
+
+        Raises:
+            DuplicateResourceError: When the resource already exists and
+                *on_duplicate* is :attr:`OnDuplicate.raise_error`.
+        """
+        record_type = type(record).__name__
+        ctx_kw = {
+            "user": self.user_or_unset,
+            "now": self.now_or_unset,
+            "resource_name": self.resource_name,
+            "record_type": record_type,
+        }
+        self._handle_event(BeforeLoad(**ctx_kw))
+        try:
+            result = self._load_record_impl(record, on_duplicate)
+            self._handle_event(OnSuccessLoad(**ctx_kw))
+            return result
+        except Exception as e:
+            self._handle_event(
+                OnFailureLoad(
+                    **ctx_kw,
+                    error=str(e),
+                    stack_trace=traceback.format_exc(),
+                )
+            )
+            raise
+        finally:
+            self._handle_event(AfterLoad(**ctx_kw))
+
+    def _load_record_impl(
+        self,
+        record: "MetaRecord | RevisionRecord | BlobRecord",
+        on_duplicate: "OnDuplicate",
+    ) -> bool:
+        """Internal implementation of load_record."""
+        if isinstance(record, MetaRecord):
+            meta = self.meta_serializer.decode(record.data)
+            exists = self.storage.exists(meta.resource_id)
+            if exists:
+                if on_duplicate is OnDuplicate.skip:
+                    return False
+                if on_duplicate is OnDuplicate.raise_error:
+                    raise DuplicateResourceError(meta.resource_id)
+                # OnDuplicate.overwrite — fall through and save
+            self.storage.save_meta(meta)
+            return True
+
+        if isinstance(record, RevisionRecord):
+            raw_res = self.resource_serializer.decode(record.data)
+            self.storage.save_revision(raw_res.info, io.BytesIO(raw_res.raw_data))
+            return True
+
+        if isinstance(record, BlobRecord):
+            if self.blob_store is not None:
+                self.blob_store.put(
+                    record.blob_data,
+                    content_type=record.content_type,
+                )
+            return True
+
+        return True
 
     @cached_property
     def meta_serializer(self):

@@ -2253,6 +2253,28 @@ class IResourceManager(ABC, Generic[T]):
         """
 
     @abstractmethod
+    def load_record(
+        self, record: object, on_duplicate: "OnDuplicate" = OnDuplicate.raise_error
+    ) -> bool:
+        """Load a single dump record into storage.
+
+        Args:
+            record: A ``MetaRecord``, ``RevisionRecord``, or ``BlobRecord``
+                instance (typically produced by :meth:`dump`).
+            on_duplicate: Strategy when a resource with the same ID already
+                exists.  Only meaningful for ``MetaRecord``; revision and
+                blob records are always written.
+
+        Returns:
+            ``True`` if the record was stored, ``False`` if it was skipped
+            (only possible when *on_duplicate* is :attr:`OnDuplicate.skip`).
+
+        Raises:
+            DuplicateResourceError: When the resource already exists and
+                *on_duplicate* is :attr:`OnDuplicate.raise_error`.
+        """
+
+    @abstractmethod
     def restore_binary(self, data: T) -> T:
         """
         還原 data 中的 binary.data (如果是從 blob store 讀取).
