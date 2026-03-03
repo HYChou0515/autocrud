@@ -67,7 +67,7 @@ export function ResourceCreate<T extends Record<string, any>>({
   );
 
   return (
-    <Container size="md" py="xl">
+    <Container size="lg" py="xl">
       <Stack gap="lg">
         <Group>
           <Button

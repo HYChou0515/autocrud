@@ -35,12 +35,16 @@ program
   .option('-o, --output <directory>', 'Output directory', 'src')
   .option('--openapi-path <path>', 'Path to OpenAPI spec endpoint', '/openapi.json')
   .option('--base-path <path>', 'API base path prefix (auto-detected if omitted)')
-  .action(async (options: { url: string; output: string; openapiPath: string; basePath?: string }) => {
-    await generateCode(options.url, options.output, {
-      openapiPath: options.openapiPath,
-      basePath: options.basePath,
-    });
-  });
+  .option('--proxy-path <path>', 'Proxy path prefix for Vite dev server (default: /api)', '/api')
+  .action(
+    async (options: { url: string; output: string; openapiPath: string; basePath?: string; proxyPath: string }) => {
+      await generateCode(options.url, options.output, {
+        openapiPath: options.openapiPath,
+        basePath: options.basePath,
+        proxyPath: options.proxyPath,
+      });
+    },
+  );
 
 program
   .command('integrate')
@@ -53,6 +57,7 @@ program
   .option('-o, --output <directory>', 'Output directory (your src/)', 'src')
   .option('--openapi-path <path>', 'Path to OpenAPI spec endpoint', '/openapi.json')
   .option('--base-path <path>', 'API base path prefix (auto-detected if omitted)')
+  .option('--proxy-path <path>', 'Proxy path prefix for Vite dev server (default: /api)', '/api')
   .option('--include-tests', 'Include test files in generated output', false)
   .option('--force', 'Overwrite all changed files without prompting', false)
   .option('--mantine <version>', 'Mantine major version to use (7 or 8)', '7')
@@ -62,6 +67,7 @@ program
       output: string;
       openapiPath: string;
       basePath?: string;
+      proxyPath: string;
       includeTests: boolean;
       force: boolean;
       mantine: string;
@@ -70,6 +76,7 @@ program
       await integrateProject(options.url, options.output, {
         openapiPath: options.openapiPath,
         basePath: options.basePath,
+        proxyPath: options.proxyPath,
         includeTests: options.includeTests,
         force: options.force,
         mantineVersion,

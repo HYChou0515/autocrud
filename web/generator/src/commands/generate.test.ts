@@ -168,6 +168,20 @@ describe('writeEnvFile', () => {
     expect(content).toContain('MY_VAR=hello');
     expect(content).toContain('OTHER=world');
   });
+
+  it('uses custom proxyPath for VITE_API_URL', () => {
+    writeEnvFile(tmpDir, 'http://localhost:8000', '/foo/bar');
+    const content = fs.readFileSync(path.join(tmpDir, '.env'), 'utf-8');
+    expect(content).toContain('VITE_API_URL=/foo/bar');
+    expect(content).toContain('API_PROXY_TARGET=http://localhost:8000');
+    expect(content).not.toContain('VITE_API_URL=/api');
+  });
+
+  it('defaults proxyPath to /api when not specified', () => {
+    writeEnvFile(tmpDir, 'http://localhost:8000');
+    const content = fs.readFileSync(path.join(tmpDir, '.env'), 'utf-8');
+    expect(content).toContain('VITE_API_URL=/api');
+  });
 });
 
 // ============================================================================
