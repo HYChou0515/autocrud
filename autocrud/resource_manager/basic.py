@@ -756,6 +756,26 @@ class IResourceStore(ABC):
     def save(self, info: RevisionInfo, data: IO[bytes]) -> None:
         """Save a new revision."""
 
+    def purge_resource(self, resource_id: str) -> None:
+        """Hard-delete all revision data for a resource.
+
+        Removes all revision data (all revisions, all schema versions) for the
+        given resource.  This is an **irreversible** operation used by
+        ``permanently_delete`` to remove resource data after metadata has been
+        removed.
+
+        The base implementation raises :exc:`NotImplementedError`.  Storage
+        backends that support permanent deletion must override this method.
+
+        Arguments:
+            resource_id (str): The unique identifier of the resource whose
+                revision data should be permanently removed.
+        """
+        raise NotImplementedError(
+            f"{type(self).__name__} does not implement purge_resource(). "
+            "Override this method to support permanent deletion."
+        )
+
 
 class IStorage(ABC):
     """Interface for unified storage management combining metadata and resource data.
@@ -988,6 +1008,25 @@ class IStorage(ABC):
         raise NotImplementedError(
             f"{type(self).__name__} does not implement purge_meta(). "
             "Override this method to support unique-constraint rollback."
+        )
+
+    def purge_resource(self, resource_id: str) -> None:
+        """Hard-delete all revision data for a resource.
+
+        Removes both the metadata and all revision data (all revisions, all
+        schema versions) for the given resource.  This is an **irreversible**
+        operation used by ``permanently_delete``.
+
+        The base implementation raises :exc:`NotImplementedError`.  Storage
+        backends that support permanent deletion must override this method.
+
+        Arguments:
+            resource_id (str): The unique identifier of the resource to
+                permanently remove.
+        """
+        raise NotImplementedError(
+            f"{type(self).__name__} does not implement purge_resource(). "
+            "Override this method to support permanent deletion."
         )
 
     @abstractmethod

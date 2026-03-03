@@ -84,6 +84,16 @@ class MemoryResourceStore(IResourceStore):
         self._raw_data_store[info.uid] = data.read()
         self._raw_info_store[info.uid] = self._info_serializer.encode(info)
 
+    def purge_resource(self, resource_id: str) -> None:
+        """Hard-delete all revision data for a resource."""
+        if resource_id not in self._store:
+            return
+        for revision_dict in self._store[resource_id].values():
+            for uid in revision_dict.values():
+                self._raw_data_store.pop(uid, None)
+                self._raw_info_store.pop(uid, None)
+        del self._store[resource_id]
+
 
 class DiskResourceStore(IResourceStore):
     def __init__(
@@ -210,3 +220,29 @@ class DiskResourceStore(IResourceStore):
             f.write(data.read())
         with self._get_raw_info_path(str(info.uid)).open("wb") as f:
             f.write(self._info_serializer.encode(info))
+
+    def purge_resource(self, resource_id: str) -> None:
+        """Hard-delete all revision data for a resource from disk."""
+        import shutil
+
+        resource_dir = self._rootdir / resource_id
+        if resource_dir.exists():
+            # Collect UIDs to remove from store/ as well
+            uids_to_remove: list[str] = []
+            for revision_dir in resource_dir.iterdir():
+                if not revision_dir.is_dir():
+                    continue
+                for schema_dir in revision_dir.iterdir():
+                    if not schema_dir.is_dir():
+                        continue
+                    # Resolve symlink to get the real directory
+                    real = schema_dir.resolve()
+                    uid = real.name
+                    uids_to_remove.append(uid)
+            # Remove resource symlink tree
+            shutil.rmtree(resource_dir)
+            # Remove real store data
+            for uid in uids_to_remove:
+                real_dir = self._get_uid_store_realdir(uid)
+                if real_dir.exists():
+                    shutil.rmtree(real_dir)

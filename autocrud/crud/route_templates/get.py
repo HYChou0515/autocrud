@@ -57,6 +57,10 @@ class ReadRouteTemplate(BaseRouteTemplate, Generic[T]):
                 description="List of meta fields to retrieve - for axios support",
                 include_in_schema=False,
             ),
+            include_deleted: bool = Query(
+                False,
+                description="If true, return metadata even for soft-deleted resources",
+            ),
             current_user: str = Depends(self.deps.get_user),
             current_time: dt.datetime = Depends(self.deps.get_now),
         ):
@@ -73,7 +77,9 @@ class ReadRouteTemplate(BaseRouteTemplate, Generic[T]):
                         fields = raw
 
                 with resource_manager.meta_provide(current_user, current_time):
-                    meta = resource_manager.get_meta(resource_id)
+                    meta = resource_manager.get_meta(
+                        resource_id, include_deleted=include_deleted
+                    )
             except HTTPException:
                 raise
             except Exception as e:
@@ -187,6 +193,7 @@ class ReadRouteTemplate(BaseRouteTemplate, Generic[T]):
             current_user,
             current_time,
             returns,
+            include_deleted=False,
         ):
             # 獲取資源和元數據
             try:
@@ -205,7 +212,9 @@ class ReadRouteTemplate(BaseRouteTemplate, Generic[T]):
                 spec = classify_partial_fields(fields, default_category="data")
 
                 with resource_manager.meta_provide(current_user, current_time):
-                    meta = resource_manager.get_meta(resource_id)
+                    meta = resource_manager.get_meta(
+                        resource_id, include_deleted=include_deleted
+                    )
                     target_revision_id = revision_id or meta.current_revision_id
 
                     data = UNSET
@@ -299,6 +308,10 @@ class ReadRouteTemplate(BaseRouteTemplate, Generic[T]):
                 description="List of fields to retrieve (e.g. '/field1', '/nested/field2') - for axios support",
                 include_in_schema=False,
             ),
+            include_deleted: bool = Query(
+                False,
+                description="If true, return data even for soft-deleted resources",
+            ),
             current_user: str = Depends(self.deps.get_user),
             current_time: dt.datetime = Depends(self.deps.get_now),
             returns: str = Query(
@@ -315,6 +328,7 @@ class ReadRouteTemplate(BaseRouteTemplate, Generic[T]):
                 current_user,
                 current_time,
                 returns,
+                include_deleted,
             )
 
         @router.get(
@@ -390,6 +404,10 @@ class ReadRouteTemplate(BaseRouteTemplate, Generic[T]):
                 description="List of fields to retrieve - for axios support",
                 include_in_schema=False,
             ),
+            include_deleted: bool = Query(
+                False,
+                description="If true, return revision list even for soft-deleted resources",
+            ),
             current_user: str = Depends(self.deps.get_user),
             current_time: dt.datetime = Depends(self.deps.get_now),
         ):
@@ -409,7 +427,9 @@ class ReadRouteTemplate(BaseRouteTemplate, Generic[T]):
                 spec = classify_partial_fields(fields, default_category="info")
 
                 with resource_manager.meta_provide(current_user, current_time):
-                    meta = resource_manager.get_meta(resource_id)
+                    meta = resource_manager.get_meta(
+                        resource_id, include_deleted=include_deleted
+                    )
 
                     if sort not in {"created_time", "-created_time"}:
                         raise HTTPException(status_code=400, detail="Invalid sort")
@@ -573,6 +593,10 @@ class ReadRouteTemplate(BaseRouteTemplate, Generic[T]):
                 description="List of fields to retrieve (e.g. '/field1', '/nested/field2') - for axios support",
                 include_in_schema=False,
             ),
+            include_deleted: bool = Query(
+                False,
+                description="If true, return data even for soft-deleted resources",
+            ),
             current_user: str = Depends(self.deps.get_user),
             current_time: dt.datetime = Depends(self.deps.get_now),
         ):
@@ -592,7 +616,9 @@ class ReadRouteTemplate(BaseRouteTemplate, Generic[T]):
 
                     if fields:
                         if not revision_id:
-                            meta = resource_manager.get_meta(resource_id)
+                            meta = resource_manager.get_meta(
+                                resource_id, include_deleted=include_deleted
+                            )
                             revision_id = meta.current_revision_id
                             schema_version = meta.schema_version
                         return MsgspecResponse(
@@ -604,7 +630,9 @@ class ReadRouteTemplate(BaseRouteTemplate, Generic[T]):
                             )
                         )
                     if not revision_id:
-                        meta = resource_manager.get_meta(resource_id)
+                        meta = resource_manager.get_meta(
+                            resource_id, include_deleted=include_deleted
+                        )
                         schema_version = meta.schema_version
                         revision_id = meta.current_revision_id
 
@@ -701,6 +729,10 @@ class ReadRouteTemplate(BaseRouteTemplate, Generic[T]):
                 description="List of fields to retrieve (e.g. '/field1', '/nested/field2') - for axios support",
                 include_in_schema=False,
             ),
+            include_deleted: bool = Query(
+                False,
+                description="If true, return data even for soft-deleted resources",
+            ),
             current_user: str = Depends(self.deps.get_user),
             current_time: dt.datetime = Depends(self.deps.get_now),
             returns: str = Query(
@@ -717,4 +749,5 @@ class ReadRouteTemplate(BaseRouteTemplate, Generic[T]):
                 current_user,
                 current_time,
                 returns,
+                include_deleted,
             )

@@ -480,6 +480,7 @@ class ResourceAction(Flag):
     patch = auto()
     switch = auto()
     delete = auto()
+    permanently_delete = auto()
     restore = auto()
     dump = auto()
     load = auto()
@@ -491,7 +492,7 @@ class ResourceAction(Flag):
     read = get | get_meta | get_resource_revision | list_revisions
     read_list = search_resources
     write = create | update | modify | patch
-    lifecycle = switch | delete | restore
+    lifecycle = switch | delete | permanently_delete | restore
     backup = dump | load | migrate
     full = read | read_list | write | lifecycle | backup
     owner = read | patch | update | modify | lifecycle
@@ -1227,6 +1228,57 @@ OnFailureDelete = defstruct(
 
 
 # ============================================================================
+# PermanentlyDelete Context Classes
+# ============================================================================
+
+_permanently_delete_context = [
+    (
+        "action",
+        Literal[ResourceAction.permanently_delete],
+        ResourceAction.permanently_delete,
+    ),
+    ("resource_id", str),
+]
+
+BeforePermanentlyDelete = defstruct(
+    "BeforePermanentlyDelete",
+    [
+        *_before_context,
+        *_permanently_delete_context,
+    ],
+    **_type_setting,
+)
+
+AfterPermanentlyDelete = defstruct(
+    "AfterPermanentlyDelete",
+    [
+        *_after_context,
+        *_permanently_delete_context,
+    ],
+    **_type_setting,
+)
+
+OnSuccessPermanentlyDelete = defstruct(
+    "OnSuccessPermanentlyDelete",
+    [
+        *_on_success_context,
+        *_permanently_delete_context,
+        ("meta", ResourceMeta),
+    ],
+    **_type_setting,
+)
+
+OnFailurePermanentlyDelete = defstruct(
+    "OnFailurePermanentlyDelete",
+    [
+        *_on_failure_context,
+        *_permanently_delete_context,
+    ],
+    **_type_setting,
+)
+
+
+# ============================================================================
 # Restore Context Classes
 # ============================================================================
 
@@ -1451,6 +1503,10 @@ EventContext = (
     | AfterDelete
     | OnSuccessDelete
     | OnFailureDelete
+    | BeforePermanentlyDelete
+    | AfterPermanentlyDelete
+    | OnSuccessPermanentlyDelete
+    | OnFailurePermanentlyDelete
     | BeforeRestore
     | AfterRestore
     | OnSuccessRestore
@@ -1805,24 +1861,29 @@ class IResourceManager(ABC, Generic[T]):
         """
 
     @abstractmethod
-    def get_meta(self, resource_id: str) -> ResourceMeta:
+    def get_meta(self, resource_id: str, include_deleted: bool = False) -> ResourceMeta:
         """Get the metadata of the resource.
 
         Args:
             resource_id (str): the id of the resource to get metadata for.
+            include_deleted (bool): if True, return metadata even for
+                soft-deleted resources instead of raising
+                ``ResourceIsDeletedError``.  Defaults to ``False``.
 
         Returns:
             meta (ResourceMeta): the metadata of the resource.
 
         Raises:
             ResourceIDNotFoundError: if resource id does not exist.
-            ResourceIsDeletedError: if resource is soft-deleted.
+            ResourceIsDeletedError: if resource is soft-deleted and
+                *include_deleted* is ``False``.
 
         ---
 
         Returns the metadata of the specified resource, including its current revision,
         total revision count, creation and update timestamps, and user information.
-        This method will raise exceptions similar to get() based on the resource state.
+        When *include_deleted* is False (the default), this method raises
+        ``ResourceIsDeletedError`` for soft-deleted resources.
         """
 
     @abstractmethod
@@ -2070,6 +2131,33 @@ class IResourceManager(ABC, Generic[T]):
 
         Note: This method pairs with delete() to provide reversible
         soft delete functionality.
+        """
+
+    @abstractmethod
+    def permanently_delete(self, resource_id: str) -> ResourceMeta:
+        """Permanently delete a resource and all its revision data.
+
+        This is an irreversible operation that removes the resource metadata
+        and all associated revision data from storage.
+
+        Args:
+            resource_id (str): the id of the resource to permanently delete.
+
+        Returns:
+            meta (ResourceMeta): the metadata of the resource before deletion.
+
+        Raises:
+            ResourceIDNotFoundError: if resource id does not exist.
+
+        ---
+
+        Unlike soft delete (delete()), this operation physically removes:
+        - All revision data for the resource
+        - The resource metadata record
+
+        The resource cannot be restored after this operation.
+        This method does NOT require the resource to be soft-deleted first;
+        it can permanently delete both active and soft-deleted resources.
         """
 
     @abstractmethod

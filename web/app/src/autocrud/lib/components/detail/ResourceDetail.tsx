@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef, useMemo } from 'react';
-import { Link } from '@tanstack/react-router';
+import { Link, useNavigate } from '@tanstack/react-router';
 import {
   Container,
   Title,
@@ -19,6 +19,7 @@ import {
 import {
   IconEdit,
   IconTrash,
+  IconTrashX,
   IconRestore,
   IconArrowLeft,
   IconAlertCircle,
@@ -129,6 +130,7 @@ export function ResourceDetail<T extends Record<string, any>>({
   initialRevision,
   onRevisionChange,
 }: ResourceDetailProps<T>) {
+  const navigate = useNavigate();
   const [editOpen, setEditOpen] = useState(false);
   const [selectedRevision, setSelectedRevision] = useState<string | null>(initialRevision ?? null);
   const editFormRef = useRef<ResourceFormHandle | null>(null);
@@ -150,6 +152,7 @@ export function ResourceDetail<T extends Record<string, any>>({
     refresh: _refresh,
     update,
     deleteResource,
+    permanentlyDelete,
     restore,
     switchRevision,
     rerun,
@@ -236,6 +239,21 @@ export function ResourceDetail<T extends Record<string, any>>({
         await deleteResource();
       } catch (error) {
         showErrorNotification(error, 'Delete Failed');
+      }
+    }
+  };
+
+  const handlePermanentlyDelete = async () => {
+    if (
+      confirm(
+        '⚠️ PERMANENTLY DELETE this resource?\n\nThis action is IRREVERSIBLE. All data and revision history will be lost forever.',
+      )
+    ) {
+      try {
+        await permanentlyDelete();
+        navigate({ to: basePath });
+      } catch (error) {
+        showErrorNotification(error, 'Permanently Delete Failed');
       }
     }
   };
@@ -331,9 +349,23 @@ export function ResourceDetail<T extends Record<string, any>>({
               </>
             )}
             {!isViewingHistorical && meta.is_deleted && (
-              <Button color="green" leftSection={<IconRestore size={16} />} onClick={handleRestore}>
-                Restore
-              </Button>
+              <>
+                <Button
+                  color="green"
+                  leftSection={<IconRestore size={16} />}
+                  onClick={handleRestore}
+                >
+                  Restore
+                </Button>
+                <Button
+                  color="red"
+                  variant="filled"
+                  leftSection={<IconTrashX size={16} />}
+                  onClick={handlePermanentlyDelete}
+                >
+                  Permanently Delete
+                </Button>
+              </>
             )}
           </Group>
         </Group>

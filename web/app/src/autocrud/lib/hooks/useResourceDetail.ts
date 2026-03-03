@@ -9,6 +9,7 @@ export interface UseResourceDetailResult<T> {
   refresh: () => void;
   update: (data: T) => Promise<void>;
   deleteResource: () => Promise<void>;
+  permanentlyDelete: () => Promise<void>;
   restore: () => Promise<void>;
   switchRevision: (revisionId: string) => Promise<void>;
   rerun: () => Promise<void>;
@@ -38,7 +39,8 @@ export function useResourceDetail<T>(
       setLoading(true);
       setError(null);
       try {
-        const params = revisionId ? { revision_id: revisionId } : undefined;
+        const params: Record<string, unknown> = { include_deleted: true };
+        if (revisionId) params.revision_id = revisionId;
         const res = await config.apiClient.get(resourceId, params);
         if (!cancelled) {
           setResource(res.data);
@@ -75,6 +77,10 @@ export function useResourceDetail<T>(
     refresh();
   }, [config.apiClient, resourceId, refresh]);
 
+  const permanentlyDelete = useCallback(async () => {
+    await config.apiClient.permanentlyDelete(resourceId);
+  }, [config.apiClient, resourceId]);
+
   const restore = useCallback(async () => {
     await config.apiClient.restore(resourceId);
     refresh();
@@ -100,6 +106,7 @@ export function useResourceDetail<T>(
     refresh,
     update,
     deleteResource,
+    permanentlyDelete,
     restore,
     switchRevision,
     rerun,

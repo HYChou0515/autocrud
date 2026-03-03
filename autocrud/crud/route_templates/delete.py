@@ -75,6 +75,55 @@ class DeleteRouteTemplate(BaseRouteTemplate):
                 raise HTTPException(status_code=400, detail=str(e))
 
 
+class PermanentlyDeleteRouteTemplate(BaseRouteTemplate):
+    """永久刪除資源的路由模板（不可恢復）"""
+
+    def apply(
+        self,
+        model_name: str,
+        resource_manager: IResourceManager[T],
+        router: APIRouter,
+    ) -> None:
+        @router.delete(
+            f"/{model_name}/{{resource_id}}/permanently",
+            responses=struct_to_responses_type(ResourceMeta),
+            summary=f"Permanently delete {model_name}",
+            tags=[f"{model_name}"],
+            description=textwrap.dedent(
+                f"""
+                **Permanently** delete a `{model_name}` resource and all its revision data.
+
+                **⚠️ WARNING: This operation is irreversible!**
+
+                **Path Parameters:**
+                - `resource_id`: The unique identifier of the resource to permanently delete
+
+                **Permanent Delete:**
+                - Physically removes the resource metadata from storage
+                - Physically removes all revision data from storage
+                - Cannot be undone — the resource and all its history are lost forever
+                - Works on both active and soft-deleted resources
+
+                **Response:**
+                - Returns the resource metadata as it was before deletion
+
+                **Error Responses:**
+                - `400`: Bad request - Resource not found or deletion error""",
+            ),
+        )
+        async def permanently_delete_resource(
+            resource_id: str,
+            current_user: str = Depends(self.deps.get_user),
+            current_time: dt.datetime = Depends(self.deps.get_now),
+        ):
+            try:
+                with resource_manager.meta_provide(current_user, current_time):
+                    meta = resource_manager.permanently_delete(resource_id)
+                return MsgspecResponse(meta)
+            except Exception as e:
+                raise HTTPException(status_code=400, detail=str(e))
+
+
 class BatchDeleteRouteTemplate(BaseRouteTemplate):
     """批量刪除資源的路由模板
 
