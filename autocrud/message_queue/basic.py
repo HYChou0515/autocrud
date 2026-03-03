@@ -1,12 +1,16 @@
 import datetime as dt
+import threading
 from abc import abstractmethod
 from typing import Callable, Generic, TypeVar
 
 from autocrud.types import (
+    DataSearchCondition,
+    DataSearchOperator,
     IMessageQueue,
     IResourceManager,
     Job,
     Resource,
+    ResourceMetaSearchQuery,
     TaskStatus,
 )
 
@@ -54,6 +58,10 @@ class BasicMessageQueue(IMessageQueue[T], Generic[T]):
     def __init__(self, do: Callable[[Resource[Job[T]]], None]):
         self._rm: IResourceManager[Job[T]] | None = None
         self._do = do
+        self._heartbeat_interval: float = 5.0
+        self._recovery_interval: float = 60.0
+        self._recovery_stop_event: threading.Event = threading.Event()
+        self._recovery_thread: threading.Thread | None = None
 
     @property
     def rm(self) -> IResourceManager[Job[T]]:
@@ -108,9 +116,102 @@ class BasicMessageQueue(IMessageQueue[T], Generic[T]):
         resource.data = job
         return resource
 
+    def recover_stale_jobs(self, heartbeat_timeout_seconds: float) -> list[str]:
+        """Recover jobs stuck in PROCESSING status.
+
+        Scans for all jobs with PROCESSING status and determines whether they
+        should be marked as FAILED based on heartbeat freshness.
+
+        Args:
+            heartbeat_timeout_seconds: Only recover jobs whose
+                ``last_heartbeat_at`` is older than this many seconds (or is
+                ``None``).  A value of 0 means recover ALL PROCESSING jobs
+                regardless of heartbeat (use with caution in multi-worker
+                setups).
+
+        Returns:
+            List of resource IDs that were recovered.
+        """
+        recovered: list[str] = []
+        query = ResourceMetaSearchQuery(
+            conditions=[
+                DataSearchCondition(
+                    field_path="status",
+                    operator=DataSearchOperator.equals,
+                    value=TaskStatus.PROCESSING,
+                )
+            ],
+        )
+        metas = self.rm.search_resources(query)
+        now = dt.datetime.now(dt.timezone.utc)
+
+        for meta in metas:
+            try:
+                resource = self.rm.get(meta.resource_id)
+                job = resource.data
+
+                # When heartbeat_timeout_seconds > 0, skip jobs with a recent
+                # heartbeat — they are still being actively processed.
+                if heartbeat_timeout_seconds > 0:
+                    hb = job.last_heartbeat_at
+                    if hb is not None:
+                        elapsed = (now - hb).total_seconds()
+                        if elapsed < heartbeat_timeout_seconds:
+                            continue  # Still alive
+
+                job.status = TaskStatus.FAILED
+                job.errmsg = (
+                    "Recovered stale job: worker was likely killed "
+                    "while processing this job."
+                )
+                with self._rm_meta_provide(resource.info.created_by):
+                    self.rm.create_or_update(meta.resource_id, job)
+                recovered.append(meta.resource_id)
+            except Exception:
+                pass  # Best effort
+        return recovered
+
+    def _start_periodic_recovery(self) -> None:
+        """Start a background thread that periodically calls ``recover_stale_jobs``.
+
+        The thread uses ``_heartbeat_interval * 3`` as the heartbeat timeout so
+        that only truly stale jobs (no heartbeat for 3 intervals) are recovered,
+        leaving active jobs on other workers untouched.
+
+        The thread runs every ``_recovery_interval`` seconds (default 60 s) and
+        is a daemon so it won't block process shutdown.
+        """
+        self._recovery_stop_event.clear()
+
+        def _loop() -> None:
+            while not self._recovery_stop_event.is_set():
+                self._recovery_stop_event.wait(self._recovery_interval)
+                if self._recovery_stop_event.is_set():
+                    break
+                try:
+                    self.recover_stale_jobs(
+                        heartbeat_timeout_seconds=self._heartbeat_interval * 3,
+                    )
+                except Exception:
+                    pass  # Best effort
+
+        self._recovery_thread = threading.Thread(
+            target=_loop,
+            name="stale-job-recovery",
+            daemon=True,
+        )
+        self._recovery_thread.start()
+
+    def _stop_periodic_recovery(self) -> None:
+        """Signal the periodic recovery thread to stop and wait for it."""
+        self._recovery_stop_event.set()
+        if self._recovery_thread is not None:
+            self._recovery_thread.join(timeout=self._recovery_interval * 2)
+            self._recovery_thread = None
+
     def stop_consuming(self) -> None:
         """Stop consuming jobs from the queue."""
-        pass
+        self._stop_periodic_recovery()
 
 
 class DelayableMessageQueue(BasicMessageQueue[T], Generic[T]):

@@ -163,13 +163,16 @@ class CeleryMessageQueue(DelayableMessageQueue[T], Generic[T]):
             except NoRetry as e:
                 # Mark as failed without retry
                 error_msg = str(e)
-                resource = queue.rm.get(resource_id)
-                job = resource.data
-                job.status = TaskStatus.FAILED
-                job.errmsg = error_msg
-                job.retries = retry_count + 1
-                with queue._rm_meta_provide(resource.info.created_by):
-                    queue.rm.create_or_update(resource_id, job)
+                try:
+                    resource = queue.rm.get(resource_id)
+                    job = resource.data
+                    job.status = TaskStatus.FAILED
+                    job.errmsg = error_msg
+                    job.retries = retry_count + 1
+                    with queue._rm_meta_provide(resource.info.created_by):
+                        queue.rm.create_or_update(resource_id, job)
+                except Exception:
+                    pass  # Best effort - still stop retrying
                 # Stop Celery's own retry mechanism
                 raise Ignore()
 
@@ -272,6 +275,12 @@ class CeleryMessageQueue(DelayableMessageQueue[T], Generic[T]):
         Note: This method blocks and runs the worker in the current process.
         In eager mode (task_always_eager=True), worker runs until stop_consuming() is called.
         """
+        # Recover any jobs left in PROCESSING from a previous crash
+        self.recover_stale_jobs(heartbeat_timeout_seconds=self._heartbeat_interval * 3)
+
+        # Start background periodic recovery for ongoing stale job detection
+        self._start_periodic_recovery()
+
         # Reset stop flag
         self._should_stop = False
 
@@ -352,6 +361,9 @@ class CeleryMessageQueue(DelayableMessageQueue[T], Generic[T]):
         Sends a special stop marker to the queue. When workers process this marker,
         they will terminate gracefully without rescheduling.
         """
+        # Stop periodic recovery thread
+        super().stop_consuming()
+
         # Set stop flag (used by periodic job scheduling)
         self._should_stop = True
 

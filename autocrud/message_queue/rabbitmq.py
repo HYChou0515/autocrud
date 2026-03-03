@@ -307,8 +307,11 @@ class RabbitMQMessageQueue(DelayableMessageQueue[T], Generic[T]):
             job.status = TaskStatus.FAILED
             job.errmsg = error_msg
             job.retries = retry_count + 1
-            with self._rm_meta_provide(resource.info.created_by):
-                self.rm.create_or_update(resource_id, job)
+            try:
+                with self._rm_meta_provide(resource.info.created_by):
+                    self.rm.create_or_update(resource_id, job)
+            except Exception:
+                pass  # Best effort; outer callback has fallback
 
             # Send to retry or dead letter queue
             self._send_to_retry_or_dead(ch, resource_id, retry_count, e)
@@ -327,6 +330,12 @@ class RabbitMQMessageQueue(DelayableMessageQueue[T], Generic[T]):
         Note: This creates a dedicated connection for consuming that persists
         for the lifetime of the consumer.
         """
+        # Recover any jobs left in PROCESSING from a previous crash
+        self.recover_stale_jobs(heartbeat_timeout_seconds=self._heartbeat_interval * 3)
+
+        # Start background periodic recovery for ongoing stale job detection
+        self._start_periodic_recovery()
+
         # Use context manager to ensure proper cleanup
         with self._get_connection() as (connection, channel):
             # Store references for stop_consuming()
@@ -393,6 +402,7 @@ class RabbitMQMessageQueue(DelayableMessageQueue[T], Generic[T]):
 
         This can be called from a different thread to gracefully stop consumption.
         """
+        super().stop_consuming()
         if hasattr(self, "_consuming_connection") and self._consuming_connection:
             if self._consuming_connection.is_open:
                 # Use thread-safe callback to stop consuming
