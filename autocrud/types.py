@@ -2402,6 +2402,9 @@ class Job(Struct, Generic[T]):
     periodic_initial_delay_seconds: int | None = None
     """Delay in seconds before the first execution. If None, executes immediately."""
 
+    last_heartbeat_at: dt.datetime | None = None
+    """Timestamp of the last heartbeat. Used to detect dead workers."""
+
 
 class IMessageQueue(ABC, Generic[T]):
     """Interface for a message queue that manages jobs as resources."""
@@ -2431,6 +2434,25 @@ class IMessageQueue(ABC, Generic[T]):
     @abstractmethod
     def fail(self, resource_id: str, error: str) -> Resource[Job[T]]:
         """Mark a job as failed."""
+        ...
+
+    @abstractmethod
+    def recover_stale_jobs(self, heartbeat_timeout_seconds: float) -> list[str]:
+        """Recover jobs stuck in PROCESSING status.
+
+        This is used to handle cases where a worker was killed (e.g. OOM)
+        and left jobs in PROCESSING status. These jobs will be marked as FAILED.
+
+        Args:
+            heartbeat_timeout_seconds: Only recover jobs whose
+                ``last_heartbeat_at`` is older than this many seconds (or is
+                ``None``).  A value of 0 means recover ALL PROCESSING jobs
+                regardless of heartbeat (use with caution in multi-worker
+                setups).
+
+        Returns:
+            List of resource IDs that were recovered.
+        """
         ...
 
     @abstractmethod

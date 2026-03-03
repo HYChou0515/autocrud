@@ -13,6 +13,7 @@ from autocrud.types import (
     ResourceMetaSearchSort,
     ResourceMetaSortDirection,
     ResourceMetaSortKey,
+    RevisionStatus,
     TaskStatus,
 )
 
@@ -122,9 +123,13 @@ class SimpleMessageQueue(DelayableMessageQueue[T], Generic[T]):
                 updated_job = resource.data
                 updated_job.status = TaskStatus.PROCESSING
 
-                # Update revision
+                # Update revision as draft so heartbeat can use modify()
                 with self._rm_meta_provide(meta.created_by):
-                    self.rm.create_or_update(resource.info.resource_id, updated_job)
+                    self.rm.create_or_update(
+                        resource.info.resource_id,
+                        updated_job,
+                        status=RevisionStatus.draft,
+                    )
 
                 # Return the updated resource
                 resource.data = updated_job
@@ -188,9 +193,27 @@ class SimpleMessageQueue(DelayableMessageQueue[T], Generic[T]):
         """
         Execute a job and handle success, DelayRetry, or failure.
 
+        A HeartbeatThread runs in the background during execution so that
+        ``recover_stale_jobs`` can distinguish live workers from dead ones.
+
         Args:
             job: The job resource to execute
         """
+        from autocrud.message_queue.heartbeat import HeartbeatThread
+
+        hb = HeartbeatThread(
+            mq=self,
+            resource_id=job.info.resource_id,
+            interval_seconds=self._heartbeat_interval,
+        )
+        hb.start()
+        try:
+            self._execute_job_inner(job)
+        finally:
+            hb.stop()
+
+    def _execute_job_inner(self, job: Resource[Job[T]]) -> None:
+        """Core job execution logic (without heartbeat management)."""
         try:
             result = self._do(job)
             # Check if callback explicitly requested to stop periodic execution
@@ -232,16 +255,30 @@ class SimpleMessageQueue(DelayableMessageQueue[T], Generic[T]):
                 with self._rm_meta_provide(job.info.created_by):
                     self.rm.create_or_update(job.info.resource_id, updated_job)
             except Exception:
-                # If update fails, still mark as failed via fail()
-                pass
+                # Primary update failed - fallback to fail() to ensure
+                # the job never stays stuck in PROCESSING
+                try:
+                    self.fail(job.info.resource_id, error_msg)
+                except Exception:
+                    pass  # Best effort - storage completely unavailable
+                return
 
             # If not retrying, also call fail() to ensure consistent state
             if not should_retry:
-                self.fail(job.info.resource_id, error_msg)
+                try:
+                    self.fail(job.info.resource_id, error_msg)
+                except Exception:
+                    pass  # Already saved FAILED status above
 
     def start_consume(self) -> None:
         """Start consuming jobs from the queue."""
         import time
+
+        # Recover any jobs left in PROCESSING from a previous crash
+        self.recover_stale_jobs(heartbeat_timeout_seconds=self._heartbeat_interval * 3)
+
+        # Start background periodic recovery for ongoing stale job detection
+        self._start_periodic_recovery()
 
         self._running = True
         while self._running:
@@ -250,13 +287,26 @@ class SimpleMessageQueue(DelayableMessageQueue[T], Generic[T]):
 
             job = self.pop()
             if job:
-                self._execute_job(job)
+                try:
+                    self._execute_job(job)
+                except Exception:
+                    # Safety net: _execute_job should handle all errors internally,
+                    # but if something unexpected escapes, ensure the consumer
+                    # loop continues running and the job is marked as FAILED.
+                    try:
+                        self.fail(
+                            job.info.resource_id,
+                            "Unexpected error during job execution",
+                        )
+                    except Exception:
+                        pass  # Best effort
             else:
                 time.sleep(0.1)
 
     def stop_consuming(self):
         """Stop the consumption loop."""
         self._running = False
+        super().stop_consuming()
 
 
 class SimpleMessageQueueFactory(IMessageQueueFactory):
