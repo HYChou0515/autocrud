@@ -105,9 +105,7 @@ def _ensure_postgres_database():
         conn = psycopg2.connect(maintenance_dsn)
         conn.set_isolation_level(ISOLATION_LEVEL_AUTOCOMMIT)
         cur = conn.cursor()
-        cur.execute(
-            "SELECT 1 FROM pg_database WHERE datname = %s", (db_name,)
-        )
+        cur.execute("SELECT 1 FROM pg_database WHERE datname = %s", (db_name,))
         if not cur.fetchone():
             cur.execute(f'CREATE DATABASE "{db_name}"')
             print(f"  [setup] Created PostgreSQL database: {db_name}")
@@ -388,9 +386,7 @@ class TestBackupBenchmark:
             objects = page.get("Contents", [])
             if objects:
                 keys = [{"Key": obj["Key"]} for obj in objects]
-                s3_client.delete_objects(
-                    Bucket=bucket, Delete={"Objects": keys}
-                )
+                s3_client.delete_objects(Bucket=bucket, Delete={"Objects": keys})
 
     # ------------------------------------------------------------------
     # Small dataset – metadata-only (no blobs)

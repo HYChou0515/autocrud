@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import io as _io
 from collections.abc import Generator
 from concurrent.futures import ThreadPoolExecutor
 from contextlib import contextmanager
@@ -335,12 +334,8 @@ class S3ResourceStore(IResourceStore):
                 .decode("utf-8")
             )
             # Fetch info + data using resolved uid
-            info_resp = client.get_object(
-                Bucket=bucket, Key=get_raw_info_key(uid)
-            )
-            data_resp = client.get_object(
-                Bucket=bucket, Key=get_raw_data_key(uid)
-            )
+            info_resp = client.get_object(Bucket=bucket, Key=get_raw_info_key(uid))
+            data_resp = client.get_object(Bucket=bucket, Key=get_raw_data_key(uid))
             info = info_decode(info_resp["Body"].read())
             data = data_resp["Body"].read()
             return info, data
