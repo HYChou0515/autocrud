@@ -72,12 +72,30 @@ class PostgresMetaStore(ISlowMetaStore):
 
     def get_conn(self) -> pg.extensions.connection:
         retry = 5
-        for _ in range(retry):
-            conn = self._conn_pool.getconn()
+        last_error: Exception | None = None
+        for attempt in range(retry):
+            try:
+                conn = self._conn_pool.getconn()
+            except psycopg2.pool.PoolError:
+                # Pool 耗盡，等待後重試（其他 thread 可能會歸還連線）
+                last_error = psycopg2.pool.PoolError("connection pool exhausted")
+                time.sleep(min(0.5 * (attempt + 1), 3))
+                continue
+
             conn.autocommit = False
             if self.test_query(conn):
                 return conn
+
+            # test_query 失敗：歸還壞連線並標記關閉，避免洩漏
+            try:
+                self._conn_pool.putconn(conn, close=True)
+            except Exception:
+                pass
+            last_error = ConnectionError("Failed to get a valid PostgreSQL connection.")
             time.sleep(1)
+
+        if isinstance(last_error, psycopg2.pool.PoolError):
+            raise last_error
         raise ConnectionError("Failed to get a valid PostgreSQL connection.")
 
     def put_conn(self, conn):
