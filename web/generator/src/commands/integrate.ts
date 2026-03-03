@@ -72,7 +72,8 @@ export async function integrateProject(
   await writeVersionConfig(ROOT, mantineVersion);
 
   // Print integration checklist
-  printChecklist(mantineVersion);
+  const proxyPath = options.proxyPath ?? '/api';
+  printChecklist(mantineVersion, proxyPath);
 }
 
 // ---------------------------------------------------------------------------
@@ -280,14 +281,14 @@ function logCopyResult(label: string, result: 'created' | 'unchanged' | 'skipped
   }
 }
 
-function printChecklist(mantineVersion: MantineVersion = '7'): void {
+function printChecklist(mantineVersion: MantineVersion = '7', proxyPath: string = '/api'): void {
   const isV8 = mantineVersion === '8';
 
   const mantinePkgs = isV8
     ? '@mantine/core@^8 @mantine/dates@^8 @mantine/form@^8 @mantine/hooks@^8 @mantine/notifications@^8'
     : '@mantine/core @mantine/dates @mantine/form @mantine/hooks @mantine/notifications';
 
-  const zodResolverPkg = isV8 ? '' : 'mantine-form-zod-resolver \\';
+  const zodResolverPkg = isV8 ? '' : 'mantine-form-zod-resolver';
   const reactPkgs = isV8 ? 'react@^19 react-dom@^19' : '';
 
   console.log('\n' + '='.repeat(60));
@@ -299,7 +300,7 @@ Please verify the following manual steps:
 1. 📦 Dependencies — Add required packages:
    pnpm add ${mantinePkgs} \\
      @tabler/icons-react @tanstack/react-router \\
-     @tanstack/react-virtual axios clsx dayjs ${zodResolverPkg}
+     @tanstack/react-virtual axios clsx dayjs ${zodResolverPkg ? zodResolverPkg + ' ' : ''}\\
      mantine-react-table@2.0.0-beta.9 react-markdown remark-gfm zod \\
      @monaco-editor/react${reactPkgs ? ' \\\n     ' + reactPkgs : ''}
 
@@ -314,13 +315,22 @@ Please verify the following manual steps:
      }
    }
 
-3. 🔧 vite.config.ts — Add TanStack Router plugin + alias:
+3. 🔧 vite.config.ts — Add TanStack Router plugin + alias + proxy:
    import { TanStackRouterVite } from '@tanstack/router-plugin/vite'
    import path from 'path'
 
    export default defineConfig({
      plugins: [TanStackRouterVite({ quoteStyle: 'single' }), react()],
      resolve: { alias: { '@': path.resolve(__dirname, './src') } },
+     server: {
+       proxy: {
+         '${proxyPath}': {
+           target: 'http://localhost:8000',
+           changeOrigin: true,
+           rewrite: (p) => p.replace(new RegExp('^${proxyPath.replace(/\//g, '\\/')}'), ''),
+         },
+       },
+     },
    })
 
 4. 🎨 postcss.config.mjs — Add Mantine preset:
@@ -348,7 +358,8 @@ ${
   isV8
     ? `
 6. ⚠️  Note: Mantine 8 requires React 19. zodResolver is now built into
-   @mantine/form — no need for mantine-form-zod-resolver.
+   @mantine/form — mantine-form-zod-resolver has been automatically patched
+   to import from @mantine/form instead.
    mantine-react-table peer dependency warnings can be safely ignored.
 
 7. 📄 See INTEGRATION.md for detailed step-by-step guide.

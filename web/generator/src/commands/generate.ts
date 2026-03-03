@@ -13,6 +13,8 @@ import path from 'node:path';
 export interface GenerateOptions {
   openapiPath?: string;
   basePath?: string;
+  /** Proxy path prefix for Vite dev server (default: '/api'). */
+  proxyPath?: string;
 }
 
 export async function generateCode(apiUrl: string, outputRoot: string, options: GenerateOptions = {}): Promise<void> {
@@ -43,7 +45,8 @@ export async function generateCode(apiUrl: string, outputRoot: string, options: 
   await generator.run();
 
   // Write .env file with proxy config
-  writeEnvFile(ROOT, apiUrl);
+  const proxyPath = options.proxyPath ?? '/api';
+  writeEnvFile(ROOT, apiUrl, proxyPath);
 }
 
 /**
@@ -102,13 +105,13 @@ export function detectBasePath(spec: any): string {
  * Write or update .env file with API configuration.
  *
  * Sets:
- * - VITE_API_URL=/api  (relative path, proxied by Vite dev server; override for prod)
+ * - VITE_API_URL=<proxyPath>  (relative path, proxied by Vite dev server; override for prod)
  * - API_PROXY_TARGET=<backendUrl>  (Vite dev server proxy target, not exposed to browser)
  */
-export function writeEnvFile(rootDir: string, backendUrl: string): void {
+export function writeEnvFile(rootDir: string, backendUrl: string, proxyPath: string = '/api'): void {
   const envPath = path.join(rootDir, '.env');
   const envVars: Record<string, string> = {
-    VITE_API_URL: '/api',
+    VITE_API_URL: proxyPath,
     API_PROXY_TARGET: backendUrl,
   };
 
@@ -130,7 +133,7 @@ export function writeEnvFile(rootDir: string, backendUrl: string): void {
       .join('\n');
     fs.writeFileSync(envPath, content + '\n', 'utf-8');
   }
-  console.log(`📝 .env: VITE_API_URL=/api`);
+  console.log(`📝 .env: VITE_API_URL=${proxyPath}`);
   console.log(`📝 .env: API_PROXY_TARGET=${backendUrl}`);
 }
 

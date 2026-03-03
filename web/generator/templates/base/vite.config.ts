@@ -10,6 +10,7 @@ export default defineConfig(({ mode }) => {
   // Load all env vars (including non-VITE_ prefixed) for proxy config
   const env = loadEnv(mode, process.cwd(), '')
   const proxyTarget = env.API_PROXY_TARGET || 'http://localhost:8000'
+  const proxyPath = env.VITE_API_URL || '/api'
 
   return {
   plugins: [
@@ -63,10 +64,10 @@ export default defineConfig(({ mode }) => {
     port: 5173,
     strictPort: true,
     proxy: {
-      '/api': {
+      [proxyPath]: {
         target: proxyTarget,
         changeOrigin: true,
-        rewrite: (path) => path.replace(/^\/api/, ''),
+        rewrite: (p: string) => p.replace(new RegExp(`^${proxyPath}`), ''),
       },
     },
   },

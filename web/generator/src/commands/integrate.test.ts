@@ -398,3 +398,33 @@ describe('promptFileConflict', () => {
     expect(mockSelect).toHaveBeenCalledTimes(2);
   });
 });
+
+// ============================================================================
+// Template file content checks
+// ============================================================================
+describe('template content checks', () => {
+  it('autocrud-admin.tsx uses @/ alias for resource imports', async () => {
+    const templatePath = path.join(__dirname, '../../templates/base/src/routes/autocrud-admin.tsx');
+    const content = await fs.readFile(templatePath, 'utf-8');
+    expect(content).toContain("from '@/autocrud/lib/resources'");
+    expect(content).not.toContain("from '../autocrud/lib/resources'");
+  });
+
+  it('ResourceCreate uses Container size="lg"', async () => {
+    const templatePath = path.join(
+      __dirname,
+      '../../templates/base/src/autocrud/lib/components/form/ResourceCreate.tsx',
+    );
+    const content = await fs.readFile(templatePath, 'utf-8');
+    expect(content).toContain('size="lg"');
+    expect(content).not.toContain('size="md"');
+  });
+
+  it('vite.config.ts uses dynamic proxyPath from env instead of hardcoded /api', async () => {
+    const templatePath = path.join(__dirname, '../../templates/base/vite.config.ts');
+    const content = await fs.readFile(templatePath, 'utf-8');
+    expect(content).toContain("const proxyPath = env.VITE_API_URL || '/api'");
+    expect(content).toContain('[proxyPath]');
+    expect(content).not.toMatch(/proxy:\s*\{\s*'\/api'/);
+  });
+});
