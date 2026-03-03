@@ -103,6 +103,7 @@ export function ResourceCreate<T extends Record<string, any>>({
                       ...config,
                       fields: action.fields,
                       zodSchema: action.zodSchema,
+                      maxFormDepth: undefined,
                     }}
                     onSubmit={makeCustomActionSubmit(action)}
                     onCancel={() => navigate({ to: basePath })}

@@ -1510,6 +1510,138 @@ describe('genResourcesConfig with custom actions', () => {
   });
 });
 
+// ── bodySchema mixed with other params — prefix & grouping ──────────────────
+// Helper: builds a spec where bodySchema (Skill) coexists with query, inline
+// body and file params — the create_new_character4 scenario.
+function buildMixedBodySchemaCharacterSpec(extraOverrides: Record<string, any> = {}) {
+  const base = buildCharacterSpec({
+    bodySchema: 'Skill',
+    bodySchemaParamName: 'f',
+    queryParams: [
+      { name: 'x', required: true, schema: { type: 'integer' } },
+      { name: 'y', required: true, schema: { type: 'string' } },
+    ],
+    inlineBodyParams: [{ name: 'name', required: true, schema: { type: 'string' } }],
+    fileParams: [{ name: 'z', required: true, schema: { type: 'string', format: 'binary' } }],
+    ...extraOverrides,
+  });
+  (base.components.schemas as any).Skill = {
+    type: 'object',
+    properties: {
+      skname: { type: 'string' },
+      description: { type: 'string' },
+      required_level: { type: 'integer' },
+    },
+    required: ['skname'],
+  };
+  return base;
+}
+
+describe('extractCustomCreateActions — bodySchema mixed with other params (prefix)', () => {
+  it('prefixes bodySchema fields with bodySchemaParamName when mixed with other params', () => {
+    const spec = buildMixedBodySchemaCharacterSpec();
+    const gen = createTestGenerator(spec);
+    (gen as any).extractResources();
+    (gen as any).extractCustomCreateActions();
+    const action = gen.resources.find((r) => r.name === 'character')!.customCreateActions![0];
+    // Body schema fields should be prefixed with 'f.'
+    const bodyFields = action.fields.filter((f: any) => f.name.startsWith('f.'));
+    expect(bodyFields.length).toBe(3); // f.skname, f.description, f.required_level
+    expect(bodyFields.map((f: any) => f.name).sort()).toEqual(['f.description', 'f.required_level', 'f.skname']);
+  });
+
+  it('non-body fields remain unprefixed', () => {
+    const spec = buildMixedBodySchemaCharacterSpec();
+    const gen = createTestGenerator(spec);
+    (gen as any).extractResources();
+    (gen as any).extractCustomCreateActions();
+    const action = gen.resources.find((r) => r.name === 'character')!.customCreateActions![0];
+    expect(action.fields.find((f: any) => f.name === 'x')).toBeDefined();
+    expect(action.fields.find((f: any) => f.name === 'y')).toBeDefined();
+    expect(action.fields.find((f: any) => f.name === 'name')).toBeDefined();
+    expect(action.fields.find((f: any) => f.name === 'z')).toBeDefined();
+  });
+
+  it('does NOT prefix bodySchema fields when pure bodySchema (no other params)', () => {
+    const spec = buildCharacterSpec({
+      bodySchema: 'Skill',
+      bodySchemaParamName: 'f',
+    });
+    (spec.components.schemas as any).Skill = {
+      type: 'object',
+      properties: {
+        skname: { type: 'string' },
+        description: { type: 'string' },
+      },
+      required: ['skname'],
+    };
+    const gen = createTestGenerator(spec);
+    (gen as any).extractResources();
+    (gen as any).extractCustomCreateActions();
+    const action = gen.resources.find((r) => r.name === 'character')!.customCreateActions![0];
+    // Pure body schema: fields should NOT be prefixed
+    expect(action.fields.find((f: any) => f.name === 'skname')).toBeDefined();
+    expect(action.fields.find((f: any) => f.name === 'description')).toBeDefined();
+    expect(action.fields.find((f: any) => f.name.startsWith('f.'))).toBeUndefined();
+  });
+
+  it('total field count includes all param types', () => {
+    const spec = buildMixedBodySchemaCharacterSpec();
+    const gen = createTestGenerator(spec);
+    (gen as any).extractResources();
+    (gen as any).extractCustomCreateActions();
+    const action = gen.resources.find((r) => r.name === 'character')!.customCreateActions![0];
+    // 2 query (x, y) + 3 body (f.skname, f.description, f.required_level) + 1 inline (name) + 1 file (z) = 7
+    expect(action.fields.length).toBe(7);
+  });
+});
+
+describe('genApiClient — bodySchema mixed with other params', () => {
+  it('uses allParams[bodySchemaParamName] instead of picking individual fields', () => {
+    const spec = buildMixedBodySchemaCharacterSpec();
+    const gen = createTestGenerator(spec);
+    (gen as any).extractResources();
+    (gen as any).extractCustomCreateActions();
+    const api = (gen as any).genApiClient(gen.resources.find((r) => r.name === 'character')!) as string;
+    // Should reference nested form value for the body schema
+    expect(api).toContain("allParams['f']");
+    // Should NOT contain individual field picking for body schema fields
+    expect(api).not.toContain("allParams['skname']");
+    expect(api).not.toContain("allParams['description']");
+    expect(api).not.toContain("allParams['required_level']");
+  });
+
+  it('still includes file, inline body, and query params correctly', () => {
+    const spec = buildMixedBodySchemaCharacterSpec();
+    const gen = createTestGenerator(spec);
+    (gen as any).extractResources();
+    (gen as any).extractCustomCreateActions();
+    const api = (gen as any).genApiClient(gen.resources.find((r) => r.name === 'character')!) as string;
+    // File → FormData
+    expect(api).toContain('new FormData()');
+    expect(api).toContain("formData.append('z'");
+    // Inline body → appended to FormData
+    expect(api).toContain("formData.append('name'");
+    // Query params
+    expect(api).toContain("params = { x: allParams['x'], y: allParams['y'] }");
+  });
+});
+
+describe('genResourcesConfig — bodySchema mixed with other params (nested zod)', () => {
+  it('generates nested zod schema for bodySchema fields when mixed', () => {
+    const spec = buildMixedBodySchemaCharacterSpec();
+    const gen = createTestGenerator(spec);
+    (gen as any).extractResources();
+    (gen as any).extractCustomCreateActions();
+    const config = (gen as any).genResourcesConfig() as string;
+    // Should have nested f: z.object({ skname: ..., ... }) from dot-notation fields
+    expect(config).toContain('f: z.object(');
+    // Top-level params should remain flat
+    expect(config).toContain('x: z.number()');
+    expect(config).toContain('z: z.instanceof(File)');
+  });
+});
+
 // ── duplicate label deduplication ───────────────────────────────────────────
 describe('extractCustomCreateActions — duplicate label deduplication', () => {
   function buildDuplicateLabelSpec() {
@@ -1743,6 +1875,159 @@ describe('extractCustomCreateActions — enum support', () => {
     expect(levelField!.type).toBe('number');
     expect(levelField!.enumValues).toBeUndefined();
     expect(levelField!.zodType).toBe('z.number().int().optional()');
+  });
+});
+
+// ============================================================================
+// inlineBodyParam with object-type schema — expand sub-fields (#198)
+// ============================================================================
+describe('inlineBodyParam with object-type schema — should expand sub-fields', () => {
+  function buildObjectInlineBodyParamSpec() {
+    return {
+      info: { title: 'Test', version: '1.0' },
+      paths: {
+        '/character': {
+          post: {
+            requestBody: {
+              content: { 'application/json': { schema: { $ref: '#/components/schemas/Character' } } },
+            },
+          },
+        },
+        '/character/{id}': { get: {} },
+      },
+      'x-autocrud-custom-create-actions': {
+        character: [
+          {
+            path: '/character/action',
+            label: 'Create with Config',
+            operationId: 'create_with_config',
+            inlineBodyParams: [
+              {
+                name: 'config',
+                required: true,
+                schema: { $ref: '#/components/schemas/CharacterConfig' },
+              },
+              { name: 'name', required: true, schema: { type: 'string' } },
+            ],
+          },
+        ],
+      },
+      components: {
+        schemas: {
+          Character: {
+            type: 'object',
+            properties: { name: { type: 'string' } },
+            required: ['name'],
+          },
+          CharacterConfig: {
+            type: 'object',
+            properties: {
+              strength: { type: 'integer' },
+              dexterity: { type: 'integer' },
+            },
+            required: ['strength', 'dexterity'],
+          },
+        },
+      },
+    };
+  }
+
+  it('expands $ref object inlineBodyParam into dot-notation sub-fields', () => {
+    const spec = buildObjectInlineBodyParamSpec();
+    const gen = createTestGenerator(spec);
+    (gen as any).extractResources();
+    (gen as any).extractCustomCreateActions();
+    const action = gen.resources.find((r) => r.name === 'character')!.customCreateActions![0];
+
+    // 'config' should be expanded to 'config.strength' and 'config.dexterity',
+    // NOT remain as a single 'object' type field.
+    const configField = action.fields.find((f: any) => f.name === 'config');
+    expect(configField).toBeUndefined(); // Should NOT exist as a single field
+
+    const strengthField = action.fields.find((f: any) => f.name === 'config.strength');
+    expect(strengthField).toBeDefined();
+    expect(strengthField!.type).toBe('number');
+
+    const dexterityField = action.fields.find((f: any) => f.name === 'config.dexterity');
+    expect(dexterityField).toBeDefined();
+    expect(dexterityField!.type).toBe('number');
+
+    // 'name' should remain as a simple scalar field
+    const nameField = action.fields.find((f: any) => f.name === 'name');
+    expect(nameField).toBeDefined();
+    expect(nameField!.type).toBe('string');
+  });
+
+  it('expands inline object (non-$ref) inlineBodyParam into dot-notation sub-fields', () => {
+    const spec = buildObjectInlineBodyParamSpec();
+    // Replace $ref with inline object schema
+    spec['x-autocrud-custom-create-actions'].character[0].inlineBodyParams[0].schema = {
+      type: 'object',
+      properties: {
+        strength: { type: 'integer' },
+        dexterity: { type: 'integer' },
+      },
+      required: ['strength', 'dexterity'],
+    };
+    const gen = createTestGenerator(spec);
+    (gen as any).extractResources();
+    (gen as any).extractCustomCreateActions();
+    const action = gen.resources.find((r) => r.name === 'character')!.customCreateActions![0];
+
+    const configField = action.fields.find((f: any) => f.name === 'config');
+    expect(configField).toBeUndefined();
+
+    const strengthField = action.fields.find((f: any) => f.name === 'config.strength');
+    expect(strengthField).toBeDefined();
+    expect(strengthField!.type).toBe('number');
+  });
+
+  it('expands nullable $ref object inlineBodyParam (anyOf + null)', () => {
+    const spec = buildObjectInlineBodyParamSpec();
+    // Make config nullable: anyOf: [$ref, {type: 'null'}]
+    spec['x-autocrud-custom-create-actions'].character[0].inlineBodyParams[0].schema = {
+      anyOf: [{ $ref: '#/components/schemas/CharacterConfig' }, { type: 'null' }],
+    };
+    const gen = createTestGenerator(spec);
+    (gen as any).extractResources();
+    (gen as any).extractCustomCreateActions();
+    const action = gen.resources.find((r) => r.name === 'character')!.customCreateActions![0];
+
+    const configField = action.fields.find((f: any) => f.name === 'config');
+    expect(configField).toBeUndefined();
+
+    const strengthField = action.fields.find((f: any) => f.name === 'config.strength');
+    expect(strengthField).toBeDefined();
+  });
+
+  it('generates nested zod schema for expanded object inlineBodyParam', () => {
+    const spec = buildObjectInlineBodyParamSpec();
+    const gen = createTestGenerator(spec);
+    (gen as any).extractResources();
+    (gen as any).extractCustomCreateActions();
+    const config = (gen as any).genResourcesConfig() as string;
+    // The zod schema should use nested z.object for 'config'
+    expect(config).toContain('config: z.object');
+    // Should contain the sub-fields
+    expect(config).toContain('strength: z.number().int()');
+    expect(config).toContain('dexterity: z.number().int()');
+  });
+
+  it('does NOT expand simple-type inlineBodyParams (string, number)', () => {
+    const spec = buildCharacterSpec({
+      inlineBodyParams: [
+        { name: 'name', required: true, schema: { type: 'string' } },
+        { name: 'age', required: false, schema: { type: 'integer' } },
+      ],
+    });
+    const gen = createTestGenerator(spec);
+    (gen as any).extractResources();
+    (gen as any).extractCustomCreateActions();
+    const action = gen.resources.find((r) => r.name === 'character')!.customCreateActions![0];
+    // Simple types should remain as flat fields (not expanded)
+    expect(action.fields.length).toBe(2);
+    expect(action.fields[0].name).toBe('name');
+    expect(action.fields[1].name).toBe('age');
   });
 });
 

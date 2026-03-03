@@ -325,13 +325,30 @@ export class Generator {
         // --- Body schema fields in the middle ---
         if (bodySchemaName) {
           const schema = this.spec.components?.schemas?.[bodySchemaName];
-          const bodyFields = this.extractFields(schema!, '', 1, 10);
+          // When body schema coexists with other param types (query, path,
+          // inline body, file), prefix its fields with bodySchemaParamName so
+          // that groupFieldsByParent() renders them inside a <Fieldset>.
+          const hasOtherParams =
+            !!raw.pathParams?.length ||
+            !!raw.queryParams?.length ||
+            !!raw.inlineBodyParams?.length ||
+            !!raw.fileParams?.length;
+          const prefix = hasOtherParams && raw.bodySchemaParamName ? raw.bodySchemaParamName : '';
+          const bodyFields = this.extractFields(schema!, prefix, 1, 10);
           fields.push(...bodyFields);
         }
 
         // --- Inline body / file params come last ---
+        // Use extractFields (via a virtual parent schema) so that object-type
+        // inline params are expanded into dot-notation sub-fields with proper
+        // Fieldset grouping — the same behaviour as the default POST form.
         if (raw.inlineBodyParams?.length > 0) {
-          const ibpFields = (raw.inlineBodyParams as any[]).map((p: any) => this.queryParamToField(p));
+          const virtualSchema = {
+            type: 'object' as const,
+            properties: Object.fromEntries((raw.inlineBodyParams as any[]).map((p: any) => [p.name, p.schema])),
+            required: (raw.inlineBodyParams as any[]).filter((p: any) => p.required).map((p: any) => p.name),
+          };
+          const ibpFields = this.extractFields(virtualSchema, '', 1, 10);
           fields.push(...ibpFields);
           actionMeta.inlineBodyParams = raw.inlineBodyParams;
         }
@@ -1544,11 +1561,20 @@ export { registry as resources };
     // Only import the main schema name; union variant types are not directly
     // referenced in the API client and would cause unused-import lint errors.
     const allTypeImports: string[] = [r.schemaName];
-    // Add custom action body schema imports (body-based actions only)
+    // Add custom action body schema imports — only for pure-body-schema
+    // actions where the type is used in the method signature `(data: Type)`.
+    // Mixed-param actions use `Record<string, unknown>` so the type is unused.
     if (r.customCreateActions) {
       for (const action of r.customCreateActions) {
         if (action.bodySchemaName && !allTypeImports.includes(action.bodySchemaName)) {
-          allTypeImports.push(action.bodySchemaName);
+          const hasOtherParams =
+            !!action.pathParams?.length ||
+            !!action.queryParams?.length ||
+            !!action.inlineBodyParams?.length ||
+            !!action.fileParams?.length;
+          if (!hasOtherParams) {
+            allTypeImports.push(action.bodySchemaName);
+          }
         }
       }
     }
@@ -1592,7 +1618,7 @@ export { registry as resources };
           const hasInlineBody = !!action.inlineBodyParams?.length;
           const hasFile = !!action.fileParams?.length;
           const bodySchemaParamName = action.bodySchemaParamName || 'body';
-          const bodyFieldNames = action.bodySchemaFieldNames || [];
+          const _bodyFieldNames = action.bodySchemaFieldNames || [];
 
           const urlExpr = hasPath
             ? '`' + action.path.replace(/\{(\w+)\}/g, (_, pname) => `\${allParams['${pname}'] as string}`) + '`'
@@ -1601,9 +1627,9 @@ export { registry as resources };
           const setupLines: string[] = [];
           let bodyVar = 'null';
 
-          // Collect body schema fields into an object
-          const bodyEntries = bodyFieldNames.map((k: string) => `'${k}': allParams['${k}']`).join(', ');
-          setupLines.push(`    const bodyObj: Record<string, unknown> = { ${bodyEntries} };`);
+          // Body schema fields are nested under bodySchemaParamName in form
+          // values (dot-notation → nested object).  Use that directly.
+          setupLines.push(`    const bodyObj = allParams['${bodySchemaParamName}'] as Record<string, unknown>;`);
 
           if (hasFile) {
             // Multipart/form-data: body schema as JSON string field
