@@ -891,3 +891,127 @@ class TestCoverageSupplementary:
         s.step("v1", migrate_v1_to_v2)
         with pytest.raises(ValueError, match="Cannot infer target version"):
             s._resolve()
+
+
+# =====================================================================
+# Tests: Msgpack encoding support
+# =====================================================================
+
+
+class TestMsgpackEncoding:
+    """Schema._encoder must respect encoding setting.
+
+    When ResourceManager uses msgpack encoding, the data stored is
+    msgpack bytes. Multi-step migrations must re-encode intermediate
+    results in the same format so the next step can decode them.
+    """
+
+    @staticmethod
+    def _make_msgpack_stream(obj) -> io.BytesIO:
+        return io.BytesIO(msgspec.msgpack.encode(obj))
+
+    def test_set_encoding_to_msgpack(self):
+        """Schema.set_encoding('msgpack') switches internal encoder."""
+        s = Schema(V3Data, "v3")
+        s.set_encoding("msgpack")
+        assert s._encoder is not None
+        # Encoder should produce msgpack bytes, not JSON
+        encoded = s._encoder.encode(V1Data(name="test", value=1))
+        # msgpack bytes should NOT start with '{' (JSON) — it's binary
+        assert encoded[0] != ord("{")
+        # Should be decodable as msgpack
+        decoded = msgspec.msgpack.decode(encoded, type=V1Data)
+        assert decoded.name == "test"
+
+    def test_chain_migration_msgpack_intermediate(self):
+        """Multi-step migration with msgpack encoding should work.
+
+        When the intermediate result is a Struct, _encode_intermediate
+        should use msgpack (not json) so the next step can decode it.
+        """
+
+        def migrate_v1_to_v2_mp(data: IO[bytes]) -> V2Data:
+            obj = msgspec.msgpack.decode(data.read(), type=V1Data)
+            return V2Data(name=obj.name, value=obj.value, tag="msgpack")
+
+        def migrate_v2_to_v3_mp(data: IO[bytes]) -> V3Data:
+            obj = msgspec.msgpack.decode(data.read(), type=V2Data)
+            return V3Data(name=obj.name, value=obj.value, tag=obj.tag, score=42.0)
+
+        s = (
+            Schema(V3Data, "v3")
+            .step("v1", migrate_v1_to_v2_mp)
+            .step("v2", migrate_v2_to_v3_mp)
+        )
+        s.set_encoding("msgpack")
+
+        data = self._make_msgpack_stream(V1Data(name="mp_chain", value=7))
+        result = s.migrate(data, "v1")
+        assert isinstance(result, V3Data)
+        assert result.name == "mp_chain"
+        assert result.tag == "msgpack"
+        assert result.score == 42.0
+
+    def test_chain_migration_msgpack_bytes_intermediate(self):
+        """Multi-step migration where fn returns raw bytes (msgpack)."""
+
+        def fn_v1_to_v2_bytes(data: IO[bytes]) -> bytes:
+            obj = msgspec.msgpack.decode(data.read(), type=V1Data)
+            v2 = V2Data(name=obj.name, value=obj.value, tag="raw_mp")
+            return msgspec.msgpack.encode(v2)
+
+        def migrate_v2_to_v3_mp(data: IO[bytes]) -> V3Data:
+            obj = msgspec.msgpack.decode(data.read(), type=V2Data)
+            return V3Data(name=obj.name, value=obj.value, tag=obj.tag, score=1.0)
+
+        s = (
+            Schema(V3Data, "v3")
+            .step("v1", fn_v1_to_v2_bytes, to="v2")
+            .step("v2", migrate_v2_to_v3_mp)
+        )
+        s.set_encoding("msgpack")
+
+        data = self._make_msgpack_stream(V1Data(name="raw", value=3))
+        result = s.migrate(data, "v1")
+        assert isinstance(result, V3Data)
+        assert result.name == "raw"
+        assert result.tag == "raw_mp"
+
+    def test_chain_migration_msgpack_pydantic_intermediate(self):
+        """Multi-step migration with Pydantic intermediate + msgpack."""
+        from pydantic import BaseModel
+
+        class V2Pydantic(BaseModel):
+            name: str
+            value: int
+            tag: str
+
+        def migrate_v1_to_v2_pydantic(data: IO[bytes]) -> V2Pydantic:
+            obj = msgspec.msgpack.decode(data.read(), type=V1Data)
+            return V2Pydantic(name=obj.name, value=obj.value, tag="pydantic_mp")
+
+        def migrate_v2_to_v3_mp(data: IO[bytes]) -> V3Data:
+            obj = msgspec.msgpack.decode(data.read(), type=V2Data)
+            return V3Data(name=obj.name, value=obj.value, tag=obj.tag, score=5.0)
+
+        s = (
+            Schema(V3Data, "v3")
+            .step("v1", migrate_v1_to_v2_pydantic, to="v2")
+            .step("v2", migrate_v2_to_v3_mp)
+        )
+        s.set_encoding("msgpack")
+
+        data = self._make_msgpack_stream(V1Data(name="pyd_mp", value=9))
+        result = s.migrate(data, "v1")
+        assert isinstance(result, V3Data)
+        assert result.name == "pyd_mp"
+        assert result.tag == "pydantic_mp"
+        assert result.score == 5.0
+
+    def test_default_encoding_stays_json(self):
+        """Without set_encoding, Schema still defaults to JSON."""
+        s = Schema(V3Data, "v3")
+        encoded = s._encoder.encode(V1Data(name="json", value=1))
+        # Should be valid JSON
+        decoded = msgspec.json.decode(encoded, type=V1Data)
+        assert decoded.name == "json"

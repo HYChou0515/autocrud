@@ -616,6 +616,10 @@ class ResourceManager(IResourceManager[T], Generic[T]):
         self._indexed_value_extractor = IndexedValueExtractor(self._indexed_fields)
         self._migration = self._schema if self._schema is not None else migration_obj
         self._encoding = encoding
+        # Sync encoding to Schema so multi-step migrations re-encode
+        # intermediate results in the correct format (json vs msgpack).
+        if self._schema is not None:
+            self._schema.set_encoding(encoding)
         self._data_serializer = MsgspecSerializer(
             encoding=encoding,
             resource_type=resource_type,

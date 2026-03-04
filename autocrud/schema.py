@@ -116,7 +116,31 @@ class Schema(Generic[T]):
         # Legacy migration wrapper (set by ``from_legacy``).
         self._legacy_migration: IMigration | None = None
         # Encoder for re-serializing intermediate migration results.
+        # Default is JSON; call ``set_encoding()`` to switch to msgpack.
         self._encoder = msgspec.json.Encoder()
+        self._encoding: str = "json"
+
+    # ------------------------------------------------------------------
+    # Encoding configuration
+    # ------------------------------------------------------------------
+
+    def set_encoding(self, encoding: str) -> None:
+        """Set the serialization format for intermediate migration results.
+
+        Parameters
+        ----------
+        encoding : str
+            ``"json"`` (default) or ``"msgpack"``.
+
+        This is called automatically by ``ResourceManager`` so that
+        multi-step migrations re-encode intermediate results in the
+        same format as the stored data.
+        """
+        self._encoding = encoding
+        if encoding == "msgpack":
+            self._encoder = msgspec.msgpack.Encoder()
+        else:
+            self._encoder = msgspec.json.Encoder()
 
     # ------------------------------------------------------------------
     # Fluent builders
@@ -437,6 +461,7 @@ class Schema(Generic[T]):
         schema._path_cache = {}
         schema._legacy_migration = migration
         schema._encoder = msgspec.json.Encoder()
+        schema._encoding = "json"
         return schema
 
     # ------------------------------------------------------------------
