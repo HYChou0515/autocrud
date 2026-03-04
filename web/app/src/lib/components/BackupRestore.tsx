@@ -23,7 +23,6 @@ import {
   Table,
   Badge,
   Divider,
-  Loader,
 } from '@mantine/core';
 import {
   IconDownload,
@@ -33,7 +32,12 @@ import {
   IconDatabaseExport,
   IconDatabaseImport,
 } from '@tabler/icons-react';
-import { backupApi, type OnDuplicate, type ImportResult, type GlobalImportResult } from '../../generated/api/backupApi';
+import {
+  backupApi,
+  type OnDuplicate,
+  type ImportResult,
+  type GlobalImportResult,
+} from '../../autocrud/generated/api/backupApi';
 
 interface BackupRestoreProps {
   resourceNames: string[];
@@ -64,7 +68,8 @@ export function BackupRestore({ resourceNames }: BackupRestoreProps) {
   // ── Per-model state ─────────────────────────────────────────────
   const [perModelFile, setPerModelFile] = useState<File | null>(null);
   const [perModelTarget, setPerModelTarget] = useState<string | null>(null);
-  const [perModelDuplicateStrategy, setPerModelDuplicateStrategy] = useState<OnDuplicate>('overwrite');
+  const [perModelDuplicateStrategy, setPerModelDuplicateStrategy] =
+    useState<OnDuplicate>('overwrite');
   const [perModelExporting, setPerModelExporting] = useState<string | null>(null);
   const [perModelImporting, setPerModelImporting] = useState(false);
   const [perModelResult, setPerModelResult] = useState<ImportResult | null>(null);
@@ -164,12 +169,22 @@ export function BackupRestore({ resourceNames }: BackupRestoreProps) {
 
         {/* Alerts */}
         {error && (
-          <Alert icon={<IconAlertCircle size={18} />} color="red" onClose={() => setError(null)} withCloseButton>
+          <Alert
+            icon={<IconAlertCircle size={18} />}
+            color="red"
+            onClose={() => setError(null)}
+            withCloseButton
+          >
             {error}
           </Alert>
         )}
         {successMessage && (
-          <Alert icon={<IconCheck size={18} />} color="green" onClose={() => setSuccessMessage(null)} withCloseButton>
+          <Alert
+            icon={<IconCheck size={18} />}
+            color="green"
+            onClose={() => setSuccessMessage(null)}
+            withCloseButton
+          >
             {successMessage}
           </Alert>
         )}
@@ -182,7 +197,8 @@ export function BackupRestore({ resourceNames }: BackupRestoreProps) {
               <Title order={4}>Global Backup</Title>
             </Group>
             <Text size="sm" c="dimmed">
-              Export all models into a single .acbak archive, or import a previously exported archive.
+              Export all models into a single .acbak archive, or import a previously exported
+              archive.
             </Text>
 
             <SimpleGrid cols={{ base: 1, sm: 2 }} spacing="md">
