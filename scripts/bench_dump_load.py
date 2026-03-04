@@ -14,14 +14,14 @@ Usage:
 
 from __future__ import annotations
 
+import cProfile
 import datetime as dt
 import io
 import os
+import pstats
 import sys
 import time
 import uuid
-import cProfile
-import pstats
 
 from msgspec import Struct
 
@@ -88,12 +88,14 @@ def seed(crud: AutoCRUD, n: int):
     mgr = crud.get_resource_manager(Item)
     with mgr.meta_provide("bench", dt.datetime(2025, 1, 1)):
         for i in range(n):
-            mgr.create(Item(
-                name=f"item_{i:06d}",
-                value=i,
-                description=f"Description for item {i}. " * 3,
-                tags=[f"tag_{j}" for j in range(5)],
-            ))
+            mgr.create(
+                Item(
+                    name=f"item_{i:06d}",
+                    value=i,
+                    description=f"Description for item {i}. " * 3,
+                    tags=[f"tag_{j}" for j in range(5)],
+                )
+            )
 
 
 def _format_size(nbytes: int) -> str:
@@ -109,6 +111,7 @@ def _cleanup_pg_tables(prefix: str):
     try:
         import psycopg2
         from psycopg2.extensions import ISOLATION_LEVEL_AUTOCOMMIT
+
         conn = psycopg2.connect(POSTGRES_DSN)
         conn.set_isolation_level(ISOLATION_LEVEL_AUTOCOMMIT)
         cur = conn.cursor()
@@ -130,6 +133,7 @@ def _cleanup_s3_prefix(prefix: str):
     """Remove all S3 objects under prefix."""
     try:
         import boto3
+
         s3 = boto3.client(
             "s3",
             endpoint_url=S3_ENDPOINT_URL,
@@ -151,9 +155,11 @@ def _ensure_infra():
     """Create PG database and S3 bucket if they don't exist."""
     # PG database
     try:
+        from urllib.parse import urlparse
+
         import psycopg2
         from psycopg2.extensions import ISOLATION_LEVEL_AUTOCOMMIT
-        from urllib.parse import urlparse
+
         parsed = urlparse(POSTGRES_DSN)
         db_name = parsed.path.lstrip("/")
         maintenance_dsn = POSTGRES_DSN.rsplit("/", 1)[0] + "/postgres"
@@ -173,6 +179,7 @@ def _ensure_infra():
     try:
         import boto3
         from botocore.exceptions import ClientError
+
         s3 = boto3.client(
             "s3",
             endpoint_url=S3_ENDPOINT_URL,
@@ -199,8 +206,10 @@ def bench_dump(crud: AutoCRUD, label: str) -> bytes:
     elapsed = time.perf_counter() - t0
     data = buf.getvalue()
     rate = int(len(data) / elapsed) if elapsed > 0 else 0
-    print(f"  DUMP {label}: {elapsed:.3f}s  "
-          f"({_format_size(len(data))}, {_format_size(rate)}/s)")
+    print(
+        f"  DUMP {label}: {elapsed:.3f}s  "
+        f"({_format_size(len(data))}, {_format_size(rate)}/s)"
+    )
     return data
 
 
@@ -212,8 +221,7 @@ def bench_load(data: bytes, label: str, prefix: str) -> float:
     elapsed = time.perf_counter() - t0
     total = sum(s.loaded for s in stats.values())
     rate = total / elapsed if elapsed > 0 else 0
-    print(f"  LOAD {label}: {elapsed:.3f}s  "
-          f"({total} records, {rate:.0f} rec/s)")
+    print(f"  LOAD {label}: {elapsed:.3f}s  ({total} records, {rate:.0f} rec/s)")
     return elapsed
 
 
@@ -226,8 +234,9 @@ def bench_load_memory(data: bytes, label: str) -> float:
     elapsed = time.perf_counter() - t0
     total = sum(s.loaded for s in stats.values())
     rate = total / elapsed if elapsed > 0 else 0
-    print(f"  LOAD {label} (memory): {elapsed:.3f}s  "
-          f"({total} records, {rate:.0f} rec/s)")
+    print(
+        f"  LOAD {label} (memory): {elapsed:.3f}s  ({total} records, {rate:.0f} rec/s)"
+    )
     return elapsed
 
 
@@ -261,14 +270,10 @@ def profile_dump(crud: AutoCRUD, n: int):
 def bench_load_breakdown(data: bytes, n: int, prefix: str):
     """Break down load into phases to show where time goes."""
     from autocrud.resource_manager.dump_format import (
+        BlobRecord,
         DumpStreamReader,
-        HeaderRecord,
-        ModelStartRecord,
-        ModelEndRecord,
         MetaRecord,
         RevisionRecord,
-        BlobRecord,
-        EofRecord,
     )
 
     # Phase 1: Deserialize archive stream
@@ -282,8 +287,10 @@ def bench_load_breakdown(data: bytes, n: int, prefix: str):
     rev_records = [r for r in records if isinstance(r, RevisionRecord)]
     blob_records = [r for r in records if isinstance(r, BlobRecord)]
     print(f"\n  --- Load Breakdown for {n} items ---")
-    print(f"  Records: {len(meta_records)} meta, {len(rev_records)} rev, "
-          f"{len(blob_records)} blob")
+    print(
+        f"  Records: {len(meta_records)} meta, {len(rev_records)} rev, "
+        f"{len(blob_records)} blob"
+    )
     print(f"  Phase 1 - Stream deserialize: {t_deserialize:.4f}s")
 
     # Phase 2: load_record per-type timing
@@ -295,21 +302,31 @@ def bench_load_breakdown(data: bytes, n: int, prefix: str):
     for rec in meta_records:
         mgr.load_record(rec, OnDuplicate.overwrite)
     t_meta = time.perf_counter() - t0
-    print(f"  Phase 2a - Load {len(meta_records)} MetaRecords: {t_meta:.4f}s  "
-          f"({len(meta_records)/t_meta:.0f} rec/s)" if t_meta > 0 else "")
+    print(
+        f"  Phase 2a - Load {len(meta_records)} MetaRecords: {t_meta:.4f}s  "
+        f"({len(meta_records) / t_meta:.0f} rec/s)"
+        if t_meta > 0
+        else ""
+    )
 
     # Time revision records
     t0 = time.perf_counter()
     for rec in rev_records:
         mgr.load_record(rec, OnDuplicate.overwrite)
     t_rev = time.perf_counter() - t0
-    print(f"  Phase 2b - Load {len(rev_records)} RevisionRecords: {t_rev:.4f}s  "
-          f"({len(rev_records)/t_rev:.0f} rec/s)" if t_rev > 0 else "")
+    print(
+        f"  Phase 2b - Load {len(rev_records)} RevisionRecords: {t_rev:.4f}s  "
+        f"({len(rev_records) / t_rev:.0f} rec/s)"
+        if t_rev > 0
+        else ""
+    )
 
     total = t_deserialize + t_meta + t_rev
     print(f"  TOTAL: {total:.4f}s")
-    print(f"  Breakdown: deserialize={t_deserialize/total*100:.1f}%, "
-          f"meta={t_meta/total*100:.1f}%, rev={t_rev/total*100:.1f}%")
+    print(
+        f"  Breakdown: deserialize={t_deserialize / total * 100:.1f}%, "
+        f"meta={t_meta / total * 100:.1f}%, rev={t_rev / total * 100:.1f}%"
+    )
 
     # Phase 3: Micro-breakdown of a single MetaRecord load
     # to see event-handler vs storage overhead
@@ -318,40 +335,47 @@ def bench_load_breakdown(data: bytes, n: int, prefix: str):
         import timeit
 
         # Decode only
-        t_decode = timeit.timeit(
-            lambda: mgr.meta_serializer.decode(rec.data), number=1000
-        ) / 1000
-        print(f"\n  --- Per-record micro-timing (avg of 1000) ---")
-        print(f"  MetaRecord decode: {t_decode*1e6:.1f} µs")
+        t_decode = (
+            timeit.timeit(lambda: mgr.meta_serializer.decode(rec.data), number=1000)
+            / 1000
+        )
+        print("\n  --- Per-record micro-timing (avg of 1000) ---")
+        print(f"  MetaRecord decode: {t_decode * 1e6:.1f} µs")
 
         # Storage exists check
         meta_obj = mgr.meta_serializer.decode(rec.data)
-        t_exists = timeit.timeit(
-            lambda: mgr.storage.exists(meta_obj.resource_id), number=1000
-        ) / 1000
-        print(f"  storage.exists(): {t_exists*1e6:.1f} µs")
+        t_exists = (
+            timeit.timeit(lambda: mgr.storage.exists(meta_obj.resource_id), number=1000)
+            / 1000
+        )
+        print(f"  storage.exists(): {t_exists * 1e6:.1f} µs")
 
         # Storage save_meta
-        t_save = timeit.timeit(
-            lambda: mgr.storage.save_meta(meta_obj), number=100
-        ) / 100
-        print(f"  storage.save_meta(): {t_save*1e6:.1f} µs")
+        t_save = (
+            timeit.timeit(lambda: mgr.storage.save_meta(meta_obj), number=100) / 100
+        )
+        print(f"  storage.save_meta(): {t_save * 1e6:.1f} µs")
 
     if rev_records:
         rec = rev_records[0]
         raw_res = mgr.resource_serializer.decode(rec.data)
 
-        t_decode = timeit.timeit(
-            lambda: mgr.resource_serializer.decode(rec.data), number=1000
-        ) / 1000
-        print(f"  RevisionRecord decode: {t_decode*1e6:.1f} µs")
+        t_decode = (
+            timeit.timeit(lambda: mgr.resource_serializer.decode(rec.data), number=1000)
+            / 1000
+        )
+        print(f"  RevisionRecord decode: {t_decode * 1e6:.1f} µs")
 
-        t_save_rev = timeit.timeit(
-            lambda: mgr.storage.save_revision(
-                raw_res.info, io.BytesIO(raw_res.raw_data)
-            ), number=100
-        ) / 100
-        print(f"  storage.save_revision(): {t_save_rev*1e6:.1f} µs")
+        t_save_rev = (
+            timeit.timeit(
+                lambda: mgr.storage.save_revision(
+                    raw_res.info, io.BytesIO(raw_res.raw_data)
+                ),
+                number=100,
+            )
+            / 100
+        )
+        print(f"  storage.save_revision(): {t_save_rev * 1e6:.1f} µs")
 
 
 def main():
@@ -367,12 +391,12 @@ def main():
     breakdown_prefix = f"bench_{run_id}_bd_"
 
     try:
-        print(f"\n{'='*60}")
+        print(f"\n{'=' * 60}")
         print(f"  PG+S3 Dump/Load Benchmark  N={n}")
         print(f"  PG: {POSTGRES_DSN}")
         print(f"  S3: {S3_ENDPOINT_URL}/{S3_BUCKET}")
         print(f"  run_id: {run_id}")
-        print(f"{'='*60}")
+        print(f"{'=' * 60}")
 
         # Seed into PG+S3
         crud = make_crud(src_prefix)
@@ -397,15 +421,15 @@ def main():
             profile_dump(crud, n)
             profile_load(data, n, prof_prefix)
             _cleanup_pg_tables(prof_prefix)
-            _cleanup_s3_prefix(f"item/data/")
+            _cleanup_s3_prefix("item/data/")
 
     finally:
         # Cleanup
-        print(f"\n  Cleaning up...")
+        print("\n  Cleaning up...")
         for p in [src_prefix, tgt_prefix, breakdown_prefix]:
             _cleanup_pg_tables(p)
-        _cleanup_s3_prefix(f"item/data/")
-        print(f"  Done.")
+        _cleanup_s3_prefix("item/data/")
+        print("  Done.")
 
 
 if __name__ == "__main__":

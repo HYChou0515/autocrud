@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from collections.abc import Generator
+from collections.abc import Generator, Iterable
 from concurrent.futures import ThreadPoolExecutor
 from contextlib import contextmanager
 from typing import IO
@@ -230,6 +230,63 @@ class S3ResourceStore(IResourceStore):
         self._create_resource_index(
             info.resource_id, info.revision_id, info.schema_version, str(info.uid)
         )
+
+    def save_many(
+        self,
+        items: "Iterable[tuple[RevisionInfo, bytes | IO[bytes]]]",
+        max_workers: int = 20,
+    ) -> None:
+        """Bulk save multiple revisions with concurrent S3 PUTs.
+
+        Each *item* is ``(info, data)`` where *data* is raw bytes **or**
+        an ``IO[bytes]`` file-like object.
+
+        All underlying ``put_object`` calls (3 per revision: data, info,
+        index) are submitted concurrently via a :class:`ThreadPoolExecutor`.
+        """
+
+        item_list = list(items)
+        if not item_list:
+            return
+
+        bucket = self.bucket
+        client = self.client
+        info_encode = self._info_serializer.encode
+
+        def _put_one(info: RevisionInfo, raw: bytes) -> None:
+            uid = str(info.uid)
+            # 1. data
+            client.put_object(
+                Bucket=bucket,
+                Key=self._get_raw_data_key(uid),
+                Body=raw,
+            )
+            # 2. info
+            client.put_object(
+                Bucket=bucket,
+                Key=self._get_raw_info_key(uid),
+                Body=info_encode(info),
+            )
+            # 3. resource index
+            resource_key = self._get_resource_key(
+                info.resource_id, info.revision_id, info.schema_version
+            )
+            client.put_object(
+                Bucket=bucket,
+                Key=resource_key,
+                Body=uid.encode("utf-8"),
+            )
+
+        # Materialise raw bytes once, outside the pool
+        prepared: list[tuple[RevisionInfo, bytes]] = []
+        for info, data in item_list:
+            raw = data.read() if hasattr(data, "read") else data
+            prepared.append((info, raw))
+
+        with ThreadPoolExecutor(max_workers=max_workers) as pool:
+            futs = [pool.submit(_put_one, info, raw) for info, raw in prepared]
+            for f in futs:
+                f.result()  # raise on first error
 
     def _save_raw_data(self, uid: str, data: IO[bytes]) -> None:
         """保存資源修訂版本的資料到 UID-based 位置"""

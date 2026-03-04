@@ -2087,7 +2087,10 @@ class AutoCRUD:
 
         current_model: str | None = None
         current_mgr = None
-        skipped_ids: set[str] = set()
+        # Per-model record buffers for bulk load
+        meta_buf: list[MetaRecord] = []
+        rev_buf: list[RevisionRecord] = []
+        blob_buf: list[BlobRecord] = []
 
         for record in reader:
             if isinstance(record, ModelStartRecord):
@@ -2097,45 +2100,45 @@ class AutoCRUD:
                         f"Model '{current_model}' not found in resource managers."
                     )
                 current_mgr = self.resource_managers[current_model]
-                skipped_ids = set()
+                meta_buf.clear()
+                rev_buf.clear()
+                blob_buf.clear()
                 if current_model not in stats:
                     stats[current_model] = LoadStats()
 
             elif isinstance(record, ModelEndRecord):
+                # Flush buffered records via bulk load
+                if current_mgr is not None and current_model is not None:
+                    st = current_mgr.load_records_bulk(
+                        meta_buf,
+                        rev_buf,
+                        blob_buf,
+                        on_duplicate=on_duplicate,
+                    )
+                    s = stats[current_model]
+                    s.loaded += st.loaded
+                    s.skipped += st.skipped
+                    s.total += st.total
                 current_model = None
                 current_mgr = None
-                skipped_ids = set()
+                meta_buf.clear()
+                rev_buf.clear()
+                blob_buf.clear()
 
             elif isinstance(record, MetaRecord):
                 if current_mgr is None:
                     raise ValueError("MetaRecord outside of model section.")
-                st = stats[current_model]
-                st.total += 1
-                try:
-                    loaded = current_mgr.load_record(record, on_duplicate)
-                except Exception:
-                    raise
-                if loaded:
-                    st.loaded += 1
-                else:
-                    st.skipped += 1
-                    # Track skipped resource_id so we skip its revisions too
-                    meta = current_mgr.meta_serializer.decode(record.data)
-                    skipped_ids.add(meta.resource_id)
+                meta_buf.append(record)
 
             elif isinstance(record, RevisionRecord):
                 if current_mgr is None:
                     raise ValueError("RevisionRecord outside of model section.")
-                # If the parent resource was skipped, skip its revisions
-                raw_res = current_mgr.resource_serializer.decode(record.data)
-                if raw_res.info.resource_id in skipped_ids:
-                    continue
-                current_mgr.load_record(record, on_duplicate)
+                rev_buf.append(record)
 
             elif isinstance(record, BlobRecord):
                 if current_mgr is None:
                     raise ValueError("BlobRecord outside of model section.")
-                current_mgr.load_record(record, on_duplicate)
+                blob_buf.append(record)
 
             elif isinstance(record, EofRecord):
                 break
