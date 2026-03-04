@@ -1,11 +1,13 @@
-from autocrud.crud.core import AutoCRUD
+from autocrud.crud.core import AutoCRUD, LoadStats
 from autocrud.resource_manager.pydantic_converter import struct_to_pydantic
 from autocrud.schema import Schema
 from autocrud.types import (
     DisplayName,
+    DuplicateResourceError,
     IConstraintChecker,
     IValidator,
     OnDelete,
+    OnDuplicate,
     Ref,
     RefRevision,
     RefType,
@@ -23,9 +25,12 @@ crud = AutoCRUD()
 __all__ = [
     "AutoCRUD",
     "DisplayName",
+    "DuplicateResourceError",
     "IConstraintChecker",
     "IValidator",
+    "LoadStats",
     "OnDelete",
+    "OnDuplicate",
     "Ref",
     "RefRevision",
     "RefType",

@@ -278,6 +278,13 @@ class PostgresMetaStore(ISlowMetaStore):
                 ],
             )
 
+    def values(self):
+        """Streaming bulk read — single ``SELECT data`` instead of N+1 queries."""
+        with self.stream_cursor() as cur:
+            cur.execute(f'SELECT data FROM "{self.table_name}"')
+            for row in cur:
+                yield self._serializer.decode(row["data"])
+
     def __getitem__(self, pk: str) -> ResourceMeta:
         # 直接從 PostgreSQL 查詢
         with self.stream_cursor() as cur:

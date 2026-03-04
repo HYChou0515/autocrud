@@ -69,6 +69,7 @@ from autocrud.types import (
     BeforeUpdate,
     Binary,
     CannotModifyResourceError,
+    DuplicateResourceError,
     EventContext,
     IConstraintChecker,
     IEventHandler,
@@ -77,6 +78,7 @@ from autocrud.types import (
     IndexableField,
     IResourceManager,
     IValidator,
+    OnDuplicate,
     OnFailureCreate,
     OnFailureDelete,
     OnFailureDump,
@@ -129,7 +131,6 @@ if TYPE_CHECKING:
     from autocrud.schema import Schema
     from autocrud.types import IPermissionChecker
 
-
 from autocrud.query import Query
 from autocrud.resource_manager.basic import (
     Ctx,
@@ -142,6 +143,11 @@ from autocrud.resource_manager.basic import (
 )
 from autocrud.resource_manager.binary_processor import BinaryProcessor
 from autocrud.resource_manager.data_converter import DataConverter
+from autocrud.resource_manager.dump_format import (
+    BlobRecord,
+    MetaRecord,
+    RevisionRecord,
+)
 from autocrud.types import PermissionResult
 from autocrud.util.naming import NameConverter, NamingFormat
 from autocrud.util.type_utils import (
@@ -267,6 +273,9 @@ class SimpleStorage(IStorage):
     def search(self, query: ResourceMetaSearchQuery) -> list[ResourceMeta]:
         return list(self._meta_store.iter_search(query))
 
+    def iter_search(self, query: ResourceMetaSearchQuery) -> Generator[ResourceMeta]:
+        yield from self._meta_store.iter_search(query)
+
     def count(self, query: ResourceMetaSearchQuery) -> int:
         return mit.ilen(self._meta_store.iter_search(query))
 
@@ -287,22 +296,88 @@ class SimpleStorage(IStorage):
         del self._meta_store[resource_id]
         self._resource_store.purge_resource(resource_id)
 
-    def dump_meta(self) -> Generator[ResourceMeta]:
-        yield from self._meta_store.values()
+    def dump_meta(
+        self, resource_ids: frozenset[str] | None = None
+    ) -> Generator[ResourceMeta]:
+        if resource_ids is None:
+            yield from self._meta_store.values()
+        else:
+            for rid in resource_ids:
+                if rid in self._meta_store:
+                    yield self._meta_store[rid]
 
-    def dump_resource(self) -> Generator[tuple[RevisionInfo, IO[bytes]]]:
-        for resource_id in self._resource_store.list_resources():
-            for revision_id in self._resource_store.list_revisions(resource_id):
-                for schema_version in self._resource_store.list_schema_versions(
-                    resource_id, revision_id
-                ):
-                    info = self._resource_store.get_revision_info(
-                        resource_id, revision_id, schema_version
-                    )
-                    with self._resource_store.get_data_bytes(
-                        resource_id, revision_id, schema_version
-                    ) as data:
-                        yield info, data
+    def dump_resource(
+        self, resource_id: str
+    ) -> Generator[tuple[RevisionInfo, IO[bytes]]]:
+        for revision_id in self._resource_store.list_revisions(resource_id):
+            for schema_version in self._resource_store.list_schema_versions(
+                resource_id, revision_id
+            ):
+                info = self._resource_store.get_revision_info(
+                    resource_id, revision_id, schema_version
+                )
+                with self._resource_store.get_data_bytes(
+                    resource_id, revision_id, schema_version
+                ) as data:
+                    yield info, data
+
+    def dump_resources_bulk(
+        self, resource_ids: frozenset[str] | None = None
+    ) -> dict[str, list[tuple[RevisionInfo, bytes]]] | None:
+        """Bulk pre-fetch all revisions (concurrent when supported).
+
+        Returns ``None`` when the underlying resource store does not
+        provide a bulk dump method, signalling the caller to fall back
+        to per-resource streaming via :meth:`dump_resource`.
+        """
+        if hasattr(self._resource_store, "dump_all_revisions"):
+            return self._resource_store.dump_all_revisions(
+                resource_ids=resource_ids,
+            )
+        return None
+
+    # ------------------------------------------------------------------
+    # Bulk load helpers
+    # ------------------------------------------------------------------
+
+    def save_metas_bulk(self, metas: list["ResourceMeta"]) -> None:
+        """Bulk save multiple metas.
+
+        Uses the underlying meta store's ``save_many`` when available
+        (e.g. PostgreSQL ``execute_batch``); otherwise falls back to
+        sequential ``__setitem__`` calls.
+        """
+        if not metas:
+            return
+        if hasattr(self._meta_store, "save_many"):
+            self._meta_store.save_many(metas)
+        else:
+            for m in metas:
+                self._meta_store[m.resource_id] = m
+
+    def save_revisions_bulk(self, items: list[tuple[RevisionInfo, bytes]]) -> None:
+        """Bulk save multiple revisions.
+
+        Uses the underlying resource store's ``save_many`` when
+        available (e.g. concurrent S3 PUTs); otherwise falls back to
+        sequential :meth:`save` calls.
+        """
+        if not items:
+            return
+        if hasattr(self._resource_store, "save_many"):
+            self._resource_store.save_many(items)
+        else:
+            for info, raw in items:
+                self._resource_store.save(info, io.BytesIO(raw))
+
+
+class _BlobEntry(Struct, kw_only=True):
+    """Internal struct for serialising blob data in dump streams."""
+
+    file_id: str
+    data: bytes
+    size: int
+    content_type: str
 
 
 class _BuildRevInfoCreate(Struct):
@@ -1633,43 +1708,311 @@ class ResourceManager(IResourceManager[T], Generic[T]):
     @execute_with_events(
         (BeforeDump, AfterDump, OnSuccessDump, OnFailureDump),
         "result",
+        inputs={"query": UNSET},
     )
-    def dump(self) -> Generator[tuple[str, IO[bytes]]]:
-        """
-        Dump all data and metadata.
+    def dump(
+        self,
+        query: Query | ResourceMetaSearchQuery | None = None,
+    ) -> Generator[
+        BlobRecord,
+        MetaRecord,
+        RevisionRecord,
+    ]:
+        """Dump metadata, revision data, and blobs as Record objects.
 
-        Returns:
-            generator: Yields tuples of (key, data_io).
+        Args:
+            query: Optional QB/search query.  When given, only matching
+                resources are exported.  ``None`` exports everything.
+
+        Yields:
+            :class:`MetaRecord`, :class:`RevisionRecord`, and
+            :class:`BlobRecord` instances.  For each resource the meta
+            record is yielded first, immediately followed by all its
+            revision records — no intermediate id collection needed.
+            Blob records are emitted at the end.
         """
-        for meta in self.storage.dump_meta():
-            yield (
-                f"meta/{meta.resource_id}",
-                io.BytesIO(self.meta_serializer.encode(meta)),
+
+        # Pre-hoist encoders
+        meta_encode = self.meta_serializer.encode
+        res_encode = self.resource_serializer.encode
+        has_blobs = self.blob_store is not None
+        collect = self._binary_processor.collect_file_ids if has_blobs else None
+        data_decode = self._data_serializer.decode if has_blobs else None
+        blob_file_ids: set[str] = set()
+
+        # Build meta iterator
+        if query is not None:
+            if isinstance(query, Query):
+                query = query.build()
+            q = msgspec.structs.replace(query, limit=2**31 - 1, offset=0)
+            metas = self.storage.iter_search(q)
+        else:
+            metas = self.storage.dump_meta(None)
+
+        # --- helpers shared by both fast/slow paths ---
+        def _make_rev_record(info, raw_data: bytes):
+            return RevisionRecord(
+                data=res_encode(RawResource(info=info, raw_data=raw_data))
             )
-        for info, data_io in self.storage.dump_resource():
-            raw_res = self.resource_serializer.encode(
-                RawResource(info=info, raw_data=data_io.read())
-            )
-            yield f"data/{info.uid}", io.BytesIO(raw_res)
+
+        def _collect_blobs(raw_data: bytes):
+            if collect is not None:
+                try:
+                    blob_file_ids.update(collect(data_decode(raw_data)))
+                except Exception:
+                    pass
+
+        # Try bulk pre-fetch (concurrent S3 downloads when supported)
+        has_bulk = hasattr(self.storage, "dump_resources_bulk")
+
+        if has_bulk:
+            # Fast path: materialise metas, pre-fetch all revision data
+            metas_list = list(metas)
+            rid_set = frozenset(m.resource_id for m in metas_list)
+            bulk = self.storage.dump_resources_bulk(resource_ids=rid_set)
+        else:
+            metas_list = None
+            bulk = None
+
+        if bulk is not None:
+            for meta in metas_list:
+                yield MetaRecord(data=meta_encode(meta))
+                for info, raw_data in bulk.get(meta.resource_id, []):
+                    yield _make_rev_record(info, raw_data)
+                    _collect_blobs(raw_data)
+        else:
+            # Slow path: stream one resource at a time (original behaviour)
+            it = metas_list if metas_list is not None else metas
+            dump_resource = self.storage.dump_resource
+            for meta in it:
+                yield MetaRecord(data=meta_encode(meta))
+                for info, data_io in dump_resource(meta.resource_id):
+                    raw_data = data_io.read()
+                    yield _make_rev_record(info, raw_data)
+                    _collect_blobs(raw_data)
+
+        # Blobs (must come after all revisions so file_ids are fully collected)
+        if has_blobs and blob_file_ids:
+            blob_store = self.blob_store
+            for file_id in blob_file_ids:
+                try:
+                    blob = blob_store.get(file_id)
+                    if blob.data is not UNSET:
+                        yield BlobRecord(
+                            file_id=file_id,
+                            blob_data=blob.data,
+                            size=blob.size
+                            if blob.size is not UNSET
+                            else len(blob.data),
+                            content_type=blob.content_type
+                            if blob.content_type is not UNSET
+                            else "",
+                        )
+                except Exception:
+                    pass
 
     @execute_with_events(
         (BeforeLoad, AfterLoad, OnSuccessLoad, OnFailureLoad),
         lambda _: {},
         inputs={"bio": UNSET},
     )
-    def load(self, key: str, bio: IO[bytes]) -> None:
-        """
-        Load a single data item (restoration).
+    def load(self, record_type: str, bio: IO[bytes]) -> None:
+        """Legacy load interface — load a single keyed item.
 
-        Arguments:
-            key (str): The key (from dump).
-            bio (IO[bytes]): The data stream.
+        .. deprecated::
+            Use :meth:`load_record` with :class:`DumpRecord` objects instead.
         """
-        if key.startswith("meta/"):
+        if record_type.startswith("meta/"):
             self.storage.save_meta(self.meta_serializer.decode(bio.read()))
-        elif key.startswith("data/"):
+        elif record_type.startswith("data/"):
             raw_res = self.resource_serializer.decode(bio.read())
             self.storage.save_revision(raw_res.info, io.BytesIO(raw_res.raw_data))
+        elif record_type.startswith("blob/"):
+            blob_entry = self._blob_serializer.decode(bio.read())
+            if self.blob_store is not None:
+                self.blob_store.put(
+                    blob_entry.data, content_type=blob_entry.content_type
+                )
+
+    def load_record(
+        self,
+        record: "MetaRecord | RevisionRecord | BlobRecord",
+        on_duplicate: "OnDuplicate" = OnDuplicate.raise_error,
+    ) -> bool:
+        """Load a single :class:`DumpRecord` into storage.
+
+        Args:
+            record: A :class:`MetaRecord`, :class:`RevisionRecord`, or
+                :class:`BlobRecord` instance (typically produced by
+                :meth:`dump`).
+            on_duplicate: Strategy when a resource with the same ID already
+                exists.  Only meaningful for :class:`MetaRecord`; revision
+                and blob records are always written.
+
+        Returns:
+            ``True`` if the record was stored, ``False`` if it was skipped
+            (only possible when *on_duplicate* is :attr:`OnDuplicate.skip`).
+
+        Raises:
+            DuplicateResourceError: When the resource already exists and
+                *on_duplicate* is :attr:`OnDuplicate.raise_error`.
+        """
+        record_type = type(record).__name__
+        ctx_kw = {
+            "user": self.user_or_unset,
+            "now": self.now_or_unset,
+            "resource_name": self.resource_name,
+            "record_type": record_type,
+        }
+        self._handle_event(BeforeLoad(**ctx_kw))
+        try:
+            result = self._load_record_impl(record, on_duplicate)
+            self._handle_event(OnSuccessLoad(**ctx_kw))
+            return result
+        except Exception as e:
+            self._handle_event(
+                OnFailureLoad(
+                    **ctx_kw,
+                    error=str(e),
+                    stack_trace=traceback.format_exc(),
+                )
+            )
+            raise
+        finally:
+            self._handle_event(AfterLoad(**ctx_kw))
+
+    def _load_record_impl(
+        self,
+        record: "MetaRecord | RevisionRecord | BlobRecord",
+        on_duplicate: "OnDuplicate",
+    ) -> bool:
+        """Internal implementation of load_record."""
+        if isinstance(record, MetaRecord):
+            meta = self.meta_serializer.decode(record.data)
+            exists = self.storage.exists(meta.resource_id)
+            if exists:
+                if on_duplicate is OnDuplicate.skip:
+                    return False
+                if on_duplicate is OnDuplicate.raise_error:
+                    raise DuplicateResourceError(meta.resource_id)
+                # OnDuplicate.overwrite — fall through and save
+            self.storage.save_meta(meta)
+            return True
+
+        if isinstance(record, RevisionRecord):
+            raw_res = self.resource_serializer.decode(record.data)
+            self.storage.save_revision(raw_res.info, io.BytesIO(raw_res.raw_data))
+            return True
+
+        if isinstance(record, BlobRecord):
+            if self.blob_store is not None:
+                self.blob_store.put(
+                    record.blob_data,
+                    content_type=record.content_type,
+                )
+            return True
+
+        return True
+
+    # ------------------------------------------------------------------
+    # Bulk load
+    # ------------------------------------------------------------------
+
+    def load_records_bulk(
+        self,
+        meta_records: "list[MetaRecord]",
+        revision_records: "list[RevisionRecord]",
+        blob_records: "list[BlobRecord]",
+        on_duplicate: "OnDuplicate" = OnDuplicate.raise_error,
+    ):
+        """Batch-load multiple dump records into storage.
+
+        Instead of writing each record one-by-one (which incurs per-call
+        overhead especially on remote backends like S3 / PostgreSQL), this
+        method:
+
+        1. Decodes **all** meta records, applies the *on_duplicate*
+           strategy, and bulk-saves them via
+           :meth:`SimpleStorage.save_metas_bulk`.
+        2. Decodes **all** revision records and bulk-saves them via
+           :meth:`SimpleStorage.save_revisions_bulk` (which may use
+           concurrent I/O on S3).
+        3. Writes blob records sequentially (typically few in number).
+
+        Events (Before/After/OnSuccess/OnFailure Load) are fired **once
+        per batch**, not per record.
+
+        Returns:
+            A :class:`LoadStats` instance with *loaded*, *skipped* and
+            *total* counts (counted per distinct ``resource_id``).
+        """
+        from autocrud.crud.core import LoadStats as _LoadStats
+
+        stats = _LoadStats()
+
+        # --- fire BeforeLoad once for the batch --------------------------
+        ctx_kw = {
+            "user": self.user_or_unset,
+            "now": self.now_or_unset,
+            "resource_name": self.resource_name,
+            "record_type": "bulk",
+        }
+        self._handle_event(BeforeLoad(**ctx_kw))
+
+        try:
+            # --- 1. decode + deduplicate metas ----------------------------
+            metas_to_save: list[ResourceMeta] = []
+            skipped_ids: set[str] = set()
+
+            for rec in meta_records:
+                meta = self.meta_serializer.decode(rec.data)
+                stats.total += 1
+                exists = self.storage.exists(meta.resource_id)
+                if exists:
+                    if on_duplicate is OnDuplicate.skip:
+                        stats.skipped += 1
+                        skipped_ids.add(meta.resource_id)
+                        continue
+                    if on_duplicate is OnDuplicate.raise_error:
+                        raise DuplicateResourceError(meta.resource_id)
+                metas_to_save.append(meta)
+                stats.loaded += 1
+
+            # bulk write metas
+            self.storage.save_metas_bulk(metas_to_save)
+
+            # --- 2. decode + bulk write revisions -------------------------
+            revisions_to_save: list[tuple[RevisionInfo, bytes]] = []
+            for rec in revision_records:
+                raw_res = self.resource_serializer.decode(rec.data)
+                if raw_res.info.resource_id in skipped_ids:
+                    continue
+                revisions_to_save.append((raw_res.info, raw_res.raw_data))
+
+            self.storage.save_revisions_bulk(revisions_to_save)
+
+            # --- 3. blob records (sequential — usually few) ---------------
+            if self.blob_store is not None:
+                for rec in blob_records:
+                    self.blob_store.put(
+                        rec.blob_data,
+                        content_type=rec.content_type,
+                    )
+
+            self._handle_event(OnSuccessLoad(**ctx_kw))
+        except Exception as e:
+            self._handle_event(
+                OnFailureLoad(
+                    **ctx_kw,
+                    error=str(e),
+                    stack_trace=traceback.format_exc(),
+                )
+            )
+            raise
+        finally:
+            self._handle_event(AfterLoad(**ctx_kw))
+
+        return stats
 
     @cached_property
     def meta_serializer(self):
@@ -1681,3 +2024,11 @@ class ResourceManager(IResourceManager[T], Generic[T]):
             encoding=Encoding.msgpack,
             resource_type=RawResource,
         )
+
+    @cached_property
+    def _blob_serializer(self):
+        return MsgspecSerializer(encoding=Encoding.msgpack, resource_type=_BlobEntry)
+
+    @cached_property
+    def _binary_processor(self) -> BinaryProcessor:
+        return BinaryProcessor(self._resource_type)

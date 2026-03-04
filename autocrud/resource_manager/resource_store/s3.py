@@ -1,4 +1,7 @@
-from collections.abc import Generator
+from __future__ import annotations
+
+from collections.abc import Generator, Iterable
+from concurrent.futures import ThreadPoolExecutor
 from contextlib import contextmanager
 from typing import IO
 
@@ -228,6 +231,63 @@ class S3ResourceStore(IResourceStore):
             info.resource_id, info.revision_id, info.schema_version, str(info.uid)
         )
 
+    def save_many(
+        self,
+        items: "Iterable[tuple[RevisionInfo, bytes | IO[bytes]]]",
+        max_workers: int = 20,
+    ) -> None:
+        """Bulk save multiple revisions with concurrent S3 PUTs.
+
+        Each *item* is ``(info, data)`` where *data* is raw bytes **or**
+        an ``IO[bytes]`` file-like object.
+
+        All underlying ``put_object`` calls (3 per revision: data, info,
+        index) are submitted concurrently via a :class:`ThreadPoolExecutor`.
+        """
+
+        item_list = list(items)
+        if not item_list:
+            return
+
+        bucket = self.bucket
+        client = self.client
+        info_encode = self._info_serializer.encode
+
+        def _put_one(info: RevisionInfo, raw: bytes) -> None:
+            uid = str(info.uid)
+            # 1. data
+            client.put_object(
+                Bucket=bucket,
+                Key=self._get_raw_data_key(uid),
+                Body=raw,
+            )
+            # 2. info
+            client.put_object(
+                Bucket=bucket,
+                Key=self._get_raw_info_key(uid),
+                Body=info_encode(info),
+            )
+            # 3. resource index
+            resource_key = self._get_resource_key(
+                info.resource_id, info.revision_id, info.schema_version
+            )
+            client.put_object(
+                Bucket=bucket,
+                Key=resource_key,
+                Body=uid.encode("utf-8"),
+            )
+
+        # Materialise raw bytes once, outside the pool
+        prepared: list[tuple[RevisionInfo, bytes]] = []
+        for info, data in item_list:
+            raw = data.read() if hasattr(data, "read") else data
+            prepared.append((info, raw))
+
+        with ThreadPoolExecutor(max_workers=max_workers) as pool:
+            futs = [pool.submit(_put_one, info, raw) for info, raw in prepared]
+            for f in futs:
+                f.result()  # raise on first error
+
     def _save_raw_data(self, uid: str, data: IO[bytes]) -> None:
         """保存資源修訂版本的資料到 UID-based 位置"""
         data_key = self._get_raw_data_key(uid)
@@ -268,3 +328,80 @@ class S3ResourceStore(IResourceStore):
                     Bucket=self.bucket,
                     Delete={"Objects": batch},
                 )
+
+    # ------------------------------------------------------------------
+    # Bulk dump helpers
+    # ------------------------------------------------------------------
+
+    def dump_all_revisions(
+        self,
+        resource_ids: frozenset[str] | None = None,
+        max_workers: int = 10,
+    ) -> dict[str, list[tuple[RevisionInfo, bytes]]]:
+        """Bulk-export all revisions with a single listing + concurrent fetches.
+
+        Instead of 6 serial S3 calls per resource (2 listings + 4 GETs),
+        this method:
+
+        1. Does **one** paginated ``ListObjectsV2`` on the *resource*
+           prefix to discover uid-index keys (which embed the
+           ``resource_id`` in their path, enabling early filtering).
+        2. Uses a :class:`ThreadPoolExecutor` to concurrently resolve
+           the uid values **and** fetch the corresponding info + data
+           objects.
+
+        Returns a dict mapping ``resource_id → [(RevisionInfo, raw_bytes)]``.
+        When *resource_ids* is given only those resources are fetched.
+        """
+        # Step 1: single listing of all uid-index keys under resource/
+        # Key format: {resource_prefix}{rid}/{rev}/{sv}/uid
+        uid_keys: list[str] = []
+        prefix_len = len(self._resource_prefix)
+        paginator = self.client.get_paginator("list_objects_v2")
+        for page in paginator.paginate(
+            Bucket=self.bucket,
+            Prefix=self._resource_prefix,
+        ):
+            for obj in page.get("Contents", []):
+                key = obj["Key"]
+                if not key.endswith("/uid"):
+                    continue
+                # Early filter by resource_id (embedded in path)
+                if resource_ids is not None:
+                    parts = key[prefix_len:].split("/", 1)
+                    if parts[0] not in resource_ids:
+                        continue
+                uid_keys.append(key)
+
+        if not uid_keys:
+            return {}
+
+        # Step 2: concurrent resolve uid + fetch info + data
+        bucket = self.bucket
+        client = self.client
+        info_decode = self._info_serializer.decode
+        get_raw_info_key = self._get_raw_info_key
+        get_raw_data_key = self._get_raw_data_key
+
+        def _fetch_one(uid_key: str) -> tuple[RevisionInfo, bytes]:
+            # Resolve uid value from index object
+            uid = (
+                client.get_object(Bucket=bucket, Key=uid_key)["Body"]
+                .read()
+                .decode("utf-8")
+            )
+            # Fetch info + data using resolved uid
+            info_resp = client.get_object(Bucket=bucket, Key=get_raw_info_key(uid))
+            data_resp = client.get_object(Bucket=bucket, Key=get_raw_data_key(uid))
+            info = info_decode(info_resp["Body"].read())
+            data = data_resp["Body"].read()
+            return info, data
+
+        with ThreadPoolExecutor(max_workers=max_workers) as pool:
+            fetched = list(pool.map(_fetch_one, uid_keys))
+
+        # Step 3: group by resource_id
+        result: dict[str, list[tuple[RevisionInfo, bytes]]] = {}
+        for info, data in fetched:
+            result.setdefault(info.resource_id, []).append((info, data))
+        return result

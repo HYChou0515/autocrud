@@ -142,7 +142,7 @@ gen-app: build-gen
 		exit 1; \
 	fi
 	@echo "📂 從模板創建新的 app..."
-	cd generator && node dist/cli.js init app --dir .. $(INIT_TEST_FLAG)
+	cd generator && node dist/cli.js init app  --mantine 8 --dir .. $(INIT_TEST_FLAG)
 	@echo "📦 安裝 app 依賴..."
 	cd app && pnpm install
 	@echo "🔧 從 AutoCRUD 後端生成代碼... ($(API_URL))"

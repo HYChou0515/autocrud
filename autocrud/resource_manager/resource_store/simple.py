@@ -1,5 +1,5 @@
 import io
-from collections.abc import Generator
+from collections.abc import Generator, Iterable
 from contextlib import contextmanager
 from pathlib import Path
 from typing import IO
@@ -83,6 +83,20 @@ class MemoryResourceStore(IResourceStore):
         ] = info.uid
         self._raw_data_store[info.uid] = data.read()
         self._raw_info_store[info.uid] = self._info_serializer.encode(info)
+
+    def save_many(self, items: Iterable[tuple[RevisionInfo, bytes | DataIO]]) -> None:
+        """Bulk save multiple revisions.
+
+        Each *item* is ``(info, data)`` where *data* is raw bytes **or** an
+        ``IO[bytes]`` file-like object (only ``read()`` is called).
+        """
+        for info, data in items:
+            raw = data.read() if hasattr(data, "read") else data
+            self._store.setdefault(info.resource_id, {}).setdefault(
+                info.revision_id, {}
+            )[info.schema_version] = info.uid
+            self._raw_data_store[info.uid] = raw
+            self._raw_info_store[info.uid] = self._info_serializer.encode(info)
 
     def purge_resource(self, resource_id: str) -> None:
         """Hard-delete all revision data for a resource."""
