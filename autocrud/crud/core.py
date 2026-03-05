@@ -229,104 +229,68 @@ class _RefIntegrityHandler(IEventHandler):
 
 
 class AutoCRUD:
-    """AutoCRUD - Automatic CRUD API Generator for FastAPI
+    """High-level entry point for registering resource models and generating CRUD routes.
 
-    AutoCRUD is the main class that automatically generates complete CRUD (Create, Read, Update, Delete)
-    APIs for your data models. It provides a powerful, flexible, and easy-to-use system for building
-    RESTful APIs with built-in version control, soft deletion, and comprehensive querying capabilities.
+    AutoCRUD manages a set of per-resource `ResourceManager`s and applies a set of
+    route templates to a FastAPI `APIRouter` (or `FastAPI` app) to generate endpoints.
 
-    Key Features:
-    - **Automatic API Generation**: Generates complete CRUD endpoints for any data model
-    - **Version Control**: Built-in revision tracking for all resources with full history
-    - **Soft Deletion**: Resources are marked as deleted rather than permanently removed
-    - **Flexible Storage**: Support for both memory and disk-based storage backends
-    - **Model Agnostic**: Works with msgspec Structs, and other data types
-    - **Customizable Routes**: Extensible route template system for custom endpoints
-    - **Data Migration**: Built-in support for schema evolution and data migration
-    - **Comprehensive Querying**: Advanced filtering, sorting, and pagination capabilities
+    Typical setup:
 
-    Basic Usage:
     ```python
     from fastapi import FastAPI
-    from autocrud import AutoCRUD
+    from autocrud import crud  # global instance
 
-    # Create AutoCRUD instance
-    autocrud = AutoCRUD()
-
-    # Add your model
-    autocrud.add_model(User)
-
-    # Apply to FastAPI router
     app = FastAPI()
-    autocrud.apply(app)
+
+    # configure once at startup (optional)
+    crud.configure(model_naming="kebab")
+
+    # register models/schemas
+    crud.add_model(User)
+    crud.add_model(Post)
+
+    # generate routes
+    crud.apply(app)
     ```
 
-    This generates the following endpoints for your User model:
-    - `POST /users` - Create a new user
-    - `GET /users/data` - List all users (data only)
-    - `GET /users/meta` - List all users (metadata only)
-    - `GET /users/revision-info` - List all users (revision info only)
-    - `GET /users/full` - List all users (complete information)
-    - `GET /users/{id}/data` - Get specific user data
-    - `GET /users/{id}/meta` - Get specific user metadata
-    - `GET /users/{id}/revision-info` - Get specific user revision info
-    - `GET /users/{id}/full` - Get complete user information
-    - `GET /users/{id}/revision-list` - Get user revision history
-    - `PUT /users/{id}` - Update user (full replacement)
-    - `PATCH /users/{id}` - Partially update user (JSON Patch)
-    - `DELETE /users/{id}` - Soft delete user
-    - `POST /users/{id}/restore` - Restore deleted user
-    - `POST /users/{id}/switch/{revision_id}` - Switch to specific revision
-
-    Advanced Features:
-    - **Custom Storage**: Use disk-based storage for persistence
-    - **Data Migration**: Handle schema changes with migration support
-    - **Custom Naming**: Control URL patterns and resource names
-    - **Route Customization**: Add custom endpoints with route templates
-    - **Backup/Restore**: Export and import complete datasets
+    Notes:
+    - Call `configure()` / `add_model()` during application startup, before serving requests.
+    - `apply()` installs route templates, custom create actions, ref routes, and backup routes.
+    - `openapi()` customizes OpenAPI schema to include AutoCRUD-specific schemas and extensions.
 
     Args:
-        model_naming: Controls how model names are converted to URL paths.
-                     Options: "same", "pascal", "camel", "snake", "kebab" (default)
-                     or a custom function that takes a type and returns a string.
-        route_templates: Custom list of route templates to use instead of defaults,
-                        or a dictionary of template classes to kwargs for configuring defaults.
-                        If None, uses the standard CRUD route templates.
+        model_naming:
+            How model names are converted to resource names (URL paths). Either one of:
+            `"same"`, `"pascal"`, `"camel"`, `"snake"`, `"kebab"`, or a callable `(type) -> str`.
+        route_templates:
+            Route templates to apply. When `None` or a `dict`, default templates are used and
+            can be configured via `{TemplateClass: kwargs}`.
+        storage_factory:
+            Default storage factory for models that don't specify `storage`.
+        message_queue_factory:
+            Default message queue factory used for Job models (when enabled).
+        admin:
+            If provided and `permission_checker` is not set, enables RBAC with `admin` as root user.
+        permission_checker:
+            Permission checker used by default for models that don't override it.
+        dependency_provider:
+            Dependency injection provider passed to route templates (when using defaults).
+        event_handlers:
+            Global event handlers used by default for models that don't override it.
+        encoding:
+            Default encoding for stored payloads (e.g. json/msgpack).
+        default_user:
+            Default user (or factory) used when user is not specified.
+        default_now:
+            Default timestamp function used when time is not specified.
 
-    Example with Advanced Features:
-    ```python
-    from autocrud import AutoCRUD, DiskStorageFactory
-    from pathlib import Path
-
-    # Use disk storage for persistence
-    storage_factory = DiskStorageFactory(Path("./data"))
-
-    # Custom naming (convert CamelCase to snake_case)
-    autocrud = AutoCRUD(model_naming="snake")
-
-    # Add model with custom configuration
-    autocrud.add_model(
-        User,
-        name="people",  # Custom URL path
-        storage_factory=storage_factory,
-        id_generator=lambda: f"user_{uuid.uuid4()}",  # Custom ID generation
-    )
-    ```
-
-    Thread Safety:
-    The AutoCRUD instance is thread-safe for read operations, but adding models
-    should be done during application startup before handling requests.
-
-    Performance:
-    - Memory storage: Suitable for development and small datasets
-    - Disk storage: Recommended for production with large datasets
-    - All operations are optimized for typical CRUD workloads
-    - Built-in pagination prevents memory issues with large result sets
-
-    See Also:
-    - IStorageFactory: For implementing custom storage backends
-    - IRouteTemplate: For creating custom endpoint templates
-    - IResourceManager: For advanced programmatic resource management
+    See also:
+        - `Schema`: declare schema/validation/migration for a resource.
+        - `Ref`, `RefRevision`: reference types used across APIs and OpenAPI schema.
+        - `dump()`, `load()`: export/import utilities for backups.
+        - Routes: docs/howto/routes.md
+        - Behavior & lifecycle: docs/reference/behavior.md
+        - Performance notes: docs/guides/performance.md
     """
 
     def __init__(
@@ -796,70 +760,121 @@ class AutoCRUD:
         validator: "Callable[[T], None] | IValidator | type | None" = None,
         constraint_checkers: "Sequence[IConstraintChecker | Callable[[ResourceManager], IConstraintChecker]] | None" = None,
     ) -> None:
-        """Add a data model to AutoCRUD and configure its API endpoints.
+        """Register a resource model (or `Schema`) and create its `ResourceManager`.
 
-        This is the main method for registering models with AutoCRUD. Once added,
-        the model will have a complete set of CRUD API endpoints generated automatically.
+        After a model is registered, calling `apply(router)` will generate FastAPI routes for it
+        using the configured route templates.
+
+        You can register either:
+        - a plain model type: `add_model(User)`
+        - a `Schema`: `add_model(Schema(User, version=...))`
 
         Args:
-            model: The data model class (msgspec Struct, dataclasses, TypedDict).
-            name: Custom resource name for URLs. If None, derived from model class name.
-            storage_factory: Custom storage backend. If None, uses in-memory storage.
-            id_generator: Custom function for generating resource IDs. If None, uses UUID4.
-            migration: Migration handler for schema evolution. Used with disk storage.
+            model:
+                Resource type or `Schema`. Supported types depend on your project setup, commonly
+                msgspec `Struct`. Pydantic `BaseModel` is supported and will be converted to a struct.
+            name:
+                Resource name (used as route base path). If `None`, derived from the model type and
+                `model_naming`.
+            id_generator:
+                Custom ID generator for created resources. If `None`, the default generator is used
+                by `ResourceManager`.
+            storage:
+                Storage instance for this resource. If `None`, a storage is created via
+                `self.storage_factory.build(model_name)`.
+            migration:
+                Schema/migration configuration.
+                - If `model` is a `Schema`, `migration` must be `None`.
+                - If `migration` is a `Schema`, it is used as the resolved schema for this model.
+                - Passing `IMigration` is supported but **deprecated** (converted via `Schema.from_legacy`).
+            indexed_fields:
+                Fields to index for search/query. Each element can be:
+                - `IndexableField`
+                - `str` (field path)
+                - `(field_path: str, field_type: type)` tuple
+            event_handlers:
+                Per-model event handlers. If `self.event_handlers` is configured globally, it takes
+                precedence; otherwise these handlers are used.
+            permission_checker:
+                Per-model permission checker. If `self.permission_checker` is configured globally, it
+                takes precedence; otherwise this checker is used.
+            encoding:
+                Encoding for stored payloads. If `None`, uses `self.default_encoding`.
+            default_status:
+                Default revision status for this resource (if supported by the revision model).
+            default_user:
+                Per-model default user (or factory). If `UNSET`, falls back to `self.default_user`
+                when configured.
+            default_now:
+                Per-model default timestamp function. If `UNSET`, falls back to `self.default_now`
+                when configured.
+            message_queue_factory:
+                Overrides message queue behavior for Job models:
+                - `UNSET`: use `self.message_queue_factory`
+                - `None`: explicitly disable queue
+                - factory instance: use the provided factory
+            job_handler:
+                Handler for Job resources (when the model is detected as a Job subclass).
+            job_handler_factory:
+                Lazy factory producing a job handler. If provided, it is wrapped as a lazy handler.
+            validator:
+                Validation hook(s). When the model is a Pydantic `BaseModel` and no validator is set
+                on the resolved schema, the Pydantic model is used as validator by default.
+            constraint_checkers:
+                Extra constraint checkers for this resource. Each element can be an instance or a
+                factory callable that receives the `ResourceManager` and returns a checker.
 
-        Examples:
-            Basic usage:
-            ```python
-            autocrud.add_model(User)  # Creates /users endpoints
-            ```
-
-            With custom name:
-            ```python
-            autocrud.add_model(User, name="people")  # Creates /people endpoints
-            ```
-
-            With persistent storage:
-            ```python
-            storage = DiskStorageFactory("./data")
-            autocrud.add_model(User, storage_factory=storage)
-            ```
-
-            With custom ID generation:
-            ```python
-            autocrud.add_model(User, id_generator=lambda: f"user_{int(time.time())}")
-            ```
-
-            With migration support:
-            ```python
-            class UserMigration(IMigration):
-                schema_version = "v2"
-
-                def migrate(self, data, old_version):
-                    # Handle schema changes
-                    return updated_data
-
-
-            autocrud.add_model(User, migration=UserMigration())
-            ```
-
-        Generated Endpoints:
-            For a model named "User", this creates:
-            - POST /users - Create new user
-            - GET /users/data - List users (data only)
-            - GET /users/meta - List users (metadata only)
-            - GET /users/{id}/data - Get user data
-            - GET /users/{id}/full - Get complete user info
-            - PUT /users/{id} - Update user
-            - DELETE /users/{id} - Soft delete user
-            - And many more...
+        Behavior:
+            - If `model` is a `Schema`, it must declare `resource_type`; schema-level migration/validator
+            should be provided on the `Schema` itself.
+            - If the model is a Pydantic type, it is converted to a struct for storage and the Pydantic
+            model can be used for validation.
+            - Ref relationships are collected from `Ref` / `RefRevision` annotations for later route and
+            referential integrity setup.
+            - Ref fields (resource_id refs only) are auto-indexed for searchability.
+            - For Job models with a message queue enabled, `status` and `retries` are auto-indexed
+            (if not already present in `indexed_fields`).
 
         Raises:
-            ValueError: If model is invalid or conflicts with existing models.
+            ValueError:
+                - if the resource name already exists
+                - if `Schema` is passed as first argument but `migration`/`validator` is also provided
+                - if `Ref(..., on_delete=set_null)` is used on a non-optional field
+            TypeError:
+                - if `indexed_fields` contains an invalid item
 
-        Note:
-            Models should be added during application startup before handling requests.
-            The order of adding models doesn't affect the generated APIs.
+        Examples:
+            Basic registration:
+
+            ```python
+            from autocrud import AutoCRUD
+
+            autocrud = AutoCRUD()
+            autocrud.add_model(User)
+            ```
+
+            Custom resource name:
+
+            ```python
+            autocrud.add_model(User, name="people")
+            ```
+
+            Provide explicit storage:
+
+            ```python
+            # storage is per-model; if you want a default for all models, pass `storage_factory=...`
+            # when constructing AutoCRUD / calling configure().
+            model_name = "people"
+            st = autocrud.storage_factory.build(model_name)
+            autocrud.add_model(User, name=model_name, storage=st)
+            ```
+
+            Using Schema as the first argument:
+
+            ```python
+            schema = Schema(User, version="v1")
+            autocrud.add_model(schema)
+            ```
         """
         _indexed_fields: list[IndexableField] = []
         for field in indexed_fields or []:
