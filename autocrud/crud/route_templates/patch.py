@@ -114,6 +114,7 @@ class PatchRouteTemplate(BaseRouteTemplate):
 
                 **Error Responses:**
                 - `422`: Validation error (schema/type validation or custom validator)
+                - `409`: Conflict - unique constraint violation
                 - `400`: Bad request (invalid patch operations, resource not found, permission denied, or other patch failures)
                 """
             ),

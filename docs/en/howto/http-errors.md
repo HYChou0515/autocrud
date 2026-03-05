@@ -15,7 +15,7 @@ This page documents how AutoCRUD route templates map internal exceptions to HTTP
 | GET | generic read failure | resource / revision missing | — | — |
 | POST | generic create error | — | unique constraint | validation |
 | PUT | generic update error | — | unique constraint | validation |
-| PATCH | generic patch failure (includes unique) | — | — | validation |
+| PATCH | generic patch failure | — | unique constraint | validation |
 
 ---
 
@@ -219,8 +219,15 @@ Most runtime errors are normalized to `400`, including:
 * JSON Patch failures
 * invalid patch paths
 * failed `test` operations
-* unique constraint violations
 * any other runtime exceptions
+
+### 409 Conflict
+
+Unique constraint violation:
+
+* `UniqueConstraintError`
+
+Response body format is identical to the Create and Update routes.
 
 ### 422 Unprocessable Entity
 
@@ -231,9 +238,9 @@ Validation errors:
 
 ### Notes
 
-This route currently **does not return 404 or 409**.
+This route currently **does not return 404**.
 
-All runtime errors except validation are normalized to `400`.
+All runtime errors except validation and unique constraint violations are normalized to `400`.
 
 Additionally:
 
