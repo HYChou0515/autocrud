@@ -306,22 +306,28 @@ def extract_display_name(struct_type: type) -> str | None:
 
 
 class Unique:
-    """Annotation marker that enforces uniqueness of a field across all resources
-    of the same type.
+    """Annotation marker that enforces uniqueness of a field.
 
-    Use with ``Annotated`` to annotate a field that must be unique.
-    AutoCRUD will automatically index the field and check uniqueness
-    on every ``create()``, ``update()``, and ``modify()`` call.
+    Use with ``Annotated`` to mark a field as unique among **non-deleted**
+    resources of the same type.
+
+    Semantics:
+    - Soft-deleted resources are ignored.
+    - ``None`` values are ignored (``None`` may repeat).
+
+    AutoCRUD ensures the field is indexed and checks uniqueness on write
+    operations (create/update/modify/patch) when the unique-relevant value
+    changes.
 
     Usage::
 
         class User(Struct):
             username: Annotated[str, Unique()]
             email: Annotated[str, Unique()]
-            age: int = 0
+            nickname: Annotated[str | None, Unique()] = None  # None can repeat
 
     Raises:
-        :exc:`UniqueConstraintError`: When a duplicate value is detected.
+        :exc:`UniqueConstraintError`: When a duplicate non-None value is detected.
     """
 
     __slots__ = ()
@@ -2297,7 +2303,7 @@ class PermissionDeniedError(Exception):
 
 
 class ResourceNotFoundError(Exception):
-    pass
+    """Base class for resource/revision not found errors."""
 
 
 class RevisionNotFoundError(ResourceNotFoundError):
@@ -2384,8 +2390,8 @@ class ValidationError(ValueError):
 class IValidator(ABC):
     """Interface for custom data validators.
 
-    Implement this to create reusable validators that can be
-    attached to ResourceManager via ``add_model(validator=...)``.
+    Implement this to create reusable validators that can be attached via
+    `add_model(validator=...)` or `Schema(..., validator=...)`.
 
     Example::
 
@@ -2394,7 +2400,6 @@ class IValidator(ABC):
                 if data.price < 0:
                     raise ValueError("Price must be non-negative")
 
-
         crud.add_model(Item, validator=PriceValidator())
     """
 
@@ -2402,12 +2407,10 @@ class IValidator(ABC):
     def validate(self, data: Any) -> None:
         """Validate the data.
 
-        Args:
-            data: The resource data (a msgspec Struct instance).
-
         Raises:
-            ValueError: If validation fails. The error will be
-                wrapped in a ``ValidationError``.
+            ValidationError:
+                If validation fails. Raising `ValueError` is allowed and will be
+                wrapped as `ValidationError` by AutoCRUD.
         """
 
 

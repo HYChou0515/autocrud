@@ -111,8 +111,9 @@ class PatchRouteTemplate(BaseRouteTemplate):
                 - Response includes updated revision information
 
                 **Error Responses:**
-                - `400`: Bad request - Invalid patch operations or resource not found
-                - `404`: Resource does not exist""",
+                - `422`: Validation error (schema/type validation or custom validator)
+                - `400`: Bad request (invalid patch operations, resource not found, permission denied, or other patch failures)
+                """
             ),
         )
         async def patch_resource(

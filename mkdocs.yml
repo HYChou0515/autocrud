@@ -77,7 +77,7 @@ theme:
 plugins:
   - search:
       lang:
-        - zh
+        - en
         # - en
       separator: '[\s\-\.]+'
   
@@ -94,6 +94,7 @@ plugins:
             show_source: true
             show_symbol_type_heading: true
             show_symbol_type_toc: true
+            show_signature_annotations: true
             signature_crossrefs: true
             separate_signature: true
             merge_init_into_class: false
@@ -145,45 +146,42 @@ plugins:
           #     - reference/permission.md
           #     - reference/message-queue.md
           #     - reference/query.md
-        - locale: zh
+        - locale: en
+          name: English
           default: true
-          name: 繁體中文
-          build: true
-          site_name: AutoCRUD
-          site_description: 模型驅動的自動化 FastAPI：內建版本控制、權限與搜尋
-          theme:
-            language: zh-TW
           nav:
-            - 首頁: index.md
-            - 開始使用:
-              - 安裝: getting-started/installation.md
-              - 快速開始: getting-started/quickstart.md
-              - 第一個 API: getting-started/first-api.md
-              - 調整 API Routes: getting-started/customize-routes.md
-            - 核心概念:
-              - 架構概覽: core-concepts/architecture.md
-              - AutoCRUD 路由: core-concepts/auto-routes.md
-              - ResourceManager: core-concepts/resource-manager.md
-              - Query Builder: core-concepts/query-builder.md
-              - S3 + SQLite MetaStore: storage/s3-sqlite-meta-store.md
-              - S3 + SQLite 鎖定機制: storage/s3-sqlite-locking.md
-            - 儲存設定:
-              - 快速上手: storage/index.md
-              - S3 backend: storage/s3-backend.md
-              - PG+S3 backend: storage/postgres-s3-backend.md
-            - 範例:
-              - 概覽: examples/index.md
-            - Benchmarks:
-              - 效能測試: benchmarks/index.md
-              - MetaStore 效能: benchmarks/metastore.md
-              - ResourceStore 效能: benchmarks/resource_store.md
-            - API 參考:
-              - reference/autocrud.md
-              - reference/resource-manager.md
-              - reference/types.md
-              - reference/permission.md
-              - reference/message-queue.md
-              - reference/query.md
+            - Home: index.md
+            - Quickstart: quickstart.md
+            - Concepts:
+              - concepts/why-autocrud.md
+              - concepts/overview.md
+              - concepts/core-concepts.md
+              - concepts/architecture.md
+              - concepts/data-model.md
+              - concepts/schema.md
+              - concepts/resource-lifecycle.md
+              - concepts/search-indexing.md
+              - concepts/query-system.md
+              - concepts/refs.md
+              - concepts/validation.md
+              - concepts/route-templates.md
+            - How-to:
+                - howto/api-conventions.md
+                - howto/routes.md
+                - howto/relationships.md
+                - howto/constraints.md
+                - howto/migrations.md
+                - howto/errors.md
+                - howto/http-errors.md
+
+            - Guides:
+                - guides/storage.md
+                - guides/performance.md
+
+            - Reference:
+                - reference/python_api.md
+                - reference/behavior.md
+                - reference/constraints.md
             
 # Extensions
 markdown_extensions:
