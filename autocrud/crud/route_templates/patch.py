@@ -10,12 +10,14 @@ from autocrud.crud.route_templates.basic import (
     BaseRouteTemplate,
     MsgspecResponse,
     jsonschema_to_json_schema_extra,
+    raise_unique_conflict,
     struct_to_responses_type,
 )
 from autocrud.types import (
     IResourceManager,
     RevisionInfo,
     RevisionStatus,
+    UniqueConstraintError,
     ValidationError,
 )
 
@@ -112,6 +114,7 @@ class PatchRouteTemplate(BaseRouteTemplate):
 
                 **Error Responses:**
                 - `422`: Validation error (schema/type validation or custom validator)
+                - `409`: Conflict - unique constraint violation
                 - `400`: Bad request (invalid patch operations, resource not found, permission denied, or other patch failures)
                 """
             ),
@@ -150,5 +153,7 @@ class PatchRouteTemplate(BaseRouteTemplate):
                 return MsgspecResponse(info)
             except (msgspec.ValidationError, ValidationError) as e:
                 raise HTTPException(status_code=422, detail=str(e))
+            except UniqueConstraintError as e:
+                raise_unique_conflict(e)
             except Exception as e:
                 raise HTTPException(status_code=400, detail=str(e))

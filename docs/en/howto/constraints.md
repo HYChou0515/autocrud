@@ -32,8 +32,12 @@ If a duplicate is detected, AutoCRUD raises `UniqueConstraintError`.
 Uniqueness is checked on write operations where unique-relevant data changes,
 such as:
 
-* create
-* update / modify / patch (when the unique fields actually change)
+* create (`POST`) → returns `409 Conflict`
+* update / modify (`PUT`) → returns `409 Conflict`
+* patch (`PATCH`) → returns `409 Conflict`
+
+All write endpoints return a consistent `409 Conflict` response when a unique
+constraint is violated.
 
 ## How it works (implementation notes)
 

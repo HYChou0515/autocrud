@@ -2400,6 +2400,7 @@ class IValidator(ABC):
                 if data.price < 0:
                     raise ValueError("Price must be non-negative")
 
+
         crud.add_model(Item, validator=PriceValidator())
     """
 
