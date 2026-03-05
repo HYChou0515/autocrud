@@ -350,11 +350,7 @@ export function ResourceDetail<T extends Record<string, any>>({
             )}
             {!isViewingHistorical && meta.is_deleted && (
               <>
-                <Button
-                  color="green"
-                  leftSection={<IconRestore size={16} />}
-                  onClick={handleRestore}
-                >
+                <Button color="green" leftSection={<IconRestore size={16} />} onClick={handleRestore}>
                   Restore
                 </Button>
                 <Button
