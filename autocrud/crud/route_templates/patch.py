@@ -10,15 +10,13 @@ from autocrud.crud.route_templates.basic import (
     BaseRouteTemplate,
     MsgspecResponse,
     jsonschema_to_json_schema_extra,
-    raise_unique_conflict,
     struct_to_responses_type,
 )
+from autocrud.crud.route_templates.exception_handlers import to_http_exception
 from autocrud.types import (
     IResourceManager,
     RevisionInfo,
     RevisionStatus,
-    UniqueConstraintError,
-    ValidationError,
 )
 
 T = TypeVar("T")
@@ -151,9 +149,5 @@ class PatchRouteTemplate(BaseRouteTemplate):
                             else change_status,
                         )
                 return MsgspecResponse(info)
-            except (msgspec.ValidationError, ValidationError) as e:
-                raise HTTPException(status_code=422, detail=str(e))
-            except UniqueConstraintError as e:
-                raise_unique_conflict(e)
             except Exception as e:
-                raise HTTPException(status_code=400, detail=str(e))
+                raise to_http_exception(e)

@@ -166,7 +166,7 @@ def test_qb_conflict_with_data_conditions(
         },
     )
     # FastAPI 會將 422 包裝成 400，但 detail 中會包含原始訊息
-    assert response.status_code == 400
+    assert response.status_code == 422
     detail = response.json()["detail"]
     assert "data_conditions" in detail
 
@@ -182,7 +182,7 @@ def test_qb_conflict_with_conditions(
             "conditions": '[{"field_path": "resource_id", "operator": "starts_with", "value": "user"}]',
         },
     )
-    assert response.status_code == 400
+    assert response.status_code == 422
     detail = response.json()["detail"]
     assert "conditions" in detail
 
@@ -196,7 +196,7 @@ def test_qb_conflict_with_sorts(client: TestClient, sample_users: list[str]) -> 
             "sorts": '[{"type": "data", "field_path": "age", "direction": "+"}]',
         },
     )
-    assert response.status_code == 400
+    assert response.status_code == 422
     detail = response.json()["detail"]
     assert "sorts" in detail
 

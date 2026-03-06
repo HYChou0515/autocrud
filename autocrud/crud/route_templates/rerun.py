@@ -9,6 +9,7 @@ from autocrud.crud.route_templates.basic import (
     MsgspecResponse,
     struct_to_responses_type,
 )
+from autocrud.crud.route_templates.exception_handlers import to_http_exception
 from autocrud.types import IResourceManager, RevisionInfo, TaskStatus
 
 T = TypeVar("T")
@@ -71,7 +72,5 @@ class RerunRouteTemplate(BaseRouteTemplate):
                     resource_manager.message_queue.put(resource_id)
 
                 return MsgspecResponse(info)
-            except HTTPException:
-                raise
             except Exception as e:
-                raise HTTPException(status_code=400, detail=str(e))
+                raise to_http_exception(e)

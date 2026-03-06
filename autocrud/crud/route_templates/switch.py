@@ -2,13 +2,14 @@ import datetime as dt
 import textwrap
 from typing import TypeVar
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends
 
 from autocrud.crud.route_templates.basic import (
     BaseRouteTemplate,
     MsgspecResponse,
     struct_to_responses_type,
 )
+from autocrud.crud.route_templates.exception_handlers import to_http_exception
 from autocrud.types import IResourceManager, ResourceMeta
 
 T = TypeVar("T")
@@ -75,4 +76,4 @@ class SwitchRevisionRouteTemplate(BaseRouteTemplate):
                     meta = resource_manager.switch(resource_id, revision_id)
                 return MsgspecResponse(meta)
             except Exception as e:
-                raise HTTPException(status_code=400, detail=str(e))
+                raise to_http_exception(e)

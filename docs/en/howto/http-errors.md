@@ -2,124 +2,102 @@
 
 This page documents how AutoCRUD route templates map internal exceptions to HTTP responses.
 
-> Important: Write routes intentionally normalize many internal exceptions into
-> `400 Bad Request`. This behavior simplifies API usage but may change in
-> future versions to expose more specific HTTP status codes.
+All route templates use a **shared helper** (`to_http_exception`) that
+provides consistent error mapping across every endpoint.
 
 ---
 
-# Error matrix (quick overview)
+## Exception mapping table
 
-| Route | 400 | 404 | 409 | 422 |
-|------|-----|-----|-----|-----|
-| GET | generic read failure | resource / revision missing | — | — |
-| POST | generic create error | — | unique constraint | validation |
-| PUT | generic update error | — | unique constraint | validation |
-| PATCH | generic patch failure | — | unique constraint | validation |
+| Exception                          | HTTP | Meaning              |
+|------------------------------------|------|----------------------|
+| `msgspec.ValidationError`          | 422  | Type-level validation |
+| `autocrud.types.ValidationError`   | 422  | Custom validation     |
+| `PermissionDeniedError`            | 403  | Access denied         |
+| `ResourceNotFoundError` (family)   | 404  | Resource / revision missing |
+| `UniqueConstraintError`            | 409  | Unique field conflict (structured detail) |
+| `ResourceConflictError` (family)   | 409  | Conflict              |
+| Any other `Exception`              | 400  | Bad request (fallback) |
 
----
-
-# Read routes (`get.py`) — current mapping
-
-## Canonical GET resource
-
-`GET /{model}/{resource_id}`  
-(and deprecated aliases like `/data`, `/meta`, `/full`, `/revision-info`)
-
-### Common errors
-
-**404 Not Found**
-
-Most internal exceptions are caught and returned as:
-
-```python
-HTTPException(404, detail=str(e))
-```
-
-This includes (but is not limited to):
+The **ResourceNotFoundError** family includes:
 
 * `ResourceIDNotFoundError`
-* `ResourceIsDeletedError` (unless `include_deleted=true`)
-* `RevisionIDNotFoundError`
+* `ResourceIsDeletedError`
 * `RevisionNotFoundError`
+* `RevisionIDNotFoundError`
 
-### Notes
+The **ResourceConflictError** family includes:
 
-Read routes intentionally **do not distinguish** between:
-
-* permission errors
-* not-found errors
-* conflict errors
-
-All of these are normalized to `404`.
+* `UniqueConstraintError` (structured JSON detail)
+* `DuplicateResourceError`
+* `SchemaConflictError`
+* `CannotModifyResourceError`
 
 ---
 
-## Revision list
+## Error matrix (quick overview)
+
+| Route   | 400          | 403         | 404             | 409              | 422        |
+|---------|--------------|-------------|-----------------|------------------|------------|
+| GET     | fallback     | permission  | not found       | conflict         | —          |
+| POST    | fallback     | permission  | not found       | unique / conflict| validation |
+| PUT     | fallback     | permission  | not found       | unique / conflict| validation |
+| PATCH   | fallback     | permission  | not found       | unique / conflict| validation |
+| DELETE  | fallback     | permission  | not found       | conflict         | —          |
+| SWITCH  | fallback     | permission  | not found       | conflict         | —          |
+| RESTORE | fallback     | permission  | not found       | conflict         | —          |
+
+---
+
+## Read routes (`get.py`)
+
+### Canonical GET resource
+
+`GET /{model}/{resource_id}`
+(and deprecated aliases: `/data`, `/meta`, `/full`, `/revision-info`)
+
+Errors pass through `to_http_exception`:
+
+* **404** — `ResourceIDNotFoundError`, `ResourceIsDeletedError`, `RevisionIDNotFoundError`
+* **403** — `PermissionDeniedError`
+* **400** — any other internal exception
+
+### Revision list
 
 `GET /{model}/{resource_id}/revision-list`
 
-### 400 Bad Request
+Specific inline errors:
 
-* invalid `sort` value (must be `created_time` or `-created_time`)
-* invalid `limit` (< 1)
-* invalid `offset` (< 0)
+* **400** — invalid `sort`, `limit < 1`, `offset < 0`
+* **404** — `from_revision_id` not found
 
-### 404 Not Found
+All other exceptions go through `to_http_exception`.
 
-* `from_revision_id` does not exist
-* any other internal exception during revision retrieval
-
----
-
-## Blob content
+### Blob content
 
 `GET /{model}/{resource_id}/blobs/{file_id}`
 
-This route performs a permission gate using:
+The route performs a permission gate via `resource_manager.get(resource_id)`.
+Errors from that call go through `to_http_exception`:
 
-```
-resource_manager.get(resource_id)
-```
+* **403** — `PermissionDeniedError`
+* **404** — `ResourceIDNotFoundError`
 
-### 403 Forbidden
+Blob-specific errors:
 
-Returned when permission check fails.
-
-Currently this collapses:
-
-* permission denied
-* resource not found
-
-into the same response.
-
-### 404 Not Found
-
-* blob does not exist (`FileNotFoundError`)
-
-### 400 Bad Request
-
-* blob store not configured (`NotImplementedError`)
-
-### 500 Internal Server Error
-
-* blob record exists but blob data is missing
-
-```
-detail: "Blob data missing"
-```
+* **404** — blob does not exist (`FileNotFoundError`)
+* **400** — blob store not configured (`NotImplementedError`)
+* **500** — blob data missing
 
 ---
 
-# Create routes (`create.py`) — current mapping
-
-## Create resource
+## Create routes (`create.py`)
 
 `POST /{model}`
 
 ### 422 Unprocessable Entity
 
-Validation errors during decoding or domain validation:
+Validation errors (caught explicitly before the fallback):
 
 * `msgspec.ValidationError`
 * `autocrud.types.ValidationError`
@@ -140,154 +118,144 @@ Response body (`detail`) format:
 }
 ```
 
-### 400 Bad Request
+### Fallback
 
-Any other exception during resource creation is normalized to:
-
-```
-HTTPException(400, detail=str(e))
-```
-
-Examples include:
-
-* permission failures
-* storage errors
-* unexpected runtime exceptions
+All other exceptions go through `to_http_exception` (403, 404, 409, or 400).
 
 ---
 
-# Update routes (`update.py`) — current mapping
-
-## Full replacement update
+## Update routes (`update.py`)
 
 `PUT /{model}/{resource_id}`
 
-### 400 Bad Request
+### 400 Bad Request (inline)
 
-* invalid argument combination
-  (`change_status` is only allowed when `mode="modify"`)
-
-* any other exception during update
-
-Note that **resource not found is also normalized to 400**.
+* `change_status` is only allowed when `mode="modify"`
 
 ### 422 Unprocessable Entity
 
-Validation failures:
+Validation errors (caught explicitly):
 
 * `msgspec.ValidationError`
 * `autocrud.types.ValidationError`
 
 ### 409 Conflict
 
-Unique constraint violation:
+* `UniqueConstraintError` (structured detail, same as Create)
+* `CannotModifyResourceError` (e.g. modifying a stable resource without `mode="modify"`)
 
-* `UniqueConstraintError`
+### 404 Not Found
 
-Response body format is identical to the Create route.
+* `ResourceIDNotFoundError` — resource does not exist
 
-### Notes
+### Fallback
 
-The update route currently **does not return 404**.
-
-All not-found conditions are normalized to `400`.
+All other exceptions go through `to_http_exception`.
 
 ---
 
-# Patch routes (`patch.py`) — current mapping
-
-## JSON Patch
+## Patch routes (`patch.py`)
 
 `PATCH /{model}/{resource_id}`
 
-Supports RFC6902 patch operations:
-
-* `add`
-* `remove`
-* `replace`
-* `move`
-* `copy`
-* `test`
-
-### 400 Bad Request
-
-Most runtime errors are normalized to `400`, including:
-
-* resource not found
-* revision not found
-* permission failures
-* JSON Patch failures
-* invalid patch paths
-* failed `test` operations
-* any other runtime exceptions
-
-### 409 Conflict
-
-Unique constraint violation:
-
-* `UniqueConstraintError`
-
-Response body format is identical to the Create and Update routes.
+Supports RFC6902 patch operations: `add`, `remove`, `replace`, `move`, `copy`, `test`.
 
 ### 422 Unprocessable Entity
 
-Validation errors:
+Validation errors (caught explicitly):
 
 * `msgspec.ValidationError`
 * `autocrud.types.ValidationError`
 
-### Notes
+### 409 Conflict
 
-This route currently **does not return 404**.
+* `UniqueConstraintError` (structured detail)
 
-All runtime errors except validation and unique constraint violations are normalized to `400`.
+### 404 Not Found
 
-Additionally:
+* `ResourceIDNotFoundError`
 
-```
-change_status can only be used with mode="modify"
-```
+### Fallback
 
-Violating this rule also returns `400`.
+All other exceptions go through `to_http_exception`.
 
 ---
 
-# Implications for API clients
+## Delete routes (`delete.py`)
 
-### Read operations
+`DELETE /{model}/{resource_id}`
 
-Clients should treat `404` as a generic **read failure**, which may represent:
+All exceptions go through `to_http_exception`:
 
-* resource does not exist
-* revision does not exist
-* permission denied
-* internal retrieval failure
+* **404** — resource not found
+* **403** — permission denied
+* **409** — conflict
+* **400** — fallback
 
-### Write operations
+The same mapping applies to:
 
-Write routes intentionally normalize most failures to:
-
-```
-400 Bad Request
-```
-
-except for:
-
-* `409` → unique constraint violation
-* `422` → validation error
-
-Clients should rely primarily on:
-
-* `409` for uniqueness conflicts
-* `422` for schema validation errors
+* `DELETE /{model}/{resource_id}/permanently`
+* `DELETE /{model}` (batch delete)
+* `POST /{model}/{resource_id}/restore`
+* `POST /{model}/restore` (batch restore)
 
 ---
 
-# Recommended improvements (optional)
+## Switch routes (`switch.py`)
 
-If a more REST-accurate API surface is desired in the future, the following changes may be considered:
+`POST /{model}/{resource_id}/switch/{revision_id}`
 
-* map `PermissionDeniedError` → `403`
-* map `ResourceNotFoundError` → `404`
-* map all `ResourceConflictError` subclasses → `409`
-* avoid broad `except Exception` handlers that collapse errors into `400` or `404`
+All exceptions go through `to_http_exception`:
+
+* **404** — resource or revision not found
+* **403** — permission denied
+* **400** — fallback
+
+---
+
+## Implications for API clients
+
+### Consistent behavior across all routes
+
+All routes now use the same error mapping:
+
+* **403** → access denied
+* **404** → resource or revision does not exist
+* **409** → conflict (unique constraint, cannot modify, duplicate, schema conflict)
+* **422** → data validation failure
+* **400** → generic / unexpected error
+
+### UniqueConstraintError detail
+
+`409` responses from `UniqueConstraintError` include structured JSON:
+
+```json
+{
+  "message": "Unique constraint violated: ...",
+  "field": "email",
+  "conflicting_resource_id": "user_123"
+}
+```
+
+Other `409` responses have a plain string `detail`.
+
+---
+
+## Implementation
+
+The shared helper lives in `autocrud/crud/route_templates/exception_handlers.py`:
+
+```python
+from autocrud.crud.route_templates.exception_handlers import to_http_exception
+```
+
+Route templates use it as:
+
+```python
+except (msgspec.ValidationError, ValidationError) as e:
+    raise HTTPException(status_code=422, detail=str(e))
+except UniqueConstraintError as e:
+    raise_unique_conflict(e)
+except Exception as e:
+    raise to_http_exception(e)
+```

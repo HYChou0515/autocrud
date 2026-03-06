@@ -20,6 +20,7 @@ from autocrud.types import (
     DataSearchCondition,
     DataSearchOperator,
     ResourceMetaSearchQuery,
+    ResourceNotFoundError,
 )
 
 
@@ -473,7 +474,7 @@ class TestMigrateSingleResourceAPI:
         with patch.object(
             MigrateRouteTemplate, "_migrate_single_resource", new_callable=AsyncMock
         ) as mock_migrate:
-            mock_migrate.side_effect = Exception("Resource not found")
+            mock_migrate.side_effect = ResourceNotFoundError("Resource not found")
 
             response = client.post("/user/migrate/single/nonexistent")
 

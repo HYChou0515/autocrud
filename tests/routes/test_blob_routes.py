@@ -64,10 +64,8 @@ def test_blob_lifecycle(client):
 def test_blob_resource_not_found(client):
     """Test getting blob for non-existent resource"""
     response = client.get("/user-with-avatar/nonexistent/blobs/somefileid")
-    # route template catches Exception during get(resource_id) and returns 403
-    # Wait, checking implementation:
-    # except Exception: raise HTTPException(status_code=403, detail="Permission denied or Resource not found")
-    assert response.status_code == 403
+    # to_http_exception maps ResourceIDNotFoundError → 404
+    assert response.status_code == 404
 
 
 def test_blob_file_not_found(client):
@@ -83,7 +81,7 @@ def test_blob_file_not_found(client):
     # Requests valid resource but invalid blob id
     response = client.get(f"/user-with-avatar/{resource_id}/blobs/nonexistent_file_id")
     assert response.status_code == 404
-    assert response.json()["detail"] == "Blob not found"
+    assert "nonexistent_file_id" in response.json()["detail"]
 
 
 def test_blob_store_not_configured():
@@ -163,7 +161,7 @@ def test_blob_route_not_implemented_error():
 
     response = client.get("/blobs/456")
     assert response.status_code == 501
-    assert response.json()["detail"] == "Blob store not configured"
+    assert "Mocked" in response.json()["detail"]
 
 
 def test_blob_route_skip_non_resource_manager():
