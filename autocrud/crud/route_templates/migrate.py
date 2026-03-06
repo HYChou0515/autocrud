@@ -69,23 +69,42 @@ class MigrateRouteTemplate(BaseRouteTemplate):
         current_time: dt.datetime,
         *,
         write_back: bool = True,
+        revision_id: str | None = None,
     ) -> MigrateProgress:
-        """遷移單一資源"""
+        """遷移單一資源（或其指定的 revision）。
+
+        Args:
+            resource_manager: The resource manager instance.
+            resource_id: The ID of the resource to migrate.
+            current_user: The user performing the migration.
+            current_time: The current timestamp.
+            write_back: Whether to persist the migrated data.
+            revision_id: Optional specific revision to migrate.  When
+                ``None``, the current revision is migrated.
+        """
         try:
             with resource_manager.meta_provide(current_user, current_time):
                 # 檢查是否需要遷移
                 meta = resource_manager.get_meta(resource_id)
+                old_version = meta.schema_version
 
                 # 假設有 migration 且 schema_version 不符才需要遷移
-                if meta.schema_version != resource_manager.schema_version:
+                if (
+                    meta.schema_version != resource_manager.schema_version
+                    or revision_id is not None
+                ):
                     if write_back:
                         # 執行遷移並寫回 storage
-                        # 這裡需要實際的遷移邏輯
-                        migrated_resource = resource_manager.migrate(resource_id)
+                        if revision_id is not None:
+                            migrated_resource = resource_manager.migrate(
+                                resource_id, revision_id=revision_id
+                            )
+                        else:
+                            migrated_resource = resource_manager.migrate(resource_id)
                         return MigrateProgress(
                             resource_id=resource_id,
                             status="success",
-                            message=f"Migrated {migrated_resource.resource_id} from {meta.schema_version} to {resource_manager.schema_version}",
+                            message=f"Migrated {migrated_resource.resource_id} from {old_version} to {resource_manager.schema_version}",
                         )
                     else:
                         # 只在記憶體中遷移測試
@@ -331,6 +350,8 @@ class MigrateRouteTemplate(BaseRouteTemplate):
 
                 **Query Parameters:**
                 - `write_back` (optional, default=true): Whether to write migrated data back to storage
+                - `revision_id` (optional): A specific revision to migrate.
+                  When omitted the current revision is migrated.
 
                 **Response:**
                 - Returns migration progress for the single resource:
@@ -341,12 +362,14 @@ class MigrateRouteTemplate(BaseRouteTemplate):
 
                 **Use Cases:**
                 - Migrate specific resource after schema update
+                - Migrate an older revision so it can be switched to
                 - Fix individual resource migration issues
                 - Test migration on single resource
                 - Manual resource upgrade
 
                 **Examples:**
                 - `POST /{model_name}/migrate/single/123` - Migrate resource 123
+                - `POST /{model_name}/migrate/single/123?revision_id=123:1` - Migrate specific revision
                 - `POST /{model_name}/migrate/single/123?write_back=false` - Test migrate resource 123
 
                 **Error Responses:**
@@ -361,6 +384,11 @@ class MigrateRouteTemplate(BaseRouteTemplate):
             write_back: bool = Query(
                 True, description="Whether to write migrated data back to storage"
             ),
+            revision_id: str | None = Query(
+                None,
+                description="Specific revision ID to migrate. "
+                "When omitted the current revision is migrated.",
+            ),
             current_user: str = Depends(self.deps.get_user),
             current_time: dt.datetime = Depends(self.deps.get_now),
         ):
@@ -371,6 +399,7 @@ class MigrateRouteTemplate(BaseRouteTemplate):
                     current_user,
                     current_time,
                     write_back=write_back,
+                    revision_id=revision_id,
                 )
 
                 if progress.status == "failed":

@@ -841,6 +841,29 @@ class IStorage(ABC):
         """
 
     @abstractmethod
+    def find_revision_schema_version(
+        self, resource_id: str, revision_id: str
+    ) -> str | None | UnsetType:
+        """Find the most recent schema version stored for a revision.
+
+        Searches all schema versions under which *revision_id* has been
+        saved and returns the **latest** (highest) one.  If the revision
+        does not exist under any schema version, returns ``UNSET``.
+
+        Note that ``None`` is a valid return value meaning the revision
+        exists but was stored without a schema version.
+
+        Arguments:
+            resource_id (str): The unique identifier of the resource.
+            revision_id (str): The unique identifier of the revision.
+
+        Returns:
+            str | None | UnsetType: The schema version string, ``None``
+                if stored without a schema, or ``UNSET`` if the revision
+                does not exist at all.
+        """
+
+    @abstractmethod
     def get_meta(self, resource_id: str) -> ResourceMeta:
         """Retrieve metadata for a specific resource.
 

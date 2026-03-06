@@ -18,6 +18,7 @@ This page summarizes the most common AutoCRUD exceptions and what to do when you
 - `ResourceConflictError`
 - `CannotModifyResourceError`
 - `SchemaConflictError`
+- `RevisionNotMigratedError`
 - `UniqueConstraintError`
 - `DuplicateResourceError`
 
@@ -84,6 +85,24 @@ Base class for “write cannot proceed due to conflict” errors.
 
 **What to do**
 - check revision status / permissions / any domain rules that gate modifications
+
+### SchemaConflictError
+Base class for schema-related conflicts.
+
+### RevisionNotMigratedError
+**Message**: `Revision '{revision_id}' of resource '{resource_id}' has schema version '{revision_schema_version}' but the resource requires '{target_schema_version}'. Migrate the revision first via migrate(resource_id, revision_id=...).`
+
+**Meaning**: you tried to `switch()` to a revision whose `schema_version` does not match the resource's
+current `schema_version`.  The target revision has not been migrated to the latest schema yet.
+
+**How to fix**
+- Migrate the specific revision before switching:
+  ```python
+  resource_manager.migrate(resource_id, revision_id=old_revision_id)
+  resource_manager.switch(resource_id, old_revision_id)
+  ```
+- Or use the HTTP endpoint:
+  `POST /{model}/migrate/single/{resource_id}?revision_id={revision_id}`
 
 ### UniqueConstraintError
 **Message**: `Unique constraint violated: field '{field}' value ... already exists on resource '{conflicting_resource_id}'.`

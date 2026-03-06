@@ -381,3 +381,210 @@ class TestSchemaAddModelIntegration:
         from autocrud import Schema as S
 
         assert S is Schema
+
+
+# =====================================================================
+# Integration: migrate specific revision + switch with migration
+# =====================================================================
+
+
+class TestMigrateRevisionAndSwitch:
+    """Test migrating specific revisions and switch behavior with migration."""
+
+    @pytest.fixture
+    def real_storage(self):
+        """Create a real SimpleStorage (memory) for integration tests."""
+        from autocrud.resource_manager.core import SimpleStorage
+        from autocrud.resource_manager.meta_store.simple import MemoryMetaStore
+        from autocrud.resource_manager.resource_store.simple import (
+            MemoryResourceStore,
+        )
+
+        meta_store = MemoryMetaStore()
+        resource_store = MemoryResourceStore()
+        return SimpleStorage(meta_store=meta_store, resource_store=resource_store)
+
+    def _create_rm_v1(self, storage):
+        """Create a ResourceManager with ItemV1 (no migration)."""
+        return ResourceManager(
+            resource_type=ItemV1,
+            storage=storage,
+            indexed_fields=[IndexableField("name")],
+        )
+
+    def _create_rm_v2(self, storage):
+        """Create a ResourceManager with ItemV2 + migration from v1/None."""
+        schema = (
+            Schema(ItemV2, "v2")
+            .step(None, migrate_v1_to_v2)  # None = created without schema
+            .plus("v1", migrate_v1_to_v2)  # parallel chain for explicit v1
+        )
+        return ResourceManager(
+            resource_type=ItemV2,
+            storage=storage,
+            migration=schema,
+            indexed_fields=[IndexableField("name"), IndexableField("currency")],
+        )
+
+    def test_migrate_specific_revision(self, real_storage):
+        """migrate(resource_id, revision_id=old_rev) should migrate that revision."""
+        # Phase 1: Create resource with v1 schema (no migration)
+        rm_v1 = self._create_rm_v1(real_storage)
+        with rm_v1.meta_provide("user1", dt.datetime(2025, 1, 1)):
+            meta1 = rm_v1.create(ItemV1(name="widget", price=100))
+
+        with rm_v1.meta_provide("user1", dt.datetime(2025, 1, 2)):
+            meta2 = rm_v1.update(meta1.resource_id, ItemV1(name="widget-v2", price=200))
+
+        rev1_id = meta1.revision_id
+        rev2_id = meta2.revision_id
+
+        # Phase 2: "Upgrade" to v2 schema — create new RM with migration
+        rm_v2 = self._create_rm_v2(real_storage)
+
+        # Migrate current revision (rev2)
+        with rm_v2.meta_provide("admin", dt.datetime(2025, 2, 1)):
+            rm_v2.migrate(meta1.resource_id)
+
+        # Now migrate old revision (rev1) explicitly
+        with rm_v2.meta_provide("admin", dt.datetime(2025, 2, 1)):
+            result = rm_v2.migrate(meta1.resource_id, revision_id=rev1_id)
+
+        # Verify rev1 was migrated: should be readable with v2 schema
+        resource = rm_v2.get(meta1.resource_id, revision_id=rev1_id)
+        assert resource.data.name == "widget"
+        assert resource.data.currency == "USD"  # Added by migration
+        assert resource.info.schema_version == "v2"
+
+    def test_migrate_specific_revision_already_latest(self, real_storage):
+        """Migrating a revision that's already at latest version returns early."""
+        rm_v1 = self._create_rm_v1(real_storage)
+        with rm_v1.meta_provide("user1", dt.datetime(2025, 1, 1)):
+            meta1 = rm_v1.create(ItemV1(name="widget", price=100))
+
+        rm_v2 = self._create_rm_v2(real_storage)
+
+        # Migrate current (and only) revision
+        with rm_v2.meta_provide("admin", dt.datetime(2025, 2, 1)):
+            rm_v2.migrate(meta1.resource_id)
+
+        # Migrate same revision again — should be a no-op
+        with rm_v2.meta_provide("admin", dt.datetime(2025, 2, 1)):
+            result = rm_v2.migrate(meta1.resource_id, revision_id=meta1.revision_id)
+
+        assert result.schema_version == "v2"
+
+    def test_migrate_specific_revision_not_found(self, real_storage):
+        """Migrating a non-existent revision_id should raise an error."""
+        rm_v1 = self._create_rm_v1(real_storage)
+        with rm_v1.meta_provide("user1", dt.datetime(2025, 1, 1)):
+            meta1 = rm_v1.create(ItemV1(name="widget", price=100))
+
+        rm_v2 = self._create_rm_v2(real_storage)
+
+        with pytest.raises(Exception):  # RevisionIDNotFoundError or KeyError
+            with rm_v2.meta_provide("admin", dt.datetime(2025, 2, 1)):
+                rm_v2.migrate(meta1.resource_id, revision_id="nonexistent-rev")
+
+    def test_switch_to_unmigrated_revision_raises(self, real_storage):
+        """switch() to a revision with old schema_version raises RevisionNotMigratedError."""
+        from autocrud.types import RevisionNotMigratedError
+
+        rm_v1 = self._create_rm_v1(real_storage)
+        with rm_v1.meta_provide("user1", dt.datetime(2025, 1, 1)):
+            meta1 = rm_v1.create(ItemV1(name="widget", price=100))
+
+        with rm_v1.meta_provide("user1", dt.datetime(2025, 1, 2)):
+            meta2 = rm_v1.update(meta1.resource_id, ItemV1(name="widget-v2", price=200))
+
+        rev1_id = meta1.revision_id
+
+        # Upgrade to v2, migrate current only
+        rm_v2 = self._create_rm_v2(real_storage)
+        with rm_v2.meta_provide("admin", dt.datetime(2025, 2, 1)):
+            rm_v2.migrate(meta1.resource_id)
+
+        # Now try to switch to unmigrated rev1 — should raise
+        with pytest.raises(RevisionNotMigratedError) as exc_info:
+            with rm_v2.meta_provide("admin", dt.datetime(2025, 2, 2)):
+                rm_v2.switch(meta1.resource_id, rev1_id)
+
+        assert exc_info.value.resource_id == meta1.resource_id
+        assert exc_info.value.revision_id == rev1_id
+
+    def test_switch_after_migrate_all_revisions(self, real_storage):
+        """switch() works after all revisions have been migrated."""
+        rm_v1 = self._create_rm_v1(real_storage)
+        with rm_v1.meta_provide("user1", dt.datetime(2025, 1, 1)):
+            meta1 = rm_v1.create(ItemV1(name="widget", price=100))
+
+        with rm_v1.meta_provide("user1", dt.datetime(2025, 1, 2)):
+            meta2 = rm_v1.update(meta1.resource_id, ItemV1(name="widget-v2", price=200))
+
+        rev1_id = meta1.revision_id
+        rev2_id = meta2.revision_id
+
+        # Upgrade to v2, migrate all revisions
+        rm_v2 = self._create_rm_v2(real_storage)
+        with rm_v2.meta_provide("admin", dt.datetime(2025, 2, 1)):
+            rm_v2.migrate(meta1.resource_id)  # migrates current (rev2)
+            rm_v2.migrate(meta1.resource_id, revision_id=rev1_id)  # migrates rev1
+
+        # Now switch to rev1 — should succeed
+        with rm_v2.meta_provide("admin", dt.datetime(2025, 2, 2)):
+            switch_result = rm_v2.switch(meta1.resource_id, rev1_id)
+
+        assert switch_result.current_revision_id == rev1_id
+
+        # Verify data is correct after switch
+        resource = rm_v2.get(meta1.resource_id)
+        assert resource.data.name == "widget"
+        assert resource.data.currency == "USD"
+
+    def test_switch_no_migration_configured(self, real_storage):
+        """switch() works normally when no migration is configured."""
+        rm_v1 = self._create_rm_v1(real_storage)
+        with rm_v1.meta_provide("user1", dt.datetime(2025, 1, 1)):
+            meta1 = rm_v1.create(ItemV1(name="widget", price=100))
+
+        with rm_v1.meta_provide("user1", dt.datetime(2025, 1, 2)):
+            meta2 = rm_v1.update(meta1.resource_id, ItemV1(name="widget-v2", price=200))
+
+        # Switch without any migration — should work fine
+        with rm_v1.meta_provide("user1", dt.datetime(2025, 1, 3)):
+            switch_result = rm_v1.switch(meta1.resource_id, meta1.revision_id)
+
+        assert switch_result.current_revision_id == meta1.revision_id
+        resource = rm_v1.get(meta1.resource_id)
+        assert resource.data.name == "widget"
+
+    def test_migrate_specific_revision_does_not_update_meta_schema_version(
+        self, real_storage
+    ):
+        """Migrating a non-current revision should not change meta.schema_version
+        (it should already be updated when current was migrated)."""
+        rm_v1 = self._create_rm_v1(real_storage)
+        with rm_v1.meta_provide("user1", dt.datetime(2025, 1, 1)):
+            meta1 = rm_v1.create(ItemV1(name="widget", price=100))
+
+        with rm_v1.meta_provide("user1", dt.datetime(2025, 1, 2)):
+            meta2 = rm_v1.update(meta1.resource_id, ItemV1(name="widget-v2", price=200))
+
+        rev1_id = meta1.revision_id
+
+        rm_v2 = self._create_rm_v2(real_storage)
+
+        # Migrate current revision first
+        with rm_v2.meta_provide("admin", dt.datetime(2025, 2, 1)):
+            rm_v2.migrate(meta1.resource_id)
+
+        # meta.schema_version should be "v2" now
+        meta_after_current = rm_v2.get_meta(meta1.resource_id)
+        assert meta_after_current.schema_version == "v2"
+
+        # Migrate old revision
+        with rm_v2.meta_provide("admin", dt.datetime(2025, 2, 1)):
+            result = rm_v2.migrate(meta1.resource_id, revision_id=rev1_id)
+
+        # meta.schema_version should still be "v2" (unchanged)
+        assert result.schema_version == "v2"
