@@ -288,12 +288,12 @@ class TestPermanentlyDeleteRoute:
 
         # Cannot restore after permanent delete
         restore_resp = client.post(f"/item/{rid}/restore")
-        assert restore_resp.status_code == 400
+        assert restore_resp.status_code == 404
 
     def test_permanently_delete_nonexistent(self, client: TestClient):
-        """Permanently deleting nonexistent resource should return 400."""
+        """Permanently deleting nonexistent resource should return 404."""
         resp = client.delete("/item/does-not-exist/permanently")
-        assert resp.status_code == 400
+        assert resp.status_code == 404
 
     def test_permanently_delete_not_in_search(self, client: TestClient):
         """Permanently deleted resource should not appear in search results."""

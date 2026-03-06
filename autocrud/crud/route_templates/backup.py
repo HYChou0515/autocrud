@@ -21,6 +21,7 @@ from autocrud.crud.route_templates.basic import (
     QueryInputs,
     build_query,
 )
+from autocrud.crud.route_templates.exception_handlers import to_http_exception
 from autocrud.types import IResourceManager, OnDuplicate
 
 T = TypeVar("T")
@@ -87,10 +88,8 @@ class ExportRouteTemplate(BaseRouteTemplate):
             if query_params.qb:
                 try:
                     query_for_dump = build_query(query_params)
-                except HTTPException:
-                    raise
                 except Exception as e:
-                    raise HTTPException(status_code=400, detail=str(e))
+                    raise to_http_exception(e)
 
             buf = io.BytesIO()
             writer = DumpStreamWriter(buf)

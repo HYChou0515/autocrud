@@ -20,6 +20,7 @@ from autocrud.crud.route_templates.basic import (
     build_query,
     struct_to_responses_type,
 )
+from autocrud.crud.route_templates.exception_handlers import to_http_exception
 from autocrud.types import (
     IResourceManager,
     ResourceMetaSearchQuery,
@@ -377,7 +378,5 @@ class MigrateRouteTemplate(BaseRouteTemplate):
 
                 return MsgspecResponse(progress)
 
-            except HTTPException:
-                raise
             except Exception as e:
-                raise HTTPException(status_code=404, detail=str(e))
+                raise to_http_exception(e)

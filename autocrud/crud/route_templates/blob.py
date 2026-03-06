@@ -3,6 +3,7 @@ from fastapi.responses import RedirectResponse
 from msgspec import UNSET
 
 from autocrud.crud.route_templates.basic import BaseRouteTemplate
+from autocrud.crud.route_templates.exception_handlers import to_http_exception
 from autocrud.resource_manager.core import ResourceManager
 from autocrud.types import IResourceManager
 
@@ -57,9 +58,5 @@ class BlobRouteTemplate(BaseRouteTemplate):
                         media_type = content.content_type
 
                     return Response(content=content.data, media_type=media_type)
-                except FileNotFoundError:
-                    raise HTTPException(status_code=404, detail="Blob not found")
-                except NotImplementedError:
-                    raise HTTPException(
-                        status_code=501, detail="Blob store not configured"
-                    )
+                except Exception as e:
+                    raise to_http_exception(e)

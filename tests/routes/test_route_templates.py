@@ -233,7 +233,7 @@ class TestRouteTemplates:
         response = client.put(
             f"/user/{resource_id}", params={"mode": "modify"}, json=updated_data
         )
-        assert response.status_code == 400
+        assert response.status_code == 409
 
         response = client.put(
             f"/user/{resource_id}",
@@ -268,7 +268,7 @@ class TestRouteTemplates:
         response = client.put(
             f"/user/{resource_id}", params={"mode": "modify"}, json=updated_data
         )
-        assert response.status_code == 400
+        assert response.status_code == 409
 
     def test_delete_user(self, client: TestClient):
         """測試刪除用戶"""
@@ -730,12 +730,12 @@ class TestRouteTemplates:
 
         # 嘗試切換到不存在的版本
         response = client.post(f"/user/{resource_id}/switch/nonexistent-revision")
-        assert response.status_code == 400
+        assert response.status_code == 404
 
     def test_switch_revision_resource_not_found(self, client: TestClient):
         """測試切換不存在資源的版本"""
         response = client.post("/user/nonexistent/switch/some-revision")
-        assert response.status_code == 400
+        assert response.status_code == 404
 
     def test_restore_resource(self, client: TestClient):
         """測試恢復已刪除的資源"""
@@ -772,7 +772,7 @@ class TestRouteTemplates:
     def test_restore_resource_not_found(self, client: TestClient):
         """測試恢復不存在的資源"""
         response = client.post("/user/nonexistent/restore")
-        assert response.status_code == 400
+        assert response.status_code == 404
 
     def test_restore_resource_not_deleted(self, client: TestClient):
         """測試恢復未被刪除的資源"""

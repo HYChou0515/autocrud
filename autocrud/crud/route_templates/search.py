@@ -3,7 +3,7 @@ import textwrap
 from typing import TypeVar
 
 import msgspec
-from fastapi import APIRouter, Depends, HTTPException, Query, Request
+from fastapi import APIRouter, Depends, Query, Request
 
 from autocrud.crud.route_templates.basic import (
     BaseRouteTemplate,
@@ -15,6 +15,7 @@ from autocrud.crud.route_templates.basic import (
     get_partial_fields,
     struct_to_responses_type,
 )
+from autocrud.crud.route_templates.exception_handlers import to_http_exception
 from autocrud.types import (
     IResourceManager,
     ResourceMeta,
@@ -129,7 +130,7 @@ class ListRouteTemplate(BaseRouteTemplate):
                     )
                 return MsgspecResponse([item.data for item in results])
             except Exception as e:
-                raise HTTPException(status_code=400, detail=str(e))
+                raise to_http_exception(e)
 
         @router.get(
             f"/{model_name}/meta",
@@ -234,7 +235,7 @@ class ListRouteTemplate(BaseRouteTemplate):
                     )
                 return MsgspecResponse([item.meta for item in results])
             except Exception as e:
-                raise HTTPException(status_code=400, detail=str(e))
+                raise to_http_exception(e)
 
         @router.get(
             f"/{model_name}/revision-info",
@@ -330,7 +331,7 @@ class ListRouteTemplate(BaseRouteTemplate):
                     )
                 return MsgspecResponse([item.info for item in results])
             except Exception as e:
-                raise HTTPException(status_code=400, detail=str(e))
+                raise to_http_exception(e)
 
         # Shared implementation for /full and bare path collection GET endpoints
         async def _handle_list_with_returns(
@@ -365,7 +366,7 @@ class ListRouteTemplate(BaseRouteTemplate):
                     )
                 return MsgspecResponse(responses)
             except Exception as e:
-                raise HTTPException(status_code=400, detail=str(e))
+                raise to_http_exception(e)
 
         @router.get(
             f"/{model_name}/full",
@@ -452,7 +453,7 @@ class ListRouteTemplate(BaseRouteTemplate):
                     count = resource_manager.count_resources(query)
                 return count
             except Exception as e:
-                raise HTTPException(status_code=400, detail=str(e))
+                raise to_http_exception(e)
 
         # New bare path endpoint — canonical GET for listing resources
         @router.get(

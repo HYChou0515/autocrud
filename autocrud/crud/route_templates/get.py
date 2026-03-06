@@ -12,6 +12,7 @@ from autocrud.crud.route_templates.basic import (
     RevisionListResponse,
     struct_to_responses_type,
 )
+from autocrud.crud.route_templates.exception_handlers import to_http_exception
 from autocrud.resource_manager.partial import (
     classify_partial_fields,
     filter_struct_partial,
@@ -80,10 +81,8 @@ class ReadRouteTemplate(BaseRouteTemplate, Generic[T]):
                     meta = resource_manager.get_meta(
                         resource_id, include_deleted=include_deleted
                     )
-            except HTTPException:
-                raise
             except Exception as e:
-                raise HTTPException(status_code=404, detail=str(e))
+                raise to_http_exception(e)
 
             # Apply partial filtering (unprefixed fields treated as meta)
             if fields:
@@ -170,10 +169,8 @@ class ReadRouteTemplate(BaseRouteTemplate, Generic[T]):
                         resource_id,
                         revision_id or UNSET,
                     )
-            except HTTPException:
-                raise
             except Exception as e:
-                raise HTTPException(status_code=404, detail=str(e))
+                raise to_http_exception(e)
 
             # Apply partial filtering (unprefixed fields treated as info)
             if fields:
@@ -248,10 +245,8 @@ class ReadRouteTemplate(BaseRouteTemplate, Generic[T]):
                             schema_version=meta.schema_version,
                         )
 
-            except HTTPException:
-                raise
             except Exception as e:
-                raise HTTPException(status_code=404, detail=str(e))
+                raise to_http_exception(e)
 
             if "meta" not in returns_list:
                 meta = UNSET
@@ -527,10 +522,8 @@ class ReadRouteTemplate(BaseRouteTemplate, Generic[T]):
                             has_more=has_more,
                         ),
                     )
-            except HTTPException:
-                raise
             except Exception as e:
-                raise HTTPException(status_code=404, detail=str(e))
+                raise to_http_exception(e)
 
         @router.get(
             f"/{model_name}/{{resource_id}}/data",
@@ -639,10 +632,8 @@ class ReadRouteTemplate(BaseRouteTemplate, Generic[T]):
                     resource = resource_manager.get_resource_revision(
                         resource_id, revision_id, schema_version=schema_version
                     )
-            except HTTPException:
-                raise
             except Exception as e:
-                raise HTTPException(status_code=404, detail=str(e))
+                raise to_http_exception(e)
 
             return MsgspecResponse(resource.data)
 
@@ -661,11 +652,8 @@ class ReadRouteTemplate(BaseRouteTemplate, Generic[T]):
                 # Permission check through get()
                 with resource_manager.meta_provide(user=user):
                     resource_manager.get(resource_id)
-            except Exception:
-                raise HTTPException(
-                    status_code=403,
-                    detail="Permission denied or Resource not found",
-                )
+            except Exception as e:
+                raise to_http_exception(e)
 
             try:
                 content = resource_manager.get_blob(file_id)
@@ -677,10 +665,8 @@ class ReadRouteTemplate(BaseRouteTemplate, Generic[T]):
                     media_type = content.content_type
 
                 return Response(content=content.data, media_type=media_type)
-            except FileNotFoundError:
-                raise HTTPException(status_code=404, detail="Blob not found")
-            except NotImplementedError:
-                raise HTTPException(status_code=400, detail="Blob store not configured")
+            except Exception as e:
+                raise to_http_exception(e)
 
         # New bare path endpoint — canonical GET for a single resource
         @router.get(

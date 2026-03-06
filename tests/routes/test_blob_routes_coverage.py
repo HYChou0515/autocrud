@@ -102,4 +102,4 @@ def test_blob_not_found_404():
 
     response = client.get("/blobs/missing_id")
     assert response.status_code == 404
-    assert response.json()["detail"] == "Blob not found"
+    assert "not found" in response.json()["detail"]
