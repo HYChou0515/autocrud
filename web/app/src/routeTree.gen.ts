@@ -12,6 +12,7 @@ import { Route as rootRouteImport } from './routes/__root'
 import { Route as AutocrudAdminRouteImport } from './routes/autocrud-admin'
 import { Route as IndexRouteImport } from './routes/index'
 import { Route as AutocrudAdminIndexRouteImport } from './routes/autocrud-admin/index'
+import { Route as AutocrudAdminMigrateRouteImport } from './routes/autocrud-admin/migrate'
 import { Route as AutocrudAdminBackupRouteImport } from './routes/autocrud-admin/backup'
 import { Route as AutocrudAdminSkillIndexRouteImport } from './routes/autocrud-admin/skill/index'
 import { Route as AutocrudAdminPetIndexRouteImport } from './routes/autocrud-admin/pet/index'
@@ -48,6 +49,11 @@ const IndexRoute = IndexRouteImport.update({
 const AutocrudAdminIndexRoute = AutocrudAdminIndexRouteImport.update({
   id: '/',
   path: '/',
+  getParentRoute: () => AutocrudAdminRoute,
+} as any)
+const AutocrudAdminMigrateRoute = AutocrudAdminMigrateRouteImport.update({
+  id: '/migrate',
+  path: '/migrate',
   getParentRoute: () => AutocrudAdminRoute,
 } as any)
 const AutocrudAdminBackupRoute = AutocrudAdminBackupRouteImport.update({
@@ -182,6 +188,7 @@ export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
   '/autocrud-admin': typeof AutocrudAdminRouteWithChildren
   '/autocrud-admin/backup': typeof AutocrudAdminBackupRoute
+  '/autocrud-admin/migrate': typeof AutocrudAdminMigrateRoute
   '/autocrud-admin/': typeof AutocrudAdminIndexRoute
   '/autocrud-admin/character/$resourceId': typeof AutocrudAdminCharacterResourceIdRoute
   '/autocrud-admin/character/create': typeof AutocrudAdminCharacterCreateRoute
@@ -208,6 +215,7 @@ export interface FileRoutesByFullPath {
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
   '/autocrud-admin/backup': typeof AutocrudAdminBackupRoute
+  '/autocrud-admin/migrate': typeof AutocrudAdminMigrateRoute
   '/autocrud-admin': typeof AutocrudAdminIndexRoute
   '/autocrud-admin/character/$resourceId': typeof AutocrudAdminCharacterResourceIdRoute
   '/autocrud-admin/character/create': typeof AutocrudAdminCharacterCreateRoute
@@ -236,6 +244,7 @@ export interface FileRoutesById {
   '/': typeof IndexRoute
   '/autocrud-admin': typeof AutocrudAdminRouteWithChildren
   '/autocrud-admin/backup': typeof AutocrudAdminBackupRoute
+  '/autocrud-admin/migrate': typeof AutocrudAdminMigrateRoute
   '/autocrud-admin/': typeof AutocrudAdminIndexRoute
   '/autocrud-admin/character/$resourceId': typeof AutocrudAdminCharacterResourceIdRoute
   '/autocrud-admin/character/create': typeof AutocrudAdminCharacterCreateRoute
@@ -265,6 +274,7 @@ export interface FileRouteTypes {
     | '/'
     | '/autocrud-admin'
     | '/autocrud-admin/backup'
+    | '/autocrud-admin/migrate'
     | '/autocrud-admin/'
     | '/autocrud-admin/character/$resourceId'
     | '/autocrud-admin/character/create'
@@ -291,6 +301,7 @@ export interface FileRouteTypes {
   to:
     | '/'
     | '/autocrud-admin/backup'
+    | '/autocrud-admin/migrate'
     | '/autocrud-admin'
     | '/autocrud-admin/character/$resourceId'
     | '/autocrud-admin/character/create'
@@ -318,6 +329,7 @@ export interface FileRouteTypes {
     | '/'
     | '/autocrud-admin'
     | '/autocrud-admin/backup'
+    | '/autocrud-admin/migrate'
     | '/autocrud-admin/'
     | '/autocrud-admin/character/$resourceId'
     | '/autocrud-admin/character/create'
@@ -368,6 +380,13 @@ declare module '@tanstack/react-router' {
       path: '/'
       fullPath: '/autocrud-admin/'
       preLoaderRoute: typeof AutocrudAdminIndexRouteImport
+      parentRoute: typeof AutocrudAdminRoute
+    }
+    '/autocrud-admin/migrate': {
+      id: '/autocrud-admin/migrate'
+      path: '/migrate'
+      fullPath: '/autocrud-admin/migrate'
+      preLoaderRoute: typeof AutocrudAdminMigrateRouteImport
       parentRoute: typeof AutocrudAdminRoute
     }
     '/autocrud-admin/backup': {
@@ -529,6 +548,7 @@ declare module '@tanstack/react-router' {
 
 interface AutocrudAdminRouteChildren {
   AutocrudAdminBackupRoute: typeof AutocrudAdminBackupRoute
+  AutocrudAdminMigrateRoute: typeof AutocrudAdminMigrateRoute
   AutocrudAdminIndexRoute: typeof AutocrudAdminIndexRoute
   AutocrudAdminCharacterResourceIdRoute: typeof AutocrudAdminCharacterResourceIdRoute
   AutocrudAdminCharacterCreateRoute: typeof AutocrudAdminCharacterCreateRoute
@@ -555,6 +575,7 @@ interface AutocrudAdminRouteChildren {
 
 const AutocrudAdminRouteChildren: AutocrudAdminRouteChildren = {
   AutocrudAdminBackupRoute: AutocrudAdminBackupRoute,
+  AutocrudAdminMigrateRoute: AutocrudAdminMigrateRoute,
   AutocrudAdminIndexRoute: AutocrudAdminIndexRoute,
   AutocrudAdminCharacterResourceIdRoute: AutocrudAdminCharacterResourceIdRoute,
   AutocrudAdminCharacterCreateRoute: AutocrudAdminCharacterCreateRoute,
