@@ -341,19 +341,54 @@ When reading a revision:
 
 Resources can be migrated explicitly using:
 
-```
-
+```python
+# Migrate the current revision
 resource_manager.migrate(resource_id)
 
+# Migrate a specific (non-current) revision
+resource_manager.migrate(resource_id, revision_id="item:abc:1")
 ```
 
-Migration process:
+Migration process (current revision):
 
 1. read existing revision data
 2. run migration logic
 3. update revision schema_version
 4. update resource meta schema_version
 5. write migrated data back
+
+Migration process (specific revision):
+
+1. locate the revision's actual schema_version in the resource store
+2. read its data using the correct schema_version key
+3. run migration logic
+4. update the revision's schema_version
+5. write migrated data back
+6. **does not** update resource meta schema_version
+
+> **Note**: `migrate()` only migrates one revision at a time. Old revisions
+> that were created before a schema upgrade remain at their original
+> schema_version until explicitly migrated.
+
+## Switch and unmigrated revisions
+
+When migration is configured, `switch()` checks whether the target revision
+has been migrated to the resource's current schema_version.
+
+- If the target revision is still at an older schema_version,
+  `RevisionNotMigratedError` is raised.
+- You must migrate the revision first before switching to it.
+
+```python
+from autocrud import RevisionNotMigratedError
+
+try:
+    resource_manager.switch(resource_id, old_revision_id)
+except RevisionNotMigratedError:
+    # Migrate the old revision first
+    resource_manager.migrate(resource_id, revision_id=old_revision_id)
+    resource_manager.switch(resource_id, old_revision_id)
+```
 
 Migration can also be executed across resources using **search-based migration APIs**.
 
@@ -400,6 +435,7 @@ meta.is_deleted = False
 ```
 
 Schema changes are handled through explicit migrations.
+Switching to older revisions requires those revisions to be migrated first.
 
 ---
 

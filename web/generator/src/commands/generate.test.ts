@@ -3316,3 +3316,193 @@ describe('parseField — nested arrays', () => {
     expect(field.zodType).toBe('z.any()');
   });
 });
+
+// ============================================================================
+// genMigrateApiClient — Schema Migration API client generation
+// ============================================================================
+
+function buildSimpleSpec(basePath: string = '') {
+  const prefix = basePath || '';
+  return {
+    info: { title: 'Test', version: '1.0' },
+    paths: {
+      [`${prefix}/character`]: {
+        post: {
+          requestBody: {
+            content: { 'application/json': { schema: { $ref: '#/components/schemas/Character' } } },
+          },
+        },
+      },
+      [`${prefix}/skill`]: {
+        post: {
+          requestBody: {
+            content: { 'application/json': { schema: { $ref: '#/components/schemas/Skill' } } },
+          },
+        },
+      },
+    },
+    components: {
+      schemas: {
+        Character: {
+          type: 'object',
+          properties: { name: { type: 'string' }, level: { type: 'integer' } },
+          required: ['name', 'level'],
+        },
+        Skill: {
+          type: 'object',
+          properties: { name: { type: 'string' } },
+          required: ['name'],
+        },
+      },
+    },
+  };
+}
+
+describe('genMigrateApiClient', () => {
+  it('generates migrateApi with MigrateProgress and MigrateResult types', () => {
+    const spec = buildSimpleSpec();
+    const gen = createTestGenerator(spec);
+    (gen as any).extractResources();
+
+    const code = (gen as any).genMigrateApiClient() as string;
+
+    // Should contain type definitions
+    expect(code).toContain('export interface MigrateProgress');
+    expect(code).toContain('export interface MigrateResult');
+
+    // Should contain streaming helper
+    expect(code).toContain('async function streamMigrate');
+
+    // Should contain the API object with test and execute methods
+    expect(code).toContain('export const migrateApi');
+    expect(code).toContain('test:');
+    expect(code).toContain('execute:');
+
+    // Should reference correct endpoint paths
+    expect(code).toContain('/migrate/test');
+    expect(code).toContain('/migrate/execute');
+  });
+
+  it('MigrateProgress interface has correct fields', () => {
+    const spec = buildSimpleSpec();
+    const gen = createTestGenerator(spec);
+    (gen as any).extractResources();
+
+    const code = (gen as any).genMigrateApiClient() as string;
+
+    expect(code).toContain('resource_id: string');
+    expect(code).toContain("status: 'migrating' | 'success' | 'failed' | 'skipped'");
+    expect(code).toContain('message?: string');
+    expect(code).toContain('error?: string');
+  });
+
+  it('MigrateResult interface has correct fields', () => {
+    const spec = buildSimpleSpec();
+    const gen = createTestGenerator(spec);
+    (gen as any).extractResources();
+
+    const code = (gen as any).genMigrateApiClient() as string;
+
+    expect(code).toContain('total: number');
+    expect(code).toContain('success: number');
+    expect(code).toContain('failed: number');
+    expect(code).toContain('skipped: number');
+    expect(code).toContain('errors: Array<{ resource_id: string; error: string }>');
+  });
+
+  it('streamMigrate correctly handles AbortSignal', () => {
+    const spec = buildSimpleSpec();
+    const gen = createTestGenerator(spec);
+    (gen as any).extractResources();
+
+    const code = (gen as any).genMigrateApiClient() as string;
+
+    // streamMigrate should accept signal parameter
+    expect(code).toContain('signal?: AbortSignal');
+    expect(code).toContain('signal');
+  });
+
+  it('uses VITE_API_URL for base URL', () => {
+    const spec = buildSimpleSpec();
+    const gen = createTestGenerator(spec);
+    (gen as any).extractResources();
+
+    const code = (gen as any).genMigrateApiClient() as string;
+
+    expect(code).toContain('VITE_API_URL');
+    expect(code).toContain("|| '/api'");
+  });
+});
+
+// ============================================================================
+// genMigratePage — Migration route page generation
+// ============================================================================
+
+describe('genMigratePage', () => {
+  it('generates a route page importing MigrationStatus component', () => {
+    const spec = buildSimpleSpec();
+    const gen = createTestGenerator(spec);
+    (gen as any).extractResources();
+
+    const code = (gen as any).genMigratePage() as string;
+
+    expect(code).toContain("import { createFileRoute } from '@tanstack/react-router'");
+    expect(code).toContain("import { MigrationStatus } from '../../lib/components/MigrationStatus'");
+    expect(code).toContain("createFileRoute('/autocrud-admin/migrate')");
+    expect(code).toContain('MigrationStatus');
+  });
+
+  it('passes all resource names to MigrationStatus', () => {
+    const spec = buildSimpleSpec();
+    const gen = createTestGenerator(spec);
+    (gen as any).extractResources();
+
+    const code = (gen as any).genMigratePage() as string;
+
+    expect(code).toContain("'character'");
+    expect(code).toContain("'skill'");
+    expect(code).toContain('resourceNames={[');
+  });
+
+  it('includes auto-generated comment header', () => {
+    const spec = buildSimpleSpec();
+    const gen = createTestGenerator(spec);
+    (gen as any).extractResources();
+
+    const code = (gen as any).genMigratePage() as string;
+
+    expect(code).toContain('// Auto-generated by AutoCRUD Web Generator');
+  });
+});
+
+// ============================================================================
+// genApiIndex — should include migrateApi export
+// ============================================================================
+
+describe('genApiIndex — migrate export', () => {
+  it('includes migrateApi export alongside backupApi', () => {
+    const spec = buildSimpleSpec();
+    const gen = createTestGenerator(spec);
+    (gen as any).extractResources();
+
+    const code = (gen as any).genApiIndex() as string;
+
+    expect(code).toContain("export { backupApi } from './backupApi'");
+    expect(code).toContain("export { migrateApi } from './migrateApi'");
+  });
+
+  it('exports all resource APIs plus backup and migrate', () => {
+    const spec = buildSimpleSpec();
+    const gen = createTestGenerator(spec);
+    (gen as any).extractResources();
+
+    const code = (gen as any).genApiIndex() as string;
+
+    // Character and Skill resources
+    expect(code).toContain('characterApi');
+    expect(code).toContain('skillApi');
+    // System APIs
+    expect(code).toContain('backupApi');
+    expect(code).toContain('migrateApi');
+  });
+});

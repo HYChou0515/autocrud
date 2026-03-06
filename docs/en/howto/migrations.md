@@ -110,3 +110,32 @@ schema = Schema.from_legacy(old_migration)
 ```
 
 This wraps the migration and preserves `schema_version` + `migrate()` compatibility.
+
+## Migrating specific revisions
+
+By default, `migrate()` migrates only the **current revision** of a resource.
+Older revisions remain at their original `schema_version` until explicitly migrated.
+
+This matters when you want to **switch** back to an older revision — AutoCRUD
+will raise `RevisionNotMigratedError` if that revision has not been migrated yet.
+
+```python
+from autocrud import RevisionNotMigratedError
+
+# After a schema upgrade, migrate the current revision
+resource_manager.migrate(resource_id)
+
+# Attempting to switch to an older, unmigrated revision
+try:
+    resource_manager.switch(resource_id, old_revision_id)
+except RevisionNotMigratedError:
+    # Migrate the specific revision first
+    resource_manager.migrate(resource_id, revision_id=old_revision_id)
+    # Now switch succeeds
+    resource_manager.switch(resource_id, old_revision_id)
+```
+
+Notes:
+
+* Migrating a specific revision **does not** update `meta.schema_version` — only the revision's own `schema_version` changes.
+* The `migrate/single/{resource_id}` HTTP endpoint also accepts an optional `revision_id` query parameter.

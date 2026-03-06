@@ -1356,6 +1356,7 @@ OnFailureRestore = defstruct(
 _migrate_context = [
     ("action", Literal[ResourceAction.migrate], ResourceAction.migrate),
     ("resource_id", str),
+    ("revision_id", str | UnsetType, UNSET),
 ]
 
 BeforeMigrate = defstruct(
@@ -1642,18 +1643,35 @@ class IResourceManager(ABC, Generic[T]):
         """
 
     @abstractmethod
-    def migrate(self, resource_id: str) -> ResourceMeta:
+    def migrate(
+        self,
+        resource_id: str,
+        *,
+        revision_id: str | UnsetType = UNSET,
+    ) -> ResourceMeta:
         """Migrate a resource to the latest schema version.
+
+        When *revision_id* is ``UNSET`` (the default), the **current**
+        revision (``meta.current_revision_id``) is migrated and
+        ``meta.schema_version`` is updated accordingly.
+
+        When *revision_id* is provided, only **that specific revision**
+        is migrated.  ``meta.schema_version`` is **not** changed (it
+        should already have been updated by a prior call that migrated
+        the current revision).
 
         Args:
             resource_id: The ID of the resource to migrate.
+            revision_id: Optional specific revision to migrate.  If
+                ``UNSET``, the current revision is migrated.
 
         Returns:
-            ResourceMeta: The updated metadata after migration.
+            ResourceMeta: The (possibly updated) metadata.
 
         Raises:
             ValueError: If migration logic is not configured.
             ResourceIDNotFoundError: If the resource ID does not exist.
+            RevisionIDNotFoundError: If *revision_id* does not exist.
         """
 
     @property
@@ -2337,6 +2355,39 @@ class ResourceConflictError(Exception):
 
 class SchemaConflictError(ResourceConflictError):
     pass
+
+
+class RevisionNotMigratedError(SchemaConflictError):
+    """Raised when switching to a revision whose schema version differs from
+    the resource's current schema version.
+
+    The revision must be migrated first via
+    ``resource_manager.migrate(resource_id, revision_id=...)``.
+
+    Attributes:
+        resource_id: The resource that was being switched.
+        revision_id: The target revision that is not yet migrated.
+        revision_schema_version: The schema version stored on the target revision.
+        current_schema_version: The resource-level (latest) schema version.
+    """
+
+    def __init__(
+        self,
+        resource_id: str,
+        revision_id: str,
+        revision_schema_version: str | None,
+        current_schema_version: str | None,
+    ) -> None:
+        super().__init__(
+            f"Revision '{revision_id}' of resource '{resource_id}' is at "
+            f"schema version '{revision_schema_version}' but the resource is at "
+            f"'{current_schema_version}'. Migrate the revision first with "
+            f"migrate('{resource_id}', revision_id='{revision_id}')."
+        )
+        self.resource_id = resource_id
+        self.revision_id = revision_id
+        self.revision_schema_version = revision_schema_version
+        self.current_schema_version = current_schema_version
 
 
 class CannotModifyResourceError(ResourceConflictError):

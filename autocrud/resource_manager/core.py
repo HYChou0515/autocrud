@@ -121,6 +121,7 @@ from autocrud.types import (
     ResourceMetaSearchQuery,
     RevisionIDNotFoundError,
     RevisionInfo,
+    RevisionNotMigratedError,
     RevisionStatus,
     SearchedResource,
     SpecialIndex,
@@ -231,6 +232,30 @@ class SimpleStorage(IStorage):
             revision_id,
             meta.schema_version,
         )
+
+    def find_revision_schema_version(
+        self, resource_id: str, revision_id: str
+    ) -> str | None | UnsetType:
+        """Find the most recent schema version stored for a revision.
+
+        Returns the highest schema version if the revision exists, or
+        ``UNSET`` if the revision was never stored.  Note that ``None``
+        is a valid schema version (meaning "no schema configured").
+        """
+        try:
+            versions = list(
+                self._resource_store.list_schema_versions(resource_id, revision_id)
+            )
+        except KeyError:
+            return UNSET
+        if not versions:
+            return UNSET
+        # Return the highest (newest) schema version.
+        # ``None`` means "no schema" and is always the lowest.
+        non_none = [v for v in versions if v is not None]
+        if non_none:
+            return max(non_none)
+        return None  # only None-keyed entry exists
 
     def get_meta(self, resource_id: str) -> ResourceMeta:
         return self._meta_store[resource_id]
@@ -803,48 +828,79 @@ class ResourceManager(IResourceManager[T], Generic[T]):
         ),
         "meta",
     )
-    def migrate(self, resource_id: str) -> ResourceMeta:
+    def migrate(
+        self,
+        resource_id: str,
+        *,
+        revision_id: str | UnsetType = UNSET,
+    ) -> ResourceMeta:
         """
         Migrate a resource to the latest schema version.
 
+        When *revision_id* is ``UNSET`` (the default), the **current**
+        revision (``meta.current_revision_id``) is migrated and
+        ``meta.schema_version`` is updated accordingly.
+
+        When *revision_id* is provided, only **that specific revision**
+        is migrated.  ``meta.schema_version`` is **not** changed (it
+        should already be at the latest version from migrating the
+        current revision first).
+
         Arguments:
             resource_id (str): The ID of the resource to migrate.
+            revision_id (str | UnsetType): Optional. A specific revision
+                to migrate. If ``UNSET``, migrates the current revision.
 
         Returns:
-            meta (ResourceMeta): The updated metadata after migration.
+            meta (ResourceMeta): The (possibly updated) metadata after migration.
 
         Raises:
             ValueError: If migration logic is not configured.
             ResourceIDNotFoundError: If the resource ID does not exist.
+            RevisionIDNotFoundError: If *revision_id* does not exist.
         """
         if self._migration is None:
             raise ValueError("Migration is not set for this resource manager")
 
-        # 獲取當前資源和元數據
         meta = self._get_meta_no_check_is_deleted(resource_id)
+
+        if revision_id is UNSET:
+            # --- Migrate the current revision (original behaviour) ---
+            target_rev = meta.current_revision_id
+            actual_sv = meta.schema_version
+        else:
+            # --- Migrate a specific (possibly non-current) revision ---
+            target_rev = revision_id
+            actual_sv = self.storage.find_revision_schema_version(
+                resource_id, target_rev
+            )
+            if actual_sv is UNSET:
+                raise RevisionIDNotFoundError(resource_id, target_rev)
+
         info = self.storage.get_resource_revision_info(
-            resource_id, meta.current_revision_id
+            resource_id, target_rev, schema_version=actual_sv
         )
 
         # 檢查是否需要遷移
         if info.schema_version == self._migration.schema_version:
-            # 如果已經是最新版本，直接返回當前元數據
             return meta
 
         # 執行數據遷移
-        # 序列化當前數據
         with self.storage.get_data_bytes(
-            resource_id, meta.current_revision_id
+            resource_id, target_rev, schema_version=actual_sv
         ) as data_io:
             migrated_data = self._migration.migrate(data_io, info.schema_version)
 
         # 更新 resource info 的 schema_version
         info.parent_schema_version = info.schema_version
         info.schema_version = self._migration.schema_version
-        meta.schema_version = self._migration.schema_version
-        meta.indexed_data = self._extract_indexed_values(migrated_data)
 
-        self.storage.save_meta(meta)
+        if revision_id is UNSET:
+            # Only update meta-level schema_version when migrating *current* revision
+            meta.schema_version = self._migration.schema_version
+            meta.indexed_data = self._extract_indexed_values(migrated_data)
+            self.storage.save_meta(meta)
+
         self.storage.save_revision(info, io.BytesIO(self.encode(migrated_data)))
 
         return meta
@@ -872,9 +928,16 @@ class ResourceManager(IResourceManager[T], Generic[T]):
         """從 data 中提取需要索引的值（保留原始類型，Enum 會在序列化時轉換）"""
         return self._indexed_value_extractor.extract_indexed_values(data)
 
-    def _load_revision_data(self, resource_id: str, revision_id: str) -> T:
+    def _load_revision_data(
+        self,
+        resource_id: str,
+        revision_id: str,
+        schema_version: str | None | UnsetType = UNSET,
+    ) -> T:
         """Load and decode data for a specific revision."""
-        with self.storage.get_data_bytes(resource_id, revision_id) as data_io:
+        with self.storage.get_data_bytes(
+            resource_id, revision_id, schema_version=schema_version
+        ) as data_io:
             return self.decode(data_io.read())
 
     @contextmanager
@@ -1613,12 +1676,31 @@ class ResourceManager(IResourceManager[T], Generic[T]):
 
         Raises:
             RevisionIDNotFoundError: If the revision ID does not exist.
+            RevisionNotMigratedError: If the revision has a different
+                schema version than the resource's current schema version
+                and migration is configured.  The revision must be
+                migrated first via ``migrate(resource_id, revision_id=...)``.
         """
         meta = self.get_meta(resource_id)
         if meta.current_revision_id == revision_id:
             return meta
-        if not self.storage.revision_exists(resource_id, revision_id):
-            raise RevisionIDNotFoundError(resource_id, revision_id)
+
+        # When migration is configured, use find_revision_schema_version
+        # to locate the revision regardless of its schema_version key.
+        if self._migration is not None:
+            actual_sv = self.storage.find_revision_schema_version(
+                resource_id, revision_id
+            )
+            if actual_sv is UNSET:
+                raise RevisionIDNotFoundError(resource_id, revision_id)
+            if actual_sv != meta.schema_version:
+                raise RevisionNotMigratedError(
+                    resource_id, revision_id, actual_sv, meta.schema_version
+                )
+        else:
+            # No migration configured — use the original check
+            if not self.storage.revision_exists(resource_id, revision_id):
+                raise RevisionIDNotFoundError(resource_id, revision_id)
 
         # 切換到指定版本時，需要更新索引數據
         if self._indexed_fields:

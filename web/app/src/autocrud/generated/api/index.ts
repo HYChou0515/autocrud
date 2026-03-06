@@ -7,3 +7,4 @@ export { petJobApi } from './pet-jobApi';
 export { gameEventApi } from './game-eventApi';
 export { petApi } from './petApi';
 export { backupApi } from './backupApi';
+export { migrateApi } from './migrateApi';
