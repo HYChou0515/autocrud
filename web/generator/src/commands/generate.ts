@@ -1035,13 +1035,19 @@ export class Generator {
     let isArray = false;
     let isNullable = false;
     let enumValues: string[] | undefined;
+    let enumSchemaName: string | undefined;
     let tsType = 'string';
     let zodType = 'z.string()';
 
     // Handle $ref references
     if (prop.$ref) {
+      const refName = prop.$ref.split('/').pop()!;
       const refSchema = this.resolveRef(prop.$ref);
       if (refSchema) {
+        // Track enum schema name so we can use it as the TS type
+        if (refSchema.enum) {
+          enumSchemaName = refName;
+        }
         prop = refSchema;
         type = prop.type;
       }
@@ -1107,8 +1113,12 @@ export class Generator {
         prop = types[0];
         // Resolve $ref in anyOf
         if (prop.$ref) {
+          const refName = prop.$ref.split('/').pop()!;
           const refSchema = this.resolveRef(prop.$ref);
           if (refSchema) {
+            if (refSchema.enum) {
+              enumSchemaName = refName;
+            }
             prop = refSchema;
           }
         }
@@ -1274,7 +1284,7 @@ export class Generator {
       tsType = 'object';
     } else if (prop.enum) {
       enumValues = prop.enum;
-      tsType = 'string';
+      tsType = enumSchemaName ?? 'string';
       const enumLiterals = enumValues!.map((v) => `"${v}"`).join(', ');
       zodType = `z.enum([${enumLiterals}])`;
 

@@ -182,9 +182,7 @@ export function MigrationStatus({ resourceNames }: MigrationStatusProps) {
         await handleMigrate(name, mode);
       }
       setGlobalSuccess(
-        mode === 'test'
-          ? 'All models tested successfully.'
-          : 'All models migrated successfully.',
+        mode === 'test' ? 'All models tested successfully.' : 'All models migrated successfully.',
       );
     },
     [clearMessages, resourceNames, handleMigrate],
@@ -376,9 +374,7 @@ function ModelMigrationCard({
             <Divider />
             <Group>
               <IconRefresh size={18} />
-              <Text fw={500}>
-                {mode === 'test' ? 'Test' : 'Migration'} Result
-              </Text>
+              <Text fw={500}>{mode === 'test' ? 'Test' : 'Migration'} Result</Text>
             </Group>
             <Group>
               <Badge color="blue" variant="light" size="lg">
@@ -436,9 +432,7 @@ function ModelMigrationCard({
         {!running && progressItems.length > 0 && (
           <Accordion variant="contained">
             <Accordion.Item value="details">
-              <Accordion.Control>
-                Details ({progressItems.length} resources)
-              </Accordion.Control>
+              <Accordion.Control>Details ({progressItems.length} resources)</Accordion.Control>
               <Accordion.Panel>
                 <Table striped withTableBorder>
                   <Table.Thead>

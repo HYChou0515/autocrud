@@ -3321,6 +3321,113 @@ describe('parseField — nested arrays', () => {
 // genMigrateApiClient — Schema Migration API client generation
 // ============================================================================
 
+// ============================================================================
+// genTypes — enum field type references
+// ============================================================================
+describe('genTypes — enum field references', () => {
+  function buildEnumSpec() {
+    return {
+      info: { title: 'Test', version: '1.0' },
+      paths: {
+        '/foo': {
+          post: {
+            requestBody: {
+              content: { 'application/json': { schema: { $ref: '#/components/schemas/Foo' } } },
+            },
+          },
+        },
+      },
+      components: {
+        schemas: {
+          FooType: {
+            type: 'string',
+            enum: ['foo', 'bar'],
+            title: 'FooType',
+          },
+          Foo: {
+            type: 'object',
+            properties: {
+              foo_type: { $ref: '#/components/schemas/FooType' },
+              name: { type: 'string' },
+            },
+            required: ['foo_type', 'name'],
+          },
+        },
+      },
+    };
+  }
+
+  it('generates enum type reference instead of string for $ref enum fields', () => {
+    const spec = buildEnumSpec();
+    const gen = createTestGenerator(spec);
+    (gen as any).extractResources();
+    const types = (gen as any).genTypes() as string;
+
+    // Enum definition should be present
+    expect(types).toContain('export enum FooType {');
+    // Interface field should reference enum type, not string
+    expect(types).toContain('foo_type: FooType;');
+    expect(types).not.toMatch(/foo_type: string;/);
+  });
+
+  it('generates nullable enum type reference for optional enum via anyOf', () => {
+    const spec = {
+      info: { title: 'Test', version: '1.0' },
+      paths: {
+        '/bar': {
+          post: {
+            requestBody: {
+              content: { 'application/json': { schema: { $ref: '#/components/schemas/Bar' } } },
+            },
+          },
+        },
+      },
+      components: {
+        schemas: {
+          BarType: {
+            type: 'string',
+            enum: ['x', 'y', 'z'],
+            title: 'BarType',
+          },
+          Bar: {
+            type: 'object',
+            properties: {
+              bar_type: {
+                anyOf: [{ $ref: '#/components/schemas/BarType' }, { type: 'null' }],
+              },
+              name: { type: 'string' },
+            },
+            required: ['name'],
+          },
+        },
+      },
+    };
+    const gen = createTestGenerator(spec);
+    (gen as any).extractResources();
+    const types = (gen as any).genTypes() as string;
+
+    // Enum definition should be present
+    expect(types).toContain('export enum BarType {');
+    // Field should reference enum type with nullable, not string
+    expect(types).toContain('bar_type?: BarType | null;');
+    expect(types).not.toMatch(/bar_type\??: string/);
+  });
+
+  it('preserves enum type in resource fields metadata', () => {
+    const spec = buildEnumSpec();
+    const gen = createTestGenerator(spec);
+    (gen as any).extractResources();
+
+    const fooResource = gen.resources.find((r) => r.name === 'foo')!;
+    const fooTypeField = fooResource.fields.find((f) => f.name === 'foo_type')!;
+
+    // enumValues should still be populated for form rendering
+    expect(fooTypeField.enumValues).toEqual(['foo', 'bar']);
+    // tsType should use the enum name, not 'string'
+    expect(fooTypeField.tsType).toBe('FooType');
+  });
+});
+
 function buildSimpleSpec(basePath: string = '') {
   const prefix = basePath || '';
   return {
