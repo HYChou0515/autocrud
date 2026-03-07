@@ -132,15 +132,35 @@ interface RefRevisionLinkProps {
 }
 
 /**
- * Extract resource_id from a revision_id.
- * revision_id format: "prefix:uuid:revision_number" → resource_id: "prefix:uuid"
+ * Parse a value stored in a RefType.revision_id field.
+ *
+ * A field annotated with `Ref(resource, ref_type=RefType.revision_id)` may
+ * hold either a true revision ID (`resource_id:number`) or a plain resource ID
+ * (meaning "latest revision").
+ *
+ * - revision_id format: "prefix:uuid:revision_number" (last segment is numeric)
+ * - resource_id format: "prefix:uuid" (last segment is NOT numeric)
+ *
+ * Returns `{ resourceId, revisionId }` where `revisionId` is `null` when the
+ * value is a plain resource ID.
  */
-function revisionIdToResourceId(revisionId: string): string {
-  const lastColon = revisionId.lastIndexOf(':');
+export function parseRevisionRef(value: string): {
+  resourceId: string;
+  revisionId: string | null;
+} {
+  const lastColon = value.lastIndexOf(':');
   if (lastColon > 0) {
-    return revisionId.substring(0, lastColon);
+    const suffix = value.substring(lastColon + 1);
+    // A true revision_id ends with a numeric revision number (e.g. ":3", ":0", ":12345")
+    if (suffix.length > 0 && /^\d+$/.test(suffix)) {
+      return {
+        resourceId: value.substring(0, lastColon),
+        revisionId: value,
+      };
+    }
   }
-  return revisionId;
+  // Not a revision_id — treat the whole value as a resource_id
+  return { resourceId: value, revisionId: null };
 }
 
 /**
@@ -154,7 +174,7 @@ export function RefRevisionLink({ value, fieldRef }: RefRevisionLinkProps) {
     return <Code c="dimmed">N/A</Code>;
   }
 
-  const resourceId = revisionIdToResourceId(value);
+  const { resourceId, revisionId } = parseRevisionRef(value);
   const detailRoute = getResourceDetailRoute(fieldRef.resource as ResourceName);
 
   const handleCopy = (e: React.MouseEvent) => {
@@ -165,13 +185,19 @@ export function RefRevisionLink({ value, fieldRef }: RefRevisionLinkProps) {
     setTimeout(() => setCopied(false), 2000);
   };
 
+  // Build search params: only include ?revision= when the value is a true revision_id
+  const searchParams = revisionId ? { revision: revisionId } : {};
+  const tooltipLabel = revisionId
+    ? `${fieldRef.resource} revision: ${value}`
+    : `${fieldRef.resource}: ${value}`;
+
   return (
     <Group gap="xs" wrap="nowrap">
-      <Tooltip label={`${fieldRef.resource} revision: ${value}`} position="top" withArrow>
+      <Tooltip label={tooltipLabel} position="top" withArrow>
         <Link
           to={detailRoute}
           params={{ resourceId }}
-          search={{ revision: value }}
+          search={searchParams}
           onClick={(e: React.MouseEvent) => e.stopPropagation()}
           onPointerDownCapture={(e: React.MouseEvent) => e.stopPropagation()}
           onClickCapture={(e: React.MouseEvent) => e.stopPropagation()}

@@ -1194,8 +1194,7 @@ Object.assign(registry, {
                   isNullable: false,
                   ref: {
                     resource: 'character',
-                    type: 'resource_id',
-                    onDelete: 'set_null',
+                    type: 'revision_id',
                   },
                 },
               ],
@@ -1270,8 +1269,7 @@ Object.assign(registry, {
                   isNullable: false,
                   ref: {
                     resource: 'character',
-                    type: 'resource_id',
-                    onDelete: 'set_null',
+                    type: 'revision_id',
                   },
                 },
               ],
@@ -1732,8 +1730,7 @@ Object.assign(registry, {
                   isNullable: false,
                   ref: {
                     resource: 'character',
-                    type: 'resource_id',
-                    onDelete: 'set_null',
+                    type: 'revision_id',
                   },
                 },
               ],
@@ -1808,8 +1805,7 @@ Object.assign(registry, {
                   isNullable: false,
                   ref: {
                     resource: 'character',
-                    type: 'resource_id',
-                    onDelete: 'set_null',
+                    type: 'revision_id',
                   },
                 },
               ],
