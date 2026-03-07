@@ -155,3 +155,54 @@ class TestIBlobStoreBehavior:
 
         url = self.blob_store.get_url(file_id)
         assert url is None or isinstance(url, str)
+
+    def test_put_with_custom_key(self):
+        """put(data, key='my-key') uses the caller-specified key as file_id."""
+        data = b"custom_key_data"
+        result = self.blob_store.put(data, key="my-custom-key")
+        assert result.file_id == "my-custom-key"
+        assert result.size == len(data)
+        assert result.data == data
+
+        # Retrievable by custom key
+        retrieved = self.blob_store.get("my-custom-key")
+        assert retrieved.data == data
+        assert retrieved.file_id == "my-custom-key"
+
+    def test_put_custom_key_overwrite(self):
+        """put(data, key='k') with the same key overwrites the previous content."""
+        key = "overwrite-key"
+        data_v1 = b"version_1"
+        data_v2 = b"version_2_longer"
+
+        self.blob_store.put(data_v1, key=key)
+        assert self.blob_store.get(key).data == data_v1
+
+        # Overwrite with new data
+        result = self.blob_store.put(data_v2, key=key)
+        assert result.file_id == key
+        assert result.size == len(data_v2)
+
+        retrieved = self.blob_store.get(key)
+        assert retrieved.data == data_v2
+
+    def test_get_custom_key(self):
+        """get() works for both hash-based and custom-keyed blobs."""
+        # Hash-based
+        hash_data = b"hash_based_blob"
+        hash_id = self.blob_store.put(hash_data).file_id
+
+        # Custom key
+        custom_data = b"custom_keyed_blob"
+        self.blob_store.put(custom_data, key="ck-get-test")
+
+        assert self.blob_store.get(hash_id).data == hash_data
+        assert self.blob_store.get("ck-get-test").data == custom_data
+
+    def test_exists_custom_key(self):
+        """exists() returns True for custom-keyed blobs."""
+        unique_key = f"ck-exists-test-{id(self.blob_store)}"
+        assert self.blob_store.exists(unique_key) is False
+
+        self.blob_store.put(b"exists_data", key=unique_key)
+        assert self.blob_store.exists(unique_key) is True

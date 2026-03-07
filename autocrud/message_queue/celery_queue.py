@@ -131,10 +131,17 @@ class CeleryMessageQueue(DelayableMessageQueue[T], Generic[T]):
                 resource_id: The ID of the job resource to process.
                 retry_count: Current retry count.
             """
+            from autocrud.message_queue.context import JobContext
+            from autocrud.message_queue.log_flush import LogFlushThread
+
             # Check for poison pill (stop marker)
             if resource_id == queue._STOP_MARKER:
                 # Worker received stop signal, terminate gracefully
                 raise Ignore()  # Stop processing without retry
+
+            blob_store = queue._blob_store
+            log_key = queue._log_key(resource_id)
+            lf: LogFlushThread | None = None
 
             try:
                 # 1. Fetch resource and update status to PROCESSING
@@ -145,11 +152,20 @@ class CeleryMessageQueue(DelayableMessageQueue[T], Generic[T]):
                     queue.rm.create_or_update(resource_id, job)
                 resource.data = job
 
+                ctx = JobContext(resource)
+                ctx.info("Job started")
+
+                if blob_store is not None:
+                    lf = LogFlushThread(ctx=ctx, blob_store=blob_store, key=log_key)
+                    lf.start()
+
                 # 2. Execute user callback
-                result = queue._do(resource)
+                result = queue._invoke_handler(resource, ctx)
 
                 # Check if callback explicitly requested to stop periodic execution
                 user_requested_stop = result is False
+
+                ctx.info("Job completed")
 
                 # 3. Mark as completed
                 completed_resource = queue.complete(resource_id)
@@ -218,6 +234,9 @@ class CeleryMessageQueue(DelayableMessageQueue[T], Generic[T]):
                 else:
                     # Max retries exceeded, stop retrying
                     raise Ignore()
+            finally:
+                if lf is not None:
+                    lf.stop()
 
         # Store task reference
         self._celery_task = process_job_task

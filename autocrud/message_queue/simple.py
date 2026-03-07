@@ -201,29 +201,60 @@ class SimpleMessageQueue(DelayableMessageQueue[T], Generic[T]):
 
         A HeartbeatThread runs in the background during execution so that
         ``recover_stale_jobs`` can distinguish live workers from dead ones.
+        A LogFlushThread periodically persists execution logs to the blob store.
 
         Args:
             job: The job resource to execute
         """
+        from autocrud.message_queue.context import JobContext
         from autocrud.message_queue.heartbeat import HeartbeatThread
+        from autocrud.message_queue.log_flush import LogFlushThread
+
+        resource_id = job.info.resource_id
+        ctx = JobContext(job)
+        ctx.info("Job started")
 
         hb = HeartbeatThread(
             mq=self,
-            resource_id=job.info.resource_id,
+            resource_id=resource_id,
             interval_seconds=self._heartbeat_interval,
         )
         hb.start()
+
+        # Start log flush thread if blob store is available
+        blob_store = self._blob_store
+        log_key = self._log_key(resource_id)
+        lf: LogFlushThread | None = None
+        if blob_store is not None:
+            lf = LogFlushThread(
+                ctx=ctx,
+                blob_store=blob_store,
+                key=log_key,
+                interval_seconds=10.0,
+            )
+            lf.start()
+
         try:
-            self._execute_job_inner(job)
+            self._execute_job_inner(job, ctx)
         finally:
             hb.stop()
+            if lf is not None:
+                lf.stop()  # stop() does a final flush
 
-    def _execute_job_inner(self, job: Resource[Job[T]]) -> None:
-        """Core job execution logic (without heartbeat management)."""
+    def _execute_job_inner(self, job: Resource[Job[T]], ctx=None) -> None:
+        """Core job execution logic (without heartbeat management).
+
+        Args:
+            job: The job resource to execute.
+            ctx: Optional :class:`JobContext` for lifecycle logging.
+        """
         try:
-            result = self._do(job)
+            result = self._invoke_handler(job, ctx)
             # Check if callback explicitly requested to stop periodic execution
             user_requested_stop = result is False
+
+            if ctx is not None:
+                ctx.info("Job completed")
 
             completed_job = self.complete(job.info.resource_id)
 
@@ -233,6 +264,8 @@ class SimpleMessageQueue(DelayableMessageQueue[T], Generic[T]):
             )
 
         except DelayRetry as e:
+            if ctx is not None:
+                ctx.info(f"Job delayed retry: {e.delay_seconds}s")
             # Handle DelayRetry using parent class method
             self._handle_delay_retry(
                 job.info.resource_id, e.delay_seconds, job.info.created_by
@@ -260,9 +293,15 @@ class SimpleMessageQueue(DelayableMessageQueue[T], Generic[T]):
             if should_retry:
                 # Retry: set status back to PENDING
                 updated_job.status = TaskStatus.PENDING
+                if ctx is not None:
+                    ctx.warning(
+                        f"Retrying ({updated_job.retries}/{effective_max_retries})"
+                    )
             else:
                 # No retry: mark as permanently FAILED
                 updated_job.status = TaskStatus.FAILED
+                if ctx is not None:
+                    ctx.error(f"Job failed: {error_msg}")
 
             try:
                 with self._rm_meta_provide(job.info.created_by):

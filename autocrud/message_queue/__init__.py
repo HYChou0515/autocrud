@@ -7,6 +7,8 @@ from autocrud.message_queue.celery_queue import (
     CeleryMessageQueue,
     CeleryMessageQueueFactory,
 )
+from autocrud.message_queue.context import JobContext
+from autocrud.message_queue.log_flush import LogFlushThread
 from autocrud.message_queue.rabbitmq import (
     RabbitMQMessageQueue,
     RabbitMQMessageQueueFactory,
@@ -23,4 +25,6 @@ __all__ = [
     "NoRetry",
     "DelayRetry",
     "DelayableMessageQueue",
+    "JobContext",
+    "LogFlushThread",
 ]
