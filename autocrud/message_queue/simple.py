@@ -256,7 +256,9 @@ class SimpleMessageQueue(DelayableMessageQueue[T], Generic[T]):
             if ctx is not None:
                 ctx.info("Job completed")
 
-            completed_job = self.complete(job.info.resource_id)
+            completed_job = self.complete(
+                job.info.resource_id, _artifact=job.data.artifact
+            )
 
             # Handle periodic job using parent class method
             self._handle_periodic_job(
@@ -274,7 +276,19 @@ class SimpleMessageQueue(DelayableMessageQueue[T], Generic[T]):
         except Exception as e:
             # Update Job with error message and retry count
             error_msg = str(e)
-            updated_job = job.data
+
+            # Always log the error so operators can diagnose failures.
+            if ctx is not None:
+                ctx.error(f"Job error: {error_msg}")
+
+            # Re-fetch from storage to avoid serialization issues
+            # (the in-memory job may contain handler-set fields that
+            # don't match the registered type, e.g. artifact on a
+            # Job[T] without D).
+            try:
+                updated_job = self.rm.get(job.info.resource_id).data
+            except Exception:
+                updated_job = job.data
             updated_job.errmsg = error_msg
             updated_job.retries += 1
 
@@ -301,7 +315,7 @@ class SimpleMessageQueue(DelayableMessageQueue[T], Generic[T]):
                 # No retry: mark as permanently FAILED
                 updated_job.status = TaskStatus.FAILED
                 if ctx is not None:
-                    ctx.error(f"Job failed: {error_msg}")
+                    ctx.error(f"Job failed permanently: {error_msg}")
 
             try:
                 with self._rm_meta_provide(job.info.created_by):

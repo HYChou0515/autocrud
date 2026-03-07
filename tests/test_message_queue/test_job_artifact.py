@@ -89,7 +89,7 @@ class TestJobArtifact:
             # Simulate handler producing an artifact
             resource.data.artifact = {"result": "computed", "count": 42}
 
-        rm, mq = _make_rm_and_queue(handler)
+        rm, mq = _make_rm_and_queue(handler, job_type=Job[Payload, dict])
 
         with rm.meta_provide("testuser", NOW):
             info = rm.create(Job(payload=Payload(task_name="compute", priority=5)))
@@ -102,6 +102,7 @@ class TestJobArtifact:
         resource = rm.get(rid)
         assert resource.data.status == TaskStatus.COMPLETED
         assert resource.data.payload.task_name == "compute"
+        assert resource.data.artifact == {"result": "computed", "count": 42}
 
     def test_rerun_resets_artifact(self):
         """After rerun, artifact=None, errmsg=None, retries=0, but payload preserved."""
@@ -109,7 +110,7 @@ class TestJobArtifact:
         def handler(resource: Resource[Job[Payload]]):
             resource.data.artifact = {"result": "done"}
 
-        rm, mq = _make_rm_and_queue(handler)
+        rm, mq = _make_rm_and_queue(handler, job_type=Job[Payload, dict])
 
         with rm.meta_provide("testuser", NOW):
             info = rm.create(Job(payload=Payload(task_name="initial", priority=1)))

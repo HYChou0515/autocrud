@@ -557,7 +557,7 @@ export class Generator {
     'errmsg',
     'retries',
     'artifact',
-    // 'max_retries',
+    'max_retries',
     'periodic_interval_seconds',
     'periodic_max_runs',
     'periodic_runs',

@@ -92,7 +92,7 @@ export type GameEventFieldName =
   | 'payload.event_x.great'
   | 'status'
   | 'errmsg'
-  | 'artifact'
+  | 'artifact.process_times'
   | 'retries'
   | 'max_retries'
   | 'periodic_interval_seconds'
@@ -1402,6 +1402,7 @@ Object.assign(registry, {
       'errmsg',
       'artifact',
       'retries',
+      'max_retries',
       'periodic_interval_seconds',
       'periodic_max_runs',
       'periodic_runs',
@@ -1585,11 +1586,11 @@ Object.assign(registry, {
         isNullable: true,
       },
       {
-        name: 'artifact',
-        label: 'Artifact',
-        type: 'null',
+        name: 'artifact.process_times',
+        label: 'Process Times',
+        type: 'number',
         isArray: false,
-        isRequired: false,
+        isRequired: true,
         isNullable: false,
       },
       {
@@ -1687,9 +1688,11 @@ Object.assign(registry, {
           .nullable()
           .optional(),
       }),
+      artifact: z.object({
+        process_times: z.number(),
+      }),
       status: z.enum(['completed', 'failed', 'pending', 'processing']).optional(),
       errmsg: z.string().nullable().optional(),
-      artifact: z.any().optional(),
       retries: z.number().int().optional(),
       max_retries: z.number().int().nullable().optional(),
       periodic_interval_seconds: z.number().int().nullable().optional(),
@@ -1703,8 +1706,8 @@ Object.assign(registry, {
     defaultHiddenFields: [
       'status',
       'errmsg',
-      'artifact',
       'retries',
+      'max_retries',
       'periodic_interval_seconds',
       'periodic_max_runs',
       'periodic_runs',

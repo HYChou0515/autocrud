@@ -38,13 +38,13 @@ class Payload(Struct):
     priority: int
 
 
-def _make_rm_and_queue(handler, blob_store=None):
+def _make_rm_and_queue(handler, blob_store=None, job_type=None):
     meta_store = MemoryMetaStore()
     resource_store = MemoryResourceStore()
     storage = SimpleStorage(meta_store, resource_store)
     mq_factory = SimpleMessageQueueFactory()
     rm = ResourceManager(
-        Job[Payload],
+        job_type or Job[Payload],
         storage=storage,
         message_queue=mq_factory.build(handler),
         indexed_fields=[IndexableField(field_path="status", field_type=str)],
@@ -208,7 +208,7 @@ class TestNewStyleHandler:
         def handler(resource: Resource[Job[Payload]], job_context: JobContext = None):
             job_context.set_artifact({"score": 99})
 
-        rm, mq = _make_rm_and_queue(handler)
+        rm, mq = _make_rm_and_queue(handler, job_type=Job[Payload, dict])
 
         with rm.meta_provide("testuser", NOW):
             info = rm.create(Job(payload=Payload(task_name="art-ctx", priority=1)))
@@ -218,6 +218,26 @@ class TestNewStyleHandler:
 
         resource = rm.get(info.resource_id)
         assert resource.data.status == TaskStatus.COMPLETED
+        assert resource.data.artifact == {"score": 99}
+
+    def test_handler_sets_artifact_persisted_after_complete(self):
+        """Artifact set by handler is persisted to storage after job completes."""
+
+        def handler(resource: Resource[Job[Payload]], job_context: JobContext = None):
+            job_context.set_artifact({"result": "done", "count": 42})
+
+        rm, mq = _make_rm_and_queue(handler, job_type=Job[Payload, dict])
+
+        with rm.meta_provide("testuser", NOW):
+            info = rm.create(Job(payload=Payload(task_name="art-persist", priority=1)))
+
+        mq.put(info.resource_id)
+        mq._execute_job(mq.pop())
+
+        # Re-fetch from storage — artifact must survive the complete() round-trip
+        resource = rm.get(info.resource_id)
+        assert resource.data.status == TaskStatus.COMPLETED
+        assert resource.data.artifact == {"result": "done", "count": 42}
 
     def test_handler_error_still_logs(self):
         """Handler with job_context that raises still gets error in logs."""
@@ -238,8 +258,36 @@ class TestNewStyleHandler:
 
         logs = mq.get_logs(info.resource_id)
         assert "Before crash" in logs
-        assert "Job failed" in logs
+        # "Job error" is always logged for every exception
+        assert "Job error" in logs
         assert "oops" in logs
+
+    def test_handler_error_logged_on_retry(self):
+        """Error details are logged even when the job will be retried."""
+        bs = MemoryBlobStore()
+
+        call_count = [0]
+
+        def handler(resource: Resource[Job[Payload]], job_context: JobContext = None):
+            call_count[0] += 1
+            if call_count[0] == 1:
+                raise RuntimeError("transient failure")
+            # succeed on second call
+
+        rm, mq = _make_rm_and_queue(handler, blob_store=bs)
+        mq.max_retries = 2
+
+        with rm.meta_provide("testuser", NOW):
+            info = rm.create(Job(payload=Payload(task_name="retry-err", priority=1)))
+
+        mq.put(info.resource_id)
+        # Execute first time — handler raises, job retries
+        mq._execute_job(mq.pop())
+
+        logs = mq.get_logs(info.resource_id)
+        # Even on retry, the error must be logged
+        assert "Job error: transient failure" in logs
+        assert "Retrying" in logs
 
 
 # ==========================================================================
@@ -277,7 +325,9 @@ class TestNoBlobStoreWithJobContext:
         def handler(resource: Resource[Job[Payload]], job_context: JobContext = None):
             job_context.set_artifact({"x": 1})
 
-        rm, mq = _make_rm_and_queue(handler, blob_store=None)
+        rm, mq = _make_rm_and_queue(
+            handler, blob_store=None, job_type=Job[Payload, dict]
+        )
 
         with rm.meta_provide("testuser", NOW):
             info = rm.create(Job(payload=Payload(task_name="art-nobs", priority=1)))
@@ -287,6 +337,7 @@ class TestNoBlobStoreWithJobContext:
 
         resource = rm.get(info.resource_id)
         assert resource.data.status == TaskStatus.COMPLETED
+        assert resource.data.artifact == {"x": 1}
 
     def test_fallback_ctx_when_invoke_handler_gets_none(self):
         """_invoke_handler creates fallback ctx + emits warning if ctx=None."""

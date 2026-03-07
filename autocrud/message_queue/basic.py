@@ -184,18 +184,30 @@ class BasicMessageQueue(IMessageQueue[T], Generic[T]):
         except FileNotFoundError:
             return None
 
-    def complete(self, resource_id: str, result: str | None = None) -> Resource[Job[T]]:
-        """
-        Mark a job as completed.
+    def complete(
+        self,
+        resource_id: str,
+        result: str | None = None,
+        *,
+        _artifact: object | None = None,
+    ) -> Resource[Job[T]]:
+        """Mark a job as completed.
+
+        When *_artifact* is provided it is copied onto the freshly
+        fetched ``Job`` before persisting, so that handler-produced
+        artifacts survive the round-trip through storage.
 
         Args:
             resource_id: The ID of the job resource.
             result: Optional result string.
+            _artifact: If not ``None``, set on the job before saving.
         """
         resource = self.rm.get(resource_id)
         job = resource.data
         job.status = TaskStatus.COMPLETED
         job.errmsg = result
+        if _artifact is not None:
+            job.artifact = _artifact
 
         with self._rm_meta_provide(resource.info.created_by):
             self.rm.create_or_update(resource_id, job)

@@ -252,7 +252,13 @@ class GameEventPayload(Struct):
     event_x: EventBodyX | None = None
 
 
-class GameEvent(Job[GameEventPayload]):
+class GameEventArtifact(Struct):
+    """遊戲事件載荷數據"""
+
+    process_times: float
+
+
+class GameEvent(Job[GameEventPayload, GameEventArtifact]):
     """遊戲事件任務（使用 Message Queue 處理）"""
 
     pass
@@ -1156,7 +1162,10 @@ def configure_crud():
         )
 
 
-def process_game_event(event_resource: Resource[GameEvent], job_context: JobContext):
+def process_game_event(
+    event_resource: Resource[GameEvent],
+    job_context: JobContext[GameEventPayload, GameEventArtifact],
+):
     """
     處理遊戲事件的背景工作函數
 
@@ -1167,6 +1176,7 @@ def process_game_event(event_resource: Resource[GameEvent], job_context: JobCont
     - 系統會在 N 秒後自動重新執行此事件
     - 適用於需要等待外部資源、隊伍集結、冷卻時間等場景
     """
+    st = dt.datetime.now()
     event = event_resource.data
     payload = event.payload
 
@@ -1246,6 +1256,9 @@ def process_game_event(event_resource: Resource[GameEvent], job_context: JobCont
 
     result_msg = f"✅ 事件處理成功: {payload.description}"
     job_context.info(f"   {result_msg}")
+    job_context.set_artifact(
+        GameEventArtifact(process_times=(dt.datetime.now() - st).total_seconds())
+    )
 
 
 def create_sample_events():

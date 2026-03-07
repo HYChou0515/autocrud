@@ -319,7 +319,9 @@ class RabbitMQMessageQueue(DelayableMessageQueue[T], Generic[T]):
             ctx.info("Job completed")
 
             # Complete (Update RM) & Ack (RabbitMQ)
-            completed_resource = self.complete(resource_id)
+            completed_resource = self.complete(
+                resource_id, _artifact=resource.data.artifact
+            )
             ch.basic_ack(delivery_tag=method.delivery_tag)
 
             # Handle periodic job using parent class method
@@ -338,9 +340,16 @@ class RabbitMQMessageQueue(DelayableMessageQueue[T], Generic[T]):
         except Exception as e:
             # Callback failed - update Job with error and retry info
             error_msg = str(e)
-            ctx.error(f"Job failed: {error_msg}")
+            # Always log the error so operators can diagnose failures.
+            ctx.error(f"Job error: {error_msg}")
 
-            # Update Job with error message and retry count
+            # Re-fetch from storage to avoid serialization issues
+            # (the in-memory job may contain handler-set fields that
+            # don't match the registered type).
+            try:
+                job = self.rm.get(resource_id).data
+            except Exception:
+                pass  # keep in-memory version as fallback
             job.status = TaskStatus.FAILED
             job.errmsg = error_msg
             job.retries = retry_count + 1

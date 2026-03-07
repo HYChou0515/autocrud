@@ -204,7 +204,7 @@ export interface GameEvent {
   payload: Record<string, any>;
   status?: TaskStatus;
   errmsg?: string | null;
-  artifact?: any;
+  artifact?: Record<string, any> | null;
   retries?: number;
   max_retries?: number | null;
   periodic_interval_seconds?: number | null;
@@ -242,6 +242,10 @@ export interface EventBodyX {
   type: 'EventBodyX';
   good: string;
   great: number;
+}
+
+export interface GameEventArtifact {
+  process_times: number;
 }
 
 export interface FullResourceResponse_Character_ {
