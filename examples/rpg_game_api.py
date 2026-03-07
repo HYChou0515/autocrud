@@ -164,7 +164,7 @@ class Dog(Struct, tag=True, kw_only=True):
     mp: int = 50
     attack: int = 10
     defense: int = 5
-    owner_id: Annotated[str, Ref("character", on_delete=OnDelete.set_null)]
+    owner_id: Annotated[str, Ref("character", ref_type=RefType.revision_id)]
 
 
 class Mount(Struct, tag=True, kw_only=True):
@@ -174,7 +174,7 @@ class Mount(Struct, tag=True, kw_only=True):
     species: str
     speed: int = 10
     stamina: int = 100
-    owner_id: Annotated[str, Ref("character", on_delete=OnDelete.set_null)]
+    owner_id: Annotated[str, Ref("character", ref_type=RefType.revision_id)]
 
 
 Pet = Mount | Dog  # 寵物可以是坐騎或寵物狗
@@ -825,7 +825,7 @@ def create_sample_data():
             mp=50,
             attack=45,
             defense=30,
-            owner_id=character_ids.get("AutoCRUD 大神"),
+            owner_id=f"{character_ids.get('AutoCRUD 大神')}:5",
         ),
         Dog(
             name="數據獵犬",
@@ -845,7 +845,7 @@ def create_sample_data():
             mp=30,
             attack=20,
             defense=15,
-            owner_id=character_ids.get("新手小白"),
+            owner_id=f"{character_ids.get('新手小白')}:8",
         ),
         Mount(
             name="API 飛龍",
@@ -859,7 +859,7 @@ def create_sample_data():
             species="獨角獸",
             speed=60,
             stamina=400,
-            owner_id=character_ids.get("Schema 設計師"),
+            owner_id=f"{character_ids.get('Schema 設計師')}:4",
         ),
         Mount(
             name="版本控制飛馬",
@@ -876,7 +876,7 @@ def create_sample_data():
             mp=120,
             attack=90,
             defense=70,
-            owner_id=character_ids.get("API 魔法師"),
+            owner_id=f"{character_ids.get('API 魔法師')}:10",
         ),
         Mount(
             name="新手村小毛驢",
