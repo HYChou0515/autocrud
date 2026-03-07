@@ -191,6 +191,7 @@ export interface Job___main___Mount_____main___Dog_ {
   status?: TaskStatus;
   errmsg?: string | null;
   retries?: number;
+  max_retries?: number | null;
   periodic_interval_seconds?: number | null;
   periodic_max_runs?: number | null;
   periodic_runs?: number;
@@ -203,6 +204,7 @@ export interface GameEvent {
   status?: TaskStatus;
   errmsg?: string | null;
   retries?: number;
+  max_retries?: number | null;
   periodic_interval_seconds?: number | null;
   periodic_max_runs?: number | null;
   periodic_runs?: number;

@@ -200,6 +200,7 @@ A job is simply another resource type.
 Job
  ├── status
  ├── retries
+ ├── max_retries   # per-job override (None → queue default)
  └── errmsg
 ```
 

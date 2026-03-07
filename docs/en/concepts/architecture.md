@@ -270,6 +270,9 @@ ResourceManager.start_consume()
 
 This allows background jobs to use the same resource model.
 
+Each job can optionally set `max_retries` to override the queue-level default.
+When `max_retries` is `None`, the queue configuration is used.
+
 ---
 
 # Event handlers

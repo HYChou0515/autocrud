@@ -72,8 +72,15 @@ class CeleryMessageQueue(DelayableMessageQueue[T], Generic[T]):
             resource_manager: ResourceManager for job persistence.
             celery_app: Celery application instance.
             queue_name: Optional queue name. If not provided, uses resource name.
-            max_retries: Maximum number of retries for failed jobs (default: 3).
+            max_retries: Default maximum number of retries for failed jobs (default: 3).
+                This is also used as the Celery task-level hard upper bound.
             retry_delay_seconds: Delay in seconds before retrying a failed job (default: 10).
+
+        Note:
+            Each :class:`~autocrud.types.Job` may set its own ``max_retries``.
+            When present, the effective value is
+            ``min(job.max_retries, queue.max_retries)`` because the Celery
+            task decorator imposes a hard upper bound.
         """
         if Celery is None:
             raise ImportError(
@@ -179,9 +186,11 @@ class CeleryMessageQueue(DelayableMessageQueue[T], Generic[T]):
             except Exception as e:
                 # Update job with error
                 error_msg = str(e)
+                job_max_retries = None
                 try:
                     resource = queue.rm.get(resource_id)
                     job = resource.data
+                    job_max_retries = job.max_retries
                     job.status = TaskStatus.FAILED
                     job.errmsg = error_msg
                     job.retries = retry_count + 1
@@ -191,8 +200,16 @@ class CeleryMessageQueue(DelayableMessageQueue[T], Generic[T]):
                     # If we can't update, just continue with retry
                     pass
 
+                # Per-job max_retries takes precedence, but is capped by the
+                # Celery task-decorator hard upper bound (queue.max_retries).
+                effective_max_retries = (
+                    min(job_max_retries, queue.max_retries)
+                    if job_max_retries is not None
+                    else queue.max_retries
+                )
+
                 # Retry using Celery's mechanism if retries remain
-                if retry_count < queue.max_retries:
+                if retry_count < effective_max_retries:
                     raise task_self.retry(
                         exc=e,
                         countdown=queue.retry_delay_seconds,

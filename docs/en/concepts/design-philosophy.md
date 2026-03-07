@@ -252,7 +252,7 @@ AutoCRUD takes a different approach:
 This means jobs automatically inherit:
 
 * version history
-* retry tracking
+* retry tracking (per-job or queue-level)
 * status fields
 * audit history
 

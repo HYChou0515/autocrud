@@ -71,6 +71,7 @@ export type PetJobFieldName =
   | 'status'
   | 'errmsg'
   | 'retries'
+  | 'max_retries'
   | 'periodic_interval_seconds'
   | 'periodic_max_runs'
   | 'periodic_runs'
@@ -91,6 +92,7 @@ export type GameEventFieldName =
   | 'status'
   | 'errmsg'
   | 'retries'
+  | 'max_retries'
   | 'periodic_interval_seconds'
   | 'periodic_max_runs'
   | 'periodic_runs'
@@ -1302,6 +1304,14 @@ Object.assign(registry, {
         isNullable: false,
       },
       {
+        name: 'max_retries',
+        label: 'Max Retries',
+        type: 'number',
+        isArray: false,
+        isRequired: false,
+        isNullable: true,
+      },
+      {
         name: 'periodic_interval_seconds',
         label: 'Periodic Interval Seconds',
         type: 'number',
@@ -1367,6 +1377,7 @@ Object.assign(registry, {
       status: z.enum(['completed', 'failed', 'pending', 'processing']).optional(),
       errmsg: z.string().nullable().optional(),
       retries: z.number().int().optional(),
+      max_retries: z.number().int().nullable().optional(),
       periodic_interval_seconds: z.number().int().nullable().optional(),
       periodic_max_runs: z.number().int().nullable().optional(),
       periodic_runs: z.number().int().optional(),
@@ -1383,6 +1394,7 @@ Object.assign(registry, {
       'periodic_max_runs',
       'periodic_runs',
       'periodic_initial_delay_seconds',
+      'last_heartbeat_at',
     ],
   },
   'game-event': {
@@ -1569,6 +1581,14 @@ Object.assign(registry, {
         isNullable: false,
       },
       {
+        name: 'max_retries',
+        label: 'Max Retries',
+        type: 'number',
+        isArray: false,
+        isRequired: false,
+        isNullable: true,
+      },
+      {
         name: 'periodic_interval_seconds',
         label: 'Periodic Interval Seconds',
         type: 'number',
@@ -1650,6 +1670,7 @@ Object.assign(registry, {
       status: z.enum(['completed', 'failed', 'pending', 'processing']).optional(),
       errmsg: z.string().nullable().optional(),
       retries: z.number().int().optional(),
+      max_retries: z.number().int().nullable().optional(),
       periodic_interval_seconds: z.number().int().nullable().optional(),
       periodic_max_runs: z.number().int().nullable().optional(),
       periodic_runs: z.number().int().optional(),
@@ -1666,6 +1687,7 @@ Object.assign(registry, {
       'periodic_max_runs',
       'periodic_runs',
       'periodic_initial_delay_seconds',
+      'last_heartbeat_at',
     ],
   },
   pet: {

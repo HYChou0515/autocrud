@@ -32,8 +32,14 @@ class SimpleMessageQueue(DelayableMessageQueue[T], Generic[T]):
 
     Features:
     - Automatic retry on failure
-    - Configurable max retry count
+    - Configurable max retry count (queue-level default, per-job override)
     - NoRetry exception support to skip retries
+
+    Per-job ``max_retries``:
+        Each :class:`~autocrud.types.Job` may set its own ``max_retries``.
+        When present (not ``None``), it overrides this queue's default.
+        The per-job value is **not** capped — it may be larger than the
+        queue default.
     """
 
     def __init__(
@@ -239,9 +245,16 @@ class SimpleMessageQueue(DelayableMessageQueue[T], Generic[T]):
             updated_job.errmsg = error_msg
             updated_job.retries += 1
 
-            # Check if we should retry or fail permanently
+            # Check if we should retry or fail permanently.
+            # Per-job max_retries takes precedence over the queue default.
+            effective_max_retries = (
+                updated_job.max_retries
+                if updated_job.max_retries is not None
+                else self.max_retries
+            )
             should_retry = (
-                not isinstance(e, NoRetry) and updated_job.retries <= self.max_retries
+                not isinstance(e, NoRetry)
+                and updated_job.retries <= effective_max_retries
             )
 
             if should_retry:
