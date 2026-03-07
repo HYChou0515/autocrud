@@ -600,7 +600,7 @@ Object.assign(registry, {
             isRequired: true,
             isNullable: false,
             unionMeta: {
-              discriminatorField: 'type',
+              discriminatorField: 'skill_type',
               variants: [
                 {
                   tag: 'active',
@@ -739,19 +739,19 @@ Object.assign(registry, {
         zodSchema: z.object({
           f: z.object({
             skname: z.string(),
-            detail: z.discriminatedUnion('type', [
+            detail: z.discriminatedUnion('skill_type', [
               z.object({
-                type: z.literal('active'),
+                skill_type: z.literal('active'),
                 mp_cost: z.number().int().optional(),
                 cooldown_seconds: z.number().int().optional(),
                 damage: z.number().int().optional(),
               }),
               z.object({
-                type: z.literal('passive'),
+                skill_type: z.literal('passive'),
                 buff_percentage: z.number().int().optional(),
               }),
               z.object({
-                type: z.literal('ultimate'),
+                skill_type: z.literal('ultimate'),
                 mp_cost: z.number().int().optional(),
                 cooldown_seconds: z.number().int().optional(),
                 damage: z.number().int().optional(),
@@ -873,7 +873,7 @@ Object.assign(registry, {
         isRequired: true,
         isNullable: false,
         unionMeta: {
-          discriminatorField: 'type',
+          discriminatorField: 'skill_type',
           variants: [
             {
               tag: 'active',
@@ -990,16 +990,19 @@ Object.assign(registry, {
     ],
     zodSchema: z.object({
       skname: z.string(),
-      detail: z.discriminatedUnion('type', [
+      detail: z.discriminatedUnion('skill_type', [
         z.object({
-          type: z.literal('active'),
+          skill_type: z.literal('active'),
           mp_cost: z.number().int().optional(),
           cooldown_seconds: z.number().int().optional(),
           damage: z.number().int().optional(),
         }),
-        z.object({ type: z.literal('passive'), buff_percentage: z.number().int().optional() }),
         z.object({
-          type: z.literal('ultimate'),
+          skill_type: z.literal('passive'),
+          buff_percentage: z.number().int().optional(),
+        }),
+        z.object({
+          skill_type: z.literal('ultimate'),
           mp_cost: z.number().int().optional(),
           cooldown_seconds: z.number().int().optional(),
           damage: z.number().int().optional(),

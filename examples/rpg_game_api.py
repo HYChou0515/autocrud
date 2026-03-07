@@ -73,7 +73,7 @@ class ItemRarity(Enum):
     AUTOCRUD = "🚀 AutoCRUD 神器"  # 特殊等級
 
 
-class ActiveSkillData(Struct, tag="active"):
+class ActiveSkillData(Struct, tag_field="skill_type", tag="active"):
     """主動技能數據"""
 
     mp_cost: int = 0
@@ -81,13 +81,13 @@ class ActiveSkillData(Struct, tag="active"):
     damage: int = 0
 
 
-class PassiveSkillData(Struct, tag="passive"):
+class PassiveSkillData(Struct, tag_field="skill_type", tag="passive"):
     """被動技能數據"""
 
     buff_percentage: int = 0  # 增益百分比
 
 
-class UltimateSkillData(Struct, tag="ultimate"):
+class UltimateSkillData(Struct, tag_field="skill_type", tag="ultimate"):
     """終極技能數據"""
 
     mp_cost: int = 0
