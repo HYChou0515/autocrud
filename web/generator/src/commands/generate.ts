@@ -556,6 +556,7 @@ export class Generator {
     'status',
     'errmsg',
     'retries',
+    'artifact',
     // 'max_retries',
     'periodic_interval_seconds',
     'periodic_max_runs',
@@ -1604,6 +1605,13 @@ export { registry as resources };
 `
       : '';
 
+    const logsMethod = r.isJob
+      ? `
+  getLogs: (id: string) =>
+    client.get<string>(\`\${BASE}/\${id}/logs\`, { transformResponse: [(data: string) => data] }),
+`
+      : '';
+
     // Generate custom create action methods
     let customActionMethods = '';
     if (r.customCreateActions) {
@@ -1796,7 +1804,7 @@ export const ${r.camel}Api = {
 
   switchRevision: (id: string, revisionId: string) =>
     client.post<ResourceMeta>(\`\${BASE}/\${id}/switch/\${revisionId}\`),
-${rerunMethod}${customActionMethods}};
+${rerunMethod}${logsMethod}${customActionMethods}};
 `;
   }
 

@@ -13,6 +13,12 @@ export interface UseResourceDetailResult<T> {
   restore: () => Promise<void>;
   switchRevision: (revisionId: string) => Promise<void>;
   rerun: () => Promise<void>;
+  /** Fetched job execution logs (null if not loaded yet, undefined if 204 No Content) */
+  logs: string | null | undefined;
+  /** Whether logs are currently being fetched */
+  logsLoading: boolean;
+  /** Fetch (or re-fetch) execution logs for the current resource */
+  fetchLogs: () => Promise<void>;
 }
 
 /**
@@ -99,6 +105,24 @@ export function useResourceDetail<T>(
     refresh();
   }, [config.apiClient, resourceId, refresh]);
 
+  // ── Job Logs ────────────────────────────────────────────────────
+  const [logs, setLogs] = useState<string | null | undefined>(null);
+  const [logsLoading, setLogsLoading] = useState(false);
+
+  const fetchLogs = useCallback(async () => {
+    if (!config.apiClient.getLogs) return;
+    setLogsLoading(true);
+    try {
+      const res = await config.apiClient.getLogs(resourceId);
+      // 204 No Content → axios returns empty string
+      setLogs(res.data || undefined);
+    } catch {
+      setLogs(undefined);
+    } finally {
+      setLogsLoading(false);
+    }
+  }, [config.apiClient, resourceId]);
+
   return {
     resource,
     loading,
@@ -110,5 +134,8 @@ export function useResourceDetail<T>(
     restore,
     switchRevision,
     rerun,
+    logs,
+    logsLoading,
+    fetchLogs,
   };
 }

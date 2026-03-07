@@ -39,6 +39,7 @@ import { DetailFieldRenderer } from '../field/DetailFieldRenderer';
 import { CollapsibleJson } from '../field/DetailFieldRenderer/CollapsibleJson';
 import { JobStatusSection, JOB_STATUS_FIELDS, JOB_STATUS_COLORS } from '../job/JobStatusSection';
 import { JobFieldsSection } from '../job/JobFieldsSection';
+import { JobLogsPanel } from '../job/JobLogsPanel';
 import type { ResourceListRoute } from '../../../generated/resources';
 import { showErrorNotification, extractUniqueConflict } from '../../utils/errorNotification';
 import { getByPath } from '@/autocrud/lib/utils/formUtils';
@@ -157,6 +158,9 @@ export function ResourceDetail<T extends Record<string, any>>({
     switchRevision,
     rerun,
     error,
+    logs,
+    logsLoading,
+    fetchLogs,
   } = useResourceDetail(config, resourceId, selectedRevision);
 
   // Depth control — shared hook (detail mode strips itemFields instead of collapsing)
@@ -403,6 +407,16 @@ export function ResourceDetail<T extends Record<string, any>>({
 
         {/* Other Job Fields Section (delegated to JobFieldsSection component) */}
         {isJob && <JobFieldsSection data={data} />}
+
+        {/* Job Execution Logs */}
+        {isJob && (
+          <JobLogsPanel
+            logs={logs}
+            loading={logsLoading}
+            onFetch={fetchLogs}
+            available={!!config.apiClient.getLogs}
+          />
+        )}
 
         {/* Data/Payload Section */}
         <Paper withBorder p="md">

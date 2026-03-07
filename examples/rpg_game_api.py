@@ -40,6 +40,7 @@ from autocrud.crud.route_templates.blob import BlobRouteTemplate
 from autocrud.crud.route_templates.graphql import GraphQLRouteTemplate
 from autocrud.crud.route_templates.migrate import MigrateRouteTemplate
 from autocrud.message_queue.basic import DelayRetry
+from autocrud.message_queue.context import JobContext
 from autocrud.message_queue.rabbitmq import RabbitMQMessageQueueFactory
 from autocrud.message_queue.simple import SimpleMessageQueueFactory
 from autocrud.query import QB
@@ -1155,7 +1156,7 @@ def configure_crud():
         )
 
 
-def process_game_event(event_resource: Resource[GameEvent]):
+def process_game_event(event_resource: Resource[GameEvent], job_context: JobContext):
     """
     處理遊戲事件的背景工作函數
 
@@ -1169,10 +1170,11 @@ def process_game_event(event_resource: Resource[GameEvent]):
     event = event_resource.data
     payload = event.payload
 
-    print(f"\n🎮 處理遊戲事件: {payload.event_type.value}")
-    print(f"   角色: {payload.character_name}")
-    print(f"   描述: {payload.description}")
-    print(f"   重試次數: {event.retries}")
+    job_context.info(f"🎮 處理遊戲事件: {payload.event_type.value}")
+    job_context.info(f"   角色: {payload.character_name}")
+    job_context.info(f"   描述: {payload.description}")
+    job_context.info(f"   重試次數: {event.retries}")
+    job_context.info(f"   重試次數: {event.retries}")
 
     # 模擬異步處理
     time.sleep(random.uniform(0.5, 2.0))
@@ -1180,28 +1182,28 @@ def process_game_event(event_resource: Resource[GameEvent]):
     # 根據事件類型處理
     if payload.event_type == GameEventType.LEVEL_UP:
         # 處理角色升級
-        print(f"   ⬆️ 角色升級！獎勵經驗值: {payload.reward_exp}")
+        job_context.info(f"   ⬆️ 角色升級！獎勵經驗值: {payload.reward_exp}")
 
     elif payload.event_type == GameEventType.GUILD_REWARD:
         # 處理公會獎勵
-        print(f"   💰 公會獎勵發放！金幣: {payload.reward_gold}")
+        job_context.info(f"   💰 公會獎勵發放！金幣: {payload.reward_gold}")
 
     elif payload.event_type == GameEventType.DAILY_LOGIN:
         # 處理每日登入
-        print(
+        job_context.info(
             f"   📅 每日登入獎勵！經驗: {payload.reward_exp}, 金幣: {payload.reward_gold}"
         )
 
     elif payload.event_type == GameEventType.QUEST_COMPLETE:
         # 處理任務完成
-        print(
+        job_context.info(
             f"   ✅ 任務完成！獎勵: 經驗 {payload.reward_exp}, 金幣 {payload.reward_gold}"
         )
 
     elif payload.event_type == GameEventType.EQUIPMENT_ENHANCE:
         # 處理裝備強化
         equipment_name = payload.extra_data.get("equipment_name", "未知裝備")
-        print(f"   🔨 裝備強化！{equipment_name} 強化成功")
+        job_context.info(f"   🔨 裝備強化！{equipment_name} 強化成功")
 
     elif payload.event_type == GameEventType.RAID_BOSS:
         # 🎯 DelayRetry 範例 1: 團隊 BOSS 戰需要等待隊伍集結
@@ -1210,14 +1212,16 @@ def process_game_event(event_resource: Resource[GameEvent]):
 
         if current_members < required_members:
             wait_time = 10  # 等待 10 秒讓更多玩家加入
-            print(f"   ⏳ 隊伍人數不足 ({current_members}/{required_members})")
-            print(f"   等待 {wait_time} 秒後重試...")
+            job_context.info(
+                f"   ⏳ 隊伍人數不足 ({current_members}/{required_members})"
+            )
+            job_context.info(f"   等待 {wait_time} 秒後重試...")
             # 拋出 DelayRetry，系統會在指定秒數後重新執行
             raise DelayRetry(delay_seconds=wait_time)
 
         boss_name = payload.extra_data.get("boss_name", "未知 BOSS")
-        print(f"   ⚔️ 團隊集結完成！開始挑戰 {boss_name}")
-        print(f"   💰 擊敗 BOSS 獲得獎勵: {payload.reward_gold} 金幣")
+        job_context.info(f"   ⚔️ 團隊集結完成！開始挑戰 {boss_name}")
+        job_context.info(f"   💰 擊敗 BOSS 獲得獎勵: {payload.reward_gold} 金幣")
 
     elif payload.event_type == GameEventType.SERVER_MAINTENANCE:
         # 🎯 DelayRetry 範例 2: 伺服器維護期間延遲處理
@@ -1230,18 +1234,18 @@ def process_game_event(event_resource: Resource[GameEvent]):
 
             if now < end_time:
                 delay = int((end_time - now).total_seconds())
-                print(f"   🔧 伺服器維護中，預計 {delay} 秒後結束")
-                print("   事件將延遲至維護結束後處理")
+                job_context.info(f"   🔧 伺服器維護中，預計 {delay} 秒後結束")
+                job_context.info("   事件將延遲至維護結束後處理")
                 # 延遲到維護結束
                 raise DelayRetry(delay_seconds=min(delay, 30))  # 最多延遲30秒
 
-        print("   ✅ 伺服器維護結束，獎勵已發放")
-        print(
+        job_context.info("   ✅ 伺服器維護結束，獎勵已發放")
+        job_context.info(
             f"   💰 補償獎勵: {payload.reward_gold} 金幣, {payload.reward_exp} 經驗值"
         )
 
     result_msg = f"✅ 事件處理成功: {payload.description}"
-    print(f"   {result_msg}")
+    job_context.info(f"   {result_msg}")
 
 
 def create_sample_events():
@@ -1323,7 +1327,7 @@ def create_sample_events():
                 ).isoformat(),
             },
         ),
-    ] * 30
+    ]
 
     with event_manager.meta_provide(user="game_admin", now=current_time):
         for event_payload in sample_events:

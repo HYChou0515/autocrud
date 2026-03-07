@@ -2,7 +2,7 @@
 import { createFileRoute, useNavigate } from '@tanstack/react-router';
 import { ResourceDetail } from '../../../autocrud/lib/components/ResourceDetail';
 import { getResource } from '../../../autocrud/lib/resources';
-import type { Job___main___Mount_____main___Dog_ } from '../../../autocrud/generated/types';
+import type { Job___main___Mount_____main___Dog__NoneType_ } from '../../../autocrud/generated/types';
 
 type DetailSearch = { revision?: string };
 
@@ -28,7 +28,7 @@ function DetailPage() {
   };
 
   return (
-    <ResourceDetail<Job___main___Mount_____main___Dog_>
+    <ResourceDetail<Job___main___Mount_____main___Dog__NoneType_>
       config={config}
       resourceId={resourceId}
       basePath="/autocrud-admin/pet-job"

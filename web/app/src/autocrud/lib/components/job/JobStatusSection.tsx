@@ -19,6 +19,7 @@ export const JOB_STATUS_FIELDS = new Set([
   'status',
   'retries',
   'errmsg',
+  'artifact',
   'periodic_interval_seconds',
   'periodic_max_runs',
   'periodic_runs',
@@ -44,6 +45,7 @@ export function JobStatusSection({ data }: JobStatusSectionProps) {
   const color = JOB_STATUS_COLORS[status] || 'gray';
   const retries: number = data.retries || 0;
   const errmsg: string | null = data.errmsg || null;
+  const artifact: unknown = data.artifact ?? null;
   const isPeriodic = data.periodic_interval_seconds != null;
   const periodicRuns: number = data.periodic_runs || 0;
   const periodicMaxRuns: number = data.periodic_max_runs || 0;
@@ -67,6 +69,23 @@ export function JobStatusSection({ data }: JobStatusSectionProps) {
       ) : (
         NA
       ),
+    },
+    {
+      label: 'Artifact',
+      value:
+        artifact != null ? (
+          typeof artifact === 'object' ? (
+            <Code block style={{ maxHeight: '200px', overflow: 'auto' }}>
+              {JSON.stringify(artifact, null, 2)}
+            </Code>
+          ) : (
+            <Text size="sm" style={{ fontFamily: 'monospace' }}>
+              {String(artifact)}
+            </Text>
+          )
+        ) : (
+          NA
+        ),
     },
     {
       label: 'Periodic Interval (seconds)',

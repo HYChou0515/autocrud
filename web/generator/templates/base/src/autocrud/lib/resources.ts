@@ -153,6 +153,8 @@ export interface ResourceConfig<T = any> {
     switchRevision: (id: string, revisionId: string) => Promise<{ data: ResourceMeta }>;
     /** Rerun a completed/failed job (only available on job resources) */
     rerun?: (id: string) => Promise<{ data: RevisionInfo }>;
+    /** Get execution logs for a job (only available on job resources) */
+    getLogs?: (id: string) => Promise<{ data: string }>;
   };
 }
 

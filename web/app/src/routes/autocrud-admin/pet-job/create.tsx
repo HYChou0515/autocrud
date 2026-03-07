@@ -2,7 +2,7 @@
 import { createFileRoute } from '@tanstack/react-router';
 import { ResourceCreate } from '../../../autocrud/lib/components/ResourceCreate';
 import { getResource } from '../../../autocrud/lib/resources';
-import type { Job___main___Mount_____main___Dog_ } from '../../../autocrud/generated/types';
+import type { Job___main___Mount_____main___Dog__NoneType_ } from '../../../autocrud/generated/types';
 
 export const Route = createFileRoute('/autocrud-admin/pet-job/create')({
   component: CreatePage,
@@ -11,7 +11,7 @@ export const Route = createFileRoute('/autocrud-admin/pet-job/create')({
 function CreatePage() {
   const config = getResource('pet-job')!;
   return (
-    <ResourceCreate<Job___main___Mount_____main___Dog_>
+    <ResourceCreate<Job___main___Mount_____main___Dog__NoneType_>
       config={config}
       basePath="/autocrud-admin/pet-job"
     />

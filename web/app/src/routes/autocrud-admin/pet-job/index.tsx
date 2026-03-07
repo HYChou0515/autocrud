@@ -2,7 +2,7 @@
 import { createFileRoute } from '@tanstack/react-router';
 import { JobTable } from '../../../autocrud/lib/components/JobTable';
 import { getResource } from '../../../autocrud/lib/resources';
-import type { Job___main___Mount_____main___Dog_ } from '../../../autocrud/generated/types';
+import type { Job___main___Mount_____main___Dog__NoneType_ } from '../../../autocrud/generated/types';
 
 export const Route = createFileRoute('/autocrud-admin/pet-job/')({
   component: ListPage,
@@ -11,7 +11,7 @@ export const Route = createFileRoute('/autocrud-admin/pet-job/')({
 function ListPage() {
   const config = getResource('pet-job')!;
   return (
-    <JobTable<Job___main___Mount_____main___Dog_>
+    <JobTable<Job___main___Mount_____main___Dog__NoneType_>
       config={config}
       basePath="/autocrud-admin/pet-job"
     />

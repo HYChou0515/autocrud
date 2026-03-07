@@ -5,6 +5,7 @@ import textwrap
 from typing import TypeVar
 
 from fastapi import APIRouter, Depends
+from fastapi.responses import PlainTextResponse, Response
 
 from autocrud.crud.route_templates.basic import BaseRouteTemplate
 from autocrud.crud.route_templates.exception_handlers import to_http_exception
@@ -28,7 +29,7 @@ class JobLogsRouteTemplate(BaseRouteTemplate):
 
         @router.get(
             f"/{model_name}/{{resource_id}}/logs",
-            response_class=None,
+            response_class=PlainTextResponse,
             summary=f"Get logs for a {model_name} job",
             tags=[f"{model_name}"],
             description=textwrap.dedent(
@@ -45,8 +46,6 @@ class JobLogsRouteTemplate(BaseRouteTemplate):
             current_user: str = Depends(self.deps.get_user),
             current_time: dt.datetime = Depends(self.deps.get_now),
         ):
-            from fastapi.responses import PlainTextResponse, Response
-
             try:
                 with resource_manager.meta_provide(current_user, current_time):
                     # Ensure the resource exists (raises 404 otherwise)
