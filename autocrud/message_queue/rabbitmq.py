@@ -32,6 +32,12 @@ class RabbitMQMessageQueue(DelayableMessageQueue[T], Generic[T]):
     - Automatic retry on failure with configurable delay
     - Dead letter queue for messages exceeding max retries
     - Configurable retry delay and max retry count
+
+    Per-job ``max_retries``:
+        Each :class:`~autocrud.types.Job` may set its own ``max_retries``.
+        When present (not ``None``), it overrides this queue's default.
+        The per-job value is **not** capped — it may be larger than the
+        queue default.
     """
 
     def __init__(
@@ -174,7 +180,13 @@ class RabbitMQMessageQueue(DelayableMessageQueue[T], Generic[T]):
         return None
 
     def _send_to_retry_or_dead(
-        self, ch: BlockingChannel, resource_id: str, retry_count: int, err: Exception
+        self,
+        ch: BlockingChannel,
+        resource_id: str,
+        retry_count: int,
+        err: Exception,
+        *,
+        job_max_retries: int | None = None,
     ) -> None:
         """
         Send a failed message to retry queue or dead letter queue based on retry count.
@@ -184,9 +196,14 @@ class RabbitMQMessageQueue(DelayableMessageQueue[T], Generic[T]):
             resource_id: The resource identifier
             retry_count: Current retry count
             err: Exception from the failure
+            job_max_retries: Per-job max retry override. When ``None``,
+                the queue-level ``self.max_retries`` is used.
         """
         error_msg = str(err)
-        if not isinstance(err, NoRetry) and retry_count < self.max_retries:
+        effective_max_retries = (
+            job_max_retries if job_max_retries is not None else self.max_retries
+        )
+        if not isinstance(err, NoRetry) and retry_count < effective_max_retries:
             target_queue = self.retry_queue_name
             new_retry_count = retry_count + 1
         else:
@@ -314,7 +331,9 @@ class RabbitMQMessageQueue(DelayableMessageQueue[T], Generic[T]):
                 pass  # Best effort; outer callback has fallback
 
             # Send to retry or dead letter queue
-            self._send_to_retry_or_dead(ch, resource_id, retry_count, e)
+            self._send_to_retry_or_dead(
+                ch, resource_id, retry_count, e, job_max_retries=job.max_retries
+            )
 
             # Ack the original message (it's now in retry/dead queue)
             ch.basic_ack(delivery_tag=method.delivery_tag)
@@ -371,9 +390,11 @@ class RabbitMQMessageQueue(DelayableMessageQueue[T], Generic[T]):
                 except Exception as e:
                     # Resource fetch failure, RM update failure, or critical error
                     # Try to update Job if we have it
+                    job_max_retries = None
                     try:
                         resource = self.rm.get(resource_id)
                         job = resource.data
+                        job_max_retries = job.max_retries
                         job.status = TaskStatus.FAILED
                         job.errmsg = str(e)
                         job.retries = retry_count + 1
@@ -384,7 +405,13 @@ class RabbitMQMessageQueue(DelayableMessageQueue[T], Generic[T]):
                         pass
 
                     # Send to retry or dead letter queue
-                    self._send_to_retry_or_dead(ch, resource_id, retry_count, e)
+                    self._send_to_retry_or_dead(
+                        ch,
+                        resource_id,
+                        retry_count,
+                        e,
+                        job_max_retries=job_max_retries,
+                    )
                     ch.basic_ack(delivery_tag=method.delivery_tag)
 
             channel.basic_qos(prefetch_count=1)

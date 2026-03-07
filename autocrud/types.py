@@ -2588,6 +2588,13 @@ class Job(Struct, Generic[T]):
     retries: int = 0
     """Number of times the job has been retried."""
 
+    max_retries: int | None = None
+    """Per-job maximum retry count. If ``None`` (default), the queue-level
+    ``max_retries`` setting is used. When set, this value takes precedence
+    over the queue default.  For Celery queues the effective value is
+    ``min(job.max_retries, queue.max_retries)`` because the Celery task
+    decorator imposes a hard upper bound."""
+
     periodic_interval_seconds: int | None = None
     """If set, the job will be re-enqueued every N seconds after completion."""
 

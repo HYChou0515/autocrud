@@ -80,7 +80,7 @@ Jobs are treated as **resources**, meaning they benefit from:
 
 - versioning
 - status tracking
-- retries
+- retries (per-job or queue-level)
 - audit history
 
 This enables reliable background processing without adding a separate task framework.
