@@ -468,16 +468,7 @@ export class Generator {
       for (const [tag, refPath] of Object.entries<string>(disc.mapping)) {
         const schemaName = refPath.split('/').pop()!;
         const schema = this.resolveRef(refPath);
-        const variantFields: Field[] = [];
-
-        if (schema?.properties) {
-          const variantRequired = new Set(schema.required ?? []);
-          for (const [subName, subProp] of Object.entries<any>(schema.properties)) {
-            if (subName === discriminatorField) continue;
-            const subField = this.parseField(subName, subProp, variantRequired.has(subName));
-            if (subField) variantFields.push(subField);
-          }
-        }
+        const variantFields = this.parseSchemaFields(schema, discriminatorField);
 
         variants.push({ tag, label: toLabel(tag), schemaName, fields: variantFields });
         variantTsTypes.push(schemaName);
@@ -556,7 +547,8 @@ export class Generator {
     'status',
     'errmsg',
     'retries',
-    // 'max_retries',
+    'artifact',
+    'max_retries',
     'periodic_interval_seconds',
     'periodic_max_runs',
     'periodic_runs',
@@ -635,6 +627,22 @@ export class Generator {
   }
 
   /**
+   * Parse all properties of a schema into Field[], optionally excluding a field by name.
+   * Consolidates the repeated pattern of iterating schema.properties with parseField().
+   */
+  private parseSchemaFields(schema: any, exclude?: string): Field[] {
+    const fields: Field[] = [];
+    if (!schema?.properties) return fields;
+    const required = new Set(schema.required ?? []);
+    for (const [name, prop] of Object.entries<any>(schema.properties)) {
+      if (exclude && name === exclude) continue;
+      const field = this.parseField(name, prop, required.has(name));
+      if (field) fields.push(field);
+    }
+    return fields;
+  }
+
+  /**
    * Detect if a resolved schema represents a Binary type.
    * Binary has a `data` property with contentEncoding: "base64".
    */
@@ -695,16 +703,7 @@ export class Generator {
     for (const [tag, refPath] of Object.entries<string>(disc.mapping || {})) {
       const schemaName = refPath.split('/').pop()!;
       const schema = this.resolveRef(refPath);
-      const variantFields: Field[] = [];
-
-      if (schema?.properties) {
-        const variantRequired = new Set(schema.required ?? []);
-        for (const [subName, subProp] of Object.entries<any>(schema.properties)) {
-          if (subName === discriminatorField) continue;
-          const subField = this.parseField(subName, subProp, variantRequired.has(subName));
-          if (subField) variantFields.push(subField);
-        }
-      }
+      const variantFields = this.parseSchemaFields(schema, discriminatorField);
 
       variants.push({ tag, label: toLabel(tag), schemaName, fields: variantFields });
       variantTsTypes.push(schemaName);
@@ -718,10 +717,9 @@ export class Generator {
     let zodType = `z.discriminatedUnion('${discriminatorField}', [${zodVariants.join(', ')}])`;
     ({ tsType, zodType } = this.applyNullableOptional(tsType, zodType, isNullable, isRequired));
 
-    const labelSource = name.includes('.') ? name.split('.').pop()! : name;
     return {
       name,
-      label: toLabel(labelSource),
+      label: toLabel(getLeafLabel(name)),
       type: 'union',
       tsType,
       isArray: false,
@@ -769,10 +767,9 @@ export class Generator {
       let tsType = variantTsTypes[0] ?? 'any';
       ({ tsType, zodType } = this.applyNullableOptional(tsType, zodType, isNullable, isRequired));
 
-      const labelSource = name.includes('.') ? name.split('.').pop()! : name;
       return {
         name,
-        label: toLabel(labelSource),
+        label: toLabel(getLeafLabel(name)),
         type: singleType,
         tsType,
         isArray: false,
@@ -793,10 +790,9 @@ export class Generator {
     let zodType = `z.union([${zodVariants.join(', ')}])`;
     ({ tsType, zodType } = this.applyNullableOptional(tsType, zodType, isNullable, isRequired));
 
-    const labelSource = name.includes('.') ? name.split('.').pop()! : name;
     return {
       name,
-      label: toLabel(labelSource),
+      label: toLabel(getLeafLabel(name)),
       type: 'union',
       tsType,
       isArray: false,
@@ -825,16 +821,7 @@ export class Generator {
     for (const [tag, refPath] of Object.entries<string>(disc.mapping || {})) {
       const schemaName = refPath.split('/').pop()!;
       const schema = this.resolveRef(refPath);
-      const variantFields: Field[] = [];
-
-      if (schema?.properties) {
-        const variantRequired = new Set(schema.required ?? []);
-        for (const [subName, subProp] of Object.entries<any>(schema.properties)) {
-          if (subName === discriminatorField) continue;
-          const subField = this.parseField(subName, subProp, variantRequired.has(subName));
-          if (subField) variantFields.push(subField);
-        }
-      }
+      const variantFields = this.parseSchemaFields(schema, discriminatorField);
 
       variants.push({ tag, label: toLabel(tag), schemaName, fields: variantFields });
     }
@@ -901,14 +888,7 @@ export class Generator {
             const resolved = this.resolveRef(itemSchema.$ref);
             if (resolved) resolvedItems = resolved;
           }
-          const variantFields: Field[] = [];
-          if (resolvedItems.properties) {
-            const reqSet = new Set(resolvedItems.required ?? []);
-            for (const [subName, subProp] of Object.entries<any>(resolvedItems.properties)) {
-              const subField = this.parseField(subName, subProp, reqSet.has(subName));
-              if (subField) variantFields.push(subField);
-            }
-          }
+          const variantFields = this.parseSchemaFields(resolvedItems);
           const tag = makeUniqueTag(`list_${schemaName}`);
           variants.push({
             tag,
@@ -922,14 +902,7 @@ export class Generator {
       } else if (t.$ref) {
         const schemaName = t.$ref.split('/').pop()!;
         const resolved = this.resolveRef(t.$ref);
-        const variantFields: Field[] = [];
-        if (resolved?.properties) {
-          const reqSet = new Set(resolved.required ?? []);
-          for (const [subName, subProp] of Object.entries<any>(resolved.properties)) {
-            const subField = this.parseField(subName, subProp, reqSet.has(subName));
-            if (subField) variantFields.push(subField);
-          }
-        }
+        const variantFields = this.parseSchemaFields(resolved);
         const tag = makeUniqueTag(schemaName);
         variants.push({
           tag,
@@ -976,14 +949,7 @@ export class Generator {
         } else if (valueSchema.type) {
           valueName = valueSchema.type === 'integer' ? 'number' : valueSchema.type;
         }
-        const dictValueFields: Field[] = [];
-        if (valueSchema.properties) {
-          const reqSet = new Set(valueSchema.required ?? []);
-          for (const [subName, subProp] of Object.entries<any>(valueSchema.properties)) {
-            const subField = this.parseField(subName, subProp, reqSet.has(subName));
-            if (subField) dictValueFields.push(subField);
-          }
-        }
+        const dictValueFields = this.parseSchemaFields(valueSchema);
         const tag = makeUniqueTag(`dict_${valueName}`);
         variants.push({
           tag,
@@ -1011,10 +977,9 @@ export class Generator {
     let zodType = 'z.any()';
     ({ tsType, zodType } = this.applyNullableOptional(tsType, zodType, isNullable, isRequired));
 
-    const labelSource = name.includes('.') ? name.split('.').pop()! : name;
     return {
       name,
-      label: toLabel(labelSource),
+      label: toLabel(getLeafLabel(name)),
       type: 'union',
       tsType,
       isArray: false,
@@ -1052,10 +1017,9 @@ export class Generator {
     // prop.const is used by msgspec for tag=True structs
     if (prop.const !== undefined) {
       const constVal = String(prop.const);
-      const labelSource = name.includes('.') ? name.split('.').pop()! : name;
       return {
         name,
-        label: toLabel(labelSource),
+        label: toLabel(getLeafLabel(name)),
         type: 'string',
         tsType: `'${constVal}'`,
         isArray: false,
@@ -1142,10 +1106,9 @@ export class Generator {
         if (innerField) {
           const wrappedTsType = `${innerField.tsType}[]`;
           const wrappedZodType = `z.array(${innerField.zodType})`;
-          const labelSource = name.includes('.') ? name.split('.').pop()! : name;
           return {
             name,
-            label: toLabel(labelSource),
+            label: toLabel(getLeafLabel(name)),
             type: 'object',
             tsType: wrappedTsType,
             isArray: false,
@@ -1186,16 +1149,7 @@ export class Generator {
         for (const [tag, refPath] of Object.entries<string>(disc.mapping || {})) {
           const schemaName = refPath.split('/').pop()!;
           const itemSchema = this.resolveRef(refPath);
-          const variantFields: Field[] = [];
-
-          if (itemSchema?.properties) {
-            const variantRequired = new Set(itemSchema.required ?? []);
-            for (const [subName, subProp] of Object.entries<any>(itemSchema.properties)) {
-              if (subName === discriminatorField) continue;
-              const subField = this.parseField(subName, subProp, variantRequired.has(subName));
-              if (subField) variantFields.push(subField);
-            }
-          }
+          const variantFields = this.parseSchemaFields(itemSchema, discriminatorField);
 
           variants.push({ tag, label: toLabel(tag), schemaName, fields: variantFields });
           variantTsTypes.push(schemaName);
@@ -1208,14 +1162,11 @@ export class Generator {
         });
         zodType = `z.array(z.discriminatedUnion('${discriminatorField}', [${zodVariants.join(', ')}]))`;
 
-        if (!isRequired) {
-          zodType = `${zodType}.optional()`;
-        }
+        ({ tsType, zodType } = this.applyNullableOptional(tsType, zodType, isNullable, isRequired));
 
-        const labelSource = name.includes('.') ? name.split('.').pop()! : name;
         return {
           name,
-          label: toLabel(labelSource),
+          label: toLabel(getLeafLabel(name)),
           type: 'union',
           tsType,
           isArray: true,
@@ -1239,21 +1190,10 @@ export class Generator {
         tsType += '[]';
         zodType = `z.array(${zodType})`;
       }
-      if (isNullable || !isRequired) {
-        if (isNullable && !isRequired) {
-          tsType += ' | null';
-          zodType = `${zodType}.nullable().optional()`;
-        } else if (isNullable) {
-          tsType += ' | null';
-          zodType = `${zodType}.nullable()`;
-        } else {
-          zodType = `${zodType}.optional()`;
-        }
-      }
-      const labelSource = name.includes('.') ? name.split('.').pop()! : name;
+      ({ tsType, zodType } = this.applyNullableOptional(tsType, zodType, isNullable, isRequired));
       return {
         name,
-        label: toLabel(labelSource),
+        label: toLabel(getLeafLabel(name)),
         type: 'binary',
         tsType,
         isArray,
@@ -1266,12 +1206,7 @@ export class Generator {
     // Detect array of typed objects: extract item sub-fields and build proper z.object
     let itemFields: Field[] | undefined;
     if (isArray && type === 'object' && prop.properties) {
-      itemFields = [];
-      const itemRequired = new Set(prop.required ?? []);
-      for (const [subName, subProp] of Object.entries<any>(prop.properties)) {
-        const subField = this.parseField(subName, subProp, itemRequired.has(subName));
-        if (subField) itemFields.push(subField);
-      }
+      itemFields = this.parseSchemaFields(prop);
       // Build proper z.object for array items (will be wrapped by z.array below)
       const innerIndent = '        ';
       const itemZodLines = itemFields.map((f) => `${innerIndent}${f.name}: ${f.zodType}`).join(',\n');
@@ -1289,22 +1224,11 @@ export class Generator {
         tsType = `'${constVal}'`;
         zodType = `z.literal('${constVal}')`;
 
-        if (isNullable || !isRequired) {
-          if (isNullable && !isRequired) {
-            tsType += ' | null';
-            zodType = `${zodType}.nullable().optional()`;
-          } else if (isNullable) {
-            tsType += ' | null';
-            zodType = `${zodType}.nullable()`;
-          } else {
-            zodType = `${zodType}.optional()`;
-          }
-        }
+        ({ tsType, zodType } = this.applyNullableOptional(tsType, zodType, isNullable, isRequired));
 
-        const labelSource = name.includes('.') ? name.split('.').pop()! : name;
         return {
           name,
-          label: toLabel(labelSource),
+          label: toLabel(getLeafLabel(name)),
           type: 'string',
           tsType,
           isArray: false,
@@ -1363,24 +1287,12 @@ export class Generator {
       zodType = `z.array(${zodType})`;
     }
 
-    if (isNullable || !isRequired) {
-      if (isNullable && !isRequired) {
-        tsType += ' | null';
-        zodType = `${zodType}.nullable().optional()`;
-      } else if (isNullable) {
-        tsType += ' | null';
-        zodType = `${zodType}.nullable()`;
-      } else {
-        zodType = `${zodType}.optional()`;
-      }
-    }
+    ({ tsType, zodType } = this.applyNullableOptional(tsType, zodType, isNullable, isRequired));
 
     // For nested fields like 'payload.event_type', use only the leaf part for labels
-    const labelSource = name.includes('.') ? name.split('.').pop()! : name;
-
     return {
       name,
-      label: toLabel(labelSource),
+      label: toLabel(getLeafLabel(name)),
       type: type === 'integer' ? 'number' : type,
       tsType,
       isArray,
@@ -1604,6 +1516,13 @@ export { registry as resources };
 `
       : '';
 
+    const logsMethod = r.isJob
+      ? `
+  getLogs: (id: string) =>
+    client.get<string>(\`\${BASE}/\${id}/logs\`, { transformResponse: [(data: string) => data] }),
+`
+      : '';
+
     // Generate custom create action methods
     let customActionMethods = '';
     if (r.customCreateActions) {
@@ -1796,7 +1715,7 @@ export const ${r.camel}Api = {
 
   switchRevision: (id: string, revisionId: string) =>
     client.post<ResourceMeta>(\`\${BASE}/\${id}/switch/\${revisionId}\`),
-${rerunMethod}${customActionMethods}};
+${rerunMethod}${logsMethod}${customActionMethods}};
 `;
   }
 
@@ -2196,6 +2115,11 @@ function toLabel(s: string) {
     .split(/[-_]+/)
     .map((w) => w[0].toUpperCase() + w.slice(1))
     .join(' ');
+}
+
+/** Extract the leaf segment from a dot-notation field name for use as label source */
+function getLeafLabel(name: string): string {
+  return name.includes('.') ? name.split('.').pop()! : name;
 }
 
 /** Escape special regex characters in a string */

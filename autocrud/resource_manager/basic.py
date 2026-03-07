@@ -577,8 +577,29 @@ class ISlowMetaStore(IMetaStore):
 
 class IBlobStore(ABC):
     @abstractmethod
-    def put(self, data: bytes, *, content_type: str | UnsetType = UNSET) -> Binary:
-        """Store binary data and return its ID (hash)."""
+    def put(
+        self,
+        data: bytes,
+        *,
+        key: str | None = None,
+        content_type: str | UnsetType = UNSET,
+    ) -> Binary:
+        """Store binary data and return a :class:`Binary` descriptor.
+
+        Args:
+            data: Raw bytes to store.
+            key: Optional caller-specified storage key.  When ``None``
+                (the default), the key is derived from a content hash.
+                When a ``str`` is given, it is used as the ``file_id``
+                directly and a subsequent ``put`` with the same key
+                **overwrites** the previous content.
+            content_type: MIME type hint.  ``UNSET`` lets the
+                implementation guess (if available).
+
+        Returns:
+            A :class:`Binary` instance with ``file_id``, ``size``, and
+            ``content_type`` populated.
+        """
         pass
 
     @abstractmethod

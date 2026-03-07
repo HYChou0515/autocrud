@@ -2347,6 +2347,105 @@ describe('Job resource — defaultHiddenFields', () => {
 });
 
 // ============================================================================
+// Job resource — getLogs & artifact
+// ============================================================================
+describe('Job resource — getLogs & artifact', () => {
+  function buildJobSpec() {
+    return {
+      info: { title: 'Test', version: '1.0' },
+      paths: {
+        '/game-event': {
+          post: {
+            requestBody: {
+              content: {
+                'application/json': {
+                  schema: { $ref: '#/components/schemas/GameEvent' },
+                },
+              },
+            },
+          },
+        },
+        '/game-event/{id}': { get: {} },
+      },
+      components: {
+        schemas: {
+          GameEvent: {
+            type: 'object',
+            properties: {
+              payload: { type: 'object' },
+              status: { type: 'string', default: 'pending' },
+              errmsg: { type: 'string', default: '' },
+              retries: { type: 'integer', default: 0 },
+              artifact: { anyOf: [{ type: 'object' }, { type: 'null' }] },
+              periodic_interval_seconds: { type: 'number', default: 0 },
+              periodic_max_runs: { type: 'integer', default: 0 },
+              periodic_runs: { type: 'integer', default: 0 },
+              periodic_initial_delay_seconds: { type: 'number', default: 0 },
+            },
+            required: ['payload'],
+          },
+        },
+      },
+    };
+  }
+
+  it('generates getLogs method for Job API', () => {
+    const spec = buildJobSpec();
+    const gen = createTestGenerator(spec);
+    (gen as any).extractResources();
+    const code = (gen as any).genApiClient(gen.resources[0]);
+
+    expect(code).toContain('getLogs:');
+    expect(code).toContain('/logs');
+    expect(code).toContain('transformResponse');
+  });
+
+  it('does NOT generate getLogs for non-Job resource', () => {
+    const spec = {
+      info: { title: 'Test', version: '1.0' },
+      paths: {
+        '/user': {
+          post: {
+            requestBody: {
+              content: {
+                'application/json': {
+                  schema: { $ref: '#/components/schemas/User' },
+                },
+              },
+            },
+          },
+        },
+        '/user/{id}': { get: {} },
+      },
+      components: {
+        schemas: {
+          User: {
+            type: 'object',
+            properties: { name: { type: 'string' } },
+            required: ['name'],
+          },
+        },
+      },
+    };
+    const gen = createTestGenerator(spec);
+    (gen as any).extractResources();
+    const code = (gen as any).genApiClient(gen.resources[0]);
+
+    expect(code).not.toContain('getLogs');
+  });
+
+  it('includes artifact in defaultHiddenFields for Job resource', () => {
+    const spec = buildJobSpec();
+    const gen = createTestGenerator(spec);
+    (gen as any).extractResources();
+    const code = (gen as any).genResourcesConfig();
+
+    expect(code).toContain('defaultHiddenFields:');
+    expect(code).toContain("'artifact'");
+  });
+});
+
+// ============================================================================
 // extractFields — nullable $ref struct expansion
 // ============================================================================
 describe('extractFields — nullable $ref struct expansion', () => {

@@ -55,8 +55,14 @@ class MemoryBlobStore(BasicBlobStore):
     def __init__(self):
         self._store = {}
 
-    def put(self, data: bytes, *, content_type: str | UnsetType = UNSET) -> Binary:
-        file_id = xxh3_128_hexdigest(data)
+    def put(
+        self,
+        data: bytes,
+        *,
+        key: str | None = None,
+        content_type: str | UnsetType = UNSET,
+    ) -> Binary:
+        file_id = key if key is not None else xxh3_128_hexdigest(data)
 
         # Create Binary object with metadata
         stored_binary = Binary(
@@ -85,12 +91,21 @@ class DiskBlobStore(BasicBlobStore):
         self.encoder = msgspec.msgpack.Encoder()
         self.decoder = msgspec.msgpack.Decoder(Binary)
 
-    def put(self, data: bytes, *, content_type: str | UnsetType = UNSET) -> Binary:
-        file_id = xxh3_128_hexdigest(data)
+    def put(
+        self,
+        data: bytes,
+        *,
+        key: str | None = None,
+        content_type: str | UnsetType = UNSET,
+    ) -> Binary:
+        file_id = key if key is not None else xxh3_128_hexdigest(data)
+        # Make filename safe for filesystem
+        safe_name = file_id.replace("/", "_").replace("..", "_")
 
-        file_path = self.root_path / file_id
+        file_path = self.root_path / safe_name
         final_content_type = self.guess_content_type(data, content_type)
-        if not file_path.exists():
+        # When key is caller-specified, always overwrite; for hash keys skip if exists
+        if key is not None or not file_path.exists():
             stored_binary = Binary(
                 file_id=file_id,
                 size=len(data),

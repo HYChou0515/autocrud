@@ -13,7 +13,9 @@ describe('JOB_STATUS_FIELDS', () => {
     const expected = [
       'status',
       'retries',
+      'max_retries',
       'errmsg',
+      'last_heartbeat_at',
       'periodic_interval_seconds',
       'periodic_max_runs',
       'periodic_runs',
@@ -27,6 +29,7 @@ describe('JOB_STATUS_FIELDS', () => {
 
   it('does not contain non-status fields', () => {
     expect(JOB_STATUS_FIELDS.has('payload')).toBe(false);
+    expect(JOB_STATUS_FIELDS.has('artifact')).toBe(false);
     expect(JOB_STATUS_FIELDS.has('name')).toBe(false);
     expect(JOB_STATUS_FIELDS.has('id')).toBe(false);
   });
@@ -36,6 +39,8 @@ describe('JOB_STATUS_FIELDS', () => {
     const allFields = [
       { name: 'status' },
       { name: 'retries' },
+      { name: 'max_retries' },
+      { name: 'last_heartbeat_at' },
       { name: 'name' },
       { name: 'description' },
       { name: 'periodic_interval_seconds' },

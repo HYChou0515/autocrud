@@ -40,6 +40,7 @@ from autocrud.crud.route_templates.delete import (
     RestoreRouteTemplate,
 )
 from autocrud.crud.route_templates.get import ReadRouteTemplate
+from autocrud.crud.route_templates.job_logs import JobLogsRouteTemplate
 from autocrud.crud.route_templates.patch import (
     RFC6902,
     PatchRouteTemplate,
@@ -426,6 +427,7 @@ class AutoCRUD:
                     PatchRouteTemplate,
                     SwitchRevisionRouteTemplate,
                     RerunRouteTemplate,
+                    JobLogsRouteTemplate,
                     DeleteRouteTemplate,
                     PermanentlyDeleteRouteTemplate,
                     RestoreRouteTemplate,

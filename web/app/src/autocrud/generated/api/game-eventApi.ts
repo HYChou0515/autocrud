@@ -46,4 +46,7 @@ export const gameEventApi = {
     client.post<ResourceMeta>(`${BASE}/${id}/switch/${revisionId}`),
 
   rerun: (id: string) => client.post<RevisionInfo>(`${BASE}/${id}/rerun`),
+
+  getLogs: (id: string) =>
+    client.get<string>(`${BASE}/${id}/logs`, { transformResponse: [(data: string) => data] }),
 };

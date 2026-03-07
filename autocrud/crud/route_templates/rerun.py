@@ -37,8 +37,9 @@ class RerunRouteTemplate(BaseRouteTemplate):
                 f"""\
                 Re-enqueue a completed or failed `{model_name}` job.
 
-                Resets the job status to `pending`, clears `retries` and `errmsg`,
-                then places the job back into the message queue for processing.
+                Resets the job status to `pending`, clears `retries`, `errmsg`,
+                and `artifact`, then places the job back into the message queue
+                for processing.  The original `payload` is preserved.
 
                 **Allowed source statuses:** `completed`, `failed`.
                 Jobs that are `pending` or `processing` cannot be rerun.
@@ -67,6 +68,7 @@ class RerunRouteTemplate(BaseRouteTemplate):
                     job.status = TaskStatus.PENDING
                     job.retries = 0
                     job.errmsg = None
+                    job.artifact = None
 
                     info = resource_manager.create_or_update(resource_id, job)
                     resource_manager.message_queue.put(resource_id)

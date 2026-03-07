@@ -43,13 +43,19 @@ class S3BlobStore(BasicBlobStore):
             else:
                 raise
 
-    def put(self, data: bytes, *, content_type: str | UnsetType = UNSET) -> Binary:
-        file_id = xxh3_128_hexdigest(data)
-        key = f"{self.prefix}{file_id}"
+    def put(
+        self,
+        data: bytes,
+        *,
+        key: str | None = None,
+        content_type: str | UnsetType = UNSET,
+    ) -> Binary:
+        file_id = key if key is not None else xxh3_128_hexdigest(data)
+        s3_key = f"{self.prefix}{file_id}"
 
         kwargs = {
             "Bucket": self.bucket,
-            "Key": key,
+            "Key": s3_key,
             "Body": data,
         }
         content_type_ = self.guess_content_type(data, content_type)

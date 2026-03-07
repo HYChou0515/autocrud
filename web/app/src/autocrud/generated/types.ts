@@ -186,10 +186,11 @@ export interface Dog {
   owner_id: string;
 }
 
-export interface Job___main___Mount_____main___Dog_ {
+export interface Job___main___Mount_____main___Dog__NoneType_ {
   payload: Mount | Dog;
   status?: TaskStatus;
   errmsg?: string | null;
+  artifact?: any;
   retries?: number;
   max_retries?: number | null;
   periodic_interval_seconds?: number | null;
@@ -203,6 +204,7 @@ export interface GameEvent {
   payload: Record<string, any>;
   status?: TaskStatus;
   errmsg?: string | null;
+  artifact?: Record<string, any> | null;
   retries?: number;
   max_retries?: number | null;
   periodic_interval_seconds?: number | null;
@@ -242,6 +244,10 @@ export interface EventBodyX {
   great: number;
 }
 
+export interface GameEventArtifact {
+  process_times: number;
+}
+
 export interface FullResourceResponse_Character_ {
   data?: Record<string, any>;
   revision_info?: Record<string, any>;
@@ -272,7 +278,7 @@ export interface FullResourceResponse___main___Mount_____main___Dog_ {
   meta?: Record<string, any>;
 }
 
-export interface FullResourceResponse_autocrud_types_Job___main___Mount_____main___Dog__ {
+export interface FullResourceResponse_autocrud_types_Job___main___Mount_____main___Dog__None__ {
   data?: Record<string, any>;
   revision_info?: Record<string, any>;
   meta?: Record<string, any>;

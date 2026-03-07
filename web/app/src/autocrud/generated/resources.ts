@@ -70,6 +70,7 @@ export type PetJobFieldName =
   | 'payload'
   | 'status'
   | 'errmsg'
+  | 'artifact'
   | 'retries'
   | 'max_retries'
   | 'periodic_interval_seconds'
@@ -91,6 +92,7 @@ export type GameEventFieldName =
   | 'payload.event_x.great'
   | 'status'
   | 'errmsg'
+  | 'artifact.process_times'
   | 'retries'
   | 'max_retries'
   | 'periodic_interval_seconds'
@@ -1138,7 +1140,7 @@ Object.assign(registry, {
     name: 'pet-job',
     label: 'Pet Job',
     pluralLabel: 'Pet Jobs',
-    schema: 'Job___main___Mount_____main___Dog_',
+    schema: 'Job___main___Mount_____main___Dog__NoneType_',
     fields: [
       {
         name: 'payload',
@@ -1296,6 +1298,14 @@ Object.assign(registry, {
         isNullable: true,
       },
       {
+        name: 'artifact',
+        label: 'Artifact',
+        type: 'null',
+        isArray: false,
+        isRequired: false,
+        isNullable: false,
+      },
+      {
         name: 'retries',
         label: 'Retries',
         type: 'number',
@@ -1376,6 +1386,7 @@ Object.assign(registry, {
       ]),
       status: z.enum(['completed', 'failed', 'pending', 'processing']).optional(),
       errmsg: z.string().nullable().optional(),
+      artifact: z.any().optional(),
       retries: z.number().int().optional(),
       max_retries: z.number().int().nullable().optional(),
       periodic_interval_seconds: z.number().int().nullable().optional(),
@@ -1389,7 +1400,9 @@ Object.assign(registry, {
     defaultHiddenFields: [
       'status',
       'errmsg',
+      'artifact',
       'retries',
+      'max_retries',
       'periodic_interval_seconds',
       'periodic_max_runs',
       'periodic_runs',
@@ -1573,6 +1586,14 @@ Object.assign(registry, {
         isNullable: true,
       },
       {
+        name: 'artifact.process_times',
+        label: 'Process Times',
+        type: 'number',
+        isArray: false,
+        isRequired: true,
+        isNullable: false,
+      },
+      {
         name: 'retries',
         label: 'Retries',
         type: 'number',
@@ -1667,6 +1688,9 @@ Object.assign(registry, {
           .nullable()
           .optional(),
       }),
+      artifact: z.object({
+        process_times: z.number(),
+      }),
       status: z.enum(['completed', 'failed', 'pending', 'processing']).optional(),
       errmsg: z.string().nullable().optional(),
       retries: z.number().int().optional(),
@@ -1683,6 +1707,7 @@ Object.assign(registry, {
       'status',
       'errmsg',
       'retries',
+      'max_retries',
       'periodic_interval_seconds',
       'periodic_max_runs',
       'periodic_runs',

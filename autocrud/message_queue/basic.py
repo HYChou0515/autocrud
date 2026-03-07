@@ -1,7 +1,9 @@
 import datetime as dt
+import inspect
 import threading
+import warnings
 from abc import abstractmethod
-from typing import Callable, Generic, TypeVar
+from typing import TYPE_CHECKING, Callable, Generic, TypeVar
 
 from autocrud.types import (
     DataSearchCondition,
@@ -13,6 +15,9 @@ from autocrud.types import (
     ResourceMetaSearchQuery,
     TaskStatus,
 )
+
+if TYPE_CHECKING:
+    from autocrud.message_queue.context import JobContext
 
 T = TypeVar("T")
 
@@ -58,10 +63,69 @@ class BasicMessageQueue(IMessageQueue[T], Generic[T]):
     def __init__(self, do: Callable[[Resource[Job[T]]], None]):
         self._rm: IResourceManager[Job[T]] | None = None
         self._do = do
+        self._handler_wants_ctx = self._check_handler_wants_context(do)
         self._heartbeat_interval: float = 5.0
         self._recovery_interval: float = 60.0
         self._recovery_stop_event: threading.Event = threading.Event()
         self._recovery_thread: threading.Thread | None = None
+
+    # ------------------------------------------------------------------
+    # Handler introspection
+    # ------------------------------------------------------------------
+
+    @staticmethod
+    def _check_handler_wants_context(fn: Callable) -> bool:
+        """Return ``True`` if *fn* declares a ``job_context`` parameter.
+
+        The check is performed once at init time so there is zero
+        per-invocation overhead.
+        """
+        try:
+            sig = inspect.signature(fn)
+            return "job_context" in sig.parameters
+        except (ValueError, TypeError):
+            return False
+
+    def _invoke_handler(
+        self,
+        resource: Resource[Job[T]],
+        ctx: "JobContext | None" = None,
+    ):
+        """Call the user handler, optionally passing *ctx*.
+
+        If the handler's signature contains a ``job_context`` parameter,
+        it is passed as a keyword argument.  Otherwise the handler is
+        called with just the ``resource`` — fully backward-compatible.
+
+        When the handler requests ``job_context`` but *ctx* is ``None``
+        (e.g. no blob store configured), a fallback :class:`JobContext`
+        is created on the fly.  Its API is fully functional (logging,
+        artifacts, etc.) but logs will **not** be persisted.  A
+        :func:`warnings.warn` is emitted so the operator notices.
+
+        Args:
+            resource: The job resource to process.
+            ctx: The :class:`JobContext` for this execution (may be ``None``).
+
+        Returns:
+            Whatever the user handler returns (used to detect ``False``
+            for periodic-job stop requests).
+        """
+        if self._handler_wants_ctx:
+            if ctx is None:
+                from autocrud.message_queue.context import JobContext
+
+                warnings.warn(
+                    "Handler requests job_context but no JobContext was "
+                    "provided (blob store may not be configured). "
+                    "A fallback context is supplied; logs will not be "
+                    "persisted to blob storage.",
+                    UserWarning,
+                    stacklevel=2,
+                )
+                ctx = JobContext(resource)
+            return self._do(resource, job_context=ctx)
+        return self._do(resource)
 
     @property
     def rm(self) -> IResourceManager[Job[T]]:
@@ -80,18 +144,70 @@ class BasicMessageQueue(IMessageQueue[T], Generic[T]):
             user=self.rm.user_or_unset or user,
         )
 
-    def complete(self, resource_id: str, result: str | None = None) -> Resource[Job[T]]:
+    # ------------------------------------------------------------------
+    # Log helpers
+    # ------------------------------------------------------------------
+
+    @staticmethod
+    def _log_key(resource_id: str) -> str:
+        """Return the blob-store key for a job's execution log.
+
+        Args:
+            resource_id: The job resource ID.
+
+        Returns:
+            A key string of the form ``__job_log__/{resource_id}``.
         """
-        Mark a job as completed.
+        return f"__job_log__/{resource_id}"
+
+    @property
+    def _blob_store(self):
+        """Return the blob store from the associated ResourceManager, or ``None``."""
+        return getattr(self.rm, "blob_store", None)
+
+    def get_logs(self, resource_id: str) -> str | None:
+        """Retrieve the execution log text for a job.
+
+        Args:
+            resource_id: The job's resource ID.
+
+        Returns:
+            The log text as a string, or ``None`` if no logs exist.
+        """
+        bs = self._blob_store
+        if bs is None:
+            return None
+        key = self._log_key(resource_id)
+        try:
+            blob = bs.get(key)
+            return blob.data.decode("utf-8") if blob.data else None
+        except FileNotFoundError:
+            return None
+
+    def complete(
+        self,
+        resource_id: str,
+        result: str | None = None,
+        *,
+        _artifact: object | None = None,
+    ) -> Resource[Job[T]]:
+        """Mark a job as completed.
+
+        When *_artifact* is provided it is copied onto the freshly
+        fetched ``Job`` before persisting, so that handler-produced
+        artifacts survive the round-trip through storage.
 
         Args:
             resource_id: The ID of the job resource.
             result: Optional result string.
+            _artifact: If not ``None``, set on the job before saving.
         """
         resource = self.rm.get(resource_id)
         job = resource.data
         job.status = TaskStatus.COMPLETED
         job.errmsg = result
+        if _artifact is not None:
+            job.artifact = _artifact
 
         with self._rm_meta_provide(resource.info.created_by):
             self.rm.create_or_update(resource_id, job)

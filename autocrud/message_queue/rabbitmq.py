@@ -286,22 +286,42 @@ class RabbitMQMessageQueue(DelayableMessageQueue[T], Generic[T]):
         """
         Execute a job and handle success, DelayRetry, or failure.
 
+        A :class:`JobContext` and :class:`LogFlushThread` are created to
+        capture lifecycle logs into the blob store (when configured).
+
         Args:
             ch: RabbitMQ channel
             method: RabbitMQ method frame
             resource: The job resource to execute
             retry_count: Current retry count from message headers
         """
+        from autocrud.message_queue.context import JobContext
+        from autocrud.message_queue.log_flush import LogFlushThread
+
         resource_id = resource.info.resource_id
         job = resource.data
 
+        ctx = JobContext(resource)
+        ctx.info("Job started")
+
+        blob_store = self._blob_store
+        log_key = self._log_key(resource_id)
+        lf: LogFlushThread | None = None
+        if blob_store is not None:
+            lf = LogFlushThread(ctx=ctx, blob_store=blob_store, key=log_key)
+            lf.start()
+
         try:
-            result = self._do(resource)
+            result = self._invoke_handler(resource, ctx)
             # Check if callback explicitly requested to stop periodic execution
             user_requested_stop = result is False
 
+            ctx.info("Job completed")
+
             # Complete (Update RM) & Ack (RabbitMQ)
-            completed_resource = self.complete(resource_id)
+            completed_resource = self.complete(
+                resource_id, _artifact=resource.data.artifact
+            )
             ch.basic_ack(delivery_tag=method.delivery_tag)
 
             # Handle periodic job using parent class method
@@ -310,6 +330,7 @@ class RabbitMQMessageQueue(DelayableMessageQueue[T], Generic[T]):
             )
 
         except DelayRetry as e:
+            ctx.info(f"Job delayed retry: {e.delay_seconds}s")
             # Handle DelayRetry using parent class method
             ch.basic_ack(delivery_tag=method.delivery_tag)
             self._handle_delay_retry(
@@ -319,8 +340,16 @@ class RabbitMQMessageQueue(DelayableMessageQueue[T], Generic[T]):
         except Exception as e:
             # Callback failed - update Job with error and retry info
             error_msg = str(e)
+            # Always log the error so operators can diagnose failures.
+            ctx.error(f"Job error: {error_msg}")
 
-            # Update Job with error message and retry count
+            # Re-fetch from storage to avoid serialization issues
+            # (the in-memory job may contain handler-set fields that
+            # don't match the registered type).
+            try:
+                job = self.rm.get(resource_id).data
+            except Exception:
+                pass  # keep in-memory version as fallback
             job.status = TaskStatus.FAILED
             job.errmsg = error_msg
             job.retries = retry_count + 1
@@ -337,6 +366,9 @@ class RabbitMQMessageQueue(DelayableMessageQueue[T], Generic[T]):
 
             # Ack the original message (it's now in retry/dead queue)
             ch.basic_ack(delivery_tag=method.delivery_tag)
+        finally:
+            if lf is not None:
+                lf.stop()
 
     def start_consume(self) -> None:
         """

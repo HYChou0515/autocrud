@@ -38,7 +38,9 @@ import { RevisionIdCell } from '../common/RevisionIdCell';
 import { DetailFieldRenderer } from '../field/DetailFieldRenderer';
 import { CollapsibleJson } from '../field/DetailFieldRenderer/CollapsibleJson';
 import { JobStatusSection, JOB_STATUS_FIELDS, JOB_STATUS_COLORS } from '../job/JobStatusSection';
+import { JobArtifactSection } from '../job/JobArtifactSection';
 import { JobFieldsSection } from '../job/JobFieldsSection';
+import { JobLogsPanel } from '../job/JobLogsPanel';
 import type { ResourceListRoute } from '../../../generated/resources';
 import { showErrorNotification, extractUniqueConflict } from '../../utils/errorNotification';
 import { getByPath } from '@/autocrud/lib/utils/formUtils';
@@ -157,6 +159,9 @@ export function ResourceDetail<T extends Record<string, any>>({
     switchRevision,
     rerun,
     error,
+    logs,
+    logsLoading,
+    fetchLogs,
   } = useResourceDetail(config, resourceId, selectedRevision);
 
   // Depth control — shared hook (detail mode strips itemFields instead of collapsing)
@@ -173,12 +178,28 @@ export function ResourceDetail<T extends Record<string, any>>({
   });
 
   // Group dot-notation fields by parent for hierarchical display
+  const isArtifactField = (name: string) => name === 'artifact' || name.startsWith('artifact.');
+
   const displayGroups = useMemo(() => {
     const filtered = isJob
-      ? visibleFields.filter((f) => !JOB_STATUS_FIELDS.has(f.name))
+      ? visibleFields.filter(
+          (f) => !JOB_STATUS_FIELDS.has(f.name) && !isArtifactField(f.name),
+        )
       : visibleFields;
     return groupFieldsForDisplay(filtered);
   }, [visibleFields, isJob]);
+
+  // Artifact-specific groups (same structured rendering as Payload)
+  const artifactGroups = useMemo(() => {
+    if (!isJob) return [];
+    const artifactFields = visibleFields.filter((f) => isArtifactField(f.name));
+    return groupFieldsForDisplay(artifactFields);
+  }, [visibleFields, isJob]);
+
+  const artifactCollapsedGroups = useMemo(() => {
+    if (!isJob) return [];
+    return collapsedGroups.filter((g) => isArtifactField(g.path));
+  }, [collapsedGroups, isJob]);
 
   if (loading) {
     return (
@@ -397,8 +418,27 @@ export function ResourceDetail<T extends Record<string, any>>({
         {/* Job Status Section (delegated to JobStatusSection component) */}
         {isJob && <JobStatusSection data={data} />}
 
+        {/* Artifact Section (structured display, same pattern as Payload) */}
+        {isJob && (
+          <JobArtifactSection
+            data={data}
+            groups={artifactGroups}
+            collapsedGroups={artifactCollapsedGroups}
+          />
+        )}
+
         {/* Other Job Fields Section (delegated to JobFieldsSection component) */}
         {isJob && <JobFieldsSection data={data} />}
+
+        {/* Job Execution Logs */}
+        {isJob && (
+          <JobLogsPanel
+            logs={logs}
+            loading={logsLoading}
+            onFetch={fetchLogs}
+            available={!!config.apiClient.getLogs}
+          />
+        )}
 
         {/* Data/Payload Section */}
         <Paper withBorder p="md">
@@ -486,7 +526,9 @@ export function ResourceDetail<T extends Record<string, any>>({
                 );
               })}
               {(isJob
-                ? collapsedGroups.filter((g) => !JOB_STATUS_FIELDS.has(g.path))
+                ? collapsedGroups.filter(
+                    (g) => !JOB_STATUS_FIELDS.has(g.path) && !isArtifactField(g.path),
+                  )
                 : collapsedGroups
               ).map((group) => {
                 const value = getByPath(data, group.path);

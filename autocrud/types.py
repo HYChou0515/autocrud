@@ -21,11 +21,13 @@ from jsonpatch import JsonPatch
 from jsonpointer import JsonPointer
 from msgspec import UNSET, Struct, UnsetType, defstruct
 from typing_extensions import Literal
+from typing_extensions import TypeVar as TypeVarExt
 
 if TYPE_CHECKING:
     from autocrud.query import Query
 
 T = TypeVar("T")
+D = TypeVarExt("D", default=None)
 
 
 # ---------------------------------------------------------------------------
@@ -2575,7 +2577,20 @@ class TaskStatus(StrEnum):
     FAILED = "failed"
 
 
-class Job(Struct, Generic[T]):
+class Job(Struct, Generic[T, D]):
+    """A job wrapping a payload ``T`` with optional artifact type ``D``.
+
+    The second type parameter ``D`` defaults to ``None`` so existing
+    ``Job[T]`` usage is fully backward-compatible.
+
+    Attributes:
+        payload: The input data for the job.
+        status: Current processing status.
+        errmsg: Error or result message after processing.
+        artifact: Optional typed output produced by the job handler.
+        retries: Number of times the job has been retried.
+    """
+
     payload: T
     """The actual job data/resource."""
 
@@ -2584,6 +2599,14 @@ class Job(Struct, Generic[T]):
 
     errmsg: str | None = None
     """Result or error message after processing."""
+
+    artifact: D | None = None
+    """Optional typed output produced by the job handler.
+
+    This field stores the result/artifact of job execution.
+    The type ``D`` defaults to ``None``, so ``Job[T]`` is equivalent
+    to ``Job[T, None]`` and ``artifact`` is simply ``None``.
+    """
 
     retries: int = 0
     """Number of times the job has been retried."""
@@ -2672,6 +2695,18 @@ class IMessageQueue(ABC, Generic[T]):
     def stop_consuming(self) -> None:
         """Stop consuming jobs from the queue."""
         ...
+
+    def get_logs(self, resource_id: str) -> str | None:
+        """Retrieve the execution log text for a job.
+
+        Args:
+            resource_id: The job's resource ID.
+
+        Returns:
+            The log text as a string, or ``None`` if no logs exist
+            (e.g. no blob store configured or the job was never executed).
+        """
+        return None
 
 
 class IMessageQueueFactory(ABC):

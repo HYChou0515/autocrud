@@ -15,7 +15,7 @@ export interface JobFieldsSectionProps {
 
 export function JobFieldsSection({ data }: JobFieldsSectionProps) {
   const otherFields = Object.entries(data).filter(
-    ([key]) => !JOB_STATUS_FIELDS.has(key) && key !== 'payload',
+    ([key]) => !JOB_STATUS_FIELDS.has(key) && key !== 'payload' && key !== 'artifact',
   );
 
   if (otherFields.length === 0) return null;
