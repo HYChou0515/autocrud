@@ -57,17 +57,7 @@ vi.mock('../field/DetailFieldRenderer', () => ({
 
 vi.mock('../job/JobStatusSection', () => ({
   JobStatusSection: () => null,
-  JOB_STATUS_FIELDS: new Set([
-    'status',
-    'retries',
-    'max_retries',
-    'errmsg',
-    'last_heartbeat_at',
-    'periodic_interval_seconds',
-    'periodic_max_runs',
-    'periodic_runs',
-    'periodic_initial_delay_seconds',
-  ]),
+  JOB_STATUS_FIELDS: new Set(['status', 'retries', 'errmsg']),
   JOB_STATUS_COLORS: {} as Record<string, string>,
 }));
 

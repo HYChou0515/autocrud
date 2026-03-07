@@ -29,6 +29,7 @@ describe('JOB_STATUS_FIELDS', () => {
 
   it('does not contain non-status fields', () => {
     expect(JOB_STATUS_FIELDS.has('payload')).toBe(false);
+    expect(JOB_STATUS_FIELDS.has('artifact')).toBe(false);
     expect(JOB_STATUS_FIELDS.has('name')).toBe(false);
     expect(JOB_STATUS_FIELDS.has('id')).toBe(false);
   });
