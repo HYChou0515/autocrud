@@ -3428,6 +3428,103 @@ describe('genTypes — enum field references', () => {
   });
 });
 
+// ============================================================================
+// genTypes — tagged struct const/literal discriminator field
+// ============================================================================
+describe('genTypes — tagged struct literal type', () => {
+  function buildTaggedStructSpec() {
+    return {
+      info: { title: 'Test', version: '1.0' },
+      paths: {
+        '/item': {
+          post: {
+            requestBody: {
+              content: {
+                'application/json': {
+                  schema: {
+                    anyOf: [{ $ref: '#/components/schemas/Equipment' }, { $ref: '#/components/schemas/Consumable' }],
+                    discriminator: {
+                      propertyName: 'type',
+                      mapping: {
+                        Equipment: '#/components/schemas/Equipment',
+                        Consumable: '#/components/schemas/Consumable',
+                      },
+                    },
+                  },
+                },
+              },
+            },
+          },
+        },
+      },
+      components: {
+        schemas: {
+          Equipment: {
+            type: 'object',
+            properties: {
+              type: { const: 'Equipment', type: 'string' },
+              name: { type: 'string' },
+              attack_bonus: { type: 'integer' },
+            },
+            required: ['type', 'name'],
+          },
+          Consumable: {
+            type: 'object',
+            properties: {
+              type: { enum: ['Consumable'], type: 'string' },
+              name: { type: 'string' },
+              heal_amount: { type: 'integer' },
+            },
+            required: ['type', 'name'],
+          },
+        },
+      },
+    };
+  }
+
+  it('generates literal type for const discriminator field (prop.const)', () => {
+    const spec = buildTaggedStructSpec();
+    const gen = createTestGenerator(spec);
+    (gen as any).extractResources();
+    const types = (gen as any).genTypes() as string;
+
+    // Equipment.type should be literal 'Equipment'
+    expect(types).toContain("type: 'Equipment';");
+    expect(types).not.toMatch(/interface Equipment[\s\S]*?type: string;/);
+  });
+
+  it('generates literal type for single-element enum discriminator field', () => {
+    const spec = buildTaggedStructSpec();
+    const gen = createTestGenerator(spec);
+    (gen as any).extractResources();
+    const types = (gen as any).genTypes() as string;
+
+    // Consumable.type should be literal 'Consumable'
+    expect(types).toContain("type: 'Consumable';");
+    expect(types).not.toMatch(/interface Consumable[\s\S]*?type: string;/);
+  });
+
+  it('parseField returns constValue and literal tsType for const field', () => {
+    const spec = buildTaggedStructSpec();
+    const gen = createTestGenerator(spec);
+    (gen as any).extractResources();
+
+    const field = (gen as any).parseField('type', { const: 'Equipment', type: 'string' }, true);
+    expect(field.constValue).toBe('Equipment');
+    expect(field.tsType).toBe("'Equipment'");
+  });
+
+  it('parseField returns constValue and literal tsType for single-element enum', () => {
+    const spec = buildTaggedStructSpec();
+    const gen = createTestGenerator(spec);
+    (gen as any).extractResources();
+
+    const field = (gen as any).parseField('type', { enum: ['Consumable'], type: 'string' }, true);
+    expect(field.constValue).toBe('Consumable');
+    expect(field.tsType).toBe("'Consumable'");
+  });
+});
+
 function buildSimpleSpec(basePath: string = '') {
   const prefix = basePath || '';
   return {

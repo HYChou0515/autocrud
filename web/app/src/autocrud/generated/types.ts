@@ -33,7 +33,7 @@ export enum GameEventType {
 }
 
 export interface ActiveSkillData {
-  type: string;
+  skill_type: 'active';
   mp_cost?: number;
   cooldown_seconds?: number;
   damage?: number;
@@ -82,7 +82,7 @@ export interface HTTPValidationError {
 }
 
 export interface PassiveSkillData {
-  type: string;
+  skill_type: 'passive';
   buff_percentage?: number;
 }
 
@@ -95,7 +95,7 @@ export interface Skill {
 }
 
 export interface UltimateSkillData {
-  type: string;
+  skill_type: 'ultimate';
   mp_cost?: number;
   cooldown_seconds?: number;
   damage?: number;
@@ -128,7 +128,7 @@ export interface Character {
 }
 
 export interface Equipment {
-  type: string;
+  type: 'Equipment';
   name: string;
   rarity: ItemRarity;
   owner_id?: string | null;
@@ -148,7 +148,7 @@ export interface Binary {
 }
 
 export interface Item {
-  type: string;
+  type: 'Item';
   name: string;
   description?: string;
   price?: number;
@@ -166,7 +166,7 @@ export interface Guild {
 }
 
 export interface Mount {
-  type: string;
+  type: 'Mount';
   name: string;
   species: string;
   speed?: number;
@@ -175,7 +175,7 @@ export interface Mount {
 }
 
 export interface Dog {
-  type: string;
+  type: 'Dog';
   name: string;
   breed: string;
   level?: number;
@@ -223,19 +223,19 @@ export interface GameEventPayload {
 }
 
 export interface EventBodyA {
-  type: string;
+  type: 'EventBodyA';
   extra_info_a: string;
   extra_value_a: number;
 }
 
 export interface EventBodyB {
-  type: string;
+  type: 'EventBodyB';
   some_field: string;
   cooldown_seconds: number;
 }
 
 export interface EventBodyX {
-  type: string;
+  type: 'EventBodyX';
   good: string;
   great: number;
 }
@@ -283,36 +283,36 @@ export interface FullResourceResponse_GameEvent_ {
 }
 
 export interface RFC6902_Add {
-  op: string;
+  op: 'add';
   path: string;
   value: string;
 }
 
 export interface RFC6902_Remove {
-  op: string;
+  op: 'remove';
   path: string;
 }
 
 export interface RFC6902_Replace {
-  op: string;
+  op: 'replace';
   path: string;
   value: string;
 }
 
 export interface RFC6902_Move {
-  op: string;
+  op: 'move';
   from: string;
   path: string;
 }
 
 export interface RFC6902_Test {
-  op: string;
+  op: 'test';
   path: string;
   value: string;
 }
 
 export interface RFC6902_Copy {
-  op: string;
+  op: 'copy';
   from: string;
   path: string;
 }

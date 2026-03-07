@@ -1062,7 +1062,7 @@ export class Generator {
         name,
         label: toLabel(labelSource),
         type: 'string',
-        tsType: 'string',
+        tsType: `'${constVal}'`,
         isArray: false,
         isRequired,
         isNullable: false,
@@ -1291,6 +1291,7 @@ export class Generator {
       // Single-element enum from tagged struct discriminator → treat as const
       if (enumValues!.length === 1) {
         const constVal = enumValues![0];
+        tsType = `'${constVal}'`;
         zodType = `z.literal('${constVal}')`;
 
         if (isNullable || !isRequired) {
