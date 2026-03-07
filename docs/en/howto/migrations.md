@@ -35,6 +35,35 @@ def v1_to_v2(bio):
 schema = Schema(User, "v2").step("v1", v1_to_v2)
 ```
 
+## Typed migration (recommended)
+
+Instead of manually reading and decoding bytes, use `source_type` to let the framework handle it:
+
+```python
+def v1_to_v2(data: UserV1) -> UserV2:
+    return UserV2(name=data.name, age=data.age, role="user")
+
+schema = Schema(UserV2, "v2").step("v1", v1_to_v2, source_type=UserV1)
+```
+
+Benefits:
+
+* No boilerplate `data.read()` + `msgspec.json.decode(...)` in every function
+* In multi-step chains, objects are passed directly between typed steps (no intermediate serialization)
+* Works with both `msgspec.Struct` and Pydantic `BaseModel` as `source_type`
+
+Multi-step typed chain:
+
+```python
+schema = (
+    Schema(UserV3, "v3")
+    .step("v1", v1_to_v2, source_type=UserV1)
+    .step("v2", v2_to_v3, source_type=UserV2)
+)
+```
+
+You can also mix typed and legacy steps in the same chain.
+
 ## Chain migration (auto-infer `to`)
 
 ```python

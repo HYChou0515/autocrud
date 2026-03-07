@@ -88,30 +88,29 @@ class Schema(Generic[T]):
         self._version: str = version
         self._raw_validator = validator
         self._validator: Callable | None = build_validator(validator)
-        # List of flushed chains.  Each chain is a list of (from_ver, fn) tuples
-        # whose ``to`` will be resolved lazily.
+        # List of flushed chains.  Each chain is a list of
+        # (from_ver, fn, source_type) tuples whose ``to`` will be
+        # resolved lazily.
         # ``from_ver`` can be a plain string or a compiled regex pattern.
+        # ``source_type`` is ``None`` for legacy IO[bytes]-based steps or
+        # a concrete type for typed steps.
         self._chains: list[
-            list[tuple[str | re.Pattern[str], Callable[[IO[bytes]], Any]]]
+            list[tuple[str | re.Pattern[str], Callable, type | None]]
         ] = []
         # The chain currently being built (not yet flushed).
         self._current_chain: list[
-            tuple[str | re.Pattern[str], Callable[[IO[bytes]], Any]]
+            tuple[str | re.Pattern[str], Callable, type | None]
         ] = []
         # Explicit ``to`` overrides: {chain_idx: {step_idx: to_ver}}
         self._explicit_to: dict[int, dict[int, str]] = {}
         # Resolved directed graph cache (invalidated on mutation).
-        self._graph: dict[str, list[tuple[str, Callable[[IO[bytes]], Any]]]] | None = (
-            None
-        )
+        self._graph: dict[str, list[tuple[str, Callable, type | None]]] | None = None
         # Regex edges resolved at build time but expanded at runtime.
-        self._regex_edges: list[
-            tuple[re.Pattern[str], str, Callable[[IO[bytes]], Any]]
-        ] = []
+        self._regex_edges: list[tuple[re.Pattern[str], str, Callable, type | None]] = []
         # Path cache: (from_ver, to_ver) → path.  Cleared on mutation.
         self._path_cache: dict[
             tuple[str | None, str],
-            list[tuple[str, str, Callable[[IO[bytes]], Any]]],
+            list[tuple[str, str, Callable, type | None]],
         ] = {}
         # Legacy migration wrapper (set by ``from_legacy``).
         self._legacy_migration: IMigration | None = None
@@ -149,9 +148,10 @@ class Schema(Generic[T]):
     def step(
         self,
         from_ver: str | re.Pattern[str],
-        fn: Callable[[IO[bytes]], Any],
+        fn: Callable,
         *,
         to: str | None = None,
+        source_type: type | None = None,
     ) -> Schema[T]:
         """Append a migration step to the *current* chain.
 
@@ -161,14 +161,43 @@ class Schema(Generic[T]):
             Source version that this step handles.  Can be a compiled regex
             pattern (``re.compile(...)``), in which case the step creates
             edges from **every** known version that matches the pattern.
-        fn : Callable[[IO[bytes]], Any]
-            Transform function ``(data_stream) -> migrated_object``.
+        fn : Callable[[IO[bytes]], Any] | Callable[[source_type], Any]
+            Transform function.  When *source_type* is ``None`` (default),
+            the function receives ``IO[bytes]`` (legacy behaviour).  When
+            *source_type* is provided, the function receives an already-decoded
+            instance of that type.
         to : str | None
             Explicit target version.  If ``None`` it is auto-inferred:
             * Middle step → next step's ``from_ver`` (must be a literal string).
             * Last step in a chain → ``Schema.version``.
+        source_type : type | None
+            When provided, the framework automatically decodes the raw bytes
+            into *source_type* before calling *fn*.  This removes the
+            boilerplate of ``msgspec.json.decode(data.read(), type=...)``
+            inside every migration function.  In multi-step chains, if the
+            previous step already returned the expected type, the object is
+            passed directly without re-encoding/decoding.
+
+        Examples
+        --------
+        Legacy (IO[bytes]) style::
+
+            def migrate_v1_to_v2(data: IO[bytes]) -> V2:
+                obj = msgspec.json.decode(data.read(), type=V1)
+                return V2(name=obj.name, extra="new")
+
+
+            Schema(V2, "v2").step("v1", migrate_v1_to_v2)
+
+        Typed style (recommended)::
+
+            def migrate_v1_to_v2(data: V1) -> V2:
+                return V2(name=data.name, extra="new")
+
+
+            Schema(V2, "v2").step("v1", migrate_v1_to_v2, source_type=V1)
         """
-        self._current_chain.append((from_ver, fn))
+        self._current_chain.append((from_ver, fn, source_type))
         if to is not None:
             chain_idx = len(self._chains)  # current chain's future index
             step_idx = len(self._current_chain) - 1
@@ -181,14 +210,26 @@ class Schema(Generic[T]):
     def plus(
         self,
         from_ver: str | re.Pattern[str],
-        fn: Callable[[IO[bytes]], Any],
+        fn: Callable,
         *,
         to: str | None = None,
+        source_type: type | None = None,
     ) -> Schema[T]:
         """Start a **new** parallel chain with the given first step.
 
         Same semantics as ``.step()`` but the previous chain is flushed first
         so that its ``to`` versions get resolved independently.
+
+        Parameters
+        ----------
+        from_ver : str | re.Pattern[str]
+            Source version (same as ``.step()``).
+        fn : Callable
+            Transform function (same as ``.step()``).
+        to : str | None
+            Explicit target version (same as ``.step()``).
+        source_type : type | None
+            Typed source (same as ``.step()``).  See ``.step()`` for details.
         """
         # Flush current chain
         if self._current_chain:
@@ -196,13 +237,13 @@ class Schema(Generic[T]):
             self._current_chain = []
         # ``.step()`` will use ``len(self._chains)`` as chain_idx for the new
         # chain that is being started.
-        return self.step(from_ver, fn, to=to)
+        return self.step(from_ver, fn, to=to, source_type=source_type)
 
     # ------------------------------------------------------------------
     # Resolution
     # ------------------------------------------------------------------
 
-    def _resolve(self) -> dict[str, list[tuple[str, Callable[[IO[bytes]], Any]]]]:
+    def _resolve(self) -> dict[str, list[tuple[str, Callable, type | None]]]:
         """Lazily resolve all chains into a directed graph.
 
         Literal ``from_ver`` strings are placed directly into the graph.
@@ -215,20 +256,20 @@ class Schema(Generic[T]):
             return self._graph
 
         # Collect all chains (include current if non-empty).
-        all_chains: list[
-            list[tuple[str | re.Pattern[str], Callable[[IO[bytes]], Any]]]
-        ] = list(self._chains)
+        all_chains: list[list[tuple[str | re.Pattern[str], Callable, type | None]]] = (
+            list(self._chains)
+        )
         if self._current_chain:
             all_chains.append(self._current_chain)
 
         # ── Pass 1: resolve to_ver for every step ─────────────────────
         resolved_steps: list[
-            tuple[str | re.Pattern[str], str, Callable[[IO[bytes]], Any]]
+            tuple[str | re.Pattern[str], str, Callable, type | None]
         ] = []
 
         for chain_idx, chain in enumerate(all_chains):
             chain_explicit = self._explicit_to.get(chain_idx, {})
-            for i, (from_ver, fn) in enumerate(chain):
+            for i, (from_ver, fn, source_type) in enumerate(chain):
                 # Determine ``to_ver``
                 if i in chain_explicit:
                     to_ver: str | None = chain_explicit[i]
@@ -249,19 +290,17 @@ class Schema(Generic[T]):
                         f"Cannot infer target version for step from {from_ver!r}. "
                         f"Set Schema(version=...) or provide to= explicitly."
                     )
-                resolved_steps.append((from_ver, to_ver, fn))
+                resolved_steps.append((from_ver, to_ver, fn, source_type))
 
         # ── Pass 2: separate literal edges vs regex edges ─────────────
-        graph: dict[str, list[tuple[str, Callable[[IO[bytes]], Any]]]] = defaultdict(
-            list
-        )
-        regex_edges: list[tuple[re.Pattern[str], str, Callable[[IO[bytes]], Any]]] = []
+        graph: dict[str, list[tuple[str, Callable, type | None]]] = defaultdict(list)
+        regex_edges: list[tuple[re.Pattern[str], str, Callable, type | None]] = []
 
-        for from_ver, to_ver, fn in resolved_steps:
+        for from_ver, to_ver, fn, source_type in resolved_steps:
             if isinstance(from_ver, re.Pattern):
-                regex_edges.append((from_ver, to_ver, fn))
+                regex_edges.append((from_ver, to_ver, fn, source_type))
             else:
-                graph[from_ver].append((to_ver, fn))
+                graph[from_ver].append((to_ver, fn, source_type))
 
         self._graph = dict(graph)
         self._regex_edges = regex_edges
@@ -271,17 +310,19 @@ class Schema(Generic[T]):
     # Runtime edge lookup
     # ------------------------------------------------------------------
 
-    def _edges_for(self, version: str) -> list[tuple[str, Callable[[IO[bytes]], Any]]]:
+    def _edges_for(self, version: str) -> list[tuple[str, Callable, type | None]]:
         """Return outgoing edges for *version* (literal + regex matches).
+
+        Each edge is ``(to_ver, fn, source_type)``.
 
         Called at runtime so that regex patterns can match versions from
         the persistence layer that were never declared in the Schema.
         """
         self._resolve()
         edges = list(self._graph.get(version, []))
-        for pattern, to_ver, fn in self._regex_edges:
+        for pattern, to_ver, fn, source_type in self._regex_edges:
             if version != to_ver and pattern.fullmatch(version):
-                edges.append((to_ver, fn))
+                edges.append((to_ver, fn, source_type))
         return edges
 
     # ------------------------------------------------------------------
@@ -290,11 +331,11 @@ class Schema(Generic[T]):
 
     def _find_path(
         self, from_ver: str | None, to_ver: str
-    ) -> list[tuple[str, str, Callable[[IO[bytes]], Any]]]:
+    ) -> list[tuple[str, str, Callable, type | None]]:
         """Find shortest path from *from_ver* to *to_ver* via BFS.
 
-        Returns list of ``(src, dst, fn)`` tuples forming the path.
-        Results are cached per ``(from_ver, to_ver)`` pair.
+        Returns list of ``(src, dst, fn, source_type)`` tuples forming
+        the path.  Results are cached per ``(from_ver, to_ver)`` pair.
 
         Raises ``ValueError`` if no path exists.
         """
@@ -315,11 +356,11 @@ class Schema(Generic[T]):
             )
 
         # BFS
-        queue: deque[list[tuple[str, str, Callable[[IO[bytes]], Any]]]] = deque()
+        queue: deque[list[tuple[str, str, Callable, type | None]]] = deque()
         visited: set[str | None] = {from_ver}
 
-        for dst, fn in initial_edges:
-            queue.append([(from_ver, dst, fn)])
+        for dst, fn, source_type in initial_edges:
+            queue.append([(from_ver, dst, fn, source_type)])
             visited.add(dst)
 
         while queue:
@@ -328,10 +369,10 @@ class Schema(Generic[T]):
             if current == to_ver:
                 self._path_cache[cache_key] = path
                 return path
-            for dst, fn in self._edges_for(current):
+            for dst, fn, source_type in self._edges_for(current):
                 if dst not in visited:
                     visited.add(dst)
-                    queue.append([*path, (current, dst, fn)])
+                    queue.append([*path, (current, dst, fn, source_type)])
 
         raise ValueError(
             f"No migration path from {from_ver!r} to {to_ver!r}. "
@@ -374,18 +415,59 @@ class Schema(Generic[T]):
             return data.read()  # type: ignore[return-value]
 
         result: Any = data
-        for _src, _dst, fn in path:
-            if not isinstance(result, (io.IOBase, io.BufferedIOBase)):
-                # fn returned a decoded struct/basemodel — re-encode for
-                # the next step so it receives IO[bytes].
-                result = io.BytesIO(self._encode_intermediate(result))
-            result = fn(result)
+        for _src, _dst, fn, source_type in path:
+            if source_type is not None:
+                # ── Typed step: auto-decode to source_type ────────────
+                if isinstance(result, source_type):
+                    # Direct pass-through (e.g. previous typed step
+                    # returned exactly the type we need).
+                    pass
+                elif isinstance(result, (io.IOBase, io.BufferedIOBase)):
+                    result = self._decode_to_type(result.read(), source_type)
+                elif isinstance(result, bytes):
+                    result = self._decode_to_type(result, source_type)
+                else:
+                    # Different decoded object — re-encode then decode.
+                    encoded = self._encode_intermediate(result)
+                    result = self._decode_to_type(encoded, source_type)
+                result = fn(result)
+            else:
+                # ── Legacy step: fn expects IO[bytes] ─────────────────
+                if not isinstance(result, (io.IOBase, io.BufferedIOBase)):
+                    result = io.BytesIO(self._encode_intermediate(result))
+                result = fn(result)
 
         return result  # type: ignore[return-value]
 
     # ------------------------------------------------------------------
     # Intermediate encoding
     # ------------------------------------------------------------------
+
+    def _decode_to_type(self, data: bytes, source_type: type) -> Any:
+        """Decode *data* bytes into an instance of *source_type*.
+
+        Uses the Schema's current encoding (json or msgpack).
+        For Pydantic ``BaseModel`` subclasses, decodes to a dict first
+        and then constructs the model via ``model_validate`` / ``parse_obj``.
+        """
+        # Check for Pydantic BaseModel
+        try:
+            from pydantic import BaseModel
+
+            if isinstance(source_type, type) and issubclass(source_type, BaseModel):
+                if self._encoding == "msgpack":
+                    raw = msgspec.msgpack.decode(data)
+                else:
+                    raw = msgspec.json.decode(data)
+                # Pydantic v2 / v1 compat
+                if hasattr(source_type, "model_validate"):
+                    return source_type.model_validate(raw)
+                return source_type.parse_obj(raw)  # type: ignore[union-attr]
+        except ImportError:
+            pass
+        if self._encoding == "msgpack":
+            return msgspec.msgpack.decode(data, type=source_type)
+        return msgspec.json.decode(data, type=source_type)
 
     def _encode_intermediate(self, obj: Any) -> bytes:
         """Encode a decoded intermediate object back to bytes.
@@ -494,19 +576,24 @@ class Schema(Generic[T]):
         if self._validator is not None:
             parts[0] += ", validator=..."
         parts[0] += ")"
-        all_chains: list[
-            list[tuple[str | re.Pattern[str], Callable[[IO[bytes]], Any]]]
-        ] = list(self._chains)
+        all_chains: list[list[tuple[str | re.Pattern[str], Callable, type | None]]] = (
+            list(self._chains)
+        )
         if self._current_chain:
             all_chains.append(self._current_chain)
         for chain_idx, chain in enumerate(all_chains):
-            for step_idx, (from_ver, _fn) in enumerate(chain):
+            for step_idx, (from_ver, _fn, src_type) in enumerate(chain):
                 if chain_idx > 0 and step_idx == 0:
                     method = ".plus"
                 else:
                     method = ".step"
                 if isinstance(from_ver, re.Pattern):
-                    parts.append(f"{method}(re.compile({from_ver.pattern!r}), ...)")
+                    ver_part = f"re.compile({from_ver.pattern!r})"
                 else:
-                    parts.append(f"{method}({from_ver!r}, ...)")
+                    ver_part = repr(from_ver)
+                if src_type is not None:
+                    src_name = get_type_name(src_type) or src_type.__name__
+                    parts.append(f"{method}({ver_part}, ..., source_type={src_name})")
+                else:
+                    parts.append(f"{method}({ver_part}, ...)")
         return "".join(parts)
