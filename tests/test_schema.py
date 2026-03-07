@@ -213,7 +213,7 @@ class TestPlusParallelChains:
 
         g1, g2 = s1._resolve(), s2._resolve()
         # Both should have v1 → {v2, v3} and v2 → {v3}
-        assert sorted(t for t, _ in g1["v1"]) == sorted(t for t, _ in g2["v1"])
+        assert sorted(t for t, *_ in g1["v1"]) == sorted(t for t, *_ in g2["v1"])
         assert g1["v2"][0][0] == g2["v2"][0][0] == "v3"
 
     def test_plus_explicit_to(self):
@@ -224,7 +224,7 @@ class TestPlusParallelChains:
             .plus("v1", migrate_v1_to_v3_direct, to="v3")
         )
         graph = s._resolve()
-        to_v3_edges = [fn for to, fn in graph["v1"] if to == "v3"]
+        to_v3_edges = [fn for to, fn, _st in graph["v1"] if to == "v3"]
         assert len(to_v3_edges) == 1
 
 
@@ -1015,3 +1015,355 @@ class TestMsgpackEncoding:
         # Should be valid JSON
         decoded = msgspec.json.decode(encoded, type=V1Data)
         assert decoded.name == "json"
+
+
+# =====================================================================
+# Tests: Typed migration (source_type parameter)
+# =====================================================================
+
+# ── Typed helper migration functions ──────────────────────────────────
+
+
+def typed_migrate_v1_to_v2(data: V1Data) -> V2Data:
+    """v1 → v2 typed: add ``tag`` field."""
+    return V2Data(name=data.name, value=data.value, tag="typed")
+
+
+def typed_migrate_v2_to_v3(data: V2Data) -> V3Data:
+    """v2 → v3 typed: add ``score`` field."""
+    return V3Data(name=data.name, value=data.value, tag=data.tag, score=1.0)
+
+
+def typed_migrate_v1_to_v3_direct(data: V1Data) -> V3Data:
+    """v1 → v3 typed shortcut."""
+    return V3Data(name=data.name, value=data.value, tag="typed-direct", score=88.0)
+
+
+class TestTypedMigration:
+    """Tests for ``source_type`` parameter in ``.step()`` and ``.plus()``."""
+
+    @staticmethod
+    def _make_stream(obj: Any) -> io.BytesIO:
+        return io.BytesIO(msgspec.json.encode(obj))
+
+    # ── Basic typed single-step ──────────────────────────────────────
+
+    def test_single_step_typed_migration(self):
+        """Single typed step: fn receives decoded V1Data directly."""
+        s = Schema(V2Data, "v2").step("v1", typed_migrate_v1_to_v2, source_type=V1Data)
+        data = self._make_stream(V1Data(name="alice", value=42))
+        result = s.migrate(data, "v1")
+        assert isinstance(result, V2Data)
+        assert result.name == "alice"
+        assert result.value == 42
+        assert result.tag == "typed"
+
+    # ── Multi-step typed chain (object pass-through) ─────────────────
+
+    def test_chain_typed_migration(self):
+        """Multi-step typed: V1→V2→V3, objects passed directly between steps."""
+        s = (
+            Schema(V3Data, "v3")
+            .step("v1", typed_migrate_v1_to_v2, source_type=V1Data)
+            .step("v2", typed_migrate_v2_to_v3, source_type=V2Data)
+        )
+        data = self._make_stream(V1Data(name="bob", value=10))
+        result = s.migrate(data, "v1")
+        assert isinstance(result, V3Data)
+        assert result.name == "bob"
+        assert result.tag == "typed"  # came through v1→v2
+        assert result.score == 1.0
+
+    def test_chain_typed_direct_passthrough(self):
+        """Verify object is passed directly (not re-encoded) between typed steps."""
+        calls: list[type] = []
+
+        def step1(data: V1Data) -> V2Data:
+            calls.append(type(data))
+            return V2Data(name=data.name, value=data.value, tag="s1")
+
+        def step2(data: V2Data) -> V3Data:
+            calls.append(type(data))
+            return V3Data(name=data.name, value=data.value, tag=data.tag, score=2.0)
+
+        s = (
+            Schema(V3Data, "v3")
+            .step("v1", step1, source_type=V1Data)
+            .step("v2", step2, source_type=V2Data)
+        )
+        data = self._make_stream(V1Data(name="direct", value=1))
+        result = s.migrate(data, "v1")
+        assert calls == [V1Data, V2Data]
+        assert isinstance(result, V3Data)
+
+    # ── Mixed typed + untyped ────────────────────────────────────────
+
+    def test_mixed_typed_then_untyped(self):
+        """First step typed, second step untyped (IO[bytes])."""
+        s = (
+            Schema(V3Data, "v3")
+            .step("v1", typed_migrate_v1_to_v2, source_type=V1Data)
+            .step("v2", migrate_v2_to_v3)  # untyped — expects IO[bytes]
+        )
+        data = self._make_stream(V1Data(name="mix1", value=5))
+        result = s.migrate(data, "v1")
+        assert isinstance(result, V3Data)
+        assert result.name == "mix1"
+        assert result.tag == "typed"  # from typed step1
+        assert result.score == 0.0  # from untyped step2
+
+    def test_mixed_untyped_then_typed(self):
+        """First step untyped (IO[bytes]), second step typed."""
+        s = (
+            Schema(V3Data, "v3")
+            .step("v1", migrate_v1_to_v2)  # untyped — returns V2Data
+            .step("v2", typed_migrate_v2_to_v3, source_type=V2Data)
+        )
+        data = self._make_stream(V1Data(name="mix2", value=7))
+        result = s.migrate(data, "v1")
+        assert isinstance(result, V3Data)
+        assert result.name == "mix2"
+        assert result.tag == "migrated"  # from untyped step1
+        assert result.score == 1.0  # from typed step2
+
+    # ── Typed with plus() ────────────────────────────────────────────
+
+    def test_typed_plus_chain(self):
+        """Parallel chain with typed source_type via plus()."""
+        s = (
+            Schema(V3Data, "v3")
+            .step("v1", typed_migrate_v1_to_v2, source_type=V1Data)
+            .step("v2", typed_migrate_v2_to_v3, source_type=V2Data)
+            .plus("v1", typed_migrate_v1_to_v3_direct, source_type=V1Data)
+        )
+        data = self._make_stream(V1Data(name="plus", value=3))
+        result = s.migrate(data, "v1")
+        # BFS picks shortest path (1-step shortcut)
+        assert isinstance(result, V3Data)
+        assert result.tag == "typed-direct"
+        assert result.score == 88.0
+
+    # ── Typed with regex from_ver ────────────────────────────────────
+
+    def test_typed_with_regex_from_ver(self):
+        """Regex from_ver combined with source_type."""
+
+        def upgrade_any(data: V1Data) -> V3Data:
+            return V3Data(
+                name=data.name, value=data.value, tag="regex-typed", score=0.0
+            )
+
+        s = Schema(V3Data, "v3").step(
+            re.compile(r"v\d+"), upgrade_any, to="v3", source_type=V1Data
+        )
+        data = self._make_stream(V1Data(name="regex", value=9))
+        result = s.migrate(data, "v99")
+        assert isinstance(result, V3Data)
+        assert result.tag == "regex-typed"
+
+    # ── Typed with Pydantic source ───────────────────────────────────
+
+    def test_typed_with_pydantic_source(self):
+        """source_type can be a Pydantic BaseModel."""
+        from pydantic import BaseModel
+
+        class V1Pydantic(BaseModel):
+            name: str
+            value: int
+
+        def migrate_pyd(data: V1Pydantic) -> V2Data:
+            return V2Data(name=data.name, value=data.value, tag="from-pydantic")
+
+        s = Schema(V2Data, "v2").step("v1", migrate_pyd, source_type=V1Pydantic)
+        # Pydantic models serialized via JSON should be decodable
+        raw = b'{"name": "pyd", "value": 42}'
+        data = io.BytesIO(raw)
+        result = s.migrate(data, "v1")
+        assert isinstance(result, V2Data)
+        assert result.name == "pyd"
+        assert result.tag == "from-pydantic"
+
+    # ── Typed with msgpack encoding ──────────────────────────────────
+
+    def test_typed_msgpack_encoding(self):
+        """Typed migration works with msgpack encoding."""
+        s = (
+            Schema(V3Data, "v3")
+            .step("v1", typed_migrate_v1_to_v2, source_type=V1Data)
+            .step("v2", typed_migrate_v2_to_v3, source_type=V2Data)
+        )
+        s.set_encoding("msgpack")
+
+        data = io.BytesIO(msgspec.msgpack.encode(V1Data(name="mp", value=5)))
+        result = s.migrate(data, "v1")
+        assert isinstance(result, V3Data)
+        assert result.name == "mp"
+        assert result.tag == "typed"
+        assert result.score == 1.0
+
+    def test_typed_msgpack_mixed(self):
+        """Mixed typed + untyped with msgpack encoding."""
+
+        def untyped_v1_to_v2(data):
+            obj = msgspec.msgpack.decode(data.read(), type=V1Data)
+            return V2Data(name=obj.name, value=obj.value, tag="untyped-mp")
+
+        s = (
+            Schema(V3Data, "v3")
+            .step("v1", untyped_v1_to_v2)
+            .step("v2", typed_migrate_v2_to_v3, source_type=V2Data)
+        )
+        s.set_encoding("msgpack")
+
+        data = io.BytesIO(msgspec.msgpack.encode(V1Data(name="mix_mp", value=3)))
+        result = s.migrate(data, "v1")
+        assert isinstance(result, V3Data)
+        assert result.name == "mix_mp"
+        assert result.tag == "untyped-mp"
+        assert result.score == 1.0
+
+    # ── source_type=None backward compat ─────────────────────────────
+
+    def test_source_type_none_backward_compat(self):
+        """Explicit source_type=None behaves identically to omitting it."""
+        s = Schema(V2Data, "v2").step("v1", migrate_v1_to_v2, source_type=None)
+        data = self._make_stream(V1Data(name="compat", value=1))
+        result = s.migrate(data, "v1")
+        assert isinstance(result, V2Data)
+        assert result.tag == "migrated"
+
+    # ── Intermediate type mismatch (re-encode + decode) ──────────────
+
+    def test_typed_step_different_intermediate_type(self):
+        """When previous step returns a different type, re-encode+decode happens."""
+
+        # Step 1 returns V2Data, step 2 expects V2Data — should pass through.
+        # But let's test the re-encode path: step 1 returns a dict-like Struct
+        # that is NOT V2Data, so it goes through _encode_intermediate → _decode.
+        class V2Alt(Struct):
+            name: str
+            value: int
+            tag: str
+
+        def step1(data: V1Data) -> V2Alt:
+            return V2Alt(name=data.name, value=data.value, tag="alt")
+
+        def step2(data: V2Data) -> V3Data:
+            return V3Data(name=data.name, value=data.value, tag=data.tag, score=7.0)
+
+        s = (
+            Schema(V3Data, "v3")
+            .step("v1", step1, source_type=V1Data, to="v2")
+            .step("v2", step2, source_type=V2Data)
+        )
+        data = self._make_stream(V1Data(name="reenc", value=2))
+        result = s.migrate(data, "v1")
+        assert isinstance(result, V3Data)
+        assert result.tag == "alt"
+        assert result.score == 7.0
+
+    # ── repr with source_type ────────────────────────────────────────
+
+    def test_repr_shows_source_type(self):
+        """repr includes source_type when present."""
+        s = Schema(V2Data, "v2").step("v1", typed_migrate_v1_to_v2, source_type=V1Data)
+        r = repr(s)
+        assert "source_type=V1Data" in r
+
+    def test_repr_mixed_source_type(self):
+        """repr shows source_type only for steps that have it."""
+        s = (
+            Schema(V3Data, "v3")
+            .step("v1", migrate_v1_to_v2)
+            .step("v2", typed_migrate_v2_to_v3, source_type=V2Data)
+        )
+        r = repr(s)
+        assert ".step('v1', ...)" in r  # no source_type
+        assert "source_type=V2Data" in r
+
+    def test_repr_regex_with_source_type(self):
+        """repr shows both regex pattern and source_type."""
+        s = Schema(V3Data, "v3").step(
+            re.compile(r"v\d+"),
+            typed_migrate_v1_to_v3_direct,
+            to="v3",
+            source_type=V1Data,
+        )
+        r = repr(s)
+        assert "re.compile" in r
+        assert "source_type=V1Data" in r
+
+    # ── Graph / edges include source_type ────────────────────────────
+
+    def test_resolve_includes_source_type(self):
+        """_resolve() graph edges carry source_type as third element."""
+        s = Schema(V2Data, "v2").step("v1", typed_migrate_v1_to_v2, source_type=V1Data)
+        graph = s._resolve()
+        edge = graph["v1"][0]
+        assert len(edge) == 3
+        assert edge[0] == "v2"
+        assert edge[2] is V1Data
+
+    def test_resolve_none_source_type_for_legacy(self):
+        """_resolve() graph edges have None source_type for legacy steps."""
+        s = Schema(V2Data, "v2").step("v1", migrate_v1_to_v2)
+        graph = s._resolve()
+        edge = graph["v1"][0]
+        assert len(edge) == 3
+        assert edge[2] is None
+
+    def test_find_path_includes_source_type(self):
+        """_find_path() returns 4-tuples with source_type."""
+        s = Schema(V2Data, "v2").step("v1", typed_migrate_v1_to_v2, source_type=V1Data)
+        path = s._find_path("v1", "v2")
+        assert len(path) == 1
+        assert len(path[0]) == 4
+        assert path[0][3] is V1Data
+
+    # ── Typed step with bytes intermediate ───────────────────────────
+
+    def test_typed_step_after_bytes_returning_step(self):
+        """Typed step correctly handles bytes returned by previous step."""
+
+        def step1_returns_bytes(data: IO[bytes]) -> bytes:
+            obj = msgspec.json.decode(data.read(), type=V1Data)
+            return msgspec.json.encode(
+                V2Data(name=obj.name, value=obj.value, tag="bytes-inter")
+            )
+
+        s = (
+            Schema(V3Data, "v3")
+            .step("v1", step1_returns_bytes, to="v2")
+            .step("v2", typed_migrate_v2_to_v3, source_type=V2Data)
+        )
+        data = self._make_stream(V1Data(name="bytes_in", value=4))
+        result = s.migrate(data, "v1")
+        assert isinstance(result, V3Data)
+        assert result.tag == "bytes-inter"
+        assert result.score == 1.0
+
+    # ── Pydantic intermediate → typed step ───────────────────────────
+
+    def test_typed_step_after_pydantic_intermediate(self):
+        """Typed step after a step that returns Pydantic BaseModel."""
+        from pydantic import BaseModel
+
+        class V2Pyd(BaseModel):
+            name: str
+            value: int
+            tag: str
+
+        def step1_pyd(data: IO[bytes]) -> V2Pyd:
+            obj = msgspec.json.decode(data.read(), type=V1Data)
+            return V2Pyd(name=obj.name, value=obj.value, tag="pyd-inter")
+
+        s = (
+            Schema(V3Data, "v3")
+            .step("v1", step1_pyd, to="v2")
+            .step("v2", typed_migrate_v2_to_v3, source_type=V2Data)
+        )
+        data = self._make_stream(V1Data(name="pyd_in", value=6))
+        result = s.migrate(data, "v1")
+        assert isinstance(result, V3Data)
+        assert result.tag == "pyd-inter"
+        assert result.score == 1.0
