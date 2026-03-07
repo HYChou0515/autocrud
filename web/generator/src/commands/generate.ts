@@ -552,21 +552,24 @@ export class Generator {
     return null;
   }
 
+  private readonly jobFields = [
+    'status',
+    'errmsg',
+    'retries',
+    // 'max_retries',
+    'periodic_interval_seconds',
+    'periodic_max_runs',
+    'periodic_runs',
+    'periodic_initial_delay_seconds',
+    'last_heartbeat_at',
+  ];
+
   private detectJobSchema(schema: any): boolean {
     // Detect if this schema is a Job type by checking for Job-specific fields
     const props = schema.properties ?? {};
-    const jobFields = [
-      'status',
-      'errmsg',
-      'retries',
-      'periodic_interval_seconds',
-      'periodic_max_runs',
-      'periodic_runs',
-      'periodic_initial_delay_seconds',
-    ];
 
     // A schema is considered a Job if it has most of the Job-specific fields
-    const matchedFields = jobFields.filter((field) => field in props);
+    const matchedFields = this.jobFields.filter((field) => field in props);
 
     // Require at least 3 of the Job-specific fields to be present
     return matchedFields.length >= 3;
@@ -574,15 +577,7 @@ export class Generator {
 
   /** Get the list of job management field names that actually exist in this resource's fields */
   private getJobHiddenFields(r: Resource): string[] {
-    const jobMgmtFields = new Set([
-      'status',
-      'errmsg',
-      'retries',
-      'periodic_interval_seconds',
-      'periodic_max_runs',
-      'periodic_runs',
-      'periodic_initial_delay_seconds',
-    ]);
+    const jobMgmtFields = new Set(this.jobFields);
     // Only include fields that actually exist in the resource
     return r.fields.filter((f) => jobMgmtFields.has(f.name)).map((f) => f.name);
   }
