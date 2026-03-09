@@ -3725,15 +3725,149 @@ describe('genMigrateApiClient', () => {
     expect(code).toContain('signal');
   });
 
-  it('uses VITE_API_URL for base URL', () => {
+  it('imports getBaseUrl from shared client module instead of defining locally', () => {
     const spec = buildSimpleSpec();
     const gen = createTestGenerator(spec);
     (gen as any).extractResources();
 
     const code = (gen as any).genMigrateApiClient() as string;
 
-    expect(code).toContain('VITE_API_URL');
-    expect(code).toContain("|| '/api'");
+    // Should import getBaseUrl from shared client
+    expect(code).toContain("import { getBaseUrl } from '../../lib/client'");
+    // Should NOT define getBaseUrl locally
+    expect(code).not.toContain('function getBaseUrl');
+    // Should NOT contain VITE_API_URL (that's in client.ts now)
+    expect(code).not.toContain('VITE_API_URL');
+  });
+
+  it('includes basePath in migrate URLs when basePath is empty', () => {
+    const spec = buildSimpleSpec();
+    const gen = createTestGenerator(spec);
+    (gen as any).extractResources();
+
+    const code = (gen as any).genMigrateApiClient() as string;
+
+    // With empty basePath, URL pattern: ${getBaseUrl()}/${modelName}/migrate/test
+    expect(code).toContain('${getBaseUrl()}/${modelName}/migrate/test');
+    expect(code).toContain('${getBaseUrl()}/${modelName}/migrate/execute');
+  });
+
+  it('includes basePath in migrate URLs when basePath is set', () => {
+    const spec = buildSimpleSpec('/v1');
+    const gen = createTestGenerator(spec, '/v1');
+    (gen as any).extractResources();
+
+    const code = (gen as any).genMigrateApiClient() as string;
+
+    // With basePath=/v1, URL pattern: ${getBaseUrl()}/v1/${modelName}/migrate/test
+    expect(code).toContain('${getBaseUrl()}/v1/${modelName}/migrate/test');
+    expect(code).toContain('${getBaseUrl()}/v1/${modelName}/migrate/execute');
+  });
+});
+
+// ============================================================================
+// genBackupApiClient — Backup/Restore API client generation
+// ============================================================================
+
+describe('genBackupApiClient', () => {
+  it('generates backupApi with global export/import and per-model methods', () => {
+    const spec = buildSimpleSpec();
+    const gen = createTestGenerator(spec);
+    (gen as any).extractResources();
+
+    const code = (gen as any).genBackupApiClient() as string;
+
+    expect(code).toContain('export const backupApi');
+    expect(code).toContain('exportAll');
+    expect(code).toContain('importAll');
+    expect(code).toContain('exportCharacter');
+    expect(code).toContain('importCharacter');
+    expect(code).toContain('exportSkill');
+    expect(code).toContain('importSkill');
+  });
+
+  it('uses Axios client for all backup requests', () => {
+    const spec = buildSimpleSpec();
+    const gen = createTestGenerator(spec);
+    (gen as any).extractResources();
+
+    const code = (gen as any).genBackupApiClient() as string;
+
+    expect(code).toContain("import { client } from '../../lib/client'");
+    expect(code).toContain('client.get');
+    expect(code).toContain('client.post');
+  });
+
+  it('includes basePath in global backup endpoints when basePath is empty', () => {
+    const spec = buildSimpleSpec();
+    const gen = createTestGenerator(spec);
+    (gen as any).extractResources();
+
+    const code = (gen as any).genBackupApiClient() as string;
+
+    // With empty basePath, paths are /_backup/export, /_backup/import
+    expect(code).toContain("'/_backup/export'");
+    expect(code).toContain("'/_backup/import'");
+  });
+
+  it('includes basePath in global backup endpoints when basePath is set', () => {
+    const spec = buildSimpleSpec('/v1');
+    const gen = createTestGenerator(spec, '/v1');
+    (gen as any).extractResources();
+
+    const code = (gen as any).genBackupApiClient() as string;
+
+    // With basePath=/v1, paths should be /v1/_backup/export, /v1/_backup/import
+    expect(code).toContain("'/v1/_backup/export'");
+    expect(code).toContain("'/v1/_backup/import'");
+  });
+
+  it('includes basePath in per-model export/import when basePath is empty', () => {
+    const spec = buildSimpleSpec();
+    const gen = createTestGenerator(spec);
+    (gen as any).extractResources();
+
+    const code = (gen as any).genBackupApiClient() as string;
+
+    expect(code).toContain('`/character/export`');
+    expect(code).toContain('`/character/import`');
+    expect(code).toContain('`/skill/export`');
+    expect(code).toContain('`/skill/import`');
+  });
+
+  it('includes basePath in per-model export/import when basePath is set', () => {
+    const spec = buildSimpleSpec('/v1');
+    const gen = createTestGenerator(spec, '/v1');
+    (gen as any).extractResources();
+
+    const code = (gen as any).genBackupApiClient() as string;
+
+    expect(code).toContain('`/v1/character/export`');
+    expect(code).toContain('`/v1/character/import`');
+    expect(code).toContain('`/v1/skill/export`');
+    expect(code).toContain('`/v1/skill/import`');
+  });
+
+  it('supports OnDuplicate type and defaults to overwrite', () => {
+    const spec = buildSimpleSpec();
+    const gen = createTestGenerator(spec);
+    (gen as any).extractResources();
+
+    const code = (gen as any).genBackupApiClient() as string;
+
+    expect(code).toContain("export type OnDuplicate = 'overwrite' | 'skip' | 'raise_error'");
+    expect(code).toContain("onDuplicate: OnDuplicate = 'overwrite'");
+  });
+
+  it('uses blob responseType for export and multipart for import', () => {
+    const spec = buildSimpleSpec();
+    const gen = createTestGenerator(spec);
+    (gen as any).extractResources();
+
+    const code = (gen as any).genBackupApiClient() as string;
+
+    expect(code).toContain("responseType: 'blob'");
+    expect(code).toContain("'Content-Type': 'multipart/form-data'");
   });
 });
 

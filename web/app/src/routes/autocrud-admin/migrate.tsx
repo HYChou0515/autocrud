@@ -7,9 +7,5 @@ export const Route = createFileRoute('/autocrud-admin/migrate')({
 });
 
 function MigratePage() {
-  return (
-    <MigrationStatus
-      resourceNames={['character', 'guild', 'skill', 'equipment', 'pet-job', 'game-event', 'pet']}
-    />
-  );
+  return <MigrationStatus resourceNames={['character', 'guild', 'skill', 'equipment', 'pet-job', 'game-event', 'pet']} />;
 }
