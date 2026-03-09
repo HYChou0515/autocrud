@@ -25,6 +25,7 @@ import {
   processSubmitValues,
   computeValidationSuppressPaths,
   computeDepthTransitionUpdates,
+  _collectUnionBinaryKeys,
   type BinaryFormValue,
 } from '@/autocrud/lib/utils/formUtils';
 
@@ -274,66 +275,79 @@ export function useResourceForm<T extends Record<string, any>>({
 
   // ── Submit ──
   const handleSubmit = async (values: T) => {
-    const binaryFieldValues = new Map<string, BinaryFormValue | null>();
-    const arrayItemBinaryValues = new Map<string, BinaryFormValue | null>();
-    // Preserve File objects before JSON deep copy destroys them
-    const fileFieldValues = new Map<string, File | null>();
-    for (const field of config.fields) {
-      if (field.type === 'binary') {
-        const bv = getByPath(values as Record<string, any>, field.name) as BinaryFormValue | null;
-        binaryFieldValues.set(field.name, bv);
-      }
-      if (field.type === 'file') {
-        const fv = getByPath(values as Record<string, any>, field.name) as File | null;
-        fileFieldValues.set(field.name, fv);
-      }
-      if (field.itemFields) {
-        const items = (values as Record<string, any>)[field.name];
-        if (Array.isArray(items)) {
-          for (let i = 0; i < items.length; i++) {
-            for (const sf of field.itemFields) {
-              if (sf.type === 'binary') {
-                const bv = items[i]?.[sf.name] as BinaryFormValue | null;
-                arrayItemBinaryValues.set(`${field.name}.${i}.${sf.name}`, bv);
+    try {
+      const binaryFieldValues = new Map<string, BinaryFormValue | null>();
+      const arrayItemBinaryValues = new Map<string, BinaryFormValue | null>();
+      // Preserve File objects before JSON deep copy destroys them
+      const fileFieldValues = new Map<string, File | null>();
+      for (const field of config.fields) {
+        if (field.type === 'binary') {
+          const bv = getByPath(values as Record<string, any>, field.name) as BinaryFormValue | null;
+          binaryFieldValues.set(field.name, bv);
+        }
+        if (field.type === 'file') {
+          const fv = getByPath(values as Record<string, any>, field.name) as File | null;
+          fileFieldValues.set(field.name, fv);
+        }
+        if (field.itemFields) {
+          const items = (values as Record<string, any>)[field.name];
+          if (Array.isArray(items)) {
+            for (let i = 0; i < items.length; i++) {
+              for (const sf of field.itemFields) {
+                if (sf.type === 'binary') {
+                  const bv = items[i]?.[sf.name] as BinaryFormValue | null;
+                  arrayItemBinaryValues.set(`${field.name}.${i}.${sf.name}`, bv);
+                }
               }
             }
           }
         }
-      }
-    }
-
-    const processed = JSON.parse(JSON.stringify(values)) as Record<string, any>;
-    const { skippedBinaryFields, binarySubFieldKeys } = processSubmitValues(
-      processed,
-      config.fields,
-      collapsedGroups,
-      dateFieldNames,
-    );
-
-    for (const key of binarySubFieldKeys) {
-      const bv = arrayItemBinaryValues.get(key);
-      setByPath(processed, key, await binaryFormValueToApi(bv));
-    }
-    for (const fieldName of skippedBinaryFields) {
-      const bv = binaryFieldValues.get(fieldName);
-      setByPath(processed, fieldName, await binaryFormValueToApi(bv));
-    }
-    // Restore File objects after JSON deep copy
-    for (const [fieldName, file] of fileFieldValues) {
-      setByPath(processed, fieldName, file);
-    }
-
-    if (config.zodSchema) {
-      const result = config.zodSchema.safeParse(processed);
-      if (!result.success) {
-        for (const issue of result.error.issues) {
-          form.setFieldError(issue.path.join('.'), issue.message);
+        // Also preserve binary values inside union variant sub-fields
+        if (field.type === 'union' && field.unionMeta) {
+          const val = getByPath(values as Record<string, any>, field.name);
+          _extractUnionBinaryValues(val, field, field.name, arrayItemBinaryValues);
         }
-        return;
       }
-    }
 
-    return onSubmit(processed as T);
+      const processed = JSON.parse(JSON.stringify(values)) as Record<string, any>;
+      const { skippedBinaryFields, binarySubFieldKeys } = processSubmitValues(
+        processed,
+        config.fields,
+        collapsedGroups,
+        dateFieldNames,
+      );
+
+      for (const key of binarySubFieldKeys) {
+        const bv = arrayItemBinaryValues.get(key);
+        const apiVal = await binaryFormValueToApi(bv);
+        setByPath(processed, key, apiVal);
+      }
+      for (const fieldName of skippedBinaryFields) {
+        const bv = binaryFieldValues.get(fieldName);
+        const apiVal = await binaryFormValueToApi(bv);
+        setByPath(processed, fieldName, apiVal);
+      }
+      // Restore File objects after JSON deep copy
+      for (const [fieldName, file] of fileFieldValues) {
+        setByPath(processed, fieldName, file);
+      }
+
+      if (config.zodSchema) {
+        const result = config.zodSchema.safeParse(processed);
+        if (!result.success) {
+          console.warn('[useResourceForm] Zod validation failed after binary processing:', result.error.issues);
+          for (const issue of result.error.issues) {
+            form.setFieldError(issue.path.join('.'), issue.message);
+          }
+          return;
+        }
+      }
+
+      return onSubmit(processed as T);
+    } catch (error) {
+      console.error('[useResourceForm] Submit failed during binary processing:', error);
+      throw error;
+    }
   };
 
   return {
@@ -355,4 +369,56 @@ export function useResourceForm<T extends Record<string, any>>({
     setSimpleUnionTypes,
     handleSubmit,
   };
+}
+
+/**
+ * Extract BinaryFormValue objects from union variant sub-fields BEFORE JSON deep copy.
+ *
+ * JSON.stringify destroys File references, so we need to preserve them in a Map first.
+ * Uses the same path schema as `_collectUnionBinaryKeys` so keys match up after deep copy.
+ *
+ * @internal
+ */
+function _extractUnionBinaryValues(
+  val: any,
+  field: { unionMeta?: any; isArray?: boolean },
+  basePath: string,
+  out: Map<string, BinaryFormValue | null>,
+): void {
+  const meta = field.unionMeta;
+  if (!meta || val == null) return;
+
+  const scanItem = (item: Record<string, any>, path: string) => {
+    const discField = meta.discriminatorField;
+    const tag = item?.[discField];
+    const variant = tag != null ? meta.variants?.find((v: any) => v.tag === tag) : undefined;
+    const candidateFields: any[] = variant?.fields ?? [];
+
+    if (candidateFields.length === 0 && !variant) {
+      for (const v of meta.variants ?? []) {
+        for (const sf of v.fields ?? []) {
+          if (sf.type === 'binary' && item?.[sf.name] != null) {
+            out.set(`${path}.${sf.name}`, item[sf.name] as BinaryFormValue | null);
+          }
+        }
+      }
+      return;
+    }
+
+    for (const sf of candidateFields) {
+      if (sf.type === 'binary') {
+        out.set(`${path}.${sf.name}`, item?.[sf.name] as BinaryFormValue | null);
+      }
+    }
+  };
+
+  if (field.isArray && Array.isArray(val)) {
+    for (let i = 0; i < val.length; i++) {
+      if (val[i] && typeof val[i] === 'object') {
+        scanItem(val[i], `${basePath}.${i}`);
+      }
+    }
+  } else if (typeof val === 'object') {
+    scanItem(val, basePath);
+  }
 }

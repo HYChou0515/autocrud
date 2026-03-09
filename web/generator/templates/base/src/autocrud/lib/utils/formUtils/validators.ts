@@ -240,6 +240,25 @@ export function computeValidationSuppressPaths(
         }
       }
     }
+    // Union variant sub-fields: scan each variant for binary/array sub-fields
+    if (f.type === 'union' && f.unionMeta) {
+      for (const variant of f.unionMeta.variants) {
+        if (!variant.fields) continue;
+        for (const sf of variant.fields) {
+          if (sf.type === 'binary') {
+            if (f.isArray) {
+              // Array union: zod key like "equipments.0.icon"
+              if (!nestedArraySubFields.some((e) => e.parent === f.name && e.sub === sf.name)) {
+                nestedArraySubFields.push({ parent: f.name, sub: sf.name });
+              }
+            } else {
+              // Non-array union: zod key like "equipment.icon"
+              suppressPaths.add(`${f.name}.${sf.name}`);
+            }
+          }
+        }
+      }
+    }
   }
 
   return { suppressPaths, nestedArraySubFields };

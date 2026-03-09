@@ -66,6 +66,7 @@ export {
   applyJsonToForm,
   createEmptyItem,
   processSubmitValues,
+  _collectUnionBinaryKeys,
 } from './transformers';
 
 // ============================================================================

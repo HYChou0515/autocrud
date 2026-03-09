@@ -78,8 +78,12 @@ export function JobStatusSection({ data }: JobStatusSectionProps) {
     {
       label: 'Last Heartbeat',
       value: lastHeartbeatAt ? (
-        <Text size="sm" style={{ fontFamily: 'monospace' }}>{lastHeartbeatAt}</Text>
-      ) : NA,
+        <Text size="sm" style={{ fontFamily: 'monospace' }}>
+          {lastHeartbeatAt}
+        </Text>
+      ) : (
+        NA
+      ),
     },
     {
       label: 'Periodic Interval (seconds)',

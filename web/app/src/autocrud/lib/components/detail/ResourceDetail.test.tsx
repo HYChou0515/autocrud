@@ -72,6 +72,7 @@ vi.mock('../../utils/errorNotification', () => ({
 
 vi.mock('@tanstack/react-router', () => ({
   Link: (props: any) => props.children,
+  useNavigate: () => vi.fn(),
 }));
 
 import { render, screen, fireEvent, waitFor, cleanup } from '@testing-library/react';
@@ -105,6 +106,7 @@ function makeConfig(overrides?: Partial<ResourceConfig<any>>): ResourceConfig<an
       get: vi.fn(),
       update: vi.fn(),
       delete: vi.fn(),
+      permanentlyDelete: vi.fn(),
       restore: vi.fn(),
       revisionList: vi.fn(),
       switchRevision: vi.fn(),
@@ -155,9 +157,13 @@ function makeMockDetail(dataOverrides: Record<string, any> = {}): UseResourceDet
     refresh: vi.fn(),
     update: vi.fn(),
     deleteResource: vi.fn(),
+    permanentlyDelete: vi.fn(),
     restore: vi.fn(),
     switchRevision: vi.fn(),
     rerun: vi.fn().mockResolvedValue(undefined),
+    logs: null,
+    logsLoading: false,
+    fetchLogs: vi.fn(),
   };
 }
 

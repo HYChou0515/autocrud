@@ -503,4 +503,64 @@ describe('computeValidationSuppressPaths', () => {
       { parent: 'equipments', sub: 'icon' },
     ]);
   });
+
+  it('should suppress binary sub-fields inside union variants (array)', () => {
+    const fields = [
+      {
+        name: 'equipments',
+        type: 'union' as const,
+        isArray: true,
+        unionMeta: {
+          discriminatorField: 'type',
+          variants: [
+            {
+              tag: 'Equipment',
+              label: 'Equipment',
+              schemaName: 'Equipment',
+              fields: [
+                { name: 'name', label: 'Name', type: 'string' as const },
+                { name: 'icon', label: 'Icon', type: 'binary' as const },
+              ],
+            },
+            {
+              tag: 'Item',
+              label: 'Item',
+              schemaName: 'Item',
+              fields: [
+                { name: 'title', label: 'Title', type: 'string' as const },
+              ],
+            },
+          ],
+        },
+      },
+    ];
+    const { nestedArraySubFields } = computeValidationSuppressPaths(fields, []);
+    expect(nestedArraySubFields).toContainEqual({ parent: 'equipments', sub: 'icon' });
+  });
+
+  it('should suppress binary sub-fields inside union variants (non-array)', () => {
+    const fields = [
+      {
+        name: 'equipment',
+        type: 'union' as const,
+        isArray: false,
+        unionMeta: {
+          discriminatorField: 'type',
+          variants: [
+            {
+              tag: 'Equipment',
+              label: 'Equipment',
+              schemaName: 'Equipment',
+              fields: [
+                { name: 'name', label: 'Name', type: 'string' as const },
+                { name: 'icon', label: 'Icon', type: 'binary' as const },
+              ],
+            },
+          ],
+        },
+      },
+    ];
+    const { suppressPaths } = computeValidationSuppressPaths(fields, []);
+    expect(suppressPaths.has('equipment.icon')).toBe(true);
+  });
 });

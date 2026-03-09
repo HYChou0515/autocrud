@@ -182,9 +182,7 @@ export function ResourceDetail<T extends Record<string, any>>({
 
   const displayGroups = useMemo(() => {
     const filtered = isJob
-      ? visibleFields.filter(
-          (f) => !JOB_STATUS_FIELDS.has(f.name) && !isArtifactField(f.name),
-        )
+      ? visibleFields.filter((f) => !JOB_STATUS_FIELDS.has(f.name) && !isArtifactField(f.name))
       : visibleFields;
     return groupFieldsForDisplay(filtered);
   }, [visibleFields, isJob]);
@@ -371,7 +369,11 @@ export function ResourceDetail<T extends Record<string, any>>({
             )}
             {!isViewingHistorical && meta.is_deleted && (
               <>
-                <Button color="green" leftSection={<IconRestore size={16} />} onClick={handleRestore}>
+                <Button
+                  color="green"
+                  leftSection={<IconRestore size={16} />}
+                  onClick={handleRestore}
+                >
                   Restore
                 </Button>
                 <Button

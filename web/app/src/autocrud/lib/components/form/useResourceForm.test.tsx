@@ -45,6 +45,7 @@ function makeConfig(
       get: noop,
       update: noop,
       delete: noop,
+      permanentlyDelete: noop,
       restore: noop,
       revisionList: noop,
       switchRevision: noop,
