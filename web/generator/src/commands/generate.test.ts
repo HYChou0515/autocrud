@@ -3681,9 +3681,16 @@ describe('genMigrateApiClient', () => {
     expect(code).toContain('test:');
     expect(code).toContain('execute:');
 
-    // Should reference correct endpoint paths
-    expect(code).toContain('/migrate/test');
-    expect(code).toContain('/migrate/execute');
+    // Should reference correct endpoint paths via buildMigrateUrl
+    expect(code).toContain('/migrate/');
+    expect(code).toContain("'test'");
+    expect(code).toContain("'execute'");
+
+    // Should contain buildMigrateUrl helper
+    expect(code).toContain('function buildMigrateUrl');
+
+    // Should contain RevisionScope type
+    expect(code).toContain('export type RevisionScope');
   });
 
   it('MigrateProgress interface has correct fields', () => {
@@ -3725,6 +3732,19 @@ describe('genMigrateApiClient', () => {
     expect(code).toContain('signal');
   });
 
+  it('test and execute accept revisionId parameter', () => {
+    const spec = buildSimpleSpec();
+    const gen = createTestGenerator(spec);
+    (gen as any).extractResources();
+
+    const code = (gen as any).genMigrateApiClient() as string;
+
+    // Both methods should accept revisionId
+    expect(code).toContain('revisionId?: RevisionScope');
+    // buildMigrateUrl should be called with revisionId
+    expect(code).toContain('buildMigrateUrl(');
+  });
+
   it('imports getBaseUrl from shared client module instead of defining locally', () => {
     const spec = buildSimpleSpec();
     const gen = createTestGenerator(spec);
@@ -3747,9 +3767,9 @@ describe('genMigrateApiClient', () => {
 
     const code = (gen as any).genMigrateApiClient() as string;
 
-    // With empty basePath, URL pattern: ${getBaseUrl()}/${modelName}/migrate/test
-    expect(code).toContain('${getBaseUrl()}/${modelName}/migrate/test');
-    expect(code).toContain('${getBaseUrl()}/${modelName}/migrate/execute');
+    // With empty basePath, buildMigrateUrl base is `${getBaseUrl()}`
+    expect(code).toContain('buildMigrateUrl(`${getBaseUrl()}`');
+    expect(code).toContain("/migrate/");
   });
 
   it('includes basePath in migrate URLs when basePath is set', () => {
@@ -3759,9 +3779,9 @@ describe('genMigrateApiClient', () => {
 
     const code = (gen as any).genMigrateApiClient() as string;
 
-    // With basePath=/v1, URL pattern: ${getBaseUrl()}/v1/${modelName}/migrate/test
-    expect(code).toContain('${getBaseUrl()}/v1/${modelName}/migrate/test');
-    expect(code).toContain('${getBaseUrl()}/v1/${modelName}/migrate/execute');
+    // With basePath=/v1, buildMigrateUrl base is `${getBaseUrl()}/v1`
+    expect(code).toContain('buildMigrateUrl(`${getBaseUrl()}/v1`');
+    expect(code).toContain("/migrate/");
   });
 });
 

@@ -300,6 +300,7 @@ class TestMigrateResourcesGenerator:
             user: str,
             time: dt.datetime,
             write_back: bool,
+            revision_id: str | None = None,
         ) -> MigrateProgress:
             return MigrateProgress(
                 resource_id=resource_id,
@@ -357,6 +358,7 @@ class TestMigrateResourcesGenerator:
             user: str,
             time: dt.datetime,
             write_back: bool,
+            revision_id: str | None = None,
         ) -> MigrateProgress:
             return MigrateProgress(
                 resource_id=resource_id,
@@ -401,6 +403,210 @@ class TestMigrateResourcesGenerator:
         assert len(results) == 1
         assert results[0].status == "failed"
         assert "Migration process failed: Database error" in results[0].error
+
+
+class TestMigrateResourcesGeneratorRevisionId:
+    """測試批次遷移生成器的 revision_id 功能"""
+
+    @pytest.mark.asyncio
+    async def test_generator_default_revision_id_none(
+        self, migrate_template: MigrateRouteTemplate, mock_resource_manager: Mock
+    ) -> None:
+        """預設 revision_id=None 時，不傳 revision_id 到 _migrate_single_resource"""
+        mock_metas = [Mock(resource_id="user:1")]
+        mock_resource_manager.search_resources.return_value = mock_metas
+
+        calls: list[dict] = []
+
+        async def mock_migrate_single(
+            manager, resource_id, user, time, write_back, revision_id=None
+        ):
+            calls.append(
+                {"resource_id": resource_id, "revision_id": revision_id}
+            )
+            return MigrateProgress(
+                resource_id=resource_id, status="success", message="ok"
+            )
+
+        migrate_template._migrate_single_resource = mock_migrate_single
+
+        results = []
+        async for p in migrate_template._migrate_resources_generator(
+            mock_resource_manager, None, "u", dt.datetime.now(), write_back=True
+        ):
+            results.append(p)
+
+        assert len(results) == 1
+        assert calls[0]["revision_id"] is None
+
+    @pytest.mark.asyncio
+    async def test_generator_specific_revision_id(
+        self, migrate_template: MigrateRouteTemplate, mock_resource_manager: Mock
+    ) -> None:
+        """傳入特定 revision_id 會轉發到 _migrate_single_resource"""
+        mock_metas = [Mock(resource_id="user:1")]
+        mock_resource_manager.search_resources.return_value = mock_metas
+
+        calls: list[dict] = []
+
+        async def mock_migrate_single(
+            manager, resource_id, user, time, write_back, revision_id=None
+        ):
+            calls.append(
+                {"resource_id": resource_id, "revision_id": revision_id}
+            )
+            return MigrateProgress(
+                resource_id=resource_id, status="success", message="ok"
+            )
+
+        migrate_template._migrate_single_resource = mock_migrate_single
+
+        results = []
+        async for p in migrate_template._migrate_resources_generator(
+            mock_resource_manager,
+            None,
+            "u",
+            dt.datetime.now(),
+            write_back=True,
+            revision_id="user:1:rev3",
+        ):
+            results.append(p)
+
+        assert len(results) == 1
+        assert calls[0]["revision_id"] == "user:1:rev3"
+
+    @pytest.mark.asyncio
+    async def test_generator_all_revisions(
+        self, migrate_template: MigrateRouteTemplate, mock_resource_manager: Mock
+    ) -> None:
+        """revision_id='all' 時，為每個 resource 列出所有 revision 並各自遷移"""
+        mock_metas = [Mock(resource_id="user:1"), Mock(resource_id="user:2")]
+        mock_resource_manager.search_resources.return_value = mock_metas
+        mock_resource_manager.list_revisions.side_effect = [
+            ["user:1:0", "user:1:1"],
+            ["user:2:0"],
+        ]
+
+        calls: list[dict] = []
+
+        async def mock_migrate_single(
+            manager, resource_id, user, time, write_back, revision_id=None
+        ):
+            calls.append(
+                {"resource_id": resource_id, "revision_id": revision_id}
+            )
+            return MigrateProgress(
+                resource_id=resource_id, status="success", message="ok"
+            )
+
+        migrate_template._migrate_single_resource = mock_migrate_single
+
+        results = []
+        async for p in migrate_template._migrate_resources_generator(
+            mock_resource_manager,
+            None,
+            "u",
+            dt.datetime.now(),
+            write_back=True,
+            revision_id="all",
+        ):
+            results.append(p)
+
+        # 2 revisions for user:1 + 1 revision for user:2 = 3
+        assert len(results) == 3
+        assert calls[0] == {"resource_id": "user:1", "revision_id": "user:1:0"}
+        assert calls[1] == {"resource_id": "user:1", "revision_id": "user:1:1"}
+        assert calls[2] == {"resource_id": "user:2", "revision_id": "user:2:0"}
+
+
+class TestMigrateBatchApiRevisionId:
+    """測試批次遷移 HTTP API 的 revision_id 查詢參數"""
+
+    def test_http_test_migration_with_revision_id(
+        self, client: TestClient, mock_resource_manager: Mock
+    ) -> None:
+        """POST /user/migrate/test?revision_id=xxx 應將 revision_id 傳遞下去"""
+        captured: list[dict] = []
+
+        async def mock_generator(
+            manager, query, user, time, write_back, revision_id=None
+        ):
+            captured.append(
+                {"write_back": write_back, "revision_id": revision_id}
+            )
+            yield MigrateProgress(
+                resource_id="user:1", status="success", message="ok"
+            )
+
+        with patch.object(
+            MigrateRouteTemplate,
+            "_migrate_resources_generator",
+            side_effect=mock_generator,
+        ):
+            resp = client.post("/user/migrate/test?revision_id=user:1:rev2")
+            resp.raise_for_status()
+            messages = [json.loads(line) for line in resp.iter_lines() if line]
+            # 1 progress + 1 result
+            assert len(messages) == 2
+
+        assert len(captured) == 1
+        assert captured[0]["write_back"] is False
+        assert captured[0]["revision_id"] == "user:1:rev2"
+
+    def test_http_execute_migration_with_revision_id_all(
+        self, client: TestClient, mock_resource_manager: Mock
+    ) -> None:
+        """POST /user/migrate/execute?revision_id=all 應將 'all' 傳遞下去"""
+        captured: list[dict] = []
+
+        async def mock_generator(
+            manager, query, user, time, write_back, revision_id=None
+        ):
+            captured.append(
+                {"write_back": write_back, "revision_id": revision_id}
+            )
+            yield MigrateProgress(
+                resource_id="user:1", status="success", message="ok"
+            )
+
+        with patch.object(
+            MigrateRouteTemplate,
+            "_migrate_resources_generator",
+            side_effect=mock_generator,
+        ):
+            resp = client.post("/user/migrate/execute?revision_id=all")
+            resp.raise_for_status()
+            messages = [json.loads(line) for line in resp.iter_lines() if line]
+            assert len(messages) == 2
+
+        assert len(captured) == 1
+        assert captured[0]["write_back"] is True
+        assert captured[0]["revision_id"] == "all"
+
+    def test_http_test_migration_default_revision_id(
+        self, client: TestClient, mock_resource_manager: Mock
+    ) -> None:
+        """未提供 revision_id 時預設為 None"""
+        captured: list[dict] = []
+
+        async def mock_generator(
+            manager, query, user, time, write_back, revision_id=None
+        ):
+            captured.append({"revision_id": revision_id})
+            yield MigrateProgress(
+                resource_id="user:1", status="success", message="ok"
+            )
+
+        with patch.object(
+            MigrateRouteTemplate,
+            "_migrate_resources_generator",
+            side_effect=mock_generator,
+        ):
+            resp = client.post("/user/migrate/test")
+            resp.raise_for_status()
+
+        assert len(captured) == 1
+        assert captured[0]["revision_id"] is None
 
 
 class TestMigrateSingleResourceAPI:
@@ -485,7 +691,7 @@ class TestMigrateSingleResourceAPI:
 def mock_generator_and_assert_func1(expected_write_back: bool):
     # Mock the generator to return test results
     async def mock_generator(
-        manager: Mock, query: Any, user: str, time: dt.datetime, write_back: bool
+        manager: Mock, query: Any, user: str, time: dt.datetime, write_back: bool, revision_id: str | None = None
     ) -> AsyncGenerator[MigrateProgress, None]:
         # 確認這是測試模式
         assert write_back is expected_write_back
@@ -522,7 +728,7 @@ def mock_generator_and_assert_func1(expected_write_back: bool):
 def mock_generator_and_assert_func2(expected_write_back: bool):
     # Mock the generator to return execution results
     async def mock_generator(
-        manager: Mock, query: Any, user: str, time: dt.datetime, write_back: bool
+        manager: Mock, query: Any, user: str, time: dt.datetime, write_back: bool, revision_id: str | None = None
     ) -> AsyncGenerator[MigrateProgress, None]:
         # 確認這是執行模式
         assert write_back is expected_write_back
@@ -549,7 +755,7 @@ def mock_generator_and_assert_func2(expected_write_back: bool):
 def mock_generator_and_assert_func3(expected_write_back: bool):
     # Mock the generator to return execution results
     async def mock_generator(
-        manager: Mock, query: Any, user: str, time: dt.datetime, write_back: bool
+        manager: Mock, query: Any, user: str, time: dt.datetime, write_back: bool, revision_id: str | None = None
     ) -> AsyncGenerator[MigrateProgress, None]:
         # 確認這是執行模式
         assert write_back is expected_write_back
@@ -579,7 +785,7 @@ def mock_generator_and_assert_func3(expected_write_back: bool):
 def mock_generator_and_assert_func4(expected_write_back: bool):
     # Mock the generator to return execution results
     async def mock_generator(
-        manager: Mock, query: Any, user: str, time: dt.datetime, write_back: bool
+        manager: Mock, query: Any, user: str, time: dt.datetime, write_back: bool, revision_id: str | None = None
     ) -> AsyncGenerator[MigrateProgress, None]:
         # 確認這是執行模式
         assert write_back is expected_write_back
