@@ -65,21 +65,29 @@ class TestAutocrud:
     def test_apply_router_templates_order(self):
         applied = []
 
-        class MockRouteTemplate(ReadRouteTemplate):
+        class MockRouteTemplateA(ReadRouteTemplate):
+            def apply(self, *args, **kwargs):
+                applied.append(self.order)
+
+        class MockRouteTemplateB(ReadRouteTemplate):
             def apply(self, *args, **kwargs):
                 applied.append(self.order)
 
         templates = [
-            MockRouteTemplate(order=1),
-            MockRouteTemplate(order=2),
-            MockRouteTemplate(order=5),
+            MockRouteTemplateA(order=1),
+            MockRouteTemplateA(order=2),
+            MockRouteTemplateB(order=5),
         ]
         crud = AutoCRUD(route_templates=templates.copy())
         crud.add_model(User)
         crud.apply(Mock())
-        crud.add_route_template(MockRouteTemplate(order=4))
+        # add_route_template replaces the existing template of the same type
+        crud.add_route_template(MockRouteTemplateA(order=4))
         crud.apply(Mock())
-        assert applied == [1, 2, 5, 1, 2, 4, 5]
+        # First apply: [1, 2, 5].
+        # add_route_template replaces both MockRouteTemplateA(1) and (2) with (4).
+        # Second apply (sorted): MockRouteTemplateA(4), MockRouteTemplateB(5) → [4, 5].
+        assert applied == [1, 2, 5, 4, 5]
 
     @pytest.mark.parametrize("default_status", ["stable", "draft", None])
     def test_add_model_with_default_status(self, default_status: str | None):

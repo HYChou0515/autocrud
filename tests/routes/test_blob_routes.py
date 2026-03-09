@@ -229,3 +229,34 @@ def test_blob_redirect():
     response = client.get("/blobs/my-file-id", follow_redirects=False)
     assert response.status_code == 307
     assert response.headers["location"] == "https://example.com/blobs/my-file-id"
+
+
+def test_add_route_template_deduplicates_blob():
+    """add_route_template should replace an existing template of the same type
+    rather than appending a duplicate, so /blobs routes are never registered twice.
+    """
+    import warnings
+
+    crud = AutoCRUD()  # default route_templates includes BlobRouteTemplate
+
+    from autocrud.crud.route_templates.blob import BlobRouteTemplate
+
+    # Simulate the pattern in rpg_game_api.py: user adds BlobRouteTemplate again
+    crud.add_route_template(BlobRouteTemplate())
+
+    # Should have exactly one BlobRouteTemplate
+    blob_count = sum(
+        1 for t in crud.route_templates if isinstance(t, BlobRouteTemplate)
+    )
+    assert blob_count == 1, f"Expected 1 BlobRouteTemplate, got {blob_count}"
+
+    crud.add_model(UserWithAvatar)
+    app = FastAPI()
+
+    # No duplicate-operation-ID warning should be emitted
+    with warnings.catch_warnings(record=True) as caught:
+        warnings.simplefilter("always")
+        crud.apply(app)
+
+    dup_warnings = [w for w in caught if "Duplicate Operation ID" in str(w.message)]
+    assert dup_warnings == [], f"Unexpected duplicate warnings: {dup_warnings}"

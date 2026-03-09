@@ -14,14 +14,14 @@ export interface GlobalImportResult {
 }
 
 export const backupApi = {
-  /** Download full backup (.acbak) for all models */
+  /** Download full backup (.acbak) for all models — uses the AutoCRUD global /_backup endpoint */
   exportAll: (models?: string[]) =>
     client.get('/_backup/export', {
       params: models ? { models } : undefined,
       responseType: 'blob',
     }),
 
-  /** Upload .acbak archive (global import) */
+  /** Upload .acbak archive (global import) — uses the AutoCRUD global /_backup endpoint */
   importAll: (file: File, onDuplicate: OnDuplicate = 'overwrite') => {
     const form = new FormData();
     form.append('file', file);

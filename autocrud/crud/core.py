@@ -24,7 +24,6 @@ from autocrud.crud.route_templates.backup import (
     ExportRouteTemplate,
     ImportRouteTemplate,
 )
-from autocrud.crud.route_templates.blob import BlobRouteTemplate
 from autocrud.crud.route_templates.basic import (
     DependencyProvider,
     FullResourceResponse,
@@ -32,6 +31,7 @@ from autocrud.crud.route_templates.basic import (
     RevisionListResponse,
     jsonschema_to_openapi,
 )
+from autocrud.crud.route_templates.blob import BlobRouteTemplate
 from autocrud.crud.route_templates.create import CreateRouteTemplate
 from autocrud.crud.route_templates.delete import (
     BatchDeleteRouteTemplate,
@@ -660,6 +660,12 @@ class AutoCRUD:
         By adding custom templates, you can extend the default CRUD functionality
         with specialized endpoints for your use cases.
 
+        If a template of the **same type** already exists (e.g. added by the
+        default ``configure()``), it is **replaced** rather than duplicated.
+        This prevents ``Duplicate Operation ID`` warnings for templates that
+        mount global routes such as ``BlobRouteTemplate`` and
+        ``GraphQLRouteTemplate``.
+
         Args:
             template: A custom route template implementing IRouteTemplate interface.
 
@@ -682,6 +688,15 @@ class AutoCRUD:
             Templates are sorted by their order property before being applied.
             Add templates before calling add_model() or apply() for best results.
         """
+        # Replace any existing template of the same type to avoid duplicates.
+        # This is important for templates that mount global routes (e.g.
+        # BlobRouteTemplate, GraphQLRouteTemplate) — having two instances
+        # would register the same path twice, producing a FastAPI
+        # "Duplicate Operation ID" warning.
+        template_type = type(template)
+        self.route_templates = [
+            t for t in self.route_templates if type(t) is not template_type
+        ]
         self.route_templates.append(template)
 
     def create_action(
