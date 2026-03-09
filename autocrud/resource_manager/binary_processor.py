@@ -252,8 +252,13 @@ class BinaryProcessor:
         """
         Process a single Binary value.
 
-        If the Binary object has data, it is stored in the blob store and
-        stripped from the object to prevent it being stored in metadata.
+        If the Binary object has ``data``, it is stored in the blob store
+        and stripped from the object to prevent it being stored in metadata.
+
+        If ``data`` is UNSET but ``file_id`` is present, the blob is assumed
+        to have been uploaded separately (e.g. via ``POST /blobs/upload``).
+        In that case we verify the blob exists and auto-fill ``size`` and
+        ``content_type`` from the store when they are missing.
         """
         if isinstance(data, Binary):
             if data.data is not UNSET:
@@ -262,6 +267,25 @@ class BinaryProcessor:
                     stored_bin,
                     data=UNSET,
                 )
+            # file_id reference: validate existence and backfill metadata
+            if data.file_id is not UNSET:
+                if not store.exists(data.file_id):
+                    raise FileNotFoundError(
+                        f"Blob with file_id '{data.file_id}' does not exist"
+                    )
+                # Backfill size / content_type from the store if missing
+                if data.size is UNSET or data.content_type is UNSET:
+                    existing = store.get(data.file_id)
+                    updates: dict[str, Any] = {}
+                    if data.size is UNSET and existing.size is not UNSET:
+                        updates["size"] = existing.size
+                    if (
+                        data.content_type is UNSET
+                        and existing.content_type is not UNSET
+                    ):
+                        updates["content_type"] = existing.content_type
+                    if updates:
+                        return msgspec.structs.replace(data, **updates)
         return data
 
     def _restore_leaf(self, data: Any, store: IBlobStore) -> Any:

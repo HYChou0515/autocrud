@@ -24,6 +24,7 @@ from autocrud.crud.route_templates.backup import (
     ExportRouteTemplate,
     ImportRouteTemplate,
 )
+from autocrud.crud.route_templates.blob import BlobRouteTemplate
 from autocrud.crud.route_templates.basic import (
     DependencyProvider,
     FullResourceResponse,
@@ -435,6 +436,7 @@ class AutoCRUD:
                     BatchRestoreRouteTemplate,
                     ExportRouteTemplate,
                     ImportRouteTemplate,
+                    BlobRouteTemplate,
                 ]:
                     more_kwargs = route_templates_dict.get(rt, {})
                     more_kwargs.setdefault("dependency_provider", dep_provider)

@@ -501,7 +501,14 @@ describe('processInitialValues', () => {
               label: 'Equipment',
               schemaName: 'Equipment',
               fields: [
-                { name: 'name', label: 'Name', type: 'string' as const, isArray: false, isRequired: true, isNullable: false },
+                {
+                  name: 'name',
+                  label: 'Name',
+                  type: 'string' as const,
+                  isArray: false,
+                  isRequired: true,
+                  isNullable: false,
+                },
               ],
             },
           ],
@@ -551,7 +558,14 @@ describe('processInitialValues', () => {
               label: 'Equipment',
               schemaName: 'Equipment',
               fields: [
-                { name: 'name', label: 'Name', type: 'string' as const, isArray: false, isRequired: true, isNullable: false },
+                {
+                  name: 'name',
+                  label: 'Name',
+                  type: 'string' as const,
+                  isArray: false,
+                  isRequired: true,
+                  isNullable: false,
+                },
               ],
             },
           ],
@@ -1464,8 +1478,22 @@ describe('processSubmitValues', () => {
               label: 'Equipment',
               schemaName: 'Equipment',
               fields: [
-                { name: 'name', label: 'Name', type: 'string' as const, isRequired: true, isNullable: false, isArray: false },
-                { name: 'icon', label: 'Icon', type: 'binary' as const, isRequired: false, isNullable: true, isArray: false },
+                {
+                  name: 'name',
+                  label: 'Name',
+                  type: 'string' as const,
+                  isRequired: true,
+                  isNullable: false,
+                  isArray: false,
+                },
+                {
+                  name: 'icon',
+                  label: 'Icon',
+                  type: 'binary' as const,
+                  isRequired: false,
+                  isNullable: true,
+                  isArray: false,
+                },
               ],
             },
             {
@@ -1473,8 +1501,22 @@ describe('processSubmitValues', () => {
               label: 'Item',
               schemaName: 'Item',
               fields: [
-                { name: 'name', label: 'Name', type: 'string' as const, isRequired: true, isNullable: false, isArray: false },
-                { name: 'icon', label: 'Icon', type: 'binary' as const, isRequired: false, isNullable: true, isArray: false },
+                {
+                  name: 'name',
+                  label: 'Name',
+                  type: 'string' as const,
+                  isRequired: true,
+                  isNullable: false,
+                  isArray: false,
+                },
+                {
+                  name: 'icon',
+                  label: 'Icon',
+                  type: 'binary' as const,
+                  isRequired: false,
+                  isNullable: true,
+                  isArray: false,
+                },
               ],
             },
           ],
@@ -1510,8 +1552,22 @@ describe('processSubmitValues', () => {
               label: 'Equipment',
               schemaName: 'Equipment',
               fields: [
-                { name: 'name', label: 'Name', type: 'string' as const, isRequired: true, isNullable: false, isArray: false },
-                { name: 'icon', label: 'Icon', type: 'binary' as const, isRequired: false, isNullable: true, isArray: false },
+                {
+                  name: 'name',
+                  label: 'Name',
+                  type: 'string' as const,
+                  isRequired: true,
+                  isNullable: false,
+                  isArray: false,
+                },
+                {
+                  name: 'icon',
+                  label: 'Icon',
+                  type: 'binary' as const,
+                  isRequired: false,
+                  isNullable: true,
+                  isArray: false,
+                },
               ],
             },
           ],
@@ -1519,9 +1575,7 @@ describe('processSubmitValues', () => {
       },
     ];
     const values = {
-      equipments: [
-        { type: 'Equipment', name: 'Sword', icon: { _mode: 'empty' } },
-      ],
+      equipments: [{ type: 'Equipment', name: 'Sword', icon: { _mode: 'empty' } }],
     };
 
     const result = processSubmitValues(values, fields, [], []);
@@ -1546,7 +1600,14 @@ describe('processSubmitValues', () => {
               label: 'Image',
               schemaName: 'ImageContent',
               fields: [
-                { name: 'file', label: 'File', type: 'binary' as const, isRequired: true, isNullable: false, isArray: false },
+                {
+                  name: 'file',
+                  label: 'File',
+                  type: 'binary' as const,
+                  isRequired: true,
+                  isNullable: false,
+                  isArray: false,
+                },
               ],
             },
           ],
@@ -1577,7 +1638,14 @@ describe('processSubmitValues', () => {
               label: 'Equipment',
               schemaName: 'Equipment',
               fields: [
-                { name: 'icon', label: 'Icon', type: 'binary' as const, isRequired: false, isNullable: true, isArray: false },
+                {
+                  name: 'icon',
+                  label: 'Icon',
+                  type: 'binary' as const,
+                  isRequired: false,
+                  isNullable: true,
+                  isArray: false,
+                },
               ],
             },
           ],
@@ -1606,7 +1674,14 @@ describe('processSubmitValues', () => {
               label: 'Image',
               schemaName: 'ImageContent',
               fields: [
-                { name: 'file', label: 'File', type: 'binary' as const, isRequired: true, isNullable: false, isArray: false },
+                {
+                  name: 'file',
+                  label: 'File',
+                  type: 'binary' as const,
+                  isRequired: true,
+                  isNullable: false,
+                  isArray: false,
+                },
               ],
             },
           ],
@@ -1634,9 +1709,30 @@ describe('processSubmitValues', () => {
               label: 'Equipment',
               schemaName: 'Equipment',
               fields: [
-                { name: 'name', label: 'Name', type: 'string' as const, isRequired: true, isNullable: false, isArray: false },
-                { name: 'attack_bonus', label: 'Attack Bonus', type: 'number' as const, isRequired: false, isNullable: false, isArray: false },
-                { name: 'icon', label: 'Icon', type: 'binary' as const, isRequired: false, isNullable: true, isArray: false },
+                {
+                  name: 'name',
+                  label: 'Name',
+                  type: 'string' as const,
+                  isRequired: true,
+                  isNullable: false,
+                  isArray: false,
+                },
+                {
+                  name: 'attack_bonus',
+                  label: 'Attack Bonus',
+                  type: 'number' as const,
+                  isRequired: false,
+                  isNullable: false,
+                  isArray: false,
+                },
+                {
+                  name: 'icon',
+                  label: 'Icon',
+                  type: 'binary' as const,
+                  isRequired: false,
+                  isNullable: true,
+                  isArray: false,
+                },
               ],
             },
             {
@@ -1644,8 +1740,22 @@ describe('processSubmitValues', () => {
               label: 'Item',
               schemaName: 'Item',
               fields: [
-                { name: 'name', label: 'Name', type: 'string' as const, isRequired: true, isNullable: false, isArray: false },
-                { name: 'price', label: 'Price', type: 'number' as const, isRequired: false, isNullable: false, isArray: false },
+                {
+                  name: 'name',
+                  label: 'Name',
+                  type: 'string' as const,
+                  isRequired: true,
+                  isNullable: false,
+                  isArray: false,
+                },
+                {
+                  name: 'price',
+                  label: 'Price',
+                  type: 'number' as const,
+                  isRequired: false,
+                  isNullable: false,
+                  isArray: false,
+                },
               ],
             },
           ],
@@ -1689,7 +1799,14 @@ describe('processSubmitValues', () => {
               label: 'Equipment',
               schemaName: 'Equipment',
               fields: [
-                { name: 'name', label: 'Name', type: 'string' as const, isRequired: true, isNullable: false, isArray: false },
+                {
+                  name: 'name',
+                  label: 'Name',
+                  type: 'string' as const,
+                  isRequired: true,
+                  isNullable: false,
+                  isArray: false,
+                },
               ],
             },
           ],

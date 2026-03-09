@@ -2,6 +2,7 @@
  * Conversion utility functions for form data transformation
  */
 
+import { client } from '../../client';
 import type { BinaryFormValue } from './types';
 
 /**
@@ -48,8 +49,12 @@ export function fileToBase64(file: File): Promise<string> {
 }
 
 /**
- * Convert a BinaryFormValue to API-ready binary payload
- * Handles different binary input modes: existing file_id, new file upload, or URL fetch
+ * Convert a BinaryFormValue to API-ready binary payload.
+ *
+ * For new file uploads (`_mode: 'file'`) and URL fetches (`_mode: 'url'`),
+ * the file is uploaded to the blob store via `POST /blobs/upload` and the
+ * returned `file_id` is used in the payload. This avoids base64 encoding
+ * overhead for large files.
  *
  * @param val - Binary form value to convert
  * @returns Promise resolving to API binary object or null
@@ -59,14 +64,14 @@ export function fileToBase64(file: File): Promise<string> {
  * await binaryFormValueToApi({ _mode: 'existing', file_id: 'abc123' })
  * // Returns: { file_id: 'abc123' }
  *
- * // New file upload
+ * // New file upload (uploaded via /blobs/upload)
  * const file = new File(['data'], 'file.txt', { type: 'text/plain' });
  * await binaryFormValueToApi({ _mode: 'file', file })
- * // Returns: { data: 'base64...', content_type: 'text/plain' }
+ * // Returns: { file_id: 'xxx', content_type: 'text/plain', size: 4 }
  *
- * // URL fetch
+ * // URL fetch (fetched then uploaded via /blobs/upload)
  * await binaryFormValueToApi({ _mode: 'url', url: 'https://example.com/image.png' })
- * // Fetches URL, converts to base64: { data: 'base64...', content_type: 'image/png' }
+ * // Returns: { file_id: 'yyy', content_type: 'image/png', size: 1024 }
  *
  * // Empty
  * await binaryFormValueToApi({ _mode: 'empty' })
@@ -84,13 +89,14 @@ export async function binaryFormValueToApi(
 
   if (val._mode === 'file' && val.file) {
     try {
-      const base64 = await fileToBase64(val.file);
+      const uploaded = await uploadBlob(val.file);
       return {
-        data: base64,
-        content_type: val.file.type || 'application/octet-stream',
+        file_id: uploaded.file_id,
+        content_type: uploaded.content_type,
+        size: uploaded.size,
       };
     } catch (e) {
-      console.error('[binaryFormValueToApi] Failed to convert file to base64:', e);
+      console.error('[binaryFormValueToApi] Failed to upload file:', e);
       throw e;
     }
   }
@@ -99,10 +105,12 @@ export async function binaryFormValueToApi(
     try {
       const resp = await fetch(val.url);
       const blob = await resp.blob();
-      const base64 = await fileToBase64(new File([blob], 'download', { type: blob.type }));
+      const file = new File([blob], 'download', { type: blob.type || 'application/octet-stream' });
+      const uploaded = await uploadBlob(file);
       return {
-        data: base64,
-        content_type: blob.type || 'application/octet-stream',
+        file_id: uploaded.file_id,
+        content_type: uploaded.content_type,
+        size: uploaded.size,
       };
     } catch (e) {
       console.error('[binaryFormValueToApi] Failed to fetch URL for binary field:', val.url, e);
@@ -111,4 +119,37 @@ export async function binaryFormValueToApi(
   }
 
   return null;
+}
+
+/**
+ * Response from the blob upload endpoint.
+ */
+export interface BlobUploadResult {
+  file_id: string;
+  size: number;
+  content_type: string;
+}
+
+/**
+ * Upload a file to the blob store via `POST /blobs/upload` (multipart/form-data).
+ *
+ * Returns the blob metadata (`file_id`, `size`, `content_type`). The returned
+ * `file_id` can be used in create/update requests to reference the uploaded
+ * binary without base64 encoding.
+ *
+ * @param file - File object to upload
+ * @returns Promise resolving to blob metadata
+ *
+ * @example
+ * const result = await uploadBlob(myFile);
+ * // result = { file_id: 'abc123', size: 1024, content_type: 'image/png' }
+ * // Then use in create: { avatar: { file_id: result.file_id } }
+ */
+export async function uploadBlob(file: File): Promise<BlobUploadResult> {
+  const formData = new FormData();
+  formData.append('file', file);
+  const resp = await client.post<BlobUploadResult>('/blobs/upload', formData, {
+    headers: { 'Content-Type': 'multipart/form-data' },
+  });
+  return resp.data;
 }
