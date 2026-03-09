@@ -1288,3 +1288,118 @@ class TestCreateActionMixedParams:
         action = actions[0]
         # The handler parameter for the Pydantic model is called 'item'
         assert action.get("bodySchemaParamName") == "item"
+
+
+# ---------------------------------------------------------------------------
+# 10. Router prefix — params must still be extracted when apply(router)
+#     is used with a prefixed APIRouter
+# ---------------------------------------------------------------------------
+
+
+class TestCreateActionWithRouterPrefix:
+    """x-autocrud-custom-create-actions must include params even when
+    the routes live under a prefixed APIRouter (e.g. /api/v1)."""
+
+    @staticmethod
+    def _build_app(prefix: str = "/api/v1"):
+        from fastapi import APIRouter
+
+        class Item(Struct):
+            name: str
+            value: int = 0
+
+        crud = AutoCRUD()
+        crud.add_model(Item, name="item")
+
+        @crud.create_action("item", label="Create From Query")
+        async def create_from_query(name: str, value: int = 0):
+            return Item(name=name, value=value)
+
+        router = APIRouter(prefix=prefix)
+        crud.apply(router)
+        app = FastAPI()
+        app.include_router(router)
+        crud.openapi(app)
+        return app
+
+    def test_query_params_present_with_prefix(self):
+        """queryParams must be injected even when router has a prefix."""
+        app = self._build_app()
+        schema = app.openapi_schema
+        custom_actions = schema.get("x-autocrud-custom-create-actions", {})
+        assert "item" in custom_actions
+        action = custom_actions["item"][0]
+        assert "queryParams" in action, (
+            f"queryParams missing — action only has keys: {list(action.keys())}"
+        )
+        qp = action["queryParams"]
+        assert len(qp) == 2
+        qp_names = {p["name"] for p in qp}
+        assert qp_names == {"name", "value"}
+
+    def test_path_params_present_with_prefix(self):
+        """pathParams must be injected even when router has a prefix."""
+        from fastapi import APIRouter
+
+        class Character(Struct):
+            name: str
+
+        crud = AutoCRUD()
+        crud.add_model(Character, name="character")
+
+        @crud.create_action("character", label="New Char", path="/{name}/new")
+        async def create_new(name: str):
+            return Character(name=name)
+
+        router = APIRouter(prefix="/api/v1")
+        crud.apply(router)
+        app = FastAPI()
+        app.include_router(router)
+        crud.openapi(app)
+
+        schema = app.openapi_schema
+        action = schema["x-autocrud-custom-create-actions"]["character"][0]
+        assert "pathParams" in action, (
+            f"pathParams missing — action only has keys: {list(action.keys())}"
+        )
+        assert action["pathParams"][0]["name"] == "name"
+
+    def test_inline_body_params_present_with_prefix(self):
+        """inlineBodyParams must be injected even when router has a prefix."""
+        from fastapi import APIRouter
+
+        class Character(Struct):
+            name: str
+
+        crud = AutoCRUD()
+        crud.add_model(Character, name="character")
+
+        @crud.create_action("character", label="Create Inline")
+        async def create_inline(
+            name: Annotated[str, Body(embed=True)],
+        ):
+            return Character(name=name)
+
+        router = APIRouter(prefix="/api/v1")
+        crud.apply(router)
+        app = FastAPI()
+        app.include_router(router)
+        crud.openapi(app)
+
+        schema = app.openapi_schema
+        action = schema["x-autocrud-custom-create-actions"]["character"][0]
+        assert "inlineBodyParams" in action, (
+            f"inlineBodyParams missing — action only has keys: {list(action.keys())}"
+        )
+        assert action["inlineBodyParams"][0]["name"] == "name"
+
+    def test_action_path_does_not_include_prefix(self):
+        """The action path in the extension should NOT include the router prefix
+        so that the frontend can construct the correct URL relative to the
+        API base path."""
+        app = self._build_app()
+        schema = app.openapi_schema
+        action = schema["x-autocrud-custom-create-actions"]["item"][0]
+        assert action["path"] == "/item/create-from-query", (
+            f"Expected '/item/create-from-query' but got '{action['path']}'"
+        )

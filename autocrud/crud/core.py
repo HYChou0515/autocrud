@@ -1395,7 +1395,16 @@ class AutoCRUD:
             # so the frontend generator can produce form fields for them.
             paths = schema.get("paths", {})
             operation_path = f"/{action.resource_name}/{action_path_segment}"
-            operation = paths.get(operation_path, {}).get("post", {})
+            # Try exact match first; fall back to suffix match when the
+            # routes live under a prefixed APIRouter (e.g. /api/v1/...).
+            path_item = paths.get(operation_path, {})
+            if not path_item:
+                suffix = operation_path
+                for spec_path, spec_item in paths.items():
+                    if spec_path.endswith(suffix) and "post" in spec_item:
+                        path_item = spec_item
+                        break
+            operation = path_item.get("post", {})
             parameters = operation.get("parameters", [])
             pp = [
                 {
