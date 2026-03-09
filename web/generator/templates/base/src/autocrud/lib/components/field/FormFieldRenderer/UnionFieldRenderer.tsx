@@ -634,6 +634,24 @@ export function UnionFieldRenderer({
   const isDiscriminated = unionMeta.discriminatorField !== '__type';
 
   if (isDiscriminated) {
+    // Array of discriminated union items — render DiscriminatedArrayBody directly
+    if (field.isArray) {
+      const items = Array.isArray(currentValue) ? currentValue : [];
+      return (
+        <Stack key={name} gap="xs">
+          <Text fw={500} size="sm">
+            {label}
+          </Text>
+          <DiscriminatedArrayBody
+            itemsPath={name}
+            items={items}
+            itemUnionMeta={unionMeta}
+            form={form}
+          />
+        </Stack>
+      );
+    }
+
     const discField = unionMeta.discriminatorField;
     const isValueNull = currentValue === null || currentValue === undefined;
     const selectedTag =

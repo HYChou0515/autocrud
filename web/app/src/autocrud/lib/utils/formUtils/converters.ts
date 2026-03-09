@@ -83,11 +83,16 @@ export async function binaryFormValueToApi(
   }
 
   if (val._mode === 'file' && val.file) {
-    const base64 = await fileToBase64(val.file);
-    return {
-      data: base64,
-      content_type: val.file.type || 'application/octet-stream',
-    };
+    try {
+      const base64 = await fileToBase64(val.file);
+      return {
+        data: base64,
+        content_type: val.file.type || 'application/octet-stream',
+      };
+    } catch (e) {
+      console.error('[binaryFormValueToApi] Failed to convert file to base64:', e);
+      throw e;
+    }
   }
 
   if (val._mode === 'url' && val.url) {
@@ -99,7 +104,8 @@ export async function binaryFormValueToApi(
         data: base64,
         content_type: blob.type || 'application/octet-stream',
       };
-    } catch {
+    } catch (e) {
+      console.error('[binaryFormValueToApi] Failed to fetch URL for binary field:', val.url, e);
       return null;
     }
   }

@@ -99,8 +99,11 @@ export function processInitialValues(
     // Determine effective type: use 'date' handler for date-variant fields
     const effectiveType = dateFieldNames.includes(field.name) ? 'date' : field.type;
 
-    // Array ref field — keep as array for MultiSelect, default to []
-    if (field.isArray && field.ref && field.ref.type === 'resource_id') {
+    // Array of discriminated union items — keep as array, default to []
+    if (field.isArray && field.type === 'union' && field.unionMeta) {
+      setByPath(processed, field.name, Array.isArray(val) ? val : []);
+    } else if (field.isArray && field.ref && field.ref.type === 'resource_id') {
+      // Array ref field — keep as array for MultiSelect, default to []
       setByPath(processed, field.name, Array.isArray(val) ? val : []);
     } else {
       // Delegate to handler for all type-specific conversion
@@ -369,6 +372,39 @@ export function processSubmitValues(
     } else if (field.type === 'file') {
       // File fields are preserved by useResourceForm (backup/restore around JSON deep copy)
       continue;
+    } else if (field.type === 'union' && field.unionMeta && field.isArray) {
+      // Array of discriminated union items — process each item's sub-fields per variant
+      _collectUnionBinaryKeys(val, field, field.name, binarySubFieldKeys);
+      if (Array.isArray(val)) {
+        const discField = field.unionMeta.discriminatorField;
+        const cleanItems = val.map((item: any, idx: number) => {
+          const tag = item?.[discField];
+          const variant = field.unionMeta!.variants?.find((v: any) => v.tag === tag);
+          const res: Record<string, any> = { [discField]: tag };
+          const candidateFields: any[] = variant?.fields ?? [];
+          for (const sf of candidateFields) {
+            let v = item?.[sf.name];
+            if (sf.type === 'binary') {
+              // Already collected in binarySubFieldKeys
+              res[sf.name] = v;
+            } else {
+              const handler = getHandler(sf.type);
+              v = (handler.submitValue ?? handler.toApiValue)(v, sf);
+              res[sf.name] = v;
+            }
+          }
+          return res;
+        });
+        setByPath(processed, field.name, cleanItems);
+      } else {
+        setByPath(processed, field.name, []);
+      }
+    } else if (field.type === 'union' && field.unionMeta) {
+      // Single union value — scan for binary sub-fields and delegate to handler
+      _collectUnionBinaryKeys(val, field, field.name, binarySubFieldKeys);
+      const handler = getHandler(field.type);
+      const submitFn = handler.submitValue ?? handler.toApiValue;
+      setByPath(processed, field.name, submitFn(val, field));
     } else {
       const handler = getHandler(field.type);
       const submitFn = handler.submitValue ?? handler.toApiValue;
@@ -391,4 +427,65 @@ export function processSubmitValues(
   }
 
   return { processed, skippedBinaryFields, binarySubFieldKeys };
+}
+
+/**
+ * Recursively scan a union field's value(s) and collect paths to binary sub-fields.
+ *
+ * Handles both discriminated and structural unions, including union arrays.
+ * The collected keys are later resolved asynchronously by `handleSubmit`.
+ *
+ * @param val - Current form value for the union field
+ * @param field - Field definition (must have `unionMeta`)
+ * @param basePath - Dot-notation prefix for building full paths
+ * @param out - Output array to push binary sub-field keys into
+ *
+ * @internal
+ */
+export function _collectUnionBinaryKeys(
+  val: any,
+  field: ResourceFieldMinimal,
+  basePath: string,
+  out: string[],
+): void {
+  const meta = field.unionMeta;
+  if (!meta || val == null) return;
+
+  /** Scan a single union variant value at `path`. */
+  const scanItem = (item: Record<string, any>, path: string) => {
+    // Determine the active variant
+    const discField = meta.discriminatorField;
+    const tag = item?.[discField];
+    const variant = tag != null ? meta.variants?.find((v: any) => v.tag === tag) : undefined;
+
+    // Gather sub-fields from the matched variant, or from ALL variants as fallback
+    const candidateFields: ResourceFieldMinimal[] = variant?.fields ?? [];
+    if (candidateFields.length === 0 && !variant) {
+      // Fallback: check all variants
+      for (const v of meta.variants ?? []) {
+        for (const sf of v.fields ?? []) {
+          if (sf.type === 'binary' && item?.[sf.name] != null) {
+            out.push(`${path}.${sf.name}`);
+          }
+        }
+      }
+      return;
+    }
+
+    for (const sf of candidateFields) {
+      if (sf.type === 'binary') {
+        out.push(`${path}.${sf.name}`);
+      }
+    }
+  };
+
+  if (field.isArray && Array.isArray(val)) {
+    for (let i = 0; i < val.length; i++) {
+      if (val[i] && typeof val[i] === 'object') {
+        scanItem(val[i], `${basePath}.${i}`);
+      }
+    }
+  } else if (typeof val === 'object') {
+    scanItem(val, basePath);
+  }
 }

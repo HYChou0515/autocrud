@@ -486,6 +486,87 @@ describe('processInitialValues', () => {
     expect(result.payload.banana.type).toBe('Banana');
     expect(result.payload.banana.length).toBe('');
   });
+
+  it('should default isArray union field to empty array when undefined', () => {
+    const fields = [
+      {
+        name: 'equipments',
+        type: 'union' as const,
+        isArray: true,
+        unionMeta: {
+          discriminatorField: 'type',
+          variants: [
+            {
+              tag: 'Equipment',
+              label: 'Equipment',
+              schemaName: 'Equipment',
+              fields: [
+                { name: 'name', label: 'Name', type: 'string' as const, isArray: false, isRequired: true, isNullable: false },
+              ],
+            },
+          ],
+        },
+      },
+    ];
+
+    const result = processInitialValues({}, fields, [], []);
+    expect(result.equipments).toEqual([]);
+  });
+
+  it('should default isArray union field to empty array when null', () => {
+    const fields = [
+      {
+        name: 'equipments',
+        type: 'union' as const,
+        isArray: true,
+        unionMeta: {
+          discriminatorField: 'type',
+          variants: [
+            {
+              tag: 'Equipment',
+              label: 'Equipment',
+              schemaName: 'Equipment',
+              fields: [],
+            },
+          ],
+        },
+      },
+    ];
+
+    const result = processInitialValues({ equipments: null }, fields, [], []);
+    expect(result.equipments).toEqual([]);
+  });
+
+  it('should preserve existing array for isArray union field', () => {
+    const fields = [
+      {
+        name: 'equipments',
+        type: 'union' as const,
+        isArray: true,
+        unionMeta: {
+          discriminatorField: 'type',
+          variants: [
+            {
+              tag: 'Equipment',
+              label: 'Equipment',
+              schemaName: 'Equipment',
+              fields: [
+                { name: 'name', label: 'Name', type: 'string' as const, isArray: false, isRequired: true, isNullable: false },
+              ],
+            },
+          ],
+        },
+      },
+    ];
+
+    const result = processInitialValues(
+      { equipments: [{ type: 'Equipment', name: 'Sword' }] },
+      fields,
+      [],
+      [],
+    );
+    expect(result.equipments).toEqual([{ type: 'Equipment', name: 'Sword' }]);
+  });
 });
 
 describe('formValuesToApiObject', () => {
@@ -1362,5 +1443,263 @@ describe('processSubmitValues', () => {
 
     const result = processSubmitValues(values, fields, [], []);
     expect(result.processed.items).toEqual([]);
+  });
+
+  // --------------------------------------------------------------------------
+  // Union variant binary sub-field handling
+  // --------------------------------------------------------------------------
+
+  it('should report binary sub-fields in discriminated union array items', () => {
+    const fields = [
+      {
+        name: 'equipments',
+        label: 'Equipments',
+        type: 'union' as const,
+        isArray: true,
+        unionMeta: {
+          discriminatorField: 'type',
+          variants: [
+            {
+              tag: 'Equipment',
+              label: 'Equipment',
+              schemaName: 'Equipment',
+              fields: [
+                { name: 'name', label: 'Name', type: 'string' as const, isRequired: true, isNullable: false, isArray: false },
+                { name: 'icon', label: 'Icon', type: 'binary' as const, isRequired: false, isNullable: true, isArray: false },
+              ],
+            },
+            {
+              tag: 'Item',
+              label: 'Item',
+              schemaName: 'Item',
+              fields: [
+                { name: 'name', label: 'Name', type: 'string' as const, isRequired: true, isNullable: false, isArray: false },
+                { name: 'icon', label: 'Icon', type: 'binary' as const, isRequired: false, isNullable: true, isArray: false },
+              ],
+            },
+          ],
+        },
+      },
+    ];
+    const bv1: BinaryFormValue = { _mode: 'file', file: null };
+    const bv2: BinaryFormValue = { _mode: 'existing', file_id: 'abc' };
+    const values = {
+      equipments: [
+        { type: 'Equipment', name: 'Sword', icon: bv1 },
+        { type: 'Item', name: 'Potion', icon: bv2 },
+      ],
+    };
+
+    const result = processSubmitValues(values, fields, [], []);
+    expect(result.binarySubFieldKeys).toContain('equipments.0.icon');
+    expect(result.binarySubFieldKeys).toContain('equipments.1.icon');
+  });
+
+  it('should process non-binary sub-fields in discriminated union array items', () => {
+    const fields = [
+      {
+        name: 'equipments',
+        label: 'Equipments',
+        type: 'union' as const,
+        isArray: true,
+        unionMeta: {
+          discriminatorField: 'type',
+          variants: [
+            {
+              tag: 'Equipment',
+              label: 'Equipment',
+              schemaName: 'Equipment',
+              fields: [
+                { name: 'name', label: 'Name', type: 'string' as const, isRequired: true, isNullable: false, isArray: false },
+                { name: 'icon', label: 'Icon', type: 'binary' as const, isRequired: false, isNullable: true, isArray: false },
+              ],
+            },
+          ],
+        },
+      },
+    ];
+    const values = {
+      equipments: [
+        { type: 'Equipment', name: 'Sword', icon: { _mode: 'empty' } },
+      ],
+    };
+
+    const result = processSubmitValues(values, fields, [], []);
+    // Non-binary fields should be processed normally
+    expect(result.processed.equipments[0].name).toBe('Sword');
+    // The discriminator field should be preserved
+    expect(result.processed.equipments[0].type).toBe('Equipment');
+  });
+
+  it('should handle single discriminated union with binary sub-field', () => {
+    const fields = [
+      {
+        name: 'content',
+        label: 'Content',
+        type: 'union' as const,
+        isArray: false,
+        unionMeta: {
+          discriminatorField: 'kind',
+          variants: [
+            {
+              tag: 'image',
+              label: 'Image',
+              schemaName: 'ImageContent',
+              fields: [
+                { name: 'file', label: 'File', type: 'binary' as const, isRequired: true, isNullable: false, isArray: false },
+              ],
+            },
+          ],
+        },
+      },
+    ];
+    const bv: BinaryFormValue = { _mode: 'file', file: null };
+    const values = {
+      content: { kind: 'image', file: bv },
+    };
+
+    const result = processSubmitValues(values, fields, [], []);
+    expect(result.binarySubFieldKeys).toContain('content.file');
+  });
+
+  it('should handle empty union array', () => {
+    const fields = [
+      {
+        name: 'equipments',
+        label: 'Equipments',
+        type: 'union' as const,
+        isArray: true,
+        unionMeta: {
+          discriminatorField: 'type',
+          variants: [
+            {
+              tag: 'Equipment',
+              label: 'Equipment',
+              schemaName: 'Equipment',
+              fields: [
+                { name: 'icon', label: 'Icon', type: 'binary' as const, isRequired: false, isNullable: true, isArray: false },
+              ],
+            },
+          ],
+        },
+      },
+    ];
+    const values = { equipments: [] };
+
+    const result = processSubmitValues(values, fields, [], []);
+    expect(result.binarySubFieldKeys).toEqual([]);
+  });
+
+  it('should handle null union value', () => {
+    const fields = [
+      {
+        name: 'content',
+        label: 'Content',
+        type: 'union' as const,
+        isArray: false,
+        isNullable: true,
+        unionMeta: {
+          discriminatorField: 'kind',
+          variants: [
+            {
+              tag: 'image',
+              label: 'Image',
+              schemaName: 'ImageContent',
+              fields: [
+                { name: 'file', label: 'File', type: 'binary' as const, isRequired: true, isNullable: false, isArray: false },
+              ],
+            },
+          ],
+        },
+      },
+    ];
+    const values = { content: null };
+
+    const result = processSubmitValues(values, fields, [], []);
+    expect(result.binarySubFieldKeys).toEqual([]);
+  });
+
+  it('should keep isArray discriminated union as array and process sub-fields per variant', () => {
+    const fields = [
+      {
+        name: 'equipments',
+        label: 'Equipments',
+        type: 'union' as const,
+        isArray: true,
+        unionMeta: {
+          discriminatorField: 'type',
+          variants: [
+            {
+              tag: 'Equipment',
+              label: 'Equipment',
+              schemaName: 'Equipment',
+              fields: [
+                { name: 'name', label: 'Name', type: 'string' as const, isRequired: true, isNullable: false, isArray: false },
+                { name: 'attack_bonus', label: 'Attack Bonus', type: 'number' as const, isRequired: false, isNullable: false, isArray: false },
+                { name: 'icon', label: 'Icon', type: 'binary' as const, isRequired: false, isNullable: true, isArray: false },
+              ],
+            },
+            {
+              tag: 'Item',
+              label: 'Item',
+              schemaName: 'Item',
+              fields: [
+                { name: 'name', label: 'Name', type: 'string' as const, isRequired: true, isNullable: false, isArray: false },
+                { name: 'price', label: 'Price', type: 'number' as const, isRequired: false, isNullable: false, isArray: false },
+              ],
+            },
+          ],
+        },
+      },
+    ];
+    const values = {
+      equipments: [
+        { type: 'Equipment', name: 'Sword', attack_bonus: '10', icon: { _mode: 'empty' } },
+        { type: 'Item', name: 'Potion', price: '50' },
+      ],
+    };
+
+    const result = processSubmitValues(values, fields, [], []);
+    // Must remain an array (not converted to an object)
+    expect(Array.isArray(result.processed.equipments)).toBe(true);
+    expect(result.processed.equipments).toHaveLength(2);
+    // Sub-fields should be processed via their type handlers
+    expect(result.processed.equipments[0].type).toBe('Equipment');
+    expect(result.processed.equipments[0].name).toBe('Sword');
+    expect(result.processed.equipments[0].attack_bonus).toBe('10'); // numberHandler passes through non-empty values
+    expect(result.processed.equipments[1].type).toBe('Item');
+    expect(result.processed.equipments[1].name).toBe('Potion');
+    expect(result.processed.equipments[1].price).toBe('50'); // numberHandler passes through non-empty values
+    // Binary fields should be in binarySubFieldKeys
+    expect(result.binarySubFieldKeys).toContain('equipments.0.icon');
+  });
+
+  it('should keep isArray discriminated union as empty array when no items', () => {
+    const fields = [
+      {
+        name: 'equipments',
+        label: 'Equipments',
+        type: 'union' as const,
+        isArray: true,
+        unionMeta: {
+          discriminatorField: 'type',
+          variants: [
+            {
+              tag: 'Equipment',
+              label: 'Equipment',
+              schemaName: 'Equipment',
+              fields: [
+                { name: 'name', label: 'Name', type: 'string' as const, isRequired: true, isNullable: false, isArray: false },
+              ],
+            },
+          ],
+        },
+      },
+    ];
+    const values = { equipments: [] };
+
+    const result = processSubmitValues(values, fields, [], []);
+    expect(Array.isArray(result.processed.equipments)).toBe(true);
+    expect(result.processed.equipments).toHaveLength(0);
   });
 });

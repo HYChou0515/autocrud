@@ -299,6 +299,66 @@ describe('UnionFieldRenderer — discriminated union (regression)', () => {
 });
 
 // ---------------------------------------------------------------------------
+// isArray discriminated union — renders DiscriminatedArrayBody
+// ---------------------------------------------------------------------------
+
+const arrayDiscriminatedField: ResourceField = makeField({
+  name: 'equipments',
+  label: 'Equipments',
+  type: 'union',
+  isArray: true,
+  unionMeta: discriminatedUnionMeta,
+});
+
+describe('UnionFieldRenderer — isArray discriminated union', () => {
+  it('renders as an array with Add button and items count', () => {
+    renderWithMantine(
+      <FormWrapper
+        field={arrayDiscriminatedField}
+        unionMeta={discriminatedUnionMeta}
+        initialValues={{ equipments: [] }}
+      />,
+    );
+
+    expectText('Equipments');
+    expectText('Items (0)');
+    expectText('Add');
+  });
+
+  it('renders existing items with variant selector and sub-fields', () => {
+    renderWithMantine(
+      <FormWrapper
+        field={arrayDiscriminatedField}
+        unionMeta={discriminatedUnionMeta}
+        initialValues={{
+          equipments: [
+            { type: 'Sword', attack: 10 },
+            { type: 'Shield', defense: 5 },
+          ],
+        }}
+      />,
+    );
+
+    expectText('Items (2)');
+    expectText('#1');
+    expectText('#2');
+  });
+
+  it('renders empty state when initialValues is undefined', () => {
+    renderWithMantine(
+      <FormWrapper
+        field={arrayDiscriminatedField}
+        unionMeta={discriminatedUnionMeta}
+        initialValues={{ equipments: undefined as any }}
+      />,
+    );
+
+    expectText('Items (0)');
+    expectText('No items yet');
+  });
+});
+
+// ---------------------------------------------------------------------------
 // Ensure simple union still works (regression)
 // ---------------------------------------------------------------------------
 

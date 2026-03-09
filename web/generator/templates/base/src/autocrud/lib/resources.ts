@@ -145,6 +145,7 @@ export interface ResourceConfig<T = any> {
     get: (id: string, params?: any) => Promise<{ data: FullResource<T> }>;
     update: (id: string, data: T, params?: any) => Promise<{ data: RevisionInfo }>;
     delete: (id: string) => Promise<{ data: ResourceMeta }>;
+    permanentlyDelete: (id: string) => Promise<void>;
     restore: (id: string) => Promise<{ data: ResourceMeta }>;
     revisionList: (
       id: string,

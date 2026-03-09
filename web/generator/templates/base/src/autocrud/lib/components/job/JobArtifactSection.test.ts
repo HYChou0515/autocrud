@@ -44,10 +44,46 @@ describe('artifact field separation for display groups', () => {
   ]);
 
   const allFields = [
-    { name: 'status', label: 'Status', type: 'string', tsType: 'string', isArray: false, isRequired: true, isNullable: false, zodType: 'z.string()' },
-    { name: 'artifact', label: 'Artifact', type: 'object', tsType: 'Record<string, any>', isArray: false, isRequired: false, isNullable: true, zodType: 'z.any()' },
-    { name: 'payload.name', label: 'Name', type: 'string', tsType: 'string', isArray: false, isRequired: true, isNullable: false, zodType: 'z.string()' },
-    { name: 'retries', label: 'Retries', type: 'number', tsType: 'number', isArray: false, isRequired: true, isNullable: false, zodType: 'z.number()' },
+    {
+      name: 'status',
+      label: 'Status',
+      type: 'string',
+      tsType: 'string',
+      isArray: false,
+      isRequired: true,
+      isNullable: false,
+      zodType: 'z.string()',
+    },
+    {
+      name: 'artifact',
+      label: 'Artifact',
+      type: 'object',
+      tsType: 'Record<string, any>',
+      isArray: false,
+      isRequired: false,
+      isNullable: true,
+      zodType: 'z.any()',
+    },
+    {
+      name: 'payload.name',
+      label: 'Name',
+      type: 'string',
+      tsType: 'string',
+      isArray: false,
+      isRequired: true,
+      isNullable: false,
+      zodType: 'z.string()',
+    },
+    {
+      name: 'retries',
+      label: 'Retries',
+      type: 'number',
+      tsType: 'number',
+      isArray: false,
+      isRequired: true,
+      isNullable: false,
+      zodType: 'z.number()',
+    },
   ] as any[];
 
   it('filters artifact and status fields from payload display', () => {
@@ -64,9 +100,36 @@ describe('artifact field separation for display groups', () => {
 
   it('handles structured artifact sub-fields', () => {
     const fieldsWithSub = [
-      { name: 'artifact.result', label: 'Result', type: 'number', tsType: 'number', isArray: false, isRequired: true, isNullable: false, zodType: 'z.number()' },
-      { name: 'artifact.details', label: 'Details', type: 'string', tsType: 'string', isArray: false, isRequired: false, isNullable: true, zodType: 'z.string()' },
-      { name: 'payload.name', label: 'Name', type: 'string', tsType: 'string', isArray: false, isRequired: true, isNullable: false, zodType: 'z.string()' },
+      {
+        name: 'artifact.result',
+        label: 'Result',
+        type: 'number',
+        tsType: 'number',
+        isArray: false,
+        isRequired: true,
+        isNullable: false,
+        zodType: 'z.number()',
+      },
+      {
+        name: 'artifact.details',
+        label: 'Details',
+        type: 'string',
+        tsType: 'string',
+        isArray: false,
+        isRequired: false,
+        isNullable: true,
+        zodType: 'z.string()',
+      },
+      {
+        name: 'payload.name',
+        label: 'Name',
+        type: 'string',
+        tsType: 'string',
+        isArray: false,
+        isRequired: true,
+        isNullable: false,
+        zodType: 'z.string()',
+      },
     ] as any[];
 
     const artifactFields = fieldsWithSub.filter((f) => isArtifactField(f.name));
@@ -117,7 +180,9 @@ describe('JobArtifactSection visibility', () => {
     const data = { artifact: { result: 42 } };
     const groups: any[] = [];
     const collapsedGroups: any[] = [];
-    expect(groups.length === 0 && collapsedGroups.length === 0 && data.artifact == null).toBe(false);
+    expect(groups.length === 0 && collapsedGroups.length === 0 && data.artifact == null).toBe(
+      false,
+    );
   });
 
   it('should render when artifact groups exist', () => {
