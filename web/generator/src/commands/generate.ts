@@ -1894,28 +1894,56 @@ async function streamMigrate(
   return result;
 }
 
+/**
+ * Build the migration URL with optional revision_id query parameter.
+ */
+function buildMigrateUrl(
+  base: string,
+  modelName: string,
+  action: 'test' | 'execute',
+  revisionId?: string | null,
+): string {
+  const url = \`\${base}/\${modelName}/migrate/\${action}\`;
+  if (revisionId) {
+    return \`\${url}?revision_id=\${encodeURIComponent(revisionId)}\`;
+  }
+  return url;
+}
+
+/** Revision scope for batch migration. */
+export type RevisionScope =
+  | null       // current revision only (default)
+  | 'all'      // every revision of each resource
+  | string;    // specific revision ID
+
 export const migrateApi = {
   /**
    * Test migration (dry run) for a model.
    * No data is written — safe to run on production.
+   *
+   * @param revisionId - Revision scope: omit/null for current, "all" for every revision, or a specific ID.
    */
   test: (
     modelName: string,
     onProgress?: (p: MigrateProgress) => void,
     signal?: AbortSignal,
+    revisionId?: RevisionScope,
   ): Promise<MigrateResult> =>
-    streamMigrate(\`\${getBaseUrl()}${bp}/\${modelName}/migrate/test\`, onProgress, signal),
+    streamMigrate(buildMigrateUrl(\`\${getBaseUrl()}${bp}\`, modelName, 'test', revisionId), onProgress, signal),
 
   /**
    * Execute migration for a model.
    * Migrated data is written back to storage.
+   *
+   * @param revisionId - Revision scope: omit/null for current, "all" for every revision, or a specific ID.
    */
   execute: (
     modelName: string,
     onProgress?: (p: MigrateProgress) => void,
     signal?: AbortSignal,
+    revisionId?: RevisionScope,
   ): Promise<MigrateResult> =>
-    streamMigrate(\`\${getBaseUrl()}${bp}/\${modelName}/migrate/execute\`, onProgress, signal),
+    streamMigrate(buildMigrateUrl(\`\${getBaseUrl()}${bp}\`, modelName, 'execute', revisionId), onProgress, signal),
 };
 `;
   }

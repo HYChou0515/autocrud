@@ -27,6 +27,8 @@ import {
   ActionIcon,
   Code,
   Loader,
+  SegmentedControl,
+  TextInput,
 } from '@mantine/core';
 import {
   IconCheck,
@@ -41,6 +43,7 @@ import {
   migrateApi,
   type MigrateProgress,
   type MigrateResult,
+  type RevisionScope,
 } from '../../generated/api/migrateApi';
 
 interface MigrationStatusProps {
@@ -85,6 +88,24 @@ function statusColor(status: string): string {
   }
 }
 
+/** Revision scope UI mode */
+type RevisionScopeMode = 'current' | 'all' | 'specific';
+
+/** Resolve UI mode + input to RevisionScope for the API. */
+function resolveRevisionScope(
+  mode: RevisionScopeMode,
+  specificId: string,
+): RevisionScope {
+  switch (mode) {
+    case 'all':
+      return 'all';
+    case 'specific':
+      return specificId || null;
+    default:
+      return null;
+  }
+}
+
 export function MigrationStatus({ resourceNames }: MigrationStatusProps) {
   const [states, setStates] = useState<Record<string, ModelMigrationState>>(() =>
     Object.fromEntries(resourceNames.map((name) => [name, getInitialState()])),
@@ -92,6 +113,18 @@ export function MigrationStatus({ resourceNames }: MigrationStatusProps) {
   const [globalError, setGlobalError] = useState<string | null>(null);
   const [globalSuccess, setGlobalSuccess] = useState<string | null>(null);
   const abortControllers = useRef<Record<string, AbortController>>({});
+
+  // Per-model revision scope
+  const [revisionModes, setRevisionModes] = useState<Record<string, RevisionScopeMode>>(() =>
+    Object.fromEntries(resourceNames.map((name) => [name, 'current' as RevisionScopeMode])),
+  );
+  const [revisionInputs, setRevisionInputs] = useState<Record<string, string>>(() =>
+    Object.fromEntries(resourceNames.map((name) => [name, ''])),
+  );
+
+  // Global revision scope
+  const [globalRevisionMode, setGlobalRevisionMode] = useState<RevisionScopeMode>('current');
+  const [globalRevisionInput, setGlobalRevisionInput] = useState('');
 
   const clearMessages = useCallback(() => {
     setGlobalError(null);
@@ -109,7 +142,7 @@ export function MigrationStatus({ resourceNames }: MigrationStatusProps) {
   );
 
   const handleMigrate = useCallback(
-    async (modelName: string, mode: 'test' | 'execute') => {
+    async (modelName: string, mode: 'test' | 'execute', revisionScope?: RevisionScope) => {
       clearMessages();
 
       // Abort any existing operation for this model
@@ -142,6 +175,7 @@ export function MigrationStatus({ resourceNames }: MigrationStatusProps) {
             }));
           },
           controller.signal,
+          revisionScope,
         );
 
         updateModelState(modelName, {
@@ -178,14 +212,15 @@ export function MigrationStatus({ resourceNames }: MigrationStatusProps) {
   const handleMigrateAll = useCallback(
     async (mode: 'test' | 'execute') => {
       clearMessages();
+      const scope = resolveRevisionScope(globalRevisionMode, globalRevisionInput);
       for (const name of resourceNames) {
-        await handleMigrate(name, mode);
+        await handleMigrate(name, mode, scope);
       }
       setGlobalSuccess(
         mode === 'test' ? 'All models tested successfully.' : 'All models migrated successfully.',
       );
     },
-    [clearMessages, resourceNames, handleMigrate],
+    [clearMessages, resourceNames, handleMigrate, globalRevisionMode, globalRevisionInput],
   );
 
   return (
@@ -231,6 +266,30 @@ export function MigrationStatus({ resourceNames }: MigrationStatusProps) {
             <Text size="sm" c="dimmed">
               Run test or execute migration for all models at once.
             </Text>
+            <Stack gap="xs">
+              <Text size="sm" fw={500}>Revision Scope</Text>
+              <Group>
+                <SegmentedControl
+                  size="xs"
+                  value={globalRevisionMode}
+                  onChange={(v) => setGlobalRevisionMode(v as RevisionScopeMode)}
+                  data={[
+                    { label: 'Current', value: 'current' },
+                    { label: 'All Revisions', value: 'all' },
+                    { label: 'Specific', value: 'specific' },
+                  ]}
+                />
+                {globalRevisionMode === 'specific' && (
+                  <TextInput
+                    size="xs"
+                    placeholder="Revision ID"
+                    value={globalRevisionInput}
+                    onChange={(e) => setGlobalRevisionInput(e.currentTarget.value)}
+                    style={{ flex: 1, maxWidth: 260 }}
+                  />
+                )}
+              </Group>
+            </Stack>
             <Group>
               <Button
                 variant="light"
@@ -259,9 +318,17 @@ export function MigrationStatus({ resourceNames }: MigrationStatusProps) {
               key={modelName}
               modelName={modelName}
               state={state}
-              onTest={() => handleMigrate(modelName, 'test')}
-              onExecute={() => handleMigrate(modelName, 'execute')}
+              onTest={(scope) => handleMigrate(modelName, 'test', scope)}
+              onExecute={(scope) => handleMigrate(modelName, 'execute', scope)}
               onCancel={() => handleCancel(modelName)}
+              revisionMode={revisionModes[modelName] || 'current'}
+              onRevisionModeChange={(m) =>
+                setRevisionModes((prev) => ({ ...prev, [modelName]: m }))
+              }
+              revisionInput={revisionInputs[modelName] || ''}
+              onRevisionInputChange={(v) =>
+                setRevisionInputs((prev) => ({ ...prev, [modelName]: v }))
+              }
             />
           );
         })}
@@ -275,9 +342,13 @@ export function MigrationStatus({ resourceNames }: MigrationStatusProps) {
 interface ModelMigrationCardProps {
   modelName: string;
   state: ModelMigrationState;
-  onTest: () => void;
-  onExecute: () => void;
+  onTest: (scope?: RevisionScope) => void;
+  onExecute: (scope?: RevisionScope) => void;
   onCancel: () => void;
+  revisionMode: RevisionScopeMode;
+  onRevisionModeChange: (mode: RevisionScopeMode) => void;
+  revisionInput: string;
+  onRevisionInputChange: (value: string) => void;
 }
 
 function ModelMigrationCard({
@@ -286,12 +357,18 @@ function ModelMigrationCard({
   onTest,
   onExecute,
   onCancel,
+  revisionMode,
+  onRevisionModeChange,
+  revisionInput,
+  onRevisionInputChange,
 }: ModelMigrationCardProps) {
   const { running, mode, progressItems, result, error } = state;
   const total = progressItems.length;
   const successCount = progressItems.filter((p) => p.status === 'success').length;
   const failedCount = progressItems.filter((p) => p.status === 'failed').length;
   const skippedCount = progressItems.filter((p) => p.status === 'skipped').length;
+
+  const currentScope = resolveRevisionScope(revisionMode, revisionInput);
 
   return (
     <Card shadow="sm" padding="lg" radius="md" withBorder>
@@ -324,7 +401,7 @@ function ModelMigrationCard({
               variant="light"
               size="xs"
               leftSection={<IconTestPipe size={14} />}
-              onClick={onTest}
+              onClick={() => onTest(currentScope)}
               disabled={running}
             >
               Test
@@ -332,12 +409,36 @@ function ModelMigrationCard({
             <Button
               size="xs"
               leftSection={<IconPlayerPlay size={14} />}
-              onClick={onExecute}
+              onClick={() => onExecute(currentScope)}
               disabled={running}
             >
               Migrate
             </Button>
           </Group>
+        </Group>
+
+        {/* Revision Scope */}
+        <Group gap="xs">
+          <Text size="xs" fw={500} c="dimmed">Revision:</Text>
+          <SegmentedControl
+            size="xs"
+            value={revisionMode}
+            onChange={(v) => onRevisionModeChange(v as RevisionScopeMode)}
+            data={[
+              { label: 'Current', value: 'current' },
+              { label: 'All', value: 'all' },
+              { label: 'Specific', value: 'specific' },
+            ]}
+          />
+          {revisionMode === 'specific' && (
+            <TextInput
+              size="xs"
+              placeholder="Revision ID"
+              value={revisionInput}
+              onChange={(e) => onRevisionInputChange(e.currentTarget.value)}
+              style={{ flex: 1, maxWidth: 220 }}
+            />
+          )}
         </Group>
 
         {/* Error */}

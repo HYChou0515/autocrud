@@ -29,6 +29,24 @@ from autocrud.types import (
 T = TypeVar("T")
 
 
+class MigrateQueryInputs(QueryInputs):
+    """Query parameters for batch migration endpoints.
+
+    Extends the standard query inputs with a ``revision_id`` field that
+    controls which revisions are migrated:
+
+    * ``None`` (default) – migrate only the current revision.
+    * ``"all"`` – migrate every revision of each resource.
+    * Any other string – migrate that specific revision ID.
+    """
+
+    revision_id: str | None = Query(
+        None,
+        description='Revision scope: omit for current revision, '
+        '"all" for every revision, or a specific revision ID.',
+    )
+
+
 class MigrateProgress(msgspec.Struct):
     """遷移進度訊息"""
 
@@ -132,8 +150,22 @@ class MigrateRouteTemplate(BaseRouteTemplate):
         current_user: str,
         current_time: dt.datetime,
         write_back: bool = True,
+        revision_id: str | None = None,
     ) -> AsyncGenerator[MigrateProgress, None]:
-        """遷移資源的生成器"""
+        """遷移資源的生成器。
+
+        Args:
+            resource_manager: The resource manager instance.
+            query: Optional search query to filter resources.
+            current_user: The user performing the migration.
+            current_time: The current timestamp.
+            write_back: Whether to persist the migrated data.
+            revision_id: Controls which revisions to migrate:
+                - ``None`` (default): migrate the current revision only.
+                - ``"all"``: migrate every revision of each resource.
+                - Any other string: migrate that specific revision for
+                  each resource.
+        """
         try:
             with resource_manager.meta_provide(current_user, current_time):
                 # 根據 query 搜尋需要遷移的資源
@@ -147,14 +179,35 @@ class MigrateRouteTemplate(BaseRouteTemplate):
                     )
 
                 for resource_id in resource_ids:
-                    progress = await self._migrate_single_resource(
-                        resource_manager,
-                        resource_id,
-                        current_user,
-                        current_time,
-                        write_back=write_back,
-                    )
-                    yield progress
+                    if revision_id == "all":
+                        # 遷移該資源的所有 revision
+                        revisions = resource_manager.list_revisions(
+                            resource_id
+                            if isinstance(resource_id, str)
+                            else resource_id.resource_id
+                        )
+                        for rev_id in revisions:
+                            progress = await self._migrate_single_resource(
+                                resource_manager,
+                                resource_id
+                                if isinstance(resource_id, str)
+                                else resource_id.resource_id,
+                                current_user,
+                                current_time,
+                                write_back=write_back,
+                                revision_id=rev_id,
+                            )
+                            yield progress
+                    else:
+                        progress = await self._migrate_single_resource(
+                            resource_manager,
+                            resource_id,
+                            current_user,
+                            current_time,
+                            write_back=write_back,
+                            revision_id=revision_id,
+                        )
+                        yield progress
 
         except Exception as e:
             yield MigrateProgress(
@@ -289,13 +342,19 @@ class MigrateRouteTemplate(BaseRouteTemplate):
 
         @router.post(f"/{model_name}/migrate/test", tags=[f"{model_name}"])
         async def test_migrate_resources(
-            query_params: QueryInputs = Query(...),
+            query_params: MigrateQueryInputs = Query(...),
             current_user: str = Depends(self.deps.get_user),
             current_time: dt.datetime = Depends(self.deps.get_now),
         ):
             """
             Test migration for resources with real-time progress updates via http streaming.
             No data will be written back to storage - memory-only testing.
+
+            **Query Parameters:**
+            - `revision_id` (optional): Controls which revisions to test:
+              - Omit: test current revision only (default)
+              - `"all"`: test every revision of each resource
+              - A specific revision ID: test only that revision
             """
             query = build_query(query_params)
 
@@ -307,6 +366,7 @@ class MigrateRouteTemplate(BaseRouteTemplate):
                         current_user,
                         current_time,
                         write_back=False,
+                        revision_id=query_params.revision_id,
                     )
                 ),
                 media_type="application/jsonl+json",
@@ -314,12 +374,18 @@ class MigrateRouteTemplate(BaseRouteTemplate):
 
         @router.post(f"/{model_name}/migrate/execute", tags=[f"{model_name}"])
         async def execute_migrate_resources(
-            query_params: QueryInputs = Query(...),
+            query_params: MigrateQueryInputs = Query(...),
             current_user: str = Depends(self.deps.get_user),
             current_time: dt.datetime = Depends(self.deps.get_now),
         ):
             """
             Execute migration for resources with real-time progress updates via http streaming.
+
+            **Query Parameters:**
+            - `revision_id` (optional): Controls which revisions to migrate:
+              - Omit: migrate current revision only (default)
+              - `"all"`: migrate every revision of each resource
+              - A specific revision ID: migrate only that revision
             """
             query = build_query(query_params)
 
@@ -331,6 +397,7 @@ class MigrateRouteTemplate(BaseRouteTemplate):
                         current_user,
                         current_time,
                         write_back=True,
+                        revision_id=query_params.revision_id,
                     )
                 ),
                 media_type="application/jsonl+json",
