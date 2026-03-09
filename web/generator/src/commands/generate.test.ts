@@ -3884,7 +3884,7 @@ describe('genMigratePage', () => {
     const code = (gen as any).genMigratePage() as string;
 
     expect(code).toContain("import { createFileRoute } from '@tanstack/react-router'");
-    expect(code).toContain("import { MigrationStatus } from '../../lib/components/MigrationStatus'");
+    expect(code).toContain("import { MigrationStatus } from '../../autocrud/lib/components/MigrationStatus'");
     expect(code).toContain("createFileRoute('/autocrud-admin/migrate')");
     expect(code).toContain('MigrationStatus');
   });

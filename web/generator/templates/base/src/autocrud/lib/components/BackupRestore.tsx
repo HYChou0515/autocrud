@@ -37,7 +37,7 @@ import {
   type OnDuplicate,
   type ImportResult,
   type GlobalImportResult,
-} from '../../autocrud/generated/api/backupApi';
+} from '../../generated/api/backupApi';
 
 interface BackupRestoreProps {
   resourceNames: string[];

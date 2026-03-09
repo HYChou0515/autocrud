@@ -41,7 +41,7 @@ import {
   migrateApi,
   type MigrateProgress,
   type MigrateResult,
-} from '../../autocrud/generated/api/migrateApi';
+} from '../../generated/api/migrateApi';
 
 interface MigrationStatusProps {
   resourceNames: string[];
