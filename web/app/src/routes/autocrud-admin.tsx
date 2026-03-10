@@ -1,11 +1,6 @@
 import { createFileRoute, Outlet, Link, useLocation, useNavigate } from '@tanstack/react-router';
 import { AppShell, NavLink, Title, Group, ScrollArea, Text } from '@mantine/core';
-import {
-  getResourceNames,
-  getResource,
-  isAsyncCreateJob,
-  getAsyncCreateJobChildren,
-} from '@/autocrud/lib/resources';
+import { getResourceNames, getResource, isAsyncCreateJob, getAsyncCreateJobChildren } from '@/autocrud/lib/resources';
 import {
   IconHome,
   IconDatabase,

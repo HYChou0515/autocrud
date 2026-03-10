@@ -4,6 +4,7 @@
 # Configurable backend API URL (override with: make gen-app API_URL=http://myhost:9000)
 # Used to fetch OpenAPI spec during generation and as Vite dev proxy target
 API_URL ?= http://localhost:8000
+BASE_PATH ?= /v1/autocrud
 
 # Include test files in generated app (override with: make gen-app INCLUDE_TESTS=1)
 INCLUDE_TESTS ?=
@@ -146,7 +147,7 @@ gen-app: build-gen
 	@echo "📦 安裝 app 依賴..."
 	cd app && pnpm install
 	@echo "🔧 從 AutoCRUD 後端生成代碼... ($(API_URL))"
-	cd app && node ../generator/dist/cli.js generate --url $(API_URL)
+	cd app && node ../generator/dist/cli.js generate --url $(API_URL) --base-path ${BASE_PATH}
 	@echo "✅ App 生成完成！"
 	@echo ""
 	@echo "📝 下一步："

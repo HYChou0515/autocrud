@@ -147,11 +147,7 @@ describe('binaryFormValueToApi', () => {
 
     const result = await binaryFormValueToApi(val);
 
-    expect(client.post).toHaveBeenCalledWith(
-      '/blobs/upload',
-      expect.any(FormData),
-      expect.any(Object),
-    );
+    expect(client.post).toHaveBeenCalledWith('/blobs/upload', expect.any(FormData), expect.any(Object));
     expect(result).toEqual({ file_id: 'uploaded-1', content_type: 'text/plain', size: 12 });
   });
 
@@ -187,11 +183,7 @@ describe('binaryFormValueToApi', () => {
     const result = await binaryFormValueToApi(val);
 
     expect(global.fetch).toHaveBeenCalledWith('https://example.com/file.html');
-    expect(client.post).toHaveBeenCalledWith(
-      '/blobs/upload',
-      expect.any(FormData),
-      expect.any(Object),
-    );
+    expect(client.post).toHaveBeenCalledWith('/blobs/upload', expect.any(FormData), expect.any(Object));
     expect(result).toEqual({ file_id: 'uploaded-3', content_type: 'text/html', size: 11 });
   });
 

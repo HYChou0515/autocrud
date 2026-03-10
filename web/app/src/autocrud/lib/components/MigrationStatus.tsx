@@ -92,7 +92,10 @@ function statusColor(status: string): string {
 type RevisionScopeMode = 'current' | 'all' | 'specific';
 
 /** Resolve UI mode + input to RevisionScope for the API. */
-function resolveRevisionScope(mode: RevisionScopeMode, specificId: string): RevisionScope {
+function resolveRevisionScope(
+  mode: RevisionScopeMode,
+  specificId: string,
+): RevisionScope {
   switch (mode) {
     case 'all':
       return 'all';
@@ -264,9 +267,7 @@ export function MigrationStatus({ resourceNames }: MigrationStatusProps) {
               Run test or execute migration for all models at once.
             </Text>
             <Stack gap="xs">
-              <Text size="sm" fw={500}>
-                Revision Scope
-              </Text>
+              <Text size="sm" fw={500}>Revision Scope</Text>
               <Group>
                 <SegmentedControl
                   size="xs"
@@ -418,9 +419,7 @@ function ModelMigrationCard({
 
         {/* Revision Scope */}
         <Group gap="xs">
-          <Text size="xs" fw={500} c="dimmed">
-            Revision:
-          </Text>
+          <Text size="xs" fw={500} c="dimmed">Revision:</Text>
           <SegmentedControl
             size="xs"
             value={revisionMode}

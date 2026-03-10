@@ -335,10 +335,7 @@ export function useResourceForm<T extends Record<string, any>>({
       if (config.zodSchema) {
         const result = config.zodSchema.safeParse(processed);
         if (!result.success) {
-          console.warn(
-            '[useResourceForm] Zod validation failed after binary processing:',
-            result.error.issues,
-          );
+          console.warn('[useResourceForm] Zod validation failed after binary processing:', result.error.issues);
           for (const issue of result.error.issues) {
             form.setFieldError(issue.path.join('.'), issue.message);
           }

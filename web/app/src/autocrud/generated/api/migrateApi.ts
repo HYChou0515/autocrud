@@ -106,9 +106,9 @@ function buildMigrateUrl(
 
 /** Revision scope for batch migration. */
 export type RevisionScope =
-  | null // current revision only (default)
-  | 'all' // every revision of each resource
-  | string; // specific revision ID
+  | null       // current revision only (default)
+  | 'all'      // every revision of each resource
+  | string;    // specific revision ID
 
 export const migrateApi = {
   /**
@@ -123,11 +123,7 @@ export const migrateApi = {
     signal?: AbortSignal,
     revisionId?: RevisionScope,
   ): Promise<MigrateResult> =>
-    streamMigrate(
-      buildMigrateUrl(`${getBaseUrl()}`, modelName, 'test', revisionId),
-      onProgress,
-      signal,
-    ),
+    streamMigrate(buildMigrateUrl(`${getBaseUrl()}/v1/autocrud`, modelName, 'test', revisionId), onProgress, signal),
 
   /**
    * Execute migration for a model.
@@ -141,9 +137,5 @@ export const migrateApi = {
     signal?: AbortSignal,
     revisionId?: RevisionScope,
   ): Promise<MigrateResult> =>
-    streamMigrate(
-      buildMigrateUrl(`${getBaseUrl()}`, modelName, 'execute', revisionId),
-      onProgress,
-      signal,
-    ),
+    streamMigrate(buildMigrateUrl(`${getBaseUrl()}/v1/autocrud`, modelName, 'execute', revisionId), onProgress, signal),
 };

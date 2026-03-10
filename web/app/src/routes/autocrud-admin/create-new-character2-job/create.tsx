@@ -10,10 +10,5 @@ export const Route = createFileRoute('/autocrud-admin/create-new-character2-job/
 
 function CreatePage() {
   const config = getResource('create-new-character2-job')!;
-  return (
-    <ResourceCreate<CreateNewCharacter2CharacterJob>
-      config={config}
-      basePath="/autocrud-admin/create-new-character2-job"
-    />
-  );
+  return <ResourceCreate<CreateNewCharacter2CharacterJob> config={config} basePath="/autocrud-admin/create-new-character2-job" />;
 }
