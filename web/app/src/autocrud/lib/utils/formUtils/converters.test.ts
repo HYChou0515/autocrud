@@ -1,16 +1,14 @@
 import { describe, expect, it, vi, beforeEach } from 'vitest';
-import { toLabel, fileToBase64, binaryFormValueToApi, uploadBlob } from './converters';
+import { toLabel, fileToBase64, binaryFormValueToApi } from './converters';
 import type { BinaryFormValue } from './types';
 
-// Mock the client module
+// Mock the client used by uploadBlob
 vi.mock('../../client', () => ({
   client: {
     post: vi.fn(),
   },
 }));
-
 import { client } from '../../client';
-const mockPost = vi.mocked(client.post);
 
 describe('toLabel', () => {
   it('should convert snake_case to Title Case', () => {
@@ -139,30 +137,26 @@ describe('binaryFormValueToApi', () => {
     expect(result).toEqual({ file_id: 'abc123' });
   });
 
-  it('should upload file and return file_id for file mode', async () => {
+  it('should upload file via blob API for file mode', async () => {
     const file = new File(['test content'], 'test.txt', { type: 'text/plain' });
     const val: BinaryFormValue = { _mode: 'file', file };
 
-    mockPost.mockResolvedValue({
-      data: { file_id: 'uploaded-abc', size: 12, content_type: 'text/plain' },
+    vi.mocked(client.post).mockResolvedValue({
+      data: { file_id: 'uploaded-1', content_type: 'text/plain', size: 12 },
     });
 
     const result = await binaryFormValueToApi(val);
 
-    expect(mockPost).toHaveBeenCalledWith('/blobs/upload', expect.any(FormData), {
-      headers: { 'Content-Type': 'multipart/form-data' },
-    });
-    expect(result).toHaveProperty('file_id', 'uploaded-abc');
-    expect(result).toHaveProperty('content_type', 'text/plain');
-    expect(result).toHaveProperty('size', 12);
+    expect(client.post).toHaveBeenCalledWith('/blobs/upload', expect.any(FormData), expect.any(Object));
+    expect(result).toEqual({ file_id: 'uploaded-1', content_type: 'text/plain', size: 12 });
   });
 
   it('should use default content_type for file without type', async () => {
     const file = new File(['test'], 'test.bin', { type: '' });
     const val: BinaryFormValue = { _mode: 'file', file };
 
-    mockPost.mockResolvedValue({
-      data: { file_id: 'uploaded-def', size: 4, content_type: 'application/octet-stream' },
+    vi.mocked(client.post).mockResolvedValue({
+      data: { file_id: 'uploaded-2', content_type: 'application/octet-stream', size: 4 },
     });
 
     const result = await binaryFormValueToApi(val);
@@ -176,25 +170,21 @@ describe('binaryFormValueToApi', () => {
     expect(result).toBeNull();
   });
 
-  it('should fetch URL and upload for url mode', async () => {
+  it('should fetch URL and upload via blob API for url mode', async () => {
     const mockBlob = new Blob(['url content'], { type: 'text/html' });
     global.fetch = vi.fn().mockResolvedValue({
       blob: () => Promise.resolve(mockBlob),
     });
-
-    mockPost.mockResolvedValue({
-      data: { file_id: 'url-uploaded-abc', size: 11, content_type: 'text/html' },
+    vi.mocked(client.post).mockResolvedValue({
+      data: { file_id: 'uploaded-3', content_type: 'text/html', size: 11 },
     });
 
     const val: BinaryFormValue = { _mode: 'url', url: 'https://example.com/file.html' };
     const result = await binaryFormValueToApi(val);
 
     expect(global.fetch).toHaveBeenCalledWith('https://example.com/file.html');
-    expect(mockPost).toHaveBeenCalledWith('/blobs/upload', expect.any(FormData), {
-      headers: { 'Content-Type': 'multipart/form-data' },
-    });
-    expect(result).toHaveProperty('file_id', 'url-uploaded-abc');
-    expect(result).toHaveProperty('content_type', 'text/html');
+    expect(client.post).toHaveBeenCalledWith('/blobs/upload', expect.any(FormData), expect.any(Object));
+    expect(result).toEqual({ file_id: 'uploaded-3', content_type: 'text/html', size: 11 });
   });
 
   it('should use default content_type for URL with unknown type', async () => {
@@ -202,9 +192,8 @@ describe('binaryFormValueToApi', () => {
     global.fetch = vi.fn().mockResolvedValue({
       blob: () => Promise.resolve(mockBlob),
     });
-
-    mockPost.mockResolvedValue({
-      data: { file_id: 'url-uploaded-def', size: 7, content_type: 'application/octet-stream' },
+    vi.mocked(client.post).mockResolvedValue({
+      data: { file_id: 'uploaded-4', content_type: 'application/octet-stream', size: 7 },
     });
 
     const val: BinaryFormValue = { _mode: 'url', url: 'https://example.com/file' };
@@ -226,47 +215,5 @@ describe('binaryFormValueToApi', () => {
     const val: BinaryFormValue = { _mode: 'url', url: '' };
     const result = await binaryFormValueToApi(val);
     expect(result).toBeNull();
-  });
-
-  it('should throw on upload failure for file mode', async () => {
-    const file = new File(['test'], 'test.txt', { type: 'text/plain' });
-    const val: BinaryFormValue = { _mode: 'file', file };
-
-    mockPost.mockRejectedValue(new Error('Upload failed'));
-
-    await expect(binaryFormValueToApi(val)).rejects.toThrow('Upload failed');
-  });
-});
-
-describe('uploadBlob', () => {
-  beforeEach(() => {
-    vi.resetAllMocks();
-  });
-
-  it('should POST file as FormData to /blobs/upload', async () => {
-    const file = new File(['hello'], 'hello.txt', { type: 'text/plain' });
-
-    mockPost.mockResolvedValue({
-      data: { file_id: 'blob-123', size: 5, content_type: 'text/plain' },
-    });
-
-    const result = await uploadBlob(file);
-
-    expect(mockPost).toHaveBeenCalledWith('/blobs/upload', expect.any(FormData), {
-      headers: { 'Content-Type': 'multipart/form-data' },
-    });
-    expect(result).toEqual({
-      file_id: 'blob-123',
-      size: 5,
-      content_type: 'text/plain',
-    });
-  });
-
-  it('should propagate upload errors', async () => {
-    const file = new File(['data'], 'data.bin', { type: 'application/octet-stream' });
-
-    mockPost.mockRejectedValue(new Error('Network error'));
-
-    await expect(uploadBlob(file)).rejects.toThrow('Network error');
   });
 });

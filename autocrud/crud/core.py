@@ -152,6 +152,7 @@ class _PendingCreateAction:
     label: str
     handler: Callable
     async_mode: Literal["job", "background"] | None = None
+    job_name: str | None = None
 
 
 class LazyJobHandler:
@@ -712,6 +713,7 @@ class AutoCRUD:
         path: str | None = None,
         label: str | None = None,
         async_mode: Literal["job", "background"] | None = None,
+        job_name: str | None = None,
     ) -> Callable:
         """Decorator to register a custom create action for a resource.
 
@@ -740,6 +742,10 @@ class AutoCRUD:
             async_mode: Execution mode for the action.  ``None`` (default)
                 executes synchronously.  ``'job'`` executes asynchronously
                 via the message queue system.
+            job_name: Custom resource name for the auto-generated Job model
+                (e.g. ``"my-custom-job"``).  If ``None``, derived automatically
+                from *path* and *resource_name*.  Only meaningful when
+                ``async_mode='job'``.
 
         Returns:
             A decorator that registers the handler and returns it unchanged.
@@ -782,6 +788,7 @@ class AutoCRUD:
                     label=action_label,
                     handler=func,
                     async_mode=async_mode,
+                    job_name=job_name,
                 )
             )
             return func
@@ -1569,7 +1576,7 @@ class AutoCRUD:
                 info["asyncMode"] = action.async_mode
                 from autocrud.crud.async_job_builder import derive_job_resource_name
 
-                info["jobResourceName"] = derive_job_resource_name(
+                info["jobResourceName"] = action.job_name or derive_job_resource_name(
                     action.path, action.resource_name
                 )
             # Warn when two actions for the same resource share the same label —
@@ -1875,7 +1882,7 @@ class AutoCRUD:
                 resource_name=action.resource_name,
                 payload_type=payload_type,
             )
-            job_resource_name = derive_job_resource_name(
+            job_resource_name = action.job_name or derive_job_resource_name(
                 action.path, action.resource_name
             )
 
@@ -1988,6 +1995,11 @@ class AutoCRUD:
                 auto_payload_type,  # None for explicit Struct, else the auto type
                 param_conversions if _is_auto_payload else None,
             )
+
+            # Populate reverse mapping on target RM so that
+            # target_rm.start_consume(custom_creation=...) can locate jobs.
+            job_rm = self.resource_managers[job_resource_name]
+            target_rm.register_async_create_job(job_resource_name, job_rm)
 
     def _apply_create_actions(self, router: APIRouter) -> None:
         """Register routes for all pending custom create actions."""

@@ -214,7 +214,7 @@ export class Generator {
       if (!bodySchema) continue;
 
       if (bodySchema.$ref) {
-        resourcePaths.set(resourceName, bodySchema.$ref.split('/').pop()!);
+        resourcePaths.set(resourceName, sanitizeTsName(bodySchema.$ref.split('/').pop()!));
       } else if (hasRefMembers(bodySchema.anyOf) || hasRefMembers(bodySchema.oneOf)) {
         // Union type: POST body is inline anyOf/oneOf with $ref members
         unionResourceSchemas.set(resourceName, bodySchema);
@@ -475,7 +475,7 @@ export class Generator {
     if (disc?.mapping) {
       // Use explicit discriminator mapping
       for (const [tag, refPath] of Object.entries<string>(disc.mapping)) {
-        const schemaName = refPath.split('/').pop()!;
+        const schemaName = sanitizeTsName(refPath.split('/').pop()!);
         const schema = this.resolveRef(refPath);
         const variantFields = this.parseSchemaFields(schema, discriminatorField);
 
@@ -485,7 +485,7 @@ export class Generator {
     } else {
       // Infer from $ref members
       for (const member of refMembers) {
-        const schemaName = member.$ref.split('/').pop()!;
+        const schemaName = sanitizeTsName(member.$ref.split('/').pop()!);
         const schema = this.resolveRef(member.$ref);
         const variantFields: Field[] = [];
         let tag = schemaName;
@@ -631,8 +631,10 @@ export class Generator {
     if (!ref.startsWith('#/components/schemas/')) {
       return null;
     }
-    const schemaName = ref.split('/').pop();
-    return this.spec.components?.schemas?.[schemaName!] ?? null;
+    const schemaName = ref.split('/').pop()!;
+    // Try direct lookup first, then fallback with dots→underscores
+    // (OpenAPI discriminator mappings may use dots while schema keys use underscores)
+    return this.spec.components?.schemas?.[schemaName] ?? this.spec.components?.schemas?.[sanitizeTsName(schemaName)] ?? null;
   }
 
   /**
@@ -710,7 +712,7 @@ export class Generator {
     const variantTsTypes: string[] = [];
 
     for (const [tag, refPath] of Object.entries<string>(disc.mapping || {})) {
-      const schemaName = refPath.split('/').pop()!;
+      const schemaName = sanitizeTsName(refPath.split('/').pop()!);
       const schema = this.resolveRef(refPath);
       const variantFields = this.parseSchemaFields(schema, discriminatorField);
 
@@ -828,7 +830,7 @@ export class Generator {
     const variants: UnionVariant[] = [];
 
     for (const [tag, refPath] of Object.entries<string>(disc.mapping || {})) {
-      const schemaName = refPath.split('/').pop()!;
+      const schemaName = sanitizeTsName(refPath.split('/').pop()!);
       const schema = this.resolveRef(refPath);
       const variantFields = this.parseSchemaFields(schema, discriminatorField);
 
@@ -893,7 +895,7 @@ export class Generator {
           let resolvedItems = itemSchema;
           let schemaName = 'Array';
           if (itemSchema.$ref) {
-            schemaName = itemSchema.$ref.split('/').pop()!;
+            schemaName = sanitizeTsName(itemSchema.$ref.split('/').pop()!);
             const resolved = this.resolveRef(itemSchema.$ref);
             if (resolved) resolvedItems = resolved;
           }
@@ -909,7 +911,7 @@ export class Generator {
           variantTsTypes.push(`${schemaName}[]`);
         }
       } else if (t.$ref) {
-        const schemaName = t.$ref.split('/').pop()!;
+        const schemaName = sanitizeTsName(t.$ref.split('/').pop()!);
         const resolved = this.resolveRef(t.$ref);
         const variantFields = this.parseSchemaFields(resolved);
         const tag = makeUniqueTag(schemaName);
@@ -952,7 +954,7 @@ export class Generator {
         let valueSchema = t.additionalProperties;
         let valueName = 'Any';
         if (valueSchema.$ref) {
-          valueName = valueSchema.$ref.split('/').pop()!;
+          valueName = sanitizeTsName(valueSchema.$ref.split('/').pop()!);
           const resolved = this.resolveRef(valueSchema.$ref);
           if (resolved) valueSchema = resolved;
         } else if (valueSchema.type) {
@@ -1010,7 +1012,7 @@ export class Generator {
 
     // Handle $ref references
     if (prop.$ref) {
-      const refName = prop.$ref.split('/').pop()!;
+      const refName = sanitizeTsName(prop.$ref.split('/').pop()!);
       const refSchema = this.resolveRef(prop.$ref);
       if (refSchema) {
         // Track enum schema name so we can use it as the TS type
@@ -1081,7 +1083,7 @@ export class Generator {
         prop = types[0];
         // Resolve $ref in anyOf
         if (prop.$ref) {
-          const refName = prop.$ref.split('/').pop()!;
+          const refName = sanitizeTsName(prop.$ref.split('/').pop()!);
           const refSchema = this.resolveRef(prop.$ref);
           if (refSchema) {
             if (refSchema.enum) {
@@ -1156,7 +1158,7 @@ export class Generator {
         const variantTsTypes: string[] = [];
 
         for (const [tag, refPath] of Object.entries<string>(disc.mapping || {})) {
-          const schemaName = refPath.split('/').pop()!;
+          const schemaName = sanitizeTsName(refPath.split('/').pop()!);
           const itemSchema = this.resolveRef(refPath);
           const variantFields = this.parseSchemaFields(itemSchema, discriminatorField);
 
@@ -2159,6 +2161,16 @@ function DetailPage() {
 }
 
 // Helper functions
+
+/**
+ * Sanitize a schema name from OpenAPI $ref for use as a TypeScript identifier.
+ * OpenAPI discriminator mappings may use dots (e.g. `__main__.ActiveSkillData`)
+ * while the schema keys use underscores (`__main___ActiveSkillData`).
+ */
+function sanitizeTsName(name: string): string {
+  return name.replace(/\./g, '_');
+}
+
 function toPascal(s: string) {
   return s
     .split(/[-_\s]+/)

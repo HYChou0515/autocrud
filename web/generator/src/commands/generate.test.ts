@@ -3769,7 +3769,7 @@ describe('genMigrateApiClient', () => {
 
     // With empty basePath, buildMigrateUrl base is `${getBaseUrl()}`
     expect(code).toContain('buildMigrateUrl(`${getBaseUrl()}`');
-    expect(code).toContain("/migrate/");
+    expect(code).toContain('/migrate/');
   });
 
   it('includes basePath in migrate URLs when basePath is set', () => {
@@ -3781,7 +3781,7 @@ describe('genMigrateApiClient', () => {
 
     // With basePath=/v1, buildMigrateUrl base is `${getBaseUrl()}/v1`
     expect(code).toContain('buildMigrateUrl(`${getBaseUrl()}/v1`');
-    expect(code).toContain("/migrate/");
+    expect(code).toContain('/migrate/');
   });
 });
 

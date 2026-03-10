@@ -8,251 +8,358 @@
 // You should NOT make any changes in this file as it will be overwritten.
 // Additionally, you should also exclude this file from your linter and/or formatter to prevent it from being checked or modified.
 
-import { Route as rootRouteImport } from './routes/__root';
-import { Route as AutocrudAdminRouteImport } from './routes/autocrud-admin';
-import { Route as IndexRouteImport } from './routes/index';
-import { Route as AutocrudAdminIndexRouteImport } from './routes/autocrud-admin/index';
-import { Route as AutocrudAdminMigrateRouteImport } from './routes/autocrud-admin/migrate';
-import { Route as AutocrudAdminBackupRouteImport } from './routes/autocrud-admin/backup';
-import { Route as AutocrudAdminSkillIndexRouteImport } from './routes/autocrud-admin/skill/index';
-import { Route as AutocrudAdminPetIndexRouteImport } from './routes/autocrud-admin/pet/index';
-import { Route as AutocrudAdminPetJobIndexRouteImport } from './routes/autocrud-admin/pet-job/index';
-import { Route as AutocrudAdminGuildIndexRouteImport } from './routes/autocrud-admin/guild/index';
-import { Route as AutocrudAdminGameEventIndexRouteImport } from './routes/autocrud-admin/game-event/index';
-import { Route as AutocrudAdminEquipmentIndexRouteImport } from './routes/autocrud-admin/equipment/index';
-import { Route as AutocrudAdminCharacterIndexRouteImport } from './routes/autocrud-admin/character/index';
-import { Route as AutocrudAdminSkillCreateRouteImport } from './routes/autocrud-admin/skill/create';
-import { Route as AutocrudAdminSkillResourceIdRouteImport } from './routes/autocrud-admin/skill/$resourceId';
-import { Route as AutocrudAdminPetCreateRouteImport } from './routes/autocrud-admin/pet/create';
-import { Route as AutocrudAdminPetResourceIdRouteImport } from './routes/autocrud-admin/pet/$resourceId';
-import { Route as AutocrudAdminPetJobCreateRouteImport } from './routes/autocrud-admin/pet-job/create';
-import { Route as AutocrudAdminPetJobResourceIdRouteImport } from './routes/autocrud-admin/pet-job/$resourceId';
-import { Route as AutocrudAdminGuildCreateRouteImport } from './routes/autocrud-admin/guild/create';
-import { Route as AutocrudAdminGuildResourceIdRouteImport } from './routes/autocrud-admin/guild/$resourceId';
-import { Route as AutocrudAdminGameEventCreateRouteImport } from './routes/autocrud-admin/game-event/create';
-import { Route as AutocrudAdminGameEventResourceIdRouteImport } from './routes/autocrud-admin/game-event/$resourceId';
-import { Route as AutocrudAdminEquipmentCreateRouteImport } from './routes/autocrud-admin/equipment/create';
-import { Route as AutocrudAdminEquipmentResourceIdRouteImport } from './routes/autocrud-admin/equipment/$resourceId';
-import { Route as AutocrudAdminCharacterCreateRouteImport } from './routes/autocrud-admin/character/create';
-import { Route as AutocrudAdminCharacterResourceIdRouteImport } from './routes/autocrud-admin/character/$resourceId';
+import { Route as rootRouteImport } from './routes/__root'
+import { Route as AutocrudAdminRouteImport } from './routes/autocrud-admin'
+import { Route as IndexRouteImport } from './routes/index'
+import { Route as AutocrudAdminIndexRouteImport } from './routes/autocrud-admin/index'
+import { Route as AutocrudAdminMigrateRouteImport } from './routes/autocrud-admin/migrate'
+import { Route as AutocrudAdminBackupRouteImport } from './routes/autocrud-admin/backup'
+import { Route as AutocrudAdminSkillIndexRouteImport } from './routes/autocrud-admin/skill/index'
+import { Route as AutocrudAdminPetIndexRouteImport } from './routes/autocrud-admin/pet/index'
+import { Route as AutocrudAdminPetJobIndexRouteImport } from './routes/autocrud-admin/pet-job/index'
+import { Route as AutocrudAdminNewChar1JobIndexRouteImport } from './routes/autocrud-admin/new-char1-job/index'
+import { Route as AutocrudAdminGuildIndexRouteImport } from './routes/autocrud-admin/guild/index'
+import { Route as AutocrudAdminGameEventIndexRouteImport } from './routes/autocrud-admin/game-event/index'
+import { Route as AutocrudAdminEquipmentIndexRouteImport } from './routes/autocrud-admin/equipment/index'
+import { Route as AutocrudAdminCreateNewCharacter4JobIndexRouteImport } from './routes/autocrud-admin/create-new-character4-job/index'
+import { Route as AutocrudAdminCreateNewCharacter2JobIndexRouteImport } from './routes/autocrud-admin/create-new-character2-job/index'
+import { Route as AutocrudAdminCharacterIndexRouteImport } from './routes/autocrud-admin/character/index'
+import { Route as AutocrudAdminSkillCreateRouteImport } from './routes/autocrud-admin/skill/create'
+import { Route as AutocrudAdminSkillResourceIdRouteImport } from './routes/autocrud-admin/skill/$resourceId'
+import { Route as AutocrudAdminPetCreateRouteImport } from './routes/autocrud-admin/pet/create'
+import { Route as AutocrudAdminPetResourceIdRouteImport } from './routes/autocrud-admin/pet/$resourceId'
+import { Route as AutocrudAdminPetJobCreateRouteImport } from './routes/autocrud-admin/pet-job/create'
+import { Route as AutocrudAdminPetJobResourceIdRouteImport } from './routes/autocrud-admin/pet-job/$resourceId'
+import { Route as AutocrudAdminNewChar1JobCreateRouteImport } from './routes/autocrud-admin/new-char1-job/create'
+import { Route as AutocrudAdminNewChar1JobResourceIdRouteImport } from './routes/autocrud-admin/new-char1-job/$resourceId'
+import { Route as AutocrudAdminGuildCreateRouteImport } from './routes/autocrud-admin/guild/create'
+import { Route as AutocrudAdminGuildResourceIdRouteImport } from './routes/autocrud-admin/guild/$resourceId'
+import { Route as AutocrudAdminGameEventCreateRouteImport } from './routes/autocrud-admin/game-event/create'
+import { Route as AutocrudAdminGameEventResourceIdRouteImport } from './routes/autocrud-admin/game-event/$resourceId'
+import { Route as AutocrudAdminEquipmentCreateRouteImport } from './routes/autocrud-admin/equipment/create'
+import { Route as AutocrudAdminEquipmentResourceIdRouteImport } from './routes/autocrud-admin/equipment/$resourceId'
+import { Route as AutocrudAdminCreateNewCharacter4JobCreateRouteImport } from './routes/autocrud-admin/create-new-character4-job/create'
+import { Route as AutocrudAdminCreateNewCharacter4JobResourceIdRouteImport } from './routes/autocrud-admin/create-new-character4-job/$resourceId'
+import { Route as AutocrudAdminCreateNewCharacter2JobCreateRouteImport } from './routes/autocrud-admin/create-new-character2-job/create'
+import { Route as AutocrudAdminCreateNewCharacter2JobResourceIdRouteImport } from './routes/autocrud-admin/create-new-character2-job/$resourceId'
+import { Route as AutocrudAdminCharacterCreateRouteImport } from './routes/autocrud-admin/character/create'
+import { Route as AutocrudAdminCharacterResourceIdRouteImport } from './routes/autocrud-admin/character/$resourceId'
 
 const AutocrudAdminRoute = AutocrudAdminRouteImport.update({
   id: '/autocrud-admin',
   path: '/autocrud-admin',
   getParentRoute: () => rootRouteImport,
-} as any);
+} as any)
 const IndexRoute = IndexRouteImport.update({
   id: '/',
   path: '/',
   getParentRoute: () => rootRouteImport,
-} as any);
+} as any)
 const AutocrudAdminIndexRoute = AutocrudAdminIndexRouteImport.update({
   id: '/',
   path: '/',
   getParentRoute: () => AutocrudAdminRoute,
-} as any);
+} as any)
 const AutocrudAdminMigrateRoute = AutocrudAdminMigrateRouteImport.update({
   id: '/migrate',
   path: '/migrate',
   getParentRoute: () => AutocrudAdminRoute,
-} as any);
+} as any)
 const AutocrudAdminBackupRoute = AutocrudAdminBackupRouteImport.update({
   id: '/backup',
   path: '/backup',
   getParentRoute: () => AutocrudAdminRoute,
-} as any);
+} as any)
 const AutocrudAdminSkillIndexRoute = AutocrudAdminSkillIndexRouteImport.update({
   id: '/skill/',
   path: '/skill/',
   getParentRoute: () => AutocrudAdminRoute,
-} as any);
+} as any)
 const AutocrudAdminPetIndexRoute = AutocrudAdminPetIndexRouteImport.update({
   id: '/pet/',
   path: '/pet/',
   getParentRoute: () => AutocrudAdminRoute,
-} as any);
-const AutocrudAdminPetJobIndexRoute = AutocrudAdminPetJobIndexRouteImport.update({
-  id: '/pet-job/',
-  path: '/pet-job/',
-  getParentRoute: () => AutocrudAdminRoute,
-} as any);
+} as any)
+const AutocrudAdminPetJobIndexRoute =
+  AutocrudAdminPetJobIndexRouteImport.update({
+    id: '/pet-job/',
+    path: '/pet-job/',
+    getParentRoute: () => AutocrudAdminRoute,
+  } as any)
+const AutocrudAdminNewChar1JobIndexRoute =
+  AutocrudAdminNewChar1JobIndexRouteImport.update({
+    id: '/new-char1-job/',
+    path: '/new-char1-job/',
+    getParentRoute: () => AutocrudAdminRoute,
+  } as any)
 const AutocrudAdminGuildIndexRoute = AutocrudAdminGuildIndexRouteImport.update({
   id: '/guild/',
   path: '/guild/',
   getParentRoute: () => AutocrudAdminRoute,
-} as any);
-const AutocrudAdminGameEventIndexRoute = AutocrudAdminGameEventIndexRouteImport.update({
-  id: '/game-event/',
-  path: '/game-event/',
-  getParentRoute: () => AutocrudAdminRoute,
-} as any);
-const AutocrudAdminEquipmentIndexRoute = AutocrudAdminEquipmentIndexRouteImport.update({
-  id: '/equipment/',
-  path: '/equipment/',
-  getParentRoute: () => AutocrudAdminRoute,
-} as any);
-const AutocrudAdminCharacterIndexRoute = AutocrudAdminCharacterIndexRouteImport.update({
-  id: '/character/',
-  path: '/character/',
-  getParentRoute: () => AutocrudAdminRoute,
-} as any);
-const AutocrudAdminSkillCreateRoute = AutocrudAdminSkillCreateRouteImport.update({
-  id: '/skill/create',
-  path: '/skill/create',
-  getParentRoute: () => AutocrudAdminRoute,
-} as any);
-const AutocrudAdminSkillResourceIdRoute = AutocrudAdminSkillResourceIdRouteImport.update({
-  id: '/skill/$resourceId',
-  path: '/skill/$resourceId',
-  getParentRoute: () => AutocrudAdminRoute,
-} as any);
+} as any)
+const AutocrudAdminGameEventIndexRoute =
+  AutocrudAdminGameEventIndexRouteImport.update({
+    id: '/game-event/',
+    path: '/game-event/',
+    getParentRoute: () => AutocrudAdminRoute,
+  } as any)
+const AutocrudAdminEquipmentIndexRoute =
+  AutocrudAdminEquipmentIndexRouteImport.update({
+    id: '/equipment/',
+    path: '/equipment/',
+    getParentRoute: () => AutocrudAdminRoute,
+  } as any)
+const AutocrudAdminCreateNewCharacter4JobIndexRoute =
+  AutocrudAdminCreateNewCharacter4JobIndexRouteImport.update({
+    id: '/create-new-character4-job/',
+    path: '/create-new-character4-job/',
+    getParentRoute: () => AutocrudAdminRoute,
+  } as any)
+const AutocrudAdminCreateNewCharacter2JobIndexRoute =
+  AutocrudAdminCreateNewCharacter2JobIndexRouteImport.update({
+    id: '/create-new-character2-job/',
+    path: '/create-new-character2-job/',
+    getParentRoute: () => AutocrudAdminRoute,
+  } as any)
+const AutocrudAdminCharacterIndexRoute =
+  AutocrudAdminCharacterIndexRouteImport.update({
+    id: '/character/',
+    path: '/character/',
+    getParentRoute: () => AutocrudAdminRoute,
+  } as any)
+const AutocrudAdminSkillCreateRoute =
+  AutocrudAdminSkillCreateRouteImport.update({
+    id: '/skill/create',
+    path: '/skill/create',
+    getParentRoute: () => AutocrudAdminRoute,
+  } as any)
+const AutocrudAdminSkillResourceIdRoute =
+  AutocrudAdminSkillResourceIdRouteImport.update({
+    id: '/skill/$resourceId',
+    path: '/skill/$resourceId',
+    getParentRoute: () => AutocrudAdminRoute,
+  } as any)
 const AutocrudAdminPetCreateRoute = AutocrudAdminPetCreateRouteImport.update({
   id: '/pet/create',
   path: '/pet/create',
   getParentRoute: () => AutocrudAdminRoute,
-} as any);
-const AutocrudAdminPetResourceIdRoute = AutocrudAdminPetResourceIdRouteImport.update({
-  id: '/pet/$resourceId',
-  path: '/pet/$resourceId',
-  getParentRoute: () => AutocrudAdminRoute,
-} as any);
-const AutocrudAdminPetJobCreateRoute = AutocrudAdminPetJobCreateRouteImport.update({
-  id: '/pet-job/create',
-  path: '/pet-job/create',
-  getParentRoute: () => AutocrudAdminRoute,
-} as any);
-const AutocrudAdminPetJobResourceIdRoute = AutocrudAdminPetJobResourceIdRouteImport.update({
-  id: '/pet-job/$resourceId',
-  path: '/pet-job/$resourceId',
-  getParentRoute: () => AutocrudAdminRoute,
-} as any);
-const AutocrudAdminGuildCreateRoute = AutocrudAdminGuildCreateRouteImport.update({
-  id: '/guild/create',
-  path: '/guild/create',
-  getParentRoute: () => AutocrudAdminRoute,
-} as any);
-const AutocrudAdminGuildResourceIdRoute = AutocrudAdminGuildResourceIdRouteImport.update({
-  id: '/guild/$resourceId',
-  path: '/guild/$resourceId',
-  getParentRoute: () => AutocrudAdminRoute,
-} as any);
-const AutocrudAdminGameEventCreateRoute = AutocrudAdminGameEventCreateRouteImport.update({
-  id: '/game-event/create',
-  path: '/game-event/create',
-  getParentRoute: () => AutocrudAdminRoute,
-} as any);
-const AutocrudAdminGameEventResourceIdRoute = AutocrudAdminGameEventResourceIdRouteImport.update({
-  id: '/game-event/$resourceId',
-  path: '/game-event/$resourceId',
-  getParentRoute: () => AutocrudAdminRoute,
-} as any);
-const AutocrudAdminEquipmentCreateRoute = AutocrudAdminEquipmentCreateRouteImport.update({
-  id: '/equipment/create',
-  path: '/equipment/create',
-  getParentRoute: () => AutocrudAdminRoute,
-} as any);
-const AutocrudAdminEquipmentResourceIdRoute = AutocrudAdminEquipmentResourceIdRouteImport.update({
-  id: '/equipment/$resourceId',
-  path: '/equipment/$resourceId',
-  getParentRoute: () => AutocrudAdminRoute,
-} as any);
-const AutocrudAdminCharacterCreateRoute = AutocrudAdminCharacterCreateRouteImport.update({
-  id: '/character/create',
-  path: '/character/create',
-  getParentRoute: () => AutocrudAdminRoute,
-} as any);
-const AutocrudAdminCharacterResourceIdRoute = AutocrudAdminCharacterResourceIdRouteImport.update({
-  id: '/character/$resourceId',
-  path: '/character/$resourceId',
-  getParentRoute: () => AutocrudAdminRoute,
-} as any);
+} as any)
+const AutocrudAdminPetResourceIdRoute =
+  AutocrudAdminPetResourceIdRouteImport.update({
+    id: '/pet/$resourceId',
+    path: '/pet/$resourceId',
+    getParentRoute: () => AutocrudAdminRoute,
+  } as any)
+const AutocrudAdminPetJobCreateRoute =
+  AutocrudAdminPetJobCreateRouteImport.update({
+    id: '/pet-job/create',
+    path: '/pet-job/create',
+    getParentRoute: () => AutocrudAdminRoute,
+  } as any)
+const AutocrudAdminPetJobResourceIdRoute =
+  AutocrudAdminPetJobResourceIdRouteImport.update({
+    id: '/pet-job/$resourceId',
+    path: '/pet-job/$resourceId',
+    getParentRoute: () => AutocrudAdminRoute,
+  } as any)
+const AutocrudAdminNewChar1JobCreateRoute =
+  AutocrudAdminNewChar1JobCreateRouteImport.update({
+    id: '/new-char1-job/create',
+    path: '/new-char1-job/create',
+    getParentRoute: () => AutocrudAdminRoute,
+  } as any)
+const AutocrudAdminNewChar1JobResourceIdRoute =
+  AutocrudAdminNewChar1JobResourceIdRouteImport.update({
+    id: '/new-char1-job/$resourceId',
+    path: '/new-char1-job/$resourceId',
+    getParentRoute: () => AutocrudAdminRoute,
+  } as any)
+const AutocrudAdminGuildCreateRoute =
+  AutocrudAdminGuildCreateRouteImport.update({
+    id: '/guild/create',
+    path: '/guild/create',
+    getParentRoute: () => AutocrudAdminRoute,
+  } as any)
+const AutocrudAdminGuildResourceIdRoute =
+  AutocrudAdminGuildResourceIdRouteImport.update({
+    id: '/guild/$resourceId',
+    path: '/guild/$resourceId',
+    getParentRoute: () => AutocrudAdminRoute,
+  } as any)
+const AutocrudAdminGameEventCreateRoute =
+  AutocrudAdminGameEventCreateRouteImport.update({
+    id: '/game-event/create',
+    path: '/game-event/create',
+    getParentRoute: () => AutocrudAdminRoute,
+  } as any)
+const AutocrudAdminGameEventResourceIdRoute =
+  AutocrudAdminGameEventResourceIdRouteImport.update({
+    id: '/game-event/$resourceId',
+    path: '/game-event/$resourceId',
+    getParentRoute: () => AutocrudAdminRoute,
+  } as any)
+const AutocrudAdminEquipmentCreateRoute =
+  AutocrudAdminEquipmentCreateRouteImport.update({
+    id: '/equipment/create',
+    path: '/equipment/create',
+    getParentRoute: () => AutocrudAdminRoute,
+  } as any)
+const AutocrudAdminEquipmentResourceIdRoute =
+  AutocrudAdminEquipmentResourceIdRouteImport.update({
+    id: '/equipment/$resourceId',
+    path: '/equipment/$resourceId',
+    getParentRoute: () => AutocrudAdminRoute,
+  } as any)
+const AutocrudAdminCreateNewCharacter4JobCreateRoute =
+  AutocrudAdminCreateNewCharacter4JobCreateRouteImport.update({
+    id: '/create-new-character4-job/create',
+    path: '/create-new-character4-job/create',
+    getParentRoute: () => AutocrudAdminRoute,
+  } as any)
+const AutocrudAdminCreateNewCharacter4JobResourceIdRoute =
+  AutocrudAdminCreateNewCharacter4JobResourceIdRouteImport.update({
+    id: '/create-new-character4-job/$resourceId',
+    path: '/create-new-character4-job/$resourceId',
+    getParentRoute: () => AutocrudAdminRoute,
+  } as any)
+const AutocrudAdminCreateNewCharacter2JobCreateRoute =
+  AutocrudAdminCreateNewCharacter2JobCreateRouteImport.update({
+    id: '/create-new-character2-job/create',
+    path: '/create-new-character2-job/create',
+    getParentRoute: () => AutocrudAdminRoute,
+  } as any)
+const AutocrudAdminCreateNewCharacter2JobResourceIdRoute =
+  AutocrudAdminCreateNewCharacter2JobResourceIdRouteImport.update({
+    id: '/create-new-character2-job/$resourceId',
+    path: '/create-new-character2-job/$resourceId',
+    getParentRoute: () => AutocrudAdminRoute,
+  } as any)
+const AutocrudAdminCharacterCreateRoute =
+  AutocrudAdminCharacterCreateRouteImport.update({
+    id: '/character/create',
+    path: '/character/create',
+    getParentRoute: () => AutocrudAdminRoute,
+  } as any)
+const AutocrudAdminCharacterResourceIdRoute =
+  AutocrudAdminCharacterResourceIdRouteImport.update({
+    id: '/character/$resourceId',
+    path: '/character/$resourceId',
+    getParentRoute: () => AutocrudAdminRoute,
+  } as any)
 
 export interface FileRoutesByFullPath {
-  '/': typeof IndexRoute;
-  '/autocrud-admin': typeof AutocrudAdminRouteWithChildren;
-  '/autocrud-admin/backup': typeof AutocrudAdminBackupRoute;
-  '/autocrud-admin/migrate': typeof AutocrudAdminMigrateRoute;
-  '/autocrud-admin/': typeof AutocrudAdminIndexRoute;
-  '/autocrud-admin/character/$resourceId': typeof AutocrudAdminCharacterResourceIdRoute;
-  '/autocrud-admin/character/create': typeof AutocrudAdminCharacterCreateRoute;
-  '/autocrud-admin/equipment/$resourceId': typeof AutocrudAdminEquipmentResourceIdRoute;
-  '/autocrud-admin/equipment/create': typeof AutocrudAdminEquipmentCreateRoute;
-  '/autocrud-admin/game-event/$resourceId': typeof AutocrudAdminGameEventResourceIdRoute;
-  '/autocrud-admin/game-event/create': typeof AutocrudAdminGameEventCreateRoute;
-  '/autocrud-admin/guild/$resourceId': typeof AutocrudAdminGuildResourceIdRoute;
-  '/autocrud-admin/guild/create': typeof AutocrudAdminGuildCreateRoute;
-  '/autocrud-admin/pet-job/$resourceId': typeof AutocrudAdminPetJobResourceIdRoute;
-  '/autocrud-admin/pet-job/create': typeof AutocrudAdminPetJobCreateRoute;
-  '/autocrud-admin/pet/$resourceId': typeof AutocrudAdminPetResourceIdRoute;
-  '/autocrud-admin/pet/create': typeof AutocrudAdminPetCreateRoute;
-  '/autocrud-admin/skill/$resourceId': typeof AutocrudAdminSkillResourceIdRoute;
-  '/autocrud-admin/skill/create': typeof AutocrudAdminSkillCreateRoute;
-  '/autocrud-admin/character/': typeof AutocrudAdminCharacterIndexRoute;
-  '/autocrud-admin/equipment/': typeof AutocrudAdminEquipmentIndexRoute;
-  '/autocrud-admin/game-event/': typeof AutocrudAdminGameEventIndexRoute;
-  '/autocrud-admin/guild/': typeof AutocrudAdminGuildIndexRoute;
-  '/autocrud-admin/pet-job/': typeof AutocrudAdminPetJobIndexRoute;
-  '/autocrud-admin/pet/': typeof AutocrudAdminPetIndexRoute;
-  '/autocrud-admin/skill/': typeof AutocrudAdminSkillIndexRoute;
+  '/': typeof IndexRoute
+  '/autocrud-admin': typeof AutocrudAdminRouteWithChildren
+  '/autocrud-admin/backup': typeof AutocrudAdminBackupRoute
+  '/autocrud-admin/migrate': typeof AutocrudAdminMigrateRoute
+  '/autocrud-admin/': typeof AutocrudAdminIndexRoute
+  '/autocrud-admin/character/$resourceId': typeof AutocrudAdminCharacterResourceIdRoute
+  '/autocrud-admin/character/create': typeof AutocrudAdminCharacterCreateRoute
+  '/autocrud-admin/create-new-character2-job/$resourceId': typeof AutocrudAdminCreateNewCharacter2JobResourceIdRoute
+  '/autocrud-admin/create-new-character2-job/create': typeof AutocrudAdminCreateNewCharacter2JobCreateRoute
+  '/autocrud-admin/create-new-character4-job/$resourceId': typeof AutocrudAdminCreateNewCharacter4JobResourceIdRoute
+  '/autocrud-admin/create-new-character4-job/create': typeof AutocrudAdminCreateNewCharacter4JobCreateRoute
+  '/autocrud-admin/equipment/$resourceId': typeof AutocrudAdminEquipmentResourceIdRoute
+  '/autocrud-admin/equipment/create': typeof AutocrudAdminEquipmentCreateRoute
+  '/autocrud-admin/game-event/$resourceId': typeof AutocrudAdminGameEventResourceIdRoute
+  '/autocrud-admin/game-event/create': typeof AutocrudAdminGameEventCreateRoute
+  '/autocrud-admin/guild/$resourceId': typeof AutocrudAdminGuildResourceIdRoute
+  '/autocrud-admin/guild/create': typeof AutocrudAdminGuildCreateRoute
+  '/autocrud-admin/new-char1-job/$resourceId': typeof AutocrudAdminNewChar1JobResourceIdRoute
+  '/autocrud-admin/new-char1-job/create': typeof AutocrudAdminNewChar1JobCreateRoute
+  '/autocrud-admin/pet-job/$resourceId': typeof AutocrudAdminPetJobResourceIdRoute
+  '/autocrud-admin/pet-job/create': typeof AutocrudAdminPetJobCreateRoute
+  '/autocrud-admin/pet/$resourceId': typeof AutocrudAdminPetResourceIdRoute
+  '/autocrud-admin/pet/create': typeof AutocrudAdminPetCreateRoute
+  '/autocrud-admin/skill/$resourceId': typeof AutocrudAdminSkillResourceIdRoute
+  '/autocrud-admin/skill/create': typeof AutocrudAdminSkillCreateRoute
+  '/autocrud-admin/character/': typeof AutocrudAdminCharacterIndexRoute
+  '/autocrud-admin/create-new-character2-job/': typeof AutocrudAdminCreateNewCharacter2JobIndexRoute
+  '/autocrud-admin/create-new-character4-job/': typeof AutocrudAdminCreateNewCharacter4JobIndexRoute
+  '/autocrud-admin/equipment/': typeof AutocrudAdminEquipmentIndexRoute
+  '/autocrud-admin/game-event/': typeof AutocrudAdminGameEventIndexRoute
+  '/autocrud-admin/guild/': typeof AutocrudAdminGuildIndexRoute
+  '/autocrud-admin/new-char1-job/': typeof AutocrudAdminNewChar1JobIndexRoute
+  '/autocrud-admin/pet-job/': typeof AutocrudAdminPetJobIndexRoute
+  '/autocrud-admin/pet/': typeof AutocrudAdminPetIndexRoute
+  '/autocrud-admin/skill/': typeof AutocrudAdminSkillIndexRoute
 }
 export interface FileRoutesByTo {
-  '/': typeof IndexRoute;
-  '/autocrud-admin/backup': typeof AutocrudAdminBackupRoute;
-  '/autocrud-admin/migrate': typeof AutocrudAdminMigrateRoute;
-  '/autocrud-admin': typeof AutocrudAdminIndexRoute;
-  '/autocrud-admin/character/$resourceId': typeof AutocrudAdminCharacterResourceIdRoute;
-  '/autocrud-admin/character/create': typeof AutocrudAdminCharacterCreateRoute;
-  '/autocrud-admin/equipment/$resourceId': typeof AutocrudAdminEquipmentResourceIdRoute;
-  '/autocrud-admin/equipment/create': typeof AutocrudAdminEquipmentCreateRoute;
-  '/autocrud-admin/game-event/$resourceId': typeof AutocrudAdminGameEventResourceIdRoute;
-  '/autocrud-admin/game-event/create': typeof AutocrudAdminGameEventCreateRoute;
-  '/autocrud-admin/guild/$resourceId': typeof AutocrudAdminGuildResourceIdRoute;
-  '/autocrud-admin/guild/create': typeof AutocrudAdminGuildCreateRoute;
-  '/autocrud-admin/pet-job/$resourceId': typeof AutocrudAdminPetJobResourceIdRoute;
-  '/autocrud-admin/pet-job/create': typeof AutocrudAdminPetJobCreateRoute;
-  '/autocrud-admin/pet/$resourceId': typeof AutocrudAdminPetResourceIdRoute;
-  '/autocrud-admin/pet/create': typeof AutocrudAdminPetCreateRoute;
-  '/autocrud-admin/skill/$resourceId': typeof AutocrudAdminSkillResourceIdRoute;
-  '/autocrud-admin/skill/create': typeof AutocrudAdminSkillCreateRoute;
-  '/autocrud-admin/character': typeof AutocrudAdminCharacterIndexRoute;
-  '/autocrud-admin/equipment': typeof AutocrudAdminEquipmentIndexRoute;
-  '/autocrud-admin/game-event': typeof AutocrudAdminGameEventIndexRoute;
-  '/autocrud-admin/guild': typeof AutocrudAdminGuildIndexRoute;
-  '/autocrud-admin/pet-job': typeof AutocrudAdminPetJobIndexRoute;
-  '/autocrud-admin/pet': typeof AutocrudAdminPetIndexRoute;
-  '/autocrud-admin/skill': typeof AutocrudAdminSkillIndexRoute;
+  '/': typeof IndexRoute
+  '/autocrud-admin/backup': typeof AutocrudAdminBackupRoute
+  '/autocrud-admin/migrate': typeof AutocrudAdminMigrateRoute
+  '/autocrud-admin': typeof AutocrudAdminIndexRoute
+  '/autocrud-admin/character/$resourceId': typeof AutocrudAdminCharacterResourceIdRoute
+  '/autocrud-admin/character/create': typeof AutocrudAdminCharacterCreateRoute
+  '/autocrud-admin/create-new-character2-job/$resourceId': typeof AutocrudAdminCreateNewCharacter2JobResourceIdRoute
+  '/autocrud-admin/create-new-character2-job/create': typeof AutocrudAdminCreateNewCharacter2JobCreateRoute
+  '/autocrud-admin/create-new-character4-job/$resourceId': typeof AutocrudAdminCreateNewCharacter4JobResourceIdRoute
+  '/autocrud-admin/create-new-character4-job/create': typeof AutocrudAdminCreateNewCharacter4JobCreateRoute
+  '/autocrud-admin/equipment/$resourceId': typeof AutocrudAdminEquipmentResourceIdRoute
+  '/autocrud-admin/equipment/create': typeof AutocrudAdminEquipmentCreateRoute
+  '/autocrud-admin/game-event/$resourceId': typeof AutocrudAdminGameEventResourceIdRoute
+  '/autocrud-admin/game-event/create': typeof AutocrudAdminGameEventCreateRoute
+  '/autocrud-admin/guild/$resourceId': typeof AutocrudAdminGuildResourceIdRoute
+  '/autocrud-admin/guild/create': typeof AutocrudAdminGuildCreateRoute
+  '/autocrud-admin/new-char1-job/$resourceId': typeof AutocrudAdminNewChar1JobResourceIdRoute
+  '/autocrud-admin/new-char1-job/create': typeof AutocrudAdminNewChar1JobCreateRoute
+  '/autocrud-admin/pet-job/$resourceId': typeof AutocrudAdminPetJobResourceIdRoute
+  '/autocrud-admin/pet-job/create': typeof AutocrudAdminPetJobCreateRoute
+  '/autocrud-admin/pet/$resourceId': typeof AutocrudAdminPetResourceIdRoute
+  '/autocrud-admin/pet/create': typeof AutocrudAdminPetCreateRoute
+  '/autocrud-admin/skill/$resourceId': typeof AutocrudAdminSkillResourceIdRoute
+  '/autocrud-admin/skill/create': typeof AutocrudAdminSkillCreateRoute
+  '/autocrud-admin/character': typeof AutocrudAdminCharacterIndexRoute
+  '/autocrud-admin/create-new-character2-job': typeof AutocrudAdminCreateNewCharacter2JobIndexRoute
+  '/autocrud-admin/create-new-character4-job': typeof AutocrudAdminCreateNewCharacter4JobIndexRoute
+  '/autocrud-admin/equipment': typeof AutocrudAdminEquipmentIndexRoute
+  '/autocrud-admin/game-event': typeof AutocrudAdminGameEventIndexRoute
+  '/autocrud-admin/guild': typeof AutocrudAdminGuildIndexRoute
+  '/autocrud-admin/new-char1-job': typeof AutocrudAdminNewChar1JobIndexRoute
+  '/autocrud-admin/pet-job': typeof AutocrudAdminPetJobIndexRoute
+  '/autocrud-admin/pet': typeof AutocrudAdminPetIndexRoute
+  '/autocrud-admin/skill': typeof AutocrudAdminSkillIndexRoute
 }
 export interface FileRoutesById {
-  __root__: typeof rootRouteImport;
-  '/': typeof IndexRoute;
-  '/autocrud-admin': typeof AutocrudAdminRouteWithChildren;
-  '/autocrud-admin/backup': typeof AutocrudAdminBackupRoute;
-  '/autocrud-admin/migrate': typeof AutocrudAdminMigrateRoute;
-  '/autocrud-admin/': typeof AutocrudAdminIndexRoute;
-  '/autocrud-admin/character/$resourceId': typeof AutocrudAdminCharacterResourceIdRoute;
-  '/autocrud-admin/character/create': typeof AutocrudAdminCharacterCreateRoute;
-  '/autocrud-admin/equipment/$resourceId': typeof AutocrudAdminEquipmentResourceIdRoute;
-  '/autocrud-admin/equipment/create': typeof AutocrudAdminEquipmentCreateRoute;
-  '/autocrud-admin/game-event/$resourceId': typeof AutocrudAdminGameEventResourceIdRoute;
-  '/autocrud-admin/game-event/create': typeof AutocrudAdminGameEventCreateRoute;
-  '/autocrud-admin/guild/$resourceId': typeof AutocrudAdminGuildResourceIdRoute;
-  '/autocrud-admin/guild/create': typeof AutocrudAdminGuildCreateRoute;
-  '/autocrud-admin/pet-job/$resourceId': typeof AutocrudAdminPetJobResourceIdRoute;
-  '/autocrud-admin/pet-job/create': typeof AutocrudAdminPetJobCreateRoute;
-  '/autocrud-admin/pet/$resourceId': typeof AutocrudAdminPetResourceIdRoute;
-  '/autocrud-admin/pet/create': typeof AutocrudAdminPetCreateRoute;
-  '/autocrud-admin/skill/$resourceId': typeof AutocrudAdminSkillResourceIdRoute;
-  '/autocrud-admin/skill/create': typeof AutocrudAdminSkillCreateRoute;
-  '/autocrud-admin/character/': typeof AutocrudAdminCharacterIndexRoute;
-  '/autocrud-admin/equipment/': typeof AutocrudAdminEquipmentIndexRoute;
-  '/autocrud-admin/game-event/': typeof AutocrudAdminGameEventIndexRoute;
-  '/autocrud-admin/guild/': typeof AutocrudAdminGuildIndexRoute;
-  '/autocrud-admin/pet-job/': typeof AutocrudAdminPetJobIndexRoute;
-  '/autocrud-admin/pet/': typeof AutocrudAdminPetIndexRoute;
-  '/autocrud-admin/skill/': typeof AutocrudAdminSkillIndexRoute;
+  __root__: typeof rootRouteImport
+  '/': typeof IndexRoute
+  '/autocrud-admin': typeof AutocrudAdminRouteWithChildren
+  '/autocrud-admin/backup': typeof AutocrudAdminBackupRoute
+  '/autocrud-admin/migrate': typeof AutocrudAdminMigrateRoute
+  '/autocrud-admin/': typeof AutocrudAdminIndexRoute
+  '/autocrud-admin/character/$resourceId': typeof AutocrudAdminCharacterResourceIdRoute
+  '/autocrud-admin/character/create': typeof AutocrudAdminCharacterCreateRoute
+  '/autocrud-admin/create-new-character2-job/$resourceId': typeof AutocrudAdminCreateNewCharacter2JobResourceIdRoute
+  '/autocrud-admin/create-new-character2-job/create': typeof AutocrudAdminCreateNewCharacter2JobCreateRoute
+  '/autocrud-admin/create-new-character4-job/$resourceId': typeof AutocrudAdminCreateNewCharacter4JobResourceIdRoute
+  '/autocrud-admin/create-new-character4-job/create': typeof AutocrudAdminCreateNewCharacter4JobCreateRoute
+  '/autocrud-admin/equipment/$resourceId': typeof AutocrudAdminEquipmentResourceIdRoute
+  '/autocrud-admin/equipment/create': typeof AutocrudAdminEquipmentCreateRoute
+  '/autocrud-admin/game-event/$resourceId': typeof AutocrudAdminGameEventResourceIdRoute
+  '/autocrud-admin/game-event/create': typeof AutocrudAdminGameEventCreateRoute
+  '/autocrud-admin/guild/$resourceId': typeof AutocrudAdminGuildResourceIdRoute
+  '/autocrud-admin/guild/create': typeof AutocrudAdminGuildCreateRoute
+  '/autocrud-admin/new-char1-job/$resourceId': typeof AutocrudAdminNewChar1JobResourceIdRoute
+  '/autocrud-admin/new-char1-job/create': typeof AutocrudAdminNewChar1JobCreateRoute
+  '/autocrud-admin/pet-job/$resourceId': typeof AutocrudAdminPetJobResourceIdRoute
+  '/autocrud-admin/pet-job/create': typeof AutocrudAdminPetJobCreateRoute
+  '/autocrud-admin/pet/$resourceId': typeof AutocrudAdminPetResourceIdRoute
+  '/autocrud-admin/pet/create': typeof AutocrudAdminPetCreateRoute
+  '/autocrud-admin/skill/$resourceId': typeof AutocrudAdminSkillResourceIdRoute
+  '/autocrud-admin/skill/create': typeof AutocrudAdminSkillCreateRoute
+  '/autocrud-admin/character/': typeof AutocrudAdminCharacterIndexRoute
+  '/autocrud-admin/create-new-character2-job/': typeof AutocrudAdminCreateNewCharacter2JobIndexRoute
+  '/autocrud-admin/create-new-character4-job/': typeof AutocrudAdminCreateNewCharacter4JobIndexRoute
+  '/autocrud-admin/equipment/': typeof AutocrudAdminEquipmentIndexRoute
+  '/autocrud-admin/game-event/': typeof AutocrudAdminGameEventIndexRoute
+  '/autocrud-admin/guild/': typeof AutocrudAdminGuildIndexRoute
+  '/autocrud-admin/new-char1-job/': typeof AutocrudAdminNewChar1JobIndexRoute
+  '/autocrud-admin/pet-job/': typeof AutocrudAdminPetJobIndexRoute
+  '/autocrud-admin/pet/': typeof AutocrudAdminPetIndexRoute
+  '/autocrud-admin/skill/': typeof AutocrudAdminSkillIndexRoute
 }
 export interface FileRouteTypes {
-  fileRoutesByFullPath: FileRoutesByFullPath;
+  fileRoutesByFullPath: FileRoutesByFullPath
   fullPaths:
     | '/'
     | '/autocrud-admin'
@@ -261,12 +368,18 @@ export interface FileRouteTypes {
     | '/autocrud-admin/'
     | '/autocrud-admin/character/$resourceId'
     | '/autocrud-admin/character/create'
+    | '/autocrud-admin/create-new-character2-job/$resourceId'
+    | '/autocrud-admin/create-new-character2-job/create'
+    | '/autocrud-admin/create-new-character4-job/$resourceId'
+    | '/autocrud-admin/create-new-character4-job/create'
     | '/autocrud-admin/equipment/$resourceId'
     | '/autocrud-admin/equipment/create'
     | '/autocrud-admin/game-event/$resourceId'
     | '/autocrud-admin/game-event/create'
     | '/autocrud-admin/guild/$resourceId'
     | '/autocrud-admin/guild/create'
+    | '/autocrud-admin/new-char1-job/$resourceId'
+    | '/autocrud-admin/new-char1-job/create'
     | '/autocrud-admin/pet-job/$resourceId'
     | '/autocrud-admin/pet-job/create'
     | '/autocrud-admin/pet/$resourceId'
@@ -274,13 +387,16 @@ export interface FileRouteTypes {
     | '/autocrud-admin/skill/$resourceId'
     | '/autocrud-admin/skill/create'
     | '/autocrud-admin/character/'
+    | '/autocrud-admin/create-new-character2-job/'
+    | '/autocrud-admin/create-new-character4-job/'
     | '/autocrud-admin/equipment/'
     | '/autocrud-admin/game-event/'
     | '/autocrud-admin/guild/'
+    | '/autocrud-admin/new-char1-job/'
     | '/autocrud-admin/pet-job/'
     | '/autocrud-admin/pet/'
-    | '/autocrud-admin/skill/';
-  fileRoutesByTo: FileRoutesByTo;
+    | '/autocrud-admin/skill/'
+  fileRoutesByTo: FileRoutesByTo
   to:
     | '/'
     | '/autocrud-admin/backup'
@@ -288,12 +404,18 @@ export interface FileRouteTypes {
     | '/autocrud-admin'
     | '/autocrud-admin/character/$resourceId'
     | '/autocrud-admin/character/create'
+    | '/autocrud-admin/create-new-character2-job/$resourceId'
+    | '/autocrud-admin/create-new-character2-job/create'
+    | '/autocrud-admin/create-new-character4-job/$resourceId'
+    | '/autocrud-admin/create-new-character4-job/create'
     | '/autocrud-admin/equipment/$resourceId'
     | '/autocrud-admin/equipment/create'
     | '/autocrud-admin/game-event/$resourceId'
     | '/autocrud-admin/game-event/create'
     | '/autocrud-admin/guild/$resourceId'
     | '/autocrud-admin/guild/create'
+    | '/autocrud-admin/new-char1-job/$resourceId'
+    | '/autocrud-admin/new-char1-job/create'
     | '/autocrud-admin/pet-job/$resourceId'
     | '/autocrud-admin/pet-job/create'
     | '/autocrud-admin/pet/$resourceId'
@@ -301,12 +423,15 @@ export interface FileRouteTypes {
     | '/autocrud-admin/skill/$resourceId'
     | '/autocrud-admin/skill/create'
     | '/autocrud-admin/character'
+    | '/autocrud-admin/create-new-character2-job'
+    | '/autocrud-admin/create-new-character4-job'
     | '/autocrud-admin/equipment'
     | '/autocrud-admin/game-event'
     | '/autocrud-admin/guild'
+    | '/autocrud-admin/new-char1-job'
     | '/autocrud-admin/pet-job'
     | '/autocrud-admin/pet'
-    | '/autocrud-admin/skill';
+    | '/autocrud-admin/skill'
   id:
     | '__root__'
     | '/'
@@ -316,12 +441,18 @@ export interface FileRouteTypes {
     | '/autocrud-admin/'
     | '/autocrud-admin/character/$resourceId'
     | '/autocrud-admin/character/create'
+    | '/autocrud-admin/create-new-character2-job/$resourceId'
+    | '/autocrud-admin/create-new-character2-job/create'
+    | '/autocrud-admin/create-new-character4-job/$resourceId'
+    | '/autocrud-admin/create-new-character4-job/create'
     | '/autocrud-admin/equipment/$resourceId'
     | '/autocrud-admin/equipment/create'
     | '/autocrud-admin/game-event/$resourceId'
     | '/autocrud-admin/game-event/create'
     | '/autocrud-admin/guild/$resourceId'
     | '/autocrud-admin/guild/create'
+    | '/autocrud-admin/new-char1-job/$resourceId'
+    | '/autocrud-admin/new-char1-job/create'
     | '/autocrud-admin/pet-job/$resourceId'
     | '/autocrud-admin/pet-job/create'
     | '/autocrud-admin/pet/$resourceId'
@@ -329,231 +460,306 @@ export interface FileRouteTypes {
     | '/autocrud-admin/skill/$resourceId'
     | '/autocrud-admin/skill/create'
     | '/autocrud-admin/character/'
+    | '/autocrud-admin/create-new-character2-job/'
+    | '/autocrud-admin/create-new-character4-job/'
     | '/autocrud-admin/equipment/'
     | '/autocrud-admin/game-event/'
     | '/autocrud-admin/guild/'
+    | '/autocrud-admin/new-char1-job/'
     | '/autocrud-admin/pet-job/'
     | '/autocrud-admin/pet/'
-    | '/autocrud-admin/skill/';
-  fileRoutesById: FileRoutesById;
+    | '/autocrud-admin/skill/'
+  fileRoutesById: FileRoutesById
 }
 export interface RootRouteChildren {
-  IndexRoute: typeof IndexRoute;
-  AutocrudAdminRoute: typeof AutocrudAdminRouteWithChildren;
+  IndexRoute: typeof IndexRoute
+  AutocrudAdminRoute: typeof AutocrudAdminRouteWithChildren
 }
 
 declare module '@tanstack/react-router' {
   interface FileRoutesByPath {
     '/autocrud-admin': {
-      id: '/autocrud-admin';
-      path: '/autocrud-admin';
-      fullPath: '/autocrud-admin';
-      preLoaderRoute: typeof AutocrudAdminRouteImport;
-      parentRoute: typeof rootRouteImport;
-    };
+      id: '/autocrud-admin'
+      path: '/autocrud-admin'
+      fullPath: '/autocrud-admin'
+      preLoaderRoute: typeof AutocrudAdminRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/': {
-      id: '/';
-      path: '/';
-      fullPath: '/';
-      preLoaderRoute: typeof IndexRouteImport;
-      parentRoute: typeof rootRouteImport;
-    };
+      id: '/'
+      path: '/'
+      fullPath: '/'
+      preLoaderRoute: typeof IndexRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/autocrud-admin/': {
-      id: '/autocrud-admin/';
-      path: '/';
-      fullPath: '/autocrud-admin/';
-      preLoaderRoute: typeof AutocrudAdminIndexRouteImport;
-      parentRoute: typeof AutocrudAdminRoute;
-    };
+      id: '/autocrud-admin/'
+      path: '/'
+      fullPath: '/autocrud-admin/'
+      preLoaderRoute: typeof AutocrudAdminIndexRouteImport
+      parentRoute: typeof AutocrudAdminRoute
+    }
     '/autocrud-admin/migrate': {
-      id: '/autocrud-admin/migrate';
-      path: '/migrate';
-      fullPath: '/autocrud-admin/migrate';
-      preLoaderRoute: typeof AutocrudAdminMigrateRouteImport;
-      parentRoute: typeof AutocrudAdminRoute;
-    };
+      id: '/autocrud-admin/migrate'
+      path: '/migrate'
+      fullPath: '/autocrud-admin/migrate'
+      preLoaderRoute: typeof AutocrudAdminMigrateRouteImport
+      parentRoute: typeof AutocrudAdminRoute
+    }
     '/autocrud-admin/backup': {
-      id: '/autocrud-admin/backup';
-      path: '/backup';
-      fullPath: '/autocrud-admin/backup';
-      preLoaderRoute: typeof AutocrudAdminBackupRouteImport;
-      parentRoute: typeof AutocrudAdminRoute;
-    };
+      id: '/autocrud-admin/backup'
+      path: '/backup'
+      fullPath: '/autocrud-admin/backup'
+      preLoaderRoute: typeof AutocrudAdminBackupRouteImport
+      parentRoute: typeof AutocrudAdminRoute
+    }
     '/autocrud-admin/skill/': {
-      id: '/autocrud-admin/skill/';
-      path: '/skill';
-      fullPath: '/autocrud-admin/skill/';
-      preLoaderRoute: typeof AutocrudAdminSkillIndexRouteImport;
-      parentRoute: typeof AutocrudAdminRoute;
-    };
+      id: '/autocrud-admin/skill/'
+      path: '/skill'
+      fullPath: '/autocrud-admin/skill/'
+      preLoaderRoute: typeof AutocrudAdminSkillIndexRouteImport
+      parentRoute: typeof AutocrudAdminRoute
+    }
     '/autocrud-admin/pet/': {
-      id: '/autocrud-admin/pet/';
-      path: '/pet';
-      fullPath: '/autocrud-admin/pet/';
-      preLoaderRoute: typeof AutocrudAdminPetIndexRouteImport;
-      parentRoute: typeof AutocrudAdminRoute;
-    };
+      id: '/autocrud-admin/pet/'
+      path: '/pet'
+      fullPath: '/autocrud-admin/pet/'
+      preLoaderRoute: typeof AutocrudAdminPetIndexRouteImport
+      parentRoute: typeof AutocrudAdminRoute
+    }
     '/autocrud-admin/pet-job/': {
-      id: '/autocrud-admin/pet-job/';
-      path: '/pet-job';
-      fullPath: '/autocrud-admin/pet-job/';
-      preLoaderRoute: typeof AutocrudAdminPetJobIndexRouteImport;
-      parentRoute: typeof AutocrudAdminRoute;
-    };
+      id: '/autocrud-admin/pet-job/'
+      path: '/pet-job'
+      fullPath: '/autocrud-admin/pet-job/'
+      preLoaderRoute: typeof AutocrudAdminPetJobIndexRouteImport
+      parentRoute: typeof AutocrudAdminRoute
+    }
+    '/autocrud-admin/new-char1-job/': {
+      id: '/autocrud-admin/new-char1-job/'
+      path: '/new-char1-job'
+      fullPath: '/autocrud-admin/new-char1-job/'
+      preLoaderRoute: typeof AutocrudAdminNewChar1JobIndexRouteImport
+      parentRoute: typeof AutocrudAdminRoute
+    }
     '/autocrud-admin/guild/': {
-      id: '/autocrud-admin/guild/';
-      path: '/guild';
-      fullPath: '/autocrud-admin/guild/';
-      preLoaderRoute: typeof AutocrudAdminGuildIndexRouteImport;
-      parentRoute: typeof AutocrudAdminRoute;
-    };
+      id: '/autocrud-admin/guild/'
+      path: '/guild'
+      fullPath: '/autocrud-admin/guild/'
+      preLoaderRoute: typeof AutocrudAdminGuildIndexRouteImport
+      parentRoute: typeof AutocrudAdminRoute
+    }
     '/autocrud-admin/game-event/': {
-      id: '/autocrud-admin/game-event/';
-      path: '/game-event';
-      fullPath: '/autocrud-admin/game-event/';
-      preLoaderRoute: typeof AutocrudAdminGameEventIndexRouteImport;
-      parentRoute: typeof AutocrudAdminRoute;
-    };
+      id: '/autocrud-admin/game-event/'
+      path: '/game-event'
+      fullPath: '/autocrud-admin/game-event/'
+      preLoaderRoute: typeof AutocrudAdminGameEventIndexRouteImport
+      parentRoute: typeof AutocrudAdminRoute
+    }
     '/autocrud-admin/equipment/': {
-      id: '/autocrud-admin/equipment/';
-      path: '/equipment';
-      fullPath: '/autocrud-admin/equipment/';
-      preLoaderRoute: typeof AutocrudAdminEquipmentIndexRouteImport;
-      parentRoute: typeof AutocrudAdminRoute;
-    };
+      id: '/autocrud-admin/equipment/'
+      path: '/equipment'
+      fullPath: '/autocrud-admin/equipment/'
+      preLoaderRoute: typeof AutocrudAdminEquipmentIndexRouteImport
+      parentRoute: typeof AutocrudAdminRoute
+    }
+    '/autocrud-admin/create-new-character4-job/': {
+      id: '/autocrud-admin/create-new-character4-job/'
+      path: '/create-new-character4-job'
+      fullPath: '/autocrud-admin/create-new-character4-job/'
+      preLoaderRoute: typeof AutocrudAdminCreateNewCharacter4JobIndexRouteImport
+      parentRoute: typeof AutocrudAdminRoute
+    }
+    '/autocrud-admin/create-new-character2-job/': {
+      id: '/autocrud-admin/create-new-character2-job/'
+      path: '/create-new-character2-job'
+      fullPath: '/autocrud-admin/create-new-character2-job/'
+      preLoaderRoute: typeof AutocrudAdminCreateNewCharacter2JobIndexRouteImport
+      parentRoute: typeof AutocrudAdminRoute
+    }
     '/autocrud-admin/character/': {
-      id: '/autocrud-admin/character/';
-      path: '/character';
-      fullPath: '/autocrud-admin/character/';
-      preLoaderRoute: typeof AutocrudAdminCharacterIndexRouteImport;
-      parentRoute: typeof AutocrudAdminRoute;
-    };
+      id: '/autocrud-admin/character/'
+      path: '/character'
+      fullPath: '/autocrud-admin/character/'
+      preLoaderRoute: typeof AutocrudAdminCharacterIndexRouteImport
+      parentRoute: typeof AutocrudAdminRoute
+    }
     '/autocrud-admin/skill/create': {
-      id: '/autocrud-admin/skill/create';
-      path: '/skill/create';
-      fullPath: '/autocrud-admin/skill/create';
-      preLoaderRoute: typeof AutocrudAdminSkillCreateRouteImport;
-      parentRoute: typeof AutocrudAdminRoute;
-    };
+      id: '/autocrud-admin/skill/create'
+      path: '/skill/create'
+      fullPath: '/autocrud-admin/skill/create'
+      preLoaderRoute: typeof AutocrudAdminSkillCreateRouteImport
+      parentRoute: typeof AutocrudAdminRoute
+    }
     '/autocrud-admin/skill/$resourceId': {
-      id: '/autocrud-admin/skill/$resourceId';
-      path: '/skill/$resourceId';
-      fullPath: '/autocrud-admin/skill/$resourceId';
-      preLoaderRoute: typeof AutocrudAdminSkillResourceIdRouteImport;
-      parentRoute: typeof AutocrudAdminRoute;
-    };
+      id: '/autocrud-admin/skill/$resourceId'
+      path: '/skill/$resourceId'
+      fullPath: '/autocrud-admin/skill/$resourceId'
+      preLoaderRoute: typeof AutocrudAdminSkillResourceIdRouteImport
+      parentRoute: typeof AutocrudAdminRoute
+    }
     '/autocrud-admin/pet/create': {
-      id: '/autocrud-admin/pet/create';
-      path: '/pet/create';
-      fullPath: '/autocrud-admin/pet/create';
-      preLoaderRoute: typeof AutocrudAdminPetCreateRouteImport;
-      parentRoute: typeof AutocrudAdminRoute;
-    };
+      id: '/autocrud-admin/pet/create'
+      path: '/pet/create'
+      fullPath: '/autocrud-admin/pet/create'
+      preLoaderRoute: typeof AutocrudAdminPetCreateRouteImport
+      parentRoute: typeof AutocrudAdminRoute
+    }
     '/autocrud-admin/pet/$resourceId': {
-      id: '/autocrud-admin/pet/$resourceId';
-      path: '/pet/$resourceId';
-      fullPath: '/autocrud-admin/pet/$resourceId';
-      preLoaderRoute: typeof AutocrudAdminPetResourceIdRouteImport;
-      parentRoute: typeof AutocrudAdminRoute;
-    };
+      id: '/autocrud-admin/pet/$resourceId'
+      path: '/pet/$resourceId'
+      fullPath: '/autocrud-admin/pet/$resourceId'
+      preLoaderRoute: typeof AutocrudAdminPetResourceIdRouteImport
+      parentRoute: typeof AutocrudAdminRoute
+    }
     '/autocrud-admin/pet-job/create': {
-      id: '/autocrud-admin/pet-job/create';
-      path: '/pet-job/create';
-      fullPath: '/autocrud-admin/pet-job/create';
-      preLoaderRoute: typeof AutocrudAdminPetJobCreateRouteImport;
-      parentRoute: typeof AutocrudAdminRoute;
-    };
+      id: '/autocrud-admin/pet-job/create'
+      path: '/pet-job/create'
+      fullPath: '/autocrud-admin/pet-job/create'
+      preLoaderRoute: typeof AutocrudAdminPetJobCreateRouteImport
+      parentRoute: typeof AutocrudAdminRoute
+    }
     '/autocrud-admin/pet-job/$resourceId': {
-      id: '/autocrud-admin/pet-job/$resourceId';
-      path: '/pet-job/$resourceId';
-      fullPath: '/autocrud-admin/pet-job/$resourceId';
-      preLoaderRoute: typeof AutocrudAdminPetJobResourceIdRouteImport;
-      parentRoute: typeof AutocrudAdminRoute;
-    };
+      id: '/autocrud-admin/pet-job/$resourceId'
+      path: '/pet-job/$resourceId'
+      fullPath: '/autocrud-admin/pet-job/$resourceId'
+      preLoaderRoute: typeof AutocrudAdminPetJobResourceIdRouteImport
+      parentRoute: typeof AutocrudAdminRoute
+    }
+    '/autocrud-admin/new-char1-job/create': {
+      id: '/autocrud-admin/new-char1-job/create'
+      path: '/new-char1-job/create'
+      fullPath: '/autocrud-admin/new-char1-job/create'
+      preLoaderRoute: typeof AutocrudAdminNewChar1JobCreateRouteImport
+      parentRoute: typeof AutocrudAdminRoute
+    }
+    '/autocrud-admin/new-char1-job/$resourceId': {
+      id: '/autocrud-admin/new-char1-job/$resourceId'
+      path: '/new-char1-job/$resourceId'
+      fullPath: '/autocrud-admin/new-char1-job/$resourceId'
+      preLoaderRoute: typeof AutocrudAdminNewChar1JobResourceIdRouteImport
+      parentRoute: typeof AutocrudAdminRoute
+    }
     '/autocrud-admin/guild/create': {
-      id: '/autocrud-admin/guild/create';
-      path: '/guild/create';
-      fullPath: '/autocrud-admin/guild/create';
-      preLoaderRoute: typeof AutocrudAdminGuildCreateRouteImport;
-      parentRoute: typeof AutocrudAdminRoute;
-    };
+      id: '/autocrud-admin/guild/create'
+      path: '/guild/create'
+      fullPath: '/autocrud-admin/guild/create'
+      preLoaderRoute: typeof AutocrudAdminGuildCreateRouteImport
+      parentRoute: typeof AutocrudAdminRoute
+    }
     '/autocrud-admin/guild/$resourceId': {
-      id: '/autocrud-admin/guild/$resourceId';
-      path: '/guild/$resourceId';
-      fullPath: '/autocrud-admin/guild/$resourceId';
-      preLoaderRoute: typeof AutocrudAdminGuildResourceIdRouteImport;
-      parentRoute: typeof AutocrudAdminRoute;
-    };
+      id: '/autocrud-admin/guild/$resourceId'
+      path: '/guild/$resourceId'
+      fullPath: '/autocrud-admin/guild/$resourceId'
+      preLoaderRoute: typeof AutocrudAdminGuildResourceIdRouteImport
+      parentRoute: typeof AutocrudAdminRoute
+    }
     '/autocrud-admin/game-event/create': {
-      id: '/autocrud-admin/game-event/create';
-      path: '/game-event/create';
-      fullPath: '/autocrud-admin/game-event/create';
-      preLoaderRoute: typeof AutocrudAdminGameEventCreateRouteImport;
-      parentRoute: typeof AutocrudAdminRoute;
-    };
+      id: '/autocrud-admin/game-event/create'
+      path: '/game-event/create'
+      fullPath: '/autocrud-admin/game-event/create'
+      preLoaderRoute: typeof AutocrudAdminGameEventCreateRouteImport
+      parentRoute: typeof AutocrudAdminRoute
+    }
     '/autocrud-admin/game-event/$resourceId': {
-      id: '/autocrud-admin/game-event/$resourceId';
-      path: '/game-event/$resourceId';
-      fullPath: '/autocrud-admin/game-event/$resourceId';
-      preLoaderRoute: typeof AutocrudAdminGameEventResourceIdRouteImport;
-      parentRoute: typeof AutocrudAdminRoute;
-    };
+      id: '/autocrud-admin/game-event/$resourceId'
+      path: '/game-event/$resourceId'
+      fullPath: '/autocrud-admin/game-event/$resourceId'
+      preLoaderRoute: typeof AutocrudAdminGameEventResourceIdRouteImport
+      parentRoute: typeof AutocrudAdminRoute
+    }
     '/autocrud-admin/equipment/create': {
-      id: '/autocrud-admin/equipment/create';
-      path: '/equipment/create';
-      fullPath: '/autocrud-admin/equipment/create';
-      preLoaderRoute: typeof AutocrudAdminEquipmentCreateRouteImport;
-      parentRoute: typeof AutocrudAdminRoute;
-    };
+      id: '/autocrud-admin/equipment/create'
+      path: '/equipment/create'
+      fullPath: '/autocrud-admin/equipment/create'
+      preLoaderRoute: typeof AutocrudAdminEquipmentCreateRouteImport
+      parentRoute: typeof AutocrudAdminRoute
+    }
     '/autocrud-admin/equipment/$resourceId': {
-      id: '/autocrud-admin/equipment/$resourceId';
-      path: '/equipment/$resourceId';
-      fullPath: '/autocrud-admin/equipment/$resourceId';
-      preLoaderRoute: typeof AutocrudAdminEquipmentResourceIdRouteImport;
-      parentRoute: typeof AutocrudAdminRoute;
-    };
+      id: '/autocrud-admin/equipment/$resourceId'
+      path: '/equipment/$resourceId'
+      fullPath: '/autocrud-admin/equipment/$resourceId'
+      preLoaderRoute: typeof AutocrudAdminEquipmentResourceIdRouteImport
+      parentRoute: typeof AutocrudAdminRoute
+    }
+    '/autocrud-admin/create-new-character4-job/create': {
+      id: '/autocrud-admin/create-new-character4-job/create'
+      path: '/create-new-character4-job/create'
+      fullPath: '/autocrud-admin/create-new-character4-job/create'
+      preLoaderRoute: typeof AutocrudAdminCreateNewCharacter4JobCreateRouteImport
+      parentRoute: typeof AutocrudAdminRoute
+    }
+    '/autocrud-admin/create-new-character4-job/$resourceId': {
+      id: '/autocrud-admin/create-new-character4-job/$resourceId'
+      path: '/create-new-character4-job/$resourceId'
+      fullPath: '/autocrud-admin/create-new-character4-job/$resourceId'
+      preLoaderRoute: typeof AutocrudAdminCreateNewCharacter4JobResourceIdRouteImport
+      parentRoute: typeof AutocrudAdminRoute
+    }
+    '/autocrud-admin/create-new-character2-job/create': {
+      id: '/autocrud-admin/create-new-character2-job/create'
+      path: '/create-new-character2-job/create'
+      fullPath: '/autocrud-admin/create-new-character2-job/create'
+      preLoaderRoute: typeof AutocrudAdminCreateNewCharacter2JobCreateRouteImport
+      parentRoute: typeof AutocrudAdminRoute
+    }
+    '/autocrud-admin/create-new-character2-job/$resourceId': {
+      id: '/autocrud-admin/create-new-character2-job/$resourceId'
+      path: '/create-new-character2-job/$resourceId'
+      fullPath: '/autocrud-admin/create-new-character2-job/$resourceId'
+      preLoaderRoute: typeof AutocrudAdminCreateNewCharacter2JobResourceIdRouteImport
+      parentRoute: typeof AutocrudAdminRoute
+    }
     '/autocrud-admin/character/create': {
-      id: '/autocrud-admin/character/create';
-      path: '/character/create';
-      fullPath: '/autocrud-admin/character/create';
-      preLoaderRoute: typeof AutocrudAdminCharacterCreateRouteImport;
-      parentRoute: typeof AutocrudAdminRoute;
-    };
+      id: '/autocrud-admin/character/create'
+      path: '/character/create'
+      fullPath: '/autocrud-admin/character/create'
+      preLoaderRoute: typeof AutocrudAdminCharacterCreateRouteImport
+      parentRoute: typeof AutocrudAdminRoute
+    }
     '/autocrud-admin/character/$resourceId': {
-      id: '/autocrud-admin/character/$resourceId';
-      path: '/character/$resourceId';
-      fullPath: '/autocrud-admin/character/$resourceId';
-      preLoaderRoute: typeof AutocrudAdminCharacterResourceIdRouteImport;
-      parentRoute: typeof AutocrudAdminRoute;
-    };
+      id: '/autocrud-admin/character/$resourceId'
+      path: '/character/$resourceId'
+      fullPath: '/autocrud-admin/character/$resourceId'
+      preLoaderRoute: typeof AutocrudAdminCharacterResourceIdRouteImport
+      parentRoute: typeof AutocrudAdminRoute
+    }
   }
 }
 
 interface AutocrudAdminRouteChildren {
-  AutocrudAdminBackupRoute: typeof AutocrudAdminBackupRoute;
-  AutocrudAdminMigrateRoute: typeof AutocrudAdminMigrateRoute;
-  AutocrudAdminIndexRoute: typeof AutocrudAdminIndexRoute;
-  AutocrudAdminCharacterResourceIdRoute: typeof AutocrudAdminCharacterResourceIdRoute;
-  AutocrudAdminCharacterCreateRoute: typeof AutocrudAdminCharacterCreateRoute;
-  AutocrudAdminEquipmentResourceIdRoute: typeof AutocrudAdminEquipmentResourceIdRoute;
-  AutocrudAdminEquipmentCreateRoute: typeof AutocrudAdminEquipmentCreateRoute;
-  AutocrudAdminGameEventResourceIdRoute: typeof AutocrudAdminGameEventResourceIdRoute;
-  AutocrudAdminGameEventCreateRoute: typeof AutocrudAdminGameEventCreateRoute;
-  AutocrudAdminGuildResourceIdRoute: typeof AutocrudAdminGuildResourceIdRoute;
-  AutocrudAdminGuildCreateRoute: typeof AutocrudAdminGuildCreateRoute;
-  AutocrudAdminPetJobResourceIdRoute: typeof AutocrudAdminPetJobResourceIdRoute;
-  AutocrudAdminPetJobCreateRoute: typeof AutocrudAdminPetJobCreateRoute;
-  AutocrudAdminPetResourceIdRoute: typeof AutocrudAdminPetResourceIdRoute;
-  AutocrudAdminPetCreateRoute: typeof AutocrudAdminPetCreateRoute;
-  AutocrudAdminSkillResourceIdRoute: typeof AutocrudAdminSkillResourceIdRoute;
-  AutocrudAdminSkillCreateRoute: typeof AutocrudAdminSkillCreateRoute;
-  AutocrudAdminCharacterIndexRoute: typeof AutocrudAdminCharacterIndexRoute;
-  AutocrudAdminEquipmentIndexRoute: typeof AutocrudAdminEquipmentIndexRoute;
-  AutocrudAdminGameEventIndexRoute: typeof AutocrudAdminGameEventIndexRoute;
-  AutocrudAdminGuildIndexRoute: typeof AutocrudAdminGuildIndexRoute;
-  AutocrudAdminPetJobIndexRoute: typeof AutocrudAdminPetJobIndexRoute;
-  AutocrudAdminPetIndexRoute: typeof AutocrudAdminPetIndexRoute;
-  AutocrudAdminSkillIndexRoute: typeof AutocrudAdminSkillIndexRoute;
+  AutocrudAdminBackupRoute: typeof AutocrudAdminBackupRoute
+  AutocrudAdminMigrateRoute: typeof AutocrudAdminMigrateRoute
+  AutocrudAdminIndexRoute: typeof AutocrudAdminIndexRoute
+  AutocrudAdminCharacterResourceIdRoute: typeof AutocrudAdminCharacterResourceIdRoute
+  AutocrudAdminCharacterCreateRoute: typeof AutocrudAdminCharacterCreateRoute
+  AutocrudAdminCreateNewCharacter2JobResourceIdRoute: typeof AutocrudAdminCreateNewCharacter2JobResourceIdRoute
+  AutocrudAdminCreateNewCharacter2JobCreateRoute: typeof AutocrudAdminCreateNewCharacter2JobCreateRoute
+  AutocrudAdminCreateNewCharacter4JobResourceIdRoute: typeof AutocrudAdminCreateNewCharacter4JobResourceIdRoute
+  AutocrudAdminCreateNewCharacter4JobCreateRoute: typeof AutocrudAdminCreateNewCharacter4JobCreateRoute
+  AutocrudAdminEquipmentResourceIdRoute: typeof AutocrudAdminEquipmentResourceIdRoute
+  AutocrudAdminEquipmentCreateRoute: typeof AutocrudAdminEquipmentCreateRoute
+  AutocrudAdminGameEventResourceIdRoute: typeof AutocrudAdminGameEventResourceIdRoute
+  AutocrudAdminGameEventCreateRoute: typeof AutocrudAdminGameEventCreateRoute
+  AutocrudAdminGuildResourceIdRoute: typeof AutocrudAdminGuildResourceIdRoute
+  AutocrudAdminGuildCreateRoute: typeof AutocrudAdminGuildCreateRoute
+  AutocrudAdminNewChar1JobResourceIdRoute: typeof AutocrudAdminNewChar1JobResourceIdRoute
+  AutocrudAdminNewChar1JobCreateRoute: typeof AutocrudAdminNewChar1JobCreateRoute
+  AutocrudAdminPetJobResourceIdRoute: typeof AutocrudAdminPetJobResourceIdRoute
+  AutocrudAdminPetJobCreateRoute: typeof AutocrudAdminPetJobCreateRoute
+  AutocrudAdminPetResourceIdRoute: typeof AutocrudAdminPetResourceIdRoute
+  AutocrudAdminPetCreateRoute: typeof AutocrudAdminPetCreateRoute
+  AutocrudAdminSkillResourceIdRoute: typeof AutocrudAdminSkillResourceIdRoute
+  AutocrudAdminSkillCreateRoute: typeof AutocrudAdminSkillCreateRoute
+  AutocrudAdminCharacterIndexRoute: typeof AutocrudAdminCharacterIndexRoute
+  AutocrudAdminCreateNewCharacter2JobIndexRoute: typeof AutocrudAdminCreateNewCharacter2JobIndexRoute
+  AutocrudAdminCreateNewCharacter4JobIndexRoute: typeof AutocrudAdminCreateNewCharacter4JobIndexRoute
+  AutocrudAdminEquipmentIndexRoute: typeof AutocrudAdminEquipmentIndexRoute
+  AutocrudAdminGameEventIndexRoute: typeof AutocrudAdminGameEventIndexRoute
+  AutocrudAdminGuildIndexRoute: typeof AutocrudAdminGuildIndexRoute
+  AutocrudAdminNewChar1JobIndexRoute: typeof AutocrudAdminNewChar1JobIndexRoute
+  AutocrudAdminPetJobIndexRoute: typeof AutocrudAdminPetJobIndexRoute
+  AutocrudAdminPetIndexRoute: typeof AutocrudAdminPetIndexRoute
+  AutocrudAdminSkillIndexRoute: typeof AutocrudAdminSkillIndexRoute
 }
 
 const AutocrudAdminRouteChildren: AutocrudAdminRouteChildren = {
@@ -562,12 +768,23 @@ const AutocrudAdminRouteChildren: AutocrudAdminRouteChildren = {
   AutocrudAdminIndexRoute: AutocrudAdminIndexRoute,
   AutocrudAdminCharacterResourceIdRoute: AutocrudAdminCharacterResourceIdRoute,
   AutocrudAdminCharacterCreateRoute: AutocrudAdminCharacterCreateRoute,
+  AutocrudAdminCreateNewCharacter2JobResourceIdRoute:
+    AutocrudAdminCreateNewCharacter2JobResourceIdRoute,
+  AutocrudAdminCreateNewCharacter2JobCreateRoute:
+    AutocrudAdminCreateNewCharacter2JobCreateRoute,
+  AutocrudAdminCreateNewCharacter4JobResourceIdRoute:
+    AutocrudAdminCreateNewCharacter4JobResourceIdRoute,
+  AutocrudAdminCreateNewCharacter4JobCreateRoute:
+    AutocrudAdminCreateNewCharacter4JobCreateRoute,
   AutocrudAdminEquipmentResourceIdRoute: AutocrudAdminEquipmentResourceIdRoute,
   AutocrudAdminEquipmentCreateRoute: AutocrudAdminEquipmentCreateRoute,
   AutocrudAdminGameEventResourceIdRoute: AutocrudAdminGameEventResourceIdRoute,
   AutocrudAdminGameEventCreateRoute: AutocrudAdminGameEventCreateRoute,
   AutocrudAdminGuildResourceIdRoute: AutocrudAdminGuildResourceIdRoute,
   AutocrudAdminGuildCreateRoute: AutocrudAdminGuildCreateRoute,
+  AutocrudAdminNewChar1JobResourceIdRoute:
+    AutocrudAdminNewChar1JobResourceIdRoute,
+  AutocrudAdminNewChar1JobCreateRoute: AutocrudAdminNewChar1JobCreateRoute,
   AutocrudAdminPetJobResourceIdRoute: AutocrudAdminPetJobResourceIdRoute,
   AutocrudAdminPetJobCreateRoute: AutocrudAdminPetJobCreateRoute,
   AutocrudAdminPetResourceIdRoute: AutocrudAdminPetResourceIdRoute,
@@ -575,22 +792,27 @@ const AutocrudAdminRouteChildren: AutocrudAdminRouteChildren = {
   AutocrudAdminSkillResourceIdRoute: AutocrudAdminSkillResourceIdRoute,
   AutocrudAdminSkillCreateRoute: AutocrudAdminSkillCreateRoute,
   AutocrudAdminCharacterIndexRoute: AutocrudAdminCharacterIndexRoute,
+  AutocrudAdminCreateNewCharacter2JobIndexRoute:
+    AutocrudAdminCreateNewCharacter2JobIndexRoute,
+  AutocrudAdminCreateNewCharacter4JobIndexRoute:
+    AutocrudAdminCreateNewCharacter4JobIndexRoute,
   AutocrudAdminEquipmentIndexRoute: AutocrudAdminEquipmentIndexRoute,
   AutocrudAdminGameEventIndexRoute: AutocrudAdminGameEventIndexRoute,
   AutocrudAdminGuildIndexRoute: AutocrudAdminGuildIndexRoute,
+  AutocrudAdminNewChar1JobIndexRoute: AutocrudAdminNewChar1JobIndexRoute,
   AutocrudAdminPetJobIndexRoute: AutocrudAdminPetJobIndexRoute,
   AutocrudAdminPetIndexRoute: AutocrudAdminPetIndexRoute,
   AutocrudAdminSkillIndexRoute: AutocrudAdminSkillIndexRoute,
-};
+}
 
 const AutocrudAdminRouteWithChildren = AutocrudAdminRoute._addFileChildren(
   AutocrudAdminRouteChildren,
-);
+)
 
 const rootRouteChildren: RootRouteChildren = {
   IndexRoute: IndexRoute,
   AutocrudAdminRoute: AutocrudAdminRouteWithChildren,
-};
+}
 export const routeTree = rootRouteImport
   ._addFileChildren(rootRouteChildren)
-  ._addFileTypes<FileRouteTypes>();
+  ._addFileTypes<FileRouteTypes>()

@@ -1074,3 +1074,378 @@ class TestAutoPayloadOpenAPI:
         async_jobs = schema.get("x-autocrud-async-create-jobs", {})
         assert "by-name-job" in async_jobs
         assert async_jobs["by-name-job"] == "article"
+
+
+# ---------------------------------------------------------------------------
+# 13. Custom job_name parameter
+# ---------------------------------------------------------------------------
+
+
+class TestJobNameParam:
+    """Tests for the ``job_name`` parameter on ``create_action()``."""
+
+    def test_job_name_stored_in_pending_action(self):
+        """``job_name`` is persisted on ``_PendingCreateAction``."""
+        crud = _make_crud()
+        crud.add_model(Article, name="article")
+
+        @crud.create_action(
+            "article", async_mode="job", label="Gen", job_name="my-gen-job"
+        )
+        def gen_article(prompt: str):
+            return Article(title=prompt, content="ok")
+
+        action = crud._pending_create_actions[0]
+        assert action.job_name == "my-gen-job"
+
+    def test_job_name_default_is_none(self):
+        """Without ``job_name``, the field defaults to ``None``."""
+        crud = _make_crud()
+        crud.add_model(Article, name="article")
+
+        @crud.create_action("article", async_mode="job", label="Gen")
+        def gen_article(prompt: str):
+            return Article(title=prompt, content="ok")
+
+        action = crud._pending_create_actions[0]
+        assert action.job_name is None
+
+    def test_custom_job_name_registers_correct_resource(self):
+        """apply() uses ``job_name`` as the registered job resource name."""
+        crud = _make_crud()
+        crud.add_model(Article, name="article")
+
+        @crud.create_action(
+            "article", async_mode="job", label="Gen", job_name="my-gen-job"
+        )
+        def gen_article(prompt: str):
+            return Article(title=prompt, content="ok")
+
+        app = FastAPI()
+        crud.apply(app)
+
+        assert "my-gen-job" in crud.resource_managers
+
+    def test_custom_job_name_in_openapi_create_actions(self):
+        """OpenAPI ``jobResourceName`` uses the custom ``job_name``."""
+        crud = _make_crud()
+        crud.add_model(Article, name="article")
+
+        @crud.create_action(
+            "article",
+            async_mode="job",
+            label="Gen",
+            path="gen-article",
+            job_name="my-gen-job",
+        )
+        def gen_article(prompt: str):
+            return Article(title=prompt, content="ok")
+
+        app = FastAPI()
+        crud.apply(app)
+        crud.openapi(app)
+        schema = app.openapi()
+
+        custom_actions = schema.get("x-autocrud-custom-create-actions", {})
+        action = next(a for a in custom_actions["article"] if a["label"] == "Gen")
+        assert action["jobResourceName"] == "my-gen-job"
+
+    def test_custom_job_name_in_openapi_async_create_jobs(self):
+        """``x-autocrud-async-create-jobs`` uses the custom ``job_name``."""
+        crud = _make_crud()
+        crud.add_model(Article, name="article")
+
+        @crud.create_action(
+            "article", async_mode="job", label="Gen", job_name="my-gen-job"
+        )
+        def gen_article(prompt: str):
+            return Article(title=prompt, content="ok")
+
+        app = FastAPI()
+        crud.apply(app)
+        crud.openapi(app)
+        schema = app.openapi()
+
+        async_jobs = schema.get("x-autocrud-async-create-jobs", {})
+        assert "my-gen-job" in async_jobs
+        assert async_jobs["my-gen-job"] == "article"
+
+    def test_custom_job_name_full_http_flow(self):
+        """POST → 202 + job completion with custom job_name."""
+        crud = _make_crud()
+        crud.add_model(Article, name="article")
+
+        @crud.create_action(
+            "article", async_mode="job", label="Gen", job_name="my-gen-job"
+        )
+        def gen_article(prompt: str):
+            return Article(title=prompt, content="generated")
+
+        app = FastAPI()
+        crud.apply(app)
+
+        job_rm = crud.resource_managers["my-gen-job"]
+        job_rm.start_consume(block=False)
+
+        client = TestClient(app)
+        resp = client.post("/article/gen-article?prompt=hello")
+        assert resp.status_code == 202
+        body = resp.json()
+        assert body["job_resource_name"] == "my-gen-job"
+
+        resource = _wait_for_job_completion(crud, "my-gen-job", body["job_resource_id"])
+        assert resource.data.status == TaskStatus.COMPLETED
+
+
+# ---------------------------------------------------------------------------
+# 14. Async create-job registration (public API)
+# ---------------------------------------------------------------------------
+
+
+class TestAsyncCreateJobRmsMapping:
+    """register_async_create_job / async_create_job_names on target RM."""
+
+    def test_mapping_populated_after_apply(self):
+        """Target RM's async_create_job_names contains all job names."""
+        crud = _make_crud()
+        crud.add_model(Article, name="article")
+
+        @crud.create_action("article", async_mode="job", label="Gen1", path="gen1")
+        def gen1(prompt: str):
+            return Article(title=prompt, content="ok")
+
+        @crud.create_action("article", async_mode="job", label="Gen2", path="gen2")
+        def gen2(prompt: str):
+            return Article(title=prompt, content="ok")
+
+        app = FastAPI()
+        crud.apply(app)
+
+        article_rm = crud.resource_managers["article"]
+        assert len(article_rm.async_create_job_names) == 2
+        assert "gen1-job" in article_rm.async_create_job_names
+        assert "gen2-job" in article_rm.async_create_job_names
+
+    def test_mapping_uses_custom_job_name(self):
+        """Custom job_name appears in async_create_job_names."""
+        crud = _make_crud()
+        crud.add_model(Article, name="article")
+
+        @crud.create_action(
+            "article", async_mode="job", label="Gen", job_name="custom-name"
+        )
+        def gen(prompt: str):
+            return Article(title=prompt, content="ok")
+
+        app = FastAPI()
+        crud.apply(app)
+
+        article_rm = crud.resource_managers["article"]
+        assert "custom-name" in article_rm.async_create_job_names
+
+    def test_mapping_empty_without_async_actions(self):
+        """RM has empty async_create_job_names when no async actions exist."""
+        crud = _make_crud()
+        crud.add_model(Article, name="article")
+
+        app = FastAPI()
+        crud.apply(app)
+
+        article_rm = crud.resource_managers["article"]
+        assert article_rm.async_create_job_names == []
+
+    def test_mapping_values_are_resource_managers(self):
+        """Registered job RMs match those in crud.resource_managers."""
+        crud = _make_crud()
+        crud.add_model(Article, name="article")
+
+        @crud.create_action(
+            "article", async_mode="job", label="Gen", job_name="gen-job"
+        )
+        def gen(prompt: str):
+            return Article(title=prompt, content="ok")
+
+        app = FastAPI()
+        crud.apply(app)
+
+        article_rm = crud.resource_managers["article"]
+        assert "gen-job" in article_rm.async_create_job_names
+        # The job RM in crud.resource_managers should be the same instance
+        assert crud.resource_managers["gen-job"] is not None
+
+    def test_register_duplicate_raises(self):
+        """Registering the same job name twice raises ValueError."""
+        crud = _make_crud()
+        crud.add_model(Article, name="article")
+
+        app = FastAPI()
+        crud.apply(app)
+
+        article_rm = crud.resource_managers["article"]
+        # Manually register a fake entry to test duplicate detection
+        article_rm.register_async_create_job("dup-job", article_rm)
+        with pytest.raises(ValueError, match="already registered"):
+            article_rm.register_async_create_job("dup-job", article_rm)
+
+
+# ---------------------------------------------------------------------------
+# 15. start_consume(custom_creation=...) on ResourceManager
+# ---------------------------------------------------------------------------
+
+
+class TestStartConsumeCustomCreation:
+    """start_consume(custom_creation=...) starts child job consumers."""
+
+    def test_custom_creation_all_starts_all_job_consumers(self):
+        """custom_creation='all' starts consumers for all child job RMs."""
+        crud = _make_crud()
+        crud.add_model(Article, name="article")
+
+        @crud.create_action("article", async_mode="job", label="Gen1", path="gen1")
+        def gen1(prompt: str):
+            return Article(title=prompt, content="1")
+
+        @crud.create_action("article", async_mode="job", label="Gen2", path="gen2")
+        def gen2(prompt: str):
+            return Article(title=prompt, content="2")
+
+        app = FastAPI()
+        crud.apply(app)
+
+        article_rm = crud.resource_managers["article"]
+        # Start all child consumers (non-blocking)
+        article_rm.start_consume(block=False, custom_creation="all")
+
+        # Submit jobs and verify they complete
+        client = TestClient(app)
+        resp1 = client.post("/article/gen1?prompt=a")
+        resp2 = client.post("/article/gen2?prompt=b")
+        assert resp1.status_code == 202
+        assert resp2.status_code == 202
+
+        r1 = _wait_for_job_completion(crud, "gen1-job", resp1.json()["job_resource_id"])
+        r2 = _wait_for_job_completion(crud, "gen2-job", resp2.json()["job_resource_id"])
+        assert r1.data.status == TaskStatus.COMPLETED
+        assert r2.data.status == TaskStatus.COMPLETED
+
+    def test_custom_creation_list_starts_specific_consumers(self):
+        """custom_creation=['gen1-job'] only starts that specific consumer."""
+        crud = _make_crud()
+        crud.add_model(Article, name="article")
+
+        @crud.create_action("article", async_mode="job", label="Gen1", path="gen1")
+        def gen1(prompt: str):
+            return Article(title=prompt, content="1")
+
+        @crud.create_action("article", async_mode="job", label="Gen2", path="gen2")
+        def gen2(prompt: str):
+            return Article(title=prompt, content="2")
+
+        app = FastAPI()
+        crud.apply(app)
+
+        article_rm = crud.resource_managers["article"]
+        # Only start gen1-job consumer
+        article_rm.start_consume(block=False, custom_creation=["gen1-job"])
+
+        client = TestClient(app)
+        resp = client.post("/article/gen1?prompt=a")
+        assert resp.status_code == 202
+
+        resource = _wait_for_job_completion(
+            crud, "gen1-job", resp.json()["job_resource_id"]
+        )
+        assert resource.data.status == TaskStatus.COMPLETED
+
+    def test_custom_creation_invalid_name_raises_value_error(self):
+        """custom_creation with unknown name raises ValueError."""
+        crud = _make_crud()
+        crud.add_model(Article, name="article")
+
+        @crud.create_action("article", async_mode="job", label="Gen", path="gen")
+        def gen(prompt: str):
+            return Article(title=prompt, content="ok")
+
+        app = FastAPI()
+        crud.apply(app)
+
+        article_rm = crud.resource_managers["article"]
+        with pytest.raises(ValueError, match="not-exist.*not a registered"):
+            article_rm.start_consume(custom_creation=["not-exist"])
+
+    def test_custom_creation_none_starts_own_consumer(self):
+        """custom_creation=None (default) starts the RM's own MQ consumer."""
+        crud = _make_crud()
+        crud.add_model(Article, name="article")
+
+        @crud.create_action("article", async_mode="job", label="Gen", path="gen")
+        def gen(prompt: str):
+            return Article(title=prompt, content="ok")
+
+        app = FastAPI()
+        crud.apply(app)
+
+        # The gen-job RM has its own MQ; start that directly
+        job_rm = crud.resource_managers["gen-job"]
+        job_rm.start_consume(block=False)  # default custom_creation=None
+
+        client = TestClient(app)
+        resp = client.post("/article/gen?prompt=a")
+        assert resp.status_code == 202
+
+        resource = _wait_for_job_completion(
+            crud, "gen-job", resp.json()["job_resource_id"]
+        )
+        assert resource.data.status == TaskStatus.COMPLETED
+
+    def test_custom_creation_none_no_mq_raises(self):
+        """custom_creation=None on RM without MQ raises NotImplementedError."""
+        crud = _make_crud()
+        crud.add_model(Article, name="article")
+
+        app = FastAPI()
+        crud.apply(app)
+
+        article_rm = crud.resource_managers["article"]
+        with pytest.raises(NotImplementedError, match="Message queue"):
+            article_rm.start_consume()
+
+    def test_custom_creation_all_no_child_jobs_is_noop(self):
+        """custom_creation='all' on RM with no child jobs is a no-op."""
+        crud = _make_crud()
+        crud.add_model(Article, name="article")
+
+        app = FastAPI()
+        crud.apply(app)
+
+        article_rm = crud.resource_managers["article"]
+        # Should not raise — just does nothing
+        article_rm.start_consume(block=False, custom_creation="all")
+
+    def test_custom_creation_all_with_block_true(self):
+        """custom_creation='all' with block=True starts and blocks."""
+        crud = _make_crud()
+        crud.add_model(Article, name="article")
+
+        @crud.create_action(
+            "article", async_mode="job", label="Gen", job_name="gen-job"
+        )
+        def gen(prompt: str):
+            return Article(title=prompt, content="ok")
+
+        app = FastAPI()
+        crud.apply(app)
+
+        client = TestClient(app)
+        resp = client.post("/article/gen?prompt=hello")
+        assert resp.status_code == 202
+
+        article_rm = crud.resource_managers["article"]
+        # block=True will block after starting the consumer — but since
+        # SimpleMessageQueue consumers run in daemon threads with a loop,
+        # we start with block=False first, then verify the job completes.
+        article_rm.start_consume(block=False, custom_creation="all")
+        resource = _wait_for_job_completion(
+            crud, "gen-job", resp.json()["job_resource_id"]
+        )
+        assert resource.data.status == TaskStatus.COMPLETED

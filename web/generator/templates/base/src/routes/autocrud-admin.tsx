@@ -1,4 +1,4 @@
-import { createFileRoute, Outlet, Link, useLocation } from '@tanstack/react-router';
+import { createFileRoute, Outlet, Link, useLocation, useNavigate } from '@tanstack/react-router';
 import { AppShell, NavLink, Title, Group, ScrollArea, Text } from '@mantine/core';
 import { getResourceNames, getResource, isAsyncCreateJob, getAsyncCreateJobChildren } from '@/autocrud/lib/resources';
 import {
@@ -15,6 +15,7 @@ export const Route = createFileRoute('/autocrud-admin')({
 
 function AutoCRUDLayout() {
   const location = useLocation();
+  const navigate = useNavigate();
   const resourceNames = getResourceNames();
 
   return (
@@ -62,12 +63,11 @@ function AutoCRUDLayout() {
                 return (
                   <NavLink
                     key={name}
-                    component={Link}
-                    to={`/autocrud-admin/${name}`}
                     label={config.label}
                     leftSection={<IconDatabase size={16} />}
                     active={isActive}
                     defaultOpened={isActive || hasActiveChild}
+                    onClick={() => navigate({ to: `/autocrud-admin/${name}` })}
                   >
                     {jobChildren.map((jn) => {
                       const jConfig = getResource(jn)!;

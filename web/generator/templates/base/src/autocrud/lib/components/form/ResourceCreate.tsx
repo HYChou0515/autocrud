@@ -49,7 +49,11 @@ export function ResourceCreate<T extends Record<string, any>>({
       try {
         const result = await action.apiMethod(values);
         // Async job actions return JobRedirectInfo with job_resource_name + job_resource_id
-        if (action.asyncMode === 'job' && action.jobResourceName && result.data?.job_resource_id) {
+        if (
+          action.asyncMode === 'job' &&
+          action.jobResourceName &&
+          'job_resource_id' in result.data
+        ) {
           navigate({
             to: `/autocrud-admin/${action.jobResourceName}/${result.data.job_resource_id}`,
           });
