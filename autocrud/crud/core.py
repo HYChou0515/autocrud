@@ -42,6 +42,11 @@ from autocrud.crud.route_templates.delete import (
 )
 from autocrud.crud.route_templates.get import ReadRouteTemplate
 from autocrud.crud.route_templates.job_logs import JobLogsRouteTemplate
+from autocrud.crud.route_templates.migrate import (
+    MigrateProgress,
+    MigrateResult,
+    MigrateRouteTemplate,
+)
 from autocrud.crud.route_templates.patch import (
     RFC6902,
     PatchRouteTemplate,
@@ -1141,6 +1146,12 @@ class AutoCRUD:
                 *structs,
             ],
         )[1]
+
+        # Include MigrateProgress and MigrateResult when MigrateRouteTemplate is active
+        if any(isinstance(rt, MigrateRouteTemplate) for rt in self.route_templates):
+            app.openapi_schema["components"]["schemas"] |= jsonschema_to_openapi(
+                [MigrateProgress, MigrateResult],
+            )[1]
 
         # Include custom create action body schemas in components
         action_body_structs = []

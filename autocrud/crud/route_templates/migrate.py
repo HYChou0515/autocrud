@@ -42,7 +42,7 @@ class MigrateQueryInputs(QueryInputs):
 
     revision_id: str | None = Query(
         None,
-        description='Revision scope: omit for current revision, '
+        description="Revision scope: omit for current revision, "
         '"all" for every revision, or a specific revision ID.',
     )
 
