@@ -421,9 +421,7 @@ class TestMigrateResourcesGeneratorRevisionId:
         async def mock_migrate_single(
             manager, resource_id, user, time, write_back, revision_id=None
         ):
-            calls.append(
-                {"resource_id": resource_id, "revision_id": revision_id}
-            )
+            calls.append({"resource_id": resource_id, "revision_id": revision_id})
             return MigrateProgress(
                 resource_id=resource_id, status="success", message="ok"
             )
@@ -452,9 +450,7 @@ class TestMigrateResourcesGeneratorRevisionId:
         async def mock_migrate_single(
             manager, resource_id, user, time, write_back, revision_id=None
         ):
-            calls.append(
-                {"resource_id": resource_id, "revision_id": revision_id}
-            )
+            calls.append({"resource_id": resource_id, "revision_id": revision_id})
             return MigrateProgress(
                 resource_id=resource_id, status="success", message="ok"
             )
@@ -492,9 +488,7 @@ class TestMigrateResourcesGeneratorRevisionId:
         async def mock_migrate_single(
             manager, resource_id, user, time, write_back, revision_id=None
         ):
-            calls.append(
-                {"resource_id": resource_id, "revision_id": revision_id}
-            )
+            calls.append({"resource_id": resource_id, "revision_id": revision_id})
             return MigrateProgress(
                 resource_id=resource_id, status="success", message="ok"
             )
@@ -531,12 +525,8 @@ class TestMigrateBatchApiRevisionId:
         async def mock_generator(
             manager, query, user, time, write_back, revision_id=None
         ):
-            captured.append(
-                {"write_back": write_back, "revision_id": revision_id}
-            )
-            yield MigrateProgress(
-                resource_id="user:1", status="success", message="ok"
-            )
+            captured.append({"write_back": write_back, "revision_id": revision_id})
+            yield MigrateProgress(resource_id="user:1", status="success", message="ok")
 
         with patch.object(
             MigrateRouteTemplate,
@@ -562,12 +552,8 @@ class TestMigrateBatchApiRevisionId:
         async def mock_generator(
             manager, query, user, time, write_back, revision_id=None
         ):
-            captured.append(
-                {"write_back": write_back, "revision_id": revision_id}
-            )
-            yield MigrateProgress(
-                resource_id="user:1", status="success", message="ok"
-            )
+            captured.append({"write_back": write_back, "revision_id": revision_id})
+            yield MigrateProgress(resource_id="user:1", status="success", message="ok")
 
         with patch.object(
             MigrateRouteTemplate,
@@ -593,9 +579,7 @@ class TestMigrateBatchApiRevisionId:
             manager, query, user, time, write_back, revision_id=None
         ):
             captured.append({"revision_id": revision_id})
-            yield MigrateProgress(
-                resource_id="user:1", status="success", message="ok"
-            )
+            yield MigrateProgress(resource_id="user:1", status="success", message="ok")
 
         with patch.object(
             MigrateRouteTemplate,
@@ -691,7 +675,12 @@ class TestMigrateSingleResourceAPI:
 def mock_generator_and_assert_func1(expected_write_back: bool):
     # Mock the generator to return test results
     async def mock_generator(
-        manager: Mock, query: Any, user: str, time: dt.datetime, write_back: bool, revision_id: str | None = None
+        manager: Mock,
+        query: Any,
+        user: str,
+        time: dt.datetime,
+        write_back: bool,
+        revision_id: str | None = None,
     ) -> AsyncGenerator[MigrateProgress, None]:
         # 確認這是測試模式
         assert write_back is expected_write_back
@@ -728,7 +717,12 @@ def mock_generator_and_assert_func1(expected_write_back: bool):
 def mock_generator_and_assert_func2(expected_write_back: bool):
     # Mock the generator to return execution results
     async def mock_generator(
-        manager: Mock, query: Any, user: str, time: dt.datetime, write_back: bool, revision_id: str | None = None
+        manager: Mock,
+        query: Any,
+        user: str,
+        time: dt.datetime,
+        write_back: bool,
+        revision_id: str | None = None,
     ) -> AsyncGenerator[MigrateProgress, None]:
         # 確認這是執行模式
         assert write_back is expected_write_back
@@ -755,7 +749,12 @@ def mock_generator_and_assert_func2(expected_write_back: bool):
 def mock_generator_and_assert_func3(expected_write_back: bool):
     # Mock the generator to return execution results
     async def mock_generator(
-        manager: Mock, query: Any, user: str, time: dt.datetime, write_back: bool, revision_id: str | None = None
+        manager: Mock,
+        query: Any,
+        user: str,
+        time: dt.datetime,
+        write_back: bool,
+        revision_id: str | None = None,
     ) -> AsyncGenerator[MigrateProgress, None]:
         # 確認這是執行模式
         assert write_back is expected_write_back
@@ -785,7 +784,12 @@ def mock_generator_and_assert_func3(expected_write_back: bool):
 def mock_generator_and_assert_func4(expected_write_back: bool):
     # Mock the generator to return execution results
     async def mock_generator(
-        manager: Mock, query: Any, user: str, time: dt.datetime, write_back: bool, revision_id: str | None = None
+        manager: Mock,
+        query: Any,
+        user: str,
+        time: dt.datetime,
+        write_back: bool,
+        revision_id: str | None = None,
     ) -> AsyncGenerator[MigrateProgress, None]:
         # 確認這是執行模式
         assert write_back is expected_write_back
