@@ -4108,6 +4108,54 @@ describe('genResourcesConfig — async create action metadata', () => {
   });
 });
 
+// ── genResourcesConfig — setApiBasePath injection ───────────────────────────
+describe('genResourcesConfig — setApiBasePath injection', () => {
+  it('emits setApiBasePath with basePath when basePath is non-empty', () => {
+    const spec = {
+      paths: {
+        '/v1/autocrud/character': {
+          post: {
+            requestBody: { content: { 'application/json': { schema: { $ref: '#/components/schemas/Character' } } } },
+          },
+        },
+      },
+      components: {
+        schemas: {
+          Character: { type: 'object', properties: { name: { type: 'string' } }, required: ['name'] },
+        },
+      },
+    };
+    const gen = createTestGenerator(spec, '/v1/autocrud');
+    (gen as any).extractResources();
+    const config = (gen as any).genResourcesConfig() as string;
+
+    expect(config).toContain("import { setApiBasePath } from '../lib/client'");
+    expect(config).toContain("setApiBasePath('/v1/autocrud')");
+  });
+
+  it('emits setApiBasePath with empty string when no basePath', () => {
+    const spec = {
+      paths: {
+        '/character': {
+          post: {
+            requestBody: { content: { 'application/json': { schema: { $ref: '#/components/schemas/Character' } } } },
+          },
+        },
+      },
+      components: {
+        schemas: {
+          Character: { type: 'object', properties: { name: { type: 'string' } }, required: ['name'] },
+        },
+      },
+    };
+    const gen = createTestGenerator(spec, '');
+    (gen as any).extractResources();
+    const config = (gen as any).genResourcesConfig() as string;
+
+    expect(config).toContain("setApiBasePath('')");
+  });
+});
+
 // ── genApiClient — custom actions use ${BASE} instead of hardcoded paths ────
 describe('genApiClient — custom action paths use BASE variable', () => {
   it('pure body schema action path uses ${BASE}', () => {
@@ -4205,5 +4253,118 @@ describe('genApiClient — custom action paths use BASE variable', () => {
     expect(api).toContain("const BASE = '/api/character'");
     expect(api).toContain('${BASE}/action');
     expect(api).not.toContain("'/api/character/action'");
+  });
+
+  it('strips resource prefix when action.path lacks basePath prefix (real backend scenario)', () => {
+    // Real backend scenario: APIRouter(prefix="/v1/autocrud"), action.path="/{resource}/{segment}"
+    // The backend stores action.path as "/character/{name}/new" (no basePath prefix)
+    // but the generator basePath is "/v1/autocrud", so base="/v1/autocrud/character".
+    // The suffix should be "/{name}/new", NOT "/character/{name}/new".
+    const spec = {
+      paths: {
+        '/v1/autocrud/character': {
+          post: {
+            requestBody: { content: { 'application/json': { schema: { $ref: '#/components/schemas/Character' } } } },
+          },
+        },
+        '/v1/autocrud/character/{id}': { get: {} },
+      },
+      'x-autocrud-custom-create-actions': {
+        character: [
+          {
+            path: '/character/{name}/new',
+            label: 'New Character1',
+            operationId: 'create_new_character1',
+            pathParams: [{ name: 'name', required: true, schema: { type: 'string' } }],
+          },
+        ],
+      },
+      components: {
+        schemas: {
+          Character: { type: 'object', properties: { name: { type: 'string' } }, required: ['name'] },
+        },
+      },
+    };
+    const gen = createTestGenerator(spec, '/v1/autocrud');
+    (gen as any).extractResources();
+    (gen as any).extractCustomCreateActions();
+    const api = (gen as any).genApiClient(gen.resources.find((r: any) => r.name === 'character')!) as string;
+    // BASE = '/v1/autocrud/character'
+    expect(api).toContain("const BASE = '/v1/autocrud/character'");
+    // The URL should be ${BASE}/${name}/new — NOT ${BASE}/character/${name}/new
+    expect(api).toContain('${BASE}/');
+    expect(api).not.toContain('/character/${allParams');
+    expect(api).not.toContain('/character/character/');
+  });
+
+  it('strips resource prefix for query-only action when action.path lacks basePath', () => {
+    const spec = {
+      paths: {
+        '/v1/autocrud/character': {
+          post: {
+            requestBody: { content: { 'application/json': { schema: { $ref: '#/components/schemas/Character' } } } },
+          },
+        },
+      },
+      'x-autocrud-custom-create-actions': {
+        character: [
+          {
+            path: '/character/create-custom',
+            label: 'Custom Create',
+            operationId: 'custom_create',
+            queryParams: [{ name: 'name', required: true, schema: { type: 'string' } }],
+          },
+        ],
+      },
+      components: {
+        schemas: {
+          Character: { type: 'object', properties: { name: { type: 'string' } }, required: ['name'] },
+        },
+      },
+    };
+    const gen = createTestGenerator(spec, '/v1/autocrud');
+    (gen as any).extractResources();
+    (gen as any).extractCustomCreateActions();
+    const api = (gen as any).genApiClient(gen.resources.find((r: any) => r.name === 'character')!) as string;
+    expect(api).toContain("const BASE = '/v1/autocrud/character'");
+    // Should use ${BASE}/create-custom, not ${BASE}/character/create-custom
+    expect(api).toContain('${BASE}/create-custom');
+    expect(api).not.toContain('/character/create-custom');
+  });
+
+  it('strips resource prefix for body-schema action when action.path lacks basePath', () => {
+    const spec = {
+      paths: {
+        '/v1/autocrud/character': {
+          post: {
+            requestBody: { content: { 'application/json': { schema: { $ref: '#/components/schemas/Character' } } } },
+          },
+        },
+      },
+      'x-autocrud-custom-create-actions': {
+        character: [
+          {
+            path: '/character/import',
+            label: 'Import Character',
+            operationId: 'import_character',
+            bodySchema: 'ImportPayload',
+          },
+        ],
+      },
+      components: {
+        schemas: {
+          Character: { type: 'object', properties: { name: { type: 'string' } }, required: ['name'] },
+          ImportPayload: { type: 'object', properties: { url: { type: 'string' } }, required: ['url'] },
+        },
+      },
+    };
+    const gen = createTestGenerator(spec, '/v1/autocrud');
+    (gen as any).extractResources();
+    (gen as any).extractCustomCreateActions();
+    const api = (gen as any).genApiClient(gen.resources.find((r: any) => r.name === 'character')!) as string;
+    expect(api).toContain("const BASE = '/v1/autocrud/character'");
+    // Should use ${BASE}/import, not ${BASE}/character/import
+    expect(api).toContain('${BASE}/import');
+    expect(api).not.toContain('/character/import');
   });
 });

@@ -37,11 +37,11 @@ export const characterApi = {
     client.post<ResourceMeta>(`${BASE}/${id}/switch/${revisionId}`),
 
   createNewCharacter1: (allParams: Record<string, unknown>) =>
-    client.post<RevisionInfo>(`${BASE}/character/${allParams['name'] as string}/new`, null),
+    client.post<RevisionInfo>(`${BASE}/${allParams['name'] as string}/new`, null),
 
   createNewCharacter2: (allParams: Record<string, unknown>) => {
     const params = { name: allParams['name'] };
-    return client.post<RevisionInfo>(`${BASE}/character/create-new-character2`, null, { params });
+    return client.post<RevisionInfo>(`${BASE}/create-new-character2`, null, { params });
   },
 
   createNewCharacter4: (allParams: Record<string, unknown>) => {
@@ -51,6 +51,6 @@ export const characterApi = {
     formData.append('name', String(allParams['name']));
     if (allParams['z'] instanceof File) formData.append('z', allParams['z'] as File);
     const params = { x: allParams['x'], y: allParams['y'] };
-    return client.post<RevisionInfo>(`${BASE}/character/create-new-character4`, formData, { params });
+    return client.post<RevisionInfo>(`${BASE}/create-new-character4`, formData, { params });
   },
 };

@@ -2,7 +2,7 @@
  * Conversion utility functions for form data transformation
  */
 
-import { client } from '../../client';
+import { client, getBlobUploadPath } from '../../client';
 import type { BinaryFormValue } from './types';
 
 /**
@@ -148,7 +148,7 @@ export interface BlobUploadResult {
 export async function uploadBlob(file: File): Promise<BlobUploadResult> {
   const formData = new FormData();
   formData.append('file', file);
-  const resp = await client.post<BlobUploadResult>('/blobs/upload', formData, {
+  const resp = await client.post<BlobUploadResult>(getBlobUploadPath(), formData, {
     headers: { 'Content-Type': 'multipart/form-data' },
   });
   return resp.data;
