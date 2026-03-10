@@ -20,18 +20,17 @@ import {
 // Constants
 // ---------------------------------------------------------------------------
 
+import { getBlobUrl } from '../../../client';
+
 /** Size threshold (in bytes) below which images are shown as inline thumbnails. */
 export const INLINE_IMAGE_MAX_SIZE = 512 * 1024; // 512 KB
-
-const API_BASE_URL = import.meta.env.VITE_API_URL || 'http://localhost:8000';
 
 // ---------------------------------------------------------------------------
 // Pure helpers
 // ---------------------------------------------------------------------------
 
-export function getBlobUrl(fileId: string): string {
-  return `${API_BASE_URL}/blobs/${fileId}`;
-}
+// Re-export getBlobUrl so existing consumers (e.g. table/index.ts) keep working.
+export { getBlobUrl };
 
 export function isImageContentType(ct: string | undefined): boolean {
   return !!ct && ct.startsWith('image/');

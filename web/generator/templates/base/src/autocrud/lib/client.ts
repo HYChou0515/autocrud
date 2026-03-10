@@ -10,12 +10,25 @@ export const client = axios.create({
 /**
  * Resolve the API base URL.
  *
- * This is the same value used by the Axios client instance.
- * Non-Axios callers (e.g. `fetch` for streaming) should use this
- * to stay consistent with the proxy / production configuration.
+ * This is the **single source of truth** for the API base URL.
+ * All URL construction MUST go through `getBaseUrl()` or `getBlobUrl()`
+ * rather than reading `import.meta.env.VITE_API_URL` directly.
+ *
+ * An ESLint `no-restricted-syntax` rule enforces this — only this file
+ * is allowed to access `VITE_API_URL`.
  */
 export function getBaseUrl(): string {
   return baseURL;
+}
+
+/**
+ * Build the full URL for downloading / displaying a blob by its file ID.
+ *
+ * Use this everywhere you need a blob `<img src>`, `<a href>`, or
+ * fetch URL instead of manually concatenating the base URL.
+ */
+export function getBlobUrl(fileId: string): string {
+  return `${baseURL}/blobs/${fileId}`;
 }
 
 // Response interceptor for error handling

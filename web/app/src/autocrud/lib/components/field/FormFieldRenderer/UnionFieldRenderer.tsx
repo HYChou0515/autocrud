@@ -66,7 +66,6 @@ function renderSubField(sf: ResourceField, subPath: string, form: UseFormReturnT
     );
   }
   if (sf.type === 'binary') {
-    const apiUrl = (typeof window !== 'undefined' && (import.meta as any).env?.VITE_API_URL) || '';
     const binaryVal = getByPath(
       form.getValues() as Record<string, any>,
       subPath,
@@ -78,7 +77,6 @@ function renderSubField(sf: ResourceField, subPath: string, form: UseFormReturnT
         required={sf.isRequired && !sf.isNullable}
         value={binaryVal}
         onChange={(val) => form.setFieldValue(subPath as any, val as any)}
-        apiUrl={apiUrl}
       />
     );
   }

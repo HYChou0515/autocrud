@@ -136,8 +136,6 @@ export function ArrayFieldRenderer({ field, form }: ArrayFieldRendererProps) {
                 );
               }
               if (sf.type === 'binary') {
-                const itemApiUrl =
-                  (typeof window !== 'undefined' && (import.meta as any).env?.VITE_API_URL) || '';
                 const itemBv = getByPath(
                   form.getValues() as Record<string, any>,
                   itemPath,
@@ -149,7 +147,6 @@ export function ArrayFieldRenderer({ field, form }: ArrayFieldRendererProps) {
                     required={sf.isRequired && !sf.isNullable}
                     value={itemBv}
                     onChange={(val) => form.setFieldValue(itemPath as any, val as any)}
-                    apiUrl={itemApiUrl}
                   />
                 );
               }

@@ -10,6 +10,7 @@ import {
 } from '@mantine/core';
 import { IconLink, IconX } from '@tabler/icons-react';
 import type { BinaryFormValue } from '@/autocrud/lib/utils/formUtils';
+import { getBlobUrl } from '../../../client';
 
 /** Binary field editor — file upload or URL input */
 export function BinaryFieldEditor({
@@ -17,13 +18,11 @@ export function BinaryFieldEditor({
   required,
   value,
   onChange,
-  apiUrl,
 }: {
   label: string;
   required?: boolean;
   value: BinaryFormValue | null;
   onChange: (val: BinaryFormValue) => void;
-  apiUrl?: string;
 }) {
   const mode = value?._mode ?? 'empty';
   const activeMode = mode === 'existing' || mode === 'empty' ? 'file' : mode;
@@ -45,7 +44,7 @@ export function BinaryFieldEditor({
     onChange({ _mode: 'empty' });
   };
 
-  const blobUrl = value?.file_id && apiUrl ? `${apiUrl}/blobs/${value.file_id}` : null;
+  const blobUrl = value?.file_id ? getBlobUrl(value.file_id) : null;
 
   return (
     <Stack gap={4}>

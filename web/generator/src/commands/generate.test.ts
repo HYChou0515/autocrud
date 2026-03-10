@@ -1310,7 +1310,7 @@ describe('genApiClient — compositional', () => {
     const api = (gen as any).genApiClient(article) as string;
     expect(api).toContain('importFromUrl');
     expect(api).toContain('(data: ImportFromUrl)');
-    expect(api).toContain("'/article/import-from-url', data");
+    expect(api).toContain('${BASE}/import-from-url');
   });
 
   it('Q only → null body + params', () => {
@@ -1351,7 +1351,7 @@ describe('genApiClient — compositional', () => {
     (gen as any).extractCustomCreateActions();
     const api = (gen as any).genApiClient(gen.resources.find((r) => r.name === 'character')!) as string;
     expect(api).toContain("data = { name: allParams['name'], age: allParams['age'] }");
-    expect(api).toContain("'/character/action', data");
+    expect(api).toContain('${BASE}/action');
     expect(api).not.toContain('null');
   });
 
@@ -4105,5 +4105,105 @@ describe('genResourcesConfig — async create action metadata', () => {
     const config = (gen as any).genResourcesConfig() as string;
 
     expect(config).not.toContain('asyncCreateJobs');
+  });
+});
+
+// ── genApiClient — custom actions use ${BASE} instead of hardcoded paths ────
+describe('genApiClient — custom action paths use BASE variable', () => {
+  it('pure body schema action path uses ${BASE}', () => {
+    const spec = buildCustomActionSpec();
+    const gen = createTestGenerator(spec);
+    (gen as any).extractResources();
+    (gen as any).extractCustomCreateActions();
+    const article = gen.resources.find((r: any) => r.name === 'article')!;
+    const api = (gen as any).genApiClient(article) as string;
+    // Should use `${BASE}/import-from-url` not '/article/import-from-url'
+    expect(api).toContain('${BASE}/import-from-url');
+    expect(api).not.toMatch(/client\.post<RevisionInfo>\('\/article\//);
+  });
+
+  it('path param action uses ${BASE} in template literal', () => {
+    const spec = buildCharacterSpec({
+      path: '/character/{name}/new',
+      pathParams: [{ name: 'name', required: true, schema: { type: 'string' } }],
+    });
+    const gen = createTestGenerator(spec);
+    (gen as any).extractResources();
+    (gen as any).extractCustomCreateActions();
+    const api = (gen as any).genApiClient(gen.resources.find((r: any) => r.name === 'character')!) as string;
+    // Should use `${BASE}/${allParams['name']...}/new` not `/character/${allParams['name']...}/new`
+    expect(api).toContain('${BASE}/');
+    expect(api).not.toMatch(/`\/character\//);
+  });
+
+  it('query-only action uses ${BASE}', () => {
+    const spec = buildCharacterSpec({
+      queryParams: [{ name: 'name', required: true, schema: { type: 'string' } }],
+    });
+    const gen = createTestGenerator(spec);
+    (gen as any).extractResources();
+    (gen as any).extractCustomCreateActions();
+    const api = (gen as any).genApiClient(gen.resources.find((r: any) => r.name === 'character')!) as string;
+    expect(api).toContain('${BASE}/action');
+    expect(api).not.toMatch(/client\.post<RevisionInfo>\('\/character\//);
+  });
+
+  it('inline body action uses ${BASE}', () => {
+    const spec = buildCharacterSpec({
+      inlineBodyParams: [{ name: 'name', required: true, schema: { type: 'string' } }],
+    });
+    const gen = createTestGenerator(spec);
+    (gen as any).extractResources();
+    (gen as any).extractCustomCreateActions();
+    const api = (gen as any).genApiClient(gen.resources.find((r: any) => r.name === 'character')!) as string;
+    expect(api).toContain('${BASE}/action');
+    expect(api).not.toMatch(/client\.post<RevisionInfo>\('\/character\//);
+  });
+
+  it('mixed body schema with file/query action uses ${BASE}', () => {
+    const spec = buildMixedBodySchemaCharacterSpec();
+    const gen = createTestGenerator(spec);
+    (gen as any).extractResources();
+    (gen as any).extractCustomCreateActions();
+    const api = (gen as any).genApiClient(gen.resources.find((r: any) => r.name === 'character')!) as string;
+    // buildMixedBodySchemaCharacterSpec uses buildCharacterSpec which defaults to path '/character/action'
+    expect(api).toContain('${BASE}/action');
+    expect(api).not.toMatch(/client\.post<RevisionInfo>\('\/character\//);
+  });
+
+  it('respects non-empty basePath in custom action paths', () => {
+    const spec = {
+      paths: {
+        '/api/character': {
+          post: {
+            requestBody: { content: { 'application/json': { schema: { $ref: '#/components/schemas/Character' } } } },
+          },
+        },
+        '/api/character/{id}': { get: {} },
+      },
+      'x-autocrud-custom-create-actions': {
+        character: [
+          {
+            path: '/api/character/action',
+            label: 'Test Action',
+            operationId: 'test_action',
+            queryParams: [{ name: 'q', required: false, schema: { type: 'string' } }],
+          },
+        ],
+      },
+      components: {
+        schemas: {
+          Character: { type: 'object', properties: { name: { type: 'string' } }, required: ['name'] },
+        },
+      },
+    };
+    const gen = createTestGenerator(spec, '/api');
+    (gen as any).extractResources();
+    (gen as any).extractCustomCreateActions();
+    const api = (gen as any).genApiClient(gen.resources.find((r: any) => r.name === 'character')!) as string;
+    // BASE = '/api/character', action path should be `${BASE}/action`
+    expect(api).toContain("const BASE = '/api/character'");
+    expect(api).toContain('${BASE}/action');
+    expect(api).not.toContain("'/api/character/action'");
   });
 });

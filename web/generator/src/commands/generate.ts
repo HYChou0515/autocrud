@@ -634,7 +634,9 @@ export class Generator {
     const schemaName = ref.split('/').pop()!;
     // Try direct lookup first, then fallback with dots→underscores
     // (OpenAPI discriminator mappings may use dots while schema keys use underscores)
-    return this.spec.components?.schemas?.[schemaName] ?? this.spec.components?.schemas?.[sanitizeTsName(schemaName)] ?? null;
+    return (
+      this.spec.components?.schemas?.[schemaName] ?? this.spec.components?.schemas?.[sanitizeTsName(schemaName)] ?? null
+    );
   }
 
   /**
@@ -1562,6 +1564,9 @@ export { registry as resources };
     if (r.customCreateActions) {
       for (const action of r.customCreateActions) {
         const methodName = toCamel(action.operationId);
+        // Strip the resource base prefix so custom actions use the shared
+        // BASE constant (e.g. '/character/foo' → '/foo' when base='/character').
+        const suffix = action.path.startsWith(base) ? action.path.slice(base.length) : action.path;
 
         if (action.bodySchemaName) {
           // Check if there are additional param types alongside the body schema
@@ -1575,7 +1580,7 @@ export { registry as resources };
             // Pure body schema: simple typed method
             customActionMethods += `
   ${methodName}: (data: ${action.bodySchemaName}) =>
-    client.post<RevisionInfo>('${action.path}', data),
+    client.post<RevisionInfo>(\`\${BASE}${suffix}\`, data),
 `;
             continue;
           }
@@ -1591,8 +1596,8 @@ export { registry as resources };
           const _bodyFieldNames = action.bodySchemaFieldNames || [];
 
           const urlExpr = hasPath
-            ? '`' + action.path.replace(/\{(\w+)\}/g, (_, pname) => `\${allParams['${pname}'] as string}`) + '`'
-            : `'${action.path}'`;
+            ? '`${BASE}' + suffix.replace(/\{(\w+)\}/g, (_, pname) => `\${allParams['${pname}'] as string}`) + '`'
+            : '`${BASE}' + suffix + '`';
 
           const setupLines: string[] = [];
           let bodyVar = 'null';
@@ -1652,10 +1657,10 @@ ${setupLines.join('\n')}
         const hasInlineBody = !!action.inlineBodyParams;
         const hasFile = !!action.fileParams?.length;
 
-        // Step 1: URL expression
+        // Step 1: URL expression — always relative to BASE
         const urlExpr = hasPath
-          ? '`' + action.path.replace(/\{(\w+)\}/g, (_, pname) => `\${allParams['${pname}'] as string}`) + '`'
-          : `'${action.path}'`;
+          ? '`${BASE}' + suffix.replace(/\{(\w+)\}/g, (_, pname) => `\${allParams['${pname}'] as string}`) + '`'
+          : '`${BASE}' + suffix + '`';
 
         // Step 2: Body — FormData when files present, JSON object for inline body, null otherwise
         const bodyLines: string[] = [];

@@ -47,6 +47,26 @@ export default tseslint.config(
       // React rules
       'react-hooks/rules-of-hooks': 'error',
       'react-hooks/exhaustive-deps': 'warn',
+
+      // Prevent direct access to VITE_API_URL outside of client.ts.
+      // All URL construction must go through getBaseUrl() or getBlobUrl()
+      // from '@/autocrud/lib/client' to ensure consistent base path handling.
+      'no-restricted-syntax': [
+        'error',
+        {
+          selector:
+            "MemberExpression[property.name='VITE_API_URL']",
+          message:
+            "Do not access VITE_API_URL directly. Use getBaseUrl() or getBlobUrl() from '@/autocrud/lib/client'.",
+        },
+      ],
+    },
+  },
+  // Allow client.ts to be the single source of truth for VITE_API_URL
+  {
+    files: ['**/autocrud/lib/client.ts'],
+    rules: {
+      'no-restricted-syntax': 'off',
     },
   },
   {

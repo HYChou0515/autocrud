@@ -25,6 +25,7 @@ export default defineConfig(({ mode }) => {
   test: {
     environment: 'happy-dom',
     include: [
+      'src/autocrud/lib/*.test.ts',
       'src/autocrud/lib/utils/**/*.test.ts',
       'src/autocrud/lib/utils/formUtils/**/*.test.ts',
       'src/autocrud/lib/components/**/*.test.{ts,tsx}',

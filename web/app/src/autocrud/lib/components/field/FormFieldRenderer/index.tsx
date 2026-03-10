@@ -62,7 +62,6 @@ const FIELD_RENDERERS: Record<FieldKind, (ctx: FieldRenderContext) => React.Reac
   ),
 
   binary: ({ field, form }) => {
-    const apiUrl = (typeof window !== 'undefined' && (import.meta as any).env?.VITE_API_URL) || '';
     const binaryVal = getByPath(form.getValues(), field.name) as unknown as BinaryFormValue | null;
     return (
       <BinaryFieldEditor
@@ -71,7 +70,6 @@ const FIELD_RENDERERS: Record<FieldKind, (ctx: FieldRenderContext) => React.Reac
         required={field.isRequired && !field.isNullable}
         value={binaryVal}
         onChange={(val) => form.setFieldValue(field.name as any, val as any)}
-        apiUrl={apiUrl}
       />
     );
   },
