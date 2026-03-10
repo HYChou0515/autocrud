@@ -2577,6 +2577,29 @@ class TaskStatus(StrEnum):
     FAILED = "failed"
 
 
+class JobRedirectInfo(Struct, kw_only=True):
+    """Response body returned by async create actions (HTTP 202).
+
+    When a custom create action uses ``async_mode='job'``, the endpoint
+    returns this struct instead of ``RevisionInfo`` so the client can
+    navigate to the auto-generated Job resource to track progress.
+
+    Attributes:
+        job_resource_name: The registered name of the auto-generated Job resource.
+        job_resource_id: The resource ID of the newly created Job instance.
+        redirect_url: A URL path to the Job detail endpoint.
+    """
+
+    job_resource_name: str
+    """The registered name of the auto-generated Job resource."""
+
+    job_resource_id: str
+    """The resource ID of the newly created Job instance."""
+
+    redirect_url: str
+    """A URL path to the Job detail endpoint."""
+
+
 class Job(Struct, Generic[T, D]):
     """A job wrapping a payload ``T`` with optional artifact type ``D``.
 

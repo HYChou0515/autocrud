@@ -3963,3 +3963,147 @@ describe('genApiIndex — migrate export', () => {
     expect(code).toContain('migrateApi');
   });
 });
+
+// ============================================================================
+// Async Create Action — asyncMode / jobResourceName / x-autocrud-async-create-jobs
+// ============================================================================
+
+function buildAsyncCreateActionSpec() {
+  return {
+    paths: {
+      '/article': {
+        post: {
+          requestBody: {
+            content: { 'application/json': { schema: { $ref: '#/components/schemas/Article' } } },
+          },
+        },
+      },
+      '/article/generate-article': {
+        post: {
+          requestBody: {
+            content: {
+              'application/json': {
+                schema: {
+                  type: 'object',
+                  properties: { prompt: { type: 'string' }, title: { type: 'string' } },
+                  required: ['prompt', 'title'],
+                  title: 'ArticleRequest',
+                },
+              },
+            },
+          },
+        },
+      },
+      '/generate-article-job': {
+        get: {},
+      },
+      '/generate-article-job/{id}': {
+        get: {},
+      },
+    },
+    'x-autocrud-custom-create-actions': {
+      article: [
+        {
+          path: '/article/generate-article',
+          label: 'Generate',
+          operationId: 'generate_article',
+          bodySchema: 'ArticleRequest',
+          asyncMode: 'job',
+          jobResourceName: 'generate-article-job',
+        },
+      ],
+    },
+    'x-autocrud-async-create-jobs': {
+      'generate-article-job': 'article',
+    },
+    components: {
+      schemas: {
+        Article: {
+          type: 'object',
+          properties: { title: { type: 'string' }, content: { type: 'string' } },
+          required: ['title', 'content'],
+        },
+        ArticleRequest: {
+          type: 'object',
+          properties: { prompt: { type: 'string' }, title: { type: 'string' } },
+          required: ['prompt', 'title'],
+        },
+      },
+    },
+  };
+}
+
+describe('extractCustomCreateActions — asyncMode', () => {
+  it('parses asyncMode and jobResourceName from OpenAPI extension', () => {
+    const spec = buildAsyncCreateActionSpec();
+    const gen = createTestGenerator(spec);
+    (gen as any).extractResources();
+    (gen as any).extractCustomCreateActions();
+
+    const resource = (gen as any).resources.find((r: any) => r.name === 'article');
+    expect(resource).toBeDefined();
+    expect(resource.customCreateActions).toBeDefined();
+    expect(resource.customCreateActions.length).toBe(1);
+
+    const action = resource.customCreateActions[0];
+    expect(action.asyncMode).toBe('job');
+    expect(action.jobResourceName).toBe('generate-article-job');
+  });
+
+  it('sync actions have no asyncMode or jobResourceName', () => {
+    const spec = buildCustomActionSpec();
+    const gen = createTestGenerator(spec);
+    (gen as any).extractResources();
+    (gen as any).extractCustomCreateActions();
+
+    const resource = (gen as any).resources.find((r: any) => r.name === 'article');
+    const action = resource.customCreateActions[0];
+    expect(action.asyncMode).toBeUndefined();
+    expect(action.jobResourceName).toBeUndefined();
+  });
+});
+
+describe('genResourcesConfig — async create action metadata', () => {
+  it('emits asyncMode and jobResourceName in resource config', () => {
+    const spec = buildAsyncCreateActionSpec();
+    const gen = createTestGenerator(spec);
+    (gen as any).extractResources();
+    (gen as any).extractCustomCreateActions();
+    const config = (gen as any).genResourcesConfig() as string;
+
+    expect(config).toContain("asyncMode: 'job'");
+    expect(config).toContain("jobResourceName: 'generate-article-job'");
+  });
+
+  it('does not emit asyncMode for sync actions', () => {
+    const spec = buildCustomActionSpec();
+    const gen = createTestGenerator(spec);
+    (gen as any).extractResources();
+    (gen as any).extractCustomCreateActions();
+    const config = (gen as any).genResourcesConfig() as string;
+
+    expect(config).not.toContain('asyncMode');
+    expect(config).not.toContain('jobResourceName');
+  });
+
+  it('emits asyncCreateJobs mapping from x-autocrud-async-create-jobs', () => {
+    const spec = buildAsyncCreateActionSpec();
+    const gen = createTestGenerator(spec);
+    (gen as any).extractResources();
+    (gen as any).extractCustomCreateActions();
+    const config = (gen as any).genResourcesConfig() as string;
+
+    expect(config).toContain('asyncCreateJobs');
+    expect(config).toContain("'generate-article-job': 'article'");
+  });
+
+  it('does not emit asyncCreateJobs when no async jobs exist', () => {
+    const spec = buildCustomActionSpec();
+    const gen = createTestGenerator(spec);
+    (gen as any).extractResources();
+    (gen as any).extractCustomCreateActions();
+    const config = (gen as any).genResourcesConfig() as string;
+
+    expect(config).not.toContain('asyncCreateJobs');
+  });
+});

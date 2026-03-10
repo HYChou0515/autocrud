@@ -112,6 +112,10 @@ export interface CustomCreateAction {
   zodSchema?: z.ZodObject<any>;
   /** API method to call when submitting this action */
   apiMethod: (data: any) => Promise<{ data: RevisionInfo }>;
+  /** When set, action runs asynchronously via a Job resource */
+  asyncMode?: 'job' | 'background';
+  /** Job resource name for async_mode='job' actions (e.g. "generate-article-job") */
+  jobResourceName?: string;
 }
 
 /**
@@ -163,6 +167,29 @@ export interface ResourceConfig<T = any> {
  * Registry of all resources (generated)
  */
 export const resources: Record<string, ResourceConfig> = {};
+
+/**
+ * Mapping of async-create-job resource names to their parent resource names.
+ * Populated by generated code from `x-autocrud-async-create-jobs`.
+ * Used by the sidebar to group job resources under their parent.
+ */
+export const asyncCreateJobs: Record<string, string> = {};
+
+/**
+ * Check whether a resource is an auto-generated async-create job.
+ */
+export function isAsyncCreateJob(resourceName: string): boolean {
+  return resourceName in asyncCreateJobs;
+}
+
+/**
+ * Get the child async-create job resource names for a parent resource.
+ */
+export function getAsyncCreateJobChildren(parentResourceName: string): string[] {
+  return Object.entries(asyncCreateJobs)
+    .filter(([, parent]) => parent === parentResourceName)
+    .map(([jobName]) => jobName);
+}
 
 /**
  * Per-field customization options
