@@ -123,7 +123,7 @@ export const migrateApi = {
     signal?: AbortSignal,
     revisionId?: RevisionScope,
   ): Promise<MigrateResult> =>
-    streamMigrate(buildMigrateUrl(getBaseUrl(), modelName, 'test', revisionId), onProgress, signal),
+    streamMigrate(buildMigrateUrl(`${getBaseUrl()}`, modelName, 'test', revisionId), onProgress, signal),
 
   /**
    * Execute migration for a model.
@@ -137,5 +137,5 @@ export const migrateApi = {
     signal?: AbortSignal,
     revisionId?: RevisionScope,
   ): Promise<MigrateResult> =>
-    streamMigrate(buildMigrateUrl(getBaseUrl(), modelName, 'execute', revisionId), onProgress, signal),
+    streamMigrate(buildMigrateUrl(`${getBaseUrl()}`, modelName, 'execute', revisionId), onProgress, signal),
 };

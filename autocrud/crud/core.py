@@ -151,6 +151,8 @@ class _PendingCreateAction:
     path: str
     label: str
     handler: Callable
+    async_mode: Literal["job", "background"] | None = None
+    job_name: str | None = None
 
 
 class LazyJobHandler:
@@ -710,6 +712,8 @@ class AutoCRUD:
         *,
         path: str | None = None,
         label: str | None = None,
+        async_mode: Literal["job", "background"] | None = None,
+        job_name: str | None = None,
     ) -> Callable:
         """Decorator to register a custom create action for a resource.
 
@@ -719,12 +723,29 @@ class AutoCRUD:
         automatically call ``resource_manager.create()`` and respond with
         ``RevisionInfo``.  If it returns ``None``, no automatic creation occurs.
 
+        When ``async_mode='job'`` is set, the framework automatically:
+
+        1. Generates a ``Job`` model with the handler's body type as payload.
+        2. Registers the Job model with a message queue.
+        3. On POST, creates a Job instance (PENDING) and enqueues it.
+        4. Returns HTTP 202 with :class:`~autocrud.types.JobRedirectInfo`.
+        5. In the background, executes the handler with the payload.
+        6. If the handler returns a resource object, auto-creates it and
+           stores the ``RevisionInfo`` as the Job's artifact.
+
         Args:
             resource_name: The name of the resource this action belongs to.
             path: URL path suffix (e.g. ``"import-from-url"``).  If ``None``,
                 inferred from the function name (underscores → hyphens).
             label: Human-friendly label shown in the UI.  If ``None``,
                 inferred from *path* (hyphens → spaces, title-cased).
+            async_mode: Execution mode for the action.  ``None`` (default)
+                executes synchronously.  ``'job'`` executes asynchronously
+                via the message queue system.
+            job_name: Custom resource name for the auto-generated Job model
+                (e.g. ``"my-custom-job"``).  If ``None``, derived automatically
+                from *path* and *resource_name*.  Only meaningful when
+                ``async_mode='job'``.
 
         Returns:
             A decorator that registers the handler and returns it unchanged.
@@ -739,6 +760,16 @@ class AutoCRUD:
             async def import_from_url(body: ImportFromUrl = Body(...)):
                 content = await fetch_and_parse(body.url)
                 return Article(content=content)  # auto-created
+
+
+            class GenerateRequest(Struct):
+                prompt: str
+
+
+            @crud.create_action("article", async_mode="job", label="Generate")
+            def generate_article(payload: GenerateRequest = Body(...)) -> Article:
+                content = call_llm(payload.prompt)  # long-running
+                return Article(content=content)  # auto-created in background
             ```
 
         Note:
@@ -756,6 +787,8 @@ class AutoCRUD:
                     path=action_path,
                     label=action_label,
                     handler=func,
+                    async_mode=async_mode,
+                    job_name=job_name,
                 )
             )
             return func
@@ -1175,6 +1208,9 @@ class AutoCRUD:
         # Inject x-autocrud-custom-create-actions top-level extension
         self._inject_custom_create_actions(app.openapi_schema)
 
+        # Inject x-autocrud-async-create-jobs mapping (job resource → parent)
+        self._inject_async_create_jobs(app.openapi_schema)
+
     def _inject_ref_metadata(self, schema: dict) -> None:
         """Post-process OpenAPI schema to inject ``x-ref-*`` extensions.
 
@@ -1535,6 +1571,14 @@ class AutoCRUD:
                 info["inlineBodyParams"] = inline_params
             if file_params:
                 info["fileParams"] = file_params
+            # Async create-action metadata
+            if action.async_mode is not None:
+                info["asyncMode"] = action.async_mode
+                from autocrud.crud.async_job_builder import derive_job_resource_name
+
+                info["jobResourceName"] = action.job_name or derive_job_resource_name(
+                    action.path, action.resource_name
+                )
             # Warn when two actions for the same resource share the same label —
             # duplicate labels cause frontend key collisions and confuse users.
             existing_labels = {
@@ -1552,6 +1596,29 @@ class AutoCRUD:
 
         if actions_by_resource:
             schema["x-autocrud-custom-create-actions"] = dict(actions_by_resource)
+
+    def _inject_async_create_jobs(self, schema: dict) -> None:
+        """Inject ``x-autocrud-async-create-jobs`` top-level extension.
+
+        Maps each auto-generated job resource name to its parent resource
+        name so the frontend generator can build sidebar accordions and
+        navigation links.
+        """
+        if not self._async_job_registry:
+            return
+
+        mapping: dict[str, str] = {}
+        for (
+            job_resource_name,
+            _job_model,
+            target_rm,
+            _auto_payload_type,
+            _param_conversions,
+        ) in self._async_job_registry.values():
+            mapping[job_resource_name] = target_rm.resource_name
+
+        if mapping:
+            schema["x-autocrud-async-create-jobs"] = mapping
 
     def _install_ref_integrity_handlers(self) -> None:
         """Install event handlers for referential integrity (cascade / set_null).
@@ -1642,6 +1709,10 @@ class AutoCRUD:
         # Install referential integrity event handlers
         self._install_ref_integrity_handlers()
 
+        # Auto-register Job models for async create actions BEFORE applying
+        # route templates so the Jobs get their own CRUD endpoints.
+        self._register_async_job_models()
+
         self.route_templates.sort()
         for model_name, resource_manager in self.resource_managers.items():
             for route_template in self.route_templates:
@@ -1661,6 +1732,275 @@ class AutoCRUD:
 
         return router
 
+    @staticmethod
+    def _reconstruct_params(
+        kwargs: dict, conversions: dict[str, tuple[str, type]]
+    ) -> dict:
+        """Reconstruct original param types from serialised surrogates.
+
+        Called inside the job handler after unpacking the auto-payload.
+
+        Conversion kinds:
+
+        * ``'upload_file'`` — :class:`UploadFilePayload` →
+          ``starlette.datastructures.UploadFile``
+        * ``'pydantic'`` — msgspec Struct → original Pydantic ``BaseModel``
+        * ``'to_str'`` — ``str`` → attempt ``original_type(str_value)``
+        """
+        import io
+
+        import msgspec as _ms
+
+        from autocrud.crud.async_job_builder import UploadFilePayload
+
+        for field_name, (conv_kind, orig_type) in conversions.items():
+            if field_name not in kwargs:
+                continue
+            val = kwargs[field_name]
+
+            if conv_kind == "upload_file" and isinstance(val, UploadFilePayload):
+                from starlette.datastructures import Headers
+                from starlette.datastructures import UploadFile as _StarletteUpload
+
+                binary = val.binary
+                data = (
+                    binary.data if not isinstance(binary.data, _ms.UnsetType) else b""
+                )
+                ct = (
+                    binary.content_type
+                    if not isinstance(binary.content_type, _ms.UnsetType)
+                    else "application/octet-stream"
+                )
+                sz = binary.size if not isinstance(binary.size, _ms.UnsetType) else None
+                kwargs[field_name] = _StarletteUpload(
+                    file=io.BytesIO(data),
+                    filename=val.filename,
+                    size=sz,
+                    headers=Headers({"content-type": ct}),
+                )
+            elif conv_kind == "pydantic":
+                kwargs[field_name] = orig_type.model_validate(_ms.to_builtins(val))
+            elif conv_kind == "to_str":
+                try:
+                    kwargs[field_name] = orig_type(val)
+                except Exception:
+                    pass  # keep as str if reconstruction fails
+
+        return kwargs
+
+    def _register_async_job_models(self) -> None:
+        """Auto-register Job models for ``async_mode='job'`` create actions.
+
+        For each pending create action with ``async_mode='job'``:
+
+        1. Inspects the handler to find the body parameter's Struct type.
+        2. Creates a dynamic ``Job[PayloadType, dict]`` subclass.
+        3. Wraps the user handler to auto-create the target resource.
+        4. Registers the Job model via ``add_model()`` with a message queue.
+
+        The mapping ``_async_job_registry`` is populated so that
+        ``_apply_create_actions()`` can create the correct endpoint handlers.
+        """
+        import msgspec as _msgspec
+
+        from autocrud.crud.async_job_builder import (
+            build_async_job_model,
+            build_auto_payload_struct,
+            derive_job_resource_name,
+            resolve_payload_field_type,
+        )
+
+        # Registry: action handler id → (job_resource_name, job_model, target_rm)
+        self._async_job_registry: dict[int, tuple[str, type, ResourceManager]] = {}
+
+        for action in self._pending_create_actions:
+            if action.async_mode != "job":
+                continue
+
+            target_rm = self.resource_managers.get(action.resource_name)
+            if target_rm is None:
+                logger.warning(
+                    f"async create_action '{action.path}' targets resource "
+                    f"'{action.resource_name}' which is not registered. Skipping."
+                )
+                continue
+
+            # Discover the handler's body parameter type (first Struct param)
+            sig = inspect.signature(action.handler)
+            payload_type = None
+            auto_payload_type = None
+            for name, param in sig.parameters.items():
+                ann = param.annotation
+                if ann is inspect.Parameter.empty:
+                    continue
+                raw_ann, _ = unwrap_annotated(ann)
+                if isinstance(raw_ann, type) and issubclass(raw_ann, _msgspec.Struct):
+                    payload_type = raw_ann
+                    break
+
+            # If no explicit Struct param, auto-generate a payload Struct
+            # from the handler's parameters.  Non-msgspec types (UploadFile,
+            # Pydantic BaseModel, pydantic_core.Url, etc.) are converted to
+            # serialisable equivalents via resolve_payload_field_type().
+            if payload_type is None:
+                param_fields: list[tuple[str, type]] = []
+                param_conversions: dict[str, tuple[str, type]] = {}
+
+                for pname, param in sig.parameters.items():
+                    ann = param.annotation
+                    if ann is inspect.Parameter.empty:
+                        continue
+                    raw_ann, _ = unwrap_annotated(ann)
+
+                    ser_type, conv_kind = resolve_payload_field_type(raw_ann)
+                    param_fields.append((pname, ser_type))
+                    if conv_kind is not None:
+                        param_conversions[pname] = (conv_kind, raw_ann)
+
+                if not param_fields:
+                    logger.warning(
+                        f"async create_action '{action.path}' handler has no "
+                        f"parameters. Cannot generate Job model. "
+                        f"Falling back to sync."
+                    )
+                    action.async_mode = None
+                    continue
+
+                # Build a dynamic payload Struct from the scalar params
+                auto_payload_type = build_auto_payload_struct(
+                    action_name=action.path,
+                    resource_name=action.resource_name,
+                    param_fields=param_fields,
+                )
+                payload_type = auto_payload_type
+            else:
+                param_conversions = {}
+
+            # Build dynamic Job model
+            job_model = build_async_job_model(
+                action_name=action.path,
+                resource_name=action.resource_name,
+                payload_type=payload_type,
+            )
+            job_resource_name = action.job_name or derive_job_resource_name(
+                action.path, action.resource_name
+            )
+
+            # Build the job handler that wraps the user's create-action handler
+            original_handler = action.handler
+            target_resource_manager = target_rm
+            _is_auto_payload = auto_payload_type is not None
+
+            def _make_job_handler(
+                handler,
+                trm,
+                *,
+                auto_payload=False,
+                param_conversions=None,
+                resource_managers=None,
+                job_resource_name=None,
+            ):
+                """Create a closure to capture the right handler and target RM.
+
+                Args:
+                    handler: The user's create-action function.
+                    trm: The target resource's ResourceManager.
+                    auto_payload: When ``True`` the payload is an auto-generated
+                        Struct whose fields mirror the handler's parameters.
+                        The handler is called with ``**kwargs`` instead of a
+                        single positional Struct argument.
+                    param_conversions: Mapping of field name →
+                        ``(conv_kind, original_type)`` for fields that need
+                        reconstruction from their serialisable surrogates.
+                    resource_managers: The ``AutoCRUD.resource_managers`` dict.
+                        Used at job-execution time to restore ``Binary`` data
+                        from the blob store before reconstructing params.
+                    job_resource_name: Name of the job resource, used together
+                        with *resource_managers* to locate the job RM.
+                """
+                _is_async = asyncio.iscoroutinefunction(handler)
+                _conversions = param_conversions or {}
+                _has_binary_conv = any(
+                    k == "upload_file" for k, _ in _conversions.values()
+                )
+                _rms = resource_managers
+                _jrn = job_resource_name
+
+                def job_handler(resource, job_context=None):
+                    payload = resource.data.payload
+                    if auto_payload:
+                        # Restore Binary.data from blob store when the
+                        # payload contains UploadFilePayload fields whose
+                        # Binary.data was stripped during storage.
+                        if _has_binary_conv and _rms and _jrn:
+                            jrm = _rms.get(_jrn)
+                            if jrm is not None:
+                                restored = jrm.restore_binary(resource.data)
+                                payload = restored.payload
+
+                        kwargs = {
+                            f: getattr(payload, f) for f in payload.__struct_fields__
+                        }
+                        # Reconstruct original types from serialised surrogates
+                        if _conversions:
+                            kwargs = AutoCRUD._reconstruct_params(kwargs, _conversions)
+                        raw_result = handler(**kwargs)
+                    else:
+                        raw_result = handler(payload)
+
+                    # Handle async handlers called from the sync MQ consumer
+                    if _is_async:
+                        result = asyncio.run(raw_result)
+                    else:
+                        result = raw_result
+
+                    if result is not None:
+                        with trm.meta_provide("system", dt.datetime.now()):
+                            info = trm.create(result)
+                        # Store RevisionInfo as artifact (dict form for
+                        # serialisability)
+                        artifact = {
+                            "resource_id": info.resource_id,
+                            "revision_id": info.revision_id,
+                            "resource_name": trm.resource_name,
+                        }
+                        if job_context is not None:
+                            job_context.set_artifact(artifact)
+                        else:
+                            resource.data.artifact = artifact
+
+                return job_handler
+
+            wrapped_handler = _make_job_handler(
+                original_handler,
+                target_resource_manager,
+                auto_payload=_is_auto_payload,
+                param_conversions=param_conversions if _is_auto_payload else None,
+                resource_managers=self.resource_managers,
+                job_resource_name=job_resource_name,
+            )
+
+            # Register the Job model with add_model (includes MQ setup)
+            self.add_model(
+                job_model,
+                name=job_resource_name,
+                job_handler=wrapped_handler,
+            )
+
+            # Store reference for _apply_create_actions
+            self._async_job_registry[id(action.handler)] = (
+                job_resource_name,
+                job_model,
+                target_rm,
+                auto_payload_type,  # None for explicit Struct, else the auto type
+                param_conversions if _is_auto_payload else None,
+            )
+
+            # Populate reverse mapping on target RM so that
+            # target_rm.start_consume(custom_creation=...) can locate jobs.
+            job_rm = self.resource_managers[job_resource_name]
+            target_rm.register_async_create_job(job_resource_name, job_rm)
+
     def _apply_create_actions(self, router: APIRouter) -> None:
         """Register routes for all pending custom create actions."""
         import msgspec as _msgspec
@@ -1675,7 +2015,52 @@ class AutoCRUD:
             """Check if *ann* is a msgspec.Struct subclass."""
             return isinstance(ann, type) and issubclass(ann, _msgspec.Struct)
 
-        def _build_fastapi_compatible_handler(handler, resource_manager):
+        async def _convert_params_for_payload(
+            kwargs: dict,
+            param_convs: dict[str, tuple[str, type]],
+            auto_payload_type: type | None,
+        ) -> None:
+            """Convert non-serialisable kwargs to their payload surrogates.
+
+            Mutates *kwargs* in place so they can be packed into the
+            auto-generated payload Struct.
+            """
+            from autocrud.crud.async_job_builder import UploadFilePayload
+            from autocrud.types import Binary
+
+            # Get the struct field types for Pydantic conversion targets
+            _field_types: dict[str, type] = {}
+            if auto_payload_type is not None:
+                for fi in _msgspec.structs.fields(auto_payload_type):
+                    _field_types[fi.name] = fi.type
+
+            for field_name, (conv_kind, _orig_type) in param_convs.items():
+                if field_name not in kwargs:
+                    continue
+                val = kwargs[field_name]
+
+                if conv_kind == "upload_file":
+                    content = await val.read()
+                    kwargs[field_name] = UploadFilePayload(
+                        binary=Binary(
+                            data=content,
+                            content_type=val.content_type,
+                            size=val.size,
+                        ),
+                        filename=val.filename,
+                    )
+                elif conv_kind == "pydantic":
+                    target_type = _field_types.get(field_name)
+                    if target_type is not None:
+                        kwargs[field_name] = _msgspec.convert(
+                            val.model_dump(mode="python"), target_type
+                        )
+                elif conv_kind == "to_str":
+                    kwargs[field_name] = str(val)
+
+        def _build_fastapi_compatible_handler(
+            handler, resource_manager, *, async_job_config=None
+        ):
             """Build a FastAPI-compatible endpoint function.
 
             The user-provided handler may use ``msgspec.Struct`` type hints on
@@ -1690,6 +2075,21 @@ class AutoCRUD:
             Plain scalar parameters (``str``, ``int``, etc.) without any
             FastAPI decorator are left as-is — FastAPI will treat them as
             query parameters, which is the correct behaviour.
+
+            Args:
+                handler: The user's endpoint function.
+                resource_manager: The target resource's ResourceManager.
+                async_job_config: When set, a
+                    ``(job_rm, job_resource_name, auto_payload_type,
+                    param_conversions)`` tuple that switches the wrapper
+                    into async-job mode.  Instead of calling *handler* and
+                    creating the target resource, the wrapper creates a Job
+                    resource and returns HTTP 202 with
+                    :class:`JobRedirectInfo`.  When *auto_payload_type* is
+                    not ``None``, individual kwargs are packed into the
+                    auto-generated payload Struct before creating the Job.
+                    *param_conversions* maps field names that need
+                    serialisation conversion at endpoint time.
             """
             sig = inspect.signature(handler)
             # Identify parameters whose annotation is a msgspec.Struct subclass
@@ -1727,7 +2127,65 @@ class AutoCRUD:
                 parameters=new_params, return_annotation=inspect.Parameter.empty
             )
 
-            if asyncio.iscoroutinefunction(handler):
+            # ---- async-job mode: create Job + return 202 ----------------
+            if async_job_config is not None:
+                from autocrud.types import JobRedirectInfo
+
+                job_rm, job_resource_name, auto_payload_type, _param_convs = (
+                    async_job_config
+                )
+                _param_convs = _param_convs or {}
+                # First Struct param is the Job payload (explicit Struct case)
+                payload_param_name = next(iter(struct_params), None)
+
+                async def wrapper(*args, **kwargs):
+                    for pname, struct_type in struct_params.items():
+                        if pname in kwargs:
+                            kwargs[pname] = _msgspec.convert(kwargs[pname], struct_type)
+
+                    # Convert non-serialisable params before packing
+                    if _param_convs:
+                        await _convert_params_for_payload(
+                            kwargs, _param_convs, auto_payload_type
+                        )
+
+                    if auto_payload_type is not None:
+                        # Auto-generated payload: pack individual kwargs
+                        payload_data = auto_payload_type(
+                            **{
+                                f: kwargs[f]
+                                for f in auto_payload_type.__struct_fields__
+                                if f in kwargs
+                            }
+                        )
+                    elif payload_param_name is not None:
+                        # Explicit Struct parameter: use it directly
+                        payload_data = kwargs.get(payload_param_name)
+                    else:
+                        payload_data = None
+
+                    if payload_data is None:
+                        raise HTTPException(
+                            status_code=400,
+                            detail="Missing payload for async create action.",
+                        )
+
+                    job_data = job_rm.resource_type(payload=payload_data)
+                    with job_rm.meta_provide("system", dt.datetime.now()):
+                        info = job_rm.create(job_data)
+
+                    redirect_url = f"/{job_resource_name}/{info.resource_id}"
+                    return MsgspecResponse(
+                        JobRedirectInfo(
+                            job_resource_name=job_resource_name,
+                            job_resource_id=info.resource_id,
+                            redirect_url=redirect_url,
+                        ),
+                        status_code=202,
+                    )
+
+            # ---- sync mode: call handler + create resource --------------
+            elif asyncio.iscoroutinefunction(handler):
 
                 async def wrapper(*args, **kwargs):
                     # Convert raw dicts to Struct instances
@@ -1774,6 +2232,56 @@ class AutoCRUD:
             # Strip leading slash from action.path to avoid double-slash
             action_path_segment = action.path.lstrip("/")
             route_path = f"/{action.resource_name}/{action_path_segment}"
+
+            # --- async_mode='job': build an endpoint that creates a Job ---
+            if action.async_mode == "job":
+                registry_entry = self._async_job_registry.get(id(action.handler))
+                if registry_entry is None:
+                    logger.warning(
+                        f"async create_action '{action.path}' has no registered "
+                        f"Job model. Falling back to sync."
+                    )
+                    action.async_mode = None
+                    # Fall through to sync handler below
+                else:
+                    (
+                        job_resource_name,
+                        job_model,
+                        target_rm,
+                        auto_payload_type,
+                        param_conversions,
+                    ) = registry_entry
+                    job_rm = self.resource_managers[job_resource_name]
+
+                    # Same handler, same FastAPI signature — only the
+                    # wrapper behaviour changes (create Job + 202).
+                    _wrapper = _build_fastapi_compatible_handler(
+                        action.handler,
+                        rm,
+                        async_job_config=(
+                            job_rm,
+                            job_resource_name,
+                            auto_payload_type,
+                            param_conversions,
+                        ),
+                    )
+
+                    router.post(
+                        route_path,
+                        response_model=None,
+                        status_code=202,
+                        summary=f"{action.label} ({action.resource_name})",
+                        tags=[f"{action.resource_name}"],
+                        openapi_extra={
+                            "x-autocrud-create-action": {
+                                "resource": action.resource_name,
+                                "label": action.label,
+                            },
+                        },
+                    )(_wrapper)
+                    continue
+
+            # --- sync (default) handler ---
             _wrapper = _build_fastapi_compatible_handler(action.handler, rm)
 
             router.post(

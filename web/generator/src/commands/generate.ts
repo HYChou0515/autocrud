@@ -214,7 +214,7 @@ export class Generator {
       if (!bodySchema) continue;
 
       if (bodySchema.$ref) {
-        resourcePaths.set(resourceName, bodySchema.$ref.split('/').pop()!);
+        resourcePaths.set(resourceName, sanitizeTsName(bodySchema.$ref.split('/').pop()!));
       } else if (hasRefMembers(bodySchema.anyOf) || hasRefMembers(bodySchema.oneOf)) {
         // Union type: POST body is inline anyOf/oneOf with $ref members
         unionResourceSchemas.set(resourceName, bodySchema);
@@ -303,6 +303,15 @@ export class Generator {
           label: raw.label,
           operationId: raw.operationId,
         };
+
+        // Async create-action metadata (from backend @crud.create_action(async_mode='job'))
+        if (raw.asyncMode) {
+          actionMeta.asyncMode = raw.asyncMode;
+        }
+        if (raw.jobResourceName) {
+          actionMeta.jobResourceName = raw.jobResourceName;
+        }
+
         const fields: Field[] = [];
 
         // --- Body-schema fields (Struct / Pydantic model) ---
@@ -466,7 +475,7 @@ export class Generator {
     if (disc?.mapping) {
       // Use explicit discriminator mapping
       for (const [tag, refPath] of Object.entries<string>(disc.mapping)) {
-        const schemaName = refPath.split('/').pop()!;
+        const schemaName = sanitizeTsName(refPath.split('/').pop()!);
         const schema = this.resolveRef(refPath);
         const variantFields = this.parseSchemaFields(schema, discriminatorField);
 
@@ -476,7 +485,7 @@ export class Generator {
     } else {
       // Infer from $ref members
       for (const member of refMembers) {
-        const schemaName = member.$ref.split('/').pop()!;
+        const schemaName = sanitizeTsName(member.$ref.split('/').pop()!);
         const schema = this.resolveRef(member.$ref);
         const variantFields: Field[] = [];
         let tag = schemaName;
@@ -622,8 +631,10 @@ export class Generator {
     if (!ref.startsWith('#/components/schemas/')) {
       return null;
     }
-    const schemaName = ref.split('/').pop();
-    return this.spec.components?.schemas?.[schemaName!] ?? null;
+    const schemaName = ref.split('/').pop()!;
+    // Try direct lookup first, then fallback with dots→underscores
+    // (OpenAPI discriminator mappings may use dots while schema keys use underscores)
+    return this.spec.components?.schemas?.[schemaName] ?? this.spec.components?.schemas?.[sanitizeTsName(schemaName)] ?? null;
   }
 
   /**
@@ -701,7 +712,7 @@ export class Generator {
     const variantTsTypes: string[] = [];
 
     for (const [tag, refPath] of Object.entries<string>(disc.mapping || {})) {
-      const schemaName = refPath.split('/').pop()!;
+      const schemaName = sanitizeTsName(refPath.split('/').pop()!);
       const schema = this.resolveRef(refPath);
       const variantFields = this.parseSchemaFields(schema, discriminatorField);
 
@@ -819,7 +830,7 @@ export class Generator {
     const variants: UnionVariant[] = [];
 
     for (const [tag, refPath] of Object.entries<string>(disc.mapping || {})) {
-      const schemaName = refPath.split('/').pop()!;
+      const schemaName = sanitizeTsName(refPath.split('/').pop()!);
       const schema = this.resolveRef(refPath);
       const variantFields = this.parseSchemaFields(schema, discriminatorField);
 
@@ -884,7 +895,7 @@ export class Generator {
           let resolvedItems = itemSchema;
           let schemaName = 'Array';
           if (itemSchema.$ref) {
-            schemaName = itemSchema.$ref.split('/').pop()!;
+            schemaName = sanitizeTsName(itemSchema.$ref.split('/').pop()!);
             const resolved = this.resolveRef(itemSchema.$ref);
             if (resolved) resolvedItems = resolved;
           }
@@ -900,7 +911,7 @@ export class Generator {
           variantTsTypes.push(`${schemaName}[]`);
         }
       } else if (t.$ref) {
-        const schemaName = t.$ref.split('/').pop()!;
+        const schemaName = sanitizeTsName(t.$ref.split('/').pop()!);
         const resolved = this.resolveRef(t.$ref);
         const variantFields = this.parseSchemaFields(resolved);
         const tag = makeUniqueTag(schemaName);
@@ -943,7 +954,7 @@ export class Generator {
         let valueSchema = t.additionalProperties;
         let valueName = 'Any';
         if (valueSchema.$ref) {
-          valueName = valueSchema.$ref.split('/').pop()!;
+          valueName = sanitizeTsName(valueSchema.$ref.split('/').pop()!);
           const resolved = this.resolveRef(valueSchema.$ref);
           if (resolved) valueSchema = resolved;
         } else if (valueSchema.type) {
@@ -1001,7 +1012,7 @@ export class Generator {
 
     // Handle $ref references
     if (prop.$ref) {
-      const refName = prop.$ref.split('/').pop()!;
+      const refName = sanitizeTsName(prop.$ref.split('/').pop()!);
       const refSchema = this.resolveRef(prop.$ref);
       if (refSchema) {
         // Track enum schema name so we can use it as the TS type
@@ -1072,7 +1083,7 @@ export class Generator {
         prop = types[0];
         // Resolve $ref in anyOf
         if (prop.$ref) {
-          const refName = prop.$ref.split('/').pop()!;
+          const refName = sanitizeTsName(prop.$ref.split('/').pop()!);
           const refSchema = this.resolveRef(prop.$ref);
           if (refSchema) {
             if (refSchema.enum) {
@@ -1147,7 +1158,7 @@ export class Generator {
         const variantTsTypes: string[] = [];
 
         for (const [tag, refPath] of Object.entries<string>(disc.mapping || {})) {
-          const schemaName = refPath.split('/').pop()!;
+          const schemaName = sanitizeTsName(refPath.split('/').pop()!);
           const itemSchema = this.resolveRef(refPath);
           const variantFields = this.parseSchemaFields(itemSchema, discriminatorField);
 
@@ -1359,6 +1370,14 @@ export class Generator {
           const actionFields = action.fields.map((f) => serializeField(f));
           const actionZodFields = buildNestedZodFields(action.fields);
           const methodName = toCamel(action.operationId);
+          const asyncLines: string[] = [];
+          if (action.asyncMode) {
+            asyncLines.push(`        asyncMode: '${action.asyncMode}',`);
+          }
+          if (action.jobResourceName) {
+            asyncLines.push(`        jobResourceName: '${action.jobResourceName}',`);
+          }
+          const asyncBlock = asyncLines.length > 0 ? '\n' + asyncLines.join('\n') : '';
           return `      {
         name: '${action.name}',
         label: '${action.label}',
@@ -1366,7 +1385,7 @@ export class Generator {
         zodSchema: z.object({
 ${actionZodFields}
         }),
-        apiMethod: ${r.camel}Api.${methodName},
+        apiMethod: ${r.camel}Api.${methodName},${asyncBlock}
       }`;
         });
         customActionsBlock = `
@@ -1421,6 +1440,21 @@ ${zodFields}
     // Generate ResourceFieldMap: resource name -> field name union
     const fieldMapEntries = this.resources.map((r) => `  '${r.name}': ${r.pascal}FieldName;`).join('\n');
 
+    // Build async create-jobs mapping from the OpenAPI extension
+    const asyncJobsMap: Record<string, string> = this.spec['x-autocrud-async-create-jobs'] ?? {};
+    let asyncJobsBlock = '';
+    if (Object.keys(asyncJobsMap).length > 0) {
+      const entries = Object.entries(asyncJobsMap)
+        .map(([jobName, parentName]) => `  '${jobName}': '${parentName}'`)
+        .join(',\n');
+      asyncJobsBlock = `
+import { asyncCreateJobs } from '../lib/resources';
+Object.assign(asyncCreateJobs, {
+${entries},
+});
+`;
+    }
+
     return `// Auto-generated by AutoCRUD Web Generator
 import { resources as registry, applyCustomizations as applyCustomizationsImpl } from '../lib/resources';
 import type { ResourceCustomizations as ResourceCustomizationsBase } from '../lib/resources';
@@ -1472,7 +1506,7 @@ export function getResourceListRoute(resource: ResourceName): ResourceListRoute 
 Object.assign(registry, {
 ${configs.join(',\n')}
 });
-
+${asyncJobsBlock}
 /**
  * Apply type-safe customizations to the generated resources.
  * Call this in main.tsx after the resources are registered.
@@ -2127,6 +2161,16 @@ function DetailPage() {
 }
 
 // Helper functions
+
+/**
+ * Sanitize a schema name from OpenAPI $ref for use as a TypeScript identifier.
+ * OpenAPI discriminator mappings may use dots (e.g. `__main__.ActiveSkillData`)
+ * while the schema keys use underscores (`__main___ActiveSkillData`).
+ */
+function sanitizeTsName(name: string): string {
+  return name.replace(/\./g, '_');
+}
+
 function toPascal(s: string) {
   return s
     .split(/[-_\s]+/)
@@ -2236,6 +2280,10 @@ interface CustomCreateAction {
   fileParams?: Array<{ name: string; required: boolean; schema: { type?: string; format?: string } }>;
   /** Extracted fields from the body schema, path/query/inline-body/file params */
   fields: Field[];
+  /** Async execution mode — 'job' delegates to a Job resource */
+  asyncMode?: 'job' | 'background';
+  /** Job resource name for async_mode='job' actions (e.g. "generate-article-job") */
+  jobResourceName?: string;
 }
 
 interface FieldRef {

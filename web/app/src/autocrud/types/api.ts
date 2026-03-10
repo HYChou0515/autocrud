@@ -28,6 +28,13 @@ export interface RevisionInfo {
   updated_by: string;
 }
 
+/** Response from async create actions (HTTP 202). */
+export interface JobRedirectInfo {
+  job_resource_name: string;
+  job_resource_id: string;
+  redirect_url: string;
+}
+
 export interface FullResource<T> {
   data: T;
   meta: ResourceMeta;

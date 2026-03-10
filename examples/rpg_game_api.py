@@ -1130,7 +1130,13 @@ def configure_crud():
         job_handler=process_game_event,
     )
 
-    @crud.create_action("character", label="New Character1", path="/{name}/new")
+    @crud.create_action(
+        "character",
+        label="New Character1",
+        path="/{name}/new",
+        async_mode="job",
+        job_name="new-char1-job",
+    )
     async def create_new_character1(
         name: Annotated[str, Ref("equipment")],
     ):
@@ -1139,7 +1145,7 @@ def configure_crud():
             character_class=CharacterClass.WARRIOR,
         )
 
-    @crud.create_action("character", label="New Character2")
+    @crud.create_action("character", label="New Character2", async_mode="job")
     async def create_new_character2(
         name: Annotated[str, Ref("equipment")],
     ):
@@ -1148,7 +1154,7 @@ def configure_crud():
             character_class=CharacterClass.WARRIOR,
         )
 
-    @crud.create_action("character", label="New Character3")
+    @crud.create_action("character", label="New Character3", async_mode="job")
     async def create_new_character4(
         x: int | str,
         y: Url,
@@ -1409,6 +1415,11 @@ def main():
     crud.apply(app)
     crud.openapi(app)
     crud.get_resource_manager(GameEvent).start_consume(block=False)
+
+    # Start all async create-job consumers for the 'character' resource
+    crud.get_resource_manager(Character).start_consume(
+        block=False, custom_creation="all"
+    )
 
     # 創建示範數據
     ans = input("需要創建示範數據嗎？[y/N]: ")

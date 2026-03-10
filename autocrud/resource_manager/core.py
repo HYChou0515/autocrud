@@ -12,6 +12,7 @@ from typing import (
     TYPE_CHECKING,
     Any,
     Generic,
+    Literal,
     NamedTuple,
     TypeVar,
 )
@@ -700,6 +701,44 @@ class ResourceManager(IResourceManager[T], Generic[T]):
         else:
             self.message_queue = None
 
+        # Reverse mapping filled by AutoCRUD._register_async_job_models().
+        # Maps job resource name → job ResourceManager for async create actions
+        # that target this resource.
+        self._async_create_job_rms: dict[str, "ResourceManager"] = {}
+
+    def register_async_create_job(
+        self, job_resource_name: str, job_rm: "ResourceManager"
+    ) -> None:
+        """Register an async create-job ResourceManager for this resource.
+
+        Called by :meth:`AutoCRUD._register_async_job_models` to populate the
+        reverse mapping so that :meth:`start_consume` can locate child job
+        consumers via ``custom_creation``.
+
+        Args:
+            job_resource_name: The registered name of the Job resource.
+            job_rm: The :class:`ResourceManager` instance for the Job resource.
+
+        Raises:
+            ValueError: If *job_resource_name* is already registered.
+        """
+        if job_resource_name in self._async_create_job_rms:
+            raise ValueError(
+                f"Async create-job '{job_resource_name}' is already registered "
+                f"on resource '{self.resource_name}'."
+            )
+        self._async_create_job_rms[job_resource_name] = job_rm
+
+    @property
+    def async_create_job_names(self) -> list[str]:
+        """Return the names of all registered async create-job resources.
+
+        Returns:
+            A list of job resource names registered via
+            :meth:`register_async_create_job`.
+        """
+        return list(self._async_create_job_rms.keys())
+
     def _register_unique_fields(self) -> None:
         """Auto-detect ``Unique``-annotated fields on the model and register a
         :class:`UniqueConstraintChecker`.
@@ -1160,16 +1199,74 @@ class ResourceManager(IResourceManager[T], Generic[T]):
             raise NotImplementedError("Blob store is not configured")
         return self.blob_store.get_url(file_id)
 
-    def start_consume(self, *, block: bool = True) -> None:
-        if self.message_queue is None:
-            raise NotImplementedError("Message queue is not configured")
-        worker_thread = threading.Thread(
-            target=self.message_queue.start_consume, daemon=True
-        )
-        worker_thread.start()
+    def start_consume(
+        self,
+        *,
+        block: bool = True,
+        custom_creation: "Literal['all'] | list[str] | None" = None,
+    ) -> None:
+        """Start consuming jobs from the message queue.
+
+        When *custom_creation* is ``None`` (default) the resource’s own
+        message-queue consumer is started.
+
+        When *custom_creation* is ``"all"``, all async-create-job consumers
+        that target this resource are started (but **not** this resource’s
+        own consumer).
+
+        When *custom_creation* is a list of job resource names, only those
+        specific consumers are started.
+
+        Args:
+            block: If ``True`` (default), block until the consumer thread(s)
+                finish.  ``False`` returns immediately after launching the
+                daemon thread(s).
+            custom_creation: Which async-create-job consumers to start.
+                ``None`` → this resource’s own MQ consumer.
+                ``"all"`` → every registered async create-job consumer.
+                ``["name", ...]`` → only the listed job resource names.
+
+        Raises:
+            NotImplementedError: If *custom_creation* is ``None`` and no
+                message queue is configured on this resource.
+            ValueError: If a name in *custom_creation* is not a registered
+                async create-job for this resource.
+        """
+        if custom_creation is None:
+            # Original behaviour: start this RM's own MQ consumer.
+            if self.message_queue is None:
+                raise NotImplementedError("Message queue is not configured")
+            worker_thread = threading.Thread(
+                target=self.message_queue.start_consume, daemon=True
+            )
+            worker_thread.start()
+            if block:
+                worker_thread.join()
+            return worker_thread
+
+        # --- custom_creation mode ---
+        if custom_creation == "all":
+            targets = list(self._async_create_job_rms.values())
+        else:
+            targets = []
+            for name in custom_creation:
+                job_rm = self._async_create_job_rms.get(name)
+                if job_rm is None:
+                    raise ValueError(
+                        f"'{name}' is not a registered async create-job "
+                        f"for resource '{self.resource_name}'. "
+                        f"Available: {list(self._async_create_job_rms.keys())}"
+                    )
+                targets.append(job_rm)
+
+        threads = []
+        for job_rm in targets:
+            t = job_rm.start_consume(block=False)
+            threads.append(t)
+
         if block:
-            worker_thread.join()
-        return worker_thread
+            for t in threads:
+                t.join()
 
     def count_resources(self, query: ResourceMetaSearchQuery | Query) -> int:
         """

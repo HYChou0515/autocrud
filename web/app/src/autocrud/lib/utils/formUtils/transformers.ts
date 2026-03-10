@@ -377,7 +377,7 @@ export function processSubmitValues(
       _collectUnionBinaryKeys(val, field, field.name, binarySubFieldKeys);
       if (Array.isArray(val)) {
         const discField = field.unionMeta.discriminatorField;
-        const cleanItems = val.map((item: any, idx: number) => {
+        const cleanItems = val.map((item: any) => {
           const tag = item?.[discField];
           const variant = field.unionMeta!.variants?.find((v: any) => v.tag === tag);
           const res: Record<string, any> = { [discField]: tag };

@@ -115,6 +115,48 @@ export const backupApi = {
     });
   },
 
+  /** Export New Char1 Job data as .acbak archive */
+  exportNewChar1Job: (params?: Record<string, unknown>) =>
+    client.get(`/new-char1-job/export`, { params, responseType: 'blob' }),
+
+  /** Import .acbak archive into New Char1 Job */
+  importNewChar1Job: (file: File, onDuplicate: OnDuplicate = 'overwrite') => {
+    const form = new FormData();
+    form.append('file', file);
+    return client.post<ImportResult>(`/new-char1-job/import`, form, {
+      headers: { 'Content-Type': 'multipart/form-data' },
+      params: { on_duplicate: onDuplicate },
+    });
+  },
+
+  /** Export Create New Character2 Job data as .acbak archive */
+  exportCreateNewCharacter2Job: (params?: Record<string, unknown>) =>
+    client.get(`/create-new-character2-job/export`, { params, responseType: 'blob' }),
+
+  /** Import .acbak archive into Create New Character2 Job */
+  importCreateNewCharacter2Job: (file: File, onDuplicate: OnDuplicate = 'overwrite') => {
+    const form = new FormData();
+    form.append('file', file);
+    return client.post<ImportResult>(`/create-new-character2-job/import`, form, {
+      headers: { 'Content-Type': 'multipart/form-data' },
+      params: { on_duplicate: onDuplicate },
+    });
+  },
+
+  /** Export Create New Character4 Job data as .acbak archive */
+  exportCreateNewCharacter4Job: (params?: Record<string, unknown>) =>
+    client.get(`/create-new-character4-job/export`, { params, responseType: 'blob' }),
+
+  /** Import .acbak archive into Create New Character4 Job */
+  importCreateNewCharacter4Job: (file: File, onDuplicate: OnDuplicate = 'overwrite') => {
+    const form = new FormData();
+    form.append('file', file);
+    return client.post<ImportResult>(`/create-new-character4-job/import`, form, {
+      headers: { 'Content-Type': 'multipart/form-data' },
+      params: { on_duplicate: onDuplicate },
+    });
+  },
+
   /** Export Pet data as .acbak archive */
   exportPet: (params?: Record<string, unknown>) =>
     client.get(`/pet/export`, { params, responseType: 'blob' }),

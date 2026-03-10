@@ -2308,13 +2308,51 @@ class IResourceManager(ABC, Generic[T]):
         """
 
     @abstractmethod
-    def start_consume(self, *, block: bool = True) -> None:
-        """Start consuming jobs from the message queue.
+    def register_async_create_job(
+        self, job_resource_name: str, job_rm: "IResourceManager"
+    ) -> None:
+        """Register an async create-job ResourceManager for this resource.
 
-        Uses the callback function that was configured when the message queue was created.
+        Args:
+            job_resource_name: The registered name of the Job resource.
+            job_rm: The ResourceManager instance for the Job resource.
 
         Raises:
-            NotImplementedError: if message queue is not configured.
+            ValueError: If *job_resource_name* is already registered.
+        """
+
+    @property
+    @abstractmethod
+    def async_create_job_names(self) -> list[str]:
+        """Return the names of all registered async create-job resources."""
+
+    @abstractmethod
+    def start_consume(
+        self,
+        *,
+        block: bool = True,
+        custom_creation: "Literal['all'] | list[str] | None" = None,
+    ) -> None:
+        """Start consuming jobs from the message queue.
+
+        When *custom_creation* is ``None`` (default), starts this resource’s
+        own message-queue consumer.
+
+        When *custom_creation* is ``"all"``, starts all async-create-job
+        consumers that target this resource.
+
+        When *custom_creation* is a list of job resource names, starts only
+        those specific consumers.
+
+        Args:
+            block: If ``True`` (default), block until the consumer thread(s)
+                finish.  ``False`` returns immediately.
+            custom_creation: Which async-create-job consumers to start.
+
+        Raises:
+            NotImplementedError: if message queue is not configured
+                (when *custom_creation* is ``None``).
+            ValueError: if a name in *custom_creation* is not registered.
         """
 
 
@@ -2575,6 +2613,29 @@ class TaskStatus(StrEnum):
     PROCESSING = "processing"
     COMPLETED = "completed"
     FAILED = "failed"
+
+
+class JobRedirectInfo(Struct, kw_only=True):
+    """Response body returned by async create actions (HTTP 202).
+
+    When a custom create action uses ``async_mode='job'``, the endpoint
+    returns this struct instead of ``RevisionInfo`` so the client can
+    navigate to the auto-generated Job resource to track progress.
+
+    Attributes:
+        job_resource_name: The registered name of the auto-generated Job resource.
+        job_resource_id: The resource ID of the newly created Job instance.
+        redirect_url: A URL path to the Job detail endpoint.
+    """
+
+    job_resource_name: str
+    """The registered name of the auto-generated Job resource."""
+
+    job_resource_id: str
+    """The resource ID of the newly created Job instance."""
+
+    redirect_url: str
+    """A URL path to the Job detail endpoint."""
 
 
 class Job(Struct, Generic[T, D]):

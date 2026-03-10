@@ -8,10 +8,13 @@ import { skillApi } from './api/skillApi';
 import { equipmentApi } from './api/equipmentApi';
 import { petJobApi } from './api/pet-jobApi';
 import { gameEventApi } from './api/game-eventApi';
+import { newChar1JobApi } from './api/new-char1-jobApi';
+import { createNewCharacter2JobApi } from './api/create-new-character2-jobApi';
+import { createNewCharacter4JobApi } from './api/create-new-character4-jobApi';
 import { petApi } from './api/petApi';
 
 /** Union type of all resource names */
-export type ResourceName = 'character' | 'guild' | 'skill' | 'equipment' | 'pet-job' | 'game-event' | 'pet';
+export type ResourceName = 'character' | 'guild' | 'skill' | 'equipment' | 'pet-job' | 'game-event' | 'new-char1-job' | 'create-new-character2-job' | 'create-new-character4-job' | 'pet';
 
 /** Per-resource field name union types */
 export type CharacterFieldName = 'name' | 'character_class' | 'valueAD__x' | 'level' | 'hp' | 'mp' | 'attack' | 'defense' | 'experience' | 'gold' | 'guild_id' | 'guild_name' | 'special_ability' | 'skill_ids' | 'equipments' | 'created_at';
@@ -20,6 +23,9 @@ export type SkillFieldName = 'skname' | 'detail' | 'description' | 'required_lev
 export type EquipmentFieldName = 'type' | 'name' | 'rarity' | 'owner_id' | 'character_class_req' | 'attack_bonus' | 'defense_bonus' | 'special_effects' | 'price' | 'icon';
 export type PetJobFieldName = 'payload' | 'status' | 'errmsg' | 'artifact' | 'retries' | 'max_retries' | 'periodic_interval_seconds' | 'periodic_max_runs' | 'periodic_runs' | 'periodic_initial_delay_seconds' | 'last_heartbeat_at';
 export type GameEventFieldName = 'payload.event_type' | 'payload.character_name' | 'payload.character_id' | 'payload.description' | 'payload.reward_gold' | 'payload.reward_exp' | 'payload.extra_data' | 'payload.event_body' | 'payload.event_x.type' | 'payload.event_x.good' | 'payload.event_x.great' | 'status' | 'errmsg' | 'artifact.process_times' | 'retries' | 'max_retries' | 'periodic_interval_seconds' | 'periodic_max_runs' | 'periodic_runs' | 'periodic_initial_delay_seconds' | 'last_heartbeat_at';
+export type NewChar1JobFieldName = 'payload.name' | 'status' | 'errmsg' | 'artifact' | 'retries' | 'max_retries' | 'periodic_interval_seconds' | 'periodic_max_runs' | 'periodic_runs' | 'periodic_initial_delay_seconds' | 'last_heartbeat_at';
+export type CreateNewCharacter2JobFieldName = 'payload.name' | 'status' | 'errmsg' | 'artifact' | 'retries' | 'max_retries' | 'periodic_interval_seconds' | 'periodic_max_runs' | 'periodic_runs' | 'periodic_initial_delay_seconds' | 'last_heartbeat_at';
+export type CreateNewCharacter4JobFieldName = 'payload.x' | 'payload.y' | 'payload.name' | 'payload.z.binary' | 'payload.z.filename' | 'payload.f.skname' | 'payload.f.detail' | 'payload.f.description' | 'payload.f.required_level' | 'payload.f.required_class' | 'status' | 'errmsg' | 'artifact' | 'retries' | 'max_retries' | 'periodic_interval_seconds' | 'periodic_max_runs' | 'periodic_runs' | 'periodic_initial_delay_seconds' | 'last_heartbeat_at';
 export type PetFieldName = 'data';
 
 /** Mapping from resource name to its field name union type */
@@ -30,6 +36,9 @@ export interface ResourceFieldMap {
   'equipment': EquipmentFieldName;
   'pet-job': PetJobFieldName;
   'game-event': GameEventFieldName;
+  'new-char1-job': NewChar1JobFieldName;
+  'create-new-character2-job': CreateNewCharacter2JobFieldName;
+  'create-new-character4-job': CreateNewCharacter4JobFieldName;
   'pet': PetFieldName;
 }
 
@@ -44,6 +53,9 @@ export type ResourceDetailRoute =
   | '/autocrud-admin/equipment/$resourceId'
   | '/autocrud-admin/pet-job/$resourceId'
   | '/autocrud-admin/game-event/$resourceId'
+  | '/autocrud-admin/new-char1-job/$resourceId'
+  | '/autocrud-admin/create-new-character2-job/$resourceId'
+  | '/autocrud-admin/create-new-character4-job/$resourceId'
   | '/autocrud-admin/pet/$resourceId';
 
 /** Union type of all resource list route paths */
@@ -54,6 +66,9 @@ export type ResourceListRoute =
   | '/autocrud-admin/equipment'
   | '/autocrud-admin/pet-job'
   | '/autocrud-admin/game-event'
+  | '/autocrud-admin/new-char1-job'
+  | '/autocrud-admin/create-new-character2-job'
+  | '/autocrud-admin/create-new-character4-job'
   | '/autocrud-admin/pet';
 
 /** Mapping from resource name to detail route path */
@@ -64,6 +79,9 @@ const detailRoutes: Record<ResourceName, ResourceDetailRoute> = {
   'equipment': '/autocrud-admin/equipment/$resourceId',
   'pet-job': '/autocrud-admin/pet-job/$resourceId',
   'game-event': '/autocrud-admin/game-event/$resourceId',
+  'new-char1-job': '/autocrud-admin/new-char1-job/$resourceId',
+  'create-new-character2-job': '/autocrud-admin/create-new-character2-job/$resourceId',
+  'create-new-character4-job': '/autocrud-admin/create-new-character4-job/$resourceId',
   'pet': '/autocrud-admin/pet/$resourceId',
 };
 
@@ -75,6 +93,9 @@ const listRoutes: Record<ResourceName, ResourceListRoute> = {
   'equipment': '/autocrud-admin/equipment',
   'pet-job': '/autocrud-admin/pet-job',
   'game-event': '/autocrud-admin/game-event',
+  'new-char1-job': '/autocrud-admin/new-char1-job',
+  'create-new-character2-job': '/autocrud-admin/create-new-character2-job',
+  'create-new-character4-job': '/autocrud-admin/create-new-character4-job',
   'pet': '/autocrud-admin/pet',
 };
 
@@ -438,6 +459,8 @@ Object.assign(registry, {
     name: z.string()
         }),
         apiMethod: characterApi.createNewCharacter1,
+        asyncMode: 'job',
+        jobResourceName: 'new-char1-job',
       },
       {
         name: 'create-new-character2',
@@ -461,6 +484,8 @@ Object.assign(registry, {
     name: z.string()
         }),
         apiMethod: characterApi.createNewCharacter2,
+        asyncMode: 'job',
+        jobResourceName: 'create-new-character2-job',
       },
       {
         name: 'create-new-character4',
@@ -508,100 +533,9 @@ Object.assign(registry, {
           {
                     name: "f.detail",
                     label: "Detail",
-                    type: "union",
                     isArray: false,
                     isRequired: true,
-                    isNullable: false,
-                    unionMeta: {
-                              discriminatorField: "skill_type",
-                              variants: [
-                                        {
-                                                  tag: "active",
-                                                  label: "Active",
-                                                  schemaName: "ActiveSkillData",
-                                                  fields: [
-                                                            {
-                                                                      name: "mp_cost",
-                                                                      label: "Mp Cost",
-                                                                      type: "number",
-                                                                      isArray: false,
-                                                                      isRequired: false,
-                                                                      isNullable: false
-                                                            },
-                                                            {
-                                                                      name: "cooldown_seconds",
-                                                                      label: "Cooldown Seconds",
-                                                                      type: "number",
-                                                                      isArray: false,
-                                                                      isRequired: false,
-                                                                      isNullable: false
-                                                            },
-                                                            {
-                                                                      name: "damage",
-                                                                      label: "Damage",
-                                                                      type: "number",
-                                                                      isArray: false,
-                                                                      isRequired: false,
-                                                                      isNullable: false
-                                                            }
-                                                  ]
-                                        },
-                                        {
-                                                  tag: "passive",
-                                                  label: "Passive",
-                                                  schemaName: "PassiveSkillData",
-                                                  fields: [
-                                                            {
-                                                                      name: "buff_percentage",
-                                                                      label: "Buff Percentage",
-                                                                      type: "number",
-                                                                      isArray: false,
-                                                                      isRequired: false,
-                                                                      isNullable: false
-                                                            }
-                                                  ]
-                                        },
-                                        {
-                                                  tag: "ultimate",
-                                                  label: "Ultimate",
-                                                  schemaName: "UltimateSkillData",
-                                                  fields: [
-                                                            {
-                                                                      name: "mp_cost",
-                                                                      label: "Mp Cost",
-                                                                      type: "number",
-                                                                      isArray: false,
-                                                                      isRequired: false,
-                                                                      isNullable: false
-                                                            },
-                                                            {
-                                                                      name: "cooldown_seconds",
-                                                                      label: "Cooldown Seconds",
-                                                                      type: "number",
-                                                                      isArray: false,
-                                                                      isRequired: false,
-                                                                      isNullable: false
-                                                            },
-                                                            {
-                                                                      name: "damage",
-                                                                      label: "Damage",
-                                                                      type: "number",
-                                                                      isArray: false,
-                                                                      isRequired: false,
-                                                                      isNullable: false
-                                                            },
-                                                            {
-                                                                      name: "area_of_effect",
-                                                                      label: "Area Of Effect",
-                                                                      type: "boolean",
-                                                                      isArray: false,
-                                                                      isRequired: false,
-                                                                      isNullable: false
-                                                            }
-                                                  ]
-                                        }
-                              ]
-                    }
+                    isNullable: false
           },
           {
                     name: "f.description",
@@ -657,7 +591,7 @@ Object.assign(registry, {
         zodSchema: z.object({
     f: z.object({
         skname: z.string(),
-        detail: z.discriminatedUnion('skill_type', [z.object({ skill_type: z.literal('active'), mp_cost: z.number().int().optional(), cooldown_seconds: z.number().int().optional(), damage: z.number().int().optional() }), z.object({ skill_type: z.literal('passive'), buff_percentage: z.number().int().optional() }), z.object({ skill_type: z.literal('ultimate'), mp_cost: z.number().int().optional(), cooldown_seconds: z.number().int().optional(), damage: z.number().int().optional(), area_of_effect: z.boolean().optional() })]),
+        detail: z.string(),
         description: z.string().optional(),
         required_level: z.number().int().optional(),
         required_class: z.enum(["⚔️ 戰士", "🏹 弓箭手", "💾 數據守護者", "🔮 法師"]).nullable().optional()
@@ -668,6 +602,8 @@ Object.assign(registry, {
     z: z.instanceof(File)
         }),
         apiMethod: characterApi.createNewCharacter4,
+        asyncMode: 'job',
+        jobResourceName: 'create-new-character4-job',
       }
     ],
   },
@@ -765,100 +701,9 @@ Object.assign(registry, {
       {
             name: "detail",
             label: "Detail",
-            type: "union",
             isArray: false,
             isRequired: true,
-            isNullable: false,
-            unionMeta: {
-                  discriminatorField: "skill_type",
-                  variants: [
-                        {
-                              tag: "active",
-                              label: "Active",
-                              schemaName: "ActiveSkillData",
-                              fields: [
-                                    {
-                                          name: "mp_cost",
-                                          label: "Mp Cost",
-                                          type: "number",
-                                          isArray: false,
-                                          isRequired: false,
-                                          isNullable: false
-                                    },
-                                    {
-                                          name: "cooldown_seconds",
-                                          label: "Cooldown Seconds",
-                                          type: "number",
-                                          isArray: false,
-                                          isRequired: false,
-                                          isNullable: false
-                                    },
-                                    {
-                                          name: "damage",
-                                          label: "Damage",
-                                          type: "number",
-                                          isArray: false,
-                                          isRequired: false,
-                                          isNullable: false
-                                    }
-                              ]
-                        },
-                        {
-                              tag: "passive",
-                              label: "Passive",
-                              schemaName: "PassiveSkillData",
-                              fields: [
-                                    {
-                                          name: "buff_percentage",
-                                          label: "Buff Percentage",
-                                          type: "number",
-                                          isArray: false,
-                                          isRequired: false,
-                                          isNullable: false
-                                    }
-                              ]
-                        },
-                        {
-                              tag: "ultimate",
-                              label: "Ultimate",
-                              schemaName: "UltimateSkillData",
-                              fields: [
-                                    {
-                                          name: "mp_cost",
-                                          label: "Mp Cost",
-                                          type: "number",
-                                          isArray: false,
-                                          isRequired: false,
-                                          isNullable: false
-                                    },
-                                    {
-                                          name: "cooldown_seconds",
-                                          label: "Cooldown Seconds",
-                                          type: "number",
-                                          isArray: false,
-                                          isRequired: false,
-                                          isNullable: false
-                                    },
-                                    {
-                                          name: "damage",
-                                          label: "Damage",
-                                          type: "number",
-                                          isArray: false,
-                                          isRequired: false,
-                                          isNullable: false
-                                    },
-                                    {
-                                          name: "area_of_effect",
-                                          label: "Area Of Effect",
-                                          type: "boolean",
-                                          isArray: false,
-                                          isRequired: false,
-                                          isNullable: false
-                                    }
-                              ]
-                        }
-                  ]
-            }
+            isNullable: false
       },
       {
             name: "description",
@@ -892,7 +737,7 @@ Object.assign(registry, {
 ],
     zodSchema: z.object({
     skname: z.string(),
-    detail: z.discriminatedUnion('skill_type', [z.object({ skill_type: z.literal('active'), mp_cost: z.number().int().optional(), cooldown_seconds: z.number().int().optional(), damage: z.number().int().optional() }), z.object({ skill_type: z.literal('passive'), buff_percentage: z.number().int().optional() }), z.object({ skill_type: z.literal('ultimate'), mp_cost: z.number().int().optional(), cooldown_seconds: z.number().int().optional(), damage: z.number().int().optional(), area_of_effect: z.boolean().optional() })]),
+    detail: z.string(),
     description: z.string().optional(),
     required_level: z.number().int().optional(),
     required_class: z.enum(["⚔️ 戰士", "🏹 弓箭手", "💾 數據守護者", "🔮 法師"]).nullable().optional()
@@ -1551,6 +1396,558 @@ Object.assign(registry, {
     maxFormDepth: 3,
     defaultHiddenFields: ["status","errmsg","retries","max_retries","periodic_interval_seconds","periodic_max_runs","periodic_runs","periodic_initial_delay_seconds","last_heartbeat_at"],
   },
+  'new-char1-job': {
+    name: 'new-char1-job',
+    label: 'New Char1 Job',
+    pluralLabel: 'New Char1 Jobs',
+    schema: 'NewCharacterJob',
+    fields: [
+      {
+            name: "payload.name",
+            label: "Name",
+            type: "string",
+            isArray: false,
+            isRequired: true,
+            isNullable: false
+      },
+      {
+            name: "status",
+            label: "Status",
+            isArray: false,
+            isRequired: false,
+            isNullable: false,
+            enumValues: [
+                  "completed",
+                  "failed",
+                  "pending",
+                  "processing"
+            ]
+      },
+      {
+            name: "errmsg",
+            label: "Errmsg",
+            type: "string",
+            isArray: false,
+            isRequired: false,
+            isNullable: true
+      },
+      {
+            name: "artifact",
+            label: "Artifact",
+            type: "object",
+            isArray: false,
+            isRequired: false,
+            isNullable: true
+      },
+      {
+            name: "retries",
+            label: "Retries",
+            type: "number",
+            isArray: false,
+            isRequired: false,
+            isNullable: false
+      },
+      {
+            name: "max_retries",
+            label: "Max Retries",
+            type: "number",
+            isArray: false,
+            isRequired: false,
+            isNullable: true
+      },
+      {
+            name: "periodic_interval_seconds",
+            label: "Periodic Interval Seconds",
+            type: "number",
+            isArray: false,
+            isRequired: false,
+            isNullable: true
+      },
+      {
+            name: "periodic_max_runs",
+            label: "Periodic Max Runs",
+            type: "number",
+            isArray: false,
+            isRequired: false,
+            isNullable: true
+      },
+      {
+            name: "periodic_runs",
+            label: "Periodic Runs",
+            type: "number",
+            isArray: false,
+            isRequired: false,
+            isNullable: false
+      },
+      {
+            name: "periodic_initial_delay_seconds",
+            label: "Periodic Initial Delay Seconds",
+            type: "number",
+            isArray: false,
+            isRequired: false,
+            isNullable: true
+      },
+      {
+            name: "last_heartbeat_at",
+            label: "Last Heartbeat At",
+            type: "string",
+            isArray: false,
+            isRequired: false,
+            isNullable: true
+      }
+],
+    zodSchema: z.object({
+    payload: z.object({
+        name: z.string()
+    }),
+    status: z.enum(["completed", "failed", "pending", "processing"]).optional(),
+    errmsg: z.string().nullable().optional(),
+    artifact: z.record(z.string(), z.any()).nullable().optional(),
+    retries: z.number().int().optional(),
+    max_retries: z.number().int().nullable().optional(),
+    periodic_interval_seconds: z.number().int().nullable().optional(),
+    periodic_max_runs: z.number().int().nullable().optional(),
+    periodic_runs: z.number().int().optional(),
+    periodic_initial_delay_seconds: z.number().int().nullable().optional(),
+    last_heartbeat_at: z.string().nullable().optional()
+    }),
+    apiClient: newChar1JobApi,
+    maxFormDepth: 2,
+    defaultHiddenFields: ["status","errmsg","artifact","retries","max_retries","periodic_interval_seconds","periodic_max_runs","periodic_runs","periodic_initial_delay_seconds","last_heartbeat_at"],
+  },
+  'create-new-character2-job': {
+    name: 'create-new-character2-job',
+    label: 'Create New Character2 Job',
+    pluralLabel: 'Create New Character2 Jobs',
+    schema: 'CreateNewCharacter2CharacterJob',
+    fields: [
+      {
+            name: "payload.name",
+            label: "Name",
+            type: "string",
+            isArray: false,
+            isRequired: true,
+            isNullable: false
+      },
+      {
+            name: "status",
+            label: "Status",
+            isArray: false,
+            isRequired: false,
+            isNullable: false,
+            enumValues: [
+                  "completed",
+                  "failed",
+                  "pending",
+                  "processing"
+            ]
+      },
+      {
+            name: "errmsg",
+            label: "Errmsg",
+            type: "string",
+            isArray: false,
+            isRequired: false,
+            isNullable: true
+      },
+      {
+            name: "artifact",
+            label: "Artifact",
+            type: "object",
+            isArray: false,
+            isRequired: false,
+            isNullable: true
+      },
+      {
+            name: "retries",
+            label: "Retries",
+            type: "number",
+            isArray: false,
+            isRequired: false,
+            isNullable: false
+      },
+      {
+            name: "max_retries",
+            label: "Max Retries",
+            type: "number",
+            isArray: false,
+            isRequired: false,
+            isNullable: true
+      },
+      {
+            name: "periodic_interval_seconds",
+            label: "Periodic Interval Seconds",
+            type: "number",
+            isArray: false,
+            isRequired: false,
+            isNullable: true
+      },
+      {
+            name: "periodic_max_runs",
+            label: "Periodic Max Runs",
+            type: "number",
+            isArray: false,
+            isRequired: false,
+            isNullable: true
+      },
+      {
+            name: "periodic_runs",
+            label: "Periodic Runs",
+            type: "number",
+            isArray: false,
+            isRequired: false,
+            isNullable: false
+      },
+      {
+            name: "periodic_initial_delay_seconds",
+            label: "Periodic Initial Delay Seconds",
+            type: "number",
+            isArray: false,
+            isRequired: false,
+            isNullable: true
+      },
+      {
+            name: "last_heartbeat_at",
+            label: "Last Heartbeat At",
+            type: "string",
+            isArray: false,
+            isRequired: false,
+            isNullable: true
+      }
+],
+    zodSchema: z.object({
+    payload: z.object({
+        name: z.string()
+    }),
+    status: z.enum(["completed", "failed", "pending", "processing"]).optional(),
+    errmsg: z.string().nullable().optional(),
+    artifact: z.record(z.string(), z.any()).nullable().optional(),
+    retries: z.number().int().optional(),
+    max_retries: z.number().int().nullable().optional(),
+    periodic_interval_seconds: z.number().int().nullable().optional(),
+    periodic_max_runs: z.number().int().nullable().optional(),
+    periodic_runs: z.number().int().optional(),
+    periodic_initial_delay_seconds: z.number().int().nullable().optional(),
+    last_heartbeat_at: z.string().nullable().optional()
+    }),
+    apiClient: createNewCharacter2JobApi,
+    maxFormDepth: 2,
+    defaultHiddenFields: ["status","errmsg","artifact","retries","max_retries","periodic_interval_seconds","periodic_max_runs","periodic_runs","periodic_initial_delay_seconds","last_heartbeat_at"],
+  },
+  'create-new-character4-job': {
+    name: 'create-new-character4-job',
+    label: 'Create New Character4 Job',
+    pluralLabel: 'Create New Character4 Jobs',
+    schema: 'CreateNewCharacter4CharacterJob',
+    fields: [
+      {
+            name: "payload.x",
+            label: "X",
+            type: "union",
+            isArray: false,
+            isRequired: true,
+            isNullable: false,
+            unionMeta: {
+                  discriminatorField: "__type",
+                  variants: [
+                        {
+                              tag: "number",
+                              label: "Number",
+                              type: "number"
+                        },
+                        {
+                              tag: "string",
+                              label: "String",
+                              type: "string"
+                        }
+                  ]
+            }
+      },
+      {
+            name: "payload.y",
+            label: "Y",
+            type: "string",
+            isArray: false,
+            isRequired: true,
+            isNullable: false
+      },
+      {
+            name: "payload.name",
+            label: "Name",
+            type: "string",
+            isArray: false,
+            isRequired: true,
+            isNullable: false
+      },
+      {
+            name: "payload.z.binary",
+            label: "Binary",
+            type: "binary",
+            isArray: false,
+            isRequired: true,
+            isNullable: false
+      },
+      {
+            name: "payload.z.filename",
+            label: "Filename",
+            type: "string",
+            isArray: false,
+            isRequired: false,
+            isNullable: true
+      },
+      {
+            name: "payload.f.skname",
+            label: "Skname",
+            type: "string",
+            isArray: false,
+            isRequired: true,
+            isNullable: false
+      },
+      {
+            name: "payload.f.detail",
+            label: "Detail",
+            type: "union",
+            isArray: false,
+            isRequired: true,
+            isNullable: false,
+            unionMeta: {
+                  discriminatorField: "skill_type",
+                  variants: [
+                        {
+                              tag: "active",
+                              label: "Active",
+                              schemaName: "autocrud_resource_manager_pydantic_converter_ActiveSkillData",
+                              fields: [
+                                    {
+                                          name: "mp_cost",
+                                          label: "Mp Cost",
+                                          type: "number",
+                                          isArray: false,
+                                          isRequired: false,
+                                          isNullable: false
+                                    },
+                                    {
+                                          name: "cooldown_seconds",
+                                          label: "Cooldown Seconds",
+                                          type: "number",
+                                          isArray: false,
+                                          isRequired: false,
+                                          isNullable: false
+                                    },
+                                    {
+                                          name: "damage",
+                                          label: "Damage",
+                                          type: "number",
+                                          isArray: false,
+                                          isRequired: false,
+                                          isNullable: false
+                                    }
+                              ]
+                        },
+                        {
+                              tag: "passive",
+                              label: "Passive",
+                              schemaName: "autocrud_resource_manager_pydantic_converter_PassiveSkillData",
+                              fields: [
+                                    {
+                                          name: "buff_percentage",
+                                          label: "Buff Percentage",
+                                          type: "number",
+                                          isArray: false,
+                                          isRequired: false,
+                                          isNullable: false
+                                    }
+                              ]
+                        },
+                        {
+                              tag: "ultimate",
+                              label: "Ultimate",
+                              schemaName: "autocrud_resource_manager_pydantic_converter_UltimateSkillData",
+                              fields: [
+                                    {
+                                          name: "mp_cost",
+                                          label: "Mp Cost",
+                                          type: "number",
+                                          isArray: false,
+                                          isRequired: false,
+                                          isNullable: false
+                                    },
+                                    {
+                                          name: "cooldown_seconds",
+                                          label: "Cooldown Seconds",
+                                          type: "number",
+                                          isArray: false,
+                                          isRequired: false,
+                                          isNullable: false
+                                    },
+                                    {
+                                          name: "damage",
+                                          label: "Damage",
+                                          type: "number",
+                                          isArray: false,
+                                          isRequired: false,
+                                          isNullable: false
+                                    },
+                                    {
+                                          name: "area_of_effect",
+                                          label: "Area Of Effect",
+                                          type: "boolean",
+                                          isArray: false,
+                                          isRequired: false,
+                                          isNullable: false
+                                    }
+                              ]
+                        }
+                  ]
+            }
+      },
+      {
+            name: "payload.f.description",
+            label: "Description",
+            type: "string",
+            isArray: false,
+            isRequired: false,
+            isNullable: false
+      },
+      {
+            name: "payload.f.required_level",
+            label: "Required Level",
+            type: "number",
+            isArray: false,
+            isRequired: false,
+            isNullable: false
+      },
+      {
+            name: "payload.f.required_class",
+            label: "Required Class",
+            isArray: false,
+            isRequired: false,
+            isNullable: true,
+            enumValues: [
+                  "⚔️ 戰士",
+                  "🏹 弓箭手",
+                  "💾 數據守護者",
+                  "🔮 法師"
+            ]
+      },
+      {
+            name: "status",
+            label: "Status",
+            isArray: false,
+            isRequired: false,
+            isNullable: false,
+            enumValues: [
+                  "completed",
+                  "failed",
+                  "pending",
+                  "processing"
+            ]
+      },
+      {
+            name: "errmsg",
+            label: "Errmsg",
+            type: "string",
+            isArray: false,
+            isRequired: false,
+            isNullable: true
+      },
+      {
+            name: "artifact",
+            label: "Artifact",
+            type: "object",
+            isArray: false,
+            isRequired: false,
+            isNullable: true
+      },
+      {
+            name: "retries",
+            label: "Retries",
+            type: "number",
+            isArray: false,
+            isRequired: false,
+            isNullable: false
+      },
+      {
+            name: "max_retries",
+            label: "Max Retries",
+            type: "number",
+            isArray: false,
+            isRequired: false,
+            isNullable: true
+      },
+      {
+            name: "periodic_interval_seconds",
+            label: "Periodic Interval Seconds",
+            type: "number",
+            isArray: false,
+            isRequired: false,
+            isNullable: true
+      },
+      {
+            name: "periodic_max_runs",
+            label: "Periodic Max Runs",
+            type: "number",
+            isArray: false,
+            isRequired: false,
+            isNullable: true
+      },
+      {
+            name: "periodic_runs",
+            label: "Periodic Runs",
+            type: "number",
+            isArray: false,
+            isRequired: false,
+            isNullable: false
+      },
+      {
+            name: "periodic_initial_delay_seconds",
+            label: "Periodic Initial Delay Seconds",
+            type: "number",
+            isArray: false,
+            isRequired: false,
+            isNullable: true
+      },
+      {
+            name: "last_heartbeat_at",
+            label: "Last Heartbeat At",
+            type: "string",
+            isArray: false,
+            isRequired: false,
+            isNullable: true
+      }
+],
+    zodSchema: z.object({
+    payload: z.object({
+        z: z.object({
+            binary: z.any(),
+            filename: z.string().nullable().optional()
+        }),
+        f: z.object({
+            skname: z.string(),
+            detail: z.discriminatedUnion('skill_type', [z.object({ skill_type: z.literal('active'), mp_cost: z.number().int().optional(), cooldown_seconds: z.number().int().optional(), damage: z.number().int().optional() }), z.object({ skill_type: z.literal('passive'), buff_percentage: z.number().int().optional() }), z.object({ skill_type: z.literal('ultimate'), mp_cost: z.number().int().optional(), cooldown_seconds: z.number().int().optional(), damage: z.number().int().optional(), area_of_effect: z.boolean().optional() })]),
+            description: z.string().optional(),
+            required_level: z.number().int().optional(),
+            required_class: z.enum(["⚔️ 戰士", "🏹 弓箭手", "💾 數據守護者", "🔮 法師"]).nullable().optional()
+        }),
+        x: z.union([z.number().int(), z.string()]),
+        y: z.string(),
+        name: z.string()
+    }),
+    status: z.enum(["completed", "failed", "pending", "processing"]).optional(),
+    errmsg: z.string().nullable().optional(),
+    artifact: z.record(z.string(), z.any()).nullable().optional(),
+    retries: z.number().int().optional(),
+    max_retries: z.number().int().nullable().optional(),
+    periodic_interval_seconds: z.number().int().nullable().optional(),
+    periodic_max_runs: z.number().int().nullable().optional(),
+    periodic_runs: z.number().int().optional(),
+    periodic_initial_delay_seconds: z.number().int().nullable().optional(),
+    last_heartbeat_at: z.string().nullable().optional()
+    }),
+    apiClient: createNewCharacter4JobApi,
+    maxFormDepth: 3,
+    defaultHiddenFields: ["status","errmsg","artifact","retries","max_retries","periodic_interval_seconds","periodic_max_runs","periodic_runs","periodic_initial_delay_seconds","last_heartbeat_at"],
+  },
   'pet': {
     name: 'pet',
     label: 'Pet',
@@ -1704,6 +2101,13 @@ Object.assign(registry, {
     maxFormDepth: 1,
     isUnion: true,
   }
+});
+
+import { asyncCreateJobs } from '../lib/resources';
+Object.assign(asyncCreateJobs, {
+  'new-char1-job': 'character',
+  'create-new-character2-job': 'character',
+  'create-new-character4-job': 'character',
 });
 
 /**

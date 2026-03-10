@@ -33,7 +33,7 @@ export enum GameEventType {
 }
 
 export interface ActiveSkillData {
-  skill_type: 'active';
+  skill_type?: 'active';
   mp_cost?: number;
   cooldown_seconds?: number;
   damage?: number;
@@ -53,6 +53,14 @@ export interface Body_import_model_character_import_post {
   file: string;
 }
 
+export interface Body_import_model_create_new_character2_job_import_post {
+  file: string;
+}
+
+export interface Body_import_model_create_new_character4_job_import_post {
+  file: string;
+}
+
 export interface Body_import_model_equipment_import_post {
   file: string;
 }
@@ -62,6 +70,10 @@ export interface Body_import_model_game_event_import_post {
 }
 
 export interface Body_import_model_guild_import_post {
+  file: string;
+}
+
+export interface Body_import_model_new_char1_job_import_post {
   file: string;
 }
 
@@ -77,25 +89,29 @@ export interface Body_import_model_skill_import_post {
   file: string;
 }
 
+export interface Body_upload_blob_blobs_upload_post {
+  file: string;
+}
+
 export interface HTTPValidationError {
   detail?: object[];
 }
 
 export interface PassiveSkillData {
-  skill_type: 'passive';
+  skill_type?: 'passive';
   buff_percentage?: number;
 }
 
 export interface Skill {
   skname: string;
-  detail: ActiveSkillData | PassiveSkillData | UltimateSkillData;
+  detail: string;
   description?: string;
   required_level?: number;
   required_class?: CharacterClass | null;
 }
 
 export interface UltimateSkillData {
-  skill_type: 'ultimate';
+  skill_type?: 'ultimate';
   mp_cost?: number;
   cooldown_seconds?: number;
   damage?: number;
@@ -106,10 +122,6 @@ export interface ValidationError {
   loc: (string | number)[];
   msg: string;
   type: string;
-}
-
-export interface fastapi___compat__v2__Body_upload_blob_blobs_upload_post {
-  file: string;
 }
 
 export interface Character {
@@ -167,6 +179,34 @@ export interface Guild {
   level?: number;
   treasury?: number;
   founded_at?: string;
+}
+
+export interface __main___Skill {
+  skname: string;
+  detail: __main___ActiveSkillData | __main___PassiveSkillData | __main___UltimateSkillData;
+  description?: string;
+  required_level?: number;
+  required_class?: CharacterClass | null;
+}
+
+export interface __main___ActiveSkillData {
+  skill_type: 'active';
+  mp_cost?: number;
+  cooldown_seconds?: number;
+  damage?: number;
+}
+
+export interface __main___PassiveSkillData {
+  skill_type: 'passive';
+  buff_percentage?: number;
+}
+
+export interface __main___UltimateSkillData {
+  skill_type: 'ultimate';
+  mp_cost?: number;
+  cooldown_seconds?: number;
+  damage?: number;
+  area_of_effect?: boolean;
 }
 
 export interface Mount {
@@ -252,6 +292,97 @@ export interface GameEventArtifact {
   process_times: number;
 }
 
+export interface NewCharacterJob {
+  payload: Record<string, any>;
+  status?: TaskStatus;
+  errmsg?: string | null;
+  artifact?: Record<string, any> | null;
+  retries?: number;
+  max_retries?: number | null;
+  periodic_interval_seconds?: number | null;
+  periodic_max_runs?: number | null;
+  periodic_runs?: number;
+  periodic_initial_delay_seconds?: number | null;
+  last_heartbeat_at?: string | null;
+}
+
+export interface NewCharacterPayload {
+  name: string;
+}
+
+export interface CreateNewCharacter2CharacterJob {
+  payload: Record<string, any>;
+  status?: TaskStatus;
+  errmsg?: string | null;
+  artifact?: Record<string, any> | null;
+  retries?: number;
+  max_retries?: number | null;
+  periodic_interval_seconds?: number | null;
+  periodic_max_runs?: number | null;
+  periodic_runs?: number;
+  periodic_initial_delay_seconds?: number | null;
+  last_heartbeat_at?: string | null;
+}
+
+export interface CreateNewCharacter2CharacterPayload {
+  name: string;
+}
+
+export interface CreateNewCharacter4CharacterJob {
+  payload: Record<string, any>;
+  status?: TaskStatus;
+  errmsg?: string | null;
+  artifact?: Record<string, any> | null;
+  retries?: number;
+  max_retries?: number | null;
+  periodic_interval_seconds?: number | null;
+  periodic_max_runs?: number | null;
+  periodic_runs?: number;
+  periodic_initial_delay_seconds?: number | null;
+  last_heartbeat_at?: string | null;
+}
+
+export interface CreateNewCharacter4CharacterPayload {
+  x: number | string;
+  y: string;
+  name: string;
+  z: Record<string, any>;
+  f: Record<string, any>;
+}
+
+export interface UploadFilePayload {
+  binary: Binary;
+  filename?: string | null;
+}
+
+export interface autocrud_resource_manager_pydantic_converter_Skill {
+  skname: string;
+  detail: autocrud_resource_manager_pydantic_converter_ActiveSkillData | autocrud_resource_manager_pydantic_converter_PassiveSkillData | autocrud_resource_manager_pydantic_converter_UltimateSkillData;
+  description?: string;
+  required_level?: number;
+  required_class?: CharacterClass | null;
+}
+
+export interface autocrud_resource_manager_pydantic_converter_ActiveSkillData {
+  skill_type: 'active';
+  mp_cost?: number;
+  cooldown_seconds?: number;
+  damage?: number;
+}
+
+export interface autocrud_resource_manager_pydantic_converter_PassiveSkillData {
+  skill_type: 'passive';
+  buff_percentage?: number;
+}
+
+export interface autocrud_resource_manager_pydantic_converter_UltimateSkillData {
+  skill_type: 'ultimate';
+  mp_cost?: number;
+  cooldown_seconds?: number;
+  damage?: number;
+  area_of_effect?: boolean;
+}
+
 export interface FullResourceResponse_Character_ {
   data?: Record<string, any>;
   revision_info?: Record<string, any>;
@@ -294,6 +425,24 @@ export interface FullResourceResponse_GameEvent_ {
   meta?: Record<string, any>;
 }
 
+export interface FullResourceResponse_NewCharacterJob_ {
+  data?: Record<string, any>;
+  revision_info?: Record<string, any>;
+  meta?: Record<string, any>;
+}
+
+export interface FullResourceResponse_CreateNewCharacter2CharacterJob_ {
+  data?: Record<string, any>;
+  revision_info?: Record<string, any>;
+  meta?: Record<string, any>;
+}
+
+export interface FullResourceResponse_CreateNewCharacter4CharacterJob_ {
+  data?: Record<string, any>;
+  revision_info?: Record<string, any>;
+  meta?: Record<string, any>;
+}
+
 export interface RFC6902_Add {
   op: 'add';
   path: string;
@@ -327,6 +476,21 @@ export interface RFC6902_Copy {
   op: 'copy';
   from: string;
   path: string;
+}
+
+export interface MigrateProgress {
+  resource_id: string;
+  status: string;
+  message?: string | null;
+  error?: string | null;
+}
+
+export interface MigrateResult {
+  total: number;
+  success: number;
+  failed: number;
+  skipped: number;
+  errors?: Record<string, any>[];
 }
 
 export type Pet = Mount | Dog;
