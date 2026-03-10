@@ -1532,6 +1532,15 @@ class AutoCRUD:
                                 break
                     if ref_target and ref_target.split("/")[-1] == body_schema:
                         body_schema_prop_names.add(pname)
+                    # Also match inline schemas whose title equals the
+                    # body schema name (happens when Pydantic params are
+                    # replaced with untyped Body for multipart/form-data).
+                    elif (
+                        not ref_target
+                        and pschema.get("title") == body_schema
+                        and pschema.get("type") == "object"
+                    ):
+                        body_schema_prop_names.add(pname)
             # Record the handler parameter name for the body schema so
             # the frontend generator can build the correct FormData /
             # JSON body key when mixing body-schema + other param types.
@@ -2015,6 +2024,11 @@ class AutoCRUD:
             """Check if *ann* is a msgspec.Struct subclass."""
             return isinstance(ann, type) and issubclass(ann, _msgspec.Struct)
 
+        def _is_upload_file_annotation(ann: Any) -> bool:
+            """Check if *ann* is or contains ``UploadFile``."""
+            raw, _ = unwrap_annotated(ann)
+            return isinstance(raw, type) and issubclass(raw, UploadFile)
+
         async def _convert_params_for_payload(
             kwargs: dict,
             param_convs: dict[str, tuple[str, type]],
@@ -2095,8 +2109,30 @@ class AutoCRUD:
             # Identify parameters whose annotation is a msgspec.Struct subclass
             # so we can convert them from raw dicts.
             struct_params: dict[str, type] = {}
+            # Pydantic BaseModel params that need manual conversion
+            # (required when UploadFile forces multipart/form-data)
+            pydantic_params: dict[str, type] = {}
             new_params: list[inspect.Parameter] = []
             new_annotations: dict[str, Any] = {}
+
+            # Pre-scan: check if UploadFile is present — forces
+            # multipart/form-data encoding where complex types arrive as
+            # JSON strings.
+            _has_upload_file = any(
+                _is_upload_file_annotation(p.annotation)
+                for p in sig.parameters.values()
+            )
+
+            def _is_pydantic_model_type(ann: type) -> bool:
+                """Check if *ann* is a Pydantic BaseModel subclass."""
+                if not isinstance(ann, type):
+                    return False
+                try:
+                    from pydantic import BaseModel
+
+                    return issubclass(ann, BaseModel)
+                except ImportError:
+                    return False
 
             for name, param in sig.parameters.items():
                 ann = param.annotation
@@ -2118,6 +2154,24 @@ class AutoCRUD:
                         default=new_default,
                     )
                     new_params.append(new_param)
+                elif _has_upload_file and _is_pydantic_model_type(raw_ann):
+                    # When UploadFile forces multipart/form-data, Pydantic
+                    # model params arrive as JSON strings.  Replace them
+                    # with untyped Body() and handle conversion in the
+                    # wrapper — same approach as Struct params.
+                    pydantic_params[name] = raw_ann
+                    try:
+                        _pydantic_schema = raw_ann.model_json_schema()
+                    except Exception:
+                        _pydantic_schema = {}
+                    new_default = Body(
+                        json_schema_extra=_pydantic_schema,
+                    )
+                    new_param = param.replace(
+                        annotation=inspect.Parameter.empty,
+                        default=new_default,
+                    )
+                    new_params.append(new_param)
                 else:
                     new_params.append(param)
                     if ann is not inspect.Parameter.empty:
@@ -2126,6 +2180,15 @@ class AutoCRUD:
             new_sig = sig.replace(
                 parameters=new_params, return_annotation=inspect.Parameter.empty
             )
+
+            def _ensure_dict(val: Any) -> Any:
+                """Parse JSON string to dict when multipart/form-data
+                delivers complex fields as strings."""
+                if isinstance(val, str):
+                    import json as _json
+
+                    return _json.loads(val)
+                return val
 
             # ---- async-job mode: create Job + return 202 ----------------
             if async_job_config is not None:
@@ -2141,7 +2204,12 @@ class AutoCRUD:
                 async def wrapper(*args, **kwargs):
                     for pname, struct_type in struct_params.items():
                         if pname in kwargs:
-                            kwargs[pname] = _msgspec.convert(kwargs[pname], struct_type)
+                            kwargs[pname] = _msgspec.convert(
+                                _ensure_dict(kwargs[pname]), struct_type
+                            )
+                    for pname, pydantic_type in pydantic_params.items():
+                        if pname in kwargs:
+                            kwargs[pname] = pydantic_type(**_ensure_dict(kwargs[pname]))
 
                     # Convert non-serialisable params before packing
                     if _param_convs:
@@ -2191,7 +2259,12 @@ class AutoCRUD:
                     # Convert raw dicts to Struct instances
                     for pname, struct_type in struct_params.items():
                         if pname in kwargs:
-                            kwargs[pname] = _msgspec.convert(kwargs[pname], struct_type)
+                            kwargs[pname] = _msgspec.convert(
+                                _ensure_dict(kwargs[pname]), struct_type
+                            )
+                    for pname, pydantic_type in pydantic_params.items():
+                        if pname in kwargs:
+                            kwargs[pname] = pydantic_type(**_ensure_dict(kwargs[pname]))
                     result = await handler(*args, **kwargs)
                     if result is None:
                         return None
@@ -2204,7 +2277,12 @@ class AutoCRUD:
                 def wrapper(*args, **kwargs):
                     for pname, struct_type in struct_params.items():
                         if pname in kwargs:
-                            kwargs[pname] = _msgspec.convert(kwargs[pname], struct_type)
+                            kwargs[pname] = _msgspec.convert(
+                                _ensure_dict(kwargs[pname]), struct_type
+                            )
+                    for pname, pydantic_type in pydantic_params.items():
+                        if pname in kwargs:
+                            kwargs[pname] = pydantic_type(**_ensure_dict(kwargs[pname]))
                     result = handler(*args, **kwargs)
                     if result is None:
                         return None

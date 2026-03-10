@@ -1289,6 +1289,91 @@ class TestCreateActionMixedParams:
         # The handler parameter for the Pydantic model is called 'item'
         assert action.get("bodySchemaParamName") == "item"
 
+    def test_mixed_pydantic_file_endpoint_works(self):
+        """Multipart submission with Pydantic body + UploadFile must succeed.
+
+        Regression test: when UploadFile forces multipart/form-data, the
+        Pydantic model arrives as a JSON string.  The endpoint should
+        transparently parse it.
+        """
+        import json
+
+        crud = AutoCRUD()
+        crud.add_model(_PEquipment, name="pequipment")
+        crud.add_model(_MixedResource, name="mresource")
+
+        _MixedItemPydantic = struct_to_pydantic(_MixedItem)
+
+        @crud.create_action("mresource", label="Mixed Action")
+        async def mixed_action(
+            q: str,
+            name: Annotated[str, Body(embed=True), Ref("pequipment")],
+            pic: UploadFile,
+            item: _MixedItemPydantic,  # type: ignore[reportInvalidTypeForm]
+        ):
+            return _MixedResource(name=f"{name}-{item.label}-{item.value}")
+
+        app = FastAPI()
+        crud.apply(app)
+        crud.openapi(app)
+        client = TestClient(app)
+
+        resp = client.post(
+            "/mresource/mixed-action",
+            params={"q": "hello"},
+            data={
+                "name": "Alice",
+                "item": json.dumps({"label": "sword", "value": 10}),
+            },
+            files={"pic": ("img.png", b"\x89PNG", "image/png")},
+        )
+        assert resp.status_code == 200, (
+            f"Expected 200, got {resp.status_code}: {resp.text}"
+        )
+        data = resp.json()
+        rm = crud.resource_managers["mresource"]
+        resource = rm.get(data["resource_id"])
+        assert resource.data.name == "Alice-sword-10"
+
+    def test_mixed_struct_file_endpoint_works(self):
+        """Multipart submission with msgspec.Struct body + UploadFile must succeed.
+
+        When UploadFile forces multipart/form-data, the Struct body arrives as
+        a JSON string.  The endpoint should transparently parse it.
+        """
+        import json
+
+        crud = AutoCRUD()
+        crud.add_model(_MixedResource, name="mresource")
+
+        @crud.create_action("mresource", label="Struct File Action")
+        async def struct_file_action(
+            q: str,
+            pic: UploadFile,
+            item: _MixedItem,
+        ):
+            return _MixedResource(name=f"{item.label}-{item.value}")
+
+        app = FastAPI()
+        crud.apply(app)
+        client = TestClient(app)
+
+        resp = client.post(
+            "/mresource/struct-file-action",
+            params={"q": "test"},
+            data={
+                "item": json.dumps({"label": "axe", "value": 5}),
+            },
+            files={"pic": ("img.png", b"\x89PNG", "image/png")},
+        )
+        assert resp.status_code == 200, (
+            f"Expected 200, got {resp.status_code}: {resp.text}"
+        )
+        data = resp.json()
+        rm = crud.resource_managers["mresource"]
+        resource = rm.get(data["resource_id"])
+        assert resource.data.name == "axe-5"
+
 
 # ---------------------------------------------------------------------------
 # 10. Router prefix — params must still be extracted when apply(router)
