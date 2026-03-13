@@ -124,7 +124,7 @@ export const createResourceV1AutocrudCharacterPostBodyEquipmentsItemTwoDescripti
 export const createResourceV1AutocrudCharacterPostBodyEquipmentsItemTwoPriceDefault = 100;
 export const createResourceV1AutocrudCharacterPostBodyEquipmentsItemTwoIconDefault = null;
 export const createResourceV1AutocrudCharacterPostBodyEquipmentsDefault = [];
-export const createResourceV1AutocrudCharacterPostBodyCreatedAtDefault = `2026-03-13T22:31:18.273420`;
+export const createResourceV1AutocrudCharacterPostBodyCreatedAtDefault = `2026-03-13T23:16:49.709048`;
 
 export const CreateResourceV1AutocrudCharacterPostBody = zod.object({
   "name": zod.string(),
@@ -260,7 +260,7 @@ export const listResourcesV1AutocrudCharacterGetResponseDataEquipmentsItemTwoDes
 export const listResourcesV1AutocrudCharacterGetResponseDataEquipmentsItemTwoPriceDefault = 100;
 export const listResourcesV1AutocrudCharacterGetResponseDataEquipmentsItemTwoIconDefault = null;
 export const listResourcesV1AutocrudCharacterGetResponseDataEquipmentsDefault = [];
-export const listResourcesV1AutocrudCharacterGetResponseDataCreatedAtDefault = `2026-03-13T22:31:18.273420`;
+export const listResourcesV1AutocrudCharacterGetResponseDataCreatedAtDefault = `2026-03-13T23:16:49.709048`;
 export const listResourcesV1AutocrudCharacterGetResponseRevisionInfoParentRevisionIdDefault = null;
 export const listResourcesV1AutocrudCharacterGetResponseRevisionInfoSchemaVersionDefault = null;
 export const listResourcesV1AutocrudCharacterGetResponseMetaSchemaVersionDefault = null;
@@ -520,7 +520,7 @@ export const listResourcesDataV1AutocrudCharacterDataGetResponseEquipmentsItemTw
 export const listResourcesDataV1AutocrudCharacterDataGetResponseEquipmentsItemTwoPriceDefault = 100;
 export const listResourcesDataV1AutocrudCharacterDataGetResponseEquipmentsItemTwoIconDefault = null;
 export const listResourcesDataV1AutocrudCharacterDataGetResponseEquipmentsDefault = [];
-export const listResourcesDataV1AutocrudCharacterDataGetResponseCreatedAtDefault = `2026-03-13T22:31:18.273420`;
+export const listResourcesDataV1AutocrudCharacterDataGetResponseCreatedAtDefault = `2026-03-13T23:16:49.709048`;
 
 export const ListResourcesDataV1AutocrudCharacterDataGetResponseItem = zod.object({
   "name": zod.string(),
@@ -832,7 +832,7 @@ export const listResourcesFullV1AutocrudCharacterFullGetResponseDataEquipmentsIt
 export const listResourcesFullV1AutocrudCharacterFullGetResponseDataEquipmentsItemTwoPriceDefault = 100;
 export const listResourcesFullV1AutocrudCharacterFullGetResponseDataEquipmentsItemTwoIconDefault = null;
 export const listResourcesFullV1AutocrudCharacterFullGetResponseDataEquipmentsDefault = [];
-export const listResourcesFullV1AutocrudCharacterFullGetResponseDataCreatedAtDefault = `2026-03-13T22:31:18.273420`;
+export const listResourcesFullV1AutocrudCharacterFullGetResponseDataCreatedAtDefault = `2026-03-13T23:16:49.709048`;
 export const listResourcesFullV1AutocrudCharacterFullGetResponseRevisionInfoParentRevisionIdDefault = null;
 export const listResourcesFullV1AutocrudCharacterFullGetResponseRevisionInfoSchemaVersionDefault = null;
 export const listResourcesFullV1AutocrudCharacterFullGetResponseMetaSchemaVersionDefault = null;
@@ -1130,7 +1130,7 @@ export const getResourceFullV1AutocrudCharacterResourceIdFullGetResponseDataEqui
 export const getResourceFullV1AutocrudCharacterResourceIdFullGetResponseDataEquipmentsItemTwoPriceDefault = 100;
 export const getResourceFullV1AutocrudCharacterResourceIdFullGetResponseDataEquipmentsItemTwoIconDefault = null;
 export const getResourceFullV1AutocrudCharacterResourceIdFullGetResponseDataEquipmentsDefault = [];
-export const getResourceFullV1AutocrudCharacterResourceIdFullGetResponseDataCreatedAtDefault = `2026-03-13T22:31:18.273420`;
+export const getResourceFullV1AutocrudCharacterResourceIdFullGetResponseDataCreatedAtDefault = `2026-03-13T23:16:49.709048`;
 export const getResourceFullV1AutocrudCharacterResourceIdFullGetResponseRevisionInfoParentRevisionIdDefault = null;
 export const getResourceFullV1AutocrudCharacterResourceIdFullGetResponseRevisionInfoSchemaVersionDefault = null;
 export const getResourceFullV1AutocrudCharacterResourceIdFullGetResponseMetaSchemaVersionDefault = null;
@@ -1396,7 +1396,7 @@ export const getResourceDataV1AutocrudCharacterResourceIdDataGetResponseEquipmen
 export const getResourceDataV1AutocrudCharacterResourceIdDataGetResponseEquipmentsItemTwoPriceDefault = 100;
 export const getResourceDataV1AutocrudCharacterResourceIdDataGetResponseEquipmentsItemTwoIconDefault = null;
 export const getResourceDataV1AutocrudCharacterResourceIdDataGetResponseEquipmentsDefault = [];
-export const getResourceDataV1AutocrudCharacterResourceIdDataGetResponseCreatedAtDefault = `2026-03-13T22:31:18.273420`;
+export const getResourceDataV1AutocrudCharacterResourceIdDataGetResponseCreatedAtDefault = `2026-03-13T23:16:49.709048`;
 
 export const GetResourceDataV1AutocrudCharacterResourceIdDataGetResponse = zod.object({
   "name": zod.string(),
@@ -1514,7 +1514,7 @@ export const getResourceV1AutocrudCharacterResourceIdGetResponseDataEquipmentsIt
 export const getResourceV1AutocrudCharacterResourceIdGetResponseDataEquipmentsItemTwoPriceDefault = 100;
 export const getResourceV1AutocrudCharacterResourceIdGetResponseDataEquipmentsItemTwoIconDefault = null;
 export const getResourceV1AutocrudCharacterResourceIdGetResponseDataEquipmentsDefault = [];
-export const getResourceV1AutocrudCharacterResourceIdGetResponseDataCreatedAtDefault = `2026-03-13T22:31:18.273420`;
+export const getResourceV1AutocrudCharacterResourceIdGetResponseDataCreatedAtDefault = `2026-03-13T23:16:49.709048`;
 export const getResourceV1AutocrudCharacterResourceIdGetResponseRevisionInfoParentRevisionIdDefault = null;
 export const getResourceV1AutocrudCharacterResourceIdGetResponseRevisionInfoSchemaVersionDefault = null;
 export const getResourceV1AutocrudCharacterResourceIdGetResponseMetaSchemaVersionDefault = null;
@@ -1662,7 +1662,7 @@ export const updateResourceV1AutocrudCharacterResourceIdPutBodyEquipmentsItemTwo
 export const updateResourceV1AutocrudCharacterResourceIdPutBodyEquipmentsItemTwoPriceDefault = 100;
 export const updateResourceV1AutocrudCharacterResourceIdPutBodyEquipmentsItemTwoIconDefault = null;
 export const updateResourceV1AutocrudCharacterResourceIdPutBodyEquipmentsDefault = [];
-export const updateResourceV1AutocrudCharacterResourceIdPutBodyCreatedAtDefault = `2026-03-13T22:31:18.273420`;
+export const updateResourceV1AutocrudCharacterResourceIdPutBodyCreatedAtDefault = `2026-03-13T23:16:49.709048`;
 
 export const UpdateResourceV1AutocrudCharacterResourceIdPutBody = zod.object({
   "name": zod.string(),
@@ -2343,7 +2343,7 @@ export const ImportModelV1AutocrudGuildImportPostResponse = zod.record(zod.strin
 export const createResourceV1AutocrudGuildPostBodyMemberCountDefault = 1;
 export const createResourceV1AutocrudGuildPostBodyLevelDefault = 1;
 export const createResourceV1AutocrudGuildPostBodyTreasuryDefault = 1000;
-export const createResourceV1AutocrudGuildPostBodyFoundedAtDefault = `2026-03-13T22:31:18.273513`;
+export const createResourceV1AutocrudGuildPostBodyFoundedAtDefault = `2026-03-13T23:16:49.709139`;
 
 export const CreateResourceV1AutocrudGuildPostBody = zod.object({
   "name": zod.string(),
@@ -2423,7 +2423,7 @@ export const ListResourcesV1AutocrudGuildGetQueryParams = zod.object({
 export const listResourcesV1AutocrudGuildGetResponseDataMemberCountDefault = 1;
 export const listResourcesV1AutocrudGuildGetResponseDataLevelDefault = 1;
 export const listResourcesV1AutocrudGuildGetResponseDataTreasuryDefault = 1000;
-export const listResourcesV1AutocrudGuildGetResponseDataFoundedAtDefault = `2026-03-13T22:31:18.273513`;
+export const listResourcesV1AutocrudGuildGetResponseDataFoundedAtDefault = `2026-03-13T23:16:49.709139`;
 export const listResourcesV1AutocrudGuildGetResponseRevisionInfoParentRevisionIdDefault = null;
 export const listResourcesV1AutocrudGuildGetResponseRevisionInfoSchemaVersionDefault = null;
 export const listResourcesV1AutocrudGuildGetResponseMetaSchemaVersionDefault = null;
@@ -2627,7 +2627,7 @@ export const ListResourcesDataV1AutocrudGuildDataGetQueryParams = zod.object({
 export const listResourcesDataV1AutocrudGuildDataGetResponseMemberCountDefault = 1;
 export const listResourcesDataV1AutocrudGuildDataGetResponseLevelDefault = 1;
 export const listResourcesDataV1AutocrudGuildDataGetResponseTreasuryDefault = 1000;
-export const listResourcesDataV1AutocrudGuildDataGetResponseFoundedAtDefault = `2026-03-13T22:31:18.273513`;
+export const listResourcesDataV1AutocrudGuildDataGetResponseFoundedAtDefault = `2026-03-13T23:16:49.709139`;
 
 export const ListResourcesDataV1AutocrudGuildDataGetResponseItem = zod.object({
   "name": zod.string(),
@@ -2883,7 +2883,7 @@ export const ListResourcesFullV1AutocrudGuildFullGetQueryParams = zod.object({
 export const listResourcesFullV1AutocrudGuildFullGetResponseDataMemberCountDefault = 1;
 export const listResourcesFullV1AutocrudGuildFullGetResponseDataLevelDefault = 1;
 export const listResourcesFullV1AutocrudGuildFullGetResponseDataTreasuryDefault = 1000;
-export const listResourcesFullV1AutocrudGuildFullGetResponseDataFoundedAtDefault = `2026-03-13T22:31:18.273513`;
+export const listResourcesFullV1AutocrudGuildFullGetResponseDataFoundedAtDefault = `2026-03-13T23:16:49.709139`;
 export const listResourcesFullV1AutocrudGuildFullGetResponseRevisionInfoParentRevisionIdDefault = null;
 export const listResourcesFullV1AutocrudGuildFullGetResponseRevisionInfoSchemaVersionDefault = null;
 export const listResourcesFullV1AutocrudGuildFullGetResponseMetaSchemaVersionDefault = null;
@@ -3125,7 +3125,7 @@ export const GetResourceFullV1AutocrudGuildResourceIdFullGetQueryParams = zod.ob
 export const getResourceFullV1AutocrudGuildResourceIdFullGetResponseDataMemberCountDefault = 1;
 export const getResourceFullV1AutocrudGuildResourceIdFullGetResponseDataLevelDefault = 1;
 export const getResourceFullV1AutocrudGuildResourceIdFullGetResponseDataTreasuryDefault = 1000;
-export const getResourceFullV1AutocrudGuildResourceIdFullGetResponseDataFoundedAtDefault = `2026-03-13T22:31:18.273513`;
+export const getResourceFullV1AutocrudGuildResourceIdFullGetResponseDataFoundedAtDefault = `2026-03-13T23:16:49.709139`;
 export const getResourceFullV1AutocrudGuildResourceIdFullGetResponseRevisionInfoParentRevisionIdDefault = null;
 export const getResourceFullV1AutocrudGuildResourceIdFullGetResponseRevisionInfoSchemaVersionDefault = null;
 export const getResourceFullV1AutocrudGuildResourceIdFullGetResponseMetaSchemaVersionDefault = null;
@@ -3335,7 +3335,7 @@ export const GetResourceDataV1AutocrudGuildResourceIdDataGetQueryParams = zod.ob
 export const getResourceDataV1AutocrudGuildResourceIdDataGetResponseMemberCountDefault = 1;
 export const getResourceDataV1AutocrudGuildResourceIdDataGetResponseLevelDefault = 1;
 export const getResourceDataV1AutocrudGuildResourceIdDataGetResponseTreasuryDefault = 1000;
-export const getResourceDataV1AutocrudGuildResourceIdDataGetResponseFoundedAtDefault = `2026-03-13T22:31:18.273513`;
+export const getResourceDataV1AutocrudGuildResourceIdDataGetResponseFoundedAtDefault = `2026-03-13T23:16:49.709139`;
 
 export const GetResourceDataV1AutocrudGuildResourceIdDataGetResponse = zod.object({
   "name": zod.string(),
@@ -3397,7 +3397,7 @@ export const GetResourceV1AutocrudGuildResourceIdGetQueryParams = zod.object({
 export const getResourceV1AutocrudGuildResourceIdGetResponseDataMemberCountDefault = 1;
 export const getResourceV1AutocrudGuildResourceIdGetResponseDataLevelDefault = 1;
 export const getResourceV1AutocrudGuildResourceIdGetResponseDataTreasuryDefault = 1000;
-export const getResourceV1AutocrudGuildResourceIdGetResponseDataFoundedAtDefault = `2026-03-13T22:31:18.273513`;
+export const getResourceV1AutocrudGuildResourceIdGetResponseDataFoundedAtDefault = `2026-03-13T23:16:49.709139`;
 export const getResourceV1AutocrudGuildResourceIdGetResponseRevisionInfoParentRevisionIdDefault = null;
 export const getResourceV1AutocrudGuildResourceIdGetResponseRevisionInfoSchemaVersionDefault = null;
 export const getResourceV1AutocrudGuildResourceIdGetResponseMetaSchemaVersionDefault = null;
@@ -3489,7 +3489,7 @@ export const UpdateResourceV1AutocrudGuildResourceIdPutQueryParams = zod.object(
 export const updateResourceV1AutocrudGuildResourceIdPutBodyMemberCountDefault = 1;
 export const updateResourceV1AutocrudGuildResourceIdPutBodyLevelDefault = 1;
 export const updateResourceV1AutocrudGuildResourceIdPutBodyTreasuryDefault = 1000;
-export const updateResourceV1AutocrudGuildResourceIdPutBodyFoundedAtDefault = `2026-03-13T22:31:18.273513`;
+export const updateResourceV1AutocrudGuildResourceIdPutBodyFoundedAtDefault = `2026-03-13T23:16:49.709139`;
 
 export const UpdateResourceV1AutocrudGuildResourceIdPutBody = zod.object({
   "name": zod.string(),
@@ -20061,3 +20061,18 @@ export const GlobalImportV1AutocrudBackupImportPostBody = zod.object({
 })
 
 export const GlobalImportV1AutocrudBackupImportPostResponse = zod.record(zod.string(), zod.unknown())
+
+// ── Resource type aliases (generated by AutoCRUD) ──────────────────────────
+// Orval "zod" client only produces Zod const schemas; these type aliases
+// allow route and API files to import properly-named TypeScript types.
+
+export type Character = Record<string, unknown>;
+export type CreateNewCharacter2CharacterJob = Record<string, unknown>;
+export type CreateNewCharacter4CharacterJob = Record<string, unknown>;
+export type Equipment = Record<string, unknown>;
+export type GameEvent = Record<string, unknown>;
+export type Guild = Record<string, unknown>;
+export type Job___main___Mount_____main___Dog__NoneType_ = Record<string, unknown>;
+export type NewCharacterJob = Record<string, unknown>;
+export type Pet = Record<string, unknown>;
+export type Skill = Record<string, unknown>;

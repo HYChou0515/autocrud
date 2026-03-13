@@ -2,7 +2,6 @@
 import { createFileRoute } from '@tanstack/react-router';
 import { ResourceCreate } from '../../../autocrud/lib/components/ResourceCreate';
 import { getResource } from '../../../autocrud/lib/resources';
-import type { GameEvent } from '../../../autocrud/generated/types';
 
 export const Route = createFileRoute('/autocrud-admin/game-event/create')({
   component: CreatePage,
@@ -10,5 +9,5 @@ export const Route = createFileRoute('/autocrud-admin/game-event/create')({
 
 function CreatePage() {
   const config = getResource('game-event')!;
-  return <ResourceCreate<GameEvent> config={config} basePath="/autocrud-admin/game-event" />;
+  return <ResourceCreate config={config} basePath="/autocrud-admin/game-event" />;
 }

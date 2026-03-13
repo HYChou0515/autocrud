@@ -1833,3 +1833,76 @@ describe('parseField — tagged struct literal type', () => {
     expect(field!.constValue).toBe('Consumable');
   });
 });
+
+// ============================================================================
+// Null-type field (e.g. Job artifact with D=NoneType)
+// ============================================================================
+describe('parseField — null type field', () => {
+  it('field with "type": "null" should have isNullable=true', () => {
+    const spec = buildSimpleSpec();
+    const { builder } = createBuilder(spec);
+    const field = builder.parseField('artifact', { type: 'null', default: null }, false);
+    expect(field).not.toBeNull();
+    expect(field!.isNullable).toBe(true);
+  });
+
+  it('zodSchema for null-type field should accept null via .nullable()', () => {
+    const spec = buildSimpleSpec();
+    const { builder } = createBuilder(spec);
+    const field = builder.parseField('artifact', { type: 'null', default: null }, false);
+    expect(field).not.toBeNull();
+    const zodType = computeZodType(field!);
+    expect(zodType).toContain('.nullable()');
+  });
+
+  it('null-type field falls back to object type', () => {
+    const spec = buildSimpleSpec();
+    const { builder } = createBuilder(spec);
+    const field = builder.parseField('artifact', { type: 'null', default: null }, false);
+    expect(field).not.toBeNull();
+    // The underlying type should be 'object' (fallback) with nullable
+    expect(field!.type).toBe('object');
+  });
+
+  it('null-type field in job schema produces nullable zodSchema', () => {
+    // Simulates the pet-job scenario: Job[Mount|Dog, NoneType].artifact
+    const spec = {
+      info: { title: 'Test', version: '1.0' },
+      paths: {
+        '/pet-job': {
+          post: {
+            requestBody: {
+              content: {
+                'application/json': {
+                  schema: { $ref: '#/components/schemas/PetJob' },
+                },
+              },
+            },
+          },
+        },
+        '/pet-job/{id}': { get: {} },
+      },
+      components: {
+        schemas: {
+          PetJob: {
+            type: 'object',
+            properties: {
+              payload: { type: 'object' },
+              status: { type: 'string', enum: ['pending', 'completed'] },
+              artifact: { type: 'null', default: null },
+            },
+            required: ['payload'],
+          },
+        },
+      },
+    };
+    const { resources } = createBuilder(spec);
+    const petJob = resources.find((r) => r.name === 'pet-job');
+    expect(petJob).toBeDefined();
+    const artifact = petJob!.fields.find((f) => f.name === 'artifact');
+    expect(artifact).toBeDefined();
+    expect(artifact!.isNullable).toBe(true);
+    const zodType = computeZodType(artifact!);
+    expect(zodType).toContain('.nullable()');
+  });
+});

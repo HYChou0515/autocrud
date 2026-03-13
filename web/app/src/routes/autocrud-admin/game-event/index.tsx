@@ -2,7 +2,6 @@
 import { createFileRoute } from '@tanstack/react-router';
 import { JobTable } from '../../../autocrud/lib/components/JobTable';
 import { getResource } from '../../../autocrud/lib/resources';
-import type { GameEvent } from '../../../autocrud/generated/types';
 
 export const Route = createFileRoute('/autocrud-admin/game-event/')({
   component: ListPage,
@@ -10,5 +9,5 @@ export const Route = createFileRoute('/autocrud-admin/game-event/')({
 
 function ListPage() {
   const config = getResource('game-event')!;
-  return <JobTable<GameEvent> config={config} basePath="/autocrud-admin/game-event" />;
+  return <JobTable config={config} basePath="/autocrud-admin/game-event" />;
 }

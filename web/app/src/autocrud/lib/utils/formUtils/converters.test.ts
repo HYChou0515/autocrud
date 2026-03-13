@@ -7,6 +7,7 @@ vi.mock('../../client', () => ({
   client: {
     post: vi.fn(),
   },
+  getBlobUploadPath: vi.fn(() => '/blobs/upload'),
 }));
 import { client } from '../../client';
 

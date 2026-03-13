@@ -2,7 +2,6 @@
 import { createFileRoute } from '@tanstack/react-router';
 import { ResourceCreate } from '../../../autocrud/lib/components/ResourceCreate';
 import { getResource } from '../../../autocrud/lib/resources';
-import type { Pet } from '../../../autocrud/generated/types';
 
 export const Route = createFileRoute('/autocrud-admin/pet/create')({
   component: CreatePage,
@@ -10,5 +9,5 @@ export const Route = createFileRoute('/autocrud-admin/pet/create')({
 
 function CreatePage() {
   const config = getResource('pet')!;
-  return <ResourceCreate<Pet> config={config} basePath="/autocrud-admin/pet" />;
+  return <ResourceCreate config={config} basePath="/autocrud-admin/pet" />;
 }

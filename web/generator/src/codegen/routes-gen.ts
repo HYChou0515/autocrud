@@ -10,7 +10,6 @@ export function genListRoute(r: Resource): string {
 import { createFileRoute } from '@tanstack/react-router';
 import { JobTable } from '../../../autocrud/lib/components/JobTable';
 import { getResource } from '../../../autocrud/lib/resources';
-import type { ${r.schemaName} } from '../../../autocrud/generated/types';
 
 export const Route = createFileRoute('/autocrud-admin/${r.name}/')({
   component: ListPage,
@@ -18,7 +17,7 @@ export const Route = createFileRoute('/autocrud-admin/${r.name}/')({
 
 function ListPage() {
   const config = getResource('${r.name}')!;
-  return <JobTable<${r.schemaName}> config={config} basePath="/autocrud-admin/${r.name}" />;
+  return <JobTable config={config} basePath="/autocrud-admin/${r.name}" />;
 }
 `;
   }
@@ -27,7 +26,6 @@ function ListPage() {
 import { createFileRoute } from '@tanstack/react-router';
 import { ResourceTable } from '../../../autocrud/lib/components/ResourceTable';
 import { getResource } from '../../../autocrud/lib/resources';
-import type { ${r.schemaName} } from '../../../autocrud/generated/types';
 
 export const Route = createFileRoute('/autocrud-admin/${r.name}/')({
   component: ListPage,
@@ -35,7 +33,7 @@ export const Route = createFileRoute('/autocrud-admin/${r.name}/')({
 
 function ListPage() {
   const config = getResource('${r.name}')!;
-  return <ResourceTable<${r.schemaName}> config={config} basePath="/autocrud-admin/${r.name}" />;
+  return <ResourceTable config={config} basePath="/autocrud-admin/${r.name}" />;
 }
 `;
 }
@@ -45,7 +43,6 @@ export function genCreateRoute(r: Resource): string {
 import { createFileRoute } from '@tanstack/react-router';
 import { ResourceCreate } from '../../../autocrud/lib/components/ResourceCreate';
 import { getResource } from '../../../autocrud/lib/resources';
-import type { ${r.schemaName} } from '../../../autocrud/generated/types';
 
 export const Route = createFileRoute('/autocrud-admin/${r.name}/create')({
   component: CreatePage,
@@ -53,7 +50,7 @@ export const Route = createFileRoute('/autocrud-admin/${r.name}/create')({
 
 function CreatePage() {
   const config = getResource('${r.name}')!;
-  return <ResourceCreate<${r.schemaName}> config={config} basePath="/autocrud-admin/${r.name}" />;
+  return <ResourceCreate config={config} basePath="/autocrud-admin/${r.name}" />;
 }
 `;
 }
@@ -63,7 +60,6 @@ export function genDetailRoute(r: Resource): string {
 import { createFileRoute, useNavigate } from '@tanstack/react-router';
 import { ResourceDetail } from '../../../autocrud/lib/components/ResourceDetail';
 import { getResource } from '../../../autocrud/lib/resources';
-import type { ${r.schemaName} } from '../../../autocrud/generated/types';
 
 type DetailSearch = { revision?: string };
 
@@ -89,7 +85,7 @@ function DetailPage() {
   };
 
   return (
-    <ResourceDetail<${r.schemaName}>
+    <ResourceDetail
       config={config}
       resourceId={resourceId}
       basePath="/autocrud-admin/${r.name}"${r.isJob ? '\n      isJob={true}' : ''}

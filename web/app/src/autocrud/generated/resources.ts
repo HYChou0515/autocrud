@@ -1226,7 +1226,7 @@ Object.assign(registry, {
             type: "object",
             isArray: false,
             isRequired: false,
-            isNullable: false
+            isNullable: true
       },
       {
             name: "retries",
@@ -1289,7 +1289,7 @@ Object.assign(registry, {
     payload: z.discriminatedUnion('type', [z.object({ type: z.literal('Mount'), name: z.string(), species: z.string(), speed: z.number().int().optional(), stamina: z.number().int().optional(), owner_id: z.string() }), z.object({ type: z.literal('Dog'), name: z.string(), breed: z.string(), level: z.number().int().optional(), hp: z.number().int().optional(), mp: z.number().int().optional(), attack: z.number().int().optional(), defense: z.number().int().optional(), owner_id: z.string() })]),
     status: z.any().optional(),
     errmsg: z.string().nullable().optional(),
-    artifact: z.record(z.string(), z.any()).optional(),
+    artifact: z.record(z.string(), z.any()).nullable().optional(),
     retries: z.number().int().optional(),
     max_retries: z.number().int().nullable().optional(),
     periodic_interval_seconds: z.number().int().nullable().optional(),

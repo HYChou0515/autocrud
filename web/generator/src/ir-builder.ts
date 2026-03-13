@@ -516,6 +516,12 @@ export class IRBuilder {
       // stays 'boolean'
     } else if (type === 'object') {
       // stays 'object'
+    } else if (type === 'null') {
+      // Pure null type (e.g. Job artifact with D=NoneType) — the only valid
+      // value is null.  Fall back to 'object' so the form/display layer has
+      // a sensible type, and mark nullable so the Zod schema includes .nullable().
+      isNullable = true;
+      type = 'object';
     } else if (
       type &&
       type !== 'string' &&

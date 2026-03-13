@@ -2,7 +2,6 @@
 import { createFileRoute } from '@tanstack/react-router';
 import { ResourceCreate } from '../../../autocrud/lib/components/ResourceCreate';
 import { getResource } from '../../../autocrud/lib/resources';
-import type { CreateNewCharacter2CharacterJob } from '../../../autocrud/generated/types';
 
 export const Route = createFileRoute('/autocrud-admin/create-new-character2-job/create')({
   component: CreatePage,
@@ -10,5 +9,5 @@ export const Route = createFileRoute('/autocrud-admin/create-new-character2-job/
 
 function CreatePage() {
   const config = getResource('create-new-character2-job')!;
-  return <ResourceCreate<CreateNewCharacter2CharacterJob> config={config} basePath="/autocrud-admin/create-new-character2-job" />;
+  return <ResourceCreate config={config} basePath="/autocrud-admin/create-new-character2-job" />;
 }
