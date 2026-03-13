@@ -7,13 +7,7 @@
 
 import { Anchor, Group, Image, Stack, Text } from '@mantine/core';
 import { IconDownload } from '@tabler/icons-react';
-
-const API_BASE_URL = import.meta.env.VITE_API_URL || 'http://localhost:8000';
-
-/** Build a URL to fetch a blob by file_id */
-function getBlobUrl(fileId: string): string {
-  return `${API_BASE_URL}/blobs/${fileId}`;
-}
+import { getBlobUrl } from '../../../client';
 
 /** Check if content_type is an image type */
 function isImageContentType(contentType: string | undefined): boolean {

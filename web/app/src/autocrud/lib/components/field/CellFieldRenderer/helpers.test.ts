@@ -12,6 +12,7 @@ import {
   renderObjectPreview,
   INLINE_IMAGE_MAX_SIZE,
 } from './helpers';
+import { getBaseUrl } from '../../../client';
 
 describe('formatBinarySize', () => {
   it('formats bytes', () => {
@@ -51,6 +52,12 @@ describe('getBlobUrl', () => {
   it('builds URL with file id', () => {
     const url = getBlobUrl('abc123');
     expect(url).toContain('/blobs/abc123');
+  });
+
+  it('uses getBaseUrl() as prefix (not hardcoded localhost)', () => {
+    const url = getBlobUrl('abc123');
+    expect(url).toBe(`${getBaseUrl()}/blobs/abc123`);
+    expect(url).not.toContain('localhost');
   });
 });
 

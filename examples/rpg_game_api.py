@@ -27,7 +27,7 @@ from typing import Annotated, Optional
 
 import msgspec
 import uvicorn
-from fastapi import Body, FastAPI, UploadFile
+from fastapi import APIRouter, Body, FastAPI, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
 from msgspec import Struct
 from pydantic_core import Url
@@ -1397,6 +1397,7 @@ def main():
         version="2.1.0",
         docs_url="/docs",
         redoc_url="/redoc",
+        root_path="/rpg-game-api",
     )
 
     # 加入 CORS middleware 允許前端存取
@@ -1410,9 +1411,11 @@ def main():
 
     # 設定全域 crud 實例
     configure_crud()
+    router = APIRouter(prefix="/v1/autocrud")
 
     # 應用到 FastAPI
-    crud.apply(app)
+    crud.apply(router)
+    app.include_router(router)
     crud.openapi(app)
     crud.get_resource_manager(GameEvent).start_consume(block=False)
 

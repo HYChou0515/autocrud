@@ -2,7 +2,6 @@
 import { createFileRoute } from '@tanstack/react-router';
 import { ResourceTable } from '../../../autocrud/lib/components/ResourceTable';
 import { getResource } from '../../../autocrud/lib/resources';
-import type { Character } from '../../../autocrud/generated/types';
 
 export const Route = createFileRoute('/autocrud-admin/character/')({
   component: ListPage,
@@ -10,5 +9,5 @@ export const Route = createFileRoute('/autocrud-admin/character/')({
 
 function ListPage() {
   const config = getResource('character')!;
-  return <ResourceTable<Character> config={config} basePath="/autocrud-admin/character" />;
+  return <ResourceTable config={config} basePath="/autocrud-admin/character" />;
 }

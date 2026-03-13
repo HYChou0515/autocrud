@@ -7,5 +7,20 @@ export const Route = createFileRoute('/autocrud-admin/backup')({
 });
 
 function BackupPage() {
-  return <BackupRestore resourceNames={['character', 'guild', 'skill', 'equipment', 'pet-job', 'game-event', 'new-char1-job', 'create-new-character2-job', 'create-new-character4-job', 'pet']} />;
+  return (
+    <BackupRestore
+      resourceNames={[
+        'character',
+        'guild',
+        'skill',
+        'equipment',
+        'pet-job',
+        'game-event',
+        'new-char1-job',
+        'create-new-character2-job',
+        'create-new-character4-job',
+        'pet',
+      ]}
+    />
+  );
 }

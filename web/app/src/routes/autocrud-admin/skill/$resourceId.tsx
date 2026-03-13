@@ -2,7 +2,6 @@
 import { createFileRoute, useNavigate } from '@tanstack/react-router';
 import { ResourceDetail } from '../../../autocrud/lib/components/ResourceDetail';
 import { getResource } from '../../../autocrud/lib/resources';
-import type { Skill } from '../../../autocrud/generated/types';
 
 type DetailSearch = { revision?: string };
 
@@ -28,7 +27,7 @@ function DetailPage() {
   };
 
   return (
-    <ResourceDetail<Skill>
+    <ResourceDetail
       config={config}
       resourceId={resourceId}
       basePath="/autocrud-admin/skill"

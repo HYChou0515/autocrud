@@ -1211,6 +1211,174 @@ class AutoCRUD:
         # Inject x-autocrud-async-create-jobs mapping (job resource → parent)
         self._inject_async_create_jobs(app.openapi_schema)
 
+        # Promote inline $defs (from Pydantic-generated schemas) into
+        # components/schemas and rewrite $ref paths so swagger-parser can
+        # resolve them.  Must run before _resolve_missing_schema_refs.
+        self._promote_defs_to_components(app.openapi_schema)
+
+        # Resolve dangling $ref pointers caused by module-qualified name
+        # divergence (e.g. route $ref → "Skill" but components only has
+        # "__main___Skill" due to pydantic_to_struct round-trip duplication).
+        self._resolve_missing_schema_refs(app.openapi_schema)
+
+    @staticmethod
+    def _promote_defs_to_components(schema: dict) -> None:
+        """Hoist inline ``$defs`` from component schemas into ``components/schemas``.
+
+        When FastAPI embeds a Pydantic model's JSON Schema inside a ``Body``
+        component, the resulting schema may contain a property-level ``$defs``
+        block with ``$ref: "#/$defs/X"`` pointers.  These absolute JSON
+        pointers target the **document root** which has no ``$defs`` key,
+        causing swagger-parser / json-schema-ref-parser to fail.
+
+        This method:
+
+        1. Walks all component schemas looking for nested ``$defs`` dicts.
+        2. Promotes each definition to ``#/components/schemas/<name>``
+           (skipping if a name already exists to avoid overwriting).
+        3. Rewrites ``$ref: "#/$defs/X"`` → ``"#/components/schemas/X"``
+           within the same schema tree (including ``discriminator.mapping``).
+        4. Removes the now-unnecessary ``$defs`` keys.
+
+        Args:
+            schema: The full OpenAPI schema dict (mutated in-place).
+        """
+        components = schema.get("components", {}).get("schemas", {})
+        if not components:
+            return
+
+        defs_prefix = "#/$defs/"
+        comp_prefix = "#/components/schemas/"
+
+        # Collect all $defs entries that need promotion
+        # Each entry: (parent_dict_containing_$defs_key, defs_dict)
+        defs_to_promote: list[tuple[dict, dict]] = []
+
+        def _find_defs(obj: Any) -> None:
+            """Recursively find dicts containing a ``$defs`` key."""
+            if isinstance(obj, dict):
+                if "$defs" in obj and isinstance(obj["$defs"], dict):
+                    defs_to_promote.append((obj, obj["$defs"]))
+                for v in obj.values():
+                    if isinstance(v, (dict, list)):
+                        _find_defs(v)
+            elif isinstance(obj, list):
+                for item in obj:
+                    _find_defs(item)
+
+        # Search within all existing component schemas
+        for comp_value in list(components.values()):
+            _find_defs(comp_value)
+
+        if not defs_to_promote:
+            return
+
+        # Build the rename map: $defs name → components name
+        rename_map: dict[str, str] = {}
+        for _parent, defs_dict in defs_to_promote:
+            for def_name, def_schema in defs_dict.items():
+                if def_name not in components:
+                    components[def_name] = def_schema
+                    rename_map[def_name] = def_name
+                else:
+                    # Name collision — keep existing, still rewrite refs
+                    rename_map[def_name] = def_name
+
+        def _rewrite_defs_refs(obj: Any) -> Any:
+            """Rewrite ``#/$defs/X`` refs to ``#/components/schemas/X``
+            and strip ``$defs`` keys."""
+            if isinstance(obj, dict):
+                out: dict[str, Any] = {}
+                for k, v in obj.items():
+                    # Drop the $defs block — its contents are now in components
+                    if k == "$defs" and isinstance(v, dict):
+                        continue
+                    if k == "$ref" and isinstance(v, str) and v.startswith(defs_prefix):
+                        def_name = v[len(defs_prefix):]
+                        target = rename_map.get(def_name, def_name)
+                        out[k] = comp_prefix + target
+                    elif (
+                        k == "mapping"
+                        and isinstance(v, dict)
+                    ):
+                        out[k] = {
+                            mk: (
+                                comp_prefix + rename_map.get(mv[len(defs_prefix):], mv[len(defs_prefix):])
+                                if isinstance(mv, str) and mv.startswith(defs_prefix)
+                                else mv
+                            )
+                            for mk, mv in v.items()
+                        }
+                    else:
+                        out[k] = _rewrite_defs_refs(v)
+                return out
+            if isinstance(obj, list):
+                return [_rewrite_defs_refs(item) for item in obj]
+            return obj
+
+        # Rewrite refs in every component schema that had $defs
+        for comp_name in list(components.keys()):
+            components[comp_name] = _rewrite_defs_refs(components[comp_name])
+
+    @staticmethod
+    def _resolve_missing_schema_refs(schema: dict) -> None:
+        """Add alias entries for dangling ``$ref`` pointers in the OpenAPI schema.
+
+        When ``msgspec.json.schema_components()`` is called with two types that
+        share the same ``__name__`` but differ in ``__module__`` (e.g. the
+        original ``Skill`` from ``__main__`` and a round-tripped version from
+        ``pydantic_converter``), msgspec disambiguates by emitting
+        module-qualified names like ``__main___Skill``.
+
+        Meanwhile, per-route ``jsonschema_to_json_schema_extra(Skill)`` only
+        sees **one** Skill type and uses the simple name ``Skill`` in its
+        ``$ref``.  This mismatch leaves dangling ``$ref`` pointers.
+
+        This method scans the entire schema for ``$ref`` targets, identifies
+        those that are missing from ``components.schemas``, and creates alias
+        entries by copying the schema from a matching module-prefixed
+        candidate.  The ``__main__`` variant is preferred over others.
+
+        Args:
+            schema: The full OpenAPI schema dict (mutated in-place).
+        """
+        import json
+        import re
+
+        components = schema.get("components", {}).get("schemas", {})
+        if not components:
+            return
+
+        # Collect all $ref target names from the entire schema
+        schema_json = json.dumps(schema)
+        all_ref_names: set[str] = set(
+            re.findall(r'"\$ref":\s*"#/components/schemas/([^"]+)"', schema_json)
+        )
+
+        missing = all_ref_names - set(components.keys())
+        if not missing:
+            return
+
+        for simple_name in missing:
+            # Find component keys that end with _<simple_name> (module prefix)
+            candidates: list[str] = []
+            for comp_name in components:
+                if comp_name.endswith(f"_{simple_name}") and comp_name != simple_name:
+                    candidates.append(comp_name)
+
+            if not candidates:
+                continue
+
+            # Prefer __main__ variant (user's original type) over others
+            chosen = candidates[0]
+            for c in candidates:
+                if c.startswith("__main__"):
+                    chosen = c
+                    break
+
+            # Create an alias: copy the chosen component under the simple name
+            components[simple_name] = components[chosen].copy()
+
     def _inject_ref_metadata(self, schema: dict) -> None:
         """Post-process OpenAPI schema to inject ``x-ref-*`` extensions.
 
@@ -1531,6 +1699,15 @@ class AutoCRUD:
                                 ref_target = item["$ref"]
                                 break
                     if ref_target and ref_target.split("/")[-1] == body_schema:
+                        body_schema_prop_names.add(pname)
+                    # Also match inline schemas whose title equals the
+                    # body schema name (happens when Pydantic params are
+                    # replaced with untyped Body for multipart/form-data).
+                    elif (
+                        not ref_target
+                        and pschema.get("title") == body_schema
+                        and pschema.get("type") == "object"
+                    ):
                         body_schema_prop_names.add(pname)
             # Record the handler parameter name for the body schema so
             # the frontend generator can build the correct FormData /
@@ -2015,6 +2192,11 @@ class AutoCRUD:
             """Check if *ann* is a msgspec.Struct subclass."""
             return isinstance(ann, type) and issubclass(ann, _msgspec.Struct)
 
+        def _is_upload_file_annotation(ann: Any) -> bool:
+            """Check if *ann* is or contains ``UploadFile``."""
+            raw, _ = unwrap_annotated(ann)
+            return isinstance(raw, type) and issubclass(raw, UploadFile)
+
         async def _convert_params_for_payload(
             kwargs: dict,
             param_convs: dict[str, tuple[str, type]],
@@ -2095,8 +2277,30 @@ class AutoCRUD:
             # Identify parameters whose annotation is a msgspec.Struct subclass
             # so we can convert them from raw dicts.
             struct_params: dict[str, type] = {}
+            # Pydantic BaseModel params that need manual conversion
+            # (required when UploadFile forces multipart/form-data)
+            pydantic_params: dict[str, type] = {}
             new_params: list[inspect.Parameter] = []
             new_annotations: dict[str, Any] = {}
+
+            # Pre-scan: check if UploadFile is present — forces
+            # multipart/form-data encoding where complex types arrive as
+            # JSON strings.
+            _has_upload_file = any(
+                _is_upload_file_annotation(p.annotation)
+                for p in sig.parameters.values()
+            )
+
+            def _is_pydantic_model_type(ann: type) -> bool:
+                """Check if *ann* is a Pydantic BaseModel subclass."""
+                if not isinstance(ann, type):
+                    return False
+                try:
+                    from pydantic import BaseModel
+
+                    return issubclass(ann, BaseModel)
+                except ImportError:
+                    return False
 
             for name, param in sig.parameters.items():
                 ann = param.annotation
@@ -2118,6 +2322,24 @@ class AutoCRUD:
                         default=new_default,
                     )
                     new_params.append(new_param)
+                elif _has_upload_file and _is_pydantic_model_type(raw_ann):
+                    # When UploadFile forces multipart/form-data, Pydantic
+                    # model params arrive as JSON strings.  Replace them
+                    # with untyped Body() and handle conversion in the
+                    # wrapper — same approach as Struct params.
+                    pydantic_params[name] = raw_ann
+                    try:
+                        _pydantic_schema = raw_ann.model_json_schema()
+                    except Exception:
+                        _pydantic_schema = {}
+                    new_default = Body(
+                        json_schema_extra=_pydantic_schema,
+                    )
+                    new_param = param.replace(
+                        annotation=inspect.Parameter.empty,
+                        default=new_default,
+                    )
+                    new_params.append(new_param)
                 else:
                     new_params.append(param)
                     if ann is not inspect.Parameter.empty:
@@ -2126,6 +2348,15 @@ class AutoCRUD:
             new_sig = sig.replace(
                 parameters=new_params, return_annotation=inspect.Parameter.empty
             )
+
+            def _ensure_dict(val: Any) -> Any:
+                """Parse JSON string to dict when multipart/form-data
+                delivers complex fields as strings."""
+                if isinstance(val, str):
+                    import json as _json
+
+                    return _json.loads(val)
+                return val
 
             # ---- async-job mode: create Job + return 202 ----------------
             if async_job_config is not None:
@@ -2141,7 +2372,12 @@ class AutoCRUD:
                 async def wrapper(*args, **kwargs):
                     for pname, struct_type in struct_params.items():
                         if pname in kwargs:
-                            kwargs[pname] = _msgspec.convert(kwargs[pname], struct_type)
+                            kwargs[pname] = _msgspec.convert(
+                                _ensure_dict(kwargs[pname]), struct_type
+                            )
+                    for pname, pydantic_type in pydantic_params.items():
+                        if pname in kwargs:
+                            kwargs[pname] = pydantic_type(**_ensure_dict(kwargs[pname]))
 
                     # Convert non-serialisable params before packing
                     if _param_convs:
@@ -2191,7 +2427,12 @@ class AutoCRUD:
                     # Convert raw dicts to Struct instances
                     for pname, struct_type in struct_params.items():
                         if pname in kwargs:
-                            kwargs[pname] = _msgspec.convert(kwargs[pname], struct_type)
+                            kwargs[pname] = _msgspec.convert(
+                                _ensure_dict(kwargs[pname]), struct_type
+                            )
+                    for pname, pydantic_type in pydantic_params.items():
+                        if pname in kwargs:
+                            kwargs[pname] = pydantic_type(**_ensure_dict(kwargs[pname]))
                     result = await handler(*args, **kwargs)
                     if result is None:
                         return None
@@ -2204,7 +2445,12 @@ class AutoCRUD:
                 def wrapper(*args, **kwargs):
                     for pname, struct_type in struct_params.items():
                         if pname in kwargs:
-                            kwargs[pname] = _msgspec.convert(kwargs[pname], struct_type)
+                            kwargs[pname] = _msgspec.convert(
+                                _ensure_dict(kwargs[pname]), struct_type
+                            )
+                    for pname, pydantic_type in pydantic_params.items():
+                        if pname in kwargs:
+                            kwargs[pname] = pydantic_type(**_ensure_dict(kwargs[pname]))
                     result = handler(*args, **kwargs)
                     if result is None:
                         return None

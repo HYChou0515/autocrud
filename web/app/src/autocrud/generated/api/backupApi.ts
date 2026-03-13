@@ -16,7 +16,7 @@ export interface GlobalImportResult {
 export const backupApi = {
   /** Download full backup (.acbak) for all models — uses the AutoCRUD global /_backup endpoint */
   exportAll: (models?: string[]) =>
-    client.get('/_backup/export', {
+    client.get('/v1/autocrud/_backup/export', {
       params: models ? { models } : undefined,
       responseType: 'blob',
     }),
@@ -25,7 +25,7 @@ export const backupApi = {
   importAll: (file: File, onDuplicate: OnDuplicate = 'overwrite') => {
     const form = new FormData();
     form.append('file', file);
-    return client.post<GlobalImportResult>('/_backup/import', form, {
+    return client.post<GlobalImportResult>('/v1/autocrud/_backup/import', form, {
       headers: { 'Content-Type': 'multipart/form-data' },
       params: { on_duplicate: onDuplicate },
     });
@@ -33,13 +33,13 @@ export const backupApi = {
 
   /** Export Character data as .acbak archive */
   exportCharacter: (params?: Record<string, unknown>) =>
-    client.get(`/character/export`, { params, responseType: 'blob' }),
+    client.get(`/v1/autocrud/character/export`, { params, responseType: 'blob' }),
 
   /** Import .acbak archive into Character */
   importCharacter: (file: File, onDuplicate: OnDuplicate = 'overwrite') => {
     const form = new FormData();
     form.append('file', file);
-    return client.post<ImportResult>(`/character/import`, form, {
+    return client.post<ImportResult>(`/v1/autocrud/character/import`, form, {
       headers: { 'Content-Type': 'multipart/form-data' },
       params: { on_duplicate: onDuplicate },
     });
@@ -47,13 +47,13 @@ export const backupApi = {
 
   /** Export Guild data as .acbak archive */
   exportGuild: (params?: Record<string, unknown>) =>
-    client.get(`/guild/export`, { params, responseType: 'blob' }),
+    client.get(`/v1/autocrud/guild/export`, { params, responseType: 'blob' }),
 
   /** Import .acbak archive into Guild */
   importGuild: (file: File, onDuplicate: OnDuplicate = 'overwrite') => {
     const form = new FormData();
     form.append('file', file);
-    return client.post<ImportResult>(`/guild/import`, form, {
+    return client.post<ImportResult>(`/v1/autocrud/guild/import`, form, {
       headers: { 'Content-Type': 'multipart/form-data' },
       params: { on_duplicate: onDuplicate },
     });
@@ -61,13 +61,13 @@ export const backupApi = {
 
   /** Export Skill data as .acbak archive */
   exportSkill: (params?: Record<string, unknown>) =>
-    client.get(`/skill/export`, { params, responseType: 'blob' }),
+    client.get(`/v1/autocrud/skill/export`, { params, responseType: 'blob' }),
 
   /** Import .acbak archive into Skill */
   importSkill: (file: File, onDuplicate: OnDuplicate = 'overwrite') => {
     const form = new FormData();
     form.append('file', file);
-    return client.post<ImportResult>(`/skill/import`, form, {
+    return client.post<ImportResult>(`/v1/autocrud/skill/import`, form, {
       headers: { 'Content-Type': 'multipart/form-data' },
       params: { on_duplicate: onDuplicate },
     });
@@ -75,13 +75,13 @@ export const backupApi = {
 
   /** Export Equipment data as .acbak archive */
   exportEquipment: (params?: Record<string, unknown>) =>
-    client.get(`/equipment/export`, { params, responseType: 'blob' }),
+    client.get(`/v1/autocrud/equipment/export`, { params, responseType: 'blob' }),
 
   /** Import .acbak archive into Equipment */
   importEquipment: (file: File, onDuplicate: OnDuplicate = 'overwrite') => {
     const form = new FormData();
     form.append('file', file);
-    return client.post<ImportResult>(`/equipment/import`, form, {
+    return client.post<ImportResult>(`/v1/autocrud/equipment/import`, form, {
       headers: { 'Content-Type': 'multipart/form-data' },
       params: { on_duplicate: onDuplicate },
     });
@@ -89,13 +89,13 @@ export const backupApi = {
 
   /** Export Pet Job data as .acbak archive */
   exportPetJob: (params?: Record<string, unknown>) =>
-    client.get(`/pet-job/export`, { params, responseType: 'blob' }),
+    client.get(`/v1/autocrud/pet-job/export`, { params, responseType: 'blob' }),
 
   /** Import .acbak archive into Pet Job */
   importPetJob: (file: File, onDuplicate: OnDuplicate = 'overwrite') => {
     const form = new FormData();
     form.append('file', file);
-    return client.post<ImportResult>(`/pet-job/import`, form, {
+    return client.post<ImportResult>(`/v1/autocrud/pet-job/import`, form, {
       headers: { 'Content-Type': 'multipart/form-data' },
       params: { on_duplicate: onDuplicate },
     });
@@ -103,13 +103,13 @@ export const backupApi = {
 
   /** Export Game Event data as .acbak archive */
   exportGameEvent: (params?: Record<string, unknown>) =>
-    client.get(`/game-event/export`, { params, responseType: 'blob' }),
+    client.get(`/v1/autocrud/game-event/export`, { params, responseType: 'blob' }),
 
   /** Import .acbak archive into Game Event */
   importGameEvent: (file: File, onDuplicate: OnDuplicate = 'overwrite') => {
     const form = new FormData();
     form.append('file', file);
-    return client.post<ImportResult>(`/game-event/import`, form, {
+    return client.post<ImportResult>(`/v1/autocrud/game-event/import`, form, {
       headers: { 'Content-Type': 'multipart/form-data' },
       params: { on_duplicate: onDuplicate },
     });
@@ -117,13 +117,13 @@ export const backupApi = {
 
   /** Export New Char1 Job data as .acbak archive */
   exportNewChar1Job: (params?: Record<string, unknown>) =>
-    client.get(`/new-char1-job/export`, { params, responseType: 'blob' }),
+    client.get(`/v1/autocrud/new-char1-job/export`, { params, responseType: 'blob' }),
 
   /** Import .acbak archive into New Char1 Job */
   importNewChar1Job: (file: File, onDuplicate: OnDuplicate = 'overwrite') => {
     const form = new FormData();
     form.append('file', file);
-    return client.post<ImportResult>(`/new-char1-job/import`, form, {
+    return client.post<ImportResult>(`/v1/autocrud/new-char1-job/import`, form, {
       headers: { 'Content-Type': 'multipart/form-data' },
       params: { on_duplicate: onDuplicate },
     });
@@ -131,13 +131,13 @@ export const backupApi = {
 
   /** Export Create New Character2 Job data as .acbak archive */
   exportCreateNewCharacter2Job: (params?: Record<string, unknown>) =>
-    client.get(`/create-new-character2-job/export`, { params, responseType: 'blob' }),
+    client.get(`/v1/autocrud/create-new-character2-job/export`, { params, responseType: 'blob' }),
 
   /** Import .acbak archive into Create New Character2 Job */
   importCreateNewCharacter2Job: (file: File, onDuplicate: OnDuplicate = 'overwrite') => {
     const form = new FormData();
     form.append('file', file);
-    return client.post<ImportResult>(`/create-new-character2-job/import`, form, {
+    return client.post<ImportResult>(`/v1/autocrud/create-new-character2-job/import`, form, {
       headers: { 'Content-Type': 'multipart/form-data' },
       params: { on_duplicate: onDuplicate },
     });
@@ -145,13 +145,13 @@ export const backupApi = {
 
   /** Export Create New Character4 Job data as .acbak archive */
   exportCreateNewCharacter4Job: (params?: Record<string, unknown>) =>
-    client.get(`/create-new-character4-job/export`, { params, responseType: 'blob' }),
+    client.get(`/v1/autocrud/create-new-character4-job/export`, { params, responseType: 'blob' }),
 
   /** Import .acbak archive into Create New Character4 Job */
   importCreateNewCharacter4Job: (file: File, onDuplicate: OnDuplicate = 'overwrite') => {
     const form = new FormData();
     form.append('file', file);
-    return client.post<ImportResult>(`/create-new-character4-job/import`, form, {
+    return client.post<ImportResult>(`/v1/autocrud/create-new-character4-job/import`, form, {
       headers: { 'Content-Type': 'multipart/form-data' },
       params: { on_duplicate: onDuplicate },
     });
@@ -159,13 +159,13 @@ export const backupApi = {
 
   /** Export Pet data as .acbak archive */
   exportPet: (params?: Record<string, unknown>) =>
-    client.get(`/pet/export`, { params, responseType: 'blob' }),
+    client.get(`/v1/autocrud/pet/export`, { params, responseType: 'blob' }),
 
   /** Import .acbak archive into Pet */
   importPet: (file: File, onDuplicate: OnDuplicate = 'overwrite') => {
     const form = new FormData();
     form.append('file', file);
-    return client.post<ImportResult>(`/pet/import`, form, {
+    return client.post<ImportResult>(`/v1/autocrud/pet/import`, form, {
       headers: { 'Content-Type': 'multipart/form-data' },
       params: { on_duplicate: onDuplicate },
     });

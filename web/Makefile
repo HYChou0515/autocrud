@@ -4,6 +4,7 @@
 # Configurable backend API URL (override with: make gen-app API_URL=http://myhost:9000)
 # Used to fetch OpenAPI spec during generation and as Vite dev proxy target
 API_URL ?= http://localhost:8000
+BASE_PATH ?= /v1/autocrud
 
 # Include test files in generated app (override with: make gen-app INCLUDE_TESTS=1)
 INCLUDE_TESTS ?=
@@ -103,7 +104,10 @@ build: build-gen
 	@echo "✅ 生產版本編譯完成"
 
 # 同步 app → generator/templates/base（排除自動生成的檔案）
+# 先在 app 端跑 style（prettier + eslint --fix）確保格式統一
 sync-templates:
+	@echo "🎨 先格式化 app 程式碼..."
+	cd app && make style
 	@echo "📋 同步 app → generator/templates/base..."
 	rsync -av --delete \
 		--exclude='node_modules' \
@@ -146,7 +150,7 @@ gen-app: build-gen
 	@echo "📦 安裝 app 依賴..."
 	cd app && pnpm install
 	@echo "🔧 從 AutoCRUD 後端生成代碼... ($(API_URL))"
-	cd app && node ../generator/dist/cli.js generate --url $(API_URL)
+	cd app && node ../generator/dist/cli.js generate --url $(API_URL) --base-path ${BASE_PATH}
 	@echo "✅ App 生成完成！"
 	@echo ""
 	@echo "📝 下一步："
@@ -180,6 +184,8 @@ style:
 	@echo "🎨 Generator: lint --fix + prettier..."
 	cd generator && pnpm lint:fix
 	cd generator && pnpm format
+	@echo "🎨 App: prettier + eslint --fix..."
+	@if [ -d "app" ]; then cd app && make style; else echo "⚠️  app 目錄不存在，跳過"; fi
 	@echo "✅ Style 完成"
 
 # 發布 generator 到 npm（style + build + sync templates + publish）
