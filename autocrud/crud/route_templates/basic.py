@@ -159,7 +159,11 @@ def _sanitize_schema_names(
     ref_prefix = "#/components/schemas/"
 
     def _rewrite(obj: Any) -> Any:
-        """Recursively rewrite ``$ref`` strings inside a JSON-like structure."""
+        """Recursively rewrite ``$ref`` strings inside a JSON-like structure.
+
+        Also handles ``discriminator.mapping`` values which are ``$ref``-style
+        component paths (e.g. ``#/components/schemas/__main__.Foo``).
+        """
         if isinstance(obj, dict):
             out: dict[str, Any] = {}
             for k, v in obj.items():
@@ -167,6 +171,18 @@ def _sanitize_schema_names(
                     old_name = v[len(ref_prefix) :]
                     new_name = rename_map.get(old_name, old_name)
                     out[k] = ref_prefix + new_name
+                elif k == "mapping" and isinstance(v, dict):
+                    # discriminator.mapping values are $ref-style paths
+                    out[k] = {
+                        mk: (
+                            ref_prefix + rename_map[mv[len(ref_prefix) :]]
+                            if isinstance(mv, str)
+                            and mv.startswith(ref_prefix)
+                            and mv[len(ref_prefix) :] in rename_map
+                            else mv
+                        )
+                        for mk, mv in v.items()
+                    }
                 else:
                     out[k] = _rewrite(v)
             return out

@@ -34,8 +34,10 @@
   "author": "",
   "license": "MIT",
   "dependencies": {
+    "@apidevtools/swagger-parser": "^12.1.0",
     "@inquirer/prompts": "^8.3.0",
-    "commander": "^12.1.0"
+    "commander": "^12.1.0",
+    "orval": "^8.5.3"
   },
   "devDependencies": {
     "@eslint/js": "^9.39.2",

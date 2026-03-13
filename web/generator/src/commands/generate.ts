@@ -1,22 +1,27 @@
 /**
  * AutoCRUD Web Code Generator — Entry Point
  *
- * Orchestrates: fetch OpenAPI spec → parse to IR → generate code files.
- *
- * The heavy lifting is delegated to:
- * - OpenAPIParser (openapi-parser.ts) — spec → IR Resources
- * - CodeGenerator (codegen/index.ts) — IR → .ts/.tsx files
+ * Orchestrates:
+ *   1. swagger-parser: load + validate + dereference OpenAPI spec
+ *   2. Orval: generate TypeScript types + Zod schemas
+ *   3. IR builder: build Resource[] from dereferenced spec
+ *   4. Custom codegen: generate api/, routes/, resources.ts
  */
 
 import fs from 'node:fs';
 import path from 'node:path';
+import os from 'node:os';
 
-import { OpenAPIParser } from '../openapi-parser.js';
+import SwaggerParser from '@apidevtools/swagger-parser';
+
+import { IRBuilder, preScanSpec } from '../ir-builder.js';
 import { CodeGenerator } from '../codegen/index.js';
+import { runOrvalGenerate, discoverOrvalZodSchemas } from '../orval-runner.js';
 import { hasRefMembers } from '../types.js';
 
 // Re-export for backward compatibility (used by CLI and tests)
-export { OpenAPIParser } from '../openapi-parser.js';
+export { IRBuilder, preScanSpec } from '../ir-builder.js';
+export type { PreScanResult } from '../ir-builder.js';
 export { CodeGenerator } from '../codegen/index.js';
 export type { Resource, Field, UnionVariant, UnionMeta, CustomCreateAction, FieldRef } from '../types.js';
 export {
@@ -31,9 +36,7 @@ export {
   computeMaxFieldDepth,
   serializeField,
 } from '../types.js';
-export { computeTsType, genTypes } from '../codegen/ts-type.js';
-export { computeZodType, buildNestedZodFields } from '../codegen/zod-type.js';
-export { genResourcesConfig } from '../codegen/resources-gen.js';
+export { genResourcesConfig, computeZodType, buildNestedZodFields } from '../codegen/resources-gen.js';
 export { genApiClient, genApiIndex, genBackupApiClient, genMigrateApiClient } from '../codegen/api-gen.js';
 export {
   genListRoute,
@@ -64,29 +67,74 @@ export async function generateCode(apiUrl: string, outputRoot: string, options: 
   console.log('🚀 AutoCRUD Web Code Generator');
   console.log(`📡 Fetching OpenAPI spec from ${specUrl}...\n`);
 
+  // ── Step 1: Fetch spec via HTTP, then validate + dereference ─────────────
+  // swagger-parser ≥12 doesn't ship an HTTP resolver, so we fetch ourselves.
   const resp = await fetch(specUrl);
   if (!resp.ok) throw new Error(`HTTP ${resp.status}: ${resp.statusText}`);
+  const specJson = await resp.text();
+  const specObj = JSON.parse(specJson);
 
-  const spec: any = await resp.json();
-  console.log(`✅ ${spec.info.title} v${spec.info.version}`);
+  // Validate (operates on in-memory object, no network needed)
+  const rawSpec = (await SwaggerParser.validate(structuredClone(specObj))) as any;
+  console.log(`✅ ${rawSpec.info.title} v${rawSpec.info.version}`);
 
   // Detect or use provided base path
-  const basePath = options.basePath ?? detectBasePath(spec);
+  const basePath = options.basePath ?? detectBasePath(specObj);
   if (basePath) {
     console.log(`🔗 API base path: ${basePath}`);
   }
 
-  // Parse OpenAPI → IR
-  const parser = new OpenAPIParser(spec, basePath);
-  const resources = parser.parse();
+  // ── Step 2: Pre-scan (capture $ref metadata before dereference) ──────────
+  const preScan = preScanSpec(specObj, basePath);
 
-  // Generate code from IR
-  const codeGen = new CodeGenerator(resources, spec, ROOT, SRC, GEN, ROUTES, basePath, parser);
+  // Save spec to temp file for Orval (needs file path input)
+  const tempSpecPath = path.join(os.tmpdir(), `autocrud-openapi-${Date.now()}.json`);
+  fs.writeFileSync(tempSpecPath, specJson, 'utf-8');
+
+  // ── Step 3: Dereference spec (resolve all $refs inline) ──────────────────
+  const dereferencedSpec = (await SwaggerParser.dereference(structuredClone(specObj))) as any;
+
+  // ── Step 4: Orval generate types + Zod schemas ──────────────────────────
+  let orvalSchemas: Map<string, string> | undefined;
+  try {
+    await runOrvalGenerate({ specPath: tempSpecPath, outputDir: GEN });
+    orvalSchemas = discoverOrvalZodSchemas(GEN);
+    if (orvalSchemas.size > 0) {
+      console.log(`  📦 Discovered ${orvalSchemas.size} Orval Zod schemas`);
+    }
+  } catch (error) {
+    console.warn('⚠️  Orval generation failed, falling back to custom generation only');
+    console.warn(error);
+  }
+
+  // ── Step 5: Build IR from dereferenced spec ──────────────────────────────
+  const builder = new IRBuilder(dereferencedSpec, basePath, preScan);
+  const resources = builder.build();
+
+  // ── Step 6: Custom codegen (api, routes, resources) ──────────────────────
+  const codeGen = new CodeGenerator(
+    resources,
+    dereferencedSpec,
+    ROOT,
+    SRC,
+    GEN,
+    ROUTES,
+    basePath,
+    builder,
+    orvalSchemas,
+  );
   codeGen.run();
 
-  // Write .env file with proxy config
+  // ── Step 7: Write .env file with proxy config ────────────────────────────
   const proxyPath = options.proxyPath ?? '/api';
   writeEnvFile(ROOT, apiUrl, proxyPath);
+
+  // Cleanup temp file
+  try {
+    fs.unlinkSync(tempSpecPath);
+  } catch {
+    // ignore cleanup errors
+  }
 }
 
 /**

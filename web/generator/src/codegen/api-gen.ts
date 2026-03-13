@@ -97,9 +97,7 @@ export function genApiClient(r: Resource, basePath: string): string {
           }
           bodyVar = 'formData';
         } else if (hasInlineBody) {
-          const ibpEntries = action
-            .inlineBodyParams!.map((p: any) => `'${p.name}': allParams['${p.name}']`)
-            .join(', ');
+          const ibpEntries = action.inlineBodyParams!.map((p: any) => `'${p.name}': allParams['${p.name}']`).join(', ');
           setupLines.push(`    const data = { '${bodySchemaParamName}': bodyObj, ${ibpEntries} };`);
           bodyVar = 'data';
         } else {

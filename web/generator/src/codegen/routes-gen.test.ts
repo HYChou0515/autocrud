@@ -2,13 +2,21 @@
  * Tests for codegen/routes-gen.ts — Route page generation.
  */
 import { describe, it, expect } from 'vitest';
-import { OpenAPIParser } from '../openapi-parser.js';
-import { genMigratePage, genCreateRoute, genBackupPage, genListRoute, genDetailRoute, genRootIndex, genDashboard } from './routes-gen.js';
+import { buildIR } from '../test-helpers.js';
+import {
+  genMigratePage,
+  genCreateRoute,
+  genBackupPage,
+  genListRoute,
+  genDetailRoute,
+  genRootIndex,
+  genDashboard,
+} from './routes-gen.js';
 
 // ─── Helpers ────────────────────────────────────────────────────────────────
 
 function parse(spec: any, basePath = '') {
-  return new OpenAPIParser(spec, basePath).parse();
+  return buildIR(spec, basePath).resources;
 }
 
 function buildSimpleSpec(basePath = '') {
@@ -16,12 +24,22 @@ function buildSimpleSpec(basePath = '') {
   return {
     info: { title: 'Test', version: '1.0' },
     paths: {
-      [`${prefix}/character`]: { post: { requestBody: { content: { 'application/json': { schema: { $ref: '#/components/schemas/Character' } } } } } },
-      [`${prefix}/skill`]: { post: { requestBody: { content: { 'application/json': { schema: { $ref: '#/components/schemas/Skill' } } } } } },
+      [`${prefix}/character`]: {
+        post: {
+          requestBody: { content: { 'application/json': { schema: { $ref: '#/components/schemas/Character' } } } },
+        },
+      },
+      [`${prefix}/skill`]: {
+        post: { requestBody: { content: { 'application/json': { schema: { $ref: '#/components/schemas/Skill' } } } } },
+      },
     },
     components: {
       schemas: {
-        Character: { type: 'object', properties: { name: { type: 'string' }, level: { type: 'integer' } }, required: ['name', 'level'] },
+        Character: {
+          type: 'object',
+          properties: { name: { type: 'string' }, level: { type: 'integer' } },
+          required: ['name', 'level'],
+        },
         Skill: { type: 'object', properties: { name: { type: 'string' } }, required: ['name'] },
       },
     },
@@ -67,7 +85,11 @@ describe('genCreateRoute — Job resource', () => {
     const spec = {
       info: { title: 'Test', version: '1.0' },
       paths: {
-        '/game-event': { post: { requestBody: { content: { 'application/json': { schema: { $ref: '#/components/schemas/GameEvent' } } } } } },
+        '/game-event': {
+          post: {
+            requestBody: { content: { 'application/json': { schema: { $ref: '#/components/schemas/GameEvent' } } } },
+          },
+        },
         '/game-event/{id}': { get: {} },
       },
       components: {

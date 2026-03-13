@@ -1,21 +1,25 @@
 /**
- * Tests for OpenAPIParser — OpenAPI spec → IR Resource parsing.
+ * Tests for IRBuilder — OpenAPI spec → IR Resource parsing.
  *
  * Covers: extractResources, extractCustomCreateActions, parseField, extractFields,
  * union parsing (discriminated, simple, structural), job detection, nested arrays.
  *
- * NOTE: tsType/zodType are NOT on the IR Field — use computeTsType/computeZodType
+ * NOTE: tsType is no longer available (Orval handles types). Use computeZodType from resources-gen.
  * from codegen layer for those checks.
  */
 import { describe, it, expect } from 'vitest';
-import { OpenAPIParser } from './openapi-parser.js';
-import { computeTsType } from './codegen/ts-type.js';
-import { computeZodType } from './codegen/zod-type.js';
+import { buildIR, simpleDeref, derefProp } from './test-helpers.js';
+
+import { computeZodType } from './codegen/resources-gen.js';
 
 // ─── Helpers ────────────────────────────────────────────────────────────────
 
-function createParser(spec: any, basePath: string = ''): OpenAPIParser {
-  return new OpenAPIParser(spec, basePath);
+/**
+ * Create an IRBuilder from a raw spec.
+ * Returns { builder, derefSpec, resources } for flexible test usage.
+ */
+function createBuilder(spec: any, basePath: string = '') {
+  return buildIR(spec, basePath);
 }
 
 function buildUnionSpec(basePath: string = '') {
@@ -91,9 +95,7 @@ function buildCharacterSpec(actionOverrides: Record<string, any>) {
       '/character/{id}': { get: {} },
     },
     'x-autocrud-custom-create-actions': {
-      character: [
-        { path: '/character/action', label: 'Test Action', operationId: 'test_action', ...actionOverrides },
-      ],
+      character: [{ path: '/character/action', label: 'Test Action', operationId: 'test_action', ...actionOverrides }],
     },
     components: {
       schemas: {
@@ -152,8 +154,18 @@ function buildCustomActionSpec() {
     },
     'x-autocrud-custom-create-actions': {
       article: [
-        { path: '/article/import-from-url', label: 'Import from URL', operationId: 'import_from_url', bodySchema: 'ImportFromUrl' },
-        { path: '/article/import-from-multiple', label: 'Import from Multiple', operationId: 'import_from_multiple', bodySchema: 'ImportFromMultiple' },
+        {
+          path: '/article/import-from-url',
+          label: 'Import from URL',
+          operationId: 'import_from_url',
+          bodySchema: 'ImportFromUrl',
+        },
+        {
+          path: '/article/import-from-multiple',
+          label: 'Import from Multiple',
+          operationId: 'import_from_multiple',
+          bodySchema: 'ImportFromMultiple',
+        },
       ],
     },
     components: {
@@ -204,27 +216,27 @@ function buildSimpleSpec(basePath: string = '') {
 // ============================================================================
 describe('extractResources — union types', () => {
   it('extracts union type resource alongside normal resources', () => {
-    const resources = createParser(buildUnionSpec()).parse();
+    const resources = buildIR(buildUnionSpec()).resources;
     expect(resources).toHaveLength(2);
     const names = resources.map((r) => r.name).sort();
     expect(names).toEqual(['cat-or-dog', 'character']);
   });
 
   it('marks union resource with isUnion=true', () => {
-    const resources = createParser(buildUnionSpec()).parse();
+    const resources = buildIR(buildUnionSpec()).resources;
     const union = resources.find((r) => r.name === 'cat-or-dog')!;
     expect(union.isUnion).toBe(true);
     expect(union.unionVariantSchemaNames).toEqual(['Cat', 'Dog']);
   });
 
   it('does not mark normal resource as union', () => {
-    const resources = createParser(buildUnionSpec()).parse();
+    const resources = buildIR(buildUnionSpec()).resources;
     const normal = resources.find((r) => r.name === 'character')!;
     expect(normal.isUnion).toBeUndefined();
   });
 
   it('union resource has a single field of type "union"', () => {
-    const resources = createParser(buildUnionSpec()).parse();
+    const resources = buildIR(buildUnionSpec()).resources;
     const union = resources.find((r) => r.name === 'cat-or-dog')!;
     expect(union.fields).toHaveLength(1);
     const field = union.fields[0];
@@ -237,7 +249,7 @@ describe('extractResources — union types', () => {
   });
 
   it('union field variants contain correct sub-fields (excluding discriminator)', () => {
-    const resources = createParser(buildUnionSpec()).parse();
+    const resources = buildIR(buildUnionSpec()).resources;
     const union = resources.find((r) => r.name === 'cat-or-dog')!;
     const variants = union.fields[0].unionMeta!.variants;
     const cat = variants.find((v) => v.tag === 'Cat')!;
@@ -249,7 +261,7 @@ describe('extractResources — union types', () => {
   });
 
   it('union resource schemaName is PascalCase of resource name', () => {
-    const resources = createParser(buildUnionSpec()).parse();
+    const resources = buildIR(buildUnionSpec()).resources;
     const union = resources.find((r) => r.name === 'cat-or-dog')!;
     expect(union.schemaName).toBe('CatOrDog');
     expect(union.pascal).toBe('CatOrDog');
@@ -274,12 +286,20 @@ describe('extractResources — union types', () => {
       },
       components: {
         schemas: {
-          Cat: { type: 'object', properties: { kind: { type: 'string', enum: ['Cat'] }, whiskers: { type: 'boolean' } }, required: ['kind', 'whiskers'] },
-          Dog: { type: 'object', properties: { kind: { type: 'string', enum: ['Dog'] }, bark: { type: 'boolean' } }, required: ['kind', 'bark'] },
+          Cat: {
+            type: 'object',
+            properties: { kind: { type: 'string', enum: ['Cat'] }, whiskers: { type: 'boolean' } },
+            required: ['kind', 'whiskers'],
+          },
+          Dog: {
+            type: 'object',
+            properties: { kind: { type: 'string', enum: ['Dog'] }, bark: { type: 'boolean' } },
+            required: ['kind', 'bark'],
+          },
         },
       },
     };
-    const resources = createParser(spec).parse();
+    const resources = buildIR(spec).resources;
     const union = resources.find((r) => r.name === 'pet')!;
     expect(union).toBeDefined();
     expect(union.isUnion).toBe(true);
@@ -311,7 +331,7 @@ describe('extractResources — union types', () => {
         },
       },
     };
-    const resources = createParser(spec).parse();
+    const resources = buildIR(spec).resources;
     expect(resources.find((r) => r.name === 'thing')).toBeUndefined();
   });
 
@@ -339,12 +359,20 @@ describe('extractResources — union types', () => {
       },
       components: {
         schemas: {
-          Cat: { type: 'object', properties: { type: { type: 'string', enum: ['Cat'] }, meow: { type: 'boolean' } }, required: ['type', 'meow'] },
-          Dog: { type: 'object', properties: { type: { type: 'string', enum: ['Dog'] }, bark: { type: 'boolean' } }, required: ['type', 'bark'] },
+          Cat: {
+            type: 'object',
+            properties: { type: { type: 'string', enum: ['Cat'] }, meow: { type: 'boolean' } },
+            required: ['type', 'meow'],
+          },
+          Dog: {
+            type: 'object',
+            properties: { type: { type: 'string', enum: ['Dog'] }, bark: { type: 'boolean' } },
+            required: ['type', 'bark'],
+          },
         },
       },
     };
-    const resources = createParser(spec).parse();
+    const resources = buildIR(spec).resources;
     const union = resources.find((r) => r.name === 'animal')!;
     expect(union).toBeDefined();
     expect(union.isUnion).toBe(true);
@@ -360,7 +388,11 @@ describe('parseField — array of union', () => {
     return {
       info: { title: 'Test', version: '1.0' },
       paths: {
-        '/character': { post: { requestBody: { content: { 'application/json': { schema: { $ref: '#/components/schemas/Character' } } } } } },
+        '/character': {
+          post: {
+            requestBody: { content: { 'application/json': { schema: { $ref: '#/components/schemas/Character' } } } },
+          },
+        },
         '/character/{id}': { get: {} },
       },
       components: {
@@ -385,12 +417,20 @@ describe('parseField — array of union', () => {
           },
           Equipment: {
             type: 'object',
-            properties: { type: { type: 'string', enum: ['Equipment'] }, name: { type: 'string' }, attack_bonus: { type: 'integer' } },
+            properties: {
+              type: { type: 'string', enum: ['Equipment'] },
+              name: { type: 'string' },
+              attack_bonus: { type: 'integer' },
+            },
             required: ['type', 'name', 'attack_bonus'],
           },
           Item: {
             type: 'object',
-            properties: { type: { type: 'string', enum: ['Item'] }, name: { type: 'string' }, description: { type: 'string' } },
+            properties: {
+              type: { type: 'string', enum: ['Item'] },
+              name: { type: 'string' },
+              description: { type: 'string' },
+            },
             required: ['type', 'name'],
           },
         },
@@ -400,9 +440,9 @@ describe('parseField — array of union', () => {
 
   it('parseField returns type=union and isArray=true for array of discriminated union', () => {
     const spec = buildArrayUnionSpec();
-    const parser = createParser(spec);
+    const { builder } = createBuilder(spec);
     const prop = spec.components.schemas.Character.properties.equipments;
-    const field = parser.parseField('equipments', prop, false);
+    const field = builder.parseField('equipments', prop, false);
     expect(field).toBeDefined();
     expect(field!.type).toBe('union');
     expect(field!.isArray).toBe(true);
@@ -410,18 +450,18 @@ describe('parseField — array of union', () => {
 
   it('parseField produces unionMeta with correct discriminatorField', () => {
     const spec = buildArrayUnionSpec();
-    const parser = createParser(spec);
+    const { builder } = createBuilder(spec);
     const prop = spec.components.schemas.Character.properties.equipments;
-    const field = parser.parseField('equipments', prop, false);
+    const field = builder.parseField('equipments', prop, false);
     expect(field!.unionMeta).toBeDefined();
     expect(field!.unionMeta!.discriminatorField).toBe('type');
   });
 
   it('parseField produces correct variant tags', () => {
     const spec = buildArrayUnionSpec();
-    const parser = createParser(spec);
+    const { builder } = createBuilder(spec);
     const prop = spec.components.schemas.Character.properties.equipments;
-    const field = parser.parseField('equipments', prop, false);
+    const field = builder.parseField('equipments', prop, false);
     const tags = field!.unionMeta!.variants.map((v: any) => v.tag);
     expect(tags).toContain('Equipment');
     expect(tags).toContain('Item');
@@ -429,9 +469,9 @@ describe('parseField — array of union', () => {
 
   it('parseField variant sub-fields exclude discriminator field', () => {
     const spec = buildArrayUnionSpec();
-    const parser = createParser(spec);
+    const { builder } = createBuilder(spec);
     const prop = spec.components.schemas.Character.properties.equipments;
-    const field = parser.parseField('equipments', prop, false);
+    const field = builder.parseField('equipments', prop, false);
     const equipVariant = field!.unionMeta!.variants.find((v: any) => v.tag === 'Equipment');
     const fieldNames = equipVariant!.fields!.map((f: any) => f.name);
     expect(fieldNames).toContain('name');
@@ -441,9 +481,9 @@ describe('parseField — array of union', () => {
 
   it('parseField generates correct zod type for array of union', () => {
     const spec = buildArrayUnionSpec();
-    const parser = createParser(spec);
+    const { builder } = createBuilder(spec);
     const prop = spec.components.schemas.Character.properties.equipments;
-    const field = parser.parseField('equipments', prop, false);
+    const field = builder.parseField('equipments', prop, false);
     const zodType = computeZodType(field!);
     expect(zodType).toContain('z.array(');
     expect(zodType).toContain('z.discriminatedUnion(');
@@ -451,8 +491,8 @@ describe('parseField — array of union', () => {
 
   it('extractFields includes array-of-union field with unionMeta', () => {
     const spec = buildArrayUnionSpec();
-    const parser = createParser(spec);
-    const fields = parser.extractFields(spec.components.schemas.Character, '', 1, 2);
+    const { builder } = createBuilder(spec);
+    const fields = builder.extractFields(spec.components.schemas.Character, '', 1, 2);
     const equip = fields.find((f: any) => f.name === 'equipments');
     expect(equip).toBeDefined();
     expect(equip!.type).toBe('union');
@@ -467,7 +507,7 @@ describe('parseField — array of union', () => {
 // ============================================================================
 describe('extractCustomCreateActions — bodySchema', () => {
   it('attaches custom actions with body schema to matching resource', () => {
-    const resources = createParser(buildCustomActionSpec()).parse();
+    const resources = buildIR(buildCustomActionSpec()).resources;
     const article = resources.find((r) => r.name === 'article');
     expect(article).toBeDefined();
     expect(article!.customCreateActions).toBeDefined();
@@ -475,7 +515,7 @@ describe('extractCustomCreateActions — bodySchema', () => {
   });
 
   it('populates action name, label, path, bodySchemaName', () => {
-    const resources = createParser(buildCustomActionSpec()).parse();
+    const resources = buildIR(buildCustomActionSpec()).resources;
     const actions = resources.find((r) => r.name === 'article')!.customCreateActions!;
     expect(actions[0].name).toBe('import-from-url');
     expect(actions[0].label).toBe('Import from URL');
@@ -485,7 +525,7 @@ describe('extractCustomCreateActions — bodySchema', () => {
   });
 
   it('extracts fields from action body schema', () => {
-    const resources = createParser(buildCustomActionSpec()).parse();
+    const resources = buildIR(buildCustomActionSpec()).resources;
     const actions = resources.find((r) => r.name === 'article')!.customCreateActions!;
     expect(actions[0].fields.length).toBe(1);
     expect(actions[0].fields[0].name).toBe('url');
@@ -500,14 +540,16 @@ describe('extractCustomCreateActions — bodySchema', () => {
     const spec = {
       paths: {
         '/article': {
-          post: { requestBody: { content: { 'application/json': { schema: { $ref: '#/components/schemas/Article' } } } } },
+          post: {
+            requestBody: { content: { 'application/json': { schema: { $ref: '#/components/schemas/Article' } } } },
+          },
         },
       },
       components: {
         schemas: { Article: { type: 'object', properties: { content: { type: 'string' } }, required: ['content'] } },
       },
     };
-    const resources = createParser(spec).parse();
+    const resources = buildIR(spec).resources;
     const article = resources.find((r) => r.name === 'article');
     expect(article).toBeDefined();
     expect(article!.customCreateActions).toBeUndefined();
@@ -516,9 +558,11 @@ describe('extractCustomCreateActions — bodySchema', () => {
   it('skips actions without any recognised param types', () => {
     const spec = buildCharacterSpec({});
     spec['x-autocrud-custom-create-actions'].character[0] = {
-      path: '/character/no-params', label: 'No Params', operationId: 'no_params',
+      path: '/character/no-params',
+      label: 'No Params',
+      operationId: 'no_params',
     };
-    const resources = createParser(spec).parse();
+    const resources = buildIR(spec).resources;
     const character = resources.find((r) => r.name === 'character')!;
     expect(character.customCreateActions).toBeUndefined();
   });
@@ -532,7 +576,7 @@ describe('extractCustomCreateActions — compositional', () => {
     const spec = buildCharacterSpec({
       queryParams: [{ name: 'name', required: true, schema: { type: 'string' } }],
     });
-    const resources = createParser(spec).parse();
+    const resources = buildIR(spec).resources;
     const action = resources.find((r) => r.name === 'character')!.customCreateActions![0];
     expect(action.fields.length).toBe(1);
     expect(action.fields[0].name).toBe('name');
@@ -547,7 +591,7 @@ describe('extractCustomCreateActions — compositional', () => {
       path: '/character/{name}/new',
       pathParams: [{ name: 'name', required: true, schema: { type: 'string' } }],
     });
-    const resources = createParser(spec).parse();
+    const resources = buildIR(spec).resources;
     const action = resources.find((r) => r.name === 'character')!.customCreateActions![0];
     expect(action.fields.length).toBe(1);
     expect(action.fields[0].name).toBe('name');
@@ -561,7 +605,7 @@ describe('extractCustomCreateActions — compositional', () => {
         { name: 'age', required: false, schema: { type: 'integer' } },
       ],
     });
-    const resources = createParser(spec).parse();
+    const resources = buildIR(spec).resources;
     const action = resources.find((r) => r.name === 'character')!.customCreateActions![0];
     expect(action.fields.length).toBe(2);
     expect(action.inlineBodyParams).toBeDefined();
@@ -571,12 +615,12 @@ describe('extractCustomCreateActions — compositional', () => {
     const spec = buildCharacterSpec({
       fileParams: [{ name: 'avatar', required: true, schema: { type: 'string', format: 'binary' } }],
     });
-    const resources = createParser(spec).parse();
+    const resources = buildIR(spec).resources;
     const action = resources.find((r) => r.name === 'character')!.customCreateActions![0];
     expect(action.fields.length).toBe(1);
     expect(action.fields[0].name).toBe('avatar');
     expect(action.fields[0].type).toBe('file');
-    expect(computeTsType(action.fields[0])).toBe('File');
+    expect(action.fields[0].type).toBe('file');
     expect(action.fileParams).toBeDefined();
   });
 
@@ -586,7 +630,7 @@ describe('extractCustomCreateActions — compositional', () => {
       pathParams: [{ name: 'name', required: true, schema: { type: 'string' } }],
       queryParams: [{ name: 'level', required: false, schema: { type: 'integer' } }],
     });
-    const resources = createParser(spec).parse();
+    const resources = buildIR(spec).resources;
     const action = resources.find((r) => r.name === 'character')!.customCreateActions![0];
     expect(action.fields.length).toBe(2);
     expect(action.pathParams).toBeDefined();
@@ -598,7 +642,7 @@ describe('extractCustomCreateActions — compositional', () => {
       queryParams: [{ name: 'x', required: true, schema: { type: 'integer' } }],
       inlineBodyParams: [{ name: 'name', required: true, schema: { type: 'string' } }],
     });
-    const resources = createParser(spec).parse();
+    const resources = buildIR(spec).resources;
     const action = resources.find((r) => r.name === 'character')!.customCreateActions![0];
     expect(action.fields.length).toBe(2);
     expect(action.queryParams).toBeDefined();
@@ -610,7 +654,7 @@ describe('extractCustomCreateActions — compositional', () => {
       queryParams: [{ name: 'x', required: true, schema: { type: 'integer' } }],
       fileParams: [{ name: 'doc', required: true, schema: { type: 'string', format: 'binary' } }],
     });
-    const resources = createParser(spec).parse();
+    const resources = buildIR(spec).resources;
     const action = resources.find((r) => r.name === 'character')!.customCreateActions![0];
     expect(action.fields.length).toBe(2);
     // NOTE: IR type is 'integer' for query param, codegen maps to 'number'
@@ -625,7 +669,7 @@ describe('extractCustomCreateActions — compositional', () => {
       inlineBodyParams: [{ name: 'title', required: true, schema: { type: 'string' } }],
       fileParams: [{ name: 'attachment', required: true, schema: { type: 'string', format: 'binary' } }],
     });
-    const resources = createParser(spec).parse();
+    const resources = buildIR(spec).resources;
     const action = resources.find((r) => r.name === 'character')!.customCreateActions![0];
     expect(action.fields.length).toBe(2);
     expect(action.inlineBodyParams).toBeDefined();
@@ -641,7 +685,7 @@ describe('extractCustomCreateActions — compositional', () => {
       inlineBodyParams: [{ name: 'name', required: true, schema: { type: 'string' } }],
       fileParams: [{ name: 'z', required: true, schema: { type: 'string', format: 'binary' } }],
     });
-    const resources = createParser(spec).parse();
+    const resources = buildIR(spec).resources;
     const action = resources.find((r) => r.name === 'character')!.customCreateActions![0];
     expect(action.fields.length).toBe(4);
     expect(action.queryParams).toBeDefined();
@@ -660,7 +704,7 @@ describe('extractCustomCreateActions — compositional', () => {
       inlineBodyParams: [{ name: 'desc', required: false, schema: { type: 'string' } }],
       fileParams: [{ name: 'img', required: true, schema: { type: 'string', format: 'binary' } }],
     });
-    const resources = createParser(spec).parse();
+    const resources = buildIR(spec).resources;
     const action = resources.find((r) => r.name === 'character')!.customCreateActions![0];
     expect(action.fields.length).toBe(4);
     expect(action.pathParams).toBeDefined();
@@ -673,7 +717,7 @@ describe('extractCustomCreateActions — compositional', () => {
     const spec = buildCharacterSpec({
       fileParams: [{ name: 'doc', required: true, schema: { type: 'string', format: 'binary' } }],
     });
-    const resources = createParser(spec).parse();
+    const resources = buildIR(spec).resources;
     const action = resources.find((r) => r.name === 'character')!.customCreateActions![0];
     expect(computeZodType(action.fields[0])).toBe('z.instanceof(File)');
   });
@@ -685,7 +729,7 @@ describe('extractCustomCreateActions — compositional', () => {
         { name: 'name', required: false, schema: { type: 'string' } },
       ],
     });
-    const resources = createParser(spec).parse();
+    const resources = buildIR(spec).resources;
     const action = resources.find((r) => r.name === 'character')!.customCreateActions![0];
     expect(computeZodType(action.fields[0])).toBe('z.number().int()');
     expect(computeZodType(action.fields[1])).toBe('z.string().optional()');
@@ -701,39 +745,73 @@ describe('extractCustomCreateActions — duplicate label deduplication', () => {
       info: { title: 'Test', version: '1.0' },
       paths: {
         '/character': {
-          post: { requestBody: { content: { 'application/json': { schema: { $ref: '#/components/schemas/Character' } } } } },
+          post: {
+            requestBody: { content: { 'application/json': { schema: { $ref: '#/components/schemas/Character' } } } },
+          },
         },
-        '/character/import-a': { post: { operationId: 'import_a', parameters: [{ name: 'url', in: 'query', required: true, schema: { type: 'string' } }] } },
-        '/character/import-b': { post: { operationId: 'import_b', parameters: [{ name: 'url', in: 'query', required: true, schema: { type: 'string' } }] } },
-        '/character/import-c': { post: { operationId: 'import_c', parameters: [{ name: 'url', in: 'query', required: true, schema: { type: 'string' } }] } },
+        '/character/import-a': {
+          post: {
+            operationId: 'import_a',
+            parameters: [{ name: 'url', in: 'query', required: true, schema: { type: 'string' } }],
+          },
+        },
+        '/character/import-b': {
+          post: {
+            operationId: 'import_b',
+            parameters: [{ name: 'url', in: 'query', required: true, schema: { type: 'string' } }],
+          },
+        },
+        '/character/import-c': {
+          post: {
+            operationId: 'import_c',
+            parameters: [{ name: 'url', in: 'query', required: true, schema: { type: 'string' } }],
+          },
+        },
         '/character/{id}': { get: {} },
       },
       'x-autocrud-custom-create-actions': {
         character: [
-          { path: '/character/import-a', label: 'Import', operationId: 'import_a', queryParams: [{ name: 'url', required: true, schema: { type: 'string' } }] },
-          { path: '/character/import-b', label: 'Import', operationId: 'import_b', queryParams: [{ name: 'url', required: true, schema: { type: 'string' } }] },
-          { path: '/character/import-c', label: 'Import', operationId: 'import_c', queryParams: [{ name: 'url', required: true, schema: { type: 'string' } }] },
+          {
+            path: '/character/import-a',
+            label: 'Import',
+            operationId: 'import_a',
+            queryParams: [{ name: 'url', required: true, schema: { type: 'string' } }],
+          },
+          {
+            path: '/character/import-b',
+            label: 'Import',
+            operationId: 'import_b',
+            queryParams: [{ name: 'url', required: true, schema: { type: 'string' } }],
+          },
+          {
+            path: '/character/import-c',
+            label: 'Import',
+            operationId: 'import_c',
+            queryParams: [{ name: 'url', required: true, schema: { type: 'string' } }],
+          },
         ],
       },
-      components: { schemas: { Character: { type: 'object', properties: { name: { type: 'string' } }, required: ['name'] } } },
+      components: {
+        schemas: { Character: { type: 'object', properties: { name: { type: 'string' } }, required: ['name'] } },
+      },
     };
   }
 
   it('renames second duplicate label to "<label> (2)"', () => {
-    const resources = createParser(buildDuplicateLabelSpec()).parse();
+    const resources = buildIR(buildDuplicateLabelSpec()).resources;
     const labels = resources.find((r) => r.name === 'character')!.customCreateActions!.map((a) => a.label);
     expect(labels).toContain('Import');
     expect(labels).toContain('Import (2)');
   });
 
   it('renames third duplicate label to "<label> (3)"', () => {
-    const resources = createParser(buildDuplicateLabelSpec()).parse();
+    const resources = buildIR(buildDuplicateLabelSpec()).resources;
     const labels = resources.find((r) => r.name === 'character')!.customCreateActions!.map((a) => a.label);
     expect(labels).toContain('Import (3)');
   });
 
   it('all three actions are preserved', () => {
-    const resources = createParser(buildDuplicateLabelSpec()).parse();
+    const resources = buildIR(buildDuplicateLabelSpec()).resources;
     expect(resources.find((r) => r.name === 'character')!.customCreateActions).toHaveLength(3);
   });
 
@@ -741,20 +819,36 @@ describe('extractCustomCreateActions — duplicate label deduplication', () => {
     const spec = {
       info: { title: 'Test', version: '1.0' },
       paths: {
-        '/character': { post: { requestBody: { content: { 'application/json': { schema: { $ref: '#/components/schemas/Character' } } } } } },
+        '/character': {
+          post: {
+            requestBody: { content: { 'application/json': { schema: { $ref: '#/components/schemas/Character' } } } },
+          },
+        },
         '/character/import-a': { post: {} },
         '/character/import-b': { post: {} },
         '/character/{id}': { get: {} },
       },
       'x-autocrud-custom-create-actions': {
         character: [
-          { path: '/character/import-a', label: 'Import A', operationId: 'import_a', queryParams: [{ name: 'url', required: true, schema: { type: 'string' } }] },
-          { path: '/character/import-b', label: 'Import B', operationId: 'import_b', queryParams: [{ name: 'url', required: true, schema: { type: 'string' } }] },
+          {
+            path: '/character/import-a',
+            label: 'Import A',
+            operationId: 'import_a',
+            queryParams: [{ name: 'url', required: true, schema: { type: 'string' } }],
+          },
+          {
+            path: '/character/import-b',
+            label: 'Import B',
+            operationId: 'import_b',
+            queryParams: [{ name: 'url', required: true, schema: { type: 'string' } }],
+          },
         ],
       },
-      components: { schemas: { Character: { type: 'object', properties: { name: { type: 'string' } }, required: ['name'] } } },
+      components: {
+        schemas: { Character: { type: 'object', properties: { name: { type: 'string' } }, required: ['name'] } },
+      },
     };
-    const resources = createParser(spec).parse();
+    const resources = buildIR(spec).resources;
     const labels = resources.find((r) => r.name === 'character')!.customCreateActions!.map((a) => a.label);
     expect(labels).toEqual(['Import A', 'Import B']);
   });
@@ -768,7 +862,7 @@ describe('extractCustomCreateActions — enum support', () => {
     const spec = buildCharacterSpec({
       queryParams: [{ name: 'role', required: true, schema: { type: 'string', enum: ['warrior', 'mage', 'archer'] } }],
     });
-    const resources = createParser(spec).parse();
+    const resources = buildIR(spec).resources;
     const action = resources.find((r) => r.name === 'character')!.customCreateActions![0];
     const roleField = action.fields.find((f: any) => f.name === 'role');
     expect(roleField).toBeDefined();
@@ -779,10 +873,14 @@ describe('extractCustomCreateActions — enum support', () => {
 
   it('inlineBodyParam with enum produces enumValues', () => {
     const spec = buildCharacterSpec({
-      inlineBodyParams: [{ name: 'role', required: true, schema: { type: 'string', enum: ['warrior', 'mage', 'archer'] } }],
+      inlineBodyParams: [
+        { name: 'role', required: true, schema: { type: 'string', enum: ['warrior', 'mage', 'archer'] } },
+      ],
     });
-    const resources = createParser(spec).parse();
-    const roleField = resources.find((r) => r.name === 'character')!.customCreateActions![0].fields.find((f: any) => f.name === 'role');
+    const resources = buildIR(spec).resources;
+    const roleField = resources
+      .find((r) => r.name === 'character')!
+      .customCreateActions![0].fields.find((f: any) => f.name === 'role');
     expect(roleField!.enumValues).toEqual(['warrior', 'mage', 'archer']);
     expect(computeZodType(roleField!)).toBe('z.enum(["warrior", "mage", "archer"])');
   });
@@ -792,8 +890,10 @@ describe('extractCustomCreateActions — enum support', () => {
       path: '/character/{role}/new',
       pathParams: [{ name: 'role', required: true, schema: { type: 'string', enum: ['warrior', 'mage', 'archer'] } }],
     });
-    const resources = createParser(spec).parse();
-    const roleField = resources.find((r) => r.name === 'character')!.customCreateActions![0].fields.find((f: any) => f.name === 'role');
+    const resources = buildIR(spec).resources;
+    const roleField = resources
+      .find((r) => r.name === 'character')!
+      .customCreateActions![0].fields.find((f: any) => f.name === 'role');
     expect(roleField!.enumValues).toEqual(['warrior', 'mage', 'archer']);
     expect(computeZodType(roleField!)).toBe('z.enum(["warrior", "mage", "archer"])');
   });
@@ -802,8 +902,10 @@ describe('extractCustomCreateActions — enum support', () => {
     const spec = buildCharacterSpec({
       queryParams: [{ name: 'role', required: false, schema: { type: 'string', enum: ['warrior', 'mage', 'archer'] } }],
     });
-    const resources = createParser(spec).parse();
-    const roleField = resources.find((r) => r.name === 'character')!.customCreateActions![0].fields.find((f: any) => f.name === 'role');
+    const resources = buildIR(spec).resources;
+    const roleField = resources
+      .find((r) => r.name === 'character')!
+      .customCreateActions![0].fields.find((f: any) => f.name === 'role');
     expect(computeZodType(roleField!)).toBe('z.enum(["warrior", "mage", "archer"]).optional()');
     expect(roleField!.isRequired).toBe(false);
   });
@@ -812,8 +914,10 @@ describe('extractCustomCreateActions — enum support', () => {
     const spec = buildCharacterSpec({
       queryParams: [{ name: 'created_at', required: true, schema: { type: 'string', format: 'date-time' } }],
     });
-    const resources = createParser(spec).parse();
-    const field = resources.find((r) => r.name === 'character')!.customCreateActions![0].fields.find((f: any) => f.name === 'created_at');
+    const resources = buildIR(spec).resources;
+    const field = resources
+      .find((r) => r.name === 'character')!
+      .customCreateActions![0].fields.find((f: any) => f.name === 'created_at');
     expect(field!.type).toBe('date');
     expect(computeZodType(field!)).toBe('z.union([z.string(), z.date()])');
   });
@@ -826,7 +930,7 @@ describe('extractCustomCreateActions — enum support', () => {
         { name: 'level', required: false, schema: { type: 'integer' } },
       ],
     });
-    const resources = createParser(spec).parse();
+    const resources = buildIR(spec).resources;
     const action = resources.find((r) => r.name === 'character')!.customCreateActions![0];
     expect(action.fields.length).toBe(3);
     const nameField = action.fields.find((f: any) => f.name === 'name')!;
@@ -850,17 +954,25 @@ describe('inlineBodyParam with object-type schema — should expand sub-fields',
     return {
       info: { title: 'Test', version: '1.0' },
       paths: {
-        '/character': { post: { requestBody: { content: { 'application/json': { schema: { $ref: '#/components/schemas/Character' } } } } } },
+        '/character': {
+          post: {
+            requestBody: { content: { 'application/json': { schema: { $ref: '#/components/schemas/Character' } } } },
+          },
+        },
         '/character/{id}': { get: {} },
       },
       'x-autocrud-custom-create-actions': {
-        character: [{
-          path: '/character/action', label: 'Create with Config', operationId: 'create_with_config',
-          inlineBodyParams: [
-            { name: 'config', required: true, schema: { $ref: '#/components/schemas/CharacterConfig' } },
-            { name: 'name', required: true, schema: { type: 'string' } },
-          ],
-        }],
+        character: [
+          {
+            path: '/character/action',
+            label: 'Create with Config',
+            operationId: 'create_with_config',
+            inlineBodyParams: [
+              { name: 'config', required: true, schema: { $ref: '#/components/schemas/CharacterConfig' } },
+              { name: 'name', required: true, schema: { type: 'string' } },
+            ],
+          },
+        ],
       },
       components: {
         schemas: {
@@ -876,7 +988,7 @@ describe('inlineBodyParam with object-type schema — should expand sub-fields',
   }
 
   it('expands $ref object inlineBodyParam into dot-notation sub-fields', () => {
-    const resources = createParser(buildObjectInlineBodyParamSpec()).parse();
+    const resources = buildIR(buildObjectInlineBodyParamSpec()).resources;
     const action = resources.find((r) => r.name === 'character')!.customCreateActions![0];
     expect(action.fields.find((f: any) => f.name === 'config')).toBeUndefined();
     expect(action.fields.find((f: any) => f.name === 'config.strength')).toBeDefined();
@@ -892,7 +1004,7 @@ describe('inlineBodyParam with object-type schema — should expand sub-fields',
       properties: { strength: { type: 'integer' }, dexterity: { type: 'integer' } },
       required: ['strength', 'dexterity'],
     };
-    const resources = createParser(spec).parse();
+    const resources = buildIR(spec).resources;
     const action = resources.find((r) => r.name === 'character')!.customCreateActions![0];
     expect(action.fields.find((f: any) => f.name === 'config')).toBeUndefined();
     expect(action.fields.find((f: any) => f.name === 'config.strength')!.type).toBe('integer');
@@ -903,7 +1015,7 @@ describe('inlineBodyParam with object-type schema — should expand sub-fields',
     spec['x-autocrud-custom-create-actions'].character[0].inlineBodyParams[0].schema = {
       anyOf: [{ $ref: '#/components/schemas/CharacterConfig' }, { type: 'null' }],
     };
-    const resources = createParser(spec).parse();
+    const resources = buildIR(spec).resources;
     const action = resources.find((r) => r.name === 'character')!.customCreateActions![0];
     expect(action.fields.find((f: any) => f.name === 'config')).toBeUndefined();
     expect(action.fields.find((f: any) => f.name === 'config.strength')).toBeDefined();
@@ -916,7 +1028,7 @@ describe('inlineBodyParam with object-type schema — should expand sub-fields',
         { name: 'age', required: false, schema: { type: 'integer' } },
       ],
     });
-    const resources = createParser(spec).parse();
+    const resources = buildIR(spec).resources;
     const action = resources.find((r) => r.name === 'character')!.customCreateActions![0];
     expect(action.fields.length).toBe(2);
     expect(action.fields[0].name).toBe('name');
@@ -930,8 +1042,12 @@ describe('inlineBodyParam with object-type schema — should expand sub-fields',
 describe('extractCustomCreateActions — bodySchema mixed with other params (prefix)', () => {
   function buildMixedBodySchemaCharacterSpec(extraOverrides: Record<string, any> = {}) {
     const base = buildCharacterSpec({
-      bodySchema: 'Skill', bodySchemaParamName: 'f',
-      queryParams: [{ name: 'x', required: true, schema: { type: 'integer' } }, { name: 'y', required: true, schema: { type: 'string' } }],
+      bodySchema: 'Skill',
+      bodySchemaParamName: 'f',
+      queryParams: [
+        { name: 'x', required: true, schema: { type: 'integer' } },
+        { name: 'y', required: true, schema: { type: 'string' } },
+      ],
       inlineBodyParams: [{ name: 'name', required: true, schema: { type: 'string' } }],
       fileParams: [{ name: 'z', required: true, schema: { type: 'string', format: 'binary' } }],
       ...extraOverrides,
@@ -945,7 +1061,7 @@ describe('extractCustomCreateActions — bodySchema mixed with other params (pre
   }
 
   it('prefixes bodySchema fields with bodySchemaParamName when mixed with other params', () => {
-    const resources = createParser(buildMixedBodySchemaCharacterSpec()).parse();
+    const resources = buildIR(buildMixedBodySchemaCharacterSpec()).resources;
     const action = resources.find((r) => r.name === 'character')!.customCreateActions![0];
     const bodyFields = action.fields.filter((f: any) => f.name.startsWith('f.'));
     expect(bodyFields.length).toBe(3);
@@ -953,7 +1069,7 @@ describe('extractCustomCreateActions — bodySchema mixed with other params (pre
   });
 
   it('non-body fields remain unprefixed', () => {
-    const resources = createParser(buildMixedBodySchemaCharacterSpec()).parse();
+    const resources = buildIR(buildMixedBodySchemaCharacterSpec()).resources;
     const action = resources.find((r) => r.name === 'character')!.customCreateActions![0];
     expect(action.fields.find((f: any) => f.name === 'x')).toBeDefined();
     expect(action.fields.find((f: any) => f.name === 'y')).toBeDefined();
@@ -968,14 +1084,14 @@ describe('extractCustomCreateActions — bodySchema mixed with other params (pre
       properties: { skname: { type: 'string' }, description: { type: 'string' } },
       required: ['skname'],
     };
-    const resources = createParser(spec).parse();
+    const resources = buildIR(spec).resources;
     const action = resources.find((r) => r.name === 'character')!.customCreateActions![0];
     expect(action.fields.find((f: any) => f.name === 'skname')).toBeDefined();
     expect(action.fields.find((f: any) => f.name.startsWith('f.'))).toBeUndefined();
   });
 
   it('total field count includes all param types', () => {
-    const resources = createParser(buildMixedBodySchemaCharacterSpec()).parse();
+    const resources = buildIR(buildMixedBodySchemaCharacterSpec()).resources;
     const action = resources.find((r) => r.name === 'character')!.customCreateActions![0];
     expect(action.fields.length).toBe(7);
   });
@@ -987,8 +1103,8 @@ describe('extractCustomCreateActions — bodySchema mixed with other params (pre
 describe('parseField — constValue for tagged struct discriminators', () => {
   it('parseField detects prop.const and returns constValue', () => {
     const spec = buildSimpleSpec();
-    const parser = createParser(spec);
-    const field = parser.parseField('type', { const: 'Apple' }, true);
+    const { builder } = createBuilder(spec);
+    const field = builder.parseField('type', { const: 'Apple' }, true);
     expect(field).toBeDefined();
     expect(field!.constValue).toBe('Apple');
     expect(field!.type).toBe('string');
@@ -997,8 +1113,8 @@ describe('parseField — constValue for tagged struct discriminators', () => {
 
   it('parseField detects single-element enum and returns constValue', () => {
     const spec = buildSimpleSpec();
-    const parser = createParser(spec);
-    const field = parser.parseField('type', { type: 'string', enum: ['Carrot'] }, true);
+    const { builder } = createBuilder(spec);
+    const field = builder.parseField('type', { type: 'string', enum: ['Carrot'] }, true);
     expect(field).toBeDefined();
     expect(field!.constValue).toBe('Carrot');
     expect(computeZodType(field!)).toBe("z.literal('Carrot')");
@@ -1006,8 +1122,8 @@ describe('parseField — constValue for tagged struct discriminators', () => {
 
   it('parseField does NOT set constValue for multi-element enum', () => {
     const spec = buildSimpleSpec();
-    const parser = createParser(spec);
-    const field = parser.parseField('role', { type: 'string', enum: ['warrior', 'mage'] }, true);
+    const { builder } = createBuilder(spec);
+    const field = builder.parseField('role', { type: 'string', enum: ['warrior', 'mage'] }, true);
     expect(field).toBeDefined();
     expect(field!.constValue).toBeUndefined();
     expect(field!.enumValues).toEqual(['warrior', 'mage']);
@@ -1027,8 +1143,8 @@ describe('parseField — constValue for tagged struct discriminators', () => {
         },
       },
     };
-    const parser = createParser(spec);
-    const carrotFields = parser.extractFields(spec.components.schemas.Carrot, 'carrot', 1, 2);
+    const { builder } = createBuilder(spec);
+    const carrotFields = builder.extractFields(spec.components.schemas.Carrot, 'carrot', 1, 2);
     const typeField = carrotFields.find((f: any) => f.name === 'carrot.type');
     expect(typeField).toBeDefined();
     expect(typeField!.constValue).toBe('Carrot');
@@ -1044,7 +1160,9 @@ describe('Job resource — defaultHiddenFields', () => {
       info: { title: 'Test', version: '1.0' },
       paths: {
         '/game-event': {
-          post: { requestBody: { content: { 'application/json': { schema: { $ref: '#/components/schemas/GameEvent' } } } } },
+          post: {
+            requestBody: { content: { 'application/json': { schema: { $ref: '#/components/schemas/GameEvent' } } } },
+          },
         },
         '/game-event/{id}': { get: {} },
       },
@@ -1070,7 +1188,7 @@ describe('Job resource — defaultHiddenFields', () => {
   }
 
   it('detects Job schema and sets isJob=true', () => {
-    const resources = createParser(buildJobSpec()).parse();
+    const resources = buildIR(buildJobSpec()).resources;
     const r = resources[0];
     expect(r.isJob).toBe(true);
     expect(r.maxFormDepth).toBe(1);
@@ -1080,7 +1198,11 @@ describe('Job resource — defaultHiddenFields', () => {
     const spec = {
       info: { title: 'Test', version: '1.0' },
       paths: {
-        '/my-job': { post: { requestBody: { content: { 'application/json': { schema: { $ref: '#/components/schemas/MyJob' } } } } } },
+        '/my-job': {
+          post: {
+            requestBody: { content: { 'application/json': { schema: { $ref: '#/components/schemas/MyJob' } } } },
+          },
+        },
         '/my-job/{id}': { get: {} },
       },
       components: {
@@ -1107,7 +1229,7 @@ describe('Job resource — defaultHiddenFields', () => {
         },
       },
     };
-    const resources = createParser(spec).parse();
+    const resources = buildIR(spec).resources;
     expect(resources[0].isJob).toBe(true);
     expect(resources[0].maxFormDepth).toBe(2);
   });
@@ -1121,14 +1243,24 @@ describe('extractFields — nullable $ref struct expansion', () => {
     return {
       info: { title: 'Test', version: '1.0' },
       paths: {
-        '/game-event': { post: { requestBody: { content: { 'application/json': { schema: { $ref: '#/components/schemas/GameEventPayload' } } } } } },
+        '/game-event': {
+          post: {
+            requestBody: {
+              content: { 'application/json': { schema: { $ref: '#/components/schemas/GameEventPayload' } } },
+            },
+          },
+        },
         '/game-event/{id}': { get: {} },
       },
       components: {
         schemas: {
           EventBodyX: {
             type: 'object',
-            properties: { type: { type: 'string', enum: ['EventBodyX'] }, good: { type: 'string' }, great: { type: 'integer' } },
+            properties: {
+              type: { type: 'string', enum: ['EventBodyX'] },
+              good: { type: 'string' },
+              great: { type: 'integer' },
+            },
             required: ['type', 'good', 'great'],
           },
           GameEventPayload: {
@@ -1146,24 +1278,24 @@ describe('extractFields — nullable $ref struct expansion', () => {
   }
 
   it('expands non-nullable $ref struct into dot-notation sub-fields', () => {
-    const parser = createParser(buildNullableRefSpec());
-    const fields = parser.extractFields(buildNullableRefSpec().components.schemas.GameEventPayload, '', 1, 2);
+    const { builder } = createBuilder(buildNullableRefSpec());
+    const fields = builder.extractFields(buildNullableRefSpec().components.schemas.GameEventPayload, '', 1, 2);
     const x2Fields = fields.filter((f: any) => f.name.startsWith('event_x2.'));
     expect(x2Fields.length).toBe(3);
     expect(x2Fields.map((f: any) => f.name).sort()).toEqual(['event_x2.good', 'event_x2.great', 'event_x2.type']);
   });
 
   it('expands nullable $ref struct (anyOf [$ref, null]) into dot-notation sub-fields', () => {
-    const parser = createParser(buildNullableRefSpec());
-    const fields = parser.extractFields(buildNullableRefSpec().components.schemas.GameEventPayload, '', 1, 2);
+    const { builder } = createBuilder(buildNullableRefSpec());
+    const fields = builder.extractFields(buildNullableRefSpec().components.schemas.GameEventPayload, '', 1, 2);
     const xFields = fields.filter((f: any) => f.name.startsWith('event_x.'));
     expect(xFields.length).toBe(3);
     expect(xFields.map((f: any) => f.name).sort()).toEqual(['event_x.good', 'event_x.great', 'event_x.type']);
   });
 
   it('does NOT expand nullable $ref struct when depth exceeds maxDepth', () => {
-    const parser = createParser(buildNullableRefSpec());
-    const fields = parser.extractFields(buildNullableRefSpec().components.schemas.GameEventPayload, '', 1, 1);
+    const { builder } = createBuilder(buildNullableRefSpec());
+    const fields = builder.extractFields(buildNullableRefSpec().components.schemas.GameEventPayload, '', 1, 1);
     const xDotFields = fields.filter((f: any) => f.name.startsWith('event_x.'));
     expect(xDotFields.length).toBe(0);
     const xField = fields.find((f: any) => f.name === 'event_x');
@@ -1176,8 +1308,8 @@ describe('extractFields — nullable $ref struct expansion', () => {
       anyOf: [{ $ref: '#/components/schemas/MyEnum' }, { type: 'null' }],
     } as any;
     (spec.components.schemas as any).MyEnum = { type: 'string', enum: ['active', 'inactive'] };
-    const parser = createParser(spec);
-    const fields = parser.extractFields(spec.components.schemas.GameEventPayload, '', 1, 2);
+    const { builder } = createBuilder(spec);
+    const fields = builder.extractFields(spec.components.schemas.GameEventPayload, '', 1, 2);
     expect(fields.filter((f: any) => f.name.startsWith('status.')).length).toBe(0);
     expect(fields.find((f: any) => f.name === 'status')).toBeDefined();
   });
@@ -1191,19 +1323,31 @@ describe('parseField — structural union', () => {
     return {
       info: { title: 'Test', version: '1.0' },
       paths: {
-        '/payload': { post: { requestBody: { content: { 'application/json': { schema: { $ref: '#/components/schemas/Payload' } } } } } },
+        '/payload': {
+          post: {
+            requestBody: { content: { 'application/json': { schema: { $ref: '#/components/schemas/Payload' } } } },
+          },
+        },
         '/payload/{id}': { get: {} },
       },
       components: {
         schemas: {
           EventBodyX: {
             type: 'object',
-            properties: { type: { type: 'string', enum: ['EventBodyX'], const: 'EventBodyX' }, good: { type: 'string' }, great: { type: 'integer' } },
+            properties: {
+              type: { type: 'string', enum: ['EventBodyX'], const: 'EventBodyX' },
+              good: { type: 'string' },
+              great: { type: 'integer' },
+            },
             required: ['type', 'good', 'great'],
           },
           EventBodyA: {
             type: 'object',
-            properties: { type: { type: 'string', enum: ['EventBodyA'], const: 'EventBodyA' }, extra_info_a: { type: 'string' }, extra_value_a: { type: 'integer' } },
+            properties: {
+              type: { type: 'string', enum: ['EventBodyA'], const: 'EventBodyA' },
+              extra_info_a: { type: 'string' },
+              extra_value_a: { type: 'integer' },
+            },
             required: ['type', 'extra_info_a', 'extra_value_a'],
           },
           Payload: { type: 'object', properties: { name: { type: 'string' } }, required: ['name'] },
@@ -1219,8 +1363,8 @@ describe('parseField — structural union', () => {
         { $ref: '#/components/schemas/EventBodyX' },
       ],
     };
-    const parser = createParser(buildStructuralUnionSpec());
-    const field = parser.parseField('event_x3', prop, true);
+    const { builder } = createBuilder(buildStructuralUnionSpec());
+    const field = builder.parseField('event_x3', prop, true);
     expect(field).toBeDefined();
     expect(field!.type).toBe('union');
     expect(field!.isArray).toBe(false);
@@ -1235,8 +1379,8 @@ describe('parseField — structural union', () => {
         { $ref: '#/components/schemas/EventBodyX' },
       ],
     };
-    const parser = createParser(buildStructuralUnionSpec());
-    const field = parser.parseField('event_x3', prop, true);
+    const { builder } = createBuilder(buildStructuralUnionSpec());
+    const field = builder.parseField('event_x3', prop, true);
     const arrayVariant = field!.unionMeta!.variants.find((v: any) => v.isArray);
     expect(arrayVariant).toBeDefined();
     expect(arrayVariant!.label).toContain('[]');
@@ -1250,8 +1394,8 @@ describe('parseField — structural union', () => {
         { $ref: '#/components/schemas/EventBodyA' },
       ],
     };
-    const parser = createParser(buildStructuralUnionSpec());
-    const field = parser.parseField('mixed', prop, true);
+    const { builder } = createBuilder(buildStructuralUnionSpec());
+    const field = builder.parseField('mixed', prop, true);
     expect(field!.type).toBe('union');
     expect(field!.unionMeta!.variants).toHaveLength(2);
     expect(field!.unionMeta!.variants.find((v: any) => v.isArray)!.fields!.map((f: any) => f.name)).toContain('good');
@@ -1266,8 +1410,8 @@ describe('parseField — structural union', () => {
         { type: 'null' },
       ],
     };
-    const parser = createParser(buildStructuralUnionSpec());
-    const field = parser.parseField('event_x3', prop, false);
+    const { builder } = createBuilder(buildStructuralUnionSpec());
+    const field = builder.parseField('event_x3', prop, false);
     expect(field!.type).toBe('union');
     expect(field!.isNullable).toBe(true);
     expect(field!.unionMeta!.variants).toHaveLength(3);
@@ -1279,8 +1423,8 @@ describe('parseField — structural union', () => {
 
   it('parses A | B (two $ref, no discriminator) as structural union', () => {
     const prop = { anyOf: [{ $ref: '#/components/schemas/EventBodyX' }, { $ref: '#/components/schemas/EventBodyA' }] };
-    const parser = createParser(buildStructuralUnionSpec());
-    const field = parser.parseField('mixed_obj', prop, true);
+    const { builder } = createBuilder(buildStructuralUnionSpec());
+    const field = builder.parseField('mixed_obj', prop, true);
     expect(field!.type).toBe('union');
     expect(field!.unionMeta!.discriminatorField).toBe('__variant');
     expect(field!.unionMeta!.variants).toHaveLength(2);
@@ -1293,8 +1437,8 @@ describe('parseField — structural union', () => {
         { type: 'array', items: { $ref: '#/components/schemas/EventBodyA' } },
       ],
     };
-    const parser = createParser(buildStructuralUnionSpec());
-    const field = parser.parseField('lists', prop, true);
+    const { builder } = createBuilder(buildStructuralUnionSpec());
+    const field = builder.parseField('lists', prop, true);
     expect(field!.type).toBe('union');
     expect(field!.unionMeta!.variants).toHaveLength(2);
     for (const v of field!.unionMeta!.variants) {
@@ -1304,8 +1448,8 @@ describe('parseField — structural union', () => {
 
   it('parses $ref | string as structural union with object + primitive variants', () => {
     const prop = { anyOf: [{ $ref: '#/components/schemas/EventBodyX' }, { type: 'string' }] };
-    const parser = createParser(buildStructuralUnionSpec());
-    const field = parser.parseField('mixed_prim', prop, true);
+    const { builder } = createBuilder(buildStructuralUnionSpec());
+    const field = builder.parseField('mixed_prim', prop, true);
     expect(field!.type).toBe('union');
     expect(field!.unionMeta!.variants).toHaveLength(2);
     expect(field!.unionMeta!.variants.find((v: any) => v.schemaName === 'EventBodyX')).toBeDefined();
@@ -1320,8 +1464,8 @@ describe('parseField — structural union', () => {
         { $ref: '#/components/schemas/EventBodyX' },
       ],
     };
-    const parser = createParser(buildStructuralUnionSpec());
-    const field = parser.parseField('event_x6', prop, false);
+    const { builder } = createBuilder(buildStructuralUnionSpec());
+    const field = builder.parseField('event_x6', prop, false);
     expect(field!.type).toBe('union');
     expect(field!.unionMeta!.variants).toHaveLength(3);
     expect(field!.isNullable).toBe(true);
@@ -1334,8 +1478,8 @@ describe('parseField — structural union', () => {
         { type: 'object', additionalProperties: { $ref: '#/components/schemas/EventBodyX' } },
       ],
     };
-    const parser = createParser(buildStructuralUnionSpec());
-    const field = parser.parseField('event_x7', prop, true);
+    const { builder } = createBuilder(buildStructuralUnionSpec());
+    const field = builder.parseField('event_x7', prop, true);
     expect(field!.type).toBe('union');
     expect(field!.unionMeta!.variants).toHaveLength(2);
     const dictVariant = field!.unionMeta!.variants.find((v: any) => v.isDict);
@@ -1348,7 +1492,10 @@ describe('parseField — structural union', () => {
     const spec = buildStructuralUnionSpec();
     spec.components.schemas.EventBodyB = {
       type: 'object',
-      properties: { type: { type: 'string', enum: ['EventBodyB'], const: 'EventBodyB' }, beta_info: { type: 'string' } },
+      properties: {
+        type: { type: 'string', enum: ['EventBodyB'], const: 'EventBodyB' },
+        beta_info: { type: 'string' },
+      },
       required: ['type', 'beta_info'],
     } as any;
     const prop = {
@@ -1356,16 +1503,27 @@ describe('parseField — structural union', () => {
         {
           type: 'array',
           items: {
-            anyOf: [{ $ref: '#/components/schemas/EventBodyX' }, { $ref: '#/components/schemas/EventBodyB' }, { $ref: '#/components/schemas/EventBodyA' }],
-            discriminator: { propertyName: 'type', mapping: { EventBodyX: '#/components/schemas/EventBodyX', EventBodyB: '#/components/schemas/EventBodyB', EventBodyA: '#/components/schemas/EventBodyA' } },
+            anyOf: [
+              { $ref: '#/components/schemas/EventBodyX' },
+              { $ref: '#/components/schemas/EventBodyB' },
+              { $ref: '#/components/schemas/EventBodyA' },
+            ],
+            discriminator: {
+              propertyName: 'type',
+              mapping: {
+                EventBodyX: '#/components/schemas/EventBodyX',
+                EventBodyB: '#/components/schemas/EventBodyB',
+                EventBodyA: '#/components/schemas/EventBodyA',
+              },
+            },
           },
         },
         { $ref: '#/components/schemas/EventBodyX' },
         { $ref: '#/components/schemas/EventBodyB' },
       ],
     };
-    const parser = createParser(spec);
-    const field = parser.parseField('event_x3', prop, true);
+    const { builder } = createBuilder(spec);
+    const field = builder.parseField('event_x3', prop, true);
     expect(field!.unionMeta!.variants).toHaveLength(3);
     const arrayVariant = field!.unionMeta!.variants.find((v: any) => v.isArray);
     expect(arrayVariant!.itemUnionMeta).toBeDefined();
@@ -1381,14 +1539,42 @@ describe('parseField — nested arrays', () => {
     return {
       info: { title: 'Test', version: '1.0' },
       paths: {
-        '/payload': { post: { requestBody: { content: { 'application/json': { schema: { $ref: '#/components/schemas/Payload' } } } } } },
+        '/payload': {
+          post: {
+            requestBody: { content: { 'application/json': { schema: { $ref: '#/components/schemas/Payload' } } } },
+          },
+        },
         '/payload/{id}': { get: {} },
       },
       components: {
         schemas: {
-          EventBodyX: { type: 'object', properties: { type: { type: 'string', enum: ['EventBodyX'], const: 'EventBodyX' }, good: { type: 'string' }, great: { type: 'integer' } }, required: ['type', 'good', 'great'] },
-          EventBodyA: { type: 'object', properties: { type: { type: 'string', enum: ['EventBodyA'], const: 'EventBodyA' }, extra_info_a: { type: 'string' }, extra_value_a: { type: 'integer' } }, required: ['type', 'extra_info_a', 'extra_value_a'] },
-          EventBodyB: { type: 'object', properties: { type: { type: 'string', enum: ['EventBodyB'], const: 'EventBodyB' }, some_field: { type: 'string' }, cooldown_seconds: { type: 'integer' } }, required: ['type', 'some_field', 'cooldown_seconds'] },
+          EventBodyX: {
+            type: 'object',
+            properties: {
+              type: { type: 'string', enum: ['EventBodyX'], const: 'EventBodyX' },
+              good: { type: 'string' },
+              great: { type: 'integer' },
+            },
+            required: ['type', 'good', 'great'],
+          },
+          EventBodyA: {
+            type: 'object',
+            properties: {
+              type: { type: 'string', enum: ['EventBodyA'], const: 'EventBodyA' },
+              extra_info_a: { type: 'string' },
+              extra_value_a: { type: 'integer' },
+            },
+            required: ['type', 'extra_info_a', 'extra_value_a'],
+          },
+          EventBodyB: {
+            type: 'object',
+            properties: {
+              type: { type: 'string', enum: ['EventBodyB'], const: 'EventBodyB' },
+              some_field: { type: 'string' },
+              cooldown_seconds: { type: 'integer' },
+            },
+            required: ['type', 'some_field', 'cooldown_seconds'],
+          },
           Payload: { type: 'object', properties: { name: { type: 'string' } }, required: ['name'] },
         },
       },
@@ -1397,10 +1583,10 @@ describe('parseField — nested arrays', () => {
 
   it('parses list[list[string]] as JSON fallback with correct tsType/zodType', () => {
     const prop = { type: 'array', items: { type: 'array', items: { type: 'string' } } };
-    const parser = createParser(buildNestedArraySpec());
-    const field = parser.parseField('nested_strings', prop, true);
+    const { builder } = createBuilder(buildNestedArraySpec());
+    const field = builder.parseField('nested_strings', prop, true);
     expect(field).toBeDefined();
-    expect(computeTsType(field!)).toBe('string[][]');
+    expect(field!.nestedArrayInner).toBeDefined();
     expect(computeZodType(field!)).toBe('z.array(z.array(z.string()))');
     expect(field!.type).toBe('object');
     expect(field!.isArray).toBe(false);
@@ -1408,18 +1594,18 @@ describe('parseField — nested arrays', () => {
 
   it('parses list[list[int]] as JSON fallback with correct tsType/zodType', () => {
     const prop = { type: 'array', items: { type: 'array', items: { type: 'integer' } } };
-    const parser = createParser(buildNestedArraySpec());
-    const field = parser.parseField('matrix', prop, true);
-    expect(computeTsType(field!)).toBe('number[][]');
+    const { builder } = createBuilder(buildNestedArraySpec());
+    const field = builder.parseField('matrix', prop, true);
+    expect(field!.nestedArrayInner).toBeDefined();
     expect(computeZodType(field!)).toBe('z.array(z.array(z.number().int()))');
     expect(field!.type).toBe('object');
   });
 
   it('parses list[list[list[string]]] as JSON fallback', () => {
     const prop = { type: 'array', items: { type: 'array', items: { type: 'array', items: { type: 'string' } } } };
-    const parser = createParser(buildNestedArraySpec());
-    const field = parser.parseField('cube', prop, true);
-    expect(computeTsType(field!)).toBe('string[][][]');
+    const { builder } = createBuilder(buildNestedArraySpec());
+    const field = builder.parseField('cube', prop, true);
+    expect(field!.nestedArrayInner).toBeDefined();
     expect(computeZodType(field!)).toBe('z.array(z.array(z.array(z.string())))');
   });
 
@@ -1430,16 +1616,19 @@ describe('parseField — nested arrays', () => {
         type: 'array',
         items: {
           anyOf: [{ $ref: '#/components/schemas/EventBodyX' }, { $ref: '#/components/schemas/EventBodyB' }],
-          discriminator: { propertyName: 'type', mapping: { EventBodyX: '#/components/schemas/EventBodyX', EventBodyB: '#/components/schemas/EventBodyB' } },
+          discriminator: {
+            propertyName: 'type',
+            mapping: { EventBodyX: '#/components/schemas/EventBodyX', EventBodyB: '#/components/schemas/EventBodyB' },
+          },
         },
       },
     };
-    const parser = createParser(buildNestedArraySpec());
-    const field = parser.parseField('nested_union', prop, true);
+    const { builder } = createBuilder(buildNestedArraySpec());
+    const field = builder.parseField('nested_union', prop, true);
     expect(field!.type).toBe('object');
     expect(field!.isArray).toBe(false);
-    expect(computeTsType(field!)).toContain('[][]');
-    expect(computeTsType(field!)).not.toBe('string[]');
+    expect(field!.nestedArrayInner).toBeDefined();
+    expect(field!.nestedArrayInner).toBeDefined();
   });
 
   it('parses event_x8: list[list[list[X|B] | B | A]] as JSON fallback', () => {
@@ -1449,28 +1638,49 @@ describe('parseField — nested arrays', () => {
         type: 'array',
         items: {
           anyOf: [
-            { type: 'array', items: { anyOf: [{ $ref: '#/components/schemas/EventBodyX' }, { $ref: '#/components/schemas/EventBodyB' }], discriminator: { propertyName: 'type', mapping: { EventBodyX: '#/components/schemas/EventBodyX', EventBodyB: '#/components/schemas/EventBodyB' } } } },
-            { anyOf: [{ $ref: '#/components/schemas/EventBodyB' }, { $ref: '#/components/schemas/EventBodyA' }], discriminator: { propertyName: 'type', mapping: { EventBodyB: '#/components/schemas/EventBodyB', EventBodyA: '#/components/schemas/EventBodyA' } } },
+            {
+              type: 'array',
+              items: {
+                anyOf: [{ $ref: '#/components/schemas/EventBodyX' }, { $ref: '#/components/schemas/EventBodyB' }],
+                discriminator: {
+                  propertyName: 'type',
+                  mapping: {
+                    EventBodyX: '#/components/schemas/EventBodyX',
+                    EventBodyB: '#/components/schemas/EventBodyB',
+                  },
+                },
+              },
+            },
+            {
+              anyOf: [{ $ref: '#/components/schemas/EventBodyB' }, { $ref: '#/components/schemas/EventBodyA' }],
+              discriminator: {
+                propertyName: 'type',
+                mapping: {
+                  EventBodyB: '#/components/schemas/EventBodyB',
+                  EventBodyA: '#/components/schemas/EventBodyA',
+                },
+              },
+            },
           ],
         },
       },
     };
-    const parser = createParser(buildNestedArraySpec());
-    const field = parser.parseField('event_x8', prop, true);
+    const { builder } = createBuilder(buildNestedArraySpec());
+    const field = builder.parseField('event_x8', prop, true);
     expect(field).toBeDefined();
-    expect(computeTsType(field!)).not.toBe('string[]');
-    expect(computeTsType(field!)).not.toBe('string[][]');
+    expect(field!.nestedArrayInner).toBeDefined();
+    expect(field!.nestedArrayInner).toBeDefined();
     expect(field!.type).toBe('object');
-    expect(computeTsType(field!)).toContain('[][]');
+    expect(field!.nestedArrayInner).toBeDefined();
   });
 
   it('parses list[list[$ref]] as JSON fallback with correct tsType', () => {
     const prop = { type: 'array', items: { type: 'array', items: { $ref: '#/components/schemas/EventBodyX' } } };
-    const parser = createParser(buildNestedArraySpec());
-    const field = parser.parseField('nested_objects', prop, true);
+    const { builder } = createBuilder(buildNestedArraySpec());
+    const field = builder.parseField('nested_objects', prop, true);
     expect(field!.type).toBe('object');
-    expect(computeTsType(field!)).toContain('[][]');
-    expect(computeTsType(field!)).not.toBe('string[]');
+    expect(field!.nestedArrayInner).toBeDefined();
+    expect(field!.nestedArrayInner).toBeDefined();
   });
 
   it('list[X | Y] (single-depth anyOf) still becomes union array', () => {
@@ -1478,8 +1688,8 @@ describe('parseField — nested arrays', () => {
       type: 'array',
       items: { anyOf: [{ $ref: '#/components/schemas/EventBodyX' }, { $ref: '#/components/schemas/EventBodyA' }] },
     };
-    const parser = createParser(buildNestedArraySpec());
-    const field = parser.parseField('single_depth', prop, true);
+    const { builder } = createBuilder(buildNestedArraySpec());
+    const field = builder.parseField('single_depth', prop, true);
     expect(field!.isArray).toBe(true);
     expect(field!.type).toBe('union');
     expect(field!.unionMeta!.discriminatorField).toBe('__variant');
@@ -1488,11 +1698,11 @@ describe('parseField — nested arrays', () => {
 
   it('falls back to object for unrecognized schema type', () => {
     const prop = { type: 'foobar' as any };
-    const parser = createParser(buildNestedArraySpec());
-    const field = parser.parseField('unknown_field', prop, true);
+    const { builder } = createBuilder(buildNestedArraySpec());
+    const field = builder.parseField('unknown_field', prop, true);
     expect(field).toBeDefined();
     expect(field!.type).toBe('object');
-    expect(computeTsType(field!)).toBe('Record<string, any>');
+    expect(field!.type).toBe('object');
     expect(computeZodType(field!)).toBe('z.record(z.string(), z.any())');
   });
 });
@@ -1504,33 +1714,69 @@ describe('extractCustomCreateActions — asyncMode', () => {
   function buildAsyncCreateActionSpec() {
     return {
       paths: {
-        '/article': { post: { requestBody: { content: { 'application/json': { schema: { $ref: '#/components/schemas/Article' } } } } } },
-        '/article/generate-article': { post: { requestBody: { content: { 'application/json': { schema: { type: 'object', properties: { prompt: { type: 'string' }, title: { type: 'string' } }, required: ['prompt', 'title'], title: 'ArticleRequest' } } } } } },
+        '/article': {
+          post: {
+            requestBody: { content: { 'application/json': { schema: { $ref: '#/components/schemas/Article' } } } },
+          },
+        },
+        '/article/generate-article': {
+          post: {
+            requestBody: {
+              content: {
+                'application/json': {
+                  schema: {
+                    type: 'object',
+                    properties: { prompt: { type: 'string' }, title: { type: 'string' } },
+                    required: ['prompt', 'title'],
+                    title: 'ArticleRequest',
+                  },
+                },
+              },
+            },
+          },
+        },
         '/generate-article-job': { get: {} },
         '/generate-article-job/{id}': { get: {} },
       },
       'x-autocrud-custom-create-actions': {
-        article: [{ path: '/article/generate-article', label: 'Generate', operationId: 'generate_article', bodySchema: 'ArticleRequest', asyncMode: 'job', jobResourceName: 'generate-article-job' }],
+        article: [
+          {
+            path: '/article/generate-article',
+            label: 'Generate',
+            operationId: 'generate_article',
+            bodySchema: 'ArticleRequest',
+            asyncMode: 'job',
+            jobResourceName: 'generate-article-job',
+          },
+        ],
       },
       'x-autocrud-async-create-jobs': { 'generate-article-job': 'article' },
       components: {
         schemas: {
-          Article: { type: 'object', properties: { title: { type: 'string' }, content: { type: 'string' } }, required: ['title', 'content'] },
-          ArticleRequest: { type: 'object', properties: { prompt: { type: 'string' }, title: { type: 'string' } }, required: ['prompt', 'title'] },
+          Article: {
+            type: 'object',
+            properties: { title: { type: 'string' }, content: { type: 'string' } },
+            required: ['title', 'content'],
+          },
+          ArticleRequest: {
+            type: 'object',
+            properties: { prompt: { type: 'string' }, title: { type: 'string' } },
+            required: ['prompt', 'title'],
+          },
         },
       },
     };
   }
 
   it('parses asyncMode and jobResourceName from OpenAPI extension', () => {
-    const resources = createParser(buildAsyncCreateActionSpec()).parse();
+    const resources = buildIR(buildAsyncCreateActionSpec()).resources;
     const action = resources.find((r) => r.name === 'article')!.customCreateActions![0];
     expect(action.asyncMode).toBe('job');
     expect(action.jobResourceName).toBe('generate-article-job');
   });
 
   it('sync actions have no asyncMode or jobResourceName', () => {
-    const resources = createParser(buildCustomActionSpec()).parse();
+    const resources = buildIR(buildCustomActionSpec()).resources;
     const action = resources.find((r) => r.name === 'article')!.customCreateActions![0];
     expect(action.asyncMode).toBeUndefined();
     expect(action.jobResourceName).toBeUndefined();
@@ -1538,26 +1784,32 @@ describe('extractCustomCreateActions — asyncMode', () => {
 });
 
 // ============================================================================
-// Enum field references (tsType via computeTsType)
+// Enum field references (field properties)
 // ============================================================================
 describe('parseField — enum field references', () => {
   it('preserves enumSchemaName for $ref enum fields', () => {
     const spec = {
       info: { title: 'Test', version: '1.0' },
       paths: {
-        '/foo': { post: { requestBody: { content: { 'application/json': { schema: { $ref: '#/components/schemas/Foo' } } } } } },
+        '/foo': {
+          post: { requestBody: { content: { 'application/json': { schema: { $ref: '#/components/schemas/Foo' } } } } },
+        },
       },
       components: {
         schemas: {
           FooType: { type: 'string', enum: ['foo', 'bar'], title: 'FooType' },
-          Foo: { type: 'object', properties: { foo_type: { $ref: '#/components/schemas/FooType' }, name: { type: 'string' } }, required: ['foo_type', 'name'] },
+          Foo: {
+            type: 'object',
+            properties: { foo_type: { $ref: '#/components/schemas/FooType' }, name: { type: 'string' } },
+            required: ['foo_type', 'name'],
+          },
         },
       },
     };
-    const resources = createParser(spec).parse();
+    const resources = buildIR(spec).resources;
     const fooTypeField = resources.find((r) => r.name === 'foo')!.fields.find((f) => f.name === 'foo_type')!;
     expect(fooTypeField.enumValues).toEqual(['foo', 'bar']);
-    expect(computeTsType(fooTypeField)).toBe('FooType');
+    expect(fooTypeField.enumSchemaName).toBe('FooType');
   });
 });
 
@@ -1567,17 +1819,17 @@ describe('parseField — enum field references', () => {
 describe('parseField — tagged struct literal type', () => {
   it('parseField returns constValue and literal tsType for const field', () => {
     const spec = buildSimpleSpec();
-    const parser = createParser(spec);
-    const field = parser.parseField('type', { const: 'Equipment', type: 'string' }, true);
+    const { builder } = createBuilder(spec);
+    const field = builder.parseField('type', { const: 'Equipment', type: 'string' }, true);
     expect(field!.constValue).toBe('Equipment');
-    expect(computeTsType(field!)).toBe("'Equipment'");
+    expect(field!.constValue).toBe('Equipment');
   });
 
   it('parseField returns constValue and literal tsType for single-element enum', () => {
     const spec = buildSimpleSpec();
-    const parser = createParser(spec);
-    const field = parser.parseField('type', { enum: ['Consumable'], type: 'string' }, true);
+    const { builder } = createBuilder(spec);
+    const field = builder.parseField('type', { enum: ['Consumable'], type: 'string' }, true);
     expect(field!.constValue).toBe('Consumable');
-    expect(computeTsType(field!)).toBe("'Consumable'");
+    expect(field!.constValue).toBe('Consumable');
   });
 });

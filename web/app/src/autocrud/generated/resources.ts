@@ -423,8 +423,8 @@ Object.assign(registry, {
 ],
     zodSchema: z.object({
     name: z.string(),
-    character_class: z.enum(["⚔️ 戰士", "🏹 弓箭手", "💾 數據守護者", "🔮 法師"]),
-    valueAD__x: z.union([z.number().int(), z.string()]).optional(),
+    character_class: z.any(),
+    valueAD__x: z.union([z.number(), z.string()]).optional(),
     level: z.number().int().optional(),
     hp: z.number().int().optional(),
     mp: z.number().int().optional(),
@@ -436,7 +436,7 @@ Object.assign(registry, {
     guild_name: z.string().nullable().optional(),
     special_ability: z.string().nullable().optional(),
     skill_ids: z.array(z.string()).optional(),
-    equipments: z.array(z.discriminatedUnion('type', [z.object({ type: z.literal('Equipment'), name: z.string(), rarity: z.enum(["傳奇", "史詩", "普通", "稀有", "🚀 AutoCRUD 神器"]), owner_id: z.string().nullable().optional(), character_class_req: z.enum(["⚔️ 戰士", "🏹 弓箭手", "💾 數據守護者", "🔮 法師"]).nullable().optional(), attack_bonus: z.number().int().optional(), defense_bonus: z.number().int().optional(), special_effects: z.array(z.string()).optional(), price: z.number().int().optional(), icon: z.any().nullable().optional() }), z.object({ type: z.literal('Item'), name: z.string(), description: z.string().optional(), price: z.number().int().optional(), icon: z.any().nullable().optional() })])).optional(),
+    equipments: z.array(z.discriminatedUnion('type', [z.object({ type: z.literal('Equipment'), name: z.string(), rarity: z.any(), owner_id: z.string().nullable().optional(), character_class_req: z.any().nullable().optional(), attack_bonus: z.number().int().optional(), defense_bonus: z.number().int().optional(), special_effects: z.array(z.string()).optional(), price: z.number().int().optional(), icon: z.any().nullable().optional() }), z.object({ type: z.literal('Item'), name: z.string(), description: z.string().optional(), price: z.number().int().optional(), icon: z.any().nullable().optional() })])).optional(),
     created_at: z.union([z.string(), z.date()]).optional()
     }),
     apiClient: characterApi,
@@ -538,9 +538,100 @@ Object.assign(registry, {
           {
                     name: "f.detail",
                     label: "Detail",
+                    type: "union",
                     isArray: false,
                     isRequired: true,
-                    isNullable: false
+                    isNullable: false,
+                    unionMeta: {
+                              discriminatorField: "skill_type",
+                              variants: [
+                                        {
+                                                  tag: "active",
+                                                  label: "Active",
+                                                  schemaName: "__main___ActiveSkillData",
+                                                  fields: [
+                                                            {
+                                                                      name: "mp_cost",
+                                                                      label: "Mp Cost",
+                                                                      type: "number",
+                                                                      isArray: false,
+                                                                      isRequired: false,
+                                                                      isNullable: false
+                                                            },
+                                                            {
+                                                                      name: "cooldown_seconds",
+                                                                      label: "Cooldown Seconds",
+                                                                      type: "number",
+                                                                      isArray: false,
+                                                                      isRequired: false,
+                                                                      isNullable: false
+                                                            },
+                                                            {
+                                                                      name: "damage",
+                                                                      label: "Damage",
+                                                                      type: "number",
+                                                                      isArray: false,
+                                                                      isRequired: false,
+                                                                      isNullable: false
+                                                            }
+                                                  ]
+                                        },
+                                        {
+                                                  tag: "passive",
+                                                  label: "Passive",
+                                                  schemaName: "__main___PassiveSkillData",
+                                                  fields: [
+                                                            {
+                                                                      name: "buff_percentage",
+                                                                      label: "Buff Percentage",
+                                                                      type: "number",
+                                                                      isArray: false,
+                                                                      isRequired: false,
+                                                                      isNullable: false
+                                                            }
+                                                  ]
+                                        },
+                                        {
+                                                  tag: "ultimate",
+                                                  label: "Ultimate",
+                                                  schemaName: "__main___UltimateSkillData",
+                                                  fields: [
+                                                            {
+                                                                      name: "mp_cost",
+                                                                      label: "Mp Cost",
+                                                                      type: "number",
+                                                                      isArray: false,
+                                                                      isRequired: false,
+                                                                      isNullable: false
+                                                            },
+                                                            {
+                                                                      name: "cooldown_seconds",
+                                                                      label: "Cooldown Seconds",
+                                                                      type: "number",
+                                                                      isArray: false,
+                                                                      isRequired: false,
+                                                                      isNullable: false
+                                                            },
+                                                            {
+                                                                      name: "damage",
+                                                                      label: "Damage",
+                                                                      type: "number",
+                                                                      isArray: false,
+                                                                      isRequired: false,
+                                                                      isNullable: false
+                                                            },
+                                                            {
+                                                                      name: "area_of_effect",
+                                                                      label: "Area Of Effect",
+                                                                      type: "boolean",
+                                                                      isArray: false,
+                                                                      isRequired: false,
+                                                                      isNullable: false
+                                                            }
+                                                  ]
+                                        }
+                              ]
+                    }
           },
           {
                     name: "f.description",
@@ -596,12 +687,12 @@ Object.assign(registry, {
         zodSchema: z.object({
     f: z.object({
         skname: z.string(),
-        detail: z.string(),
+        detail: z.discriminatedUnion('skill_type', [z.object({ skill_type: z.literal('active'), mp_cost: z.number().int().optional(), cooldown_seconds: z.number().int().optional(), damage: z.number().int().optional() }), z.object({ skill_type: z.literal('passive'), buff_percentage: z.number().int().optional() }), z.object({ skill_type: z.literal('ultimate'), mp_cost: z.number().int().optional(), cooldown_seconds: z.number().int().optional(), damage: z.number().int().optional(), area_of_effect: z.boolean().optional() })]),
         description: z.string().optional(),
         required_level: z.number().int().optional(),
-        required_class: z.enum(["⚔️ 戰士", "🏹 弓箭手", "💾 數據守護者", "🔮 法師"]).nullable().optional()
+        required_class: z.any().nullable().optional()
     }),
-    x: z.union([z.number().int(), z.string()]),
+    x: z.union([z.number(), z.string()]),
     y: z.string(),
     name: z.string(),
     z: z.instanceof(File)
@@ -692,7 +783,6 @@ Object.assign(registry, {
     name: 'skill',
     label: 'Skill',
     pluralLabel: 'Skills',
-    displayNameField: 'skname',
     schema: 'Skill',
     fields: [
       {
@@ -706,9 +796,100 @@ Object.assign(registry, {
       {
             name: "detail",
             label: "Detail",
+            type: "union",
             isArray: false,
             isRequired: true,
-            isNullable: false
+            isNullable: false,
+            unionMeta: {
+                  discriminatorField: "skill_type",
+                  variants: [
+                        {
+                              tag: "active",
+                              label: "Active",
+                              schemaName: "__main___ActiveSkillData",
+                              fields: [
+                                    {
+                                          name: "mp_cost",
+                                          label: "Mp Cost",
+                                          type: "number",
+                                          isArray: false,
+                                          isRequired: false,
+                                          isNullable: false
+                                    },
+                                    {
+                                          name: "cooldown_seconds",
+                                          label: "Cooldown Seconds",
+                                          type: "number",
+                                          isArray: false,
+                                          isRequired: false,
+                                          isNullable: false
+                                    },
+                                    {
+                                          name: "damage",
+                                          label: "Damage",
+                                          type: "number",
+                                          isArray: false,
+                                          isRequired: false,
+                                          isNullable: false
+                                    }
+                              ]
+                        },
+                        {
+                              tag: "passive",
+                              label: "Passive",
+                              schemaName: "__main___PassiveSkillData",
+                              fields: [
+                                    {
+                                          name: "buff_percentage",
+                                          label: "Buff Percentage",
+                                          type: "number",
+                                          isArray: false,
+                                          isRequired: false,
+                                          isNullable: false
+                                    }
+                              ]
+                        },
+                        {
+                              tag: "ultimate",
+                              label: "Ultimate",
+                              schemaName: "__main___UltimateSkillData",
+                              fields: [
+                                    {
+                                          name: "mp_cost",
+                                          label: "Mp Cost",
+                                          type: "number",
+                                          isArray: false,
+                                          isRequired: false,
+                                          isNullable: false
+                                    },
+                                    {
+                                          name: "cooldown_seconds",
+                                          label: "Cooldown Seconds",
+                                          type: "number",
+                                          isArray: false,
+                                          isRequired: false,
+                                          isNullable: false
+                                    },
+                                    {
+                                          name: "damage",
+                                          label: "Damage",
+                                          type: "number",
+                                          isArray: false,
+                                          isRequired: false,
+                                          isNullable: false
+                                    },
+                                    {
+                                          name: "area_of_effect",
+                                          label: "Area Of Effect",
+                                          type: "boolean",
+                                          isArray: false,
+                                          isRequired: false,
+                                          isNullable: false
+                                    }
+                              ]
+                        }
+                  ]
+            }
       },
       {
             name: "description",
@@ -742,10 +923,10 @@ Object.assign(registry, {
 ],
     zodSchema: z.object({
     skname: z.string(),
-    detail: z.string(),
+    detail: z.discriminatedUnion('skill_type', [z.object({ skill_type: z.literal('active'), mp_cost: z.number().int().optional(), cooldown_seconds: z.number().int().optional(), damage: z.number().int().optional() }), z.object({ skill_type: z.literal('passive'), buff_percentage: z.number().int().optional() }), z.object({ skill_type: z.literal('ultimate'), mp_cost: z.number().int().optional(), cooldown_seconds: z.number().int().optional(), damage: z.number().int().optional(), area_of_effect: z.boolean().optional() })]),
     description: z.string().optional(),
     required_level: z.number().int().optional(),
-    required_class: z.enum(["⚔️ 戰士", "🏹 弓箭手", "💾 數據守護者", "🔮 法師"]).nullable().optional()
+    required_class: z.any().nullable().optional()
     }),
     apiClient: skillApi,
     maxFormDepth: 1,
@@ -861,9 +1042,9 @@ Object.assign(registry, {
     zodSchema: z.object({
     type: z.literal('Equipment'),
     name: z.string(),
-    rarity: z.enum(["傳奇", "史詩", "普通", "稀有", "🚀 AutoCRUD 神器"]),
+    rarity: z.any(),
     owner_id: z.string().nullable().optional(),
-    character_class_req: z.enum(["⚔️ 戰士", "🏹 弓箭手", "💾 數據守護者", "🔮 法師"]).nullable().optional(),
+    character_class_req: z.any().nullable().optional(),
     attack_bonus: z.number().int().optional(),
     defense_bonus: z.number().int().optional(),
     special_effects: z.array(z.string()).optional(),
@@ -1042,7 +1223,7 @@ Object.assign(registry, {
       {
             name: "artifact",
             label: "Artifact",
-            type: "null",
+            type: "object",
             isArray: false,
             isRequired: false,
             isNullable: false
@@ -1106,9 +1287,9 @@ Object.assign(registry, {
 ],
     zodSchema: z.object({
     payload: z.discriminatedUnion('type', [z.object({ type: z.literal('Mount'), name: z.string(), species: z.string(), speed: z.number().int().optional(), stamina: z.number().int().optional(), owner_id: z.string() }), z.object({ type: z.literal('Dog'), name: z.string(), breed: z.string(), level: z.number().int().optional(), hp: z.number().int().optional(), mp: z.number().int().optional(), attack: z.number().int().optional(), defense: z.number().int().optional(), owner_id: z.string() })]),
-    status: z.enum(["completed", "failed", "pending", "processing"]).optional(),
+    status: z.any().optional(),
     errmsg: z.string().nullable().optional(),
-    artifact: z.any().optional(),
+    artifact: z.record(z.string(), z.any()).optional(),
     retries: z.number().int().optional(),
     max_retries: z.number().int().nullable().optional(),
     periodic_interval_seconds: z.number().int().nullable().optional(),
@@ -1375,7 +1556,7 @@ Object.assign(registry, {
             good: z.string(),
             great: z.number().int()
         }),
-        event_type: z.enum(["daily_login", "equipment_enhance", "guild_reward", "level_up", "quest_complete", "raid_boss", "server_maintenance"]),
+        event_type: z.any(),
         character_name: z.string(),
         character_id: z.string().nullable(),
         description: z.string(),
@@ -1387,7 +1568,7 @@ Object.assign(registry, {
     artifact: z.object({
         process_times: z.number()
     }),
-    status: z.enum(["completed", "failed", "pending", "processing"]).optional(),
+    status: z.any().optional(),
     errmsg: z.string().nullable().optional(),
     retries: z.number().int().optional(),
     max_retries: z.number().int().nullable().optional(),
@@ -1505,7 +1686,7 @@ Object.assign(registry, {
     payload: z.object({
         name: z.string()
     }),
-    status: z.enum(["completed", "failed", "pending", "processing"]).optional(),
+    status: z.any().optional(),
     errmsg: z.string().nullable().optional(),
     artifact: z.record(z.string(), z.any()).nullable().optional(),
     retries: z.number().int().optional(),
@@ -1624,7 +1805,7 @@ Object.assign(registry, {
     payload: z.object({
         name: z.string()
     }),
-    status: z.enum(["completed", "failed", "pending", "processing"]).optional(),
+    status: z.any().optional(),
     errmsg: z.string().nullable().optional(),
     artifact: z.record(z.string(), z.any()).nullable().optional(),
     retries: z.number().int().optional(),
@@ -1932,13 +2113,13 @@ Object.assign(registry, {
             detail: z.discriminatedUnion('skill_type', [z.object({ skill_type: z.literal('active'), mp_cost: z.number().int().optional(), cooldown_seconds: z.number().int().optional(), damage: z.number().int().optional() }), z.object({ skill_type: z.literal('passive'), buff_percentage: z.number().int().optional() }), z.object({ skill_type: z.literal('ultimate'), mp_cost: z.number().int().optional(), cooldown_seconds: z.number().int().optional(), damage: z.number().int().optional(), area_of_effect: z.boolean().optional() })]),
             description: z.string().optional(),
             required_level: z.number().int().optional(),
-            required_class: z.enum(["⚔️ 戰士", "🏹 弓箭手", "💾 數據守護者", "🔮 法師"]).nullable().optional()
+            required_class: z.any().nullable().optional()
         }),
-        x: z.union([z.number().int(), z.string()]),
+        x: z.union([z.number(), z.string()]),
         y: z.string(),
         name: z.string()
     }),
-    status: z.enum(["completed", "failed", "pending", "processing"]).optional(),
+    status: z.any().optional(),
     errmsg: z.string().nullable().optional(),
     artifact: z.record(z.string(), z.any()).nullable().optional(),
     retries: z.number().int().optional(),

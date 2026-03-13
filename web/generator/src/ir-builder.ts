@@ -1,18 +1,15 @@
 /**
- * OpenAPI Parser — extracts semantic IR from an OpenAPI spec.
+ * IR Builder — builds semantic IR from a **dereferenced** OpenAPI spec.
  *
- * Converts OpenAPI schemas into the IR types defined in types.ts.
- * No code-generation logic lives here — only semantic parsing.
+ * Replaces the old OpenAPIParser. Uses swagger-parser's dereference output
+ * (no $ref resolution needed) alongside pre-computed schema metadata
+ * collected before dereference.
+ *
+ * Pipeline:
+ *   raw spec → preScanSpec() → swagger-parser.dereference() → IRBuilder.build() → Resource[]
  */
 
-import type {
-  Field,
-  FieldRef,
-  UnionVariant,
-  UnionMeta,
-  Resource,
-  CustomCreateAction,
-} from './types.js';
+import type { Field, FieldRef, UnionVariant, Resource, CustomCreateAction } from './types.js';
 import {
   sanitizeTsName,
   toPascal,
@@ -25,28 +22,89 @@ import {
   computeMaxFieldDepth,
 } from './types.js';
 
+// ─── Pre-scan types ──────────────────────────────────────────────────────────
+
 /**
- * OpenAPIParser — stateless parser that converts an OpenAPI spec into IR Resources.
+ * Pre-scan metadata collected BEFORE swagger-parser dereference.
+ * Captures $ref-dependent info that would be lost after dereference.
+ */
+export interface PreScanResult {
+  /** resource name → schema name (from POST paths with $ref body) */
+  resourceSchemaMap: Map<string, string>;
+  /** resource name → variant schema names (from POST paths with anyOf/oneOf $ref body) */
+  unionResourceVariants: Map<string, string[]>;
+  /** schema name → enum values */
+  enumSchemas: Map<string, string[]>;
+}
+
+/**
+ * Scan a raw (non-dereferenced) OpenAPI spec to capture $ref metadata.
+ * Must be called BEFORE swagger-parser dereference().
+ */
+export function preScanSpec(spec: any, basePath: string): PreScanResult {
+  const resourceSchemaMap = new Map<string, string>();
+  const unionResourceVariants = new Map<string, string[]>();
+  const enumSchemas = new Map<string, string[]>();
+
+  const prefix = basePath;
+  const pattern = prefix ? new RegExp(`^${escapeRegex(prefix)}\\/([^/]+)$`) : /^\/([^/]+)$/;
+
+  // Scan POST paths for resource schema mappings
+  for (const [pathStr, methods] of Object.entries<any>(spec.paths ?? {})) {
+    if (!methods.post) continue;
+    const match = pathStr.match(pattern);
+    if (!match) continue;
+
+    const resourceName = match[1];
+    const bodySchema = methods.post.requestBody?.content?.['application/json']?.schema;
+    if (!bodySchema) continue;
+
+    if (bodySchema.$ref) {
+      resourceSchemaMap.set(resourceName, sanitizeTsName(bodySchema.$ref.split('/').pop()!));
+    } else if (hasRefMembers(bodySchema.anyOf) || hasRefMembers(bodySchema.oneOf)) {
+      const members = bodySchema.anyOf || bodySchema.oneOf;
+      const variantNames = members.filter((m: any) => m.$ref).map((m: any) => sanitizeTsName(m.$ref.split('/').pop()!));
+      unionResourceVariants.set(resourceName, variantNames);
+    }
+  }
+
+  // Collect enum schemas
+  for (const [name, schema] of Object.entries<any>(spec.components?.schemas ?? {})) {
+    if (schema.enum) {
+      enumSchemas.set(name, schema.enum);
+    }
+  }
+
+  return { resourceSchemaMap, unionResourceVariants, enumSchemas };
+}
+
+// ─── IR Builder ──────────────────────────────────────────────────────────────
+
+/**
+ * IRBuilder — builds IR Resources from a fully dereferenced OpenAPI spec.
  *
  * @example
  * ```ts
- * const parser = new OpenAPIParser(spec, '/api/v1');
- * const resources = parser.parse();
+ * const preScan = preScanSpec(rawSpec, basePath);
+ * const dereferencedSpec = await SwaggerParser.dereference(rawSpec);
+ * const builder = new IRBuilder(dereferencedSpec, basePath, preScan);
+ * const resources = builder.build();
  * ```
  */
-export class OpenAPIParser {
+export class IRBuilder {
   /** @internal Exposed for testing */
   resources: Resource[] = [];
 
   constructor(
     private spec: any,
     private basePath: string,
+    private preScan: PreScanResult,
   ) {}
 
   /**
-   * Parse the OpenAPI spec and return the list of resources.
+   * Build IR Resources from the dereferenced spec.
    */
-  parse(): Resource[] {
+  build(): Resource[] {
     this.resources = [];
     this.extractResources();
     this.extractCustomCreateActions();
@@ -56,34 +114,13 @@ export class OpenAPIParser {
   // ── Resource Extraction ────────────────────────────────────────────────────
 
   private extractResources() {
-    const resourcePaths = new Map<string, string>();
-    const prefix = this.basePath;
-
-    const pattern = prefix ? new RegExp(`^${escapeRegex(prefix)}\\/([^/]+)$`) : /^\/([^/]+)$/;
-    const unionResourceSchemas = new Map<string, any>();
-
-    for (const [path, methods] of Object.entries<any>(this.spec.paths)) {
-      if (!methods.post) continue;
-      const match = path.match(pattern);
-      if (!match) continue;
-
-      const resourceName = match[1];
-      const bodySchema = methods.post.requestBody?.content?.['application/json']?.schema;
-      if (!bodySchema) continue;
-
-      if (bodySchema.$ref) {
-        resourcePaths.set(resourceName, sanitizeTsName(bodySchema.$ref.split('/').pop()!));
-      } else if (hasRefMembers(bodySchema.anyOf) || hasRefMembers(bodySchema.oneOf)) {
-        unionResourceSchemas.set(resourceName, bodySchema);
-      }
-    }
-
     const SYSTEM_SCHEMAS = new Set(['ResourceMeta', 'RevisionInfo', 'RevisionStatus', 'RevisionListResponse']);
 
-    for (const [name, schemaName] of resourcePaths) {
+    // Normal resources (from pre-scan resourceSchemaMap)
+    for (const [name, schemaName] of this.preScan.resourceSchemaMap) {
       if (SYSTEM_SCHEMAS.has(schemaName)) continue;
 
-      const schema = this.spec.components.schemas[schemaName];
+      const schema = this.getSchema(schemaName);
       if (!schema?.properties) continue;
 
       const displayNameField =
@@ -106,8 +143,14 @@ export class OpenAPIParser {
       });
     }
 
-    for (const [name, bodySchema] of unionResourceSchemas) {
-      const unionField = this.buildUnionResourceField(name, bodySchema);
+    // Union resources (from pre-scan unionResourceVariants)
+    for (const [name, variantSchemaNames] of this.preScan.unionResourceVariants) {
+      // Read body schema from dereferenced spec paths
+      const pathKey = this.basePath ? `${this.basePath}/${name}` : `/${name}`;
+      const bodySchema = this.spec.paths?.[pathKey]?.post?.requestBody?.content?.['application/json']?.schema;
+      if (!bodySchema) continue;
+
+      const unionField = this.buildUnionResourceField(name, bodySchema, variantSchemaNames);
       if (!unionField) continue;
 
       const schemaName = toPascal(name);
@@ -122,7 +165,7 @@ export class OpenAPIParser {
         isJob: false,
         maxFormDepth: computeMaxFieldDepth(unionFields),
         isUnion: true,
-        unionVariantSchemaNames: unionField.unionMeta!.variants.map((v) => v.schemaName).filter(Boolean) as string[],
+        unionVariantSchemaNames: variantSchemaNames,
       });
     }
   }
@@ -161,7 +204,7 @@ export class OpenAPIParser {
         let bodySchemaName: string | undefined;
         if (raw.bodySchema) {
           bodySchemaName = raw.bodySchema as string;
-          const schema = this.spec.components?.schemas?.[bodySchemaName!];
+          const schema = this.getSchema(bodySchemaName!);
           if (!schema?.properties) {
             console.warn(`⚠️  Custom action '${raw.label}': schema '${bodySchemaName}' not found, skipping`);
             continue;
@@ -185,7 +228,7 @@ export class OpenAPIParser {
         }
 
         if (bodySchemaName) {
-          const schema = this.spec.components?.schemas?.[bodySchemaName];
+          const schema = this.getSchema(bodySchemaName);
           const hasOtherParams =
             !!raw.pathParams?.length ||
             !!raw.queryParams?.length ||
@@ -254,22 +297,24 @@ export class OpenAPIParser {
     for (const [name, rawProp] of Object.entries<any>(schema.properties ?? {})) {
       const fullName = parentPath ? `${parentPath}.${name}` : name;
 
-      let prop = rawProp;
-      if (prop.$ref) {
-        const resolved = this.resolveRef(prop.$ref);
-        if (resolved) prop = resolved;
-      }
+      // After dereference, $ref is already resolved inline — no resolveRef needed
+      // (resolveIfRef is a lightweight fallback for robustness)
+      const prop = this.resolveIfRef(rawProp);
 
-      // Handle nullable $ref struct: anyOf: [$ref, {type:'null'}]
-      if (rawProp.anyOf && !rawProp.discriminator && currentDepth < maxDepth) {
-        const nonNullTypes = (rawProp.anyOf as any[]).filter((t: any) => t.type !== 'null');
-        if (nonNullTypes.length === 1 && nonNullTypes[0].$ref) {
-          const resolved = this.resolveRef(nonNullTypes[0].$ref);
-          if (resolved && resolved.type === 'object' && resolved.properties && !this.isBinarySchema(resolved)) {
-            const subFields = this.extractFields(resolved, fullName, currentDepth + 1, maxDepth);
-            fields.push(...subFields);
-            continue;
-          }
+      // Handle nullable struct: anyOf: [{type:'object', properties:...}, {type:'null'}]
+      if (prop.anyOf && !prop.discriminator && currentDepth < maxDepth) {
+        const nonNullTypes = (prop.anyOf as any[])
+          .map((t: any) => this.resolveIfRef(t))
+          .filter((t: any) => t.type !== 'null');
+        if (
+          nonNullTypes.length === 1 &&
+          nonNullTypes[0].type === 'object' &&
+          nonNullTypes[0].properties &&
+          !this.isBinarySchema(nonNullTypes[0])
+        ) {
+          const subFields = this.extractFields(nonNullTypes[0], fullName, currentDepth + 1, maxDepth);
+          fields.push(...subFields);
+          continue;
         }
       }
 
@@ -287,24 +332,19 @@ export class OpenAPIParser {
 
   // ── Core Field Parser ─────────────────────────────────────────────────────
 
-  parseField(name: string, prop: any, isRequired: boolean): Field | null {
+  parseField(name: string, rawPropInput: any, isRequired: boolean): Field | null {
+    // Resolve $ref fallback for robustness
+    let prop = this.resolveIfRef(rawPropInput);
     let type: string = prop.type;
     let isArray = false;
     let isNullable = false;
     let enumValues: string[] | undefined;
     let enumSchemaName: string | undefined;
 
-    // Handle $ref references
-    if (prop.$ref) {
-      const refName = sanitizeTsName(prop.$ref.split('/').pop()!);
-      const refSchema = this.resolveRef(prop.$ref);
-      if (refSchema) {
-        if (refSchema.enum) {
-          enumSchemaName = refName;
-        }
-        prop = refSchema;
-        type = prop.type;
-      }
+    // After dereference, $ref is already resolved inline.
+    // Detect enum schema name by matching enum values against pre-scan data.
+    if (prop.enum) {
+      enumSchemaName = this.findEnumSchemaName(prop.enum);
     }
 
     // Detect const value (from tagged struct discriminator field)
@@ -335,8 +375,9 @@ export class OpenAPIParser {
     }
 
     if (prop.anyOf) {
-      const types = prop.anyOf.filter((t: any) => t.type !== 'null');
-      isNullable = prop.anyOf.some((t: any) => t.type === 'null');
+      const resolvedAnyOf = (prop.anyOf as any[]).map((t: any) => this.resolveIfRef(t));
+      const types = resolvedAnyOf.filter((t: any) => t.type !== 'null');
+      isNullable = resolvedAnyOf.some((t: any) => t.type === 'null');
 
       const discResult = this.tryParseDiscriminatedUnion(name, prop, types, isNullable, isRequired);
       if (discResult) return discResult;
@@ -357,15 +398,9 @@ export class OpenAPIParser {
           };
         }
         prop = types[0];
-        if (prop.$ref) {
-          const refName = sanitizeTsName(prop.$ref.split('/').pop()!);
-          const refSchema = this.resolveRef(prop.$ref);
-          if (refSchema) {
-            if (refSchema.enum) {
-              enumSchemaName = refName;
-            }
-            prop = refSchema;
-          }
+        // After dereference, no $ref to resolve — schema is inline
+        if (prop.enum) {
+          enumSchemaName = this.findEnumSchemaName(prop.enum);
         }
         type = prop.type;
       }
@@ -373,13 +408,8 @@ export class OpenAPIParser {
 
     if (type === 'array') {
       isArray = true;
-      prop = prop.items ?? {};
-      if (prop.$ref) {
-        const refSchema = this.resolveRef(prop.$ref);
-        if (refSchema) {
-          prop = refSchema;
-        }
-      }
+      prop = this.resolveIfRef(prop.items ?? {});
+      // After dereference, items is already resolved inline (resolveIfRef is fallback)
 
       // Handle nested arrays: list[list[...]]
       if (prop.type === 'array') {
@@ -417,7 +447,9 @@ export class OpenAPIParser {
 
         for (const [tag, refPath] of Object.entries<string>(disc.mapping || {})) {
           const schemaName = sanitizeTsName(refPath.split('/').pop()!);
-          const itemSchema = this.resolveRef(refPath);
+          // After dereference, look up schema by name from components.schemas
+          const itemSchema = this.getSchema(schemaName);
+          if (!itemSchema) continue;
           const variantFields = this.parseSchemaFields(itemSchema, discriminatorField);
           variants.push({ tag, label: toLabel(tag), schemaName, fields: variantFields });
         }
@@ -537,8 +569,10 @@ export class OpenAPIParser {
     const variants: UnionVariant[] = [];
 
     for (const [tag, refPath] of Object.entries<string>(disc.mapping || {})) {
+      // discriminator.mapping values survive dereference (they're regular strings)
       const schemaName = sanitizeTsName(refPath.split('/').pop()!);
-      const schema = this.resolveRef(refPath);
+      const schema = this.getSchema(schemaName);
+      if (!schema) continue;
       const variantFields = this.parseSchemaFields(schema, discriminatorField);
       variants.push({ tag, label: toLabel(tag), schemaName, fields: variantFields });
     }
@@ -555,7 +589,12 @@ export class OpenAPIParser {
   }
 
   private tryParseSimpleUnion(name: string, types: any[], isNullable: boolean, isRequired: boolean): Field | null {
-    if (types.length <= 1 || types.some((t: any) => t.$ref) || types.some((t: any) => t.type === 'array')) {
+    // After dereference, check if types contain $ref-resolved objects or arrays
+    if (types.length <= 1 || types.some((t: any) => t.type === 'array')) {
+      return null;
+    }
+    // Check if any type is an object with properties (was originally a $ref to a schema)
+    if (types.some((t: any) => t.type === 'object' && t.properties)) {
       return null;
     }
 
@@ -572,7 +611,6 @@ export class OpenAPIParser {
     // After dedup, if only one variant remains, it's not really a union
     if (variants.length <= 1) {
       const singleType = variants[0]?.type ?? 'string';
-      // Map back to the original OpenAPI types for codegen to compute zod properly
       return {
         name,
         label: toLabel(getLeafLabel(name)),
@@ -580,8 +618,6 @@ export class OpenAPIParser {
         isArray: false,
         isRequired,
         isNullable,
-        // Store the original OpenAPI types so codegen can generate z.union([z.number().int(), z.number()])
-        // when needed (e.g. int|float → number with union zod)
       };
     }
 
@@ -609,7 +645,8 @@ export class OpenAPIParser {
 
     for (const [tag, refPath] of Object.entries<string>(disc.mapping || {})) {
       const schemaName = sanitizeTsName(refPath.split('/').pop()!);
-      const schema = this.resolveRef(refPath);
+      const schema = this.getSchema(schemaName);
+      if (!schema) continue;
       const variantFields = this.parseSchemaFields(schema, discriminatorField);
       variants.push({ tag, label: toLabel(tag), schemaName, fields: variantFields });
     }
@@ -639,9 +676,10 @@ export class OpenAPIParser {
       return tag;
     };
 
-    for (const t of types) {
+    for (const rawT of types) {
+      const t = this.resolveIfRef(rawT);
       if (t.type === 'array') {
-        const itemSchema = t.items ?? {};
+        const itemSchema = this.resolveIfRef(t.items ?? {});
         const innerUnionMeta = this.buildDiscriminatedUnionMeta(itemSchema);
         if (innerUnionMeta) {
           const innerNames = innerUnionMeta.variants.map((v) => v.schemaName).filter(Boolean);
@@ -659,11 +697,9 @@ export class OpenAPIParser {
           });
         } else {
           let resolvedItems = itemSchema;
-          let schemaName = 'Array';
-          if (itemSchema.$ref) {
-            schemaName = sanitizeTsName(itemSchema.$ref.split('/').pop()!);
-            const resolved = this.resolveRef(itemSchema.$ref);
-            if (resolved) resolvedItems = resolved;
+          const schemaName = this.findSchemaName(itemSchema) ?? 'Array';
+          if (schemaName !== 'Array') {
+            resolvedItems = this.getSchema(schemaName) ?? resolvedItems;
           }
           const variantFields = this.parseSchemaFields(resolvedItems);
           const tag = makeUniqueTag(`list_${schemaName}`);
@@ -675,10 +711,10 @@ export class OpenAPIParser {
             isArray: true,
           });
         }
-      } else if (t.$ref) {
-        const schemaName = sanitizeTsName(t.$ref.split('/').pop()!);
-        const resolved = this.resolveRef(t.$ref);
-        const variantFields = this.parseSchemaFields(resolved);
+      } else if (t.type === 'object' && t.properties) {
+        // After dereference, $ref objects are inline. Try to find schema name by reference equality.
+        const schemaName = this.findSchemaName(t) ?? toPascal(name);
+        const variantFields = this.parseSchemaFields(t);
         const tag = makeUniqueTag(schemaName);
         variants.push({
           tag,
@@ -709,12 +745,12 @@ export class OpenAPIParser {
           }
         }
       } else if (t.type === 'object' && t.additionalProperties) {
-        let valueSchema = t.additionalProperties;
+        let valueSchema = this.resolveIfRef(t.additionalProperties);
         let valueName = 'Any';
-        if (valueSchema.$ref) {
-          valueName = sanitizeTsName(valueSchema.$ref.split('/').pop()!);
-          const resolved = this.resolveRef(valueSchema.$ref);
-          if (resolved) valueSchema = resolved;
+        const vsName = this.findSchemaName(valueSchema);
+        if (vsName) {
+          valueName = vsName;
+          valueSchema = this.getSchema(vsName) ?? valueSchema;
         } else if (valueSchema.type) {
           valueName = valueSchema.type === 'integer' ? 'number' : valueSchema.type;
         }
@@ -751,40 +787,41 @@ export class OpenAPIParser {
 
   // ── Union Resource Field Builder ──────────────────────────────────────────
 
-  private buildUnionResourceField(resourceName: string, bodySchema: any): Field | null {
+  private buildUnionResourceField(resourceName: string, bodySchema: any, variantSchemaNames: string[]): Field | null {
     const members = bodySchema.anyOf || bodySchema.oneOf;
     if (!members) return null;
-
-    const refMembers = members.filter((m: any) => m.$ref);
-    if (refMembers.length === 0) return null;
+    if (members.length === 0) return null;
 
     const disc = bodySchema.discriminator;
-    const discriminatorField = disc?.propertyName || this.detectDiscriminatorField(refMembers);
+    const discriminatorField = disc?.propertyName || this.detectDiscriminatorField(members);
     if (!discriminatorField) return null;
 
     const variants: UnionVariant[] = [];
 
     if (disc?.mapping) {
+      // Mapping values are $ref-style strings that survive dereference
       for (const [tag, refPath] of Object.entries<string>(disc.mapping)) {
         const schemaName = sanitizeTsName(refPath.split('/').pop()!);
-        const schema = this.resolveRef(refPath);
+        const schema = this.getSchema(schemaName);
+        if (!schema) continue;
         const variantFields = this.parseSchemaFields(schema, discriminatorField);
         variants.push({ tag, label: toLabel(tag), schemaName, fields: variantFields });
       }
     } else {
-      for (const member of refMembers) {
-        const schemaName = sanitizeTsName(member.$ref.split('/').pop()!);
-        const schema = this.resolveRef(member.$ref);
+      // No mapping — pair inline members with pre-scan variant schema names
+      for (let i = 0; i < members.length && i < variantSchemaNames.length; i++) {
+        const member = members[i];
+        const schemaName = variantSchemaNames[i];
         const variantFields: Field[] = [];
         let tag = schemaName;
 
-        if (schema?.properties) {
-          const variantRequired = new Set(schema.required ?? []);
-          const discProp = schema.properties[discriminatorField];
+        if (member.properties) {
+          const variantRequired = new Set(member.required ?? []);
+          const discProp = member.properties[discriminatorField];
           if (discProp?.const) tag = discProp.const;
           else if (discProp?.enum?.length === 1) tag = discProp.enum[0];
 
-          for (const [subName, subProp] of Object.entries<any>(schema.properties)) {
+          for (const [subName, subProp] of Object.entries<any>(member.properties)) {
             if (subName === discriminatorField) continue;
             const subField = this.parseField(subName, subProp, variantRequired.has(subName));
             if (subField) variantFields.push(subField);
@@ -810,13 +847,57 @@ export class OpenAPIParser {
 
   // ── Helpers ───────────────────────────────────────────────────────────────
 
-  private detectDiscriminatorField(refMembers: any[]): string | null {
-    const schemas = refMembers.map((m: any) => this.resolveRef(m.$ref)).filter(Boolean);
-    if (schemas.length === 0) return null;
+  /**
+   * Look up a schema by name from components.schemas (post-dereference).
+   * Replaces the old resolveRef() — direct name lookup instead of $ref parsing.
+   */
+  getSchema(name: string): any | null {
+    return this.spec.components?.schemas?.[name] ?? this.spec.components?.schemas?.[sanitizeTsName(name)] ?? null;
+  }
 
-    const firstProps = Object.keys(schemas[0].properties ?? {});
+  /**
+   * Resolve $ref if present, returning the schema from components.schemas.
+   * This is a lightweight fallback for robustness — the spec should already be
+   * dereferenced, but if a prop still has $ref (e.g., in test fixtures or
+   * edge cases), resolve it gracefully.
+   */
+  resolveIfRef(prop: any): any {
+    if (prop?.$ref && typeof prop.$ref === 'string') {
+      const name = prop.$ref.split('/').pop()!;
+      return this.getSchema(name) ?? prop;
+    }
+    return prop;
+  }
+
+  /**
+   * Find a schema name by reference equality against components.schemas.
+   * After dereference, swagger-parser uses the same object references.
+   */
+  findSchemaName(obj: any): string | undefined {
+    for (const [name, schema] of Object.entries<any>(this.spec.components?.schemas ?? {})) {
+      if (schema === obj) return name;
+    }
+    return undefined;
+  }
+
+  /**
+   * Find an enum schema name by matching enum values against pre-scan data.
+   */
+  findEnumSchemaName(values: string[]): string | undefined {
+    const sorted = JSON.stringify([...values].sort());
+    for (const [name, enumValues] of this.preScan.enumSchemas) {
+      if (JSON.stringify([...enumValues].sort()) === sorted) return name;
+    }
+    return undefined;
+  }
+
+  private detectDiscriminatorField(members: any[]): string | null {
+    // After dereference, members are inline objects (no $ref)
+    if (members.length === 0) return null;
+
+    const firstProps = Object.keys(members[0].properties ?? {});
     for (const propName of firstProps) {
-      const isDiscriminator = schemas.every((s: any) => {
+      const isDiscriminator = members.every((s: any) => {
         const p = s.properties?.[propName];
         if (!p) return false;
         return p.const !== undefined || (p.enum && p.enum.length === 1);
@@ -851,16 +932,6 @@ export class OpenAPIParser {
     return r.fields.filter((f) => jobMgmtFields.has(f.name)).map((f) => f.name);
   }
 
-  resolveRef(ref: string): any | null {
-    if (!ref.startsWith('#/components/schemas/')) {
-      return null;
-    }
-    const schemaName = ref.split('/').pop()!;
-    return (
-      this.spec.components?.schemas?.[schemaName] ?? this.spec.components?.schemas?.[sanitizeTsName(schemaName)] ?? null
-    );
-  }
-
   isBinarySchema(schema: any): boolean {
     if (schema?.type !== 'object' || !schema?.properties) return false;
     const dataProp = schema.properties.data;
@@ -892,11 +963,7 @@ export class OpenAPIParser {
     };
   }
 
-  fileParamToField(param: {
-    name: string;
-    required: boolean;
-    schema?: { type?: string; format?: string };
-  }): Field {
+  fileParamToField(param: { name: string; required: boolean; schema?: { type?: string; format?: string } }): Field {
     return {
       name: param.name,
       label: toLabel(param.name),

@@ -2,13 +2,13 @@
  * Tests for codegen/api-gen.ts — API client, backup, migrate, index generation.
  */
 import { describe, it, expect } from 'vitest';
-import { OpenAPIParser } from '../openapi-parser.js';
+import { buildIR } from '../test-helpers.js';
 import { genApiClient, genApiIndex, genBackupApiClient, genMigrateApiClient } from './api-gen.js';
 
 // ─── Helpers ────────────────────────────────────────────────────────────────
 
 function parse(spec: any, basePath = '') {
-  return new OpenAPIParser(spec, basePath).parse();
+  return buildIR(spec, basePath).resources;
 }
 
 function buildSimpleSpec(basePath = '') {
@@ -16,12 +16,22 @@ function buildSimpleSpec(basePath = '') {
   return {
     info: { title: 'Test', version: '1.0' },
     paths: {
-      [`${prefix}/character`]: { post: { requestBody: { content: { 'application/json': { schema: { $ref: '#/components/schemas/Character' } } } } } },
-      [`${prefix}/skill`]: { post: { requestBody: { content: { 'application/json': { schema: { $ref: '#/components/schemas/Skill' } } } } } },
+      [`${prefix}/character`]: {
+        post: {
+          requestBody: { content: { 'application/json': { schema: { $ref: '#/components/schemas/Character' } } } },
+        },
+      },
+      [`${prefix}/skill`]: {
+        post: { requestBody: { content: { 'application/json': { schema: { $ref: '#/components/schemas/Skill' } } } } },
+      },
     },
     components: {
       schemas: {
-        Character: { type: 'object', properties: { name: { type: 'string' }, level: { type: 'integer' } }, required: ['name', 'level'] },
+        Character: {
+          type: 'object',
+          properties: { name: { type: 'string' }, level: { type: 'integer' } },
+          required: ['name', 'level'],
+        },
         Skill: { type: 'object', properties: { name: { type: 'string' } }, required: ['name'] },
       },
     },
@@ -32,7 +42,11 @@ function buildUnionSpec() {
   return {
     info: { title: 'Test', version: '1.0' },
     paths: {
-      '/character': { post: { requestBody: { content: { 'application/json': { schema: { $ref: '#/components/schemas/Character' } } } } } },
+      '/character': {
+        post: {
+          requestBody: { content: { 'application/json': { schema: { $ref: '#/components/schemas/Character' } } } },
+        },
+      },
       '/cat-or-dog': {
         post: {
           requestBody: {
@@ -40,7 +54,10 @@ function buildUnionSpec() {
               'application/json': {
                 schema: {
                   anyOf: [{ $ref: '#/components/schemas/Cat' }, { $ref: '#/components/schemas/Dog' }],
-                  discriminator: { propertyName: 'type', mapping: { Cat: '#/components/schemas/Cat', Dog: '#/components/schemas/Dog' } },
+                  discriminator: {
+                    propertyName: 'type',
+                    mapping: { Cat: '#/components/schemas/Cat', Dog: '#/components/schemas/Dog' },
+                  },
                 },
               },
             },
@@ -52,9 +69,21 @@ function buildUnionSpec() {
     },
     components: {
       schemas: {
-        Character: { type: 'object', properties: { name: { type: 'string' }, level: { type: 'integer' } }, required: ['name', 'level'] },
-        Cat: { type: 'object', properties: { type: { type: 'string', enum: ['Cat'] }, name: { type: 'string' }, color: { type: 'string' } }, required: ['type', 'name', 'color'] },
-        Dog: { type: 'object', properties: { type: { type: 'string', enum: ['Dog'] }, name: { type: 'string' }, breed: { type: 'string' } }, required: ['type', 'name', 'breed'] },
+        Character: {
+          type: 'object',
+          properties: { name: { type: 'string' }, level: { type: 'integer' } },
+          required: ['name', 'level'],
+        },
+        Cat: {
+          type: 'object',
+          properties: { type: { type: 'string', enum: ['Cat'] }, name: { type: 'string' }, color: { type: 'string' } },
+          required: ['type', 'name', 'color'],
+        },
+        Dog: {
+          type: 'object',
+          properties: { type: { type: 'string', enum: ['Dog'] }, name: { type: 'string' }, breed: { type: 'string' } },
+          required: ['type', 'name', 'breed'],
+        },
       },
     },
   };
@@ -63,11 +92,39 @@ function buildUnionSpec() {
 function buildCustomActionSpec() {
   return {
     paths: {
-      '/article': { post: { requestBody: { content: { 'application/json': { schema: { $ref: '#/components/schemas/Article' } } } } } },
-      '/article/import-from-url': { post: { summary: 'Import from URL (article)', 'x-autocrud-create-action': { resource: 'article', label: 'Import from URL' }, requestBody: { content: { 'application/json': { schema: { type: 'object', properties: { url: { type: 'string' } }, required: ['url'], title: 'ImportFromUrl' } } } } } },
+      '/article': {
+        post: {
+          requestBody: { content: { 'application/json': { schema: { $ref: '#/components/schemas/Article' } } } },
+        },
+      },
+      '/article/import-from-url': {
+        post: {
+          summary: 'Import from URL (article)',
+          'x-autocrud-create-action': { resource: 'article', label: 'Import from URL' },
+          requestBody: {
+            content: {
+              'application/json': {
+                schema: {
+                  type: 'object',
+                  properties: { url: { type: 'string' } },
+                  required: ['url'],
+                  title: 'ImportFromUrl',
+                },
+              },
+            },
+          },
+        },
+      },
     },
     'x-autocrud-custom-create-actions': {
-      article: [{ path: '/article/import-from-url', label: 'Import from URL', operationId: 'import_from_url', bodySchema: 'ImportFromUrl' }],
+      article: [
+        {
+          path: '/article/import-from-url',
+          label: 'Import from URL',
+          operationId: 'import_from_url',
+          bodySchema: 'ImportFromUrl',
+        },
+      ],
     },
     components: {
       schemas: {
@@ -81,7 +138,11 @@ function buildCustomActionSpec() {
 function buildCharacterSpec(actionOverrides: Record<string, any>) {
   return {
     paths: {
-      '/character': { post: { requestBody: { content: { 'application/json': { schema: { $ref: '#/components/schemas/Character' } } } } } },
+      '/character': {
+        post: {
+          requestBody: { content: { 'application/json': { schema: { $ref: '#/components/schemas/Character' } } } },
+        },
+      },
       '/character/{id}': { get: {} },
     },
     'x-autocrud-custom-create-actions': {
@@ -95,8 +156,12 @@ function buildCharacterSpec(actionOverrides: Record<string, any>) {
 
 function buildMixedBodySchemaCharacterSpec() {
   const base = buildCharacterSpec({
-    bodySchema: 'Skill', bodySchemaParamName: 'f',
-    queryParams: [{ name: 'x', required: true, schema: { type: 'integer' } }, { name: 'y', required: true, schema: { type: 'string' } }],
+    bodySchema: 'Skill',
+    bodySchemaParamName: 'f',
+    queryParams: [
+      { name: 'x', required: true, schema: { type: 'integer' } },
+      { name: 'y', required: true, schema: { type: 'string' } },
+    ],
     inlineBodyParams: [{ name: 'name', required: true, schema: { type: 'string' } }],
     fileParams: [{ name: 'z', required: true, schema: { type: 'string', format: 'binary' } }],
   });
@@ -112,7 +177,11 @@ function buildJobSpec() {
   return {
     info: { title: 'Test', version: '1.0' },
     paths: {
-      '/game-event': { post: { requestBody: { content: { 'application/json': { schema: { $ref: '#/components/schemas/GameEvent' } } } } } },
+      '/game-event': {
+        post: {
+          requestBody: { content: { 'application/json': { schema: { $ref: '#/components/schemas/GameEvent' } } } },
+        },
+      },
       '/game-event/{id}': { get: {} },
     },
     components: {
@@ -168,10 +237,14 @@ describe('genApiClient — Job resource', () => {
     const spec = {
       info: { title: 'Test', version: '1.0' },
       paths: {
-        '/user': { post: { requestBody: { content: { 'application/json': { schema: { $ref: '#/components/schemas/User' } } } } } },
+        '/user': {
+          post: { requestBody: { content: { 'application/json': { schema: { $ref: '#/components/schemas/User' } } } } },
+        },
         '/user/{id}': { get: {} },
       },
-      components: { schemas: { User: { type: 'object', properties: { name: { type: 'string' } }, required: ['name'] } } },
+      components: {
+        schemas: { User: { type: 'object', properties: { name: { type: 'string' } }, required: ['name'] } },
+      },
     };
     const resources = parse(spec);
     const code = genApiClient(resources[0], '');
@@ -238,16 +311,26 @@ describe('genApiClient — custom action paths use BASE variable', () => {
   it('respects non-empty basePath in custom action paths', () => {
     const spec = {
       paths: {
-        '/api/character': { post: { requestBody: { content: { 'application/json': { schema: { $ref: '#/components/schemas/Character' } } } } } },
+        '/api/character': {
+          post: {
+            requestBody: { content: { 'application/json': { schema: { $ref: '#/components/schemas/Character' } } } },
+          },
+        },
         '/api/character/{id}': { get: {} },
       },
       'x-autocrud-custom-create-actions': {
-        character: [{
-          path: '/api/character/action', label: 'Test Action', operationId: 'test_action',
-          queryParams: [{ name: 'q', required: false, schema: { type: 'string' } }],
-        }],
+        character: [
+          {
+            path: '/api/character/action',
+            label: 'Test Action',
+            operationId: 'test_action',
+            queryParams: [{ name: 'q', required: false, schema: { type: 'string' } }],
+          },
+        ],
       },
-      components: { schemas: { Character: { type: 'object', properties: { name: { type: 'string' } }, required: ['name'] } } },
+      components: {
+        schemas: { Character: { type: 'object', properties: { name: { type: 'string' } }, required: ['name'] } },
+      },
     };
     const resources = parse(spec, '/api');
     const api = genApiClient(resources.find((r) => r.name === 'character')!, '/api');
@@ -260,16 +343,26 @@ describe('genApiClient — custom action paths use BASE variable', () => {
   it('strips resource prefix when action.path lacks basePath prefix', () => {
     const spec = {
       paths: {
-        '/v1/autocrud/character': { post: { requestBody: { content: { 'application/json': { schema: { $ref: '#/components/schemas/Character' } } } } } },
+        '/v1/autocrud/character': {
+          post: {
+            requestBody: { content: { 'application/json': { schema: { $ref: '#/components/schemas/Character' } } } },
+          },
+        },
         '/v1/autocrud/character/{id}': { get: {} },
       },
       'x-autocrud-custom-create-actions': {
-        character: [{
-          path: '/character/{name}/new', label: 'New Character1', operationId: 'create_new_character1',
-          pathParams: [{ name: 'name', required: true, schema: { type: 'string' } }],
-        }],
+        character: [
+          {
+            path: '/character/{name}/new',
+            label: 'New Character1',
+            operationId: 'create_new_character1',
+            pathParams: [{ name: 'name', required: true, schema: { type: 'string' } }],
+          },
+        ],
       },
-      components: { schemas: { Character: { type: 'object', properties: { name: { type: 'string' } }, required: ['name'] } } },
+      components: {
+        schemas: { Character: { type: 'object', properties: { name: { type: 'string' } }, required: ['name'] } },
+      },
     };
     const resources = parse(spec, '/v1/autocrud');
     const api = genApiClient(resources.find((r) => r.name === 'character')!, '/v1/autocrud');
@@ -283,15 +376,25 @@ describe('genApiClient — custom action paths use BASE variable', () => {
   it('strips resource prefix for query-only action when action.path lacks basePath', () => {
     const spec = {
       paths: {
-        '/v1/autocrud/character': { post: { requestBody: { content: { 'application/json': { schema: { $ref: '#/components/schemas/Character' } } } } } },
+        '/v1/autocrud/character': {
+          post: {
+            requestBody: { content: { 'application/json': { schema: { $ref: '#/components/schemas/Character' } } } },
+          },
+        },
       },
       'x-autocrud-custom-create-actions': {
-        character: [{
-          path: '/character/create-custom', label: 'Custom Create', operationId: 'custom_create',
-          queryParams: [{ name: 'name', required: true, schema: { type: 'string' } }],
-        }],
+        character: [
+          {
+            path: '/character/create-custom',
+            label: 'Custom Create',
+            operationId: 'custom_create',
+            queryParams: [{ name: 'name', required: true, schema: { type: 'string' } }],
+          },
+        ],
       },
-      components: { schemas: { Character: { type: 'object', properties: { name: { type: 'string' } }, required: ['name'] } } },
+      components: {
+        schemas: { Character: { type: 'object', properties: { name: { type: 'string' } }, required: ['name'] } },
+      },
     };
     const resources = parse(spec, '/v1/autocrud');
     const api = genApiClient(resources.find((r) => r.name === 'character')!, '/v1/autocrud');
@@ -304,13 +407,21 @@ describe('genApiClient — custom action paths use BASE variable', () => {
   it('strips resource prefix for body-schema action when action.path lacks basePath', () => {
     const spec = {
       paths: {
-        '/v1/autocrud/character': { post: { requestBody: { content: { 'application/json': { schema: { $ref: '#/components/schemas/Character' } } } } } },
+        '/v1/autocrud/character': {
+          post: {
+            requestBody: { content: { 'application/json': { schema: { $ref: '#/components/schemas/Character' } } } },
+          },
+        },
       },
       'x-autocrud-custom-create-actions': {
-        character: [{
-          path: '/character/import', label: 'Import Character', operationId: 'import_character',
-          bodySchema: 'ImportPayload',
-        }],
+        character: [
+          {
+            path: '/character/import',
+            label: 'Import Character',
+            operationId: 'import_character',
+            bodySchema: 'ImportPayload',
+          },
+        ],
       },
       components: {
         schemas: {
