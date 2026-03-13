@@ -104,7 +104,10 @@ build: build-gen
 	@echo "✅ 生產版本編譯完成"
 
 # 同步 app → generator/templates/base（排除自動生成的檔案）
+# 先在 app 端跑 style（prettier + eslint --fix）確保格式統一
 sync-templates:
+	@echo "🎨 先格式化 app 程式碼..."
+	cd app && make style
 	@echo "📋 同步 app → generator/templates/base..."
 	rsync -av --delete \
 		--exclude='node_modules' \
@@ -181,6 +184,8 @@ style:
 	@echo "🎨 Generator: lint --fix + prettier..."
 	cd generator && pnpm lint:fix
 	cd generator && pnpm format
+	@echo "🎨 App: prettier + eslint --fix..."
+	@if [ -d "app" ]; then cd app && make style; else echo "⚠️  app 目錄不存在，跳過"; fi
 	@echo "✅ Style 完成"
 
 # 發布 generator 到 npm（style + build + sync templates + publish）

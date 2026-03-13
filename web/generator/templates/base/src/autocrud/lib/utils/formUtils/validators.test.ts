@@ -526,9 +526,7 @@ describe('computeValidationSuppressPaths', () => {
               tag: 'Item',
               label: 'Item',
               schemaName: 'Item',
-              fields: [
-                { name: 'title', label: 'Title', type: 'string' as const },
-              ],
+              fields: [{ name: 'title', label: 'Title', type: 'string' as const }],
             },
           ],
         },
