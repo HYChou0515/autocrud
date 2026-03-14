@@ -3,7 +3,7 @@ from __future__ import annotations
 from typing import TYPE_CHECKING, Callable, Generic, TypeVar
 
 from autocrud.message_queue.basic import DelayableMessageQueue, DelayRetry, NoRetry
-from autocrud.types import Job, Resource, TaskStatus
+from autocrud.types import Job, Resource, RevisionStatus, TaskStatus
 
 try:
     from celery import Celery
@@ -132,6 +132,7 @@ class CeleryMessageQueue(DelayableMessageQueue[T], Generic[T]):
                 retry_count: Current retry count.
             """
             from autocrud.message_queue.context import JobContext
+            from autocrud.message_queue.heartbeat import HeartbeatThread
             from autocrud.message_queue.log_flush import LogFlushThread
 
             # Check for poison pill (stop marker)
@@ -142,18 +143,32 @@ class CeleryMessageQueue(DelayableMessageQueue[T], Generic[T]):
             blob_store = queue._blob_store
             log_key = queue._log_key(resource_id)
             lf: LogFlushThread | None = None
+            hb: HeartbeatThread | None = None
 
             try:
                 # 1. Fetch resource and update status to PROCESSING
+                # Use draft status so HeartbeatThread can use modify()
                 resource = queue.rm.get(resource_id)
                 job = resource.data
                 job.status = TaskStatus.PROCESSING
                 with queue._rm_meta_provide(resource.info.created_by):
-                    queue.rm.create_or_update(resource_id, job)
+                    queue.rm.create_or_update(
+                        resource_id,
+                        job,
+                        status=RevisionStatus.draft,
+                    )
                 resource.data = job
 
                 ctx = JobContext(resource)
                 ctx.info("Job started")
+
+                # -- Application-level heartbeat (same as SimpleMessageQueue) --
+                hb = HeartbeatThread(
+                    mq=queue,
+                    resource_id=resource_id,
+                    interval_seconds=queue._heartbeat_interval,
+                )
+                hb.start()
 
                 if blob_store is not None:
                     lf = LogFlushThread(ctx=ctx, blob_store=blob_store, key=log_key)
@@ -235,6 +250,8 @@ class CeleryMessageQueue(DelayableMessageQueue[T], Generic[T]):
                     # Max retries exceeded, stop retrying
                     raise Ignore()
             finally:
+                if hb is not None:
+                    hb.stop()
                 if lf is not None:
                     lf.stop()
 
