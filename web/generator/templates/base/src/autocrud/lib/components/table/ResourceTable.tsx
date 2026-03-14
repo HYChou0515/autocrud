@@ -137,7 +137,7 @@ export function ResourceTable<T extends MRT_RowData>({
   const containerSize = widthProp ?? tc.width ?? 'xl';
   const initPageSize = initPageSizeProp ?? tc.initPageSize ?? 20;
   const rowPerPageOptions = rowPerPageOptionsProp ?? tc.rowPerPageOptions;
-  const wrappedInContainer = wrappedInContainerProp ?? tc.wrappedInContainer ?? true;
+  const wrappedInContainer = wrappedInContainerProp ?? tc.wrappedInContainer ?? false;
   const onRowClick = onRowClickProp ?? tc.onRowClick;
   const disableGlobalSearch = disableGlobalSearchProp ?? tc.disableGlobalSearch ?? false;
   const disableAdvancedSearch = disableAdvancedSearchProp ?? tc.disableAdvancedSearch ?? false;

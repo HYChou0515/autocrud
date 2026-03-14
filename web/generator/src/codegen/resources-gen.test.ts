@@ -414,6 +414,90 @@ describe('genResourcesConfig — async create action metadata', () => {
     expect(code).toContain("'generate-article-job': 'article'");
   });
 
+  it('emits tableConfig.canCreate=false for async create job resources', () => {
+    // Build a spec where generate-article-job is a full resource (with POST)
+    const spec = {
+      ...buildAsyncCreateActionSpec(),
+      paths: {
+        ...buildAsyncCreateActionSpec().paths,
+        '/generate-article-job': {
+          post: {
+            requestBody: {
+              content: {
+                'application/json': {
+                  schema: { $ref: '#/components/schemas/GenerateArticleJob' },
+                },
+              },
+            },
+          },
+        },
+      },
+      components: {
+        schemas: {
+          ...buildAsyncCreateActionSpec().components.schemas,
+          GenerateArticleJob: {
+            type: 'object',
+            properties: {
+              payload: { type: 'object' },
+              status: { type: 'string', default: 'pending' },
+            },
+            required: ['payload'],
+          },
+        },
+      },
+    };
+    const code = parseAndGenConfig(spec);
+    // The generate-article-job resource config block should contain tableConfig
+    // Find the config block inside Object.assign(registry, { ... })
+    const registryBlock = code.split('Object.assign(registry,')[1]?.split('});')[0] ?? '';
+    const jobConfigStart = registryBlock.indexOf("'generate-article-job':");
+    expect(jobConfigStart).toBeGreaterThan(-1);
+    const jobConfigBlock = registryBlock.substring(jobConfigStart, jobConfigStart + 800);
+    expect(jobConfigBlock).toContain('tableConfig: { canCreate: false }');
+  });
+
+  it('does NOT emit tableConfig.canCreate for parent resource (article)', () => {
+    const spec = {
+      ...buildAsyncCreateActionSpec(),
+      paths: {
+        ...buildAsyncCreateActionSpec().paths,
+        '/generate-article-job': {
+          post: {
+            requestBody: {
+              content: {
+                'application/json': {
+                  schema: { $ref: '#/components/schemas/GenerateArticleJob' },
+                },
+              },
+            },
+          },
+        },
+      },
+      components: {
+        schemas: {
+          ...buildAsyncCreateActionSpec().components.schemas,
+          GenerateArticleJob: {
+            type: 'object',
+            properties: { payload: { type: 'object' } },
+            required: ['payload'],
+          },
+        },
+      },
+    };
+    const code = parseAndGenConfig(spec);
+    // Extract the article config block from the registry
+    const registryBlock = code.split('Object.assign(registry,')[1]?.split('});')[0] ?? '';
+    const articleStart = registryBlock.indexOf("'article':");
+    const jobStart = registryBlock.indexOf("'generate-article-job':");
+    const articleBlock = registryBlock.substring(articleStart, jobStart);
+    expect(articleBlock).not.toContain('tableConfig');
+  });
+
+  it('does NOT emit tableConfig.canCreate for regular job resource not in asyncCreateJobs', () => {
+    const code = parseAndGenConfig(buildJobSpec());
+    expect(code).not.toContain('tableConfig');
+  });
+
   it('does not emit asyncCreateJobs when no async jobs exist', () => {
     const spec = {
       paths: {

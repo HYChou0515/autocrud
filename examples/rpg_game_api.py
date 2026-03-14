@@ -1151,6 +1151,8 @@ def configure_crud():
     async def create_new_character1(
         name: Annotated[str, Ref("equipment")],
     ):
+        import time
+        time.sleep(100)
         return Character(
             name=name,
             character_class=CharacterClass.WARRIOR,
@@ -1160,6 +1162,7 @@ def configure_crud():
     async def create_new_character2(
         name: Annotated[str, Ref("equipment")],
     ):
+        time.sleep(100)
         return Character(
             name=name,
             character_class=CharacterClass.WARRIOR,
@@ -1173,6 +1176,7 @@ def configure_crud():
         z: UploadFile,
         f: struct_to_pydantic(Skill),  # type: ignore[reportInvalidTypeForm]
     ):
+        time.sleep(100)
         return Character(
             name=f"{name} ({x}, {y} {z.size} {f})",
             character_class=CharacterClass.WARRIOR,

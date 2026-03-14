@@ -4,6 +4,8 @@
 
 // 主元件
 export { ResourceTable } from './ResourceTable';
+export { MultiResourceTable } from './MultiResourceTable';
+export type { MultiResourceTableProps } from './MultiResourceTable';
 
 // 子元件
 export { ResourceIdCell } from '../common/ResourceIdCell';

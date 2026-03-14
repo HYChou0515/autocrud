@@ -161,7 +161,7 @@ export interface TableConfig {
   /** Override the table title. Defaults to `config.label`. */
   title?: string;
   /** Table density. Defaults to `'xs'`. */
-  density?: 'xs' | 'sm' | 'md';
+  density?: 'xs' | 'md' | 'xl';
 }
 
 /**

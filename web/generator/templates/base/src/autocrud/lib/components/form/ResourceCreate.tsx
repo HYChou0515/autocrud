@@ -67,19 +67,10 @@ export function ResourceCreate<T extends Record<string, any>>({
   const makeCustomActionSubmit =
     (action: CustomCreateAction) => async (values: Record<string, any>) => {
       try {
-        const result = await action.apiMethod(values);
-        // Async job actions return JobRedirectInfo with job_resource_name + job_resource_id
-        if (
-          action.asyncMode === 'job' &&
-          action.jobResourceName &&
-          'job_resource_id' in result.data
-        ) {
-          navigate({
-            to: `/autocrud-admin/${action.jobResourceName}/${result.data.job_resource_id}`,
-          });
-        } else {
-          navigate({ to: basePath });
-        }
+        await action.apiMethod(values);
+        // Always navigate back to the parent resource list page.
+        // For async job actions, the job will appear in PendingJobsAccordion.
+        navigate({ to: basePath });
       } catch (error) {
         showErrorNotification(error, `${action.label} Failed`);
       }

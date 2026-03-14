@@ -204,6 +204,9 @@ export function genResourcesConfig(
     }
   }
 
+  // Extract async-create-jobs mapping early so it can be used during config generation
+  const asyncJobsMap: Record<string, string> = spec['x-autocrud-async-create-jobs'] ?? {};
+
   const configs = resources.map((r) => {
     const fields = r.fields.map((f) => serializeField(f));
     const zodSchemaExpr = buildZodSchemaExpr(r, orvalSchemas);
@@ -257,7 +260,10 @@ ${displayNameLine}    schema: '${r.schemaName}',
         ? `
     isUnion: true,`
         : ''
-    }${customActionsBlock}
+    }${customActionsBlock}${r.name in asyncJobsMap
+        ? `
+    tableConfig: { canCreate: false },`
+        : ''}
   }`;
   });
 
@@ -282,7 +288,6 @@ ${displayNameLine}    schema: '${r.schemaName}',
 
   const fieldMapEntries = resources.map((r) => `  '${r.name}': ${r.pascal}FieldName;`).join('\n');
 
-  const asyncJobsMap: Record<string, string> = spec['x-autocrud-async-create-jobs'] ?? {};
   let asyncJobsBlock = '';
   if (Object.keys(asyncJobsMap).length > 0) {
     const entries = Object.entries(asyncJobsMap)

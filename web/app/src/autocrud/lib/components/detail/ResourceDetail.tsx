@@ -28,6 +28,7 @@ import {
   IconRefresh,
 } from '@tabler/icons-react';
 import type { ResourceConfig, ResourceField, DetailConfig } from '../../resources';
+import { isAsyncCreateJob, asyncCreateJobs } from '../../resources';
 import { useResourceDetail } from '../../hooks/useResourceDetail';
 import { useFieldDepth } from '../../hooks/useFieldDepth';
 import { ResourceForm, type ResourceFormHandle } from '../form/ResourceForm';
@@ -156,6 +157,12 @@ export function ResourceDetail<T extends Record<string, any>>({
   const showRevisionHistory = showRevisionHistoryProp ?? dc.showRevisionHistory ?? true;
   const closeHandler = onCloseProp ?? dc.onClose;
   const pageTitle = titleProp ?? dc.title;
+
+  // For async-create-job resources, the back button navigates to the parent
+  // resource list instead of the job's own list page.
+  const effectiveBackPath: ResourceListRoute = isAsyncCreateJob(config.name)
+    ? (`/autocrud-admin/${asyncCreateJobs[config.name]}` as ResourceListRoute)
+    : basePath;
 
   const [editOpen, setEditOpen] = useState(false);
   const [selectedRevision, setSelectedRevision] = useState<string | null>(initialRevision ?? null);
@@ -300,7 +307,7 @@ export function ResourceDetail<T extends Record<string, any>>({
     ) {
       try {
         await permanentlyDelete();
-        navigate({ to: basePath });
+        navigate({ to: effectiveBackPath });
       } catch (error) {
         showErrorNotification(error, 'Permanently Delete Failed');
       }
@@ -354,7 +361,7 @@ export function ResourceDetail<T extends Record<string, any>>({
               ) : (
                 <Button
                   component={Link}
-                  to={basePath}
+                  to={effectiveBackPath}
                   variant="subtle"
                   leftSection={<IconArrowLeft size={16} />}
                 >

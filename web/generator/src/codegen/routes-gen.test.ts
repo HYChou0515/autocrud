@@ -142,6 +142,62 @@ describe('genListRoute', () => {
 
     expect(code).toContain("createFileRoute('/autocrud-admin/character/')");
     expect(code).toContain('ResourceTable');
+    expect(code).toContain('Container');
+    // Should NOT include PendingJobsAccordion for plain resources
+    expect(code).not.toContain('PendingJobsAccordion');
+    expect(code).not.toContain('Stack');
+  });
+
+  it('generates list route with PendingJobsAccordion for resources with async-create-job actions', () => {
+    const resources = parse(buildSimpleSpec());
+    const charResource = resources.find((r) => r.name === 'character')!;
+
+    // Augment with customCreateActions that have async job mode
+    charResource.customCreateActions = [
+      {
+        name: 'create-special',
+        path: '/character/create-special',
+        label: 'Create Special',
+        operationId: 'create_special',
+        fields: [],
+        asyncMode: 'job',
+        jobResourceName: 'create-special-job',
+      },
+    ];
+
+    const code = genListRoute(charResource);
+
+    expect(code).toContain("createFileRoute('/autocrud-admin/character/')");
+    expect(code).toContain('ResourceTable');
+    expect(code).toContain('PendingJobsAccordion');
+    expect(code).toContain('parentResourceName="character"');
+    expect(code).toContain("import { Container, Stack } from '@mantine/core'");
+    expect(code).toContain(
+      "import { PendingJobsAccordion } from '../../../autocrud/lib/components/PendingJobsAccordion'",
+    );
+  });
+
+  it('does NOT include PendingJobsAccordion for background async actions (no jobResourceName)', () => {
+    const resources = parse(buildSimpleSpec());
+    const charResource = resources.find((r) => r.name === 'character')!;
+
+    charResource.customCreateActions = [
+      {
+        name: 'create-bg',
+        path: '/character/create-bg',
+        label: 'Create BG',
+        operationId: 'create_bg',
+        fields: [],
+        asyncMode: 'background',
+        // no jobResourceName
+      },
+    ];
+
+    const code = genListRoute(charResource);
+
+    expect(code).not.toContain('PendingJobsAccordion');
+    expect(code).not.toContain('Stack');
+    expect(code).toContain('Container');
   });
 });
 

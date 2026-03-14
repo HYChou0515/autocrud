@@ -71,9 +71,28 @@ vi.mock('../../utils/errorNotification', () => ({
 }));
 
 vi.mock('@tanstack/react-router', () => ({
-  Link: (props: any) => props.children,
+  Link: (props: any) => (
+    <a data-testid="back-link" data-to={props.to}>
+      {props.children}
+    </a>
+  ),
   useNavigate: () => vi.fn(),
 }));
+
+// Mock async create job helpers — use vi.hoisted so the variable is available in the mock factory
+const { mockAsyncCreateJobs } = vi.hoisted(() => {
+  const mockAsyncCreateJobs: Record<string, string> = {};
+  return { mockAsyncCreateJobs };
+});
+
+vi.mock('../../resources', async (importOriginal) => {
+  const actual = (await importOriginal()) as any;
+  return {
+    ...actual,
+    isAsyncCreateJob: (name: string) => name in mockAsyncCreateJobs,
+    asyncCreateJobs: mockAsyncCreateJobs,
+  };
+});
 
 import { render, screen, fireEvent, waitFor, cleanup } from '@testing-library/react';
 import { MantineProvider } from '@mantine/core';
@@ -517,5 +536,58 @@ describe('ResourceDetail — customization props', () => {
     expect(screen.queryByText('Edit')).toBeNull();
     expect(screen.queryByText('Delete')).toBeNull();
     expect(screen.getByText('Read-Only View')).toBeTruthy();
+  });
+});
+
+// ============================================================================
+// Async create job — back button navigates to parent resource
+// ============================================================================
+describe('ResourceDetail — async create job back button', () => {
+  beforeEach(() => {
+    cleanup();
+    // Clear the mapping
+    Object.keys(mockAsyncCreateJobs).forEach((k) => delete mockAsyncCreateJobs[k]);
+  });
+
+  it('shows back link pointing to job list for regular job resource', () => {
+    mockDetailResult = makeMockDetail();
+
+    const config = makeConfig({ name: 'pet-job' });
+    render(
+      <MantineProvider>
+        <ResourceDetail
+          config={config}
+          resourceId="r1"
+          basePath={'/autocrud-admin/pet-job' as any}
+          isJob={true}
+        />
+      </MantineProvider>,
+    );
+
+    const backLink = screen.getByTestId('back-link');
+    expect(backLink.getAttribute('data-to')).toBe('/autocrud-admin/pet-job');
+  });
+
+  it('shows back link pointing to parent resource for async create job', () => {
+    // Register this job as an async create job of "character"
+    mockAsyncCreateJobs['new-char1-job'] = 'character';
+
+    mockDetailResult = makeMockDetail();
+
+    const config = makeConfig({ name: 'new-char1-job' });
+    render(
+      <MantineProvider>
+        <ResourceDetail
+          config={config}
+          resourceId="r1"
+          basePath={'/autocrud-admin/new-char1-job' as any}
+          isJob={true}
+        />
+      </MantineProvider>,
+    );
+
+    const backLink = screen.getByTestId('back-link');
+    // Should navigate to parent (character), not to the job list
+    expect(backLink.getAttribute('data-to')).toBe('/autocrud-admin/character');
   });
 });

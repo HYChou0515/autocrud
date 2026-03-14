@@ -21,10 +21,13 @@ vi.mock('@tanstack/react-router', () => ({
 }));
 
 vi.mock('./ResourceForm', () => ({
-  ResourceForm: ({ onCancel, submitLabel }: any) => (
+  ResourceForm: ({ onCancel, onSubmit, submitLabel }: any) => (
     <div data-testid="resource-form" data-submit-label={submitLabel}>
       <button data-testid="form-cancel" onClick={onCancel}>
         Cancel
+      </button>
+      <button data-testid="form-submit" onClick={() => onSubmit({})}>
+        Submit
       </button>
     </div>
   ),
@@ -35,7 +38,7 @@ vi.mock('../../utils/errorNotification', () => ({
   extractUniqueConflict: vi.fn().mockReturnValue(null),
 }));
 
-import { render, screen, fireEvent, cleanup } from '@testing-library/react';
+import { render, screen, fireEvent, cleanup, waitFor } from '@testing-library/react';
 import { MantineProvider } from '@mantine/core';
 import { ResourceCreate } from './ResourceCreate';
 
@@ -236,5 +239,68 @@ describe('ResourceCreate — customization props', () => {
     expect(screen.getByText('Prop Title')).toBeTruthy();
     expect(screen.queryByText('Config Title')).toBeNull();
     expect(screen.getByText('Back')).toBeTruthy();
+  });
+
+  // ── Custom create action — async job navigation ──
+
+  it('navigates to basePath (not job detail) after async-job custom create action', async () => {
+    const mockApiMethod = vi.fn().mockResolvedValue({
+      data: { job_resource_id: 'job-123', resource_id: 'r1' },
+    });
+
+    const jobAction: CustomCreateAction = {
+      name: 'create-special',
+      label: 'Create Special',
+      fields: [makeField('url')],
+      apiMethod: mockApiMethod,
+      asyncMode: 'job',
+      jobResourceName: 'create-special-job',
+    };
+
+    const config = makeConfig({
+      customCreateActions: [jobAction],
+    });
+
+    renderCreate(config, { customFormOnly: true });
+
+    // Submit the custom action form
+    fireEvent.click(screen.getByTestId('form-submit'));
+
+    await waitFor(() => {
+      expect(mockApiMethod).toHaveBeenCalled();
+      // Should navigate to basePath (/test), NOT to the job detail page
+      expect(mockNavigate).toHaveBeenCalledWith({ to: '/test' });
+    });
+
+    // Verify it did NOT navigate to the job detail page
+    expect(mockNavigate).not.toHaveBeenCalledWith(
+      expect.objectContaining({ to: expect.stringContaining('create-special-job') }),
+    );
+  });
+
+  it('navigates to basePath after non-async custom create action', async () => {
+    const mockApiMethod = vi.fn().mockResolvedValue({
+      data: { resource_id: 'r1', revision_id: 'rev1' },
+    });
+
+    const action: CustomCreateAction = {
+      name: 'import',
+      label: 'Import',
+      fields: [makeField('url')],
+      apiMethod: mockApiMethod,
+    };
+
+    const config = makeConfig({
+      customCreateActions: [action],
+    });
+
+    renderCreate(config, { customFormOnly: true });
+
+    fireEvent.click(screen.getByTestId('form-submit'));
+
+    await waitFor(() => {
+      expect(mockApiMethod).toHaveBeenCalled();
+      expect(mockNavigate).toHaveBeenCalledWith({ to: '/test' });
+    });
   });
 });
