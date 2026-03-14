@@ -14,6 +14,7 @@ import {
   computeTableMode,
   mrtSortingToSorts,
   mrtFiltersToParams,
+  DEFAULT_SORTING,
 } from './utils';
 
 // ---------------------------------------------------------------------------
@@ -330,5 +331,31 @@ describe('mrtFiltersToParams', () => {
     );
     expect(serverParams).toEqual({ created_bys: ['admin'] });
     expect(dataConditions).toEqual([{ field_path: 'name', operator: 'contains', value: 'bob' }]);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// DEFAULT_SORTING
+// ---------------------------------------------------------------------------
+
+describe('DEFAULT_SORTING', () => {
+  it('sorts by updated_time descending', () => {
+    expect(DEFAULT_SORTING).toEqual([{ id: 'updated_time', desc: true }]);
+  });
+
+  it('is a valid server-sortable state (stays in server mode)', () => {
+    const mode = computeTableMode({
+      debouncedGlobalFilter: '',
+      sorting: DEFAULT_SORTING,
+      columnFilters: [],
+      indexedFields: [],
+    });
+    expect(mode).toBe('server');
+  });
+
+  it('produces valid backend sorts string via mrtSortingToSorts', () => {
+    const sortsStr = mrtSortingToSorts(DEFAULT_SORTING);
+    const parsed = JSON.parse(sortsStr);
+    expect(parsed).toEqual([{ type: 'meta', key: 'updated_time', direction: '-' }]);
   });
 });
