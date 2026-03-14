@@ -7,6 +7,8 @@ import type {
   RevisionListResponse,
 } from '../types/api';
 import type { z } from 'zod';
+import type { SearchCondition } from './components/table/types';
+import type { MRT_SortingState } from 'mantine-react-table';
 
 /**
  * Field variant types - allows customization of input component
@@ -119,6 +121,94 @@ export interface CustomCreateAction {
   jobResourceName?: string;
 }
 
+// ---------------------------------------------------------------------------
+// Component-level configuration interfaces
+// ---------------------------------------------------------------------------
+
+/**
+ * Configuration options for ResourceTable component.
+ *
+ * Can be set via `ResourceCustomizationConfig.table` (config-first) or
+ * passed directly as props to `<ResourceTable>` (props override config).
+ */
+export interface TableConfig {
+  /** Whether to show the "Create" button in the table header. Defaults to `true`. */
+  canCreate?: boolean;
+  /** Search conditions that are always applied to every API request.
+   *  Useful for creating a table that only shows a slice of data
+   *  (e.g. only resources with a specific tag). */
+  alwaysSearchCondition?: SearchCondition[];
+  /** Override the outer Container size. Accepts Mantine Container `size` prop values
+   *  (e.g. `'sm'`, `'md'`, `'lg'`, `'xl'`, or a number for max-width in px).
+   *  Defaults to `'xl'`. */
+  width?: string | number;
+  /** Initial page size. Defaults to `20`. */
+  initPageSize?: number;
+  /** Available page size options for the pagination selector. */
+  rowPerPageOptions?: number[];
+  /** Whether to wrap the table in a Mantine `<Container>`. Defaults to `true`.
+   *  Set to `false` when embedding the table inside another layout. */
+  wrappedInContainer?: boolean;
+  /** Custom row click handler. Set to `false` to disable row click navigation.
+   *  Defaults to navigating to the resource detail page. */
+  onRowClick?: false | ((resourceId: string) => void);
+  /** Hide the global free-text search input. Defaults to `false`. */
+  disableGlobalSearch?: boolean;
+  /** Hide the advanced search panel. Defaults to `false`. */
+  disableAdvancedSearch?: boolean;
+  /** Override the default sort state. Defaults to `[{ id: 'updated_time', desc: true }]`. */
+  defaultSort?: MRT_SortingState;
+  /** Override the table title. Defaults to `config.label`. */
+  title?: string;
+  /** Table density. Defaults to `'xs'`. */
+  density?: 'xs' | 'sm' | 'md';
+}
+
+/**
+ * Configuration options for ResourceCreate component.
+ *
+ * Can be set via `ResourceCustomizationConfig.create` (config-first) or
+ * passed directly as props to `<ResourceCreate>` (props override config).
+ */
+export interface CreateConfig {
+  /** When `true`, only show custom create actions (hide the standard form tab).
+   *  Has no effect when there are no `customCreateActions`. Defaults to `false`. */
+  customFormOnly?: boolean;
+  /** Override the cancel / back button behaviour.
+   *  Defaults to navigating to `basePath`. */
+  onCancel?: () => void;
+  /** Whether to wrap the form in a Mantine `<Container>`. Defaults to `true`. */
+  wrappedInContainer?: boolean;
+  /** Whether to show the Back button. Defaults to `true`. */
+  showBackButton?: boolean;
+  /** Override the page title. Defaults to `"Create {config.label}"`. */
+  title?: string;
+}
+
+/**
+ * Configuration options for ResourceDetail component.
+ *
+ * Can be set via `ResourceCustomizationConfig.detail` (config-first) or
+ * passed directly as props to `<ResourceDetail>` (props override config).
+ */
+export interface DetailConfig {
+  /** Whether to wrap in a Mantine `<Container>`. Defaults to `true`. */
+  wrappedInContainer?: boolean;
+  /** Whether to show the Back button. Defaults to `true`. */
+  showBackButton?: boolean;
+  /** Whether to show the Edit button. Defaults to `true`. */
+  showEditButton?: boolean;
+  /** Whether to show the Delete / Permanently Delete buttons. Defaults to `true`. */
+  showDeleteButton?: boolean;
+  /** Whether to show the Revision History section. Defaults to `true`. */
+  showRevisionHistory?: boolean;
+  /** Override the Back button / close behaviour.
+   *  Defaults to navigating to `basePath`. */
+  onClose?: () => void;
+  /** Override the page title. Defaults to `"{config.label} Detail"`. */
+  title?: string;
+}
+
 /**
  * Resource configuration for code generation and runtime
  */
@@ -143,6 +233,12 @@ export interface ResourceConfig<T = any> {
   defaultHiddenFields?: string[];
   /** Custom create actions — alternative ways to create this resource */
   customCreateActions?: CustomCreateAction[];
+  /** Component-level config for ResourceTable (populated by applyCustomizations) */
+  tableConfig?: TableConfig;
+  /** Component-level config for ResourceCreate (populated by applyCustomizations) */
+  createConfig?: CreateConfig;
+  /** Component-level config for ResourceDetail (populated by applyCustomizations) */
+  detailConfig?: DetailConfig;
   apiClient: {
     create: (data: T) => Promise<{ data: RevisionInfo }>;
     list: (params?: any) => Promise<{ data: FullResource<T>[] }>;
@@ -223,6 +319,12 @@ export interface ResourceCustomizationConfig<F extends string = string> {
   pluralLabel?: string;
   /** Reveal fields that are in `defaultHiddenFields` — makes them visible in forms again */
   showHiddenFields?: F[];
+  /** Component-level customization for ResourceTable */
+  table?: TableConfig;
+  /** Component-level customization for ResourceCreate */
+  create?: CreateConfig;
+  /** Component-level customization for ResourceDetail */
+  detail?: DetailConfig;
 }
 
 /**
@@ -270,6 +372,11 @@ export function applyCustomizations(customizations: ResourceCustomizations<any>)
       const showSet = new Set(config.showHiddenFields);
       resource.defaultHiddenFields = resource.defaultHiddenFields.filter((f) => !showSet.has(f));
     }
+
+    // Component-level config overrides
+    if (config.table) resource.tableConfig = { ...resource.tableConfig, ...config.table };
+    if (config.create) resource.createConfig = { ...resource.createConfig, ...config.create };
+    if (config.detail) resource.detailConfig = { ...resource.detailConfig, ...config.detail };
 
     // Field-level overrides
     if (config.fields) {

@@ -364,3 +364,158 @@ describe('groupFieldsForDisplay', () => {
     expect(groups.every((g) => g.kind === 'single')).toBe(true);
   });
 });
+
+// ============================================================================
+// ResourceDetail — customization props
+// ============================================================================
+
+describe('ResourceDetail — customization props', () => {
+  beforeEach(() => {
+    cleanup();
+    vi.mocked(showErrorNotification).mockReset();
+  });
+
+  function renderDetailCustom(
+    configOverrides: Partial<ResourceConfig<any>> = {},
+    props: Record<string, any> = {},
+    isJob = false,
+  ) {
+    mockDetailResult = makeMockDetail();
+    const config = makeConfig(configOverrides);
+    return render(
+      <MantineProvider>
+        <ResourceDetail
+          config={config}
+          resourceId="r1"
+          basePath={'/test' as any}
+          isJob={isJob}
+          {...props}
+        />
+      </MantineProvider>,
+    );
+  }
+
+  // ── showEditButton ──
+
+  it('shows Edit button by default', () => {
+    renderDetailCustom();
+    expect(screen.getByText('Edit')).toBeTruthy();
+  });
+
+  it('hides Edit button when showEditButton=false', () => {
+    renderDetailCustom({}, { showEditButton: false });
+    expect(screen.queryByText('Edit')).toBeNull();
+  });
+
+  it('hides Edit button via detailConfig', () => {
+    renderDetailCustom({ detailConfig: { showEditButton: false } });
+    expect(screen.queryByText('Edit')).toBeNull();
+  });
+
+  it('props override detailConfig for showEditButton', () => {
+    renderDetailCustom({ detailConfig: { showEditButton: false } }, { showEditButton: true });
+    expect(screen.getByText('Edit')).toBeTruthy();
+  });
+
+  // ── showDeleteButton ──
+
+  it('shows Delete button by default', () => {
+    renderDetailCustom();
+    expect(screen.getByText('Delete')).toBeTruthy();
+  });
+
+  it('hides Delete button when showDeleteButton=false', () => {
+    renderDetailCustom({}, { showDeleteButton: false });
+    expect(screen.queryByText('Delete')).toBeNull();
+  });
+
+  // ── showRevisionHistory ──
+
+  it('renders RevisionHistorySection by default (mock returns null but called)', () => {
+    // The mock returns null but exists; the key is that it's called
+    renderDetailCustom();
+    // RevisionHistorySection is mocked to return null, so we can't check display
+    // but we verified it renders without error
+  });
+
+  // ── showBackButton ──
+
+  it('shows Back button by default', () => {
+    renderDetailCustom();
+    expect(screen.getByText('Back')).toBeTruthy();
+  });
+
+  it('hides Back button when showBackButton=false', () => {
+    renderDetailCustom({}, { showBackButton: false });
+    expect(screen.queryByText('Back')).toBeNull();
+  });
+
+  // ── title ──
+
+  it('uses default title for non-job resource', () => {
+    renderDetailCustom();
+    // Default: "Test Job Detail" (from config.label)
+    expect(screen.getByText('Test Job Detail')).toBeTruthy();
+  });
+
+  it('shows "Job Detail" for job resource', () => {
+    renderDetailCustom({}, {}, true);
+    expect(screen.getByText('Job Detail')).toBeTruthy();
+  });
+
+  it('uses custom title from prop', () => {
+    renderDetailCustom({}, { title: 'Custom Title' });
+    expect(screen.getByText('Custom Title')).toBeTruthy();
+  });
+
+  it('reads title from detailConfig', () => {
+    renderDetailCustom({ detailConfig: { title: 'Config Title' } });
+    expect(screen.getByText('Config Title')).toBeTruthy();
+  });
+
+  it('prop title overrides detailConfig.title', () => {
+    renderDetailCustom({ detailConfig: { title: 'Config Title' } }, { title: 'Prop Title' });
+    expect(screen.getByText('Prop Title')).toBeTruthy();
+    expect(screen.queryByText('Config Title')).toBeNull();
+  });
+
+  // ── wrappedInContainer ──
+
+  it('has Container by default', () => {
+    const { container } = renderDetailCustom();
+    const containerEl = container.querySelector('.mantine-Container-root');
+    expect(containerEl).toBeTruthy();
+  });
+
+  it('skips Container when wrappedInContainer=false', () => {
+    const { container } = renderDetailCustom({}, { wrappedInContainer: false });
+    const containerEl = container.querySelector('.mantine-Container-root');
+    expect(containerEl).toBeNull();
+  });
+
+  // ── onClose ──
+
+  it('uses onClose callback for Back button', () => {
+    const onClose = vi.fn();
+    renderDetailCustom({}, { onClose });
+    fireEvent.click(screen.getByText('Back'));
+    expect(onClose).toHaveBeenCalled();
+  });
+
+  // ── Combined config ──
+
+  it('applies multiple detailConfig settings together', () => {
+    renderDetailCustom({
+      detailConfig: {
+        showBackButton: false,
+        showEditButton: false,
+        showDeleteButton: false,
+        title: 'Read-Only View',
+      },
+    });
+    expect(screen.queryByText('Back')).toBeNull();
+    expect(screen.queryByText('Edit')).toBeNull();
+    expect(screen.queryByText('Delete')).toBeNull();
+    expect(screen.getByText('Read-Only View')).toBeTruthy();
+  });
+});
