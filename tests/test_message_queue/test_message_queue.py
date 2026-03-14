@@ -712,6 +712,7 @@ class TestMessageQueueUnified:
         queue._do = callback
         queue.start_consume()
         mock_channel.simulate_message(b"test-id", retry_count=0)
+        queue._join_workers()
 
         callback.assert_called_once()
 
@@ -756,6 +757,7 @@ class TestMessageQueueUnified:
 
         # Simulate message with retry_count = max_retries (3)
         mock_channel.simulate_message(b"test-id", retry_count=3)
+        queue._join_workers()
 
         # Verify message was published to dead letter queue
         publish_calls = [
@@ -786,6 +788,7 @@ class TestMessageQueueUnified:
         for retry_count in range(4):
             mock_channel.basic_publish.reset_mock()
             mock_channel.simulate_message(b"test-id", retry_count=retry_count)
+            queue._join_workers()
 
             if retry_count < 3:
                 # Should go to retry queue
@@ -853,6 +856,7 @@ class TestMessageQueueUnified:
         queue._do = callback
         queue.start_consume()
         mock_channel.simulate_message(b"test-id", retry_count=0)
+        queue._join_workers()
 
         # Verify error message was truncated to 500 characters in headers
         publish_calls = [
@@ -892,6 +896,7 @@ class TestMessageQueueUnified:
         queue._do = callback
         queue.start_consume()
         mock_channel.simulate_message(b"test-id", retry_count=1)
+        queue._join_workers()
 
         update_calls = [
             c

@@ -407,6 +407,7 @@ class TestPerJobMaxRetriesRabbitMQ:
 
         # retry_count=1 equals per-job max_retries → should go to dead queue
         mock_channel.simulate_message(b"test-id", retry_count=1)
+        queue._join_workers()
 
         publish_calls = [
             c
@@ -430,6 +431,7 @@ class TestPerJobMaxRetriesRabbitMQ:
 
         # retry_count=2 < queue default 3 → should go to retry queue
         mock_channel.simulate_message(b"test-id", retry_count=2)
+        queue._join_workers()
 
         retry_calls = [
             c
@@ -449,6 +451,7 @@ class TestPerJobMaxRetriesRabbitMQ:
         queue.start_consume()
 
         mock_channel.simulate_message(b"test-id", retry_count=0)
+        queue._join_workers()
 
         dead_calls = [
             c
@@ -470,6 +473,7 @@ class TestPerJobMaxRetriesRabbitMQ:
         for retry_count in range(3):
             mock_channel.basic_publish.reset_mock()
             mock_channel.simulate_message(b"test-id", retry_count=retry_count)
+            queue._join_workers()
 
             if retry_count < 2:
                 # Should go to retry queue
