@@ -1612,7 +1612,7 @@ Object.assign(registry, {
         label: 'Type',
         type: 'string',
         isArray: false,
-        isRequired: true,
+        isRequired: false,
         isNullable: false,
         enumValues: ['EventBodyX'],
         constValue: 'EventBodyX',
@@ -1622,7 +1622,7 @@ Object.assign(registry, {
         label: 'Good',
         type: 'string',
         isArray: false,
-        isRequired: true,
+        isRequired: false,
         isNullable: false,
       },
       {
@@ -1630,7 +1630,7 @@ Object.assign(registry, {
         label: 'Great',
         type: 'number',
         isArray: false,
-        isRequired: true,
+        isRequired: false,
         isNullable: false,
       },
       {
@@ -1654,7 +1654,7 @@ Object.assign(registry, {
         label: 'Process Times',
         type: 'number',
         isArray: false,
-        isRequired: true,
+        isRequired: false,
         isNullable: false,
       },
       {
@@ -1715,38 +1715,47 @@ Object.assign(registry, {
       },
     ],
     zodSchema: z.object({
-      payload: z.object({
-        event_x: z.object({
-          type: z.literal('EventBodyX'),
-          good: z.string(),
-          great: z.number().int(),
-        }),
-        event_type: z.any(),
-        character_name: z.string(),
-        character_id: z.string().nullable(),
-        description: z.string(),
-        reward_gold: z.number().int().optional(),
-        reward_exp: z.number().int().optional(),
-        extra_data: z.record(z.string(), z.any()).optional(),
-        event_body: z
-          .discriminatedUnion('type', [
-            z.object({
-              type: z.literal('EventBodyA'),
-              extra_info_a: z.string(),
-              extra_value_a: z.number().int(),
-            }),
-            z.object({
-              type: z.literal('EventBodyB'),
-              some_field: z.string(),
-              cooldown_seconds: z.number().int(),
-            }),
-          ])
-          .nullable()
-          .optional(),
-      }),
-      artifact: z.object({
-        process_times: z.number(),
-      }),
+      payload: z
+        .object({
+          event_x: z
+            .object({
+              type: z.literal('EventBodyX').optional(),
+              good: z.string().optional(),
+              great: z.number().int().optional(),
+            })
+            .nullable()
+            .optional(),
+          event_type: z.any(),
+          character_name: z.string(),
+          character_id: z.string().nullable(),
+          description: z.string(),
+          reward_gold: z.number().int().optional(),
+          reward_exp: z.number().int().optional(),
+          extra_data: z.record(z.string(), z.any()).optional(),
+          event_body: z
+            .discriminatedUnion('type', [
+              z.object({
+                type: z.literal('EventBodyA'),
+                extra_info_a: z.string(),
+                extra_value_a: z.number().int(),
+              }),
+              z.object({
+                type: z.literal('EventBodyB'),
+                some_field: z.string(),
+                cooldown_seconds: z.number().int(),
+              }),
+            ])
+            .nullable()
+            .optional(),
+        })
+        .nullable()
+        .optional(),
+      artifact: z
+        .object({
+          process_times: z.number().optional(),
+        })
+        .nullable()
+        .optional(),
       status: z.any().optional(),
       errmsg: z.string().nullable().optional(),
       retries: z.number().int().optional(),
@@ -1762,6 +1771,7 @@ Object.assign(registry, {
     defaultHiddenFields: [
       'status',
       'errmsg',
+      'artifact.process_times',
       'retries',
       'max_retries',
       'periodic_interval_seconds',
@@ -1895,6 +1905,7 @@ Object.assign(registry, {
       'periodic_initial_delay_seconds',
       'last_heartbeat_at',
     ],
+    tableConfig: { canCreate: false },
   },
   'create-new-character2-job': {
     name: 'create-new-character2-job',
@@ -2020,6 +2031,7 @@ Object.assign(registry, {
       'periodic_initial_delay_seconds',
       'last_heartbeat_at',
     ],
+    tableConfig: { canCreate: false },
   },
   'create-new-character4-job': {
     name: 'create-new-character4-job',
@@ -2353,6 +2365,7 @@ Object.assign(registry, {
       'periodic_initial_delay_seconds',
       'last_heartbeat_at',
     ],
+    tableConfig: { canCreate: false },
   },
   pet: {
     name: 'pet',

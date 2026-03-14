@@ -75,6 +75,20 @@ export function buildRawColumns<T>(config: ResourceConfig<T>): InternalColumnDef
       variant: 'string',
       customRender: (value) => ResourceIdCell({ rid: String(value) }),
     },
+    {
+      id: 'updated_time',
+      header: 'Updated',
+      accessorFn: (row) => row?.meta?.updated_time,
+      variant: 'relative-time',
+      defaultHidden: false,
+    },
+    {
+      id: 'updated_by',
+      header: 'Updated By',
+      accessorFn: (row) => row?.meta?.updated_by,
+      variant: 'string',
+      defaultHidden: true,
+    },
   ];
 
   // Data fields — cell rendering is delegated to CellFieldRenderer registry
@@ -165,20 +179,6 @@ export function buildRawColumns<T>(config: ResourceConfig<T>): InternalColumnDef
       id: 'created_by',
       header: 'Created By',
       accessorFn: (row) => row?.meta?.created_by,
-      variant: 'string',
-      defaultHidden: true,
-    },
-    {
-      id: 'updated_time',
-      header: 'Updated',
-      accessorFn: (row) => row?.meta?.updated_time,
-      variant: 'relative-time',
-      defaultHidden: false,
-    },
-    {
-      id: 'updated_by',
-      header: 'Updated By',
-      accessorFn: (row) => row?.meta?.updated_by,
       variant: 'string',
       defaultHidden: true,
     },

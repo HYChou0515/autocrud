@@ -26,7 +26,7 @@ export function useResourceList<T>(
 ): UseResourceListResult<T> {
   const [data, setData] = useState<FullResource<T>[]>([]);
   const [total, setTotal] = useState(0);
-  const [loading, setLoading] = useState(true);
+  const [loading, setLoading] = useState(!!(config as unknown));
   const [error, setError] = useState<Error | null>(null);
   const [refreshCount, setRefreshCount] = useState(0);
 
@@ -35,6 +35,11 @@ export function useResourceList<T>(
   }, []);
 
   useEffect(() => {
+    if (!config) {
+      setLoading(false);
+      return;
+    }
+
     let cancelled = false;
 
     const fetchData = async () => {
@@ -66,7 +71,7 @@ export function useResourceList<T>(
     return () => {
       cancelled = true;
     };
-  }, [config.apiClient, JSON.stringify(params), refreshCount]);
+  }, [config?.apiClient, JSON.stringify(params), refreshCount]);
 
   return { data, total, loading, error, refresh };
 }

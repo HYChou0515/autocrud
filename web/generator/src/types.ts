@@ -94,6 +94,13 @@ export interface Field {
    * e.g. list[list[int]] → nestedArrayInner describes the inner list[int].
    */
   nestedArrayInner?: Field;
+  /**
+   * When a struct field is expanded into dot-notation sub-fields,
+   * these flags indicate whether the parent struct field was nullable/optional.
+   * Used by codegen to emit `.nullable().optional()` on the re-nested z.object().
+   */
+  parentNullable?: boolean;
+  parentOptional?: boolean;
 }
 
 // ─── Custom Create Actions ───────────────────────────────────────────────────

@@ -144,7 +144,12 @@ export function buildNestedZodFields(fields: Field[], indent: string = '    '): 
   const lines: string[] = [];
   for (const [prefix, subFields] of Object.entries(nested)) {
     const inner = buildNestedZodFields(subFields, indent + '    ');
-    lines.push(`${indent}${prefix}: z.object({\n${inner}\n${indent}})`);
+    // Check if sub-fields carry parent nullable/optional flags
+    const isParentNullable = subFields.some((f) => f.parentNullable);
+    const isParentOptional = subFields.some((f) => f.parentOptional);
+    let groupZod = `z.object({\n${inner}\n${indent}})`;
+    groupZod = applyNullableOptionalZod(groupZod, isParentNullable, !isParentOptional);
+    lines.push(`${indent}${prefix}: ${groupZod}`);
   }
   for (const f of topLevel) {
     lines.push(`${indent}${f.name}: ${f.zodType}`);
@@ -204,6 +209,9 @@ export function genResourcesConfig(
     }
   }
 
+  // Extract async-create-jobs mapping early so it can be used during config generation
+  const asyncJobsMap: Record<string, string> = spec['x-autocrud-async-create-jobs'] ?? {};
+
   const configs = resources.map((r) => {
     const fields = r.fields.map((f) => serializeField(f));
     const zodSchemaExpr = buildZodSchemaExpr(r, orvalSchemas);
@@ -257,7 +265,12 @@ ${displayNameLine}    schema: '${r.schemaName}',
         ? `
     isUnion: true,`
         : ''
-    }${customActionsBlock}
+    }${customActionsBlock}${
+      r.name in asyncJobsMap
+        ? `
+    tableConfig: { canCreate: false },`
+        : ''
+    }
   }`;
   });
 
@@ -282,7 +295,6 @@ ${displayNameLine}    schema: '${r.schemaName}',
 
   const fieldMapEntries = resources.map((r) => `  '${r.name}': ${r.pascal}FieldName;`).join('\n');
 
-  const asyncJobsMap: Record<string, string> = spec['x-autocrud-async-create-jobs'] ?? {};
   let asyncJobsBlock = '';
   if (Object.keys(asyncJobsMap).length > 0) {
     const entries = Object.entries(asyncJobsMap)

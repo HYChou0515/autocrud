@@ -27,7 +27,8 @@ import {
   IconHistory,
   IconRefresh,
 } from '@tabler/icons-react';
-import type { ResourceConfig, ResourceField } from '../../resources';
+import type { ResourceConfig, ResourceField, DetailConfig } from '../../resources';
+import { isAsyncCreateJob, asyncCreateJobs } from '../../resources';
 import { useResourceDetail } from '../../hooks/useResourceDetail';
 import { useFieldDepth } from '../../hooks/useFieldDepth';
 import { ResourceForm, type ResourceFormHandle } from '../form/ResourceForm';
@@ -109,7 +110,7 @@ export function groupFieldsForDisplay(fields: ResourceField[]): DisplayGroup[] {
   return groups;
 }
 
-export interface ResourceDetailProps<T> {
+export interface ResourceDetailProps<T> extends Partial<DetailConfig> {
   config: ResourceConfig<T>;
   resourceId: string;
   basePath: ResourceListRoute;
@@ -121,8 +122,13 @@ export interface ResourceDetailProps<T> {
 }
 
 /**
- * Generic resource detail page with edit, delete, restore, and revision history
- * Supports both regular resources and Job resources
+ * Generic resource detail page with edit, delete, restore, and revision history.
+ * Supports both regular resources and Job resources.
+ *
+ * Customization props (e.g. `wrappedInContainer`, `showEditButton`, `showDeleteButton`,
+ * `showRevisionHistory`, `showBackButton`, `onClose`, `title`) can be passed directly
+ * as props or set via `config.detailConfig` (populated from `ResourceCustomizationConfig.detail`).
+ * Props win when both are present.
  */
 export function ResourceDetail<T extends Record<string, any>>({
   config,
@@ -131,8 +137,33 @@ export function ResourceDetail<T extends Record<string, any>>({
   isJob = false,
   initialRevision,
   onRevisionChange,
+  // ── New customization props (override config.detailConfig) ──
+  wrappedInContainer: wrappedInContainerProp,
+  showBackButton: showBackButtonProp,
+  showEditButton: showEditButtonProp,
+  showDeleteButton: showDeleteButtonProp,
+  showRevisionHistory: showRevisionHistoryProp,
+  onClose: onCloseProp,
+  title: titleProp,
 }: ResourceDetailProps<T>) {
   const navigate = useNavigate();
+
+  // ── Merge config.detailConfig with props (props win) ──
+  const dc = config.detailConfig ?? {};
+  const wrappedInContainer = wrappedInContainerProp ?? dc.wrappedInContainer ?? true;
+  const showBackButton = showBackButtonProp ?? dc.showBackButton ?? true;
+  const showEditButton = showEditButtonProp ?? dc.showEditButton ?? true;
+  const showDeleteButton = showDeleteButtonProp ?? dc.showDeleteButton ?? true;
+  const showRevisionHistory = showRevisionHistoryProp ?? dc.showRevisionHistory ?? true;
+  const closeHandler = onCloseProp ?? dc.onClose;
+  const pageTitle = titleProp ?? dc.title;
+
+  // For async-create-job resources, the back button navigates to the parent
+  // resource list instead of the job's own list page.
+  const effectiveBackPath: ResourceListRoute = isAsyncCreateJob(config.name)
+    ? (`/autocrud-admin/${asyncCreateJobs[config.name]}` as ResourceListRoute)
+    : basePath;
+
   const [editOpen, setEditOpen] = useState(false);
   const [selectedRevision, setSelectedRevision] = useState<string | null>(initialRevision ?? null);
   const editFormRef = useRef<ResourceFormHandle | null>(null);
@@ -200,19 +231,25 @@ export function ResourceDetail<T extends Record<string, any>>({
   }, [collapsedGroups, isJob]);
 
   if (loading) {
+    const loader = <Loader />;
+    if (!wrappedInContainer) return loader;
     return (
       <Container size="lg" py="xl">
-        <Loader />
+        {loader}
       </Container>
     );
   }
 
   if (error || !resource) {
+    const errorAlert = (
+      <Alert icon={<IconAlertCircle size={16} />} title="Error" color="red">
+        {error?.message || 'Resource not found'}
+      </Alert>
+    );
+    if (!wrappedInContainer) return errorAlert;
     return (
       <Container size="lg" py="xl">
-        <Alert icon={<IconAlertCircle size={16} />} title="Error" color="red">
-          {error?.message || 'Resource not found'}
-        </Alert>
+        {errorAlert}
       </Container>
     );
   }
@@ -270,7 +307,7 @@ export function ResourceDetail<T extends Record<string, any>>({
     ) {
       try {
         await permanentlyDelete();
-        navigate({ to: basePath });
+        navigate({ to: effectiveBackPath });
       } catch (error) {
         showErrorNotification(error, 'Permanently Delete Failed');
       }
@@ -305,22 +342,35 @@ export function ResourceDetail<T extends Record<string, any>>({
     }
   };
 
-  return (
-    <Container size="lg" py="xl">
+  const defaultTitle = isJob ? 'Job Detail' : `${config.label} Detail`;
+
+  const detailContent = (
+    <>
       <Stack gap="lg">
         <Group justify="space-between">
           <Group>
-            <Button
-              component={Link}
-              to={basePath}
-              variant="subtle"
-              leftSection={<IconArrowLeft size={16} />}
-            >
-              Back
-            </Button>
+            {showBackButton &&
+              (closeHandler ? (
+                <Button
+                  variant="subtle"
+                  leftSection={<IconArrowLeft size={16} />}
+                  onClick={closeHandler}
+                >
+                  Back
+                </Button>
+              ) : (
+                <Button
+                  component={Link}
+                  to={effectiveBackPath}
+                  variant="subtle"
+                  leftSection={<IconArrowLeft size={16} />}
+                >
+                  Back
+                </Button>
+              ))}
             <div>
               <Group gap="xs" mb="xs">
-                <Title order={2}>{isJob ? 'Job Detail' : `${config.label} Detail`}</Title>
+                <Title order={2}>{pageTitle ?? defaultTitle}</Title>
                 {isJob && jobStatus && (
                   <Badge color={JOB_STATUS_COLORS[jobStatus] || 'gray'} variant="filled">
                     {jobStatus.toUpperCase()}
@@ -350,21 +400,25 @@ export function ResourceDetail<T extends Record<string, any>>({
                       Rerun
                     </Button>
                   )}
-                <Button
-                  variant="light"
-                  leftSection={<IconEdit size={16} />}
-                  onClick={() => setEditOpen(true)}
-                >
-                  Edit
-                </Button>
-                <Button
-                  color="red"
-                  variant="light"
-                  leftSection={<IconTrash size={16} />}
-                  onClick={handleDelete}
-                >
-                  Delete
-                </Button>
+                {showEditButton && (
+                  <Button
+                    variant="light"
+                    leftSection={<IconEdit size={16} />}
+                    onClick={() => setEditOpen(true)}
+                  >
+                    Edit
+                  </Button>
+                )}
+                {showDeleteButton && (
+                  <Button
+                    color="red"
+                    variant="light"
+                    leftSection={<IconTrash size={16} />}
+                    onClick={handleDelete}
+                  >
+                    Delete
+                  </Button>
+                )}
               </>
             )}
             {!isViewingHistorical && meta.is_deleted && (
@@ -376,14 +430,16 @@ export function ResourceDetail<T extends Record<string, any>>({
                 >
                   Restore
                 </Button>
-                <Button
-                  color="red"
-                  variant="filled"
-                  leftSection={<IconTrashX size={16} />}
-                  onClick={handlePermanentlyDelete}
-                >
-                  Permanently Delete
-                </Button>
+                {showDeleteButton && (
+                  <Button
+                    color="red"
+                    variant="filled"
+                    leftSection={<IconTrashX size={16} />}
+                    onClick={handlePermanentlyDelete}
+                  >
+                    Permanently Delete
+                  </Button>
+                )}
               </>
             )}
           </Group>
@@ -555,15 +611,17 @@ export function ResourceDetail<T extends Record<string, any>>({
 
         <MetadataSection meta={meta} revisionInfo={revision_info} variant="full" />
 
-        <RevisionHistorySection
-          config={config}
-          resourceId={meta.resource_id}
-          currentRevisionId={meta.current_revision_id}
-          onRevisionSelect={(revisionId) => {
-            handleRevisionSelect(revisionId === meta.current_revision_id ? null : revisionId);
-          }}
-          selectedRevisionId={selectedRevision || undefined}
-        />
+        {showRevisionHistory && (
+          <RevisionHistorySection
+            config={config}
+            resourceId={meta.resource_id}
+            currentRevisionId={meta.current_revision_id}
+            onRevisionSelect={(revisionId) => {
+              handleRevisionSelect(revisionId === meta.current_revision_id ? null : revisionId);
+            }}
+            selectedRevisionId={selectedRevision || undefined}
+          />
+        )}
       </Stack>
 
       <Modal
@@ -583,6 +641,14 @@ export function ResourceDetail<T extends Record<string, any>>({
           />
         )}
       </Modal>
+    </>
+  );
+
+  if (!wrappedInContainer) return detailContent;
+
+  return (
+    <Container size="lg" py="xl">
+      {detailContent}
     </Container>
   );
 }

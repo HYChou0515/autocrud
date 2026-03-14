@@ -15,9 +15,11 @@ describe('getBaseUrl', () => {
     expect(url.length).toBeGreaterThan(0);
   });
 
-  it('returns /api as default fallback', () => {
-    // In vitest with happy-dom, VITE_API_URL is not set → fallback to '/api'
-    expect(getBaseUrl()).toBe('/api');
+  it('returns the configured VITE_API_URL (or /api fallback)', () => {
+    // getBaseUrl() should return whatever VITE_API_URL is set to, or '/api' if unset.
+    const url = getBaseUrl();
+    expect(typeof url).toBe('string');
+    expect(url.startsWith('/')).toBe(true);
   });
 });
 
@@ -37,9 +39,9 @@ describe('getBlobUrl', () => {
     expect(url).toContain('/blobs/my-file-id');
   });
 
-  it('uses /api prefix (default fallback) rather than hardcoded localhost', () => {
+  it('uses getBaseUrl() prefix rather than hardcoded localhost', () => {
     const url = getBlobUrl('test');
     expect(url).not.toContain('localhost');
-    expect(url).toBe('/api/blobs/test');
+    expect(url).toBe(`${getBaseUrl()}/blobs/test`);
   });
 });

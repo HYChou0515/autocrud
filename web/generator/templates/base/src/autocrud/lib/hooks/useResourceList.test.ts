@@ -77,9 +77,7 @@ describe('useResourceList', () => {
   });
 
   it('does not crash when config is null', async () => {
-    const { result } = renderHook(() =>
-      useResourceList(null as unknown as ResourceConfig, {}),
-    );
+    const { result } = renderHook(() => useResourceList(null as unknown as ResourceConfig, {}));
 
     await waitFor(() => {
       expect(result.current.loading).toBe(false);

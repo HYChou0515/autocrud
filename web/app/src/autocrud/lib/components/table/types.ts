@@ -2,7 +2,7 @@
  * ResourceTable 相關類型定義
  */
 
-import type { ResourceConfig } from '../../resources';
+import type { ResourceConfig, TableConfig } from '../../resources';
 
 /**
  * 搜尋條件介面
@@ -82,8 +82,10 @@ export interface NormalizedSearchableField extends Omit<SearchableField, 'label'
 
 /**
  * ResourceTable 元件 Props
+ *
+ * Props override values from `config.tableConfig` (set via `ResourceCustomizationConfig.table`).
  */
-export interface ResourceTableProps<T> {
+export interface ResourceTableProps<T> extends Partial<TableConfig> {
   config: ResourceConfig<T>;
   basePath: string;
   columns?: {

@@ -114,15 +114,43 @@ export function ResourceTable<T extends MRT_RowData>({
   columns,
   searchableFields,
   disableQB = true,
+  // ── New customization props (override config.tableConfig) ──
+  canCreate: canCreateProp,
+  alwaysSearchCondition: alwaysSearchConditionProp,
+  width: widthProp,
+  initPageSize: initPageSizeProp,
+  rowPerPageOptions: rowPerPageOptionsProp,
+  wrappedInContainer: wrappedInContainerProp,
+  onRowClick: onRowClickProp,
+  disableGlobalSearch: disableGlobalSearchProp,
+  disableAdvancedSearch: disableAdvancedSearchProp,
+  defaultSort: defaultSortProp,
+  title: titleProp,
+  density: densityProp,
 }: ResourceTableProps<T>) {
   const navigate = useNavigate();
 
+  // ── Merge config.tableConfig with props (props win) ──
+  const tc = config.tableConfig ?? {};
+  const canCreate = canCreateProp ?? tc.canCreate ?? true;
+  const alwaysSearchCondition = alwaysSearchConditionProp ?? tc.alwaysSearchCondition;
+  const containerSize = widthProp ?? tc.width ?? 'xl';
+  const initPageSize = initPageSizeProp ?? tc.initPageSize ?? 20;
+  const rowPerPageOptions = rowPerPageOptionsProp ?? tc.rowPerPageOptions;
+  const wrappedInContainer = wrappedInContainerProp ?? tc.wrappedInContainer ?? false;
+  const onRowClick = onRowClickProp ?? tc.onRowClick;
+  const disableGlobalSearch = disableGlobalSearchProp ?? tc.disableGlobalSearch ?? false;
+  const disableAdvancedSearch = disableAdvancedSearchProp ?? tc.disableAdvancedSearch ?? false;
+  const defaultSortOverride = defaultSortProp ?? tc.defaultSort;
+  const tableTitle = titleProp ?? tc.title ?? config.label;
+  const density = densityProp ?? tc.density ?? 'xs';
+
   // ── MRT state ──
-  const [sorting, setSorting] = useState<MRT_SortingState>(DEFAULT_SORTING);
+  const [sorting, setSorting] = useState<MRT_SortingState>(defaultSortOverride ?? DEFAULT_SORTING);
   const [columnFilters, setColumnFilters] = useState<MRT_ColumnFiltersState>([]);
   const [pagination, setPagination] = useState<MRT_PaginationState>({
     pageIndex: 0,
-    pageSize: 20,
+    pageSize: initPageSize,
   });
 
   // ── Global filter with debounce (triggers client mode after delay) ──
@@ -234,8 +262,29 @@ export function ResourceTable<T extends MRT_RowData>({
       if (sortsStr) baseParams.sorts = sortsStr;
     }
 
+    // --- Always-on search conditions (e.g. filter for a specific tag) ---
+    if (alwaysSearchCondition && alwaysSearchCondition.length > 0) {
+      const alwaysConditions = alwaysSearchCondition.map((c) => ({
+        field_path: c.field,
+        operator: c.operator,
+        value: c.value,
+      }));
+      const existing = baseParams.data_conditions
+        ? (JSON.parse(baseParams.data_conditions as string) as unknown[])
+        : [];
+      baseParams.data_conditions = JSON.stringify([...existing, ...alwaysConditions]);
+    }
+
     return baseParams;
-  }, [mode, pagination, activeSearch, sorting, columnFilters, config.indexedFields]);
+  }, [
+    mode,
+    pagination,
+    activeSearch,
+    sorting,
+    columnFilters,
+    config.indexedFields,
+    alwaysSearchCondition,
+  ]);
 
   const { data, total, loading, error, refresh } = useResourceList(config, params);
 
@@ -284,8 +333,8 @@ export function ResourceTable<T extends MRT_RowData>({
     data: data as FullResourceRow<T>[],
 
     // Global filter
-    enableGlobalFilter: true,
-    onGlobalFilterChange: setGlobalFilter,
+    enableGlobalFilter: !disableGlobalSearch,
+    onGlobalFilterChange: disableGlobalSearch ? undefined : setGlobalFilter,
 
     // Column filters
     enableColumnFilters: true,
@@ -296,6 +345,9 @@ export function ResourceTable<T extends MRT_RowData>({
 
     // Pagination
     onPaginationChange: setPagination,
+    ...(rowPerPageOptions
+      ? { mantinePaginationProps: { rowsPerPageOptions: rowPerPageOptions.map(String) } }
+      : {}),
 
     // Server / client mode toggle
     manualPagination: isServer,
@@ -306,57 +358,68 @@ export function ResourceTable<T extends MRT_RowData>({
     state: {
       isLoading: loading,
       sorting,
-      globalFilter,
+      globalFilter: disableGlobalSearch ? undefined : globalFilter,
       columnFilters,
       pagination,
     },
 
-    mantineTableBodyRowProps: ({ row }) => ({
-      onClick: () =>
-        navigate({
-          to: `${basePath}/$resourceId`,
-          params: { resourceId: row.original?.meta?.resource_id ?? '' },
-        }),
-      style: { cursor: 'pointer' },
-    }),
-    initialState: { density: 'xs' },
+    mantineTableBodyRowProps:
+      onRowClick === false
+        ? undefined
+        : ({ row }) => ({
+            onClick: () => {
+              const rid = row.original?.meta?.resource_id ?? '';
+              if (typeof onRowClick === 'function') {
+                onRowClick(rid);
+              } else {
+                navigate({
+                  to: `${basePath}/$resourceId`,
+                  params: { resourceId: rid },
+                });
+              }
+            },
+            style: { cursor: 'pointer' },
+          }),
+    initialState: { density },
   });
 
-  return (
-    <Container size="xl" py="xl">
-      <Stack gap="md">
-        <Group justify="space-between">
-          <div>
-            <Title order={2}>{config.label}</Title>
-            <Group gap="xs">
-              <Text c="dimmed" size="sm">
-                {countLabel}
+  const tableContent = (
+    <Stack gap="md">
+      <Group justify="space-between">
+        <div>
+          <Title order={2}>{tableTitle}</Title>
+          <Group gap="xs">
+            <Text c="dimmed" size="sm">
+              {countLabel}
+            </Text>
+            <Badge size="xs" variant="light" color={isServer ? 'blue' : 'orange'}>
+              {isServer ? 'Server' : 'Client'}
+            </Badge>
+            {clientOverflowInfo && (
+              <Text c="orange" size="xs">
+                僅載入 {formatTime(clientOverflowInfo.cutoffTime, 'full')} 之後更新的資料，尚有{' '}
+                {clientOverflowInfo.unfetchedCount} 筆未載入
               </Text>
-              <Badge size="xs" variant="light" color={isServer ? 'blue' : 'orange'}>
-                {isServer ? 'Server' : 'Client'}
-              </Badge>
-              {clientOverflowInfo && (
-                <Text c="orange" size="xs">
-                  僅載入 {formatTime(clientOverflowInfo.cutoffTime, 'full')} 之後更新的資料，尚有{' '}
-                  {clientOverflowInfo.unfetchedCount} 筆未載入
-                </Text>
-              )}
-            </Group>
-          </div>
-          <Group>
-            <Button variant="light" leftSection={<IconRefresh size={16} />} onClick={refresh}>
-              Refresh
-            </Button>
+            )}
+          </Group>
+        </div>
+        <Group>
+          <Button variant="light" leftSection={<IconRefresh size={16} />} onClick={refresh}>
+            Refresh
+          </Button>
+          {canCreate && (
             <Button
               leftSection={<IconPlus size={16} />}
               onClick={() => navigate({ to: `${basePath}/create` })}
             >
               Create
             </Button>
-          </Group>
+          )}
         </Group>
+      </Group>
 
-        {/* 即時篩選 - client-side free text search (triggers client mode after debounce) */}
+      {/* 即時篩選 - client-side free text search (triggers client mode after debounce) */}
+      {!disableGlobalSearch && (
         <TextInput
           placeholder="Search all loaded resources..."
           value={globalFilter ?? ''}
@@ -371,24 +434,34 @@ export function ResourceTable<T extends MRT_RowData>({
           }
           size="sm"
         />
+      )}
 
-        {/* 進階搜尋面板（後端查詢） */}
+      {/* 進階搜尋面板（後端查詢） */}
+      {!disableAdvancedSearch && (
         <AdvancedSearchPanel
           config={config}
           searchableFields={searchableFields}
           disableQB={disableQB}
           onSearchChange={handleSearchChange}
         />
+      )}
 
-        {/* 錯誤訊息 */}
-        {error && (
-          <Alert icon={<IconAlertCircle size={16} />} title="搜尋錯誤" color="red" withCloseButton>
-            {error.message}
-          </Alert>
-        )}
+      {/* 錯誤訊息 */}
+      {error && (
+        <Alert icon={<IconAlertCircle size={16} />} title="搜尋錯誤" color="red" withCloseButton>
+          {error.message}
+        </Alert>
+      )}
 
-        <MantineReactTable table={table} />
-      </Stack>
+      <MantineReactTable table={table} />
+    </Stack>
+  );
+
+  if (!wrappedInContainer) return tableContent;
+
+  return (
+    <Container size={containerSize as any} py="xl">
+      {tableContent}
     </Container>
   );
 }

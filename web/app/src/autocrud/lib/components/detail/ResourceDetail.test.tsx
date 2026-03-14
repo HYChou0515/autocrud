@@ -71,9 +71,28 @@ vi.mock('../../utils/errorNotification', () => ({
 }));
 
 vi.mock('@tanstack/react-router', () => ({
-  Link: (props: any) => props.children,
+  Link: (props: any) => (
+    <a data-testid="back-link" data-to={props.to}>
+      {props.children}
+    </a>
+  ),
   useNavigate: () => vi.fn(),
 }));
+
+// Mock async create job helpers — use vi.hoisted so the variable is available in the mock factory
+const { mockAsyncCreateJobs } = vi.hoisted(() => {
+  const mockAsyncCreateJobs: Record<string, string> = {};
+  return { mockAsyncCreateJobs };
+});
+
+vi.mock('../../resources', async (importOriginal) => {
+  const actual = (await importOriginal()) as any;
+  return {
+    ...actual,
+    isAsyncCreateJob: (name: string) => name in mockAsyncCreateJobs,
+    asyncCreateJobs: mockAsyncCreateJobs,
+  };
+});
 
 import { render, screen, fireEvent, waitFor, cleanup } from '@testing-library/react';
 import { MantineProvider } from '@mantine/core';
@@ -362,5 +381,213 @@ describe('groupFieldsForDisplay', () => {
     const groups = groupFieldsForDisplay(fields);
     expect(groups).toHaveLength(3);
     expect(groups.every((g) => g.kind === 'single')).toBe(true);
+  });
+});
+
+// ============================================================================
+// ResourceDetail — customization props
+// ============================================================================
+
+describe('ResourceDetail — customization props', () => {
+  beforeEach(() => {
+    cleanup();
+    vi.mocked(showErrorNotification).mockReset();
+  });
+
+  function renderDetailCustom(
+    configOverrides: Partial<ResourceConfig<any>> = {},
+    props: Record<string, any> = {},
+    isJob = false,
+  ) {
+    mockDetailResult = makeMockDetail();
+    const config = makeConfig(configOverrides);
+    return render(
+      <MantineProvider>
+        <ResourceDetail
+          config={config}
+          resourceId="r1"
+          basePath={'/test' as any}
+          isJob={isJob}
+          {...props}
+        />
+      </MantineProvider>,
+    );
+  }
+
+  // ── showEditButton ──
+
+  it('shows Edit button by default', () => {
+    renderDetailCustom();
+    expect(screen.getByText('Edit')).toBeTruthy();
+  });
+
+  it('hides Edit button when showEditButton=false', () => {
+    renderDetailCustom({}, { showEditButton: false });
+    expect(screen.queryByText('Edit')).toBeNull();
+  });
+
+  it('hides Edit button via detailConfig', () => {
+    renderDetailCustom({ detailConfig: { showEditButton: false } });
+    expect(screen.queryByText('Edit')).toBeNull();
+  });
+
+  it('props override detailConfig for showEditButton', () => {
+    renderDetailCustom({ detailConfig: { showEditButton: false } }, { showEditButton: true });
+    expect(screen.getByText('Edit')).toBeTruthy();
+  });
+
+  // ── showDeleteButton ──
+
+  it('shows Delete button by default', () => {
+    renderDetailCustom();
+    expect(screen.getByText('Delete')).toBeTruthy();
+  });
+
+  it('hides Delete button when showDeleteButton=false', () => {
+    renderDetailCustom({}, { showDeleteButton: false });
+    expect(screen.queryByText('Delete')).toBeNull();
+  });
+
+  // ── showRevisionHistory ──
+
+  it('renders RevisionHistorySection by default (mock returns null but called)', () => {
+    // The mock returns null but exists; the key is that it's called
+    renderDetailCustom();
+    // RevisionHistorySection is mocked to return null, so we can't check display
+    // but we verified it renders without error
+  });
+
+  // ── showBackButton ──
+
+  it('shows Back button by default', () => {
+    renderDetailCustom();
+    expect(screen.getByText('Back')).toBeTruthy();
+  });
+
+  it('hides Back button when showBackButton=false', () => {
+    renderDetailCustom({}, { showBackButton: false });
+    expect(screen.queryByText('Back')).toBeNull();
+  });
+
+  // ── title ──
+
+  it('uses default title for non-job resource', () => {
+    renderDetailCustom();
+    // Default: "Test Job Detail" (from config.label)
+    expect(screen.getByText('Test Job Detail')).toBeTruthy();
+  });
+
+  it('shows "Job Detail" for job resource', () => {
+    renderDetailCustom({}, {}, true);
+    expect(screen.getByText('Job Detail')).toBeTruthy();
+  });
+
+  it('uses custom title from prop', () => {
+    renderDetailCustom({}, { title: 'Custom Title' });
+    expect(screen.getByText('Custom Title')).toBeTruthy();
+  });
+
+  it('reads title from detailConfig', () => {
+    renderDetailCustom({ detailConfig: { title: 'Config Title' } });
+    expect(screen.getByText('Config Title')).toBeTruthy();
+  });
+
+  it('prop title overrides detailConfig.title', () => {
+    renderDetailCustom({ detailConfig: { title: 'Config Title' } }, { title: 'Prop Title' });
+    expect(screen.getByText('Prop Title')).toBeTruthy();
+    expect(screen.queryByText('Config Title')).toBeNull();
+  });
+
+  // ── wrappedInContainer ──
+
+  it('has Container by default', () => {
+    const { container } = renderDetailCustom();
+    const containerEl = container.querySelector('.mantine-Container-root');
+    expect(containerEl).toBeTruthy();
+  });
+
+  it('skips Container when wrappedInContainer=false', () => {
+    const { container } = renderDetailCustom({}, { wrappedInContainer: false });
+    const containerEl = container.querySelector('.mantine-Container-root');
+    expect(containerEl).toBeNull();
+  });
+
+  // ── onClose ──
+
+  it('uses onClose callback for Back button', () => {
+    const onClose = vi.fn();
+    renderDetailCustom({}, { onClose });
+    fireEvent.click(screen.getByText('Back'));
+    expect(onClose).toHaveBeenCalled();
+  });
+
+  // ── Combined config ──
+
+  it('applies multiple detailConfig settings together', () => {
+    renderDetailCustom({
+      detailConfig: {
+        showBackButton: false,
+        showEditButton: false,
+        showDeleteButton: false,
+        title: 'Read-Only View',
+      },
+    });
+    expect(screen.queryByText('Back')).toBeNull();
+    expect(screen.queryByText('Edit')).toBeNull();
+    expect(screen.queryByText('Delete')).toBeNull();
+    expect(screen.getByText('Read-Only View')).toBeTruthy();
+  });
+});
+
+// ============================================================================
+// Async create job — back button navigates to parent resource
+// ============================================================================
+describe('ResourceDetail — async create job back button', () => {
+  beforeEach(() => {
+    cleanup();
+    // Clear the mapping
+    Object.keys(mockAsyncCreateJobs).forEach((k) => delete mockAsyncCreateJobs[k]);
+  });
+
+  it('shows back link pointing to job list for regular job resource', () => {
+    mockDetailResult = makeMockDetail();
+
+    const config = makeConfig({ name: 'pet-job' });
+    render(
+      <MantineProvider>
+        <ResourceDetail
+          config={config}
+          resourceId="r1"
+          basePath={'/autocrud-admin/pet-job' as any}
+          isJob={true}
+        />
+      </MantineProvider>,
+    );
+
+    const backLink = screen.getByTestId('back-link');
+    expect(backLink.getAttribute('data-to')).toBe('/autocrud-admin/pet-job');
+  });
+
+  it('shows back link pointing to parent resource for async create job', () => {
+    // Register this job as an async create job of "character"
+    mockAsyncCreateJobs['new-char1-job'] = 'character';
+
+    mockDetailResult = makeMockDetail();
+
+    const config = makeConfig({ name: 'new-char1-job' });
+    render(
+      <MantineProvider>
+        <ResourceDetail
+          config={config}
+          resourceId="r1"
+          basePath={'/autocrud-admin/new-char1-job' as any}
+          isJob={true}
+        />
+      </MantineProvider>,
+    );
+
+    const backLink = screen.getByTestId('back-link');
+    // Should navigate to parent (character), not to the job list
+    expect(backLink.getAttribute('data-to')).toBe('/autocrud-admin/character');
   });
 });

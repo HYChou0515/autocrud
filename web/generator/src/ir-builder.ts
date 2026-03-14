@@ -312,14 +312,33 @@ export class IRBuilder {
           nonNullTypes[0].properties &&
           !this.isBinarySchema(nonNullTypes[0])
         ) {
+          const isParentRequired = required.has(name);
           const subFields = this.extractFields(nonNullTypes[0], fullName, currentDepth + 1, maxDepth);
+          // If the parent field is not required or is nullable,
+          // propagate that to all expanded sub-fields so the form
+          // doesn't mark them as required.
+          for (const sf of subFields) {
+            if (!isParentRequired) {
+              sf.isRequired = false;
+              sf.parentOptional = true;
+            }
+            sf.parentNullable = true; // anyOf with null → always nullable
+          }
           fields.push(...subFields);
           continue;
         }
       }
 
       if (prop.type === 'object' && prop.properties && currentDepth < maxDepth && !this.isBinarySchema(prop)) {
+        const isParentRequired = required.has(name);
         const subFields = this.extractFields(prop, fullName, currentDepth + 1, maxDepth);
+        // If the parent object field is not required, propagate to sub-fields
+        if (!isParentRequired) {
+          for (const sf of subFields) {
+            sf.isRequired = false;
+            sf.parentOptional = true;
+          }
+        }
         fields.push(...subFields);
       } else {
         const field = this.parseField(fullName, rawProp, required.has(name));
@@ -932,10 +951,19 @@ export class IRBuilder {
     return matchedFields.length >= 3;
   }
 
-  /** Get the list of job management field names that actually exist in this resource's fields */
+  /** Get the list of job management field names that actually exist in this resource's fields.
+   *  Also matches dot-notation expanded sub-fields (e.g. artifact.process_times). */
   getJobHiddenFields(r: Resource): string[] {
     const jobMgmtFields = new Set(this.jobFields);
-    return r.fields.filter((f) => jobMgmtFields.has(f.name)).map((f) => f.name);
+    return r.fields
+      .filter((f) => {
+        // Exact match (e.g. "status", "retries")
+        if (jobMgmtFields.has(f.name)) return true;
+        // Prefix match for expanded sub-fields (e.g. "artifact.process_times")
+        const topLevel = f.name.split('.')[0];
+        return jobMgmtFields.has(topLevel);
+      })
+      .map((f) => f.name);
   }
 
   isBinarySchema(schema: any): boolean {

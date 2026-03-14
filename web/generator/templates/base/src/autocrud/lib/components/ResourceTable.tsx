@@ -6,12 +6,15 @@
 
 export {
   ResourceTable,
+  MultiResourceTable,
   ResourceIdCell,
   SearchForm,
   MetaSearchForm,
   operatorLabels,
   getDefaultOperators,
 } from './table';
+
+export type { MultiResourceTableProps } from './table';
 
 export type {
   SearchCondition,

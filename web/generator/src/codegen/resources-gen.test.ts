@@ -158,6 +158,59 @@ describe('genResourcesConfig — Job defaultHiddenFields', () => {
     expect(code).toContain("'artifact'");
   });
 
+  it('hides expanded artifact sub-fields (dot-notation) in defaultHiddenFields', () => {
+    // When artifact is a typed struct (e.g. GameEventArtifact),
+    // extractFields expands it to artifact.process_times etc.
+    // These expanded fields should still be hidden.
+    const spec = {
+      info: { title: 'Test', version: '1.0' },
+      paths: {
+        '/game-event': {
+          post: {
+            requestBody: { content: { 'application/json': { schema: { $ref: '#/components/schemas/GameEvent' } } } },
+          },
+        },
+        '/game-event/{id}': { get: {} },
+      },
+      components: {
+        schemas: {
+          GameEventArtifact: {
+            type: 'object',
+            properties: { process_times: { type: 'number' } },
+            required: ['process_times'],
+          },
+          GameEvent: {
+            type: 'object',
+            properties: {
+              payload: { type: 'object', properties: { event_type: { type: 'string' } }, required: ['event_type'] },
+              status: { type: 'string', default: 'pending' },
+              errmsg: { type: 'string', default: '' },
+              artifact: {
+                anyOf: [{ $ref: '#/components/schemas/GameEventArtifact' }, { type: 'null' }],
+                default: null,
+              },
+              retries: { type: 'integer', default: 0 },
+              max_retries: { type: 'integer', default: 0 },
+              periodic_interval_seconds: { type: 'number', default: 0 },
+              periodic_max_runs: { type: 'integer', default: 0 },
+              periodic_runs: { type: 'integer', default: 0 },
+              periodic_initial_delay_seconds: { type: 'number', default: 0 },
+              last_heartbeat_at: { type: 'string' },
+            },
+            required: ['payload'],
+          },
+        },
+      },
+    };
+    const code = parseAndGenConfig(spec);
+    expect(code).toContain('defaultHiddenFields:');
+    // artifact.process_times should be in hidden fields
+    const hiddenMatch = code.match(/defaultHiddenFields:\s*\[([^\]]*)\]/);
+    expect(hiddenMatch).not.toBeNull();
+    const hiddenFields = hiddenMatch![1];
+    expect(hiddenFields).toContain('artifact.process_times');
+  });
+
   it('does NOT include defaultHiddenFields for non-Job resource', () => {
     const spec = {
       info: { title: 'Test', version: '1.0' },
@@ -414,6 +467,90 @@ describe('genResourcesConfig — async create action metadata', () => {
     expect(code).toContain("'generate-article-job': 'article'");
   });
 
+  it('emits tableConfig.canCreate=false for async create job resources', () => {
+    // Build a spec where generate-article-job is a full resource (with POST)
+    const spec = {
+      ...buildAsyncCreateActionSpec(),
+      paths: {
+        ...buildAsyncCreateActionSpec().paths,
+        '/generate-article-job': {
+          post: {
+            requestBody: {
+              content: {
+                'application/json': {
+                  schema: { $ref: '#/components/schemas/GenerateArticleJob' },
+                },
+              },
+            },
+          },
+        },
+      },
+      components: {
+        schemas: {
+          ...buildAsyncCreateActionSpec().components.schemas,
+          GenerateArticleJob: {
+            type: 'object',
+            properties: {
+              payload: { type: 'object' },
+              status: { type: 'string', default: 'pending' },
+            },
+            required: ['payload'],
+          },
+        },
+      },
+    };
+    const code = parseAndGenConfig(spec);
+    // The generate-article-job resource config block should contain tableConfig
+    // Find the config block inside Object.assign(registry, { ... })
+    const registryBlock = code.split('Object.assign(registry,')[1]?.split('});')[0] ?? '';
+    const jobConfigStart = registryBlock.indexOf("'generate-article-job':");
+    expect(jobConfigStart).toBeGreaterThan(-1);
+    const jobConfigBlock = registryBlock.substring(jobConfigStart, jobConfigStart + 800);
+    expect(jobConfigBlock).toContain('tableConfig: { canCreate: false }');
+  });
+
+  it('does NOT emit tableConfig.canCreate for parent resource (article)', () => {
+    const spec = {
+      ...buildAsyncCreateActionSpec(),
+      paths: {
+        ...buildAsyncCreateActionSpec().paths,
+        '/generate-article-job': {
+          post: {
+            requestBody: {
+              content: {
+                'application/json': {
+                  schema: { $ref: '#/components/schemas/GenerateArticleJob' },
+                },
+              },
+            },
+          },
+        },
+      },
+      components: {
+        schemas: {
+          ...buildAsyncCreateActionSpec().components.schemas,
+          GenerateArticleJob: {
+            type: 'object',
+            properties: { payload: { type: 'object' } },
+            required: ['payload'],
+          },
+        },
+      },
+    };
+    const code = parseAndGenConfig(spec);
+    // Extract the article config block from the registry
+    const registryBlock = code.split('Object.assign(registry,')[1]?.split('});')[0] ?? '';
+    const articleStart = registryBlock.indexOf("'article':");
+    const jobStart = registryBlock.indexOf("'generate-article-job':");
+    const articleBlock = registryBlock.substring(articleStart, jobStart);
+    expect(articleBlock).not.toContain('tableConfig');
+  });
+
+  it('does NOT emit tableConfig.canCreate for regular job resource not in asyncCreateJobs', () => {
+    const code = parseAndGenConfig(buildJobSpec());
+    expect(code).not.toContain('tableConfig');
+  });
+
   it('does not emit asyncCreateJobs when no async jobs exist', () => {
     const spec = {
       paths: {
@@ -533,5 +670,100 @@ describe('genResourcesConfig — structural union field serialization', () => {
     const code = parseAndGenConfig(spec);
     expect(code).toContain('isArray: true');
     expect(code).toContain('__variant');
+  });
+});
+
+// ============================================================================
+// buildNestedZodFields — nullable optional struct grouping
+// ============================================================================
+describe('buildNestedZodFields — nullable optional struct grouping', () => {
+  it('nested group from nullable optional parent gets .nullable().optional()', () => {
+    const spec = {
+      info: { title: 'Test', version: '1.0' },
+      paths: {
+        '/game-event': {
+          post: {
+            requestBody: {
+              content: {
+                'application/json': {
+                  schema: { $ref: '#/components/schemas/GameEvent' },
+                },
+              },
+            },
+          },
+        },
+        '/game-event/{id}': { get: {} },
+      },
+      components: {
+        schemas: {
+          GameEventArtifact: {
+            type: 'object',
+            properties: {
+              process_times: { type: 'number' },
+            },
+            required: ['process_times'],
+          },
+          GameEvent: {
+            type: 'object',
+            properties: {
+              payload: {
+                type: 'object',
+                properties: { event_type: { type: 'string' } },
+                required: ['event_type'],
+              },
+              status: { type: 'string', default: 'pending' },
+              artifact: {
+                anyOf: [{ $ref: '#/components/schemas/GameEventArtifact' }, { type: 'null' }],
+                default: null,
+              },
+            },
+            required: ['payload'],
+          },
+        },
+      },
+    };
+    const code = parseAndGenConfig(spec);
+    // artifact z.object should be nullable and optional
+    expect(code).toMatch(/artifact:\s*z\.object\(\{[^}]*\}\)\.nullable\(\)\.optional\(\)/);
+  });
+
+  it('nested group from required parent should NOT get .optional()', () => {
+    const spec = {
+      info: { title: 'Test', version: '1.0' },
+      paths: {
+        '/game-event': {
+          post: {
+            requestBody: {
+              content: {
+                'application/json': {
+                  schema: { $ref: '#/components/schemas/GameEvent' },
+                },
+              },
+            },
+          },
+        },
+        '/game-event/{id}': { get: {} },
+      },
+      components: {
+        schemas: {
+          GameEvent: {
+            type: 'object',
+            properties: {
+              payload: {
+                type: 'object',
+                properties: { event_type: { type: 'string' } },
+                required: ['event_type'],
+              },
+            },
+            required: ['payload'],
+          },
+        },
+      },
+    };
+    const code = parseAndGenConfig(spec);
+    // payload z.object should NOT be optional or nullable (it's required)
+    expect(code).toMatch(/payload:\s*z\.object\(\{[^}]*\}\)[,\s]/);
+    expect(code).not.toMatch(/payload:\s*z\.object\(\{[^}]*\}\)\.optional\(\)/);
+    expect(code).not.toMatch(/payload:\s*z\.object\(\{[^}]*\}\)\.nullable\(\)/);
   });
 });
