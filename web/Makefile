@@ -150,7 +150,7 @@ gen-app: build-gen
 	@echo "📦 安裝 app 依賴..."
 	cd app && pnpm install
 	@echo "🔧 從 AutoCRUD 後端生成代碼... ($(API_URL))"
-	cd app && node ../generator/dist/cli.js generate --url $(API_URL) --base-path ${BASE_PATH}
+	cd app && node ../generator/dist/cli.js generate --url $(API_URL) --base-path ${BASE_PATH} --proxy-path "/proxy/backend"
 	@echo "✅ App 生成完成！"
 	@echo ""
 	@echo "📝 下一步："
