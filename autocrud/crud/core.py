@@ -15,7 +15,7 @@ from typing import (
     TypeVar,
 )
 
-from fastapi import APIRouter, FastAPI, File, HTTPException, UploadFile
+from fastapi import APIRouter, Depends, FastAPI, File, HTTPException, UploadFile
 from fastapi.openapi.utils import get_openapi
 from fastapi.params import Body
 from msgspec import UNSET, UnsetType
@@ -2132,7 +2132,10 @@ class AutoCRUD:
                         result = raw_result
 
                     if result is not None:
-                        with trm.meta_provide("system", dt.datetime.now()):
+                        # Propagate the user who created the Job to the
+                        # target resource so created_by is traceable.
+                        _job_user = resource.info.created_by or "system"
+                        with trm.meta_provide(_job_user, dt.datetime.now()):
                             info = trm.create(result)
                         # Store RevisionInfo as artifact (dict form for
                         # serialisability)
@@ -2183,10 +2186,23 @@ class AutoCRUD:
         import msgspec as _msgspec
 
         from autocrud.crud.route_templates.basic import (
+            BaseRouteTemplate,
+            DependencyProvider,
             MsgspecResponse,
             jsonschema_to_json_schema_extra,
             struct_to_responses_type,
         )
+
+        # Resolve DependencyProvider: try to reuse one from existing route
+        # templates so that custom create actions share the same get_user /
+        # get_now dependency as standard CRUD routes.
+        deps: DependencyProvider | None = None
+        for rt in self.route_templates:
+            if isinstance(rt, BaseRouteTemplate) and hasattr(rt, "deps"):
+                deps = rt.deps
+                break
+        if deps is None:
+            deps = DependencyProvider()
 
         def _is_msgspec_struct_type(ann: type) -> bool:
             """Check if *ann* is a msgspec.Struct subclass."""
@@ -2241,7 +2257,7 @@ class AutoCRUD:
                     kwargs[field_name] = str(val)
 
         def _build_fastapi_compatible_handler(
-            handler, resource_manager, *, async_job_config=None
+            handler, resource_manager, *, async_job_config=None, deps=None
         ):
             """Build a FastAPI-compatible endpoint function.
 
@@ -2272,7 +2288,14 @@ class AutoCRUD:
                     auto-generated payload Struct before creating the Job.
                     *param_conversions* maps field names that need
                     serialisation conversion at endpoint time.
+                deps: A :class:`DependencyProvider` instance used to inject
+                    ``current_user`` and ``current_time`` into the wrapper
+                    function signature via ``Depends()``.  When ``None`` a
+                    default ``DependencyProvider()`` is created.
             """
+            if deps is None:
+                deps = DependencyProvider()
+
             sig = inspect.signature(handler)
             # Identify parameters whose annotation is a msgspec.Struct subclass
             # so we can convert them from raw dicts.
@@ -2345,6 +2368,26 @@ class AutoCRUD:
                     if ann is not inspect.Parameter.empty:
                         new_annotations[name] = ann
 
+            # Inject current_user and current_time via Depends()
+            new_params.append(
+                inspect.Parameter(
+                    "current_user",
+                    inspect.Parameter.KEYWORD_ONLY,
+                    default=Depends(deps.get_user),
+                    annotation=str,
+                )
+            )
+            new_params.append(
+                inspect.Parameter(
+                    "current_time",
+                    inspect.Parameter.KEYWORD_ONLY,
+                    default=Depends(deps.get_now),
+                    annotation=dt.datetime,
+                )
+            )
+            new_annotations["current_user"] = str
+            new_annotations["current_time"] = dt.datetime
+
             new_sig = sig.replace(
                 parameters=new_params, return_annotation=inspect.Parameter.empty
             )
@@ -2370,6 +2413,8 @@ class AutoCRUD:
                 payload_param_name = next(iter(struct_params), None)
 
                 async def wrapper(*args, **kwargs):
+                    _current_user = kwargs.pop("current_user", "anonymous")
+                    _current_time = kwargs.pop("current_time", dt.datetime.now())
                     for pname, struct_type in struct_params.items():
                         if pname in kwargs:
                             kwargs[pname] = _msgspec.convert(
@@ -2407,7 +2452,7 @@ class AutoCRUD:
                         )
 
                     job_data = job_rm.resource_type(payload=payload_data)
-                    with job_rm.meta_provide("system", dt.datetime.now()):
+                    with job_rm.meta_provide(_current_user, _current_time):
                         info = job_rm.create(job_data)
 
                     redirect_url = f"/{job_resource_name}/{info.resource_id}"
@@ -2424,6 +2469,8 @@ class AutoCRUD:
             elif asyncio.iscoroutinefunction(handler):
 
                 async def wrapper(*args, **kwargs):
+                    _current_user = kwargs.pop("current_user", "anonymous")
+                    _current_time = kwargs.pop("current_time", dt.datetime.now())
                     # Convert raw dicts to Struct instances
                     for pname, struct_type in struct_params.items():
                         if pname in kwargs:
@@ -2436,13 +2483,15 @@ class AutoCRUD:
                     result = await handler(*args, **kwargs)
                     if result is None:
                         return None
-                    with resource_manager.meta_provide("system", dt.datetime.now()):
+                    with resource_manager.meta_provide(_current_user, _current_time):
                         info = resource_manager.create(result)
                     return MsgspecResponse(info)
 
             else:
 
                 def wrapper(*args, **kwargs):
+                    _current_user = kwargs.pop("current_user", "anonymous")
+                    _current_time = kwargs.pop("current_time", dt.datetime.now())
                     for pname, struct_type in struct_params.items():
                         if pname in kwargs:
                             kwargs[pname] = _msgspec.convert(
@@ -2454,7 +2503,7 @@ class AutoCRUD:
                     result = handler(*args, **kwargs)
                     if result is None:
                         return None
-                    with resource_manager.meta_provide("system", dt.datetime.now()):
+                    with resource_manager.meta_provide(_current_user, _current_time):
                         info = resource_manager.create(result)
                     return MsgspecResponse(info)
 
@@ -2510,6 +2559,7 @@ class AutoCRUD:
                             auto_payload_type,
                             param_conversions,
                         ),
+                        deps=deps,
                     )
 
                     router.post(
@@ -2528,7 +2578,7 @@ class AutoCRUD:
                     continue
 
             # --- sync (default) handler ---
-            _wrapper = _build_fastapi_compatible_handler(action.handler, rm)
+            _wrapper = _build_fastapi_compatible_handler(action.handler, rm, deps=deps)
 
             router.post(
                 route_path,

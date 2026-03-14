@@ -36,6 +36,7 @@ from autocrud import IValidator, OnDelete, Ref, Schema, crud, struct_to_pydantic
 
 # 預先將 Struct 轉為 Pydantic Model，供 FastAPI 端點作為型別標註使用
 # 直接在 annotation 寫 struct_to_pydantic(Skill) 會被 Pylance 報 reportInvalidTypeForm
+from autocrud.crud.route_templates.basic import DependencyProvider
 from autocrud.crud.route_templates.blob import BlobRouteTemplate
 from autocrud.crud.route_templates.graphql import GraphQLRouteTemplate
 from autocrud.crud.route_templates.migrate import MigrateRouteTemplate
@@ -1076,7 +1077,17 @@ def configure_crud():
         mq_factory = SimpleMessageQueueFactory()
 
     # 使用全域 crud 實例的 configure 方法
-    crud.configure(storage_factory=storage_factory, message_queue_factory=mq_factory)
+    dp = DependencyProvider(
+        get_user=lambda: "game_admin",  # 簡單的使用者提供者，實際應用中可以整合認證系統
+        get_now=lambda: (
+            dt.datetime.now()
+        ),  # 簡單的時間提供者，實際應用中可以使用更精確的時間源
+    )
+    crud.configure(
+        storage_factory=storage_factory,
+        message_queue_factory=mq_factory,
+        dependency_provider=dp,
+    )
 
     # 添加額外的路由模板
     crud.add_route_template(GraphQLRouteTemplate())

@@ -1449,3 +1449,152 @@ class TestStartConsumeCustomCreation:
             crud, "gen-job", resp.json()["job_resource_id"]
         )
         assert resource.data.status == TaskStatus.COMPLETED
+
+
+# ---------------------------------------------------------------------------
+# Custom create action respects DependencyProvider (get_user / get_now)
+# ---------------------------------------------------------------------------
+
+
+class TestCreateActionDependencyProvider:
+    """Custom create actions should use DependencyProvider.get_user / get_now
+    instead of hard-coded "system" / datetime.now()."""
+
+    def test_sync_create_action_async_handler_uses_dependency_provider_user(self):
+        """Sync create action (async handler) should use get_user from
+        DependencyProvider, not hard-coded 'system'."""
+        from autocrud.crud.route_templates.basic import DependencyProvider
+
+        def custom_get_user() -> str:
+            return "custom-user-async"
+
+        crud = _make_crud(
+            dependency_provider=DependencyProvider(get_user=custom_get_user),
+        )
+        crud.add_model(Article, name="article")
+
+        @crud.create_action("article", label="Quick Import")
+        async def quick_import(body: ImportPayload = Body(...)):
+            return Article(title="imported", content=body.url)
+
+        app = FastAPI()
+        crud.apply(app)
+        client = TestClient(app)
+
+        resp = client.post("/article/quick-import", json={"url": "https://example.com"})
+        assert resp.status_code == 200
+        data = resp.json()
+        resource_id = data["resource_id"]
+
+        # Verify the created resource's created_by
+        rm = crud.resource_managers["article"]
+        resource = rm.get(resource_id)
+        assert resource.info.created_by == "custom-user-async"
+
+    def test_sync_create_action_sync_handler_uses_dependency_provider_user(self):
+        """Sync create action (sync handler) should use get_user from
+        DependencyProvider, not hard-coded 'system'."""
+        from autocrud.crud.route_templates.basic import DependencyProvider
+
+        def custom_get_user() -> str:
+            return "custom-user-sync"
+
+        crud = _make_crud(
+            dependency_provider=DependencyProvider(get_user=custom_get_user),
+        )
+        crud.add_model(Article, name="article")
+
+        @crud.create_action("article", label="Sync Import")
+        def sync_import(body: ImportPayload = Body(...)):
+            return Article(title="imported", content=body.url)
+
+        app = FastAPI()
+        crud.apply(app)
+        client = TestClient(app)
+
+        resp = client.post("/article/sync-import", json={"url": "https://example.com"})
+        assert resp.status_code == 200
+        data = resp.json()
+        resource_id = data["resource_id"]
+
+        # Verify the created resource's created_by
+        rm = crud.resource_managers["article"]
+        resource = rm.get(resource_id)
+        assert resource.info.created_by == "custom-user-sync"
+
+    def test_async_job_create_action_uses_dependency_provider_user(self):
+        """Async-job create action should use get_user from DependencyProvider
+        for both the Job resource and the target resource created by the
+        background handler."""
+        from autocrud.crud.route_templates.basic import DependencyProvider
+
+        def custom_get_user() -> str:
+            return "custom-user-job"
+
+        crud = _make_crud(
+            dependency_provider=DependencyProvider(get_user=custom_get_user),
+        )
+        crud.add_model(Article, name="article")
+
+        @crud.create_action("article", async_mode="job", label="Generate")
+        def generate_article(payload: ArticleRequest = Body(...)) -> Article:
+            return Article(title=payload.title, content=f"generated:{payload.prompt}")
+
+        app = FastAPI()
+        crud.apply(app)
+        client = TestClient(app)
+
+        # Start consuming jobs
+        job_rm = crud.resource_managers["generate-article-job"]
+        job_rm.start_consume(block=False)
+
+        resp = client.post(
+            "/article/generate-article",
+            json={"prompt": "hello", "title": "test"},
+        )
+        assert resp.status_code == 202
+        job_data = resp.json()
+
+        # Verify the Job resource's created_by
+        job_resource = job_rm.get(job_data["job_resource_id"])
+        assert job_resource.info.created_by == "custom-user-job"
+
+        # Wait for the background job to finish
+        resource = _wait_for_job_completion(
+            crud, "generate-article-job", job_data["job_resource_id"]
+        )
+        assert resource.data.status == TaskStatus.COMPLETED
+
+        # Verify the target Article resource's created_by
+        article_rm = crud.resource_managers["article"]
+        artifact = resource.data.artifact
+        article = article_rm.get(artifact["resource_id"])
+        assert article.info.created_by == "custom-user-job"
+
+    def test_default_dependency_provider_uses_anonymous(self):
+        """Without custom DependencyProvider, create action should use
+        the default 'anonymous' user (from DependencyProvider default)."""
+        crud = AutoCRUD(
+            message_queue_factory=SimpleMessageQueueFactory(max_retries=1),
+        )
+        crud.add_model(Article, name="article")
+
+        @crud.create_action("article", label="Import")
+        def import_article(body: ImportPayload = Body(...)):
+            return Article(title="imported", content=body.url)
+
+        app = FastAPI()
+        crud.apply(app)
+        client = TestClient(app)
+
+        resp = client.post(
+            "/article/import-article", json={"url": "https://example.com"}
+        )
+        assert resp.status_code == 200
+        data = resp.json()
+        resource_id = data["resource_id"]
+
+        rm = crud.resource_managers["article"]
+        resource = rm.get(resource_id)
+        # Default DependencyProvider returns "anonymous"
+        assert resource.info.created_by == "anonymous"
