@@ -1,10 +1,11 @@
 from __future__ import annotations
 
+import threading
 from contextlib import contextmanager
 from typing import TYPE_CHECKING, Callable, Generic, TypeVar
 
 from autocrud.message_queue.basic import DelayableMessageQueue, DelayRetry, NoRetry
-from autocrud.types import Job, Resource, TaskStatus
+from autocrud.types import Job, Resource, RevisionStatus, TaskStatus
 from autocrud.util.naming import NameConverter, NamingFormat
 
 try:
@@ -48,6 +49,7 @@ class RabbitMQMessageQueue(DelayableMessageQueue[T], Generic[T]):
         queue_prefix: str = "autocrud:",
         max_retries: int = 3,
         retry_delay_seconds: int = 10,
+        amqp_heartbeat_seconds: int = 600,
     ):
         if pika is None:
             raise ImportError(
@@ -60,6 +62,10 @@ class RabbitMQMessageQueue(DelayableMessageQueue[T], Generic[T]):
         self.queue_prefix = queue_prefix
         self.max_retries = max_retries
         self.retry_delay_seconds = retry_delay_seconds
+        self.amqp_heartbeat_seconds = amqp_heartbeat_seconds
+
+        # Track worker threads so callers can wait for in-flight jobs.
+        self._worker_threads: list[threading.Thread] = []
 
         # Get resource name and convert to snake_case
         resource_name = resource_manager.resource_name
@@ -79,8 +85,14 @@ class RabbitMQMessageQueue(DelayableMessageQueue[T], Generic[T]):
 
         Creates a new connection for each operation to ensure thread safety.
         Automatically closes the connection when exiting the context.
+
+        The AMQP ``heartbeat`` is explicitly set on connection parameters
+        so that long-running jobs do not cause RabbitMQ to close the
+        connection due to missed heartbeats.  The value is taken from
+        :attr:`amqp_heartbeat_seconds` (default 600).
         """
         params = pika.URLParameters(self.amqp_url)
+        params.heartbeat = self.amqp_heartbeat_seconds
         connection = pika.BlockingConnection(params)
         channel = connection.channel()
         try:
@@ -161,10 +173,15 @@ class RabbitMQMessageQueue(DelayableMessageQueue[T], Generic[T]):
 
                     # 2. Update status to PROCESSING
                     # Note: We update RM first. If update fails, we don't Ack.
+                    # Use draft status so HeartbeatThread can use modify()
                     updated_job = resource.data
                     updated_job.status = TaskStatus.PROCESSING
                     with self._rm_meta_provide(resource.info.created_by):
-                        self.rm.create_or_update(resource_id, updated_job)
+                        self.rm.create_or_update(
+                            resource_id,
+                            updated_job,
+                            status=RevisionStatus.draft,
+                        )
 
                     # 3. Ack message
                     channel.basic_ack(method_frame.delivery_tag)
@@ -284,10 +301,21 @@ class RabbitMQMessageQueue(DelayableMessageQueue[T], Generic[T]):
         retry_count: int,
     ) -> None:
         """
-        Execute a job and handle success, DelayRetry, or failure.
+        Execute a job on a **worker thread** and handle success,
+        :class:`DelayRetry`, or failure.
 
-        A :class:`JobContext` and :class:`LogFlushThread` are created to
-        capture lifecycle logs into the blob store (when configured).
+        The callback returns immediately so that the pika I/O thread can
+        continue to service AMQP heartbeats.  ACK / NACK is delivered
+        back to the I/O thread via
+        ``connection.add_callback_threadsafe``.
+
+        A :class:`HeartbeatThread` keeps ``job.last_heartbeat_at``
+        up-to-date so that :meth:`recover_stale_jobs` can distinguish
+        live workers from dead ones (consistent with
+        :class:`SimpleMessageQueue`).
+
+        A :class:`LogFlushThread` periodically persists execution logs
+        when a blob store is configured.
 
         Args:
             ch: RabbitMQ channel
@@ -295,91 +323,139 @@ class RabbitMQMessageQueue(DelayableMessageQueue[T], Generic[T]):
             resource: The job resource to execute
             retry_count: Current retry count from message headers
         """
-        from autocrud.message_queue.context import JobContext
-        from autocrud.message_queue.log_flush import LogFlushThread
+        connection = self._consuming_connection
 
-        resource_id = resource.info.resource_id
-        job = resource.data
+        def _worker() -> None:
+            from autocrud.message_queue.context import JobContext
+            from autocrud.message_queue.heartbeat import HeartbeatThread
+            from autocrud.message_queue.log_flush import LogFlushThread
 
-        ctx = JobContext(resource)
-        ctx.info("Job started")
+            resource_id = resource.info.resource_id
+            job = resource.data
 
-        blob_store = self._blob_store
-        log_key = self._log_key(resource_id)
-        lf: LogFlushThread | None = None
-        if blob_store is not None:
-            lf = LogFlushThread(ctx=ctx, blob_store=blob_store, key=log_key)
-            lf.start()
+            ctx = JobContext(resource)
+            ctx.info("Job started")
 
-        try:
-            result = self._invoke_handler(resource, ctx)
-            # Check if callback explicitly requested to stop periodic execution
-            user_requested_stop = result is False
-
-            ctx.info("Job completed")
-
-            # Complete (Update RM) & Ack (RabbitMQ)
-            completed_resource = self.complete(
-                resource_id, _artifact=resource.data.artifact
+            # -- Application-level heartbeat (same as SimpleMessageQueue) --
+            hb = HeartbeatThread(
+                mq=self,
+                resource_id=resource_id,
+                interval_seconds=self._heartbeat_interval,
             )
-            ch.basic_ack(delivery_tag=method.delivery_tag)
+            hb.start()
 
-            # Handle periodic job using parent class method
-            self._handle_periodic_job(
-                resource_id, completed_resource, user_requested_stop
-            )
+            blob_store = self._blob_store
+            log_key = self._log_key(resource_id)
+            lf: LogFlushThread | None = None
+            if blob_store is not None:
+                lf = LogFlushThread(ctx=ctx, blob_store=blob_store, key=log_key)
+                lf.start()
 
-        except DelayRetry as e:
-            ctx.info(f"Job delayed retry: {e.delay_seconds}s")
-            # Handle DelayRetry using parent class method
-            ch.basic_ack(delivery_tag=method.delivery_tag)
-            self._handle_delay_retry(
-                resource_id, e.delay_seconds, resource.info.created_by
-            )
-
-        except Exception as e:
-            # Callback failed - update Job with error and retry info
-            error_msg = str(e)
-            # Always log the error so operators can diagnose failures.
-            ctx.error(f"Job error: {error_msg}")
-
-            # Re-fetch from storage to avoid serialization issues
-            # (the in-memory job may contain handler-set fields that
-            # don't match the registered type).
             try:
-                job = self.rm.get(resource_id).data
-            except Exception:
-                pass  # keep in-memory version as fallback
-            job.status = TaskStatus.FAILED
-            job.errmsg = error_msg
-            job.retries = retry_count + 1
-            try:
-                with self._rm_meta_provide(resource.info.created_by):
-                    self.rm.create_or_update(resource_id, job)
-            except Exception:
-                pass  # Best effort; outer callback has fallback
+                result = self._invoke_handler(resource, ctx)
+                # Check if callback explicitly requested to stop periodic execution
+                user_requested_stop = result is False
 
-            # Send to retry or dead letter queue
-            self._send_to_retry_or_dead(
-                ch, resource_id, retry_count, e, job_max_retries=job.max_retries
-            )
+                ctx.info("Job completed")
 
-            # Ack the original message (it's now in retry/dead queue)
-            ch.basic_ack(delivery_tag=method.delivery_tag)
-        finally:
-            if lf is not None:
-                lf.stop()
+                # Complete (Update RM)
+                completed_resource = self.complete(
+                    resource_id, _artifact=resource.data.artifact
+                )
+
+                # ACK via I/O thread
+                def _ack():
+                    ch.basic_ack(delivery_tag=method.delivery_tag)
+
+                connection.add_callback_threadsafe(_ack)
+
+                # Handle periodic job using parent class method
+                self._handle_periodic_job(
+                    resource_id, completed_resource, user_requested_stop
+                )
+
+            except DelayRetry as e:
+                ctx.info(f"Job delayed retry: {e.delay_seconds}s")
+
+                def _ack_delay():
+                    ch.basic_ack(delivery_tag=method.delivery_tag)
+
+                connection.add_callback_threadsafe(_ack_delay)
+                self._handle_delay_retry(
+                    resource_id, e.delay_seconds, resource.info.created_by
+                )
+
+            except Exception as e:
+                # Callback failed - update Job with error and retry info
+                error_msg = str(e)
+                ctx.error(f"Job error: {error_msg}")
+
+                # Capture exception before it's deleted at except-block exit
+                exc = e
+                job_max = job.max_retries
+
+                # Re-fetch from storage to avoid serialization issues
+                try:
+                    job = self.rm.get(resource_id).data
+                    job_max = job.max_retries
+                except Exception:
+                    pass  # keep in-memory version as fallback
+                job.status = TaskStatus.FAILED
+                job.errmsg = error_msg
+                job.retries = retry_count + 1
+                try:
+                    with self._rm_meta_provide(resource.info.created_by):
+                        self.rm.create_or_update(resource_id, job)
+                except Exception:
+                    pass  # Best effort
+
+                def _ack_fail():
+                    self._send_to_retry_or_dead(
+                        ch,
+                        resource_id,
+                        retry_count,
+                        exc,
+                        job_max_retries=job_max,
+                    )
+                    ch.basic_ack(delivery_tag=method.delivery_tag)
+
+                connection.add_callback_threadsafe(_ack_fail)
+
+            except BaseException:
+                # Safety net (e.g. KeyboardInterrupt, SystemExit, OOM-adjacent).
+                # NACK with requeue so another worker can pick it up.
+                def _nack():
+                    ch.basic_nack(delivery_tag=method.delivery_tag, requeue=True)
+
+                connection.add_callback_threadsafe(_nack)
+
+            finally:
+                hb.stop()
+                if lf is not None:
+                    lf.stop()
+
+        thread = threading.Thread(
+            target=_worker,
+            name=f"rmq-worker-{resource.info.resource_id}",
+            daemon=True,
+        )
+        self._worker_threads.append(thread)
+        thread.start()
 
     def start_consume(self) -> None:
         """
         Start consuming jobs from the queue with the configured callback.
 
-        This method blocks and processes jobs as they arrive. Failed jobs are
-        automatically retried based on the configured retry policy. Jobs exceeding
-        max retries are sent to the dead letter queue.
+        This method blocks and processes jobs as they arrive.  Each job
+        is executed on a **dedicated worker thread** so that the pika I/O
+        thread stays free to service AMQP heartbeats.
 
-        Note: This creates a dedicated connection for consuming that persists
-        for the lifetime of the consumer.
+        Failed jobs are automatically retried based on the configured
+        retry policy.  Jobs exceeding max retries are sent to the dead
+        letter queue.
+
+        Note: This creates a dedicated connection for consuming that
+        persists for the lifetime of the consumer.
         """
         # Recover any jobs left in PROCESSING from a previous crash
         self.recover_stale_jobs(heartbeat_timeout_seconds=self._heartbeat_interval * 3)
@@ -389,7 +465,7 @@ class RabbitMQMessageQueue(DelayableMessageQueue[T], Generic[T]):
 
         # Use context manager to ensure proper cleanup
         with self._get_connection() as (connection, channel):
-            # Store references for stop_consuming()
+            # Store references for stop_consuming() and worker threads
             self._consuming_connection = connection
             self._consuming_channel = channel
 
@@ -409,14 +485,19 @@ class RabbitMQMessageQueue(DelayableMessageQueue[T], Generic[T]):
                 try:
                     # 1. Fetch & Update status to PROCESSING
                     # If this fails (e.g. resource deleted), we fall to outer except
+                    # Use draft status so HeartbeatThread can use modify()
                     resource = self.rm.get(resource_id)
                     job = resource.data
                     job.status = TaskStatus.PROCESSING
                     with self._rm_meta_provide(resource.info.created_by):
-                        self.rm.create_or_update(resource_id, job)
+                        self.rm.create_or_update(
+                            resource_id,
+                            job,
+                            status=RevisionStatus.draft,
+                        )
                     resource.data = job
 
-                    # 2. Execute user callback
+                    # 2. Execute user callback (spawns a worker thread)
                     self._execute_job(ch, method, resource, retry_count)
 
                 except Exception as e:
@@ -452,24 +533,49 @@ class RabbitMQMessageQueue(DelayableMessageQueue[T], Generic[T]):
             try:
                 channel.start_consuming()
             finally:
-                # Clear references when exiting
-                self._consuming_connection = None
-                self._consuming_channel = None
+                # Wait for any in-flight worker threads to finish and
+                # schedule their ACK/NACK callbacks.
+                self._join_workers()
+                # Flush pending add_callback_threadsafe callbacks that
+                # workers scheduled but the event loop did not process
+                # before start_consuming() exited.
+                try:
+                    connection.process_data_events(time_limit=0)
+                except Exception:
+                    pass
+
+    def _join_workers(self, timeout: float = 30) -> None:
+        """Wait for all in-flight worker threads to finish.
+
+        This is called internally during shutdown and can also be used
+        by tests to synchronise with asynchronous worker threads.
+
+        Args:
+            timeout: Maximum seconds to wait per thread.
+        """
+        for t in self._worker_threads:
+            t.join(timeout=timeout)
+        self._worker_threads.clear()
 
     def stop_consuming(self):
-        """Stop the consumption loop.
+        """Signal the consumption loop to stop.
 
-        This can be called from a different thread to gracefully stop consumption.
+        This can be called from a different thread.  The actual cleanup
+        (joining worker threads, flushing pending callbacks, clearing
+        references) happens in :meth:`start_consume`'s ``finally``
+        block so that the pika connection stays open long enough for
+        all in-flight workers to ACK/NACK.
         """
         super().stop_consuming()
-        if hasattr(self, "_consuming_connection") and self._consuming_connection:
-            if self._consuming_connection.is_open:
-                # Use thread-safe callback to stop consuming
-                def stop():
-                    if self._consuming_channel and self._consuming_channel.is_open:
-                        self._consuming_channel.stop_consuming()
+        conn = self._consuming_connection
+        if conn is not None and getattr(conn, "is_open", False):
 
-                self._consuming_connection.add_callback_threadsafe(stop)
+            def _stop():
+                ch = self._consuming_channel
+                if ch is not None and getattr(ch, "is_open", False):
+                    ch.stop_consuming()
+
+            conn.add_callback_threadsafe(_stop)
 
 
 class RabbitMQMessageQueueFactory:
@@ -481,6 +587,7 @@ class RabbitMQMessageQueueFactory:
         queue_prefix: str = "autocrud:",
         max_retries: int = 3,
         retry_delay_seconds: int = 10,
+        amqp_heartbeat_seconds: int = 600,
     ):
         """Initialize the RabbitMQ message queue factory.
 
@@ -489,11 +596,15 @@ class RabbitMQMessageQueueFactory:
             queue_prefix: Prefix for queue names (default: "autocrud:")
             max_retries: Maximum number of retries for failed jobs (default: 3)
             retry_delay_seconds: Delay in seconds before retrying a failed job (default: 10)
+            amqp_heartbeat_seconds: AMQP heartbeat interval in seconds
+                (default: 600).  Set on every connection so that
+                long-running jobs do not trigger a heartbeat timeout.
         """
         self.amqp_url = amqp_url
         self.queue_prefix = queue_prefix
         self.max_retries = max_retries
         self.retry_delay_seconds = retry_delay_seconds
+        self.amqp_heartbeat_seconds = amqp_heartbeat_seconds
 
     def build(
         self, do: Callable[[Resource[Job[T]]], None]
@@ -517,6 +628,7 @@ class RabbitMQMessageQueueFactory:
                 queue_prefix=self.queue_prefix,
                 max_retries=self.max_retries,
                 retry_delay_seconds=self.retry_delay_seconds,
+                amqp_heartbeat_seconds=self.amqp_heartbeat_seconds,
             )
 
         return create_queue

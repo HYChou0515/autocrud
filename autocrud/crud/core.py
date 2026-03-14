@@ -1294,16 +1294,16 @@ class AutoCRUD:
                     if k == "$defs" and isinstance(v, dict):
                         continue
                     if k == "$ref" and isinstance(v, str) and v.startswith(defs_prefix):
-                        def_name = v[len(defs_prefix):]
+                        def_name = v[len(defs_prefix) :]
                         target = rename_map.get(def_name, def_name)
                         out[k] = comp_prefix + target
-                    elif (
-                        k == "mapping"
-                        and isinstance(v, dict)
-                    ):
+                    elif k == "mapping" and isinstance(v, dict):
                         out[k] = {
                             mk: (
-                                comp_prefix + rename_map.get(mv[len(defs_prefix):], mv[len(defs_prefix):])
+                                comp_prefix
+                                + rename_map.get(
+                                    mv[len(defs_prefix) :], mv[len(defs_prefix) :]
+                                )
                                 if isinstance(mv, str) and mv.startswith(defs_prefix)
                                 else mv
                             )

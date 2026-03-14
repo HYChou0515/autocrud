@@ -196,9 +196,7 @@ class TestResolveMissingSchemaRefs:
                         "requestBody": {
                             "content": {
                                 "application/json": {
-                                    "schema": {
-                                        "$ref": "#/components/schemas/Skill"
-                                    }
+                                    "schema": {"$ref": "#/components/schemas/Skill"}
                                 }
                             }
                         },
@@ -283,9 +281,7 @@ class TestResolveMissingSchemaRefs:
                             "200": {
                                 "content": {
                                     "application/json": {
-                                        "schema": {
-                                            "$ref": "#/components/schemas/Foo"
-                                        }
+                                        "schema": {"$ref": "#/components/schemas/Foo"}
                                     }
                                 }
                             }
@@ -352,9 +348,7 @@ class TestResolveMissingSchemaRefs:
                 "schemas": {
                     "Wrapper": {
                         "type": "object",
-                        "properties": {
-                            "child": {"$ref": "#/components/schemas/Child"}
-                        },
+                        "properties": {"child": {"$ref": "#/components/schemas/Child"}},
                     },
                     "some_module_Child": {
                         "type": "object",
@@ -449,15 +443,11 @@ class TestPromoteDefsToComponents:
                                 "$defs": {
                                     "ActiveSkillData": {
                                         "type": "object",
-                                        "properties": {
-                                            "damage": {"type": "integer"}
-                                        },
+                                        "properties": {"damage": {"type": "integer"}},
                                     }
                                 },
                                 "properties": {
-                                    "detail": {
-                                        "$ref": "#/$defs/ActiveSkillData"
-                                    }
+                                    "detail": {"$ref": "#/$defs/ActiveSkillData"}
                                 },
                                 "type": "object",
                             }
@@ -485,9 +475,7 @@ class TestPromoteDefsToComponents:
                                 "$defs": {
                                     "Foo": {"type": "object", "properties": {}},
                                 },
-                                "properties": {
-                                    "x": {"$ref": "#/$defs/Foo"}
-                                },
+                                "properties": {"x": {"$ref": "#/$defs/Foo"}},
                                 "type": "object",
                             }
                         },
@@ -515,9 +503,7 @@ class TestPromoteDefsToComponents:
                                 "$defs": {
                                     "Bar": {"type": "object", "properties": {}},
                                 },
-                                "properties": {
-                                    "y": {"$ref": "#/$defs/Bar"}
-                                },
+                                "properties": {"y": {"$ref": "#/$defs/Bar"}},
                                 "type": "object",
                             }
                         },
@@ -527,9 +513,10 @@ class TestPromoteDefsToComponents:
             }
         }
         AutoCRUD._promote_defs_to_components(schema)
-        assert "$defs" not in schema["components"]["schemas"]["Body_action"][
-            "properties"
-        ]["f"]
+        assert (
+            "$defs"
+            not in schema["components"]["schemas"]["Body_action"]["properties"]["f"]
+        )
 
     def test_discriminator_mapping_also_rewritten(self):
         """discriminator.mapping values using #/$defs/X are also rewritten."""
@@ -569,9 +556,9 @@ class TestPromoteDefsToComponents:
             }
         }
         AutoCRUD._promote_defs_to_components(schema)
-        mapping = schema["components"]["schemas"]["Body_action"]["properties"][
-            "f"
-        ]["properties"]["pet"]["discriminator"]["mapping"]
+        mapping = schema["components"]["schemas"]["Body_action"]["properties"]["f"][
+            "properties"
+        ]["pet"]["discriminator"]["mapping"]
         for key, val in mapping.items():
             assert val.startswith("#/components/schemas/"), f"mapping {key}={val}"
 
@@ -616,9 +603,7 @@ class TestPromoteDefsToComponents:
                                         },
                                     },
                                 },
-                                "properties": {
-                                    "x": {"$ref": "#/$defs/Existing"}
-                                },
+                                "properties": {"x": {"$ref": "#/$defs/Existing"}},
                                 "type": "object",
                             }
                         },
