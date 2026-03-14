@@ -158,6 +158,59 @@ describe('genResourcesConfig — Job defaultHiddenFields', () => {
     expect(code).toContain("'artifact'");
   });
 
+  it('hides expanded artifact sub-fields (dot-notation) in defaultHiddenFields', () => {
+    // When artifact is a typed struct (e.g. GameEventArtifact),
+    // extractFields expands it to artifact.process_times etc.
+    // These expanded fields should still be hidden.
+    const spec = {
+      info: { title: 'Test', version: '1.0' },
+      paths: {
+        '/game-event': {
+          post: {
+            requestBody: { content: { 'application/json': { schema: { $ref: '#/components/schemas/GameEvent' } } } },
+          },
+        },
+        '/game-event/{id}': { get: {} },
+      },
+      components: {
+        schemas: {
+          GameEventArtifact: {
+            type: 'object',
+            properties: { process_times: { type: 'number' } },
+            required: ['process_times'],
+          },
+          GameEvent: {
+            type: 'object',
+            properties: {
+              payload: { type: 'object', properties: { event_type: { type: 'string' } }, required: ['event_type'] },
+              status: { type: 'string', default: 'pending' },
+              errmsg: { type: 'string', default: '' },
+              artifact: {
+                anyOf: [{ $ref: '#/components/schemas/GameEventArtifact' }, { type: 'null' }],
+                default: null,
+              },
+              retries: { type: 'integer', default: 0 },
+              max_retries: { type: 'integer', default: 0 },
+              periodic_interval_seconds: { type: 'number', default: 0 },
+              periodic_max_runs: { type: 'integer', default: 0 },
+              periodic_runs: { type: 'integer', default: 0 },
+              periodic_initial_delay_seconds: { type: 'number', default: 0 },
+              last_heartbeat_at: { type: 'string' },
+            },
+            required: ['payload'],
+          },
+        },
+      },
+    };
+    const code = parseAndGenConfig(spec);
+    expect(code).toContain('defaultHiddenFields:');
+    // artifact.process_times should be in hidden fields
+    const hiddenMatch = code.match(/defaultHiddenFields:\s*\[([^\]]*)\]/);
+    expect(hiddenMatch).not.toBeNull();
+    const hiddenFields = hiddenMatch![1];
+    expect(hiddenFields).toContain('artifact.process_times');
+  });
+
   it('does NOT include defaultHiddenFields for non-Job resource', () => {
     const spec = {
       info: { title: 'Test', version: '1.0' },
@@ -617,5 +670,100 @@ describe('genResourcesConfig — structural union field serialization', () => {
     const code = parseAndGenConfig(spec);
     expect(code).toContain('isArray: true');
     expect(code).toContain('__variant');
+  });
+});
+
+// ============================================================================
+// buildNestedZodFields — nullable optional struct grouping
+// ============================================================================
+describe('buildNestedZodFields — nullable optional struct grouping', () => {
+  it('nested group from nullable optional parent gets .nullable().optional()', () => {
+    const spec = {
+      info: { title: 'Test', version: '1.0' },
+      paths: {
+        '/game-event': {
+          post: {
+            requestBody: {
+              content: {
+                'application/json': {
+                  schema: { $ref: '#/components/schemas/GameEvent' },
+                },
+              },
+            },
+          },
+        },
+        '/game-event/{id}': { get: {} },
+      },
+      components: {
+        schemas: {
+          GameEventArtifact: {
+            type: 'object',
+            properties: {
+              process_times: { type: 'number' },
+            },
+            required: ['process_times'],
+          },
+          GameEvent: {
+            type: 'object',
+            properties: {
+              payload: {
+                type: 'object',
+                properties: { event_type: { type: 'string' } },
+                required: ['event_type'],
+              },
+              status: { type: 'string', default: 'pending' },
+              artifact: {
+                anyOf: [{ $ref: '#/components/schemas/GameEventArtifact' }, { type: 'null' }],
+                default: null,
+              },
+            },
+            required: ['payload'],
+          },
+        },
+      },
+    };
+    const code = parseAndGenConfig(spec);
+    // artifact z.object should be nullable and optional
+    expect(code).toMatch(/artifact:\s*z\.object\(\{[^}]*\}\)\.nullable\(\)\.optional\(\)/);
+  });
+
+  it('nested group from required parent should NOT get .optional()', () => {
+    const spec = {
+      info: { title: 'Test', version: '1.0' },
+      paths: {
+        '/game-event': {
+          post: {
+            requestBody: {
+              content: {
+                'application/json': {
+                  schema: { $ref: '#/components/schemas/GameEvent' },
+                },
+              },
+            },
+          },
+        },
+        '/game-event/{id}': { get: {} },
+      },
+      components: {
+        schemas: {
+          GameEvent: {
+            type: 'object',
+            properties: {
+              payload: {
+                type: 'object',
+                properties: { event_type: { type: 'string' } },
+                required: ['event_type'],
+              },
+            },
+            required: ['payload'],
+          },
+        },
+      },
+    };
+    const code = parseAndGenConfig(spec);
+    // payload z.object should NOT be optional or nullable (it's required)
+    expect(code).toMatch(/payload:\s*z\.object\(\{[^}]*\}\)[,\s]/);
+    expect(code).not.toMatch(/payload:\s*z\.object\(\{[^}]*\}\)\.optional\(\)/);
+    expect(code).not.toMatch(/payload:\s*z\.object\(\{[^}]*\}\)\.nullable\(\)/);
   });
 });

@@ -1906,3 +1906,153 @@ describe('parseField — null type field', () => {
     expect(zodType).toContain('.nullable()');
   });
 });
+
+// ============================================================================
+// extractFields — nullable optional struct expansion
+// ============================================================================
+describe('extractFields — nullable optional struct expansion', () => {
+  /**
+   * Simulates Job[Payload, Artifact] where:
+   *   artifact: Artifact | None = None
+   * OpenAPI schema: artifact is NOT in required, and is anyOf [{Artifact}, {null}]
+   * When expanded, artifact.process_times should NOT be required (parent is optional).
+   */
+  function buildNullableArtifactJobSpec() {
+    return {
+      info: { title: 'Test', version: '1.0' },
+      paths: {
+        '/game-event': {
+          post: {
+            requestBody: {
+              content: {
+                'application/json': {
+                  schema: { $ref: '#/components/schemas/GameEvent' },
+                },
+              },
+            },
+          },
+        },
+        '/game-event/{id}': { get: {} },
+      },
+      components: {
+        schemas: {
+          GameEventArtifact: {
+            type: 'object',
+            properties: {
+              process_times: { type: 'number' },
+            },
+            required: ['process_times'],
+          },
+          GameEvent: {
+            type: 'object',
+            properties: {
+              payload: {
+                type: 'object',
+                properties: {
+                  event_type: { type: 'string' },
+                },
+                required: ['event_type'],
+              },
+              status: { type: 'string', default: 'pending' },
+              artifact: {
+                anyOf: [{ $ref: '#/components/schemas/GameEventArtifact' }, { type: 'null' }],
+                default: null,
+              },
+              retries: { type: 'integer', default: 0 },
+            },
+            required: ['payload'],
+          },
+        },
+      },
+    };
+  }
+
+  it('expanded sub-fields of nullable optional struct should NOT be required', () => {
+    const { resources } = createBuilder(buildNullableArtifactJobSpec());
+    const gameEvent = resources.find((r) => r.name === 'game-event');
+    expect(gameEvent).toBeDefined();
+
+    // artifact.process_times was expanded from nullable optional parent
+    const artifactField = gameEvent!.fields.find((f) => f.name === 'artifact.process_times');
+    expect(artifactField).toBeDefined();
+    // The parent artifact is NOT required (not in schema required array),
+    // so expanded sub-fields should also be NOT required
+    expect(artifactField!.isRequired).toBe(false);
+  });
+
+  it('expanded sub-fields should carry parentNullable flag', () => {
+    const { resources } = createBuilder(buildNullableArtifactJobSpec());
+    const gameEvent = resources.find((r) => r.name === 'game-event');
+    const artifactField = gameEvent!.fields.find((f) => f.name === 'artifact.process_times');
+    expect(artifactField).toBeDefined();
+    // Sub-fields should know their parent group was nullable
+    expect(artifactField!.parentNullable).toBe(true);
+  });
+
+  it('expanded sub-fields should carry parentOptional flag', () => {
+    const { resources } = createBuilder(buildNullableArtifactJobSpec());
+    const gameEvent = resources.find((r) => r.name === 'game-event');
+    const artifactField = gameEvent!.fields.find((f) => f.name === 'artifact.process_times');
+    expect(artifactField).toBeDefined();
+    // Sub-fields should know their parent group was optional
+    expect(artifactField!.parentOptional).toBe(true);
+  });
+
+  it('required parent struct expansion keeps sub-fields required', () => {
+    const { resources } = createBuilder(buildNullableArtifactJobSpec());
+    const gameEvent = resources.find((r) => r.name === 'game-event');
+    // payload IS required, so payload.event_type should stay required
+    const payloadField = gameEvent!.fields.find((f) => f.name === 'payload.event_type');
+    expect(payloadField).toBeDefined();
+    expect(payloadField!.isRequired).toBe(true);
+    // payload is not nullable
+    expect(payloadField!.parentNullable).toBeFalsy();
+  });
+
+  it('plain (non-nullable) optional struct sub-fields should NOT be required', () => {
+    const spec = {
+      info: { title: 'Test', version: '1.0' },
+      paths: {
+        '/item': {
+          post: {
+            requestBody: {
+              content: {
+                'application/json': {
+                  schema: { $ref: '#/components/schemas/Item' },
+                },
+              },
+            },
+          },
+        },
+        '/item/{id}': { get: {} },
+      },
+      components: {
+        schemas: {
+          Item: {
+            type: 'object',
+            properties: {
+              name: { type: 'string' },
+              stats: {
+                type: 'object',
+                properties: {
+                  attack: { type: 'number' },
+                },
+                required: ['attack'],
+              },
+            },
+            required: ['name'],
+            // stats is NOT required
+          },
+        },
+      },
+    };
+    const { resources } = createBuilder(spec);
+    const item = resources.find((r) => r.name === 'item');
+    expect(item).toBeDefined();
+    const attackField = item!.fields.find((f) => f.name === 'stats.attack');
+    expect(attackField).toBeDefined();
+    // stats is optional (not in required), so stats.attack should be NOT required
+    expect(attackField!.isRequired).toBe(false);
+    expect(attackField!.parentOptional).toBe(true);
+  });
+});

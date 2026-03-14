@@ -144,7 +144,12 @@ export function buildNestedZodFields(fields: Field[], indent: string = '    '): 
   const lines: string[] = [];
   for (const [prefix, subFields] of Object.entries(nested)) {
     const inner = buildNestedZodFields(subFields, indent + '    ');
-    lines.push(`${indent}${prefix}: z.object({\n${inner}\n${indent}})`);
+    // Check if sub-fields carry parent nullable/optional flags
+    const isParentNullable = subFields.some((f) => f.parentNullable);
+    const isParentOptional = subFields.some((f) => f.parentOptional);
+    let groupZod = `z.object({\n${inner}\n${indent}})`;
+    groupZod = applyNullableOptionalZod(groupZod, isParentNullable, !isParentOptional);
+    lines.push(`${indent}${prefix}: ${groupZod}`);
   }
   for (const f of topLevel) {
     lines.push(`${indent}${f.name}: ${f.zodType}`);
@@ -260,10 +265,12 @@ ${displayNameLine}    schema: '${r.schemaName}',
         ? `
     isUnion: true,`
         : ''
-    }${customActionsBlock}${r.name in asyncJobsMap
+    }${customActionsBlock}${
+      r.name in asyncJobsMap
         ? `
     tableConfig: { canCreate: false },`
-        : ''}
+        : ''
+    }
   }`;
   });
 
