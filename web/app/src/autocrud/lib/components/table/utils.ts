@@ -16,6 +16,12 @@ import type { MetaFilters, SearchCondition } from './types';
 export const SERVER_META_SORT_KEYS = ['resource_id', 'created_time', 'updated_time'] as const;
 
 /**
+ * Default sorting state for ResourceTable.
+ * Sorts by updated_time descending so the most recently modified items appear first.
+ */
+export const DEFAULT_SORTING: MRT_SortingState = [{ id: 'updated_time', desc: true }];
+
+/**
  * Meta columns that the backend can filter on via dedicated query params.
  * Maps column id → the backend query parameter name(s) and conversion strategy.
  */

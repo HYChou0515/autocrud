@@ -45,6 +45,7 @@ import {
   computeTableMode,
   mrtSortingToSorts,
   mrtFiltersToParams,
+  DEFAULT_SORTING,
   type TableMode,
 } from './utils';
 
@@ -117,7 +118,7 @@ export function ResourceTable<T extends MRT_RowData>({
   const navigate = useNavigate();
 
   // ── MRT state ──
-  const [sorting, setSorting] = useState<MRT_SortingState>([]);
+  const [sorting, setSorting] = useState<MRT_SortingState>(DEFAULT_SORTING);
   const [columnFilters, setColumnFilters] = useState<MRT_ColumnFiltersState>([]);
   const [pagination, setPagination] = useState<MRT_PaginationState>({
     pageIndex: 0,
