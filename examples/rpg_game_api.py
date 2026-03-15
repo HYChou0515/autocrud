@@ -1152,6 +1152,7 @@ def configure_crud():
         name: Annotated[str, Ref("equipment")],
     ):
         import time
+
         time.sleep(100)
         return Character(
             name=name,

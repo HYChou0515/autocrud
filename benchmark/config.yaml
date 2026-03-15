@@ -1,0 +1,166 @@
+# AutoCRUD CRUD Benchmark Configuration
+# ======================================
+# Adjust these settings to control what gets benchmarked.
+# Environment variables can be referenced as ${VAR_NAME}.
+# Scenarios referencing unavailable storage backends are skipped.
+
+# --- Global Defaults ---
+output_dir: benchmark/results
+default_n: 1000        # number of records per scenario
+default_warmup: 10     # warmup iterations (discarded)
+default_repeat: 3      # timing repetitions (averaged)
+
+# --- Available Models ---
+# Predefined msgspec.Struct models with varying complexity.
+#   simple       — SimpleItem(name, value, description, tags)
+#   nested       — NestedCharacter(name, level, hp, mp, stats: Stats, skills: list[SkillRef])
+#   complex      — ComplexEntity(name, metadata: dict, tags: list, inner: Inner, note: str|None)
+#   with_binary  — BinaryAvatar(name, image: Binary|None)
+models:
+  - simple
+  - nested
+  - complex
+  - with_binary
+
+# --- Storage Backends ---
+storage:
+  memory: {}
+  disk:
+    rootdir: /tmp/autocrud-benchmark
+  postgres:
+    dsn: postgresql://admin:password@localhost:5432/autocrud_bench
+    s3_bucket: autocrud-bench
+    s3_endpoint_url: http://localhost:9000
+    s3_access_key: minioadmin
+    s3_secret_key: minioadmin
+  s3:
+    bucket: autocrud-bench
+    endpoint_url: http://localhost:9000
+    access_key: minioadmin
+    secret_key: minioadmin
+
+# --- Benchmark Scenarios ---
+# Each scenario specifies: storage, encoding, model, operations, and
+# optionally n / warmup / repeat overrides.
+#
+# Supported operations:
+#   create, get, update, delete, search,
+#   patch, modify, switch, restore, list_resources
+scenarios:
+  # - name: memory-json-simple
+  #   storage: memory
+  #   encoding: json
+  #   model: simple
+  #   operations: [create, get, update, delete, search, modify, switch, restore]
+
+  # - name: memory-msgpack-simple
+  #   storage: memory
+  #   encoding: msgpack
+  #   model: simple
+  #   operations: [create, get, update, delete, search, modify, switch, restore]
+
+  # - name: memory-json-nested
+  #   storage: memory
+  #   encoding: json
+  #   model: nested
+  #   operations: [create, get, update, delete, search, modify, switch, restore]
+
+  # - name: memory-msgpack-nested
+  #   storage: memory
+  #   encoding: msgpack
+  #   model: nested
+  #   operations: [create, get, update, delete, search, modify, switch, restore]
+
+  # - name: memory-json-complex
+  #   storage: memory
+  #   encoding: json
+  #   model: complex
+  #   operations: [create, get, update, delete, search, modify, switch, restore]
+
+  # - name: memory-msgpack-complex
+  #   storage: memory
+  #   encoding: msgpack
+  #   model: complex
+  #   operations: [create, get, update, delete, search, modify, switch, restore]
+
+  # - name: disk-json-simple
+  #   storage: disk
+  #   encoding: json
+  #   model: simple
+  #   operations: [create, get, update, delete, search, modify, switch, restore]
+
+  # - name: disk-msgpack-simple
+  #   storage: disk
+  #   encoding: msgpack
+  #   model: simple
+  #   operations: [create, get, update, delete, search, modify, switch, restore]
+
+  # - name: disk-json-nested
+  #   storage: disk
+  #   encoding: json
+  #   model: nested
+  #   n: 100
+  #   operations: [create, get, update, delete, search, modify, switch, restore]
+
+  - name: disk-msgpack-simple
+    storage: disk
+    encoding: msgpack
+    model: simple
+    n: 100
+    operations: [create, get, update, delete, search, modify, switch, restore]
+
+  - name: disk-json-simple
+    storage: disk
+    encoding: json
+    model: simple
+    n: 100
+    operations: [create, get, update, delete, search, modify, switch, restore]
+
+  - name: postgres-msgpack-simple
+    storage: postgres
+    encoding: msgpack
+    model: simple
+    n: 100
+    operations: [create, get, update, delete, search, modify, switch, restore]
+
+  - name: disk-msgpack-nested
+    storage: disk
+    encoding: msgpack
+    model: nested
+    n: 100
+    operations: [create, get, update, delete, search, modify, switch, restore]
+
+  - name: disk-json-nested
+    storage: disk
+    encoding: json
+    model: nested
+    n: 100
+    operations: [create, get, update, delete, search, modify, switch, restore]
+
+  - name: postgres-msgpack-nested
+    storage: postgres
+    encoding: msgpack
+    model: nested
+    n: 100
+    operations: [create, get, update, delete, search, modify, switch, restore]
+
+  - name: disk-msgpack-complex
+    storage: disk
+    encoding: msgpack
+    model: complex
+    n: 100
+    operations: [create, get, update, delete, search, modify, switch, restore]
+
+  - name: disk-json-complex
+    storage: disk
+    encoding: json
+    model: complex
+    n: 100
+    operations: [create, get, update, delete, search, modify, switch, restore]
+
+  - name: postgres-msgpack-complex
+    storage: postgres
+    encoding: msgpack
+    model: complex
+    n: 100
+    operations: [create, get, update, delete, search, modify, switch, restore]

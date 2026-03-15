@@ -13,7 +13,9 @@ help:
 	@echo "開發工具："
 	@echo "  test         執行所有測試（排除基準測試）"
 	@echo "  test-benchmark 執行基準測試（需要外部系統依賴）"
-	@echo "  benchmark    執行基準測試腳本並更新文檔"
+	@echo "  benchmark    執行基準測試腳本並更新文檔（MetaStore/ResourceStore）"
+	@echo "  bench        執行 CRUD benchmark（config-driven）"
+	@echo "  bench-list   列出 CRUD benchmark 所有 scenario"
 	@echo "  coverage     執行測試並生成覆蓋率報告"
 	@echo "  cov-html     生成 HTML 覆蓋率報告"
 	@echo "  style        格式化程式碼並修復程式碼風格問題 (ruff format + ruff check --fix)"
@@ -69,11 +71,23 @@ test-benchmark:
 	@echo "執行基準測試（需要外部系統依賴）..."
 	uv run pytest -m "benchmark" -v
 
-# 執行基準測試腳本並更新文檔
+# 執行基準測試腳本並更新文檔（MetaStore/ResourceStore 效能圖表）
 .PHONY: benchmark
 benchmark:
 	@echo "執行基準測試腳本並更新文檔..."
 	uv run --with matplotlib --with seaborn scripts/run_benchmarks.py
+
+# 執行 CRUD benchmark（config-driven）
+.PHONY: bench
+bench:
+	@echo "執行 CRUD benchmark..."
+	uv run --extra benchmark python -m benchmark
+
+# 列出 CRUD benchmark 所有 scenario
+.PHONY: bench-list
+bench-list:
+	@echo "列出 CRUD benchmark scenario..."
+	uv run --extra benchmark python -m benchmark --list
 
 # 執行測試並生成覆蓋率報告
 .PHONY: coverage

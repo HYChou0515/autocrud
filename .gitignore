@@ -34,3 +34,6 @@ ENV/
 
 # Temporary files
 tmp*/
+
+# Benchmark results
+benchmark/results/
