@@ -121,7 +121,9 @@ class TestResourceManagerMigrate:
         mock_storage.exists.assert_called_with("test:123")
         mock_storage.get_meta.assert_called_with("test:123")
         mock_storage.get_resource_revision_info.assert_called_with(
-            "test:123", mock_meta.current_revision_id
+            "test:123",
+            mock_meta.current_revision_id,
+            schema_version=mock_meta.schema_version,
         )
 
     @pytest.mark.parametrize("meta_provided", (True, False))
@@ -182,10 +184,14 @@ class TestResourceManagerMigrate:
         mock_storage.exists.assert_called_once_with("test:123")
         mock_storage.get_meta.assert_called_once_with("test:123")
         mock_storage.get_resource_revision_info.assert_called_once_with(
-            "test:123", original_meta.current_revision_id
+            "test:123",
+            "test:123:1",
+            schema_version=old_version,
         )
         mock_storage.get_data_bytes.assert_called_once_with(
-            "test:123", original_meta.current_revision_id
+            "test:123",
+            "test:123:1",
+            schema_version=old_version,
         )
 
         # 驗證保存被調用

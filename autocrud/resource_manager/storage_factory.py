@@ -145,6 +145,65 @@ class PostgreSQLStorageFactory(IStorageFactory):
         )
 
 
+class PostgresDiskStorageFactory(IStorageFactory):
+    """PostgreSQL + Disk Storage Factory for hybrid deployments.
+
+    Uses PostgreSQL for metadata storage (fast queries, indexes) and local disk
+    for resource data. Suitable for single-node deployments that benefit from
+    PostgreSQL's query capabilities without requiring S3 infrastructure.
+
+    Args:
+        connection_string: PostgreSQL connection string
+            (e.g., ``"postgresql://user:pass@host:port/db"``).
+        rootdir: Root directory for disk-based resource data storage.
+        encoding: Encoding format for data serialization (default: ``Encoding.msgpack``).
+        table_prefix: Prefix for PostgreSQL table names (default: ``""``).
+    """
+
+    def __init__(
+        self,
+        connection_string: str,
+        rootdir: Path | str,
+        encoding: Encoding = Encoding.msgpack,
+        table_prefix: str = "",
+    ):
+        self.connection_string = connection_string
+        self.rootdir = Path(rootdir)
+        self.encoding = encoding
+        self.table_prefix = table_prefix
+
+    def build(
+        self,
+        model_name: str,
+    ) -> IStorage:
+        """Build a PostgreSQL + Disk storage for the specified model.
+
+        Args:
+            model_name: Model name (used for table naming and directory structure).
+
+        Returns:
+            Storage combining PostgreSQL meta store and disk resource store.
+        """
+        # Use PostgreSQL for metadata (indexes, search queries)
+        table_name = (
+            f"{self.table_prefix}{model_name}_meta"
+            if self.table_prefix
+            else f"{model_name}_meta"
+        )
+        meta_store = PostgresMetaStore(
+            pg_dsn=self.connection_string,
+            encoding=self.encoding,
+            table_name=table_name,
+        )
+
+        # Use disk for resource data storage
+        resource_store = DiskResourceStore(
+            rootdir=self.rootdir / model_name / "data",
+        )
+
+        return SimpleStorage(meta_store, resource_store)
+
+
 class S3StorageFactory(IStorageFactory):
     """S3 Storage Factory with SQLite metadata store.
 

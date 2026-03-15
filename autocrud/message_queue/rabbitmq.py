@@ -457,6 +457,9 @@ class RabbitMQMessageQueue(DelayableMessageQueue[T], Generic[T]):
         Note: This creates a dedicated connection for consuming that
         persists for the lifetime of the consumer.
         """
+        # Reset stop signals so a previously-stopped queue can be restarted.
+        self._recovery_stop_event.clear()
+
         # Recover any jobs left in PROCESSING from a previous crash
         self.recover_stale_jobs(heartbeat_timeout_seconds=self._heartbeat_interval * 3)
 

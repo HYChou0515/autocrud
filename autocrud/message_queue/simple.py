@@ -340,6 +340,9 @@ class SimpleMessageQueue(DelayableMessageQueue[T], Generic[T]):
         """Start consuming jobs from the queue."""
         import time
 
+        # Reset stop signals so a previously-stopped queue can be restarted.
+        self._recovery_stop_event.clear()
+
         # Recover any jobs left in PROCESSING from a previous crash
         self.recover_stale_jobs(heartbeat_timeout_seconds=self._heartbeat_interval * 3)
 

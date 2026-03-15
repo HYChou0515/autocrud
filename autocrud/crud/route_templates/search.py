@@ -26,14 +26,23 @@ T = TypeVar("T")
 
 
 class ListRouteTemplate(BaseRouteTemplate):
-    """列出所有資源的路由模板"""
+    """列出所有資源的路由模板
+
+    Collection-level (``/{model}/data``, ``/{model}/meta``, …) routes are
+    registered by this template.  They **must** appear in the router before
+    instance-level ``/{model}/{resource_id}`` routes (from ``ReadRouteTemplate``,
+    etc.), because Starlette matches the first route whose pattern fits the
+    incoming path.  A lower ``order`` value (default **50**) ensures this
+    template is applied before most other templates (default 100).
+    """
 
     def __init__(
         self,
         *args,
+        order: int = 50,
         **kwargs,
     ):
-        super().__init__(*args, **kwargs)
+        super().__init__(*args, order=order, **kwargs)
 
     def apply(
         self,
