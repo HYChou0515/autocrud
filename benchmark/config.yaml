@@ -27,6 +27,9 @@ storage:
   memory: {}
   disk:
     rootdir: /tmp/autocrud-benchmark
+  pg_disk:
+    dsn: postgresql://admin:password@localhost:5432/autocrud_bench
+    rootdir: /tmp/autocrud-benchmark-pg-disk
   postgres:
     dsn: postgresql://admin:password@localhost:5432/autocrud_bench
     s3_bucket: autocrud-bench
@@ -107,60 +110,109 @@ scenarios:
     encoding: msgpack
     model: simple
     n: 100
-    operations: [create, get, update, delete, search, modify, switch, restore]
+    operations: [create, get, update, delete, search, modify, switch, restore, list_resources]
 
-  - name: disk-json-simple
-    storage: disk
-    encoding: json
+  - name: pg_disk-msgpack-simple
+    storage: pg_disk
+    encoding: msgpack
     model: simple
     n: 100
-    operations: [create, get, update, delete, search, modify, switch, restore]
+    operations: [create, get, update, delete, search, modify, switch, restore, list_resources]
 
   - name: postgres-msgpack-simple
     storage: postgres
     encoding: msgpack
     model: simple
     n: 100
-    operations: [create, get, update, delete, search, modify, switch, restore]
+    operations: [create, get, update, delete, search, modify, switch, restore, list_resources]
+
+  - name: s3-msgpack-simple
+    storage: s3
+    encoding: msgpack
+    model: simple
+    n: 100
+    operations: [create, get, update, delete, search, modify, switch, restore, list_resources]
 
   - name: disk-msgpack-nested
     storage: disk
     encoding: msgpack
     model: nested
     n: 100
-    operations: [create, get, update, delete, search, modify, switch, restore]
+    operations: [create, get, update, delete, search, modify, switch, restore, list_resources]
 
-  - name: disk-json-nested
-    storage: disk
-    encoding: json
+  - name: pg_disk-msgpack-nested
+    storage: pg_disk
+    encoding: msgpack
     model: nested
     n: 100
-    operations: [create, get, update, delete, search, modify, switch, restore]
+    operations: [create, get, update, delete, search, modify, switch, restore, list_resources]
 
   - name: postgres-msgpack-nested
     storage: postgres
     encoding: msgpack
     model: nested
     n: 100
-    operations: [create, get, update, delete, search, modify, switch, restore]
+    operations: [create, get, update, delete, search, modify, switch, restore, list_resources]
+
+  - name: s3-msgpack-nested
+    storage: s3
+    encoding: msgpack
+    model: nested
+    n: 100
+    operations: [create, get, update, delete, search, modify, switch, restore, list_resources]
 
   - name: disk-msgpack-complex
     storage: disk
     encoding: msgpack
     model: complex
     n: 100
-    operations: [create, get, update, delete, search, modify, switch, restore]
+    operations: [create, get, update, delete, search, modify, switch, restore, list_resources]
 
-  - name: disk-json-complex
-    storage: disk
-    encoding: json
+  - name: pg_disk-msgpack-complex
+    storage: pg_disk
+    encoding: msgpack
     model: complex
     n: 100
-    operations: [create, get, update, delete, search, modify, switch, restore]
+    operations: [create, get, update, delete, search, modify, switch, restore, list_resources]
 
   - name: postgres-msgpack-complex
     storage: postgres
     encoding: msgpack
     model: complex
     n: 100
-    operations: [create, get, update, delete, search, modify, switch, restore]
+    operations: [create, get, update, delete, search, modify, switch, restore, list_resources]
+
+  - name: s3-msgpack-complex
+    storage: s3
+    encoding: msgpack
+    model: complex
+    n: 100
+    operations: [create, get, update, delete, search, modify, switch, restore, list_resources]
+
+  - name: disk-msgpack-binary
+    storage: disk
+    encoding: msgpack
+    model: with_binary
+    n: 100
+    operations: [create, get, update, delete, search, modify, switch, restore, list_resources]
+
+  - name: pg_disk-msgpack-binary
+    storage: pg_disk
+    encoding: msgpack
+    model: with_binary
+    n: 100
+    operations: [create, get, update, delete, search, modify, switch, restore, list_resources]
+
+  - name: postgres-msgpack-binary
+    storage: postgres
+    encoding: msgpack
+    model: with_binary
+    n: 100
+    operations: [create, get, update, delete, search, modify, switch, restore, list_resources]
+
+  - name: s3-msgpack-binary
+    storage: s3
+    encoding: msgpack
+    model: with_binary
+    n: 100
+    operations: [create, get, update, delete, search, modify, switch, restore, list_resources]

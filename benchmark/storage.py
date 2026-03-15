@@ -67,6 +67,15 @@ def build_storage_factory(
             encoding=encoding,
         )
 
+    if storage_name == "pg_disk":
+        from autocrud.resource_manager.storage_factory import PostgresDiskStorageFactory
+
+        return PostgresDiskStorageFactory(
+            connection_string=params["dsn"],
+            rootdir=params.get("rootdir", "/tmp/autocrud-benchmark-pg-disk"),
+            encoding=encoding,
+        )
+
     raise ValueError(f"Unknown storage backend: {storage_name}")
 
 
@@ -115,6 +124,19 @@ def check_availability(storage_name: str, params: dict[str, Any]) -> tuple[bool,
         except Exception as exc:
             return False, f"S3 unreachable: {exc}"
 
+    if storage_name == "pg_disk":
+        dsn = params.get("dsn", "")
+        if not dsn or "${" in dsn:
+            return False, "POSTGRES_DSN not set"
+        try:
+            import psycopg2
+
+            conn = psycopg2.connect(dsn, connect_timeout=3)
+            conn.close()
+            return True, ""
+        except Exception as exc:
+            return False, f"PostgreSQL unreachable: {exc}"
+
     return False, f"Unknown storage: {storage_name}"
 
 
@@ -135,6 +157,9 @@ def cleanup_storage(storage_name: str, params: dict[str, Any]) -> None:
 
     elif storage_name == "s3":
         _cleanup_s3(params)
+
+    elif storage_name == "pg_disk":
+        _cleanup_pg_disk(params)
 
 
 def _cleanup_postgres(params: dict[str, Any]) -> None:
@@ -216,3 +241,30 @@ def _delete_all_s3_objects(
                 )
     except Exception:
         pass
+
+
+def _cleanup_pg_disk(params: dict[str, Any]) -> None:
+    """Clean up PostgreSQL tables and disk data for pg_disk backend."""
+    dsn = params.get("dsn", "")
+    if dsn and "${" not in dsn:
+        try:
+            import psycopg2
+
+            conn = psycopg2.connect(dsn, connect_timeout=3)
+            conn.autocommit = True
+            cur = conn.cursor()
+            cur.execute(
+                "SELECT tablename FROM pg_tables "
+                "WHERE schemaname = 'public' AND tablename LIKE '%\\_meta'"
+            )
+            tables = [row[0] for row in cur.fetchall()]
+            for table in tables:
+                cur.execute(f'DROP TABLE IF EXISTS "{table}" CASCADE')
+            cur.close()
+            conn.close()
+        except Exception:
+            pass
+
+    rootdir = Path(params.get("rootdir", "/tmp/autocrud-benchmark-pg-disk"))
+    if rootdir.exists():
+        shutil.rmtree(rootdir, ignore_errors=True)

@@ -32,7 +32,7 @@ VALID_OPERATIONS = {
     "restore",
     "list_resources",
 }
-VALID_STORAGES = {"memory", "disk", "postgres", "s3"}
+VALID_STORAGES = {"memory", "disk", "postgres", "s3", "pg_disk"}
 
 _ENV_RE = re.compile(r"\$\{(\w+)\}")
 
