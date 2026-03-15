@@ -296,8 +296,14 @@ class BasicMessageQueue(IMessageQueue[T], Generic[T]):
 
         The thread runs every ``_recovery_interval`` seconds (default 60 s) and
         is a daemon so it won't block process shutdown.
+
+        If ``_stop_periodic_recovery`` has already been called (i.e. the stop
+        event is set), this method is a no-op to avoid a race between
+        ``stop_consuming`` and ``start_consume`` running on different threads.
         """
-        self._recovery_stop_event.clear()
+        # If stop was already requested, don't (re-)start the recovery thread.
+        if self._recovery_stop_event.is_set():
+            return
 
         def _loop() -> None:
             while not self._recovery_stop_event.is_set():
@@ -322,7 +328,7 @@ class BasicMessageQueue(IMessageQueue[T], Generic[T]):
         """Signal the periodic recovery thread to stop and wait for it."""
         self._recovery_stop_event.set()
         if self._recovery_thread is not None:
-            self._recovery_thread.join(timeout=self._recovery_interval * 2)
+            self._recovery_thread.join(timeout=max(self._recovery_interval * 2, 2.0))
             self._recovery_thread = None
 
     def stop_consuming(self) -> None:
