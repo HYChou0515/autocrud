@@ -15,7 +15,9 @@ import {
   mrtSortingToSorts,
   mrtFiltersToParams,
   DEFAULT_SORTING,
+  buildRequestParams,
 } from './utils';
+import type { ActiveSearchState } from './searchUtils';
 
 // ---------------------------------------------------------------------------
 // isServerSortable
@@ -357,5 +359,164 @@ describe('DEFAULT_SORTING', () => {
     const sortsStr = mrtSortingToSorts(DEFAULT_SORTING);
     const parsed = JSON.parse(sortsStr);
     expect(parsed).toEqual([{ type: 'meta', key: 'updated_time', direction: '-' }]);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// buildRequestParams
+// ---------------------------------------------------------------------------
+
+describe('buildRequestParams', () => {
+  const baseActiveSearch: ActiveSearchState = {
+    mode: 'condition',
+    condition: { meta: {}, data: [] },
+    qb: '',
+    resultLimit: undefined,
+    sortBy: undefined,
+  };
+
+  const defaultArgs = {
+    mode: 'server' as const,
+    pagination: { pageIndex: 0, pageSize: 20 },
+    activeSearch: baseActiveSearch,
+    sorting: DEFAULT_SORTING,
+    columnFilters: [] as any[],
+    indexedFields: [] as string[],
+    alwaysSearchCondition: undefined,
+  };
+
+  it('includes sorts in server mode with condition search', () => {
+    const params = buildRequestParams(defaultArgs);
+    expect(params.sorts).toBeDefined();
+    expect(params.qb).toBeUndefined();
+  });
+
+  it('includes sorts in client mode with condition search', () => {
+    const params = buildRequestParams({
+      ...defaultArgs,
+      mode: 'client',
+    });
+    expect(params.sorts).toBeDefined();
+    expect(params.qb).toBeUndefined();
+  });
+
+  it('does NOT include sorts when QB mode is active (server mode)', () => {
+    const params = buildRequestParams({
+      ...defaultArgs,
+      mode: 'server',
+      activeSearch: {
+        ...baseActiveSearch,
+        mode: 'qb',
+        qb: 'QB.all().order_by("-updated_time")',
+      },
+    });
+    expect(params.qb).toBe('QB.all().order_by("-updated_time")');
+    expect(params.sorts).toBeUndefined();
+  });
+
+  it('does NOT include sorts when QB mode is active (client mode)', () => {
+    const params = buildRequestParams({
+      ...defaultArgs,
+      mode: 'client',
+      activeSearch: {
+        ...baseActiveSearch,
+        mode: 'qb',
+        qb: 'QB["level"] > 5',
+      },
+    });
+    expect(params.qb).toBe('QB["level"] > 5');
+    expect(params.sorts).toBeUndefined();
+  });
+
+  it('does NOT include data_conditions or meta filters in QB mode', () => {
+    const params = buildRequestParams({
+      ...defaultArgs,
+      mode: 'server',
+      activeSearch: {
+        ...baseActiveSearch,
+        mode: 'qb',
+        qb: 'QB.all()',
+      },
+    });
+    expect(params.qb).toBe('QB.all()');
+    expect(params.sorts).toBeUndefined();
+    expect(params.data_conditions).toBeUndefined();
+    expect(params.created_time_start).toBeUndefined();
+  });
+
+  it('uses pagination in server mode', () => {
+    const params = buildRequestParams({
+      ...defaultArgs,
+      mode: 'server',
+      pagination: { pageIndex: 2, pageSize: 10 },
+    });
+    expect(params.limit).toBe(10);
+    expect(params.offset).toBe(20);
+  });
+
+  it('uses CLIENT_FETCH_LIMIT in client mode', () => {
+    const params = buildRequestParams({
+      ...defaultArgs,
+      mode: 'client',
+    });
+    expect(params.limit).toBe(1000);
+    expect(params.offset).toBeUndefined();
+  });
+
+  it('includes advanced panel sorts in condition mode (server)', () => {
+    const params = buildRequestParams({
+      ...defaultArgs,
+      mode: 'server',
+      activeSearch: {
+        ...baseActiveSearch,
+        sortBy: [{ field: 'updated_time', order: 'desc' }],
+      },
+    });
+    expect(params.sorts).toBeDefined();
+    const parsed = JSON.parse(params.sorts as string);
+    expect(parsed).toEqual([{ type: 'meta', key: 'updated_time', direction: '-' }]);
+  });
+
+  it('includes MRT sorting in server mode when no advanced sorts', () => {
+    const params = buildRequestParams({
+      ...defaultArgs,
+      mode: 'server',
+      sorting: [{ id: 'created_time', desc: false }],
+    });
+    expect(params.sorts).toBeDefined();
+    const parsed = JSON.parse(params.sorts as string);
+    expect(parsed).toEqual([{ type: 'meta', key: 'created_time', direction: '+' }]);
+  });
+
+  it('merges alwaysSearchCondition with existing data_conditions', () => {
+    const params = buildRequestParams({
+      ...defaultArgs,
+      activeSearch: {
+        ...baseActiveSearch,
+        condition: {
+          meta: {},
+          data: [{ field: 'name', operator: 'eq', value: 'hero' }],
+        },
+      },
+      alwaysSearchCondition: [{ field: 'active', operator: 'eq', value: true }],
+    });
+    const parsed = JSON.parse(params.data_conditions as string);
+    expect(parsed).toHaveLength(2);
+    expect(parsed[0]).toEqual({ field_path: 'name', operator: 'eq', value: 'hero' });
+    expect(parsed[1]).toEqual({ field_path: 'active', operator: 'eq', value: true });
+  });
+
+  it('handles QB mode with empty string (falls back to condition mode)', () => {
+    const params = buildRequestParams({
+      ...defaultArgs,
+      activeSearch: {
+        ...baseActiveSearch,
+        mode: 'qb',
+        qb: '', // empty QB → should behave like condition mode
+      },
+    });
+    expect(params.qb).toBeUndefined();
+    // Should still include sorts since it's effectively condition mode
+    expect(params.sorts).toBeDefined();
   });
 });

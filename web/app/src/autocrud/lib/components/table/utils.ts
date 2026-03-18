@@ -279,6 +279,131 @@ export function conditionToQB(
   return qb;
 }
 
+// ---------------------------------------------------------------------------
+// buildRequestParams — pure function extracted from ResourceTable useMemo
+// ---------------------------------------------------------------------------
+
+/** Maximum number of items fetched from the backend for client-side operations */
+const CLIENT_FETCH_LIMIT = 1000;
+
+import type { ActiveSearchState } from './searchUtils';
+
+export interface BuildRequestParamsArgs {
+  mode: TableMode;
+  pagination: { pageIndex: number; pageSize: number };
+  activeSearch: ActiveSearchState;
+  sorting: MRT_SortingState;
+  columnFilters: MRT_ColumnFiltersState;
+  indexedFields?: string[];
+  alwaysSearchCondition?: { field: string; operator: string; value: unknown }[];
+}
+
+/**
+ * Build the request params for the resource list API call.
+ *
+ * **Key rule**: when `activeSearch.mode === 'qb'` and `activeSearch.qb` is
+ * non-empty, the `sorts` parameter is **never** included. The backend rejects
+ * `qb` + `sorts` together (HTTP 422). Ordering must be expressed inside the
+ * QB expression itself (e.g. `.order_by("-updated_time")`).
+ */
+export function buildRequestParams({
+  mode,
+  pagination,
+  activeSearch,
+  sorting,
+  columnFilters,
+  indexedFields,
+  alwaysSearchCondition,
+}: BuildRequestParamsArgs): Record<string, unknown> {
+  const baseParams: Record<string, unknown> = {};
+  const isQBMode = activeSearch.mode === 'qb' && !!activeSearch.qb;
+
+  // --- Pagination ---
+  if (mode === 'server') {
+    baseParams.limit = pagination.pageSize;
+    baseParams.offset = pagination.pageIndex * pagination.pageSize;
+  } else {
+    baseParams.limit = CLIENT_FETCH_LIMIT;
+  }
+
+  // --- AdvancedSearchPanel conditions ---
+  if (isQBMode) {
+    // QB mode: just send the QB string — NO sorts, data_conditions, or meta filters
+    baseParams.qb = activeSearch.qb;
+  } else {
+    // Client mode default sort (updated_time desc)
+    if (mode === 'client') {
+      baseParams.sorts = JSON.stringify([{ type: 'meta', key: 'updated_time', direction: '-' }]);
+    }
+
+    // Condition mode
+    const { meta, data: advancedData } = activeSearch.condition;
+
+    // Advanced panel result limit (cap at CLIENT_FETCH_LIMIT)
+    if (activeSearch.resultLimit) {
+      baseParams.limit = Math.min(
+        activeSearch.resultLimit,
+        mode === 'server' ? activeSearch.resultLimit : CLIENT_FETCH_LIMIT,
+      );
+    }
+
+    // Advanced panel sorts (only in server mode — in client mode MRT handles sorting)
+    if (mode === 'server' && activeSearch.sortBy && activeSearch.sortBy.length > 0) {
+      const sortsStr = sortByToSorts(activeSearch.sortBy);
+      if (sortsStr) baseParams.sorts = sortsStr;
+    }
+
+    // Advanced panel data_conditions
+    const advancedConditions = advancedData.map((condition) => ({
+      field_path: condition.field,
+      operator: condition.operator,
+      value: condition.value,
+    }));
+
+    // Advanced panel meta filters
+    if (meta.created_time_start) baseParams.created_time_start = meta.created_time_start;
+    if (meta.created_time_end) baseParams.created_time_end = meta.created_time_end;
+    if (meta.updated_time_start) baseParams.updated_time_start = meta.updated_time_start;
+    if (meta.updated_time_end) baseParams.updated_time_end = meta.updated_time_end;
+    if (meta.created_by) baseParams.created_bys = [meta.created_by];
+    if (meta.updated_by) baseParams.updated_bys = [meta.updated_by];
+
+    // --- MRT column filters (server-filterable ones sent to backend in both modes) ---
+    const { serverParams, dataConditions: mrtDataConditions } = mrtFiltersToParams(
+      columnFilters,
+      indexedFields,
+    );
+    Object.assign(baseParams, serverParams);
+
+    // Merge advanced + MRT data_conditions
+    const allDataConditions = [...advancedConditions, ...mrtDataConditions];
+    if (allDataConditions.length > 0) {
+      baseParams.data_conditions = JSON.stringify(allDataConditions);
+    }
+  }
+
+  // --- MRT column sorting (server mode only, condition mode only) ---
+  if (mode === 'server' && sorting.length > 0 && !baseParams.sorts && !isQBMode) {
+    const sortsStr = mrtSortingToSorts(sorting, indexedFields);
+    if (sortsStr) baseParams.sorts = sortsStr;
+  }
+
+  // --- Always-on search conditions (e.g. filter for a specific tag) ---
+  if (alwaysSearchCondition && alwaysSearchCondition.length > 0) {
+    const alwaysConditions = alwaysSearchCondition.map((c) => ({
+      field_path: c.field,
+      operator: c.operator,
+      value: c.value,
+    }));
+    const existing = baseParams.data_conditions
+      ? (JSON.parse(baseParams.data_conditions as string) as unknown[])
+      : [];
+    baseParams.data_conditions = JSON.stringify([...existing, ...alwaysConditions]);
+  }
+
+  return baseParams;
+}
+
 /**
  * 將 sortBy 轉換為 API 需要的 sorts 格式
  * Meta 欄位使用 key，Data 欄位使用 field_path

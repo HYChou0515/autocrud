@@ -41,17 +41,7 @@ import { buildTableColumns } from './buildColumns';
 import type { InternalColumnDef } from './buildColumns';
 import type { ActiveSearchState } from './searchUtils';
 import type { ResourceTableProps } from './types';
-import {
-  sortByToSorts,
-  computeTableMode,
-  mrtSortingToSorts,
-  mrtFiltersToParams,
-  DEFAULT_SORTING,
-  type TableMode,
-} from './utils';
-
-/** Maximum number of items fetched from the backend for client-side operations */
-const CLIENT_FETCH_LIMIT = 1000;
+import { computeTableMode, buildRequestParams, DEFAULT_SORTING, type TableMode } from './utils';
 
 /** Debounce delay (ms) for globalFilter before triggering client mode */
 const GLOBAL_FILTER_DEBOUNCE_MS = 1000;
@@ -194,99 +184,27 @@ export function ResourceTable<T extends MRT_RowData>({
   }, [mode]);
 
   // ── Build request params ──
-  const params = useMemo(() => {
-    const baseParams: Record<string, unknown> = {};
-
-    // --- Pagination ---
-    if (mode === 'server') {
-      baseParams.limit = pagination.pageSize;
-      baseParams.offset = pagination.pageIndex * pagination.pageSize;
-    } else {
-      baseParams.limit = CLIENT_FETCH_LIMIT;
-      // Sort by updated_time desc to fetch the most recently updated items
-      baseParams.sorts = JSON.stringify([{ type: 'meta', key: 'updated_time', direction: '-' }]);
-    }
-
-    // --- AdvancedSearchPanel conditions ---
-    if (activeSearch.mode === 'qb' && activeSearch.qb) {
-      // QB mode: just send the QB string
-      baseParams.qb = activeSearch.qb;
-    } else {
-      // Condition mode
-      const { meta, data: advancedData } = activeSearch.condition;
-
-      // Advanced panel result limit (cap at CLIENT_FETCH_LIMIT)
-      if (activeSearch.resultLimit) {
-        baseParams.limit = Math.min(
-          activeSearch.resultLimit,
-          mode === 'server' ? activeSearch.resultLimit : CLIENT_FETCH_LIMIT,
-        );
-      }
-
-      // Advanced panel sorts (only in server mode — in client mode MRT handles sorting)
-      if (mode === 'server' && activeSearch.sortBy && activeSearch.sortBy.length > 0) {
-        const sortsStr = sortByToSorts(activeSearch.sortBy);
-        if (sortsStr) baseParams.sorts = sortsStr;
-      }
-
-      // Advanced panel data_conditions
-      const advancedConditions = advancedData.map((condition) => ({
-        field_path: condition.field,
-        operator: condition.operator,
-        value: condition.value,
-      }));
-
-      // Advanced panel meta filters
-      if (meta.created_time_start) baseParams.created_time_start = meta.created_time_start;
-      if (meta.created_time_end) baseParams.created_time_end = meta.created_time_end;
-      if (meta.updated_time_start) baseParams.updated_time_start = meta.updated_time_start;
-      if (meta.updated_time_end) baseParams.updated_time_end = meta.updated_time_end;
-      if (meta.created_by) baseParams.created_bys = [meta.created_by];
-      if (meta.updated_by) baseParams.updated_bys = [meta.updated_by];
-
-      // --- MRT column filters (server-filterable ones sent to backend in both modes) ---
-      const { serverParams, dataConditions: mrtDataConditions } = mrtFiltersToParams(
+  const params = useMemo(
+    () =>
+      buildRequestParams({
+        mode,
+        pagination,
+        activeSearch,
+        sorting,
         columnFilters,
-        config.indexedFields,
-      );
-      Object.assign(baseParams, serverParams);
-
-      // Merge advanced + MRT data_conditions
-      const allDataConditions = [...advancedConditions, ...mrtDataConditions];
-      if (allDataConditions.length > 0) {
-        baseParams.data_conditions = JSON.stringify(allDataConditions);
-      }
-    }
-
-    // --- MRT column sorting (server mode only — send sortable columns to backend) ---
-    if (mode === 'server' && sorting.length > 0 && !baseParams.sorts) {
-      const sortsStr = mrtSortingToSorts(sorting, config.indexedFields);
-      if (sortsStr) baseParams.sorts = sortsStr;
-    }
-
-    // --- Always-on search conditions (e.g. filter for a specific tag) ---
-    if (alwaysSearchCondition && alwaysSearchCondition.length > 0) {
-      const alwaysConditions = alwaysSearchCondition.map((c) => ({
-        field_path: c.field,
-        operator: c.operator,
-        value: c.value,
-      }));
-      const existing = baseParams.data_conditions
-        ? (JSON.parse(baseParams.data_conditions as string) as unknown[])
-        : [];
-      baseParams.data_conditions = JSON.stringify([...existing, ...alwaysConditions]);
-    }
-
-    return baseParams;
-  }, [
-    mode,
-    pagination,
-    activeSearch,
-    sorting,
-    columnFilters,
-    config.indexedFields,
-    alwaysSearchCondition,
-  ]);
+        indexedFields: config.indexedFields,
+        alwaysSearchCondition,
+      }),
+    [
+      mode,
+      pagination,
+      activeSearch,
+      sorting,
+      columnFilters,
+      config.indexedFields,
+      alwaysSearchCondition,
+    ],
+  );
 
   const { data, total, loading, error, refresh } = useResourceList(config, params);
 
