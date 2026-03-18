@@ -32,6 +32,7 @@ import type { UseFormReturnType } from '@mantine/form';
 import type { ResourceField, UnionMeta, UnionVariant } from '../../../resources';
 import { BinaryFieldEditor } from './BinaryFieldEditor';
 import { ArrayFieldRenderer } from './ArrayFieldRenderer';
+import { JsonEditor } from './JsonEditor';
 import {
   getByPath,
   createEmptyItem,
@@ -100,15 +101,16 @@ function renderSubField(sf: ResourceField, subPath: string, form: UseFormReturnT
     );
   }
   if (sf.type === 'object') {
+    const objInputProps = form.getInputProps(subPath);
     return (
-      <Textarea
+      <JsonEditor
         key={subPath}
         label={sf.label}
         required={sf.isRequired && !sf.isNullable}
-        placeholder="{}"
-        minRows={2}
-        styles={{ input: { fontFamily: 'monospace', fontSize: '13px' } }}
-        {...form.getInputProps(subPath)}
+        value={objInputProps.value ?? ''}
+        onChange={(val) => form.setFieldValue(subPath as any, val as any)}
+        height={150}
+        error={objInputProps.error as string | undefined}
       />
     );
   }

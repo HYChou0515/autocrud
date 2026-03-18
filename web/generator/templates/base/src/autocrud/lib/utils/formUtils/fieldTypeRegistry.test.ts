@@ -218,6 +218,28 @@ describe('stringHandler', () => {
     it('returns empty array for non-array isArray', () => {
       expect(stringHandler.toFormValue(null, field({ isArray: true }))).toEqual([]);
     });
+
+    // ── [object Object] bug: object values must be serialized ──
+    it('converts plain object to JSON string instead of passing through', () => {
+      const obj = { key: 'value' };
+      const result = stringHandler.toFormValue(obj, field());
+      expect(typeof result).toBe('string');
+      expect(result).toBe(JSON.stringify(obj, null, 2));
+    });
+
+    it('converts nested object to JSON string', () => {
+      const obj = { nested: { a: 1, b: [2, 3] } };
+      const result = stringHandler.toFormValue(obj, field());
+      expect(typeof result).toBe('string');
+      expect(JSON.parse(result as string)).toEqual(obj);
+    });
+
+    it('does not convert Date objects', () => {
+      const date = new Date('2024-01-01');
+      const result = stringHandler.toFormValue(date, field());
+      // Date should pass through (dateHandler handles dates)
+      expect(result).toBe(date);
+    });
   });
 
   describe('toApiValue', () => {
@@ -320,6 +342,17 @@ describe('numberHandler', () => {
 
     it('returns value for non-null', () => {
       expect(numberHandler.toFormValue(42, field())).toBe(42);
+    });
+
+    // ── [object Object] bug: object values must not pass through ──
+    it('converts object to empty string instead of passing through', () => {
+      const result = numberHandler.toFormValue({ key: 'value' }, field());
+      expect(result).toBe('');
+    });
+
+    it('converts array to empty string for non-array field', () => {
+      const result = numberHandler.toFormValue([1, 2, 3], field());
+      expect(result).toBe('');
     });
   });
 
@@ -1114,6 +1147,60 @@ describe('unionHandler', () => {
         expect(result.__variant).toBe('EventBodyB');
         expect(result.type).toBe('EventBodyB');
       });
+    });
+  });
+
+  // ── [object Object] bug: sub-field object values must be processed ──
+  describe('structural union with object sub-fields', () => {
+    const objectSubFieldUnion = (): ResourceFieldMinimal => ({
+      name: 'event',
+      type: 'union',
+      unionMeta: {
+        discriminatorField: '__variant',
+        variants: [
+          {
+            tag: 'WithMeta',
+            label: 'With Metadata',
+            schemaName: 'WithMeta',
+            fields: [
+              { name: 'name', type: 'string' },
+              { name: 'metadata', type: 'object' },
+            ],
+          },
+        ],
+      },
+    });
+
+    it('converts object sub-field values to JSON string when wrapping API data', () => {
+      const apiVal = { name: 'test', metadata: { key: 'value', nested: { a: 1 } } };
+      const result = unionHandler.toFormValue(apiVal, objectSubFieldUnion());
+      expect(result.__variant).toBe('WithMeta');
+      expect(result.name).toBe('test');
+      // metadata should be JSON string, not raw object
+      expect(typeof result.metadata).toBe('string');
+      expect(JSON.parse(result.metadata)).toEqual({ key: 'value', nested: { a: 1 } });
+    });
+
+    it('converts object sub-field to JSON string on fallback variant match', () => {
+      // Variant with object sub-field where bestObjScore is 0 (falls to firstObj)
+      const f: ResourceFieldMinimal = {
+        name: 'data',
+        type: 'union',
+        unionMeta: {
+          discriminatorField: '__variant',
+          variants: [
+            {
+              tag: 'ObjType',
+              label: 'Object Type',
+              fields: [{ name: 'info', type: 'object' }],
+            },
+          ],
+        },
+      };
+      const apiVal = { info: { deep: { nested: true } } };
+      const result = unionHandler.toFormValue(apiVal, f);
+      expect(result.__variant).toBe('ObjType');
+      expect(typeof result.info).toBe('string');
     });
   });
 });

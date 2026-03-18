@@ -581,6 +581,88 @@ describe('processInitialValues', () => {
     );
     expect(result.equipments).toEqual([{ type: 'Equipment', name: 'Sword' }]);
   });
+
+  // ── [object Object] bug: structural union array items must be converted ──
+  it('should convert structural union array items via unionHandler.toFormValue', () => {
+    const fields = [
+      {
+        name: 'events',
+        type: 'union' as const,
+        isArray: true,
+        unionMeta: {
+          discriminatorField: '__variant',
+          variants: [
+            {
+              tag: 'WithMeta',
+              label: 'With Metadata',
+              schemaName: 'WithMeta',
+              fields: [
+                { name: 'name', type: 'string' as const },
+                { name: 'metadata', type: 'object' as const },
+              ],
+            },
+          ],
+        },
+      },
+    ];
+
+    const result = processInitialValues(
+      { events: [{ name: 'test', metadata: { key: 'value' } }] },
+      fields,
+      [],
+      [],
+    );
+
+    // Each item should be wrapped with __variant
+    expect(result.events).toHaveLength(1);
+    expect(result.events[0].__variant).toBe('WithMeta');
+    expect(result.events[0].name).toBe('test');
+    // object sub-field should be JSON string, not raw object
+    expect(typeof result.events[0].metadata).toBe('string');
+    expect(JSON.parse(result.events[0].metadata)).toEqual({ key: 'value' });
+  });
+
+  it('should handle structural union array with already-wrapped items', () => {
+    const fields = [
+      {
+        name: 'events',
+        type: 'union' as const,
+        isArray: true,
+        unionMeta: {
+          discriminatorField: '__variant',
+          variants: [
+            {
+              tag: 'Simple',
+              label: 'Simple',
+              fields: [{ name: 'value', type: 'string' as const }],
+            },
+          ],
+        },
+      },
+    ];
+
+    const result = processInitialValues(
+      { events: [{ __variant: 'Simple', value: 'hello' }] },
+      fields,
+      [],
+      [],
+    );
+
+    expect(result.events).toHaveLength(1);
+    expect(result.events[0].__variant).toBe('Simple');
+    expect(result.events[0].value).toBe('hello');
+  });
+
+  // ── [object Object] bug: string field with object value from API ──
+  it('should convert object value to JSON string for string-typed field', () => {
+    const fields = [{ name: 'data', type: 'string' as const }];
+
+    const result = processInitialValues({ data: { nested: { key: 'value' } } }, fields, [], []);
+
+    // Must be a string, never a raw object
+    expect(typeof result.data).toBe('string');
+    expect(JSON.parse(result.data)).toEqual({ nested: { key: 'value' } });
+  });
 });
 
 describe('formValuesToApiObject', () => {

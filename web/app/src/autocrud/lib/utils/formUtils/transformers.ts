@@ -99,9 +99,15 @@ export function processInitialValues(
     // Determine effective type: use 'date' handler for date-variant fields
     const effectiveType = dateFieldNames.includes(field.name) ? 'date' : field.type;
 
-    // Array of discriminated union items — keep as array, default to []
+    // Array of discriminated union items — process each item via unionHandler
     if (field.isArray && field.type === 'union' && field.unionMeta) {
-      setByPath(processed, field.name, Array.isArray(val) ? val : []);
+      if (Array.isArray(val)) {
+        const handler = getHandler('union');
+        const processedItems = val.map((item: any) => handler.toFormValue(item, field));
+        setByPath(processed, field.name, processedItems);
+      } else {
+        setByPath(processed, field.name, []);
+      }
     } else if (field.isArray && field.ref && field.ref.type === 'resource_id') {
       // Array ref field — keep as array for MultiSelect, default to []
       setByPath(processed, field.name, Array.isArray(val) ? val : []);

@@ -11,6 +11,7 @@ import { guildApi } from './api/guildApi';
 import { skillApi } from './api/skillApi';
 import { equipmentApi } from './api/equipmentApi';
 import { petJobApi } from './api/pet-jobApi';
+import { questApi } from './api/questApi';
 import { gameEventApi } from './api/game-eventApi';
 import { newChar1JobApi } from './api/new-char1-jobApi';
 import { createNewCharacter2JobApi } from './api/create-new-character2-jobApi';
@@ -28,6 +29,7 @@ export type ResourceName =
   | 'skill'
   | 'equipment'
   | 'pet-job'
+  | 'quest'
   | 'game-event'
   | 'new-char1-job'
   | 'create-new-character2-job'
@@ -89,6 +91,13 @@ export type PetJobFieldName =
   | 'periodic_runs'
   | 'periodic_initial_delay_seconds'
   | 'last_heartbeat_at';
+export type QuestFieldName =
+  | 'title'
+  | 'description'
+  | 'level_requirement'
+  | 'difficulty'
+  | 'quest_config'
+  | 'rewards';
 export type GameEventFieldName =
   | 'payload.event_type'
   | 'payload.character_name'
@@ -165,6 +174,7 @@ export interface ResourceFieldMap {
   skill: SkillFieldName;
   equipment: EquipmentFieldName;
   'pet-job': PetJobFieldName;
+  quest: QuestFieldName;
   'game-event': GameEventFieldName;
   'new-char1-job': NewChar1JobFieldName;
   'create-new-character2-job': CreateNewCharacter2JobFieldName;
@@ -182,6 +192,7 @@ export type ResourceDetailRoute =
   | '/autocrud-admin/skill/$resourceId'
   | '/autocrud-admin/equipment/$resourceId'
   | '/autocrud-admin/pet-job/$resourceId'
+  | '/autocrud-admin/quest/$resourceId'
   | '/autocrud-admin/game-event/$resourceId'
   | '/autocrud-admin/new-char1-job/$resourceId'
   | '/autocrud-admin/create-new-character2-job/$resourceId'
@@ -195,6 +206,7 @@ export type ResourceListRoute =
   | '/autocrud-admin/skill'
   | '/autocrud-admin/equipment'
   | '/autocrud-admin/pet-job'
+  | '/autocrud-admin/quest'
   | '/autocrud-admin/game-event'
   | '/autocrud-admin/new-char1-job'
   | '/autocrud-admin/create-new-character2-job'
@@ -208,6 +220,7 @@ const detailRoutes: Record<ResourceName, ResourceDetailRoute> = {
   skill: '/autocrud-admin/skill/$resourceId',
   equipment: '/autocrud-admin/equipment/$resourceId',
   'pet-job': '/autocrud-admin/pet-job/$resourceId',
+  quest: '/autocrud-admin/quest/$resourceId',
   'game-event': '/autocrud-admin/game-event/$resourceId',
   'new-char1-job': '/autocrud-admin/new-char1-job/$resourceId',
   'create-new-character2-job': '/autocrud-admin/create-new-character2-job/$resourceId',
@@ -222,6 +235,7 @@ const listRoutes: Record<ResourceName, ResourceListRoute> = {
   skill: '/autocrud-admin/skill',
   equipment: '/autocrud-admin/equipment',
   'pet-job': '/autocrud-admin/pet-job',
+  quest: '/autocrud-admin/quest',
   'game-event': '/autocrud-admin/game-event',
   'new-char1-job': '/autocrud-admin/new-char1-job',
   'create-new-character2-job': '/autocrud-admin/create-new-character2-job',
@@ -1473,6 +1487,165 @@ Object.assign(registry, {
       'periodic_initial_delay_seconds',
       'last_heartbeat_at',
     ],
+  },
+  quest: {
+    name: 'quest',
+    label: 'Quest',
+    pluralLabel: 'Quests',
+    displayNameField: 'title',
+    schema: 'Quest',
+    fields: [
+      {
+        name: 'title',
+        label: 'Title',
+        type: 'string',
+        isArray: false,
+        isRequired: true,
+        isNullable: false,
+        isUnique: true,
+      },
+      {
+        name: 'description',
+        label: 'Description',
+        type: 'string',
+        isArray: false,
+        isRequired: false,
+        isNullable: false,
+      },
+      {
+        name: 'level_requirement',
+        label: 'Level Requirement',
+        type: 'number',
+        isArray: false,
+        isRequired: false,
+        isNullable: false,
+      },
+      {
+        name: 'difficulty',
+        label: 'Difficulty',
+        type: 'string',
+        isArray: false,
+        isRequired: false,
+        isNullable: false,
+      },
+      {
+        name: 'quest_config',
+        label: 'Quest Config',
+        type: 'object',
+        isArray: false,
+        isRequired: false,
+        isNullable: false,
+      },
+      {
+        name: 'rewards',
+        label: 'Rewards',
+        type: 'union',
+        isArray: true,
+        isRequired: false,
+        isNullable: false,
+        unionMeta: {
+          discriminatorField: 'type',
+          variants: [
+            {
+              tag: 'QuestRewardItem',
+              label: 'QuestRewardItem',
+              schemaName: 'QuestRewardItem',
+              fields: [
+                {
+                  name: 'item_name',
+                  label: 'Item Name',
+                  type: 'string',
+                  isArray: false,
+                  isRequired: true,
+                  isNullable: false,
+                },
+                {
+                  name: 'quantity',
+                  label: 'Quantity',
+                  type: 'number',
+                  isArray: false,
+                  isRequired: false,
+                  isNullable: false,
+                },
+                {
+                  name: 'extra_properties',
+                  label: 'Extra Properties',
+                  type: 'object',
+                  isArray: false,
+                  isRequired: false,
+                  isNullable: false,
+                },
+              ],
+            },
+            {
+              tag: 'QuestRewardGold',
+              label: 'QuestRewardGold',
+              schemaName: 'QuestRewardGold',
+              fields: [
+                {
+                  name: 'amount',
+                  label: 'Amount',
+                  type: 'number',
+                  isArray: false,
+                  isRequired: false,
+                  isNullable: false,
+                },
+              ],
+            },
+            {
+              tag: 'QuestRewardExp',
+              label: 'QuestRewardExp',
+              schemaName: 'QuestRewardExp',
+              fields: [
+                {
+                  name: 'exp',
+                  label: 'Exp',
+                  type: 'number',
+                  isArray: false,
+                  isRequired: false,
+                  isNullable: false,
+                },
+                {
+                  name: 'bonus_config',
+                  label: 'Bonus Config',
+                  type: 'object',
+                  isArray: false,
+                  isRequired: false,
+                  isNullable: false,
+                },
+              ],
+            },
+          ],
+        },
+      },
+    ],
+    zodSchema: z.object({
+      title: z.string(),
+      description: z.string().optional(),
+      level_requirement: z.number().int().optional(),
+      difficulty: z.string().optional(),
+      quest_config: z.record(z.string(), z.any()).optional(),
+      rewards: z
+        .array(
+          z.discriminatedUnion('type', [
+            z.object({
+              type: z.literal('QuestRewardItem'),
+              item_name: z.string(),
+              quantity: z.number().int().optional(),
+              extra_properties: z.record(z.string(), z.any()).optional(),
+            }),
+            z.object({ type: z.literal('QuestRewardGold'), amount: z.number().int().optional() }),
+            z.object({
+              type: z.literal('QuestRewardExp'),
+              exp: z.number().int().optional(),
+              bonus_config: z.record(z.string(), z.any()).optional(),
+            }),
+          ]),
+        )
+        .optional(),
+    }),
+    apiClient: questApi,
+    maxFormDepth: 1,
   },
   'game-event': {
     name: 'game-event',

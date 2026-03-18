@@ -9,6 +9,7 @@
         - ⚔️ **角色管理**: 創建、查詢、升級遊戲角色
         - 🏰 **公會系統**: 管理遊戲公會和成員
         - 🗡️ **裝備系統**: 武器裝備的完整管理
+        - 📜 **任務系統**: dict 欄位 Monaco 編輯器 + Union 子欄位展示
         - 🎯 **遊戲事件系統**: 使用 Message Queue 處理異步遊戲事件
         - 🚀 **AutoCRUD 驅動**: 自動生成的完整 CRUD API
         - 📊 **數據搜尋**: 強大的查詢和篩選功能
@@ -19,753 +20,13 @@
         2. 創建新角色: `POST /character`  
         3. 查看公會列表: `GET /guild/data`
         4. 瀏覽裝備: `GET /equipment/data`
-        5. 查看遊戲事件: `GET /game-event/data`
-        6. 觸發遊戲事件: `POST /game-event`
+        5. 查看任務列表: `GET /quest/data` ← dict 欄位 + Union 子欄位示範
+        6. 查看遊戲事件: `GET /game-event/data`
+        7. 觸發遊戲事件: `POST /game-event`
         
  * OpenAPI spec version: 2.1.0
  */
 import * as zod from 'zod';
-
-/**
- * Export all (or filtered) **character** resources as a
-streaming ``.acbak`` archive.
-
-Supports the same query parameters as the search endpoint
-(``qb``, ``is_deleted``, time ranges, etc.) to filter
-which resources are included.
- * @summary Export character data
- */
-export const exportModelV1AutocrudCharacterExportGetQueryIsDeletedDefault = false;
-export const exportModelV1AutocrudCharacterExportGetQueryLimitDefault = 10;
-export const exportModelV1AutocrudCharacterExportGetQueryOffsetDefault = 0;
-
-export const ExportModelV1AutocrudCharacterExportGetQueryParams = zod.object({
-  qb: zod
-    .union([zod.string(), zod.null()])
-    .optional()
-    .describe(
-      "Query Builder expression. Example: \"QB['foo'] == 123\" or \"QB['age'].gt(18) & QB['status'].eq('active')\"",
-    ),
-  is_deleted: zod
-    .union([zod.boolean(), zod.null()])
-    .default(exportModelV1AutocrudCharacterExportGetQueryIsDeletedDefault)
-    .describe('Filter by deletion status'),
-  created_time_start: zod
-    .union([zod.string(), zod.null()])
-    .optional()
-    .describe('Filter by created time start (ISO format)'),
-  created_time_end: zod
-    .union([zod.string(), zod.null()])
-    .optional()
-    .describe('Filter by created time end (ISO format)'),
-  updated_time_start: zod
-    .union([zod.string(), zod.null()])
-    .optional()
-    .describe('Filter by updated time start (ISO format)'),
-  updated_time_end: zod
-    .union([zod.string(), zod.null()])
-    .optional()
-    .describe('Filter by updated time end (ISO format)'),
-  created_bys: zod
-    .union([zod.array(zod.string()), zod.null()])
-    .optional()
-    .describe('Filter by creators'),
-  updated_bys: zod
-    .union([zod.array(zod.string()), zod.null()])
-    .optional()
-    .describe('Filter by updaters'),
-  data_conditions: zod
-    .union([zod.string(), zod.null()])
-    .optional()
-    .describe(
-      'Data filter conditions in JSON format. Example: \'[{\"field_path\": \"department\", \"operator\": \"eq\", \"value\": \"Engineering\"}]\'',
-    ),
-  conditions: zod
-    .union([zod.string(), zod.null()])
-    .optional()
-    .describe(
-      'General filter conditions in JSON format for meta fields or data. Example: \'[{\"field_path\": \"resource_id\", \"operator\": \"starts_with\", \"value\": \"user-\"}]\'',
-    ),
-  sorts: zod
-    .union([zod.string(), zod.null()])
-    .optional()
-    .describe(
-      'Sort conditions in JSON format. Example: \'[{\"type\": \"meta\", \"key\": \"created_time\", \"direction\": \"+\"}, {\"type\": \"data\", \"field_path\": \"name\", \"direction\": \"-\"}]\'',
-    ),
-  limit: zod
-    .number()
-    .default(exportModelV1AutocrudCharacterExportGetQueryLimitDefault)
-    .describe('Maximum number of results'),
-  offset: zod
-    .number()
-    .default(exportModelV1AutocrudCharacterExportGetQueryOffsetDefault)
-    .describe('Number of results to skip'),
-  partial: zod
-    .union([zod.array(zod.string()), zod.null()])
-    .optional()
-    .describe("List of fields to retrieve (e.g. '\/field1', '\/nested\/field2')"),
-});
-
-export const ExportModelV1AutocrudCharacterExportGetResponse = zod.unknown();
-
-/**
- * Import **character** resources from a ``.acbak`` archive.
-
-The archive must contain a **character** model section.
-Use ``on_duplicate`` to control behaviour when a resource ID
-already exists.
- * @summary Import character data
- */
-export const importModelV1AutocrudCharacterImportPostQueryOnDuplicateDefault = `overwrite`;
-
-export const ImportModelV1AutocrudCharacterImportPostQueryParams = zod.object({
-  on_duplicate: zod
-    .string()
-    .default(importModelV1AutocrudCharacterImportPostQueryOnDuplicateDefault)
-    .describe('Strategy: overwrite | skip | raise_error'),
-});
-
-export const ImportModelV1AutocrudCharacterImportPostBody = zod.object({
-  file: zod.instanceof(File).describe('.acbak archive file'),
-});
-
-export const ImportModelV1AutocrudCharacterImportPostResponse = zod.record(
-  zod.string(),
-  zod.unknown(),
-);
-
-/**
- * Create a new `character` resource.
-
-**Request Body:**
-- Send the resource data as JSON in the request body
-- The data will be validated against the `character` schema
-
-**Response:**
-- Returns revision information for the newly created resource
-- Includes `resource_id` and `revision_id` for tracking
-- All resources are version-controlled from creation
-
-**Examples:**
-- `POST /character` with JSON body - Create new resource
-- Response includes resource and revision identifiers
-
-**Error Responses:**
-- `422`: Validation error - Invalid data format or missing required fields
-- `400`: Bad request - General creation error
- * @summary Create character
- */
-export const createResourceV1AutocrudCharacterPostBodyValueADXDefault = 12;
-export const createResourceV1AutocrudCharacterPostBodyLevelDefault = 1;
-export const createResourceV1AutocrudCharacterPostBodyHpDefault = 100;
-export const createResourceV1AutocrudCharacterPostBodyMpDefault = 50;
-export const createResourceV1AutocrudCharacterPostBodyAttackDefault = 10;
-export const createResourceV1AutocrudCharacterPostBodyDefenseDefault = 5;
-export const createResourceV1AutocrudCharacterPostBodyExperienceDefault = 0;
-export const createResourceV1AutocrudCharacterPostBodyGoldDefault = 100;
-export const createResourceV1AutocrudCharacterPostBodyGuildIdDefault = null;
-export const createResourceV1AutocrudCharacterPostBodyGuildNameDefault = null;
-export const createResourceV1AutocrudCharacterPostBodySpecialAbilityDefault = null;
-export const createResourceV1AutocrudCharacterPostBodySkillIdsDefault = [];
-export const createResourceV1AutocrudCharacterPostBodyEquipmentsItemOneOwnerIdDefault = null;
-export const createResourceV1AutocrudCharacterPostBodyEquipmentsItemOneCharacterClassReqDefault =
-  null;
-export const createResourceV1AutocrudCharacterPostBodyEquipmentsItemOneAttackBonusDefault = 0;
-export const createResourceV1AutocrudCharacterPostBodyEquipmentsItemOneDefenseBonusDefault = 0;
-export const createResourceV1AutocrudCharacterPostBodyEquipmentsItemOneSpecialEffectsDefault = [];
-export const createResourceV1AutocrudCharacterPostBodyEquipmentsItemOnePriceDefault = 100;
-export const createResourceV1AutocrudCharacterPostBodyEquipmentsItemOneIconDefault = null;
-export const createResourceV1AutocrudCharacterPostBodyEquipmentsItemTwoDescriptionDefault = ``;
-export const createResourceV1AutocrudCharacterPostBodyEquipmentsItemTwoPriceDefault = 100;
-export const createResourceV1AutocrudCharacterPostBodyEquipmentsItemTwoIconDefault = null;
-export const createResourceV1AutocrudCharacterPostBodyEquipmentsDefault = [];
-export const createResourceV1AutocrudCharacterPostBodyCreatedAtDefault = `2026-03-15T06:43:55.430201`;
-
-export const CreateResourceV1AutocrudCharacterPostBody = zod
-  .object({
-    name: zod.string(),
-    character_class: zod
-      .enum(['⚔️ 戰士', '🏹 弓箭手', '💾 數據守護者', '🔮 法師'])
-      .describe('職業系統'),
-    valueAD__x: zod
-      .union([zod.number(), zod.string()])
-      .default(createResourceV1AutocrudCharacterPostBodyValueADXDefault),
-    level: zod.number().default(createResourceV1AutocrudCharacterPostBodyLevelDefault),
-    hp: zod.number().default(createResourceV1AutocrudCharacterPostBodyHpDefault),
-    mp: zod.number().default(createResourceV1AutocrudCharacterPostBodyMpDefault),
-    attack: zod.number().default(createResourceV1AutocrudCharacterPostBodyAttackDefault),
-    defense: zod.number().default(createResourceV1AutocrudCharacterPostBodyDefenseDefault),
-    experience: zod.number().default(createResourceV1AutocrudCharacterPostBodyExperienceDefault),
-    gold: zod.number().default(createResourceV1AutocrudCharacterPostBodyGoldDefault),
-    guild_id: zod
-      .union([zod.string(), zod.null()])
-      .default(createResourceV1AutocrudCharacterPostBodyGuildIdDefault),
-    guild_name: zod
-      .union([zod.string(), zod.null()])
-      .default(createResourceV1AutocrudCharacterPostBodyGuildNameDefault),
-    special_ability: zod
-      .union([zod.string(), zod.null()])
-      .default(createResourceV1AutocrudCharacterPostBodySpecialAbilityDefault),
-    skill_ids: zod
-      .array(zod.string())
-      .default(createResourceV1AutocrudCharacterPostBodySkillIdsDefault),
-    equipments: zod
-      .array(
-        zod.union([
-          zod
-            .object({
-              type: zod.enum(['Equipment']),
-              name: zod.string(),
-              rarity: zod
-                .enum(['傳奇', '史詩', '普通', '稀有', '🚀 AutoCRUD 神器'])
-                .describe('裝備稀有度'),
-              owner_id: zod
-                .union([zod.string(), zod.null()])
-                .default(createResourceV1AutocrudCharacterPostBodyEquipmentsItemOneOwnerIdDefault),
-              character_class_req: zod
-                .union([
-                  zod
-                    .enum(['⚔️ 戰士', '🏹 弓箭手', '💾 數據守護者', '🔮 法師'])
-                    .describe('職業系統'),
-                  zod.null(),
-                ])
-                .default(
-                  createResourceV1AutocrudCharacterPostBodyEquipmentsItemOneCharacterClassReqDefault,
-                ),
-              attack_bonus: zod
-                .number()
-                .default(
-                  createResourceV1AutocrudCharacterPostBodyEquipmentsItemOneAttackBonusDefault,
-                ),
-              defense_bonus: zod
-                .number()
-                .default(
-                  createResourceV1AutocrudCharacterPostBodyEquipmentsItemOneDefenseBonusDefault,
-                ),
-              special_effects: zod
-                .array(zod.string())
-                .default(
-                  createResourceV1AutocrudCharacterPostBodyEquipmentsItemOneSpecialEffectsDefault,
-                ),
-              price: zod
-                .number()
-                .default(createResourceV1AutocrudCharacterPostBodyEquipmentsItemOnePriceDefault),
-              icon: zod
-                .union([
-                  zod.null(),
-                  zod
-                    .object({
-                      file_id: zod.string().optional(),
-                      size: zod.number().optional(),
-                      content_type: zod.string().optional(),
-                      data: zod.string().optional(),
-                    })
-                    .describe(
-                      'A wrapper for binary data that handles storage optimization.\n\nWhen creating a resource, you can populate the `data` field with bytes.\nThe system will automatically extract it, store it in the blob store,\nand populate `file_id` (which is the hash of the content) and `size`.\nThe `data` field will be cleared in the stored resource.',
-                    ),
-                ])
-                .default(createResourceV1AutocrudCharacterPostBodyEquipmentsItemOneIconDefault),
-            })
-            .describe('遊戲裝備'),
-          zod
-            .object({
-              type: zod.enum(['Item']),
-              name: zod.string(),
-              description: zod
-                .string()
-                .default(
-                  createResourceV1AutocrudCharacterPostBodyEquipmentsItemTwoDescriptionDefault,
-                ),
-              price: zod
-                .number()
-                .default(createResourceV1AutocrudCharacterPostBodyEquipmentsItemTwoPriceDefault),
-              icon: zod
-                .union([
-                  zod.null(),
-                  zod
-                    .object({
-                      file_id: zod.string().optional(),
-                      size: zod.number().optional(),
-                      content_type: zod.string().optional(),
-                      data: zod.string().optional(),
-                    })
-                    .describe(
-                      'A wrapper for binary data that handles storage optimization.\n\nWhen creating a resource, you can populate the `data` field with bytes.\nThe system will automatically extract it, store it in the blob store,\nand populate `file_id` (which is the hash of the content) and `size`.\nThe `data` field will be cleared in the stored resource.',
-                    ),
-                ])
-                .default(createResourceV1AutocrudCharacterPostBodyEquipmentsItemTwoIconDefault),
-            })
-            .describe('遊戲物品（裝備和消耗品的基類）'),
-        ]),
-      )
-      .default(createResourceV1AutocrudCharacterPostBodyEquipmentsDefault),
-    created_at: zod.string().default(createResourceV1AutocrudCharacterPostBodyCreatedAtDefault),
-  })
-  .describe('遊戲角色');
-
-export const createResourceV1AutocrudCharacterPostResponseParentRevisionIdDefault = null;
-export const createResourceV1AutocrudCharacterPostResponseSchemaVersionDefault = null;
-
-export const CreateResourceV1AutocrudCharacterPostResponse = zod
-  .object({
-    uid: zod.uuid(),
-    resource_id: zod.string(),
-    revision_id: zod.string(),
-    parent_revision_id: zod
-      .union([zod.string(), zod.null()])
-      .default(createResourceV1AutocrudCharacterPostResponseParentRevisionIdDefault),
-    parent_schema_version: zod.union([zod.string(), zod.null()]).optional(),
-    schema_version: zod
-      .union([zod.string(), zod.null()])
-      .default(createResourceV1AutocrudCharacterPostResponseSchemaVersionDefault),
-    data_hash: zod.string().optional(),
-    status: zod.enum(['draft', 'stable']),
-    created_time: zod.string(),
-    updated_time: zod.string(),
-    created_by: zod.string(),
-    updated_by: zod.string(),
-  })
-  .describe(
-    'Metadata about a specific revision of a resource.\n\nThis class contains essential information about a particular revision,',
-  );
-
-/**
- * Retrieve a list of `character` resources.
-
-Use the `returns` query parameter to control which sections are included in each item.
-By default all sections are returned: `data`, `revision_info`, `meta`.
-
-**Query Parameters:**
-- `returns` (default `"data,revision_info,meta"`): Comma-separated list of sections to include.
-  Allowed values: `data`, `revision_info`, `meta`.
-- `limit` / `offset`: Pagination controls.
-- `partial` / `partial[]`: Partial field selection.
-- All standard filtering and sorting parameters.
-
-**Examples:**
-- `GET /character` — full list (data + meta + revision_info)
-- `GET /character?returns=data` — data only
-- `GET /character?returns=data,meta` — data + meta, no revision_info
-- `GET /character?limit=20&offset=40` — pagination
-
-**Error Responses:**
-- `400`: Bad request - Invalid query parameters or search error
- * @summary List character resources
- */
-export const listResourcesV1AutocrudCharacterGetQueryIsDeletedDefault = false;
-export const listResourcesV1AutocrudCharacterGetQueryLimitDefault = 10;
-export const listResourcesV1AutocrudCharacterGetQueryOffsetDefault = 0;
-export const listResourcesV1AutocrudCharacterGetQueryReturnsDefault = `data,revision_info,meta`;
-
-export const ListResourcesV1AutocrudCharacterGetQueryParams = zod.object({
-  qb: zod
-    .union([zod.string(), zod.null()])
-    .optional()
-    .describe(
-      "Query Builder expression. Example: \"QB['foo'] == 123\" or \"QB['age'].gt(18) & QB['status'].eq('active')\"",
-    ),
-  is_deleted: zod
-    .union([zod.boolean(), zod.null()])
-    .default(listResourcesV1AutocrudCharacterGetQueryIsDeletedDefault)
-    .describe('Filter by deletion status'),
-  created_time_start: zod
-    .union([zod.string(), zod.null()])
-    .optional()
-    .describe('Filter by created time start (ISO format)'),
-  created_time_end: zod
-    .union([zod.string(), zod.null()])
-    .optional()
-    .describe('Filter by created time end (ISO format)'),
-  updated_time_start: zod
-    .union([zod.string(), zod.null()])
-    .optional()
-    .describe('Filter by updated time start (ISO format)'),
-  updated_time_end: zod
-    .union([zod.string(), zod.null()])
-    .optional()
-    .describe('Filter by updated time end (ISO format)'),
-  created_bys: zod
-    .union([zod.array(zod.string()), zod.null()])
-    .optional()
-    .describe('Filter by creators'),
-  updated_bys: zod
-    .union([zod.array(zod.string()), zod.null()])
-    .optional()
-    .describe('Filter by updaters'),
-  data_conditions: zod
-    .union([zod.string(), zod.null()])
-    .optional()
-    .describe(
-      'Data filter conditions in JSON format. Example: \'[{\"field_path\": \"department\", \"operator\": \"eq\", \"value\": \"Engineering\"}]\'',
-    ),
-  conditions: zod
-    .union([zod.string(), zod.null()])
-    .optional()
-    .describe(
-      'General filter conditions in JSON format for meta fields or data. Example: \'[{\"field_path\": \"resource_id\", \"operator\": \"starts_with\", \"value\": \"user-\"}]\'',
-    ),
-  sorts: zod
-    .union([zod.string(), zod.null()])
-    .optional()
-    .describe(
-      'Sort conditions in JSON format. Example: \'[{\"type\": \"meta\", \"key\": \"created_time\", \"direction\": \"+\"}, {\"type\": \"data\", \"field_path\": \"name\", \"direction\": \"-\"}]\'',
-    ),
-  limit: zod
-    .number()
-    .default(listResourcesV1AutocrudCharacterGetQueryLimitDefault)
-    .describe('Maximum number of results'),
-  offset: zod
-    .number()
-    .default(listResourcesV1AutocrudCharacterGetQueryOffsetDefault)
-    .describe('Number of results to skip'),
-  partial: zod
-    .union([zod.array(zod.string()), zod.null()])
-    .optional()
-    .describe("List of fields to retrieve (e.g. '\/field1', '\/nested\/field2')"),
-  returns: zod
-    .string()
-    .default(listResourcesV1AutocrudCharacterGetQueryReturnsDefault)
-    .describe('Fields to return, comma-separated. Options: data, revision_info, meta'),
-});
-
-export const listResourcesV1AutocrudCharacterGetResponseDataValueADXDefault = 12;
-export const listResourcesV1AutocrudCharacterGetResponseDataLevelDefault = 1;
-export const listResourcesV1AutocrudCharacterGetResponseDataHpDefault = 100;
-export const listResourcesV1AutocrudCharacterGetResponseDataMpDefault = 50;
-export const listResourcesV1AutocrudCharacterGetResponseDataAttackDefault = 10;
-export const listResourcesV1AutocrudCharacterGetResponseDataDefenseDefault = 5;
-export const listResourcesV1AutocrudCharacterGetResponseDataExperienceDefault = 0;
-export const listResourcesV1AutocrudCharacterGetResponseDataGoldDefault = 100;
-export const listResourcesV1AutocrudCharacterGetResponseDataGuildIdDefault = null;
-export const listResourcesV1AutocrudCharacterGetResponseDataGuildNameDefault = null;
-export const listResourcesV1AutocrudCharacterGetResponseDataSpecialAbilityDefault = null;
-export const listResourcesV1AutocrudCharacterGetResponseDataSkillIdsDefault = [];
-export const listResourcesV1AutocrudCharacterGetResponseDataEquipmentsItemOneOwnerIdDefault = null;
-export const listResourcesV1AutocrudCharacterGetResponseDataEquipmentsItemOneCharacterClassReqDefault =
-  null;
-export const listResourcesV1AutocrudCharacterGetResponseDataEquipmentsItemOneAttackBonusDefault = 0;
-export const listResourcesV1AutocrudCharacterGetResponseDataEquipmentsItemOneDefenseBonusDefault = 0;
-export const listResourcesV1AutocrudCharacterGetResponseDataEquipmentsItemOneSpecialEffectsDefault =
-  [];
-export const listResourcesV1AutocrudCharacterGetResponseDataEquipmentsItemOnePriceDefault = 100;
-export const listResourcesV1AutocrudCharacterGetResponseDataEquipmentsItemOneIconDefault = null;
-export const listResourcesV1AutocrudCharacterGetResponseDataEquipmentsItemTwoDescriptionDefault = ``;
-export const listResourcesV1AutocrudCharacterGetResponseDataEquipmentsItemTwoPriceDefault = 100;
-export const listResourcesV1AutocrudCharacterGetResponseDataEquipmentsItemTwoIconDefault = null;
-export const listResourcesV1AutocrudCharacterGetResponseDataEquipmentsDefault = [];
-export const listResourcesV1AutocrudCharacterGetResponseDataCreatedAtDefault = `2026-03-15T06:43:55.430201`;
-export const listResourcesV1AutocrudCharacterGetResponseRevisionInfoParentRevisionIdDefault = null;
-export const listResourcesV1AutocrudCharacterGetResponseRevisionInfoSchemaVersionDefault = null;
-export const listResourcesV1AutocrudCharacterGetResponseMetaSchemaVersionDefault = null;
-export const listResourcesV1AutocrudCharacterGetResponseMetaIsDeletedDefault = false;
-
-export const ListResourcesV1AutocrudCharacterGetResponseItem = zod.object({
-  data: zod
-    .object({
-      name: zod.string(),
-      character_class: zod
-        .enum(['⚔️ 戰士', '🏹 弓箭手', '💾 數據守護者', '🔮 法師'])
-        .describe('職業系統'),
-      valueAD__x: zod
-        .union([zod.number(), zod.string()])
-        .default(listResourcesV1AutocrudCharacterGetResponseDataValueADXDefault),
-      level: zod.number().default(listResourcesV1AutocrudCharacterGetResponseDataLevelDefault),
-      hp: zod.number().default(listResourcesV1AutocrudCharacterGetResponseDataHpDefault),
-      mp: zod.number().default(listResourcesV1AutocrudCharacterGetResponseDataMpDefault),
-      attack: zod.number().default(listResourcesV1AutocrudCharacterGetResponseDataAttackDefault),
-      defense: zod.number().default(listResourcesV1AutocrudCharacterGetResponseDataDefenseDefault),
-      experience: zod
-        .number()
-        .default(listResourcesV1AutocrudCharacterGetResponseDataExperienceDefault),
-      gold: zod.number().default(listResourcesV1AutocrudCharacterGetResponseDataGoldDefault),
-      guild_id: zod
-        .union([zod.string(), zod.null()])
-        .default(listResourcesV1AutocrudCharacterGetResponseDataGuildIdDefault),
-      guild_name: zod
-        .union([zod.string(), zod.null()])
-        .default(listResourcesV1AutocrudCharacterGetResponseDataGuildNameDefault),
-      special_ability: zod
-        .union([zod.string(), zod.null()])
-        .default(listResourcesV1AutocrudCharacterGetResponseDataSpecialAbilityDefault),
-      skill_ids: zod
-        .array(zod.string())
-        .default(listResourcesV1AutocrudCharacterGetResponseDataSkillIdsDefault),
-      equipments: zod
-        .array(
-          zod.union([
-            zod
-              .object({
-                type: zod.enum(['Equipment']),
-                name: zod.string(),
-                rarity: zod
-                  .enum(['傳奇', '史詩', '普通', '稀有', '🚀 AutoCRUD 神器'])
-                  .describe('裝備稀有度'),
-                owner_id: zod
-                  .union([zod.string(), zod.null()])
-                  .default(
-                    listResourcesV1AutocrudCharacterGetResponseDataEquipmentsItemOneOwnerIdDefault,
-                  ),
-                character_class_req: zod
-                  .union([
-                    zod
-                      .enum(['⚔️ 戰士', '🏹 弓箭手', '💾 數據守護者', '🔮 法師'])
-                      .describe('職業系統'),
-                    zod.null(),
-                  ])
-                  .default(
-                    listResourcesV1AutocrudCharacterGetResponseDataEquipmentsItemOneCharacterClassReqDefault,
-                  ),
-                attack_bonus: zod
-                  .number()
-                  .default(
-                    listResourcesV1AutocrudCharacterGetResponseDataEquipmentsItemOneAttackBonusDefault,
-                  ),
-                defense_bonus: zod
-                  .number()
-                  .default(
-                    listResourcesV1AutocrudCharacterGetResponseDataEquipmentsItemOneDefenseBonusDefault,
-                  ),
-                special_effects: zod
-                  .array(zod.string())
-                  .default(
-                    listResourcesV1AutocrudCharacterGetResponseDataEquipmentsItemOneSpecialEffectsDefault,
-                  ),
-                price: zod
-                  .number()
-                  .default(
-                    listResourcesV1AutocrudCharacterGetResponseDataEquipmentsItemOnePriceDefault,
-                  ),
-                icon: zod
-                  .union([
-                    zod.null(),
-                    zod
-                      .object({
-                        file_id: zod.string().optional(),
-                        size: zod.number().optional(),
-                        content_type: zod.string().optional(),
-                        data: zod.string().optional(),
-                      })
-                      .describe(
-                        'A wrapper for binary data that handles storage optimization.\n\nWhen creating a resource, you can populate the `data` field with bytes.\nThe system will automatically extract it, store it in the blob store,\nand populate `file_id` (which is the hash of the content) and `size`.\nThe `data` field will be cleared in the stored resource.',
-                      ),
-                  ])
-                  .default(
-                    listResourcesV1AutocrudCharacterGetResponseDataEquipmentsItemOneIconDefault,
-                  ),
-              })
-              .describe('遊戲裝備'),
-            zod
-              .object({
-                type: zod.enum(['Item']),
-                name: zod.string(),
-                description: zod
-                  .string()
-                  .default(
-                    listResourcesV1AutocrudCharacterGetResponseDataEquipmentsItemTwoDescriptionDefault,
-                  ),
-                price: zod
-                  .number()
-                  .default(
-                    listResourcesV1AutocrudCharacterGetResponseDataEquipmentsItemTwoPriceDefault,
-                  ),
-                icon: zod
-                  .union([
-                    zod.null(),
-                    zod
-                      .object({
-                        file_id: zod.string().optional(),
-                        size: zod.number().optional(),
-                        content_type: zod.string().optional(),
-                        data: zod.string().optional(),
-                      })
-                      .describe(
-                        'A wrapper for binary data that handles storage optimization.\n\nWhen creating a resource, you can populate the `data` field with bytes.\nThe system will automatically extract it, store it in the blob store,\nand populate `file_id` (which is the hash of the content) and `size`.\nThe `data` field will be cleared in the stored resource.',
-                      ),
-                  ])
-                  .default(
-                    listResourcesV1AutocrudCharacterGetResponseDataEquipmentsItemTwoIconDefault,
-                  ),
-              })
-              .describe('遊戲物品（裝備和消耗品的基類）'),
-          ]),
-        )
-        .default(listResourcesV1AutocrudCharacterGetResponseDataEquipmentsDefault),
-      created_at: zod
-        .string()
-        .default(listResourcesV1AutocrudCharacterGetResponseDataCreatedAtDefault),
-    })
-    .optional()
-    .describe('遊戲角色'),
-  revision_info: zod
-    .object({
-      uid: zod.uuid(),
-      resource_id: zod.string(),
-      revision_id: zod.string(),
-      parent_revision_id: zod
-        .union([zod.string(), zod.null()])
-        .default(listResourcesV1AutocrudCharacterGetResponseRevisionInfoParentRevisionIdDefault),
-      parent_schema_version: zod.union([zod.string(), zod.null()]).optional(),
-      schema_version: zod
-        .union([zod.string(), zod.null()])
-        .default(listResourcesV1AutocrudCharacterGetResponseRevisionInfoSchemaVersionDefault),
-      data_hash: zod.string().optional(),
-      status: zod.enum(['draft', 'stable']),
-      created_time: zod.string(),
-      updated_time: zod.string(),
-      created_by: zod.string(),
-      updated_by: zod.string(),
-    })
-    .optional()
-    .describe(
-      'Metadata about a specific revision of a resource.\n\nThis class contains essential information about a particular revision,',
-    ),
-  meta: zod
-    .object({
-      current_revision_id: zod.string(),
-      resource_id: zod.string(),
-      schema_version: zod
-        .union([zod.string(), zod.null()])
-        .default(listResourcesV1AutocrudCharacterGetResponseMetaSchemaVersionDefault),
-      total_revision_count: zod.number(),
-      created_time: zod.string(),
-      updated_time: zod.string(),
-      created_by: zod.string(),
-      updated_by: zod.string(),
-      is_deleted: zod
-        .boolean()
-        .default(listResourcesV1AutocrudCharacterGetResponseMetaIsDeletedDefault),
-      indexed_data: zod.looseObject({}).optional(),
-    })
-    .optional()
-    .describe(
-      'Metadata about a resource, including its current revision and status.\n\nThis class provides essential information about a resource without including\nthe full data content.',
-    ),
-});
-export const ListResourcesV1AutocrudCharacterGetResponse = zod.array(
-  ListResourcesV1AutocrudCharacterGetResponseItem,
-);
-
-/**
- * Batch delete `character` resources matching the given query conditions.
-
-**Query Parameters:**
-- Uses the same search parameters as the list endpoint
-- `is_deleted` parameter is **forced to `false`** — only non-deleted resources are targeted
-- Use `data_conditions` to filter specific resources for deletion
-- Use `limit` to control the maximum number of resources to delete
-
-**Soft Delete:**
-- Resources are marked as deleted rather than permanently removed
-- Deleted resources can be restored using the batch restore endpoint
-
-**Response:**
-- Returns a list of `ResourceMeta` for all deleted resources
-- Each entry will have `is_deleted` set to `true`
-- Empty list if no resources match the query
-
-**Examples:**
-- `DELETE /character?limit=100` — Delete up to 100 resources
-- `DELETE /character?data_conditions=[{"field_path":"age","operator":"gt","value":25}]` — Delete resources with age > 25
-
-**Error Responses:**
-- `400`: Bad request — Invalid query parameters or deletion error
- * @summary Batch delete character
- */
-export const batchDeleteV1AutocrudCharacterDeleteQueryIsDeletedDefault = false;
-export const batchDeleteV1AutocrudCharacterDeleteQueryLimitDefault = 10;
-export const batchDeleteV1AutocrudCharacterDeleteQueryOffsetDefault = 0;
-
-export const BatchDeleteV1AutocrudCharacterDeleteQueryParams = zod.object({
-  qb: zod
-    .union([zod.string(), zod.null()])
-    .optional()
-    .describe(
-      "Query Builder expression. Example: \"QB['foo'] == 123\" or \"QB['age'].gt(18) & QB['status'].eq('active')\"",
-    ),
-  is_deleted: zod
-    .union([zod.boolean(), zod.null()])
-    .default(batchDeleteV1AutocrudCharacterDeleteQueryIsDeletedDefault)
-    .describe('Filter by deletion status'),
-  created_time_start: zod
-    .union([zod.string(), zod.null()])
-    .optional()
-    .describe('Filter by created time start (ISO format)'),
-  created_time_end: zod
-    .union([zod.string(), zod.null()])
-    .optional()
-    .describe('Filter by created time end (ISO format)'),
-  updated_time_start: zod
-    .union([zod.string(), zod.null()])
-    .optional()
-    .describe('Filter by updated time start (ISO format)'),
-  updated_time_end: zod
-    .union([zod.string(), zod.null()])
-    .optional()
-    .describe('Filter by updated time end (ISO format)'),
-  created_bys: zod
-    .union([zod.array(zod.string()), zod.null()])
-    .optional()
-    .describe('Filter by creators'),
-  updated_bys: zod
-    .union([zod.array(zod.string()), zod.null()])
-    .optional()
-    .describe('Filter by updaters'),
-  data_conditions: zod
-    .union([zod.string(), zod.null()])
-    .optional()
-    .describe(
-      'Data filter conditions in JSON format. Example: \'[{\"field_path\": \"department\", \"operator\": \"eq\", \"value\": \"Engineering\"}]\'',
-    ),
-  conditions: zod
-    .union([zod.string(), zod.null()])
-    .optional()
-    .describe(
-      'General filter conditions in JSON format for meta fields or data. Example: \'[{\"field_path\": \"resource_id\", \"operator\": \"starts_with\", \"value\": \"user-\"}]\'',
-    ),
-  sorts: zod
-    .union([zod.string(), zod.null()])
-    .optional()
-    .describe(
-      'Sort conditions in JSON format. Example: \'[{\"type\": \"meta\", \"key\": \"created_time\", \"direction\": \"+\"}, {\"type\": \"data\", \"field_path\": \"name\", \"direction\": \"-\"}]\'',
-    ),
-  limit: zod
-    .number()
-    .default(batchDeleteV1AutocrudCharacterDeleteQueryLimitDefault)
-    .describe('Maximum number of results'),
-  offset: zod
-    .number()
-    .default(batchDeleteV1AutocrudCharacterDeleteQueryOffsetDefault)
-    .describe('Number of results to skip'),
-  partial: zod
-    .union([zod.array(zod.string()), zod.null()])
-    .optional()
-    .describe("List of fields to retrieve (e.g. '\/field1', '\/nested\/field2')"),
-});
-
-export const batchDeleteV1AutocrudCharacterDeleteResponseSchemaVersionDefault = null;
-export const batchDeleteV1AutocrudCharacterDeleteResponseIsDeletedDefault = false;
-
-export const BatchDeleteV1AutocrudCharacterDeleteResponseItem = zod
-  .object({
-    current_revision_id: zod.string(),
-    resource_id: zod.string(),
-    schema_version: zod
-      .union([zod.string(), zod.null()])
-      .default(batchDeleteV1AutocrudCharacterDeleteResponseSchemaVersionDefault),
-    total_revision_count: zod.number(),
-    created_time: zod.string(),
-    updated_time: zod.string(),
-    created_by: zod.string(),
-    updated_by: zod.string(),
-    is_deleted: zod.boolean().default(batchDeleteV1AutocrudCharacterDeleteResponseIsDeletedDefault),
-    indexed_data: zod.looseObject({}).optional(),
-  })
-  .describe(
-    'Metadata about a resource, including its current revision and status.\n\nThis class provides essential information about a resource without including\nthe full data content.',
-  );
-export const BatchDeleteV1AutocrudCharacterDeleteResponse = zod.array(
-  BatchDeleteV1AutocrudCharacterDeleteResponseItem,
-);
 
 /**
  * Retrieve a list of `character` resources returning only the data content.
@@ -929,7 +190,7 @@ export const listResourcesDataV1AutocrudCharacterDataGetResponseEquipmentsItemTw
 export const listResourcesDataV1AutocrudCharacterDataGetResponseEquipmentsItemTwoPriceDefault = 100;
 export const listResourcesDataV1AutocrudCharacterDataGetResponseEquipmentsItemTwoIconDefault = null;
 export const listResourcesDataV1AutocrudCharacterDataGetResponseEquipmentsDefault = [];
-export const listResourcesDataV1AutocrudCharacterDataGetResponseCreatedAtDefault = `2026-03-15T06:43:55.430201`;
+export const listResourcesDataV1AutocrudCharacterDataGetResponseCreatedAtDefault = `2026-03-18T21:23:09.465887`;
 
 export const ListResourcesDataV1AutocrudCharacterDataGetResponseItem = zod
   .object({
@@ -1514,7 +775,7 @@ export const listResourcesFullV1AutocrudCharacterFullGetResponseDataEquipmentsIt
 export const listResourcesFullV1AutocrudCharacterFullGetResponseDataEquipmentsItemTwoIconDefault =
   null;
 export const listResourcesFullV1AutocrudCharacterFullGetResponseDataEquipmentsDefault = [];
-export const listResourcesFullV1AutocrudCharacterFullGetResponseDataCreatedAtDefault = `2026-03-15T06:43:55.430201`;
+export const listResourcesFullV1AutocrudCharacterFullGetResponseDataCreatedAtDefault = `2026-03-18T21:23:09.465887`;
 export const listResourcesFullV1AutocrudCharacterFullGetResponseRevisionInfoParentRevisionIdDefault =
   null;
 export const listResourcesFullV1AutocrudCharacterFullGetResponseRevisionInfoSchemaVersionDefault =
@@ -1836,6 +1097,747 @@ export const GetResourcesCountV1AutocrudCharacterCountGetQueryParams = zod.objec
 export const GetResourcesCountV1AutocrudCharacterCountGetResponse = zod.number();
 
 /**
+ * Retrieve a list of `character` resources.
+
+Use the `returns` query parameter to control which sections are included in each item.
+By default all sections are returned: `data`, `revision_info`, `meta`.
+
+**Query Parameters:**
+- `returns` (default `"data,revision_info,meta"`): Comma-separated list of sections to include.
+  Allowed values: `data`, `revision_info`, `meta`.
+- `limit` / `offset`: Pagination controls.
+- `partial` / `partial[]`: Partial field selection.
+- All standard filtering and sorting parameters.
+
+**Examples:**
+- `GET /character` — full list (data + meta + revision_info)
+- `GET /character?returns=data` — data only
+- `GET /character?returns=data,meta` — data + meta, no revision_info
+- `GET /character?limit=20&offset=40` — pagination
+
+**Error Responses:**
+- `400`: Bad request - Invalid query parameters or search error
+ * @summary List character resources
+ */
+export const listResourcesV1AutocrudCharacterGetQueryIsDeletedDefault = false;
+export const listResourcesV1AutocrudCharacterGetQueryLimitDefault = 10;
+export const listResourcesV1AutocrudCharacterGetQueryOffsetDefault = 0;
+export const listResourcesV1AutocrudCharacterGetQueryReturnsDefault = `data,revision_info,meta`;
+
+export const ListResourcesV1AutocrudCharacterGetQueryParams = zod.object({
+  qb: zod
+    .union([zod.string(), zod.null()])
+    .optional()
+    .describe(
+      "Query Builder expression. Example: \"QB['foo'] == 123\" or \"QB['age'].gt(18) & QB['status'].eq('active')\"",
+    ),
+  is_deleted: zod
+    .union([zod.boolean(), zod.null()])
+    .default(listResourcesV1AutocrudCharacterGetQueryIsDeletedDefault)
+    .describe('Filter by deletion status'),
+  created_time_start: zod
+    .union([zod.string(), zod.null()])
+    .optional()
+    .describe('Filter by created time start (ISO format)'),
+  created_time_end: zod
+    .union([zod.string(), zod.null()])
+    .optional()
+    .describe('Filter by created time end (ISO format)'),
+  updated_time_start: zod
+    .union([zod.string(), zod.null()])
+    .optional()
+    .describe('Filter by updated time start (ISO format)'),
+  updated_time_end: zod
+    .union([zod.string(), zod.null()])
+    .optional()
+    .describe('Filter by updated time end (ISO format)'),
+  created_bys: zod
+    .union([zod.array(zod.string()), zod.null()])
+    .optional()
+    .describe('Filter by creators'),
+  updated_bys: zod
+    .union([zod.array(zod.string()), zod.null()])
+    .optional()
+    .describe('Filter by updaters'),
+  data_conditions: zod
+    .union([zod.string(), zod.null()])
+    .optional()
+    .describe(
+      'Data filter conditions in JSON format. Example: \'[{\"field_path\": \"department\", \"operator\": \"eq\", \"value\": \"Engineering\"}]\'',
+    ),
+  conditions: zod
+    .union([zod.string(), zod.null()])
+    .optional()
+    .describe(
+      'General filter conditions in JSON format for meta fields or data. Example: \'[{\"field_path\": \"resource_id\", \"operator\": \"starts_with\", \"value\": \"user-\"}]\'',
+    ),
+  sorts: zod
+    .union([zod.string(), zod.null()])
+    .optional()
+    .describe(
+      'Sort conditions in JSON format. Example: \'[{\"type\": \"meta\", \"key\": \"created_time\", \"direction\": \"+\"}, {\"type\": \"data\", \"field_path\": \"name\", \"direction\": \"-\"}]\'',
+    ),
+  limit: zod
+    .number()
+    .default(listResourcesV1AutocrudCharacterGetQueryLimitDefault)
+    .describe('Maximum number of results'),
+  offset: zod
+    .number()
+    .default(listResourcesV1AutocrudCharacterGetQueryOffsetDefault)
+    .describe('Number of results to skip'),
+  partial: zod
+    .union([zod.array(zod.string()), zod.null()])
+    .optional()
+    .describe("List of fields to retrieve (e.g. '\/field1', '\/nested\/field2')"),
+  returns: zod
+    .string()
+    .default(listResourcesV1AutocrudCharacterGetQueryReturnsDefault)
+    .describe('Fields to return, comma-separated. Options: data, revision_info, meta'),
+});
+
+export const listResourcesV1AutocrudCharacterGetResponseDataValueADXDefault = 12;
+export const listResourcesV1AutocrudCharacterGetResponseDataLevelDefault = 1;
+export const listResourcesV1AutocrudCharacterGetResponseDataHpDefault = 100;
+export const listResourcesV1AutocrudCharacterGetResponseDataMpDefault = 50;
+export const listResourcesV1AutocrudCharacterGetResponseDataAttackDefault = 10;
+export const listResourcesV1AutocrudCharacterGetResponseDataDefenseDefault = 5;
+export const listResourcesV1AutocrudCharacterGetResponseDataExperienceDefault = 0;
+export const listResourcesV1AutocrudCharacterGetResponseDataGoldDefault = 100;
+export const listResourcesV1AutocrudCharacterGetResponseDataGuildIdDefault = null;
+export const listResourcesV1AutocrudCharacterGetResponseDataGuildNameDefault = null;
+export const listResourcesV1AutocrudCharacterGetResponseDataSpecialAbilityDefault = null;
+export const listResourcesV1AutocrudCharacterGetResponseDataSkillIdsDefault = [];
+export const listResourcesV1AutocrudCharacterGetResponseDataEquipmentsItemOneOwnerIdDefault = null;
+export const listResourcesV1AutocrudCharacterGetResponseDataEquipmentsItemOneCharacterClassReqDefault =
+  null;
+export const listResourcesV1AutocrudCharacterGetResponseDataEquipmentsItemOneAttackBonusDefault = 0;
+export const listResourcesV1AutocrudCharacterGetResponseDataEquipmentsItemOneDefenseBonusDefault = 0;
+export const listResourcesV1AutocrudCharacterGetResponseDataEquipmentsItemOneSpecialEffectsDefault =
+  [];
+export const listResourcesV1AutocrudCharacterGetResponseDataEquipmentsItemOnePriceDefault = 100;
+export const listResourcesV1AutocrudCharacterGetResponseDataEquipmentsItemOneIconDefault = null;
+export const listResourcesV1AutocrudCharacterGetResponseDataEquipmentsItemTwoDescriptionDefault = ``;
+export const listResourcesV1AutocrudCharacterGetResponseDataEquipmentsItemTwoPriceDefault = 100;
+export const listResourcesV1AutocrudCharacterGetResponseDataEquipmentsItemTwoIconDefault = null;
+export const listResourcesV1AutocrudCharacterGetResponseDataEquipmentsDefault = [];
+export const listResourcesV1AutocrudCharacterGetResponseDataCreatedAtDefault = `2026-03-18T21:23:09.465887`;
+export const listResourcesV1AutocrudCharacterGetResponseRevisionInfoParentRevisionIdDefault = null;
+export const listResourcesV1AutocrudCharacterGetResponseRevisionInfoSchemaVersionDefault = null;
+export const listResourcesV1AutocrudCharacterGetResponseMetaSchemaVersionDefault = null;
+export const listResourcesV1AutocrudCharacterGetResponseMetaIsDeletedDefault = false;
+
+export const ListResourcesV1AutocrudCharacterGetResponseItem = zod.object({
+  data: zod
+    .object({
+      name: zod.string(),
+      character_class: zod
+        .enum(['⚔️ 戰士', '🏹 弓箭手', '💾 數據守護者', '🔮 法師'])
+        .describe('職業系統'),
+      valueAD__x: zod
+        .union([zod.number(), zod.string()])
+        .default(listResourcesV1AutocrudCharacterGetResponseDataValueADXDefault),
+      level: zod.number().default(listResourcesV1AutocrudCharacterGetResponseDataLevelDefault),
+      hp: zod.number().default(listResourcesV1AutocrudCharacterGetResponseDataHpDefault),
+      mp: zod.number().default(listResourcesV1AutocrudCharacterGetResponseDataMpDefault),
+      attack: zod.number().default(listResourcesV1AutocrudCharacterGetResponseDataAttackDefault),
+      defense: zod.number().default(listResourcesV1AutocrudCharacterGetResponseDataDefenseDefault),
+      experience: zod
+        .number()
+        .default(listResourcesV1AutocrudCharacterGetResponseDataExperienceDefault),
+      gold: zod.number().default(listResourcesV1AutocrudCharacterGetResponseDataGoldDefault),
+      guild_id: zod
+        .union([zod.string(), zod.null()])
+        .default(listResourcesV1AutocrudCharacterGetResponseDataGuildIdDefault),
+      guild_name: zod
+        .union([zod.string(), zod.null()])
+        .default(listResourcesV1AutocrudCharacterGetResponseDataGuildNameDefault),
+      special_ability: zod
+        .union([zod.string(), zod.null()])
+        .default(listResourcesV1AutocrudCharacterGetResponseDataSpecialAbilityDefault),
+      skill_ids: zod
+        .array(zod.string())
+        .default(listResourcesV1AutocrudCharacterGetResponseDataSkillIdsDefault),
+      equipments: zod
+        .array(
+          zod.union([
+            zod
+              .object({
+                type: zod.enum(['Equipment']),
+                name: zod.string(),
+                rarity: zod
+                  .enum(['傳奇', '史詩', '普通', '稀有', '🚀 AutoCRUD 神器'])
+                  .describe('裝備稀有度'),
+                owner_id: zod
+                  .union([zod.string(), zod.null()])
+                  .default(
+                    listResourcesV1AutocrudCharacterGetResponseDataEquipmentsItemOneOwnerIdDefault,
+                  ),
+                character_class_req: zod
+                  .union([
+                    zod
+                      .enum(['⚔️ 戰士', '🏹 弓箭手', '💾 數據守護者', '🔮 法師'])
+                      .describe('職業系統'),
+                    zod.null(),
+                  ])
+                  .default(
+                    listResourcesV1AutocrudCharacterGetResponseDataEquipmentsItemOneCharacterClassReqDefault,
+                  ),
+                attack_bonus: zod
+                  .number()
+                  .default(
+                    listResourcesV1AutocrudCharacterGetResponseDataEquipmentsItemOneAttackBonusDefault,
+                  ),
+                defense_bonus: zod
+                  .number()
+                  .default(
+                    listResourcesV1AutocrudCharacterGetResponseDataEquipmentsItemOneDefenseBonusDefault,
+                  ),
+                special_effects: zod
+                  .array(zod.string())
+                  .default(
+                    listResourcesV1AutocrudCharacterGetResponseDataEquipmentsItemOneSpecialEffectsDefault,
+                  ),
+                price: zod
+                  .number()
+                  .default(
+                    listResourcesV1AutocrudCharacterGetResponseDataEquipmentsItemOnePriceDefault,
+                  ),
+                icon: zod
+                  .union([
+                    zod.null(),
+                    zod
+                      .object({
+                        file_id: zod.string().optional(),
+                        size: zod.number().optional(),
+                        content_type: zod.string().optional(),
+                        data: zod.string().optional(),
+                      })
+                      .describe(
+                        'A wrapper for binary data that handles storage optimization.\n\nWhen creating a resource, you can populate the `data` field with bytes.\nThe system will automatically extract it, store it in the blob store,\nand populate `file_id` (which is the hash of the content) and `size`.\nThe `data` field will be cleared in the stored resource.',
+                      ),
+                  ])
+                  .default(
+                    listResourcesV1AutocrudCharacterGetResponseDataEquipmentsItemOneIconDefault,
+                  ),
+              })
+              .describe('遊戲裝備'),
+            zod
+              .object({
+                type: zod.enum(['Item']),
+                name: zod.string(),
+                description: zod
+                  .string()
+                  .default(
+                    listResourcesV1AutocrudCharacterGetResponseDataEquipmentsItemTwoDescriptionDefault,
+                  ),
+                price: zod
+                  .number()
+                  .default(
+                    listResourcesV1AutocrudCharacterGetResponseDataEquipmentsItemTwoPriceDefault,
+                  ),
+                icon: zod
+                  .union([
+                    zod.null(),
+                    zod
+                      .object({
+                        file_id: zod.string().optional(),
+                        size: zod.number().optional(),
+                        content_type: zod.string().optional(),
+                        data: zod.string().optional(),
+                      })
+                      .describe(
+                        'A wrapper for binary data that handles storage optimization.\n\nWhen creating a resource, you can populate the `data` field with bytes.\nThe system will automatically extract it, store it in the blob store,\nand populate `file_id` (which is the hash of the content) and `size`.\nThe `data` field will be cleared in the stored resource.',
+                      ),
+                  ])
+                  .default(
+                    listResourcesV1AutocrudCharacterGetResponseDataEquipmentsItemTwoIconDefault,
+                  ),
+              })
+              .describe('遊戲物品（裝備和消耗品的基類）'),
+          ]),
+        )
+        .default(listResourcesV1AutocrudCharacterGetResponseDataEquipmentsDefault),
+      created_at: zod
+        .string()
+        .default(listResourcesV1AutocrudCharacterGetResponseDataCreatedAtDefault),
+    })
+    .optional()
+    .describe('遊戲角色'),
+  revision_info: zod
+    .object({
+      uid: zod.uuid(),
+      resource_id: zod.string(),
+      revision_id: zod.string(),
+      parent_revision_id: zod
+        .union([zod.string(), zod.null()])
+        .default(listResourcesV1AutocrudCharacterGetResponseRevisionInfoParentRevisionIdDefault),
+      parent_schema_version: zod.union([zod.string(), zod.null()]).optional(),
+      schema_version: zod
+        .union([zod.string(), zod.null()])
+        .default(listResourcesV1AutocrudCharacterGetResponseRevisionInfoSchemaVersionDefault),
+      data_hash: zod.string().optional(),
+      status: zod.enum(['draft', 'stable']),
+      created_time: zod.string(),
+      updated_time: zod.string(),
+      created_by: zod.string(),
+      updated_by: zod.string(),
+    })
+    .optional()
+    .describe(
+      'Metadata about a specific revision of a resource.\n\nThis class contains essential information about a particular revision,',
+    ),
+  meta: zod
+    .object({
+      current_revision_id: zod.string(),
+      resource_id: zod.string(),
+      schema_version: zod
+        .union([zod.string(), zod.null()])
+        .default(listResourcesV1AutocrudCharacterGetResponseMetaSchemaVersionDefault),
+      total_revision_count: zod.number(),
+      created_time: zod.string(),
+      updated_time: zod.string(),
+      created_by: zod.string(),
+      updated_by: zod.string(),
+      is_deleted: zod
+        .boolean()
+        .default(listResourcesV1AutocrudCharacterGetResponseMetaIsDeletedDefault),
+      indexed_data: zod.looseObject({}).optional(),
+    })
+    .optional()
+    .describe(
+      'Metadata about a resource, including its current revision and status.\n\nThis class provides essential information about a resource without including\nthe full data content.',
+    ),
+});
+export const ListResourcesV1AutocrudCharacterGetResponse = zod.array(
+  ListResourcesV1AutocrudCharacterGetResponseItem,
+);
+
+/**
+ * Create a new `character` resource.
+
+**Request Body:**
+- Send the resource data as JSON in the request body
+- The data will be validated against the `character` schema
+
+**Response:**
+- Returns revision information for the newly created resource
+- Includes `resource_id` and `revision_id` for tracking
+- All resources are version-controlled from creation
+
+**Examples:**
+- `POST /character` with JSON body - Create new resource
+- Response includes resource and revision identifiers
+
+**Error Responses:**
+- `422`: Validation error - Invalid data format or missing required fields
+- `400`: Bad request - General creation error
+ * @summary Create character
+ */
+export const createResourceV1AutocrudCharacterPostBodyValueADXDefault = 12;
+export const createResourceV1AutocrudCharacterPostBodyLevelDefault = 1;
+export const createResourceV1AutocrudCharacterPostBodyHpDefault = 100;
+export const createResourceV1AutocrudCharacterPostBodyMpDefault = 50;
+export const createResourceV1AutocrudCharacterPostBodyAttackDefault = 10;
+export const createResourceV1AutocrudCharacterPostBodyDefenseDefault = 5;
+export const createResourceV1AutocrudCharacterPostBodyExperienceDefault = 0;
+export const createResourceV1AutocrudCharacterPostBodyGoldDefault = 100;
+export const createResourceV1AutocrudCharacterPostBodyGuildIdDefault = null;
+export const createResourceV1AutocrudCharacterPostBodyGuildNameDefault = null;
+export const createResourceV1AutocrudCharacterPostBodySpecialAbilityDefault = null;
+export const createResourceV1AutocrudCharacterPostBodySkillIdsDefault = [];
+export const createResourceV1AutocrudCharacterPostBodyEquipmentsItemOneOwnerIdDefault = null;
+export const createResourceV1AutocrudCharacterPostBodyEquipmentsItemOneCharacterClassReqDefault =
+  null;
+export const createResourceV1AutocrudCharacterPostBodyEquipmentsItemOneAttackBonusDefault = 0;
+export const createResourceV1AutocrudCharacterPostBodyEquipmentsItemOneDefenseBonusDefault = 0;
+export const createResourceV1AutocrudCharacterPostBodyEquipmentsItemOneSpecialEffectsDefault = [];
+export const createResourceV1AutocrudCharacterPostBodyEquipmentsItemOnePriceDefault = 100;
+export const createResourceV1AutocrudCharacterPostBodyEquipmentsItemOneIconDefault = null;
+export const createResourceV1AutocrudCharacterPostBodyEquipmentsItemTwoDescriptionDefault = ``;
+export const createResourceV1AutocrudCharacterPostBodyEquipmentsItemTwoPriceDefault = 100;
+export const createResourceV1AutocrudCharacterPostBodyEquipmentsItemTwoIconDefault = null;
+export const createResourceV1AutocrudCharacterPostBodyEquipmentsDefault = [];
+export const createResourceV1AutocrudCharacterPostBodyCreatedAtDefault = `2026-03-18T21:23:09.465887`;
+
+export const CreateResourceV1AutocrudCharacterPostBody = zod
+  .object({
+    name: zod.string(),
+    character_class: zod
+      .enum(['⚔️ 戰士', '🏹 弓箭手', '💾 數據守護者', '🔮 法師'])
+      .describe('職業系統'),
+    valueAD__x: zod
+      .union([zod.number(), zod.string()])
+      .default(createResourceV1AutocrudCharacterPostBodyValueADXDefault),
+    level: zod.number().default(createResourceV1AutocrudCharacterPostBodyLevelDefault),
+    hp: zod.number().default(createResourceV1AutocrudCharacterPostBodyHpDefault),
+    mp: zod.number().default(createResourceV1AutocrudCharacterPostBodyMpDefault),
+    attack: zod.number().default(createResourceV1AutocrudCharacterPostBodyAttackDefault),
+    defense: zod.number().default(createResourceV1AutocrudCharacterPostBodyDefenseDefault),
+    experience: zod.number().default(createResourceV1AutocrudCharacterPostBodyExperienceDefault),
+    gold: zod.number().default(createResourceV1AutocrudCharacterPostBodyGoldDefault),
+    guild_id: zod
+      .union([zod.string(), zod.null()])
+      .default(createResourceV1AutocrudCharacterPostBodyGuildIdDefault),
+    guild_name: zod
+      .union([zod.string(), zod.null()])
+      .default(createResourceV1AutocrudCharacterPostBodyGuildNameDefault),
+    special_ability: zod
+      .union([zod.string(), zod.null()])
+      .default(createResourceV1AutocrudCharacterPostBodySpecialAbilityDefault),
+    skill_ids: zod
+      .array(zod.string())
+      .default(createResourceV1AutocrudCharacterPostBodySkillIdsDefault),
+    equipments: zod
+      .array(
+        zod.union([
+          zod
+            .object({
+              type: zod.enum(['Equipment']),
+              name: zod.string(),
+              rarity: zod
+                .enum(['傳奇', '史詩', '普通', '稀有', '🚀 AutoCRUD 神器'])
+                .describe('裝備稀有度'),
+              owner_id: zod
+                .union([zod.string(), zod.null()])
+                .default(createResourceV1AutocrudCharacterPostBodyEquipmentsItemOneOwnerIdDefault),
+              character_class_req: zod
+                .union([
+                  zod
+                    .enum(['⚔️ 戰士', '🏹 弓箭手', '💾 數據守護者', '🔮 法師'])
+                    .describe('職業系統'),
+                  zod.null(),
+                ])
+                .default(
+                  createResourceV1AutocrudCharacterPostBodyEquipmentsItemOneCharacterClassReqDefault,
+                ),
+              attack_bonus: zod
+                .number()
+                .default(
+                  createResourceV1AutocrudCharacterPostBodyEquipmentsItemOneAttackBonusDefault,
+                ),
+              defense_bonus: zod
+                .number()
+                .default(
+                  createResourceV1AutocrudCharacterPostBodyEquipmentsItemOneDefenseBonusDefault,
+                ),
+              special_effects: zod
+                .array(zod.string())
+                .default(
+                  createResourceV1AutocrudCharacterPostBodyEquipmentsItemOneSpecialEffectsDefault,
+                ),
+              price: zod
+                .number()
+                .default(createResourceV1AutocrudCharacterPostBodyEquipmentsItemOnePriceDefault),
+              icon: zod
+                .union([
+                  zod.null(),
+                  zod
+                    .object({
+                      file_id: zod.string().optional(),
+                      size: zod.number().optional(),
+                      content_type: zod.string().optional(),
+                      data: zod.string().optional(),
+                    })
+                    .describe(
+                      'A wrapper for binary data that handles storage optimization.\n\nWhen creating a resource, you can populate the `data` field with bytes.\nThe system will automatically extract it, store it in the blob store,\nand populate `file_id` (which is the hash of the content) and `size`.\nThe `data` field will be cleared in the stored resource.',
+                    ),
+                ])
+                .default(createResourceV1AutocrudCharacterPostBodyEquipmentsItemOneIconDefault),
+            })
+            .describe('遊戲裝備'),
+          zod
+            .object({
+              type: zod.enum(['Item']),
+              name: zod.string(),
+              description: zod
+                .string()
+                .default(
+                  createResourceV1AutocrudCharacterPostBodyEquipmentsItemTwoDescriptionDefault,
+                ),
+              price: zod
+                .number()
+                .default(createResourceV1AutocrudCharacterPostBodyEquipmentsItemTwoPriceDefault),
+              icon: zod
+                .union([
+                  zod.null(),
+                  zod
+                    .object({
+                      file_id: zod.string().optional(),
+                      size: zod.number().optional(),
+                      content_type: zod.string().optional(),
+                      data: zod.string().optional(),
+                    })
+                    .describe(
+                      'A wrapper for binary data that handles storage optimization.\n\nWhen creating a resource, you can populate the `data` field with bytes.\nThe system will automatically extract it, store it in the blob store,\nand populate `file_id` (which is the hash of the content) and `size`.\nThe `data` field will be cleared in the stored resource.',
+                    ),
+                ])
+                .default(createResourceV1AutocrudCharacterPostBodyEquipmentsItemTwoIconDefault),
+            })
+            .describe('遊戲物品（裝備和消耗品的基類）'),
+        ]),
+      )
+      .default(createResourceV1AutocrudCharacterPostBodyEquipmentsDefault),
+    created_at: zod.string().default(createResourceV1AutocrudCharacterPostBodyCreatedAtDefault),
+  })
+  .describe('遊戲角色');
+
+export const createResourceV1AutocrudCharacterPostResponseParentRevisionIdDefault = null;
+export const createResourceV1AutocrudCharacterPostResponseSchemaVersionDefault = null;
+
+export const CreateResourceV1AutocrudCharacterPostResponse = zod
+  .object({
+    uid: zod.uuid(),
+    resource_id: zod.string(),
+    revision_id: zod.string(),
+    parent_revision_id: zod
+      .union([zod.string(), zod.null()])
+      .default(createResourceV1AutocrudCharacterPostResponseParentRevisionIdDefault),
+    parent_schema_version: zod.union([zod.string(), zod.null()]).optional(),
+    schema_version: zod
+      .union([zod.string(), zod.null()])
+      .default(createResourceV1AutocrudCharacterPostResponseSchemaVersionDefault),
+    data_hash: zod.string().optional(),
+    status: zod.enum(['draft', 'stable']),
+    created_time: zod.string(),
+    updated_time: zod.string(),
+    created_by: zod.string(),
+    updated_by: zod.string(),
+  })
+  .describe(
+    'Metadata about a specific revision of a resource.\n\nThis class contains essential information about a particular revision,',
+  );
+
+/**
+ * Batch delete `character` resources matching the given query conditions.
+
+**Query Parameters:**
+- Uses the same search parameters as the list endpoint
+- `is_deleted` parameter is **forced to `false`** — only non-deleted resources are targeted
+- Use `data_conditions` to filter specific resources for deletion
+- Use `limit` to control the maximum number of resources to delete
+
+**Soft Delete:**
+- Resources are marked as deleted rather than permanently removed
+- Deleted resources can be restored using the batch restore endpoint
+
+**Response:**
+- Returns a list of `ResourceMeta` for all deleted resources
+- Each entry will have `is_deleted` set to `true`
+- Empty list if no resources match the query
+
+**Examples:**
+- `DELETE /character?limit=100` — Delete up to 100 resources
+- `DELETE /character?data_conditions=[{"field_path":"age","operator":"gt","value":25}]` — Delete resources with age > 25
+
+**Error Responses:**
+- `400`: Bad request — Invalid query parameters or deletion error
+ * @summary Batch delete character
+ */
+export const batchDeleteV1AutocrudCharacterDeleteQueryIsDeletedDefault = false;
+export const batchDeleteV1AutocrudCharacterDeleteQueryLimitDefault = 10;
+export const batchDeleteV1AutocrudCharacterDeleteQueryOffsetDefault = 0;
+
+export const BatchDeleteV1AutocrudCharacterDeleteQueryParams = zod.object({
+  qb: zod
+    .union([zod.string(), zod.null()])
+    .optional()
+    .describe(
+      "Query Builder expression. Example: \"QB['foo'] == 123\" or \"QB['age'].gt(18) & QB['status'].eq('active')\"",
+    ),
+  is_deleted: zod
+    .union([zod.boolean(), zod.null()])
+    .default(batchDeleteV1AutocrudCharacterDeleteQueryIsDeletedDefault)
+    .describe('Filter by deletion status'),
+  created_time_start: zod
+    .union([zod.string(), zod.null()])
+    .optional()
+    .describe('Filter by created time start (ISO format)'),
+  created_time_end: zod
+    .union([zod.string(), zod.null()])
+    .optional()
+    .describe('Filter by created time end (ISO format)'),
+  updated_time_start: zod
+    .union([zod.string(), zod.null()])
+    .optional()
+    .describe('Filter by updated time start (ISO format)'),
+  updated_time_end: zod
+    .union([zod.string(), zod.null()])
+    .optional()
+    .describe('Filter by updated time end (ISO format)'),
+  created_bys: zod
+    .union([zod.array(zod.string()), zod.null()])
+    .optional()
+    .describe('Filter by creators'),
+  updated_bys: zod
+    .union([zod.array(zod.string()), zod.null()])
+    .optional()
+    .describe('Filter by updaters'),
+  data_conditions: zod
+    .union([zod.string(), zod.null()])
+    .optional()
+    .describe(
+      'Data filter conditions in JSON format. Example: \'[{\"field_path\": \"department\", \"operator\": \"eq\", \"value\": \"Engineering\"}]\'',
+    ),
+  conditions: zod
+    .union([zod.string(), zod.null()])
+    .optional()
+    .describe(
+      'General filter conditions in JSON format for meta fields or data. Example: \'[{\"field_path\": \"resource_id\", \"operator\": \"starts_with\", \"value\": \"user-\"}]\'',
+    ),
+  sorts: zod
+    .union([zod.string(), zod.null()])
+    .optional()
+    .describe(
+      'Sort conditions in JSON format. Example: \'[{\"type\": \"meta\", \"key\": \"created_time\", \"direction\": \"+\"}, {\"type\": \"data\", \"field_path\": \"name\", \"direction\": \"-\"}]\'',
+    ),
+  limit: zod
+    .number()
+    .default(batchDeleteV1AutocrudCharacterDeleteQueryLimitDefault)
+    .describe('Maximum number of results'),
+  offset: zod
+    .number()
+    .default(batchDeleteV1AutocrudCharacterDeleteQueryOffsetDefault)
+    .describe('Number of results to skip'),
+  partial: zod
+    .union([zod.array(zod.string()), zod.null()])
+    .optional()
+    .describe("List of fields to retrieve (e.g. '\/field1', '\/nested\/field2')"),
+});
+
+export const batchDeleteV1AutocrudCharacterDeleteResponseSchemaVersionDefault = null;
+export const batchDeleteV1AutocrudCharacterDeleteResponseIsDeletedDefault = false;
+
+export const BatchDeleteV1AutocrudCharacterDeleteResponseItem = zod
+  .object({
+    current_revision_id: zod.string(),
+    resource_id: zod.string(),
+    schema_version: zod
+      .union([zod.string(), zod.null()])
+      .default(batchDeleteV1AutocrudCharacterDeleteResponseSchemaVersionDefault),
+    total_revision_count: zod.number(),
+    created_time: zod.string(),
+    updated_time: zod.string(),
+    created_by: zod.string(),
+    updated_by: zod.string(),
+    is_deleted: zod.boolean().default(batchDeleteV1AutocrudCharacterDeleteResponseIsDeletedDefault),
+    indexed_data: zod.looseObject({}).optional(),
+  })
+  .describe(
+    'Metadata about a resource, including its current revision and status.\n\nThis class provides essential information about a resource without including\nthe full data content.',
+  );
+export const BatchDeleteV1AutocrudCharacterDeleteResponse = zod.array(
+  BatchDeleteV1AutocrudCharacterDeleteResponseItem,
+);
+
+/**
+ * Export all (or filtered) **character** resources as a
+streaming ``.acbak`` archive.
+
+Supports the same query parameters as the search endpoint
+(``qb``, ``is_deleted``, time ranges, etc.) to filter
+which resources are included.
+ * @summary Export character data
+ */
+export const exportModelV1AutocrudCharacterExportGetQueryIsDeletedDefault = false;
+export const exportModelV1AutocrudCharacterExportGetQueryLimitDefault = 10;
+export const exportModelV1AutocrudCharacterExportGetQueryOffsetDefault = 0;
+
+export const ExportModelV1AutocrudCharacterExportGetQueryParams = zod.object({
+  qb: zod
+    .union([zod.string(), zod.null()])
+    .optional()
+    .describe(
+      "Query Builder expression. Example: \"QB['foo'] == 123\" or \"QB['age'].gt(18) & QB['status'].eq('active')\"",
+    ),
+  is_deleted: zod
+    .union([zod.boolean(), zod.null()])
+    .default(exportModelV1AutocrudCharacterExportGetQueryIsDeletedDefault)
+    .describe('Filter by deletion status'),
+  created_time_start: zod
+    .union([zod.string(), zod.null()])
+    .optional()
+    .describe('Filter by created time start (ISO format)'),
+  created_time_end: zod
+    .union([zod.string(), zod.null()])
+    .optional()
+    .describe('Filter by created time end (ISO format)'),
+  updated_time_start: zod
+    .union([zod.string(), zod.null()])
+    .optional()
+    .describe('Filter by updated time start (ISO format)'),
+  updated_time_end: zod
+    .union([zod.string(), zod.null()])
+    .optional()
+    .describe('Filter by updated time end (ISO format)'),
+  created_bys: zod
+    .union([zod.array(zod.string()), zod.null()])
+    .optional()
+    .describe('Filter by creators'),
+  updated_bys: zod
+    .union([zod.array(zod.string()), zod.null()])
+    .optional()
+    .describe('Filter by updaters'),
+  data_conditions: zod
+    .union([zod.string(), zod.null()])
+    .optional()
+    .describe(
+      'Data filter conditions in JSON format. Example: \'[{\"field_path\": \"department\", \"operator\": \"eq\", \"value\": \"Engineering\"}]\'',
+    ),
+  conditions: zod
+    .union([zod.string(), zod.null()])
+    .optional()
+    .describe(
+      'General filter conditions in JSON format for meta fields or data. Example: \'[{\"field_path\": \"resource_id\", \"operator\": \"starts_with\", \"value\": \"user-\"}]\'',
+    ),
+  sorts: zod
+    .union([zod.string(), zod.null()])
+    .optional()
+    .describe(
+      'Sort conditions in JSON format. Example: \'[{\"type\": \"meta\", \"key\": \"created_time\", \"direction\": \"+\"}, {\"type\": \"data\", \"field_path\": \"name\", \"direction\": \"-\"}]\'',
+    ),
+  limit: zod
+    .number()
+    .default(exportModelV1AutocrudCharacterExportGetQueryLimitDefault)
+    .describe('Maximum number of results'),
+  offset: zod
+    .number()
+    .default(exportModelV1AutocrudCharacterExportGetQueryOffsetDefault)
+    .describe('Number of results to skip'),
+  partial: zod
+    .union([zod.array(zod.string()), zod.null()])
+    .optional()
+    .describe("List of fields to retrieve (e.g. '\/field1', '\/nested\/field2')"),
+});
+
+export const ExportModelV1AutocrudCharacterExportGetResponse = zod.unknown();
+
+/**
+ * Import **character** resources from a ``.acbak`` archive.
+
+The archive must contain a **character** model section.
+Use ``on_duplicate`` to control behaviour when a resource ID
+already exists.
+ * @summary Import character data
+ */
+export const importModelV1AutocrudCharacterImportPostQueryOnDuplicateDefault = `overwrite`;
+
+export const ImportModelV1AutocrudCharacterImportPostQueryParams = zod.object({
+  on_duplicate: zod
+    .string()
+    .default(importModelV1AutocrudCharacterImportPostQueryOnDuplicateDefault)
+    .describe('Strategy: overwrite | skip | raise_error'),
+});
+
+export const ImportModelV1AutocrudCharacterImportPostBody = zod.object({
+  file: zod.instanceof(File).describe('.acbak archive file'),
+});
+
+export const ImportModelV1AutocrudCharacterImportPostResponse = zod.record(
+  zod.string(),
+  zod.unknown(),
+);
+
+/**
  * Deprecated: use `GET /character/{resource_id}?returns=meta` instead.
  * @deprecated
  * @summary Get character Meta by ID
@@ -2034,7 +2036,7 @@ export const getResourceFullV1AutocrudCharacterResourceIdFullGetResponseDataEqui
 export const getResourceFullV1AutocrudCharacterResourceIdFullGetResponseDataEquipmentsItemTwoIconDefault =
   null;
 export const getResourceFullV1AutocrudCharacterResourceIdFullGetResponseDataEquipmentsDefault = [];
-export const getResourceFullV1AutocrudCharacterResourceIdFullGetResponseDataCreatedAtDefault = `2026-03-15T06:43:55.430201`;
+export const getResourceFullV1AutocrudCharacterResourceIdFullGetResponseDataCreatedAtDefault = `2026-03-18T21:23:09.465887`;
 export const getResourceFullV1AutocrudCharacterResourceIdFullGetResponseRevisionInfoParentRevisionIdDefault =
   null;
 export const getResourceFullV1AutocrudCharacterResourceIdFullGetResponseRevisionInfoSchemaVersionDefault =
@@ -2506,7 +2508,7 @@ export const getResourceDataV1AutocrudCharacterResourceIdDataGetResponseEquipmen
 export const getResourceDataV1AutocrudCharacterResourceIdDataGetResponseEquipmentsItemTwoIconDefault =
   null;
 export const getResourceDataV1AutocrudCharacterResourceIdDataGetResponseEquipmentsDefault = [];
-export const getResourceDataV1AutocrudCharacterResourceIdDataGetResponseCreatedAtDefault = `2026-03-15T06:43:55.430201`;
+export const getResourceDataV1AutocrudCharacterResourceIdDataGetResponseCreatedAtDefault = `2026-03-18T21:23:09.465887`;
 
 export const GetResourceDataV1AutocrudCharacterResourceIdDataGetResponse = zod
   .object({
@@ -2737,7 +2739,7 @@ export const getResourceV1AutocrudCharacterResourceIdGetResponseDataEquipmentsIt
 export const getResourceV1AutocrudCharacterResourceIdGetResponseDataEquipmentsItemTwoIconDefault =
   null;
 export const getResourceV1AutocrudCharacterResourceIdGetResponseDataEquipmentsDefault = [];
-export const getResourceV1AutocrudCharacterResourceIdGetResponseDataCreatedAtDefault = `2026-03-15T06:43:55.430201`;
+export const getResourceV1AutocrudCharacterResourceIdGetResponseDataCreatedAtDefault = `2026-03-18T21:23:09.465887`;
 export const getResourceV1AutocrudCharacterResourceIdGetResponseRevisionInfoParentRevisionIdDefault =
   null;
 export const getResourceV1AutocrudCharacterResourceIdGetResponseRevisionInfoSchemaVersionDefault =
@@ -3010,7 +3012,7 @@ export const updateResourceV1AutocrudCharacterResourceIdPutBodyEquipmentsItemTwo
 export const updateResourceV1AutocrudCharacterResourceIdPutBodyEquipmentsItemTwoPriceDefault = 100;
 export const updateResourceV1AutocrudCharacterResourceIdPutBodyEquipmentsItemTwoIconDefault = null;
 export const updateResourceV1AutocrudCharacterResourceIdPutBodyEquipmentsDefault = [];
-export const updateResourceV1AutocrudCharacterResourceIdPutBodyCreatedAtDefault = `2026-03-15T06:43:55.430201`;
+export const updateResourceV1AutocrudCharacterResourceIdPutBodyCreatedAtDefault = `2026-03-18T21:23:09.465887`;
 
 export const UpdateResourceV1AutocrudCharacterResourceIdPutBody = zod
   .object({
@@ -3944,469 +3946,6 @@ export const MigrateSingleResourceV1AutocrudCharacterMigrateSingleResourceIdPost
   .describe('遷移進度訊息');
 
 /**
- * Export all (or filtered) **guild** resources as a
-streaming ``.acbak`` archive.
-
-Supports the same query parameters as the search endpoint
-(``qb``, ``is_deleted``, time ranges, etc.) to filter
-which resources are included.
- * @summary Export guild data
- */
-export const exportModelV1AutocrudGuildExportGetQueryIsDeletedDefault = false;
-export const exportModelV1AutocrudGuildExportGetQueryLimitDefault = 10;
-export const exportModelV1AutocrudGuildExportGetQueryOffsetDefault = 0;
-
-export const ExportModelV1AutocrudGuildExportGetQueryParams = zod.object({
-  qb: zod
-    .union([zod.string(), zod.null()])
-    .optional()
-    .describe(
-      "Query Builder expression. Example: \"QB['foo'] == 123\" or \"QB['age'].gt(18) & QB['status'].eq('active')\"",
-    ),
-  is_deleted: zod
-    .union([zod.boolean(), zod.null()])
-    .default(exportModelV1AutocrudGuildExportGetQueryIsDeletedDefault)
-    .describe('Filter by deletion status'),
-  created_time_start: zod
-    .union([zod.string(), zod.null()])
-    .optional()
-    .describe('Filter by created time start (ISO format)'),
-  created_time_end: zod
-    .union([zod.string(), zod.null()])
-    .optional()
-    .describe('Filter by created time end (ISO format)'),
-  updated_time_start: zod
-    .union([zod.string(), zod.null()])
-    .optional()
-    .describe('Filter by updated time start (ISO format)'),
-  updated_time_end: zod
-    .union([zod.string(), zod.null()])
-    .optional()
-    .describe('Filter by updated time end (ISO format)'),
-  created_bys: zod
-    .union([zod.array(zod.string()), zod.null()])
-    .optional()
-    .describe('Filter by creators'),
-  updated_bys: zod
-    .union([zod.array(zod.string()), zod.null()])
-    .optional()
-    .describe('Filter by updaters'),
-  data_conditions: zod
-    .union([zod.string(), zod.null()])
-    .optional()
-    .describe(
-      'Data filter conditions in JSON format. Example: \'[{\"field_path\": \"department\", \"operator\": \"eq\", \"value\": \"Engineering\"}]\'',
-    ),
-  conditions: zod
-    .union([zod.string(), zod.null()])
-    .optional()
-    .describe(
-      'General filter conditions in JSON format for meta fields or data. Example: \'[{\"field_path\": \"resource_id\", \"operator\": \"starts_with\", \"value\": \"user-\"}]\'',
-    ),
-  sorts: zod
-    .union([zod.string(), zod.null()])
-    .optional()
-    .describe(
-      'Sort conditions in JSON format. Example: \'[{\"type\": \"meta\", \"key\": \"created_time\", \"direction\": \"+\"}, {\"type\": \"data\", \"field_path\": \"name\", \"direction\": \"-\"}]\'',
-    ),
-  limit: zod
-    .number()
-    .default(exportModelV1AutocrudGuildExportGetQueryLimitDefault)
-    .describe('Maximum number of results'),
-  offset: zod
-    .number()
-    .default(exportModelV1AutocrudGuildExportGetQueryOffsetDefault)
-    .describe('Number of results to skip'),
-  partial: zod
-    .union([zod.array(zod.string()), zod.null()])
-    .optional()
-    .describe("List of fields to retrieve (e.g. '\/field1', '\/nested\/field2')"),
-});
-
-export const ExportModelV1AutocrudGuildExportGetResponse = zod.unknown();
-
-/**
- * Import **guild** resources from a ``.acbak`` archive.
-
-The archive must contain a **guild** model section.
-Use ``on_duplicate`` to control behaviour when a resource ID
-already exists.
- * @summary Import guild data
- */
-export const importModelV1AutocrudGuildImportPostQueryOnDuplicateDefault = `overwrite`;
-
-export const ImportModelV1AutocrudGuildImportPostQueryParams = zod.object({
-  on_duplicate: zod
-    .string()
-    .default(importModelV1AutocrudGuildImportPostQueryOnDuplicateDefault)
-    .describe('Strategy: overwrite | skip | raise_error'),
-});
-
-export const ImportModelV1AutocrudGuildImportPostBody = zod.object({
-  file: zod.instanceof(File).describe('.acbak archive file'),
-});
-
-export const ImportModelV1AutocrudGuildImportPostResponse = zod.record(zod.string(), zod.unknown());
-
-/**
- * Create a new `guild` resource.
-
-**Request Body:**
-- Send the resource data as JSON in the request body
-- The data will be validated against the `guild` schema
-
-**Response:**
-- Returns revision information for the newly created resource
-- Includes `resource_id` and `revision_id` for tracking
-- All resources are version-controlled from creation
-
-**Examples:**
-- `POST /guild` with JSON body - Create new resource
-- Response includes resource and revision identifiers
-
-**Error Responses:**
-- `422`: Validation error - Invalid data format or missing required fields
-- `400`: Bad request - General creation error
- * @summary Create guild
- */
-export const createResourceV1AutocrudGuildPostBodyMemberCountDefault = 1;
-export const createResourceV1AutocrudGuildPostBodyLevelDefault = 1;
-export const createResourceV1AutocrudGuildPostBodyTreasuryDefault = 1000;
-export const createResourceV1AutocrudGuildPostBodyFoundedAtDefault = `2026-03-15T06:43:55.430290`;
-
-export const CreateResourceV1AutocrudGuildPostBody = zod
-  .object({
-    name: zod.string(),
-    description: zod.string(),
-    leader: zod.string(),
-    member_count: zod.number().default(createResourceV1AutocrudGuildPostBodyMemberCountDefault),
-    level: zod.number().default(createResourceV1AutocrudGuildPostBodyLevelDefault),
-    treasury: zod.number().default(createResourceV1AutocrudGuildPostBodyTreasuryDefault),
-    founded_at: zod.string().default(createResourceV1AutocrudGuildPostBodyFoundedAtDefault),
-  })
-  .describe('遊戲公會');
-
-export const createResourceV1AutocrudGuildPostResponseParentRevisionIdDefault = null;
-export const createResourceV1AutocrudGuildPostResponseSchemaVersionDefault = null;
-
-export const CreateResourceV1AutocrudGuildPostResponse = zod
-  .object({
-    uid: zod.uuid(),
-    resource_id: zod.string(),
-    revision_id: zod.string(),
-    parent_revision_id: zod
-      .union([zod.string(), zod.null()])
-      .default(createResourceV1AutocrudGuildPostResponseParentRevisionIdDefault),
-    parent_schema_version: zod.union([zod.string(), zod.null()]).optional(),
-    schema_version: zod
-      .union([zod.string(), zod.null()])
-      .default(createResourceV1AutocrudGuildPostResponseSchemaVersionDefault),
-    data_hash: zod.string().optional(),
-    status: zod.enum(['draft', 'stable']),
-    created_time: zod.string(),
-    updated_time: zod.string(),
-    created_by: zod.string(),
-    updated_by: zod.string(),
-  })
-  .describe(
-    'Metadata about a specific revision of a resource.\n\nThis class contains essential information about a particular revision,',
-  );
-
-/**
- * Retrieve a list of `guild` resources.
-
-Use the `returns` query parameter to control which sections are included in each item.
-By default all sections are returned: `data`, `revision_info`, `meta`.
-
-**Query Parameters:**
-- `returns` (default `"data,revision_info,meta"`): Comma-separated list of sections to include.
-  Allowed values: `data`, `revision_info`, `meta`.
-- `limit` / `offset`: Pagination controls.
-- `partial` / `partial[]`: Partial field selection.
-- All standard filtering and sorting parameters.
-
-**Examples:**
-- `GET /guild` — full list (data + meta + revision_info)
-- `GET /guild?returns=data` — data only
-- `GET /guild?returns=data,meta` — data + meta, no revision_info
-- `GET /guild?limit=20&offset=40` — pagination
-
-**Error Responses:**
-- `400`: Bad request - Invalid query parameters or search error
- * @summary List guild resources
- */
-export const listResourcesV1AutocrudGuildGetQueryIsDeletedDefault = false;
-export const listResourcesV1AutocrudGuildGetQueryLimitDefault = 10;
-export const listResourcesV1AutocrudGuildGetQueryOffsetDefault = 0;
-export const listResourcesV1AutocrudGuildGetQueryReturnsDefault = `data,revision_info,meta`;
-
-export const ListResourcesV1AutocrudGuildGetQueryParams = zod.object({
-  qb: zod
-    .union([zod.string(), zod.null()])
-    .optional()
-    .describe(
-      "Query Builder expression. Example: \"QB['foo'] == 123\" or \"QB['age'].gt(18) & QB['status'].eq('active')\"",
-    ),
-  is_deleted: zod
-    .union([zod.boolean(), zod.null()])
-    .default(listResourcesV1AutocrudGuildGetQueryIsDeletedDefault)
-    .describe('Filter by deletion status'),
-  created_time_start: zod
-    .union([zod.string(), zod.null()])
-    .optional()
-    .describe('Filter by created time start (ISO format)'),
-  created_time_end: zod
-    .union([zod.string(), zod.null()])
-    .optional()
-    .describe('Filter by created time end (ISO format)'),
-  updated_time_start: zod
-    .union([zod.string(), zod.null()])
-    .optional()
-    .describe('Filter by updated time start (ISO format)'),
-  updated_time_end: zod
-    .union([zod.string(), zod.null()])
-    .optional()
-    .describe('Filter by updated time end (ISO format)'),
-  created_bys: zod
-    .union([zod.array(zod.string()), zod.null()])
-    .optional()
-    .describe('Filter by creators'),
-  updated_bys: zod
-    .union([zod.array(zod.string()), zod.null()])
-    .optional()
-    .describe('Filter by updaters'),
-  data_conditions: zod
-    .union([zod.string(), zod.null()])
-    .optional()
-    .describe(
-      'Data filter conditions in JSON format. Example: \'[{\"field_path\": \"department\", \"operator\": \"eq\", \"value\": \"Engineering\"}]\'',
-    ),
-  conditions: zod
-    .union([zod.string(), zod.null()])
-    .optional()
-    .describe(
-      'General filter conditions in JSON format for meta fields or data. Example: \'[{\"field_path\": \"resource_id\", \"operator\": \"starts_with\", \"value\": \"user-\"}]\'',
-    ),
-  sorts: zod
-    .union([zod.string(), zod.null()])
-    .optional()
-    .describe(
-      'Sort conditions in JSON format. Example: \'[{\"type\": \"meta\", \"key\": \"created_time\", \"direction\": \"+\"}, {\"type\": \"data\", \"field_path\": \"name\", \"direction\": \"-\"}]\'',
-    ),
-  limit: zod
-    .number()
-    .default(listResourcesV1AutocrudGuildGetQueryLimitDefault)
-    .describe('Maximum number of results'),
-  offset: zod
-    .number()
-    .default(listResourcesV1AutocrudGuildGetQueryOffsetDefault)
-    .describe('Number of results to skip'),
-  partial: zod
-    .union([zod.array(zod.string()), zod.null()])
-    .optional()
-    .describe("List of fields to retrieve (e.g. '\/field1', '\/nested\/field2')"),
-  returns: zod
-    .string()
-    .default(listResourcesV1AutocrudGuildGetQueryReturnsDefault)
-    .describe('Fields to return, comma-separated. Options: data, revision_info, meta'),
-});
-
-export const listResourcesV1AutocrudGuildGetResponseDataMemberCountDefault = 1;
-export const listResourcesV1AutocrudGuildGetResponseDataLevelDefault = 1;
-export const listResourcesV1AutocrudGuildGetResponseDataTreasuryDefault = 1000;
-export const listResourcesV1AutocrudGuildGetResponseDataFoundedAtDefault = `2026-03-15T06:43:55.430290`;
-export const listResourcesV1AutocrudGuildGetResponseRevisionInfoParentRevisionIdDefault = null;
-export const listResourcesV1AutocrudGuildGetResponseRevisionInfoSchemaVersionDefault = null;
-export const listResourcesV1AutocrudGuildGetResponseMetaSchemaVersionDefault = null;
-export const listResourcesV1AutocrudGuildGetResponseMetaIsDeletedDefault = false;
-
-export const ListResourcesV1AutocrudGuildGetResponseItem = zod.object({
-  data: zod
-    .object({
-      name: zod.string(),
-      description: zod.string(),
-      leader: zod.string(),
-      member_count: zod
-        .number()
-        .default(listResourcesV1AutocrudGuildGetResponseDataMemberCountDefault),
-      level: zod.number().default(listResourcesV1AutocrudGuildGetResponseDataLevelDefault),
-      treasury: zod.number().default(listResourcesV1AutocrudGuildGetResponseDataTreasuryDefault),
-      founded_at: zod.string().default(listResourcesV1AutocrudGuildGetResponseDataFoundedAtDefault),
-    })
-    .optional()
-    .describe('遊戲公會'),
-  revision_info: zod
-    .object({
-      uid: zod.uuid(),
-      resource_id: zod.string(),
-      revision_id: zod.string(),
-      parent_revision_id: zod
-        .union([zod.string(), zod.null()])
-        .default(listResourcesV1AutocrudGuildGetResponseRevisionInfoParentRevisionIdDefault),
-      parent_schema_version: zod.union([zod.string(), zod.null()]).optional(),
-      schema_version: zod
-        .union([zod.string(), zod.null()])
-        .default(listResourcesV1AutocrudGuildGetResponseRevisionInfoSchemaVersionDefault),
-      data_hash: zod.string().optional(),
-      status: zod.enum(['draft', 'stable']),
-      created_time: zod.string(),
-      updated_time: zod.string(),
-      created_by: zod.string(),
-      updated_by: zod.string(),
-    })
-    .optional()
-    .describe(
-      'Metadata about a specific revision of a resource.\n\nThis class contains essential information about a particular revision,',
-    ),
-  meta: zod
-    .object({
-      current_revision_id: zod.string(),
-      resource_id: zod.string(),
-      schema_version: zod
-        .union([zod.string(), zod.null()])
-        .default(listResourcesV1AutocrudGuildGetResponseMetaSchemaVersionDefault),
-      total_revision_count: zod.number(),
-      created_time: zod.string(),
-      updated_time: zod.string(),
-      created_by: zod.string(),
-      updated_by: zod.string(),
-      is_deleted: zod
-        .boolean()
-        .default(listResourcesV1AutocrudGuildGetResponseMetaIsDeletedDefault),
-      indexed_data: zod.looseObject({}).optional(),
-    })
-    .optional()
-    .describe(
-      'Metadata about a resource, including its current revision and status.\n\nThis class provides essential information about a resource without including\nthe full data content.',
-    ),
-});
-export const ListResourcesV1AutocrudGuildGetResponse = zod.array(
-  ListResourcesV1AutocrudGuildGetResponseItem,
-);
-
-/**
- * Batch delete `guild` resources matching the given query conditions.
-
-**Query Parameters:**
-- Uses the same search parameters as the list endpoint
-- `is_deleted` parameter is **forced to `false`** — only non-deleted resources are targeted
-- Use `data_conditions` to filter specific resources for deletion
-- Use `limit` to control the maximum number of resources to delete
-
-**Soft Delete:**
-- Resources are marked as deleted rather than permanently removed
-- Deleted resources can be restored using the batch restore endpoint
-
-**Response:**
-- Returns a list of `ResourceMeta` for all deleted resources
-- Each entry will have `is_deleted` set to `true`
-- Empty list if no resources match the query
-
-**Examples:**
-- `DELETE /guild?limit=100` — Delete up to 100 resources
-- `DELETE /guild?data_conditions=[{"field_path":"age","operator":"gt","value":25}]` — Delete resources with age > 25
-
-**Error Responses:**
-- `400`: Bad request — Invalid query parameters or deletion error
- * @summary Batch delete guild
- */
-export const batchDeleteV1AutocrudGuildDeleteQueryIsDeletedDefault = false;
-export const batchDeleteV1AutocrudGuildDeleteQueryLimitDefault = 10;
-export const batchDeleteV1AutocrudGuildDeleteQueryOffsetDefault = 0;
-
-export const BatchDeleteV1AutocrudGuildDeleteQueryParams = zod.object({
-  qb: zod
-    .union([zod.string(), zod.null()])
-    .optional()
-    .describe(
-      "Query Builder expression. Example: \"QB['foo'] == 123\" or \"QB['age'].gt(18) & QB['status'].eq('active')\"",
-    ),
-  is_deleted: zod
-    .union([zod.boolean(), zod.null()])
-    .default(batchDeleteV1AutocrudGuildDeleteQueryIsDeletedDefault)
-    .describe('Filter by deletion status'),
-  created_time_start: zod
-    .union([zod.string(), zod.null()])
-    .optional()
-    .describe('Filter by created time start (ISO format)'),
-  created_time_end: zod
-    .union([zod.string(), zod.null()])
-    .optional()
-    .describe('Filter by created time end (ISO format)'),
-  updated_time_start: zod
-    .union([zod.string(), zod.null()])
-    .optional()
-    .describe('Filter by updated time start (ISO format)'),
-  updated_time_end: zod
-    .union([zod.string(), zod.null()])
-    .optional()
-    .describe('Filter by updated time end (ISO format)'),
-  created_bys: zod
-    .union([zod.array(zod.string()), zod.null()])
-    .optional()
-    .describe('Filter by creators'),
-  updated_bys: zod
-    .union([zod.array(zod.string()), zod.null()])
-    .optional()
-    .describe('Filter by updaters'),
-  data_conditions: zod
-    .union([zod.string(), zod.null()])
-    .optional()
-    .describe(
-      'Data filter conditions in JSON format. Example: \'[{\"field_path\": \"department\", \"operator\": \"eq\", \"value\": \"Engineering\"}]\'',
-    ),
-  conditions: zod
-    .union([zod.string(), zod.null()])
-    .optional()
-    .describe(
-      'General filter conditions in JSON format for meta fields or data. Example: \'[{\"field_path\": \"resource_id\", \"operator\": \"starts_with\", \"value\": \"user-\"}]\'',
-    ),
-  sorts: zod
-    .union([zod.string(), zod.null()])
-    .optional()
-    .describe(
-      'Sort conditions in JSON format. Example: \'[{\"type\": \"meta\", \"key\": \"created_time\", \"direction\": \"+\"}, {\"type\": \"data\", \"field_path\": \"name\", \"direction\": \"-\"}]\'',
-    ),
-  limit: zod
-    .number()
-    .default(batchDeleteV1AutocrudGuildDeleteQueryLimitDefault)
-    .describe('Maximum number of results'),
-  offset: zod
-    .number()
-    .default(batchDeleteV1AutocrudGuildDeleteQueryOffsetDefault)
-    .describe('Number of results to skip'),
-  partial: zod
-    .union([zod.array(zod.string()), zod.null()])
-    .optional()
-    .describe("List of fields to retrieve (e.g. '\/field1', '\/nested\/field2')"),
-});
-
-export const batchDeleteV1AutocrudGuildDeleteResponseSchemaVersionDefault = null;
-export const batchDeleteV1AutocrudGuildDeleteResponseIsDeletedDefault = false;
-
-export const BatchDeleteV1AutocrudGuildDeleteResponseItem = zod
-  .object({
-    current_revision_id: zod.string(),
-    resource_id: zod.string(),
-    schema_version: zod
-      .union([zod.string(), zod.null()])
-      .default(batchDeleteV1AutocrudGuildDeleteResponseSchemaVersionDefault),
-    total_revision_count: zod.number(),
-    created_time: zod.string(),
-    updated_time: zod.string(),
-    created_by: zod.string(),
-    updated_by: zod.string(),
-    is_deleted: zod.boolean().default(batchDeleteV1AutocrudGuildDeleteResponseIsDeletedDefault),
-    indexed_data: zod.looseObject({}).optional(),
-  })
-  .describe(
-    'Metadata about a resource, including its current revision and status.\n\nThis class provides essential information about a resource without including\nthe full data content.',
-  );
-export const BatchDeleteV1AutocrudGuildDeleteResponse = zod.array(
-  BatchDeleteV1AutocrudGuildDeleteResponseItem,
-);
-
-/**
  * Retrieve a list of `guild` resources returning only the data content.
 
 **Response Format:**
@@ -4545,7 +4084,7 @@ export const ListResourcesDataV1AutocrudGuildDataGetQueryParams = zod.object({
 export const listResourcesDataV1AutocrudGuildDataGetResponseMemberCountDefault = 1;
 export const listResourcesDataV1AutocrudGuildDataGetResponseLevelDefault = 1;
 export const listResourcesDataV1AutocrudGuildDataGetResponseTreasuryDefault = 1000;
-export const listResourcesDataV1AutocrudGuildDataGetResponseFoundedAtDefault = `2026-03-15T06:43:55.430290`;
+export const listResourcesDataV1AutocrudGuildDataGetResponseFoundedAtDefault = `2026-03-18T21:23:09.465975`;
 
 export const ListResourcesDataV1AutocrudGuildDataGetResponseItem = zod
   .object({
@@ -4981,7 +4520,7 @@ export const ListResourcesFullV1AutocrudGuildFullGetQueryParams = zod.object({
 export const listResourcesFullV1AutocrudGuildFullGetResponseDataMemberCountDefault = 1;
 export const listResourcesFullV1AutocrudGuildFullGetResponseDataLevelDefault = 1;
 export const listResourcesFullV1AutocrudGuildFullGetResponseDataTreasuryDefault = 1000;
-export const listResourcesFullV1AutocrudGuildFullGetResponseDataFoundedAtDefault = `2026-03-15T06:43:55.430290`;
+export const listResourcesFullV1AutocrudGuildFullGetResponseDataFoundedAtDefault = `2026-03-18T21:23:09.465975`;
 export const listResourcesFullV1AutocrudGuildFullGetResponseRevisionInfoParentRevisionIdDefault =
   null;
 export const listResourcesFullV1AutocrudGuildFullGetResponseRevisionInfoSchemaVersionDefault = null;
@@ -5174,6 +4713,469 @@ export const GetResourcesCountV1AutocrudGuildCountGetQueryParams = zod.object({
 export const GetResourcesCountV1AutocrudGuildCountGetResponse = zod.number();
 
 /**
+ * Retrieve a list of `guild` resources.
+
+Use the `returns` query parameter to control which sections are included in each item.
+By default all sections are returned: `data`, `revision_info`, `meta`.
+
+**Query Parameters:**
+- `returns` (default `"data,revision_info,meta"`): Comma-separated list of sections to include.
+  Allowed values: `data`, `revision_info`, `meta`.
+- `limit` / `offset`: Pagination controls.
+- `partial` / `partial[]`: Partial field selection.
+- All standard filtering and sorting parameters.
+
+**Examples:**
+- `GET /guild` — full list (data + meta + revision_info)
+- `GET /guild?returns=data` — data only
+- `GET /guild?returns=data,meta` — data + meta, no revision_info
+- `GET /guild?limit=20&offset=40` — pagination
+
+**Error Responses:**
+- `400`: Bad request - Invalid query parameters or search error
+ * @summary List guild resources
+ */
+export const listResourcesV1AutocrudGuildGetQueryIsDeletedDefault = false;
+export const listResourcesV1AutocrudGuildGetQueryLimitDefault = 10;
+export const listResourcesV1AutocrudGuildGetQueryOffsetDefault = 0;
+export const listResourcesV1AutocrudGuildGetQueryReturnsDefault = `data,revision_info,meta`;
+
+export const ListResourcesV1AutocrudGuildGetQueryParams = zod.object({
+  qb: zod
+    .union([zod.string(), zod.null()])
+    .optional()
+    .describe(
+      "Query Builder expression. Example: \"QB['foo'] == 123\" or \"QB['age'].gt(18) & QB['status'].eq('active')\"",
+    ),
+  is_deleted: zod
+    .union([zod.boolean(), zod.null()])
+    .default(listResourcesV1AutocrudGuildGetQueryIsDeletedDefault)
+    .describe('Filter by deletion status'),
+  created_time_start: zod
+    .union([zod.string(), zod.null()])
+    .optional()
+    .describe('Filter by created time start (ISO format)'),
+  created_time_end: zod
+    .union([zod.string(), zod.null()])
+    .optional()
+    .describe('Filter by created time end (ISO format)'),
+  updated_time_start: zod
+    .union([zod.string(), zod.null()])
+    .optional()
+    .describe('Filter by updated time start (ISO format)'),
+  updated_time_end: zod
+    .union([zod.string(), zod.null()])
+    .optional()
+    .describe('Filter by updated time end (ISO format)'),
+  created_bys: zod
+    .union([zod.array(zod.string()), zod.null()])
+    .optional()
+    .describe('Filter by creators'),
+  updated_bys: zod
+    .union([zod.array(zod.string()), zod.null()])
+    .optional()
+    .describe('Filter by updaters'),
+  data_conditions: zod
+    .union([zod.string(), zod.null()])
+    .optional()
+    .describe(
+      'Data filter conditions in JSON format. Example: \'[{\"field_path\": \"department\", \"operator\": \"eq\", \"value\": \"Engineering\"}]\'',
+    ),
+  conditions: zod
+    .union([zod.string(), zod.null()])
+    .optional()
+    .describe(
+      'General filter conditions in JSON format for meta fields or data. Example: \'[{\"field_path\": \"resource_id\", \"operator\": \"starts_with\", \"value\": \"user-\"}]\'',
+    ),
+  sorts: zod
+    .union([zod.string(), zod.null()])
+    .optional()
+    .describe(
+      'Sort conditions in JSON format. Example: \'[{\"type\": \"meta\", \"key\": \"created_time\", \"direction\": \"+\"}, {\"type\": \"data\", \"field_path\": \"name\", \"direction\": \"-\"}]\'',
+    ),
+  limit: zod
+    .number()
+    .default(listResourcesV1AutocrudGuildGetQueryLimitDefault)
+    .describe('Maximum number of results'),
+  offset: zod
+    .number()
+    .default(listResourcesV1AutocrudGuildGetQueryOffsetDefault)
+    .describe('Number of results to skip'),
+  partial: zod
+    .union([zod.array(zod.string()), zod.null()])
+    .optional()
+    .describe("List of fields to retrieve (e.g. '\/field1', '\/nested\/field2')"),
+  returns: zod
+    .string()
+    .default(listResourcesV1AutocrudGuildGetQueryReturnsDefault)
+    .describe('Fields to return, comma-separated. Options: data, revision_info, meta'),
+});
+
+export const listResourcesV1AutocrudGuildGetResponseDataMemberCountDefault = 1;
+export const listResourcesV1AutocrudGuildGetResponseDataLevelDefault = 1;
+export const listResourcesV1AutocrudGuildGetResponseDataTreasuryDefault = 1000;
+export const listResourcesV1AutocrudGuildGetResponseDataFoundedAtDefault = `2026-03-18T21:23:09.465975`;
+export const listResourcesV1AutocrudGuildGetResponseRevisionInfoParentRevisionIdDefault = null;
+export const listResourcesV1AutocrudGuildGetResponseRevisionInfoSchemaVersionDefault = null;
+export const listResourcesV1AutocrudGuildGetResponseMetaSchemaVersionDefault = null;
+export const listResourcesV1AutocrudGuildGetResponseMetaIsDeletedDefault = false;
+
+export const ListResourcesV1AutocrudGuildGetResponseItem = zod.object({
+  data: zod
+    .object({
+      name: zod.string(),
+      description: zod.string(),
+      leader: zod.string(),
+      member_count: zod
+        .number()
+        .default(listResourcesV1AutocrudGuildGetResponseDataMemberCountDefault),
+      level: zod.number().default(listResourcesV1AutocrudGuildGetResponseDataLevelDefault),
+      treasury: zod.number().default(listResourcesV1AutocrudGuildGetResponseDataTreasuryDefault),
+      founded_at: zod.string().default(listResourcesV1AutocrudGuildGetResponseDataFoundedAtDefault),
+    })
+    .optional()
+    .describe('遊戲公會'),
+  revision_info: zod
+    .object({
+      uid: zod.uuid(),
+      resource_id: zod.string(),
+      revision_id: zod.string(),
+      parent_revision_id: zod
+        .union([zod.string(), zod.null()])
+        .default(listResourcesV1AutocrudGuildGetResponseRevisionInfoParentRevisionIdDefault),
+      parent_schema_version: zod.union([zod.string(), zod.null()]).optional(),
+      schema_version: zod
+        .union([zod.string(), zod.null()])
+        .default(listResourcesV1AutocrudGuildGetResponseRevisionInfoSchemaVersionDefault),
+      data_hash: zod.string().optional(),
+      status: zod.enum(['draft', 'stable']),
+      created_time: zod.string(),
+      updated_time: zod.string(),
+      created_by: zod.string(),
+      updated_by: zod.string(),
+    })
+    .optional()
+    .describe(
+      'Metadata about a specific revision of a resource.\n\nThis class contains essential information about a particular revision,',
+    ),
+  meta: zod
+    .object({
+      current_revision_id: zod.string(),
+      resource_id: zod.string(),
+      schema_version: zod
+        .union([zod.string(), zod.null()])
+        .default(listResourcesV1AutocrudGuildGetResponseMetaSchemaVersionDefault),
+      total_revision_count: zod.number(),
+      created_time: zod.string(),
+      updated_time: zod.string(),
+      created_by: zod.string(),
+      updated_by: zod.string(),
+      is_deleted: zod
+        .boolean()
+        .default(listResourcesV1AutocrudGuildGetResponseMetaIsDeletedDefault),
+      indexed_data: zod.looseObject({}).optional(),
+    })
+    .optional()
+    .describe(
+      'Metadata about a resource, including its current revision and status.\n\nThis class provides essential information about a resource without including\nthe full data content.',
+    ),
+});
+export const ListResourcesV1AutocrudGuildGetResponse = zod.array(
+  ListResourcesV1AutocrudGuildGetResponseItem,
+);
+
+/**
+ * Create a new `guild` resource.
+
+**Request Body:**
+- Send the resource data as JSON in the request body
+- The data will be validated against the `guild` schema
+
+**Response:**
+- Returns revision information for the newly created resource
+- Includes `resource_id` and `revision_id` for tracking
+- All resources are version-controlled from creation
+
+**Examples:**
+- `POST /guild` with JSON body - Create new resource
+- Response includes resource and revision identifiers
+
+**Error Responses:**
+- `422`: Validation error - Invalid data format or missing required fields
+- `400`: Bad request - General creation error
+ * @summary Create guild
+ */
+export const createResourceV1AutocrudGuildPostBodyMemberCountDefault = 1;
+export const createResourceV1AutocrudGuildPostBodyLevelDefault = 1;
+export const createResourceV1AutocrudGuildPostBodyTreasuryDefault = 1000;
+export const createResourceV1AutocrudGuildPostBodyFoundedAtDefault = `2026-03-18T21:23:09.465975`;
+
+export const CreateResourceV1AutocrudGuildPostBody = zod
+  .object({
+    name: zod.string(),
+    description: zod.string(),
+    leader: zod.string(),
+    member_count: zod.number().default(createResourceV1AutocrudGuildPostBodyMemberCountDefault),
+    level: zod.number().default(createResourceV1AutocrudGuildPostBodyLevelDefault),
+    treasury: zod.number().default(createResourceV1AutocrudGuildPostBodyTreasuryDefault),
+    founded_at: zod.string().default(createResourceV1AutocrudGuildPostBodyFoundedAtDefault),
+  })
+  .describe('遊戲公會');
+
+export const createResourceV1AutocrudGuildPostResponseParentRevisionIdDefault = null;
+export const createResourceV1AutocrudGuildPostResponseSchemaVersionDefault = null;
+
+export const CreateResourceV1AutocrudGuildPostResponse = zod
+  .object({
+    uid: zod.uuid(),
+    resource_id: zod.string(),
+    revision_id: zod.string(),
+    parent_revision_id: zod
+      .union([zod.string(), zod.null()])
+      .default(createResourceV1AutocrudGuildPostResponseParentRevisionIdDefault),
+    parent_schema_version: zod.union([zod.string(), zod.null()]).optional(),
+    schema_version: zod
+      .union([zod.string(), zod.null()])
+      .default(createResourceV1AutocrudGuildPostResponseSchemaVersionDefault),
+    data_hash: zod.string().optional(),
+    status: zod.enum(['draft', 'stable']),
+    created_time: zod.string(),
+    updated_time: zod.string(),
+    created_by: zod.string(),
+    updated_by: zod.string(),
+  })
+  .describe(
+    'Metadata about a specific revision of a resource.\n\nThis class contains essential information about a particular revision,',
+  );
+
+/**
+ * Batch delete `guild` resources matching the given query conditions.
+
+**Query Parameters:**
+- Uses the same search parameters as the list endpoint
+- `is_deleted` parameter is **forced to `false`** — only non-deleted resources are targeted
+- Use `data_conditions` to filter specific resources for deletion
+- Use `limit` to control the maximum number of resources to delete
+
+**Soft Delete:**
+- Resources are marked as deleted rather than permanently removed
+- Deleted resources can be restored using the batch restore endpoint
+
+**Response:**
+- Returns a list of `ResourceMeta` for all deleted resources
+- Each entry will have `is_deleted` set to `true`
+- Empty list if no resources match the query
+
+**Examples:**
+- `DELETE /guild?limit=100` — Delete up to 100 resources
+- `DELETE /guild?data_conditions=[{"field_path":"age","operator":"gt","value":25}]` — Delete resources with age > 25
+
+**Error Responses:**
+- `400`: Bad request — Invalid query parameters or deletion error
+ * @summary Batch delete guild
+ */
+export const batchDeleteV1AutocrudGuildDeleteQueryIsDeletedDefault = false;
+export const batchDeleteV1AutocrudGuildDeleteQueryLimitDefault = 10;
+export const batchDeleteV1AutocrudGuildDeleteQueryOffsetDefault = 0;
+
+export const BatchDeleteV1AutocrudGuildDeleteQueryParams = zod.object({
+  qb: zod
+    .union([zod.string(), zod.null()])
+    .optional()
+    .describe(
+      "Query Builder expression. Example: \"QB['foo'] == 123\" or \"QB['age'].gt(18) & QB['status'].eq('active')\"",
+    ),
+  is_deleted: zod
+    .union([zod.boolean(), zod.null()])
+    .default(batchDeleteV1AutocrudGuildDeleteQueryIsDeletedDefault)
+    .describe('Filter by deletion status'),
+  created_time_start: zod
+    .union([zod.string(), zod.null()])
+    .optional()
+    .describe('Filter by created time start (ISO format)'),
+  created_time_end: zod
+    .union([zod.string(), zod.null()])
+    .optional()
+    .describe('Filter by created time end (ISO format)'),
+  updated_time_start: zod
+    .union([zod.string(), zod.null()])
+    .optional()
+    .describe('Filter by updated time start (ISO format)'),
+  updated_time_end: zod
+    .union([zod.string(), zod.null()])
+    .optional()
+    .describe('Filter by updated time end (ISO format)'),
+  created_bys: zod
+    .union([zod.array(zod.string()), zod.null()])
+    .optional()
+    .describe('Filter by creators'),
+  updated_bys: zod
+    .union([zod.array(zod.string()), zod.null()])
+    .optional()
+    .describe('Filter by updaters'),
+  data_conditions: zod
+    .union([zod.string(), zod.null()])
+    .optional()
+    .describe(
+      'Data filter conditions in JSON format. Example: \'[{\"field_path\": \"department\", \"operator\": \"eq\", \"value\": \"Engineering\"}]\'',
+    ),
+  conditions: zod
+    .union([zod.string(), zod.null()])
+    .optional()
+    .describe(
+      'General filter conditions in JSON format for meta fields or data. Example: \'[{\"field_path\": \"resource_id\", \"operator\": \"starts_with\", \"value\": \"user-\"}]\'',
+    ),
+  sorts: zod
+    .union([zod.string(), zod.null()])
+    .optional()
+    .describe(
+      'Sort conditions in JSON format. Example: \'[{\"type\": \"meta\", \"key\": \"created_time\", \"direction\": \"+\"}, {\"type\": \"data\", \"field_path\": \"name\", \"direction\": \"-\"}]\'',
+    ),
+  limit: zod
+    .number()
+    .default(batchDeleteV1AutocrudGuildDeleteQueryLimitDefault)
+    .describe('Maximum number of results'),
+  offset: zod
+    .number()
+    .default(batchDeleteV1AutocrudGuildDeleteQueryOffsetDefault)
+    .describe('Number of results to skip'),
+  partial: zod
+    .union([zod.array(zod.string()), zod.null()])
+    .optional()
+    .describe("List of fields to retrieve (e.g. '\/field1', '\/nested\/field2')"),
+});
+
+export const batchDeleteV1AutocrudGuildDeleteResponseSchemaVersionDefault = null;
+export const batchDeleteV1AutocrudGuildDeleteResponseIsDeletedDefault = false;
+
+export const BatchDeleteV1AutocrudGuildDeleteResponseItem = zod
+  .object({
+    current_revision_id: zod.string(),
+    resource_id: zod.string(),
+    schema_version: zod
+      .union([zod.string(), zod.null()])
+      .default(batchDeleteV1AutocrudGuildDeleteResponseSchemaVersionDefault),
+    total_revision_count: zod.number(),
+    created_time: zod.string(),
+    updated_time: zod.string(),
+    created_by: zod.string(),
+    updated_by: zod.string(),
+    is_deleted: zod.boolean().default(batchDeleteV1AutocrudGuildDeleteResponseIsDeletedDefault),
+    indexed_data: zod.looseObject({}).optional(),
+  })
+  .describe(
+    'Metadata about a resource, including its current revision and status.\n\nThis class provides essential information about a resource without including\nthe full data content.',
+  );
+export const BatchDeleteV1AutocrudGuildDeleteResponse = zod.array(
+  BatchDeleteV1AutocrudGuildDeleteResponseItem,
+);
+
+/**
+ * Export all (or filtered) **guild** resources as a
+streaming ``.acbak`` archive.
+
+Supports the same query parameters as the search endpoint
+(``qb``, ``is_deleted``, time ranges, etc.) to filter
+which resources are included.
+ * @summary Export guild data
+ */
+export const exportModelV1AutocrudGuildExportGetQueryIsDeletedDefault = false;
+export const exportModelV1AutocrudGuildExportGetQueryLimitDefault = 10;
+export const exportModelV1AutocrudGuildExportGetQueryOffsetDefault = 0;
+
+export const ExportModelV1AutocrudGuildExportGetQueryParams = zod.object({
+  qb: zod
+    .union([zod.string(), zod.null()])
+    .optional()
+    .describe(
+      "Query Builder expression. Example: \"QB['foo'] == 123\" or \"QB['age'].gt(18) & QB['status'].eq('active')\"",
+    ),
+  is_deleted: zod
+    .union([zod.boolean(), zod.null()])
+    .default(exportModelV1AutocrudGuildExportGetQueryIsDeletedDefault)
+    .describe('Filter by deletion status'),
+  created_time_start: zod
+    .union([zod.string(), zod.null()])
+    .optional()
+    .describe('Filter by created time start (ISO format)'),
+  created_time_end: zod
+    .union([zod.string(), zod.null()])
+    .optional()
+    .describe('Filter by created time end (ISO format)'),
+  updated_time_start: zod
+    .union([zod.string(), zod.null()])
+    .optional()
+    .describe('Filter by updated time start (ISO format)'),
+  updated_time_end: zod
+    .union([zod.string(), zod.null()])
+    .optional()
+    .describe('Filter by updated time end (ISO format)'),
+  created_bys: zod
+    .union([zod.array(zod.string()), zod.null()])
+    .optional()
+    .describe('Filter by creators'),
+  updated_bys: zod
+    .union([zod.array(zod.string()), zod.null()])
+    .optional()
+    .describe('Filter by updaters'),
+  data_conditions: zod
+    .union([zod.string(), zod.null()])
+    .optional()
+    .describe(
+      'Data filter conditions in JSON format. Example: \'[{\"field_path\": \"department\", \"operator\": \"eq\", \"value\": \"Engineering\"}]\'',
+    ),
+  conditions: zod
+    .union([zod.string(), zod.null()])
+    .optional()
+    .describe(
+      'General filter conditions in JSON format for meta fields or data. Example: \'[{\"field_path\": \"resource_id\", \"operator\": \"starts_with\", \"value\": \"user-\"}]\'',
+    ),
+  sorts: zod
+    .union([zod.string(), zod.null()])
+    .optional()
+    .describe(
+      'Sort conditions in JSON format. Example: \'[{\"type\": \"meta\", \"key\": \"created_time\", \"direction\": \"+\"}, {\"type\": \"data\", \"field_path\": \"name\", \"direction\": \"-\"}]\'',
+    ),
+  limit: zod
+    .number()
+    .default(exportModelV1AutocrudGuildExportGetQueryLimitDefault)
+    .describe('Maximum number of results'),
+  offset: zod
+    .number()
+    .default(exportModelV1AutocrudGuildExportGetQueryOffsetDefault)
+    .describe('Number of results to skip'),
+  partial: zod
+    .union([zod.array(zod.string()), zod.null()])
+    .optional()
+    .describe("List of fields to retrieve (e.g. '\/field1', '\/nested\/field2')"),
+});
+
+export const ExportModelV1AutocrudGuildExportGetResponse = zod.unknown();
+
+/**
+ * Import **guild** resources from a ``.acbak`` archive.
+
+The archive must contain a **guild** model section.
+Use ``on_duplicate`` to control behaviour when a resource ID
+already exists.
+ * @summary Import guild data
+ */
+export const importModelV1AutocrudGuildImportPostQueryOnDuplicateDefault = `overwrite`;
+
+export const ImportModelV1AutocrudGuildImportPostQueryParams = zod.object({
+  on_duplicate: zod
+    .string()
+    .default(importModelV1AutocrudGuildImportPostQueryOnDuplicateDefault)
+    .describe('Strategy: overwrite | skip | raise_error'),
+});
+
+export const ImportModelV1AutocrudGuildImportPostBody = zod.object({
+  file: zod.instanceof(File).describe('.acbak archive file'),
+});
+
+export const ImportModelV1AutocrudGuildImportPostResponse = zod.record(zod.string(), zod.unknown());
+
+/**
  * Deprecated: use `GET /guild/{resource_id}?returns=meta` instead.
  * @deprecated
  * @summary Get guild Meta by ID
@@ -5344,7 +5346,7 @@ export const GetResourceFullV1AutocrudGuildResourceIdFullGetQueryParams = zod.ob
 export const getResourceFullV1AutocrudGuildResourceIdFullGetResponseDataMemberCountDefault = 1;
 export const getResourceFullV1AutocrudGuildResourceIdFullGetResponseDataLevelDefault = 1;
 export const getResourceFullV1AutocrudGuildResourceIdFullGetResponseDataTreasuryDefault = 1000;
-export const getResourceFullV1AutocrudGuildResourceIdFullGetResponseDataFoundedAtDefault = `2026-03-15T06:43:55.430290`;
+export const getResourceFullV1AutocrudGuildResourceIdFullGetResponseDataFoundedAtDefault = `2026-03-18T21:23:09.465975`;
 export const getResourceFullV1AutocrudGuildResourceIdFullGetResponseRevisionInfoParentRevisionIdDefault =
   null;
 export const getResourceFullV1AutocrudGuildResourceIdFullGetResponseRevisionInfoSchemaVersionDefault =
@@ -5646,7 +5648,7 @@ export const GetResourceDataV1AutocrudGuildResourceIdDataGetQueryParams = zod.ob
 export const getResourceDataV1AutocrudGuildResourceIdDataGetResponseMemberCountDefault = 1;
 export const getResourceDataV1AutocrudGuildResourceIdDataGetResponseLevelDefault = 1;
 export const getResourceDataV1AutocrudGuildResourceIdDataGetResponseTreasuryDefault = 1000;
-export const getResourceDataV1AutocrudGuildResourceIdDataGetResponseFoundedAtDefault = `2026-03-15T06:43:55.430290`;
+export const getResourceDataV1AutocrudGuildResourceIdDataGetResponseFoundedAtDefault = `2026-03-18T21:23:09.465975`;
 
 export const GetResourceDataV1AutocrudGuildResourceIdDataGetResponse = zod
   .object({
@@ -5728,7 +5730,7 @@ export const GetResourceV1AutocrudGuildResourceIdGetQueryParams = zod.object({
 export const getResourceV1AutocrudGuildResourceIdGetResponseDataMemberCountDefault = 1;
 export const getResourceV1AutocrudGuildResourceIdGetResponseDataLevelDefault = 1;
 export const getResourceV1AutocrudGuildResourceIdGetResponseDataTreasuryDefault = 1000;
-export const getResourceV1AutocrudGuildResourceIdGetResponseDataFoundedAtDefault = `2026-03-15T06:43:55.430290`;
+export const getResourceV1AutocrudGuildResourceIdGetResponseDataFoundedAtDefault = `2026-03-18T21:23:09.465975`;
 export const getResourceV1AutocrudGuildResourceIdGetResponseRevisionInfoParentRevisionIdDefault =
   null;
 export const getResourceV1AutocrudGuildResourceIdGetResponseRevisionInfoSchemaVersionDefault = null;
@@ -5849,7 +5851,7 @@ export const UpdateResourceV1AutocrudGuildResourceIdPutQueryParams = zod.object(
 export const updateResourceV1AutocrudGuildResourceIdPutBodyMemberCountDefault = 1;
 export const updateResourceV1AutocrudGuildResourceIdPutBodyLevelDefault = 1;
 export const updateResourceV1AutocrudGuildResourceIdPutBodyTreasuryDefault = 1000;
-export const updateResourceV1AutocrudGuildResourceIdPutBodyFoundedAtDefault = `2026-03-15T06:43:55.430290`;
+export const updateResourceV1AutocrudGuildResourceIdPutBodyFoundedAtDefault = `2026-03-18T21:23:09.465975`;
 
 export const UpdateResourceV1AutocrudGuildResourceIdPutBody = zod
   .object({
@@ -6626,571 +6628,6 @@ export const MigrateSingleResourceV1AutocrudGuildMigrateSingleResourceIdPostResp
       .default(migrateSingleResourceV1AutocrudGuildMigrateSingleResourceIdPostResponseErrorDefault),
   })
   .describe('遷移進度訊息');
-
-/**
- * Export all (or filtered) **skill** resources as a
-streaming ``.acbak`` archive.
-
-Supports the same query parameters as the search endpoint
-(``qb``, ``is_deleted``, time ranges, etc.) to filter
-which resources are included.
- * @summary Export skill data
- */
-export const exportModelV1AutocrudSkillExportGetQueryIsDeletedDefault = false;
-export const exportModelV1AutocrudSkillExportGetQueryLimitDefault = 10;
-export const exportModelV1AutocrudSkillExportGetQueryOffsetDefault = 0;
-
-export const ExportModelV1AutocrudSkillExportGetQueryParams = zod.object({
-  qb: zod
-    .union([zod.string(), zod.null()])
-    .optional()
-    .describe(
-      "Query Builder expression. Example: \"QB['foo'] == 123\" or \"QB['age'].gt(18) & QB['status'].eq('active')\"",
-    ),
-  is_deleted: zod
-    .union([zod.boolean(), zod.null()])
-    .default(exportModelV1AutocrudSkillExportGetQueryIsDeletedDefault)
-    .describe('Filter by deletion status'),
-  created_time_start: zod
-    .union([zod.string(), zod.null()])
-    .optional()
-    .describe('Filter by created time start (ISO format)'),
-  created_time_end: zod
-    .union([zod.string(), zod.null()])
-    .optional()
-    .describe('Filter by created time end (ISO format)'),
-  updated_time_start: zod
-    .union([zod.string(), zod.null()])
-    .optional()
-    .describe('Filter by updated time start (ISO format)'),
-  updated_time_end: zod
-    .union([zod.string(), zod.null()])
-    .optional()
-    .describe('Filter by updated time end (ISO format)'),
-  created_bys: zod
-    .union([zod.array(zod.string()), zod.null()])
-    .optional()
-    .describe('Filter by creators'),
-  updated_bys: zod
-    .union([zod.array(zod.string()), zod.null()])
-    .optional()
-    .describe('Filter by updaters'),
-  data_conditions: zod
-    .union([zod.string(), zod.null()])
-    .optional()
-    .describe(
-      'Data filter conditions in JSON format. Example: \'[{\"field_path\": \"department\", \"operator\": \"eq\", \"value\": \"Engineering\"}]\'',
-    ),
-  conditions: zod
-    .union([zod.string(), zod.null()])
-    .optional()
-    .describe(
-      'General filter conditions in JSON format for meta fields or data. Example: \'[{\"field_path\": \"resource_id\", \"operator\": \"starts_with\", \"value\": \"user-\"}]\'',
-    ),
-  sorts: zod
-    .union([zod.string(), zod.null()])
-    .optional()
-    .describe(
-      'Sort conditions in JSON format. Example: \'[{\"type\": \"meta\", \"key\": \"created_time\", \"direction\": \"+\"}, {\"type\": \"data\", \"field_path\": \"name\", \"direction\": \"-\"}]\'',
-    ),
-  limit: zod
-    .number()
-    .default(exportModelV1AutocrudSkillExportGetQueryLimitDefault)
-    .describe('Maximum number of results'),
-  offset: zod
-    .number()
-    .default(exportModelV1AutocrudSkillExportGetQueryOffsetDefault)
-    .describe('Number of results to skip'),
-  partial: zod
-    .union([zod.array(zod.string()), zod.null()])
-    .optional()
-    .describe("List of fields to retrieve (e.g. '\/field1', '\/nested\/field2')"),
-});
-
-export const ExportModelV1AutocrudSkillExportGetResponse = zod.unknown();
-
-/**
- * Import **skill** resources from a ``.acbak`` archive.
-
-The archive must contain a **skill** model section.
-Use ``on_duplicate`` to control behaviour when a resource ID
-already exists.
- * @summary Import skill data
- */
-export const importModelV1AutocrudSkillImportPostQueryOnDuplicateDefault = `overwrite`;
-
-export const ImportModelV1AutocrudSkillImportPostQueryParams = zod.object({
-  on_duplicate: zod
-    .string()
-    .default(importModelV1AutocrudSkillImportPostQueryOnDuplicateDefault)
-    .describe('Strategy: overwrite | skip | raise_error'),
-});
-
-export const ImportModelV1AutocrudSkillImportPostBody = zod.object({
-  file: zod.instanceof(File).describe('.acbak archive file'),
-});
-
-export const ImportModelV1AutocrudSkillImportPostResponse = zod.record(zod.string(), zod.unknown());
-
-/**
- * Create a new `skill` resource.
-
-**Request Body:**
-- Send the resource data as JSON in the request body
-- The data will be validated against the `skill` schema
-
-**Response:**
-- Returns revision information for the newly created resource
-- Includes `resource_id` and `revision_id` for tracking
-- All resources are version-controlled from creation
-
-**Examples:**
-- `POST /skill` with JSON body - Create new resource
-- Response includes resource and revision identifiers
-
-**Error Responses:**
-- `422`: Validation error - Invalid data format or missing required fields
-- `400`: Bad request - General creation error
- * @summary Create skill
- */
-export const createResourceV1AutocrudSkillPostBodyDetailOneMpCostDefault = 0;
-export const createResourceV1AutocrudSkillPostBodyDetailOneCooldownSecondsDefault = 0;
-export const createResourceV1AutocrudSkillPostBodyDetailOneDamageDefault = 0;
-export const createResourceV1AutocrudSkillPostBodyDetailTwoBuffPercentageDefault = 0;
-export const createResourceV1AutocrudSkillPostBodyDetailThreeMpCostDefault = 0;
-export const createResourceV1AutocrudSkillPostBodyDetailThreeCooldownSecondsDefault = 0;
-export const createResourceV1AutocrudSkillPostBodyDetailThreeDamageDefault = 0;
-export const createResourceV1AutocrudSkillPostBodyDetailThreeAreaOfEffectDefault = false;
-export const createResourceV1AutocrudSkillPostBodyDescriptionDefault = ``;
-export const createResourceV1AutocrudSkillPostBodyRequiredLevelDefault = 1;
-export const createResourceV1AutocrudSkillPostBodyRequiredClassDefault = null;
-
-export const CreateResourceV1AutocrudSkillPostBody = zod
-  .object({
-    skname: zod.string(),
-    detail: zod.union([
-      zod
-        .object({
-          skill_type: zod.enum(['active']),
-          mp_cost: zod
-            .number()
-            .default(createResourceV1AutocrudSkillPostBodyDetailOneMpCostDefault),
-          cooldown_seconds: zod
-            .number()
-            .default(createResourceV1AutocrudSkillPostBodyDetailOneCooldownSecondsDefault),
-          damage: zod.number().default(createResourceV1AutocrudSkillPostBodyDetailOneDamageDefault),
-        })
-        .describe('主動技能數據'),
-      zod
-        .object({
-          skill_type: zod.enum(['passive']),
-          buff_percentage: zod
-            .number()
-            .default(createResourceV1AutocrudSkillPostBodyDetailTwoBuffPercentageDefault),
-        })
-        .describe('被動技能數據'),
-      zod
-        .object({
-          skill_type: zod.enum(['ultimate']),
-          mp_cost: zod
-            .number()
-            .default(createResourceV1AutocrudSkillPostBodyDetailThreeMpCostDefault),
-          cooldown_seconds: zod
-            .number()
-            .default(createResourceV1AutocrudSkillPostBodyDetailThreeCooldownSecondsDefault),
-          damage: zod
-            .number()
-            .default(createResourceV1AutocrudSkillPostBodyDetailThreeDamageDefault),
-          area_of_effect: zod
-            .boolean()
-            .default(createResourceV1AutocrudSkillPostBodyDetailThreeAreaOfEffectDefault),
-        })
-        .describe('終極技能數據'),
-    ]),
-    description: zod.string().default(createResourceV1AutocrudSkillPostBodyDescriptionDefault),
-    required_level: zod.number().default(createResourceV1AutocrudSkillPostBodyRequiredLevelDefault),
-    required_class: zod
-      .union([
-        zod.enum(['⚔️ 戰士', '🏹 弓箭手', '💾 數據守護者', '🔮 法師']).describe('職業系統'),
-        zod.null(),
-      ])
-      .default(createResourceV1AutocrudSkillPostBodyRequiredClassDefault),
-  })
-  .describe('遊戲技能（使用 Union 區分技能類型）');
-
-export const createResourceV1AutocrudSkillPostResponseParentRevisionIdDefault = null;
-export const createResourceV1AutocrudSkillPostResponseSchemaVersionDefault = null;
-
-export const CreateResourceV1AutocrudSkillPostResponse = zod
-  .object({
-    uid: zod.uuid(),
-    resource_id: zod.string(),
-    revision_id: zod.string(),
-    parent_revision_id: zod
-      .union([zod.string(), zod.null()])
-      .default(createResourceV1AutocrudSkillPostResponseParentRevisionIdDefault),
-    parent_schema_version: zod.union([zod.string(), zod.null()]).optional(),
-    schema_version: zod
-      .union([zod.string(), zod.null()])
-      .default(createResourceV1AutocrudSkillPostResponseSchemaVersionDefault),
-    data_hash: zod.string().optional(),
-    status: zod.enum(['draft', 'stable']),
-    created_time: zod.string(),
-    updated_time: zod.string(),
-    created_by: zod.string(),
-    updated_by: zod.string(),
-  })
-  .describe(
-    'Metadata about a specific revision of a resource.\n\nThis class contains essential information about a particular revision,',
-  );
-
-/**
- * Retrieve a list of `skill` resources.
-
-Use the `returns` query parameter to control which sections are included in each item.
-By default all sections are returned: `data`, `revision_info`, `meta`.
-
-**Query Parameters:**
-- `returns` (default `"data,revision_info,meta"`): Comma-separated list of sections to include.
-  Allowed values: `data`, `revision_info`, `meta`.
-- `limit` / `offset`: Pagination controls.
-- `partial` / `partial[]`: Partial field selection.
-- All standard filtering and sorting parameters.
-
-**Examples:**
-- `GET /skill` — full list (data + meta + revision_info)
-- `GET /skill?returns=data` — data only
-- `GET /skill?returns=data,meta` — data + meta, no revision_info
-- `GET /skill?limit=20&offset=40` — pagination
-
-**Error Responses:**
-- `400`: Bad request - Invalid query parameters or search error
- * @summary List skill resources
- */
-export const listResourcesV1AutocrudSkillGetQueryIsDeletedDefault = false;
-export const listResourcesV1AutocrudSkillGetQueryLimitDefault = 10;
-export const listResourcesV1AutocrudSkillGetQueryOffsetDefault = 0;
-export const listResourcesV1AutocrudSkillGetQueryReturnsDefault = `data,revision_info,meta`;
-
-export const ListResourcesV1AutocrudSkillGetQueryParams = zod.object({
-  qb: zod
-    .union([zod.string(), zod.null()])
-    .optional()
-    .describe(
-      "Query Builder expression. Example: \"QB['foo'] == 123\" or \"QB['age'].gt(18) & QB['status'].eq('active')\"",
-    ),
-  is_deleted: zod
-    .union([zod.boolean(), zod.null()])
-    .default(listResourcesV1AutocrudSkillGetQueryIsDeletedDefault)
-    .describe('Filter by deletion status'),
-  created_time_start: zod
-    .union([zod.string(), zod.null()])
-    .optional()
-    .describe('Filter by created time start (ISO format)'),
-  created_time_end: zod
-    .union([zod.string(), zod.null()])
-    .optional()
-    .describe('Filter by created time end (ISO format)'),
-  updated_time_start: zod
-    .union([zod.string(), zod.null()])
-    .optional()
-    .describe('Filter by updated time start (ISO format)'),
-  updated_time_end: zod
-    .union([zod.string(), zod.null()])
-    .optional()
-    .describe('Filter by updated time end (ISO format)'),
-  created_bys: zod
-    .union([zod.array(zod.string()), zod.null()])
-    .optional()
-    .describe('Filter by creators'),
-  updated_bys: zod
-    .union([zod.array(zod.string()), zod.null()])
-    .optional()
-    .describe('Filter by updaters'),
-  data_conditions: zod
-    .union([zod.string(), zod.null()])
-    .optional()
-    .describe(
-      'Data filter conditions in JSON format. Example: \'[{\"field_path\": \"department\", \"operator\": \"eq\", \"value\": \"Engineering\"}]\'',
-    ),
-  conditions: zod
-    .union([zod.string(), zod.null()])
-    .optional()
-    .describe(
-      'General filter conditions in JSON format for meta fields or data. Example: \'[{\"field_path\": \"resource_id\", \"operator\": \"starts_with\", \"value\": \"user-\"}]\'',
-    ),
-  sorts: zod
-    .union([zod.string(), zod.null()])
-    .optional()
-    .describe(
-      'Sort conditions in JSON format. Example: \'[{\"type\": \"meta\", \"key\": \"created_time\", \"direction\": \"+\"}, {\"type\": \"data\", \"field_path\": \"name\", \"direction\": \"-\"}]\'',
-    ),
-  limit: zod
-    .number()
-    .default(listResourcesV1AutocrudSkillGetQueryLimitDefault)
-    .describe('Maximum number of results'),
-  offset: zod
-    .number()
-    .default(listResourcesV1AutocrudSkillGetQueryOffsetDefault)
-    .describe('Number of results to skip'),
-  partial: zod
-    .union([zod.array(zod.string()), zod.null()])
-    .optional()
-    .describe("List of fields to retrieve (e.g. '\/field1', '\/nested\/field2')"),
-  returns: zod
-    .string()
-    .default(listResourcesV1AutocrudSkillGetQueryReturnsDefault)
-    .describe('Fields to return, comma-separated. Options: data, revision_info, meta'),
-});
-
-export const listResourcesV1AutocrudSkillGetResponseDataDetailOneMpCostDefault = 0;
-export const listResourcesV1AutocrudSkillGetResponseDataDetailOneCooldownSecondsDefault = 0;
-export const listResourcesV1AutocrudSkillGetResponseDataDetailOneDamageDefault = 0;
-export const listResourcesV1AutocrudSkillGetResponseDataDetailTwoBuffPercentageDefault = 0;
-export const listResourcesV1AutocrudSkillGetResponseDataDetailThreeMpCostDefault = 0;
-export const listResourcesV1AutocrudSkillGetResponseDataDetailThreeCooldownSecondsDefault = 0;
-export const listResourcesV1AutocrudSkillGetResponseDataDetailThreeDamageDefault = 0;
-export const listResourcesV1AutocrudSkillGetResponseDataDetailThreeAreaOfEffectDefault = false;
-export const listResourcesV1AutocrudSkillGetResponseDataDescriptionDefault = ``;
-export const listResourcesV1AutocrudSkillGetResponseDataRequiredLevelDefault = 1;
-export const listResourcesV1AutocrudSkillGetResponseDataRequiredClassDefault = null;
-export const listResourcesV1AutocrudSkillGetResponseRevisionInfoParentRevisionIdDefault = null;
-export const listResourcesV1AutocrudSkillGetResponseRevisionInfoSchemaVersionDefault = null;
-export const listResourcesV1AutocrudSkillGetResponseMetaSchemaVersionDefault = null;
-export const listResourcesV1AutocrudSkillGetResponseMetaIsDeletedDefault = false;
-
-export const ListResourcesV1AutocrudSkillGetResponseItem = zod.object({
-  data: zod
-    .object({
-      skname: zod.string(),
-      detail: zod.union([
-        zod
-          .object({
-            skill_type: zod.enum(['active']),
-            mp_cost: zod
-              .number()
-              .default(listResourcesV1AutocrudSkillGetResponseDataDetailOneMpCostDefault),
-            cooldown_seconds: zod
-              .number()
-              .default(listResourcesV1AutocrudSkillGetResponseDataDetailOneCooldownSecondsDefault),
-            damage: zod
-              .number()
-              .default(listResourcesV1AutocrudSkillGetResponseDataDetailOneDamageDefault),
-          })
-          .describe('主動技能數據'),
-        zod
-          .object({
-            skill_type: zod.enum(['passive']),
-            buff_percentage: zod
-              .number()
-              .default(listResourcesV1AutocrudSkillGetResponseDataDetailTwoBuffPercentageDefault),
-          })
-          .describe('被動技能數據'),
-        zod
-          .object({
-            skill_type: zod.enum(['ultimate']),
-            mp_cost: zod
-              .number()
-              .default(listResourcesV1AutocrudSkillGetResponseDataDetailThreeMpCostDefault),
-            cooldown_seconds: zod
-              .number()
-              .default(
-                listResourcesV1AutocrudSkillGetResponseDataDetailThreeCooldownSecondsDefault,
-              ),
-            damage: zod
-              .number()
-              .default(listResourcesV1AutocrudSkillGetResponseDataDetailThreeDamageDefault),
-            area_of_effect: zod
-              .boolean()
-              .default(listResourcesV1AutocrudSkillGetResponseDataDetailThreeAreaOfEffectDefault),
-          })
-          .describe('終極技能數據'),
-      ]),
-      description: zod
-        .string()
-        .default(listResourcesV1AutocrudSkillGetResponseDataDescriptionDefault),
-      required_level: zod
-        .number()
-        .default(listResourcesV1AutocrudSkillGetResponseDataRequiredLevelDefault),
-      required_class: zod
-        .union([
-          zod.enum(['⚔️ 戰士', '🏹 弓箭手', '💾 數據守護者', '🔮 法師']).describe('職業系統'),
-          zod.null(),
-        ])
-        .default(listResourcesV1AutocrudSkillGetResponseDataRequiredClassDefault),
-    })
-    .optional()
-    .describe('遊戲技能（使用 Union 區分技能類型）'),
-  revision_info: zod
-    .object({
-      uid: zod.uuid(),
-      resource_id: zod.string(),
-      revision_id: zod.string(),
-      parent_revision_id: zod
-        .union([zod.string(), zod.null()])
-        .default(listResourcesV1AutocrudSkillGetResponseRevisionInfoParentRevisionIdDefault),
-      parent_schema_version: zod.union([zod.string(), zod.null()]).optional(),
-      schema_version: zod
-        .union([zod.string(), zod.null()])
-        .default(listResourcesV1AutocrudSkillGetResponseRevisionInfoSchemaVersionDefault),
-      data_hash: zod.string().optional(),
-      status: zod.enum(['draft', 'stable']),
-      created_time: zod.string(),
-      updated_time: zod.string(),
-      created_by: zod.string(),
-      updated_by: zod.string(),
-    })
-    .optional()
-    .describe(
-      'Metadata about a specific revision of a resource.\n\nThis class contains essential information about a particular revision,',
-    ),
-  meta: zod
-    .object({
-      current_revision_id: zod.string(),
-      resource_id: zod.string(),
-      schema_version: zod
-        .union([zod.string(), zod.null()])
-        .default(listResourcesV1AutocrudSkillGetResponseMetaSchemaVersionDefault),
-      total_revision_count: zod.number(),
-      created_time: zod.string(),
-      updated_time: zod.string(),
-      created_by: zod.string(),
-      updated_by: zod.string(),
-      is_deleted: zod
-        .boolean()
-        .default(listResourcesV1AutocrudSkillGetResponseMetaIsDeletedDefault),
-      indexed_data: zod.looseObject({}).optional(),
-    })
-    .optional()
-    .describe(
-      'Metadata about a resource, including its current revision and status.\n\nThis class provides essential information about a resource without including\nthe full data content.',
-    ),
-});
-export const ListResourcesV1AutocrudSkillGetResponse = zod.array(
-  ListResourcesV1AutocrudSkillGetResponseItem,
-);
-
-/**
- * Batch delete `skill` resources matching the given query conditions.
-
-**Query Parameters:**
-- Uses the same search parameters as the list endpoint
-- `is_deleted` parameter is **forced to `false`** — only non-deleted resources are targeted
-- Use `data_conditions` to filter specific resources for deletion
-- Use `limit` to control the maximum number of resources to delete
-
-**Soft Delete:**
-- Resources are marked as deleted rather than permanently removed
-- Deleted resources can be restored using the batch restore endpoint
-
-**Response:**
-- Returns a list of `ResourceMeta` for all deleted resources
-- Each entry will have `is_deleted` set to `true`
-- Empty list if no resources match the query
-
-**Examples:**
-- `DELETE /skill?limit=100` — Delete up to 100 resources
-- `DELETE /skill?data_conditions=[{"field_path":"age","operator":"gt","value":25}]` — Delete resources with age > 25
-
-**Error Responses:**
-- `400`: Bad request — Invalid query parameters or deletion error
- * @summary Batch delete skill
- */
-export const batchDeleteV1AutocrudSkillDeleteQueryIsDeletedDefault = false;
-export const batchDeleteV1AutocrudSkillDeleteQueryLimitDefault = 10;
-export const batchDeleteV1AutocrudSkillDeleteQueryOffsetDefault = 0;
-
-export const BatchDeleteV1AutocrudSkillDeleteQueryParams = zod.object({
-  qb: zod
-    .union([zod.string(), zod.null()])
-    .optional()
-    .describe(
-      "Query Builder expression. Example: \"QB['foo'] == 123\" or \"QB['age'].gt(18) & QB['status'].eq('active')\"",
-    ),
-  is_deleted: zod
-    .union([zod.boolean(), zod.null()])
-    .default(batchDeleteV1AutocrudSkillDeleteQueryIsDeletedDefault)
-    .describe('Filter by deletion status'),
-  created_time_start: zod
-    .union([zod.string(), zod.null()])
-    .optional()
-    .describe('Filter by created time start (ISO format)'),
-  created_time_end: zod
-    .union([zod.string(), zod.null()])
-    .optional()
-    .describe('Filter by created time end (ISO format)'),
-  updated_time_start: zod
-    .union([zod.string(), zod.null()])
-    .optional()
-    .describe('Filter by updated time start (ISO format)'),
-  updated_time_end: zod
-    .union([zod.string(), zod.null()])
-    .optional()
-    .describe('Filter by updated time end (ISO format)'),
-  created_bys: zod
-    .union([zod.array(zod.string()), zod.null()])
-    .optional()
-    .describe('Filter by creators'),
-  updated_bys: zod
-    .union([zod.array(zod.string()), zod.null()])
-    .optional()
-    .describe('Filter by updaters'),
-  data_conditions: zod
-    .union([zod.string(), zod.null()])
-    .optional()
-    .describe(
-      'Data filter conditions in JSON format. Example: \'[{\"field_path\": \"department\", \"operator\": \"eq\", \"value\": \"Engineering\"}]\'',
-    ),
-  conditions: zod
-    .union([zod.string(), zod.null()])
-    .optional()
-    .describe(
-      'General filter conditions in JSON format for meta fields or data. Example: \'[{\"field_path\": \"resource_id\", \"operator\": \"starts_with\", \"value\": \"user-\"}]\'',
-    ),
-  sorts: zod
-    .union([zod.string(), zod.null()])
-    .optional()
-    .describe(
-      'Sort conditions in JSON format. Example: \'[{\"type\": \"meta\", \"key\": \"created_time\", \"direction\": \"+\"}, {\"type\": \"data\", \"field_path\": \"name\", \"direction\": \"-\"}]\'',
-    ),
-  limit: zod
-    .number()
-    .default(batchDeleteV1AutocrudSkillDeleteQueryLimitDefault)
-    .describe('Maximum number of results'),
-  offset: zod
-    .number()
-    .default(batchDeleteV1AutocrudSkillDeleteQueryOffsetDefault)
-    .describe('Number of results to skip'),
-  partial: zod
-    .union([zod.array(zod.string()), zod.null()])
-    .optional()
-    .describe("List of fields to retrieve (e.g. '\/field1', '\/nested\/field2')"),
-});
-
-export const batchDeleteV1AutocrudSkillDeleteResponseSchemaVersionDefault = null;
-export const batchDeleteV1AutocrudSkillDeleteResponseIsDeletedDefault = false;
-
-export const BatchDeleteV1AutocrudSkillDeleteResponseItem = zod
-  .object({
-    current_revision_id: zod.string(),
-    resource_id: zod.string(),
-    schema_version: zod
-      .union([zod.string(), zod.null()])
-      .default(batchDeleteV1AutocrudSkillDeleteResponseSchemaVersionDefault),
-    total_revision_count: zod.number(),
-    created_time: zod.string(),
-    updated_time: zod.string(),
-    created_by: zod.string(),
-    updated_by: zod.string(),
-    is_deleted: zod.boolean().default(batchDeleteV1AutocrudSkillDeleteResponseIsDeletedDefault),
-    indexed_data: zod.looseObject({}).optional(),
-  })
-  .describe(
-    'Metadata about a resource, including its current revision and status.\n\nThis class provides essential information about a resource without including\nthe full data content.',
-  );
-export const BatchDeleteV1AutocrudSkillDeleteResponse = zod.array(
-  BatchDeleteV1AutocrudSkillDeleteResponseItem,
-);
 
 /**
  * Retrieve a list of `skill` resources returning only the data content.
@@ -8068,6 +7505,571 @@ export const GetResourcesCountV1AutocrudSkillCountGetQueryParams = zod.object({
 });
 
 export const GetResourcesCountV1AutocrudSkillCountGetResponse = zod.number();
+
+/**
+ * Retrieve a list of `skill` resources.
+
+Use the `returns` query parameter to control which sections are included in each item.
+By default all sections are returned: `data`, `revision_info`, `meta`.
+
+**Query Parameters:**
+- `returns` (default `"data,revision_info,meta"`): Comma-separated list of sections to include.
+  Allowed values: `data`, `revision_info`, `meta`.
+- `limit` / `offset`: Pagination controls.
+- `partial` / `partial[]`: Partial field selection.
+- All standard filtering and sorting parameters.
+
+**Examples:**
+- `GET /skill` — full list (data + meta + revision_info)
+- `GET /skill?returns=data` — data only
+- `GET /skill?returns=data,meta` — data + meta, no revision_info
+- `GET /skill?limit=20&offset=40` — pagination
+
+**Error Responses:**
+- `400`: Bad request - Invalid query parameters or search error
+ * @summary List skill resources
+ */
+export const listResourcesV1AutocrudSkillGetQueryIsDeletedDefault = false;
+export const listResourcesV1AutocrudSkillGetQueryLimitDefault = 10;
+export const listResourcesV1AutocrudSkillGetQueryOffsetDefault = 0;
+export const listResourcesV1AutocrudSkillGetQueryReturnsDefault = `data,revision_info,meta`;
+
+export const ListResourcesV1AutocrudSkillGetQueryParams = zod.object({
+  qb: zod
+    .union([zod.string(), zod.null()])
+    .optional()
+    .describe(
+      "Query Builder expression. Example: \"QB['foo'] == 123\" or \"QB['age'].gt(18) & QB['status'].eq('active')\"",
+    ),
+  is_deleted: zod
+    .union([zod.boolean(), zod.null()])
+    .default(listResourcesV1AutocrudSkillGetQueryIsDeletedDefault)
+    .describe('Filter by deletion status'),
+  created_time_start: zod
+    .union([zod.string(), zod.null()])
+    .optional()
+    .describe('Filter by created time start (ISO format)'),
+  created_time_end: zod
+    .union([zod.string(), zod.null()])
+    .optional()
+    .describe('Filter by created time end (ISO format)'),
+  updated_time_start: zod
+    .union([zod.string(), zod.null()])
+    .optional()
+    .describe('Filter by updated time start (ISO format)'),
+  updated_time_end: zod
+    .union([zod.string(), zod.null()])
+    .optional()
+    .describe('Filter by updated time end (ISO format)'),
+  created_bys: zod
+    .union([zod.array(zod.string()), zod.null()])
+    .optional()
+    .describe('Filter by creators'),
+  updated_bys: zod
+    .union([zod.array(zod.string()), zod.null()])
+    .optional()
+    .describe('Filter by updaters'),
+  data_conditions: zod
+    .union([zod.string(), zod.null()])
+    .optional()
+    .describe(
+      'Data filter conditions in JSON format. Example: \'[{\"field_path\": \"department\", \"operator\": \"eq\", \"value\": \"Engineering\"}]\'',
+    ),
+  conditions: zod
+    .union([zod.string(), zod.null()])
+    .optional()
+    .describe(
+      'General filter conditions in JSON format for meta fields or data. Example: \'[{\"field_path\": \"resource_id\", \"operator\": \"starts_with\", \"value\": \"user-\"}]\'',
+    ),
+  sorts: zod
+    .union([zod.string(), zod.null()])
+    .optional()
+    .describe(
+      'Sort conditions in JSON format. Example: \'[{\"type\": \"meta\", \"key\": \"created_time\", \"direction\": \"+\"}, {\"type\": \"data\", \"field_path\": \"name\", \"direction\": \"-\"}]\'',
+    ),
+  limit: zod
+    .number()
+    .default(listResourcesV1AutocrudSkillGetQueryLimitDefault)
+    .describe('Maximum number of results'),
+  offset: zod
+    .number()
+    .default(listResourcesV1AutocrudSkillGetQueryOffsetDefault)
+    .describe('Number of results to skip'),
+  partial: zod
+    .union([zod.array(zod.string()), zod.null()])
+    .optional()
+    .describe("List of fields to retrieve (e.g. '\/field1', '\/nested\/field2')"),
+  returns: zod
+    .string()
+    .default(listResourcesV1AutocrudSkillGetQueryReturnsDefault)
+    .describe('Fields to return, comma-separated. Options: data, revision_info, meta'),
+});
+
+export const listResourcesV1AutocrudSkillGetResponseDataDetailOneMpCostDefault = 0;
+export const listResourcesV1AutocrudSkillGetResponseDataDetailOneCooldownSecondsDefault = 0;
+export const listResourcesV1AutocrudSkillGetResponseDataDetailOneDamageDefault = 0;
+export const listResourcesV1AutocrudSkillGetResponseDataDetailTwoBuffPercentageDefault = 0;
+export const listResourcesV1AutocrudSkillGetResponseDataDetailThreeMpCostDefault = 0;
+export const listResourcesV1AutocrudSkillGetResponseDataDetailThreeCooldownSecondsDefault = 0;
+export const listResourcesV1AutocrudSkillGetResponseDataDetailThreeDamageDefault = 0;
+export const listResourcesV1AutocrudSkillGetResponseDataDetailThreeAreaOfEffectDefault = false;
+export const listResourcesV1AutocrudSkillGetResponseDataDescriptionDefault = ``;
+export const listResourcesV1AutocrudSkillGetResponseDataRequiredLevelDefault = 1;
+export const listResourcesV1AutocrudSkillGetResponseDataRequiredClassDefault = null;
+export const listResourcesV1AutocrudSkillGetResponseRevisionInfoParentRevisionIdDefault = null;
+export const listResourcesV1AutocrudSkillGetResponseRevisionInfoSchemaVersionDefault = null;
+export const listResourcesV1AutocrudSkillGetResponseMetaSchemaVersionDefault = null;
+export const listResourcesV1AutocrudSkillGetResponseMetaIsDeletedDefault = false;
+
+export const ListResourcesV1AutocrudSkillGetResponseItem = zod.object({
+  data: zod
+    .object({
+      skname: zod.string(),
+      detail: zod.union([
+        zod
+          .object({
+            skill_type: zod.enum(['active']),
+            mp_cost: zod
+              .number()
+              .default(listResourcesV1AutocrudSkillGetResponseDataDetailOneMpCostDefault),
+            cooldown_seconds: zod
+              .number()
+              .default(listResourcesV1AutocrudSkillGetResponseDataDetailOneCooldownSecondsDefault),
+            damage: zod
+              .number()
+              .default(listResourcesV1AutocrudSkillGetResponseDataDetailOneDamageDefault),
+          })
+          .describe('主動技能數據'),
+        zod
+          .object({
+            skill_type: zod.enum(['passive']),
+            buff_percentage: zod
+              .number()
+              .default(listResourcesV1AutocrudSkillGetResponseDataDetailTwoBuffPercentageDefault),
+          })
+          .describe('被動技能數據'),
+        zod
+          .object({
+            skill_type: zod.enum(['ultimate']),
+            mp_cost: zod
+              .number()
+              .default(listResourcesV1AutocrudSkillGetResponseDataDetailThreeMpCostDefault),
+            cooldown_seconds: zod
+              .number()
+              .default(
+                listResourcesV1AutocrudSkillGetResponseDataDetailThreeCooldownSecondsDefault,
+              ),
+            damage: zod
+              .number()
+              .default(listResourcesV1AutocrudSkillGetResponseDataDetailThreeDamageDefault),
+            area_of_effect: zod
+              .boolean()
+              .default(listResourcesV1AutocrudSkillGetResponseDataDetailThreeAreaOfEffectDefault),
+          })
+          .describe('終極技能數據'),
+      ]),
+      description: zod
+        .string()
+        .default(listResourcesV1AutocrudSkillGetResponseDataDescriptionDefault),
+      required_level: zod
+        .number()
+        .default(listResourcesV1AutocrudSkillGetResponseDataRequiredLevelDefault),
+      required_class: zod
+        .union([
+          zod.enum(['⚔️ 戰士', '🏹 弓箭手', '💾 數據守護者', '🔮 法師']).describe('職業系統'),
+          zod.null(),
+        ])
+        .default(listResourcesV1AutocrudSkillGetResponseDataRequiredClassDefault),
+    })
+    .optional()
+    .describe('遊戲技能（使用 Union 區分技能類型）'),
+  revision_info: zod
+    .object({
+      uid: zod.uuid(),
+      resource_id: zod.string(),
+      revision_id: zod.string(),
+      parent_revision_id: zod
+        .union([zod.string(), zod.null()])
+        .default(listResourcesV1AutocrudSkillGetResponseRevisionInfoParentRevisionIdDefault),
+      parent_schema_version: zod.union([zod.string(), zod.null()]).optional(),
+      schema_version: zod
+        .union([zod.string(), zod.null()])
+        .default(listResourcesV1AutocrudSkillGetResponseRevisionInfoSchemaVersionDefault),
+      data_hash: zod.string().optional(),
+      status: zod.enum(['draft', 'stable']),
+      created_time: zod.string(),
+      updated_time: zod.string(),
+      created_by: zod.string(),
+      updated_by: zod.string(),
+    })
+    .optional()
+    .describe(
+      'Metadata about a specific revision of a resource.\n\nThis class contains essential information about a particular revision,',
+    ),
+  meta: zod
+    .object({
+      current_revision_id: zod.string(),
+      resource_id: zod.string(),
+      schema_version: zod
+        .union([zod.string(), zod.null()])
+        .default(listResourcesV1AutocrudSkillGetResponseMetaSchemaVersionDefault),
+      total_revision_count: zod.number(),
+      created_time: zod.string(),
+      updated_time: zod.string(),
+      created_by: zod.string(),
+      updated_by: zod.string(),
+      is_deleted: zod
+        .boolean()
+        .default(listResourcesV1AutocrudSkillGetResponseMetaIsDeletedDefault),
+      indexed_data: zod.looseObject({}).optional(),
+    })
+    .optional()
+    .describe(
+      'Metadata about a resource, including its current revision and status.\n\nThis class provides essential information about a resource without including\nthe full data content.',
+    ),
+});
+export const ListResourcesV1AutocrudSkillGetResponse = zod.array(
+  ListResourcesV1AutocrudSkillGetResponseItem,
+);
+
+/**
+ * Create a new `skill` resource.
+
+**Request Body:**
+- Send the resource data as JSON in the request body
+- The data will be validated against the `skill` schema
+
+**Response:**
+- Returns revision information for the newly created resource
+- Includes `resource_id` and `revision_id` for tracking
+- All resources are version-controlled from creation
+
+**Examples:**
+- `POST /skill` with JSON body - Create new resource
+- Response includes resource and revision identifiers
+
+**Error Responses:**
+- `422`: Validation error - Invalid data format or missing required fields
+- `400`: Bad request - General creation error
+ * @summary Create skill
+ */
+export const createResourceV1AutocrudSkillPostBodyDetailOneMpCostDefault = 0;
+export const createResourceV1AutocrudSkillPostBodyDetailOneCooldownSecondsDefault = 0;
+export const createResourceV1AutocrudSkillPostBodyDetailOneDamageDefault = 0;
+export const createResourceV1AutocrudSkillPostBodyDetailTwoBuffPercentageDefault = 0;
+export const createResourceV1AutocrudSkillPostBodyDetailThreeMpCostDefault = 0;
+export const createResourceV1AutocrudSkillPostBodyDetailThreeCooldownSecondsDefault = 0;
+export const createResourceV1AutocrudSkillPostBodyDetailThreeDamageDefault = 0;
+export const createResourceV1AutocrudSkillPostBodyDetailThreeAreaOfEffectDefault = false;
+export const createResourceV1AutocrudSkillPostBodyDescriptionDefault = ``;
+export const createResourceV1AutocrudSkillPostBodyRequiredLevelDefault = 1;
+export const createResourceV1AutocrudSkillPostBodyRequiredClassDefault = null;
+
+export const CreateResourceV1AutocrudSkillPostBody = zod
+  .object({
+    skname: zod.string(),
+    detail: zod.union([
+      zod
+        .object({
+          skill_type: zod.enum(['active']),
+          mp_cost: zod
+            .number()
+            .default(createResourceV1AutocrudSkillPostBodyDetailOneMpCostDefault),
+          cooldown_seconds: zod
+            .number()
+            .default(createResourceV1AutocrudSkillPostBodyDetailOneCooldownSecondsDefault),
+          damage: zod.number().default(createResourceV1AutocrudSkillPostBodyDetailOneDamageDefault),
+        })
+        .describe('主動技能數據'),
+      zod
+        .object({
+          skill_type: zod.enum(['passive']),
+          buff_percentage: zod
+            .number()
+            .default(createResourceV1AutocrudSkillPostBodyDetailTwoBuffPercentageDefault),
+        })
+        .describe('被動技能數據'),
+      zod
+        .object({
+          skill_type: zod.enum(['ultimate']),
+          mp_cost: zod
+            .number()
+            .default(createResourceV1AutocrudSkillPostBodyDetailThreeMpCostDefault),
+          cooldown_seconds: zod
+            .number()
+            .default(createResourceV1AutocrudSkillPostBodyDetailThreeCooldownSecondsDefault),
+          damage: zod
+            .number()
+            .default(createResourceV1AutocrudSkillPostBodyDetailThreeDamageDefault),
+          area_of_effect: zod
+            .boolean()
+            .default(createResourceV1AutocrudSkillPostBodyDetailThreeAreaOfEffectDefault),
+        })
+        .describe('終極技能數據'),
+    ]),
+    description: zod.string().default(createResourceV1AutocrudSkillPostBodyDescriptionDefault),
+    required_level: zod.number().default(createResourceV1AutocrudSkillPostBodyRequiredLevelDefault),
+    required_class: zod
+      .union([
+        zod.enum(['⚔️ 戰士', '🏹 弓箭手', '💾 數據守護者', '🔮 法師']).describe('職業系統'),
+        zod.null(),
+      ])
+      .default(createResourceV1AutocrudSkillPostBodyRequiredClassDefault),
+  })
+  .describe('遊戲技能（使用 Union 區分技能類型）');
+
+export const createResourceV1AutocrudSkillPostResponseParentRevisionIdDefault = null;
+export const createResourceV1AutocrudSkillPostResponseSchemaVersionDefault = null;
+
+export const CreateResourceV1AutocrudSkillPostResponse = zod
+  .object({
+    uid: zod.uuid(),
+    resource_id: zod.string(),
+    revision_id: zod.string(),
+    parent_revision_id: zod
+      .union([zod.string(), zod.null()])
+      .default(createResourceV1AutocrudSkillPostResponseParentRevisionIdDefault),
+    parent_schema_version: zod.union([zod.string(), zod.null()]).optional(),
+    schema_version: zod
+      .union([zod.string(), zod.null()])
+      .default(createResourceV1AutocrudSkillPostResponseSchemaVersionDefault),
+    data_hash: zod.string().optional(),
+    status: zod.enum(['draft', 'stable']),
+    created_time: zod.string(),
+    updated_time: zod.string(),
+    created_by: zod.string(),
+    updated_by: zod.string(),
+  })
+  .describe(
+    'Metadata about a specific revision of a resource.\n\nThis class contains essential information about a particular revision,',
+  );
+
+/**
+ * Batch delete `skill` resources matching the given query conditions.
+
+**Query Parameters:**
+- Uses the same search parameters as the list endpoint
+- `is_deleted` parameter is **forced to `false`** — only non-deleted resources are targeted
+- Use `data_conditions` to filter specific resources for deletion
+- Use `limit` to control the maximum number of resources to delete
+
+**Soft Delete:**
+- Resources are marked as deleted rather than permanently removed
+- Deleted resources can be restored using the batch restore endpoint
+
+**Response:**
+- Returns a list of `ResourceMeta` for all deleted resources
+- Each entry will have `is_deleted` set to `true`
+- Empty list if no resources match the query
+
+**Examples:**
+- `DELETE /skill?limit=100` — Delete up to 100 resources
+- `DELETE /skill?data_conditions=[{"field_path":"age","operator":"gt","value":25}]` — Delete resources with age > 25
+
+**Error Responses:**
+- `400`: Bad request — Invalid query parameters or deletion error
+ * @summary Batch delete skill
+ */
+export const batchDeleteV1AutocrudSkillDeleteQueryIsDeletedDefault = false;
+export const batchDeleteV1AutocrudSkillDeleteQueryLimitDefault = 10;
+export const batchDeleteV1AutocrudSkillDeleteQueryOffsetDefault = 0;
+
+export const BatchDeleteV1AutocrudSkillDeleteQueryParams = zod.object({
+  qb: zod
+    .union([zod.string(), zod.null()])
+    .optional()
+    .describe(
+      "Query Builder expression. Example: \"QB['foo'] == 123\" or \"QB['age'].gt(18) & QB['status'].eq('active')\"",
+    ),
+  is_deleted: zod
+    .union([zod.boolean(), zod.null()])
+    .default(batchDeleteV1AutocrudSkillDeleteQueryIsDeletedDefault)
+    .describe('Filter by deletion status'),
+  created_time_start: zod
+    .union([zod.string(), zod.null()])
+    .optional()
+    .describe('Filter by created time start (ISO format)'),
+  created_time_end: zod
+    .union([zod.string(), zod.null()])
+    .optional()
+    .describe('Filter by created time end (ISO format)'),
+  updated_time_start: zod
+    .union([zod.string(), zod.null()])
+    .optional()
+    .describe('Filter by updated time start (ISO format)'),
+  updated_time_end: zod
+    .union([zod.string(), zod.null()])
+    .optional()
+    .describe('Filter by updated time end (ISO format)'),
+  created_bys: zod
+    .union([zod.array(zod.string()), zod.null()])
+    .optional()
+    .describe('Filter by creators'),
+  updated_bys: zod
+    .union([zod.array(zod.string()), zod.null()])
+    .optional()
+    .describe('Filter by updaters'),
+  data_conditions: zod
+    .union([zod.string(), zod.null()])
+    .optional()
+    .describe(
+      'Data filter conditions in JSON format. Example: \'[{\"field_path\": \"department\", \"operator\": \"eq\", \"value\": \"Engineering\"}]\'',
+    ),
+  conditions: zod
+    .union([zod.string(), zod.null()])
+    .optional()
+    .describe(
+      'General filter conditions in JSON format for meta fields or data. Example: \'[{\"field_path\": \"resource_id\", \"operator\": \"starts_with\", \"value\": \"user-\"}]\'',
+    ),
+  sorts: zod
+    .union([zod.string(), zod.null()])
+    .optional()
+    .describe(
+      'Sort conditions in JSON format. Example: \'[{\"type\": \"meta\", \"key\": \"created_time\", \"direction\": \"+\"}, {\"type\": \"data\", \"field_path\": \"name\", \"direction\": \"-\"}]\'',
+    ),
+  limit: zod
+    .number()
+    .default(batchDeleteV1AutocrudSkillDeleteQueryLimitDefault)
+    .describe('Maximum number of results'),
+  offset: zod
+    .number()
+    .default(batchDeleteV1AutocrudSkillDeleteQueryOffsetDefault)
+    .describe('Number of results to skip'),
+  partial: zod
+    .union([zod.array(zod.string()), zod.null()])
+    .optional()
+    .describe("List of fields to retrieve (e.g. '\/field1', '\/nested\/field2')"),
+});
+
+export const batchDeleteV1AutocrudSkillDeleteResponseSchemaVersionDefault = null;
+export const batchDeleteV1AutocrudSkillDeleteResponseIsDeletedDefault = false;
+
+export const BatchDeleteV1AutocrudSkillDeleteResponseItem = zod
+  .object({
+    current_revision_id: zod.string(),
+    resource_id: zod.string(),
+    schema_version: zod
+      .union([zod.string(), zod.null()])
+      .default(batchDeleteV1AutocrudSkillDeleteResponseSchemaVersionDefault),
+    total_revision_count: zod.number(),
+    created_time: zod.string(),
+    updated_time: zod.string(),
+    created_by: zod.string(),
+    updated_by: zod.string(),
+    is_deleted: zod.boolean().default(batchDeleteV1AutocrudSkillDeleteResponseIsDeletedDefault),
+    indexed_data: zod.looseObject({}).optional(),
+  })
+  .describe(
+    'Metadata about a resource, including its current revision and status.\n\nThis class provides essential information about a resource without including\nthe full data content.',
+  );
+export const BatchDeleteV1AutocrudSkillDeleteResponse = zod.array(
+  BatchDeleteV1AutocrudSkillDeleteResponseItem,
+);
+
+/**
+ * Export all (or filtered) **skill** resources as a
+streaming ``.acbak`` archive.
+
+Supports the same query parameters as the search endpoint
+(``qb``, ``is_deleted``, time ranges, etc.) to filter
+which resources are included.
+ * @summary Export skill data
+ */
+export const exportModelV1AutocrudSkillExportGetQueryIsDeletedDefault = false;
+export const exportModelV1AutocrudSkillExportGetQueryLimitDefault = 10;
+export const exportModelV1AutocrudSkillExportGetQueryOffsetDefault = 0;
+
+export const ExportModelV1AutocrudSkillExportGetQueryParams = zod.object({
+  qb: zod
+    .union([zod.string(), zod.null()])
+    .optional()
+    .describe(
+      "Query Builder expression. Example: \"QB['foo'] == 123\" or \"QB['age'].gt(18) & QB['status'].eq('active')\"",
+    ),
+  is_deleted: zod
+    .union([zod.boolean(), zod.null()])
+    .default(exportModelV1AutocrudSkillExportGetQueryIsDeletedDefault)
+    .describe('Filter by deletion status'),
+  created_time_start: zod
+    .union([zod.string(), zod.null()])
+    .optional()
+    .describe('Filter by created time start (ISO format)'),
+  created_time_end: zod
+    .union([zod.string(), zod.null()])
+    .optional()
+    .describe('Filter by created time end (ISO format)'),
+  updated_time_start: zod
+    .union([zod.string(), zod.null()])
+    .optional()
+    .describe('Filter by updated time start (ISO format)'),
+  updated_time_end: zod
+    .union([zod.string(), zod.null()])
+    .optional()
+    .describe('Filter by updated time end (ISO format)'),
+  created_bys: zod
+    .union([zod.array(zod.string()), zod.null()])
+    .optional()
+    .describe('Filter by creators'),
+  updated_bys: zod
+    .union([zod.array(zod.string()), zod.null()])
+    .optional()
+    .describe('Filter by updaters'),
+  data_conditions: zod
+    .union([zod.string(), zod.null()])
+    .optional()
+    .describe(
+      'Data filter conditions in JSON format. Example: \'[{\"field_path\": \"department\", \"operator\": \"eq\", \"value\": \"Engineering\"}]\'',
+    ),
+  conditions: zod
+    .union([zod.string(), zod.null()])
+    .optional()
+    .describe(
+      'General filter conditions in JSON format for meta fields or data. Example: \'[{\"field_path\": \"resource_id\", \"operator\": \"starts_with\", \"value\": \"user-\"}]\'',
+    ),
+  sorts: zod
+    .union([zod.string(), zod.null()])
+    .optional()
+    .describe(
+      'Sort conditions in JSON format. Example: \'[{\"type\": \"meta\", \"key\": \"created_time\", \"direction\": \"+\"}, {\"type\": \"data\", \"field_path\": \"name\", \"direction\": \"-\"}]\'',
+    ),
+  limit: zod
+    .number()
+    .default(exportModelV1AutocrudSkillExportGetQueryLimitDefault)
+    .describe('Maximum number of results'),
+  offset: zod
+    .number()
+    .default(exportModelV1AutocrudSkillExportGetQueryOffsetDefault)
+    .describe('Number of results to skip'),
+  partial: zod
+    .union([zod.array(zod.string()), zod.null()])
+    .optional()
+    .describe("List of fields to retrieve (e.g. '\/field1', '\/nested\/field2')"),
+});
+
+export const ExportModelV1AutocrudSkillExportGetResponse = zod.unknown();
+
+/**
+ * Import **skill** resources from a ``.acbak`` archive.
+
+The archive must contain a **skill** model section.
+Use ``on_duplicate`` to control behaviour when a resource ID
+already exists.
+ * @summary Import skill data
+ */
+export const importModelV1AutocrudSkillImportPostQueryOnDuplicateDefault = `overwrite`;
+
+export const ImportModelV1AutocrudSkillImportPostQueryParams = zod.object({
+  on_duplicate: zod
+    .string()
+    .default(importModelV1AutocrudSkillImportPostQueryOnDuplicateDefault)
+    .describe('Strategy: overwrite | skip | raise_error'),
+});
+
+export const ImportModelV1AutocrudSkillImportPostBody = zod.object({
+  file: zod.instanceof(File).describe('.acbak archive file'),
+});
+
+export const ImportModelV1AutocrudSkillImportPostResponse = zod.record(zod.string(), zod.unknown());
 
 /**
  * Deprecated: use `GET /skill/{resource_id}?returns=meta` instead.
@@ -9752,534 +9754,6 @@ export const MigrateSingleResourceV1AutocrudSkillMigrateSingleResourceIdPostResp
   .describe('遷移進度訊息');
 
 /**
- * Export all (or filtered) **equipment** resources as a
-streaming ``.acbak`` archive.
-
-Supports the same query parameters as the search endpoint
-(``qb``, ``is_deleted``, time ranges, etc.) to filter
-which resources are included.
- * @summary Export equipment data
- */
-export const exportModelV1AutocrudEquipmentExportGetQueryIsDeletedDefault = false;
-export const exportModelV1AutocrudEquipmentExportGetQueryLimitDefault = 10;
-export const exportModelV1AutocrudEquipmentExportGetQueryOffsetDefault = 0;
-
-export const ExportModelV1AutocrudEquipmentExportGetQueryParams = zod.object({
-  qb: zod
-    .union([zod.string(), zod.null()])
-    .optional()
-    .describe(
-      "Query Builder expression. Example: \"QB['foo'] == 123\" or \"QB['age'].gt(18) & QB['status'].eq('active')\"",
-    ),
-  is_deleted: zod
-    .union([zod.boolean(), zod.null()])
-    .default(exportModelV1AutocrudEquipmentExportGetQueryIsDeletedDefault)
-    .describe('Filter by deletion status'),
-  created_time_start: zod
-    .union([zod.string(), zod.null()])
-    .optional()
-    .describe('Filter by created time start (ISO format)'),
-  created_time_end: zod
-    .union([zod.string(), zod.null()])
-    .optional()
-    .describe('Filter by created time end (ISO format)'),
-  updated_time_start: zod
-    .union([zod.string(), zod.null()])
-    .optional()
-    .describe('Filter by updated time start (ISO format)'),
-  updated_time_end: zod
-    .union([zod.string(), zod.null()])
-    .optional()
-    .describe('Filter by updated time end (ISO format)'),
-  created_bys: zod
-    .union([zod.array(zod.string()), zod.null()])
-    .optional()
-    .describe('Filter by creators'),
-  updated_bys: zod
-    .union([zod.array(zod.string()), zod.null()])
-    .optional()
-    .describe('Filter by updaters'),
-  data_conditions: zod
-    .union([zod.string(), zod.null()])
-    .optional()
-    .describe(
-      'Data filter conditions in JSON format. Example: \'[{\"field_path\": \"department\", \"operator\": \"eq\", \"value\": \"Engineering\"}]\'',
-    ),
-  conditions: zod
-    .union([zod.string(), zod.null()])
-    .optional()
-    .describe(
-      'General filter conditions in JSON format for meta fields or data. Example: \'[{\"field_path\": \"resource_id\", \"operator\": \"starts_with\", \"value\": \"user-\"}]\'',
-    ),
-  sorts: zod
-    .union([zod.string(), zod.null()])
-    .optional()
-    .describe(
-      'Sort conditions in JSON format. Example: \'[{\"type\": \"meta\", \"key\": \"created_time\", \"direction\": \"+\"}, {\"type\": \"data\", \"field_path\": \"name\", \"direction\": \"-\"}]\'',
-    ),
-  limit: zod
-    .number()
-    .default(exportModelV1AutocrudEquipmentExportGetQueryLimitDefault)
-    .describe('Maximum number of results'),
-  offset: zod
-    .number()
-    .default(exportModelV1AutocrudEquipmentExportGetQueryOffsetDefault)
-    .describe('Number of results to skip'),
-  partial: zod
-    .union([zod.array(zod.string()), zod.null()])
-    .optional()
-    .describe("List of fields to retrieve (e.g. '\/field1', '\/nested\/field2')"),
-});
-
-export const ExportModelV1AutocrudEquipmentExportGetResponse = zod.unknown();
-
-/**
- * Import **equipment** resources from a ``.acbak`` archive.
-
-The archive must contain a **equipment** model section.
-Use ``on_duplicate`` to control behaviour when a resource ID
-already exists.
- * @summary Import equipment data
- */
-export const importModelV1AutocrudEquipmentImportPostQueryOnDuplicateDefault = `overwrite`;
-
-export const ImportModelV1AutocrudEquipmentImportPostQueryParams = zod.object({
-  on_duplicate: zod
-    .string()
-    .default(importModelV1AutocrudEquipmentImportPostQueryOnDuplicateDefault)
-    .describe('Strategy: overwrite | skip | raise_error'),
-});
-
-export const ImportModelV1AutocrudEquipmentImportPostBody = zod.object({
-  file: zod.instanceof(File).describe('.acbak archive file'),
-});
-
-export const ImportModelV1AutocrudEquipmentImportPostResponse = zod.record(
-  zod.string(),
-  zod.unknown(),
-);
-
-/**
- * Create a new `equipment` resource.
-
-**Request Body:**
-- Send the resource data as JSON in the request body
-- The data will be validated against the `equipment` schema
-
-**Response:**
-- Returns revision information for the newly created resource
-- Includes `resource_id` and `revision_id` for tracking
-- All resources are version-controlled from creation
-
-**Examples:**
-- `POST /equipment` with JSON body - Create new resource
-- Response includes resource and revision identifiers
-
-**Error Responses:**
-- `422`: Validation error - Invalid data format or missing required fields
-- `400`: Bad request - General creation error
- * @summary Create equipment
- */
-export const createResourceV1AutocrudEquipmentPostBodyOwnerIdDefault = null;
-export const createResourceV1AutocrudEquipmentPostBodyCharacterClassReqDefault = null;
-export const createResourceV1AutocrudEquipmentPostBodyAttackBonusDefault = 0;
-export const createResourceV1AutocrudEquipmentPostBodyDefenseBonusDefault = 0;
-export const createResourceV1AutocrudEquipmentPostBodySpecialEffectsDefault = [];
-export const createResourceV1AutocrudEquipmentPostBodyPriceDefault = 100;
-export const createResourceV1AutocrudEquipmentPostBodyIconDefault = null;
-
-export const CreateResourceV1AutocrudEquipmentPostBody = zod
-  .object({
-    type: zod.enum(['Equipment']),
-    name: zod.string(),
-    rarity: zod.enum(['傳奇', '史詩', '普通', '稀有', '🚀 AutoCRUD 神器']).describe('裝備稀有度'),
-    owner_id: zod
-      .union([zod.string(), zod.null()])
-      .default(createResourceV1AutocrudEquipmentPostBodyOwnerIdDefault),
-    character_class_req: zod
-      .union([
-        zod.enum(['⚔️ 戰士', '🏹 弓箭手', '💾 數據守護者', '🔮 法師']).describe('職業系統'),
-        zod.null(),
-      ])
-      .default(createResourceV1AutocrudEquipmentPostBodyCharacterClassReqDefault),
-    attack_bonus: zod.number().default(createResourceV1AutocrudEquipmentPostBodyAttackBonusDefault),
-    defense_bonus: zod
-      .number()
-      .default(createResourceV1AutocrudEquipmentPostBodyDefenseBonusDefault),
-    special_effects: zod
-      .array(zod.string())
-      .default(createResourceV1AutocrudEquipmentPostBodySpecialEffectsDefault),
-    price: zod.number().default(createResourceV1AutocrudEquipmentPostBodyPriceDefault),
-    icon: zod
-      .union([
-        zod.null(),
-        zod
-          .object({
-            file_id: zod.string().optional(),
-            size: zod.number().optional(),
-            content_type: zod.string().optional(),
-            data: zod.string().optional(),
-          })
-          .describe(
-            'A wrapper for binary data that handles storage optimization.\n\nWhen creating a resource, you can populate the `data` field with bytes.\nThe system will automatically extract it, store it in the blob store,\nand populate `file_id` (which is the hash of the content) and `size`.\nThe `data` field will be cleared in the stored resource.',
-          ),
-      ])
-      .default(createResourceV1AutocrudEquipmentPostBodyIconDefault),
-  })
-  .describe('遊戲裝備');
-
-export const createResourceV1AutocrudEquipmentPostResponseParentRevisionIdDefault = null;
-export const createResourceV1AutocrudEquipmentPostResponseSchemaVersionDefault = null;
-
-export const CreateResourceV1AutocrudEquipmentPostResponse = zod
-  .object({
-    uid: zod.uuid(),
-    resource_id: zod.string(),
-    revision_id: zod.string(),
-    parent_revision_id: zod
-      .union([zod.string(), zod.null()])
-      .default(createResourceV1AutocrudEquipmentPostResponseParentRevisionIdDefault),
-    parent_schema_version: zod.union([zod.string(), zod.null()]).optional(),
-    schema_version: zod
-      .union([zod.string(), zod.null()])
-      .default(createResourceV1AutocrudEquipmentPostResponseSchemaVersionDefault),
-    data_hash: zod.string().optional(),
-    status: zod.enum(['draft', 'stable']),
-    created_time: zod.string(),
-    updated_time: zod.string(),
-    created_by: zod.string(),
-    updated_by: zod.string(),
-  })
-  .describe(
-    'Metadata about a specific revision of a resource.\n\nThis class contains essential information about a particular revision,',
-  );
-
-/**
- * Retrieve a list of `equipment` resources.
-
-Use the `returns` query parameter to control which sections are included in each item.
-By default all sections are returned: `data`, `revision_info`, `meta`.
-
-**Query Parameters:**
-- `returns` (default `"data,revision_info,meta"`): Comma-separated list of sections to include.
-  Allowed values: `data`, `revision_info`, `meta`.
-- `limit` / `offset`: Pagination controls.
-- `partial` / `partial[]`: Partial field selection.
-- All standard filtering and sorting parameters.
-
-**Examples:**
-- `GET /equipment` — full list (data + meta + revision_info)
-- `GET /equipment?returns=data` — data only
-- `GET /equipment?returns=data,meta` — data + meta, no revision_info
-- `GET /equipment?limit=20&offset=40` — pagination
-
-**Error Responses:**
-- `400`: Bad request - Invalid query parameters or search error
- * @summary List equipment resources
- */
-export const listResourcesV1AutocrudEquipmentGetQueryIsDeletedDefault = false;
-export const listResourcesV1AutocrudEquipmentGetQueryLimitDefault = 10;
-export const listResourcesV1AutocrudEquipmentGetQueryOffsetDefault = 0;
-export const listResourcesV1AutocrudEquipmentGetQueryReturnsDefault = `data,revision_info,meta`;
-
-export const ListResourcesV1AutocrudEquipmentGetQueryParams = zod.object({
-  qb: zod
-    .union([zod.string(), zod.null()])
-    .optional()
-    .describe(
-      "Query Builder expression. Example: \"QB['foo'] == 123\" or \"QB['age'].gt(18) & QB['status'].eq('active')\"",
-    ),
-  is_deleted: zod
-    .union([zod.boolean(), zod.null()])
-    .default(listResourcesV1AutocrudEquipmentGetQueryIsDeletedDefault)
-    .describe('Filter by deletion status'),
-  created_time_start: zod
-    .union([zod.string(), zod.null()])
-    .optional()
-    .describe('Filter by created time start (ISO format)'),
-  created_time_end: zod
-    .union([zod.string(), zod.null()])
-    .optional()
-    .describe('Filter by created time end (ISO format)'),
-  updated_time_start: zod
-    .union([zod.string(), zod.null()])
-    .optional()
-    .describe('Filter by updated time start (ISO format)'),
-  updated_time_end: zod
-    .union([zod.string(), zod.null()])
-    .optional()
-    .describe('Filter by updated time end (ISO format)'),
-  created_bys: zod
-    .union([zod.array(zod.string()), zod.null()])
-    .optional()
-    .describe('Filter by creators'),
-  updated_bys: zod
-    .union([zod.array(zod.string()), zod.null()])
-    .optional()
-    .describe('Filter by updaters'),
-  data_conditions: zod
-    .union([zod.string(), zod.null()])
-    .optional()
-    .describe(
-      'Data filter conditions in JSON format. Example: \'[{\"field_path\": \"department\", \"operator\": \"eq\", \"value\": \"Engineering\"}]\'',
-    ),
-  conditions: zod
-    .union([zod.string(), zod.null()])
-    .optional()
-    .describe(
-      'General filter conditions in JSON format for meta fields or data. Example: \'[{\"field_path\": \"resource_id\", \"operator\": \"starts_with\", \"value\": \"user-\"}]\'',
-    ),
-  sorts: zod
-    .union([zod.string(), zod.null()])
-    .optional()
-    .describe(
-      'Sort conditions in JSON format. Example: \'[{\"type\": \"meta\", \"key\": \"created_time\", \"direction\": \"+\"}, {\"type\": \"data\", \"field_path\": \"name\", \"direction\": \"-\"}]\'',
-    ),
-  limit: zod
-    .number()
-    .default(listResourcesV1AutocrudEquipmentGetQueryLimitDefault)
-    .describe('Maximum number of results'),
-  offset: zod
-    .number()
-    .default(listResourcesV1AutocrudEquipmentGetQueryOffsetDefault)
-    .describe('Number of results to skip'),
-  partial: zod
-    .union([zod.array(zod.string()), zod.null()])
-    .optional()
-    .describe("List of fields to retrieve (e.g. '\/field1', '\/nested\/field2')"),
-  returns: zod
-    .string()
-    .default(listResourcesV1AutocrudEquipmentGetQueryReturnsDefault)
-    .describe('Fields to return, comma-separated. Options: data, revision_info, meta'),
-});
-
-export const listResourcesV1AutocrudEquipmentGetResponseDataOwnerIdDefault = null;
-export const listResourcesV1AutocrudEquipmentGetResponseDataCharacterClassReqDefault = null;
-export const listResourcesV1AutocrudEquipmentGetResponseDataAttackBonusDefault = 0;
-export const listResourcesV1AutocrudEquipmentGetResponseDataDefenseBonusDefault = 0;
-export const listResourcesV1AutocrudEquipmentGetResponseDataSpecialEffectsDefault = [];
-export const listResourcesV1AutocrudEquipmentGetResponseDataPriceDefault = 100;
-export const listResourcesV1AutocrudEquipmentGetResponseDataIconDefault = null;
-export const listResourcesV1AutocrudEquipmentGetResponseRevisionInfoParentRevisionIdDefault = null;
-export const listResourcesV1AutocrudEquipmentGetResponseRevisionInfoSchemaVersionDefault = null;
-export const listResourcesV1AutocrudEquipmentGetResponseMetaSchemaVersionDefault = null;
-export const listResourcesV1AutocrudEquipmentGetResponseMetaIsDeletedDefault = false;
-
-export const ListResourcesV1AutocrudEquipmentGetResponseItem = zod.object({
-  data: zod
-    .object({
-      type: zod.enum(['Equipment']),
-      name: zod.string(),
-      rarity: zod.enum(['傳奇', '史詩', '普通', '稀有', '🚀 AutoCRUD 神器']).describe('裝備稀有度'),
-      owner_id: zod
-        .union([zod.string(), zod.null()])
-        .default(listResourcesV1AutocrudEquipmentGetResponseDataOwnerIdDefault),
-      character_class_req: zod
-        .union([
-          zod.enum(['⚔️ 戰士', '🏹 弓箭手', '💾 數據守護者', '🔮 法師']).describe('職業系統'),
-          zod.null(),
-        ])
-        .default(listResourcesV1AutocrudEquipmentGetResponseDataCharacterClassReqDefault),
-      attack_bonus: zod
-        .number()
-        .default(listResourcesV1AutocrudEquipmentGetResponseDataAttackBonusDefault),
-      defense_bonus: zod
-        .number()
-        .default(listResourcesV1AutocrudEquipmentGetResponseDataDefenseBonusDefault),
-      special_effects: zod
-        .array(zod.string())
-        .default(listResourcesV1AutocrudEquipmentGetResponseDataSpecialEffectsDefault),
-      price: zod.number().default(listResourcesV1AutocrudEquipmentGetResponseDataPriceDefault),
-      icon: zod
-        .union([
-          zod.null(),
-          zod
-            .object({
-              file_id: zod.string().optional(),
-              size: zod.number().optional(),
-              content_type: zod.string().optional(),
-              data: zod.string().optional(),
-            })
-            .describe(
-              'A wrapper for binary data that handles storage optimization.\n\nWhen creating a resource, you can populate the `data` field with bytes.\nThe system will automatically extract it, store it in the blob store,\nand populate `file_id` (which is the hash of the content) and `size`.\nThe `data` field will be cleared in the stored resource.',
-            ),
-        ])
-        .default(listResourcesV1AutocrudEquipmentGetResponseDataIconDefault),
-    })
-    .optional()
-    .describe('遊戲裝備'),
-  revision_info: zod
-    .object({
-      uid: zod.uuid(),
-      resource_id: zod.string(),
-      revision_id: zod.string(),
-      parent_revision_id: zod
-        .union([zod.string(), zod.null()])
-        .default(listResourcesV1AutocrudEquipmentGetResponseRevisionInfoParentRevisionIdDefault),
-      parent_schema_version: zod.union([zod.string(), zod.null()]).optional(),
-      schema_version: zod
-        .union([zod.string(), zod.null()])
-        .default(listResourcesV1AutocrudEquipmentGetResponseRevisionInfoSchemaVersionDefault),
-      data_hash: zod.string().optional(),
-      status: zod.enum(['draft', 'stable']),
-      created_time: zod.string(),
-      updated_time: zod.string(),
-      created_by: zod.string(),
-      updated_by: zod.string(),
-    })
-    .optional()
-    .describe(
-      'Metadata about a specific revision of a resource.\n\nThis class contains essential information about a particular revision,',
-    ),
-  meta: zod
-    .object({
-      current_revision_id: zod.string(),
-      resource_id: zod.string(),
-      schema_version: zod
-        .union([zod.string(), zod.null()])
-        .default(listResourcesV1AutocrudEquipmentGetResponseMetaSchemaVersionDefault),
-      total_revision_count: zod.number(),
-      created_time: zod.string(),
-      updated_time: zod.string(),
-      created_by: zod.string(),
-      updated_by: zod.string(),
-      is_deleted: zod
-        .boolean()
-        .default(listResourcesV1AutocrudEquipmentGetResponseMetaIsDeletedDefault),
-      indexed_data: zod.looseObject({}).optional(),
-    })
-    .optional()
-    .describe(
-      'Metadata about a resource, including its current revision and status.\n\nThis class provides essential information about a resource without including\nthe full data content.',
-    ),
-});
-export const ListResourcesV1AutocrudEquipmentGetResponse = zod.array(
-  ListResourcesV1AutocrudEquipmentGetResponseItem,
-);
-
-/**
- * Batch delete `equipment` resources matching the given query conditions.
-
-**Query Parameters:**
-- Uses the same search parameters as the list endpoint
-- `is_deleted` parameter is **forced to `false`** — only non-deleted resources are targeted
-- Use `data_conditions` to filter specific resources for deletion
-- Use `limit` to control the maximum number of resources to delete
-
-**Soft Delete:**
-- Resources are marked as deleted rather than permanently removed
-- Deleted resources can be restored using the batch restore endpoint
-
-**Response:**
-- Returns a list of `ResourceMeta` for all deleted resources
-- Each entry will have `is_deleted` set to `true`
-- Empty list if no resources match the query
-
-**Examples:**
-- `DELETE /equipment?limit=100` — Delete up to 100 resources
-- `DELETE /equipment?data_conditions=[{"field_path":"age","operator":"gt","value":25}]` — Delete resources with age > 25
-
-**Error Responses:**
-- `400`: Bad request — Invalid query parameters or deletion error
- * @summary Batch delete equipment
- */
-export const batchDeleteV1AutocrudEquipmentDeleteQueryIsDeletedDefault = false;
-export const batchDeleteV1AutocrudEquipmentDeleteQueryLimitDefault = 10;
-export const batchDeleteV1AutocrudEquipmentDeleteQueryOffsetDefault = 0;
-
-export const BatchDeleteV1AutocrudEquipmentDeleteQueryParams = zod.object({
-  qb: zod
-    .union([zod.string(), zod.null()])
-    .optional()
-    .describe(
-      "Query Builder expression. Example: \"QB['foo'] == 123\" or \"QB['age'].gt(18) & QB['status'].eq('active')\"",
-    ),
-  is_deleted: zod
-    .union([zod.boolean(), zod.null()])
-    .default(batchDeleteV1AutocrudEquipmentDeleteQueryIsDeletedDefault)
-    .describe('Filter by deletion status'),
-  created_time_start: zod
-    .union([zod.string(), zod.null()])
-    .optional()
-    .describe('Filter by created time start (ISO format)'),
-  created_time_end: zod
-    .union([zod.string(), zod.null()])
-    .optional()
-    .describe('Filter by created time end (ISO format)'),
-  updated_time_start: zod
-    .union([zod.string(), zod.null()])
-    .optional()
-    .describe('Filter by updated time start (ISO format)'),
-  updated_time_end: zod
-    .union([zod.string(), zod.null()])
-    .optional()
-    .describe('Filter by updated time end (ISO format)'),
-  created_bys: zod
-    .union([zod.array(zod.string()), zod.null()])
-    .optional()
-    .describe('Filter by creators'),
-  updated_bys: zod
-    .union([zod.array(zod.string()), zod.null()])
-    .optional()
-    .describe('Filter by updaters'),
-  data_conditions: zod
-    .union([zod.string(), zod.null()])
-    .optional()
-    .describe(
-      'Data filter conditions in JSON format. Example: \'[{\"field_path\": \"department\", \"operator\": \"eq\", \"value\": \"Engineering\"}]\'',
-    ),
-  conditions: zod
-    .union([zod.string(), zod.null()])
-    .optional()
-    .describe(
-      'General filter conditions in JSON format for meta fields or data. Example: \'[{\"field_path\": \"resource_id\", \"operator\": \"starts_with\", \"value\": \"user-\"}]\'',
-    ),
-  sorts: zod
-    .union([zod.string(), zod.null()])
-    .optional()
-    .describe(
-      'Sort conditions in JSON format. Example: \'[{\"type\": \"meta\", \"key\": \"created_time\", \"direction\": \"+\"}, {\"type\": \"data\", \"field_path\": \"name\", \"direction\": \"-\"}]\'',
-    ),
-  limit: zod
-    .number()
-    .default(batchDeleteV1AutocrudEquipmentDeleteQueryLimitDefault)
-    .describe('Maximum number of results'),
-  offset: zod
-    .number()
-    .default(batchDeleteV1AutocrudEquipmentDeleteQueryOffsetDefault)
-    .describe('Number of results to skip'),
-  partial: zod
-    .union([zod.array(zod.string()), zod.null()])
-    .optional()
-    .describe("List of fields to retrieve (e.g. '\/field1', '\/nested\/field2')"),
-});
-
-export const batchDeleteV1AutocrudEquipmentDeleteResponseSchemaVersionDefault = null;
-export const batchDeleteV1AutocrudEquipmentDeleteResponseIsDeletedDefault = false;
-
-export const BatchDeleteV1AutocrudEquipmentDeleteResponseItem = zod
-  .object({
-    current_revision_id: zod.string(),
-    resource_id: zod.string(),
-    schema_version: zod
-      .union([zod.string(), zod.null()])
-      .default(batchDeleteV1AutocrudEquipmentDeleteResponseSchemaVersionDefault),
-    total_revision_count: zod.number(),
-    created_time: zod.string(),
-    updated_time: zod.string(),
-    created_by: zod.string(),
-    updated_by: zod.string(),
-    is_deleted: zod.boolean().default(batchDeleteV1AutocrudEquipmentDeleteResponseIsDeletedDefault),
-    indexed_data: zod.looseObject({}).optional(),
-  })
-  .describe(
-    'Metadata about a resource, including its current revision and status.\n\nThis class provides essential information about a resource without including\nthe full data content.',
-  );
-export const BatchDeleteV1AutocrudEquipmentDeleteResponse = zod.array(
-  BatchDeleteV1AutocrudEquipmentDeleteResponseItem,
-);
-
-/**
  * Retrieve a list of `equipment` resources returning only the data content.
 
 **Response Format:**
@@ -11108,6 +10582,534 @@ export const GetResourcesCountV1AutocrudEquipmentCountGetQueryParams = zod.objec
 });
 
 export const GetResourcesCountV1AutocrudEquipmentCountGetResponse = zod.number();
+
+/**
+ * Retrieve a list of `equipment` resources.
+
+Use the `returns` query parameter to control which sections are included in each item.
+By default all sections are returned: `data`, `revision_info`, `meta`.
+
+**Query Parameters:**
+- `returns` (default `"data,revision_info,meta"`): Comma-separated list of sections to include.
+  Allowed values: `data`, `revision_info`, `meta`.
+- `limit` / `offset`: Pagination controls.
+- `partial` / `partial[]`: Partial field selection.
+- All standard filtering and sorting parameters.
+
+**Examples:**
+- `GET /equipment` — full list (data + meta + revision_info)
+- `GET /equipment?returns=data` — data only
+- `GET /equipment?returns=data,meta` — data + meta, no revision_info
+- `GET /equipment?limit=20&offset=40` — pagination
+
+**Error Responses:**
+- `400`: Bad request - Invalid query parameters or search error
+ * @summary List equipment resources
+ */
+export const listResourcesV1AutocrudEquipmentGetQueryIsDeletedDefault = false;
+export const listResourcesV1AutocrudEquipmentGetQueryLimitDefault = 10;
+export const listResourcesV1AutocrudEquipmentGetQueryOffsetDefault = 0;
+export const listResourcesV1AutocrudEquipmentGetQueryReturnsDefault = `data,revision_info,meta`;
+
+export const ListResourcesV1AutocrudEquipmentGetQueryParams = zod.object({
+  qb: zod
+    .union([zod.string(), zod.null()])
+    .optional()
+    .describe(
+      "Query Builder expression. Example: \"QB['foo'] == 123\" or \"QB['age'].gt(18) & QB['status'].eq('active')\"",
+    ),
+  is_deleted: zod
+    .union([zod.boolean(), zod.null()])
+    .default(listResourcesV1AutocrudEquipmentGetQueryIsDeletedDefault)
+    .describe('Filter by deletion status'),
+  created_time_start: zod
+    .union([zod.string(), zod.null()])
+    .optional()
+    .describe('Filter by created time start (ISO format)'),
+  created_time_end: zod
+    .union([zod.string(), zod.null()])
+    .optional()
+    .describe('Filter by created time end (ISO format)'),
+  updated_time_start: zod
+    .union([zod.string(), zod.null()])
+    .optional()
+    .describe('Filter by updated time start (ISO format)'),
+  updated_time_end: zod
+    .union([zod.string(), zod.null()])
+    .optional()
+    .describe('Filter by updated time end (ISO format)'),
+  created_bys: zod
+    .union([zod.array(zod.string()), zod.null()])
+    .optional()
+    .describe('Filter by creators'),
+  updated_bys: zod
+    .union([zod.array(zod.string()), zod.null()])
+    .optional()
+    .describe('Filter by updaters'),
+  data_conditions: zod
+    .union([zod.string(), zod.null()])
+    .optional()
+    .describe(
+      'Data filter conditions in JSON format. Example: \'[{\"field_path\": \"department\", \"operator\": \"eq\", \"value\": \"Engineering\"}]\'',
+    ),
+  conditions: zod
+    .union([zod.string(), zod.null()])
+    .optional()
+    .describe(
+      'General filter conditions in JSON format for meta fields or data. Example: \'[{\"field_path\": \"resource_id\", \"operator\": \"starts_with\", \"value\": \"user-\"}]\'',
+    ),
+  sorts: zod
+    .union([zod.string(), zod.null()])
+    .optional()
+    .describe(
+      'Sort conditions in JSON format. Example: \'[{\"type\": \"meta\", \"key\": \"created_time\", \"direction\": \"+\"}, {\"type\": \"data\", \"field_path\": \"name\", \"direction\": \"-\"}]\'',
+    ),
+  limit: zod
+    .number()
+    .default(listResourcesV1AutocrudEquipmentGetQueryLimitDefault)
+    .describe('Maximum number of results'),
+  offset: zod
+    .number()
+    .default(listResourcesV1AutocrudEquipmentGetQueryOffsetDefault)
+    .describe('Number of results to skip'),
+  partial: zod
+    .union([zod.array(zod.string()), zod.null()])
+    .optional()
+    .describe("List of fields to retrieve (e.g. '\/field1', '\/nested\/field2')"),
+  returns: zod
+    .string()
+    .default(listResourcesV1AutocrudEquipmentGetQueryReturnsDefault)
+    .describe('Fields to return, comma-separated. Options: data, revision_info, meta'),
+});
+
+export const listResourcesV1AutocrudEquipmentGetResponseDataOwnerIdDefault = null;
+export const listResourcesV1AutocrudEquipmentGetResponseDataCharacterClassReqDefault = null;
+export const listResourcesV1AutocrudEquipmentGetResponseDataAttackBonusDefault = 0;
+export const listResourcesV1AutocrudEquipmentGetResponseDataDefenseBonusDefault = 0;
+export const listResourcesV1AutocrudEquipmentGetResponseDataSpecialEffectsDefault = [];
+export const listResourcesV1AutocrudEquipmentGetResponseDataPriceDefault = 100;
+export const listResourcesV1AutocrudEquipmentGetResponseDataIconDefault = null;
+export const listResourcesV1AutocrudEquipmentGetResponseRevisionInfoParentRevisionIdDefault = null;
+export const listResourcesV1AutocrudEquipmentGetResponseRevisionInfoSchemaVersionDefault = null;
+export const listResourcesV1AutocrudEquipmentGetResponseMetaSchemaVersionDefault = null;
+export const listResourcesV1AutocrudEquipmentGetResponseMetaIsDeletedDefault = false;
+
+export const ListResourcesV1AutocrudEquipmentGetResponseItem = zod.object({
+  data: zod
+    .object({
+      type: zod.enum(['Equipment']),
+      name: zod.string(),
+      rarity: zod.enum(['傳奇', '史詩', '普通', '稀有', '🚀 AutoCRUD 神器']).describe('裝備稀有度'),
+      owner_id: zod
+        .union([zod.string(), zod.null()])
+        .default(listResourcesV1AutocrudEquipmentGetResponseDataOwnerIdDefault),
+      character_class_req: zod
+        .union([
+          zod.enum(['⚔️ 戰士', '🏹 弓箭手', '💾 數據守護者', '🔮 法師']).describe('職業系統'),
+          zod.null(),
+        ])
+        .default(listResourcesV1AutocrudEquipmentGetResponseDataCharacterClassReqDefault),
+      attack_bonus: zod
+        .number()
+        .default(listResourcesV1AutocrudEquipmentGetResponseDataAttackBonusDefault),
+      defense_bonus: zod
+        .number()
+        .default(listResourcesV1AutocrudEquipmentGetResponseDataDefenseBonusDefault),
+      special_effects: zod
+        .array(zod.string())
+        .default(listResourcesV1AutocrudEquipmentGetResponseDataSpecialEffectsDefault),
+      price: zod.number().default(listResourcesV1AutocrudEquipmentGetResponseDataPriceDefault),
+      icon: zod
+        .union([
+          zod.null(),
+          zod
+            .object({
+              file_id: zod.string().optional(),
+              size: zod.number().optional(),
+              content_type: zod.string().optional(),
+              data: zod.string().optional(),
+            })
+            .describe(
+              'A wrapper for binary data that handles storage optimization.\n\nWhen creating a resource, you can populate the `data` field with bytes.\nThe system will automatically extract it, store it in the blob store,\nand populate `file_id` (which is the hash of the content) and `size`.\nThe `data` field will be cleared in the stored resource.',
+            ),
+        ])
+        .default(listResourcesV1AutocrudEquipmentGetResponseDataIconDefault),
+    })
+    .optional()
+    .describe('遊戲裝備'),
+  revision_info: zod
+    .object({
+      uid: zod.uuid(),
+      resource_id: zod.string(),
+      revision_id: zod.string(),
+      parent_revision_id: zod
+        .union([zod.string(), zod.null()])
+        .default(listResourcesV1AutocrudEquipmentGetResponseRevisionInfoParentRevisionIdDefault),
+      parent_schema_version: zod.union([zod.string(), zod.null()]).optional(),
+      schema_version: zod
+        .union([zod.string(), zod.null()])
+        .default(listResourcesV1AutocrudEquipmentGetResponseRevisionInfoSchemaVersionDefault),
+      data_hash: zod.string().optional(),
+      status: zod.enum(['draft', 'stable']),
+      created_time: zod.string(),
+      updated_time: zod.string(),
+      created_by: zod.string(),
+      updated_by: zod.string(),
+    })
+    .optional()
+    .describe(
+      'Metadata about a specific revision of a resource.\n\nThis class contains essential information about a particular revision,',
+    ),
+  meta: zod
+    .object({
+      current_revision_id: zod.string(),
+      resource_id: zod.string(),
+      schema_version: zod
+        .union([zod.string(), zod.null()])
+        .default(listResourcesV1AutocrudEquipmentGetResponseMetaSchemaVersionDefault),
+      total_revision_count: zod.number(),
+      created_time: zod.string(),
+      updated_time: zod.string(),
+      created_by: zod.string(),
+      updated_by: zod.string(),
+      is_deleted: zod
+        .boolean()
+        .default(listResourcesV1AutocrudEquipmentGetResponseMetaIsDeletedDefault),
+      indexed_data: zod.looseObject({}).optional(),
+    })
+    .optional()
+    .describe(
+      'Metadata about a resource, including its current revision and status.\n\nThis class provides essential information about a resource without including\nthe full data content.',
+    ),
+});
+export const ListResourcesV1AutocrudEquipmentGetResponse = zod.array(
+  ListResourcesV1AutocrudEquipmentGetResponseItem,
+);
+
+/**
+ * Create a new `equipment` resource.
+
+**Request Body:**
+- Send the resource data as JSON in the request body
+- The data will be validated against the `equipment` schema
+
+**Response:**
+- Returns revision information for the newly created resource
+- Includes `resource_id` and `revision_id` for tracking
+- All resources are version-controlled from creation
+
+**Examples:**
+- `POST /equipment` with JSON body - Create new resource
+- Response includes resource and revision identifiers
+
+**Error Responses:**
+- `422`: Validation error - Invalid data format or missing required fields
+- `400`: Bad request - General creation error
+ * @summary Create equipment
+ */
+export const createResourceV1AutocrudEquipmentPostBodyOwnerIdDefault = null;
+export const createResourceV1AutocrudEquipmentPostBodyCharacterClassReqDefault = null;
+export const createResourceV1AutocrudEquipmentPostBodyAttackBonusDefault = 0;
+export const createResourceV1AutocrudEquipmentPostBodyDefenseBonusDefault = 0;
+export const createResourceV1AutocrudEquipmentPostBodySpecialEffectsDefault = [];
+export const createResourceV1AutocrudEquipmentPostBodyPriceDefault = 100;
+export const createResourceV1AutocrudEquipmentPostBodyIconDefault = null;
+
+export const CreateResourceV1AutocrudEquipmentPostBody = zod
+  .object({
+    type: zod.enum(['Equipment']),
+    name: zod.string(),
+    rarity: zod.enum(['傳奇', '史詩', '普通', '稀有', '🚀 AutoCRUD 神器']).describe('裝備稀有度'),
+    owner_id: zod
+      .union([zod.string(), zod.null()])
+      .default(createResourceV1AutocrudEquipmentPostBodyOwnerIdDefault),
+    character_class_req: zod
+      .union([
+        zod.enum(['⚔️ 戰士', '🏹 弓箭手', '💾 數據守護者', '🔮 法師']).describe('職業系統'),
+        zod.null(),
+      ])
+      .default(createResourceV1AutocrudEquipmentPostBodyCharacterClassReqDefault),
+    attack_bonus: zod.number().default(createResourceV1AutocrudEquipmentPostBodyAttackBonusDefault),
+    defense_bonus: zod
+      .number()
+      .default(createResourceV1AutocrudEquipmentPostBodyDefenseBonusDefault),
+    special_effects: zod
+      .array(zod.string())
+      .default(createResourceV1AutocrudEquipmentPostBodySpecialEffectsDefault),
+    price: zod.number().default(createResourceV1AutocrudEquipmentPostBodyPriceDefault),
+    icon: zod
+      .union([
+        zod.null(),
+        zod
+          .object({
+            file_id: zod.string().optional(),
+            size: zod.number().optional(),
+            content_type: zod.string().optional(),
+            data: zod.string().optional(),
+          })
+          .describe(
+            'A wrapper for binary data that handles storage optimization.\n\nWhen creating a resource, you can populate the `data` field with bytes.\nThe system will automatically extract it, store it in the blob store,\nand populate `file_id` (which is the hash of the content) and `size`.\nThe `data` field will be cleared in the stored resource.',
+          ),
+      ])
+      .default(createResourceV1AutocrudEquipmentPostBodyIconDefault),
+  })
+  .describe('遊戲裝備');
+
+export const createResourceV1AutocrudEquipmentPostResponseParentRevisionIdDefault = null;
+export const createResourceV1AutocrudEquipmentPostResponseSchemaVersionDefault = null;
+
+export const CreateResourceV1AutocrudEquipmentPostResponse = zod
+  .object({
+    uid: zod.uuid(),
+    resource_id: zod.string(),
+    revision_id: zod.string(),
+    parent_revision_id: zod
+      .union([zod.string(), zod.null()])
+      .default(createResourceV1AutocrudEquipmentPostResponseParentRevisionIdDefault),
+    parent_schema_version: zod.union([zod.string(), zod.null()]).optional(),
+    schema_version: zod
+      .union([zod.string(), zod.null()])
+      .default(createResourceV1AutocrudEquipmentPostResponseSchemaVersionDefault),
+    data_hash: zod.string().optional(),
+    status: zod.enum(['draft', 'stable']),
+    created_time: zod.string(),
+    updated_time: zod.string(),
+    created_by: zod.string(),
+    updated_by: zod.string(),
+  })
+  .describe(
+    'Metadata about a specific revision of a resource.\n\nThis class contains essential information about a particular revision,',
+  );
+
+/**
+ * Batch delete `equipment` resources matching the given query conditions.
+
+**Query Parameters:**
+- Uses the same search parameters as the list endpoint
+- `is_deleted` parameter is **forced to `false`** — only non-deleted resources are targeted
+- Use `data_conditions` to filter specific resources for deletion
+- Use `limit` to control the maximum number of resources to delete
+
+**Soft Delete:**
+- Resources are marked as deleted rather than permanently removed
+- Deleted resources can be restored using the batch restore endpoint
+
+**Response:**
+- Returns a list of `ResourceMeta` for all deleted resources
+- Each entry will have `is_deleted` set to `true`
+- Empty list if no resources match the query
+
+**Examples:**
+- `DELETE /equipment?limit=100` — Delete up to 100 resources
+- `DELETE /equipment?data_conditions=[{"field_path":"age","operator":"gt","value":25}]` — Delete resources with age > 25
+
+**Error Responses:**
+- `400`: Bad request — Invalid query parameters or deletion error
+ * @summary Batch delete equipment
+ */
+export const batchDeleteV1AutocrudEquipmentDeleteQueryIsDeletedDefault = false;
+export const batchDeleteV1AutocrudEquipmentDeleteQueryLimitDefault = 10;
+export const batchDeleteV1AutocrudEquipmentDeleteQueryOffsetDefault = 0;
+
+export const BatchDeleteV1AutocrudEquipmentDeleteQueryParams = zod.object({
+  qb: zod
+    .union([zod.string(), zod.null()])
+    .optional()
+    .describe(
+      "Query Builder expression. Example: \"QB['foo'] == 123\" or \"QB['age'].gt(18) & QB['status'].eq('active')\"",
+    ),
+  is_deleted: zod
+    .union([zod.boolean(), zod.null()])
+    .default(batchDeleteV1AutocrudEquipmentDeleteQueryIsDeletedDefault)
+    .describe('Filter by deletion status'),
+  created_time_start: zod
+    .union([zod.string(), zod.null()])
+    .optional()
+    .describe('Filter by created time start (ISO format)'),
+  created_time_end: zod
+    .union([zod.string(), zod.null()])
+    .optional()
+    .describe('Filter by created time end (ISO format)'),
+  updated_time_start: zod
+    .union([zod.string(), zod.null()])
+    .optional()
+    .describe('Filter by updated time start (ISO format)'),
+  updated_time_end: zod
+    .union([zod.string(), zod.null()])
+    .optional()
+    .describe('Filter by updated time end (ISO format)'),
+  created_bys: zod
+    .union([zod.array(zod.string()), zod.null()])
+    .optional()
+    .describe('Filter by creators'),
+  updated_bys: zod
+    .union([zod.array(zod.string()), zod.null()])
+    .optional()
+    .describe('Filter by updaters'),
+  data_conditions: zod
+    .union([zod.string(), zod.null()])
+    .optional()
+    .describe(
+      'Data filter conditions in JSON format. Example: \'[{\"field_path\": \"department\", \"operator\": \"eq\", \"value\": \"Engineering\"}]\'',
+    ),
+  conditions: zod
+    .union([zod.string(), zod.null()])
+    .optional()
+    .describe(
+      'General filter conditions in JSON format for meta fields or data. Example: \'[{\"field_path\": \"resource_id\", \"operator\": \"starts_with\", \"value\": \"user-\"}]\'',
+    ),
+  sorts: zod
+    .union([zod.string(), zod.null()])
+    .optional()
+    .describe(
+      'Sort conditions in JSON format. Example: \'[{\"type\": \"meta\", \"key\": \"created_time\", \"direction\": \"+\"}, {\"type\": \"data\", \"field_path\": \"name\", \"direction\": \"-\"}]\'',
+    ),
+  limit: zod
+    .number()
+    .default(batchDeleteV1AutocrudEquipmentDeleteQueryLimitDefault)
+    .describe('Maximum number of results'),
+  offset: zod
+    .number()
+    .default(batchDeleteV1AutocrudEquipmentDeleteQueryOffsetDefault)
+    .describe('Number of results to skip'),
+  partial: zod
+    .union([zod.array(zod.string()), zod.null()])
+    .optional()
+    .describe("List of fields to retrieve (e.g. '\/field1', '\/nested\/field2')"),
+});
+
+export const batchDeleteV1AutocrudEquipmentDeleteResponseSchemaVersionDefault = null;
+export const batchDeleteV1AutocrudEquipmentDeleteResponseIsDeletedDefault = false;
+
+export const BatchDeleteV1AutocrudEquipmentDeleteResponseItem = zod
+  .object({
+    current_revision_id: zod.string(),
+    resource_id: zod.string(),
+    schema_version: zod
+      .union([zod.string(), zod.null()])
+      .default(batchDeleteV1AutocrudEquipmentDeleteResponseSchemaVersionDefault),
+    total_revision_count: zod.number(),
+    created_time: zod.string(),
+    updated_time: zod.string(),
+    created_by: zod.string(),
+    updated_by: zod.string(),
+    is_deleted: zod.boolean().default(batchDeleteV1AutocrudEquipmentDeleteResponseIsDeletedDefault),
+    indexed_data: zod.looseObject({}).optional(),
+  })
+  .describe(
+    'Metadata about a resource, including its current revision and status.\n\nThis class provides essential information about a resource without including\nthe full data content.',
+  );
+export const BatchDeleteV1AutocrudEquipmentDeleteResponse = zod.array(
+  BatchDeleteV1AutocrudEquipmentDeleteResponseItem,
+);
+
+/**
+ * Export all (or filtered) **equipment** resources as a
+streaming ``.acbak`` archive.
+
+Supports the same query parameters as the search endpoint
+(``qb``, ``is_deleted``, time ranges, etc.) to filter
+which resources are included.
+ * @summary Export equipment data
+ */
+export const exportModelV1AutocrudEquipmentExportGetQueryIsDeletedDefault = false;
+export const exportModelV1AutocrudEquipmentExportGetQueryLimitDefault = 10;
+export const exportModelV1AutocrudEquipmentExportGetQueryOffsetDefault = 0;
+
+export const ExportModelV1AutocrudEquipmentExportGetQueryParams = zod.object({
+  qb: zod
+    .union([zod.string(), zod.null()])
+    .optional()
+    .describe(
+      "Query Builder expression. Example: \"QB['foo'] == 123\" or \"QB['age'].gt(18) & QB['status'].eq('active')\"",
+    ),
+  is_deleted: zod
+    .union([zod.boolean(), zod.null()])
+    .default(exportModelV1AutocrudEquipmentExportGetQueryIsDeletedDefault)
+    .describe('Filter by deletion status'),
+  created_time_start: zod
+    .union([zod.string(), zod.null()])
+    .optional()
+    .describe('Filter by created time start (ISO format)'),
+  created_time_end: zod
+    .union([zod.string(), zod.null()])
+    .optional()
+    .describe('Filter by created time end (ISO format)'),
+  updated_time_start: zod
+    .union([zod.string(), zod.null()])
+    .optional()
+    .describe('Filter by updated time start (ISO format)'),
+  updated_time_end: zod
+    .union([zod.string(), zod.null()])
+    .optional()
+    .describe('Filter by updated time end (ISO format)'),
+  created_bys: zod
+    .union([zod.array(zod.string()), zod.null()])
+    .optional()
+    .describe('Filter by creators'),
+  updated_bys: zod
+    .union([zod.array(zod.string()), zod.null()])
+    .optional()
+    .describe('Filter by updaters'),
+  data_conditions: zod
+    .union([zod.string(), zod.null()])
+    .optional()
+    .describe(
+      'Data filter conditions in JSON format. Example: \'[{\"field_path\": \"department\", \"operator\": \"eq\", \"value\": \"Engineering\"}]\'',
+    ),
+  conditions: zod
+    .union([zod.string(), zod.null()])
+    .optional()
+    .describe(
+      'General filter conditions in JSON format for meta fields or data. Example: \'[{\"field_path\": \"resource_id\", \"operator\": \"starts_with\", \"value\": \"user-\"}]\'',
+    ),
+  sorts: zod
+    .union([zod.string(), zod.null()])
+    .optional()
+    .describe(
+      'Sort conditions in JSON format. Example: \'[{\"type\": \"meta\", \"key\": \"created_time\", \"direction\": \"+\"}, {\"type\": \"data\", \"field_path\": \"name\", \"direction\": \"-\"}]\'',
+    ),
+  limit: zod
+    .number()
+    .default(exportModelV1AutocrudEquipmentExportGetQueryLimitDefault)
+    .describe('Maximum number of results'),
+  offset: zod
+    .number()
+    .default(exportModelV1AutocrudEquipmentExportGetQueryOffsetDefault)
+    .describe('Number of results to skip'),
+  partial: zod
+    .union([zod.array(zod.string()), zod.null()])
+    .optional()
+    .describe("List of fields to retrieve (e.g. '\/field1', '\/nested\/field2')"),
+});
+
+export const ExportModelV1AutocrudEquipmentExportGetResponse = zod.unknown();
+
+/**
+ * Import **equipment** resources from a ``.acbak`` archive.
+
+The archive must contain a **equipment** model section.
+Use ``on_duplicate`` to control behaviour when a resource ID
+already exists.
+ * @summary Import equipment data
+ */
+export const importModelV1AutocrudEquipmentImportPostQueryOnDuplicateDefault = `overwrite`;
+
+export const ImportModelV1AutocrudEquipmentImportPostQueryParams = zod.object({
+  on_duplicate: zod
+    .string()
+    .default(importModelV1AutocrudEquipmentImportPostQueryOnDuplicateDefault)
+    .describe('Strategy: overwrite | skip | raise_error'),
+});
+
+export const ImportModelV1AutocrudEquipmentImportPostBody = zod.object({
+  file: zod.instanceof(File).describe('.acbak archive file'),
+});
+
+export const ImportModelV1AutocrudEquipmentImportPostResponse = zod.record(
+  zod.string(),
+  zod.unknown(),
+);
 
 /**
  * Deprecated: use `GET /equipment/{resource_id}?returns=meta` instead.
@@ -12712,500 +12714,6 @@ export const MigrateSingleResourceV1AutocrudEquipmentMigrateSingleResourceIdPost
   .describe('遷移進度訊息');
 
 /**
- * Export all (or filtered) **pet** resources as a
-streaming ``.acbak`` archive.
-
-Supports the same query parameters as the search endpoint
-(``qb``, ``is_deleted``, time ranges, etc.) to filter
-which resources are included.
- * @summary Export pet data
- */
-export const exportModelV1AutocrudPetExportGetQueryIsDeletedDefault = false;
-export const exportModelV1AutocrudPetExportGetQueryLimitDefault = 10;
-export const exportModelV1AutocrudPetExportGetQueryOffsetDefault = 0;
-
-export const ExportModelV1AutocrudPetExportGetQueryParams = zod.object({
-  qb: zod
-    .union([zod.string(), zod.null()])
-    .optional()
-    .describe(
-      "Query Builder expression. Example: \"QB['foo'] == 123\" or \"QB['age'].gt(18) & QB['status'].eq('active')\"",
-    ),
-  is_deleted: zod
-    .union([zod.boolean(), zod.null()])
-    .default(exportModelV1AutocrudPetExportGetQueryIsDeletedDefault)
-    .describe('Filter by deletion status'),
-  created_time_start: zod
-    .union([zod.string(), zod.null()])
-    .optional()
-    .describe('Filter by created time start (ISO format)'),
-  created_time_end: zod
-    .union([zod.string(), zod.null()])
-    .optional()
-    .describe('Filter by created time end (ISO format)'),
-  updated_time_start: zod
-    .union([zod.string(), zod.null()])
-    .optional()
-    .describe('Filter by updated time start (ISO format)'),
-  updated_time_end: zod
-    .union([zod.string(), zod.null()])
-    .optional()
-    .describe('Filter by updated time end (ISO format)'),
-  created_bys: zod
-    .union([zod.array(zod.string()), zod.null()])
-    .optional()
-    .describe('Filter by creators'),
-  updated_bys: zod
-    .union([zod.array(zod.string()), zod.null()])
-    .optional()
-    .describe('Filter by updaters'),
-  data_conditions: zod
-    .union([zod.string(), zod.null()])
-    .optional()
-    .describe(
-      'Data filter conditions in JSON format. Example: \'[{\"field_path\": \"department\", \"operator\": \"eq\", \"value\": \"Engineering\"}]\'',
-    ),
-  conditions: zod
-    .union([zod.string(), zod.null()])
-    .optional()
-    .describe(
-      'General filter conditions in JSON format for meta fields or data. Example: \'[{\"field_path\": \"resource_id\", \"operator\": \"starts_with\", \"value\": \"user-\"}]\'',
-    ),
-  sorts: zod
-    .union([zod.string(), zod.null()])
-    .optional()
-    .describe(
-      'Sort conditions in JSON format. Example: \'[{\"type\": \"meta\", \"key\": \"created_time\", \"direction\": \"+\"}, {\"type\": \"data\", \"field_path\": \"name\", \"direction\": \"-\"}]\'',
-    ),
-  limit: zod
-    .number()
-    .default(exportModelV1AutocrudPetExportGetQueryLimitDefault)
-    .describe('Maximum number of results'),
-  offset: zod
-    .number()
-    .default(exportModelV1AutocrudPetExportGetQueryOffsetDefault)
-    .describe('Number of results to skip'),
-  partial: zod
-    .union([zod.array(zod.string()), zod.null()])
-    .optional()
-    .describe("List of fields to retrieve (e.g. '\/field1', '\/nested\/field2')"),
-});
-
-export const ExportModelV1AutocrudPetExportGetResponse = zod.unknown();
-
-/**
- * Import **pet** resources from a ``.acbak`` archive.
-
-The archive must contain a **pet** model section.
-Use ``on_duplicate`` to control behaviour when a resource ID
-already exists.
- * @summary Import pet data
- */
-export const importModelV1AutocrudPetImportPostQueryOnDuplicateDefault = `overwrite`;
-
-export const ImportModelV1AutocrudPetImportPostQueryParams = zod.object({
-  on_duplicate: zod
-    .string()
-    .default(importModelV1AutocrudPetImportPostQueryOnDuplicateDefault)
-    .describe('Strategy: overwrite | skip | raise_error'),
-});
-
-export const ImportModelV1AutocrudPetImportPostBody = zod.object({
-  file: zod.instanceof(File).describe('.acbak archive file'),
-});
-
-export const ImportModelV1AutocrudPetImportPostResponse = zod.record(zod.string(), zod.unknown());
-
-/**
- * Create a new `pet` resource.
-
-**Request Body:**
-- Send the resource data as JSON in the request body
-- The data will be validated against the `pet` schema
-
-**Response:**
-- Returns revision information for the newly created resource
-- Includes `resource_id` and `revision_id` for tracking
-- All resources are version-controlled from creation
-
-**Examples:**
-- `POST /pet` with JSON body - Create new resource
-- Response includes resource and revision identifiers
-
-**Error Responses:**
-- `422`: Validation error - Invalid data format or missing required fields
-- `400`: Bad request - General creation error
- * @summary Create pet
- */
-export const createResourceV1AutocrudPetPostBodyOneSpeedDefault = 10;
-export const createResourceV1AutocrudPetPostBodyOneStaminaDefault = 100;
-export const createResourceV1AutocrudPetPostBodyTwoLevelDefault = 1;
-export const createResourceV1AutocrudPetPostBodyTwoHpDefault = 100;
-export const createResourceV1AutocrudPetPostBodyTwoMpDefault = 50;
-export const createResourceV1AutocrudPetPostBodyTwoAttackDefault = 10;
-export const createResourceV1AutocrudPetPostBodyTwoDefenseDefault = 5;
-
-export const CreateResourceV1AutocrudPetPostBody = zod.union([
-  zod
-    .object({
-      type: zod.enum(['Mount']),
-      name: zod.string(),
-      species: zod.string(),
-      speed: zod.number().default(createResourceV1AutocrudPetPostBodyOneSpeedDefault),
-      stamina: zod.number().default(createResourceV1AutocrudPetPostBodyOneStaminaDefault),
-      owner_id: zod.string(),
-    })
-    .describe('遊戲中的坐騎系統示例'),
-  zod
-    .object({
-      type: zod.enum(['Dog']),
-      name: zod.string(),
-      breed: zod.string(),
-      level: zod.number().default(createResourceV1AutocrudPetPostBodyTwoLevelDefault),
-      hp: zod.number().default(createResourceV1AutocrudPetPostBodyTwoHpDefault),
-      mp: zod.number().default(createResourceV1AutocrudPetPostBodyTwoMpDefault),
-      attack: zod.number().default(createResourceV1AutocrudPetPostBodyTwoAttackDefault),
-      defense: zod.number().default(createResourceV1AutocrudPetPostBodyTwoDefenseDefault),
-      owner_id: zod.string(),
-    })
-    .describe('遊戲中的寵物系統示例'),
-]);
-
-export const createResourceV1AutocrudPetPostResponseParentRevisionIdDefault = null;
-export const createResourceV1AutocrudPetPostResponseSchemaVersionDefault = null;
-
-export const CreateResourceV1AutocrudPetPostResponse = zod
-  .object({
-    uid: zod.uuid(),
-    resource_id: zod.string(),
-    revision_id: zod.string(),
-    parent_revision_id: zod
-      .union([zod.string(), zod.null()])
-      .default(createResourceV1AutocrudPetPostResponseParentRevisionIdDefault),
-    parent_schema_version: zod.union([zod.string(), zod.null()]).optional(),
-    schema_version: zod
-      .union([zod.string(), zod.null()])
-      .default(createResourceV1AutocrudPetPostResponseSchemaVersionDefault),
-    data_hash: zod.string().optional(),
-    status: zod.enum(['draft', 'stable']),
-    created_time: zod.string(),
-    updated_time: zod.string(),
-    created_by: zod.string(),
-    updated_by: zod.string(),
-  })
-  .describe(
-    'Metadata about a specific revision of a resource.\n\nThis class contains essential information about a particular revision,',
-  );
-
-/**
- * Retrieve a list of `pet` resources.
-
-Use the `returns` query parameter to control which sections are included in each item.
-By default all sections are returned: `data`, `revision_info`, `meta`.
-
-**Query Parameters:**
-- `returns` (default `"data,revision_info,meta"`): Comma-separated list of sections to include.
-  Allowed values: `data`, `revision_info`, `meta`.
-- `limit` / `offset`: Pagination controls.
-- `partial` / `partial[]`: Partial field selection.
-- All standard filtering and sorting parameters.
-
-**Examples:**
-- `GET /pet` — full list (data + meta + revision_info)
-- `GET /pet?returns=data` — data only
-- `GET /pet?returns=data,meta` — data + meta, no revision_info
-- `GET /pet?limit=20&offset=40` — pagination
-
-**Error Responses:**
-- `400`: Bad request - Invalid query parameters or search error
- * @summary List pet resources
- */
-export const listResourcesV1AutocrudPetGetQueryIsDeletedDefault = false;
-export const listResourcesV1AutocrudPetGetQueryLimitDefault = 10;
-export const listResourcesV1AutocrudPetGetQueryOffsetDefault = 0;
-export const listResourcesV1AutocrudPetGetQueryReturnsDefault = `data,revision_info,meta`;
-
-export const ListResourcesV1AutocrudPetGetQueryParams = zod.object({
-  qb: zod
-    .union([zod.string(), zod.null()])
-    .optional()
-    .describe(
-      "Query Builder expression. Example: \"QB['foo'] == 123\" or \"QB['age'].gt(18) & QB['status'].eq('active')\"",
-    ),
-  is_deleted: zod
-    .union([zod.boolean(), zod.null()])
-    .default(listResourcesV1AutocrudPetGetQueryIsDeletedDefault)
-    .describe('Filter by deletion status'),
-  created_time_start: zod
-    .union([zod.string(), zod.null()])
-    .optional()
-    .describe('Filter by created time start (ISO format)'),
-  created_time_end: zod
-    .union([zod.string(), zod.null()])
-    .optional()
-    .describe('Filter by created time end (ISO format)'),
-  updated_time_start: zod
-    .union([zod.string(), zod.null()])
-    .optional()
-    .describe('Filter by updated time start (ISO format)'),
-  updated_time_end: zod
-    .union([zod.string(), zod.null()])
-    .optional()
-    .describe('Filter by updated time end (ISO format)'),
-  created_bys: zod
-    .union([zod.array(zod.string()), zod.null()])
-    .optional()
-    .describe('Filter by creators'),
-  updated_bys: zod
-    .union([zod.array(zod.string()), zod.null()])
-    .optional()
-    .describe('Filter by updaters'),
-  data_conditions: zod
-    .union([zod.string(), zod.null()])
-    .optional()
-    .describe(
-      'Data filter conditions in JSON format. Example: \'[{\"field_path\": \"department\", \"operator\": \"eq\", \"value\": \"Engineering\"}]\'',
-    ),
-  conditions: zod
-    .union([zod.string(), zod.null()])
-    .optional()
-    .describe(
-      'General filter conditions in JSON format for meta fields or data. Example: \'[{\"field_path\": \"resource_id\", \"operator\": \"starts_with\", \"value\": \"user-\"}]\'',
-    ),
-  sorts: zod
-    .union([zod.string(), zod.null()])
-    .optional()
-    .describe(
-      'Sort conditions in JSON format. Example: \'[{\"type\": \"meta\", \"key\": \"created_time\", \"direction\": \"+\"}, {\"type\": \"data\", \"field_path\": \"name\", \"direction\": \"-\"}]\'',
-    ),
-  limit: zod
-    .number()
-    .default(listResourcesV1AutocrudPetGetQueryLimitDefault)
-    .describe('Maximum number of results'),
-  offset: zod
-    .number()
-    .default(listResourcesV1AutocrudPetGetQueryOffsetDefault)
-    .describe('Number of results to skip'),
-  partial: zod
-    .union([zod.array(zod.string()), zod.null()])
-    .optional()
-    .describe("List of fields to retrieve (e.g. '\/field1', '\/nested\/field2')"),
-  returns: zod
-    .string()
-    .default(listResourcesV1AutocrudPetGetQueryReturnsDefault)
-    .describe('Fields to return, comma-separated. Options: data, revision_info, meta'),
-});
-
-export const listResourcesV1AutocrudPetGetResponseDataOneSpeedDefault = 10;
-export const listResourcesV1AutocrudPetGetResponseDataOneStaminaDefault = 100;
-export const listResourcesV1AutocrudPetGetResponseDataTwoLevelDefault = 1;
-export const listResourcesV1AutocrudPetGetResponseDataTwoHpDefault = 100;
-export const listResourcesV1AutocrudPetGetResponseDataTwoMpDefault = 50;
-export const listResourcesV1AutocrudPetGetResponseDataTwoAttackDefault = 10;
-export const listResourcesV1AutocrudPetGetResponseDataTwoDefenseDefault = 5;
-export const listResourcesV1AutocrudPetGetResponseRevisionInfoParentRevisionIdDefault = null;
-export const listResourcesV1AutocrudPetGetResponseRevisionInfoSchemaVersionDefault = null;
-export const listResourcesV1AutocrudPetGetResponseMetaSchemaVersionDefault = null;
-export const listResourcesV1AutocrudPetGetResponseMetaIsDeletedDefault = false;
-
-export const ListResourcesV1AutocrudPetGetResponseItem = zod.object({
-  data: zod
-    .union([
-      zod
-        .object({
-          type: zod.enum(['Mount']),
-          name: zod.string(),
-          species: zod.string(),
-          speed: zod.number().default(listResourcesV1AutocrudPetGetResponseDataOneSpeedDefault),
-          stamina: zod.number().default(listResourcesV1AutocrudPetGetResponseDataOneStaminaDefault),
-          owner_id: zod.string(),
-        })
-        .describe('遊戲中的坐騎系統示例'),
-      zod
-        .object({
-          type: zod.enum(['Dog']),
-          name: zod.string(),
-          breed: zod.string(),
-          level: zod.number().default(listResourcesV1AutocrudPetGetResponseDataTwoLevelDefault),
-          hp: zod.number().default(listResourcesV1AutocrudPetGetResponseDataTwoHpDefault),
-          mp: zod.number().default(listResourcesV1AutocrudPetGetResponseDataTwoMpDefault),
-          attack: zod.number().default(listResourcesV1AutocrudPetGetResponseDataTwoAttackDefault),
-          defense: zod.number().default(listResourcesV1AutocrudPetGetResponseDataTwoDefenseDefault),
-          owner_id: zod.string(),
-        })
-        .describe('遊戲中的寵物系統示例'),
-    ])
-    .optional(),
-  revision_info: zod
-    .object({
-      uid: zod.uuid(),
-      resource_id: zod.string(),
-      revision_id: zod.string(),
-      parent_revision_id: zod
-        .union([zod.string(), zod.null()])
-        .default(listResourcesV1AutocrudPetGetResponseRevisionInfoParentRevisionIdDefault),
-      parent_schema_version: zod.union([zod.string(), zod.null()]).optional(),
-      schema_version: zod
-        .union([zod.string(), zod.null()])
-        .default(listResourcesV1AutocrudPetGetResponseRevisionInfoSchemaVersionDefault),
-      data_hash: zod.string().optional(),
-      status: zod.enum(['draft', 'stable']),
-      created_time: zod.string(),
-      updated_time: zod.string(),
-      created_by: zod.string(),
-      updated_by: zod.string(),
-    })
-    .optional()
-    .describe(
-      'Metadata about a specific revision of a resource.\n\nThis class contains essential information about a particular revision,',
-    ),
-  meta: zod
-    .object({
-      current_revision_id: zod.string(),
-      resource_id: zod.string(),
-      schema_version: zod
-        .union([zod.string(), zod.null()])
-        .default(listResourcesV1AutocrudPetGetResponseMetaSchemaVersionDefault),
-      total_revision_count: zod.number(),
-      created_time: zod.string(),
-      updated_time: zod.string(),
-      created_by: zod.string(),
-      updated_by: zod.string(),
-      is_deleted: zod.boolean().default(listResourcesV1AutocrudPetGetResponseMetaIsDeletedDefault),
-      indexed_data: zod.looseObject({}).optional(),
-    })
-    .optional()
-    .describe(
-      'Metadata about a resource, including its current revision and status.\n\nThis class provides essential information about a resource without including\nthe full data content.',
-    ),
-});
-export const ListResourcesV1AutocrudPetGetResponse = zod.array(
-  ListResourcesV1AutocrudPetGetResponseItem,
-);
-
-/**
- * Batch delete `pet` resources matching the given query conditions.
-
-**Query Parameters:**
-- Uses the same search parameters as the list endpoint
-- `is_deleted` parameter is **forced to `false`** — only non-deleted resources are targeted
-- Use `data_conditions` to filter specific resources for deletion
-- Use `limit` to control the maximum number of resources to delete
-
-**Soft Delete:**
-- Resources are marked as deleted rather than permanently removed
-- Deleted resources can be restored using the batch restore endpoint
-
-**Response:**
-- Returns a list of `ResourceMeta` for all deleted resources
-- Each entry will have `is_deleted` set to `true`
-- Empty list if no resources match the query
-
-**Examples:**
-- `DELETE /pet?limit=100` — Delete up to 100 resources
-- `DELETE /pet?data_conditions=[{"field_path":"age","operator":"gt","value":25}]` — Delete resources with age > 25
-
-**Error Responses:**
-- `400`: Bad request — Invalid query parameters or deletion error
- * @summary Batch delete pet
- */
-export const batchDeleteV1AutocrudPetDeleteQueryIsDeletedDefault = false;
-export const batchDeleteV1AutocrudPetDeleteQueryLimitDefault = 10;
-export const batchDeleteV1AutocrudPetDeleteQueryOffsetDefault = 0;
-
-export const BatchDeleteV1AutocrudPetDeleteQueryParams = zod.object({
-  qb: zod
-    .union([zod.string(), zod.null()])
-    .optional()
-    .describe(
-      "Query Builder expression. Example: \"QB['foo'] == 123\" or \"QB['age'].gt(18) & QB['status'].eq('active')\"",
-    ),
-  is_deleted: zod
-    .union([zod.boolean(), zod.null()])
-    .default(batchDeleteV1AutocrudPetDeleteQueryIsDeletedDefault)
-    .describe('Filter by deletion status'),
-  created_time_start: zod
-    .union([zod.string(), zod.null()])
-    .optional()
-    .describe('Filter by created time start (ISO format)'),
-  created_time_end: zod
-    .union([zod.string(), zod.null()])
-    .optional()
-    .describe('Filter by created time end (ISO format)'),
-  updated_time_start: zod
-    .union([zod.string(), zod.null()])
-    .optional()
-    .describe('Filter by updated time start (ISO format)'),
-  updated_time_end: zod
-    .union([zod.string(), zod.null()])
-    .optional()
-    .describe('Filter by updated time end (ISO format)'),
-  created_bys: zod
-    .union([zod.array(zod.string()), zod.null()])
-    .optional()
-    .describe('Filter by creators'),
-  updated_bys: zod
-    .union([zod.array(zod.string()), zod.null()])
-    .optional()
-    .describe('Filter by updaters'),
-  data_conditions: zod
-    .union([zod.string(), zod.null()])
-    .optional()
-    .describe(
-      'Data filter conditions in JSON format. Example: \'[{\"field_path\": \"department\", \"operator\": \"eq\", \"value\": \"Engineering\"}]\'',
-    ),
-  conditions: zod
-    .union([zod.string(), zod.null()])
-    .optional()
-    .describe(
-      'General filter conditions in JSON format for meta fields or data. Example: \'[{\"field_path\": \"resource_id\", \"operator\": \"starts_with\", \"value\": \"user-\"}]\'',
-    ),
-  sorts: zod
-    .union([zod.string(), zod.null()])
-    .optional()
-    .describe(
-      'Sort conditions in JSON format. Example: \'[{\"type\": \"meta\", \"key\": \"created_time\", \"direction\": \"+\"}, {\"type\": \"data\", \"field_path\": \"name\", \"direction\": \"-\"}]\'',
-    ),
-  limit: zod
-    .number()
-    .default(batchDeleteV1AutocrudPetDeleteQueryLimitDefault)
-    .describe('Maximum number of results'),
-  offset: zod
-    .number()
-    .default(batchDeleteV1AutocrudPetDeleteQueryOffsetDefault)
-    .describe('Number of results to skip'),
-  partial: zod
-    .union([zod.array(zod.string()), zod.null()])
-    .optional()
-    .describe("List of fields to retrieve (e.g. '\/field1', '\/nested\/field2')"),
-});
-
-export const batchDeleteV1AutocrudPetDeleteResponseSchemaVersionDefault = null;
-export const batchDeleteV1AutocrudPetDeleteResponseIsDeletedDefault = false;
-
-export const BatchDeleteV1AutocrudPetDeleteResponseItem = zod
-  .object({
-    current_revision_id: zod.string(),
-    resource_id: zod.string(),
-    schema_version: zod
-      .union([zod.string(), zod.null()])
-      .default(batchDeleteV1AutocrudPetDeleteResponseSchemaVersionDefault),
-    total_revision_count: zod.number(),
-    created_time: zod.string(),
-    updated_time: zod.string(),
-    created_by: zod.string(),
-    updated_by: zod.string(),
-    is_deleted: zod.boolean().default(batchDeleteV1AutocrudPetDeleteResponseIsDeletedDefault),
-    indexed_data: zod.looseObject({}).optional(),
-  })
-  .describe(
-    'Metadata about a resource, including its current revision and status.\n\nThis class provides essential information about a resource without including\nthe full data content.',
-  );
-export const BatchDeleteV1AutocrudPetDeleteResponse = zod.array(
-  BatchDeleteV1AutocrudPetDeleteResponseItem,
-);
-
-/**
  * Retrieve a list of `pet` resources returning only the data content.
 
 **Response Format:**
@@ -14004,6 +13512,500 @@ export const GetResourcesCountV1AutocrudPetCountGetQueryParams = zod.object({
 });
 
 export const GetResourcesCountV1AutocrudPetCountGetResponse = zod.number();
+
+/**
+ * Retrieve a list of `pet` resources.
+
+Use the `returns` query parameter to control which sections are included in each item.
+By default all sections are returned: `data`, `revision_info`, `meta`.
+
+**Query Parameters:**
+- `returns` (default `"data,revision_info,meta"`): Comma-separated list of sections to include.
+  Allowed values: `data`, `revision_info`, `meta`.
+- `limit` / `offset`: Pagination controls.
+- `partial` / `partial[]`: Partial field selection.
+- All standard filtering and sorting parameters.
+
+**Examples:**
+- `GET /pet` — full list (data + meta + revision_info)
+- `GET /pet?returns=data` — data only
+- `GET /pet?returns=data,meta` — data + meta, no revision_info
+- `GET /pet?limit=20&offset=40` — pagination
+
+**Error Responses:**
+- `400`: Bad request - Invalid query parameters or search error
+ * @summary List pet resources
+ */
+export const listResourcesV1AutocrudPetGetQueryIsDeletedDefault = false;
+export const listResourcesV1AutocrudPetGetQueryLimitDefault = 10;
+export const listResourcesV1AutocrudPetGetQueryOffsetDefault = 0;
+export const listResourcesV1AutocrudPetGetQueryReturnsDefault = `data,revision_info,meta`;
+
+export const ListResourcesV1AutocrudPetGetQueryParams = zod.object({
+  qb: zod
+    .union([zod.string(), zod.null()])
+    .optional()
+    .describe(
+      "Query Builder expression. Example: \"QB['foo'] == 123\" or \"QB['age'].gt(18) & QB['status'].eq('active')\"",
+    ),
+  is_deleted: zod
+    .union([zod.boolean(), zod.null()])
+    .default(listResourcesV1AutocrudPetGetQueryIsDeletedDefault)
+    .describe('Filter by deletion status'),
+  created_time_start: zod
+    .union([zod.string(), zod.null()])
+    .optional()
+    .describe('Filter by created time start (ISO format)'),
+  created_time_end: zod
+    .union([zod.string(), zod.null()])
+    .optional()
+    .describe('Filter by created time end (ISO format)'),
+  updated_time_start: zod
+    .union([zod.string(), zod.null()])
+    .optional()
+    .describe('Filter by updated time start (ISO format)'),
+  updated_time_end: zod
+    .union([zod.string(), zod.null()])
+    .optional()
+    .describe('Filter by updated time end (ISO format)'),
+  created_bys: zod
+    .union([zod.array(zod.string()), zod.null()])
+    .optional()
+    .describe('Filter by creators'),
+  updated_bys: zod
+    .union([zod.array(zod.string()), zod.null()])
+    .optional()
+    .describe('Filter by updaters'),
+  data_conditions: zod
+    .union([zod.string(), zod.null()])
+    .optional()
+    .describe(
+      'Data filter conditions in JSON format. Example: \'[{\"field_path\": \"department\", \"operator\": \"eq\", \"value\": \"Engineering\"}]\'',
+    ),
+  conditions: zod
+    .union([zod.string(), zod.null()])
+    .optional()
+    .describe(
+      'General filter conditions in JSON format for meta fields or data. Example: \'[{\"field_path\": \"resource_id\", \"operator\": \"starts_with\", \"value\": \"user-\"}]\'',
+    ),
+  sorts: zod
+    .union([zod.string(), zod.null()])
+    .optional()
+    .describe(
+      'Sort conditions in JSON format. Example: \'[{\"type\": \"meta\", \"key\": \"created_time\", \"direction\": \"+\"}, {\"type\": \"data\", \"field_path\": \"name\", \"direction\": \"-\"}]\'',
+    ),
+  limit: zod
+    .number()
+    .default(listResourcesV1AutocrudPetGetQueryLimitDefault)
+    .describe('Maximum number of results'),
+  offset: zod
+    .number()
+    .default(listResourcesV1AutocrudPetGetQueryOffsetDefault)
+    .describe('Number of results to skip'),
+  partial: zod
+    .union([zod.array(zod.string()), zod.null()])
+    .optional()
+    .describe("List of fields to retrieve (e.g. '\/field1', '\/nested\/field2')"),
+  returns: zod
+    .string()
+    .default(listResourcesV1AutocrudPetGetQueryReturnsDefault)
+    .describe('Fields to return, comma-separated. Options: data, revision_info, meta'),
+});
+
+export const listResourcesV1AutocrudPetGetResponseDataOneSpeedDefault = 10;
+export const listResourcesV1AutocrudPetGetResponseDataOneStaminaDefault = 100;
+export const listResourcesV1AutocrudPetGetResponseDataTwoLevelDefault = 1;
+export const listResourcesV1AutocrudPetGetResponseDataTwoHpDefault = 100;
+export const listResourcesV1AutocrudPetGetResponseDataTwoMpDefault = 50;
+export const listResourcesV1AutocrudPetGetResponseDataTwoAttackDefault = 10;
+export const listResourcesV1AutocrudPetGetResponseDataTwoDefenseDefault = 5;
+export const listResourcesV1AutocrudPetGetResponseRevisionInfoParentRevisionIdDefault = null;
+export const listResourcesV1AutocrudPetGetResponseRevisionInfoSchemaVersionDefault = null;
+export const listResourcesV1AutocrudPetGetResponseMetaSchemaVersionDefault = null;
+export const listResourcesV1AutocrudPetGetResponseMetaIsDeletedDefault = false;
+
+export const ListResourcesV1AutocrudPetGetResponseItem = zod.object({
+  data: zod
+    .union([
+      zod
+        .object({
+          type: zod.enum(['Mount']),
+          name: zod.string(),
+          species: zod.string(),
+          speed: zod.number().default(listResourcesV1AutocrudPetGetResponseDataOneSpeedDefault),
+          stamina: zod.number().default(listResourcesV1AutocrudPetGetResponseDataOneStaminaDefault),
+          owner_id: zod.string(),
+        })
+        .describe('遊戲中的坐騎系統示例'),
+      zod
+        .object({
+          type: zod.enum(['Dog']),
+          name: zod.string(),
+          breed: zod.string(),
+          level: zod.number().default(listResourcesV1AutocrudPetGetResponseDataTwoLevelDefault),
+          hp: zod.number().default(listResourcesV1AutocrudPetGetResponseDataTwoHpDefault),
+          mp: zod.number().default(listResourcesV1AutocrudPetGetResponseDataTwoMpDefault),
+          attack: zod.number().default(listResourcesV1AutocrudPetGetResponseDataTwoAttackDefault),
+          defense: zod.number().default(listResourcesV1AutocrudPetGetResponseDataTwoDefenseDefault),
+          owner_id: zod.string(),
+        })
+        .describe('遊戲中的寵物系統示例'),
+    ])
+    .optional(),
+  revision_info: zod
+    .object({
+      uid: zod.uuid(),
+      resource_id: zod.string(),
+      revision_id: zod.string(),
+      parent_revision_id: zod
+        .union([zod.string(), zod.null()])
+        .default(listResourcesV1AutocrudPetGetResponseRevisionInfoParentRevisionIdDefault),
+      parent_schema_version: zod.union([zod.string(), zod.null()]).optional(),
+      schema_version: zod
+        .union([zod.string(), zod.null()])
+        .default(listResourcesV1AutocrudPetGetResponseRevisionInfoSchemaVersionDefault),
+      data_hash: zod.string().optional(),
+      status: zod.enum(['draft', 'stable']),
+      created_time: zod.string(),
+      updated_time: zod.string(),
+      created_by: zod.string(),
+      updated_by: zod.string(),
+    })
+    .optional()
+    .describe(
+      'Metadata about a specific revision of a resource.\n\nThis class contains essential information about a particular revision,',
+    ),
+  meta: zod
+    .object({
+      current_revision_id: zod.string(),
+      resource_id: zod.string(),
+      schema_version: zod
+        .union([zod.string(), zod.null()])
+        .default(listResourcesV1AutocrudPetGetResponseMetaSchemaVersionDefault),
+      total_revision_count: zod.number(),
+      created_time: zod.string(),
+      updated_time: zod.string(),
+      created_by: zod.string(),
+      updated_by: zod.string(),
+      is_deleted: zod.boolean().default(listResourcesV1AutocrudPetGetResponseMetaIsDeletedDefault),
+      indexed_data: zod.looseObject({}).optional(),
+    })
+    .optional()
+    .describe(
+      'Metadata about a resource, including its current revision and status.\n\nThis class provides essential information about a resource without including\nthe full data content.',
+    ),
+});
+export const ListResourcesV1AutocrudPetGetResponse = zod.array(
+  ListResourcesV1AutocrudPetGetResponseItem,
+);
+
+/**
+ * Create a new `pet` resource.
+
+**Request Body:**
+- Send the resource data as JSON in the request body
+- The data will be validated against the `pet` schema
+
+**Response:**
+- Returns revision information for the newly created resource
+- Includes `resource_id` and `revision_id` for tracking
+- All resources are version-controlled from creation
+
+**Examples:**
+- `POST /pet` with JSON body - Create new resource
+- Response includes resource and revision identifiers
+
+**Error Responses:**
+- `422`: Validation error - Invalid data format or missing required fields
+- `400`: Bad request - General creation error
+ * @summary Create pet
+ */
+export const createResourceV1AutocrudPetPostBodyOneSpeedDefault = 10;
+export const createResourceV1AutocrudPetPostBodyOneStaminaDefault = 100;
+export const createResourceV1AutocrudPetPostBodyTwoLevelDefault = 1;
+export const createResourceV1AutocrudPetPostBodyTwoHpDefault = 100;
+export const createResourceV1AutocrudPetPostBodyTwoMpDefault = 50;
+export const createResourceV1AutocrudPetPostBodyTwoAttackDefault = 10;
+export const createResourceV1AutocrudPetPostBodyTwoDefenseDefault = 5;
+
+export const CreateResourceV1AutocrudPetPostBody = zod.union([
+  zod
+    .object({
+      type: zod.enum(['Mount']),
+      name: zod.string(),
+      species: zod.string(),
+      speed: zod.number().default(createResourceV1AutocrudPetPostBodyOneSpeedDefault),
+      stamina: zod.number().default(createResourceV1AutocrudPetPostBodyOneStaminaDefault),
+      owner_id: zod.string(),
+    })
+    .describe('遊戲中的坐騎系統示例'),
+  zod
+    .object({
+      type: zod.enum(['Dog']),
+      name: zod.string(),
+      breed: zod.string(),
+      level: zod.number().default(createResourceV1AutocrudPetPostBodyTwoLevelDefault),
+      hp: zod.number().default(createResourceV1AutocrudPetPostBodyTwoHpDefault),
+      mp: zod.number().default(createResourceV1AutocrudPetPostBodyTwoMpDefault),
+      attack: zod.number().default(createResourceV1AutocrudPetPostBodyTwoAttackDefault),
+      defense: zod.number().default(createResourceV1AutocrudPetPostBodyTwoDefenseDefault),
+      owner_id: zod.string(),
+    })
+    .describe('遊戲中的寵物系統示例'),
+]);
+
+export const createResourceV1AutocrudPetPostResponseParentRevisionIdDefault = null;
+export const createResourceV1AutocrudPetPostResponseSchemaVersionDefault = null;
+
+export const CreateResourceV1AutocrudPetPostResponse = zod
+  .object({
+    uid: zod.uuid(),
+    resource_id: zod.string(),
+    revision_id: zod.string(),
+    parent_revision_id: zod
+      .union([zod.string(), zod.null()])
+      .default(createResourceV1AutocrudPetPostResponseParentRevisionIdDefault),
+    parent_schema_version: zod.union([zod.string(), zod.null()]).optional(),
+    schema_version: zod
+      .union([zod.string(), zod.null()])
+      .default(createResourceV1AutocrudPetPostResponseSchemaVersionDefault),
+    data_hash: zod.string().optional(),
+    status: zod.enum(['draft', 'stable']),
+    created_time: zod.string(),
+    updated_time: zod.string(),
+    created_by: zod.string(),
+    updated_by: zod.string(),
+  })
+  .describe(
+    'Metadata about a specific revision of a resource.\n\nThis class contains essential information about a particular revision,',
+  );
+
+/**
+ * Batch delete `pet` resources matching the given query conditions.
+
+**Query Parameters:**
+- Uses the same search parameters as the list endpoint
+- `is_deleted` parameter is **forced to `false`** — only non-deleted resources are targeted
+- Use `data_conditions` to filter specific resources for deletion
+- Use `limit` to control the maximum number of resources to delete
+
+**Soft Delete:**
+- Resources are marked as deleted rather than permanently removed
+- Deleted resources can be restored using the batch restore endpoint
+
+**Response:**
+- Returns a list of `ResourceMeta` for all deleted resources
+- Each entry will have `is_deleted` set to `true`
+- Empty list if no resources match the query
+
+**Examples:**
+- `DELETE /pet?limit=100` — Delete up to 100 resources
+- `DELETE /pet?data_conditions=[{"field_path":"age","operator":"gt","value":25}]` — Delete resources with age > 25
+
+**Error Responses:**
+- `400`: Bad request — Invalid query parameters or deletion error
+ * @summary Batch delete pet
+ */
+export const batchDeleteV1AutocrudPetDeleteQueryIsDeletedDefault = false;
+export const batchDeleteV1AutocrudPetDeleteQueryLimitDefault = 10;
+export const batchDeleteV1AutocrudPetDeleteQueryOffsetDefault = 0;
+
+export const BatchDeleteV1AutocrudPetDeleteQueryParams = zod.object({
+  qb: zod
+    .union([zod.string(), zod.null()])
+    .optional()
+    .describe(
+      "Query Builder expression. Example: \"QB['foo'] == 123\" or \"QB['age'].gt(18) & QB['status'].eq('active')\"",
+    ),
+  is_deleted: zod
+    .union([zod.boolean(), zod.null()])
+    .default(batchDeleteV1AutocrudPetDeleteQueryIsDeletedDefault)
+    .describe('Filter by deletion status'),
+  created_time_start: zod
+    .union([zod.string(), zod.null()])
+    .optional()
+    .describe('Filter by created time start (ISO format)'),
+  created_time_end: zod
+    .union([zod.string(), zod.null()])
+    .optional()
+    .describe('Filter by created time end (ISO format)'),
+  updated_time_start: zod
+    .union([zod.string(), zod.null()])
+    .optional()
+    .describe('Filter by updated time start (ISO format)'),
+  updated_time_end: zod
+    .union([zod.string(), zod.null()])
+    .optional()
+    .describe('Filter by updated time end (ISO format)'),
+  created_bys: zod
+    .union([zod.array(zod.string()), zod.null()])
+    .optional()
+    .describe('Filter by creators'),
+  updated_bys: zod
+    .union([zod.array(zod.string()), zod.null()])
+    .optional()
+    .describe('Filter by updaters'),
+  data_conditions: zod
+    .union([zod.string(), zod.null()])
+    .optional()
+    .describe(
+      'Data filter conditions in JSON format. Example: \'[{\"field_path\": \"department\", \"operator\": \"eq\", \"value\": \"Engineering\"}]\'',
+    ),
+  conditions: zod
+    .union([zod.string(), zod.null()])
+    .optional()
+    .describe(
+      'General filter conditions in JSON format for meta fields or data. Example: \'[{\"field_path\": \"resource_id\", \"operator\": \"starts_with\", \"value\": \"user-\"}]\'',
+    ),
+  sorts: zod
+    .union([zod.string(), zod.null()])
+    .optional()
+    .describe(
+      'Sort conditions in JSON format. Example: \'[{\"type\": \"meta\", \"key\": \"created_time\", \"direction\": \"+\"}, {\"type\": \"data\", \"field_path\": \"name\", \"direction\": \"-\"}]\'',
+    ),
+  limit: zod
+    .number()
+    .default(batchDeleteV1AutocrudPetDeleteQueryLimitDefault)
+    .describe('Maximum number of results'),
+  offset: zod
+    .number()
+    .default(batchDeleteV1AutocrudPetDeleteQueryOffsetDefault)
+    .describe('Number of results to skip'),
+  partial: zod
+    .union([zod.array(zod.string()), zod.null()])
+    .optional()
+    .describe("List of fields to retrieve (e.g. '\/field1', '\/nested\/field2')"),
+});
+
+export const batchDeleteV1AutocrudPetDeleteResponseSchemaVersionDefault = null;
+export const batchDeleteV1AutocrudPetDeleteResponseIsDeletedDefault = false;
+
+export const BatchDeleteV1AutocrudPetDeleteResponseItem = zod
+  .object({
+    current_revision_id: zod.string(),
+    resource_id: zod.string(),
+    schema_version: zod
+      .union([zod.string(), zod.null()])
+      .default(batchDeleteV1AutocrudPetDeleteResponseSchemaVersionDefault),
+    total_revision_count: zod.number(),
+    created_time: zod.string(),
+    updated_time: zod.string(),
+    created_by: zod.string(),
+    updated_by: zod.string(),
+    is_deleted: zod.boolean().default(batchDeleteV1AutocrudPetDeleteResponseIsDeletedDefault),
+    indexed_data: zod.looseObject({}).optional(),
+  })
+  .describe(
+    'Metadata about a resource, including its current revision and status.\n\nThis class provides essential information about a resource without including\nthe full data content.',
+  );
+export const BatchDeleteV1AutocrudPetDeleteResponse = zod.array(
+  BatchDeleteV1AutocrudPetDeleteResponseItem,
+);
+
+/**
+ * Export all (or filtered) **pet** resources as a
+streaming ``.acbak`` archive.
+
+Supports the same query parameters as the search endpoint
+(``qb``, ``is_deleted``, time ranges, etc.) to filter
+which resources are included.
+ * @summary Export pet data
+ */
+export const exportModelV1AutocrudPetExportGetQueryIsDeletedDefault = false;
+export const exportModelV1AutocrudPetExportGetQueryLimitDefault = 10;
+export const exportModelV1AutocrudPetExportGetQueryOffsetDefault = 0;
+
+export const ExportModelV1AutocrudPetExportGetQueryParams = zod.object({
+  qb: zod
+    .union([zod.string(), zod.null()])
+    .optional()
+    .describe(
+      "Query Builder expression. Example: \"QB['foo'] == 123\" or \"QB['age'].gt(18) & QB['status'].eq('active')\"",
+    ),
+  is_deleted: zod
+    .union([zod.boolean(), zod.null()])
+    .default(exportModelV1AutocrudPetExportGetQueryIsDeletedDefault)
+    .describe('Filter by deletion status'),
+  created_time_start: zod
+    .union([zod.string(), zod.null()])
+    .optional()
+    .describe('Filter by created time start (ISO format)'),
+  created_time_end: zod
+    .union([zod.string(), zod.null()])
+    .optional()
+    .describe('Filter by created time end (ISO format)'),
+  updated_time_start: zod
+    .union([zod.string(), zod.null()])
+    .optional()
+    .describe('Filter by updated time start (ISO format)'),
+  updated_time_end: zod
+    .union([zod.string(), zod.null()])
+    .optional()
+    .describe('Filter by updated time end (ISO format)'),
+  created_bys: zod
+    .union([zod.array(zod.string()), zod.null()])
+    .optional()
+    .describe('Filter by creators'),
+  updated_bys: zod
+    .union([zod.array(zod.string()), zod.null()])
+    .optional()
+    .describe('Filter by updaters'),
+  data_conditions: zod
+    .union([zod.string(), zod.null()])
+    .optional()
+    .describe(
+      'Data filter conditions in JSON format. Example: \'[{\"field_path\": \"department\", \"operator\": \"eq\", \"value\": \"Engineering\"}]\'',
+    ),
+  conditions: zod
+    .union([zod.string(), zod.null()])
+    .optional()
+    .describe(
+      'General filter conditions in JSON format for meta fields or data. Example: \'[{\"field_path\": \"resource_id\", \"operator\": \"starts_with\", \"value\": \"user-\"}]\'',
+    ),
+  sorts: zod
+    .union([zod.string(), zod.null()])
+    .optional()
+    .describe(
+      'Sort conditions in JSON format. Example: \'[{\"type\": \"meta\", \"key\": \"created_time\", \"direction\": \"+\"}, {\"type\": \"data\", \"field_path\": \"name\", \"direction\": \"-\"}]\'',
+    ),
+  limit: zod
+    .number()
+    .default(exportModelV1AutocrudPetExportGetQueryLimitDefault)
+    .describe('Maximum number of results'),
+  offset: zod
+    .number()
+    .default(exportModelV1AutocrudPetExportGetQueryOffsetDefault)
+    .describe('Number of results to skip'),
+  partial: zod
+    .union([zod.array(zod.string()), zod.null()])
+    .optional()
+    .describe("List of fields to retrieve (e.g. '\/field1', '\/nested\/field2')"),
+});
+
+export const ExportModelV1AutocrudPetExportGetResponse = zod.unknown();
+
+/**
+ * Import **pet** resources from a ``.acbak`` archive.
+
+The archive must contain a **pet** model section.
+Use ``on_duplicate`` to control behaviour when a resource ID
+already exists.
+ * @summary Import pet data
+ */
+export const importModelV1AutocrudPetImportPostQueryOnDuplicateDefault = `overwrite`;
+
+export const ImportModelV1AutocrudPetImportPostQueryParams = zod.object({
+  on_duplicate: zod
+    .string()
+    .default(importModelV1AutocrudPetImportPostQueryOnDuplicateDefault)
+    .describe('Strategy: overwrite | skip | raise_error'),
+});
+
+export const ImportModelV1AutocrudPetImportPostBody = zod.object({
+  file: zod.instanceof(File).describe('.acbak archive file'),
+});
+
+export const ImportModelV1AutocrudPetImportPostResponse = zod.record(zod.string(), zod.unknown());
 
 /**
  * Deprecated: use `GET /pet/{resource_id}?returns=meta` instead.
@@ -15525,606 +15527,6 @@ export const MigrateSingleResourceV1AutocrudPetMigrateSingleResourceIdPostRespon
   .describe('遷移進度訊息');
 
 /**
- * Export all (or filtered) **pet-job** resources as a
-streaming ``.acbak`` archive.
-
-Supports the same query parameters as the search endpoint
-(``qb``, ``is_deleted``, time ranges, etc.) to filter
-which resources are included.
- * @summary Export pet-job data
- */
-export const exportModelV1AutocrudPetJobExportGetQueryIsDeletedDefault = false;
-export const exportModelV1AutocrudPetJobExportGetQueryLimitDefault = 10;
-export const exportModelV1AutocrudPetJobExportGetQueryOffsetDefault = 0;
-
-export const ExportModelV1AutocrudPetJobExportGetQueryParams = zod.object({
-  qb: zod
-    .union([zod.string(), zod.null()])
-    .optional()
-    .describe(
-      "Query Builder expression. Example: \"QB['foo'] == 123\" or \"QB['age'].gt(18) & QB['status'].eq('active')\"",
-    ),
-  is_deleted: zod
-    .union([zod.boolean(), zod.null()])
-    .default(exportModelV1AutocrudPetJobExportGetQueryIsDeletedDefault)
-    .describe('Filter by deletion status'),
-  created_time_start: zod
-    .union([zod.string(), zod.null()])
-    .optional()
-    .describe('Filter by created time start (ISO format)'),
-  created_time_end: zod
-    .union([zod.string(), zod.null()])
-    .optional()
-    .describe('Filter by created time end (ISO format)'),
-  updated_time_start: zod
-    .union([zod.string(), zod.null()])
-    .optional()
-    .describe('Filter by updated time start (ISO format)'),
-  updated_time_end: zod
-    .union([zod.string(), zod.null()])
-    .optional()
-    .describe('Filter by updated time end (ISO format)'),
-  created_bys: zod
-    .union([zod.array(zod.string()), zod.null()])
-    .optional()
-    .describe('Filter by creators'),
-  updated_bys: zod
-    .union([zod.array(zod.string()), zod.null()])
-    .optional()
-    .describe('Filter by updaters'),
-  data_conditions: zod
-    .union([zod.string(), zod.null()])
-    .optional()
-    .describe(
-      'Data filter conditions in JSON format. Example: \'[{\"field_path\": \"department\", \"operator\": \"eq\", \"value\": \"Engineering\"}]\'',
-    ),
-  conditions: zod
-    .union([zod.string(), zod.null()])
-    .optional()
-    .describe(
-      'General filter conditions in JSON format for meta fields or data. Example: \'[{\"field_path\": \"resource_id\", \"operator\": \"starts_with\", \"value\": \"user-\"}]\'',
-    ),
-  sorts: zod
-    .union([zod.string(), zod.null()])
-    .optional()
-    .describe(
-      'Sort conditions in JSON format. Example: \'[{\"type\": \"meta\", \"key\": \"created_time\", \"direction\": \"+\"}, {\"type\": \"data\", \"field_path\": \"name\", \"direction\": \"-\"}]\'',
-    ),
-  limit: zod
-    .number()
-    .default(exportModelV1AutocrudPetJobExportGetQueryLimitDefault)
-    .describe('Maximum number of results'),
-  offset: zod
-    .number()
-    .default(exportModelV1AutocrudPetJobExportGetQueryOffsetDefault)
-    .describe('Number of results to skip'),
-  partial: zod
-    .union([zod.array(zod.string()), zod.null()])
-    .optional()
-    .describe("List of fields to retrieve (e.g. '\/field1', '\/nested\/field2')"),
-});
-
-export const ExportModelV1AutocrudPetJobExportGetResponse = zod.unknown();
-
-/**
- * Import **pet-job** resources from a ``.acbak`` archive.
-
-The archive must contain a **pet-job** model section.
-Use ``on_duplicate`` to control behaviour when a resource ID
-already exists.
- * @summary Import pet-job data
- */
-export const importModelV1AutocrudPetJobImportPostQueryOnDuplicateDefault = `overwrite`;
-
-export const ImportModelV1AutocrudPetJobImportPostQueryParams = zod.object({
-  on_duplicate: zod
-    .string()
-    .default(importModelV1AutocrudPetJobImportPostQueryOnDuplicateDefault)
-    .describe('Strategy: overwrite | skip | raise_error'),
-});
-
-export const ImportModelV1AutocrudPetJobImportPostBody = zod.object({
-  file: zod.instanceof(File).describe('.acbak archive file'),
-});
-
-export const ImportModelV1AutocrudPetJobImportPostResponse = zod.record(
-  zod.string(),
-  zod.unknown(),
-);
-
-/**
- * Create a new `pet-job` resource.
-
-**Request Body:**
-- Send the resource data as JSON in the request body
-- The data will be validated against the `pet-job` schema
-
-**Response:**
-- Returns revision information for the newly created resource
-- Includes `resource_id` and `revision_id` for tracking
-- All resources are version-controlled from creation
-
-**Examples:**
-- `POST /pet-job` with JSON body - Create new resource
-- Response includes resource and revision identifiers
-
-**Error Responses:**
-- `422`: Validation error - Invalid data format or missing required fields
-- `400`: Bad request - General creation error
- * @summary Create pet-job
- */
-export const createResourceV1AutocrudPetJobPostBodyPayloadOneSpeedDefault = 10;
-export const createResourceV1AutocrudPetJobPostBodyPayloadOneStaminaDefault = 100;
-export const createResourceV1AutocrudPetJobPostBodyPayloadTwoLevelDefault = 1;
-export const createResourceV1AutocrudPetJobPostBodyPayloadTwoHpDefault = 100;
-export const createResourceV1AutocrudPetJobPostBodyPayloadTwoMpDefault = 50;
-export const createResourceV1AutocrudPetJobPostBodyPayloadTwoAttackDefault = 10;
-export const createResourceV1AutocrudPetJobPostBodyPayloadTwoDefenseDefault = 5;
-export const createResourceV1AutocrudPetJobPostBodyStatusDefault = `pending`;
-export const createResourceV1AutocrudPetJobPostBodyErrmsgDefault = null;
-export const createResourceV1AutocrudPetJobPostBodyArtifactDefault = null;
-export const createResourceV1AutocrudPetJobPostBodyRetriesDefault = 0;
-export const createResourceV1AutocrudPetJobPostBodyMaxRetriesDefault = null;
-export const createResourceV1AutocrudPetJobPostBodyPeriodicIntervalSecondsDefault = null;
-export const createResourceV1AutocrudPetJobPostBodyPeriodicMaxRunsDefault = null;
-export const createResourceV1AutocrudPetJobPostBodyPeriodicRunsDefault = 0;
-export const createResourceV1AutocrudPetJobPostBodyPeriodicInitialDelaySecondsDefault = null;
-export const createResourceV1AutocrudPetJobPostBodyLastHeartbeatAtDefault = null;
-
-export const CreateResourceV1AutocrudPetJobPostBody = zod
-  .object({
-    payload: zod.union([
-      zod
-        .object({
-          type: zod.enum(['Mount']),
-          name: zod.string(),
-          species: zod.string(),
-          speed: zod.number().default(createResourceV1AutocrudPetJobPostBodyPayloadOneSpeedDefault),
-          stamina: zod
-            .number()
-            .default(createResourceV1AutocrudPetJobPostBodyPayloadOneStaminaDefault),
-          owner_id: zod.string(),
-        })
-        .describe('遊戲中的坐騎系統示例'),
-      zod
-        .object({
-          type: zod.enum(['Dog']),
-          name: zod.string(),
-          breed: zod.string(),
-          level: zod.number().default(createResourceV1AutocrudPetJobPostBodyPayloadTwoLevelDefault),
-          hp: zod.number().default(createResourceV1AutocrudPetJobPostBodyPayloadTwoHpDefault),
-          mp: zod.number().default(createResourceV1AutocrudPetJobPostBodyPayloadTwoMpDefault),
-          attack: zod
-            .number()
-            .default(createResourceV1AutocrudPetJobPostBodyPayloadTwoAttackDefault),
-          defense: zod
-            .number()
-            .default(createResourceV1AutocrudPetJobPostBodyPayloadTwoDefenseDefault),
-          owner_id: zod.string(),
-        })
-        .describe('遊戲中的寵物系統示例'),
-    ]),
-    status: zod
-      .enum(['completed', 'failed', 'pending', 'processing'])
-      .default(createResourceV1AutocrudPetJobPostBodyStatusDefault),
-    errmsg: zod
-      .union([zod.string(), zod.null()])
-      .default(createResourceV1AutocrudPetJobPostBodyErrmsgDefault),
-    artifact: zod.null().default(createResourceV1AutocrudPetJobPostBodyArtifactDefault),
-    retries: zod.number().default(createResourceV1AutocrudPetJobPostBodyRetriesDefault),
-    max_retries: zod
-      .union([zod.number(), zod.null()])
-      .default(createResourceV1AutocrudPetJobPostBodyMaxRetriesDefault),
-    periodic_interval_seconds: zod
-      .union([zod.number(), zod.null()])
-      .default(createResourceV1AutocrudPetJobPostBodyPeriodicIntervalSecondsDefault),
-    periodic_max_runs: zod
-      .union([zod.number(), zod.null()])
-      .default(createResourceV1AutocrudPetJobPostBodyPeriodicMaxRunsDefault),
-    periodic_runs: zod.number().default(createResourceV1AutocrudPetJobPostBodyPeriodicRunsDefault),
-    periodic_initial_delay_seconds: zod
-      .union([zod.number(), zod.null()])
-      .default(createResourceV1AutocrudPetJobPostBodyPeriodicInitialDelaySecondsDefault),
-    last_heartbeat_at: zod
-      .union([zod.string(), zod.null()])
-      .default(createResourceV1AutocrudPetJobPostBodyLastHeartbeatAtDefault),
-  })
-  .describe(
-    'A job wrapping a payload ``T`` with optional artifact type ``D``.\n\nThe second type parameter ``D`` defaults to ``None`` so existing\n``Job[T]`` usage is fully backward-compatible.\n\nAttributes:\n    payload: The input data for the job.\n    status: Current processing status.\n    errmsg: Error or result message after processing.\n    artifact: Optional typed output produced by the job handler.\n    retries: Number of times the job has been retried.',
-  );
-
-export const createResourceV1AutocrudPetJobPostResponseParentRevisionIdDefault = null;
-export const createResourceV1AutocrudPetJobPostResponseSchemaVersionDefault = null;
-
-export const CreateResourceV1AutocrudPetJobPostResponse = zod
-  .object({
-    uid: zod.uuid(),
-    resource_id: zod.string(),
-    revision_id: zod.string(),
-    parent_revision_id: zod
-      .union([zod.string(), zod.null()])
-      .default(createResourceV1AutocrudPetJobPostResponseParentRevisionIdDefault),
-    parent_schema_version: zod.union([zod.string(), zod.null()]).optional(),
-    schema_version: zod
-      .union([zod.string(), zod.null()])
-      .default(createResourceV1AutocrudPetJobPostResponseSchemaVersionDefault),
-    data_hash: zod.string().optional(),
-    status: zod.enum(['draft', 'stable']),
-    created_time: zod.string(),
-    updated_time: zod.string(),
-    created_by: zod.string(),
-    updated_by: zod.string(),
-  })
-  .describe(
-    'Metadata about a specific revision of a resource.\n\nThis class contains essential information about a particular revision,',
-  );
-
-/**
- * Retrieve a list of `pet-job` resources.
-
-Use the `returns` query parameter to control which sections are included in each item.
-By default all sections are returned: `data`, `revision_info`, `meta`.
-
-**Query Parameters:**
-- `returns` (default `"data,revision_info,meta"`): Comma-separated list of sections to include.
-  Allowed values: `data`, `revision_info`, `meta`.
-- `limit` / `offset`: Pagination controls.
-- `partial` / `partial[]`: Partial field selection.
-- All standard filtering and sorting parameters.
-
-**Examples:**
-- `GET /pet-job` — full list (data + meta + revision_info)
-- `GET /pet-job?returns=data` — data only
-- `GET /pet-job?returns=data,meta` — data + meta, no revision_info
-- `GET /pet-job?limit=20&offset=40` — pagination
-
-**Error Responses:**
-- `400`: Bad request - Invalid query parameters or search error
- * @summary List pet-job resources
- */
-export const listResourcesV1AutocrudPetJobGetQueryIsDeletedDefault = false;
-export const listResourcesV1AutocrudPetJobGetQueryLimitDefault = 10;
-export const listResourcesV1AutocrudPetJobGetQueryOffsetDefault = 0;
-export const listResourcesV1AutocrudPetJobGetQueryReturnsDefault = `data,revision_info,meta`;
-
-export const ListResourcesV1AutocrudPetJobGetQueryParams = zod.object({
-  qb: zod
-    .union([zod.string(), zod.null()])
-    .optional()
-    .describe(
-      "Query Builder expression. Example: \"QB['foo'] == 123\" or \"QB['age'].gt(18) & QB['status'].eq('active')\"",
-    ),
-  is_deleted: zod
-    .union([zod.boolean(), zod.null()])
-    .default(listResourcesV1AutocrudPetJobGetQueryIsDeletedDefault)
-    .describe('Filter by deletion status'),
-  created_time_start: zod
-    .union([zod.string(), zod.null()])
-    .optional()
-    .describe('Filter by created time start (ISO format)'),
-  created_time_end: zod
-    .union([zod.string(), zod.null()])
-    .optional()
-    .describe('Filter by created time end (ISO format)'),
-  updated_time_start: zod
-    .union([zod.string(), zod.null()])
-    .optional()
-    .describe('Filter by updated time start (ISO format)'),
-  updated_time_end: zod
-    .union([zod.string(), zod.null()])
-    .optional()
-    .describe('Filter by updated time end (ISO format)'),
-  created_bys: zod
-    .union([zod.array(zod.string()), zod.null()])
-    .optional()
-    .describe('Filter by creators'),
-  updated_bys: zod
-    .union([zod.array(zod.string()), zod.null()])
-    .optional()
-    .describe('Filter by updaters'),
-  data_conditions: zod
-    .union([zod.string(), zod.null()])
-    .optional()
-    .describe(
-      'Data filter conditions in JSON format. Example: \'[{\"field_path\": \"department\", \"operator\": \"eq\", \"value\": \"Engineering\"}]\'',
-    ),
-  conditions: zod
-    .union([zod.string(), zod.null()])
-    .optional()
-    .describe(
-      'General filter conditions in JSON format for meta fields or data. Example: \'[{\"field_path\": \"resource_id\", \"operator\": \"starts_with\", \"value\": \"user-\"}]\'',
-    ),
-  sorts: zod
-    .union([zod.string(), zod.null()])
-    .optional()
-    .describe(
-      'Sort conditions in JSON format. Example: \'[{\"type\": \"meta\", \"key\": \"created_time\", \"direction\": \"+\"}, {\"type\": \"data\", \"field_path\": \"name\", \"direction\": \"-\"}]\'',
-    ),
-  limit: zod
-    .number()
-    .default(listResourcesV1AutocrudPetJobGetQueryLimitDefault)
-    .describe('Maximum number of results'),
-  offset: zod
-    .number()
-    .default(listResourcesV1AutocrudPetJobGetQueryOffsetDefault)
-    .describe('Number of results to skip'),
-  partial: zod
-    .union([zod.array(zod.string()), zod.null()])
-    .optional()
-    .describe("List of fields to retrieve (e.g. '\/field1', '\/nested\/field2')"),
-  returns: zod
-    .string()
-    .default(listResourcesV1AutocrudPetJobGetQueryReturnsDefault)
-    .describe('Fields to return, comma-separated. Options: data, revision_info, meta'),
-});
-
-export const listResourcesV1AutocrudPetJobGetResponseDataPayloadOneSpeedDefault = 10;
-export const listResourcesV1AutocrudPetJobGetResponseDataPayloadOneStaminaDefault = 100;
-export const listResourcesV1AutocrudPetJobGetResponseDataPayloadTwoLevelDefault = 1;
-export const listResourcesV1AutocrudPetJobGetResponseDataPayloadTwoHpDefault = 100;
-export const listResourcesV1AutocrudPetJobGetResponseDataPayloadTwoMpDefault = 50;
-export const listResourcesV1AutocrudPetJobGetResponseDataPayloadTwoAttackDefault = 10;
-export const listResourcesV1AutocrudPetJobGetResponseDataPayloadTwoDefenseDefault = 5;
-export const listResourcesV1AutocrudPetJobGetResponseDataStatusDefault = `pending`;
-export const listResourcesV1AutocrudPetJobGetResponseDataErrmsgDefault = null;
-export const listResourcesV1AutocrudPetJobGetResponseDataArtifactDefault = null;
-export const listResourcesV1AutocrudPetJobGetResponseDataRetriesDefault = 0;
-export const listResourcesV1AutocrudPetJobGetResponseDataMaxRetriesDefault = null;
-export const listResourcesV1AutocrudPetJobGetResponseDataPeriodicIntervalSecondsDefault = null;
-export const listResourcesV1AutocrudPetJobGetResponseDataPeriodicMaxRunsDefault = null;
-export const listResourcesV1AutocrudPetJobGetResponseDataPeriodicRunsDefault = 0;
-export const listResourcesV1AutocrudPetJobGetResponseDataPeriodicInitialDelaySecondsDefault = null;
-export const listResourcesV1AutocrudPetJobGetResponseDataLastHeartbeatAtDefault = null;
-export const listResourcesV1AutocrudPetJobGetResponseRevisionInfoParentRevisionIdDefault = null;
-export const listResourcesV1AutocrudPetJobGetResponseRevisionInfoSchemaVersionDefault = null;
-export const listResourcesV1AutocrudPetJobGetResponseMetaSchemaVersionDefault = null;
-export const listResourcesV1AutocrudPetJobGetResponseMetaIsDeletedDefault = false;
-
-export const ListResourcesV1AutocrudPetJobGetResponseItem = zod.object({
-  data: zod
-    .object({
-      payload: zod.union([
-        zod
-          .object({
-            type: zod.enum(['Mount']),
-            name: zod.string(),
-            species: zod.string(),
-            speed: zod
-              .number()
-              .default(listResourcesV1AutocrudPetJobGetResponseDataPayloadOneSpeedDefault),
-            stamina: zod
-              .number()
-              .default(listResourcesV1AutocrudPetJobGetResponseDataPayloadOneStaminaDefault),
-            owner_id: zod.string(),
-          })
-          .describe('遊戲中的坐騎系統示例'),
-        zod
-          .object({
-            type: zod.enum(['Dog']),
-            name: zod.string(),
-            breed: zod.string(),
-            level: zod
-              .number()
-              .default(listResourcesV1AutocrudPetJobGetResponseDataPayloadTwoLevelDefault),
-            hp: zod
-              .number()
-              .default(listResourcesV1AutocrudPetJobGetResponseDataPayloadTwoHpDefault),
-            mp: zod
-              .number()
-              .default(listResourcesV1AutocrudPetJobGetResponseDataPayloadTwoMpDefault),
-            attack: zod
-              .number()
-              .default(listResourcesV1AutocrudPetJobGetResponseDataPayloadTwoAttackDefault),
-            defense: zod
-              .number()
-              .default(listResourcesV1AutocrudPetJobGetResponseDataPayloadTwoDefenseDefault),
-            owner_id: zod.string(),
-          })
-          .describe('遊戲中的寵物系統示例'),
-      ]),
-      status: zod
-        .enum(['completed', 'failed', 'pending', 'processing'])
-        .default(listResourcesV1AutocrudPetJobGetResponseDataStatusDefault),
-      errmsg: zod
-        .union([zod.string(), zod.null()])
-        .default(listResourcesV1AutocrudPetJobGetResponseDataErrmsgDefault),
-      artifact: zod.null().default(listResourcesV1AutocrudPetJobGetResponseDataArtifactDefault),
-      retries: zod.number().default(listResourcesV1AutocrudPetJobGetResponseDataRetriesDefault),
-      max_retries: zod
-        .union([zod.number(), zod.null()])
-        .default(listResourcesV1AutocrudPetJobGetResponseDataMaxRetriesDefault),
-      periodic_interval_seconds: zod
-        .union([zod.number(), zod.null()])
-        .default(listResourcesV1AutocrudPetJobGetResponseDataPeriodicIntervalSecondsDefault),
-      periodic_max_runs: zod
-        .union([zod.number(), zod.null()])
-        .default(listResourcesV1AutocrudPetJobGetResponseDataPeriodicMaxRunsDefault),
-      periodic_runs: zod
-        .number()
-        .default(listResourcesV1AutocrudPetJobGetResponseDataPeriodicRunsDefault),
-      periodic_initial_delay_seconds: zod
-        .union([zod.number(), zod.null()])
-        .default(listResourcesV1AutocrudPetJobGetResponseDataPeriodicInitialDelaySecondsDefault),
-      last_heartbeat_at: zod
-        .union([zod.string(), zod.null()])
-        .default(listResourcesV1AutocrudPetJobGetResponseDataLastHeartbeatAtDefault),
-    })
-    .optional()
-    .describe(
-      'A job wrapping a payload ``T`` with optional artifact type ``D``.\n\nThe second type parameter ``D`` defaults to ``None`` so existing\n``Job[T]`` usage is fully backward-compatible.\n\nAttributes:\n    payload: The input data for the job.\n    status: Current processing status.\n    errmsg: Error or result message after processing.\n    artifact: Optional typed output produced by the job handler.\n    retries: Number of times the job has been retried.',
-    ),
-  revision_info: zod
-    .object({
-      uid: zod.uuid(),
-      resource_id: zod.string(),
-      revision_id: zod.string(),
-      parent_revision_id: zod
-        .union([zod.string(), zod.null()])
-        .default(listResourcesV1AutocrudPetJobGetResponseRevisionInfoParentRevisionIdDefault),
-      parent_schema_version: zod.union([zod.string(), zod.null()]).optional(),
-      schema_version: zod
-        .union([zod.string(), zod.null()])
-        .default(listResourcesV1AutocrudPetJobGetResponseRevisionInfoSchemaVersionDefault),
-      data_hash: zod.string().optional(),
-      status: zod.enum(['draft', 'stable']),
-      created_time: zod.string(),
-      updated_time: zod.string(),
-      created_by: zod.string(),
-      updated_by: zod.string(),
-    })
-    .optional()
-    .describe(
-      'Metadata about a specific revision of a resource.\n\nThis class contains essential information about a particular revision,',
-    ),
-  meta: zod
-    .object({
-      current_revision_id: zod.string(),
-      resource_id: zod.string(),
-      schema_version: zod
-        .union([zod.string(), zod.null()])
-        .default(listResourcesV1AutocrudPetJobGetResponseMetaSchemaVersionDefault),
-      total_revision_count: zod.number(),
-      created_time: zod.string(),
-      updated_time: zod.string(),
-      created_by: zod.string(),
-      updated_by: zod.string(),
-      is_deleted: zod
-        .boolean()
-        .default(listResourcesV1AutocrudPetJobGetResponseMetaIsDeletedDefault),
-      indexed_data: zod.looseObject({}).optional(),
-    })
-    .optional()
-    .describe(
-      'Metadata about a resource, including its current revision and status.\n\nThis class provides essential information about a resource without including\nthe full data content.',
-    ),
-});
-export const ListResourcesV1AutocrudPetJobGetResponse = zod.array(
-  ListResourcesV1AutocrudPetJobGetResponseItem,
-);
-
-/**
- * Batch delete `pet-job` resources matching the given query conditions.
-
-**Query Parameters:**
-- Uses the same search parameters as the list endpoint
-- `is_deleted` parameter is **forced to `false`** — only non-deleted resources are targeted
-- Use `data_conditions` to filter specific resources for deletion
-- Use `limit` to control the maximum number of resources to delete
-
-**Soft Delete:**
-- Resources are marked as deleted rather than permanently removed
-- Deleted resources can be restored using the batch restore endpoint
-
-**Response:**
-- Returns a list of `ResourceMeta` for all deleted resources
-- Each entry will have `is_deleted` set to `true`
-- Empty list if no resources match the query
-
-**Examples:**
-- `DELETE /pet-job?limit=100` — Delete up to 100 resources
-- `DELETE /pet-job?data_conditions=[{"field_path":"age","operator":"gt","value":25}]` — Delete resources with age > 25
-
-**Error Responses:**
-- `400`: Bad request — Invalid query parameters or deletion error
- * @summary Batch delete pet-job
- */
-export const batchDeleteV1AutocrudPetJobDeleteQueryIsDeletedDefault = false;
-export const batchDeleteV1AutocrudPetJobDeleteQueryLimitDefault = 10;
-export const batchDeleteV1AutocrudPetJobDeleteQueryOffsetDefault = 0;
-
-export const BatchDeleteV1AutocrudPetJobDeleteQueryParams = zod.object({
-  qb: zod
-    .union([zod.string(), zod.null()])
-    .optional()
-    .describe(
-      "Query Builder expression. Example: \"QB['foo'] == 123\" or \"QB['age'].gt(18) & QB['status'].eq('active')\"",
-    ),
-  is_deleted: zod
-    .union([zod.boolean(), zod.null()])
-    .default(batchDeleteV1AutocrudPetJobDeleteQueryIsDeletedDefault)
-    .describe('Filter by deletion status'),
-  created_time_start: zod
-    .union([zod.string(), zod.null()])
-    .optional()
-    .describe('Filter by created time start (ISO format)'),
-  created_time_end: zod
-    .union([zod.string(), zod.null()])
-    .optional()
-    .describe('Filter by created time end (ISO format)'),
-  updated_time_start: zod
-    .union([zod.string(), zod.null()])
-    .optional()
-    .describe('Filter by updated time start (ISO format)'),
-  updated_time_end: zod
-    .union([zod.string(), zod.null()])
-    .optional()
-    .describe('Filter by updated time end (ISO format)'),
-  created_bys: zod
-    .union([zod.array(zod.string()), zod.null()])
-    .optional()
-    .describe('Filter by creators'),
-  updated_bys: zod
-    .union([zod.array(zod.string()), zod.null()])
-    .optional()
-    .describe('Filter by updaters'),
-  data_conditions: zod
-    .union([zod.string(), zod.null()])
-    .optional()
-    .describe(
-      'Data filter conditions in JSON format. Example: \'[{\"field_path\": \"department\", \"operator\": \"eq\", \"value\": \"Engineering\"}]\'',
-    ),
-  conditions: zod
-    .union([zod.string(), zod.null()])
-    .optional()
-    .describe(
-      'General filter conditions in JSON format for meta fields or data. Example: \'[{\"field_path\": \"resource_id\", \"operator\": \"starts_with\", \"value\": \"user-\"}]\'',
-    ),
-  sorts: zod
-    .union([zod.string(), zod.null()])
-    .optional()
-    .describe(
-      'Sort conditions in JSON format. Example: \'[{\"type\": \"meta\", \"key\": \"created_time\", \"direction\": \"+\"}, {\"type\": \"data\", \"field_path\": \"name\", \"direction\": \"-\"}]\'',
-    ),
-  limit: zod
-    .number()
-    .default(batchDeleteV1AutocrudPetJobDeleteQueryLimitDefault)
-    .describe('Maximum number of results'),
-  offset: zod
-    .number()
-    .default(batchDeleteV1AutocrudPetJobDeleteQueryOffsetDefault)
-    .describe('Number of results to skip'),
-  partial: zod
-    .union([zod.array(zod.string()), zod.null()])
-    .optional()
-    .describe("List of fields to retrieve (e.g. '\/field1', '\/nested\/field2')"),
-});
-
-export const batchDeleteV1AutocrudPetJobDeleteResponseSchemaVersionDefault = null;
-export const batchDeleteV1AutocrudPetJobDeleteResponseIsDeletedDefault = false;
-
-export const BatchDeleteV1AutocrudPetJobDeleteResponseItem = zod
-  .object({
-    current_revision_id: zod.string(),
-    resource_id: zod.string(),
-    schema_version: zod
-      .union([zod.string(), zod.null()])
-      .default(batchDeleteV1AutocrudPetJobDeleteResponseSchemaVersionDefault),
-    total_revision_count: zod.number(),
-    created_time: zod.string(),
-    updated_time: zod.string(),
-    created_by: zod.string(),
-    updated_by: zod.string(),
-    is_deleted: zod.boolean().default(batchDeleteV1AutocrudPetJobDeleteResponseIsDeletedDefault),
-    indexed_data: zod.looseObject({}).optional(),
-  })
-  .describe(
-    'Metadata about a resource, including its current revision and status.\n\nThis class provides essential information about a resource without including\nthe full data content.',
-  );
-export const BatchDeleteV1AutocrudPetJobDeleteResponse = zod.array(
-  BatchDeleteV1AutocrudPetJobDeleteResponseItem,
-);
-
-/**
  * Retrieve a list of `pet-job` resources returning only the data content.
 
 **Response Format:**
@@ -17044,6 +16446,606 @@ export const GetResourcesCountV1AutocrudPetJobCountGetQueryParams = zod.object({
 });
 
 export const GetResourcesCountV1AutocrudPetJobCountGetResponse = zod.number();
+
+/**
+ * Retrieve a list of `pet-job` resources.
+
+Use the `returns` query parameter to control which sections are included in each item.
+By default all sections are returned: `data`, `revision_info`, `meta`.
+
+**Query Parameters:**
+- `returns` (default `"data,revision_info,meta"`): Comma-separated list of sections to include.
+  Allowed values: `data`, `revision_info`, `meta`.
+- `limit` / `offset`: Pagination controls.
+- `partial` / `partial[]`: Partial field selection.
+- All standard filtering and sorting parameters.
+
+**Examples:**
+- `GET /pet-job` — full list (data + meta + revision_info)
+- `GET /pet-job?returns=data` — data only
+- `GET /pet-job?returns=data,meta` — data + meta, no revision_info
+- `GET /pet-job?limit=20&offset=40` — pagination
+
+**Error Responses:**
+- `400`: Bad request - Invalid query parameters or search error
+ * @summary List pet-job resources
+ */
+export const listResourcesV1AutocrudPetJobGetQueryIsDeletedDefault = false;
+export const listResourcesV1AutocrudPetJobGetQueryLimitDefault = 10;
+export const listResourcesV1AutocrudPetJobGetQueryOffsetDefault = 0;
+export const listResourcesV1AutocrudPetJobGetQueryReturnsDefault = `data,revision_info,meta`;
+
+export const ListResourcesV1AutocrudPetJobGetQueryParams = zod.object({
+  qb: zod
+    .union([zod.string(), zod.null()])
+    .optional()
+    .describe(
+      "Query Builder expression. Example: \"QB['foo'] == 123\" or \"QB['age'].gt(18) & QB['status'].eq('active')\"",
+    ),
+  is_deleted: zod
+    .union([zod.boolean(), zod.null()])
+    .default(listResourcesV1AutocrudPetJobGetQueryIsDeletedDefault)
+    .describe('Filter by deletion status'),
+  created_time_start: zod
+    .union([zod.string(), zod.null()])
+    .optional()
+    .describe('Filter by created time start (ISO format)'),
+  created_time_end: zod
+    .union([zod.string(), zod.null()])
+    .optional()
+    .describe('Filter by created time end (ISO format)'),
+  updated_time_start: zod
+    .union([zod.string(), zod.null()])
+    .optional()
+    .describe('Filter by updated time start (ISO format)'),
+  updated_time_end: zod
+    .union([zod.string(), zod.null()])
+    .optional()
+    .describe('Filter by updated time end (ISO format)'),
+  created_bys: zod
+    .union([zod.array(zod.string()), zod.null()])
+    .optional()
+    .describe('Filter by creators'),
+  updated_bys: zod
+    .union([zod.array(zod.string()), zod.null()])
+    .optional()
+    .describe('Filter by updaters'),
+  data_conditions: zod
+    .union([zod.string(), zod.null()])
+    .optional()
+    .describe(
+      'Data filter conditions in JSON format. Example: \'[{\"field_path\": \"department\", \"operator\": \"eq\", \"value\": \"Engineering\"}]\'',
+    ),
+  conditions: zod
+    .union([zod.string(), zod.null()])
+    .optional()
+    .describe(
+      'General filter conditions in JSON format for meta fields or data. Example: \'[{\"field_path\": \"resource_id\", \"operator\": \"starts_with\", \"value\": \"user-\"}]\'',
+    ),
+  sorts: zod
+    .union([zod.string(), zod.null()])
+    .optional()
+    .describe(
+      'Sort conditions in JSON format. Example: \'[{\"type\": \"meta\", \"key\": \"created_time\", \"direction\": \"+\"}, {\"type\": \"data\", \"field_path\": \"name\", \"direction\": \"-\"}]\'',
+    ),
+  limit: zod
+    .number()
+    .default(listResourcesV1AutocrudPetJobGetQueryLimitDefault)
+    .describe('Maximum number of results'),
+  offset: zod
+    .number()
+    .default(listResourcesV1AutocrudPetJobGetQueryOffsetDefault)
+    .describe('Number of results to skip'),
+  partial: zod
+    .union([zod.array(zod.string()), zod.null()])
+    .optional()
+    .describe("List of fields to retrieve (e.g. '\/field1', '\/nested\/field2')"),
+  returns: zod
+    .string()
+    .default(listResourcesV1AutocrudPetJobGetQueryReturnsDefault)
+    .describe('Fields to return, comma-separated. Options: data, revision_info, meta'),
+});
+
+export const listResourcesV1AutocrudPetJobGetResponseDataPayloadOneSpeedDefault = 10;
+export const listResourcesV1AutocrudPetJobGetResponseDataPayloadOneStaminaDefault = 100;
+export const listResourcesV1AutocrudPetJobGetResponseDataPayloadTwoLevelDefault = 1;
+export const listResourcesV1AutocrudPetJobGetResponseDataPayloadTwoHpDefault = 100;
+export const listResourcesV1AutocrudPetJobGetResponseDataPayloadTwoMpDefault = 50;
+export const listResourcesV1AutocrudPetJobGetResponseDataPayloadTwoAttackDefault = 10;
+export const listResourcesV1AutocrudPetJobGetResponseDataPayloadTwoDefenseDefault = 5;
+export const listResourcesV1AutocrudPetJobGetResponseDataStatusDefault = `pending`;
+export const listResourcesV1AutocrudPetJobGetResponseDataErrmsgDefault = null;
+export const listResourcesV1AutocrudPetJobGetResponseDataArtifactDefault = null;
+export const listResourcesV1AutocrudPetJobGetResponseDataRetriesDefault = 0;
+export const listResourcesV1AutocrudPetJobGetResponseDataMaxRetriesDefault = null;
+export const listResourcesV1AutocrudPetJobGetResponseDataPeriodicIntervalSecondsDefault = null;
+export const listResourcesV1AutocrudPetJobGetResponseDataPeriodicMaxRunsDefault = null;
+export const listResourcesV1AutocrudPetJobGetResponseDataPeriodicRunsDefault = 0;
+export const listResourcesV1AutocrudPetJobGetResponseDataPeriodicInitialDelaySecondsDefault = null;
+export const listResourcesV1AutocrudPetJobGetResponseDataLastHeartbeatAtDefault = null;
+export const listResourcesV1AutocrudPetJobGetResponseRevisionInfoParentRevisionIdDefault = null;
+export const listResourcesV1AutocrudPetJobGetResponseRevisionInfoSchemaVersionDefault = null;
+export const listResourcesV1AutocrudPetJobGetResponseMetaSchemaVersionDefault = null;
+export const listResourcesV1AutocrudPetJobGetResponseMetaIsDeletedDefault = false;
+
+export const ListResourcesV1AutocrudPetJobGetResponseItem = zod.object({
+  data: zod
+    .object({
+      payload: zod.union([
+        zod
+          .object({
+            type: zod.enum(['Mount']),
+            name: zod.string(),
+            species: zod.string(),
+            speed: zod
+              .number()
+              .default(listResourcesV1AutocrudPetJobGetResponseDataPayloadOneSpeedDefault),
+            stamina: zod
+              .number()
+              .default(listResourcesV1AutocrudPetJobGetResponseDataPayloadOneStaminaDefault),
+            owner_id: zod.string(),
+          })
+          .describe('遊戲中的坐騎系統示例'),
+        zod
+          .object({
+            type: zod.enum(['Dog']),
+            name: zod.string(),
+            breed: zod.string(),
+            level: zod
+              .number()
+              .default(listResourcesV1AutocrudPetJobGetResponseDataPayloadTwoLevelDefault),
+            hp: zod
+              .number()
+              .default(listResourcesV1AutocrudPetJobGetResponseDataPayloadTwoHpDefault),
+            mp: zod
+              .number()
+              .default(listResourcesV1AutocrudPetJobGetResponseDataPayloadTwoMpDefault),
+            attack: zod
+              .number()
+              .default(listResourcesV1AutocrudPetJobGetResponseDataPayloadTwoAttackDefault),
+            defense: zod
+              .number()
+              .default(listResourcesV1AutocrudPetJobGetResponseDataPayloadTwoDefenseDefault),
+            owner_id: zod.string(),
+          })
+          .describe('遊戲中的寵物系統示例'),
+      ]),
+      status: zod
+        .enum(['completed', 'failed', 'pending', 'processing'])
+        .default(listResourcesV1AutocrudPetJobGetResponseDataStatusDefault),
+      errmsg: zod
+        .union([zod.string(), zod.null()])
+        .default(listResourcesV1AutocrudPetJobGetResponseDataErrmsgDefault),
+      artifact: zod.null().default(listResourcesV1AutocrudPetJobGetResponseDataArtifactDefault),
+      retries: zod.number().default(listResourcesV1AutocrudPetJobGetResponseDataRetriesDefault),
+      max_retries: zod
+        .union([zod.number(), zod.null()])
+        .default(listResourcesV1AutocrudPetJobGetResponseDataMaxRetriesDefault),
+      periodic_interval_seconds: zod
+        .union([zod.number(), zod.null()])
+        .default(listResourcesV1AutocrudPetJobGetResponseDataPeriodicIntervalSecondsDefault),
+      periodic_max_runs: zod
+        .union([zod.number(), zod.null()])
+        .default(listResourcesV1AutocrudPetJobGetResponseDataPeriodicMaxRunsDefault),
+      periodic_runs: zod
+        .number()
+        .default(listResourcesV1AutocrudPetJobGetResponseDataPeriodicRunsDefault),
+      periodic_initial_delay_seconds: zod
+        .union([zod.number(), zod.null()])
+        .default(listResourcesV1AutocrudPetJobGetResponseDataPeriodicInitialDelaySecondsDefault),
+      last_heartbeat_at: zod
+        .union([zod.string(), zod.null()])
+        .default(listResourcesV1AutocrudPetJobGetResponseDataLastHeartbeatAtDefault),
+    })
+    .optional()
+    .describe(
+      'A job wrapping a payload ``T`` with optional artifact type ``D``.\n\nThe second type parameter ``D`` defaults to ``None`` so existing\n``Job[T]`` usage is fully backward-compatible.\n\nAttributes:\n    payload: The input data for the job.\n    status: Current processing status.\n    errmsg: Error or result message after processing.\n    artifact: Optional typed output produced by the job handler.\n    retries: Number of times the job has been retried.',
+    ),
+  revision_info: zod
+    .object({
+      uid: zod.uuid(),
+      resource_id: zod.string(),
+      revision_id: zod.string(),
+      parent_revision_id: zod
+        .union([zod.string(), zod.null()])
+        .default(listResourcesV1AutocrudPetJobGetResponseRevisionInfoParentRevisionIdDefault),
+      parent_schema_version: zod.union([zod.string(), zod.null()]).optional(),
+      schema_version: zod
+        .union([zod.string(), zod.null()])
+        .default(listResourcesV1AutocrudPetJobGetResponseRevisionInfoSchemaVersionDefault),
+      data_hash: zod.string().optional(),
+      status: zod.enum(['draft', 'stable']),
+      created_time: zod.string(),
+      updated_time: zod.string(),
+      created_by: zod.string(),
+      updated_by: zod.string(),
+    })
+    .optional()
+    .describe(
+      'Metadata about a specific revision of a resource.\n\nThis class contains essential information about a particular revision,',
+    ),
+  meta: zod
+    .object({
+      current_revision_id: zod.string(),
+      resource_id: zod.string(),
+      schema_version: zod
+        .union([zod.string(), zod.null()])
+        .default(listResourcesV1AutocrudPetJobGetResponseMetaSchemaVersionDefault),
+      total_revision_count: zod.number(),
+      created_time: zod.string(),
+      updated_time: zod.string(),
+      created_by: zod.string(),
+      updated_by: zod.string(),
+      is_deleted: zod
+        .boolean()
+        .default(listResourcesV1AutocrudPetJobGetResponseMetaIsDeletedDefault),
+      indexed_data: zod.looseObject({}).optional(),
+    })
+    .optional()
+    .describe(
+      'Metadata about a resource, including its current revision and status.\n\nThis class provides essential information about a resource without including\nthe full data content.',
+    ),
+});
+export const ListResourcesV1AutocrudPetJobGetResponse = zod.array(
+  ListResourcesV1AutocrudPetJobGetResponseItem,
+);
+
+/**
+ * Create a new `pet-job` resource.
+
+**Request Body:**
+- Send the resource data as JSON in the request body
+- The data will be validated against the `pet-job` schema
+
+**Response:**
+- Returns revision information for the newly created resource
+- Includes `resource_id` and `revision_id` for tracking
+- All resources are version-controlled from creation
+
+**Examples:**
+- `POST /pet-job` with JSON body - Create new resource
+- Response includes resource and revision identifiers
+
+**Error Responses:**
+- `422`: Validation error - Invalid data format or missing required fields
+- `400`: Bad request - General creation error
+ * @summary Create pet-job
+ */
+export const createResourceV1AutocrudPetJobPostBodyPayloadOneSpeedDefault = 10;
+export const createResourceV1AutocrudPetJobPostBodyPayloadOneStaminaDefault = 100;
+export const createResourceV1AutocrudPetJobPostBodyPayloadTwoLevelDefault = 1;
+export const createResourceV1AutocrudPetJobPostBodyPayloadTwoHpDefault = 100;
+export const createResourceV1AutocrudPetJobPostBodyPayloadTwoMpDefault = 50;
+export const createResourceV1AutocrudPetJobPostBodyPayloadTwoAttackDefault = 10;
+export const createResourceV1AutocrudPetJobPostBodyPayloadTwoDefenseDefault = 5;
+export const createResourceV1AutocrudPetJobPostBodyStatusDefault = `pending`;
+export const createResourceV1AutocrudPetJobPostBodyErrmsgDefault = null;
+export const createResourceV1AutocrudPetJobPostBodyArtifactDefault = null;
+export const createResourceV1AutocrudPetJobPostBodyRetriesDefault = 0;
+export const createResourceV1AutocrudPetJobPostBodyMaxRetriesDefault = null;
+export const createResourceV1AutocrudPetJobPostBodyPeriodicIntervalSecondsDefault = null;
+export const createResourceV1AutocrudPetJobPostBodyPeriodicMaxRunsDefault = null;
+export const createResourceV1AutocrudPetJobPostBodyPeriodicRunsDefault = 0;
+export const createResourceV1AutocrudPetJobPostBodyPeriodicInitialDelaySecondsDefault = null;
+export const createResourceV1AutocrudPetJobPostBodyLastHeartbeatAtDefault = null;
+
+export const CreateResourceV1AutocrudPetJobPostBody = zod
+  .object({
+    payload: zod.union([
+      zod
+        .object({
+          type: zod.enum(['Mount']),
+          name: zod.string(),
+          species: zod.string(),
+          speed: zod.number().default(createResourceV1AutocrudPetJobPostBodyPayloadOneSpeedDefault),
+          stamina: zod
+            .number()
+            .default(createResourceV1AutocrudPetJobPostBodyPayloadOneStaminaDefault),
+          owner_id: zod.string(),
+        })
+        .describe('遊戲中的坐騎系統示例'),
+      zod
+        .object({
+          type: zod.enum(['Dog']),
+          name: zod.string(),
+          breed: zod.string(),
+          level: zod.number().default(createResourceV1AutocrudPetJobPostBodyPayloadTwoLevelDefault),
+          hp: zod.number().default(createResourceV1AutocrudPetJobPostBodyPayloadTwoHpDefault),
+          mp: zod.number().default(createResourceV1AutocrudPetJobPostBodyPayloadTwoMpDefault),
+          attack: zod
+            .number()
+            .default(createResourceV1AutocrudPetJobPostBodyPayloadTwoAttackDefault),
+          defense: zod
+            .number()
+            .default(createResourceV1AutocrudPetJobPostBodyPayloadTwoDefenseDefault),
+          owner_id: zod.string(),
+        })
+        .describe('遊戲中的寵物系統示例'),
+    ]),
+    status: zod
+      .enum(['completed', 'failed', 'pending', 'processing'])
+      .default(createResourceV1AutocrudPetJobPostBodyStatusDefault),
+    errmsg: zod
+      .union([zod.string(), zod.null()])
+      .default(createResourceV1AutocrudPetJobPostBodyErrmsgDefault),
+    artifact: zod.null().default(createResourceV1AutocrudPetJobPostBodyArtifactDefault),
+    retries: zod.number().default(createResourceV1AutocrudPetJobPostBodyRetriesDefault),
+    max_retries: zod
+      .union([zod.number(), zod.null()])
+      .default(createResourceV1AutocrudPetJobPostBodyMaxRetriesDefault),
+    periodic_interval_seconds: zod
+      .union([zod.number(), zod.null()])
+      .default(createResourceV1AutocrudPetJobPostBodyPeriodicIntervalSecondsDefault),
+    periodic_max_runs: zod
+      .union([zod.number(), zod.null()])
+      .default(createResourceV1AutocrudPetJobPostBodyPeriodicMaxRunsDefault),
+    periodic_runs: zod.number().default(createResourceV1AutocrudPetJobPostBodyPeriodicRunsDefault),
+    periodic_initial_delay_seconds: zod
+      .union([zod.number(), zod.null()])
+      .default(createResourceV1AutocrudPetJobPostBodyPeriodicInitialDelaySecondsDefault),
+    last_heartbeat_at: zod
+      .union([zod.string(), zod.null()])
+      .default(createResourceV1AutocrudPetJobPostBodyLastHeartbeatAtDefault),
+  })
+  .describe(
+    'A job wrapping a payload ``T`` with optional artifact type ``D``.\n\nThe second type parameter ``D`` defaults to ``None`` so existing\n``Job[T]`` usage is fully backward-compatible.\n\nAttributes:\n    payload: The input data for the job.\n    status: Current processing status.\n    errmsg: Error or result message after processing.\n    artifact: Optional typed output produced by the job handler.\n    retries: Number of times the job has been retried.',
+  );
+
+export const createResourceV1AutocrudPetJobPostResponseParentRevisionIdDefault = null;
+export const createResourceV1AutocrudPetJobPostResponseSchemaVersionDefault = null;
+
+export const CreateResourceV1AutocrudPetJobPostResponse = zod
+  .object({
+    uid: zod.uuid(),
+    resource_id: zod.string(),
+    revision_id: zod.string(),
+    parent_revision_id: zod
+      .union([zod.string(), zod.null()])
+      .default(createResourceV1AutocrudPetJobPostResponseParentRevisionIdDefault),
+    parent_schema_version: zod.union([zod.string(), zod.null()]).optional(),
+    schema_version: zod
+      .union([zod.string(), zod.null()])
+      .default(createResourceV1AutocrudPetJobPostResponseSchemaVersionDefault),
+    data_hash: zod.string().optional(),
+    status: zod.enum(['draft', 'stable']),
+    created_time: zod.string(),
+    updated_time: zod.string(),
+    created_by: zod.string(),
+    updated_by: zod.string(),
+  })
+  .describe(
+    'Metadata about a specific revision of a resource.\n\nThis class contains essential information about a particular revision,',
+  );
+
+/**
+ * Batch delete `pet-job` resources matching the given query conditions.
+
+**Query Parameters:**
+- Uses the same search parameters as the list endpoint
+- `is_deleted` parameter is **forced to `false`** — only non-deleted resources are targeted
+- Use `data_conditions` to filter specific resources for deletion
+- Use `limit` to control the maximum number of resources to delete
+
+**Soft Delete:**
+- Resources are marked as deleted rather than permanently removed
+- Deleted resources can be restored using the batch restore endpoint
+
+**Response:**
+- Returns a list of `ResourceMeta` for all deleted resources
+- Each entry will have `is_deleted` set to `true`
+- Empty list if no resources match the query
+
+**Examples:**
+- `DELETE /pet-job?limit=100` — Delete up to 100 resources
+- `DELETE /pet-job?data_conditions=[{"field_path":"age","operator":"gt","value":25}]` — Delete resources with age > 25
+
+**Error Responses:**
+- `400`: Bad request — Invalid query parameters or deletion error
+ * @summary Batch delete pet-job
+ */
+export const batchDeleteV1AutocrudPetJobDeleteQueryIsDeletedDefault = false;
+export const batchDeleteV1AutocrudPetJobDeleteQueryLimitDefault = 10;
+export const batchDeleteV1AutocrudPetJobDeleteQueryOffsetDefault = 0;
+
+export const BatchDeleteV1AutocrudPetJobDeleteQueryParams = zod.object({
+  qb: zod
+    .union([zod.string(), zod.null()])
+    .optional()
+    .describe(
+      "Query Builder expression. Example: \"QB['foo'] == 123\" or \"QB['age'].gt(18) & QB['status'].eq('active')\"",
+    ),
+  is_deleted: zod
+    .union([zod.boolean(), zod.null()])
+    .default(batchDeleteV1AutocrudPetJobDeleteQueryIsDeletedDefault)
+    .describe('Filter by deletion status'),
+  created_time_start: zod
+    .union([zod.string(), zod.null()])
+    .optional()
+    .describe('Filter by created time start (ISO format)'),
+  created_time_end: zod
+    .union([zod.string(), zod.null()])
+    .optional()
+    .describe('Filter by created time end (ISO format)'),
+  updated_time_start: zod
+    .union([zod.string(), zod.null()])
+    .optional()
+    .describe('Filter by updated time start (ISO format)'),
+  updated_time_end: zod
+    .union([zod.string(), zod.null()])
+    .optional()
+    .describe('Filter by updated time end (ISO format)'),
+  created_bys: zod
+    .union([zod.array(zod.string()), zod.null()])
+    .optional()
+    .describe('Filter by creators'),
+  updated_bys: zod
+    .union([zod.array(zod.string()), zod.null()])
+    .optional()
+    .describe('Filter by updaters'),
+  data_conditions: zod
+    .union([zod.string(), zod.null()])
+    .optional()
+    .describe(
+      'Data filter conditions in JSON format. Example: \'[{\"field_path\": \"department\", \"operator\": \"eq\", \"value\": \"Engineering\"}]\'',
+    ),
+  conditions: zod
+    .union([zod.string(), zod.null()])
+    .optional()
+    .describe(
+      'General filter conditions in JSON format for meta fields or data. Example: \'[{\"field_path\": \"resource_id\", \"operator\": \"starts_with\", \"value\": \"user-\"}]\'',
+    ),
+  sorts: zod
+    .union([zod.string(), zod.null()])
+    .optional()
+    .describe(
+      'Sort conditions in JSON format. Example: \'[{\"type\": \"meta\", \"key\": \"created_time\", \"direction\": \"+\"}, {\"type\": \"data\", \"field_path\": \"name\", \"direction\": \"-\"}]\'',
+    ),
+  limit: zod
+    .number()
+    .default(batchDeleteV1AutocrudPetJobDeleteQueryLimitDefault)
+    .describe('Maximum number of results'),
+  offset: zod
+    .number()
+    .default(batchDeleteV1AutocrudPetJobDeleteQueryOffsetDefault)
+    .describe('Number of results to skip'),
+  partial: zod
+    .union([zod.array(zod.string()), zod.null()])
+    .optional()
+    .describe("List of fields to retrieve (e.g. '\/field1', '\/nested\/field2')"),
+});
+
+export const batchDeleteV1AutocrudPetJobDeleteResponseSchemaVersionDefault = null;
+export const batchDeleteV1AutocrudPetJobDeleteResponseIsDeletedDefault = false;
+
+export const BatchDeleteV1AutocrudPetJobDeleteResponseItem = zod
+  .object({
+    current_revision_id: zod.string(),
+    resource_id: zod.string(),
+    schema_version: zod
+      .union([zod.string(), zod.null()])
+      .default(batchDeleteV1AutocrudPetJobDeleteResponseSchemaVersionDefault),
+    total_revision_count: zod.number(),
+    created_time: zod.string(),
+    updated_time: zod.string(),
+    created_by: zod.string(),
+    updated_by: zod.string(),
+    is_deleted: zod.boolean().default(batchDeleteV1AutocrudPetJobDeleteResponseIsDeletedDefault),
+    indexed_data: zod.looseObject({}).optional(),
+  })
+  .describe(
+    'Metadata about a resource, including its current revision and status.\n\nThis class provides essential information about a resource without including\nthe full data content.',
+  );
+export const BatchDeleteV1AutocrudPetJobDeleteResponse = zod.array(
+  BatchDeleteV1AutocrudPetJobDeleteResponseItem,
+);
+
+/**
+ * Export all (or filtered) **pet-job** resources as a
+streaming ``.acbak`` archive.
+
+Supports the same query parameters as the search endpoint
+(``qb``, ``is_deleted``, time ranges, etc.) to filter
+which resources are included.
+ * @summary Export pet-job data
+ */
+export const exportModelV1AutocrudPetJobExportGetQueryIsDeletedDefault = false;
+export const exportModelV1AutocrudPetJobExportGetQueryLimitDefault = 10;
+export const exportModelV1AutocrudPetJobExportGetQueryOffsetDefault = 0;
+
+export const ExportModelV1AutocrudPetJobExportGetQueryParams = zod.object({
+  qb: zod
+    .union([zod.string(), zod.null()])
+    .optional()
+    .describe(
+      "Query Builder expression. Example: \"QB['foo'] == 123\" or \"QB['age'].gt(18) & QB['status'].eq('active')\"",
+    ),
+  is_deleted: zod
+    .union([zod.boolean(), zod.null()])
+    .default(exportModelV1AutocrudPetJobExportGetQueryIsDeletedDefault)
+    .describe('Filter by deletion status'),
+  created_time_start: zod
+    .union([zod.string(), zod.null()])
+    .optional()
+    .describe('Filter by created time start (ISO format)'),
+  created_time_end: zod
+    .union([zod.string(), zod.null()])
+    .optional()
+    .describe('Filter by created time end (ISO format)'),
+  updated_time_start: zod
+    .union([zod.string(), zod.null()])
+    .optional()
+    .describe('Filter by updated time start (ISO format)'),
+  updated_time_end: zod
+    .union([zod.string(), zod.null()])
+    .optional()
+    .describe('Filter by updated time end (ISO format)'),
+  created_bys: zod
+    .union([zod.array(zod.string()), zod.null()])
+    .optional()
+    .describe('Filter by creators'),
+  updated_bys: zod
+    .union([zod.array(zod.string()), zod.null()])
+    .optional()
+    .describe('Filter by updaters'),
+  data_conditions: zod
+    .union([zod.string(), zod.null()])
+    .optional()
+    .describe(
+      'Data filter conditions in JSON format. Example: \'[{\"field_path\": \"department\", \"operator\": \"eq\", \"value\": \"Engineering\"}]\'',
+    ),
+  conditions: zod
+    .union([zod.string(), zod.null()])
+    .optional()
+    .describe(
+      'General filter conditions in JSON format for meta fields or data. Example: \'[{\"field_path\": \"resource_id\", \"operator\": \"starts_with\", \"value\": \"user-\"}]\'',
+    ),
+  sorts: zod
+    .union([zod.string(), zod.null()])
+    .optional()
+    .describe(
+      'Sort conditions in JSON format. Example: \'[{\"type\": \"meta\", \"key\": \"created_time\", \"direction\": \"+\"}, {\"type\": \"data\", \"field_path\": \"name\", \"direction\": \"-\"}]\'',
+    ),
+  limit: zod
+    .number()
+    .default(exportModelV1AutocrudPetJobExportGetQueryLimitDefault)
+    .describe('Maximum number of results'),
+  offset: zod
+    .number()
+    .default(exportModelV1AutocrudPetJobExportGetQueryOffsetDefault)
+    .describe('Number of results to skip'),
+  partial: zod
+    .union([zod.array(zod.string()), zod.null()])
+    .optional()
+    .describe("List of fields to retrieve (e.g. '\/field1', '\/nested\/field2')"),
+});
+
+export const ExportModelV1AutocrudPetJobExportGetResponse = zod.unknown();
+
+/**
+ * Import **pet-job** resources from a ``.acbak`` archive.
+
+The archive must contain a **pet-job** model section.
+Use ``on_duplicate`` to control behaviour when a resource ID
+already exists.
+ * @summary Import pet-job data
+ */
+export const importModelV1AutocrudPetJobImportPostQueryOnDuplicateDefault = `overwrite`;
+
+export const ImportModelV1AutocrudPetJobImportPostQueryParams = zod.object({
+  on_duplicate: zod
+    .string()
+    .default(importModelV1AutocrudPetJobImportPostQueryOnDuplicateDefault)
+    .describe('Strategy: overwrite | skip | raise_error'),
+});
+
+export const ImportModelV1AutocrudPetJobImportPostBody = zod.object({
+  file: zod.instanceof(File).describe('.acbak archive file'),
+});
+
+export const ImportModelV1AutocrudPetJobImportPostResponse = zod.record(
+  zod.string(),
+  zod.unknown(),
+);
 
 /**
  * Deprecated: use `GET /pet-job/{resource_id}?returns=meta` instead.
@@ -18841,19 +18843,75 @@ export const MigrateSingleResourceV1AutocrudPetJobMigrateSingleResourceIdPostRes
   .describe('遷移進度訊息');
 
 /**
- * Export all (or filtered) **game-event** resources as a
-streaming ``.acbak`` archive.
+ * Retrieve a list of `quest` resources returning only the data content.
 
-Supports the same query parameters as the search endpoint
-(``qb``, ``is_deleted``, time ranges, etc.) to filter
-which resources are included.
- * @summary Export game-event data
+**Response Format:**
+- Returns only the resource data for each item (most lightweight option)
+- Excludes metadata and revision information
+- Ideal for applications that only need the core resource content
+
+**Filtering Options:**
+- `is_deleted`: Filter by deletion status (true/false)
+- `created_time_start/end`: Filter by creation time range (ISO format)
+- `updated_time_start/end`: Filter by update time range (ISO format)
+- `created_bys`: Filter by resource creators (list of usernames)
+- `updated_bys`: Filter by resource updaters (list of usernames)
+- `data_conditions`: Filter by data content (JSON format)
+- `conditions`: Filter by meta fields or data content (JSON format)
+
+**General Filtering:**
+- Use `conditions` parameter to filter by metadata fields or data content
+- Format: JSON array of condition objects
+- Attributes: `field_path`, `operator`, `value`
+- Meta fields: `resource_id`, `is_deleted`, `created_time`, `updated_time`, `created_by`, `updated_by`
+- Example: `[{"field_path": "resource_id", "operator": "starts_with", "value": "user-"}]`
+
+**Data Filtering:**
+- Use `data_conditions` parameter to filter resources by their data content
+- Format: JSON array of condition objects
+- Each condition has: `field_path`, `operator`, `value`
+- Supported operators: `eq`, `ne`, `gt`, `lt`, `gte`, `lte`, `contains`, `starts_with`, `ends_with`, `in`, `not_in`
+- Example: `[{"field_path": "department", "operator": "eq", "value": "Engineering"}]`
+
+**Sorting Options:**
+- Use `sorts` parameter to specify sorting criteria
+- Format: JSON array of sort objects
+- Each sort object has: `type`, `direction`, and either `key` (for meta) or `field_path` (for data)
+- Sort types: `meta` (for metadata fields), `data` (for data content fields)
+- Directions: `+` (ascending), `-` (descending)
+- Meta sort keys: `created_time`, `updated_time`, `resource_id`
+- Example: `[{"type": "meta", "key": "created_time", "direction": "+"}, {"type": "data", "field_path": "name", "direction": "-"}]`
+
+**Pagination:**
+- `limit`: Maximum number of results to return (default: 10)
+- `offset`: Number of results to skip for pagination (default: 0)
+
+**Partial Response:**
+- `partial`: List of fields to retrieve (e.g. '/field1', '/nested/field2')
+- Useful for reducing payload size when only specific fields are needed
+
+**Performance Benefits:**
+- Minimal response payload size
+- Faster response times
+- Reduced bandwidth usage
+- Direct access to resource content only
+
+**Examples:**
+- `GET /quest/data` - Get first 10 resources (data only)
+- `GET /quest/data?limit=20&offset=40` - Get resources 41-60 (data only)
+- `GET /quest/data?is_deleted=false&limit=5` - Get 5 non-deleted resources (data only)
+- `GET /quest/data?partial=/name&partial=/email` - Get specific fields for all resources
+
+**Error Responses:**
+- `400`: Bad request - Invalid query parameters or search error
+ * @deprecated
+ * @summary List quest Data Only
  */
-export const exportModelV1AutocrudGameEventExportGetQueryIsDeletedDefault = false;
-export const exportModelV1AutocrudGameEventExportGetQueryLimitDefault = 10;
-export const exportModelV1AutocrudGameEventExportGetQueryOffsetDefault = 0;
+export const listResourcesDataV1AutocrudQuestDataGetQueryIsDeletedDefault = false;
+export const listResourcesDataV1AutocrudQuestDataGetQueryLimitDefault = 10;
+export const listResourcesDataV1AutocrudQuestDataGetQueryOffsetDefault = 0;
 
-export const ExportModelV1AutocrudGameEventExportGetQueryParams = zod.object({
+export const ListResourcesDataV1AutocrudQuestDataGetQueryParams = zod.object({
   qb: zod
     .union([zod.string(), zod.null()])
     .optional()
@@ -18862,7 +18920,7 @@ export const ExportModelV1AutocrudGameEventExportGetQueryParams = zod.object({
     ),
   is_deleted: zod
     .union([zod.boolean(), zod.null()])
-    .default(exportModelV1AutocrudGameEventExportGetQueryIsDeletedDefault)
+    .default(listResourcesDataV1AutocrudQuestDataGetQueryIsDeletedDefault)
     .describe('Filter by deletion status'),
   created_time_start: zod
     .union([zod.string(), zod.null()])
@@ -18908,11 +18966,11 @@ export const ExportModelV1AutocrudGameEventExportGetQueryParams = zod.object({
     ),
   limit: zod
     .number()
-    .default(exportModelV1AutocrudGameEventExportGetQueryLimitDefault)
+    .default(listResourcesDataV1AutocrudQuestDataGetQueryLimitDefault)
     .describe('Maximum number of results'),
   offset: zod
     .number()
-    .default(exportModelV1AutocrudGameEventExportGetQueryOffsetDefault)
+    .default(listResourcesDataV1AutocrudQuestDataGetQueryOffsetDefault)
     .describe('Number of results to skip'),
   partial: zod
     .union([zod.array(zod.string()), zod.null()])
@@ -18920,186 +18978,407 @@ export const ExportModelV1AutocrudGameEventExportGetQueryParams = zod.object({
     .describe("List of fields to retrieve (e.g. '\/field1', '\/nested\/field2')"),
 });
 
-export const ExportModelV1AutocrudGameEventExportGetResponse = zod.unknown();
+export const listResourcesDataV1AutocrudQuestDataGetResponseDescriptionDefault = ``;
+export const listResourcesDataV1AutocrudQuestDataGetResponseLevelRequirementDefault = 1;
+export const listResourcesDataV1AutocrudQuestDataGetResponseDifficultyDefault = `normal`;
+export const listResourcesDataV1AutocrudQuestDataGetResponseQuestConfigDefault = {};
+export const listResourcesDataV1AutocrudQuestDataGetResponseRewardsItemOneQuantityDefault = 1;
+export const listResourcesDataV1AutocrudQuestDataGetResponseRewardsItemOneExtraPropertiesDefault =
+  {};
+export const listResourcesDataV1AutocrudQuestDataGetResponseRewardsItemTwoAmountDefault = 100;
+export const listResourcesDataV1AutocrudQuestDataGetResponseRewardsItemThreeExpDefault = 100;
+export const listResourcesDataV1AutocrudQuestDataGetResponseRewardsItemThreeBonusConfigDefault = {};
+export const listResourcesDataV1AutocrudQuestDataGetResponseRewardsDefault = [];
 
-/**
- * Import **game-event** resources from a ``.acbak`` archive.
-
-The archive must contain a **game-event** model section.
-Use ``on_duplicate`` to control behaviour when a resource ID
-already exists.
- * @summary Import game-event data
- */
-export const importModelV1AutocrudGameEventImportPostQueryOnDuplicateDefault = `overwrite`;
-
-export const ImportModelV1AutocrudGameEventImportPostQueryParams = zod.object({
-  on_duplicate: zod
-    .string()
-    .default(importModelV1AutocrudGameEventImportPostQueryOnDuplicateDefault)
-    .describe('Strategy: overwrite | skip | raise_error'),
-});
-
-export const ImportModelV1AutocrudGameEventImportPostBody = zod.object({
-  file: zod.instanceof(File).describe('.acbak archive file'),
-});
-
-export const ImportModelV1AutocrudGameEventImportPostResponse = zod.record(
-  zod.string(),
-  zod.unknown(),
+export const ListResourcesDataV1AutocrudQuestDataGetResponseItem = zod
+  .object({
+    title: zod.string(),
+    description: zod
+      .string()
+      .default(listResourcesDataV1AutocrudQuestDataGetResponseDescriptionDefault),
+    level_requirement: zod
+      .number()
+      .default(listResourcesDataV1AutocrudQuestDataGetResponseLevelRequirementDefault),
+    difficulty: zod
+      .string()
+      .default(listResourcesDataV1AutocrudQuestDataGetResponseDifficultyDefault),
+    quest_config: zod
+      .looseObject({})
+      .default(listResourcesDataV1AutocrudQuestDataGetResponseQuestConfigDefault),
+    rewards: zod
+      .array(
+        zod.union([
+          zod
+            .object({
+              type: zod.enum(['QuestRewardItem']),
+              item_name: zod.string(),
+              quantity: zod
+                .number()
+                .default(
+                  listResourcesDataV1AutocrudQuestDataGetResponseRewardsItemOneQuantityDefault,
+                ),
+              extra_properties: zod
+                .looseObject({})
+                .default(
+                  listResourcesDataV1AutocrudQuestDataGetResponseRewardsItemOneExtraPropertiesDefault,
+                ),
+            })
+            .describe(
+              '任務獎勵：物品\n\n包含 extra_properties (dict) 子欄位，\n在 Union 表單中會以 Monaco JSON 編輯器呈現。',
+            ),
+          zod
+            .object({
+              type: zod.enum(['QuestRewardGold']),
+              amount: zod
+                .number()
+                .default(
+                  listResourcesDataV1AutocrudQuestDataGetResponseRewardsItemTwoAmountDefault,
+                ),
+            })
+            .describe('任務獎勵：金幣'),
+          zod
+            .object({
+              type: zod.enum(['QuestRewardExp']),
+              exp: zod
+                .number()
+                .default(listResourcesDataV1AutocrudQuestDataGetResponseRewardsItemThreeExpDefault),
+              bonus_config: zod
+                .looseObject({})
+                .default(
+                  listResourcesDataV1AutocrudQuestDataGetResponseRewardsItemThreeBonusConfigDefault,
+                ),
+            })
+            .describe(
+              '任務獎勵：經驗值\n\n包含 bonus_config (dict) 子欄位，\n在 Union 表單中會以 Monaco JSON 編輯器呈現。',
+            ),
+        ]),
+      )
+      .default(listResourcesDataV1AutocrudQuestDataGetResponseRewardsDefault),
+  })
+  .describe(
+    '遊戲任務\n\n展示新功能：\n- quest_config (dict) → 在 create\/edit 表單中使用 Monaco JSON 編輯器\n- rewards (list[Union]) → 陣列中的 Union 子欄位正確處理，不再顯示 [object Object]\n- Union 變體 (QuestRewardItem, QuestRewardExp) 中的 dict 子欄位也使用 Monaco 編輯器',
+  );
+export const ListResourcesDataV1AutocrudQuestDataGetResponse = zod.array(
+  ListResourcesDataV1AutocrudQuestDataGetResponseItem,
 );
 
 /**
- * Create a new `game-event` resource.
+ * Retrieve a list of `quest` resources returning only the metadata.
 
-**Request Body:**
-- Send the resource data as JSON in the request body
-- The data will be validated against the `game-event` schema
+**Response Format:**
+- Returns only resource metadata for each item
+- Excludes actual data content and revision information
+- Ideal for browsing resource overviews and management operations
 
-**Response:**
-- Returns revision information for the newly created resource
-- Includes `resource_id` and `revision_id` for tracking
-- All resources are version-controlled from creation
+**Metadata Includes:**
+- `resource_id`: Unique identifier of the resource
+- `current_revision_id`: ID of the current active revision
+- `total_revision_count`: Total number of revisions
+- `created_time` / `updated_time`: Timestamps
+- `created_by` / `updated_by`: User information
+- `is_deleted`: Deletion status
+- `schema_version`: Schema version information
+
+**Filtering Options:**
+- `is_deleted`: Filter by deletion status (true/false)
+- `created_time_start/end`: Filter by creation time range (ISO format)
+- `updated_time_start/end`: Filter by update time range (ISO format)
+- `created_bys`: Filter by resource creators (list of usernames)
+- `updated_bys`: Filter by resource updaters (list of usernames)
+- `data_conditions`: Filter by data content (JSON format)
+- `conditions`: Filter by meta fields or data content (JSON format)
+
+**General Filtering:**
+- Use `conditions` parameter to filter by metadata fields or data content
+- Format: JSON array of condition objects
+- Attributes: `field_path`, `operator`, `value`
+- Meta fields: `resource_id`, `is_deleted`, `created_time`, `updated_time`, `created_by`, `updated_by`
+- Example: `[{"field_path": "resource_id", "operator": "starts_with", "value": "user-"}]`
+
+**Data Filtering:**
+- Use `data_conditions` parameter to filter resources by their data content
+- Format: JSON array of condition objects
+- Each condition has: `field_path`, `operator`, `value`
+- Supported operators: `eq`, `ne`, `gt`, `lt`, `gte`, `lte`, `contains`, `starts_with`, `ends_with`, `in`, `not_in`
+- Example: `[{"field_path": "age", "operator": "gt", "value": 25}]`
+
+**Sorting Options:**
+- Use `sorts` parameter to specify sorting criteria
+- Format: JSON array of sort objects
+- Each sort object has: `type`, `direction`, and either `key` (for meta) or `field_path` (for data)
+- Sort types: `meta` (for metadata fields), `data` (for data content fields)
+- Directions: `+` (ascending), `-` (descending)
+- Meta sort keys: `created_time`, `updated_time`, `resource_id`
+- Example: `[{"type": "meta", "key": "updated_time", "direction": "-"}, {"type": "data", "field_path": "department", "direction": "+"}]`
+
+**Pagination:**
+- `limit`: Maximum number of results to return (default: 10)
+- `offset`: Number of results to skip for pagination (default: 0)
+
+**Use Cases:**
+- Resource management and administration
+- Audit trail analysis
+- Bulk operations planning
+- System monitoring and statistics
 
 **Examples:**
-- `POST /game-event` with JSON body - Create new resource
-- Response includes resource and revision identifiers
+- `GET /quest/meta` - Get metadata for first 10 resources
+- `GET /quest/meta?is_deleted=true` - Get metadata for deleted resources
+- `GET /quest/meta?created_bys=admin&limit=50` - Get metadata for admin-created resources
 
 **Error Responses:**
-- `422`: Validation error - Invalid data format or missing required fields
-- `400`: Bad request - General creation error
- * @summary Create game-event
+- `400`: Bad request - Invalid query parameters or search error
+ * @deprecated
+ * @summary List quest Metadata Only
  */
-export const createResourceV1AutocrudGameEventPostBodyPayloadRewardGoldDefault = 0;
-export const createResourceV1AutocrudGameEventPostBodyPayloadRewardExpDefault = 0;
-export const createResourceV1AutocrudGameEventPostBodyPayloadExtraDataDefault = {};
-export const createResourceV1AutocrudGameEventPostBodyPayloadEventBodyDefault = null;
-export const createResourceV1AutocrudGameEventPostBodyPayloadEventXDefault = null;
-export const createResourceV1AutocrudGameEventPostBodyStatusDefault = `pending`;
-export const createResourceV1AutocrudGameEventPostBodyErrmsgDefault = null;
-export const createResourceV1AutocrudGameEventPostBodyArtifactDefault = null;
-export const createResourceV1AutocrudGameEventPostBodyRetriesDefault = 0;
-export const createResourceV1AutocrudGameEventPostBodyMaxRetriesDefault = null;
-export const createResourceV1AutocrudGameEventPostBodyPeriodicIntervalSecondsDefault = null;
-export const createResourceV1AutocrudGameEventPostBodyPeriodicMaxRunsDefault = null;
-export const createResourceV1AutocrudGameEventPostBodyPeriodicRunsDefault = 0;
-export const createResourceV1AutocrudGameEventPostBodyPeriodicInitialDelaySecondsDefault = null;
-export const createResourceV1AutocrudGameEventPostBodyLastHeartbeatAtDefault = null;
+export const listResourcesMetaV1AutocrudQuestMetaGetQueryIsDeletedDefault = false;
+export const listResourcesMetaV1AutocrudQuestMetaGetQueryLimitDefault = 10;
+export const listResourcesMetaV1AutocrudQuestMetaGetQueryOffsetDefault = 0;
 
-export const CreateResourceV1AutocrudGameEventPostBody = zod
+export const ListResourcesMetaV1AutocrudQuestMetaGetQueryParams = zod.object({
+  qb: zod
+    .union([zod.string(), zod.null()])
+    .optional()
+    .describe(
+      "Query Builder expression. Example: \"QB['foo'] == 123\" or \"QB['age'].gt(18) & QB['status'].eq('active')\"",
+    ),
+  is_deleted: zod
+    .union([zod.boolean(), zod.null()])
+    .default(listResourcesMetaV1AutocrudQuestMetaGetQueryIsDeletedDefault)
+    .describe('Filter by deletion status'),
+  created_time_start: zod
+    .union([zod.string(), zod.null()])
+    .optional()
+    .describe('Filter by created time start (ISO format)'),
+  created_time_end: zod
+    .union([zod.string(), zod.null()])
+    .optional()
+    .describe('Filter by created time end (ISO format)'),
+  updated_time_start: zod
+    .union([zod.string(), zod.null()])
+    .optional()
+    .describe('Filter by updated time start (ISO format)'),
+  updated_time_end: zod
+    .union([zod.string(), zod.null()])
+    .optional()
+    .describe('Filter by updated time end (ISO format)'),
+  created_bys: zod
+    .union([zod.array(zod.string()), zod.null()])
+    .optional()
+    .describe('Filter by creators'),
+  updated_bys: zod
+    .union([zod.array(zod.string()), zod.null()])
+    .optional()
+    .describe('Filter by updaters'),
+  data_conditions: zod
+    .union([zod.string(), zod.null()])
+    .optional()
+    .describe(
+      'Data filter conditions in JSON format. Example: \'[{\"field_path\": \"department\", \"operator\": \"eq\", \"value\": \"Engineering\"}]\'',
+    ),
+  conditions: zod
+    .union([zod.string(), zod.null()])
+    .optional()
+    .describe(
+      'General filter conditions in JSON format for meta fields or data. Example: \'[{\"field_path\": \"resource_id\", \"operator\": \"starts_with\", \"value\": \"user-\"}]\'',
+    ),
+  sorts: zod
+    .union([zod.string(), zod.null()])
+    .optional()
+    .describe(
+      'Sort conditions in JSON format. Example: \'[{\"type\": \"meta\", \"key\": \"created_time\", \"direction\": \"+\"}, {\"type\": \"data\", \"field_path\": \"name\", \"direction\": \"-\"}]\'',
+    ),
+  limit: zod
+    .number()
+    .default(listResourcesMetaV1AutocrudQuestMetaGetQueryLimitDefault)
+    .describe('Maximum number of results'),
+  offset: zod
+    .number()
+    .default(listResourcesMetaV1AutocrudQuestMetaGetQueryOffsetDefault)
+    .describe('Number of results to skip'),
+  partial: zod
+    .union([zod.array(zod.string()), zod.null()])
+    .optional()
+    .describe("List of fields to retrieve (e.g. '\/field1', '\/nested\/field2')"),
+});
+
+export const listResourcesMetaV1AutocrudQuestMetaGetResponseSchemaVersionDefault = null;
+export const listResourcesMetaV1AutocrudQuestMetaGetResponseIsDeletedDefault = false;
+
+export const ListResourcesMetaV1AutocrudQuestMetaGetResponseItem = zod
   .object({
-    payload: zod
-      .object({
-        event_type: zod
-          .enum([
-            'daily_login',
-            'equipment_enhance',
-            'guild_reward',
-            'level_up',
-            'quest_complete',
-            'raid_boss',
-            'server_maintenance',
-          ])
-          .describe('遊戲事件類型'),
-        character_name: zod.string(),
-        character_id: zod.union([zod.string(), zod.null()]),
-        description: zod.string(),
-        reward_gold: zod
-          .number()
-          .default(createResourceV1AutocrudGameEventPostBodyPayloadRewardGoldDefault),
-        reward_exp: zod
-          .number()
-          .default(createResourceV1AutocrudGameEventPostBodyPayloadRewardExpDefault),
-        extra_data: zod
-          .looseObject({})
-          .default(createResourceV1AutocrudGameEventPostBodyPayloadExtraDataDefault),
-        event_body: zod
-          .union([
-            zod.null(),
-            zod.union([
-              zod
-                .object({
-                  type: zod.enum(['EventBodyA']),
-                  extra_info_a: zod.string(),
-                  extra_value_a: zod.number(),
-                })
-                .describe('事件類型 A 的專屬數據'),
-              zod
-                .object({
-                  type: zod.enum(['EventBodyB']),
-                  some_field: zod.string(),
-                  cooldown_seconds: zod.number(),
-                })
-                .describe('事件類型 B 的專屬數據'),
-            ]),
-          ])
-          .default(createResourceV1AutocrudGameEventPostBodyPayloadEventBodyDefault),
-        event_x: zod
-          .union([
-            zod.null(),
-            zod
-              .object({
-                type: zod.enum(['EventBodyX']),
-                good: zod.string(),
-                great: zod.number(),
-              })
-              .describe('事件類型 X 的專屬數據'),
-          ])
-          .default(createResourceV1AutocrudGameEventPostBodyPayloadEventXDefault),
-      })
-      .describe('遊戲事件載荷數據'),
-    status: zod
-      .enum(['completed', 'failed', 'pending', 'processing'])
-      .default(createResourceV1AutocrudGameEventPostBodyStatusDefault),
-    errmsg: zod
+    current_revision_id: zod.string(),
+    resource_id: zod.string(),
+    schema_version: zod
       .union([zod.string(), zod.null()])
-      .default(createResourceV1AutocrudGameEventPostBodyErrmsgDefault),
-    artifact: zod
-      .union([
-        zod.null(),
-        zod
-          .object({
-            process_times: zod.number(),
-          })
-          .describe('遊戲事件載荷數據'),
-      ])
-      .default(createResourceV1AutocrudGameEventPostBodyArtifactDefault),
-    retries: zod.number().default(createResourceV1AutocrudGameEventPostBodyRetriesDefault),
-    max_retries: zod
-      .union([zod.number(), zod.null()])
-      .default(createResourceV1AutocrudGameEventPostBodyMaxRetriesDefault),
-    periodic_interval_seconds: zod
-      .union([zod.number(), zod.null()])
-      .default(createResourceV1AutocrudGameEventPostBodyPeriodicIntervalSecondsDefault),
-    periodic_max_runs: zod
-      .union([zod.number(), zod.null()])
-      .default(createResourceV1AutocrudGameEventPostBodyPeriodicMaxRunsDefault),
-    periodic_runs: zod
-      .number()
-      .default(createResourceV1AutocrudGameEventPostBodyPeriodicRunsDefault),
-    periodic_initial_delay_seconds: zod
-      .union([zod.number(), zod.null()])
-      .default(createResourceV1AutocrudGameEventPostBodyPeriodicInitialDelaySecondsDefault),
-    last_heartbeat_at: zod
-      .union([zod.string(), zod.null()])
-      .default(createResourceV1AutocrudGameEventPostBodyLastHeartbeatAtDefault),
+      .default(listResourcesMetaV1AutocrudQuestMetaGetResponseSchemaVersionDefault),
+    total_revision_count: zod.number(),
+    created_time: zod.string(),
+    updated_time: zod.string(),
+    created_by: zod.string(),
+    updated_by: zod.string(),
+    is_deleted: zod
+      .boolean()
+      .default(listResourcesMetaV1AutocrudQuestMetaGetResponseIsDeletedDefault),
+    indexed_data: zod.looseObject({}).optional(),
   })
-  .describe('遊戲事件任務（使用 Message Queue 處理）');
+  .describe(
+    'Metadata about a resource, including its current revision and status.\n\nThis class provides essential information about a resource without including\nthe full data content.',
+  );
+export const ListResourcesMetaV1AutocrudQuestMetaGetResponse = zod.array(
+  ListResourcesMetaV1AutocrudQuestMetaGetResponseItem,
+);
 
-export const createResourceV1AutocrudGameEventPostResponseParentRevisionIdDefault = null;
-export const createResourceV1AutocrudGameEventPostResponseSchemaVersionDefault = null;
+/**
+ * Retrieve a list of `quest` resources returning only the current revision information.
 
-export const CreateResourceV1AutocrudGameEventPostResponse = zod
+**Response Format:**
+- Returns only revision information for the current revision of each resource
+- Excludes actual data content and resource metadata
+- Focuses on version control and revision tracking information
+
+**Revision Info Includes:**
+- `uid`: Unique identifier for this revision
+- `resource_id`: ID of the parent resource
+- `revision_id`: The revision identifier
+- `parent_revision_id`: ID of the parent revision (if any)
+- `schema_version`: Schema version used for this revision
+- `data_hash`: Hash of the resource data for integrity checking
+- `status`: Current status of the revision (draft/stable)
+
+**Filtering Options:**
+- `is_deleted`: Filter by deletion status (true/false)
+- `created_time_start/end`: Filter by creation time range (ISO format)
+- `updated_time_start/end`: Filter by update time range (ISO format)
+- `created_bys`: Filter by resource creators (list of usernames)
+- `updated_bys`: Filter by resource updaters (list of usernames)
+- `data_conditions`: Filter by data content (JSON format)
+- `conditions`: Filter by meta fields or data content (JSON format)
+
+**General Filtering:**
+- Use `conditions` parameter to filter by metadata fields or data content
+- Format: JSON array of condition objects
+- Attributes: `field_path`, `operator`, `value`
+- Meta fields: `resource_id`, `is_deleted`, `created_time`, `updated_time`, `created_by`, `updated_by`
+- Example: `[{"field_path": "resource_id", "operator": "starts_with", "value": "user-"}]`
+
+**Data Filtering:**
+- Use `data_conditions` parameter to filter resources by their data content
+- Format: JSON array of condition objects
+- Each condition has: `field_path`, `operator`, `value`
+- Supported operators: `eq`, `ne`, `gt`, `lt`, `gte`, `lte`, `contains`, `starts_with`, `ends_with`, `in`, `not_in`
+- Example: `[{"field_path": "status", "operator": "eq", "value": "active"}]`
+
+**Pagination:**
+- `limit`: Maximum number of results to return (default: 10)
+- `offset`: Number of results to skip for pagination (default: 0)
+
+**Use Cases:**
+- Version control system integration
+- Data integrity verification through hashes
+- Revision status monitoring
+- Change tracking and audit trails
+
+**Examples:**
+- `GET /quest/revision-info` - Get current revision info for first 10 resources
+- `GET /quest/revision-info?limit=100` - Get revision info for first 100 resources
+- `GET /quest/revision-info?updated_bys=editor` - Get revision info for editor-modified resources
+
+**Error Responses:**
+- `400`: Bad request - Invalid query parameters or search error
+ * @deprecated
+ * @summary List quest Current Revision Info
+ */
+export const listResourcesRevisionInfoV1AutocrudQuestRevisionInfoGetQueryIsDeletedDefault = false;
+export const listResourcesRevisionInfoV1AutocrudQuestRevisionInfoGetQueryLimitDefault = 10;
+export const listResourcesRevisionInfoV1AutocrudQuestRevisionInfoGetQueryOffsetDefault = 0;
+
+export const ListResourcesRevisionInfoV1AutocrudQuestRevisionInfoGetQueryParams = zod.object({
+  qb: zod
+    .union([zod.string(), zod.null()])
+    .optional()
+    .describe(
+      "Query Builder expression. Example: \"QB['foo'] == 123\" or \"QB['age'].gt(18) & QB['status'].eq('active')\"",
+    ),
+  is_deleted: zod
+    .union([zod.boolean(), zod.null()])
+    .default(listResourcesRevisionInfoV1AutocrudQuestRevisionInfoGetQueryIsDeletedDefault)
+    .describe('Filter by deletion status'),
+  created_time_start: zod
+    .union([zod.string(), zod.null()])
+    .optional()
+    .describe('Filter by created time start (ISO format)'),
+  created_time_end: zod
+    .union([zod.string(), zod.null()])
+    .optional()
+    .describe('Filter by created time end (ISO format)'),
+  updated_time_start: zod
+    .union([zod.string(), zod.null()])
+    .optional()
+    .describe('Filter by updated time start (ISO format)'),
+  updated_time_end: zod
+    .union([zod.string(), zod.null()])
+    .optional()
+    .describe('Filter by updated time end (ISO format)'),
+  created_bys: zod
+    .union([zod.array(zod.string()), zod.null()])
+    .optional()
+    .describe('Filter by creators'),
+  updated_bys: zod
+    .union([zod.array(zod.string()), zod.null()])
+    .optional()
+    .describe('Filter by updaters'),
+  data_conditions: zod
+    .union([zod.string(), zod.null()])
+    .optional()
+    .describe(
+      'Data filter conditions in JSON format. Example: \'[{\"field_path\": \"department\", \"operator\": \"eq\", \"value\": \"Engineering\"}]\'',
+    ),
+  conditions: zod
+    .union([zod.string(), zod.null()])
+    .optional()
+    .describe(
+      'General filter conditions in JSON format for meta fields or data. Example: \'[{\"field_path\": \"resource_id\", \"operator\": \"starts_with\", \"value\": \"user-\"}]\'',
+    ),
+  sorts: zod
+    .union([zod.string(), zod.null()])
+    .optional()
+    .describe(
+      'Sort conditions in JSON format. Example: \'[{\"type\": \"meta\", \"key\": \"created_time\", \"direction\": \"+\"}, {\"type\": \"data\", \"field_path\": \"name\", \"direction\": \"-\"}]\'',
+    ),
+  limit: zod
+    .number()
+    .default(listResourcesRevisionInfoV1AutocrudQuestRevisionInfoGetQueryLimitDefault)
+    .describe('Maximum number of results'),
+  offset: zod
+    .number()
+    .default(listResourcesRevisionInfoV1AutocrudQuestRevisionInfoGetQueryOffsetDefault)
+    .describe('Number of results to skip'),
+  partial: zod
+    .union([zod.array(zod.string()), zod.null()])
+    .optional()
+    .describe("List of fields to retrieve (e.g. '\/field1', '\/nested\/field2')"),
+});
+
+export const listResourcesRevisionInfoV1AutocrudQuestRevisionInfoGetResponseParentRevisionIdDefault =
+  null;
+export const listResourcesRevisionInfoV1AutocrudQuestRevisionInfoGetResponseSchemaVersionDefault =
+  null;
+
+export const ListResourcesRevisionInfoV1AutocrudQuestRevisionInfoGetResponseItem = zod
   .object({
     uid: zod.uuid(),
     resource_id: zod.string(),
     revision_id: zod.string(),
     parent_revision_id: zod
       .union([zod.string(), zod.null()])
-      .default(createResourceV1AutocrudGameEventPostResponseParentRevisionIdDefault),
+      .default(
+        listResourcesRevisionInfoV1AutocrudQuestRevisionInfoGetResponseParentRevisionIdDefault,
+      ),
     parent_schema_version: zod.union([zod.string(), zod.null()]).optional(),
     schema_version: zod
       .union([zod.string(), zod.null()])
-      .default(createResourceV1AutocrudGameEventPostResponseSchemaVersionDefault),
+      .default(listResourcesRevisionInfoV1AutocrudQuestRevisionInfoGetResponseSchemaVersionDefault),
     data_hash: zod.string().optional(),
     status: zod.enum(['draft', 'stable']),
     created_time: zod.string(),
@@ -19110,36 +19389,21 @@ export const CreateResourceV1AutocrudGameEventPostResponse = zod
   .describe(
     'Metadata about a specific revision of a resource.\n\nThis class contains essential information about a particular revision,',
   );
+export const ListResourcesRevisionInfoV1AutocrudQuestRevisionInfoGetResponse = zod.array(
+  ListResourcesRevisionInfoV1AutocrudQuestRevisionInfoGetResponseItem,
+);
 
 /**
- * Retrieve a list of `game-event` resources.
-
-Use the `returns` query parameter to control which sections are included in each item.
-By default all sections are returned: `data`, `revision_info`, `meta`.
-
-**Query Parameters:**
-- `returns` (default `"data,revision_info,meta"`): Comma-separated list of sections to include.
-  Allowed values: `data`, `revision_info`, `meta`.
-- `limit` / `offset`: Pagination controls.
-- `partial` / `partial[]`: Partial field selection.
-- All standard filtering and sorting parameters.
-
-**Examples:**
-- `GET /game-event` — full list (data + meta + revision_info)
-- `GET /game-event?returns=data` — data only
-- `GET /game-event?returns=data,meta` — data + meta, no revision_info
-- `GET /game-event?limit=20&offset=40` — pagination
-
-**Error Responses:**
-- `400`: Bad request - Invalid query parameters or search error
- * @summary List game-event resources
+ * Deprecated: use `GET /quest` instead. Retrieve a list of `quest` resources with complete information including data, metadata, and revision info.
+ * @deprecated
+ * @summary List quest Complete Information
  */
-export const listResourcesV1AutocrudGameEventGetQueryIsDeletedDefault = false;
-export const listResourcesV1AutocrudGameEventGetQueryLimitDefault = 10;
-export const listResourcesV1AutocrudGameEventGetQueryOffsetDefault = 0;
-export const listResourcesV1AutocrudGameEventGetQueryReturnsDefault = `data,revision_info,meta`;
+export const listResourcesFullV1AutocrudQuestFullGetQueryIsDeletedDefault = false;
+export const listResourcesFullV1AutocrudQuestFullGetQueryLimitDefault = 10;
+export const listResourcesFullV1AutocrudQuestFullGetQueryOffsetDefault = 0;
+export const listResourcesFullV1AutocrudQuestFullGetQueryReturnsDefault = `data,revision_info,meta`;
 
-export const ListResourcesV1AutocrudGameEventGetQueryParams = zod.object({
+export const ListResourcesFullV1AutocrudQuestFullGetQueryParams = zod.object({
   qb: zod
     .union([zod.string(), zod.null()])
     .optional()
@@ -19148,7 +19412,7 @@ export const ListResourcesV1AutocrudGameEventGetQueryParams = zod.object({
     ),
   is_deleted: zod
     .union([zod.boolean(), zod.null()])
-    .default(listResourcesV1AutocrudGameEventGetQueryIsDeletedDefault)
+    .default(listResourcesFullV1AutocrudQuestFullGetQueryIsDeletedDefault)
     .describe('Filter by deletion status'),
   created_time_start: zod
     .union([zod.string(), zod.null()])
@@ -19194,11 +19458,11 @@ export const ListResourcesV1AutocrudGameEventGetQueryParams = zod.object({
     ),
   limit: zod
     .number()
-    .default(listResourcesV1AutocrudGameEventGetQueryLimitDefault)
+    .default(listResourcesFullV1AutocrudQuestFullGetQueryLimitDefault)
     .describe('Maximum number of results'),
   offset: zod
     .number()
-    .default(listResourcesV1AutocrudGameEventGetQueryOffsetDefault)
+    .default(listResourcesFullV1AutocrudQuestFullGetQueryOffsetDefault)
     .describe('Number of results to skip'),
   partial: zod
     .union([zod.array(zod.string()), zod.null()])
@@ -19206,132 +19470,100 @@ export const ListResourcesV1AutocrudGameEventGetQueryParams = zod.object({
     .describe("List of fields to retrieve (e.g. '\/field1', '\/nested\/field2')"),
   returns: zod
     .string()
-    .default(listResourcesV1AutocrudGameEventGetQueryReturnsDefault)
+    .default(listResourcesFullV1AutocrudQuestFullGetQueryReturnsDefault)
     .describe('Fields to return, comma-separated. Options: data, revision_info, meta'),
 });
 
-export const listResourcesV1AutocrudGameEventGetResponseDataPayloadRewardGoldDefault = 0;
-export const listResourcesV1AutocrudGameEventGetResponseDataPayloadRewardExpDefault = 0;
-export const listResourcesV1AutocrudGameEventGetResponseDataPayloadExtraDataDefault = {};
-export const listResourcesV1AutocrudGameEventGetResponseDataPayloadEventBodyDefault = null;
-export const listResourcesV1AutocrudGameEventGetResponseDataPayloadEventXDefault = null;
-export const listResourcesV1AutocrudGameEventGetResponseDataStatusDefault = `pending`;
-export const listResourcesV1AutocrudGameEventGetResponseDataErrmsgDefault = null;
-export const listResourcesV1AutocrudGameEventGetResponseDataArtifactDefault = null;
-export const listResourcesV1AutocrudGameEventGetResponseDataRetriesDefault = 0;
-export const listResourcesV1AutocrudGameEventGetResponseDataMaxRetriesDefault = null;
-export const listResourcesV1AutocrudGameEventGetResponseDataPeriodicIntervalSecondsDefault = null;
-export const listResourcesV1AutocrudGameEventGetResponseDataPeriodicMaxRunsDefault = null;
-export const listResourcesV1AutocrudGameEventGetResponseDataPeriodicRunsDefault = 0;
-export const listResourcesV1AutocrudGameEventGetResponseDataPeriodicInitialDelaySecondsDefault =
+export const listResourcesFullV1AutocrudQuestFullGetResponseDataDescriptionDefault = ``;
+export const listResourcesFullV1AutocrudQuestFullGetResponseDataLevelRequirementDefault = 1;
+export const listResourcesFullV1AutocrudQuestFullGetResponseDataDifficultyDefault = `normal`;
+export const listResourcesFullV1AutocrudQuestFullGetResponseDataQuestConfigDefault = {};
+export const listResourcesFullV1AutocrudQuestFullGetResponseDataRewardsItemOneQuantityDefault = 1;
+export const listResourcesFullV1AutocrudQuestFullGetResponseDataRewardsItemOneExtraPropertiesDefault =
+  {};
+export const listResourcesFullV1AutocrudQuestFullGetResponseDataRewardsItemTwoAmountDefault = 100;
+export const listResourcesFullV1AutocrudQuestFullGetResponseDataRewardsItemThreeExpDefault = 100;
+export const listResourcesFullV1AutocrudQuestFullGetResponseDataRewardsItemThreeBonusConfigDefault =
+  {};
+export const listResourcesFullV1AutocrudQuestFullGetResponseDataRewardsDefault = [];
+export const listResourcesFullV1AutocrudQuestFullGetResponseRevisionInfoParentRevisionIdDefault =
   null;
-export const listResourcesV1AutocrudGameEventGetResponseDataLastHeartbeatAtDefault = null;
-export const listResourcesV1AutocrudGameEventGetResponseRevisionInfoParentRevisionIdDefault = null;
-export const listResourcesV1AutocrudGameEventGetResponseRevisionInfoSchemaVersionDefault = null;
-export const listResourcesV1AutocrudGameEventGetResponseMetaSchemaVersionDefault = null;
-export const listResourcesV1AutocrudGameEventGetResponseMetaIsDeletedDefault = false;
+export const listResourcesFullV1AutocrudQuestFullGetResponseRevisionInfoSchemaVersionDefault = null;
+export const listResourcesFullV1AutocrudQuestFullGetResponseMetaSchemaVersionDefault = null;
+export const listResourcesFullV1AutocrudQuestFullGetResponseMetaIsDeletedDefault = false;
 
-export const ListResourcesV1AutocrudGameEventGetResponseItem = zod.object({
+export const ListResourcesFullV1AutocrudQuestFullGetResponseItem = zod.object({
   data: zod
     .object({
-      payload: zod
-        .object({
-          event_type: zod
-            .enum([
-              'daily_login',
-              'equipment_enhance',
-              'guild_reward',
-              'level_up',
-              'quest_complete',
-              'raid_boss',
-              'server_maintenance',
-            ])
-            .describe('遊戲事件類型'),
-          character_name: zod.string(),
-          character_id: zod.union([zod.string(), zod.null()]),
-          description: zod.string(),
-          reward_gold: zod
-            .number()
-            .default(listResourcesV1AutocrudGameEventGetResponseDataPayloadRewardGoldDefault),
-          reward_exp: zod
-            .number()
-            .default(listResourcesV1AutocrudGameEventGetResponseDataPayloadRewardExpDefault),
-          extra_data: zod
-            .looseObject({})
-            .default(listResourcesV1AutocrudGameEventGetResponseDataPayloadExtraDataDefault),
-          event_body: zod
-            .union([
-              zod.null(),
-              zod.union([
-                zod
-                  .object({
-                    type: zod.enum(['EventBodyA']),
-                    extra_info_a: zod.string(),
-                    extra_value_a: zod.number(),
-                  })
-                  .describe('事件類型 A 的專屬數據'),
-                zod
-                  .object({
-                    type: zod.enum(['EventBodyB']),
-                    some_field: zod.string(),
-                    cooldown_seconds: zod.number(),
-                  })
-                  .describe('事件類型 B 的專屬數據'),
-              ]),
-            ])
-            .default(listResourcesV1AutocrudGameEventGetResponseDataPayloadEventBodyDefault),
-          event_x: zod
-            .union([
-              zod.null(),
-              zod
-                .object({
-                  type: zod.enum(['EventBodyX']),
-                  good: zod.string(),
-                  great: zod.number(),
-                })
-                .describe('事件類型 X 的專屬數據'),
-            ])
-            .default(listResourcesV1AutocrudGameEventGetResponseDataPayloadEventXDefault),
-        })
-        .describe('遊戲事件載荷數據'),
-      status: zod
-        .enum(['completed', 'failed', 'pending', 'processing'])
-        .default(listResourcesV1AutocrudGameEventGetResponseDataStatusDefault),
-      errmsg: zod
-        .union([zod.string(), zod.null()])
-        .default(listResourcesV1AutocrudGameEventGetResponseDataErrmsgDefault),
-      artifact: zod
-        .union([
-          zod.null(),
-          zod
-            .object({
-              process_times: zod.number(),
-            })
-            .describe('遊戲事件載荷數據'),
-        ])
-        .default(listResourcesV1AutocrudGameEventGetResponseDataArtifactDefault),
-      retries: zod.number().default(listResourcesV1AutocrudGameEventGetResponseDataRetriesDefault),
-      max_retries: zod
-        .union([zod.number(), zod.null()])
-        .default(listResourcesV1AutocrudGameEventGetResponseDataMaxRetriesDefault),
-      periodic_interval_seconds: zod
-        .union([zod.number(), zod.null()])
-        .default(listResourcesV1AutocrudGameEventGetResponseDataPeriodicIntervalSecondsDefault),
-      periodic_max_runs: zod
-        .union([zod.number(), zod.null()])
-        .default(listResourcesV1AutocrudGameEventGetResponseDataPeriodicMaxRunsDefault),
-      periodic_runs: zod
+      title: zod.string(),
+      description: zod
+        .string()
+        .default(listResourcesFullV1AutocrudQuestFullGetResponseDataDescriptionDefault),
+      level_requirement: zod
         .number()
-        .default(listResourcesV1AutocrudGameEventGetResponseDataPeriodicRunsDefault),
-      periodic_initial_delay_seconds: zod
-        .union([zod.number(), zod.null()])
-        .default(listResourcesV1AutocrudGameEventGetResponseDataPeriodicInitialDelaySecondsDefault),
-      last_heartbeat_at: zod
-        .union([zod.string(), zod.null()])
-        .default(listResourcesV1AutocrudGameEventGetResponseDataLastHeartbeatAtDefault),
+        .default(listResourcesFullV1AutocrudQuestFullGetResponseDataLevelRequirementDefault),
+      difficulty: zod
+        .string()
+        .default(listResourcesFullV1AutocrudQuestFullGetResponseDataDifficultyDefault),
+      quest_config: zod
+        .looseObject({})
+        .default(listResourcesFullV1AutocrudQuestFullGetResponseDataQuestConfigDefault),
+      rewards: zod
+        .array(
+          zod.union([
+            zod
+              .object({
+                type: zod.enum(['QuestRewardItem']),
+                item_name: zod.string(),
+                quantity: zod
+                  .number()
+                  .default(
+                    listResourcesFullV1AutocrudQuestFullGetResponseDataRewardsItemOneQuantityDefault,
+                  ),
+                extra_properties: zod
+                  .looseObject({})
+                  .default(
+                    listResourcesFullV1AutocrudQuestFullGetResponseDataRewardsItemOneExtraPropertiesDefault,
+                  ),
+              })
+              .describe(
+                '任務獎勵：物品\n\n包含 extra_properties (dict) 子欄位，\n在 Union 表單中會以 Monaco JSON 編輯器呈現。',
+              ),
+            zod
+              .object({
+                type: zod.enum(['QuestRewardGold']),
+                amount: zod
+                  .number()
+                  .default(
+                    listResourcesFullV1AutocrudQuestFullGetResponseDataRewardsItemTwoAmountDefault,
+                  ),
+              })
+              .describe('任務獎勵：金幣'),
+            zod
+              .object({
+                type: zod.enum(['QuestRewardExp']),
+                exp: zod
+                  .number()
+                  .default(
+                    listResourcesFullV1AutocrudQuestFullGetResponseDataRewardsItemThreeExpDefault,
+                  ),
+                bonus_config: zod
+                  .looseObject({})
+                  .default(
+                    listResourcesFullV1AutocrudQuestFullGetResponseDataRewardsItemThreeBonusConfigDefault,
+                  ),
+              })
+              .describe(
+                '任務獎勵：經驗值\n\n包含 bonus_config (dict) 子欄位，\n在 Union 表單中會以 Monaco JSON 編輯器呈現。',
+              ),
+          ]),
+        )
+        .default(listResourcesFullV1AutocrudQuestFullGetResponseDataRewardsDefault),
     })
     .optional()
-    .describe('遊戲事件任務（使用 Message Queue 處理）'),
+    .describe(
+      '遊戲任務\n\n展示新功能：\n- quest_config (dict) → 在 create\/edit 表單中使用 Monaco JSON 編輯器\n- rewards (list[Union]) → 陣列中的 Union 子欄位正確處理，不再顯示 [object Object]\n- Union 變體 (QuestRewardItem, QuestRewardExp) 中的 dict 子欄位也使用 Monaco 編輯器',
+    ),
   revision_info: zod
     .object({
       uid: zod.uuid(),
@@ -19339,11 +19571,13 @@ export const ListResourcesV1AutocrudGameEventGetResponseItem = zod.object({
       revision_id: zod.string(),
       parent_revision_id: zod
         .union([zod.string(), zod.null()])
-        .default(listResourcesV1AutocrudGameEventGetResponseRevisionInfoParentRevisionIdDefault),
+        .default(
+          listResourcesFullV1AutocrudQuestFullGetResponseRevisionInfoParentRevisionIdDefault,
+        ),
       parent_schema_version: zod.union([zod.string(), zod.null()]).optional(),
       schema_version: zod
         .union([zod.string(), zod.null()])
-        .default(listResourcesV1AutocrudGameEventGetResponseRevisionInfoSchemaVersionDefault),
+        .default(listResourcesFullV1AutocrudQuestFullGetResponseRevisionInfoSchemaVersionDefault),
       data_hash: zod.string().optional(),
       status: zod.enum(['draft', 'stable']),
       created_time: zod.string(),
@@ -19361,7 +19595,7 @@ export const ListResourcesV1AutocrudGameEventGetResponseItem = zod.object({
       resource_id: zod.string(),
       schema_version: zod
         .union([zod.string(), zod.null()])
-        .default(listResourcesV1AutocrudGameEventGetResponseMetaSchemaVersionDefault),
+        .default(listResourcesFullV1AutocrudQuestFullGetResponseMetaSchemaVersionDefault),
       total_revision_count: zod.number(),
       created_time: zod.string(),
       updated_time: zod.string(),
@@ -19369,7 +19603,7 @@ export const ListResourcesV1AutocrudGameEventGetResponseItem = zod.object({
       updated_by: zod.string(),
       is_deleted: zod
         .boolean()
-        .default(listResourcesV1AutocrudGameEventGetResponseMetaIsDeletedDefault),
+        .default(listResourcesFullV1AutocrudQuestFullGetResponseMetaIsDeletedDefault),
       indexed_data: zod.looseObject({}).optional(),
     })
     .optional()
@@ -19377,41 +19611,57 @@ export const ListResourcesV1AutocrudGameEventGetResponseItem = zod.object({
       'Metadata about a resource, including its current revision and status.\n\nThis class provides essential information about a resource without including\nthe full data content.',
     ),
 });
-export const ListResourcesV1AutocrudGameEventGetResponse = zod.array(
-  ListResourcesV1AutocrudGameEventGetResponseItem,
+export const ListResourcesFullV1AutocrudQuestFullGetResponse = zod.array(
+  ListResourcesFullV1AutocrudQuestFullGetResponseItem,
 );
 
 /**
- * Batch delete `game-event` resources matching the given query conditions.
+ * Retrieve the count of `quest` resources matching the search criteria.
 
-**Query Parameters:**
-- Uses the same search parameters as the list endpoint
-- `is_deleted` parameter is **forced to `false`** — only non-deleted resources are targeted
-- Use `data_conditions` to filter specific resources for deletion
-- Use `limit` to control the maximum number of resources to delete
+**Response Format:**
+- Returns a single integer representing the count of matching resources.
 
-**Soft Delete:**
-- Resources are marked as deleted rather than permanently removed
-- Deleted resources can be restored using the batch restore endpoint
+**Filtering Options:**
+- `is_deleted`: Filter by deletion status (true/false)
+- `created_time_start/end`: Filter by creation time range (ISO format)
+- `updated_time_start/end`: Filter by update time range (ISO format)
+- `created_bys`: Filter by resource creators (list of usernames)
+- `updated_bys`: Filter by resource updaters (list of usernames)
+- `data_conditions`: Filter by data content (JSON format)
+- `conditions`: Filter by meta fields or data content (JSON format)
 
-**Response:**
-- Returns a list of `ResourceMeta` for all deleted resources
-- Each entry will have `is_deleted` set to `true`
-- Empty list if no resources match the query
+**General Filtering:**
+- Use `conditions` parameter to filter by metadata fields or data content
+- Format: JSON array of condition objects
+- Attributes: `field_path`, `operator`, `value`
+- Meta fields: `resource_id`, `is_deleted`, `created_time`, `updated_time`, `created_by`, `updated_by`
+- Example: `[{"field_path": "resource_id", "operator": "starts_with", "value": "user-"}]`
+
+**Data Filtering:**
+- Use `data_conditions` parameter to filter resources by their data content
+- Format: JSON array of condition objects
+- Each condition has: `field_path`, `operator`, `value`
+- Supported operators: `eq`, `ne`, `gt`, `lt`, `gte`, `lte`, `contains`, `starts_with`, `ends_with`, `in`, `not_in`
+- Example: `[{"field_path": "name", "operator": "contains", "value": "project"}]`
+
+**Use Cases:**
+- Getting total number of resources for pagination calculations
+- Statistical analysis
+- Checking existence of resources matching criteria
 
 **Examples:**
-- `DELETE /game-event?limit=100` — Delete up to 100 resources
-- `DELETE /game-event?data_conditions=[{"field_path":"age","operator":"gt","value":25}]` — Delete resources with age > 25
+- `GET /quest/count` - Get total count of all resources
+- `GET /quest/count?is_deleted=false` - Get count of active resources
 
 **Error Responses:**
-- `400`: Bad request — Invalid query parameters or deletion error
- * @summary Batch delete game-event
+- `400`: Bad request - Invalid query parameters or search error
+ * @summary Count quest Resources
  */
-export const batchDeleteV1AutocrudGameEventDeleteQueryIsDeletedDefault = false;
-export const batchDeleteV1AutocrudGameEventDeleteQueryLimitDefault = 10;
-export const batchDeleteV1AutocrudGameEventDeleteQueryOffsetDefault = 0;
+export const getResourcesCountV1AutocrudQuestCountGetQueryIsDeletedDefault = false;
+export const getResourcesCountV1AutocrudQuestCountGetQueryLimitDefault = 10;
+export const getResourcesCountV1AutocrudQuestCountGetQueryOffsetDefault = 0;
 
-export const BatchDeleteV1AutocrudGameEventDeleteQueryParams = zod.object({
+export const GetResourcesCountV1AutocrudQuestCountGetQueryParams = zod.object({
   qb: zod
     .union([zod.string(), zod.null()])
     .optional()
@@ -19420,7 +19670,7 @@ export const BatchDeleteV1AutocrudGameEventDeleteQueryParams = zod.object({
     ),
   is_deleted: zod
     .union([zod.boolean(), zod.null()])
-    .default(batchDeleteV1AutocrudGameEventDeleteQueryIsDeletedDefault)
+    .default(getResourcesCountV1AutocrudQuestCountGetQueryIsDeletedDefault)
     .describe('Filter by deletion status'),
   created_time_start: zod
     .union([zod.string(), zod.null()])
@@ -19466,11 +19716,11 @@ export const BatchDeleteV1AutocrudGameEventDeleteQueryParams = zod.object({
     ),
   limit: zod
     .number()
-    .default(batchDeleteV1AutocrudGameEventDeleteQueryLimitDefault)
+    .default(getResourcesCountV1AutocrudQuestCountGetQueryLimitDefault)
     .describe('Maximum number of results'),
   offset: zod
     .number()
-    .default(batchDeleteV1AutocrudGameEventDeleteQueryOffsetDefault)
+    .default(getResourcesCountV1AutocrudQuestCountGetQueryOffsetDefault)
     .describe('Number of results to skip'),
   partial: zod
     .union([zod.array(zod.string()), zod.null()])
@@ -19478,30 +19728,2273 @@ export const BatchDeleteV1AutocrudGameEventDeleteQueryParams = zod.object({
     .describe("List of fields to retrieve (e.g. '\/field1', '\/nested\/field2')"),
 });
 
-export const batchDeleteV1AutocrudGameEventDeleteResponseSchemaVersionDefault = null;
-export const batchDeleteV1AutocrudGameEventDeleteResponseIsDeletedDefault = false;
+export const GetResourcesCountV1AutocrudQuestCountGetResponse = zod.number();
 
-export const BatchDeleteV1AutocrudGameEventDeleteResponseItem = zod
+/**
+ * Retrieve a list of `quest` resources.
+
+Use the `returns` query parameter to control which sections are included in each item.
+By default all sections are returned: `data`, `revision_info`, `meta`.
+
+**Query Parameters:**
+- `returns` (default `"data,revision_info,meta"`): Comma-separated list of sections to include.
+  Allowed values: `data`, `revision_info`, `meta`.
+- `limit` / `offset`: Pagination controls.
+- `partial` / `partial[]`: Partial field selection.
+- All standard filtering and sorting parameters.
+
+**Examples:**
+- `GET /quest` — full list (data + meta + revision_info)
+- `GET /quest?returns=data` — data only
+- `GET /quest?returns=data,meta` — data + meta, no revision_info
+- `GET /quest?limit=20&offset=40` — pagination
+
+**Error Responses:**
+- `400`: Bad request - Invalid query parameters or search error
+ * @summary List quest resources
+ */
+export const listResourcesV1AutocrudQuestGetQueryIsDeletedDefault = false;
+export const listResourcesV1AutocrudQuestGetQueryLimitDefault = 10;
+export const listResourcesV1AutocrudQuestGetQueryOffsetDefault = 0;
+export const listResourcesV1AutocrudQuestGetQueryReturnsDefault = `data,revision_info,meta`;
+
+export const ListResourcesV1AutocrudQuestGetQueryParams = zod.object({
+  qb: zod
+    .union([zod.string(), zod.null()])
+    .optional()
+    .describe(
+      "Query Builder expression. Example: \"QB['foo'] == 123\" or \"QB['age'].gt(18) & QB['status'].eq('active')\"",
+    ),
+  is_deleted: zod
+    .union([zod.boolean(), zod.null()])
+    .default(listResourcesV1AutocrudQuestGetQueryIsDeletedDefault)
+    .describe('Filter by deletion status'),
+  created_time_start: zod
+    .union([zod.string(), zod.null()])
+    .optional()
+    .describe('Filter by created time start (ISO format)'),
+  created_time_end: zod
+    .union([zod.string(), zod.null()])
+    .optional()
+    .describe('Filter by created time end (ISO format)'),
+  updated_time_start: zod
+    .union([zod.string(), zod.null()])
+    .optional()
+    .describe('Filter by updated time start (ISO format)'),
+  updated_time_end: zod
+    .union([zod.string(), zod.null()])
+    .optional()
+    .describe('Filter by updated time end (ISO format)'),
+  created_bys: zod
+    .union([zod.array(zod.string()), zod.null()])
+    .optional()
+    .describe('Filter by creators'),
+  updated_bys: zod
+    .union([zod.array(zod.string()), zod.null()])
+    .optional()
+    .describe('Filter by updaters'),
+  data_conditions: zod
+    .union([zod.string(), zod.null()])
+    .optional()
+    .describe(
+      'Data filter conditions in JSON format. Example: \'[{\"field_path\": \"department\", \"operator\": \"eq\", \"value\": \"Engineering\"}]\'',
+    ),
+  conditions: zod
+    .union([zod.string(), zod.null()])
+    .optional()
+    .describe(
+      'General filter conditions in JSON format for meta fields or data. Example: \'[{\"field_path\": \"resource_id\", \"operator\": \"starts_with\", \"value\": \"user-\"}]\'',
+    ),
+  sorts: zod
+    .union([zod.string(), zod.null()])
+    .optional()
+    .describe(
+      'Sort conditions in JSON format. Example: \'[{\"type\": \"meta\", \"key\": \"created_time\", \"direction\": \"+\"}, {\"type\": \"data\", \"field_path\": \"name\", \"direction\": \"-\"}]\'',
+    ),
+  limit: zod
+    .number()
+    .default(listResourcesV1AutocrudQuestGetQueryLimitDefault)
+    .describe('Maximum number of results'),
+  offset: zod
+    .number()
+    .default(listResourcesV1AutocrudQuestGetQueryOffsetDefault)
+    .describe('Number of results to skip'),
+  partial: zod
+    .union([zod.array(zod.string()), zod.null()])
+    .optional()
+    .describe("List of fields to retrieve (e.g. '\/field1', '\/nested\/field2')"),
+  returns: zod
+    .string()
+    .default(listResourcesV1AutocrudQuestGetQueryReturnsDefault)
+    .describe('Fields to return, comma-separated. Options: data, revision_info, meta'),
+});
+
+export const listResourcesV1AutocrudQuestGetResponseDataDescriptionDefault = ``;
+export const listResourcesV1AutocrudQuestGetResponseDataLevelRequirementDefault = 1;
+export const listResourcesV1AutocrudQuestGetResponseDataDifficultyDefault = `normal`;
+export const listResourcesV1AutocrudQuestGetResponseDataQuestConfigDefault = {};
+export const listResourcesV1AutocrudQuestGetResponseDataRewardsItemOneQuantityDefault = 1;
+export const listResourcesV1AutocrudQuestGetResponseDataRewardsItemOneExtraPropertiesDefault = {};
+export const listResourcesV1AutocrudQuestGetResponseDataRewardsItemTwoAmountDefault = 100;
+export const listResourcesV1AutocrudQuestGetResponseDataRewardsItemThreeExpDefault = 100;
+export const listResourcesV1AutocrudQuestGetResponseDataRewardsItemThreeBonusConfigDefault = {};
+export const listResourcesV1AutocrudQuestGetResponseDataRewardsDefault = [];
+export const listResourcesV1AutocrudQuestGetResponseRevisionInfoParentRevisionIdDefault = null;
+export const listResourcesV1AutocrudQuestGetResponseRevisionInfoSchemaVersionDefault = null;
+export const listResourcesV1AutocrudQuestGetResponseMetaSchemaVersionDefault = null;
+export const listResourcesV1AutocrudQuestGetResponseMetaIsDeletedDefault = false;
+
+export const ListResourcesV1AutocrudQuestGetResponseItem = zod.object({
+  data: zod
+    .object({
+      title: zod.string(),
+      description: zod
+        .string()
+        .default(listResourcesV1AutocrudQuestGetResponseDataDescriptionDefault),
+      level_requirement: zod
+        .number()
+        .default(listResourcesV1AutocrudQuestGetResponseDataLevelRequirementDefault),
+      difficulty: zod
+        .string()
+        .default(listResourcesV1AutocrudQuestGetResponseDataDifficultyDefault),
+      quest_config: zod
+        .looseObject({})
+        .default(listResourcesV1AutocrudQuestGetResponseDataQuestConfigDefault),
+      rewards: zod
+        .array(
+          zod.union([
+            zod
+              .object({
+                type: zod.enum(['QuestRewardItem']),
+                item_name: zod.string(),
+                quantity: zod
+                  .number()
+                  .default(
+                    listResourcesV1AutocrudQuestGetResponseDataRewardsItemOneQuantityDefault,
+                  ),
+                extra_properties: zod
+                  .looseObject({})
+                  .default(
+                    listResourcesV1AutocrudQuestGetResponseDataRewardsItemOneExtraPropertiesDefault,
+                  ),
+              })
+              .describe(
+                '任務獎勵：物品\n\n包含 extra_properties (dict) 子欄位，\n在 Union 表單中會以 Monaco JSON 編輯器呈現。',
+              ),
+            zod
+              .object({
+                type: zod.enum(['QuestRewardGold']),
+                amount: zod
+                  .number()
+                  .default(listResourcesV1AutocrudQuestGetResponseDataRewardsItemTwoAmountDefault),
+              })
+              .describe('任務獎勵：金幣'),
+            zod
+              .object({
+                type: zod.enum(['QuestRewardExp']),
+                exp: zod
+                  .number()
+                  .default(listResourcesV1AutocrudQuestGetResponseDataRewardsItemThreeExpDefault),
+                bonus_config: zod
+                  .looseObject({})
+                  .default(
+                    listResourcesV1AutocrudQuestGetResponseDataRewardsItemThreeBonusConfigDefault,
+                  ),
+              })
+              .describe(
+                '任務獎勵：經驗值\n\n包含 bonus_config (dict) 子欄位，\n在 Union 表單中會以 Monaco JSON 編輯器呈現。',
+              ),
+          ]),
+        )
+        .default(listResourcesV1AutocrudQuestGetResponseDataRewardsDefault),
+    })
+    .optional()
+    .describe(
+      '遊戲任務\n\n展示新功能：\n- quest_config (dict) → 在 create\/edit 表單中使用 Monaco JSON 編輯器\n- rewards (list[Union]) → 陣列中的 Union 子欄位正確處理，不再顯示 [object Object]\n- Union 變體 (QuestRewardItem, QuestRewardExp) 中的 dict 子欄位也使用 Monaco 編輯器',
+    ),
+  revision_info: zod
+    .object({
+      uid: zod.uuid(),
+      resource_id: zod.string(),
+      revision_id: zod.string(),
+      parent_revision_id: zod
+        .union([zod.string(), zod.null()])
+        .default(listResourcesV1AutocrudQuestGetResponseRevisionInfoParentRevisionIdDefault),
+      parent_schema_version: zod.union([zod.string(), zod.null()]).optional(),
+      schema_version: zod
+        .union([zod.string(), zod.null()])
+        .default(listResourcesV1AutocrudQuestGetResponseRevisionInfoSchemaVersionDefault),
+      data_hash: zod.string().optional(),
+      status: zod.enum(['draft', 'stable']),
+      created_time: zod.string(),
+      updated_time: zod.string(),
+      created_by: zod.string(),
+      updated_by: zod.string(),
+    })
+    .optional()
+    .describe(
+      'Metadata about a specific revision of a resource.\n\nThis class contains essential information about a particular revision,',
+    ),
+  meta: zod
+    .object({
+      current_revision_id: zod.string(),
+      resource_id: zod.string(),
+      schema_version: zod
+        .union([zod.string(), zod.null()])
+        .default(listResourcesV1AutocrudQuestGetResponseMetaSchemaVersionDefault),
+      total_revision_count: zod.number(),
+      created_time: zod.string(),
+      updated_time: zod.string(),
+      created_by: zod.string(),
+      updated_by: zod.string(),
+      is_deleted: zod
+        .boolean()
+        .default(listResourcesV1AutocrudQuestGetResponseMetaIsDeletedDefault),
+      indexed_data: zod.looseObject({}).optional(),
+    })
+    .optional()
+    .describe(
+      'Metadata about a resource, including its current revision and status.\n\nThis class provides essential information about a resource without including\nthe full data content.',
+    ),
+});
+export const ListResourcesV1AutocrudQuestGetResponse = zod.array(
+  ListResourcesV1AutocrudQuestGetResponseItem,
+);
+
+/**
+ * Create a new `quest` resource.
+
+**Request Body:**
+- Send the resource data as JSON in the request body
+- The data will be validated against the `quest` schema
+
+**Response:**
+- Returns revision information for the newly created resource
+- Includes `resource_id` and `revision_id` for tracking
+- All resources are version-controlled from creation
+
+**Examples:**
+- `POST /quest` with JSON body - Create new resource
+- Response includes resource and revision identifiers
+
+**Error Responses:**
+- `422`: Validation error - Invalid data format or missing required fields
+- `400`: Bad request - General creation error
+ * @summary Create quest
+ */
+export const createResourceV1AutocrudQuestPostBodyDescriptionDefault = ``;
+export const createResourceV1AutocrudQuestPostBodyLevelRequirementDefault = 1;
+export const createResourceV1AutocrudQuestPostBodyDifficultyDefault = `normal`;
+export const createResourceV1AutocrudQuestPostBodyQuestConfigDefault = {};
+export const createResourceV1AutocrudQuestPostBodyRewardsItemOneQuantityDefault = 1;
+export const createResourceV1AutocrudQuestPostBodyRewardsItemOneExtraPropertiesDefault = {};
+export const createResourceV1AutocrudQuestPostBodyRewardsItemTwoAmountDefault = 100;
+export const createResourceV1AutocrudQuestPostBodyRewardsItemThreeExpDefault = 100;
+export const createResourceV1AutocrudQuestPostBodyRewardsItemThreeBonusConfigDefault = {};
+export const createResourceV1AutocrudQuestPostBodyRewardsDefault = [];
+
+export const CreateResourceV1AutocrudQuestPostBody = zod
+  .object({
+    title: zod.string(),
+    description: zod.string().default(createResourceV1AutocrudQuestPostBodyDescriptionDefault),
+    level_requirement: zod
+      .number()
+      .default(createResourceV1AutocrudQuestPostBodyLevelRequirementDefault),
+    difficulty: zod.string().default(createResourceV1AutocrudQuestPostBodyDifficultyDefault),
+    quest_config: zod
+      .looseObject({})
+      .default(createResourceV1AutocrudQuestPostBodyQuestConfigDefault),
+    rewards: zod
+      .array(
+        zod.union([
+          zod
+            .object({
+              type: zod.enum(['QuestRewardItem']),
+              item_name: zod.string(),
+              quantity: zod
+                .number()
+                .default(createResourceV1AutocrudQuestPostBodyRewardsItemOneQuantityDefault),
+              extra_properties: zod
+                .looseObject({})
+                .default(createResourceV1AutocrudQuestPostBodyRewardsItemOneExtraPropertiesDefault),
+            })
+            .describe(
+              '任務獎勵：物品\n\n包含 extra_properties (dict) 子欄位，\n在 Union 表單中會以 Monaco JSON 編輯器呈現。',
+            ),
+          zod
+            .object({
+              type: zod.enum(['QuestRewardGold']),
+              amount: zod
+                .number()
+                .default(createResourceV1AutocrudQuestPostBodyRewardsItemTwoAmountDefault),
+            })
+            .describe('任務獎勵：金幣'),
+          zod
+            .object({
+              type: zod.enum(['QuestRewardExp']),
+              exp: zod
+                .number()
+                .default(createResourceV1AutocrudQuestPostBodyRewardsItemThreeExpDefault),
+              bonus_config: zod
+                .looseObject({})
+                .default(createResourceV1AutocrudQuestPostBodyRewardsItemThreeBonusConfigDefault),
+            })
+            .describe(
+              '任務獎勵：經驗值\n\n包含 bonus_config (dict) 子欄位，\n在 Union 表單中會以 Monaco JSON 編輯器呈現。',
+            ),
+        ]),
+      )
+      .default(createResourceV1AutocrudQuestPostBodyRewardsDefault),
+  })
+  .describe(
+    '遊戲任務\n\n展示新功能：\n- quest_config (dict) → 在 create\/edit 表單中使用 Monaco JSON 編輯器\n- rewards (list[Union]) → 陣列中的 Union 子欄位正確處理，不再顯示 [object Object]\n- Union 變體 (QuestRewardItem, QuestRewardExp) 中的 dict 子欄位也使用 Monaco 編輯器',
+  );
+
+export const createResourceV1AutocrudQuestPostResponseParentRevisionIdDefault = null;
+export const createResourceV1AutocrudQuestPostResponseSchemaVersionDefault = null;
+
+export const CreateResourceV1AutocrudQuestPostResponse = zod
+  .object({
+    uid: zod.uuid(),
+    resource_id: zod.string(),
+    revision_id: zod.string(),
+    parent_revision_id: zod
+      .union([zod.string(), zod.null()])
+      .default(createResourceV1AutocrudQuestPostResponseParentRevisionIdDefault),
+    parent_schema_version: zod.union([zod.string(), zod.null()]).optional(),
+    schema_version: zod
+      .union([zod.string(), zod.null()])
+      .default(createResourceV1AutocrudQuestPostResponseSchemaVersionDefault),
+    data_hash: zod.string().optional(),
+    status: zod.enum(['draft', 'stable']),
+    created_time: zod.string(),
+    updated_time: zod.string(),
+    created_by: zod.string(),
+    updated_by: zod.string(),
+  })
+  .describe(
+    'Metadata about a specific revision of a resource.\n\nThis class contains essential information about a particular revision,',
+  );
+
+/**
+ * Batch delete `quest` resources matching the given query conditions.
+
+**Query Parameters:**
+- Uses the same search parameters as the list endpoint
+- `is_deleted` parameter is **forced to `false`** — only non-deleted resources are targeted
+- Use `data_conditions` to filter specific resources for deletion
+- Use `limit` to control the maximum number of resources to delete
+
+**Soft Delete:**
+- Resources are marked as deleted rather than permanently removed
+- Deleted resources can be restored using the batch restore endpoint
+
+**Response:**
+- Returns a list of `ResourceMeta` for all deleted resources
+- Each entry will have `is_deleted` set to `true`
+- Empty list if no resources match the query
+
+**Examples:**
+- `DELETE /quest?limit=100` — Delete up to 100 resources
+- `DELETE /quest?data_conditions=[{"field_path":"age","operator":"gt","value":25}]` — Delete resources with age > 25
+
+**Error Responses:**
+- `400`: Bad request — Invalid query parameters or deletion error
+ * @summary Batch delete quest
+ */
+export const batchDeleteV1AutocrudQuestDeleteQueryIsDeletedDefault = false;
+export const batchDeleteV1AutocrudQuestDeleteQueryLimitDefault = 10;
+export const batchDeleteV1AutocrudQuestDeleteQueryOffsetDefault = 0;
+
+export const BatchDeleteV1AutocrudQuestDeleteQueryParams = zod.object({
+  qb: zod
+    .union([zod.string(), zod.null()])
+    .optional()
+    .describe(
+      "Query Builder expression. Example: \"QB['foo'] == 123\" or \"QB['age'].gt(18) & QB['status'].eq('active')\"",
+    ),
+  is_deleted: zod
+    .union([zod.boolean(), zod.null()])
+    .default(batchDeleteV1AutocrudQuestDeleteQueryIsDeletedDefault)
+    .describe('Filter by deletion status'),
+  created_time_start: zod
+    .union([zod.string(), zod.null()])
+    .optional()
+    .describe('Filter by created time start (ISO format)'),
+  created_time_end: zod
+    .union([zod.string(), zod.null()])
+    .optional()
+    .describe('Filter by created time end (ISO format)'),
+  updated_time_start: zod
+    .union([zod.string(), zod.null()])
+    .optional()
+    .describe('Filter by updated time start (ISO format)'),
+  updated_time_end: zod
+    .union([zod.string(), zod.null()])
+    .optional()
+    .describe('Filter by updated time end (ISO format)'),
+  created_bys: zod
+    .union([zod.array(zod.string()), zod.null()])
+    .optional()
+    .describe('Filter by creators'),
+  updated_bys: zod
+    .union([zod.array(zod.string()), zod.null()])
+    .optional()
+    .describe('Filter by updaters'),
+  data_conditions: zod
+    .union([zod.string(), zod.null()])
+    .optional()
+    .describe(
+      'Data filter conditions in JSON format. Example: \'[{\"field_path\": \"department\", \"operator\": \"eq\", \"value\": \"Engineering\"}]\'',
+    ),
+  conditions: zod
+    .union([zod.string(), zod.null()])
+    .optional()
+    .describe(
+      'General filter conditions in JSON format for meta fields or data. Example: \'[{\"field_path\": \"resource_id\", \"operator\": \"starts_with\", \"value\": \"user-\"}]\'',
+    ),
+  sorts: zod
+    .union([zod.string(), zod.null()])
+    .optional()
+    .describe(
+      'Sort conditions in JSON format. Example: \'[{\"type\": \"meta\", \"key\": \"created_time\", \"direction\": \"+\"}, {\"type\": \"data\", \"field_path\": \"name\", \"direction\": \"-\"}]\'',
+    ),
+  limit: zod
+    .number()
+    .default(batchDeleteV1AutocrudQuestDeleteQueryLimitDefault)
+    .describe('Maximum number of results'),
+  offset: zod
+    .number()
+    .default(batchDeleteV1AutocrudQuestDeleteQueryOffsetDefault)
+    .describe('Number of results to skip'),
+  partial: zod
+    .union([zod.array(zod.string()), zod.null()])
+    .optional()
+    .describe("List of fields to retrieve (e.g. '\/field1', '\/nested\/field2')"),
+});
+
+export const batchDeleteV1AutocrudQuestDeleteResponseSchemaVersionDefault = null;
+export const batchDeleteV1AutocrudQuestDeleteResponseIsDeletedDefault = false;
+
+export const BatchDeleteV1AutocrudQuestDeleteResponseItem = zod
   .object({
     current_revision_id: zod.string(),
     resource_id: zod.string(),
     schema_version: zod
       .union([zod.string(), zod.null()])
-      .default(batchDeleteV1AutocrudGameEventDeleteResponseSchemaVersionDefault),
+      .default(batchDeleteV1AutocrudQuestDeleteResponseSchemaVersionDefault),
     total_revision_count: zod.number(),
     created_time: zod.string(),
     updated_time: zod.string(),
     created_by: zod.string(),
     updated_by: zod.string(),
-    is_deleted: zod.boolean().default(batchDeleteV1AutocrudGameEventDeleteResponseIsDeletedDefault),
+    is_deleted: zod.boolean().default(batchDeleteV1AutocrudQuestDeleteResponseIsDeletedDefault),
     indexed_data: zod.looseObject({}).optional(),
   })
   .describe(
     'Metadata about a resource, including its current revision and status.\n\nThis class provides essential information about a resource without including\nthe full data content.',
   );
-export const BatchDeleteV1AutocrudGameEventDeleteResponse = zod.array(
-  BatchDeleteV1AutocrudGameEventDeleteResponseItem,
+export const BatchDeleteV1AutocrudQuestDeleteResponse = zod.array(
+  BatchDeleteV1AutocrudQuestDeleteResponseItem,
 );
+
+/**
+ * Export all (or filtered) **quest** resources as a
+streaming ``.acbak`` archive.
+
+Supports the same query parameters as the search endpoint
+(``qb``, ``is_deleted``, time ranges, etc.) to filter
+which resources are included.
+ * @summary Export quest data
+ */
+export const exportModelV1AutocrudQuestExportGetQueryIsDeletedDefault = false;
+export const exportModelV1AutocrudQuestExportGetQueryLimitDefault = 10;
+export const exportModelV1AutocrudQuestExportGetQueryOffsetDefault = 0;
+
+export const ExportModelV1AutocrudQuestExportGetQueryParams = zod.object({
+  qb: zod
+    .union([zod.string(), zod.null()])
+    .optional()
+    .describe(
+      "Query Builder expression. Example: \"QB['foo'] == 123\" or \"QB['age'].gt(18) & QB['status'].eq('active')\"",
+    ),
+  is_deleted: zod
+    .union([zod.boolean(), zod.null()])
+    .default(exportModelV1AutocrudQuestExportGetQueryIsDeletedDefault)
+    .describe('Filter by deletion status'),
+  created_time_start: zod
+    .union([zod.string(), zod.null()])
+    .optional()
+    .describe('Filter by created time start (ISO format)'),
+  created_time_end: zod
+    .union([zod.string(), zod.null()])
+    .optional()
+    .describe('Filter by created time end (ISO format)'),
+  updated_time_start: zod
+    .union([zod.string(), zod.null()])
+    .optional()
+    .describe('Filter by updated time start (ISO format)'),
+  updated_time_end: zod
+    .union([zod.string(), zod.null()])
+    .optional()
+    .describe('Filter by updated time end (ISO format)'),
+  created_bys: zod
+    .union([zod.array(zod.string()), zod.null()])
+    .optional()
+    .describe('Filter by creators'),
+  updated_bys: zod
+    .union([zod.array(zod.string()), zod.null()])
+    .optional()
+    .describe('Filter by updaters'),
+  data_conditions: zod
+    .union([zod.string(), zod.null()])
+    .optional()
+    .describe(
+      'Data filter conditions in JSON format. Example: \'[{\"field_path\": \"department\", \"operator\": \"eq\", \"value\": \"Engineering\"}]\'',
+    ),
+  conditions: zod
+    .union([zod.string(), zod.null()])
+    .optional()
+    .describe(
+      'General filter conditions in JSON format for meta fields or data. Example: \'[{\"field_path\": \"resource_id\", \"operator\": \"starts_with\", \"value\": \"user-\"}]\'',
+    ),
+  sorts: zod
+    .union([zod.string(), zod.null()])
+    .optional()
+    .describe(
+      'Sort conditions in JSON format. Example: \'[{\"type\": \"meta\", \"key\": \"created_time\", \"direction\": \"+\"}, {\"type\": \"data\", \"field_path\": \"name\", \"direction\": \"-\"}]\'',
+    ),
+  limit: zod
+    .number()
+    .default(exportModelV1AutocrudQuestExportGetQueryLimitDefault)
+    .describe('Maximum number of results'),
+  offset: zod
+    .number()
+    .default(exportModelV1AutocrudQuestExportGetQueryOffsetDefault)
+    .describe('Number of results to skip'),
+  partial: zod
+    .union([zod.array(zod.string()), zod.null()])
+    .optional()
+    .describe("List of fields to retrieve (e.g. '\/field1', '\/nested\/field2')"),
+});
+
+export const ExportModelV1AutocrudQuestExportGetResponse = zod.unknown();
+
+/**
+ * Import **quest** resources from a ``.acbak`` archive.
+
+The archive must contain a **quest** model section.
+Use ``on_duplicate`` to control behaviour when a resource ID
+already exists.
+ * @summary Import quest data
+ */
+export const importModelV1AutocrudQuestImportPostQueryOnDuplicateDefault = `overwrite`;
+
+export const ImportModelV1AutocrudQuestImportPostQueryParams = zod.object({
+  on_duplicate: zod
+    .string()
+    .default(importModelV1AutocrudQuestImportPostQueryOnDuplicateDefault)
+    .describe('Strategy: overwrite | skip | raise_error'),
+});
+
+export const ImportModelV1AutocrudQuestImportPostBody = zod.object({
+  file: zod.instanceof(File).describe('.acbak archive file'),
+});
+
+export const ImportModelV1AutocrudQuestImportPostResponse = zod.record(zod.string(), zod.unknown());
+
+/**
+ * Deprecated: use `GET /quest/{resource_id}?returns=meta` instead.
+ * @deprecated
+ * @summary Get quest Meta by ID
+ */
+export const GetResourceMetaV1AutocrudQuestResourceIdMetaGetParams = zod.object({
+  resource_id: zod.string(),
+});
+
+export const getResourceMetaV1AutocrudQuestResourceIdMetaGetQueryIncludeDeletedDefault = false;
+
+export const GetResourceMetaV1AutocrudQuestResourceIdMetaGetQueryParams = zod.object({
+  partial: zod
+    .union([zod.array(zod.string()), zod.null()])
+    .optional()
+    .describe("List of meta fields to retrieve (e.g. '\/resource_id', '\/created_time')"),
+  include_deleted: zod
+    .boolean()
+    .default(getResourceMetaV1AutocrudQuestResourceIdMetaGetQueryIncludeDeletedDefault)
+    .describe('If true, return metadata even for soft-deleted resources'),
+});
+
+export const getResourceMetaV1AutocrudQuestResourceIdMetaGetResponseSchemaVersionDefault = null;
+export const getResourceMetaV1AutocrudQuestResourceIdMetaGetResponseIsDeletedDefault = false;
+
+export const GetResourceMetaV1AutocrudQuestResourceIdMetaGetResponse = zod
+  .object({
+    current_revision_id: zod.string(),
+    resource_id: zod.string(),
+    schema_version: zod
+      .union([zod.string(), zod.null()])
+      .default(getResourceMetaV1AutocrudQuestResourceIdMetaGetResponseSchemaVersionDefault),
+    total_revision_count: zod.number(),
+    created_time: zod.string(),
+    updated_time: zod.string(),
+    created_by: zod.string(),
+    updated_by: zod.string(),
+    is_deleted: zod
+      .boolean()
+      .default(getResourceMetaV1AutocrudQuestResourceIdMetaGetResponseIsDeletedDefault),
+    indexed_data: zod.looseObject({}).optional(),
+  })
+  .describe(
+    'Metadata about a resource, including its current revision and status.\n\nThis class provides essential information about a resource without including\nthe full data content.',
+  );
+
+/**
+ * Retrieve revision information for a specific `quest` resource.
+
+**Path Parameters:**
+- `resource_id`: The unique identifier of the resource
+
+**Query Parameters:**
+- `revision_id` (optional): Specific revision ID to retrieve. If not provided, returns the current revision
+
+**Response:**
+- Returns detailed revision information including:
+  - `uid`: Unique identifier for this revision
+  - `revision_id`: The revision identifier
+  - `parent_revision_id`: ID of the parent revision (if any)
+  - `schema_version`: Schema version used for this revision
+  - `data_hash`: Hash of the resource data
+  - `status`: Current status of the revision
+
+**Use Cases:**
+- Get metadata about a specific revision
+- Track revision lineage and relationships
+- Verify data integrity through hash checking
+- Monitor revision status changes
+
+**Examples:**
+- `GET /quest/123/revision-info` - Get current revision info
+- `GET /quest/123/revision-info?revision_id=rev456` - Get specific revision info
+
+**Error Responses:**
+- `404`: Resource or revision not found
+ * @deprecated
+ * @summary Get quest Revision Info
+ */
+export const GetResourceRevisionInfoV1AutocrudQuestResourceIdRevisionInfoGetParams = zod.object({
+  resource_id: zod.string(),
+});
+
+export const GetResourceRevisionInfoV1AutocrudQuestResourceIdRevisionInfoGetQueryParams =
+  zod.object({
+    revision_id: zod
+      .union([zod.string(), zod.null()])
+      .optional()
+      .describe('Specific revision ID to retrieve. If not provided, returns the current revision'),
+    partial: zod
+      .union([zod.array(zod.string()), zod.null()])
+      .optional()
+      .describe("List of revision info fields to retrieve (e.g. '\/revision_id', '\/status')"),
+  });
+
+export const getResourceRevisionInfoV1AutocrudQuestResourceIdRevisionInfoGetResponseParentRevisionIdDefault =
+  null;
+export const getResourceRevisionInfoV1AutocrudQuestResourceIdRevisionInfoGetResponseSchemaVersionDefault =
+  null;
+
+export const GetResourceRevisionInfoV1AutocrudQuestResourceIdRevisionInfoGetResponse = zod
+  .object({
+    uid: zod.uuid(),
+    resource_id: zod.string(),
+    revision_id: zod.string(),
+    parent_revision_id: zod
+      .union([zod.string(), zod.null()])
+      .default(
+        getResourceRevisionInfoV1AutocrudQuestResourceIdRevisionInfoGetResponseParentRevisionIdDefault,
+      ),
+    parent_schema_version: zod.union([zod.string(), zod.null()]).optional(),
+    schema_version: zod
+      .union([zod.string(), zod.null()])
+      .default(
+        getResourceRevisionInfoV1AutocrudQuestResourceIdRevisionInfoGetResponseSchemaVersionDefault,
+      ),
+    data_hash: zod.string().optional(),
+    status: zod.enum(['draft', 'stable']),
+    created_time: zod.string(),
+    updated_time: zod.string(),
+    created_by: zod.string(),
+    updated_by: zod.string(),
+  })
+  .describe(
+    'Metadata about a specific revision of a resource.\n\nThis class contains essential information about a particular revision,',
+  );
+
+/**
+ * Deprecated: use `GET /quest/{resource_id}` instead.
+
+Retrieve complete information for a `quest` resource including data, metadata, and revision info.
+
+**Query Parameters:**
+- `revision_id` (optional): Specific revision ID to retrieve
+- `partial` (optional): List of fields to retrieve
+- `returns`: Comma-separated fields to return (data, revision_info, meta)
+
+**Error Responses:**
+- `404`: Resource or revision not found
+ * @deprecated
+ * @summary Get Complete quest Information
+ */
+export const GetResourceFullV1AutocrudQuestResourceIdFullGetParams = zod.object({
+  resource_id: zod.string(),
+});
+
+export const getResourceFullV1AutocrudQuestResourceIdFullGetQueryIncludeDeletedDefault = false;
+export const getResourceFullV1AutocrudQuestResourceIdFullGetQueryReturnsDefault = `data,revision_info,meta`;
+
+export const GetResourceFullV1AutocrudQuestResourceIdFullGetQueryParams = zod.object({
+  revision_id: zod
+    .union([zod.string(), zod.null()])
+    .optional()
+    .describe('Specific revision ID to retrieve. If not provided, returns the current revision'),
+  partial: zod
+    .union([zod.array(zod.string()), zod.null()])
+    .optional()
+    .describe("List of fields to retrieve (e.g. '\/field1', '\/nested\/field2')"),
+  include_deleted: zod
+    .boolean()
+    .default(getResourceFullV1AutocrudQuestResourceIdFullGetQueryIncludeDeletedDefault)
+    .describe('If true, return data even for soft-deleted resources'),
+  returns: zod
+    .string()
+    .default(getResourceFullV1AutocrudQuestResourceIdFullGetQueryReturnsDefault)
+    .describe('Fields to return, comma-separated. Options: data, revision_info, meta'),
+});
+
+export const getResourceFullV1AutocrudQuestResourceIdFullGetResponseDataDescriptionDefault = ``;
+export const getResourceFullV1AutocrudQuestResourceIdFullGetResponseDataLevelRequirementDefault = 1;
+export const getResourceFullV1AutocrudQuestResourceIdFullGetResponseDataDifficultyDefault = `normal`;
+export const getResourceFullV1AutocrudQuestResourceIdFullGetResponseDataQuestConfigDefault = {};
+export const getResourceFullV1AutocrudQuestResourceIdFullGetResponseDataRewardsItemOneQuantityDefault = 1;
+export const getResourceFullV1AutocrudQuestResourceIdFullGetResponseDataRewardsItemOneExtraPropertiesDefault =
+  {};
+export const getResourceFullV1AutocrudQuestResourceIdFullGetResponseDataRewardsItemTwoAmountDefault = 100;
+export const getResourceFullV1AutocrudQuestResourceIdFullGetResponseDataRewardsItemThreeExpDefault = 100;
+export const getResourceFullV1AutocrudQuestResourceIdFullGetResponseDataRewardsItemThreeBonusConfigDefault =
+  {};
+export const getResourceFullV1AutocrudQuestResourceIdFullGetResponseDataRewardsDefault = [];
+export const getResourceFullV1AutocrudQuestResourceIdFullGetResponseRevisionInfoParentRevisionIdDefault =
+  null;
+export const getResourceFullV1AutocrudQuestResourceIdFullGetResponseRevisionInfoSchemaVersionDefault =
+  null;
+export const getResourceFullV1AutocrudQuestResourceIdFullGetResponseMetaSchemaVersionDefault = null;
+export const getResourceFullV1AutocrudQuestResourceIdFullGetResponseMetaIsDeletedDefault = false;
+
+export const GetResourceFullV1AutocrudQuestResourceIdFullGetResponse = zod.object({
+  data: zod
+    .object({
+      title: zod.string(),
+      description: zod
+        .string()
+        .default(getResourceFullV1AutocrudQuestResourceIdFullGetResponseDataDescriptionDefault),
+      level_requirement: zod
+        .number()
+        .default(
+          getResourceFullV1AutocrudQuestResourceIdFullGetResponseDataLevelRequirementDefault,
+        ),
+      difficulty: zod
+        .string()
+        .default(getResourceFullV1AutocrudQuestResourceIdFullGetResponseDataDifficultyDefault),
+      quest_config: zod
+        .looseObject({})
+        .default(getResourceFullV1AutocrudQuestResourceIdFullGetResponseDataQuestConfigDefault),
+      rewards: zod
+        .array(
+          zod.union([
+            zod
+              .object({
+                type: zod.enum(['QuestRewardItem']),
+                item_name: zod.string(),
+                quantity: zod
+                  .number()
+                  .default(
+                    getResourceFullV1AutocrudQuestResourceIdFullGetResponseDataRewardsItemOneQuantityDefault,
+                  ),
+                extra_properties: zod
+                  .looseObject({})
+                  .default(
+                    getResourceFullV1AutocrudQuestResourceIdFullGetResponseDataRewardsItemOneExtraPropertiesDefault,
+                  ),
+              })
+              .describe(
+                '任務獎勵：物品\n\n包含 extra_properties (dict) 子欄位，\n在 Union 表單中會以 Monaco JSON 編輯器呈現。',
+              ),
+            zod
+              .object({
+                type: zod.enum(['QuestRewardGold']),
+                amount: zod
+                  .number()
+                  .default(
+                    getResourceFullV1AutocrudQuestResourceIdFullGetResponseDataRewardsItemTwoAmountDefault,
+                  ),
+              })
+              .describe('任務獎勵：金幣'),
+            zod
+              .object({
+                type: zod.enum(['QuestRewardExp']),
+                exp: zod
+                  .number()
+                  .default(
+                    getResourceFullV1AutocrudQuestResourceIdFullGetResponseDataRewardsItemThreeExpDefault,
+                  ),
+                bonus_config: zod
+                  .looseObject({})
+                  .default(
+                    getResourceFullV1AutocrudQuestResourceIdFullGetResponseDataRewardsItemThreeBonusConfigDefault,
+                  ),
+              })
+              .describe(
+                '任務獎勵：經驗值\n\n包含 bonus_config (dict) 子欄位，\n在 Union 表單中會以 Monaco JSON 編輯器呈現。',
+              ),
+          ]),
+        )
+        .default(getResourceFullV1AutocrudQuestResourceIdFullGetResponseDataRewardsDefault),
+    })
+    .optional()
+    .describe(
+      '遊戲任務\n\n展示新功能：\n- quest_config (dict) → 在 create\/edit 表單中使用 Monaco JSON 編輯器\n- rewards (list[Union]) → 陣列中的 Union 子欄位正確處理，不再顯示 [object Object]\n- Union 變體 (QuestRewardItem, QuestRewardExp) 中的 dict 子欄位也使用 Monaco 編輯器',
+    ),
+  revision_info: zod
+    .object({
+      uid: zod.uuid(),
+      resource_id: zod.string(),
+      revision_id: zod.string(),
+      parent_revision_id: zod
+        .union([zod.string(), zod.null()])
+        .default(
+          getResourceFullV1AutocrudQuestResourceIdFullGetResponseRevisionInfoParentRevisionIdDefault,
+        ),
+      parent_schema_version: zod.union([zod.string(), zod.null()]).optional(),
+      schema_version: zod
+        .union([zod.string(), zod.null()])
+        .default(
+          getResourceFullV1AutocrudQuestResourceIdFullGetResponseRevisionInfoSchemaVersionDefault,
+        ),
+      data_hash: zod.string().optional(),
+      status: zod.enum(['draft', 'stable']),
+      created_time: zod.string(),
+      updated_time: zod.string(),
+      created_by: zod.string(),
+      updated_by: zod.string(),
+    })
+    .optional()
+    .describe(
+      'Metadata about a specific revision of a resource.\n\nThis class contains essential information about a particular revision,',
+    ),
+  meta: zod
+    .object({
+      current_revision_id: zod.string(),
+      resource_id: zod.string(),
+      schema_version: zod
+        .union([zod.string(), zod.null()])
+        .default(getResourceFullV1AutocrudQuestResourceIdFullGetResponseMetaSchemaVersionDefault),
+      total_revision_count: zod.number(),
+      created_time: zod.string(),
+      updated_time: zod.string(),
+      created_by: zod.string(),
+      updated_by: zod.string(),
+      is_deleted: zod
+        .boolean()
+        .default(getResourceFullV1AutocrudQuestResourceIdFullGetResponseMetaIsDeletedDefault),
+      indexed_data: zod.looseObject({}).optional(),
+    })
+    .optional()
+    .describe(
+      'Metadata about a resource, including its current revision and status.\n\nThis class provides essential information about a resource without including\nthe full data content.',
+    ),
+});
+
+/**
+ * Retrieve the complete revision history for a `quest` resource.
+
+**Path Parameters:**
+- `resource_id`: The unique identifier of the resource
+
+**Response:**
+- Returns resource metadata and complete revision history including:
+  - `meta`: Current resource metadata
+  - `revisions`: Array of all revision information objects
+    - Each revision includes uid, revision_id, parent_revision_id, schema_version, data_hash, and status
+                    - `total`: Total number of revisions matching the query (before limit)
+                    - `has_more`: Whether more revisions are available beyond the returned list
+
+                **Query Parameters:**
+                - `limit` (default 10): Maximum number of revisions to return
+                - `offset` (default 0): Number of revisions to skip
+                - `sort`: `created_time` or `-created_time` (default `-created_time`)
+                - `created_time_start`: ISO datetime lower bound (inclusive)
+                - `created_time_end`: ISO datetime upper bound (inclusive)
+                - `from_revision_id`: Start listing from this revision_id (inclusive)
+                - `chain_only`: Return only the parent chain from current revision
+
+**Use Cases:**
+- View complete change history of a resource
+- Audit trail and compliance tracking
+- Understanding resource evolution over time
+- Selecting specific revisions for comparison or restoration
+
+**Version Control Benefits:**
+- Complete chronological history of all changes
+- Parent-child relationships between revisions
+- Data integrity verification through hashes
+- Status tracking for each revision
+
+**Examples:**
+- `GET /quest/123/revision-list` - Get all revisions for resource 123
+- `GET /quest/123/revision-list?limit=10&offset=20`
+- `GET /quest/123/revision-list?created_time_start=2025-01-01T00:00:00`
+- `GET /quest/123/revision-list?from_revision_id=rev123`
+- `GET /quest/123/revision-list?chain_only=true`
+- Response includes metadata and array of revision information
+
+**Error Responses:**
+- `404`: Resource not found
+ * @summary Get quest Revision History
+ */
+export const GetResourceRevisionListV1AutocrudQuestResourceIdRevisionListGetParams = zod.object({
+  resource_id: zod.string(),
+});
+
+export const getResourceRevisionListV1AutocrudQuestResourceIdRevisionListGetQueryLimitDefault = 10;
+export const getResourceRevisionListV1AutocrudQuestResourceIdRevisionListGetQueryOffsetDefault = 0;
+export const getResourceRevisionListV1AutocrudQuestResourceIdRevisionListGetQueryChainOnlyDefault = false;
+export const getResourceRevisionListV1AutocrudQuestResourceIdRevisionListGetQuerySortDefault = `-created_time`;
+export const getResourceRevisionListV1AutocrudQuestResourceIdRevisionListGetQueryIncludeDeletedDefault = false;
+
+export const GetResourceRevisionListV1AutocrudQuestResourceIdRevisionListGetQueryParams =
+  zod.object({
+    limit: zod
+      .number()
+      .default(getResourceRevisionListV1AutocrudQuestResourceIdRevisionListGetQueryLimitDefault),
+    offset: zod
+      .number()
+      .default(getResourceRevisionListV1AutocrudQuestResourceIdRevisionListGetQueryOffsetDefault),
+    created_time_start: zod.union([zod.string(), zod.null()]).optional(),
+    created_time_end: zod.union([zod.string(), zod.null()]).optional(),
+    from_revision_id: zod.union([zod.string(), zod.null()]).optional(),
+    chain_only: zod
+      .boolean()
+      .default(
+        getResourceRevisionListV1AutocrudQuestResourceIdRevisionListGetQueryChainOnlyDefault,
+      ),
+    sort: zod
+      .string()
+      .default(getResourceRevisionListV1AutocrudQuestResourceIdRevisionListGetQuerySortDefault),
+    partial: zod
+      .union([zod.array(zod.string()), zod.null()])
+      .optional()
+      .describe(
+        "List of fields to retrieve (e.g. '\/revision_id', '\/status', '\/meta\/resource_id')",
+      ),
+    include_deleted: zod
+      .boolean()
+      .default(
+        getResourceRevisionListV1AutocrudQuestResourceIdRevisionListGetQueryIncludeDeletedDefault,
+      )
+      .describe('If true, return revision list even for soft-deleted resources'),
+  });
+
+export const getResourceRevisionListV1AutocrudQuestResourceIdRevisionListGetResponseMetaSchemaVersionDefault =
+  null;
+export const getResourceRevisionListV1AutocrudQuestResourceIdRevisionListGetResponseMetaIsDeletedDefault = false;
+export const getResourceRevisionListV1AutocrudQuestResourceIdRevisionListGetResponseRevisionsItemParentRevisionIdDefault =
+  null;
+export const getResourceRevisionListV1AutocrudQuestResourceIdRevisionListGetResponseRevisionsItemSchemaVersionDefault =
+  null;
+export const getResourceRevisionListV1AutocrudQuestResourceIdRevisionListGetResponseTotalDefault = 0;
+export const getResourceRevisionListV1AutocrudQuestResourceIdRevisionListGetResponseHasMoreDefault = false;
+
+export const GetResourceRevisionListV1AutocrudQuestResourceIdRevisionListGetResponse = zod.object({
+  meta: zod
+    .object({
+      current_revision_id: zod.string(),
+      resource_id: zod.string(),
+      schema_version: zod
+        .union([zod.string(), zod.null()])
+        .default(
+          getResourceRevisionListV1AutocrudQuestResourceIdRevisionListGetResponseMetaSchemaVersionDefault,
+        ),
+      total_revision_count: zod.number(),
+      created_time: zod.string(),
+      updated_time: zod.string(),
+      created_by: zod.string(),
+      updated_by: zod.string(),
+      is_deleted: zod
+        .boolean()
+        .default(
+          getResourceRevisionListV1AutocrudQuestResourceIdRevisionListGetResponseMetaIsDeletedDefault,
+        ),
+      indexed_data: zod.looseObject({}).optional(),
+    })
+    .describe(
+      'Metadata about a resource, including its current revision and status.\n\nThis class provides essential information about a resource without including\nthe full data content.',
+    ),
+  revisions: zod.array(
+    zod
+      .object({
+        uid: zod.uuid(),
+        resource_id: zod.string(),
+        revision_id: zod.string(),
+        parent_revision_id: zod
+          .union([zod.string(), zod.null()])
+          .default(
+            getResourceRevisionListV1AutocrudQuestResourceIdRevisionListGetResponseRevisionsItemParentRevisionIdDefault,
+          ),
+        parent_schema_version: zod.union([zod.string(), zod.null()]).optional(),
+        schema_version: zod
+          .union([zod.string(), zod.null()])
+          .default(
+            getResourceRevisionListV1AutocrudQuestResourceIdRevisionListGetResponseRevisionsItemSchemaVersionDefault,
+          ),
+        data_hash: zod.string().optional(),
+        status: zod.enum(['draft', 'stable']),
+        created_time: zod.string(),
+        updated_time: zod.string(),
+        created_by: zod.string(),
+        updated_by: zod.string(),
+      })
+      .describe(
+        'Metadata about a specific revision of a resource.\n\nThis class contains essential information about a particular revision,',
+      ),
+  ),
+  total: zod
+    .number()
+    .default(getResourceRevisionListV1AutocrudQuestResourceIdRevisionListGetResponseTotalDefault),
+  has_more: zod
+    .boolean()
+    .default(getResourceRevisionListV1AutocrudQuestResourceIdRevisionListGetResponseHasMoreDefault),
+});
+
+/**
+ * Retrieve only the data content of a `quest` resource.
+
+**Path Parameters:**
+- `resource_id`: The unique identifier of the resource
+
+**Query Parameters:**
+- `revision_id` (optional): Specific revision ID to retrieve. If not provided, returns the current revision
+- `partial` (optional): List of fields to retrieve (e.g. '/field1', '/nested/field2')
+
+**Response:**
+- Returns only the resource data without metadata or revision information
+- The response format matches the original resource schema
+- Most lightweight option for retrieving resource content
+
+**Use Cases:**
+- Simple data retrieval when metadata is not needed
+- Efficient resource content access
+- Integration with external systems that only need the data
+- Lightweight API calls to minimize response size
+- Fetching only necessary data for UI components (using partial)
+
+**Performance Benefits:**
+- Minimal response payload
+- Faster response times
+- Reduced bandwidth usage
+- Direct access to resource content
+
+**Examples:**
+- `GET /quest/123/data` - Get current resource data only
+- `GET /quest/123/data?revision_id=rev456` - Get specific revision data only
+- `GET /quest/123/data?partial=/name&partial=/email` - Get specific fields
+
+**Error Responses:**
+- `404`: Resource or revision not found
+ * @deprecated
+ * @summary Get quest Data
+ */
+export const GetResourceDataV1AutocrudQuestResourceIdDataGetParams = zod.object({
+  resource_id: zod.string(),
+});
+
+export const getResourceDataV1AutocrudQuestResourceIdDataGetQueryIncludeDeletedDefault = false;
+
+export const GetResourceDataV1AutocrudQuestResourceIdDataGetQueryParams = zod.object({
+  revision_id: zod
+    .union([zod.string(), zod.null()])
+    .optional()
+    .describe('Specific revision ID to retrieve. If not provided, returns the current revision'),
+  partial: zod
+    .union([zod.array(zod.string()), zod.null()])
+    .optional()
+    .describe("List of fields to retrieve (e.g. '\/field1', '\/nested\/field2')"),
+  include_deleted: zod
+    .boolean()
+    .default(getResourceDataV1AutocrudQuestResourceIdDataGetQueryIncludeDeletedDefault)
+    .describe('If true, return data even for soft-deleted resources'),
+});
+
+export const getResourceDataV1AutocrudQuestResourceIdDataGetResponseDescriptionDefault = ``;
+export const getResourceDataV1AutocrudQuestResourceIdDataGetResponseLevelRequirementDefault = 1;
+export const getResourceDataV1AutocrudQuestResourceIdDataGetResponseDifficultyDefault = `normal`;
+export const getResourceDataV1AutocrudQuestResourceIdDataGetResponseQuestConfigDefault = {};
+export const getResourceDataV1AutocrudQuestResourceIdDataGetResponseRewardsItemOneQuantityDefault = 1;
+export const getResourceDataV1AutocrudQuestResourceIdDataGetResponseRewardsItemOneExtraPropertiesDefault =
+  {};
+export const getResourceDataV1AutocrudQuestResourceIdDataGetResponseRewardsItemTwoAmountDefault = 100;
+export const getResourceDataV1AutocrudQuestResourceIdDataGetResponseRewardsItemThreeExpDefault = 100;
+export const getResourceDataV1AutocrudQuestResourceIdDataGetResponseRewardsItemThreeBonusConfigDefault =
+  {};
+export const getResourceDataV1AutocrudQuestResourceIdDataGetResponseRewardsDefault = [];
+
+export const GetResourceDataV1AutocrudQuestResourceIdDataGetResponse = zod
+  .object({
+    title: zod.string(),
+    description: zod
+      .string()
+      .default(getResourceDataV1AutocrudQuestResourceIdDataGetResponseDescriptionDefault),
+    level_requirement: zod
+      .number()
+      .default(getResourceDataV1AutocrudQuestResourceIdDataGetResponseLevelRequirementDefault),
+    difficulty: zod
+      .string()
+      .default(getResourceDataV1AutocrudQuestResourceIdDataGetResponseDifficultyDefault),
+    quest_config: zod
+      .looseObject({})
+      .default(getResourceDataV1AutocrudQuestResourceIdDataGetResponseQuestConfigDefault),
+    rewards: zod
+      .array(
+        zod.union([
+          zod
+            .object({
+              type: zod.enum(['QuestRewardItem']),
+              item_name: zod.string(),
+              quantity: zod
+                .number()
+                .default(
+                  getResourceDataV1AutocrudQuestResourceIdDataGetResponseRewardsItemOneQuantityDefault,
+                ),
+              extra_properties: zod
+                .looseObject({})
+                .default(
+                  getResourceDataV1AutocrudQuestResourceIdDataGetResponseRewardsItemOneExtraPropertiesDefault,
+                ),
+            })
+            .describe(
+              '任務獎勵：物品\n\n包含 extra_properties (dict) 子欄位，\n在 Union 表單中會以 Monaco JSON 編輯器呈現。',
+            ),
+          zod
+            .object({
+              type: zod.enum(['QuestRewardGold']),
+              amount: zod
+                .number()
+                .default(
+                  getResourceDataV1AutocrudQuestResourceIdDataGetResponseRewardsItemTwoAmountDefault,
+                ),
+            })
+            .describe('任務獎勵：金幣'),
+          zod
+            .object({
+              type: zod.enum(['QuestRewardExp']),
+              exp: zod
+                .number()
+                .default(
+                  getResourceDataV1AutocrudQuestResourceIdDataGetResponseRewardsItemThreeExpDefault,
+                ),
+              bonus_config: zod
+                .looseObject({})
+                .default(
+                  getResourceDataV1AutocrudQuestResourceIdDataGetResponseRewardsItemThreeBonusConfigDefault,
+                ),
+            })
+            .describe(
+              '任務獎勵：經驗值\n\n包含 bonus_config (dict) 子欄位，\n在 Union 表單中會以 Monaco JSON 編輯器呈現。',
+            ),
+        ]),
+      )
+      .default(getResourceDataV1AutocrudQuestResourceIdDataGetResponseRewardsDefault),
+  })
+  .describe(
+    '遊戲任務\n\n展示新功能：\n- quest_config (dict) → 在 create\/edit 表單中使用 Monaco JSON 編輯器\n- rewards (list[Union]) → 陣列中的 Union 子欄位正確處理，不再顯示 [object Object]\n- Union 變體 (QuestRewardItem, QuestRewardExp) 中的 dict 子欄位也使用 Monaco 編輯器',
+  );
+
+/**
+ * @summary Get blob content
+ */
+export const GetBlobV1AutocrudQuestResourceIdBlobsFileIdGetParams = zod.object({
+  resource_id: zod.string().describe('Resource ID'),
+  file_id: zod.string().describe('File ID of the blob'),
+});
+
+/**
+ * Retrieve a `quest` resource by ID.
+
+Use the `returns` query parameter to control which sections are included in the response.
+By default all sections are returned: `data`, `revision_info`, `meta`.
+
+**Query Parameters:**
+- `returns` (default `"data,revision_info,meta"`): Comma-separated list of sections to include.
+  Allowed values: `data`, `revision_info`, `meta`.
+- `revision_id` (optional): Specific revision ID to retrieve.
+- `partial` / `partial[]` (optional): List of fields for partial response.
+
+**Examples:**
+- `GET /quest/123` — full response (data + meta + revision_info)
+- `GET /quest/123?returns=data` — data only
+- `GET /quest/123?returns=data,meta` — data + meta, no revision_info
+- `GET /quest/123?returns=meta` — metadata only
+- `GET /quest/123?partial=/name&partial=/email` — partial data fields
+
+**Error Responses:**
+- `404`: Resource or revision not found
+ * @summary Get quest resource
+ */
+export const GetResourceV1AutocrudQuestResourceIdGetParams = zod.object({
+  resource_id: zod.string(),
+});
+
+export const getResourceV1AutocrudQuestResourceIdGetQueryIncludeDeletedDefault = false;
+export const getResourceV1AutocrudQuestResourceIdGetQueryReturnsDefault = `data,revision_info,meta`;
+
+export const GetResourceV1AutocrudQuestResourceIdGetQueryParams = zod.object({
+  revision_id: zod
+    .union([zod.string(), zod.null()])
+    .optional()
+    .describe('Specific revision ID to retrieve. If not provided, returns the current revision'),
+  partial: zod
+    .union([zod.array(zod.string()), zod.null()])
+    .optional()
+    .describe("List of fields to retrieve (e.g. '\/field1', '\/nested\/field2')"),
+  include_deleted: zod
+    .boolean()
+    .default(getResourceV1AutocrudQuestResourceIdGetQueryIncludeDeletedDefault)
+    .describe('If true, return data even for soft-deleted resources'),
+  returns: zod
+    .string()
+    .default(getResourceV1AutocrudQuestResourceIdGetQueryReturnsDefault)
+    .describe('Fields to return, comma-separated. Options: data, revision_info, meta'),
+});
+
+export const getResourceV1AutocrudQuestResourceIdGetResponseDataDescriptionDefault = ``;
+export const getResourceV1AutocrudQuestResourceIdGetResponseDataLevelRequirementDefault = 1;
+export const getResourceV1AutocrudQuestResourceIdGetResponseDataDifficultyDefault = `normal`;
+export const getResourceV1AutocrudQuestResourceIdGetResponseDataQuestConfigDefault = {};
+export const getResourceV1AutocrudQuestResourceIdGetResponseDataRewardsItemOneQuantityDefault = 1;
+export const getResourceV1AutocrudQuestResourceIdGetResponseDataRewardsItemOneExtraPropertiesDefault =
+  {};
+export const getResourceV1AutocrudQuestResourceIdGetResponseDataRewardsItemTwoAmountDefault = 100;
+export const getResourceV1AutocrudQuestResourceIdGetResponseDataRewardsItemThreeExpDefault = 100;
+export const getResourceV1AutocrudQuestResourceIdGetResponseDataRewardsItemThreeBonusConfigDefault =
+  {};
+export const getResourceV1AutocrudQuestResourceIdGetResponseDataRewardsDefault = [];
+export const getResourceV1AutocrudQuestResourceIdGetResponseRevisionInfoParentRevisionIdDefault =
+  null;
+export const getResourceV1AutocrudQuestResourceIdGetResponseRevisionInfoSchemaVersionDefault = null;
+export const getResourceV1AutocrudQuestResourceIdGetResponseMetaSchemaVersionDefault = null;
+export const getResourceV1AutocrudQuestResourceIdGetResponseMetaIsDeletedDefault = false;
+
+export const GetResourceV1AutocrudQuestResourceIdGetResponse = zod.object({
+  data: zod
+    .object({
+      title: zod.string(),
+      description: zod
+        .string()
+        .default(getResourceV1AutocrudQuestResourceIdGetResponseDataDescriptionDefault),
+      level_requirement: zod
+        .number()
+        .default(getResourceV1AutocrudQuestResourceIdGetResponseDataLevelRequirementDefault),
+      difficulty: zod
+        .string()
+        .default(getResourceV1AutocrudQuestResourceIdGetResponseDataDifficultyDefault),
+      quest_config: zod
+        .looseObject({})
+        .default(getResourceV1AutocrudQuestResourceIdGetResponseDataQuestConfigDefault),
+      rewards: zod
+        .array(
+          zod.union([
+            zod
+              .object({
+                type: zod.enum(['QuestRewardItem']),
+                item_name: zod.string(),
+                quantity: zod
+                  .number()
+                  .default(
+                    getResourceV1AutocrudQuestResourceIdGetResponseDataRewardsItemOneQuantityDefault,
+                  ),
+                extra_properties: zod
+                  .looseObject({})
+                  .default(
+                    getResourceV1AutocrudQuestResourceIdGetResponseDataRewardsItemOneExtraPropertiesDefault,
+                  ),
+              })
+              .describe(
+                '任務獎勵：物品\n\n包含 extra_properties (dict) 子欄位，\n在 Union 表單中會以 Monaco JSON 編輯器呈現。',
+              ),
+            zod
+              .object({
+                type: zod.enum(['QuestRewardGold']),
+                amount: zod
+                  .number()
+                  .default(
+                    getResourceV1AutocrudQuestResourceIdGetResponseDataRewardsItemTwoAmountDefault,
+                  ),
+              })
+              .describe('任務獎勵：金幣'),
+            zod
+              .object({
+                type: zod.enum(['QuestRewardExp']),
+                exp: zod
+                  .number()
+                  .default(
+                    getResourceV1AutocrudQuestResourceIdGetResponseDataRewardsItemThreeExpDefault,
+                  ),
+                bonus_config: zod
+                  .looseObject({})
+                  .default(
+                    getResourceV1AutocrudQuestResourceIdGetResponseDataRewardsItemThreeBonusConfigDefault,
+                  ),
+              })
+              .describe(
+                '任務獎勵：經驗值\n\n包含 bonus_config (dict) 子欄位，\n在 Union 表單中會以 Monaco JSON 編輯器呈現。',
+              ),
+          ]),
+        )
+        .default(getResourceV1AutocrudQuestResourceIdGetResponseDataRewardsDefault),
+    })
+    .optional()
+    .describe(
+      '遊戲任務\n\n展示新功能：\n- quest_config (dict) → 在 create\/edit 表單中使用 Monaco JSON 編輯器\n- rewards (list[Union]) → 陣列中的 Union 子欄位正確處理，不再顯示 [object Object]\n- Union 變體 (QuestRewardItem, QuestRewardExp) 中的 dict 子欄位也使用 Monaco 編輯器',
+    ),
+  revision_info: zod
+    .object({
+      uid: zod.uuid(),
+      resource_id: zod.string(),
+      revision_id: zod.string(),
+      parent_revision_id: zod
+        .union([zod.string(), zod.null()])
+        .default(
+          getResourceV1AutocrudQuestResourceIdGetResponseRevisionInfoParentRevisionIdDefault,
+        ),
+      parent_schema_version: zod.union([zod.string(), zod.null()]).optional(),
+      schema_version: zod
+        .union([zod.string(), zod.null()])
+        .default(getResourceV1AutocrudQuestResourceIdGetResponseRevisionInfoSchemaVersionDefault),
+      data_hash: zod.string().optional(),
+      status: zod.enum(['draft', 'stable']),
+      created_time: zod.string(),
+      updated_time: zod.string(),
+      created_by: zod.string(),
+      updated_by: zod.string(),
+    })
+    .optional()
+    .describe(
+      'Metadata about a specific revision of a resource.\n\nThis class contains essential information about a particular revision,',
+    ),
+  meta: zod
+    .object({
+      current_revision_id: zod.string(),
+      resource_id: zod.string(),
+      schema_version: zod
+        .union([zod.string(), zod.null()])
+        .default(getResourceV1AutocrudQuestResourceIdGetResponseMetaSchemaVersionDefault),
+      total_revision_count: zod.number(),
+      created_time: zod.string(),
+      updated_time: zod.string(),
+      created_by: zod.string(),
+      updated_by: zod.string(),
+      is_deleted: zod
+        .boolean()
+        .default(getResourceV1AutocrudQuestResourceIdGetResponseMetaIsDeletedDefault),
+      indexed_data: zod.looseObject({}).optional(),
+    })
+    .optional()
+    .describe(
+      'Metadata about a resource, including its current revision and status.\n\nThis class provides essential information about a resource without including\nthe full data content.',
+    ),
+});
+
+/**
+ * Update an existing `quest` resource by replacing it entirely.
+
+**Path Parameters:**
+- `resource_id`: The unique identifier of the resource to update
+
+**Request Body:**
+- Send the complete updated resource data as JSON
+- The data will be validated against the `quest` schema
+- This is a full replacement update (PUT semantics)
+
+**Response:**
+- Returns revision information for the updated resource
+- Includes new `revision_id` and maintains `resource_id`
+- Creates a new version while preserving revision history
+
+**Version Control:**
+- Each update creates a new revision
+- Previous versions remain accessible via revision history
+- Original resource ID is preserved across updates
+
+**Examples:**
+- `PUT /quest/123` with JSON body - Update resource with ID 123
+- Response includes updated revision information
+
+**Error Responses:**
+- `422`: Validation error - Invalid data format or missing required fields
+- `400`: Bad request - Resource not found or update error
+- `404`: Resource does not exist
+ * @summary Update quest
+ */
+export const UpdateResourceV1AutocrudQuestResourceIdPutParams = zod.object({
+  resource_id: zod.string(),
+});
+
+export const updateResourceV1AutocrudQuestResourceIdPutQueryModeDefault = `update`;
+
+export const UpdateResourceV1AutocrudQuestResourceIdPutQueryParams = zod.object({
+  change_status: zod.union([zod.enum(['draft', 'stable']), zod.null()]).optional(),
+  mode: zod
+    .enum(['update', 'modify'])
+    .default(updateResourceV1AutocrudQuestResourceIdPutQueryModeDefault),
+});
+
+export const updateResourceV1AutocrudQuestResourceIdPutBodyDescriptionDefault = ``;
+export const updateResourceV1AutocrudQuestResourceIdPutBodyLevelRequirementDefault = 1;
+export const updateResourceV1AutocrudQuestResourceIdPutBodyDifficultyDefault = `normal`;
+export const updateResourceV1AutocrudQuestResourceIdPutBodyQuestConfigDefault = {};
+export const updateResourceV1AutocrudQuestResourceIdPutBodyRewardsItemOneQuantityDefault = 1;
+export const updateResourceV1AutocrudQuestResourceIdPutBodyRewardsItemOneExtraPropertiesDefault =
+  {};
+export const updateResourceV1AutocrudQuestResourceIdPutBodyRewardsItemTwoAmountDefault = 100;
+export const updateResourceV1AutocrudQuestResourceIdPutBodyRewardsItemThreeExpDefault = 100;
+export const updateResourceV1AutocrudQuestResourceIdPutBodyRewardsItemThreeBonusConfigDefault = {};
+export const updateResourceV1AutocrudQuestResourceIdPutBodyRewardsDefault = [];
+
+export const UpdateResourceV1AutocrudQuestResourceIdPutBody = zod
+  .object({
+    title: zod.string(),
+    description: zod
+      .string()
+      .default(updateResourceV1AutocrudQuestResourceIdPutBodyDescriptionDefault),
+    level_requirement: zod
+      .number()
+      .default(updateResourceV1AutocrudQuestResourceIdPutBodyLevelRequirementDefault),
+    difficulty: zod
+      .string()
+      .default(updateResourceV1AutocrudQuestResourceIdPutBodyDifficultyDefault),
+    quest_config: zod
+      .looseObject({})
+      .default(updateResourceV1AutocrudQuestResourceIdPutBodyQuestConfigDefault),
+    rewards: zod
+      .array(
+        zod.union([
+          zod
+            .object({
+              type: zod.enum(['QuestRewardItem']),
+              item_name: zod.string(),
+              quantity: zod
+                .number()
+                .default(
+                  updateResourceV1AutocrudQuestResourceIdPutBodyRewardsItemOneQuantityDefault,
+                ),
+              extra_properties: zod
+                .looseObject({})
+                .default(
+                  updateResourceV1AutocrudQuestResourceIdPutBodyRewardsItemOneExtraPropertiesDefault,
+                ),
+            })
+            .describe(
+              '任務獎勵：物品\n\n包含 extra_properties (dict) 子欄位，\n在 Union 表單中會以 Monaco JSON 編輯器呈現。',
+            ),
+          zod
+            .object({
+              type: zod.enum(['QuestRewardGold']),
+              amount: zod
+                .number()
+                .default(updateResourceV1AutocrudQuestResourceIdPutBodyRewardsItemTwoAmountDefault),
+            })
+            .describe('任務獎勵：金幣'),
+          zod
+            .object({
+              type: zod.enum(['QuestRewardExp']),
+              exp: zod
+                .number()
+                .default(updateResourceV1AutocrudQuestResourceIdPutBodyRewardsItemThreeExpDefault),
+              bonus_config: zod
+                .looseObject({})
+                .default(
+                  updateResourceV1AutocrudQuestResourceIdPutBodyRewardsItemThreeBonusConfigDefault,
+                ),
+            })
+            .describe(
+              '任務獎勵：經驗值\n\n包含 bonus_config (dict) 子欄位，\n在 Union 表單中會以 Monaco JSON 編輯器呈現。',
+            ),
+        ]),
+      )
+      .default(updateResourceV1AutocrudQuestResourceIdPutBodyRewardsDefault),
+  })
+  .describe(
+    '遊戲任務\n\n展示新功能：\n- quest_config (dict) → 在 create\/edit 表單中使用 Monaco JSON 編輯器\n- rewards (list[Union]) → 陣列中的 Union 子欄位正確處理，不再顯示 [object Object]\n- Union 變體 (QuestRewardItem, QuestRewardExp) 中的 dict 子欄位也使用 Monaco 編輯器',
+  );
+
+export const updateResourceV1AutocrudQuestResourceIdPutResponseParentRevisionIdDefault = null;
+export const updateResourceV1AutocrudQuestResourceIdPutResponseSchemaVersionDefault = null;
+
+export const UpdateResourceV1AutocrudQuestResourceIdPutResponse = zod
+  .object({
+    uid: zod.uuid(),
+    resource_id: zod.string(),
+    revision_id: zod.string(),
+    parent_revision_id: zod
+      .union([zod.string(), zod.null()])
+      .default(updateResourceV1AutocrudQuestResourceIdPutResponseParentRevisionIdDefault),
+    parent_schema_version: zod.union([zod.string(), zod.null()]).optional(),
+    schema_version: zod
+      .union([zod.string(), zod.null()])
+      .default(updateResourceV1AutocrudQuestResourceIdPutResponseSchemaVersionDefault),
+    data_hash: zod.string().optional(),
+    status: zod.enum(['draft', 'stable']),
+    created_time: zod.string(),
+    updated_time: zod.string(),
+    created_by: zod.string(),
+    updated_by: zod.string(),
+  })
+  .describe(
+    'Metadata about a specific revision of a resource.\n\nThis class contains essential information about a particular revision,',
+  );
+
+/**
+ * Partially update a `quest` resource using JSON Patch operations.
+
+**Path Parameters:**
+- `resource_id`: The unique identifier of the resource to patch
+
+**Request Body:**
+- Send JSON Patch operations as an array of patch objects
+- Each patch operation should follow RFC 6902 JSON Patch specification
+- Supports operations: `add`, `remove`, `replace`, `move`, `copy`, `test`
+
+**JSON Patch Format:**
+```json
+[
+{"op": "replace", "path": "/field_name", "value": "new_value"},
+{"op": "add", "path": "/new_field", "value": "field_value"},
+{"op": "remove", "path": "/unwanted_field"}
+]
+```
+
+**Response:**
+- Returns revision information for the patched resource
+- Includes new `revision_id` and maintains `resource_id`
+- Creates a new version while preserving revision history
+
+**Version Control:**
+- Each patch creates a new revision
+- Previous versions remain accessible via revision history
+- Original resource ID is preserved across patches
+
+**Examples:**
+- `PATCH /quest/123` with JSON Patch array - Apply patches to resource
+- Response includes updated revision information
+
+**Error Responses:**
+- `422`: Validation error (schema/type validation or custom validator)
+- `409`: Conflict - unique constraint violation
+- `400`: Bad request (invalid patch operations, resource not found, permission denied, or other patch failures)
+ * @summary Partially update quest
+ */
+export const PatchResourceV1AutocrudQuestResourceIdPatchParams = zod.object({
+  resource_id: zod.string(),
+});
+
+export const patchResourceV1AutocrudQuestResourceIdPatchQueryModeDefault = `update`;
+
+export const PatchResourceV1AutocrudQuestResourceIdPatchQueryParams = zod.object({
+  change_status: zod.union([zod.enum(['draft', 'stable']), zod.null()]).optional(),
+  mode: zod
+    .enum(['update', 'modify'])
+    .default(patchResourceV1AutocrudQuestResourceIdPatchQueryModeDefault),
+});
+
+export const PatchResourceV1AutocrudQuestResourceIdPatchBodyItem = zod.union([
+  zod.object({
+    op: zod.enum(['add']),
+    path: zod.string(),
+    value: zod.unknown(),
+  }),
+  zod.object({
+    op: zod.enum(['remove']),
+    path: zod.string(),
+  }),
+  zod.object({
+    op: zod.enum(['replace']),
+    path: zod.string(),
+    value: zod.unknown(),
+  }),
+  zod.object({
+    op: zod.enum(['move']),
+    from: zod.string(),
+    path: zod.string(),
+  }),
+  zod.object({
+    op: zod.enum(['test']),
+    path: zod.string(),
+    value: zod.unknown(),
+  }),
+  zod.object({
+    op: zod.enum(['copy']),
+    from: zod.string(),
+    path: zod.string(),
+  }),
+]);
+export const PatchResourceV1AutocrudQuestResourceIdPatchBody = zod.array(
+  PatchResourceV1AutocrudQuestResourceIdPatchBodyItem,
+);
+
+export const patchResourceV1AutocrudQuestResourceIdPatchResponseParentRevisionIdDefault = null;
+export const patchResourceV1AutocrudQuestResourceIdPatchResponseSchemaVersionDefault = null;
+
+export const PatchResourceV1AutocrudQuestResourceIdPatchResponse = zod
+  .object({
+    uid: zod.uuid(),
+    resource_id: zod.string(),
+    revision_id: zod.string(),
+    parent_revision_id: zod
+      .union([zod.string(), zod.null()])
+      .default(patchResourceV1AutocrudQuestResourceIdPatchResponseParentRevisionIdDefault),
+    parent_schema_version: zod.union([zod.string(), zod.null()]).optional(),
+    schema_version: zod
+      .union([zod.string(), zod.null()])
+      .default(patchResourceV1AutocrudQuestResourceIdPatchResponseSchemaVersionDefault),
+    data_hash: zod.string().optional(),
+    status: zod.enum(['draft', 'stable']),
+    created_time: zod.string(),
+    updated_time: zod.string(),
+    created_by: zod.string(),
+    updated_by: zod.string(),
+  })
+  .describe(
+    'Metadata about a specific revision of a resource.\n\nThis class contains essential information about a particular revision,',
+  );
+
+/**
+ * Delete a `quest` resource by marking it as deleted.
+
+**Path Parameters:**
+- `resource_id`: The unique identifier of the resource to delete
+
+**Soft Delete:**
+- Resources are marked as deleted rather than permanently removed
+- Deleted resources can be restored using the restore endpoint
+- All revision history is preserved after deletion
+
+**Response:**
+- Returns updated resource metadata
+- The `is_deleted` field will be set to `true`
+- Includes updated timestamp and user information
+
+**Version Control:**
+- Deletion creates a new revision in the resource history
+- Previous versions remain accessible for audit purposes
+- The resource can be restored to any previous revision
+
+**Examples:**
+- `DELETE /quest/123` - Mark resource with ID 123 as deleted
+- Response shows updated metadata with deletion status
+
+**Error Responses:**
+- `400`: Bad request - Resource not found or deletion error
+- `404`: Resource does not exist
+ * @summary Delete quest
+ */
+export const DeleteResourceV1AutocrudQuestResourceIdDeleteParams = zod.object({
+  resource_id: zod.string(),
+});
+
+export const deleteResourceV1AutocrudQuestResourceIdDeleteResponseSchemaVersionDefault = null;
+export const deleteResourceV1AutocrudQuestResourceIdDeleteResponseIsDeletedDefault = false;
+
+export const DeleteResourceV1AutocrudQuestResourceIdDeleteResponse = zod
+  .object({
+    current_revision_id: zod.string(),
+    resource_id: zod.string(),
+    schema_version: zod
+      .union([zod.string(), zod.null()])
+      .default(deleteResourceV1AutocrudQuestResourceIdDeleteResponseSchemaVersionDefault),
+    total_revision_count: zod.number(),
+    created_time: zod.string(),
+    updated_time: zod.string(),
+    created_by: zod.string(),
+    updated_by: zod.string(),
+    is_deleted: zod
+      .boolean()
+      .default(deleteResourceV1AutocrudQuestResourceIdDeleteResponseIsDeletedDefault),
+    indexed_data: zod.looseObject({}).optional(),
+  })
+  .describe(
+    'Metadata about a resource, including its current revision and status.\n\nThis class provides essential information about a resource without including\nthe full data content.',
+  );
+
+/**
+ * Switch a `quest` resource to a specific revision, making it the current active version.
+
+**Path Parameters:**
+- `resource_id`: The unique identifier of the resource
+- `revision_id`: The specific revision ID to switch to
+
+**Version Control Operation:**
+- Changes the current active revision of the resource
+- The specified revision becomes the new "current" version
+- All previous revisions remain preserved in history
+- Does not create a new revision, just changes the pointer
+
+**Response:**
+- Returns confirmation with resource and revision information
+- Includes the new `current_revision_id`
+- Provides success message confirming the switch
+
+**Use Cases:**
+- Roll back to a previous version of a resource
+- Restore a specific revision as the current version
+- Undo recent changes by switching to an earlier revision
+- Switch between different versions for testing or comparison
+
+**Examples:**
+- `POST /quest/123/switch/rev456` - Switch resource 123 to revision rev456
+- Response confirms the successful revision switch
+
+**Error Responses:**
+- `400`: Bad request - Invalid revision ID or switch operation failed
+- `404`: Resource or revision does not exist
+
+**Note:** This operation changes which revision is considered "current" but does not modify the revision history.
+ * @summary Switch quest to specific revision
+ */
+export const SwitchRevisionV1AutocrudQuestResourceIdSwitchRevisionIdPostParams = zod.object({
+  resource_id: zod.string(),
+  revision_id: zod.string(),
+});
+
+export const switchRevisionV1AutocrudQuestResourceIdSwitchRevisionIdPostResponseSchemaVersionDefault =
+  null;
+export const switchRevisionV1AutocrudQuestResourceIdSwitchRevisionIdPostResponseIsDeletedDefault = false;
+
+export const SwitchRevisionV1AutocrudQuestResourceIdSwitchRevisionIdPostResponse = zod
+  .object({
+    current_revision_id: zod.string(),
+    resource_id: zod.string(),
+    schema_version: zod
+      .union([zod.string(), zod.null()])
+      .default(
+        switchRevisionV1AutocrudQuestResourceIdSwitchRevisionIdPostResponseSchemaVersionDefault,
+      ),
+    total_revision_count: zod.number(),
+    created_time: zod.string(),
+    updated_time: zod.string(),
+    created_by: zod.string(),
+    updated_by: zod.string(),
+    is_deleted: zod
+      .boolean()
+      .default(switchRevisionV1AutocrudQuestResourceIdSwitchRevisionIdPostResponseIsDeletedDefault),
+    indexed_data: zod.looseObject({}).optional(),
+  })
+  .describe(
+    'Metadata about a resource, including its current revision and status.\n\nThis class provides essential information about a resource without including\nthe full data content.',
+  );
+
+/**
+ * **Permanently** delete a `quest` resource and all its revision data.
+
+**⚠️ WARNING: This operation is irreversible!**
+
+**Path Parameters:**
+- `resource_id`: The unique identifier of the resource to permanently delete
+
+**Permanent Delete:**
+- Physically removes the resource metadata from storage
+- Physically removes all revision data from storage
+- Cannot be undone — the resource and all its history are lost forever
+- Works on both active and soft-deleted resources
+
+**Response:**
+- Returns the resource metadata as it was before deletion
+
+**Error Responses:**
+- `400`: Bad request - Resource not found or deletion error
+ * @summary Permanently delete quest
+ */
+export const PermanentlyDeleteResourceV1AutocrudQuestResourceIdPermanentlyDeleteParams = zod.object(
+  {
+    resource_id: zod.string(),
+  },
+);
+
+export const permanentlyDeleteResourceV1AutocrudQuestResourceIdPermanentlyDeleteResponseSchemaVersionDefault =
+  null;
+export const permanentlyDeleteResourceV1AutocrudQuestResourceIdPermanentlyDeleteResponseIsDeletedDefault = false;
+
+export const PermanentlyDeleteResourceV1AutocrudQuestResourceIdPermanentlyDeleteResponse = zod
+  .object({
+    current_revision_id: zod.string(),
+    resource_id: zod.string(),
+    schema_version: zod
+      .union([zod.string(), zod.null()])
+      .default(
+        permanentlyDeleteResourceV1AutocrudQuestResourceIdPermanentlyDeleteResponseSchemaVersionDefault,
+      ),
+    total_revision_count: zod.number(),
+    created_time: zod.string(),
+    updated_time: zod.string(),
+    created_by: zod.string(),
+    updated_by: zod.string(),
+    is_deleted: zod
+      .boolean()
+      .default(
+        permanentlyDeleteResourceV1AutocrudQuestResourceIdPermanentlyDeleteResponseIsDeletedDefault,
+      ),
+    indexed_data: zod.looseObject({}).optional(),
+  })
+  .describe(
+    'Metadata about a resource, including its current revision and status.\n\nThis class provides essential information about a resource without including\nthe full data content.',
+  );
+
+/**
+ * Restore a previously deleted `quest` resource, making it active again.
+
+**Path Parameters:**
+- `resource_id`: The unique identifier of the deleted resource to restore
+
+**Restore Operation:**
+- Unmarks a soft-deleted resource, making it active again
+- Changes the `is_deleted` status from `true` to `false`
+- All revision history remains intact during restoration
+- The resource becomes accessible through normal operations again
+
+**Response:**
+- Returns confirmation with resource metadata
+- Includes updated `is_deleted` status (will be `false`)
+- Shows current `revision_id` and resource information
+- Provides success message confirming the restoration
+
+**Use Cases:**
+- Recover accidentally deleted resources
+- Restore resources that were soft-deleted for temporary removal
+- Undo deletion operations without losing data or history
+- Reactivate archived resources for continued use
+
+**Examples:**
+- `POST /quest/123/restore` - Restore deleted resource with ID 123
+- Response shows updated metadata with `is_deleted: false`
+
+**Error Responses:**
+- `400`: Bad request - Resource is not deleted or restore operation failed
+- `404`: Resource does not exist
+
+**Note:** Only works with soft-deleted resources. The resource must exist and be marked as deleted to be restored.
+ * @summary Restore deleted quest
+ */
+export const RestoreResourceV1AutocrudQuestResourceIdRestorePostParams = zod.object({
+  resource_id: zod.string(),
+});
+
+export const restoreResourceV1AutocrudQuestResourceIdRestorePostResponseSchemaVersionDefault = null;
+export const restoreResourceV1AutocrudQuestResourceIdRestorePostResponseIsDeletedDefault = false;
+
+export const RestoreResourceV1AutocrudQuestResourceIdRestorePostResponse = zod
+  .object({
+    current_revision_id: zod.string(),
+    resource_id: zod.string(),
+    schema_version: zod
+      .union([zod.string(), zod.null()])
+      .default(restoreResourceV1AutocrudQuestResourceIdRestorePostResponseSchemaVersionDefault),
+    total_revision_count: zod.number(),
+    created_time: zod.string(),
+    updated_time: zod.string(),
+    created_by: zod.string(),
+    updated_by: zod.string(),
+    is_deleted: zod
+      .boolean()
+      .default(restoreResourceV1AutocrudQuestResourceIdRestorePostResponseIsDeletedDefault),
+    indexed_data: zod.looseObject({}).optional(),
+  })
+  .describe(
+    'Metadata about a resource, including its current revision and status.\n\nThis class provides essential information about a resource without including\nthe full data content.',
+  );
+
+/**
+ * Batch restore previously deleted `quest` resources matching the given query conditions.
+
+**Query Parameters:**
+- Uses the same search parameters as the list endpoint
+- `is_deleted` parameter is **forced to `true`** — only deleted resources are targeted
+- Use `data_conditions` to filter specific resources for restoration
+- Use `limit` to control the maximum number of resources to restore
+
+**Restore Operation:**
+- Unmarks soft-deleted resources, making them active again
+- All revision history remains intact during restoration
+
+**Response:**
+- Returns a list of `ResourceMeta` for all restored resources
+- Each entry will have `is_deleted` set to `false`
+- Empty list if no resources match the query
+
+**Examples:**
+- `POST /quest/restore?limit=100` — Restore up to 100 deleted resources
+- `POST /quest/restore?data_conditions=[{"field_path":"age","operator":"gt","value":25}]` — Restore deleted resources with age > 25
+
+**Error Responses:**
+- `400`: Bad request — Invalid query parameters or restore error
+ * @summary Batch restore deleted quest
+ */
+export const batchRestoreV1AutocrudQuestRestorePostQueryIsDeletedDefault = false;
+export const batchRestoreV1AutocrudQuestRestorePostQueryLimitDefault = 10;
+export const batchRestoreV1AutocrudQuestRestorePostQueryOffsetDefault = 0;
+
+export const BatchRestoreV1AutocrudQuestRestorePostQueryParams = zod.object({
+  qb: zod
+    .union([zod.string(), zod.null()])
+    .optional()
+    .describe(
+      "Query Builder expression. Example: \"QB['foo'] == 123\" or \"QB['age'].gt(18) & QB['status'].eq('active')\"",
+    ),
+  is_deleted: zod
+    .union([zod.boolean(), zod.null()])
+    .default(batchRestoreV1AutocrudQuestRestorePostQueryIsDeletedDefault)
+    .describe('Filter by deletion status'),
+  created_time_start: zod
+    .union([zod.string(), zod.null()])
+    .optional()
+    .describe('Filter by created time start (ISO format)'),
+  created_time_end: zod
+    .union([zod.string(), zod.null()])
+    .optional()
+    .describe('Filter by created time end (ISO format)'),
+  updated_time_start: zod
+    .union([zod.string(), zod.null()])
+    .optional()
+    .describe('Filter by updated time start (ISO format)'),
+  updated_time_end: zod
+    .union([zod.string(), zod.null()])
+    .optional()
+    .describe('Filter by updated time end (ISO format)'),
+  created_bys: zod
+    .union([zod.array(zod.string()), zod.null()])
+    .optional()
+    .describe('Filter by creators'),
+  updated_bys: zod
+    .union([zod.array(zod.string()), zod.null()])
+    .optional()
+    .describe('Filter by updaters'),
+  data_conditions: zod
+    .union([zod.string(), zod.null()])
+    .optional()
+    .describe(
+      'Data filter conditions in JSON format. Example: \'[{\"field_path\": \"department\", \"operator\": \"eq\", \"value\": \"Engineering\"}]\'',
+    ),
+  conditions: zod
+    .union([zod.string(), zod.null()])
+    .optional()
+    .describe(
+      'General filter conditions in JSON format for meta fields or data. Example: \'[{\"field_path\": \"resource_id\", \"operator\": \"starts_with\", \"value\": \"user-\"}]\'',
+    ),
+  sorts: zod
+    .union([zod.string(), zod.null()])
+    .optional()
+    .describe(
+      'Sort conditions in JSON format. Example: \'[{\"type\": \"meta\", \"key\": \"created_time\", \"direction\": \"+\"}, {\"type\": \"data\", \"field_path\": \"name\", \"direction\": \"-\"}]\'',
+    ),
+  limit: zod
+    .number()
+    .default(batchRestoreV1AutocrudQuestRestorePostQueryLimitDefault)
+    .describe('Maximum number of results'),
+  offset: zod
+    .number()
+    .default(batchRestoreV1AutocrudQuestRestorePostQueryOffsetDefault)
+    .describe('Number of results to skip'),
+  partial: zod
+    .union([zod.array(zod.string()), zod.null()])
+    .optional()
+    .describe("List of fields to retrieve (e.g. '\/field1', '\/nested\/field2')"),
+});
+
+export const batchRestoreV1AutocrudQuestRestorePostResponseSchemaVersionDefault = null;
+export const batchRestoreV1AutocrudQuestRestorePostResponseIsDeletedDefault = false;
+
+export const BatchRestoreV1AutocrudQuestRestorePostResponseItem = zod
+  .object({
+    current_revision_id: zod.string(),
+    resource_id: zod.string(),
+    schema_version: zod
+      .union([zod.string(), zod.null()])
+      .default(batchRestoreV1AutocrudQuestRestorePostResponseSchemaVersionDefault),
+    total_revision_count: zod.number(),
+    created_time: zod.string(),
+    updated_time: zod.string(),
+    created_by: zod.string(),
+    updated_by: zod.string(),
+    is_deleted: zod
+      .boolean()
+      .default(batchRestoreV1AutocrudQuestRestorePostResponseIsDeletedDefault),
+    indexed_data: zod.looseObject({}).optional(),
+  })
+  .describe(
+    'Metadata about a resource, including its current revision and status.\n\nThis class provides essential information about a resource without including\nthe full data content.',
+  );
+export const BatchRestoreV1AutocrudQuestRestorePostResponse = zod.array(
+  BatchRestoreV1AutocrudQuestRestorePostResponseItem,
+);
+
+/**
+ * Test migration for resources with real-time progress updates via http streaming.
+No data will be written back to storage - memory-only testing.
+
+**Query Parameters:**
+- `revision_id` (optional): Controls which revisions to test:
+  - Omit: test current revision only (default)
+  - `"all"`: test every revision of each resource
+  - A specific revision ID: test only that revision
+ * @summary Test Migrate Resources
+ */
+export const testMigrateResourcesV1AutocrudQuestMigrateTestPostQueryIsDeletedDefault = false;
+export const testMigrateResourcesV1AutocrudQuestMigrateTestPostQueryLimitDefault = 10;
+export const testMigrateResourcesV1AutocrudQuestMigrateTestPostQueryOffsetDefault = 0;
+
+export const TestMigrateResourcesV1AutocrudQuestMigrateTestPostQueryParams = zod.object({
+  qb: zod
+    .union([zod.string(), zod.null()])
+    .optional()
+    .describe(
+      "Query Builder expression. Example: \"QB['foo'] == 123\" or \"QB['age'].gt(18) & QB['status'].eq('active')\"",
+    ),
+  is_deleted: zod
+    .union([zod.boolean(), zod.null()])
+    .default(testMigrateResourcesV1AutocrudQuestMigrateTestPostQueryIsDeletedDefault)
+    .describe('Filter by deletion status'),
+  created_time_start: zod
+    .union([zod.string(), zod.null()])
+    .optional()
+    .describe('Filter by created time start (ISO format)'),
+  created_time_end: zod
+    .union([zod.string(), zod.null()])
+    .optional()
+    .describe('Filter by created time end (ISO format)'),
+  updated_time_start: zod
+    .union([zod.string(), zod.null()])
+    .optional()
+    .describe('Filter by updated time start (ISO format)'),
+  updated_time_end: zod
+    .union([zod.string(), zod.null()])
+    .optional()
+    .describe('Filter by updated time end (ISO format)'),
+  created_bys: zod
+    .union([zod.array(zod.string()), zod.null()])
+    .optional()
+    .describe('Filter by creators'),
+  updated_bys: zod
+    .union([zod.array(zod.string()), zod.null()])
+    .optional()
+    .describe('Filter by updaters'),
+  data_conditions: zod
+    .union([zod.string(), zod.null()])
+    .optional()
+    .describe(
+      'Data filter conditions in JSON format. Example: \'[{\"field_path\": \"department\", \"operator\": \"eq\", \"value\": \"Engineering\"}]\'',
+    ),
+  conditions: zod
+    .union([zod.string(), zod.null()])
+    .optional()
+    .describe(
+      'General filter conditions in JSON format for meta fields or data. Example: \'[{\"field_path\": \"resource_id\", \"operator\": \"starts_with\", \"value\": \"user-\"}]\'',
+    ),
+  sorts: zod
+    .union([zod.string(), zod.null()])
+    .optional()
+    .describe(
+      'Sort conditions in JSON format. Example: \'[{\"type\": \"meta\", \"key\": \"created_time\", \"direction\": \"+\"}, {\"type\": \"data\", \"field_path\": \"name\", \"direction\": \"-\"}]\'',
+    ),
+  limit: zod
+    .number()
+    .default(testMigrateResourcesV1AutocrudQuestMigrateTestPostQueryLimitDefault)
+    .describe('Maximum number of results'),
+  offset: zod
+    .number()
+    .default(testMigrateResourcesV1AutocrudQuestMigrateTestPostQueryOffsetDefault)
+    .describe('Number of results to skip'),
+  partial: zod
+    .union([zod.array(zod.string()), zod.null()])
+    .optional()
+    .describe("List of fields to retrieve (e.g. '\/field1', '\/nested\/field2')"),
+  revision_id: zod
+    .union([zod.string(), zod.null()])
+    .optional()
+    .describe(
+      'Revision scope: omit for current revision, \"all\" for every revision, or a specific revision ID.',
+    ),
+});
+
+export const TestMigrateResourcesV1AutocrudQuestMigrateTestPostResponse = zod.unknown();
+
+/**
+ * Execute migration for resources with real-time progress updates via http streaming.
+
+**Query Parameters:**
+- `revision_id` (optional): Controls which revisions to migrate:
+  - Omit: migrate current revision only (default)
+  - `"all"`: migrate every revision of each resource
+  - A specific revision ID: migrate only that revision
+ * @summary Execute Migrate Resources
+ */
+export const executeMigrateResourcesV1AutocrudQuestMigrateExecutePostQueryIsDeletedDefault = false;
+export const executeMigrateResourcesV1AutocrudQuestMigrateExecutePostQueryLimitDefault = 10;
+export const executeMigrateResourcesV1AutocrudQuestMigrateExecutePostQueryOffsetDefault = 0;
+
+export const ExecuteMigrateResourcesV1AutocrudQuestMigrateExecutePostQueryParams = zod.object({
+  qb: zod
+    .union([zod.string(), zod.null()])
+    .optional()
+    .describe(
+      "Query Builder expression. Example: \"QB['foo'] == 123\" or \"QB['age'].gt(18) & QB['status'].eq('active')\"",
+    ),
+  is_deleted: zod
+    .union([zod.boolean(), zod.null()])
+    .default(executeMigrateResourcesV1AutocrudQuestMigrateExecutePostQueryIsDeletedDefault)
+    .describe('Filter by deletion status'),
+  created_time_start: zod
+    .union([zod.string(), zod.null()])
+    .optional()
+    .describe('Filter by created time start (ISO format)'),
+  created_time_end: zod
+    .union([zod.string(), zod.null()])
+    .optional()
+    .describe('Filter by created time end (ISO format)'),
+  updated_time_start: zod
+    .union([zod.string(), zod.null()])
+    .optional()
+    .describe('Filter by updated time start (ISO format)'),
+  updated_time_end: zod
+    .union([zod.string(), zod.null()])
+    .optional()
+    .describe('Filter by updated time end (ISO format)'),
+  created_bys: zod
+    .union([zod.array(zod.string()), zod.null()])
+    .optional()
+    .describe('Filter by creators'),
+  updated_bys: zod
+    .union([zod.array(zod.string()), zod.null()])
+    .optional()
+    .describe('Filter by updaters'),
+  data_conditions: zod
+    .union([zod.string(), zod.null()])
+    .optional()
+    .describe(
+      'Data filter conditions in JSON format. Example: \'[{\"field_path\": \"department\", \"operator\": \"eq\", \"value\": \"Engineering\"}]\'',
+    ),
+  conditions: zod
+    .union([zod.string(), zod.null()])
+    .optional()
+    .describe(
+      'General filter conditions in JSON format for meta fields or data. Example: \'[{\"field_path\": \"resource_id\", \"operator\": \"starts_with\", \"value\": \"user-\"}]\'',
+    ),
+  sorts: zod
+    .union([zod.string(), zod.null()])
+    .optional()
+    .describe(
+      'Sort conditions in JSON format. Example: \'[{\"type\": \"meta\", \"key\": \"created_time\", \"direction\": \"+\"}, {\"type\": \"data\", \"field_path\": \"name\", \"direction\": \"-\"}]\'',
+    ),
+  limit: zod
+    .number()
+    .default(executeMigrateResourcesV1AutocrudQuestMigrateExecutePostQueryLimitDefault)
+    .describe('Maximum number of results'),
+  offset: zod
+    .number()
+    .default(executeMigrateResourcesV1AutocrudQuestMigrateExecutePostQueryOffsetDefault)
+    .describe('Number of results to skip'),
+  partial: zod
+    .union([zod.array(zod.string()), zod.null()])
+    .optional()
+    .describe("List of fields to retrieve (e.g. '\/field1', '\/nested\/field2')"),
+  revision_id: zod
+    .union([zod.string(), zod.null()])
+    .optional()
+    .describe(
+      'Revision scope: omit for current revision, \"all\" for every revision, or a specific revision ID.',
+    ),
+});
+
+export const ExecuteMigrateResourcesV1AutocrudQuestMigrateExecutePostResponse = zod.unknown();
+
+/**
+ * Migrate a single `quest` resource to the current schema version.
+
+**Path Parameters:**
+- `resource_id`: The unique identifier of the resource to migrate
+
+**Query Parameters:**
+- `write_back` (optional, default=true): Whether to write migrated data back to storage
+- `revision_id` (optional): A specific revision to migrate.
+  When omitted the current revision is migrated.
+
+**Response:**
+- Returns migration progress for the single resource:
+  - `resource_id`: The resource that was migrated
+  - `status`: Migration status (success/failed/skipped)
+  - `message`: Success message or additional info
+  - `error`: Error message if migration failed
+
+**Use Cases:**
+- Migrate specific resource after schema update
+- Migrate an older revision so it can be switched to
+- Fix individual resource migration issues
+- Test migration on single resource
+- Manual resource upgrade
+
+**Examples:**
+- `POST /quest/migrate/single/123` - Migrate resource 123
+- `POST /quest/migrate/single/123?revision_id=123:1` - Migrate specific revision
+- `POST /quest/migrate/single/123?write_back=false` - Test migrate resource 123
+
+**Error Responses:**
+- `404`: Resource not found
+- `400`: Migration failed
+ * @summary Migrate Single quest Resource
+ */
+export const MigrateSingleResourceV1AutocrudQuestMigrateSingleResourceIdPostParams = zod.object({
+  resource_id: zod.string(),
+});
+
+export const migrateSingleResourceV1AutocrudQuestMigrateSingleResourceIdPostQueryWriteBackDefault = true;
+
+export const MigrateSingleResourceV1AutocrudQuestMigrateSingleResourceIdPostQueryParams =
+  zod.object({
+    write_back: zod
+      .boolean()
+      .default(migrateSingleResourceV1AutocrudQuestMigrateSingleResourceIdPostQueryWriteBackDefault)
+      .describe('Whether to write migrated data back to storage'),
+    revision_id: zod
+      .union([zod.string(), zod.null()])
+      .optional()
+      .describe('Specific revision ID to migrate. When omitted the current revision is migrated.'),
+  });
+
+export const migrateSingleResourceV1AutocrudQuestMigrateSingleResourceIdPostResponseMessageDefault =
+  null;
+export const migrateSingleResourceV1AutocrudQuestMigrateSingleResourceIdPostResponseErrorDefault =
+  null;
+
+export const MigrateSingleResourceV1AutocrudQuestMigrateSingleResourceIdPostResponse = zod
+  .object({
+    resource_id: zod.string(),
+    status: zod.string(),
+    message: zod
+      .union([zod.string(), zod.null()])
+      .default(
+        migrateSingleResourceV1AutocrudQuestMigrateSingleResourceIdPostResponseMessageDefault,
+      ),
+    error: zod
+      .union([zod.string(), zod.null()])
+      .default(migrateSingleResourceV1AutocrudQuestMigrateSingleResourceIdPostResponseErrorDefault),
+  })
+  .describe('遷移進度訊息');
 
 /**
  * Retrieve a list of `game-event` resources returning only the data content.
@@ -20484,6 +22977,669 @@ export const GetResourcesCountV1AutocrudGameEventCountGetQueryParams = zod.objec
 });
 
 export const GetResourcesCountV1AutocrudGameEventCountGetResponse = zod.number();
+
+/**
+ * Retrieve a list of `game-event` resources.
+
+Use the `returns` query parameter to control which sections are included in each item.
+By default all sections are returned: `data`, `revision_info`, `meta`.
+
+**Query Parameters:**
+- `returns` (default `"data,revision_info,meta"`): Comma-separated list of sections to include.
+  Allowed values: `data`, `revision_info`, `meta`.
+- `limit` / `offset`: Pagination controls.
+- `partial` / `partial[]`: Partial field selection.
+- All standard filtering and sorting parameters.
+
+**Examples:**
+- `GET /game-event` — full list (data + meta + revision_info)
+- `GET /game-event?returns=data` — data only
+- `GET /game-event?returns=data,meta` — data + meta, no revision_info
+- `GET /game-event?limit=20&offset=40` — pagination
+
+**Error Responses:**
+- `400`: Bad request - Invalid query parameters or search error
+ * @summary List game-event resources
+ */
+export const listResourcesV1AutocrudGameEventGetQueryIsDeletedDefault = false;
+export const listResourcesV1AutocrudGameEventGetQueryLimitDefault = 10;
+export const listResourcesV1AutocrudGameEventGetQueryOffsetDefault = 0;
+export const listResourcesV1AutocrudGameEventGetQueryReturnsDefault = `data,revision_info,meta`;
+
+export const ListResourcesV1AutocrudGameEventGetQueryParams = zod.object({
+  qb: zod
+    .union([zod.string(), zod.null()])
+    .optional()
+    .describe(
+      "Query Builder expression. Example: \"QB['foo'] == 123\" or \"QB['age'].gt(18) & QB['status'].eq('active')\"",
+    ),
+  is_deleted: zod
+    .union([zod.boolean(), zod.null()])
+    .default(listResourcesV1AutocrudGameEventGetQueryIsDeletedDefault)
+    .describe('Filter by deletion status'),
+  created_time_start: zod
+    .union([zod.string(), zod.null()])
+    .optional()
+    .describe('Filter by created time start (ISO format)'),
+  created_time_end: zod
+    .union([zod.string(), zod.null()])
+    .optional()
+    .describe('Filter by created time end (ISO format)'),
+  updated_time_start: zod
+    .union([zod.string(), zod.null()])
+    .optional()
+    .describe('Filter by updated time start (ISO format)'),
+  updated_time_end: zod
+    .union([zod.string(), zod.null()])
+    .optional()
+    .describe('Filter by updated time end (ISO format)'),
+  created_bys: zod
+    .union([zod.array(zod.string()), zod.null()])
+    .optional()
+    .describe('Filter by creators'),
+  updated_bys: zod
+    .union([zod.array(zod.string()), zod.null()])
+    .optional()
+    .describe('Filter by updaters'),
+  data_conditions: zod
+    .union([zod.string(), zod.null()])
+    .optional()
+    .describe(
+      'Data filter conditions in JSON format. Example: \'[{\"field_path\": \"department\", \"operator\": \"eq\", \"value\": \"Engineering\"}]\'',
+    ),
+  conditions: zod
+    .union([zod.string(), zod.null()])
+    .optional()
+    .describe(
+      'General filter conditions in JSON format for meta fields or data. Example: \'[{\"field_path\": \"resource_id\", \"operator\": \"starts_with\", \"value\": \"user-\"}]\'',
+    ),
+  sorts: zod
+    .union([zod.string(), zod.null()])
+    .optional()
+    .describe(
+      'Sort conditions in JSON format. Example: \'[{\"type\": \"meta\", \"key\": \"created_time\", \"direction\": \"+\"}, {\"type\": \"data\", \"field_path\": \"name\", \"direction\": \"-\"}]\'',
+    ),
+  limit: zod
+    .number()
+    .default(listResourcesV1AutocrudGameEventGetQueryLimitDefault)
+    .describe('Maximum number of results'),
+  offset: zod
+    .number()
+    .default(listResourcesV1AutocrudGameEventGetQueryOffsetDefault)
+    .describe('Number of results to skip'),
+  partial: zod
+    .union([zod.array(zod.string()), zod.null()])
+    .optional()
+    .describe("List of fields to retrieve (e.g. '\/field1', '\/nested\/field2')"),
+  returns: zod
+    .string()
+    .default(listResourcesV1AutocrudGameEventGetQueryReturnsDefault)
+    .describe('Fields to return, comma-separated. Options: data, revision_info, meta'),
+});
+
+export const listResourcesV1AutocrudGameEventGetResponseDataPayloadRewardGoldDefault = 0;
+export const listResourcesV1AutocrudGameEventGetResponseDataPayloadRewardExpDefault = 0;
+export const listResourcesV1AutocrudGameEventGetResponseDataPayloadExtraDataDefault = {};
+export const listResourcesV1AutocrudGameEventGetResponseDataPayloadEventBodyDefault = null;
+export const listResourcesV1AutocrudGameEventGetResponseDataPayloadEventXDefault = null;
+export const listResourcesV1AutocrudGameEventGetResponseDataStatusDefault = `pending`;
+export const listResourcesV1AutocrudGameEventGetResponseDataErrmsgDefault = null;
+export const listResourcesV1AutocrudGameEventGetResponseDataArtifactDefault = null;
+export const listResourcesV1AutocrudGameEventGetResponseDataRetriesDefault = 0;
+export const listResourcesV1AutocrudGameEventGetResponseDataMaxRetriesDefault = null;
+export const listResourcesV1AutocrudGameEventGetResponseDataPeriodicIntervalSecondsDefault = null;
+export const listResourcesV1AutocrudGameEventGetResponseDataPeriodicMaxRunsDefault = null;
+export const listResourcesV1AutocrudGameEventGetResponseDataPeriodicRunsDefault = 0;
+export const listResourcesV1AutocrudGameEventGetResponseDataPeriodicInitialDelaySecondsDefault =
+  null;
+export const listResourcesV1AutocrudGameEventGetResponseDataLastHeartbeatAtDefault = null;
+export const listResourcesV1AutocrudGameEventGetResponseRevisionInfoParentRevisionIdDefault = null;
+export const listResourcesV1AutocrudGameEventGetResponseRevisionInfoSchemaVersionDefault = null;
+export const listResourcesV1AutocrudGameEventGetResponseMetaSchemaVersionDefault = null;
+export const listResourcesV1AutocrudGameEventGetResponseMetaIsDeletedDefault = false;
+
+export const ListResourcesV1AutocrudGameEventGetResponseItem = zod.object({
+  data: zod
+    .object({
+      payload: zod
+        .object({
+          event_type: zod
+            .enum([
+              'daily_login',
+              'equipment_enhance',
+              'guild_reward',
+              'level_up',
+              'quest_complete',
+              'raid_boss',
+              'server_maintenance',
+            ])
+            .describe('遊戲事件類型'),
+          character_name: zod.string(),
+          character_id: zod.union([zod.string(), zod.null()]),
+          description: zod.string(),
+          reward_gold: zod
+            .number()
+            .default(listResourcesV1AutocrudGameEventGetResponseDataPayloadRewardGoldDefault),
+          reward_exp: zod
+            .number()
+            .default(listResourcesV1AutocrudGameEventGetResponseDataPayloadRewardExpDefault),
+          extra_data: zod
+            .looseObject({})
+            .default(listResourcesV1AutocrudGameEventGetResponseDataPayloadExtraDataDefault),
+          event_body: zod
+            .union([
+              zod.null(),
+              zod.union([
+                zod
+                  .object({
+                    type: zod.enum(['EventBodyA']),
+                    extra_info_a: zod.string(),
+                    extra_value_a: zod.number(),
+                  })
+                  .describe('事件類型 A 的專屬數據'),
+                zod
+                  .object({
+                    type: zod.enum(['EventBodyB']),
+                    some_field: zod.string(),
+                    cooldown_seconds: zod.number(),
+                  })
+                  .describe('事件類型 B 的專屬數據'),
+              ]),
+            ])
+            .default(listResourcesV1AutocrudGameEventGetResponseDataPayloadEventBodyDefault),
+          event_x: zod
+            .union([
+              zod.null(),
+              zod
+                .object({
+                  type: zod.enum(['EventBodyX']),
+                  good: zod.string(),
+                  great: zod.number(),
+                })
+                .describe('事件類型 X 的專屬數據'),
+            ])
+            .default(listResourcesV1AutocrudGameEventGetResponseDataPayloadEventXDefault),
+        })
+        .describe('遊戲事件載荷數據'),
+      status: zod
+        .enum(['completed', 'failed', 'pending', 'processing'])
+        .default(listResourcesV1AutocrudGameEventGetResponseDataStatusDefault),
+      errmsg: zod
+        .union([zod.string(), zod.null()])
+        .default(listResourcesV1AutocrudGameEventGetResponseDataErrmsgDefault),
+      artifact: zod
+        .union([
+          zod.null(),
+          zod
+            .object({
+              process_times: zod.number(),
+            })
+            .describe('遊戲事件載荷數據'),
+        ])
+        .default(listResourcesV1AutocrudGameEventGetResponseDataArtifactDefault),
+      retries: zod.number().default(listResourcesV1AutocrudGameEventGetResponseDataRetriesDefault),
+      max_retries: zod
+        .union([zod.number(), zod.null()])
+        .default(listResourcesV1AutocrudGameEventGetResponseDataMaxRetriesDefault),
+      periodic_interval_seconds: zod
+        .union([zod.number(), zod.null()])
+        .default(listResourcesV1AutocrudGameEventGetResponseDataPeriodicIntervalSecondsDefault),
+      periodic_max_runs: zod
+        .union([zod.number(), zod.null()])
+        .default(listResourcesV1AutocrudGameEventGetResponseDataPeriodicMaxRunsDefault),
+      periodic_runs: zod
+        .number()
+        .default(listResourcesV1AutocrudGameEventGetResponseDataPeriodicRunsDefault),
+      periodic_initial_delay_seconds: zod
+        .union([zod.number(), zod.null()])
+        .default(listResourcesV1AutocrudGameEventGetResponseDataPeriodicInitialDelaySecondsDefault),
+      last_heartbeat_at: zod
+        .union([zod.string(), zod.null()])
+        .default(listResourcesV1AutocrudGameEventGetResponseDataLastHeartbeatAtDefault),
+    })
+    .optional()
+    .describe('遊戲事件任務（使用 Message Queue 處理）'),
+  revision_info: zod
+    .object({
+      uid: zod.uuid(),
+      resource_id: zod.string(),
+      revision_id: zod.string(),
+      parent_revision_id: zod
+        .union([zod.string(), zod.null()])
+        .default(listResourcesV1AutocrudGameEventGetResponseRevisionInfoParentRevisionIdDefault),
+      parent_schema_version: zod.union([zod.string(), zod.null()]).optional(),
+      schema_version: zod
+        .union([zod.string(), zod.null()])
+        .default(listResourcesV1AutocrudGameEventGetResponseRevisionInfoSchemaVersionDefault),
+      data_hash: zod.string().optional(),
+      status: zod.enum(['draft', 'stable']),
+      created_time: zod.string(),
+      updated_time: zod.string(),
+      created_by: zod.string(),
+      updated_by: zod.string(),
+    })
+    .optional()
+    .describe(
+      'Metadata about a specific revision of a resource.\n\nThis class contains essential information about a particular revision,',
+    ),
+  meta: zod
+    .object({
+      current_revision_id: zod.string(),
+      resource_id: zod.string(),
+      schema_version: zod
+        .union([zod.string(), zod.null()])
+        .default(listResourcesV1AutocrudGameEventGetResponseMetaSchemaVersionDefault),
+      total_revision_count: zod.number(),
+      created_time: zod.string(),
+      updated_time: zod.string(),
+      created_by: zod.string(),
+      updated_by: zod.string(),
+      is_deleted: zod
+        .boolean()
+        .default(listResourcesV1AutocrudGameEventGetResponseMetaIsDeletedDefault),
+      indexed_data: zod.looseObject({}).optional(),
+    })
+    .optional()
+    .describe(
+      'Metadata about a resource, including its current revision and status.\n\nThis class provides essential information about a resource without including\nthe full data content.',
+    ),
+});
+export const ListResourcesV1AutocrudGameEventGetResponse = zod.array(
+  ListResourcesV1AutocrudGameEventGetResponseItem,
+);
+
+/**
+ * Create a new `game-event` resource.
+
+**Request Body:**
+- Send the resource data as JSON in the request body
+- The data will be validated against the `game-event` schema
+
+**Response:**
+- Returns revision information for the newly created resource
+- Includes `resource_id` and `revision_id` for tracking
+- All resources are version-controlled from creation
+
+**Examples:**
+- `POST /game-event` with JSON body - Create new resource
+- Response includes resource and revision identifiers
+
+**Error Responses:**
+- `422`: Validation error - Invalid data format or missing required fields
+- `400`: Bad request - General creation error
+ * @summary Create game-event
+ */
+export const createResourceV1AutocrudGameEventPostBodyPayloadRewardGoldDefault = 0;
+export const createResourceV1AutocrudGameEventPostBodyPayloadRewardExpDefault = 0;
+export const createResourceV1AutocrudGameEventPostBodyPayloadExtraDataDefault = {};
+export const createResourceV1AutocrudGameEventPostBodyPayloadEventBodyDefault = null;
+export const createResourceV1AutocrudGameEventPostBodyPayloadEventXDefault = null;
+export const createResourceV1AutocrudGameEventPostBodyStatusDefault = `pending`;
+export const createResourceV1AutocrudGameEventPostBodyErrmsgDefault = null;
+export const createResourceV1AutocrudGameEventPostBodyArtifactDefault = null;
+export const createResourceV1AutocrudGameEventPostBodyRetriesDefault = 0;
+export const createResourceV1AutocrudGameEventPostBodyMaxRetriesDefault = null;
+export const createResourceV1AutocrudGameEventPostBodyPeriodicIntervalSecondsDefault = null;
+export const createResourceV1AutocrudGameEventPostBodyPeriodicMaxRunsDefault = null;
+export const createResourceV1AutocrudGameEventPostBodyPeriodicRunsDefault = 0;
+export const createResourceV1AutocrudGameEventPostBodyPeriodicInitialDelaySecondsDefault = null;
+export const createResourceV1AutocrudGameEventPostBodyLastHeartbeatAtDefault = null;
+
+export const CreateResourceV1AutocrudGameEventPostBody = zod
+  .object({
+    payload: zod
+      .object({
+        event_type: zod
+          .enum([
+            'daily_login',
+            'equipment_enhance',
+            'guild_reward',
+            'level_up',
+            'quest_complete',
+            'raid_boss',
+            'server_maintenance',
+          ])
+          .describe('遊戲事件類型'),
+        character_name: zod.string(),
+        character_id: zod.union([zod.string(), zod.null()]),
+        description: zod.string(),
+        reward_gold: zod
+          .number()
+          .default(createResourceV1AutocrudGameEventPostBodyPayloadRewardGoldDefault),
+        reward_exp: zod
+          .number()
+          .default(createResourceV1AutocrudGameEventPostBodyPayloadRewardExpDefault),
+        extra_data: zod
+          .looseObject({})
+          .default(createResourceV1AutocrudGameEventPostBodyPayloadExtraDataDefault),
+        event_body: zod
+          .union([
+            zod.null(),
+            zod.union([
+              zod
+                .object({
+                  type: zod.enum(['EventBodyA']),
+                  extra_info_a: zod.string(),
+                  extra_value_a: zod.number(),
+                })
+                .describe('事件類型 A 的專屬數據'),
+              zod
+                .object({
+                  type: zod.enum(['EventBodyB']),
+                  some_field: zod.string(),
+                  cooldown_seconds: zod.number(),
+                })
+                .describe('事件類型 B 的專屬數據'),
+            ]),
+          ])
+          .default(createResourceV1AutocrudGameEventPostBodyPayloadEventBodyDefault),
+        event_x: zod
+          .union([
+            zod.null(),
+            zod
+              .object({
+                type: zod.enum(['EventBodyX']),
+                good: zod.string(),
+                great: zod.number(),
+              })
+              .describe('事件類型 X 的專屬數據'),
+          ])
+          .default(createResourceV1AutocrudGameEventPostBodyPayloadEventXDefault),
+      })
+      .describe('遊戲事件載荷數據'),
+    status: zod
+      .enum(['completed', 'failed', 'pending', 'processing'])
+      .default(createResourceV1AutocrudGameEventPostBodyStatusDefault),
+    errmsg: zod
+      .union([zod.string(), zod.null()])
+      .default(createResourceV1AutocrudGameEventPostBodyErrmsgDefault),
+    artifact: zod
+      .union([
+        zod.null(),
+        zod
+          .object({
+            process_times: zod.number(),
+          })
+          .describe('遊戲事件載荷數據'),
+      ])
+      .default(createResourceV1AutocrudGameEventPostBodyArtifactDefault),
+    retries: zod.number().default(createResourceV1AutocrudGameEventPostBodyRetriesDefault),
+    max_retries: zod
+      .union([zod.number(), zod.null()])
+      .default(createResourceV1AutocrudGameEventPostBodyMaxRetriesDefault),
+    periodic_interval_seconds: zod
+      .union([zod.number(), zod.null()])
+      .default(createResourceV1AutocrudGameEventPostBodyPeriodicIntervalSecondsDefault),
+    periodic_max_runs: zod
+      .union([zod.number(), zod.null()])
+      .default(createResourceV1AutocrudGameEventPostBodyPeriodicMaxRunsDefault),
+    periodic_runs: zod
+      .number()
+      .default(createResourceV1AutocrudGameEventPostBodyPeriodicRunsDefault),
+    periodic_initial_delay_seconds: zod
+      .union([zod.number(), zod.null()])
+      .default(createResourceV1AutocrudGameEventPostBodyPeriodicInitialDelaySecondsDefault),
+    last_heartbeat_at: zod
+      .union([zod.string(), zod.null()])
+      .default(createResourceV1AutocrudGameEventPostBodyLastHeartbeatAtDefault),
+  })
+  .describe('遊戲事件任務（使用 Message Queue 處理）');
+
+export const createResourceV1AutocrudGameEventPostResponseParentRevisionIdDefault = null;
+export const createResourceV1AutocrudGameEventPostResponseSchemaVersionDefault = null;
+
+export const CreateResourceV1AutocrudGameEventPostResponse = zod
+  .object({
+    uid: zod.uuid(),
+    resource_id: zod.string(),
+    revision_id: zod.string(),
+    parent_revision_id: zod
+      .union([zod.string(), zod.null()])
+      .default(createResourceV1AutocrudGameEventPostResponseParentRevisionIdDefault),
+    parent_schema_version: zod.union([zod.string(), zod.null()]).optional(),
+    schema_version: zod
+      .union([zod.string(), zod.null()])
+      .default(createResourceV1AutocrudGameEventPostResponseSchemaVersionDefault),
+    data_hash: zod.string().optional(),
+    status: zod.enum(['draft', 'stable']),
+    created_time: zod.string(),
+    updated_time: zod.string(),
+    created_by: zod.string(),
+    updated_by: zod.string(),
+  })
+  .describe(
+    'Metadata about a specific revision of a resource.\n\nThis class contains essential information about a particular revision,',
+  );
+
+/**
+ * Batch delete `game-event` resources matching the given query conditions.
+
+**Query Parameters:**
+- Uses the same search parameters as the list endpoint
+- `is_deleted` parameter is **forced to `false`** — only non-deleted resources are targeted
+- Use `data_conditions` to filter specific resources for deletion
+- Use `limit` to control the maximum number of resources to delete
+
+**Soft Delete:**
+- Resources are marked as deleted rather than permanently removed
+- Deleted resources can be restored using the batch restore endpoint
+
+**Response:**
+- Returns a list of `ResourceMeta` for all deleted resources
+- Each entry will have `is_deleted` set to `true`
+- Empty list if no resources match the query
+
+**Examples:**
+- `DELETE /game-event?limit=100` — Delete up to 100 resources
+- `DELETE /game-event?data_conditions=[{"field_path":"age","operator":"gt","value":25}]` — Delete resources with age > 25
+
+**Error Responses:**
+- `400`: Bad request — Invalid query parameters or deletion error
+ * @summary Batch delete game-event
+ */
+export const batchDeleteV1AutocrudGameEventDeleteQueryIsDeletedDefault = false;
+export const batchDeleteV1AutocrudGameEventDeleteQueryLimitDefault = 10;
+export const batchDeleteV1AutocrudGameEventDeleteQueryOffsetDefault = 0;
+
+export const BatchDeleteV1AutocrudGameEventDeleteQueryParams = zod.object({
+  qb: zod
+    .union([zod.string(), zod.null()])
+    .optional()
+    .describe(
+      "Query Builder expression. Example: \"QB['foo'] == 123\" or \"QB['age'].gt(18) & QB['status'].eq('active')\"",
+    ),
+  is_deleted: zod
+    .union([zod.boolean(), zod.null()])
+    .default(batchDeleteV1AutocrudGameEventDeleteQueryIsDeletedDefault)
+    .describe('Filter by deletion status'),
+  created_time_start: zod
+    .union([zod.string(), zod.null()])
+    .optional()
+    .describe('Filter by created time start (ISO format)'),
+  created_time_end: zod
+    .union([zod.string(), zod.null()])
+    .optional()
+    .describe('Filter by created time end (ISO format)'),
+  updated_time_start: zod
+    .union([zod.string(), zod.null()])
+    .optional()
+    .describe('Filter by updated time start (ISO format)'),
+  updated_time_end: zod
+    .union([zod.string(), zod.null()])
+    .optional()
+    .describe('Filter by updated time end (ISO format)'),
+  created_bys: zod
+    .union([zod.array(zod.string()), zod.null()])
+    .optional()
+    .describe('Filter by creators'),
+  updated_bys: zod
+    .union([zod.array(zod.string()), zod.null()])
+    .optional()
+    .describe('Filter by updaters'),
+  data_conditions: zod
+    .union([zod.string(), zod.null()])
+    .optional()
+    .describe(
+      'Data filter conditions in JSON format. Example: \'[{\"field_path\": \"department\", \"operator\": \"eq\", \"value\": \"Engineering\"}]\'',
+    ),
+  conditions: zod
+    .union([zod.string(), zod.null()])
+    .optional()
+    .describe(
+      'General filter conditions in JSON format for meta fields or data. Example: \'[{\"field_path\": \"resource_id\", \"operator\": \"starts_with\", \"value\": \"user-\"}]\'',
+    ),
+  sorts: zod
+    .union([zod.string(), zod.null()])
+    .optional()
+    .describe(
+      'Sort conditions in JSON format. Example: \'[{\"type\": \"meta\", \"key\": \"created_time\", \"direction\": \"+\"}, {\"type\": \"data\", \"field_path\": \"name\", \"direction\": \"-\"}]\'',
+    ),
+  limit: zod
+    .number()
+    .default(batchDeleteV1AutocrudGameEventDeleteQueryLimitDefault)
+    .describe('Maximum number of results'),
+  offset: zod
+    .number()
+    .default(batchDeleteV1AutocrudGameEventDeleteQueryOffsetDefault)
+    .describe('Number of results to skip'),
+  partial: zod
+    .union([zod.array(zod.string()), zod.null()])
+    .optional()
+    .describe("List of fields to retrieve (e.g. '\/field1', '\/nested\/field2')"),
+});
+
+export const batchDeleteV1AutocrudGameEventDeleteResponseSchemaVersionDefault = null;
+export const batchDeleteV1AutocrudGameEventDeleteResponseIsDeletedDefault = false;
+
+export const BatchDeleteV1AutocrudGameEventDeleteResponseItem = zod
+  .object({
+    current_revision_id: zod.string(),
+    resource_id: zod.string(),
+    schema_version: zod
+      .union([zod.string(), zod.null()])
+      .default(batchDeleteV1AutocrudGameEventDeleteResponseSchemaVersionDefault),
+    total_revision_count: zod.number(),
+    created_time: zod.string(),
+    updated_time: zod.string(),
+    created_by: zod.string(),
+    updated_by: zod.string(),
+    is_deleted: zod.boolean().default(batchDeleteV1AutocrudGameEventDeleteResponseIsDeletedDefault),
+    indexed_data: zod.looseObject({}).optional(),
+  })
+  .describe(
+    'Metadata about a resource, including its current revision and status.\n\nThis class provides essential information about a resource without including\nthe full data content.',
+  );
+export const BatchDeleteV1AutocrudGameEventDeleteResponse = zod.array(
+  BatchDeleteV1AutocrudGameEventDeleteResponseItem,
+);
+
+/**
+ * Export all (or filtered) **game-event** resources as a
+streaming ``.acbak`` archive.
+
+Supports the same query parameters as the search endpoint
+(``qb``, ``is_deleted``, time ranges, etc.) to filter
+which resources are included.
+ * @summary Export game-event data
+ */
+export const exportModelV1AutocrudGameEventExportGetQueryIsDeletedDefault = false;
+export const exportModelV1AutocrudGameEventExportGetQueryLimitDefault = 10;
+export const exportModelV1AutocrudGameEventExportGetQueryOffsetDefault = 0;
+
+export const ExportModelV1AutocrudGameEventExportGetQueryParams = zod.object({
+  qb: zod
+    .union([zod.string(), zod.null()])
+    .optional()
+    .describe(
+      "Query Builder expression. Example: \"QB['foo'] == 123\" or \"QB['age'].gt(18) & QB['status'].eq('active')\"",
+    ),
+  is_deleted: zod
+    .union([zod.boolean(), zod.null()])
+    .default(exportModelV1AutocrudGameEventExportGetQueryIsDeletedDefault)
+    .describe('Filter by deletion status'),
+  created_time_start: zod
+    .union([zod.string(), zod.null()])
+    .optional()
+    .describe('Filter by created time start (ISO format)'),
+  created_time_end: zod
+    .union([zod.string(), zod.null()])
+    .optional()
+    .describe('Filter by created time end (ISO format)'),
+  updated_time_start: zod
+    .union([zod.string(), zod.null()])
+    .optional()
+    .describe('Filter by updated time start (ISO format)'),
+  updated_time_end: zod
+    .union([zod.string(), zod.null()])
+    .optional()
+    .describe('Filter by updated time end (ISO format)'),
+  created_bys: zod
+    .union([zod.array(zod.string()), zod.null()])
+    .optional()
+    .describe('Filter by creators'),
+  updated_bys: zod
+    .union([zod.array(zod.string()), zod.null()])
+    .optional()
+    .describe('Filter by updaters'),
+  data_conditions: zod
+    .union([zod.string(), zod.null()])
+    .optional()
+    .describe(
+      'Data filter conditions in JSON format. Example: \'[{\"field_path\": \"department\", \"operator\": \"eq\", \"value\": \"Engineering\"}]\'',
+    ),
+  conditions: zod
+    .union([zod.string(), zod.null()])
+    .optional()
+    .describe(
+      'General filter conditions in JSON format for meta fields or data. Example: \'[{\"field_path\": \"resource_id\", \"operator\": \"starts_with\", \"value\": \"user-\"}]\'',
+    ),
+  sorts: zod
+    .union([zod.string(), zod.null()])
+    .optional()
+    .describe(
+      'Sort conditions in JSON format. Example: \'[{\"type\": \"meta\", \"key\": \"created_time\", \"direction\": \"+\"}, {\"type\": \"data\", \"field_path\": \"name\", \"direction\": \"-\"}]\'',
+    ),
+  limit: zod
+    .number()
+    .default(exportModelV1AutocrudGameEventExportGetQueryLimitDefault)
+    .describe('Maximum number of results'),
+  offset: zod
+    .number()
+    .default(exportModelV1AutocrudGameEventExportGetQueryOffsetDefault)
+    .describe('Number of results to skip'),
+  partial: zod
+    .union([zod.array(zod.string()), zod.null()])
+    .optional()
+    .describe("List of fields to retrieve (e.g. '\/field1', '\/nested\/field2')"),
+});
+
+export const ExportModelV1AutocrudGameEventExportGetResponse = zod.unknown();
+
+/**
+ * Import **game-event** resources from a ``.acbak`` archive.
+
+The archive must contain a **game-event** model section.
+Use ``on_duplicate`` to control behaviour when a resource ID
+already exists.
+ * @summary Import game-event data
+ */
+export const importModelV1AutocrudGameEventImportPostQueryOnDuplicateDefault = `overwrite`;
+
+export const ImportModelV1AutocrudGameEventImportPostQueryParams = zod.object({
+  on_duplicate: zod
+    .string()
+    .default(importModelV1AutocrudGameEventImportPostQueryOnDuplicateDefault)
+    .describe('Strategy: overwrite | skip | raise_error'),
+});
+
+export const ImportModelV1AutocrudGameEventImportPostBody = zod.object({
+  file: zod.instanceof(File).describe('.acbak archive file'),
+});
+
+export const ImportModelV1AutocrudGameEventImportPostResponse = zod.record(
+  zod.string(),
+  zod.unknown(),
+);
 
 /**
  * Deprecated: use `GET /game-event/{resource_id}?returns=meta` instead.
@@ -22462,535 +25618,6 @@ export const MigrateSingleResourceV1AutocrudGameEventMigrateSingleResourceIdPost
   .describe('遷移進度訊息');
 
 /**
- * Export all (or filtered) **new-char1-job** resources as a
-streaming ``.acbak`` archive.
-
-Supports the same query parameters as the search endpoint
-(``qb``, ``is_deleted``, time ranges, etc.) to filter
-which resources are included.
- * @summary Export new-char1-job data
- */
-export const exportModelV1AutocrudNewChar1JobExportGetQueryIsDeletedDefault = false;
-export const exportModelV1AutocrudNewChar1JobExportGetQueryLimitDefault = 10;
-export const exportModelV1AutocrudNewChar1JobExportGetQueryOffsetDefault = 0;
-
-export const ExportModelV1AutocrudNewChar1JobExportGetQueryParams = zod.object({
-  qb: zod
-    .union([zod.string(), zod.null()])
-    .optional()
-    .describe(
-      "Query Builder expression. Example: \"QB['foo'] == 123\" or \"QB['age'].gt(18) & QB['status'].eq('active')\"",
-    ),
-  is_deleted: zod
-    .union([zod.boolean(), zod.null()])
-    .default(exportModelV1AutocrudNewChar1JobExportGetQueryIsDeletedDefault)
-    .describe('Filter by deletion status'),
-  created_time_start: zod
-    .union([zod.string(), zod.null()])
-    .optional()
-    .describe('Filter by created time start (ISO format)'),
-  created_time_end: zod
-    .union([zod.string(), zod.null()])
-    .optional()
-    .describe('Filter by created time end (ISO format)'),
-  updated_time_start: zod
-    .union([zod.string(), zod.null()])
-    .optional()
-    .describe('Filter by updated time start (ISO format)'),
-  updated_time_end: zod
-    .union([zod.string(), zod.null()])
-    .optional()
-    .describe('Filter by updated time end (ISO format)'),
-  created_bys: zod
-    .union([zod.array(zod.string()), zod.null()])
-    .optional()
-    .describe('Filter by creators'),
-  updated_bys: zod
-    .union([zod.array(zod.string()), zod.null()])
-    .optional()
-    .describe('Filter by updaters'),
-  data_conditions: zod
-    .union([zod.string(), zod.null()])
-    .optional()
-    .describe(
-      'Data filter conditions in JSON format. Example: \'[{\"field_path\": \"department\", \"operator\": \"eq\", \"value\": \"Engineering\"}]\'',
-    ),
-  conditions: zod
-    .union([zod.string(), zod.null()])
-    .optional()
-    .describe(
-      'General filter conditions in JSON format for meta fields or data. Example: \'[{\"field_path\": \"resource_id\", \"operator\": \"starts_with\", \"value\": \"user-\"}]\'',
-    ),
-  sorts: zod
-    .union([zod.string(), zod.null()])
-    .optional()
-    .describe(
-      'Sort conditions in JSON format. Example: \'[{\"type\": \"meta\", \"key\": \"created_time\", \"direction\": \"+\"}, {\"type\": \"data\", \"field_path\": \"name\", \"direction\": \"-\"}]\'',
-    ),
-  limit: zod
-    .number()
-    .default(exportModelV1AutocrudNewChar1JobExportGetQueryLimitDefault)
-    .describe('Maximum number of results'),
-  offset: zod
-    .number()
-    .default(exportModelV1AutocrudNewChar1JobExportGetQueryOffsetDefault)
-    .describe('Number of results to skip'),
-  partial: zod
-    .union([zod.array(zod.string()), zod.null()])
-    .optional()
-    .describe("List of fields to retrieve (e.g. '\/field1', '\/nested\/field2')"),
-});
-
-export const ExportModelV1AutocrudNewChar1JobExportGetResponse = zod.unknown();
-
-/**
- * Import **new-char1-job** resources from a ``.acbak`` archive.
-
-The archive must contain a **new-char1-job** model section.
-Use ``on_duplicate`` to control behaviour when a resource ID
-already exists.
- * @summary Import new-char1-job data
- */
-export const importModelV1AutocrudNewChar1JobImportPostQueryOnDuplicateDefault = `overwrite`;
-
-export const ImportModelV1AutocrudNewChar1JobImportPostQueryParams = zod.object({
-  on_duplicate: zod
-    .string()
-    .default(importModelV1AutocrudNewChar1JobImportPostQueryOnDuplicateDefault)
-    .describe('Strategy: overwrite | skip | raise_error'),
-});
-
-export const ImportModelV1AutocrudNewChar1JobImportPostBody = zod.object({
-  file: zod.instanceof(File).describe('.acbak archive file'),
-});
-
-export const ImportModelV1AutocrudNewChar1JobImportPostResponse = zod.record(
-  zod.string(),
-  zod.unknown(),
-);
-
-/**
- * Create a new `new-char1-job` resource.
-
-**Request Body:**
-- Send the resource data as JSON in the request body
-- The data will be validated against the `new-char1-job` schema
-
-**Response:**
-- Returns revision information for the newly created resource
-- Includes `resource_id` and `revision_id` for tracking
-- All resources are version-controlled from creation
-
-**Examples:**
-- `POST /new-char1-job` with JSON body - Create new resource
-- Response includes resource and revision identifiers
-
-**Error Responses:**
-- `422`: Validation error - Invalid data format or missing required fields
-- `400`: Bad request - General creation error
- * @summary Create new-char1-job
- */
-export const createResourceV1AutocrudNewChar1JobPostBodyStatusDefault = `pending`;
-export const createResourceV1AutocrudNewChar1JobPostBodyErrmsgDefault = null;
-export const createResourceV1AutocrudNewChar1JobPostBodyArtifactDefault = null;
-export const createResourceV1AutocrudNewChar1JobPostBodyRetriesDefault = 0;
-export const createResourceV1AutocrudNewChar1JobPostBodyMaxRetriesDefault = null;
-export const createResourceV1AutocrudNewChar1JobPostBodyPeriodicIntervalSecondsDefault = null;
-export const createResourceV1AutocrudNewChar1JobPostBodyPeriodicMaxRunsDefault = null;
-export const createResourceV1AutocrudNewChar1JobPostBodyPeriodicRunsDefault = 0;
-export const createResourceV1AutocrudNewChar1JobPostBodyPeriodicInitialDelaySecondsDefault = null;
-export const createResourceV1AutocrudNewChar1JobPostBodyLastHeartbeatAtDefault = null;
-
-export const CreateResourceV1AutocrudNewChar1JobPostBody = zod.object({
-  payload: zod.object({
-    name: zod.string(),
-  }),
-  status: zod
-    .enum(['completed', 'failed', 'pending', 'processing'])
-    .default(createResourceV1AutocrudNewChar1JobPostBodyStatusDefault),
-  errmsg: zod
-    .union([zod.string(), zod.null()])
-    .default(createResourceV1AutocrudNewChar1JobPostBodyErrmsgDefault),
-  artifact: zod
-    .union([zod.looseObject({}), zod.null()])
-    .default(createResourceV1AutocrudNewChar1JobPostBodyArtifactDefault),
-  retries: zod.number().default(createResourceV1AutocrudNewChar1JobPostBodyRetriesDefault),
-  max_retries: zod
-    .union([zod.number(), zod.null()])
-    .default(createResourceV1AutocrudNewChar1JobPostBodyMaxRetriesDefault),
-  periodic_interval_seconds: zod
-    .union([zod.number(), zod.null()])
-    .default(createResourceV1AutocrudNewChar1JobPostBodyPeriodicIntervalSecondsDefault),
-  periodic_max_runs: zod
-    .union([zod.number(), zod.null()])
-    .default(createResourceV1AutocrudNewChar1JobPostBodyPeriodicMaxRunsDefault),
-  periodic_runs: zod
-    .number()
-    .default(createResourceV1AutocrudNewChar1JobPostBodyPeriodicRunsDefault),
-  periodic_initial_delay_seconds: zod
-    .union([zod.number(), zod.null()])
-    .default(createResourceV1AutocrudNewChar1JobPostBodyPeriodicInitialDelaySecondsDefault),
-  last_heartbeat_at: zod
-    .union([zod.string(), zod.null()])
-    .default(createResourceV1AutocrudNewChar1JobPostBodyLastHeartbeatAtDefault),
-});
-
-export const createResourceV1AutocrudNewChar1JobPostResponseParentRevisionIdDefault = null;
-export const createResourceV1AutocrudNewChar1JobPostResponseSchemaVersionDefault = null;
-
-export const CreateResourceV1AutocrudNewChar1JobPostResponse = zod
-  .object({
-    uid: zod.uuid(),
-    resource_id: zod.string(),
-    revision_id: zod.string(),
-    parent_revision_id: zod
-      .union([zod.string(), zod.null()])
-      .default(createResourceV1AutocrudNewChar1JobPostResponseParentRevisionIdDefault),
-    parent_schema_version: zod.union([zod.string(), zod.null()]).optional(),
-    schema_version: zod
-      .union([zod.string(), zod.null()])
-      .default(createResourceV1AutocrudNewChar1JobPostResponseSchemaVersionDefault),
-    data_hash: zod.string().optional(),
-    status: zod.enum(['draft', 'stable']),
-    created_time: zod.string(),
-    updated_time: zod.string(),
-    created_by: zod.string(),
-    updated_by: zod.string(),
-  })
-  .describe(
-    'Metadata about a specific revision of a resource.\n\nThis class contains essential information about a particular revision,',
-  );
-
-/**
- * Retrieve a list of `new-char1-job` resources.
-
-Use the `returns` query parameter to control which sections are included in each item.
-By default all sections are returned: `data`, `revision_info`, `meta`.
-
-**Query Parameters:**
-- `returns` (default `"data,revision_info,meta"`): Comma-separated list of sections to include.
-  Allowed values: `data`, `revision_info`, `meta`.
-- `limit` / `offset`: Pagination controls.
-- `partial` / `partial[]`: Partial field selection.
-- All standard filtering and sorting parameters.
-
-**Examples:**
-- `GET /new-char1-job` — full list (data + meta + revision_info)
-- `GET /new-char1-job?returns=data` — data only
-- `GET /new-char1-job?returns=data,meta` — data + meta, no revision_info
-- `GET /new-char1-job?limit=20&offset=40` — pagination
-
-**Error Responses:**
-- `400`: Bad request - Invalid query parameters or search error
- * @summary List new-char1-job resources
- */
-export const listResourcesV1AutocrudNewChar1JobGetQueryIsDeletedDefault = false;
-export const listResourcesV1AutocrudNewChar1JobGetQueryLimitDefault = 10;
-export const listResourcesV1AutocrudNewChar1JobGetQueryOffsetDefault = 0;
-export const listResourcesV1AutocrudNewChar1JobGetQueryReturnsDefault = `data,revision_info,meta`;
-
-export const ListResourcesV1AutocrudNewChar1JobGetQueryParams = zod.object({
-  qb: zod
-    .union([zod.string(), zod.null()])
-    .optional()
-    .describe(
-      "Query Builder expression. Example: \"QB['foo'] == 123\" or \"QB['age'].gt(18) & QB['status'].eq('active')\"",
-    ),
-  is_deleted: zod
-    .union([zod.boolean(), zod.null()])
-    .default(listResourcesV1AutocrudNewChar1JobGetQueryIsDeletedDefault)
-    .describe('Filter by deletion status'),
-  created_time_start: zod
-    .union([zod.string(), zod.null()])
-    .optional()
-    .describe('Filter by created time start (ISO format)'),
-  created_time_end: zod
-    .union([zod.string(), zod.null()])
-    .optional()
-    .describe('Filter by created time end (ISO format)'),
-  updated_time_start: zod
-    .union([zod.string(), zod.null()])
-    .optional()
-    .describe('Filter by updated time start (ISO format)'),
-  updated_time_end: zod
-    .union([zod.string(), zod.null()])
-    .optional()
-    .describe('Filter by updated time end (ISO format)'),
-  created_bys: zod
-    .union([zod.array(zod.string()), zod.null()])
-    .optional()
-    .describe('Filter by creators'),
-  updated_bys: zod
-    .union([zod.array(zod.string()), zod.null()])
-    .optional()
-    .describe('Filter by updaters'),
-  data_conditions: zod
-    .union([zod.string(), zod.null()])
-    .optional()
-    .describe(
-      'Data filter conditions in JSON format. Example: \'[{\"field_path\": \"department\", \"operator\": \"eq\", \"value\": \"Engineering\"}]\'',
-    ),
-  conditions: zod
-    .union([zod.string(), zod.null()])
-    .optional()
-    .describe(
-      'General filter conditions in JSON format for meta fields or data. Example: \'[{\"field_path\": \"resource_id\", \"operator\": \"starts_with\", \"value\": \"user-\"}]\'',
-    ),
-  sorts: zod
-    .union([zod.string(), zod.null()])
-    .optional()
-    .describe(
-      'Sort conditions in JSON format. Example: \'[{\"type\": \"meta\", \"key\": \"created_time\", \"direction\": \"+\"}, {\"type\": \"data\", \"field_path\": \"name\", \"direction\": \"-\"}]\'',
-    ),
-  limit: zod
-    .number()
-    .default(listResourcesV1AutocrudNewChar1JobGetQueryLimitDefault)
-    .describe('Maximum number of results'),
-  offset: zod
-    .number()
-    .default(listResourcesV1AutocrudNewChar1JobGetQueryOffsetDefault)
-    .describe('Number of results to skip'),
-  partial: zod
-    .union([zod.array(zod.string()), zod.null()])
-    .optional()
-    .describe("List of fields to retrieve (e.g. '\/field1', '\/nested\/field2')"),
-  returns: zod
-    .string()
-    .default(listResourcesV1AutocrudNewChar1JobGetQueryReturnsDefault)
-    .describe('Fields to return, comma-separated. Options: data, revision_info, meta'),
-});
-
-export const listResourcesV1AutocrudNewChar1JobGetResponseDataStatusDefault = `pending`;
-export const listResourcesV1AutocrudNewChar1JobGetResponseDataErrmsgDefault = null;
-export const listResourcesV1AutocrudNewChar1JobGetResponseDataArtifactDefault = null;
-export const listResourcesV1AutocrudNewChar1JobGetResponseDataRetriesDefault = 0;
-export const listResourcesV1AutocrudNewChar1JobGetResponseDataMaxRetriesDefault = null;
-export const listResourcesV1AutocrudNewChar1JobGetResponseDataPeriodicIntervalSecondsDefault = null;
-export const listResourcesV1AutocrudNewChar1JobGetResponseDataPeriodicMaxRunsDefault = null;
-export const listResourcesV1AutocrudNewChar1JobGetResponseDataPeriodicRunsDefault = 0;
-export const listResourcesV1AutocrudNewChar1JobGetResponseDataPeriodicInitialDelaySecondsDefault =
-  null;
-export const listResourcesV1AutocrudNewChar1JobGetResponseDataLastHeartbeatAtDefault = null;
-export const listResourcesV1AutocrudNewChar1JobGetResponseRevisionInfoParentRevisionIdDefault =
-  null;
-export const listResourcesV1AutocrudNewChar1JobGetResponseRevisionInfoSchemaVersionDefault = null;
-export const listResourcesV1AutocrudNewChar1JobGetResponseMetaSchemaVersionDefault = null;
-export const listResourcesV1AutocrudNewChar1JobGetResponseMetaIsDeletedDefault = false;
-
-export const ListResourcesV1AutocrudNewChar1JobGetResponseItem = zod.object({
-  data: zod
-    .object({
-      payload: zod.object({
-        name: zod.string(),
-      }),
-      status: zod
-        .enum(['completed', 'failed', 'pending', 'processing'])
-        .default(listResourcesV1AutocrudNewChar1JobGetResponseDataStatusDefault),
-      errmsg: zod
-        .union([zod.string(), zod.null()])
-        .default(listResourcesV1AutocrudNewChar1JobGetResponseDataErrmsgDefault),
-      artifact: zod
-        .union([zod.looseObject({}), zod.null()])
-        .default(listResourcesV1AutocrudNewChar1JobGetResponseDataArtifactDefault),
-      retries: zod
-        .number()
-        .default(listResourcesV1AutocrudNewChar1JobGetResponseDataRetriesDefault),
-      max_retries: zod
-        .union([zod.number(), zod.null()])
-        .default(listResourcesV1AutocrudNewChar1JobGetResponseDataMaxRetriesDefault),
-      periodic_interval_seconds: zod
-        .union([zod.number(), zod.null()])
-        .default(listResourcesV1AutocrudNewChar1JobGetResponseDataPeriodicIntervalSecondsDefault),
-      periodic_max_runs: zod
-        .union([zod.number(), zod.null()])
-        .default(listResourcesV1AutocrudNewChar1JobGetResponseDataPeriodicMaxRunsDefault),
-      periodic_runs: zod
-        .number()
-        .default(listResourcesV1AutocrudNewChar1JobGetResponseDataPeriodicRunsDefault),
-      periodic_initial_delay_seconds: zod
-        .union([zod.number(), zod.null()])
-        .default(
-          listResourcesV1AutocrudNewChar1JobGetResponseDataPeriodicInitialDelaySecondsDefault,
-        ),
-      last_heartbeat_at: zod
-        .union([zod.string(), zod.null()])
-        .default(listResourcesV1AutocrudNewChar1JobGetResponseDataLastHeartbeatAtDefault),
-    })
-    .optional(),
-  revision_info: zod
-    .object({
-      uid: zod.uuid(),
-      resource_id: zod.string(),
-      revision_id: zod.string(),
-      parent_revision_id: zod
-        .union([zod.string(), zod.null()])
-        .default(listResourcesV1AutocrudNewChar1JobGetResponseRevisionInfoParentRevisionIdDefault),
-      parent_schema_version: zod.union([zod.string(), zod.null()]).optional(),
-      schema_version: zod
-        .union([zod.string(), zod.null()])
-        .default(listResourcesV1AutocrudNewChar1JobGetResponseRevisionInfoSchemaVersionDefault),
-      data_hash: zod.string().optional(),
-      status: zod.enum(['draft', 'stable']),
-      created_time: zod.string(),
-      updated_time: zod.string(),
-      created_by: zod.string(),
-      updated_by: zod.string(),
-    })
-    .optional()
-    .describe(
-      'Metadata about a specific revision of a resource.\n\nThis class contains essential information about a particular revision,',
-    ),
-  meta: zod
-    .object({
-      current_revision_id: zod.string(),
-      resource_id: zod.string(),
-      schema_version: zod
-        .union([zod.string(), zod.null()])
-        .default(listResourcesV1AutocrudNewChar1JobGetResponseMetaSchemaVersionDefault),
-      total_revision_count: zod.number(),
-      created_time: zod.string(),
-      updated_time: zod.string(),
-      created_by: zod.string(),
-      updated_by: zod.string(),
-      is_deleted: zod
-        .boolean()
-        .default(listResourcesV1AutocrudNewChar1JobGetResponseMetaIsDeletedDefault),
-      indexed_data: zod.looseObject({}).optional(),
-    })
-    .optional()
-    .describe(
-      'Metadata about a resource, including its current revision and status.\n\nThis class provides essential information about a resource without including\nthe full data content.',
-    ),
-});
-export const ListResourcesV1AutocrudNewChar1JobGetResponse = zod.array(
-  ListResourcesV1AutocrudNewChar1JobGetResponseItem,
-);
-
-/**
- * Batch delete `new-char1-job` resources matching the given query conditions.
-
-**Query Parameters:**
-- Uses the same search parameters as the list endpoint
-- `is_deleted` parameter is **forced to `false`** — only non-deleted resources are targeted
-- Use `data_conditions` to filter specific resources for deletion
-- Use `limit` to control the maximum number of resources to delete
-
-**Soft Delete:**
-- Resources are marked as deleted rather than permanently removed
-- Deleted resources can be restored using the batch restore endpoint
-
-**Response:**
-- Returns a list of `ResourceMeta` for all deleted resources
-- Each entry will have `is_deleted` set to `true`
-- Empty list if no resources match the query
-
-**Examples:**
-- `DELETE /new-char1-job?limit=100` — Delete up to 100 resources
-- `DELETE /new-char1-job?data_conditions=[{"field_path":"age","operator":"gt","value":25}]` — Delete resources with age > 25
-
-**Error Responses:**
-- `400`: Bad request — Invalid query parameters or deletion error
- * @summary Batch delete new-char1-job
- */
-export const batchDeleteV1AutocrudNewChar1JobDeleteQueryIsDeletedDefault = false;
-export const batchDeleteV1AutocrudNewChar1JobDeleteQueryLimitDefault = 10;
-export const batchDeleteV1AutocrudNewChar1JobDeleteQueryOffsetDefault = 0;
-
-export const BatchDeleteV1AutocrudNewChar1JobDeleteQueryParams = zod.object({
-  qb: zod
-    .union([zod.string(), zod.null()])
-    .optional()
-    .describe(
-      "Query Builder expression. Example: \"QB['foo'] == 123\" or \"QB['age'].gt(18) & QB['status'].eq('active')\"",
-    ),
-  is_deleted: zod
-    .union([zod.boolean(), zod.null()])
-    .default(batchDeleteV1AutocrudNewChar1JobDeleteQueryIsDeletedDefault)
-    .describe('Filter by deletion status'),
-  created_time_start: zod
-    .union([zod.string(), zod.null()])
-    .optional()
-    .describe('Filter by created time start (ISO format)'),
-  created_time_end: zod
-    .union([zod.string(), zod.null()])
-    .optional()
-    .describe('Filter by created time end (ISO format)'),
-  updated_time_start: zod
-    .union([zod.string(), zod.null()])
-    .optional()
-    .describe('Filter by updated time start (ISO format)'),
-  updated_time_end: zod
-    .union([zod.string(), zod.null()])
-    .optional()
-    .describe('Filter by updated time end (ISO format)'),
-  created_bys: zod
-    .union([zod.array(zod.string()), zod.null()])
-    .optional()
-    .describe('Filter by creators'),
-  updated_bys: zod
-    .union([zod.array(zod.string()), zod.null()])
-    .optional()
-    .describe('Filter by updaters'),
-  data_conditions: zod
-    .union([zod.string(), zod.null()])
-    .optional()
-    .describe(
-      'Data filter conditions in JSON format. Example: \'[{\"field_path\": \"department\", \"operator\": \"eq\", \"value\": \"Engineering\"}]\'',
-    ),
-  conditions: zod
-    .union([zod.string(), zod.null()])
-    .optional()
-    .describe(
-      'General filter conditions in JSON format for meta fields or data. Example: \'[{\"field_path\": \"resource_id\", \"operator\": \"starts_with\", \"value\": \"user-\"}]\'',
-    ),
-  sorts: zod
-    .union([zod.string(), zod.null()])
-    .optional()
-    .describe(
-      'Sort conditions in JSON format. Example: \'[{\"type\": \"meta\", \"key\": \"created_time\", \"direction\": \"+\"}, {\"type\": \"data\", \"field_path\": \"name\", \"direction\": \"-\"}]\'',
-    ),
-  limit: zod
-    .number()
-    .default(batchDeleteV1AutocrudNewChar1JobDeleteQueryLimitDefault)
-    .describe('Maximum number of results'),
-  offset: zod
-    .number()
-    .default(batchDeleteV1AutocrudNewChar1JobDeleteQueryOffsetDefault)
-    .describe('Number of results to skip'),
-  partial: zod
-    .union([zod.array(zod.string()), zod.null()])
-    .optional()
-    .describe("List of fields to retrieve (e.g. '\/field1', '\/nested\/field2')"),
-});
-
-export const batchDeleteV1AutocrudNewChar1JobDeleteResponseSchemaVersionDefault = null;
-export const batchDeleteV1AutocrudNewChar1JobDeleteResponseIsDeletedDefault = false;
-
-export const BatchDeleteV1AutocrudNewChar1JobDeleteResponseItem = zod
-  .object({
-    current_revision_id: zod.string(),
-    resource_id: zod.string(),
-    schema_version: zod
-      .union([zod.string(), zod.null()])
-      .default(batchDeleteV1AutocrudNewChar1JobDeleteResponseSchemaVersionDefault),
-    total_revision_count: zod.number(),
-    created_time: zod.string(),
-    updated_time: zod.string(),
-    created_by: zod.string(),
-    updated_by: zod.string(),
-    is_deleted: zod
-      .boolean()
-      .default(batchDeleteV1AutocrudNewChar1JobDeleteResponseIsDeletedDefault),
-    indexed_data: zod.looseObject({}).optional(),
-  })
-  .describe(
-    'Metadata about a resource, including its current revision and status.\n\nThis class provides essential information about a resource without including\nthe full data content.',
-  );
-export const BatchDeleteV1AutocrudNewChar1JobDeleteResponse = zod.array(
-  BatchDeleteV1AutocrudNewChar1JobDeleteResponseItem,
-);
-
-/**
  * Retrieve a list of `new-char1-job` resources returning only the data content.
 
 **Response Format:**
@@ -23822,6 +26449,535 @@ export const GetResourcesCountV1AutocrudNewChar1JobCountGetQueryParams = zod.obj
 });
 
 export const GetResourcesCountV1AutocrudNewChar1JobCountGetResponse = zod.number();
+
+/**
+ * Retrieve a list of `new-char1-job` resources.
+
+Use the `returns` query parameter to control which sections are included in each item.
+By default all sections are returned: `data`, `revision_info`, `meta`.
+
+**Query Parameters:**
+- `returns` (default `"data,revision_info,meta"`): Comma-separated list of sections to include.
+  Allowed values: `data`, `revision_info`, `meta`.
+- `limit` / `offset`: Pagination controls.
+- `partial` / `partial[]`: Partial field selection.
+- All standard filtering and sorting parameters.
+
+**Examples:**
+- `GET /new-char1-job` — full list (data + meta + revision_info)
+- `GET /new-char1-job?returns=data` — data only
+- `GET /new-char1-job?returns=data,meta` — data + meta, no revision_info
+- `GET /new-char1-job?limit=20&offset=40` — pagination
+
+**Error Responses:**
+- `400`: Bad request - Invalid query parameters or search error
+ * @summary List new-char1-job resources
+ */
+export const listResourcesV1AutocrudNewChar1JobGetQueryIsDeletedDefault = false;
+export const listResourcesV1AutocrudNewChar1JobGetQueryLimitDefault = 10;
+export const listResourcesV1AutocrudNewChar1JobGetQueryOffsetDefault = 0;
+export const listResourcesV1AutocrudNewChar1JobGetQueryReturnsDefault = `data,revision_info,meta`;
+
+export const ListResourcesV1AutocrudNewChar1JobGetQueryParams = zod.object({
+  qb: zod
+    .union([zod.string(), zod.null()])
+    .optional()
+    .describe(
+      "Query Builder expression. Example: \"QB['foo'] == 123\" or \"QB['age'].gt(18) & QB['status'].eq('active')\"",
+    ),
+  is_deleted: zod
+    .union([zod.boolean(), zod.null()])
+    .default(listResourcesV1AutocrudNewChar1JobGetQueryIsDeletedDefault)
+    .describe('Filter by deletion status'),
+  created_time_start: zod
+    .union([zod.string(), zod.null()])
+    .optional()
+    .describe('Filter by created time start (ISO format)'),
+  created_time_end: zod
+    .union([zod.string(), zod.null()])
+    .optional()
+    .describe('Filter by created time end (ISO format)'),
+  updated_time_start: zod
+    .union([zod.string(), zod.null()])
+    .optional()
+    .describe('Filter by updated time start (ISO format)'),
+  updated_time_end: zod
+    .union([zod.string(), zod.null()])
+    .optional()
+    .describe('Filter by updated time end (ISO format)'),
+  created_bys: zod
+    .union([zod.array(zod.string()), zod.null()])
+    .optional()
+    .describe('Filter by creators'),
+  updated_bys: zod
+    .union([zod.array(zod.string()), zod.null()])
+    .optional()
+    .describe('Filter by updaters'),
+  data_conditions: zod
+    .union([zod.string(), zod.null()])
+    .optional()
+    .describe(
+      'Data filter conditions in JSON format. Example: \'[{\"field_path\": \"department\", \"operator\": \"eq\", \"value\": \"Engineering\"}]\'',
+    ),
+  conditions: zod
+    .union([zod.string(), zod.null()])
+    .optional()
+    .describe(
+      'General filter conditions in JSON format for meta fields or data. Example: \'[{\"field_path\": \"resource_id\", \"operator\": \"starts_with\", \"value\": \"user-\"}]\'',
+    ),
+  sorts: zod
+    .union([zod.string(), zod.null()])
+    .optional()
+    .describe(
+      'Sort conditions in JSON format. Example: \'[{\"type\": \"meta\", \"key\": \"created_time\", \"direction\": \"+\"}, {\"type\": \"data\", \"field_path\": \"name\", \"direction\": \"-\"}]\'',
+    ),
+  limit: zod
+    .number()
+    .default(listResourcesV1AutocrudNewChar1JobGetQueryLimitDefault)
+    .describe('Maximum number of results'),
+  offset: zod
+    .number()
+    .default(listResourcesV1AutocrudNewChar1JobGetQueryOffsetDefault)
+    .describe('Number of results to skip'),
+  partial: zod
+    .union([zod.array(zod.string()), zod.null()])
+    .optional()
+    .describe("List of fields to retrieve (e.g. '\/field1', '\/nested\/field2')"),
+  returns: zod
+    .string()
+    .default(listResourcesV1AutocrudNewChar1JobGetQueryReturnsDefault)
+    .describe('Fields to return, comma-separated. Options: data, revision_info, meta'),
+});
+
+export const listResourcesV1AutocrudNewChar1JobGetResponseDataStatusDefault = `pending`;
+export const listResourcesV1AutocrudNewChar1JobGetResponseDataErrmsgDefault = null;
+export const listResourcesV1AutocrudNewChar1JobGetResponseDataArtifactDefault = null;
+export const listResourcesV1AutocrudNewChar1JobGetResponseDataRetriesDefault = 0;
+export const listResourcesV1AutocrudNewChar1JobGetResponseDataMaxRetriesDefault = null;
+export const listResourcesV1AutocrudNewChar1JobGetResponseDataPeriodicIntervalSecondsDefault = null;
+export const listResourcesV1AutocrudNewChar1JobGetResponseDataPeriodicMaxRunsDefault = null;
+export const listResourcesV1AutocrudNewChar1JobGetResponseDataPeriodicRunsDefault = 0;
+export const listResourcesV1AutocrudNewChar1JobGetResponseDataPeriodicInitialDelaySecondsDefault =
+  null;
+export const listResourcesV1AutocrudNewChar1JobGetResponseDataLastHeartbeatAtDefault = null;
+export const listResourcesV1AutocrudNewChar1JobGetResponseRevisionInfoParentRevisionIdDefault =
+  null;
+export const listResourcesV1AutocrudNewChar1JobGetResponseRevisionInfoSchemaVersionDefault = null;
+export const listResourcesV1AutocrudNewChar1JobGetResponseMetaSchemaVersionDefault = null;
+export const listResourcesV1AutocrudNewChar1JobGetResponseMetaIsDeletedDefault = false;
+
+export const ListResourcesV1AutocrudNewChar1JobGetResponseItem = zod.object({
+  data: zod
+    .object({
+      payload: zod.object({
+        name: zod.string(),
+      }),
+      status: zod
+        .enum(['completed', 'failed', 'pending', 'processing'])
+        .default(listResourcesV1AutocrudNewChar1JobGetResponseDataStatusDefault),
+      errmsg: zod
+        .union([zod.string(), zod.null()])
+        .default(listResourcesV1AutocrudNewChar1JobGetResponseDataErrmsgDefault),
+      artifact: zod
+        .union([zod.looseObject({}), zod.null()])
+        .default(listResourcesV1AutocrudNewChar1JobGetResponseDataArtifactDefault),
+      retries: zod
+        .number()
+        .default(listResourcesV1AutocrudNewChar1JobGetResponseDataRetriesDefault),
+      max_retries: zod
+        .union([zod.number(), zod.null()])
+        .default(listResourcesV1AutocrudNewChar1JobGetResponseDataMaxRetriesDefault),
+      periodic_interval_seconds: zod
+        .union([zod.number(), zod.null()])
+        .default(listResourcesV1AutocrudNewChar1JobGetResponseDataPeriodicIntervalSecondsDefault),
+      periodic_max_runs: zod
+        .union([zod.number(), zod.null()])
+        .default(listResourcesV1AutocrudNewChar1JobGetResponseDataPeriodicMaxRunsDefault),
+      periodic_runs: zod
+        .number()
+        .default(listResourcesV1AutocrudNewChar1JobGetResponseDataPeriodicRunsDefault),
+      periodic_initial_delay_seconds: zod
+        .union([zod.number(), zod.null()])
+        .default(
+          listResourcesV1AutocrudNewChar1JobGetResponseDataPeriodicInitialDelaySecondsDefault,
+        ),
+      last_heartbeat_at: zod
+        .union([zod.string(), zod.null()])
+        .default(listResourcesV1AutocrudNewChar1JobGetResponseDataLastHeartbeatAtDefault),
+    })
+    .optional(),
+  revision_info: zod
+    .object({
+      uid: zod.uuid(),
+      resource_id: zod.string(),
+      revision_id: zod.string(),
+      parent_revision_id: zod
+        .union([zod.string(), zod.null()])
+        .default(listResourcesV1AutocrudNewChar1JobGetResponseRevisionInfoParentRevisionIdDefault),
+      parent_schema_version: zod.union([zod.string(), zod.null()]).optional(),
+      schema_version: zod
+        .union([zod.string(), zod.null()])
+        .default(listResourcesV1AutocrudNewChar1JobGetResponseRevisionInfoSchemaVersionDefault),
+      data_hash: zod.string().optional(),
+      status: zod.enum(['draft', 'stable']),
+      created_time: zod.string(),
+      updated_time: zod.string(),
+      created_by: zod.string(),
+      updated_by: zod.string(),
+    })
+    .optional()
+    .describe(
+      'Metadata about a specific revision of a resource.\n\nThis class contains essential information about a particular revision,',
+    ),
+  meta: zod
+    .object({
+      current_revision_id: zod.string(),
+      resource_id: zod.string(),
+      schema_version: zod
+        .union([zod.string(), zod.null()])
+        .default(listResourcesV1AutocrudNewChar1JobGetResponseMetaSchemaVersionDefault),
+      total_revision_count: zod.number(),
+      created_time: zod.string(),
+      updated_time: zod.string(),
+      created_by: zod.string(),
+      updated_by: zod.string(),
+      is_deleted: zod
+        .boolean()
+        .default(listResourcesV1AutocrudNewChar1JobGetResponseMetaIsDeletedDefault),
+      indexed_data: zod.looseObject({}).optional(),
+    })
+    .optional()
+    .describe(
+      'Metadata about a resource, including its current revision and status.\n\nThis class provides essential information about a resource without including\nthe full data content.',
+    ),
+});
+export const ListResourcesV1AutocrudNewChar1JobGetResponse = zod.array(
+  ListResourcesV1AutocrudNewChar1JobGetResponseItem,
+);
+
+/**
+ * Create a new `new-char1-job` resource.
+
+**Request Body:**
+- Send the resource data as JSON in the request body
+- The data will be validated against the `new-char1-job` schema
+
+**Response:**
+- Returns revision information for the newly created resource
+- Includes `resource_id` and `revision_id` for tracking
+- All resources are version-controlled from creation
+
+**Examples:**
+- `POST /new-char1-job` with JSON body - Create new resource
+- Response includes resource and revision identifiers
+
+**Error Responses:**
+- `422`: Validation error - Invalid data format or missing required fields
+- `400`: Bad request - General creation error
+ * @summary Create new-char1-job
+ */
+export const createResourceV1AutocrudNewChar1JobPostBodyStatusDefault = `pending`;
+export const createResourceV1AutocrudNewChar1JobPostBodyErrmsgDefault = null;
+export const createResourceV1AutocrudNewChar1JobPostBodyArtifactDefault = null;
+export const createResourceV1AutocrudNewChar1JobPostBodyRetriesDefault = 0;
+export const createResourceV1AutocrudNewChar1JobPostBodyMaxRetriesDefault = null;
+export const createResourceV1AutocrudNewChar1JobPostBodyPeriodicIntervalSecondsDefault = null;
+export const createResourceV1AutocrudNewChar1JobPostBodyPeriodicMaxRunsDefault = null;
+export const createResourceV1AutocrudNewChar1JobPostBodyPeriodicRunsDefault = 0;
+export const createResourceV1AutocrudNewChar1JobPostBodyPeriodicInitialDelaySecondsDefault = null;
+export const createResourceV1AutocrudNewChar1JobPostBodyLastHeartbeatAtDefault = null;
+
+export const CreateResourceV1AutocrudNewChar1JobPostBody = zod.object({
+  payload: zod.object({
+    name: zod.string(),
+  }),
+  status: zod
+    .enum(['completed', 'failed', 'pending', 'processing'])
+    .default(createResourceV1AutocrudNewChar1JobPostBodyStatusDefault),
+  errmsg: zod
+    .union([zod.string(), zod.null()])
+    .default(createResourceV1AutocrudNewChar1JobPostBodyErrmsgDefault),
+  artifact: zod
+    .union([zod.looseObject({}), zod.null()])
+    .default(createResourceV1AutocrudNewChar1JobPostBodyArtifactDefault),
+  retries: zod.number().default(createResourceV1AutocrudNewChar1JobPostBodyRetriesDefault),
+  max_retries: zod
+    .union([zod.number(), zod.null()])
+    .default(createResourceV1AutocrudNewChar1JobPostBodyMaxRetriesDefault),
+  periodic_interval_seconds: zod
+    .union([zod.number(), zod.null()])
+    .default(createResourceV1AutocrudNewChar1JobPostBodyPeriodicIntervalSecondsDefault),
+  periodic_max_runs: zod
+    .union([zod.number(), zod.null()])
+    .default(createResourceV1AutocrudNewChar1JobPostBodyPeriodicMaxRunsDefault),
+  periodic_runs: zod
+    .number()
+    .default(createResourceV1AutocrudNewChar1JobPostBodyPeriodicRunsDefault),
+  periodic_initial_delay_seconds: zod
+    .union([zod.number(), zod.null()])
+    .default(createResourceV1AutocrudNewChar1JobPostBodyPeriodicInitialDelaySecondsDefault),
+  last_heartbeat_at: zod
+    .union([zod.string(), zod.null()])
+    .default(createResourceV1AutocrudNewChar1JobPostBodyLastHeartbeatAtDefault),
+});
+
+export const createResourceV1AutocrudNewChar1JobPostResponseParentRevisionIdDefault = null;
+export const createResourceV1AutocrudNewChar1JobPostResponseSchemaVersionDefault = null;
+
+export const CreateResourceV1AutocrudNewChar1JobPostResponse = zod
+  .object({
+    uid: zod.uuid(),
+    resource_id: zod.string(),
+    revision_id: zod.string(),
+    parent_revision_id: zod
+      .union([zod.string(), zod.null()])
+      .default(createResourceV1AutocrudNewChar1JobPostResponseParentRevisionIdDefault),
+    parent_schema_version: zod.union([zod.string(), zod.null()]).optional(),
+    schema_version: zod
+      .union([zod.string(), zod.null()])
+      .default(createResourceV1AutocrudNewChar1JobPostResponseSchemaVersionDefault),
+    data_hash: zod.string().optional(),
+    status: zod.enum(['draft', 'stable']),
+    created_time: zod.string(),
+    updated_time: zod.string(),
+    created_by: zod.string(),
+    updated_by: zod.string(),
+  })
+  .describe(
+    'Metadata about a specific revision of a resource.\n\nThis class contains essential information about a particular revision,',
+  );
+
+/**
+ * Batch delete `new-char1-job` resources matching the given query conditions.
+
+**Query Parameters:**
+- Uses the same search parameters as the list endpoint
+- `is_deleted` parameter is **forced to `false`** — only non-deleted resources are targeted
+- Use `data_conditions` to filter specific resources for deletion
+- Use `limit` to control the maximum number of resources to delete
+
+**Soft Delete:**
+- Resources are marked as deleted rather than permanently removed
+- Deleted resources can be restored using the batch restore endpoint
+
+**Response:**
+- Returns a list of `ResourceMeta` for all deleted resources
+- Each entry will have `is_deleted` set to `true`
+- Empty list if no resources match the query
+
+**Examples:**
+- `DELETE /new-char1-job?limit=100` — Delete up to 100 resources
+- `DELETE /new-char1-job?data_conditions=[{"field_path":"age","operator":"gt","value":25}]` — Delete resources with age > 25
+
+**Error Responses:**
+- `400`: Bad request — Invalid query parameters or deletion error
+ * @summary Batch delete new-char1-job
+ */
+export const batchDeleteV1AutocrudNewChar1JobDeleteQueryIsDeletedDefault = false;
+export const batchDeleteV1AutocrudNewChar1JobDeleteQueryLimitDefault = 10;
+export const batchDeleteV1AutocrudNewChar1JobDeleteQueryOffsetDefault = 0;
+
+export const BatchDeleteV1AutocrudNewChar1JobDeleteQueryParams = zod.object({
+  qb: zod
+    .union([zod.string(), zod.null()])
+    .optional()
+    .describe(
+      "Query Builder expression. Example: \"QB['foo'] == 123\" or \"QB['age'].gt(18) & QB['status'].eq('active')\"",
+    ),
+  is_deleted: zod
+    .union([zod.boolean(), zod.null()])
+    .default(batchDeleteV1AutocrudNewChar1JobDeleteQueryIsDeletedDefault)
+    .describe('Filter by deletion status'),
+  created_time_start: zod
+    .union([zod.string(), zod.null()])
+    .optional()
+    .describe('Filter by created time start (ISO format)'),
+  created_time_end: zod
+    .union([zod.string(), zod.null()])
+    .optional()
+    .describe('Filter by created time end (ISO format)'),
+  updated_time_start: zod
+    .union([zod.string(), zod.null()])
+    .optional()
+    .describe('Filter by updated time start (ISO format)'),
+  updated_time_end: zod
+    .union([zod.string(), zod.null()])
+    .optional()
+    .describe('Filter by updated time end (ISO format)'),
+  created_bys: zod
+    .union([zod.array(zod.string()), zod.null()])
+    .optional()
+    .describe('Filter by creators'),
+  updated_bys: zod
+    .union([zod.array(zod.string()), zod.null()])
+    .optional()
+    .describe('Filter by updaters'),
+  data_conditions: zod
+    .union([zod.string(), zod.null()])
+    .optional()
+    .describe(
+      'Data filter conditions in JSON format. Example: \'[{\"field_path\": \"department\", \"operator\": \"eq\", \"value\": \"Engineering\"}]\'',
+    ),
+  conditions: zod
+    .union([zod.string(), zod.null()])
+    .optional()
+    .describe(
+      'General filter conditions in JSON format for meta fields or data. Example: \'[{\"field_path\": \"resource_id\", \"operator\": \"starts_with\", \"value\": \"user-\"}]\'',
+    ),
+  sorts: zod
+    .union([zod.string(), zod.null()])
+    .optional()
+    .describe(
+      'Sort conditions in JSON format. Example: \'[{\"type\": \"meta\", \"key\": \"created_time\", \"direction\": \"+\"}, {\"type\": \"data\", \"field_path\": \"name\", \"direction\": \"-\"}]\'',
+    ),
+  limit: zod
+    .number()
+    .default(batchDeleteV1AutocrudNewChar1JobDeleteQueryLimitDefault)
+    .describe('Maximum number of results'),
+  offset: zod
+    .number()
+    .default(batchDeleteV1AutocrudNewChar1JobDeleteQueryOffsetDefault)
+    .describe('Number of results to skip'),
+  partial: zod
+    .union([zod.array(zod.string()), zod.null()])
+    .optional()
+    .describe("List of fields to retrieve (e.g. '\/field1', '\/nested\/field2')"),
+});
+
+export const batchDeleteV1AutocrudNewChar1JobDeleteResponseSchemaVersionDefault = null;
+export const batchDeleteV1AutocrudNewChar1JobDeleteResponseIsDeletedDefault = false;
+
+export const BatchDeleteV1AutocrudNewChar1JobDeleteResponseItem = zod
+  .object({
+    current_revision_id: zod.string(),
+    resource_id: zod.string(),
+    schema_version: zod
+      .union([zod.string(), zod.null()])
+      .default(batchDeleteV1AutocrudNewChar1JobDeleteResponseSchemaVersionDefault),
+    total_revision_count: zod.number(),
+    created_time: zod.string(),
+    updated_time: zod.string(),
+    created_by: zod.string(),
+    updated_by: zod.string(),
+    is_deleted: zod
+      .boolean()
+      .default(batchDeleteV1AutocrudNewChar1JobDeleteResponseIsDeletedDefault),
+    indexed_data: zod.looseObject({}).optional(),
+  })
+  .describe(
+    'Metadata about a resource, including its current revision and status.\n\nThis class provides essential information about a resource without including\nthe full data content.',
+  );
+export const BatchDeleteV1AutocrudNewChar1JobDeleteResponse = zod.array(
+  BatchDeleteV1AutocrudNewChar1JobDeleteResponseItem,
+);
+
+/**
+ * Export all (or filtered) **new-char1-job** resources as a
+streaming ``.acbak`` archive.
+
+Supports the same query parameters as the search endpoint
+(``qb``, ``is_deleted``, time ranges, etc.) to filter
+which resources are included.
+ * @summary Export new-char1-job data
+ */
+export const exportModelV1AutocrudNewChar1JobExportGetQueryIsDeletedDefault = false;
+export const exportModelV1AutocrudNewChar1JobExportGetQueryLimitDefault = 10;
+export const exportModelV1AutocrudNewChar1JobExportGetQueryOffsetDefault = 0;
+
+export const ExportModelV1AutocrudNewChar1JobExportGetQueryParams = zod.object({
+  qb: zod
+    .union([zod.string(), zod.null()])
+    .optional()
+    .describe(
+      "Query Builder expression. Example: \"QB['foo'] == 123\" or \"QB['age'].gt(18) & QB['status'].eq('active')\"",
+    ),
+  is_deleted: zod
+    .union([zod.boolean(), zod.null()])
+    .default(exportModelV1AutocrudNewChar1JobExportGetQueryIsDeletedDefault)
+    .describe('Filter by deletion status'),
+  created_time_start: zod
+    .union([zod.string(), zod.null()])
+    .optional()
+    .describe('Filter by created time start (ISO format)'),
+  created_time_end: zod
+    .union([zod.string(), zod.null()])
+    .optional()
+    .describe('Filter by created time end (ISO format)'),
+  updated_time_start: zod
+    .union([zod.string(), zod.null()])
+    .optional()
+    .describe('Filter by updated time start (ISO format)'),
+  updated_time_end: zod
+    .union([zod.string(), zod.null()])
+    .optional()
+    .describe('Filter by updated time end (ISO format)'),
+  created_bys: zod
+    .union([zod.array(zod.string()), zod.null()])
+    .optional()
+    .describe('Filter by creators'),
+  updated_bys: zod
+    .union([zod.array(zod.string()), zod.null()])
+    .optional()
+    .describe('Filter by updaters'),
+  data_conditions: zod
+    .union([zod.string(), zod.null()])
+    .optional()
+    .describe(
+      'Data filter conditions in JSON format. Example: \'[{\"field_path\": \"department\", \"operator\": \"eq\", \"value\": \"Engineering\"}]\'',
+    ),
+  conditions: zod
+    .union([zod.string(), zod.null()])
+    .optional()
+    .describe(
+      'General filter conditions in JSON format for meta fields or data. Example: \'[{\"field_path\": \"resource_id\", \"operator\": \"starts_with\", \"value\": \"user-\"}]\'',
+    ),
+  sorts: zod
+    .union([zod.string(), zod.null()])
+    .optional()
+    .describe(
+      'Sort conditions in JSON format. Example: \'[{\"type\": \"meta\", \"key\": \"created_time\", \"direction\": \"+\"}, {\"type\": \"data\", \"field_path\": \"name\", \"direction\": \"-\"}]\'',
+    ),
+  limit: zod
+    .number()
+    .default(exportModelV1AutocrudNewChar1JobExportGetQueryLimitDefault)
+    .describe('Maximum number of results'),
+  offset: zod
+    .number()
+    .default(exportModelV1AutocrudNewChar1JobExportGetQueryOffsetDefault)
+    .describe('Number of results to skip'),
+  partial: zod
+    .union([zod.array(zod.string()), zod.null()])
+    .optional()
+    .describe("List of fields to retrieve (e.g. '\/field1', '\/nested\/field2')"),
+});
+
+export const ExportModelV1AutocrudNewChar1JobExportGetResponse = zod.unknown();
+
+/**
+ * Import **new-char1-job** resources from a ``.acbak`` archive.
+
+The archive must contain a **new-char1-job** model section.
+Use ``on_duplicate`` to control behaviour when a resource ID
+already exists.
+ * @summary Import new-char1-job data
+ */
+export const importModelV1AutocrudNewChar1JobImportPostQueryOnDuplicateDefault = `overwrite`;
+
+export const ImportModelV1AutocrudNewChar1JobImportPostQueryParams = zod.object({
+  on_duplicate: zod
+    .string()
+    .default(importModelV1AutocrudNewChar1JobImportPostQueryOnDuplicateDefault)
+    .describe('Strategy: overwrite | skip | raise_error'),
+});
+
+export const ImportModelV1AutocrudNewChar1JobImportPostBody = zod.object({
+  file: zod.instanceof(File).describe('.acbak archive file'),
+});
+
+export const ImportModelV1AutocrudNewChar1JobImportPostResponse = zod.record(
+  zod.string(),
+  zod.unknown(),
+);
 
 /**
  * Deprecated: use `GET /new-char1-job/{resource_id}?returns=meta` instead.
@@ -25495,557 +28651,6 @@ export const MigrateSingleResourceV1AutocrudNewChar1JobMigrateSingleResourceIdPo
   .describe('遷移進度訊息');
 
 /**
- * Export all (or filtered) **create-new-character2-job** resources as a
-streaming ``.acbak`` archive.
-
-Supports the same query parameters as the search endpoint
-(``qb``, ``is_deleted``, time ranges, etc.) to filter
-which resources are included.
- * @summary Export create-new-character2-job data
- */
-export const exportModelV1AutocrudCreateNewCharacter2JobExportGetQueryIsDeletedDefault = false;
-export const exportModelV1AutocrudCreateNewCharacter2JobExportGetQueryLimitDefault = 10;
-export const exportModelV1AutocrudCreateNewCharacter2JobExportGetQueryOffsetDefault = 0;
-
-export const ExportModelV1AutocrudCreateNewCharacter2JobExportGetQueryParams = zod.object({
-  qb: zod
-    .union([zod.string(), zod.null()])
-    .optional()
-    .describe(
-      "Query Builder expression. Example: \"QB['foo'] == 123\" or \"QB['age'].gt(18) & QB['status'].eq('active')\"",
-    ),
-  is_deleted: zod
-    .union([zod.boolean(), zod.null()])
-    .default(exportModelV1AutocrudCreateNewCharacter2JobExportGetQueryIsDeletedDefault)
-    .describe('Filter by deletion status'),
-  created_time_start: zod
-    .union([zod.string(), zod.null()])
-    .optional()
-    .describe('Filter by created time start (ISO format)'),
-  created_time_end: zod
-    .union([zod.string(), zod.null()])
-    .optional()
-    .describe('Filter by created time end (ISO format)'),
-  updated_time_start: zod
-    .union([zod.string(), zod.null()])
-    .optional()
-    .describe('Filter by updated time start (ISO format)'),
-  updated_time_end: zod
-    .union([zod.string(), zod.null()])
-    .optional()
-    .describe('Filter by updated time end (ISO format)'),
-  created_bys: zod
-    .union([zod.array(zod.string()), zod.null()])
-    .optional()
-    .describe('Filter by creators'),
-  updated_bys: zod
-    .union([zod.array(zod.string()), zod.null()])
-    .optional()
-    .describe('Filter by updaters'),
-  data_conditions: zod
-    .union([zod.string(), zod.null()])
-    .optional()
-    .describe(
-      'Data filter conditions in JSON format. Example: \'[{\"field_path\": \"department\", \"operator\": \"eq\", \"value\": \"Engineering\"}]\'',
-    ),
-  conditions: zod
-    .union([zod.string(), zod.null()])
-    .optional()
-    .describe(
-      'General filter conditions in JSON format for meta fields or data. Example: \'[{\"field_path\": \"resource_id\", \"operator\": \"starts_with\", \"value\": \"user-\"}]\'',
-    ),
-  sorts: zod
-    .union([zod.string(), zod.null()])
-    .optional()
-    .describe(
-      'Sort conditions in JSON format. Example: \'[{\"type\": \"meta\", \"key\": \"created_time\", \"direction\": \"+\"}, {\"type\": \"data\", \"field_path\": \"name\", \"direction\": \"-\"}]\'',
-    ),
-  limit: zod
-    .number()
-    .default(exportModelV1AutocrudCreateNewCharacter2JobExportGetQueryLimitDefault)
-    .describe('Maximum number of results'),
-  offset: zod
-    .number()
-    .default(exportModelV1AutocrudCreateNewCharacter2JobExportGetQueryOffsetDefault)
-    .describe('Number of results to skip'),
-  partial: zod
-    .union([zod.array(zod.string()), zod.null()])
-    .optional()
-    .describe("List of fields to retrieve (e.g. '\/field1', '\/nested\/field2')"),
-});
-
-export const ExportModelV1AutocrudCreateNewCharacter2JobExportGetResponse = zod.unknown();
-
-/**
- * Import **create-new-character2-job** resources from a ``.acbak`` archive.
-
-The archive must contain a **create-new-character2-job** model section.
-Use ``on_duplicate`` to control behaviour when a resource ID
-already exists.
- * @summary Import create-new-character2-job data
- */
-export const importModelV1AutocrudCreateNewCharacter2JobImportPostQueryOnDuplicateDefault = `overwrite`;
-
-export const ImportModelV1AutocrudCreateNewCharacter2JobImportPostQueryParams = zod.object({
-  on_duplicate: zod
-    .string()
-    .default(importModelV1AutocrudCreateNewCharacter2JobImportPostQueryOnDuplicateDefault)
-    .describe('Strategy: overwrite | skip | raise_error'),
-});
-
-export const ImportModelV1AutocrudCreateNewCharacter2JobImportPostBody = zod.object({
-  file: zod.instanceof(File).describe('.acbak archive file'),
-});
-
-export const ImportModelV1AutocrudCreateNewCharacter2JobImportPostResponse = zod.record(
-  zod.string(),
-  zod.unknown(),
-);
-
-/**
- * Create a new `create-new-character2-job` resource.
-
-**Request Body:**
-- Send the resource data as JSON in the request body
-- The data will be validated against the `create-new-character2-job` schema
-
-**Response:**
-- Returns revision information for the newly created resource
-- Includes `resource_id` and `revision_id` for tracking
-- All resources are version-controlled from creation
-
-**Examples:**
-- `POST /create-new-character2-job` with JSON body - Create new resource
-- Response includes resource and revision identifiers
-
-**Error Responses:**
-- `422`: Validation error - Invalid data format or missing required fields
-- `400`: Bad request - General creation error
- * @summary Create create-new-character2-job
- */
-export const createResourceV1AutocrudCreateNewCharacter2JobPostBodyStatusDefault = `pending`;
-export const createResourceV1AutocrudCreateNewCharacter2JobPostBodyErrmsgDefault = null;
-export const createResourceV1AutocrudCreateNewCharacter2JobPostBodyArtifactDefault = null;
-export const createResourceV1AutocrudCreateNewCharacter2JobPostBodyRetriesDefault = 0;
-export const createResourceV1AutocrudCreateNewCharacter2JobPostBodyMaxRetriesDefault = null;
-export const createResourceV1AutocrudCreateNewCharacter2JobPostBodyPeriodicIntervalSecondsDefault =
-  null;
-export const createResourceV1AutocrudCreateNewCharacter2JobPostBodyPeriodicMaxRunsDefault = null;
-export const createResourceV1AutocrudCreateNewCharacter2JobPostBodyPeriodicRunsDefault = 0;
-export const createResourceV1AutocrudCreateNewCharacter2JobPostBodyPeriodicInitialDelaySecondsDefault =
-  null;
-export const createResourceV1AutocrudCreateNewCharacter2JobPostBodyLastHeartbeatAtDefault = null;
-
-export const CreateResourceV1AutocrudCreateNewCharacter2JobPostBody = zod.object({
-  payload: zod.object({
-    name: zod.string(),
-  }),
-  status: zod
-    .enum(['completed', 'failed', 'pending', 'processing'])
-    .default(createResourceV1AutocrudCreateNewCharacter2JobPostBodyStatusDefault),
-  errmsg: zod
-    .union([zod.string(), zod.null()])
-    .default(createResourceV1AutocrudCreateNewCharacter2JobPostBodyErrmsgDefault),
-  artifact: zod
-    .union([zod.looseObject({}), zod.null()])
-    .default(createResourceV1AutocrudCreateNewCharacter2JobPostBodyArtifactDefault),
-  retries: zod
-    .number()
-    .default(createResourceV1AutocrudCreateNewCharacter2JobPostBodyRetriesDefault),
-  max_retries: zod
-    .union([zod.number(), zod.null()])
-    .default(createResourceV1AutocrudCreateNewCharacter2JobPostBodyMaxRetriesDefault),
-  periodic_interval_seconds: zod
-    .union([zod.number(), zod.null()])
-    .default(createResourceV1AutocrudCreateNewCharacter2JobPostBodyPeriodicIntervalSecondsDefault),
-  periodic_max_runs: zod
-    .union([zod.number(), zod.null()])
-    .default(createResourceV1AutocrudCreateNewCharacter2JobPostBodyPeriodicMaxRunsDefault),
-  periodic_runs: zod
-    .number()
-    .default(createResourceV1AutocrudCreateNewCharacter2JobPostBodyPeriodicRunsDefault),
-  periodic_initial_delay_seconds: zod
-    .union([zod.number(), zod.null()])
-    .default(
-      createResourceV1AutocrudCreateNewCharacter2JobPostBodyPeriodicInitialDelaySecondsDefault,
-    ),
-  last_heartbeat_at: zod
-    .union([zod.string(), zod.null()])
-    .default(createResourceV1AutocrudCreateNewCharacter2JobPostBodyLastHeartbeatAtDefault),
-});
-
-export const createResourceV1AutocrudCreateNewCharacter2JobPostResponseParentRevisionIdDefault =
-  null;
-export const createResourceV1AutocrudCreateNewCharacter2JobPostResponseSchemaVersionDefault = null;
-
-export const CreateResourceV1AutocrudCreateNewCharacter2JobPostResponse = zod
-  .object({
-    uid: zod.uuid(),
-    resource_id: zod.string(),
-    revision_id: zod.string(),
-    parent_revision_id: zod
-      .union([zod.string(), zod.null()])
-      .default(createResourceV1AutocrudCreateNewCharacter2JobPostResponseParentRevisionIdDefault),
-    parent_schema_version: zod.union([zod.string(), zod.null()]).optional(),
-    schema_version: zod
-      .union([zod.string(), zod.null()])
-      .default(createResourceV1AutocrudCreateNewCharacter2JobPostResponseSchemaVersionDefault),
-    data_hash: zod.string().optional(),
-    status: zod.enum(['draft', 'stable']),
-    created_time: zod.string(),
-    updated_time: zod.string(),
-    created_by: zod.string(),
-    updated_by: zod.string(),
-  })
-  .describe(
-    'Metadata about a specific revision of a resource.\n\nThis class contains essential information about a particular revision,',
-  );
-
-/**
- * Retrieve a list of `create-new-character2-job` resources.
-
-Use the `returns` query parameter to control which sections are included in each item.
-By default all sections are returned: `data`, `revision_info`, `meta`.
-
-**Query Parameters:**
-- `returns` (default `"data,revision_info,meta"`): Comma-separated list of sections to include.
-  Allowed values: `data`, `revision_info`, `meta`.
-- `limit` / `offset`: Pagination controls.
-- `partial` / `partial[]`: Partial field selection.
-- All standard filtering and sorting parameters.
-
-**Examples:**
-- `GET /create-new-character2-job` — full list (data + meta + revision_info)
-- `GET /create-new-character2-job?returns=data` — data only
-- `GET /create-new-character2-job?returns=data,meta` — data + meta, no revision_info
-- `GET /create-new-character2-job?limit=20&offset=40` — pagination
-
-**Error Responses:**
-- `400`: Bad request - Invalid query parameters or search error
- * @summary List create-new-character2-job resources
- */
-export const listResourcesV1AutocrudCreateNewCharacter2JobGetQueryIsDeletedDefault = false;
-export const listResourcesV1AutocrudCreateNewCharacter2JobGetQueryLimitDefault = 10;
-export const listResourcesV1AutocrudCreateNewCharacter2JobGetQueryOffsetDefault = 0;
-export const listResourcesV1AutocrudCreateNewCharacter2JobGetQueryReturnsDefault = `data,revision_info,meta`;
-
-export const ListResourcesV1AutocrudCreateNewCharacter2JobGetQueryParams = zod.object({
-  qb: zod
-    .union([zod.string(), zod.null()])
-    .optional()
-    .describe(
-      "Query Builder expression. Example: \"QB['foo'] == 123\" or \"QB['age'].gt(18) & QB['status'].eq('active')\"",
-    ),
-  is_deleted: zod
-    .union([zod.boolean(), zod.null()])
-    .default(listResourcesV1AutocrudCreateNewCharacter2JobGetQueryIsDeletedDefault)
-    .describe('Filter by deletion status'),
-  created_time_start: zod
-    .union([zod.string(), zod.null()])
-    .optional()
-    .describe('Filter by created time start (ISO format)'),
-  created_time_end: zod
-    .union([zod.string(), zod.null()])
-    .optional()
-    .describe('Filter by created time end (ISO format)'),
-  updated_time_start: zod
-    .union([zod.string(), zod.null()])
-    .optional()
-    .describe('Filter by updated time start (ISO format)'),
-  updated_time_end: zod
-    .union([zod.string(), zod.null()])
-    .optional()
-    .describe('Filter by updated time end (ISO format)'),
-  created_bys: zod
-    .union([zod.array(zod.string()), zod.null()])
-    .optional()
-    .describe('Filter by creators'),
-  updated_bys: zod
-    .union([zod.array(zod.string()), zod.null()])
-    .optional()
-    .describe('Filter by updaters'),
-  data_conditions: zod
-    .union([zod.string(), zod.null()])
-    .optional()
-    .describe(
-      'Data filter conditions in JSON format. Example: \'[{\"field_path\": \"department\", \"operator\": \"eq\", \"value\": \"Engineering\"}]\'',
-    ),
-  conditions: zod
-    .union([zod.string(), zod.null()])
-    .optional()
-    .describe(
-      'General filter conditions in JSON format for meta fields or data. Example: \'[{\"field_path\": \"resource_id\", \"operator\": \"starts_with\", \"value\": \"user-\"}]\'',
-    ),
-  sorts: zod
-    .union([zod.string(), zod.null()])
-    .optional()
-    .describe(
-      'Sort conditions in JSON format. Example: \'[{\"type\": \"meta\", \"key\": \"created_time\", \"direction\": \"+\"}, {\"type\": \"data\", \"field_path\": \"name\", \"direction\": \"-\"}]\'',
-    ),
-  limit: zod
-    .number()
-    .default(listResourcesV1AutocrudCreateNewCharacter2JobGetQueryLimitDefault)
-    .describe('Maximum number of results'),
-  offset: zod
-    .number()
-    .default(listResourcesV1AutocrudCreateNewCharacter2JobGetQueryOffsetDefault)
-    .describe('Number of results to skip'),
-  partial: zod
-    .union([zod.array(zod.string()), zod.null()])
-    .optional()
-    .describe("List of fields to retrieve (e.g. '\/field1', '\/nested\/field2')"),
-  returns: zod
-    .string()
-    .default(listResourcesV1AutocrudCreateNewCharacter2JobGetQueryReturnsDefault)
-    .describe('Fields to return, comma-separated. Options: data, revision_info, meta'),
-});
-
-export const listResourcesV1AutocrudCreateNewCharacter2JobGetResponseDataStatusDefault = `pending`;
-export const listResourcesV1AutocrudCreateNewCharacter2JobGetResponseDataErrmsgDefault = null;
-export const listResourcesV1AutocrudCreateNewCharacter2JobGetResponseDataArtifactDefault = null;
-export const listResourcesV1AutocrudCreateNewCharacter2JobGetResponseDataRetriesDefault = 0;
-export const listResourcesV1AutocrudCreateNewCharacter2JobGetResponseDataMaxRetriesDefault = null;
-export const listResourcesV1AutocrudCreateNewCharacter2JobGetResponseDataPeriodicIntervalSecondsDefault =
-  null;
-export const listResourcesV1AutocrudCreateNewCharacter2JobGetResponseDataPeriodicMaxRunsDefault =
-  null;
-export const listResourcesV1AutocrudCreateNewCharacter2JobGetResponseDataPeriodicRunsDefault = 0;
-export const listResourcesV1AutocrudCreateNewCharacter2JobGetResponseDataPeriodicInitialDelaySecondsDefault =
-  null;
-export const listResourcesV1AutocrudCreateNewCharacter2JobGetResponseDataLastHeartbeatAtDefault =
-  null;
-export const listResourcesV1AutocrudCreateNewCharacter2JobGetResponseRevisionInfoParentRevisionIdDefault =
-  null;
-export const listResourcesV1AutocrudCreateNewCharacter2JobGetResponseRevisionInfoSchemaVersionDefault =
-  null;
-export const listResourcesV1AutocrudCreateNewCharacter2JobGetResponseMetaSchemaVersionDefault =
-  null;
-export const listResourcesV1AutocrudCreateNewCharacter2JobGetResponseMetaIsDeletedDefault = false;
-
-export const ListResourcesV1AutocrudCreateNewCharacter2JobGetResponseItem = zod.object({
-  data: zod
-    .object({
-      payload: zod.object({
-        name: zod.string(),
-      }),
-      status: zod
-        .enum(['completed', 'failed', 'pending', 'processing'])
-        .default(listResourcesV1AutocrudCreateNewCharacter2JobGetResponseDataStatusDefault),
-      errmsg: zod
-        .union([zod.string(), zod.null()])
-        .default(listResourcesV1AutocrudCreateNewCharacter2JobGetResponseDataErrmsgDefault),
-      artifact: zod
-        .union([zod.looseObject({}), zod.null()])
-        .default(listResourcesV1AutocrudCreateNewCharacter2JobGetResponseDataArtifactDefault),
-      retries: zod
-        .number()
-        .default(listResourcesV1AutocrudCreateNewCharacter2JobGetResponseDataRetriesDefault),
-      max_retries: zod
-        .union([zod.number(), zod.null()])
-        .default(listResourcesV1AutocrudCreateNewCharacter2JobGetResponseDataMaxRetriesDefault),
-      periodic_interval_seconds: zod
-        .union([zod.number(), zod.null()])
-        .default(
-          listResourcesV1AutocrudCreateNewCharacter2JobGetResponseDataPeriodicIntervalSecondsDefault,
-        ),
-      periodic_max_runs: zod
-        .union([zod.number(), zod.null()])
-        .default(
-          listResourcesV1AutocrudCreateNewCharacter2JobGetResponseDataPeriodicMaxRunsDefault,
-        ),
-      periodic_runs: zod
-        .number()
-        .default(listResourcesV1AutocrudCreateNewCharacter2JobGetResponseDataPeriodicRunsDefault),
-      periodic_initial_delay_seconds: zod
-        .union([zod.number(), zod.null()])
-        .default(
-          listResourcesV1AutocrudCreateNewCharacter2JobGetResponseDataPeriodicInitialDelaySecondsDefault,
-        ),
-      last_heartbeat_at: zod
-        .union([zod.string(), zod.null()])
-        .default(
-          listResourcesV1AutocrudCreateNewCharacter2JobGetResponseDataLastHeartbeatAtDefault,
-        ),
-    })
-    .optional(),
-  revision_info: zod
-    .object({
-      uid: zod.uuid(),
-      resource_id: zod.string(),
-      revision_id: zod.string(),
-      parent_revision_id: zod
-        .union([zod.string(), zod.null()])
-        .default(
-          listResourcesV1AutocrudCreateNewCharacter2JobGetResponseRevisionInfoParentRevisionIdDefault,
-        ),
-      parent_schema_version: zod.union([zod.string(), zod.null()]).optional(),
-      schema_version: zod
-        .union([zod.string(), zod.null()])
-        .default(
-          listResourcesV1AutocrudCreateNewCharacter2JobGetResponseRevisionInfoSchemaVersionDefault,
-        ),
-      data_hash: zod.string().optional(),
-      status: zod.enum(['draft', 'stable']),
-      created_time: zod.string(),
-      updated_time: zod.string(),
-      created_by: zod.string(),
-      updated_by: zod.string(),
-    })
-    .optional()
-    .describe(
-      'Metadata about a specific revision of a resource.\n\nThis class contains essential information about a particular revision,',
-    ),
-  meta: zod
-    .object({
-      current_revision_id: zod.string(),
-      resource_id: zod.string(),
-      schema_version: zod
-        .union([zod.string(), zod.null()])
-        .default(listResourcesV1AutocrudCreateNewCharacter2JobGetResponseMetaSchemaVersionDefault),
-      total_revision_count: zod.number(),
-      created_time: zod.string(),
-      updated_time: zod.string(),
-      created_by: zod.string(),
-      updated_by: zod.string(),
-      is_deleted: zod
-        .boolean()
-        .default(listResourcesV1AutocrudCreateNewCharacter2JobGetResponseMetaIsDeletedDefault),
-      indexed_data: zod.looseObject({}).optional(),
-    })
-    .optional()
-    .describe(
-      'Metadata about a resource, including its current revision and status.\n\nThis class provides essential information about a resource without including\nthe full data content.',
-    ),
-});
-export const ListResourcesV1AutocrudCreateNewCharacter2JobGetResponse = zod.array(
-  ListResourcesV1AutocrudCreateNewCharacter2JobGetResponseItem,
-);
-
-/**
- * Batch delete `create-new-character2-job` resources matching the given query conditions.
-
-**Query Parameters:**
-- Uses the same search parameters as the list endpoint
-- `is_deleted` parameter is **forced to `false`** — only non-deleted resources are targeted
-- Use `data_conditions` to filter specific resources for deletion
-- Use `limit` to control the maximum number of resources to delete
-
-**Soft Delete:**
-- Resources are marked as deleted rather than permanently removed
-- Deleted resources can be restored using the batch restore endpoint
-
-**Response:**
-- Returns a list of `ResourceMeta` for all deleted resources
-- Each entry will have `is_deleted` set to `true`
-- Empty list if no resources match the query
-
-**Examples:**
-- `DELETE /create-new-character2-job?limit=100` — Delete up to 100 resources
-- `DELETE /create-new-character2-job?data_conditions=[{"field_path":"age","operator":"gt","value":25}]` — Delete resources with age > 25
-
-**Error Responses:**
-- `400`: Bad request — Invalid query parameters or deletion error
- * @summary Batch delete create-new-character2-job
- */
-export const batchDeleteV1AutocrudCreateNewCharacter2JobDeleteQueryIsDeletedDefault = false;
-export const batchDeleteV1AutocrudCreateNewCharacter2JobDeleteQueryLimitDefault = 10;
-export const batchDeleteV1AutocrudCreateNewCharacter2JobDeleteQueryOffsetDefault = 0;
-
-export const BatchDeleteV1AutocrudCreateNewCharacter2JobDeleteQueryParams = zod.object({
-  qb: zod
-    .union([zod.string(), zod.null()])
-    .optional()
-    .describe(
-      "Query Builder expression. Example: \"QB['foo'] == 123\" or \"QB['age'].gt(18) & QB['status'].eq('active')\"",
-    ),
-  is_deleted: zod
-    .union([zod.boolean(), zod.null()])
-    .default(batchDeleteV1AutocrudCreateNewCharacter2JobDeleteQueryIsDeletedDefault)
-    .describe('Filter by deletion status'),
-  created_time_start: zod
-    .union([zod.string(), zod.null()])
-    .optional()
-    .describe('Filter by created time start (ISO format)'),
-  created_time_end: zod
-    .union([zod.string(), zod.null()])
-    .optional()
-    .describe('Filter by created time end (ISO format)'),
-  updated_time_start: zod
-    .union([zod.string(), zod.null()])
-    .optional()
-    .describe('Filter by updated time start (ISO format)'),
-  updated_time_end: zod
-    .union([zod.string(), zod.null()])
-    .optional()
-    .describe('Filter by updated time end (ISO format)'),
-  created_bys: zod
-    .union([zod.array(zod.string()), zod.null()])
-    .optional()
-    .describe('Filter by creators'),
-  updated_bys: zod
-    .union([zod.array(zod.string()), zod.null()])
-    .optional()
-    .describe('Filter by updaters'),
-  data_conditions: zod
-    .union([zod.string(), zod.null()])
-    .optional()
-    .describe(
-      'Data filter conditions in JSON format. Example: \'[{\"field_path\": \"department\", \"operator\": \"eq\", \"value\": \"Engineering\"}]\'',
-    ),
-  conditions: zod
-    .union([zod.string(), zod.null()])
-    .optional()
-    .describe(
-      'General filter conditions in JSON format for meta fields or data. Example: \'[{\"field_path\": \"resource_id\", \"operator\": \"starts_with\", \"value\": \"user-\"}]\'',
-    ),
-  sorts: zod
-    .union([zod.string(), zod.null()])
-    .optional()
-    .describe(
-      'Sort conditions in JSON format. Example: \'[{\"type\": \"meta\", \"key\": \"created_time\", \"direction\": \"+\"}, {\"type\": \"data\", \"field_path\": \"name\", \"direction\": \"-\"}]\'',
-    ),
-  limit: zod
-    .number()
-    .default(batchDeleteV1AutocrudCreateNewCharacter2JobDeleteQueryLimitDefault)
-    .describe('Maximum number of results'),
-  offset: zod
-    .number()
-    .default(batchDeleteV1AutocrudCreateNewCharacter2JobDeleteQueryOffsetDefault)
-    .describe('Number of results to skip'),
-  partial: zod
-    .union([zod.array(zod.string()), zod.null()])
-    .optional()
-    .describe("List of fields to retrieve (e.g. '\/field1', '\/nested\/field2')"),
-});
-
-export const batchDeleteV1AutocrudCreateNewCharacter2JobDeleteResponseSchemaVersionDefault = null;
-export const batchDeleteV1AutocrudCreateNewCharacter2JobDeleteResponseIsDeletedDefault = false;
-
-export const BatchDeleteV1AutocrudCreateNewCharacter2JobDeleteResponseItem = zod
-  .object({
-    current_revision_id: zod.string(),
-    resource_id: zod.string(),
-    schema_version: zod
-      .union([zod.string(), zod.null()])
-      .default(batchDeleteV1AutocrudCreateNewCharacter2JobDeleteResponseSchemaVersionDefault),
-    total_revision_count: zod.number(),
-    created_time: zod.string(),
-    updated_time: zod.string(),
-    created_by: zod.string(),
-    updated_by: zod.string(),
-    is_deleted: zod
-      .boolean()
-      .default(batchDeleteV1AutocrudCreateNewCharacter2JobDeleteResponseIsDeletedDefault),
-    indexed_data: zod.looseObject({}).optional(),
-  })
-  .describe(
-    'Metadata about a resource, including its current revision and status.\n\nThis class provides essential information about a resource without including\nthe full data content.',
-  );
-export const BatchDeleteV1AutocrudCreateNewCharacter2JobDeleteResponse = zod.array(
-  BatchDeleteV1AutocrudCreateNewCharacter2JobDeleteResponseItem,
-);
-
-/**
  * Retrieve a list of `create-new-character2-job` resources returning only the data content.
 
 **Response Format:**
@@ -26918,6 +29523,557 @@ export const GetResourcesCountV1AutocrudCreateNewCharacter2JobCountGetQueryParam
 });
 
 export const GetResourcesCountV1AutocrudCreateNewCharacter2JobCountGetResponse = zod.number();
+
+/**
+ * Retrieve a list of `create-new-character2-job` resources.
+
+Use the `returns` query parameter to control which sections are included in each item.
+By default all sections are returned: `data`, `revision_info`, `meta`.
+
+**Query Parameters:**
+- `returns` (default `"data,revision_info,meta"`): Comma-separated list of sections to include.
+  Allowed values: `data`, `revision_info`, `meta`.
+- `limit` / `offset`: Pagination controls.
+- `partial` / `partial[]`: Partial field selection.
+- All standard filtering and sorting parameters.
+
+**Examples:**
+- `GET /create-new-character2-job` — full list (data + meta + revision_info)
+- `GET /create-new-character2-job?returns=data` — data only
+- `GET /create-new-character2-job?returns=data,meta` — data + meta, no revision_info
+- `GET /create-new-character2-job?limit=20&offset=40` — pagination
+
+**Error Responses:**
+- `400`: Bad request - Invalid query parameters or search error
+ * @summary List create-new-character2-job resources
+ */
+export const listResourcesV1AutocrudCreateNewCharacter2JobGetQueryIsDeletedDefault = false;
+export const listResourcesV1AutocrudCreateNewCharacter2JobGetQueryLimitDefault = 10;
+export const listResourcesV1AutocrudCreateNewCharacter2JobGetQueryOffsetDefault = 0;
+export const listResourcesV1AutocrudCreateNewCharacter2JobGetQueryReturnsDefault = `data,revision_info,meta`;
+
+export const ListResourcesV1AutocrudCreateNewCharacter2JobGetQueryParams = zod.object({
+  qb: zod
+    .union([zod.string(), zod.null()])
+    .optional()
+    .describe(
+      "Query Builder expression. Example: \"QB['foo'] == 123\" or \"QB['age'].gt(18) & QB['status'].eq('active')\"",
+    ),
+  is_deleted: zod
+    .union([zod.boolean(), zod.null()])
+    .default(listResourcesV1AutocrudCreateNewCharacter2JobGetQueryIsDeletedDefault)
+    .describe('Filter by deletion status'),
+  created_time_start: zod
+    .union([zod.string(), zod.null()])
+    .optional()
+    .describe('Filter by created time start (ISO format)'),
+  created_time_end: zod
+    .union([zod.string(), zod.null()])
+    .optional()
+    .describe('Filter by created time end (ISO format)'),
+  updated_time_start: zod
+    .union([zod.string(), zod.null()])
+    .optional()
+    .describe('Filter by updated time start (ISO format)'),
+  updated_time_end: zod
+    .union([zod.string(), zod.null()])
+    .optional()
+    .describe('Filter by updated time end (ISO format)'),
+  created_bys: zod
+    .union([zod.array(zod.string()), zod.null()])
+    .optional()
+    .describe('Filter by creators'),
+  updated_bys: zod
+    .union([zod.array(zod.string()), zod.null()])
+    .optional()
+    .describe('Filter by updaters'),
+  data_conditions: zod
+    .union([zod.string(), zod.null()])
+    .optional()
+    .describe(
+      'Data filter conditions in JSON format. Example: \'[{\"field_path\": \"department\", \"operator\": \"eq\", \"value\": \"Engineering\"}]\'',
+    ),
+  conditions: zod
+    .union([zod.string(), zod.null()])
+    .optional()
+    .describe(
+      'General filter conditions in JSON format for meta fields or data. Example: \'[{\"field_path\": \"resource_id\", \"operator\": \"starts_with\", \"value\": \"user-\"}]\'',
+    ),
+  sorts: zod
+    .union([zod.string(), zod.null()])
+    .optional()
+    .describe(
+      'Sort conditions in JSON format. Example: \'[{\"type\": \"meta\", \"key\": \"created_time\", \"direction\": \"+\"}, {\"type\": \"data\", \"field_path\": \"name\", \"direction\": \"-\"}]\'',
+    ),
+  limit: zod
+    .number()
+    .default(listResourcesV1AutocrudCreateNewCharacter2JobGetQueryLimitDefault)
+    .describe('Maximum number of results'),
+  offset: zod
+    .number()
+    .default(listResourcesV1AutocrudCreateNewCharacter2JobGetQueryOffsetDefault)
+    .describe('Number of results to skip'),
+  partial: zod
+    .union([zod.array(zod.string()), zod.null()])
+    .optional()
+    .describe("List of fields to retrieve (e.g. '\/field1', '\/nested\/field2')"),
+  returns: zod
+    .string()
+    .default(listResourcesV1AutocrudCreateNewCharacter2JobGetQueryReturnsDefault)
+    .describe('Fields to return, comma-separated. Options: data, revision_info, meta'),
+});
+
+export const listResourcesV1AutocrudCreateNewCharacter2JobGetResponseDataStatusDefault = `pending`;
+export const listResourcesV1AutocrudCreateNewCharacter2JobGetResponseDataErrmsgDefault = null;
+export const listResourcesV1AutocrudCreateNewCharacter2JobGetResponseDataArtifactDefault = null;
+export const listResourcesV1AutocrudCreateNewCharacter2JobGetResponseDataRetriesDefault = 0;
+export const listResourcesV1AutocrudCreateNewCharacter2JobGetResponseDataMaxRetriesDefault = null;
+export const listResourcesV1AutocrudCreateNewCharacter2JobGetResponseDataPeriodicIntervalSecondsDefault =
+  null;
+export const listResourcesV1AutocrudCreateNewCharacter2JobGetResponseDataPeriodicMaxRunsDefault =
+  null;
+export const listResourcesV1AutocrudCreateNewCharacter2JobGetResponseDataPeriodicRunsDefault = 0;
+export const listResourcesV1AutocrudCreateNewCharacter2JobGetResponseDataPeriodicInitialDelaySecondsDefault =
+  null;
+export const listResourcesV1AutocrudCreateNewCharacter2JobGetResponseDataLastHeartbeatAtDefault =
+  null;
+export const listResourcesV1AutocrudCreateNewCharacter2JobGetResponseRevisionInfoParentRevisionIdDefault =
+  null;
+export const listResourcesV1AutocrudCreateNewCharacter2JobGetResponseRevisionInfoSchemaVersionDefault =
+  null;
+export const listResourcesV1AutocrudCreateNewCharacter2JobGetResponseMetaSchemaVersionDefault =
+  null;
+export const listResourcesV1AutocrudCreateNewCharacter2JobGetResponseMetaIsDeletedDefault = false;
+
+export const ListResourcesV1AutocrudCreateNewCharacter2JobGetResponseItem = zod.object({
+  data: zod
+    .object({
+      payload: zod.object({
+        name: zod.string(),
+      }),
+      status: zod
+        .enum(['completed', 'failed', 'pending', 'processing'])
+        .default(listResourcesV1AutocrudCreateNewCharacter2JobGetResponseDataStatusDefault),
+      errmsg: zod
+        .union([zod.string(), zod.null()])
+        .default(listResourcesV1AutocrudCreateNewCharacter2JobGetResponseDataErrmsgDefault),
+      artifact: zod
+        .union([zod.looseObject({}), zod.null()])
+        .default(listResourcesV1AutocrudCreateNewCharacter2JobGetResponseDataArtifactDefault),
+      retries: zod
+        .number()
+        .default(listResourcesV1AutocrudCreateNewCharacter2JobGetResponseDataRetriesDefault),
+      max_retries: zod
+        .union([zod.number(), zod.null()])
+        .default(listResourcesV1AutocrudCreateNewCharacter2JobGetResponseDataMaxRetriesDefault),
+      periodic_interval_seconds: zod
+        .union([zod.number(), zod.null()])
+        .default(
+          listResourcesV1AutocrudCreateNewCharacter2JobGetResponseDataPeriodicIntervalSecondsDefault,
+        ),
+      periodic_max_runs: zod
+        .union([zod.number(), zod.null()])
+        .default(
+          listResourcesV1AutocrudCreateNewCharacter2JobGetResponseDataPeriodicMaxRunsDefault,
+        ),
+      periodic_runs: zod
+        .number()
+        .default(listResourcesV1AutocrudCreateNewCharacter2JobGetResponseDataPeriodicRunsDefault),
+      periodic_initial_delay_seconds: zod
+        .union([zod.number(), zod.null()])
+        .default(
+          listResourcesV1AutocrudCreateNewCharacter2JobGetResponseDataPeriodicInitialDelaySecondsDefault,
+        ),
+      last_heartbeat_at: zod
+        .union([zod.string(), zod.null()])
+        .default(
+          listResourcesV1AutocrudCreateNewCharacter2JobGetResponseDataLastHeartbeatAtDefault,
+        ),
+    })
+    .optional(),
+  revision_info: zod
+    .object({
+      uid: zod.uuid(),
+      resource_id: zod.string(),
+      revision_id: zod.string(),
+      parent_revision_id: zod
+        .union([zod.string(), zod.null()])
+        .default(
+          listResourcesV1AutocrudCreateNewCharacter2JobGetResponseRevisionInfoParentRevisionIdDefault,
+        ),
+      parent_schema_version: zod.union([zod.string(), zod.null()]).optional(),
+      schema_version: zod
+        .union([zod.string(), zod.null()])
+        .default(
+          listResourcesV1AutocrudCreateNewCharacter2JobGetResponseRevisionInfoSchemaVersionDefault,
+        ),
+      data_hash: zod.string().optional(),
+      status: zod.enum(['draft', 'stable']),
+      created_time: zod.string(),
+      updated_time: zod.string(),
+      created_by: zod.string(),
+      updated_by: zod.string(),
+    })
+    .optional()
+    .describe(
+      'Metadata about a specific revision of a resource.\n\nThis class contains essential information about a particular revision,',
+    ),
+  meta: zod
+    .object({
+      current_revision_id: zod.string(),
+      resource_id: zod.string(),
+      schema_version: zod
+        .union([zod.string(), zod.null()])
+        .default(listResourcesV1AutocrudCreateNewCharacter2JobGetResponseMetaSchemaVersionDefault),
+      total_revision_count: zod.number(),
+      created_time: zod.string(),
+      updated_time: zod.string(),
+      created_by: zod.string(),
+      updated_by: zod.string(),
+      is_deleted: zod
+        .boolean()
+        .default(listResourcesV1AutocrudCreateNewCharacter2JobGetResponseMetaIsDeletedDefault),
+      indexed_data: zod.looseObject({}).optional(),
+    })
+    .optional()
+    .describe(
+      'Metadata about a resource, including its current revision and status.\n\nThis class provides essential information about a resource without including\nthe full data content.',
+    ),
+});
+export const ListResourcesV1AutocrudCreateNewCharacter2JobGetResponse = zod.array(
+  ListResourcesV1AutocrudCreateNewCharacter2JobGetResponseItem,
+);
+
+/**
+ * Create a new `create-new-character2-job` resource.
+
+**Request Body:**
+- Send the resource data as JSON in the request body
+- The data will be validated against the `create-new-character2-job` schema
+
+**Response:**
+- Returns revision information for the newly created resource
+- Includes `resource_id` and `revision_id` for tracking
+- All resources are version-controlled from creation
+
+**Examples:**
+- `POST /create-new-character2-job` with JSON body - Create new resource
+- Response includes resource and revision identifiers
+
+**Error Responses:**
+- `422`: Validation error - Invalid data format or missing required fields
+- `400`: Bad request - General creation error
+ * @summary Create create-new-character2-job
+ */
+export const createResourceV1AutocrudCreateNewCharacter2JobPostBodyStatusDefault = `pending`;
+export const createResourceV1AutocrudCreateNewCharacter2JobPostBodyErrmsgDefault = null;
+export const createResourceV1AutocrudCreateNewCharacter2JobPostBodyArtifactDefault = null;
+export const createResourceV1AutocrudCreateNewCharacter2JobPostBodyRetriesDefault = 0;
+export const createResourceV1AutocrudCreateNewCharacter2JobPostBodyMaxRetriesDefault = null;
+export const createResourceV1AutocrudCreateNewCharacter2JobPostBodyPeriodicIntervalSecondsDefault =
+  null;
+export const createResourceV1AutocrudCreateNewCharacter2JobPostBodyPeriodicMaxRunsDefault = null;
+export const createResourceV1AutocrudCreateNewCharacter2JobPostBodyPeriodicRunsDefault = 0;
+export const createResourceV1AutocrudCreateNewCharacter2JobPostBodyPeriodicInitialDelaySecondsDefault =
+  null;
+export const createResourceV1AutocrudCreateNewCharacter2JobPostBodyLastHeartbeatAtDefault = null;
+
+export const CreateResourceV1AutocrudCreateNewCharacter2JobPostBody = zod.object({
+  payload: zod.object({
+    name: zod.string(),
+  }),
+  status: zod
+    .enum(['completed', 'failed', 'pending', 'processing'])
+    .default(createResourceV1AutocrudCreateNewCharacter2JobPostBodyStatusDefault),
+  errmsg: zod
+    .union([zod.string(), zod.null()])
+    .default(createResourceV1AutocrudCreateNewCharacter2JobPostBodyErrmsgDefault),
+  artifact: zod
+    .union([zod.looseObject({}), zod.null()])
+    .default(createResourceV1AutocrudCreateNewCharacter2JobPostBodyArtifactDefault),
+  retries: zod
+    .number()
+    .default(createResourceV1AutocrudCreateNewCharacter2JobPostBodyRetriesDefault),
+  max_retries: zod
+    .union([zod.number(), zod.null()])
+    .default(createResourceV1AutocrudCreateNewCharacter2JobPostBodyMaxRetriesDefault),
+  periodic_interval_seconds: zod
+    .union([zod.number(), zod.null()])
+    .default(createResourceV1AutocrudCreateNewCharacter2JobPostBodyPeriodicIntervalSecondsDefault),
+  periodic_max_runs: zod
+    .union([zod.number(), zod.null()])
+    .default(createResourceV1AutocrudCreateNewCharacter2JobPostBodyPeriodicMaxRunsDefault),
+  periodic_runs: zod
+    .number()
+    .default(createResourceV1AutocrudCreateNewCharacter2JobPostBodyPeriodicRunsDefault),
+  periodic_initial_delay_seconds: zod
+    .union([zod.number(), zod.null()])
+    .default(
+      createResourceV1AutocrudCreateNewCharacter2JobPostBodyPeriodicInitialDelaySecondsDefault,
+    ),
+  last_heartbeat_at: zod
+    .union([zod.string(), zod.null()])
+    .default(createResourceV1AutocrudCreateNewCharacter2JobPostBodyLastHeartbeatAtDefault),
+});
+
+export const createResourceV1AutocrudCreateNewCharacter2JobPostResponseParentRevisionIdDefault =
+  null;
+export const createResourceV1AutocrudCreateNewCharacter2JobPostResponseSchemaVersionDefault = null;
+
+export const CreateResourceV1AutocrudCreateNewCharacter2JobPostResponse = zod
+  .object({
+    uid: zod.uuid(),
+    resource_id: zod.string(),
+    revision_id: zod.string(),
+    parent_revision_id: zod
+      .union([zod.string(), zod.null()])
+      .default(createResourceV1AutocrudCreateNewCharacter2JobPostResponseParentRevisionIdDefault),
+    parent_schema_version: zod.union([zod.string(), zod.null()]).optional(),
+    schema_version: zod
+      .union([zod.string(), zod.null()])
+      .default(createResourceV1AutocrudCreateNewCharacter2JobPostResponseSchemaVersionDefault),
+    data_hash: zod.string().optional(),
+    status: zod.enum(['draft', 'stable']),
+    created_time: zod.string(),
+    updated_time: zod.string(),
+    created_by: zod.string(),
+    updated_by: zod.string(),
+  })
+  .describe(
+    'Metadata about a specific revision of a resource.\n\nThis class contains essential information about a particular revision,',
+  );
+
+/**
+ * Batch delete `create-new-character2-job` resources matching the given query conditions.
+
+**Query Parameters:**
+- Uses the same search parameters as the list endpoint
+- `is_deleted` parameter is **forced to `false`** — only non-deleted resources are targeted
+- Use `data_conditions` to filter specific resources for deletion
+- Use `limit` to control the maximum number of resources to delete
+
+**Soft Delete:**
+- Resources are marked as deleted rather than permanently removed
+- Deleted resources can be restored using the batch restore endpoint
+
+**Response:**
+- Returns a list of `ResourceMeta` for all deleted resources
+- Each entry will have `is_deleted` set to `true`
+- Empty list if no resources match the query
+
+**Examples:**
+- `DELETE /create-new-character2-job?limit=100` — Delete up to 100 resources
+- `DELETE /create-new-character2-job?data_conditions=[{"field_path":"age","operator":"gt","value":25}]` — Delete resources with age > 25
+
+**Error Responses:**
+- `400`: Bad request — Invalid query parameters or deletion error
+ * @summary Batch delete create-new-character2-job
+ */
+export const batchDeleteV1AutocrudCreateNewCharacter2JobDeleteQueryIsDeletedDefault = false;
+export const batchDeleteV1AutocrudCreateNewCharacter2JobDeleteQueryLimitDefault = 10;
+export const batchDeleteV1AutocrudCreateNewCharacter2JobDeleteQueryOffsetDefault = 0;
+
+export const BatchDeleteV1AutocrudCreateNewCharacter2JobDeleteQueryParams = zod.object({
+  qb: zod
+    .union([zod.string(), zod.null()])
+    .optional()
+    .describe(
+      "Query Builder expression. Example: \"QB['foo'] == 123\" or \"QB['age'].gt(18) & QB['status'].eq('active')\"",
+    ),
+  is_deleted: zod
+    .union([zod.boolean(), zod.null()])
+    .default(batchDeleteV1AutocrudCreateNewCharacter2JobDeleteQueryIsDeletedDefault)
+    .describe('Filter by deletion status'),
+  created_time_start: zod
+    .union([zod.string(), zod.null()])
+    .optional()
+    .describe('Filter by created time start (ISO format)'),
+  created_time_end: zod
+    .union([zod.string(), zod.null()])
+    .optional()
+    .describe('Filter by created time end (ISO format)'),
+  updated_time_start: zod
+    .union([zod.string(), zod.null()])
+    .optional()
+    .describe('Filter by updated time start (ISO format)'),
+  updated_time_end: zod
+    .union([zod.string(), zod.null()])
+    .optional()
+    .describe('Filter by updated time end (ISO format)'),
+  created_bys: zod
+    .union([zod.array(zod.string()), zod.null()])
+    .optional()
+    .describe('Filter by creators'),
+  updated_bys: zod
+    .union([zod.array(zod.string()), zod.null()])
+    .optional()
+    .describe('Filter by updaters'),
+  data_conditions: zod
+    .union([zod.string(), zod.null()])
+    .optional()
+    .describe(
+      'Data filter conditions in JSON format. Example: \'[{\"field_path\": \"department\", \"operator\": \"eq\", \"value\": \"Engineering\"}]\'',
+    ),
+  conditions: zod
+    .union([zod.string(), zod.null()])
+    .optional()
+    .describe(
+      'General filter conditions in JSON format for meta fields or data. Example: \'[{\"field_path\": \"resource_id\", \"operator\": \"starts_with\", \"value\": \"user-\"}]\'',
+    ),
+  sorts: zod
+    .union([zod.string(), zod.null()])
+    .optional()
+    .describe(
+      'Sort conditions in JSON format. Example: \'[{\"type\": \"meta\", \"key\": \"created_time\", \"direction\": \"+\"}, {\"type\": \"data\", \"field_path\": \"name\", \"direction\": \"-\"}]\'',
+    ),
+  limit: zod
+    .number()
+    .default(batchDeleteV1AutocrudCreateNewCharacter2JobDeleteQueryLimitDefault)
+    .describe('Maximum number of results'),
+  offset: zod
+    .number()
+    .default(batchDeleteV1AutocrudCreateNewCharacter2JobDeleteQueryOffsetDefault)
+    .describe('Number of results to skip'),
+  partial: zod
+    .union([zod.array(zod.string()), zod.null()])
+    .optional()
+    .describe("List of fields to retrieve (e.g. '\/field1', '\/nested\/field2')"),
+});
+
+export const batchDeleteV1AutocrudCreateNewCharacter2JobDeleteResponseSchemaVersionDefault = null;
+export const batchDeleteV1AutocrudCreateNewCharacter2JobDeleteResponseIsDeletedDefault = false;
+
+export const BatchDeleteV1AutocrudCreateNewCharacter2JobDeleteResponseItem = zod
+  .object({
+    current_revision_id: zod.string(),
+    resource_id: zod.string(),
+    schema_version: zod
+      .union([zod.string(), zod.null()])
+      .default(batchDeleteV1AutocrudCreateNewCharacter2JobDeleteResponseSchemaVersionDefault),
+    total_revision_count: zod.number(),
+    created_time: zod.string(),
+    updated_time: zod.string(),
+    created_by: zod.string(),
+    updated_by: zod.string(),
+    is_deleted: zod
+      .boolean()
+      .default(batchDeleteV1AutocrudCreateNewCharacter2JobDeleteResponseIsDeletedDefault),
+    indexed_data: zod.looseObject({}).optional(),
+  })
+  .describe(
+    'Metadata about a resource, including its current revision and status.\n\nThis class provides essential information about a resource without including\nthe full data content.',
+  );
+export const BatchDeleteV1AutocrudCreateNewCharacter2JobDeleteResponse = zod.array(
+  BatchDeleteV1AutocrudCreateNewCharacter2JobDeleteResponseItem,
+);
+
+/**
+ * Export all (or filtered) **create-new-character2-job** resources as a
+streaming ``.acbak`` archive.
+
+Supports the same query parameters as the search endpoint
+(``qb``, ``is_deleted``, time ranges, etc.) to filter
+which resources are included.
+ * @summary Export create-new-character2-job data
+ */
+export const exportModelV1AutocrudCreateNewCharacter2JobExportGetQueryIsDeletedDefault = false;
+export const exportModelV1AutocrudCreateNewCharacter2JobExportGetQueryLimitDefault = 10;
+export const exportModelV1AutocrudCreateNewCharacter2JobExportGetQueryOffsetDefault = 0;
+
+export const ExportModelV1AutocrudCreateNewCharacter2JobExportGetQueryParams = zod.object({
+  qb: zod
+    .union([zod.string(), zod.null()])
+    .optional()
+    .describe(
+      "Query Builder expression. Example: \"QB['foo'] == 123\" or \"QB['age'].gt(18) & QB['status'].eq('active')\"",
+    ),
+  is_deleted: zod
+    .union([zod.boolean(), zod.null()])
+    .default(exportModelV1AutocrudCreateNewCharacter2JobExportGetQueryIsDeletedDefault)
+    .describe('Filter by deletion status'),
+  created_time_start: zod
+    .union([zod.string(), zod.null()])
+    .optional()
+    .describe('Filter by created time start (ISO format)'),
+  created_time_end: zod
+    .union([zod.string(), zod.null()])
+    .optional()
+    .describe('Filter by created time end (ISO format)'),
+  updated_time_start: zod
+    .union([zod.string(), zod.null()])
+    .optional()
+    .describe('Filter by updated time start (ISO format)'),
+  updated_time_end: zod
+    .union([zod.string(), zod.null()])
+    .optional()
+    .describe('Filter by updated time end (ISO format)'),
+  created_bys: zod
+    .union([zod.array(zod.string()), zod.null()])
+    .optional()
+    .describe('Filter by creators'),
+  updated_bys: zod
+    .union([zod.array(zod.string()), zod.null()])
+    .optional()
+    .describe('Filter by updaters'),
+  data_conditions: zod
+    .union([zod.string(), zod.null()])
+    .optional()
+    .describe(
+      'Data filter conditions in JSON format. Example: \'[{\"field_path\": \"department\", \"operator\": \"eq\", \"value\": \"Engineering\"}]\'',
+    ),
+  conditions: zod
+    .union([zod.string(), zod.null()])
+    .optional()
+    .describe(
+      'General filter conditions in JSON format for meta fields or data. Example: \'[{\"field_path\": \"resource_id\", \"operator\": \"starts_with\", \"value\": \"user-\"}]\'',
+    ),
+  sorts: zod
+    .union([zod.string(), zod.null()])
+    .optional()
+    .describe(
+      'Sort conditions in JSON format. Example: \'[{\"type\": \"meta\", \"key\": \"created_time\", \"direction\": \"+\"}, {\"type\": \"data\", \"field_path\": \"name\", \"direction\": \"-\"}]\'',
+    ),
+  limit: zod
+    .number()
+    .default(exportModelV1AutocrudCreateNewCharacter2JobExportGetQueryLimitDefault)
+    .describe('Maximum number of results'),
+  offset: zod
+    .number()
+    .default(exportModelV1AutocrudCreateNewCharacter2JobExportGetQueryOffsetDefault)
+    .describe('Number of results to skip'),
+  partial: zod
+    .union([zod.array(zod.string()), zod.null()])
+    .optional()
+    .describe("List of fields to retrieve (e.g. '\/field1', '\/nested\/field2')"),
+});
+
+export const ExportModelV1AutocrudCreateNewCharacter2JobExportGetResponse = zod.unknown();
+
+/**
+ * Import **create-new-character2-job** resources from a ``.acbak`` archive.
+
+The archive must contain a **create-new-character2-job** model section.
+Use ``on_duplicate`` to control behaviour when a resource ID
+already exists.
+ * @summary Import create-new-character2-job data
+ */
+export const importModelV1AutocrudCreateNewCharacter2JobImportPostQueryOnDuplicateDefault = `overwrite`;
+
+export const ImportModelV1AutocrudCreateNewCharacter2JobImportPostQueryParams = zod.object({
+  on_duplicate: zod
+    .string()
+    .default(importModelV1AutocrudCreateNewCharacter2JobImportPostQueryOnDuplicateDefault)
+    .describe('Strategy: overwrite | skip | raise_error'),
+});
+
+export const ImportModelV1AutocrudCreateNewCharacter2JobImportPostBody = zod.object({
+  file: zod.instanceof(File).describe('.acbak archive file'),
+});
+
+export const ImportModelV1AutocrudCreateNewCharacter2JobImportPostResponse = zod.record(
+  zod.string(),
+  zod.unknown(),
+);
 
 /**
  * Deprecated: use `GET /create-new-character2-job/{resource_id}?returns=meta` instead.
@@ -28702,770 +31858,6 @@ export const MigrateSingleResourceV1AutocrudCreateNewCharacter2JobMigrateSingleR
     .describe('遷移進度訊息');
 
 /**
- * Export all (or filtered) **create-new-character4-job** resources as a
-streaming ``.acbak`` archive.
-
-Supports the same query parameters as the search endpoint
-(``qb``, ``is_deleted``, time ranges, etc.) to filter
-which resources are included.
- * @summary Export create-new-character4-job data
- */
-export const exportModelV1AutocrudCreateNewCharacter4JobExportGetQueryIsDeletedDefault = false;
-export const exportModelV1AutocrudCreateNewCharacter4JobExportGetQueryLimitDefault = 10;
-export const exportModelV1AutocrudCreateNewCharacter4JobExportGetQueryOffsetDefault = 0;
-
-export const ExportModelV1AutocrudCreateNewCharacter4JobExportGetQueryParams = zod.object({
-  qb: zod
-    .union([zod.string(), zod.null()])
-    .optional()
-    .describe(
-      "Query Builder expression. Example: \"QB['foo'] == 123\" or \"QB['age'].gt(18) & QB['status'].eq('active')\"",
-    ),
-  is_deleted: zod
-    .union([zod.boolean(), zod.null()])
-    .default(exportModelV1AutocrudCreateNewCharacter4JobExportGetQueryIsDeletedDefault)
-    .describe('Filter by deletion status'),
-  created_time_start: zod
-    .union([zod.string(), zod.null()])
-    .optional()
-    .describe('Filter by created time start (ISO format)'),
-  created_time_end: zod
-    .union([zod.string(), zod.null()])
-    .optional()
-    .describe('Filter by created time end (ISO format)'),
-  updated_time_start: zod
-    .union([zod.string(), zod.null()])
-    .optional()
-    .describe('Filter by updated time start (ISO format)'),
-  updated_time_end: zod
-    .union([zod.string(), zod.null()])
-    .optional()
-    .describe('Filter by updated time end (ISO format)'),
-  created_bys: zod
-    .union([zod.array(zod.string()), zod.null()])
-    .optional()
-    .describe('Filter by creators'),
-  updated_bys: zod
-    .union([zod.array(zod.string()), zod.null()])
-    .optional()
-    .describe('Filter by updaters'),
-  data_conditions: zod
-    .union([zod.string(), zod.null()])
-    .optional()
-    .describe(
-      'Data filter conditions in JSON format. Example: \'[{\"field_path\": \"department\", \"operator\": \"eq\", \"value\": \"Engineering\"}]\'',
-    ),
-  conditions: zod
-    .union([zod.string(), zod.null()])
-    .optional()
-    .describe(
-      'General filter conditions in JSON format for meta fields or data. Example: \'[{\"field_path\": \"resource_id\", \"operator\": \"starts_with\", \"value\": \"user-\"}]\'',
-    ),
-  sorts: zod
-    .union([zod.string(), zod.null()])
-    .optional()
-    .describe(
-      'Sort conditions in JSON format. Example: \'[{\"type\": \"meta\", \"key\": \"created_time\", \"direction\": \"+\"}, {\"type\": \"data\", \"field_path\": \"name\", \"direction\": \"-\"}]\'',
-    ),
-  limit: zod
-    .number()
-    .default(exportModelV1AutocrudCreateNewCharacter4JobExportGetQueryLimitDefault)
-    .describe('Maximum number of results'),
-  offset: zod
-    .number()
-    .default(exportModelV1AutocrudCreateNewCharacter4JobExportGetQueryOffsetDefault)
-    .describe('Number of results to skip'),
-  partial: zod
-    .union([zod.array(zod.string()), zod.null()])
-    .optional()
-    .describe("List of fields to retrieve (e.g. '\/field1', '\/nested\/field2')"),
-});
-
-export const ExportModelV1AutocrudCreateNewCharacter4JobExportGetResponse = zod.unknown();
-
-/**
- * Import **create-new-character4-job** resources from a ``.acbak`` archive.
-
-The archive must contain a **create-new-character4-job** model section.
-Use ``on_duplicate`` to control behaviour when a resource ID
-already exists.
- * @summary Import create-new-character4-job data
- */
-export const importModelV1AutocrudCreateNewCharacter4JobImportPostQueryOnDuplicateDefault = `overwrite`;
-
-export const ImportModelV1AutocrudCreateNewCharacter4JobImportPostQueryParams = zod.object({
-  on_duplicate: zod
-    .string()
-    .default(importModelV1AutocrudCreateNewCharacter4JobImportPostQueryOnDuplicateDefault)
-    .describe('Strategy: overwrite | skip | raise_error'),
-});
-
-export const ImportModelV1AutocrudCreateNewCharacter4JobImportPostBody = zod.object({
-  file: zod.instanceof(File).describe('.acbak archive file'),
-});
-
-export const ImportModelV1AutocrudCreateNewCharacter4JobImportPostResponse = zod.record(
-  zod.string(),
-  zod.unknown(),
-);
-
-/**
- * Create a new `create-new-character4-job` resource.
-
-**Request Body:**
-- Send the resource data as JSON in the request body
-- The data will be validated against the `create-new-character4-job` schema
-
-**Response:**
-- Returns revision information for the newly created resource
-- Includes `resource_id` and `revision_id` for tracking
-- All resources are version-controlled from creation
-
-**Examples:**
-- `POST /create-new-character4-job` with JSON body - Create new resource
-- Response includes resource and revision identifiers
-
-**Error Responses:**
-- `422`: Validation error - Invalid data format or missing required fields
-- `400`: Bad request - General creation error
- * @summary Create create-new-character4-job
- */
-export const createResourceV1AutocrudCreateNewCharacter4JobPostBodyPayloadZFilenameDefault = null;
-export const createResourceV1AutocrudCreateNewCharacter4JobPostBodyPayloadFDetailOneMpCostDefault = 0;
-export const createResourceV1AutocrudCreateNewCharacter4JobPostBodyPayloadFDetailOneCooldownSecondsDefault = 0;
-export const createResourceV1AutocrudCreateNewCharacter4JobPostBodyPayloadFDetailOneDamageDefault = 0;
-export const createResourceV1AutocrudCreateNewCharacter4JobPostBodyPayloadFDetailTwoBuffPercentageDefault = 0;
-export const createResourceV1AutocrudCreateNewCharacter4JobPostBodyPayloadFDetailThreeMpCostDefault = 0;
-export const createResourceV1AutocrudCreateNewCharacter4JobPostBodyPayloadFDetailThreeCooldownSecondsDefault = 0;
-export const createResourceV1AutocrudCreateNewCharacter4JobPostBodyPayloadFDetailThreeDamageDefault = 0;
-export const createResourceV1AutocrudCreateNewCharacter4JobPostBodyPayloadFDetailThreeAreaOfEffectDefault = false;
-export const createResourceV1AutocrudCreateNewCharacter4JobPostBodyPayloadFDescriptionDefault = ``;
-export const createResourceV1AutocrudCreateNewCharacter4JobPostBodyPayloadFRequiredLevelDefault = 1;
-export const createResourceV1AutocrudCreateNewCharacter4JobPostBodyPayloadFRequiredClassDefault =
-  null;
-export const createResourceV1AutocrudCreateNewCharacter4JobPostBodyStatusDefault = `pending`;
-export const createResourceV1AutocrudCreateNewCharacter4JobPostBodyErrmsgDefault = null;
-export const createResourceV1AutocrudCreateNewCharacter4JobPostBodyArtifactDefault = null;
-export const createResourceV1AutocrudCreateNewCharacter4JobPostBodyRetriesDefault = 0;
-export const createResourceV1AutocrudCreateNewCharacter4JobPostBodyMaxRetriesDefault = null;
-export const createResourceV1AutocrudCreateNewCharacter4JobPostBodyPeriodicIntervalSecondsDefault =
-  null;
-export const createResourceV1AutocrudCreateNewCharacter4JobPostBodyPeriodicMaxRunsDefault = null;
-export const createResourceV1AutocrudCreateNewCharacter4JobPostBodyPeriodicRunsDefault = 0;
-export const createResourceV1AutocrudCreateNewCharacter4JobPostBodyPeriodicInitialDelaySecondsDefault =
-  null;
-export const createResourceV1AutocrudCreateNewCharacter4JobPostBodyLastHeartbeatAtDefault = null;
-
-export const CreateResourceV1AutocrudCreateNewCharacter4JobPostBody = zod.object({
-  payload: zod.object({
-    x: zod.union([zod.number(), zod.string()]),
-    y: zod.string(),
-    name: zod.string(),
-    z: zod
-      .object({
-        binary: zod
-          .object({
-            file_id: zod.string().optional(),
-            size: zod.number().optional(),
-            content_type: zod.string().optional(),
-            data: zod.string().optional(),
-          })
-          .describe(
-            'A wrapper for binary data that handles storage optimization.\n\nWhen creating a resource, you can populate the `data` field with bytes.\nThe system will automatically extract it, store it in the blob store,\nand populate `file_id` (which is the hash of the content) and `size`.\nThe `data` field will be cleared in the stored resource.',
-          ),
-        filename: zod
-          .union([zod.string(), zod.null()])
-          .default(createResourceV1AutocrudCreateNewCharacter4JobPostBodyPayloadZFilenameDefault),
-      })
-      .describe(
-        "Serialisable surrogate for ``fastapi.UploadFile`` in Job payloads.\n\nUses :class:`~autocrud.types.Binary` to carry the file content and\nmetadata (``data``, ``content_type``, ``size``), plus an extra\n``filename`` field that ``Binary`` does not have.\n\nAt \*\*endpoint\*\* time the wrapper reads the incoming file and stores its\ncontent in the ``binary`` field.  At \*\*job-execution\*\* time the\nframework reconstructs a real ``UploadFile`` from these fields before\ncalling the user's handler.",
-      ),
-    f: zod.object({
-      skname: zod.string(),
-      detail: zod.union([
-        zod.object({
-          skill_type: zod.enum(['active']),
-          mp_cost: zod
-            .number()
-            .default(
-              createResourceV1AutocrudCreateNewCharacter4JobPostBodyPayloadFDetailOneMpCostDefault,
-            ),
-          cooldown_seconds: zod
-            .number()
-            .default(
-              createResourceV1AutocrudCreateNewCharacter4JobPostBodyPayloadFDetailOneCooldownSecondsDefault,
-            ),
-          damage: zod
-            .number()
-            .default(
-              createResourceV1AutocrudCreateNewCharacter4JobPostBodyPayloadFDetailOneDamageDefault,
-            ),
-        }),
-        zod.object({
-          skill_type: zod.enum(['passive']),
-          buff_percentage: zod
-            .number()
-            .default(
-              createResourceV1AutocrudCreateNewCharacter4JobPostBodyPayloadFDetailTwoBuffPercentageDefault,
-            ),
-        }),
-        zod.object({
-          skill_type: zod.enum(['ultimate']),
-          mp_cost: zod
-            .number()
-            .default(
-              createResourceV1AutocrudCreateNewCharacter4JobPostBodyPayloadFDetailThreeMpCostDefault,
-            ),
-          cooldown_seconds: zod
-            .number()
-            .default(
-              createResourceV1AutocrudCreateNewCharacter4JobPostBodyPayloadFDetailThreeCooldownSecondsDefault,
-            ),
-          damage: zod
-            .number()
-            .default(
-              createResourceV1AutocrudCreateNewCharacter4JobPostBodyPayloadFDetailThreeDamageDefault,
-            ),
-          area_of_effect: zod
-            .boolean()
-            .default(
-              createResourceV1AutocrudCreateNewCharacter4JobPostBodyPayloadFDetailThreeAreaOfEffectDefault,
-            ),
-        }),
-      ]),
-      description: zod
-        .string()
-        .default(createResourceV1AutocrudCreateNewCharacter4JobPostBodyPayloadFDescriptionDefault),
-      required_level: zod
-        .number()
-        .default(
-          createResourceV1AutocrudCreateNewCharacter4JobPostBodyPayloadFRequiredLevelDefault,
-        ),
-      required_class: zod
-        .union([
-          zod.enum(['⚔️ 戰士', '🏹 弓箭手', '💾 數據守護者', '🔮 法師']).describe('職業系統'),
-          zod.null(),
-        ])
-        .default(
-          createResourceV1AutocrudCreateNewCharacter4JobPostBodyPayloadFRequiredClassDefault,
-        ),
-    }),
-  }),
-  status: zod
-    .enum(['completed', 'failed', 'pending', 'processing'])
-    .default(createResourceV1AutocrudCreateNewCharacter4JobPostBodyStatusDefault),
-  errmsg: zod
-    .union([zod.string(), zod.null()])
-    .default(createResourceV1AutocrudCreateNewCharacter4JobPostBodyErrmsgDefault),
-  artifact: zod
-    .union([zod.looseObject({}), zod.null()])
-    .default(createResourceV1AutocrudCreateNewCharacter4JobPostBodyArtifactDefault),
-  retries: zod
-    .number()
-    .default(createResourceV1AutocrudCreateNewCharacter4JobPostBodyRetriesDefault),
-  max_retries: zod
-    .union([zod.number(), zod.null()])
-    .default(createResourceV1AutocrudCreateNewCharacter4JobPostBodyMaxRetriesDefault),
-  periodic_interval_seconds: zod
-    .union([zod.number(), zod.null()])
-    .default(createResourceV1AutocrudCreateNewCharacter4JobPostBodyPeriodicIntervalSecondsDefault),
-  periodic_max_runs: zod
-    .union([zod.number(), zod.null()])
-    .default(createResourceV1AutocrudCreateNewCharacter4JobPostBodyPeriodicMaxRunsDefault),
-  periodic_runs: zod
-    .number()
-    .default(createResourceV1AutocrudCreateNewCharacter4JobPostBodyPeriodicRunsDefault),
-  periodic_initial_delay_seconds: zod
-    .union([zod.number(), zod.null()])
-    .default(
-      createResourceV1AutocrudCreateNewCharacter4JobPostBodyPeriodicInitialDelaySecondsDefault,
-    ),
-  last_heartbeat_at: zod
-    .union([zod.string(), zod.null()])
-    .default(createResourceV1AutocrudCreateNewCharacter4JobPostBodyLastHeartbeatAtDefault),
-});
-
-export const createResourceV1AutocrudCreateNewCharacter4JobPostResponseParentRevisionIdDefault =
-  null;
-export const createResourceV1AutocrudCreateNewCharacter4JobPostResponseSchemaVersionDefault = null;
-
-export const CreateResourceV1AutocrudCreateNewCharacter4JobPostResponse = zod
-  .object({
-    uid: zod.uuid(),
-    resource_id: zod.string(),
-    revision_id: zod.string(),
-    parent_revision_id: zod
-      .union([zod.string(), zod.null()])
-      .default(createResourceV1AutocrudCreateNewCharacter4JobPostResponseParentRevisionIdDefault),
-    parent_schema_version: zod.union([zod.string(), zod.null()]).optional(),
-    schema_version: zod
-      .union([zod.string(), zod.null()])
-      .default(createResourceV1AutocrudCreateNewCharacter4JobPostResponseSchemaVersionDefault),
-    data_hash: zod.string().optional(),
-    status: zod.enum(['draft', 'stable']),
-    created_time: zod.string(),
-    updated_time: zod.string(),
-    created_by: zod.string(),
-    updated_by: zod.string(),
-  })
-  .describe(
-    'Metadata about a specific revision of a resource.\n\nThis class contains essential information about a particular revision,',
-  );
-
-/**
- * Retrieve a list of `create-new-character4-job` resources.
-
-Use the `returns` query parameter to control which sections are included in each item.
-By default all sections are returned: `data`, `revision_info`, `meta`.
-
-**Query Parameters:**
-- `returns` (default `"data,revision_info,meta"`): Comma-separated list of sections to include.
-  Allowed values: `data`, `revision_info`, `meta`.
-- `limit` / `offset`: Pagination controls.
-- `partial` / `partial[]`: Partial field selection.
-- All standard filtering and sorting parameters.
-
-**Examples:**
-- `GET /create-new-character4-job` — full list (data + meta + revision_info)
-- `GET /create-new-character4-job?returns=data` — data only
-- `GET /create-new-character4-job?returns=data,meta` — data + meta, no revision_info
-- `GET /create-new-character4-job?limit=20&offset=40` — pagination
-
-**Error Responses:**
-- `400`: Bad request - Invalid query parameters or search error
- * @summary List create-new-character4-job resources
- */
-export const listResourcesV1AutocrudCreateNewCharacter4JobGetQueryIsDeletedDefault = false;
-export const listResourcesV1AutocrudCreateNewCharacter4JobGetQueryLimitDefault = 10;
-export const listResourcesV1AutocrudCreateNewCharacter4JobGetQueryOffsetDefault = 0;
-export const listResourcesV1AutocrudCreateNewCharacter4JobGetQueryReturnsDefault = `data,revision_info,meta`;
-
-export const ListResourcesV1AutocrudCreateNewCharacter4JobGetQueryParams = zod.object({
-  qb: zod
-    .union([zod.string(), zod.null()])
-    .optional()
-    .describe(
-      "Query Builder expression. Example: \"QB['foo'] == 123\" or \"QB['age'].gt(18) & QB['status'].eq('active')\"",
-    ),
-  is_deleted: zod
-    .union([zod.boolean(), zod.null()])
-    .default(listResourcesV1AutocrudCreateNewCharacter4JobGetQueryIsDeletedDefault)
-    .describe('Filter by deletion status'),
-  created_time_start: zod
-    .union([zod.string(), zod.null()])
-    .optional()
-    .describe('Filter by created time start (ISO format)'),
-  created_time_end: zod
-    .union([zod.string(), zod.null()])
-    .optional()
-    .describe('Filter by created time end (ISO format)'),
-  updated_time_start: zod
-    .union([zod.string(), zod.null()])
-    .optional()
-    .describe('Filter by updated time start (ISO format)'),
-  updated_time_end: zod
-    .union([zod.string(), zod.null()])
-    .optional()
-    .describe('Filter by updated time end (ISO format)'),
-  created_bys: zod
-    .union([zod.array(zod.string()), zod.null()])
-    .optional()
-    .describe('Filter by creators'),
-  updated_bys: zod
-    .union([zod.array(zod.string()), zod.null()])
-    .optional()
-    .describe('Filter by updaters'),
-  data_conditions: zod
-    .union([zod.string(), zod.null()])
-    .optional()
-    .describe(
-      'Data filter conditions in JSON format. Example: \'[{\"field_path\": \"department\", \"operator\": \"eq\", \"value\": \"Engineering\"}]\'',
-    ),
-  conditions: zod
-    .union([zod.string(), zod.null()])
-    .optional()
-    .describe(
-      'General filter conditions in JSON format for meta fields or data. Example: \'[{\"field_path\": \"resource_id\", \"operator\": \"starts_with\", \"value\": \"user-\"}]\'',
-    ),
-  sorts: zod
-    .union([zod.string(), zod.null()])
-    .optional()
-    .describe(
-      'Sort conditions in JSON format. Example: \'[{\"type\": \"meta\", \"key\": \"created_time\", \"direction\": \"+\"}, {\"type\": \"data\", \"field_path\": \"name\", \"direction\": \"-\"}]\'',
-    ),
-  limit: zod
-    .number()
-    .default(listResourcesV1AutocrudCreateNewCharacter4JobGetQueryLimitDefault)
-    .describe('Maximum number of results'),
-  offset: zod
-    .number()
-    .default(listResourcesV1AutocrudCreateNewCharacter4JobGetQueryOffsetDefault)
-    .describe('Number of results to skip'),
-  partial: zod
-    .union([zod.array(zod.string()), zod.null()])
-    .optional()
-    .describe("List of fields to retrieve (e.g. '\/field1', '\/nested\/field2')"),
-  returns: zod
-    .string()
-    .default(listResourcesV1AutocrudCreateNewCharacter4JobGetQueryReturnsDefault)
-    .describe('Fields to return, comma-separated. Options: data, revision_info, meta'),
-});
-
-export const listResourcesV1AutocrudCreateNewCharacter4JobGetResponseDataPayloadZFilenameDefault =
-  null;
-export const listResourcesV1AutocrudCreateNewCharacter4JobGetResponseDataPayloadFDetailOneMpCostDefault = 0;
-export const listResourcesV1AutocrudCreateNewCharacter4JobGetResponseDataPayloadFDetailOneCooldownSecondsDefault = 0;
-export const listResourcesV1AutocrudCreateNewCharacter4JobGetResponseDataPayloadFDetailOneDamageDefault = 0;
-export const listResourcesV1AutocrudCreateNewCharacter4JobGetResponseDataPayloadFDetailTwoBuffPercentageDefault = 0;
-export const listResourcesV1AutocrudCreateNewCharacter4JobGetResponseDataPayloadFDetailThreeMpCostDefault = 0;
-export const listResourcesV1AutocrudCreateNewCharacter4JobGetResponseDataPayloadFDetailThreeCooldownSecondsDefault = 0;
-export const listResourcesV1AutocrudCreateNewCharacter4JobGetResponseDataPayloadFDetailThreeDamageDefault = 0;
-export const listResourcesV1AutocrudCreateNewCharacter4JobGetResponseDataPayloadFDetailThreeAreaOfEffectDefault = false;
-export const listResourcesV1AutocrudCreateNewCharacter4JobGetResponseDataPayloadFDescriptionDefault = ``;
-export const listResourcesV1AutocrudCreateNewCharacter4JobGetResponseDataPayloadFRequiredLevelDefault = 1;
-export const listResourcesV1AutocrudCreateNewCharacter4JobGetResponseDataPayloadFRequiredClassDefault =
-  null;
-export const listResourcesV1AutocrudCreateNewCharacter4JobGetResponseDataStatusDefault = `pending`;
-export const listResourcesV1AutocrudCreateNewCharacter4JobGetResponseDataErrmsgDefault = null;
-export const listResourcesV1AutocrudCreateNewCharacter4JobGetResponseDataArtifactDefault = null;
-export const listResourcesV1AutocrudCreateNewCharacter4JobGetResponseDataRetriesDefault = 0;
-export const listResourcesV1AutocrudCreateNewCharacter4JobGetResponseDataMaxRetriesDefault = null;
-export const listResourcesV1AutocrudCreateNewCharacter4JobGetResponseDataPeriodicIntervalSecondsDefault =
-  null;
-export const listResourcesV1AutocrudCreateNewCharacter4JobGetResponseDataPeriodicMaxRunsDefault =
-  null;
-export const listResourcesV1AutocrudCreateNewCharacter4JobGetResponseDataPeriodicRunsDefault = 0;
-export const listResourcesV1AutocrudCreateNewCharacter4JobGetResponseDataPeriodicInitialDelaySecondsDefault =
-  null;
-export const listResourcesV1AutocrudCreateNewCharacter4JobGetResponseDataLastHeartbeatAtDefault =
-  null;
-export const listResourcesV1AutocrudCreateNewCharacter4JobGetResponseRevisionInfoParentRevisionIdDefault =
-  null;
-export const listResourcesV1AutocrudCreateNewCharacter4JobGetResponseRevisionInfoSchemaVersionDefault =
-  null;
-export const listResourcesV1AutocrudCreateNewCharacter4JobGetResponseMetaSchemaVersionDefault =
-  null;
-export const listResourcesV1AutocrudCreateNewCharacter4JobGetResponseMetaIsDeletedDefault = false;
-
-export const ListResourcesV1AutocrudCreateNewCharacter4JobGetResponseItem = zod.object({
-  data: zod
-    .object({
-      payload: zod.object({
-        x: zod.union([zod.number(), zod.string()]),
-        y: zod.string(),
-        name: zod.string(),
-        z: zod
-          .object({
-            binary: zod
-              .object({
-                file_id: zod.string().optional(),
-                size: zod.number().optional(),
-                content_type: zod.string().optional(),
-                data: zod.string().optional(),
-              })
-              .describe(
-                'A wrapper for binary data that handles storage optimization.\n\nWhen creating a resource, you can populate the `data` field with bytes.\nThe system will automatically extract it, store it in the blob store,\nand populate `file_id` (which is the hash of the content) and `size`.\nThe `data` field will be cleared in the stored resource.',
-              ),
-            filename: zod
-              .union([zod.string(), zod.null()])
-              .default(
-                listResourcesV1AutocrudCreateNewCharacter4JobGetResponseDataPayloadZFilenameDefault,
-              ),
-          })
-          .describe(
-            "Serialisable surrogate for ``fastapi.UploadFile`` in Job payloads.\n\nUses :class:`~autocrud.types.Binary` to carry the file content and\nmetadata (``data``, ``content_type``, ``size``), plus an extra\n``filename`` field that ``Binary`` does not have.\n\nAt \*\*endpoint\*\* time the wrapper reads the incoming file and stores its\ncontent in the ``binary`` field.  At \*\*job-execution\*\* time the\nframework reconstructs a real ``UploadFile`` from these fields before\ncalling the user's handler.",
-          ),
-        f: zod.object({
-          skname: zod.string(),
-          detail: zod.union([
-            zod.object({
-              skill_type: zod.enum(['active']),
-              mp_cost: zod
-                .number()
-                .default(
-                  listResourcesV1AutocrudCreateNewCharacter4JobGetResponseDataPayloadFDetailOneMpCostDefault,
-                ),
-              cooldown_seconds: zod
-                .number()
-                .default(
-                  listResourcesV1AutocrudCreateNewCharacter4JobGetResponseDataPayloadFDetailOneCooldownSecondsDefault,
-                ),
-              damage: zod
-                .number()
-                .default(
-                  listResourcesV1AutocrudCreateNewCharacter4JobGetResponseDataPayloadFDetailOneDamageDefault,
-                ),
-            }),
-            zod.object({
-              skill_type: zod.enum(['passive']),
-              buff_percentage: zod
-                .number()
-                .default(
-                  listResourcesV1AutocrudCreateNewCharacter4JobGetResponseDataPayloadFDetailTwoBuffPercentageDefault,
-                ),
-            }),
-            zod.object({
-              skill_type: zod.enum(['ultimate']),
-              mp_cost: zod
-                .number()
-                .default(
-                  listResourcesV1AutocrudCreateNewCharacter4JobGetResponseDataPayloadFDetailThreeMpCostDefault,
-                ),
-              cooldown_seconds: zod
-                .number()
-                .default(
-                  listResourcesV1AutocrudCreateNewCharacter4JobGetResponseDataPayloadFDetailThreeCooldownSecondsDefault,
-                ),
-              damage: zod
-                .number()
-                .default(
-                  listResourcesV1AutocrudCreateNewCharacter4JobGetResponseDataPayloadFDetailThreeDamageDefault,
-                ),
-              area_of_effect: zod
-                .boolean()
-                .default(
-                  listResourcesV1AutocrudCreateNewCharacter4JobGetResponseDataPayloadFDetailThreeAreaOfEffectDefault,
-                ),
-            }),
-          ]),
-          description: zod
-            .string()
-            .default(
-              listResourcesV1AutocrudCreateNewCharacter4JobGetResponseDataPayloadFDescriptionDefault,
-            ),
-          required_level: zod
-            .number()
-            .default(
-              listResourcesV1AutocrudCreateNewCharacter4JobGetResponseDataPayloadFRequiredLevelDefault,
-            ),
-          required_class: zod
-            .union([
-              zod.enum(['⚔️ 戰士', '🏹 弓箭手', '💾 數據守護者', '🔮 法師']).describe('職業系統'),
-              zod.null(),
-            ])
-            .default(
-              listResourcesV1AutocrudCreateNewCharacter4JobGetResponseDataPayloadFRequiredClassDefault,
-            ),
-        }),
-      }),
-      status: zod
-        .enum(['completed', 'failed', 'pending', 'processing'])
-        .default(listResourcesV1AutocrudCreateNewCharacter4JobGetResponseDataStatusDefault),
-      errmsg: zod
-        .union([zod.string(), zod.null()])
-        .default(listResourcesV1AutocrudCreateNewCharacter4JobGetResponseDataErrmsgDefault),
-      artifact: zod
-        .union([zod.looseObject({}), zod.null()])
-        .default(listResourcesV1AutocrudCreateNewCharacter4JobGetResponseDataArtifactDefault),
-      retries: zod
-        .number()
-        .default(listResourcesV1AutocrudCreateNewCharacter4JobGetResponseDataRetriesDefault),
-      max_retries: zod
-        .union([zod.number(), zod.null()])
-        .default(listResourcesV1AutocrudCreateNewCharacter4JobGetResponseDataMaxRetriesDefault),
-      periodic_interval_seconds: zod
-        .union([zod.number(), zod.null()])
-        .default(
-          listResourcesV1AutocrudCreateNewCharacter4JobGetResponseDataPeriodicIntervalSecondsDefault,
-        ),
-      periodic_max_runs: zod
-        .union([zod.number(), zod.null()])
-        .default(
-          listResourcesV1AutocrudCreateNewCharacter4JobGetResponseDataPeriodicMaxRunsDefault,
-        ),
-      periodic_runs: zod
-        .number()
-        .default(listResourcesV1AutocrudCreateNewCharacter4JobGetResponseDataPeriodicRunsDefault),
-      periodic_initial_delay_seconds: zod
-        .union([zod.number(), zod.null()])
-        .default(
-          listResourcesV1AutocrudCreateNewCharacter4JobGetResponseDataPeriodicInitialDelaySecondsDefault,
-        ),
-      last_heartbeat_at: zod
-        .union([zod.string(), zod.null()])
-        .default(
-          listResourcesV1AutocrudCreateNewCharacter4JobGetResponseDataLastHeartbeatAtDefault,
-        ),
-    })
-    .optional(),
-  revision_info: zod
-    .object({
-      uid: zod.uuid(),
-      resource_id: zod.string(),
-      revision_id: zod.string(),
-      parent_revision_id: zod
-        .union([zod.string(), zod.null()])
-        .default(
-          listResourcesV1AutocrudCreateNewCharacter4JobGetResponseRevisionInfoParentRevisionIdDefault,
-        ),
-      parent_schema_version: zod.union([zod.string(), zod.null()]).optional(),
-      schema_version: zod
-        .union([zod.string(), zod.null()])
-        .default(
-          listResourcesV1AutocrudCreateNewCharacter4JobGetResponseRevisionInfoSchemaVersionDefault,
-        ),
-      data_hash: zod.string().optional(),
-      status: zod.enum(['draft', 'stable']),
-      created_time: zod.string(),
-      updated_time: zod.string(),
-      created_by: zod.string(),
-      updated_by: zod.string(),
-    })
-    .optional()
-    .describe(
-      'Metadata about a specific revision of a resource.\n\nThis class contains essential information about a particular revision,',
-    ),
-  meta: zod
-    .object({
-      current_revision_id: zod.string(),
-      resource_id: zod.string(),
-      schema_version: zod
-        .union([zod.string(), zod.null()])
-        .default(listResourcesV1AutocrudCreateNewCharacter4JobGetResponseMetaSchemaVersionDefault),
-      total_revision_count: zod.number(),
-      created_time: zod.string(),
-      updated_time: zod.string(),
-      created_by: zod.string(),
-      updated_by: zod.string(),
-      is_deleted: zod
-        .boolean()
-        .default(listResourcesV1AutocrudCreateNewCharacter4JobGetResponseMetaIsDeletedDefault),
-      indexed_data: zod.looseObject({}).optional(),
-    })
-    .optional()
-    .describe(
-      'Metadata about a resource, including its current revision and status.\n\nThis class provides essential information about a resource without including\nthe full data content.',
-    ),
-});
-export const ListResourcesV1AutocrudCreateNewCharacter4JobGetResponse = zod.array(
-  ListResourcesV1AutocrudCreateNewCharacter4JobGetResponseItem,
-);
-
-/**
- * Batch delete `create-new-character4-job` resources matching the given query conditions.
-
-**Query Parameters:**
-- Uses the same search parameters as the list endpoint
-- `is_deleted` parameter is **forced to `false`** — only non-deleted resources are targeted
-- Use `data_conditions` to filter specific resources for deletion
-- Use `limit` to control the maximum number of resources to delete
-
-**Soft Delete:**
-- Resources are marked as deleted rather than permanently removed
-- Deleted resources can be restored using the batch restore endpoint
-
-**Response:**
-- Returns a list of `ResourceMeta` for all deleted resources
-- Each entry will have `is_deleted` set to `true`
-- Empty list if no resources match the query
-
-**Examples:**
-- `DELETE /create-new-character4-job?limit=100` — Delete up to 100 resources
-- `DELETE /create-new-character4-job?data_conditions=[{"field_path":"age","operator":"gt","value":25}]` — Delete resources with age > 25
-
-**Error Responses:**
-- `400`: Bad request — Invalid query parameters or deletion error
- * @summary Batch delete create-new-character4-job
- */
-export const batchDeleteV1AutocrudCreateNewCharacter4JobDeleteQueryIsDeletedDefault = false;
-export const batchDeleteV1AutocrudCreateNewCharacter4JobDeleteQueryLimitDefault = 10;
-export const batchDeleteV1AutocrudCreateNewCharacter4JobDeleteQueryOffsetDefault = 0;
-
-export const BatchDeleteV1AutocrudCreateNewCharacter4JobDeleteQueryParams = zod.object({
-  qb: zod
-    .union([zod.string(), zod.null()])
-    .optional()
-    .describe(
-      "Query Builder expression. Example: \"QB['foo'] == 123\" or \"QB['age'].gt(18) & QB['status'].eq('active')\"",
-    ),
-  is_deleted: zod
-    .union([zod.boolean(), zod.null()])
-    .default(batchDeleteV1AutocrudCreateNewCharacter4JobDeleteQueryIsDeletedDefault)
-    .describe('Filter by deletion status'),
-  created_time_start: zod
-    .union([zod.string(), zod.null()])
-    .optional()
-    .describe('Filter by created time start (ISO format)'),
-  created_time_end: zod
-    .union([zod.string(), zod.null()])
-    .optional()
-    .describe('Filter by created time end (ISO format)'),
-  updated_time_start: zod
-    .union([zod.string(), zod.null()])
-    .optional()
-    .describe('Filter by updated time start (ISO format)'),
-  updated_time_end: zod
-    .union([zod.string(), zod.null()])
-    .optional()
-    .describe('Filter by updated time end (ISO format)'),
-  created_bys: zod
-    .union([zod.array(zod.string()), zod.null()])
-    .optional()
-    .describe('Filter by creators'),
-  updated_bys: zod
-    .union([zod.array(zod.string()), zod.null()])
-    .optional()
-    .describe('Filter by updaters'),
-  data_conditions: zod
-    .union([zod.string(), zod.null()])
-    .optional()
-    .describe(
-      'Data filter conditions in JSON format. Example: \'[{\"field_path\": \"department\", \"operator\": \"eq\", \"value\": \"Engineering\"}]\'',
-    ),
-  conditions: zod
-    .union([zod.string(), zod.null()])
-    .optional()
-    .describe(
-      'General filter conditions in JSON format for meta fields or data. Example: \'[{\"field_path\": \"resource_id\", \"operator\": \"starts_with\", \"value\": \"user-\"}]\'',
-    ),
-  sorts: zod
-    .union([zod.string(), zod.null()])
-    .optional()
-    .describe(
-      'Sort conditions in JSON format. Example: \'[{\"type\": \"meta\", \"key\": \"created_time\", \"direction\": \"+\"}, {\"type\": \"data\", \"field_path\": \"name\", \"direction\": \"-\"}]\'',
-    ),
-  limit: zod
-    .number()
-    .default(batchDeleteV1AutocrudCreateNewCharacter4JobDeleteQueryLimitDefault)
-    .describe('Maximum number of results'),
-  offset: zod
-    .number()
-    .default(batchDeleteV1AutocrudCreateNewCharacter4JobDeleteQueryOffsetDefault)
-    .describe('Number of results to skip'),
-  partial: zod
-    .union([zod.array(zod.string()), zod.null()])
-    .optional()
-    .describe("List of fields to retrieve (e.g. '\/field1', '\/nested\/field2')"),
-});
-
-export const batchDeleteV1AutocrudCreateNewCharacter4JobDeleteResponseSchemaVersionDefault = null;
-export const batchDeleteV1AutocrudCreateNewCharacter4JobDeleteResponseIsDeletedDefault = false;
-
-export const BatchDeleteV1AutocrudCreateNewCharacter4JobDeleteResponseItem = zod
-  .object({
-    current_revision_id: zod.string(),
-    resource_id: zod.string(),
-    schema_version: zod
-      .union([zod.string(), zod.null()])
-      .default(batchDeleteV1AutocrudCreateNewCharacter4JobDeleteResponseSchemaVersionDefault),
-    total_revision_count: zod.number(),
-    created_time: zod.string(),
-    updated_time: zod.string(),
-    created_by: zod.string(),
-    updated_by: zod.string(),
-    is_deleted: zod
-      .boolean()
-      .default(batchDeleteV1AutocrudCreateNewCharacter4JobDeleteResponseIsDeletedDefault),
-    indexed_data: zod.looseObject({}).optional(),
-  })
-  .describe(
-    'Metadata about a resource, including its current revision and status.\n\nThis class provides essential information about a resource without including\nthe full data content.',
-  );
-export const BatchDeleteV1AutocrudCreateNewCharacter4JobDeleteResponse = zod.array(
-  BatchDeleteV1AutocrudCreateNewCharacter4JobDeleteResponseItem,
-);
-
-/**
  * Retrieve a list of `create-new-character4-job` resources returning only the data content.
 
 **Response Format:**
@@ -30556,6 +32948,770 @@ export const GetResourcesCountV1AutocrudCreateNewCharacter4JobCountGetQueryParam
 });
 
 export const GetResourcesCountV1AutocrudCreateNewCharacter4JobCountGetResponse = zod.number();
+
+/**
+ * Retrieve a list of `create-new-character4-job` resources.
+
+Use the `returns` query parameter to control which sections are included in each item.
+By default all sections are returned: `data`, `revision_info`, `meta`.
+
+**Query Parameters:**
+- `returns` (default `"data,revision_info,meta"`): Comma-separated list of sections to include.
+  Allowed values: `data`, `revision_info`, `meta`.
+- `limit` / `offset`: Pagination controls.
+- `partial` / `partial[]`: Partial field selection.
+- All standard filtering and sorting parameters.
+
+**Examples:**
+- `GET /create-new-character4-job` — full list (data + meta + revision_info)
+- `GET /create-new-character4-job?returns=data` — data only
+- `GET /create-new-character4-job?returns=data,meta` — data + meta, no revision_info
+- `GET /create-new-character4-job?limit=20&offset=40` — pagination
+
+**Error Responses:**
+- `400`: Bad request - Invalid query parameters or search error
+ * @summary List create-new-character4-job resources
+ */
+export const listResourcesV1AutocrudCreateNewCharacter4JobGetQueryIsDeletedDefault = false;
+export const listResourcesV1AutocrudCreateNewCharacter4JobGetQueryLimitDefault = 10;
+export const listResourcesV1AutocrudCreateNewCharacter4JobGetQueryOffsetDefault = 0;
+export const listResourcesV1AutocrudCreateNewCharacter4JobGetQueryReturnsDefault = `data,revision_info,meta`;
+
+export const ListResourcesV1AutocrudCreateNewCharacter4JobGetQueryParams = zod.object({
+  qb: zod
+    .union([zod.string(), zod.null()])
+    .optional()
+    .describe(
+      "Query Builder expression. Example: \"QB['foo'] == 123\" or \"QB['age'].gt(18) & QB['status'].eq('active')\"",
+    ),
+  is_deleted: zod
+    .union([zod.boolean(), zod.null()])
+    .default(listResourcesV1AutocrudCreateNewCharacter4JobGetQueryIsDeletedDefault)
+    .describe('Filter by deletion status'),
+  created_time_start: zod
+    .union([zod.string(), zod.null()])
+    .optional()
+    .describe('Filter by created time start (ISO format)'),
+  created_time_end: zod
+    .union([zod.string(), zod.null()])
+    .optional()
+    .describe('Filter by created time end (ISO format)'),
+  updated_time_start: zod
+    .union([zod.string(), zod.null()])
+    .optional()
+    .describe('Filter by updated time start (ISO format)'),
+  updated_time_end: zod
+    .union([zod.string(), zod.null()])
+    .optional()
+    .describe('Filter by updated time end (ISO format)'),
+  created_bys: zod
+    .union([zod.array(zod.string()), zod.null()])
+    .optional()
+    .describe('Filter by creators'),
+  updated_bys: zod
+    .union([zod.array(zod.string()), zod.null()])
+    .optional()
+    .describe('Filter by updaters'),
+  data_conditions: zod
+    .union([zod.string(), zod.null()])
+    .optional()
+    .describe(
+      'Data filter conditions in JSON format. Example: \'[{\"field_path\": \"department\", \"operator\": \"eq\", \"value\": \"Engineering\"}]\'',
+    ),
+  conditions: zod
+    .union([zod.string(), zod.null()])
+    .optional()
+    .describe(
+      'General filter conditions in JSON format for meta fields or data. Example: \'[{\"field_path\": \"resource_id\", \"operator\": \"starts_with\", \"value\": \"user-\"}]\'',
+    ),
+  sorts: zod
+    .union([zod.string(), zod.null()])
+    .optional()
+    .describe(
+      'Sort conditions in JSON format. Example: \'[{\"type\": \"meta\", \"key\": \"created_time\", \"direction\": \"+\"}, {\"type\": \"data\", \"field_path\": \"name\", \"direction\": \"-\"}]\'',
+    ),
+  limit: zod
+    .number()
+    .default(listResourcesV1AutocrudCreateNewCharacter4JobGetQueryLimitDefault)
+    .describe('Maximum number of results'),
+  offset: zod
+    .number()
+    .default(listResourcesV1AutocrudCreateNewCharacter4JobGetQueryOffsetDefault)
+    .describe('Number of results to skip'),
+  partial: zod
+    .union([zod.array(zod.string()), zod.null()])
+    .optional()
+    .describe("List of fields to retrieve (e.g. '\/field1', '\/nested\/field2')"),
+  returns: zod
+    .string()
+    .default(listResourcesV1AutocrudCreateNewCharacter4JobGetQueryReturnsDefault)
+    .describe('Fields to return, comma-separated. Options: data, revision_info, meta'),
+});
+
+export const listResourcesV1AutocrudCreateNewCharacter4JobGetResponseDataPayloadZFilenameDefault =
+  null;
+export const listResourcesV1AutocrudCreateNewCharacter4JobGetResponseDataPayloadFDetailOneMpCostDefault = 0;
+export const listResourcesV1AutocrudCreateNewCharacter4JobGetResponseDataPayloadFDetailOneCooldownSecondsDefault = 0;
+export const listResourcesV1AutocrudCreateNewCharacter4JobGetResponseDataPayloadFDetailOneDamageDefault = 0;
+export const listResourcesV1AutocrudCreateNewCharacter4JobGetResponseDataPayloadFDetailTwoBuffPercentageDefault = 0;
+export const listResourcesV1AutocrudCreateNewCharacter4JobGetResponseDataPayloadFDetailThreeMpCostDefault = 0;
+export const listResourcesV1AutocrudCreateNewCharacter4JobGetResponseDataPayloadFDetailThreeCooldownSecondsDefault = 0;
+export const listResourcesV1AutocrudCreateNewCharacter4JobGetResponseDataPayloadFDetailThreeDamageDefault = 0;
+export const listResourcesV1AutocrudCreateNewCharacter4JobGetResponseDataPayloadFDetailThreeAreaOfEffectDefault = false;
+export const listResourcesV1AutocrudCreateNewCharacter4JobGetResponseDataPayloadFDescriptionDefault = ``;
+export const listResourcesV1AutocrudCreateNewCharacter4JobGetResponseDataPayloadFRequiredLevelDefault = 1;
+export const listResourcesV1AutocrudCreateNewCharacter4JobGetResponseDataPayloadFRequiredClassDefault =
+  null;
+export const listResourcesV1AutocrudCreateNewCharacter4JobGetResponseDataStatusDefault = `pending`;
+export const listResourcesV1AutocrudCreateNewCharacter4JobGetResponseDataErrmsgDefault = null;
+export const listResourcesV1AutocrudCreateNewCharacter4JobGetResponseDataArtifactDefault = null;
+export const listResourcesV1AutocrudCreateNewCharacter4JobGetResponseDataRetriesDefault = 0;
+export const listResourcesV1AutocrudCreateNewCharacter4JobGetResponseDataMaxRetriesDefault = null;
+export const listResourcesV1AutocrudCreateNewCharacter4JobGetResponseDataPeriodicIntervalSecondsDefault =
+  null;
+export const listResourcesV1AutocrudCreateNewCharacter4JobGetResponseDataPeriodicMaxRunsDefault =
+  null;
+export const listResourcesV1AutocrudCreateNewCharacter4JobGetResponseDataPeriodicRunsDefault = 0;
+export const listResourcesV1AutocrudCreateNewCharacter4JobGetResponseDataPeriodicInitialDelaySecondsDefault =
+  null;
+export const listResourcesV1AutocrudCreateNewCharacter4JobGetResponseDataLastHeartbeatAtDefault =
+  null;
+export const listResourcesV1AutocrudCreateNewCharacter4JobGetResponseRevisionInfoParentRevisionIdDefault =
+  null;
+export const listResourcesV1AutocrudCreateNewCharacter4JobGetResponseRevisionInfoSchemaVersionDefault =
+  null;
+export const listResourcesV1AutocrudCreateNewCharacter4JobGetResponseMetaSchemaVersionDefault =
+  null;
+export const listResourcesV1AutocrudCreateNewCharacter4JobGetResponseMetaIsDeletedDefault = false;
+
+export const ListResourcesV1AutocrudCreateNewCharacter4JobGetResponseItem = zod.object({
+  data: zod
+    .object({
+      payload: zod.object({
+        x: zod.union([zod.number(), zod.string()]),
+        y: zod.string(),
+        name: zod.string(),
+        z: zod
+          .object({
+            binary: zod
+              .object({
+                file_id: zod.string().optional(),
+                size: zod.number().optional(),
+                content_type: zod.string().optional(),
+                data: zod.string().optional(),
+              })
+              .describe(
+                'A wrapper for binary data that handles storage optimization.\n\nWhen creating a resource, you can populate the `data` field with bytes.\nThe system will automatically extract it, store it in the blob store,\nand populate `file_id` (which is the hash of the content) and `size`.\nThe `data` field will be cleared in the stored resource.',
+              ),
+            filename: zod
+              .union([zod.string(), zod.null()])
+              .default(
+                listResourcesV1AutocrudCreateNewCharacter4JobGetResponseDataPayloadZFilenameDefault,
+              ),
+          })
+          .describe(
+            "Serialisable surrogate for ``fastapi.UploadFile`` in Job payloads.\n\nUses :class:`~autocrud.types.Binary` to carry the file content and\nmetadata (``data``, ``content_type``, ``size``), plus an extra\n``filename`` field that ``Binary`` does not have.\n\nAt \*\*endpoint\*\* time the wrapper reads the incoming file and stores its\ncontent in the ``binary`` field.  At \*\*job-execution\*\* time the\nframework reconstructs a real ``UploadFile`` from these fields before\ncalling the user's handler.",
+          ),
+        f: zod.object({
+          skname: zod.string(),
+          detail: zod.union([
+            zod.object({
+              skill_type: zod.enum(['active']),
+              mp_cost: zod
+                .number()
+                .default(
+                  listResourcesV1AutocrudCreateNewCharacter4JobGetResponseDataPayloadFDetailOneMpCostDefault,
+                ),
+              cooldown_seconds: zod
+                .number()
+                .default(
+                  listResourcesV1AutocrudCreateNewCharacter4JobGetResponseDataPayloadFDetailOneCooldownSecondsDefault,
+                ),
+              damage: zod
+                .number()
+                .default(
+                  listResourcesV1AutocrudCreateNewCharacter4JobGetResponseDataPayloadFDetailOneDamageDefault,
+                ),
+            }),
+            zod.object({
+              skill_type: zod.enum(['passive']),
+              buff_percentage: zod
+                .number()
+                .default(
+                  listResourcesV1AutocrudCreateNewCharacter4JobGetResponseDataPayloadFDetailTwoBuffPercentageDefault,
+                ),
+            }),
+            zod.object({
+              skill_type: zod.enum(['ultimate']),
+              mp_cost: zod
+                .number()
+                .default(
+                  listResourcesV1AutocrudCreateNewCharacter4JobGetResponseDataPayloadFDetailThreeMpCostDefault,
+                ),
+              cooldown_seconds: zod
+                .number()
+                .default(
+                  listResourcesV1AutocrudCreateNewCharacter4JobGetResponseDataPayloadFDetailThreeCooldownSecondsDefault,
+                ),
+              damage: zod
+                .number()
+                .default(
+                  listResourcesV1AutocrudCreateNewCharacter4JobGetResponseDataPayloadFDetailThreeDamageDefault,
+                ),
+              area_of_effect: zod
+                .boolean()
+                .default(
+                  listResourcesV1AutocrudCreateNewCharacter4JobGetResponseDataPayloadFDetailThreeAreaOfEffectDefault,
+                ),
+            }),
+          ]),
+          description: zod
+            .string()
+            .default(
+              listResourcesV1AutocrudCreateNewCharacter4JobGetResponseDataPayloadFDescriptionDefault,
+            ),
+          required_level: zod
+            .number()
+            .default(
+              listResourcesV1AutocrudCreateNewCharacter4JobGetResponseDataPayloadFRequiredLevelDefault,
+            ),
+          required_class: zod
+            .union([
+              zod.enum(['⚔️ 戰士', '🏹 弓箭手', '💾 數據守護者', '🔮 法師']).describe('職業系統'),
+              zod.null(),
+            ])
+            .default(
+              listResourcesV1AutocrudCreateNewCharacter4JobGetResponseDataPayloadFRequiredClassDefault,
+            ),
+        }),
+      }),
+      status: zod
+        .enum(['completed', 'failed', 'pending', 'processing'])
+        .default(listResourcesV1AutocrudCreateNewCharacter4JobGetResponseDataStatusDefault),
+      errmsg: zod
+        .union([zod.string(), zod.null()])
+        .default(listResourcesV1AutocrudCreateNewCharacter4JobGetResponseDataErrmsgDefault),
+      artifact: zod
+        .union([zod.looseObject({}), zod.null()])
+        .default(listResourcesV1AutocrudCreateNewCharacter4JobGetResponseDataArtifactDefault),
+      retries: zod
+        .number()
+        .default(listResourcesV1AutocrudCreateNewCharacter4JobGetResponseDataRetriesDefault),
+      max_retries: zod
+        .union([zod.number(), zod.null()])
+        .default(listResourcesV1AutocrudCreateNewCharacter4JobGetResponseDataMaxRetriesDefault),
+      periodic_interval_seconds: zod
+        .union([zod.number(), zod.null()])
+        .default(
+          listResourcesV1AutocrudCreateNewCharacter4JobGetResponseDataPeriodicIntervalSecondsDefault,
+        ),
+      periodic_max_runs: zod
+        .union([zod.number(), zod.null()])
+        .default(
+          listResourcesV1AutocrudCreateNewCharacter4JobGetResponseDataPeriodicMaxRunsDefault,
+        ),
+      periodic_runs: zod
+        .number()
+        .default(listResourcesV1AutocrudCreateNewCharacter4JobGetResponseDataPeriodicRunsDefault),
+      periodic_initial_delay_seconds: zod
+        .union([zod.number(), zod.null()])
+        .default(
+          listResourcesV1AutocrudCreateNewCharacter4JobGetResponseDataPeriodicInitialDelaySecondsDefault,
+        ),
+      last_heartbeat_at: zod
+        .union([zod.string(), zod.null()])
+        .default(
+          listResourcesV1AutocrudCreateNewCharacter4JobGetResponseDataLastHeartbeatAtDefault,
+        ),
+    })
+    .optional(),
+  revision_info: zod
+    .object({
+      uid: zod.uuid(),
+      resource_id: zod.string(),
+      revision_id: zod.string(),
+      parent_revision_id: zod
+        .union([zod.string(), zod.null()])
+        .default(
+          listResourcesV1AutocrudCreateNewCharacter4JobGetResponseRevisionInfoParentRevisionIdDefault,
+        ),
+      parent_schema_version: zod.union([zod.string(), zod.null()]).optional(),
+      schema_version: zod
+        .union([zod.string(), zod.null()])
+        .default(
+          listResourcesV1AutocrudCreateNewCharacter4JobGetResponseRevisionInfoSchemaVersionDefault,
+        ),
+      data_hash: zod.string().optional(),
+      status: zod.enum(['draft', 'stable']),
+      created_time: zod.string(),
+      updated_time: zod.string(),
+      created_by: zod.string(),
+      updated_by: zod.string(),
+    })
+    .optional()
+    .describe(
+      'Metadata about a specific revision of a resource.\n\nThis class contains essential information about a particular revision,',
+    ),
+  meta: zod
+    .object({
+      current_revision_id: zod.string(),
+      resource_id: zod.string(),
+      schema_version: zod
+        .union([zod.string(), zod.null()])
+        .default(listResourcesV1AutocrudCreateNewCharacter4JobGetResponseMetaSchemaVersionDefault),
+      total_revision_count: zod.number(),
+      created_time: zod.string(),
+      updated_time: zod.string(),
+      created_by: zod.string(),
+      updated_by: zod.string(),
+      is_deleted: zod
+        .boolean()
+        .default(listResourcesV1AutocrudCreateNewCharacter4JobGetResponseMetaIsDeletedDefault),
+      indexed_data: zod.looseObject({}).optional(),
+    })
+    .optional()
+    .describe(
+      'Metadata about a resource, including its current revision and status.\n\nThis class provides essential information about a resource without including\nthe full data content.',
+    ),
+});
+export const ListResourcesV1AutocrudCreateNewCharacter4JobGetResponse = zod.array(
+  ListResourcesV1AutocrudCreateNewCharacter4JobGetResponseItem,
+);
+
+/**
+ * Create a new `create-new-character4-job` resource.
+
+**Request Body:**
+- Send the resource data as JSON in the request body
+- The data will be validated against the `create-new-character4-job` schema
+
+**Response:**
+- Returns revision information for the newly created resource
+- Includes `resource_id` and `revision_id` for tracking
+- All resources are version-controlled from creation
+
+**Examples:**
+- `POST /create-new-character4-job` with JSON body - Create new resource
+- Response includes resource and revision identifiers
+
+**Error Responses:**
+- `422`: Validation error - Invalid data format or missing required fields
+- `400`: Bad request - General creation error
+ * @summary Create create-new-character4-job
+ */
+export const createResourceV1AutocrudCreateNewCharacter4JobPostBodyPayloadZFilenameDefault = null;
+export const createResourceV1AutocrudCreateNewCharacter4JobPostBodyPayloadFDetailOneMpCostDefault = 0;
+export const createResourceV1AutocrudCreateNewCharacter4JobPostBodyPayloadFDetailOneCooldownSecondsDefault = 0;
+export const createResourceV1AutocrudCreateNewCharacter4JobPostBodyPayloadFDetailOneDamageDefault = 0;
+export const createResourceV1AutocrudCreateNewCharacter4JobPostBodyPayloadFDetailTwoBuffPercentageDefault = 0;
+export const createResourceV1AutocrudCreateNewCharacter4JobPostBodyPayloadFDetailThreeMpCostDefault = 0;
+export const createResourceV1AutocrudCreateNewCharacter4JobPostBodyPayloadFDetailThreeCooldownSecondsDefault = 0;
+export const createResourceV1AutocrudCreateNewCharacter4JobPostBodyPayloadFDetailThreeDamageDefault = 0;
+export const createResourceV1AutocrudCreateNewCharacter4JobPostBodyPayloadFDetailThreeAreaOfEffectDefault = false;
+export const createResourceV1AutocrudCreateNewCharacter4JobPostBodyPayloadFDescriptionDefault = ``;
+export const createResourceV1AutocrudCreateNewCharacter4JobPostBodyPayloadFRequiredLevelDefault = 1;
+export const createResourceV1AutocrudCreateNewCharacter4JobPostBodyPayloadFRequiredClassDefault =
+  null;
+export const createResourceV1AutocrudCreateNewCharacter4JobPostBodyStatusDefault = `pending`;
+export const createResourceV1AutocrudCreateNewCharacter4JobPostBodyErrmsgDefault = null;
+export const createResourceV1AutocrudCreateNewCharacter4JobPostBodyArtifactDefault = null;
+export const createResourceV1AutocrudCreateNewCharacter4JobPostBodyRetriesDefault = 0;
+export const createResourceV1AutocrudCreateNewCharacter4JobPostBodyMaxRetriesDefault = null;
+export const createResourceV1AutocrudCreateNewCharacter4JobPostBodyPeriodicIntervalSecondsDefault =
+  null;
+export const createResourceV1AutocrudCreateNewCharacter4JobPostBodyPeriodicMaxRunsDefault = null;
+export const createResourceV1AutocrudCreateNewCharacter4JobPostBodyPeriodicRunsDefault = 0;
+export const createResourceV1AutocrudCreateNewCharacter4JobPostBodyPeriodicInitialDelaySecondsDefault =
+  null;
+export const createResourceV1AutocrudCreateNewCharacter4JobPostBodyLastHeartbeatAtDefault = null;
+
+export const CreateResourceV1AutocrudCreateNewCharacter4JobPostBody = zod.object({
+  payload: zod.object({
+    x: zod.union([zod.number(), zod.string()]),
+    y: zod.string(),
+    name: zod.string(),
+    z: zod
+      .object({
+        binary: zod
+          .object({
+            file_id: zod.string().optional(),
+            size: zod.number().optional(),
+            content_type: zod.string().optional(),
+            data: zod.string().optional(),
+          })
+          .describe(
+            'A wrapper for binary data that handles storage optimization.\n\nWhen creating a resource, you can populate the `data` field with bytes.\nThe system will automatically extract it, store it in the blob store,\nand populate `file_id` (which is the hash of the content) and `size`.\nThe `data` field will be cleared in the stored resource.',
+          ),
+        filename: zod
+          .union([zod.string(), zod.null()])
+          .default(createResourceV1AutocrudCreateNewCharacter4JobPostBodyPayloadZFilenameDefault),
+      })
+      .describe(
+        "Serialisable surrogate for ``fastapi.UploadFile`` in Job payloads.\n\nUses :class:`~autocrud.types.Binary` to carry the file content and\nmetadata (``data``, ``content_type``, ``size``), plus an extra\n``filename`` field that ``Binary`` does not have.\n\nAt \*\*endpoint\*\* time the wrapper reads the incoming file and stores its\ncontent in the ``binary`` field.  At \*\*job-execution\*\* time the\nframework reconstructs a real ``UploadFile`` from these fields before\ncalling the user's handler.",
+      ),
+    f: zod.object({
+      skname: zod.string(),
+      detail: zod.union([
+        zod.object({
+          skill_type: zod.enum(['active']),
+          mp_cost: zod
+            .number()
+            .default(
+              createResourceV1AutocrudCreateNewCharacter4JobPostBodyPayloadFDetailOneMpCostDefault,
+            ),
+          cooldown_seconds: zod
+            .number()
+            .default(
+              createResourceV1AutocrudCreateNewCharacter4JobPostBodyPayloadFDetailOneCooldownSecondsDefault,
+            ),
+          damage: zod
+            .number()
+            .default(
+              createResourceV1AutocrudCreateNewCharacter4JobPostBodyPayloadFDetailOneDamageDefault,
+            ),
+        }),
+        zod.object({
+          skill_type: zod.enum(['passive']),
+          buff_percentage: zod
+            .number()
+            .default(
+              createResourceV1AutocrudCreateNewCharacter4JobPostBodyPayloadFDetailTwoBuffPercentageDefault,
+            ),
+        }),
+        zod.object({
+          skill_type: zod.enum(['ultimate']),
+          mp_cost: zod
+            .number()
+            .default(
+              createResourceV1AutocrudCreateNewCharacter4JobPostBodyPayloadFDetailThreeMpCostDefault,
+            ),
+          cooldown_seconds: zod
+            .number()
+            .default(
+              createResourceV1AutocrudCreateNewCharacter4JobPostBodyPayloadFDetailThreeCooldownSecondsDefault,
+            ),
+          damage: zod
+            .number()
+            .default(
+              createResourceV1AutocrudCreateNewCharacter4JobPostBodyPayloadFDetailThreeDamageDefault,
+            ),
+          area_of_effect: zod
+            .boolean()
+            .default(
+              createResourceV1AutocrudCreateNewCharacter4JobPostBodyPayloadFDetailThreeAreaOfEffectDefault,
+            ),
+        }),
+      ]),
+      description: zod
+        .string()
+        .default(createResourceV1AutocrudCreateNewCharacter4JobPostBodyPayloadFDescriptionDefault),
+      required_level: zod
+        .number()
+        .default(
+          createResourceV1AutocrudCreateNewCharacter4JobPostBodyPayloadFRequiredLevelDefault,
+        ),
+      required_class: zod
+        .union([
+          zod.enum(['⚔️ 戰士', '🏹 弓箭手', '💾 數據守護者', '🔮 法師']).describe('職業系統'),
+          zod.null(),
+        ])
+        .default(
+          createResourceV1AutocrudCreateNewCharacter4JobPostBodyPayloadFRequiredClassDefault,
+        ),
+    }),
+  }),
+  status: zod
+    .enum(['completed', 'failed', 'pending', 'processing'])
+    .default(createResourceV1AutocrudCreateNewCharacter4JobPostBodyStatusDefault),
+  errmsg: zod
+    .union([zod.string(), zod.null()])
+    .default(createResourceV1AutocrudCreateNewCharacter4JobPostBodyErrmsgDefault),
+  artifact: zod
+    .union([zod.looseObject({}), zod.null()])
+    .default(createResourceV1AutocrudCreateNewCharacter4JobPostBodyArtifactDefault),
+  retries: zod
+    .number()
+    .default(createResourceV1AutocrudCreateNewCharacter4JobPostBodyRetriesDefault),
+  max_retries: zod
+    .union([zod.number(), zod.null()])
+    .default(createResourceV1AutocrudCreateNewCharacter4JobPostBodyMaxRetriesDefault),
+  periodic_interval_seconds: zod
+    .union([zod.number(), zod.null()])
+    .default(createResourceV1AutocrudCreateNewCharacter4JobPostBodyPeriodicIntervalSecondsDefault),
+  periodic_max_runs: zod
+    .union([zod.number(), zod.null()])
+    .default(createResourceV1AutocrudCreateNewCharacter4JobPostBodyPeriodicMaxRunsDefault),
+  periodic_runs: zod
+    .number()
+    .default(createResourceV1AutocrudCreateNewCharacter4JobPostBodyPeriodicRunsDefault),
+  periodic_initial_delay_seconds: zod
+    .union([zod.number(), zod.null()])
+    .default(
+      createResourceV1AutocrudCreateNewCharacter4JobPostBodyPeriodicInitialDelaySecondsDefault,
+    ),
+  last_heartbeat_at: zod
+    .union([zod.string(), zod.null()])
+    .default(createResourceV1AutocrudCreateNewCharacter4JobPostBodyLastHeartbeatAtDefault),
+});
+
+export const createResourceV1AutocrudCreateNewCharacter4JobPostResponseParentRevisionIdDefault =
+  null;
+export const createResourceV1AutocrudCreateNewCharacter4JobPostResponseSchemaVersionDefault = null;
+
+export const CreateResourceV1AutocrudCreateNewCharacter4JobPostResponse = zod
+  .object({
+    uid: zod.uuid(),
+    resource_id: zod.string(),
+    revision_id: zod.string(),
+    parent_revision_id: zod
+      .union([zod.string(), zod.null()])
+      .default(createResourceV1AutocrudCreateNewCharacter4JobPostResponseParentRevisionIdDefault),
+    parent_schema_version: zod.union([zod.string(), zod.null()]).optional(),
+    schema_version: zod
+      .union([zod.string(), zod.null()])
+      .default(createResourceV1AutocrudCreateNewCharacter4JobPostResponseSchemaVersionDefault),
+    data_hash: zod.string().optional(),
+    status: zod.enum(['draft', 'stable']),
+    created_time: zod.string(),
+    updated_time: zod.string(),
+    created_by: zod.string(),
+    updated_by: zod.string(),
+  })
+  .describe(
+    'Metadata about a specific revision of a resource.\n\nThis class contains essential information about a particular revision,',
+  );
+
+/**
+ * Batch delete `create-new-character4-job` resources matching the given query conditions.
+
+**Query Parameters:**
+- Uses the same search parameters as the list endpoint
+- `is_deleted` parameter is **forced to `false`** — only non-deleted resources are targeted
+- Use `data_conditions` to filter specific resources for deletion
+- Use `limit` to control the maximum number of resources to delete
+
+**Soft Delete:**
+- Resources are marked as deleted rather than permanently removed
+- Deleted resources can be restored using the batch restore endpoint
+
+**Response:**
+- Returns a list of `ResourceMeta` for all deleted resources
+- Each entry will have `is_deleted` set to `true`
+- Empty list if no resources match the query
+
+**Examples:**
+- `DELETE /create-new-character4-job?limit=100` — Delete up to 100 resources
+- `DELETE /create-new-character4-job?data_conditions=[{"field_path":"age","operator":"gt","value":25}]` — Delete resources with age > 25
+
+**Error Responses:**
+- `400`: Bad request — Invalid query parameters or deletion error
+ * @summary Batch delete create-new-character4-job
+ */
+export const batchDeleteV1AutocrudCreateNewCharacter4JobDeleteQueryIsDeletedDefault = false;
+export const batchDeleteV1AutocrudCreateNewCharacter4JobDeleteQueryLimitDefault = 10;
+export const batchDeleteV1AutocrudCreateNewCharacter4JobDeleteQueryOffsetDefault = 0;
+
+export const BatchDeleteV1AutocrudCreateNewCharacter4JobDeleteQueryParams = zod.object({
+  qb: zod
+    .union([zod.string(), zod.null()])
+    .optional()
+    .describe(
+      "Query Builder expression. Example: \"QB['foo'] == 123\" or \"QB['age'].gt(18) & QB['status'].eq('active')\"",
+    ),
+  is_deleted: zod
+    .union([zod.boolean(), zod.null()])
+    .default(batchDeleteV1AutocrudCreateNewCharacter4JobDeleteQueryIsDeletedDefault)
+    .describe('Filter by deletion status'),
+  created_time_start: zod
+    .union([zod.string(), zod.null()])
+    .optional()
+    .describe('Filter by created time start (ISO format)'),
+  created_time_end: zod
+    .union([zod.string(), zod.null()])
+    .optional()
+    .describe('Filter by created time end (ISO format)'),
+  updated_time_start: zod
+    .union([zod.string(), zod.null()])
+    .optional()
+    .describe('Filter by updated time start (ISO format)'),
+  updated_time_end: zod
+    .union([zod.string(), zod.null()])
+    .optional()
+    .describe('Filter by updated time end (ISO format)'),
+  created_bys: zod
+    .union([zod.array(zod.string()), zod.null()])
+    .optional()
+    .describe('Filter by creators'),
+  updated_bys: zod
+    .union([zod.array(zod.string()), zod.null()])
+    .optional()
+    .describe('Filter by updaters'),
+  data_conditions: zod
+    .union([zod.string(), zod.null()])
+    .optional()
+    .describe(
+      'Data filter conditions in JSON format. Example: \'[{\"field_path\": \"department\", \"operator\": \"eq\", \"value\": \"Engineering\"}]\'',
+    ),
+  conditions: zod
+    .union([zod.string(), zod.null()])
+    .optional()
+    .describe(
+      'General filter conditions in JSON format for meta fields or data. Example: \'[{\"field_path\": \"resource_id\", \"operator\": \"starts_with\", \"value\": \"user-\"}]\'',
+    ),
+  sorts: zod
+    .union([zod.string(), zod.null()])
+    .optional()
+    .describe(
+      'Sort conditions in JSON format. Example: \'[{\"type\": \"meta\", \"key\": \"created_time\", \"direction\": \"+\"}, {\"type\": \"data\", \"field_path\": \"name\", \"direction\": \"-\"}]\'',
+    ),
+  limit: zod
+    .number()
+    .default(batchDeleteV1AutocrudCreateNewCharacter4JobDeleteQueryLimitDefault)
+    .describe('Maximum number of results'),
+  offset: zod
+    .number()
+    .default(batchDeleteV1AutocrudCreateNewCharacter4JobDeleteQueryOffsetDefault)
+    .describe('Number of results to skip'),
+  partial: zod
+    .union([zod.array(zod.string()), zod.null()])
+    .optional()
+    .describe("List of fields to retrieve (e.g. '\/field1', '\/nested\/field2')"),
+});
+
+export const batchDeleteV1AutocrudCreateNewCharacter4JobDeleteResponseSchemaVersionDefault = null;
+export const batchDeleteV1AutocrudCreateNewCharacter4JobDeleteResponseIsDeletedDefault = false;
+
+export const BatchDeleteV1AutocrudCreateNewCharacter4JobDeleteResponseItem = zod
+  .object({
+    current_revision_id: zod.string(),
+    resource_id: zod.string(),
+    schema_version: zod
+      .union([zod.string(), zod.null()])
+      .default(batchDeleteV1AutocrudCreateNewCharacter4JobDeleteResponseSchemaVersionDefault),
+    total_revision_count: zod.number(),
+    created_time: zod.string(),
+    updated_time: zod.string(),
+    created_by: zod.string(),
+    updated_by: zod.string(),
+    is_deleted: zod
+      .boolean()
+      .default(batchDeleteV1AutocrudCreateNewCharacter4JobDeleteResponseIsDeletedDefault),
+    indexed_data: zod.looseObject({}).optional(),
+  })
+  .describe(
+    'Metadata about a resource, including its current revision and status.\n\nThis class provides essential information about a resource without including\nthe full data content.',
+  );
+export const BatchDeleteV1AutocrudCreateNewCharacter4JobDeleteResponse = zod.array(
+  BatchDeleteV1AutocrudCreateNewCharacter4JobDeleteResponseItem,
+);
+
+/**
+ * Export all (or filtered) **create-new-character4-job** resources as a
+streaming ``.acbak`` archive.
+
+Supports the same query parameters as the search endpoint
+(``qb``, ``is_deleted``, time ranges, etc.) to filter
+which resources are included.
+ * @summary Export create-new-character4-job data
+ */
+export const exportModelV1AutocrudCreateNewCharacter4JobExportGetQueryIsDeletedDefault = false;
+export const exportModelV1AutocrudCreateNewCharacter4JobExportGetQueryLimitDefault = 10;
+export const exportModelV1AutocrudCreateNewCharacter4JobExportGetQueryOffsetDefault = 0;
+
+export const ExportModelV1AutocrudCreateNewCharacter4JobExportGetQueryParams = zod.object({
+  qb: zod
+    .union([zod.string(), zod.null()])
+    .optional()
+    .describe(
+      "Query Builder expression. Example: \"QB['foo'] == 123\" or \"QB['age'].gt(18) & QB['status'].eq('active')\"",
+    ),
+  is_deleted: zod
+    .union([zod.boolean(), zod.null()])
+    .default(exportModelV1AutocrudCreateNewCharacter4JobExportGetQueryIsDeletedDefault)
+    .describe('Filter by deletion status'),
+  created_time_start: zod
+    .union([zod.string(), zod.null()])
+    .optional()
+    .describe('Filter by created time start (ISO format)'),
+  created_time_end: zod
+    .union([zod.string(), zod.null()])
+    .optional()
+    .describe('Filter by created time end (ISO format)'),
+  updated_time_start: zod
+    .union([zod.string(), zod.null()])
+    .optional()
+    .describe('Filter by updated time start (ISO format)'),
+  updated_time_end: zod
+    .union([zod.string(), zod.null()])
+    .optional()
+    .describe('Filter by updated time end (ISO format)'),
+  created_bys: zod
+    .union([zod.array(zod.string()), zod.null()])
+    .optional()
+    .describe('Filter by creators'),
+  updated_bys: zod
+    .union([zod.array(zod.string()), zod.null()])
+    .optional()
+    .describe('Filter by updaters'),
+  data_conditions: zod
+    .union([zod.string(), zod.null()])
+    .optional()
+    .describe(
+      'Data filter conditions in JSON format. Example: \'[{\"field_path\": \"department\", \"operator\": \"eq\", \"value\": \"Engineering\"}]\'',
+    ),
+  conditions: zod
+    .union([zod.string(), zod.null()])
+    .optional()
+    .describe(
+      'General filter conditions in JSON format for meta fields or data. Example: \'[{\"field_path\": \"resource_id\", \"operator\": \"starts_with\", \"value\": \"user-\"}]\'',
+    ),
+  sorts: zod
+    .union([zod.string(), zod.null()])
+    .optional()
+    .describe(
+      'Sort conditions in JSON format. Example: \'[{\"type\": \"meta\", \"key\": \"created_time\", \"direction\": \"+\"}, {\"type\": \"data\", \"field_path\": \"name\", \"direction\": \"-\"}]\'',
+    ),
+  limit: zod
+    .number()
+    .default(exportModelV1AutocrudCreateNewCharacter4JobExportGetQueryLimitDefault)
+    .describe('Maximum number of results'),
+  offset: zod
+    .number()
+    .default(exportModelV1AutocrudCreateNewCharacter4JobExportGetQueryOffsetDefault)
+    .describe('Number of results to skip'),
+  partial: zod
+    .union([zod.array(zod.string()), zod.null()])
+    .optional()
+    .describe("List of fields to retrieve (e.g. '\/field1', '\/nested\/field2')"),
+});
+
+export const ExportModelV1AutocrudCreateNewCharacter4JobExportGetResponse = zod.unknown();
+
+/**
+ * Import **create-new-character4-job** resources from a ``.acbak`` archive.
+
+The archive must contain a **create-new-character4-job** model section.
+Use ``on_duplicate`` to control behaviour when a resource ID
+already exists.
+ * @summary Import create-new-character4-job data
+ */
+export const importModelV1AutocrudCreateNewCharacter4JobImportPostQueryOnDuplicateDefault = `overwrite`;
+
+export const ImportModelV1AutocrudCreateNewCharacter4JobImportPostQueryParams = zod.object({
+  on_duplicate: zod
+    .string()
+    .default(importModelV1AutocrudCreateNewCharacter4JobImportPostQueryOnDuplicateDefault)
+    .describe('Strategy: overwrite | skip | raise_error'),
+});
+
+export const ImportModelV1AutocrudCreateNewCharacter4JobImportPostBody = zod.object({
+  file: zod.instanceof(File).describe('.acbak archive file'),
+});
+
+export const ImportModelV1AutocrudCreateNewCharacter4JobImportPostResponse = zod.record(
+  zod.string(),
+  zod.unknown(),
+);
 
 /**
  * Deprecated: use `GET /create-new-character4-job/{resource_id}?returns=meta` instead.
@@ -33005,4 +36161,5 @@ export type Guild = Record<string, unknown>;
 export type Job___main___Mount_____main___Dog__NoneType_ = Record<string, unknown>;
 export type NewCharacterJob = Record<string, unknown>;
 export type Pet = Record<string, unknown>;
+export type Quest = Record<string, unknown>;
 export type Skill = Record<string, unknown>;

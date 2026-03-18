@@ -15,6 +15,7 @@ import { Route as AutocrudAdminIndexRouteImport } from './routes/autocrud-admin/
 import { Route as AutocrudAdminMigrateRouteImport } from './routes/autocrud-admin/migrate'
 import { Route as AutocrudAdminBackupRouteImport } from './routes/autocrud-admin/backup'
 import { Route as AutocrudAdminSkillIndexRouteImport } from './routes/autocrud-admin/skill/index'
+import { Route as AutocrudAdminQuestIndexRouteImport } from './routes/autocrud-admin/quest/index'
 import { Route as AutocrudAdminPetIndexRouteImport } from './routes/autocrud-admin/pet/index'
 import { Route as AutocrudAdminPetJobIndexRouteImport } from './routes/autocrud-admin/pet-job/index'
 import { Route as AutocrudAdminNewChar1JobIndexRouteImport } from './routes/autocrud-admin/new-char1-job/index'
@@ -26,6 +27,8 @@ import { Route as AutocrudAdminCreateNewCharacter2JobIndexRouteImport } from './
 import { Route as AutocrudAdminCharacterIndexRouteImport } from './routes/autocrud-admin/character/index'
 import { Route as AutocrudAdminSkillCreateRouteImport } from './routes/autocrud-admin/skill/create'
 import { Route as AutocrudAdminSkillResourceIdRouteImport } from './routes/autocrud-admin/skill/$resourceId'
+import { Route as AutocrudAdminQuestCreateRouteImport } from './routes/autocrud-admin/quest/create'
+import { Route as AutocrudAdminQuestResourceIdRouteImport } from './routes/autocrud-admin/quest/$resourceId'
 import { Route as AutocrudAdminPetCreateRouteImport } from './routes/autocrud-admin/pet/create'
 import { Route as AutocrudAdminPetResourceIdRouteImport } from './routes/autocrud-admin/pet/$resourceId'
 import { Route as AutocrudAdminPetJobCreateRouteImport } from './routes/autocrud-admin/pet-job/create'
@@ -73,6 +76,11 @@ const AutocrudAdminBackupRoute = AutocrudAdminBackupRouteImport.update({
 const AutocrudAdminSkillIndexRoute = AutocrudAdminSkillIndexRouteImport.update({
   id: '/skill/',
   path: '/skill/',
+  getParentRoute: () => AutocrudAdminRoute,
+} as any)
+const AutocrudAdminQuestIndexRoute = AutocrudAdminQuestIndexRouteImport.update({
+  id: '/quest/',
+  path: '/quest/',
   getParentRoute: () => AutocrudAdminRoute,
 } as any)
 const AutocrudAdminPetIndexRoute = AutocrudAdminPetIndexRouteImport.update({
@@ -137,6 +145,18 @@ const AutocrudAdminSkillResourceIdRoute =
   AutocrudAdminSkillResourceIdRouteImport.update({
     id: '/skill/$resourceId',
     path: '/skill/$resourceId',
+    getParentRoute: () => AutocrudAdminRoute,
+  } as any)
+const AutocrudAdminQuestCreateRoute =
+  AutocrudAdminQuestCreateRouteImport.update({
+    id: '/quest/create',
+    path: '/quest/create',
+    getParentRoute: () => AutocrudAdminRoute,
+  } as any)
+const AutocrudAdminQuestResourceIdRoute =
+  AutocrudAdminQuestResourceIdRouteImport.update({
+    id: '/quest/$resourceId',
+    path: '/quest/$resourceId',
     getParentRoute: () => AutocrudAdminRoute,
   } as any)
 const AutocrudAdminPetCreateRoute = AutocrudAdminPetCreateRouteImport.update({
@@ -271,6 +291,8 @@ export interface FileRoutesByFullPath {
   '/autocrud-admin/pet-job/create': typeof AutocrudAdminPetJobCreateRoute
   '/autocrud-admin/pet/$resourceId': typeof AutocrudAdminPetResourceIdRoute
   '/autocrud-admin/pet/create': typeof AutocrudAdminPetCreateRoute
+  '/autocrud-admin/quest/$resourceId': typeof AutocrudAdminQuestResourceIdRoute
+  '/autocrud-admin/quest/create': typeof AutocrudAdminQuestCreateRoute
   '/autocrud-admin/skill/$resourceId': typeof AutocrudAdminSkillResourceIdRoute
   '/autocrud-admin/skill/create': typeof AutocrudAdminSkillCreateRoute
   '/autocrud-admin/character/': typeof AutocrudAdminCharacterIndexRoute
@@ -282,6 +304,7 @@ export interface FileRoutesByFullPath {
   '/autocrud-admin/new-char1-job/': typeof AutocrudAdminNewChar1JobIndexRoute
   '/autocrud-admin/pet-job/': typeof AutocrudAdminPetJobIndexRoute
   '/autocrud-admin/pet/': typeof AutocrudAdminPetIndexRoute
+  '/autocrud-admin/quest/': typeof AutocrudAdminQuestIndexRoute
   '/autocrud-admin/skill/': typeof AutocrudAdminSkillIndexRoute
 }
 export interface FileRoutesByTo {
@@ -307,6 +330,8 @@ export interface FileRoutesByTo {
   '/autocrud-admin/pet-job/create': typeof AutocrudAdminPetJobCreateRoute
   '/autocrud-admin/pet/$resourceId': typeof AutocrudAdminPetResourceIdRoute
   '/autocrud-admin/pet/create': typeof AutocrudAdminPetCreateRoute
+  '/autocrud-admin/quest/$resourceId': typeof AutocrudAdminQuestResourceIdRoute
+  '/autocrud-admin/quest/create': typeof AutocrudAdminQuestCreateRoute
   '/autocrud-admin/skill/$resourceId': typeof AutocrudAdminSkillResourceIdRoute
   '/autocrud-admin/skill/create': typeof AutocrudAdminSkillCreateRoute
   '/autocrud-admin/character': typeof AutocrudAdminCharacterIndexRoute
@@ -318,6 +343,7 @@ export interface FileRoutesByTo {
   '/autocrud-admin/new-char1-job': typeof AutocrudAdminNewChar1JobIndexRoute
   '/autocrud-admin/pet-job': typeof AutocrudAdminPetJobIndexRoute
   '/autocrud-admin/pet': typeof AutocrudAdminPetIndexRoute
+  '/autocrud-admin/quest': typeof AutocrudAdminQuestIndexRoute
   '/autocrud-admin/skill': typeof AutocrudAdminSkillIndexRoute
 }
 export interface FileRoutesById {
@@ -345,6 +371,8 @@ export interface FileRoutesById {
   '/autocrud-admin/pet-job/create': typeof AutocrudAdminPetJobCreateRoute
   '/autocrud-admin/pet/$resourceId': typeof AutocrudAdminPetResourceIdRoute
   '/autocrud-admin/pet/create': typeof AutocrudAdminPetCreateRoute
+  '/autocrud-admin/quest/$resourceId': typeof AutocrudAdminQuestResourceIdRoute
+  '/autocrud-admin/quest/create': typeof AutocrudAdminQuestCreateRoute
   '/autocrud-admin/skill/$resourceId': typeof AutocrudAdminSkillResourceIdRoute
   '/autocrud-admin/skill/create': typeof AutocrudAdminSkillCreateRoute
   '/autocrud-admin/character/': typeof AutocrudAdminCharacterIndexRoute
@@ -356,6 +384,7 @@ export interface FileRoutesById {
   '/autocrud-admin/new-char1-job/': typeof AutocrudAdminNewChar1JobIndexRoute
   '/autocrud-admin/pet-job/': typeof AutocrudAdminPetJobIndexRoute
   '/autocrud-admin/pet/': typeof AutocrudAdminPetIndexRoute
+  '/autocrud-admin/quest/': typeof AutocrudAdminQuestIndexRoute
   '/autocrud-admin/skill/': typeof AutocrudAdminSkillIndexRoute
 }
 export interface FileRouteTypes {
@@ -384,6 +413,8 @@ export interface FileRouteTypes {
     | '/autocrud-admin/pet-job/create'
     | '/autocrud-admin/pet/$resourceId'
     | '/autocrud-admin/pet/create'
+    | '/autocrud-admin/quest/$resourceId'
+    | '/autocrud-admin/quest/create'
     | '/autocrud-admin/skill/$resourceId'
     | '/autocrud-admin/skill/create'
     | '/autocrud-admin/character/'
@@ -395,6 +426,7 @@ export interface FileRouteTypes {
     | '/autocrud-admin/new-char1-job/'
     | '/autocrud-admin/pet-job/'
     | '/autocrud-admin/pet/'
+    | '/autocrud-admin/quest/'
     | '/autocrud-admin/skill/'
   fileRoutesByTo: FileRoutesByTo
   to:
@@ -420,6 +452,8 @@ export interface FileRouteTypes {
     | '/autocrud-admin/pet-job/create'
     | '/autocrud-admin/pet/$resourceId'
     | '/autocrud-admin/pet/create'
+    | '/autocrud-admin/quest/$resourceId'
+    | '/autocrud-admin/quest/create'
     | '/autocrud-admin/skill/$resourceId'
     | '/autocrud-admin/skill/create'
     | '/autocrud-admin/character'
@@ -431,6 +465,7 @@ export interface FileRouteTypes {
     | '/autocrud-admin/new-char1-job'
     | '/autocrud-admin/pet-job'
     | '/autocrud-admin/pet'
+    | '/autocrud-admin/quest'
     | '/autocrud-admin/skill'
   id:
     | '__root__'
@@ -457,6 +492,8 @@ export interface FileRouteTypes {
     | '/autocrud-admin/pet-job/create'
     | '/autocrud-admin/pet/$resourceId'
     | '/autocrud-admin/pet/create'
+    | '/autocrud-admin/quest/$resourceId'
+    | '/autocrud-admin/quest/create'
     | '/autocrud-admin/skill/$resourceId'
     | '/autocrud-admin/skill/create'
     | '/autocrud-admin/character/'
@@ -468,6 +505,7 @@ export interface FileRouteTypes {
     | '/autocrud-admin/new-char1-job/'
     | '/autocrud-admin/pet-job/'
     | '/autocrud-admin/pet/'
+    | '/autocrud-admin/quest/'
     | '/autocrud-admin/skill/'
   fileRoutesById: FileRoutesById
 }
@@ -518,6 +556,13 @@ declare module '@tanstack/react-router' {
       path: '/skill'
       fullPath: '/autocrud-admin/skill/'
       preLoaderRoute: typeof AutocrudAdminSkillIndexRouteImport
+      parentRoute: typeof AutocrudAdminRoute
+    }
+    '/autocrud-admin/quest/': {
+      id: '/autocrud-admin/quest/'
+      path: '/quest'
+      fullPath: '/autocrud-admin/quest/'
+      preLoaderRoute: typeof AutocrudAdminQuestIndexRouteImport
       parentRoute: typeof AutocrudAdminRoute
     }
     '/autocrud-admin/pet/': {
@@ -595,6 +640,20 @@ declare module '@tanstack/react-router' {
       path: '/skill/$resourceId'
       fullPath: '/autocrud-admin/skill/$resourceId'
       preLoaderRoute: typeof AutocrudAdminSkillResourceIdRouteImport
+      parentRoute: typeof AutocrudAdminRoute
+    }
+    '/autocrud-admin/quest/create': {
+      id: '/autocrud-admin/quest/create'
+      path: '/quest/create'
+      fullPath: '/autocrud-admin/quest/create'
+      preLoaderRoute: typeof AutocrudAdminQuestCreateRouteImport
+      parentRoute: typeof AutocrudAdminRoute
+    }
+    '/autocrud-admin/quest/$resourceId': {
+      id: '/autocrud-admin/quest/$resourceId'
+      path: '/quest/$resourceId'
+      fullPath: '/autocrud-admin/quest/$resourceId'
+      preLoaderRoute: typeof AutocrudAdminQuestResourceIdRouteImport
       parentRoute: typeof AutocrudAdminRoute
     }
     '/autocrud-admin/pet/create': {
@@ -748,6 +807,8 @@ interface AutocrudAdminRouteChildren {
   AutocrudAdminPetJobCreateRoute: typeof AutocrudAdminPetJobCreateRoute
   AutocrudAdminPetResourceIdRoute: typeof AutocrudAdminPetResourceIdRoute
   AutocrudAdminPetCreateRoute: typeof AutocrudAdminPetCreateRoute
+  AutocrudAdminQuestResourceIdRoute: typeof AutocrudAdminQuestResourceIdRoute
+  AutocrudAdminQuestCreateRoute: typeof AutocrudAdminQuestCreateRoute
   AutocrudAdminSkillResourceIdRoute: typeof AutocrudAdminSkillResourceIdRoute
   AutocrudAdminSkillCreateRoute: typeof AutocrudAdminSkillCreateRoute
   AutocrudAdminCharacterIndexRoute: typeof AutocrudAdminCharacterIndexRoute
@@ -759,6 +820,7 @@ interface AutocrudAdminRouteChildren {
   AutocrudAdminNewChar1JobIndexRoute: typeof AutocrudAdminNewChar1JobIndexRoute
   AutocrudAdminPetJobIndexRoute: typeof AutocrudAdminPetJobIndexRoute
   AutocrudAdminPetIndexRoute: typeof AutocrudAdminPetIndexRoute
+  AutocrudAdminQuestIndexRoute: typeof AutocrudAdminQuestIndexRoute
   AutocrudAdminSkillIndexRoute: typeof AutocrudAdminSkillIndexRoute
 }
 
@@ -789,6 +851,8 @@ const AutocrudAdminRouteChildren: AutocrudAdminRouteChildren = {
   AutocrudAdminPetJobCreateRoute: AutocrudAdminPetJobCreateRoute,
   AutocrudAdminPetResourceIdRoute: AutocrudAdminPetResourceIdRoute,
   AutocrudAdminPetCreateRoute: AutocrudAdminPetCreateRoute,
+  AutocrudAdminQuestResourceIdRoute: AutocrudAdminQuestResourceIdRoute,
+  AutocrudAdminQuestCreateRoute: AutocrudAdminQuestCreateRoute,
   AutocrudAdminSkillResourceIdRoute: AutocrudAdminSkillResourceIdRoute,
   AutocrudAdminSkillCreateRoute: AutocrudAdminSkillCreateRoute,
   AutocrudAdminCharacterIndexRoute: AutocrudAdminCharacterIndexRoute,
@@ -802,6 +866,7 @@ const AutocrudAdminRouteChildren: AutocrudAdminRouteChildren = {
   AutocrudAdminNewChar1JobIndexRoute: AutocrudAdminNewChar1JobIndexRoute,
   AutocrudAdminPetJobIndexRoute: AutocrudAdminPetJobIndexRoute,
   AutocrudAdminPetIndexRoute: AutocrudAdminPetIndexRoute,
+  AutocrudAdminQuestIndexRoute: AutocrudAdminQuestIndexRoute,
   AutocrudAdminSkillIndexRoute: AutocrudAdminSkillIndexRoute,
 }
 

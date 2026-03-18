@@ -145,6 +145,10 @@ export const stringHandler: FieldTypeHandler = {
       if (field.enumValues && field.enumValues.length > 0) return null;
       return '';
     }
+    // Guard: object values must be serialized to prevent [object Object] in TextInput
+    if (typeof val === 'object' && !(val instanceof Date)) {
+      return JSON.stringify(val, null, 2);
+    }
     return val;
   },
 
@@ -184,6 +188,8 @@ export const numberHandler: FieldTypeHandler = {
       if (field.enumValues && field.enumValues.length > 0) return null;
       return '';
     }
+    // Guard: object/array values are not valid numbers — return empty string
+    if (typeof val === 'object') return '';
     return val;
   },
 
@@ -466,11 +472,29 @@ export const unionHandler: FieldTypeHandler = {
           }
         }
         if (bestObj && bestObjScore > 0) {
-          return { __variant: bestObj.tag, ...val };
+          const wrapped = { __variant: bestObj.tag, ...val };
+          // Process sub-fields so object-typed values become JSON strings
+          for (const sf of bestObj.fields || []) {
+            if (sf.name in wrapped && sf.name !== '__variant') {
+              const handler = registry.get(sf.type ?? 'string') ?? stringHandler;
+              wrapped[sf.name] = handler.toFormValue(wrapped[sf.name], sf);
+            }
+          }
+          return wrapped;
         }
         // Fallback: first non-array variant
         const firstObj = objVariants[0];
-        if (firstObj) return { __variant: firstObj.tag, ...val };
+        if (firstObj) {
+          const wrapped = { __variant: firstObj.tag, ...val };
+          // Process sub-fields so object-typed values become JSON strings
+          for (const sf of firstObj.fields || []) {
+            if (sf.name in wrapped && sf.name !== '__variant') {
+              const handler = registry.get(sf.type ?? 'string') ?? stringHandler;
+              wrapped[sf.name] = handler.toFormValue(wrapped[sf.name], sf);
+            }
+          }
+          return wrapped;
+        }
       }
       if (val !== null && val !== undefined) {
         // Primitive

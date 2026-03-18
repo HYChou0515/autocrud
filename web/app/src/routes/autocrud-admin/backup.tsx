@@ -15,6 +15,7 @@ function BackupPage() {
         'skill',
         'equipment',
         'pet-job',
+        'quest',
         'game-event',
         'new-char1-job',
         'create-new-character2-job',
