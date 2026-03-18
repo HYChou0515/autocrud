@@ -24,6 +24,7 @@ from autocrud.types import (
     ResourceMetaSortKey,
     RevisionInfo,
 )
+from autocrud.util.datetime_utils import ensure_aware
 
 T = TypeVar("T")
 
@@ -306,19 +307,31 @@ def bool_to_sign(b: bool) -> int:
 
 
 def get_sort_fn(qsorts: list[ResourceMetaSearchSort | ResourceDataSearchSort]):
+    """Return a ``functools.cmp_to_key`` comparator for *qsorts*.
+
+    Datetime fields are normalised to timezone-aware UTC values via
+    :func:`~autocrud.util.datetime_utils.ensure_aware` so that mixed
+    naive/aware ``created_time`` or ``updated_time`` values never cause
+    a ``TypeError``.
+    """
+
     def compare(meta1: ResourceMeta, meta2: ResourceMeta) -> int:
         for sort in qsorts:
             if isinstance(sort, ResourceMetaSearchSort):
                 if sort.key == ResourceMetaSortKey.created_time:
-                    if meta1.created_time != meta2.created_time:
-                        return bool_to_sign(meta1.created_time > meta2.created_time) * (
+                    t1 = ensure_aware(meta1.created_time)
+                    t2 = ensure_aware(meta2.created_time)
+                    if t1 != t2:
+                        return bool_to_sign(t1 > t2) * (
                             1
                             if sort.direction == ResourceMetaSortDirection.ascending
                             else -1
                         )
                 elif sort.key == ResourceMetaSortKey.updated_time:
-                    if meta1.updated_time != meta2.updated_time:
-                        return bool_to_sign(meta1.updated_time > meta2.updated_time) * (
+                    t1 = ensure_aware(meta1.updated_time)
+                    t2 = ensure_aware(meta2.updated_time)
+                    if t1 != t2:
+                        return bool_to_sign(t1 > t2) * (
                             1
                             if sort.direction == ResourceMetaSortDirection.ascending
                             else -1
