@@ -943,6 +943,7 @@ Object.assign(registry, {
     name: 'skill',
     label: 'Skill',
     pluralLabel: 'Skills',
+    displayNameField: 'skname',
     schema: 'Skill',
     fields: [
       {
