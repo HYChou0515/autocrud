@@ -8,7 +8,6 @@
 import {
   TextInput,
   NumberInput,
-  Textarea,
   Select,
   Button,
   Stack,
@@ -26,6 +25,7 @@ import type { UseFormReturnType } from '@mantine/form';
 import type { ResourceField } from '../../../resources';
 import { BinaryFieldEditor } from './BinaryFieldEditor';
 import { UnionFieldRenderer } from './UnionFieldRenderer';
+import { JsonEditor } from './JsonEditor';
 import {
   getByPath,
   getDefaultVariant,
@@ -123,15 +123,16 @@ export function ArrayFieldRenderer({ field, form }: ArrayFieldRendererProps) {
                 );
               }
               if (sf.type === 'object') {
+                const objInputProps = form.getInputProps(itemPath);
                 return (
-                  <Textarea
+                  <JsonEditor
                     key={itemPath}
                     label={sf.label}
                     required={sf.isRequired && !sf.isNullable}
-                    placeholder="{}"
-                    minRows={2}
-                    styles={{ input: { fontFamily: 'monospace', fontSize: '13px' } }}
-                    {...form.getInputProps(itemPath)}
+                    value={objInputProps.value ?? ''}
+                    onChange={(val) => form.setFieldValue(itemPath as any, val as any)}
+                    height={150}
+                    error={objInputProps.error as string | undefined}
                   />
                 );
               }

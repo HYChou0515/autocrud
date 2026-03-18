@@ -7,6 +7,8 @@
 - 預填遊戲數據
 - 可直接使用的 OpenAPI 文檔
 - Message Queue 異步任務處理（遊戲事件系統）
+- dict 欄位在表單中使用 Monaco JSON 編輯器（Quest 模型）
+- Union 陣列子欄位正確處理（修復 [object Object] 問題）
 
 運行方式：
     python rpg_system.py
@@ -16,6 +18,7 @@
     http://localhost:8000/character - 角色 API
     http://localhost:8000/guild - 公會 API
     http://localhost:8000/skill - 技能 API
+    http://localhost:8000/quest - 任務 API（dict 欄位 + Union 展示）
     http://localhost:8000/game-event - 遊戲事件任務 API
 """
 
@@ -194,6 +197,63 @@ class Guild(Struct):
     founded_at: dt.datetime = dt.datetime.now()
 
 
+# ===== 任務系統：展示 dict 欄位 (Monaco JSON 編輯器) 與 Union 子欄位處理 =====
+#
+# 這組模型專門演示 v0.8.3 修復的功能：
+# 1. dict 欄位在 create/edit 表單中使用 Monaco JSON 編輯器（取代舊版 Textarea）
+# 2. Union 陣列中的子欄位正確轉換（修復 [object Object] 問題）
+# 3. Union 變體中的 dict 子欄位也能使用 Monaco 編輯器
+
+
+class QuestRewardItem(Struct, tag=True):
+    """任務獎勵：物品
+
+    包含 extra_properties (dict) 子欄位，
+    在 Union 表單中會以 Monaco JSON 編輯器呈現。
+    """
+
+    item_name: Annotated[str, DisplayName()]
+    quantity: int = 1
+    extra_properties: dict = {}  # dict → Monaco JSON 編輯器
+
+
+class QuestRewardGold(Struct, tag=True):
+    """任務獎勵：金幣"""
+
+    amount: int = 100
+
+
+class QuestRewardExp(Struct, tag=True):
+    """任務獎勵：經驗值
+
+    包含 bonus_config (dict) 子欄位，
+    在 Union 表單中會以 Monaco JSON 編輯器呈現。
+    """
+
+    exp: int = 100
+    bonus_config: dict = {}  # dict → Monaco JSON 編輯器
+
+
+class Quest(Struct):
+    """遊戲任務
+
+    展示新功能：
+    - quest_config (dict) → 在 create/edit 表單中使用 Monaco JSON 編輯器
+    - rewards (list[Union]) → 陣列中的 Union 子欄位正確處理，不再顯示 [object Object]
+    - Union 變體 (QuestRewardItem, QuestRewardExp) 中的 dict 子欄位也使用 Monaco 編輯器
+    """
+
+    title: Annotated[str, DisplayName(), Unique()]
+    description: str = ""
+    level_requirement: int = 1
+    difficulty: str = "normal"
+    # dict 欄位 → 在 create/edit 表單以 Monaco JSON 編輯器呈現
+    quest_config: dict = {}
+    # Union 陣列：每個獎勵可以是物品、金幣或經驗值
+    # 物品和經驗值獎勵含有 dict 子欄位，也使用 Monaco 編輯器
+    rewards: list[QuestRewardItem | QuestRewardGold | QuestRewardExp] = []
+
+
 # ===== Message Queue 使用範例：遊戲事件系統 =====
 
 
@@ -340,6 +400,19 @@ def validate_equipment(data: Equipment) -> None:
         errors.append("攻擊加成不可為負數")
     if data.defense_bonus < 0:
         errors.append("防禦加成不可為負數")
+    if errors:
+        raise ValueError("; ".join(errors))
+
+
+def validate_quest(data: Quest) -> None:
+    """任務資料驗證"""
+    errors = []
+    if not data.title.strip():
+        errors.append("任務標題不可為空")
+    if data.level_requirement < 1:
+        errors.append("任務等級需求至少為 1")
+    if data.difficulty not in ("easy", "normal", "hard", "legendary"):
+        errors.append("難度必須為 easy / normal / hard / legendary")
     if errors:
         raise ValueError("; ".join(errors))
 
@@ -905,6 +978,133 @@ def create_sample_data():
             except Exception as e:
                 print(f"❌ 寵物創建失敗: {e}")
 
+    # 📜 創建任務（展示 dict 欄位 Monaco JSON 編輯器 + Union 子欄位處理）
+    quest_manager = crud.get_resource_manager(Quest)
+    if quest_manager:
+        quests = [
+            Quest(
+                title="擊敗 SQL 注入怪獸",
+                description="在資料庫深處找到並擊敗危險的 SQL 注入怪獸，保護數據安全",
+                level_requirement=30,
+                difficulty="hard",
+                # dict 欄位：在前端 create/edit 表單中顯示為 Monaco JSON 編輯器
+                quest_config={
+                    "boss_hp": 50000,
+                    "time_limit_seconds": 600,
+                    "required_party_size": 3,
+                    "drop_table": {
+                        "legendary_rate": 0.05,
+                        "epic_rate": 0.15,
+                        "rare_rate": 0.30,
+                    },
+                },
+                # Union 陣列：修復前會顯示 [object Object]，現在正確處理
+                rewards=[
+                    QuestRewardGold(amount=5000),
+                    QuestRewardExp(
+                        exp=10000,
+                        # dict 子欄位：Union 變體中的 dict 也使用 Monaco 編輯器
+                        bonus_config={
+                            "weekend_multiplier": 1.5,
+                            "guild_bonus": True,
+                        },
+                    ),
+                    QuestRewardItem(
+                        item_name="SQL 注入防護盾",
+                        quantity=1,
+                        # dict 子欄位：Union 變體中的 dict 也使用 Monaco 編輯器
+                        extra_properties={
+                            "defense_bonus": 50,
+                            "special_effect": "免疫 SQL 注入攻擊",
+                            "durability": 9999,
+                        },
+                    ),
+                ],
+            ),
+            Quest(
+                title="收集 AutoCRUD 碎片",
+                description="在各個副本中收集散落的 AutoCRUD 碎片，拼湊出完整的框架",
+                level_requirement=10,
+                difficulty="normal",
+                quest_config={
+                    "total_fragments": 10,
+                    "fragment_locations": [
+                        "新手村",
+                        "API 法師學院",
+                        "數據庫騎士團",
+                    ],
+                },
+                rewards=[
+                    QuestRewardExp(exp=3000),
+                    QuestRewardItem(
+                        item_name="AutoCRUD 碎片",
+                        quantity=10,
+                        extra_properties={
+                            "combinable": True,
+                            "result": "AutoCRUD 神器原型",
+                        },
+                    ),
+                ],
+            ),
+            Quest(
+                title="每日巡邏任務",
+                description="在新手村周圍巡邏，確保新手玩家的安全",
+                level_requirement=1,
+                difficulty="easy",
+                quest_config={"patrol_points": 5, "reward_scaling": True},
+                rewards=[
+                    QuestRewardGold(amount=100),
+                    QuestRewardExp(exp=200),
+                ],
+            ),
+            Quest(
+                title="世界 BOSS：代碼債務巨龍",
+                description="集結全伺服器的勇者，挑戰傳說中的代碼債務巨龍！",
+                level_requirement=80,
+                difficulty="legendary",
+                quest_config={
+                    "boss_phases": [
+                        {"phase": 1, "hp": 100000, "enrage_timer": 300},
+                        {"phase": 2, "hp": 200000, "enrage_timer": 600},
+                        {"phase": 3, "hp": 500000, "enrage_timer": 900},
+                    ],
+                    "required_members": 20,
+                    "weekly_reset": True,
+                },
+                rewards=[
+                    QuestRewardGold(amount=50000),
+                    QuestRewardExp(
+                        exp=100000,
+                        bonus_config={
+                            "first_kill_bonus": 2.0,
+                            "achievement": "龍殺手",
+                        },
+                    ),
+                    QuestRewardItem(
+                        item_name="巨龍之心",
+                        quantity=1,
+                        extra_properties={
+                            "type": "crafting_material",
+                            "tier": "legendary",
+                            "recipes": ["龍鱗鎧甲", "龍息魔杖", "龍爪匕首"],
+                        },
+                    ),
+                ],
+            ),
+        ]
+
+        with quest_manager.meta_provide(current_user, current_time):
+            for quest in quests:
+                try:
+                    quest_manager.create(quest)
+                    print(
+                        f"✅ 創建任務: {quest.title} [{quest.difficulty}] "
+                        f"(config: {len(quest.quest_config)} 項設定, "
+                        f"rewards: {len(quest.rewards)} 個獎勵)"
+                    )
+                except Exception as e:
+                    print(f"❌ 任務創建失敗: {e}")
+
 
 def demonstrate_qb_queries():
     """展示 QueryBuilder (QB) 的使用範例"""
@@ -1130,6 +1330,16 @@ def configure_crud():
     crud.add_model(
         Schema(Job[Pet], "v1"),
         name="pet-job",
+    )
+
+    # 註冊任務模型（展示 dict 欄位 + Union 子欄位 Monaco 編輯器）
+    crud.add_model(
+        Schema(Quest, "v1", validator=validate_quest),
+        indexed_fields=[
+            ("title", str),
+            ("level_requirement", int),
+            ("difficulty", str),
+        ],
     )
 
     # 註冊遊戲事件任務模型（使用 Message Queue）
@@ -1397,6 +1607,7 @@ def main():
         - ⚔️ **角色管理**: 創建、查詢、升級遊戲角色
         - 🏰 **公會系統**: 管理遊戲公會和成員
         - 🗡️ **裝備系統**: 武器裝備的完整管理
+        - 📜 **任務系統**: dict 欄位 Monaco 編輯器 + Union 子欄位展示
         - 🎯 **遊戲事件系統**: 使用 Message Queue 處理異步遊戲事件
         - 🚀 **AutoCRUD 驅動**: 自動生成的完整 CRUD API
         - 📊 **數據搜尋**: 強大的查詢和篩選功能
@@ -1407,8 +1618,9 @@ def main():
         2. 創建新角色: `POST /character`  
         3. 查看公會列表: `GET /guild/data`
         4. 瀏覽裝備: `GET /equipment/data`
-        5. 查看遊戲事件: `GET /game-event/data`
-        6. 觸發遊戲事件: `POST /game-event`
+        5. 查看任務列表: `GET /quest/data` ← dict 欄位 + Union 子欄位示範
+        6. 查看遊戲事件: `GET /game-event/data`
+        7. 觸發遊戲事件: `POST /game-event`
         """,
         version="2.1.0",
         docs_url="/docs",
@@ -1464,8 +1676,14 @@ def main():
     print("⚔️ 角色 API: http://localhost:8000/character/data")
     print("🏰 公會 API: http://localhost:8000/guild/data")
     print("🗡️ 裝備 API: http://localhost:8000/equipment/data")
+    print("📜 任務 API: http://localhost:8000/quest/data")
     print("🎯 遊戲事件 API: http://localhost:8000/game-event/data")
     print("📊 完整資訊: http://localhost:8000/character/full")
+    print("\n✨ 新功能展示 (Quest 模型):")
+    print("   - dict 欄位 (quest_config) → Monaco JSON 編輯器")
+    print("   - Union 陣列 (rewards) → 子欄位正確處理，不再顯示 [object Object]")
+    print("   - Union 變體中的 dict 子欄位 → 也使用 Monaco 編輯器")
+    print("   - 開啟前端 create/edit 頁面即可體驗")
     print("\n💡 Message Queue 使用範例:")
     print("   - 遊戲事件會在背景自動處理")
     print("   - 可透過 API 查看事件狀態: GET /game-event/data")

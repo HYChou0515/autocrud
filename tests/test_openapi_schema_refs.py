@@ -6,20 +6,23 @@ Covers:
 - ``_resolve_missing_schema_refs`` adds aliases for $ref targets that point
   to simple names when only module-qualified versions exist in components.
 - End-to-end: all $ref pointers resolve after openapi() post-processing.
+- ``x-display-name-field`` survives module-qualified name dedup.
 """
 
 import datetime as dt
 import json
 import re
+from typing import Annotated
 
 import pytest
-from fastapi import FastAPI
+from fastapi import FastAPI, UploadFile
 from msgspec import Struct
 
 from autocrud import struct_to_pydantic
 from autocrud.crud.core import AutoCRUD
 from autocrud.crud.route_templates.basic import _sanitize_schema_names
 from autocrud.message_queue.simple import SimpleMessageQueueFactory
+from autocrud.types import DisplayName
 
 # ---------------------------------------------------------------------------
 # Test Models — Skill with tagged-union detail field
@@ -45,6 +48,18 @@ class Skill(Struct):
     """Skill with a union field to trigger sub-schema generation."""
 
     name: str
+    detail: ActiveDetail | PassiveDetail | UltimateDetail
+    description: str = ""
+
+
+class SkillWithDN(Struct):
+    """Skill with a DisplayName annotation + union field.
+
+    Used to test that x-display-name-field survives module-qualified
+    name dedup caused by struct_to_pydantic round-trip.
+    """
+
+    skname: Annotated[str, DisplayName()]
     detail: ActiveDetail | PassiveDetail | UltimateDetail
     description: str = ""
 
@@ -615,3 +630,65 @@ class TestPromoteDefsToComponents:
         AutoCRUD._promote_defs_to_components(schema)
         # Original should not be overwritten
         assert "original" in schema["components"]["schemas"]["Existing"]["properties"]
+
+
+# ===================================================================
+# Test: x-display-name-field survives module-qualified name dedup
+# ===================================================================
+
+# Module-level Pydantic model from SkillWithDN — triggers module-qualified
+# name conflict just like struct_to_pydantic(Skill) in the real-world case.
+SkillWithDNPydantic = struct_to_pydantic(SkillWithDN)
+
+
+class TestDisplayNameFieldSurvivesDedup:
+    """When a Struct has ``DisplayName()`` AND a ``struct_to_pydantic()``
+    round-trip creates a second type with the same ``__name__`` but different
+    ``__module__``, ``_inject_ref_metadata`` fails to inject
+    ``x-display-name-field`` because the simple name doesn't exist in
+    components yet — only the module-qualified variant does.
+
+    ``_resolve_missing_schema_refs`` later creates the simple-name alias via
+    ``.copy()``, but the copy has no metadata because the source never
+    received it either (``get_type_name()`` returns the simple name which
+    didn't exist in components at injection time).
+
+    This is an end-to-end regression test ensuring the generated OpenAPI spec
+    includes ``x-display-name-field`` even when name collisions are present.
+    """
+
+    def _build_app(self) -> tuple[AutoCRUD, FastAPI]:
+        crud = _make_crud()
+        crud.configure(model_naming="kebab")
+        crud.add_model(SkillWithDN, name="skill-dn")
+        crud.add_model(Article)
+
+        @crud.create_action("article", async_mode="job")
+        def gen_article(
+            attachment: UploadFile,
+            skill: SkillWithDNPydantic,  # type: ignore[valid-type]
+        ):
+            return Article(title=skill.skname, content="generated")
+
+        app = FastAPI()
+        crud.apply(app)
+        crud.openapi(app)
+        return crud, app
+
+    def test_display_name_field_present(self):
+        """``x-display-name-field`` must be set on the SkillWithDN
+        component even when a struct_to_pydantic duplicate exists."""
+        _, app = self._build_app()
+        components = app.openapi_schema["components"]["schemas"]
+        comp = components.get("SkillWithDN")
+        assert comp is not None, (
+            f"SkillWithDN not in components. Available: {sorted(components.keys())}"
+        )
+        assert comp.get("x-display-name-field") == "skname", (
+            f"Expected x-display-name-field='skname', got {comp.get('x-display-name-field')!r}"
+        )
+
+    def test_all_refs_still_resolve(self):
+        """Ensure the fix doesn't break $ref resolution."""
+        _, app = self._build_app()
+        _assert_all_refs_resolve(app.openapi_schema)

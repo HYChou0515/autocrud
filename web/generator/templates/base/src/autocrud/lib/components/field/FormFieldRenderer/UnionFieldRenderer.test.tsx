@@ -8,13 +8,25 @@
  * consistently use getAllByText(...).length checks instead of getByText.
  */
 
-import { describe, it, expect } from 'vitest';
+import { describe, it, expect, vi } from 'vitest';
 import { render, screen, fireEvent } from '@testing-library/react';
 import { MantineProvider } from '@mantine/core';
 import { useForm } from '@mantine/form';
 import { useState } from 'react';
 import type { ResourceField, UnionMeta } from '../../../resources';
 import { UnionFieldRenderer } from './UnionFieldRenderer';
+
+/** Monaco Editor doesn't work in happy-dom — mock it */
+vi.mock('@monaco-editor/react', () => ({
+  default: ({ value, onChange, height }: any) => (
+    <textarea
+      data-testid="mock-monaco"
+      value={value ?? ''}
+      onChange={(e) => onChange?.(e.target.value)}
+      style={{ height }}
+    />
+  ),
+}));
 
 /** Wrap with MantineProvider */
 function renderWithMantine(ui: React.ReactElement) {
@@ -1705,5 +1717,55 @@ describe('UnionFieldRenderer — nullable sub-fields should not be required', ()
 
     expect(requiredLabels).toContain('score');
     expect(requiredLabels).not.toContain('bonus');
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Object sub-field in union variant should render JsonEditor (Monaco)
+// ---------------------------------------------------------------------------
+
+describe('UnionFieldRenderer — object sub-field uses Monaco editor', () => {
+  it('renders JsonEditor (Monaco) for object type sub-field in structural union', () => {
+    const meta: UnionMeta = {
+      discriminatorField: '__variant',
+      variants: [
+        {
+          tag: 'WithMeta',
+          label: 'With Metadata',
+          schemaName: 'WithMeta',
+          fields: [
+            makeField({ name: 'title', type: 'string' }),
+            makeField({ name: 'metadata', type: 'object' }),
+          ],
+        },
+      ],
+    };
+    const field = makeField({
+      name: 'data',
+      label: 'Data',
+      type: 'union',
+      unionMeta: meta,
+    });
+
+    const { container } = renderWithMantine(
+      <FormWrapper
+        field={field}
+        unionMeta={meta}
+        initialValues={{
+          data: { __variant: 'WithMeta', title: 'test', metadata: '{"key": "value"}' },
+        }}
+      />,
+    );
+
+    // JsonEditor renders a mock-monaco textarea in tests
+    const monacoEditors = container.querySelectorAll('[data-testid="mock-monaco"]');
+    expect(monacoEditors.length).toBeGreaterThanOrEqual(1);
+
+    // Should NOT have a plain Textarea with placeholder "{}" (old implementation)
+    const textareas = container.querySelectorAll('textarea:not([data-testid="mock-monaco"])');
+    const objectTextarea = Array.from(textareas).find(
+      (ta) => ta.getAttribute('placeholder') === '{}',
+    );
+    expect(objectTextarea).toBeFalsy();
   });
 });

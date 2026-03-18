@@ -1387,6 +1387,13 @@ class AutoCRUD:
         annotations and writes the corresponding ``x-ref-resource``,
         ``x-ref-type``, and ``x-ref-on-delete`` extensions into the matching
         schema properties so the web generator can discover relationships.
+
+        It also injects ``x-display-name-field`` and ``x-unique`` extensions.
+
+        When ``struct_to_pydantic()`` causes module-qualified name dedup
+        (e.g. only ``__main___Skill`` exists instead of ``Skill``), the
+        internal ``_find_component`` helper falls back to module-prefixed
+        variants so metadata is still injected correctly.
         """
         components = schema.get("components", {}).get("schemas", {})
         all_refs: list[_RefInfo] = []
@@ -1394,8 +1401,32 @@ class AutoCRUD:
         # Collect (schema_name, refs) pairs for both top-level and nested Structs
         processed_structs: set[type] = set()
 
+        def _find_component(simple_name: str) -> dict | None:
+            """Look up a component by simple name, falling back to a
+            module-qualified variant when name dedup has eliminated the
+            simple entry (e.g. only ``__main___Skill`` exists).
+
+            Prefers the ``__main__`` variant when multiple candidates exist.
+            """
+            comp = components.get(simple_name)
+            if comp is not None:
+                return comp
+            candidates = [
+                k
+                for k in components
+                if k.endswith(f"_{simple_name}") and k != simple_name
+            ]
+            if not candidates:
+                return None
+            chosen = candidates[0]
+            for c in candidates:
+                if c.startswith("__main__"):
+                    chosen = c
+                    break
+            return components.get(chosen)
+
         def _inject_into_component(comp_name: str, refs: list[_RefInfo]) -> None:
-            comp = components.get(comp_name)
+            comp = _find_component(comp_name)
             if not comp or "properties" not in comp:
                 return
             for ref_info in refs:
@@ -1433,7 +1464,7 @@ class AutoCRUD:
 
             dn_field = extract_display_name(struct_type)
             if dn_field is not None:
-                comp = components.get(struct_name)
+                comp = _find_component(struct_name)
                 if comp is not None:
                     comp["x-display-name-field"] = dn_field
 
@@ -1441,7 +1472,7 @@ class AutoCRUD:
             if inject_unique and rm is not None:
                 unique_fields = self._get_unique_fields(rm)
                 if unique_fields:
-                    comp = components.get(struct_name)
+                    comp = _find_component(struct_name)
                     if comp is not None:
                         props = comp.get("properties", {})
                         for uf in unique_fields:

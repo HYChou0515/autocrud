@@ -6,12 +6,24 @@
  * union, date, and nested arrays.
  */
 
-import { describe, it, expect } from 'vitest';
+import { describe, it, expect, vi } from 'vitest';
 import { render, screen, fireEvent } from '@testing-library/react';
 import { MantineProvider } from '@mantine/core';
 import { useForm } from '@mantine/form';
 import type { ResourceField } from '../../../resources';
 import { ArrayFieldRenderer } from './ArrayFieldRenderer';
+
+/** Monaco Editor doesn't work in happy-dom — mock it */
+vi.mock('@monaco-editor/react', () => ({
+  default: ({ value, onChange, height }: any) => (
+    <textarea
+      data-testid="mock-monaco"
+      value={value ?? ''}
+      onChange={(e) => onChange?.(e.target.value)}
+      style={{ height }}
+    />
+  ),
+}));
 
 /** Wrap with MantineProvider */
 function renderWithMantine(ui: React.ReactElement) {
@@ -341,5 +353,57 @@ describe('ArrayFieldRenderer — nullable sub-fields not required', () => {
     // subtitle and count are isRequired=true but isNullable=true → NOT required in form
     expect(requiredLabels).not.toContain('subtitle');
     expect(requiredLabels).not.toContain('count');
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Object sub-field should render JsonEditor (Monaco) instead of Textarea
+// ---------------------------------------------------------------------------
+
+const objectSubFieldArrayField: ResourceField = makeField({
+  name: 'items',
+  label: 'Items',
+  type: 'array',
+  isArray: true,
+  itemFields: [
+    makeField({ name: 'title', type: 'string', isRequired: true }),
+    makeField({ name: 'metadata', type: 'object' }),
+  ],
+});
+
+describe('ArrayFieldRenderer — object sub-field uses Monaco editor', () => {
+  it('renders JsonEditor (Monaco) for object type sub-field instead of Textarea', () => {
+    const { container } = renderWithMantine(
+      <FormWrapper
+        field={objectSubFieldArrayField}
+        initialValues={{
+          items: [{ title: 'test', metadata: '{"key": "value"}' }],
+        }}
+      />,
+    );
+
+    // JsonEditor renders a mock-monaco textarea in tests
+    const monacoEditors = container.querySelectorAll('[data-testid="mock-monaco"]');
+    expect(monacoEditors.length).toBeGreaterThanOrEqual(1);
+
+    // Should NOT have a plain Textarea with placeholder "{}" (old implementation)
+    const textareas = container.querySelectorAll('textarea:not([data-testid="mock-monaco"])');
+    const objectTextarea = Array.from(textareas).find(
+      (ta) => ta.getAttribute('placeholder') === '{}',
+    );
+    expect(objectTextarea).toBeFalsy();
+  });
+
+  it('renders label for object sub-field', () => {
+    const { container } = renderWithMantine(
+      <FormWrapper
+        field={objectSubFieldArrayField}
+        initialValues={{
+          items: [{ title: 'test', metadata: '' }],
+        }}
+      />,
+    );
+
+    expect(container.textContent).toContain('metadata');
   });
 });

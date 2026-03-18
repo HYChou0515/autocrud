@@ -101,6 +101,20 @@ export const backupApi = {
     });
   },
 
+  /** Export Quest data as .acbak archive */
+  exportQuest: (params?: Record<string, unknown>) =>
+    client.get(`/v1/autocrud/quest/export`, { params, responseType: 'blob' }),
+
+  /** Import .acbak archive into Quest */
+  importQuest: (file: File, onDuplicate: OnDuplicate = 'overwrite') => {
+    const form = new FormData();
+    form.append('file', file);
+    return client.post<ImportResult>(`/v1/autocrud/quest/import`, form, {
+      headers: { 'Content-Type': 'multipart/form-data' },
+      params: { on_duplicate: onDuplicate },
+    });
+  },
+
   /** Export Game Event data as .acbak archive */
   exportGameEvent: (params?: Record<string, unknown>) =>
     client.get(`/v1/autocrud/game-event/export`, { params, responseType: 'blob' }),

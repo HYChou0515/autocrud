@@ -4,6 +4,7 @@ export { guildApi } from './guildApi';
 export { skillApi } from './skillApi';
 export { equipmentApi } from './equipmentApi';
 export { petJobApi } from './pet-jobApi';
+export { questApi } from './questApi';
 export { gameEventApi } from './game-eventApi';
 export { newChar1JobApi } from './new-char1-jobApi';
 export { createNewCharacter2JobApi } from './create-new-character2-jobApi';
