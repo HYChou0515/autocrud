@@ -22,6 +22,7 @@ from autocrud.types import (
     ResourceMeta,
     RevisionInfo,
 )
+from autocrud.util.datetime_utils import ensure_aware
 
 T = TypeVar("T")
 
@@ -452,20 +453,32 @@ class ReadRouteTemplate(BaseRouteTemplate, Generic[T]):
                             # 如果無法獲取某個版本，跳過
                             continue
 
-                    # Sort by created_time
+                    # Sort by created_time — normalise to aware UTC to
+                    # avoid TypeError when mixing naive/aware datetimes.
                     reverse = sort == "-created_time"
-                    revision_infos.sort(key=lambda r: r.created_time, reverse=reverse)
+                    revision_infos.sort(
+                        key=lambda r: ensure_aware(r.created_time),
+                        reverse=reverse,
+                    )
 
                     # Filter by created_time range
                     if created_time_start:
-                        start_dt = dt.datetime.fromisoformat(created_time_start)
+                        start_dt = ensure_aware(
+                            dt.datetime.fromisoformat(created_time_start)
+                        )
                         revision_infos = [
-                            r for r in revision_infos if r.created_time >= start_dt
+                            r
+                            for r in revision_infos
+                            if ensure_aware(r.created_time) >= start_dt
                         ]
                     if created_time_end:
-                        end_dt = dt.datetime.fromisoformat(created_time_end)
+                        end_dt = ensure_aware(
+                            dt.datetime.fromisoformat(created_time_end)
+                        )
                         revision_infos = [
-                            r for r in revision_infos if r.created_time <= end_dt
+                            r
+                            for r in revision_infos
+                            if ensure_aware(r.created_time) <= end_dt
                         ]
 
                     # Filter by starting revision_id (inclusive)

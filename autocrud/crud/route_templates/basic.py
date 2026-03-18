@@ -85,10 +85,15 @@ class DependencyProvider:
         return default_get_user
 
     def _create_default_now_dependency(self) -> Callable:
-        """創建預設的時間 dependency 函數"""
+        """創建預設的時間 dependency 函數
+
+        Returns a callable that produces a **timezone-aware** UTC
+        ``datetime``.  This avoids ``TypeError`` when comparing naive
+        and aware datetimes (e.g. after a msgpack round-trip).
+        """
 
         def default_get_now() -> dt.datetime:
-            return dt.datetime.now()
+            return dt.datetime.now(dt.timezone.utc)
 
         return default_get_now
 
