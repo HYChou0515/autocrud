@@ -4,12 +4,14 @@
  * Covers:
  * - Normal fetch with mocked apiClient
  * - Graceful handling when config is undefined (no crash)
- * - Refresh triggers re-fetch
+ * - Refresh triggers re-fetch (via query invalidation)
  * - Error handling
  */
 
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { renderHook, act, waitFor } from '@testing-library/react';
+import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
+import React from 'react';
 import { useResourceList } from './useResourceList';
 import type { ResourceConfig } from '../resources';
 
@@ -32,6 +34,18 @@ function makeConfig(overrides: Partial<ResourceConfig> = {}): ResourceConfig {
   };
 }
 
+/** Create a fresh QueryClient + wrapper for each test */
+function createWrapper() {
+  const queryClient = new QueryClient({
+    defaultOptions: {
+      queries: { retry: false, gcTime: 0 },
+    },
+  });
+  const Wrapper = ({ children }: { children: React.ReactNode }) =>
+    React.createElement(QueryClientProvider, { client: queryClient }, children);
+  return { Wrapper, queryClient };
+}
+
 // ---------------------------------------------------------------------------
 // Tests
 // ---------------------------------------------------------------------------
@@ -43,7 +57,10 @@ describe('useResourceList', () => {
 
   it('fetches data with valid config', async () => {
     const config = makeConfig();
-    const { result } = renderHook(() => useResourceList(config, { limit: 10, offset: 0 }));
+    const { Wrapper } = createWrapper();
+    const { result } = renderHook(() => useResourceList(config, { limit: 10, offset: 0 }), {
+      wrapper: Wrapper,
+    });
 
     // Initially loading
     expect(result.current.loading).toBe(true);
@@ -62,10 +79,13 @@ describe('useResourceList', () => {
   it('does not crash when config is undefined', async () => {
     // This is the bug scenario: getResource() returns undefined,
     // and RefTableSelectModal passes it as config! to useResourceList.
-    const { result } = renderHook(() =>
-      useResourceList(undefined as unknown as ResourceConfig, { limit: 10 }),
+    const { Wrapper } = createWrapper();
+    const { result } = renderHook(
+      () => useResourceList(undefined as unknown as ResourceConfig, { limit: 10 }),
+      { wrapper: Wrapper },
     );
 
+    // With react-query and enabled: false, loading should be false
     await waitFor(() => {
       expect(result.current.loading).toBe(false);
     });
@@ -77,7 +97,10 @@ describe('useResourceList', () => {
   });
 
   it('does not crash when config is null', async () => {
-    const { result } = renderHook(() => useResourceList(null as unknown as ResourceConfig, {}));
+    const { Wrapper } = createWrapper();
+    const { result } = renderHook(() => useResourceList(null as unknown as ResourceConfig, {}), {
+      wrapper: Wrapper,
+    });
 
     await waitFor(() => {
       expect(result.current.loading).toBe(false);
@@ -95,9 +118,11 @@ describe('useResourceList', () => {
       } as any,
     });
 
-    const consoleSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
+    const { Wrapper } = createWrapper();
 
-    const { result } = renderHook(() => useResourceList(config));
+    const { result } = renderHook(() => useResourceList(config), {
+      wrapper: Wrapper,
+    });
 
     await waitFor(() => {
       expect(result.current.loading).toBe(false);
@@ -106,18 +131,19 @@ describe('useResourceList', () => {
     expect(result.current.error).toBeInstanceOf(Error);
     expect(result.current.error?.message).toBe('Network error');
     expect(result.current.data).toEqual([]);
-
-    consoleSpy.mockRestore();
   });
 
-  it('refresh triggers re-fetch', async () => {
+  it('refresh triggers re-fetch via query invalidation', async () => {
     const listFn = vi.fn().mockResolvedValue({ data: [{ meta: {}, data: {} }] });
     const countFn = vi.fn().mockResolvedValue({ data: 1 });
     const config = makeConfig({
       apiClient: { list: listFn, count: countFn } as any,
     });
 
-    const { result } = renderHook(() => useResourceList(config));
+    const { Wrapper } = createWrapper();
+    const { result } = renderHook(() => useResourceList(config), {
+      wrapper: Wrapper,
+    });
 
     await waitFor(() => {
       expect(result.current.loading).toBe(false);
@@ -125,7 +151,7 @@ describe('useResourceList', () => {
 
     expect(listFn).toHaveBeenCalledTimes(1);
 
-    // Trigger refresh
+    // Trigger refresh (invalidates query)
     act(() => {
       result.current.refresh();
     });

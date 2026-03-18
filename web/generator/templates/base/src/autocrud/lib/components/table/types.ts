@@ -3,6 +3,7 @@
  */
 
 import type { ResourceConfig, TableConfig } from '../../resources';
+import type { InternalColumnDef, CellRenderProps } from './buildColumns';
 
 /**
  * 搜尋條件介面
@@ -47,7 +48,12 @@ export interface ColumnOverride {
   variant?: ColumnVariant; // 顯示方式
   size?: number; // 欄位寬度
   hidden?: boolean; // 是否隱藏
-  render?: (value: unknown) => React.ReactNode; // 自訂渲染函數（優先於 variant）
+  /**
+   * 自訂渲染函數（優先於 variant）。
+   * 接收完整 MRT Cell render props，可透過 `props.cell.getValue()`
+   * 取得值、`props.row.original` 取得整筆資料。
+   */
+  render?: (props: CellRenderProps<unknown>) => React.ReactNode;
 }
 
 /**
@@ -92,6 +98,9 @@ export interface ResourceTableProps<T> extends Partial<TableConfig> {
     order?: string[]; // 欄位順序（不在此列表的按預設順序放後面）
     overrides?: Record<string, ColumnOverride>; // 覆蓋特定欄位的設定
   };
+  /** Extra columns to add to the table (appended to the built-in column pool;
+   *  use `columns.order` to control final position). */
+  moreColumns?: InternalColumnDef<T>[];
   searchableFields?: SearchableField[]; // 可搜尋的欄位（用於後端 filter 表單）
   disableQB?: boolean; // 是否啟用 QB 語法搜尋（預設 false）
 }

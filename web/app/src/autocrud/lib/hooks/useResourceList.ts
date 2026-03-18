@@ -1,4 +1,5 @@
-import { useState, useEffect, useCallback } from 'react';
+import { useCallback } from 'react';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
 import type { FullResource } from '../../types/api';
 import type { ResourceConfig } from '../resources';
 
@@ -18,60 +19,40 @@ export interface UseResourceListResult<T> {
 }
 
 /**
- * Generic hook for resource list with pagination and sorting
+ * Generic hook for resource list with pagination and sorting.
+ *
+ * Uses `@tanstack/react-query` for automatic caching, deduplication, and
+ * background re-fetching.  The query key is derived from the resource name
+ * and the request params so identical requests share the same cache entry.
  */
 export function useResourceList<T>(
   config: ResourceConfig<T>,
   params: UseResourceListParams = {},
 ): UseResourceListResult<T> {
-  const [data, setData] = useState<FullResource<T>[]>([]);
-  const [total, setTotal] = useState(0);
-  const [loading, setLoading] = useState(!!(config as unknown));
-  const [error, setError] = useState<Error | null>(null);
-  const [refreshCount, setRefreshCount] = useState(0);
+  const queryClient = useQueryClient();
+  const resourceName = config?.name ?? '__none__';
+
+  const listQuery = useQuery({
+    queryKey: ['resource-list', resourceName, params] as const,
+    queryFn: async () => {
+      const [list, cnt] = await Promise.all([
+        config.apiClient.list(params),
+        config.apiClient.count(params),
+      ]);
+      return { data: list.data as FullResource<T>[], total: cnt.data as number };
+    },
+    enabled: !!config,
+  });
 
   const refresh = useCallback(() => {
-    setRefreshCount((c) => c + 1);
-  }, []);
+    queryClient.invalidateQueries({ queryKey: ['resource-list', resourceName] });
+  }, [queryClient, resourceName]);
 
-  useEffect(() => {
-    if (!config) {
-      setLoading(false);
-      return;
-    }
-
-    let cancelled = false;
-
-    const fetchData = async () => {
-      setLoading(true);
-      setError(null);
-      try {
-        const [list, cnt] = await Promise.all([
-          config.apiClient.list(params),
-          config.apiClient.count(params),
-        ]);
-        if (!cancelled) {
-          setData(list.data);
-          setTotal(cnt.data);
-        }
-      } catch (e) {
-        if (!cancelled) {
-          setError(e as Error);
-          console.error('fetch error', e);
-        }
-      } finally {
-        if (!cancelled) {
-          setLoading(false);
-        }
-      }
-    };
-
-    fetchData();
-
-    return () => {
-      cancelled = true;
-    };
-  }, [config?.apiClient, JSON.stringify(params), refreshCount]);
-
-  return { data, total, loading, error, refresh };
+  return {
+    data: listQuery.data?.data ?? [],
+    total: listQuery.data?.total ?? 0,
+    loading: listQuery.isLoading || listQuery.isFetching,
+    error: listQuery.error ?? null,
+    refresh,
+  };
 }

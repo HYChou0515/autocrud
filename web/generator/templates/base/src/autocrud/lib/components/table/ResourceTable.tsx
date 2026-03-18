@@ -38,6 +38,7 @@ import type { FullResourceRow } from '../../../types/api';
 import { formatTime } from '../common/TimeDisplay';
 import { AdvancedSearchPanel } from './AdvancedSearchPanel';
 import { buildTableColumns } from './buildColumns';
+import type { InternalColumnDef } from './buildColumns';
 import type { ActiveSearchState } from './searchUtils';
 import type { ResourceTableProps } from './types';
 import {
@@ -112,6 +113,7 @@ export function ResourceTable<T extends MRT_RowData>({
   config,
   basePath,
   columns,
+  moreColumns,
   searchableFields,
   disableQB = true,
   // ── New customization props (override config.tableConfig) ──
@@ -321,8 +323,9 @@ export function ResourceTable<T extends MRT_RowData>({
       buildTableColumns(config, {
         order: columns?.order,
         overrides: columns?.overrides,
+        moreColumns: moreColumns as InternalColumnDef<T>[] | undefined,
       }),
-    [config.fields, columns],
+    [config.fields, columns, moreColumns],
   );
 
   // ── MRT instance ──
@@ -368,10 +371,10 @@ export function ResourceTable<T extends MRT_RowData>({
         ? undefined
         : ({ row }) => ({
             onClick: () => {
-              const rid = row.original?.meta?.resource_id ?? '';
               if (typeof onRowClick === 'function') {
-                onRowClick(rid);
+                onRowClick(row.original);
               } else {
+                const rid = row.original?.meta?.resource_id ?? '';
                 navigate({
                   to: `${basePath}/$resourceId`,
                   params: { resourceId: rid },

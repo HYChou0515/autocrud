@@ -3,6 +3,7 @@ import type {
   RevisionInfo,
   JobRedirectInfo,
   FullResource,
+  FullResourceRow,
   RevisionListParams,
   RevisionListResponse,
 } from '../types/api';
@@ -150,8 +151,10 @@ export interface TableConfig {
    *  Set to `false` when embedding the table inside another layout. */
   wrappedInContainer?: boolean;
   /** Custom row click handler. Set to `false` to disable row click navigation.
-   *  Defaults to navigating to the resource detail page. */
-  onRowClick?: false | ((resourceId: string) => void);
+   *  The callback receives the full row object (`FullResourceRow`) so you can
+   *  access `row.data`, `row.meta`, etc.  Defaults to navigating to the
+   *  resource detail page. */
+  onRowClick?: false | ((row: FullResourceRow<unknown>) => void);
   /** Hide the global free-text search input. Defaults to `false`. */
   disableGlobalSearch?: boolean;
   /** Hide the advanced search panel. Defaults to `false`. */

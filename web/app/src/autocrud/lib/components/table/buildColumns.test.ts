@@ -9,6 +9,7 @@
 
 import { describe, it, expect } from 'vitest';
 import { buildRawColumns, buildTableColumns, renderMetaCell } from './buildColumns';
+import type { InternalColumnDef, CellRenderProps } from './buildColumns';
 import type { ResourceConfig, ResourceField, UnionMeta } from '../../resources';
 
 // ---------------------------------------------------------------------------
@@ -80,6 +81,20 @@ function makeUnionConfig(): ResourceConfig {
     ],
     { isUnion: true },
   );
+}
+
+// ---------------------------------------------------------------------------
+// Helper: mock MRT CellRenderProps for testing customRender
+// ---------------------------------------------------------------------------
+
+function makeCellProps(value: unknown, original?: any): CellRenderProps<any> {
+  return {
+    cell: { getValue: () => value } as any,
+    column: {} as any,
+    row: { original: original ?? {} } as any,
+    table: {} as any,
+    renderedCellValue: null,
+  };
 }
 
 // ---------------------------------------------------------------------------
@@ -333,8 +348,8 @@ describe('buildRawColumns (union resource)', () => {
     expect(tagCol.size).toBe(100);
     expect(tagCol.header).toBe('Type');
     expect(tagCol.customRender).toBeDefined();
-    expect(tagCol.customRender!('Dog')).toBe('Dog');
-    expect(tagCol.customRender!(null)).toBe('');
+    expect(tagCol.customRender!(makeCellProps('Dog'))).toBe('Dog');
+    expect(tagCol.customRender!(makeCellProps(null))).toBe('');
   });
 
   it('discriminator accessorFn reads from row.data directly', () => {
@@ -428,8 +443,169 @@ describe('buildTableColumns (union resource)', () => {
     const tagCol = mrtCols.find((c) => c.id === '__union_tag')!;
     expect(tagCol.Cell).toBeDefined();
 
-    // The Cell function wraps customRender
-    const rendered = tagCol.Cell!({ cell: { getValue: () => 'Dog' } } as any);
+    // The Cell function wraps customRender — pass full MRT-like props
+    const rendered = tagCol.Cell!({
+      cell: { getValue: () => 'Dog' },
+      column: {},
+      row: { original: {} },
+      table: {},
+      renderedCellValue: null,
+    } as any);
     expect(rendered).toBe('Dog');
+  });
+});
+
+// ---------------------------------------------------------------------------
+// moreColumns
+// ---------------------------------------------------------------------------
+
+describe('buildTableColumns (moreColumns)', () => {
+  it('appends extra columns to the table', () => {
+    const config = makeConfig([makeField({ name: 'name', label: 'Name' })]);
+    const extra: InternalColumnDef<any>[] = [
+      {
+        id: 'custom_actions',
+        header: 'Actions',
+        accessorFn: () => null,
+      },
+    ];
+    const mrtCols = buildTableColumns(config, { moreColumns: extra });
+    const ids = mrtCols.map((c) => c.id);
+    expect(ids).toContain('custom_actions');
+  });
+
+  it('moreColumns position is controlled by order', () => {
+    const config = makeConfig([
+      makeField({ name: 'a', label: 'A' }),
+      makeField({ name: 'b', label: 'B' }),
+    ]);
+    const extra: InternalColumnDef<any>[] = [
+      { id: 'extra', header: 'Extra', accessorFn: () => null },
+    ];
+    const mrtCols = buildTableColumns(config, {
+      moreColumns: extra,
+      order: ['extra', 'a', 'b'],
+    });
+    const ids = mrtCols.map((c) => c.id);
+    // extra should come before a and b
+    expect(ids.indexOf('extra')).toBeLessThan(ids.indexOf('a'));
+    expect(ids.indexOf('a')).toBeLessThan(ids.indexOf('b'));
+  });
+
+  it('moreColumns without order appear after built-in columns', () => {
+    const config = makeConfig([makeField({ name: 'name', label: 'Name' })]);
+    const extra: InternalColumnDef<any>[] = [
+      { id: 'extra', header: 'Extra', accessorFn: () => null },
+    ];
+    const mrtCols = buildTableColumns(config, { moreColumns: extra });
+    const ids = mrtCols.map((c) => c.id);
+    // 'extra' should be after 'name' and after all built-in visible columns
+    expect(ids.indexOf('extra')).toBeGreaterThan(ids.indexOf('name'));
+  });
+
+  it('moreColumns with customRender receives full CellRenderProps', () => {
+    const config = makeConfig([]);
+    const extra: InternalColumnDef<any>[] = [
+      {
+        id: 'actions',
+        header: 'Actions',
+        accessorFn: (row) => row?.meta?.resource_id,
+        customRender: (props) => {
+          const rid = props.row.original?.meta?.resource_id;
+          return `edit-${rid}`;
+        },
+      },
+    ];
+    const mrtCols = buildTableColumns(config, { moreColumns: extra });
+    const actionsCol = mrtCols.find((c) => c.id === 'actions')!;
+    expect(actionsCol.Cell).toBeDefined();
+
+    const result = actionsCol.Cell!({
+      cell: { getValue: () => 'rid-1' },
+      column: {},
+      row: { original: { meta: { resource_id: 'rid-1' }, data: {} } },
+      table: {},
+      renderedCellValue: null,
+    } as any);
+    expect(result).toBe('edit-rid-1');
+  });
+
+  it('moreColumns respect overrides (hidden, label)', () => {
+    const config = makeConfig([]);
+    const extra: InternalColumnDef<any>[] = [
+      { id: 'extra', header: 'Extra', accessorFn: () => null },
+    ];
+    const mrtCols = buildTableColumns(config, {
+      moreColumns: extra,
+      overrides: { extra: { hidden: true } },
+    });
+    const ids = mrtCols.map((c) => c.id);
+    expect(ids).not.toContain('extra');
+  });
+});
+
+// ---------------------------------------------------------------------------
+// customRender with full CellRenderProps
+// ---------------------------------------------------------------------------
+
+describe('customRender (CellRenderProps)', () => {
+  it('resource_id customRender is defined and receives CellRenderProps', () => {
+    const config = makeConfig([]);
+    const cols = buildRawColumns(config);
+    const ridCol = cols.find((c) => c.id === 'resource_id')!;
+    expect(ridCol.customRender).toBeDefined();
+    // We cannot call ResourceIdCell outside a React component context (hooks),
+    // but we verify the signature accepts CellRenderProps shape.
+    expect(typeof ridCol.customRender).toBe('function');
+  });
+
+  it('customRender in ColumnOverride receives full CellRenderProps', () => {
+    const config = makeConfig([makeField({ name: 'name', label: 'Name' })]);
+    const original = { data: { name: 'Alice' }, meta: { resource_id: 'rid-1' } };
+    const mrtCols = buildTableColumns(config, {
+      overrides: {
+        name: {
+          render: (props) => {
+            const v = props.cell.getValue();
+            const rid = (props.row.original as any)?.meta?.resource_id;
+            return `${v}(${rid})`;
+          },
+        },
+      },
+    });
+    const nameCol = mrtCols.find((c) => c.id === 'name')!;
+    const rendered = nameCol.Cell!({
+      cell: { getValue: () => 'Alice' },
+      column: {},
+      row: { original },
+      table: {},
+      renderedCellValue: null,
+    } as any);
+    expect(rendered).toBe('Alice(rid-1)');
+  });
+
+  it('customRender on InternalColumnDef receives row.original', () => {
+    const config = makeConfig([]);
+    const extra: InternalColumnDef<any>[] = [
+      {
+        id: 'full_name',
+        header: 'Full Name',
+        accessorFn: (row) => (row?.data as any)?.first_name,
+        customRender: (props) => {
+          const data = props.row.original?.data as any;
+          return `${data?.first_name} ${data?.last_name}`;
+        },
+      },
+    ];
+    const mrtCols = buildTableColumns(config, { moreColumns: extra });
+    const col = mrtCols.find((c) => c.id === 'full_name')!;
+    const result = col.Cell!({
+      cell: { getValue: () => 'John' },
+      column: {},
+      row: { original: { data: { first_name: 'John', last_name: 'Doe' }, meta: {} } },
+      table: {},
+      renderedCellValue: null,
+    } as any);
+    expect(result).toBe('John Doe');
   });
 });

@@ -60,5 +60,9 @@ export type {
   ResourceTableProps,
 } from './types';
 
+// buildColumns types (for moreColumns / customRender consumers)
+export type { InternalColumnDef, CellRenderProps, BuildTableColumnsOptions } from './buildColumns';
+export { buildRawColumns, buildTableColumns, renderMetaCell } from './buildColumns';
+
 // 常數與工具函數
 export { operatorLabels, getDefaultOperators } from './types';
