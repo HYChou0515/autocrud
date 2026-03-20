@@ -41,7 +41,15 @@ import { buildTableColumns } from './buildColumns';
 import type { InternalColumnDef } from './buildColumns';
 import type { ActiveSearchState } from './searchUtils';
 import type { ResourceTableProps } from './types';
-import { computeTableMode, buildRequestParams, DEFAULT_SORTING, type TableMode } from './utils';
+import {
+  computeTableMode,
+  buildRequestParams,
+  DEFAULT_SORTING,
+  splitConditionsByIndex,
+  applyClientConditions,
+  applyClientSort,
+  type TableMode,
+} from './utils';
 
 /** Debounce delay (ms) for globalFilter before triggering client mode */
 const GLOBAL_FILTER_DEBOUNCE_MS = 1000;
@@ -170,8 +178,17 @@ export function ResourceTable<T extends MRT_RowData>({
         sorting,
         columnFilters,
         indexedFields: config.indexedFields,
+        activeSearchData: activeSearch.condition?.data,
+        activeSearchSortBy: activeSearch.sortBy,
       }),
-    [debouncedGlobalFilter, sorting, columnFilters, config.indexedFields],
+    [
+      debouncedGlobalFilter,
+      sorting,
+      columnFilters,
+      config.indexedFields,
+      activeSearch.condition?.data,
+      activeSearch.sortBy,
+    ],
   );
 
   // Reset page index when mode changes
@@ -206,7 +223,36 @@ export function ResourceTable<T extends MRT_RowData>({
     ],
   );
 
-  const { data, total, loading, error, refresh } = useResourceList(config, params);
+  const { data: rawData, total, loading, error, refresh } = useResourceList(config, params);
+
+  // ── Client-side post-processing: apply non-indexed conditions & sort ──
+  const data = useMemo(() => {
+    let result = rawData;
+
+    // Apply non-indexed data conditions client-side
+    const advancedDataConditions = activeSearch.condition?.data ?? [];
+    if (advancedDataConditions.length > 0) {
+      const { clientConditions: nonIndexed } = splitConditionsByIndex(
+        advancedDataConditions,
+        config.indexedFields ?? [],
+      );
+      if (nonIndexed.length > 0) {
+        result = applyClientConditions(result, nonIndexed);
+      }
+    }
+
+    // Apply non-indexed sorts client-side
+    const advancedSortBy = activeSearch.sortBy;
+    if (advancedSortBy && advancedSortBy.length > 0) {
+      // Only apply client-side sort for non-indexed sort fields
+      const clientSorts = advancedSortBy.filter((s) => !config.indexedFields?.includes(s.field));
+      if (clientSorts.length > 0) {
+        result = applyClientSort(result, clientSorts);
+      }
+    }
+
+    return result;
+  }, [rawData, activeSearch.condition?.data, activeSearch.sortBy, config.indexedFields]);
 
   // ── Client mode overflow info (cutoff timestamp) ──
   const clientOverflowInfo = useMemo(() => {
@@ -364,6 +410,9 @@ export function ResourceTable<T extends MRT_RowData>({
           searchableFields={searchableFields}
           disableQB={disableQB}
           onSearchChange={handleSearchChange}
+          mrtColumnFilters={columnFilters}
+          mrtSorting={sorting}
+          onMrtSortingChange={setSorting}
         />
       )}
 

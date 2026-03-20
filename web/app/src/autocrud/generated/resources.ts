@@ -588,6 +588,15 @@ Object.assign(registry, {
     }),
     apiClient: characterApi,
     maxFormDepth: 1,
+    indexedFields: [
+      'level',
+      'name',
+      'gold',
+      'guild_name',
+      'character_class',
+      'guild_id',
+      'skill_ids',
+    ],
     customCreateActions: [
       {
         name: 'new',
@@ -1104,6 +1113,7 @@ Object.assign(registry, {
     }),
     apiClient: skillApi,
     maxFormDepth: 1,
+    indexedFields: ['name', 'required_level'],
   },
   equipment: {
     name: 'equipment',
@@ -1214,6 +1224,7 @@ Object.assign(registry, {
     }),
     apiClient: equipmentApi,
     maxFormDepth: 1,
+    indexedFields: ['owner_id'],
   },
   'pet-job': {
     name: 'pet-job',
@@ -1647,6 +1658,7 @@ Object.assign(registry, {
     }),
     apiClient: questApi,
     maxFormDepth: 1,
+    indexedFields: ['title', 'level_requirement', 'difficulty'],
   },
   'game-event': {
     name: 'game-event',
@@ -1942,6 +1954,7 @@ Object.assign(registry, {
     }),
     apiClient: gameEventApi,
     maxFormDepth: 3,
+    indexedFields: ['status', 'retries'],
     defaultHiddenFields: [
       'status',
       'errmsg',
@@ -2067,6 +2080,7 @@ Object.assign(registry, {
     }),
     apiClient: newChar1JobApi,
     maxFormDepth: 2,
+    indexedFields: ['status', 'retries'],
     defaultHiddenFields: [
       'status',
       'errmsg',
@@ -2193,6 +2207,7 @@ Object.assign(registry, {
     }),
     apiClient: createNewCharacter2JobApi,
     maxFormDepth: 2,
+    indexedFields: ['status', 'retries'],
     defaultHiddenFields: [
       'status',
       'errmsg',
@@ -2527,6 +2542,7 @@ Object.assign(registry, {
     }),
     apiClient: createNewCharacter4JobApi,
     maxFormDepth: 3,
+    indexedFields: ['status', 'retries'],
     defaultHiddenFields: [
       'status',
       'errmsg',

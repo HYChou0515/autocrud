@@ -28,6 +28,7 @@ import { renderCellValue } from '../field/CellFieldRenderer';
 import { ResourceIdCell } from '../common/ResourceIdCell';
 import { formatTime } from '../common/TimeDisplay';
 import type { ColumnOverride } from './types';
+import type { CellRenderProps } from './buildColumns';
 
 // ---------------------------------------------------------------------------
 // Props
@@ -156,7 +157,7 @@ export function MultiResourceTable({
         },
         Cell: ({ cell }) => {
           const value = cell.getValue();
-          if (override?.render) return override.render(value);
+          if (override?.render) return override.render(value as CellRenderProps<unknown>);
           return renderCellValue({ field, value });
         },
       });

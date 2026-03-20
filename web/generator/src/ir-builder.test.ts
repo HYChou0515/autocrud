@@ -2056,3 +2056,119 @@ describe('extractFields — nullable optional struct expansion', () => {
     expect(attackField!.parentOptional).toBe(true);
   });
 });
+
+// ─── x-autocrud-indexed-fields ──────────────────────────────────────────────
+
+describe('x-autocrud-indexed-fields', () => {
+  it('should populate indexedFields from top-level extension', () => {
+    const spec = {
+      info: { title: 'Test', version: '1.0' },
+      paths: {
+        '/hero': {
+          post: {
+            requestBody: {
+              content: { 'application/json': { schema: { $ref: '#/components/schemas/Hero' } } },
+            },
+          },
+        },
+        '/hero/{id}': { get: {} },
+        '/weapon': {
+          post: {
+            requestBody: {
+              content: { 'application/json': { schema: { $ref: '#/components/schemas/Weapon' } } },
+            },
+          },
+        },
+        '/weapon/{id}': { get: {} },
+      },
+      components: {
+        schemas: {
+          Hero: {
+            type: 'object',
+            properties: { name: { type: 'string' }, level: { type: 'integer' }, hp: { type: 'number' } },
+            required: ['name', 'level'],
+          },
+          Weapon: {
+            type: 'object',
+            properties: { name: { type: 'string' }, damage: { type: 'integer' } },
+            required: ['name'],
+          },
+        },
+      },
+      'x-autocrud-indexed-fields': {
+        hero: ['name', 'level'],
+        weapon: ['name'],
+      },
+    };
+    const { resources } = createBuilder(spec);
+    const hero = resources.find((r) => r.name === 'hero');
+    const weapon = resources.find((r) => r.name === 'weapon');
+
+    expect(hero).toBeDefined();
+    expect(hero!.indexedFields).toEqual(['name', 'level']);
+
+    expect(weapon).toBeDefined();
+    expect(weapon!.indexedFields).toEqual(['name']);
+  });
+
+  it('should leave indexedFields undefined when extension is absent', () => {
+    const spec = {
+      info: { title: 'Test', version: '1.0' },
+      paths: {
+        '/hero': {
+          post: {
+            requestBody: {
+              content: { 'application/json': { schema: { $ref: '#/components/schemas/Hero' } } },
+            },
+          },
+        },
+        '/hero/{id}': { get: {} },
+      },
+      components: {
+        schemas: {
+          Hero: {
+            type: 'object',
+            properties: { name: { type: 'string' } },
+            required: ['name'],
+          },
+        },
+      },
+    };
+    const { resources } = createBuilder(spec);
+    const hero = resources.find((r) => r.name === 'hero');
+    expect(hero).toBeDefined();
+    expect(hero!.indexedFields).toBeUndefined();
+  });
+
+  it('should not set indexedFields for resource not in the mapping', () => {
+    const spec = {
+      info: { title: 'Test', version: '1.0' },
+      paths: {
+        '/hero': {
+          post: {
+            requestBody: {
+              content: { 'application/json': { schema: { $ref: '#/components/schemas/Hero' } } },
+            },
+          },
+        },
+        '/hero/{id}': { get: {} },
+      },
+      components: {
+        schemas: {
+          Hero: {
+            type: 'object',
+            properties: { name: { type: 'string' } },
+            required: ['name'],
+          },
+        },
+      },
+      'x-autocrud-indexed-fields': {
+        weapon: ['name'],
+      },
+    };
+    const { resources } = createBuilder(spec);
+    const hero = resources.find((r) => r.name === 'hero');
+    expect(hero).toBeDefined();
+    expect(hero!.indexedFields).toBeUndefined();
+  });
+});

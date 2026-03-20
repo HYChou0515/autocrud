@@ -16,6 +16,14 @@ import {
   mrtFiltersToParams,
   DEFAULT_SORTING,
   buildRequestParams,
+  splitConditionsByIndex,
+  applyClientConditions,
+  applyClientSort,
+  getNestedValue,
+  isMetaField,
+  META_SORT_FIELDS,
+  conditionToQB,
+  isoToPythonDatetime,
 } from './utils';
 import type { ActiveSearchState } from './searchUtils';
 
@@ -491,6 +499,7 @@ describe('buildRequestParams', () => {
   it('merges alwaysSearchCondition with existing data_conditions', () => {
     const params = buildRequestParams({
       ...defaultArgs,
+      indexedFields: ['name'],
       activeSearch: {
         ...baseActiveSearch,
         condition: {
@@ -518,5 +527,561 @@ describe('buildRequestParams', () => {
     expect(params.qb).toBeUndefined();
     // Should still include sorts since it's effectively condition mode
     expect(params.sorts).toBeDefined();
+  });
+
+  it('converts server-filterable meta conditions to query params', () => {
+    const params = buildRequestParams({
+      ...defaultArgs,
+      activeSearch: {
+        ...baseActiveSearch,
+        condition: {
+          meta: {},
+          data: [{ field: 'is_deleted', operator: 'eq', value: true }],
+        },
+      },
+    });
+    expect(params.is_deleted).toBe(true);
+    // Should NOT be in data_conditions
+    expect(params.data_conditions).toBeUndefined();
+  });
+
+  it('converts created_by meta condition to created_bys param', () => {
+    const params = buildRequestParams({
+      ...defaultArgs,
+      activeSearch: {
+        ...baseActiveSearch,
+        condition: {
+          meta: {},
+          data: [{ field: 'created_by', operator: 'eq', value: 'admin' }],
+        },
+      },
+    });
+    expect(params.created_bys).toEqual(['admin']);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// META_SORT_FIELDS
+// ---------------------------------------------------------------------------
+
+describe('META_SORT_FIELDS', () => {
+  it('contains 8 standard meta fields', () => {
+    expect(META_SORT_FIELDS).toHaveLength(8);
+  });
+
+  it('includes resource_id, created_time, updated_time', () => {
+    expect(META_SORT_FIELDS).toContain('resource_id');
+    expect(META_SORT_FIELDS).toContain('created_time');
+    expect(META_SORT_FIELDS).toContain('updated_time');
+  });
+
+  it('includes created_by, updated_by, schema_version, is_deleted, current_revision_id', () => {
+    expect(META_SORT_FIELDS).toContain('created_by');
+    expect(META_SORT_FIELDS).toContain('updated_by');
+    expect(META_SORT_FIELDS).toContain('schema_version');
+    expect(META_SORT_FIELDS).toContain('is_deleted');
+    expect(META_SORT_FIELDS).toContain('current_revision_id');
+  });
+});
+
+// ---------------------------------------------------------------------------
+// isMetaField
+// ---------------------------------------------------------------------------
+
+describe('isMetaField', () => {
+  it('returns true for meta searchable fields', () => {
+    expect(isMetaField('resource_id')).toBe(true);
+    expect(isMetaField('schema_version')).toBe(true);
+    expect(isMetaField('is_deleted')).toBe(true);
+    expect(isMetaField('current_revision_id')).toBe(true);
+    expect(isMetaField('created_by')).toBe(true);
+    expect(isMetaField('updated_by')).toBe(true);
+  });
+
+  it('returns false for data fields', () => {
+    expect(isMetaField('name')).toBe(false);
+    expect(isMetaField('level')).toBe(false);
+    expect(isMetaField('stats.hp')).toBe(false);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// getNestedValue
+// ---------------------------------------------------------------------------
+
+describe('getNestedValue', () => {
+  it('returns top-level value for simple key', () => {
+    expect(getNestedValue({ a: 1 }, 'a')).toBe(1);
+  });
+
+  it('returns nested value for dot-path', () => {
+    expect(getNestedValue({ a: { b: { c: 42 } } }, 'a.b.c')).toBe(42);
+  });
+
+  it('returns undefined for missing path', () => {
+    expect(getNestedValue({ a: 1 }, 'b')).toBeUndefined();
+    expect(getNestedValue({ a: { b: 1 } }, 'a.c')).toBeUndefined();
+  });
+
+  it('returns undefined for null object', () => {
+    expect(getNestedValue(null, 'a')).toBeUndefined();
+    expect(getNestedValue(undefined, 'a.b')).toBeUndefined();
+  });
+
+  it('returns undefined when intermediate is null', () => {
+    expect(getNestedValue({ a: null }, 'a.b')).toBeUndefined();
+  });
+
+  it('handles arrays in path', () => {
+    expect(getNestedValue({ a: [10, 20] }, 'a.1')).toBe(20);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// splitConditionsByIndex
+// ---------------------------------------------------------------------------
+
+describe('splitConditionsByIndex', () => {
+  it('separates indexed vs non-indexed data fields', () => {
+    const conditions = [
+      { field: 'name', operator: 'eq', value: 'hero' },
+      { field: 'level', operator: 'gte', value: 10 },
+      { field: 'desc', operator: 'contains', value: 'test' },
+    ];
+    const { serverConditions, clientConditions, serverMetaConditions } = splitConditionsByIndex(
+      conditions,
+      ['name', 'level'],
+    );
+    expect(serverConditions).toHaveLength(2);
+    expect(clientConditions).toHaveLength(1);
+    expect(clientConditions[0].field).toBe('desc');
+    expect(serverMetaConditions).toHaveLength(0);
+  });
+
+  it('classifies server-filterable meta fields as serverMetaConditions', () => {
+    const conditions = [
+      { field: 'created_by', operator: 'eq', value: 'admin' },
+      { field: 'updated_by', operator: 'eq', value: 'bob' },
+      { field: 'is_deleted', operator: 'eq', value: true },
+    ];
+    const { serverConditions, clientConditions, serverMetaConditions } = splitConditionsByIndex(
+      conditions,
+      [],
+    );
+    expect(serverMetaConditions).toHaveLength(3);
+    expect(serverConditions).toHaveLength(0);
+    expect(clientConditions).toHaveLength(0);
+  });
+
+  it('classifies non-server-filterable meta fields as clientConditions', () => {
+    const conditions = [
+      { field: 'resource_id', operator: 'eq', value: 'abc' },
+      { field: 'schema_version', operator: 'eq', value: 'v1' },
+      { field: 'current_revision_id', operator: 'eq', value: 'rev-1' },
+    ];
+    const { serverConditions, clientConditions, serverMetaConditions } = splitConditionsByIndex(
+      conditions,
+      [],
+    );
+    expect(clientConditions).toHaveLength(3);
+    expect(serverConditions).toHaveLength(0);
+    expect(serverMetaConditions).toHaveLength(0);
+  });
+
+  it('handles mixed data + meta conditions', () => {
+    const conditions = [
+      { field: 'name', operator: 'eq', value: 'hero' },
+      { field: 'created_by', operator: 'eq', value: 'admin' },
+      { field: 'resource_id', operator: 'eq', value: 'x' },
+      { field: 'desc', operator: 'contains', value: 'test' },
+    ];
+    const { serverConditions, clientConditions, serverMetaConditions } = splitConditionsByIndex(
+      conditions,
+      ['name'],
+    );
+    expect(serverConditions).toHaveLength(1);
+    expect(serverConditions[0].field).toBe('name');
+    expect(serverMetaConditions).toHaveLength(1);
+    expect(serverMetaConditions[0].field).toBe('created_by');
+    expect(clientConditions).toHaveLength(2);
+    expect(clientConditions.map((c) => c.field).sort()).toEqual(['desc', 'resource_id']);
+  });
+
+  it('returns empty arrays for empty conditions', () => {
+    const { serverConditions, clientConditions, serverMetaConditions } = splitConditionsByIndex(
+      [],
+      ['level'],
+    );
+    expect(serverConditions).toHaveLength(0);
+    expect(clientConditions).toHaveLength(0);
+    expect(serverMetaConditions).toHaveLength(0);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// applyClientConditions
+// ---------------------------------------------------------------------------
+
+describe('applyClientConditions', () => {
+  const rows = [
+    {
+      data: { name: 'Alice', level: 10, desc: 'warrior' },
+      meta: { resource_id: 'r1', is_deleted: false, schema_version: 'v1' },
+    },
+    {
+      data: { name: 'Bob', level: 20, desc: 'mage' },
+      meta: { resource_id: 'r2', is_deleted: true, schema_version: 'v2' },
+    },
+    {
+      data: { name: 'Charlie', level: 5, desc: 'thief' },
+      meta: { resource_id: 'r3', is_deleted: false, schema_version: 'v1' },
+    },
+  ];
+
+  it('returns all rows when no conditions', () => {
+    expect(applyClientConditions(rows, [])).toEqual(rows);
+  });
+
+  it('filters by data field (eq)', () => {
+    const result = applyClientConditions(rows, [{ field: 'name', operator: 'eq', value: 'Alice' }]);
+    expect(result).toHaveLength(1);
+    expect(result[0].data.name).toBe('Alice');
+  });
+
+  it('filters by data field (contains)', () => {
+    const result = applyClientConditions(rows, [
+      { field: 'desc', operator: 'contains', value: 'a' },
+    ]);
+    expect(result).toHaveLength(2); // warrior, mage
+  });
+
+  it('filters by data field (gte) with number coercion', () => {
+    const result = applyClientConditions(rows, [{ field: 'level', operator: 'gte', value: 10 }]);
+    expect(result).toHaveLength(2);
+  });
+
+  it('filters by meta field (resource_id)', () => {
+    const result = applyClientConditions(rows, [
+      { field: 'resource_id', operator: 'eq', value: 'r2' },
+    ]);
+    expect(result).toHaveLength(1);
+    expect(result[0].meta.resource_id).toBe('r2');
+  });
+
+  it('filters by meta field (is_deleted)', () => {
+    const result = applyClientConditions(rows, [
+      { field: 'is_deleted', operator: 'eq', value: false },
+    ]);
+    expect(result).toHaveLength(2);
+  });
+
+  it('handles AND logic with mixed data + meta conditions', () => {
+    const result = applyClientConditions(rows, [
+      { field: 'schema_version', operator: 'eq', value: 'v1' },
+      { field: 'level', operator: 'gte', value: 10 },
+    ]);
+    expect(result).toHaveLength(1);
+    expect(result[0].data.name).toBe('Alice');
+  });
+
+  it('supports dot-path data fields', () => {
+    const nestedRows = [
+      { data: { stats: { hp: 100, mp: 50 } }, meta: {} },
+      { data: { stats: { hp: 200, mp: 30 } }, meta: {} },
+    ];
+    const result = applyClientConditions(nestedRows, [
+      { field: 'stats.hp', operator: 'gte', value: 150 },
+    ]);
+    expect(result).toHaveLength(1);
+    expect(result[0].data.stats.hp).toBe(200);
+  });
+
+  it('supports deep dot-path (a.b.c)', () => {
+    const deepRows = [
+      { data: { a: { b: { c: 'x' } } }, meta: {} },
+      { data: { a: { b: { c: 'y' } } }, meta: {} },
+    ];
+    const result = applyClientConditions(deepRows, [
+      { field: 'a.b.c', operator: 'eq', value: 'x' },
+    ]);
+    expect(result).toHaveLength(1);
+  });
+
+  it('supports ne operator', () => {
+    const result = applyClientConditions(rows, [{ field: 'name', operator: 'ne', value: 'Alice' }]);
+    expect(result).toHaveLength(2);
+  });
+
+  it('supports starts_with operator', () => {
+    const result = applyClientConditions(rows, [
+      { field: 'name', operator: 'starts_with', value: 'Ch' },
+    ]);
+    expect(result).toHaveLength(1);
+    expect(result[0].data.name).toBe('Charlie');
+  });
+
+  it('supports ends_with operator', () => {
+    const result = applyClientConditions(rows, [
+      { field: 'name', operator: 'ends_with', value: 'ob' },
+    ]);
+    expect(result).toHaveLength(1);
+    expect(result[0].data.name).toBe('Bob');
+  });
+});
+
+// ---------------------------------------------------------------------------
+// applyClientSort
+// ---------------------------------------------------------------------------
+
+describe('applyClientSort', () => {
+  const rows = [
+    {
+      data: { name: 'Charlie', level: 5 },
+      meta: { created_time: '2024-03-01', resource_id: 'r3' },
+    },
+    { data: { name: 'Alice', level: 10 }, meta: { created_time: '2024-01-01', resource_id: 'r1' } },
+    { data: { name: 'Bob', level: 20 }, meta: { created_time: '2024-02-01', resource_id: 'r2' } },
+  ];
+
+  it('returns copy when no sort criteria', () => {
+    const result = applyClientSort(rows, []);
+    expect(result).toEqual(rows);
+    expect(result).not.toBe(rows); // does not mutate
+  });
+
+  it('sorts by data field ascending', () => {
+    const result = applyClientSort(rows, [{ field: 'name', order: 'asc' }]);
+    expect(result.map((r) => r.data.name)).toEqual(['Alice', 'Bob', 'Charlie']);
+  });
+
+  it('sorts by data field descending', () => {
+    const result = applyClientSort(rows, [{ field: 'level', order: 'desc' }]);
+    expect(result.map((r) => r.data.level)).toEqual([20, 10, 5]);
+  });
+
+  it('sorts by meta field', () => {
+    const result = applyClientSort(rows, [{ field: 'created_time', order: 'asc' }]);
+    expect(result.map((r) => r.meta.resource_id)).toEqual(['r1', 'r2', 'r3']);
+  });
+
+  it('multi-level sort', () => {
+    const rowsWithTie = [
+      { data: { group: 'A', level: 10 }, meta: {} },
+      { data: { group: 'A', level: 5 }, meta: {} },
+      { data: { group: 'B', level: 20 }, meta: {} },
+    ];
+    const result = applyClientSort(rowsWithTie, [
+      { field: 'group', order: 'asc' },
+      { field: 'level', order: 'desc' },
+    ]);
+    expect(result.map((r) => r.data.level)).toEqual([10, 5, 20]);
+  });
+
+  it('does not mutate original array', () => {
+    const original = [...rows];
+    applyClientSort(rows, [{ field: 'name', order: 'asc' }]);
+    expect(rows).toEqual(original);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// isoToPythonDatetime
+// ---------------------------------------------------------------------------
+
+describe('isoToPythonDatetime', () => {
+  it('converts a valid ISO string to Python dt.datetime(...)', () => {
+    // Use a fixed UTC string to avoid timezone issues
+    const result = isoToPythonDatetime('2024-03-15T10:30:00');
+    expect(result).toMatch(/^dt\.datetime\(\d{4}, \d+, \d+, \d+, \d+, \d+\)$/);
+  });
+
+  it('returns quoted fallback for invalid date', () => {
+    expect(isoToPythonDatetime('not-a-date')).toBe('"not-a-date"');
+  });
+});
+
+// ---------------------------------------------------------------------------
+// conditionToQB
+// ---------------------------------------------------------------------------
+
+describe('conditionToQB', () => {
+  it('returns QB.all() when no conditions', () => {
+    expect(conditionToQB({}, [])).toBe('QB.all()');
+  });
+
+  // --- Data conditions ---
+
+  it('generates eq condition', () => {
+    const result = conditionToQB({}, [{ field: 'name', operator: 'eq', value: 'Alice' }]);
+    expect(result).toBe('(QB["name"] == "Alice")');
+  });
+
+  it('generates ne condition', () => {
+    const result = conditionToQB({}, [{ field: 'status', operator: 'ne', value: 'deleted' }]);
+    expect(result).toBe('(QB["status"] != "deleted")');
+  });
+
+  it('generates numeric comparison with gte', () => {
+    const result = conditionToQB({}, [{ field: 'level', operator: 'gte', value: 6 }]);
+    expect(result).toBe('(QB["level"] >= 6)');
+  });
+
+  it('generates gt condition', () => {
+    const result = conditionToQB({}, [{ field: 'score', operator: 'gt', value: 100 }]);
+    expect(result).toBe('(QB["score"] > 100)');
+  });
+
+  it('generates lt condition', () => {
+    const result = conditionToQB({}, [{ field: 'age', operator: 'lt', value: 18 }]);
+    expect(result).toBe('(QB["age"] < 18)');
+  });
+
+  it('generates lte condition', () => {
+    const result = conditionToQB({}, [{ field: 'priority', operator: 'lte', value: 3 }]);
+    expect(result).toBe('(QB["priority"] <= 3)');
+  });
+
+  // --- String methods (no parens needed) ---
+
+  it('generates contains condition', () => {
+    const result = conditionToQB({}, [{ field: 'name', operator: 'contains', value: 'foo' }]);
+    expect(result).toBe('QB["name"].contains("foo")');
+  });
+
+  it('generates starts_with condition', () => {
+    const result = conditionToQB({}, [{ field: 'name', operator: 'starts_with', value: 'A' }]);
+    expect(result).toBe('QB["name"].starts_with("A")');
+  });
+
+  it('generates ends_with condition', () => {
+    const result = conditionToQB({}, [{ field: 'name', operator: 'ends_with', value: 'z' }]);
+    expect(result).toBe('QB["name"].ends_with("z")');
+  });
+
+  // --- Multiple conditions joined with & ---
+
+  it('joins multiple conditions with &', () => {
+    const result = conditionToQB({}, [
+      { field: 'level', operator: 'gte', value: 5 },
+      { field: 'name', operator: 'eq', value: 'Bob' },
+    ]);
+    expect(result).toBe('(QB["level"] >= 5) & (QB["name"] == "Bob")');
+  });
+
+  it('joins comparison + method conditions with &', () => {
+    const result = conditionToQB({}, [
+      { field: 'level', operator: 'gte', value: 5 },
+      { field: 'name', operator: 'contains', value: 'Bob' },
+    ]);
+    expect(result).toBe('(QB["level"] >= 5) & QB["name"].contains("Bob")');
+  });
+
+  // --- order_by chaining ---
+
+  it('appends .order_by() to QB.all()', () => {
+    const result = conditionToQB({}, [], undefined, [{ field: 'updated_time', order: 'desc' }]);
+    expect(result).toBe('QB.all().order_by("-updated_time")');
+  });
+
+  it('wraps comparison in parens before .order_by()', () => {
+    const result = conditionToQB({}, [{ field: 'level', operator: 'gte', value: 6 }], undefined, [
+      { field: 'updated_time', order: 'desc' },
+    ]);
+    expect(result).toBe('(QB["level"] >= 6).order_by("-updated_time")');
+  });
+
+  it('wraps multiple conditions in parens before .order_by()', () => {
+    const result = conditionToQB(
+      {},
+      [
+        { field: 'level', operator: 'gte', value: 5 },
+        { field: 'name', operator: 'eq', value: 'Bob' },
+      ],
+      undefined,
+      [{ field: 'created_time', order: 'asc' }],
+    );
+    expect(result).toBe('((QB["level"] >= 5) & (QB["name"] == "Bob")).order_by("created_time")');
+  });
+
+  it('handles multi-sort order_by', () => {
+    const result = conditionToQB({}, [], undefined, [
+      { field: 'level', order: 'desc' },
+      { field: 'name', order: 'asc' },
+    ]);
+    expect(result).toBe('QB.all().order_by("-level", "name")');
+  });
+
+  // --- limit chaining ---
+
+  it('appends .limit() correctly', () => {
+    const result = conditionToQB({}, [], 50);
+    expect(result).toBe('QB.all().limit(50)');
+  });
+
+  it('wraps comparison in parens before .limit()', () => {
+    const result = conditionToQB({}, [{ field: 'level', operator: 'gte', value: 6 }], 10);
+    expect(result).toBe('(QB["level"] >= 6).limit(10)');
+  });
+
+  // --- order_by + limit combined ---
+
+  it('chains order_by and limit together', () => {
+    const result = conditionToQB(
+      {},
+      [{ field: 'level', operator: 'gte', value: 6 }],
+      10,
+      [{ field: 'updated_time', order: 'desc' }],
+    );
+    expect(result).toBe('(QB["level"] >= 6).order_by("-updated_time").limit(10)');
+  });
+
+  // --- Meta conditions ---
+
+  it('generates meta created_by condition', () => {
+    const result = conditionToQB({ created_by: 'admin' }, []);
+    expect(result).toBe('QB.created_by().eq("admin")');
+  });
+
+  it('generates meta time range conditions', () => {
+    const result = conditionToQB(
+      { created_time_start: '2024-01-01T00:00:00', created_time_end: '2024-12-31T23:59:59' },
+      [],
+    );
+    expect(result).toContain('QB.created_time().gte(dt.datetime(');
+    expect(result).toContain('QB.created_time().lte(dt.datetime(');
+    expect(result).toContain(' & ');
+  });
+
+  // --- Meta + data + order_by + limit combined ---
+
+  it('combines meta, data, order_by and limit', () => {
+    const result = conditionToQB(
+      { created_by: 'admin' },
+      [{ field: 'level', operator: 'gte', value: 6 }],
+      20,
+      [{ field: 'updated_time', order: 'desc' }],
+    );
+    expect(result).toBe(
+      '(QB.created_by().eq("admin") & (QB["level"] >= 6)).order_by("-updated_time").limit(20)',
+    );
+  });
+
+  // --- Skips empty sort entries ---
+
+  it('skips sort entries with empty field', () => {
+    const result = conditionToQB({}, [], undefined, [{ field: '', order: 'asc' }]);
+    expect(result).toBe('QB.all()');
+  });
+
+  // --- String method conditions do not need extra parens for chaining ---
+
+  it('method-style condition with order_by does not need wrapping', () => {
+    const result = conditionToQB(
+      {},
+      [{ field: 'name', operator: 'contains', value: 'test' }],
+      undefined,
+      [{ field: 'name', order: 'asc' }],
+    );
+    expect(result).toBe('QB["name"].contains("test").order_by("name")');
   });
 });

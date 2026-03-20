@@ -4,6 +4,7 @@
 
 import type { MRT_ColumnFiltersState, MRT_SortingState } from 'mantine-react-table';
 import type { MetaFilters, SearchCondition } from './types';
+import { META_SEARCHABLE_FIELDS } from './searchFieldUtils';
 
 // ---------------------------------------------------------------------------
 // Server-capability constants
@@ -46,6 +47,21 @@ export const SERVER_META_FILTER_COLUMNS: Record<
   },
 };
 
+/**
+ * All 8 standard meta fields.
+ * Used for client-side sorting and advanced search sort field options.
+ */
+export const META_SORT_FIELDS = [
+  'resource_id',
+  'created_time',
+  'updated_time',
+  'created_by',
+  'updated_by',
+  'schema_version',
+  'is_deleted',
+  'current_revision_id',
+] as const;
+
 // ---------------------------------------------------------------------------
 // Server-capability queries
 // ---------------------------------------------------------------------------
@@ -75,6 +91,10 @@ export interface ComputeTableModeArgs {
   sorting: MRT_SortingState;
   columnFilters: MRT_ColumnFiltersState;
   indexedFields?: string[];
+  /** Advanced search data conditions — non-indexed fields trigger client mode. */
+  activeSearchData?: SearchCondition[];
+  /** Advanced search sort-by — non-indexed/non-meta fields trigger client mode. */
+  activeSearchSortBy?: { field: string; order: 'asc' | 'desc' }[];
 }
 
 /**
@@ -90,6 +110,8 @@ export function computeTableMode({
   sorting,
   columnFilters,
   indexedFields,
+  activeSearchData,
+  activeSearchSortBy,
 }: ComputeTableModeArgs): TableMode {
   // Trigger 1: global free-text filter
   if (debouncedGlobalFilter) return 'client';
@@ -103,6 +125,23 @@ export function computeTableMode({
   for (const filter of columnFilters) {
     if (filter.value == null || filter.value === '') continue;
     if (!isServerFilterable(filter.id, indexedFields)) return 'client';
+  }
+
+  // Trigger 4: advanced search data conditions on non-indexed fields
+  if (activeSearchData) {
+    for (const cond of activeSearchData) {
+      if (!indexedFields || !indexedFields.includes(cond.field)) return 'client';
+    }
+  }
+
+  // Trigger 5: advanced search sort on non-indexed/non-meta fields
+  if (activeSearchSortBy) {
+    for (const s of activeSearchSortBy) {
+      if (!s.field) continue;
+      const isMeta = (META_SORT_FIELDS as readonly string[]).includes(s.field);
+      const isIndexed = indexedFields && indexedFields.includes(s.field);
+      if (!isMeta && !isIndexed) return 'client';
+    }
   }
 
   return 'server';
@@ -222,26 +261,27 @@ export function conditionToQB(
     const field = `QB["${cond.field}"]`;
 
     switch (op) {
-      // 比較運算符 - 直接用 Python 語法
+      // 比較運算符 - 需要加括號，避免 Python 運算符優先順序問題
+      // 例: (QB["level"] >= 6).order_by(...) 而非 QB["level"] >= 6.order_by(...)
       case 'eq':
-        parts.push(`${field} == ${val}`);
+        parts.push(`(${field} == ${val})`);
         break;
       case 'ne':
-        parts.push(`${field} != ${val}`);
+        parts.push(`(${field} != ${val})`);
         break;
       case 'gt':
-        parts.push(`${field} > ${val}`);
+        parts.push(`(${field} > ${val})`);
         break;
       case 'gte':
-        parts.push(`${field} >= ${val}`);
+        parts.push(`(${field} >= ${val})`);
         break;
       case 'lt':
-        parts.push(`${field} < ${val}`);
+        parts.push(`(${field} < ${val})`);
         break;
       case 'lte':
-        parts.push(`${field} <= ${val}`);
+        parts.push(`(${field} <= ${val})`);
         break;
-      // 字串方法 - 使用 .method() 語法
+      // 字串方法 - 使用 .method() 語法，不需要括號
       case 'contains':
         parts.push(`${field}.contains(${val})`);
         break;
@@ -252,13 +292,23 @@ export function conditionToQB(
         parts.push(`${field}.ends_with(${val})`);
         break;
       default:
-        parts.push(`${field} == ${val}`);
+        parts.push(`(${field} == ${val})`);
     }
   }
 
   // 基礎查詢條件（使用 & 連接）
   // 如果沒有條件，使用 QB.all() 表示查詢全部
   let qb = parts.length > 0 ? parts.join(' & ') : 'QB.all()';
+
+  // 判斷是否需要鏈式呼叫（.order_by / .limit）
+  const needsChaining =
+    (sortBy && sortBy.some((s) => s.field)) || (resultLimit != null && resultLimit > 0);
+
+  // 如果有多個 parts 且需要鏈式呼叫，外層要加括號
+  // 例: (condA & condB).order_by(...) 而非 condA & condB.order_by(...)
+  if (needsChaining && parts.length > 1) {
+    qb = `(${qb})`;
+  }
 
   // 加入排序（多層排序）
   if (sortBy && sortBy.length > 0) {
@@ -348,25 +398,45 @@ export function buildRequestParams({
     }
 
     // Advanced panel sorts (only in server mode — in client mode MRT handles sorting)
+    // Filter to only indexed + meta sort fields; non-indexed sorts applied client-side.
     if (mode === 'server' && activeSearch.sortBy && activeSearch.sortBy.length > 0) {
-      const sortsStr = sortByToSorts(activeSearch.sortBy);
-      if (sortsStr) baseParams.sorts = sortsStr;
+      const serverSorts = activeSearch.sortBy.filter(
+        (s) =>
+          (indexedFields ?? []).includes(s.field) ||
+          (META_SORT_FIELDS as readonly string[]).includes(s.field),
+      );
+      if (serverSorts.length > 0) {
+        const sortsStr = sortByToSorts(serverSorts);
+        if (sortsStr) baseParams.sorts = sortsStr;
+      }
     }
 
-    // Advanced panel data_conditions
-    const advancedConditions = advancedData.map((condition) => ({
+    // Advanced panel data_conditions — only send indexed conditions to server;
+    // non-indexed conditions are applied client-side in ResourceTable.
+    // Meta conditions that are server-filterable get converted to query params.
+    const { serverConditions: indexedAdvanced, serverMetaConditions: metaConditions } =
+      splitConditionsByIndex(advancedData, indexedFields ?? []);
+    const advancedConditions = indexedAdvanced.map((condition) => ({
       field_path: condition.field,
       operator: condition.operator,
       value: condition.value,
     }));
 
-    // Advanced panel meta filters
+    // Advanced panel meta filters (from MetaSearchForm)
     if (meta.created_time_start) baseParams.created_time_start = meta.created_time_start;
     if (meta.created_time_end) baseParams.created_time_end = meta.created_time_end;
     if (meta.updated_time_start) baseParams.updated_time_start = meta.updated_time_start;
     if (meta.updated_time_end) baseParams.updated_time_end = meta.updated_time_end;
     if (meta.created_by) baseParams.created_bys = [meta.created_by];
     if (meta.updated_by) baseParams.updated_bys = [meta.updated_by];
+
+    // Server-filterable meta conditions from SearchForm (Bug 2)
+    for (const mc of metaConditions) {
+      const metaDef = SERVER_META_FILTER_COLUMNS[mc.field];
+      if (metaDef) {
+        Object.assign(baseParams, metaDef.convert(mc.value));
+      }
+    }
 
     // --- MRT column filters (server-filterable ones sent to backend in both modes) ---
     const { serverParams, dataConditions: mrtDataConditions } = mrtFiltersToParams(
@@ -402,6 +472,160 @@ export function buildRequestParams({
   }
 
   return baseParams;
+}
+
+// ---------------------------------------------------------------------------
+// Client-side filtering & sorting helpers
+// ---------------------------------------------------------------------------
+
+/** Set of meta field names from META_SEARCHABLE_FIELDS for fast lookup */
+const META_FIELD_NAMES = new Set(META_SEARCHABLE_FIELDS.map((f) => f.name));
+
+/**
+ * Check whether a field name is a meta field (from META_SEARCHABLE_FIELDS).
+ */
+export function isMetaField(field: string): boolean {
+  return META_FIELD_NAMES.has(field);
+}
+
+/**
+ * Split advanced search data conditions into server (indexed) and client
+ * (non-indexed) buckets.
+ *
+ * Meta fields that are server-filterable (in SERVER_META_FILTER_COLUMNS)
+ * are classified as server conditions. Other meta fields and non-indexed
+ * data fields go to client.
+ */
+export function splitConditionsByIndex(
+  conditions: SearchCondition[],
+  indexedFields: string[],
+): {
+  serverConditions: SearchCondition[];
+  clientConditions: SearchCondition[];
+  serverMetaConditions: SearchCondition[];
+} {
+  const serverConditions: SearchCondition[] = [];
+  const clientConditions: SearchCondition[] = [];
+  const serverMetaConditions: SearchCondition[] = [];
+  for (const c of conditions) {
+    if (isMetaField(c.field)) {
+      // Meta field: check if server-filterable
+      if (c.field in SERVER_META_FILTER_COLUMNS) {
+        serverMetaConditions.push(c);
+      } else {
+        clientConditions.push(c);
+      }
+    } else if (indexedFields.includes(c.field)) {
+      serverConditions.push(c);
+    } else {
+      clientConditions.push(c);
+    }
+  }
+  return { serverConditions, clientConditions, serverMetaConditions };
+}
+
+/**
+ * Resolve a potentially nested value from an object using a dot-path.
+ * E.g. getNestedValue({ a: { b: { c: 1 } } }, 'a.b.c') → 1
+ */
+export function getNestedValue(obj: any, path: string): any {
+  if (obj == null) return undefined;
+  // Fast path: no dots
+  if (!path.includes('.')) return obj[path];
+  const parts = path.split('.');
+  let current = obj;
+  for (const part of parts) {
+    if (current == null) return undefined;
+    current = current[part];
+  }
+  return current;
+}
+
+/**
+ * Apply search conditions to rows client-side (AND logic).
+ * Supports operators: eq, ne, gt, gte, lt, lte, contains, starts_with, ends_with.
+ * Handles numeric coercion for comparison operators.
+ * Supports meta fields (looked up from row.meta) and dot-path data fields.
+ */
+export function applyClientConditions(rows: any[], conditions: SearchCondition[]): any[] {
+  if (conditions.length === 0) return rows;
+
+  const metaFields = META_SORT_FIELDS as readonly string[];
+
+  return rows.filter((row) =>
+    conditions.every((cond) => {
+      // Determine where to look up the value: meta or data
+      const isMeta = metaFields.includes(cond.field) || isMetaField(cond.field);
+      const fieldValue = isMeta ? row?.meta?.[cond.field] : getNestedValue(row?.data, cond.field);
+      const condValue = cond.value;
+
+      // Coerce to numbers for comparison if possible
+      const numField = Number(fieldValue);
+      const numCond = Number(condValue);
+      const canCompareNum = !isNaN(numField) && !isNaN(numCond);
+
+      switch (cond.operator) {
+        case 'eq':
+          return fieldValue == condValue;
+        case 'ne':
+          return fieldValue != condValue;
+        case 'gt':
+          return canCompareNum ? numField > numCond : String(fieldValue) > String(condValue);
+        case 'gte':
+          return canCompareNum ? numField >= numCond : String(fieldValue) >= String(condValue);
+        case 'lt':
+          return canCompareNum ? numField < numCond : String(fieldValue) < String(condValue);
+        case 'lte':
+          return canCompareNum ? numField <= numCond : String(fieldValue) <= String(condValue);
+        case 'contains':
+          return String(fieldValue ?? '').includes(String(condValue));
+        case 'starts_with':
+          return String(fieldValue ?? '').startsWith(String(condValue));
+        case 'ends_with':
+          return String(fieldValue ?? '').endsWith(String(condValue));
+        default:
+          return fieldValue == condValue;
+      }
+    }),
+  );
+}
+
+/**
+ * Sort rows client-side by multiple sort criteria.
+ * Supports data fields and meta fields. Does NOT mutate the original array.
+ */
+export function applyClientSort(
+  rows: any[],
+  sortBy: { field: string; order: 'asc' | 'desc' }[],
+): any[] {
+  if (sortBy.length === 0) return [...rows];
+
+  const metaFields = META_SORT_FIELDS as readonly string[];
+
+  return [...rows].sort((a, b) => {
+    for (const s of sortBy) {
+      if (!s.field) continue;
+      const isMeta = metaFields.includes(s.field);
+      const valA = isMeta ? a?.meta?.[s.field] : a?.data?.[s.field];
+      const valB = isMeta ? b?.meta?.[s.field] : b?.data?.[s.field];
+
+      let cmp: number;
+      if (valA == null && valB == null) {
+        cmp = 0;
+      } else if (valA == null) {
+        cmp = -1;
+      } else if (valB == null) {
+        cmp = 1;
+      } else if (typeof valA === 'number' && typeof valB === 'number') {
+        cmp = valA - valB;
+      } else {
+        cmp = String(valA).localeCompare(String(valB));
+      }
+
+      if (cmp !== 0) return s.order === 'desc' ? -cmp : cmp;
+    }
+    return 0;
+  });
 }
 
 /**

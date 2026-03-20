@@ -130,6 +130,10 @@ export class IRBuilder {
       const fields = this.extractFields(schema, '', 1, 10);
       const maxFormDepth = computeMaxFieldDepth(fields);
 
+      // Read indexed fields from x-autocrud-indexed-fields top-level extension
+      const indexedFieldsMap: Record<string, string[]> = this.spec['x-autocrud-indexed-fields'] ?? {};
+      const indexedFields = indexedFieldsMap[name];
+
       this.resources.push({
         name,
         label: toLabel(name),
@@ -140,6 +144,7 @@ export class IRBuilder {
         fields,
         isJob,
         maxFormDepth,
+        ...(indexedFields && indexedFields.length > 0 ? { indexedFields } : {}),
       });
     }
 

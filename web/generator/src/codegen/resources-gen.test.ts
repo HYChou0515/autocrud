@@ -767,3 +767,64 @@ describe('buildNestedZodFields — nullable optional struct grouping', () => {
     expect(code).not.toMatch(/payload:\s*z\.object\(\{[^}]*\}\)\.nullable\(\)/);
   });
 });
+
+// ─── indexedFields generation ────────────────────────────────────────────────
+
+describe('indexedFields generation', () => {
+  it('should emit indexedFields when x-autocrud-indexed-fields is present', () => {
+    const spec = {
+      info: { title: 'Test', version: '1.0' },
+      paths: {
+        '/hero': {
+          post: {
+            requestBody: {
+              content: { 'application/json': { schema: { $ref: '#/components/schemas/Hero' } } },
+            },
+          },
+        },
+        '/hero/{id}': { get: {} },
+      },
+      components: {
+        schemas: {
+          Hero: {
+            type: 'object',
+            properties: { name: { type: 'string' }, level: { type: 'integer' } },
+            required: ['name'],
+          },
+        },
+      },
+      'x-autocrud-indexed-fields': {
+        hero: ['name', 'level'],
+      },
+    };
+    const code = parseAndGenConfig(spec);
+    expect(code).toContain('indexedFields: ["name","level"]');
+  });
+
+  it('should NOT emit indexedFields when extension is absent', () => {
+    const spec = {
+      info: { title: 'Test', version: '1.0' },
+      paths: {
+        '/hero': {
+          post: {
+            requestBody: {
+              content: { 'application/json': { schema: { $ref: '#/components/schemas/Hero' } } },
+            },
+          },
+        },
+        '/hero/{id}': { get: {} },
+      },
+      components: {
+        schemas: {
+          Hero: {
+            type: 'object',
+            properties: { name: { type: 'string' } },
+            required: ['name'],
+          },
+        },
+      },
+    };
+    const code = parseAndGenConfig(spec);
+    expect(code).not.toContain('indexedFields');
+  });
+});

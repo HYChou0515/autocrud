@@ -256,6 +256,11 @@ ${displayNameLine}    schema: '${r.schemaName}',
     zodSchema: ${zodSchemaExpr},
     apiClient: ${r.camel}Api,
     maxFormDepth: ${r.maxFormDepth},${
+      r.indexedFields && r.indexedFields.length > 0
+        ? `
+    indexedFields: ${JSON.stringify(r.indexedFields)},`
+        : ''
+    }${
       r.isJob
         ? `
     defaultHiddenFields: ${JSON.stringify(getJobHiddenFields(r))},`

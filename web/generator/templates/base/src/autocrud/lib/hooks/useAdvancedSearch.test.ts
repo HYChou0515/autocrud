@@ -219,6 +219,22 @@ describe('buildSortFieldOptions', () => {
     expect(options[1].value).toBe('a');
     expect(options[2].value).toBe('b');
   });
+
+  it('does NOT produce duplicate options when normalizedFields contain meta field names', () => {
+    // After Bug 2, normalizedSearchableFields includes created_by/updated_by from META_SEARCHABLE_FIELDS
+    const normalized = [
+      { name: 'level', label: 'Level' },
+      { name: 'created_by', label: '[meta] Created By' },
+      { name: 'updated_by', label: '[meta] Updated By' },
+    ];
+    const options = buildSortFieldOptions(normalized, []);
+    const values = options.map((o) => o.value);
+    // No value should appear more than once
+    expect(new Set(values).size).toBe(values.length);
+    // created_by and updated_by should each appear exactly once
+    expect(values.filter((v) => v === 'created_by')).toHaveLength(1);
+    expect(values.filter((v) => v === 'updated_by')).toHaveLength(1);
+  });
 });
 
 // ---------------------------------------------------------------------------
@@ -576,6 +592,47 @@ describe('useAdvancedSearch (hook)', () => {
       const lastCall = mockNavigate.mock.calls[mockNavigate.mock.calls.length - 1][0];
       expect(lastCall).toHaveProperty('replace', true);
       expect(lastCall).toHaveProperty('to', '/test');
+    });
+  });
+
+  // ---- Sort sync timing (Bug 3) ------------------------------------------
+
+  describe('sort sync timing', () => {
+    it('editingState.sortBy changes do NOT trigger onSearchChange', () => {
+      const onSearchChange = vi.fn();
+      const { result } = renderHook(() => useAdvancedSearch(defaultOpts({ onSearchChange })));
+
+      // onSearchChange is called once on mount with empty search
+      const callCountAfterMount = onSearchChange.mock.calls.length;
+
+      // Change editing sort — should NOT trigger onSearchChange
+      act(() => {
+        result.current.handleSortByChange([{ field: 'name', order: 'asc' }]);
+      });
+
+      expect(onSearchChange.mock.calls.length).toBe(callCountAfterMount);
+    });
+
+    it('activeSearch.sortBy changes only after search submit', () => {
+      const onSearchChange = vi.fn();
+      const { result } = renderHook(() => useAdvancedSearch(defaultOpts({ onSearchChange })));
+
+      // Edit sort
+      act(() => {
+        result.current.handleSortByChange([{ field: 'level', order: 'desc' }]);
+      });
+
+      // editingState updated, activeSearch NOT updated yet
+      expect(result.current.editingState.sortBy).toEqual([{ field: 'level', order: 'desc' }]);
+      expect(result.current.activeSearch.sortBy).toBeUndefined();
+
+      // Submit search
+      act(() => {
+        result.current.handleConditionSearch();
+      });
+
+      // NOW activeSearch should reflect the sort
+      expect(result.current.activeSearch.sortBy).toEqual([{ field: 'level', order: 'desc' }]);
     });
   });
 });
