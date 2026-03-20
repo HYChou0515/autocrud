@@ -158,6 +158,8 @@ export interface Resource {
   isUnion?: boolean;
   unionVariantSchemaNames?: string[];
   customCreateActions?: CustomCreateAction[];
+  /** Indexed field paths from backend (x-autocrud-indexed-fields). */
+  indexedFields?: string[];
 }
 
 // ─── Helper functions ────────────────────────────────────────────────────────

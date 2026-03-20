@@ -1211,6 +1211,9 @@ class AutoCRUD:
         # Inject x-autocrud-async-create-jobs mapping (job resource → parent)
         self._inject_async_create_jobs(app.openapi_schema)
 
+        # Inject x-autocrud-indexed-fields mapping (resource → indexed field paths)
+        self._inject_indexed_fields(app.openapi_schema)
+
         # Promote inline $defs (from Pydantic-generated schemas) into
         # components/schemas and rewrite $ref paths so swagger-parser can
         # resolve them.  Must run before _resolve_missing_schema_refs.
@@ -1827,6 +1830,23 @@ class AutoCRUD:
 
         if mapping:
             schema["x-autocrud-async-create-jobs"] = mapping
+
+    def _inject_indexed_fields(self, schema: dict) -> None:
+        """Inject ``x-autocrud-indexed-fields`` top-level extension.
+
+        Maps each resource name to its list of indexed field paths so the
+        web generator can populate ``indexedFields`` in the resource config.
+        This enables the frontend to distinguish server-sortable/filterable
+        fields from client-only fields.
+        """
+        mapping: dict[str, list[str]] = {}
+        for name, rm in self.resource_managers.items():
+            indexed = rm.indexed_fields
+            if indexed:
+                mapping[name] = [f.field_path for f in indexed]
+
+        if mapping:
+            schema["x-autocrud-indexed-fields"] = mapping
 
     def _install_ref_integrity_handlers(self) -> None:
         """Install event handlers for referential integrity (cascade / set_null).

@@ -21,6 +21,7 @@ import {
   Collapse,
   Paper,
   Tooltip,
+  Slider,
 } from '@mantine/core';
 import {
   IconPlus,
@@ -35,6 +36,7 @@ import {
 } from '@tabler/icons-react';
 import type { ResourceConfig } from '../../resources';
 import type { SearchableField } from './types';
+import type { MRT_ColumnFiltersState, MRT_SortingState } from 'mantine-react-table';
 import { SearchForm } from './SearchForm';
 import { MetaSearchForm } from './MetaSearchForm';
 import { useAdvancedSearch } from '../../hooks/useAdvancedSearch';
@@ -52,6 +54,12 @@ export interface AdvancedSearchPanelProps {
   disableQB?: boolean;
   /** Called whenever the active (submitted) search state changes. */
   onSearchChange: (search: ActiveSearchState) => void;
+  /** MRT column filters — forwarded to useAdvancedSearch for sync. */
+  mrtColumnFilters?: MRT_ColumnFiltersState;
+  /** MRT sorting — forwarded to useAdvancedSearch for bidirectional sync. */
+  mrtSorting?: MRT_SortingState;
+  /** Callback to sync advanced search sort back to MRT. */
+  onMrtSortingChange?: (sorting: MRT_SortingState) => void;
 }
 
 // ---------------------------------------------------------------------------
@@ -63,6 +71,9 @@ export function AdvancedSearchPanel({
   searchableFields,
   disableQB = true,
   onSearchChange,
+  mrtColumnFilters,
+  mrtSorting,
+  onMrtSortingChange,
 }: AdvancedSearchPanelProps) {
   const {
     searchMode,
@@ -84,7 +95,18 @@ export function AdvancedSearchPanel({
     normalizedSearchableFields,
     sortFieldOptions,
     activeBackendCount,
-  } = useAdvancedSearch({ config, searchableFields, disableQB, onSearchChange });
+    filterDepth,
+    setFilterDepth,
+    maxFilterDepth,
+  } = useAdvancedSearch({
+    config,
+    searchableFields,
+    disableQB,
+    onSearchChange,
+    mrtColumnFilters,
+    mrtSorting,
+    onMrtSortingChange,
+  });
 
   // ---- Render ----
   return (
@@ -145,18 +167,38 @@ export function AdvancedSearchPanel({
                 onChange={handleMetaConditionChange}
               />
 
-              {normalizedSearchableFields.length > 0 && (
-                <>
-                  <Divider label="資料欄位篩選" labelPosition="center" my="sm" />
-                  <SearchForm
-                    fields={normalizedSearchableFields}
-                    onSubmit={handleConditionSearch}
-                    initialConditions={editingState.condition.data}
-                    hideButtons
-                    onChange={handleDataConditionChange}
-                  />
-                </>
-              )}
+              <Divider my="sm">
+                <Group gap="xs">
+                  <Text size="xs">資料欄位篩選</Text>
+                  {maxFilterDepth > 1 && (
+                    <Group gap={4}>
+                      <Text size="xs" c="dimmed">
+                        深度:
+                      </Text>
+                      <Slider
+                        value={filterDepth}
+                        onChange={setFilterDepth}
+                        min={1}
+                        max={maxFilterDepth}
+                        step={1}
+                        size="xs"
+                        style={{ width: 80 }}
+                        marks={Array.from({ length: maxFilterDepth }, (_, i) => ({
+                          value: i + 1,
+                          label: String(i + 1),
+                        }))}
+                      />
+                    </Group>
+                  )}
+                </Group>
+              </Divider>
+              <SearchForm
+                fields={normalizedSearchableFields}
+                onSubmit={handleConditionSearch}
+                initialConditions={editingState.condition.data}
+                hideButtons
+                onChange={handleDataConditionChange}
+              />
 
               <Divider label="查詢選項" labelPosition="center" my="sm" />
 

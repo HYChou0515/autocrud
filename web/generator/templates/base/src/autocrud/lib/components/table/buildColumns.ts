@@ -6,13 +6,36 @@
  * ordering, overrides, CellFieldRenderer dispatch).
  */
 
-import type { MRT_ColumnDef, MRT_RowData } from 'mantine-react-table';
+import type {
+  MRT_ColumnDef,
+  MRT_RowData,
+  MRT_Cell,
+  MRT_Column,
+  MRT_Row,
+  MRT_TableInstance,
+} from 'mantine-react-table';
 import type { FullResourceRow } from '../../../types/api';
 import type { ResourceConfig, ResourceField } from '../../resources';
 import { formatTime } from '../common/TimeDisplay';
 import { renderCellValue } from '../field/CellFieldRenderer';
 import { ResourceIdCell } from '../common/ResourceIdCell';
 import type { ColumnVariant, ColumnOverride } from './types';
+
+// ---------------------------------------------------------------------------
+// MRT Cell render props — passed to customRender for full flexibility
+// ---------------------------------------------------------------------------
+
+/**
+ * Props passed to `customRender`.  Mirrors MRT's `Cell` render callback so
+ * users can access the full row, cell value, column, and table instance.
+ */
+export interface CellRenderProps<T> {
+  cell: MRT_Cell<FullResourceRow<T>, unknown>;
+  column: MRT_Column<FullResourceRow<T>, unknown>;
+  row: MRT_Row<FullResourceRow<T>>;
+  table: MRT_TableInstance<FullResourceRow<T>>;
+  renderedCellValue: React.ReactNode;
+}
 
 // ---------------------------------------------------------------------------
 // Internal column definition (before MRT conversion)
@@ -28,8 +51,13 @@ export interface InternalColumnDef<T> {
   /** ResourceField metadata — present for data columns, absent for meta columns. */
   field?: ResourceField;
   defaultHidden?: boolean;
-  /** Override render — highest priority. */
-  customRender?: (value: unknown) => React.ReactNode;
+  /**
+   * Override render — highest priority.
+   *
+   * Receives the full MRT Cell render props so you can access `row.original`,
+   * `cell.getValue()`, `table`, etc.
+   */
+  customRender?: (props: CellRenderProps<T>) => React.ReactNode;
 }
 
 // ---------------------------------------------------------------------------
@@ -73,7 +101,7 @@ export function buildRawColumns<T>(config: ResourceConfig<T>): InternalColumnDef
       accessorFn: (row) => row?.meta?.resource_id,
       size: 180,
       variant: 'string',
-      customRender: (value) => ResourceIdCell({ rid: String(value) }),
+      customRender: (props) => ResourceIdCell({ rid: String(props.cell.getValue()) }),
     },
     {
       id: 'updated_time',
@@ -105,7 +133,10 @@ export function buildRawColumns<T>(config: ResourceConfig<T>): InternalColumnDef
         header: discriminatorField.charAt(0).toUpperCase() + discriminatorField.slice(1),
         accessorFn: (row) => (row?.data as any)?.[discriminatorField],
         size: 100,
-        customRender: (value) => (value != null ? String(value) : ''),
+        customRender: (props) => {
+          const v = props.cell.getValue();
+          return v != null ? String(v) : '';
+        },
       });
 
       // Collect all unique sub-fields from all variants (skip discriminator)
@@ -152,7 +183,7 @@ export function buildRawColumns<T>(config: ResourceConfig<T>): InternalColumnDef
       accessorFn: (row) => row?.meta?.current_revision_id,
       variant: 'string',
       defaultHidden: true,
-      customRender: (value) => ResourceIdCell({ rid: String(value) }),
+      customRender: (props) => ResourceIdCell({ rid: String(props.cell.getValue()) }),
     },
     {
       id: 'schema_version',
@@ -191,11 +222,17 @@ export function buildRawColumns<T>(config: ResourceConfig<T>): InternalColumnDef
 // Apply overrides, ordering, and convert to MRT column definitions
 // ---------------------------------------------------------------------------
 
-export interface BuildTableColumnsOptions {
+export interface BuildTableColumnsOptions<T = unknown> {
   /** Column ordering */
   order?: string[];
   /** Per-column overrides */
   overrides?: Record<string, ColumnOverride>;
+  /**
+   * Extra columns to append to the raw column pool.
+   * Their final position is determined by `order`; without explicit ordering
+   * they appear after all built-in columns.
+   */
+  moreColumns?: InternalColumnDef<T>[];
 }
 
 /**
@@ -205,9 +242,15 @@ export interface BuildTableColumnsOptions {
  */
 export function buildTableColumns<T extends MRT_RowData>(
   config: ResourceConfig<T>,
-  options?: BuildTableColumnsOptions,
+  options?: BuildTableColumnsOptions<T>,
 ): MRT_ColumnDef<FullResourceRow<T>, unknown>[] {
   const allColumns = buildRawColumns(config);
+
+  // Append caller-supplied extra columns
+  if (options?.moreColumns) {
+    allColumns.push(...options.moreColumns);
+  }
+
   const overrides = options?.overrides ?? {};
 
   // Apply overrides
@@ -244,11 +287,19 @@ export function buildTableColumns<T extends MRT_RowData>(
       header: col.header,
       accessorFn: col.accessorFn,
       size: col.size,
-      Cell: ({ cell }: { cell: { getValue: () => unknown } }) => {
-        const value = cell.getValue();
+      Cell: (cellProps: {
+        cell: MRT_Cell<FullResourceRow<T>, unknown>;
+        column: MRT_Column<FullResourceRow<T>, unknown>;
+        row: MRT_Row<FullResourceRow<T>>;
+        table: MRT_TableInstance<FullResourceRow<T>>;
+        renderedCellValue: React.ReactNode;
+      }) => {
+        const value = cellProps.cell.getValue();
         // 1. Highest priority: custom render (ColumnOverride.render or meta hard-coded)
         if (col.customRender) {
-          return col.customRender(value);
+          // customRender may come from InternalColumnDef<T> or ColumnOverride (unknown).
+          // Both accept the same shape; the cast is safe.
+          return (col.customRender as (props: CellRenderProps<T>) => React.ReactNode)(cellProps);
         }
         // 2. Data field: use CellFieldRenderer registry
         if (col.field) {

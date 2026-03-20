@@ -38,19 +38,18 @@ import type { FullResourceRow } from '../../../types/api';
 import { formatTime } from '../common/TimeDisplay';
 import { AdvancedSearchPanel } from './AdvancedSearchPanel';
 import { buildTableColumns } from './buildColumns';
+import type { InternalColumnDef } from './buildColumns';
 import type { ActiveSearchState } from './searchUtils';
 import type { ResourceTableProps } from './types';
 import {
-  sortByToSorts,
   computeTableMode,
-  mrtSortingToSorts,
-  mrtFiltersToParams,
+  buildRequestParams,
   DEFAULT_SORTING,
+  splitConditionsByIndex,
+  applyClientConditions,
+  applyClientSort,
   type TableMode,
 } from './utils';
-
-/** Maximum number of items fetched from the backend for client-side operations */
-const CLIENT_FETCH_LIMIT = 1000;
 
 /** Debounce delay (ms) for globalFilter before triggering client mode */
 const GLOBAL_FILTER_DEBOUNCE_MS = 1000;
@@ -112,6 +111,7 @@ export function ResourceTable<T extends MRT_RowData>({
   config,
   basePath,
   columns,
+  moreColumns,
   searchableFields,
   disableQB = true,
   // ── New customization props (override config.tableConfig) ──
@@ -178,8 +178,17 @@ export function ResourceTable<T extends MRT_RowData>({
         sorting,
         columnFilters,
         indexedFields: config.indexedFields,
+        activeSearchData: activeSearch.condition?.data,
+        activeSearchSortBy: activeSearch.sortBy,
       }),
-    [debouncedGlobalFilter, sorting, columnFilters, config.indexedFields],
+    [
+      debouncedGlobalFilter,
+      sorting,
+      columnFilters,
+      config.indexedFields,
+      activeSearch.condition?.data,
+      activeSearch.sortBy,
+    ],
   );
 
   // Reset page index when mode changes
@@ -192,101 +201,58 @@ export function ResourceTable<T extends MRT_RowData>({
   }, [mode]);
 
   // ── Build request params ──
-  const params = useMemo(() => {
-    const baseParams: Record<string, unknown> = {};
-
-    // --- Pagination ---
-    if (mode === 'server') {
-      baseParams.limit = pagination.pageSize;
-      baseParams.offset = pagination.pageIndex * pagination.pageSize;
-    } else {
-      baseParams.limit = CLIENT_FETCH_LIMIT;
-      // Sort by updated_time desc to fetch the most recently updated items
-      baseParams.sorts = JSON.stringify([{ type: 'meta', key: 'updated_time', direction: '-' }]);
-    }
-
-    // --- AdvancedSearchPanel conditions ---
-    if (activeSearch.mode === 'qb' && activeSearch.qb) {
-      // QB mode: just send the QB string
-      baseParams.qb = activeSearch.qb;
-    } else {
-      // Condition mode
-      const { meta, data: advancedData } = activeSearch.condition;
-
-      // Advanced panel result limit (cap at CLIENT_FETCH_LIMIT)
-      if (activeSearch.resultLimit) {
-        baseParams.limit = Math.min(
-          activeSearch.resultLimit,
-          mode === 'server' ? activeSearch.resultLimit : CLIENT_FETCH_LIMIT,
-        );
-      }
-
-      // Advanced panel sorts (only in server mode — in client mode MRT handles sorting)
-      if (mode === 'server' && activeSearch.sortBy && activeSearch.sortBy.length > 0) {
-        const sortsStr = sortByToSorts(activeSearch.sortBy);
-        if (sortsStr) baseParams.sorts = sortsStr;
-      }
-
-      // Advanced panel data_conditions
-      const advancedConditions = advancedData.map((condition) => ({
-        field_path: condition.field,
-        operator: condition.operator,
-        value: condition.value,
-      }));
-
-      // Advanced panel meta filters
-      if (meta.created_time_start) baseParams.created_time_start = meta.created_time_start;
-      if (meta.created_time_end) baseParams.created_time_end = meta.created_time_end;
-      if (meta.updated_time_start) baseParams.updated_time_start = meta.updated_time_start;
-      if (meta.updated_time_end) baseParams.updated_time_end = meta.updated_time_end;
-      if (meta.created_by) baseParams.created_bys = [meta.created_by];
-      if (meta.updated_by) baseParams.updated_bys = [meta.updated_by];
-
-      // --- MRT column filters (server-filterable ones sent to backend in both modes) ---
-      const { serverParams, dataConditions: mrtDataConditions } = mrtFiltersToParams(
+  const params = useMemo(
+    () =>
+      buildRequestParams({
+        mode,
+        pagination,
+        activeSearch,
+        sorting,
         columnFilters,
-        config.indexedFields,
-      );
-      Object.assign(baseParams, serverParams);
+        indexedFields: config.indexedFields,
+        alwaysSearchCondition,
+      }),
+    [
+      mode,
+      pagination,
+      activeSearch,
+      sorting,
+      columnFilters,
+      config.indexedFields,
+      alwaysSearchCondition,
+    ],
+  );
 
-      // Merge advanced + MRT data_conditions
-      const allDataConditions = [...advancedConditions, ...mrtDataConditions];
-      if (allDataConditions.length > 0) {
-        baseParams.data_conditions = JSON.stringify(allDataConditions);
+  const { data: rawData, total, loading, error, refresh } = useResourceList(config, params);
+
+  // ── Client-side post-processing: apply non-indexed conditions & sort ──
+  const data = useMemo(() => {
+    let result = rawData;
+
+    // Apply non-indexed data conditions client-side
+    const advancedDataConditions = activeSearch.condition?.data ?? [];
+    if (advancedDataConditions.length > 0) {
+      const { clientConditions: nonIndexed } = splitConditionsByIndex(
+        advancedDataConditions,
+        config.indexedFields ?? [],
+      );
+      if (nonIndexed.length > 0) {
+        result = applyClientConditions(result, nonIndexed);
       }
     }
 
-    // --- MRT column sorting (server mode only — send sortable columns to backend) ---
-    if (mode === 'server' && sorting.length > 0 && !baseParams.sorts) {
-      const sortsStr = mrtSortingToSorts(sorting, config.indexedFields);
-      if (sortsStr) baseParams.sorts = sortsStr;
+    // Apply non-indexed sorts client-side
+    const advancedSortBy = activeSearch.sortBy;
+    if (advancedSortBy && advancedSortBy.length > 0) {
+      // Only apply client-side sort for non-indexed sort fields
+      const clientSorts = advancedSortBy.filter((s) => !config.indexedFields?.includes(s.field));
+      if (clientSorts.length > 0) {
+        result = applyClientSort(result, clientSorts);
+      }
     }
 
-    // --- Always-on search conditions (e.g. filter for a specific tag) ---
-    if (alwaysSearchCondition && alwaysSearchCondition.length > 0) {
-      const alwaysConditions = alwaysSearchCondition.map((c) => ({
-        field_path: c.field,
-        operator: c.operator,
-        value: c.value,
-      }));
-      const existing = baseParams.data_conditions
-        ? (JSON.parse(baseParams.data_conditions as string) as unknown[])
-        : [];
-      baseParams.data_conditions = JSON.stringify([...existing, ...alwaysConditions]);
-    }
-
-    return baseParams;
-  }, [
-    mode,
-    pagination,
-    activeSearch,
-    sorting,
-    columnFilters,
-    config.indexedFields,
-    alwaysSearchCondition,
-  ]);
-
-  const { data, total, loading, error, refresh } = useResourceList(config, params);
+    return result;
+  }, [rawData, activeSearch.condition?.data, activeSearch.sortBy, config.indexedFields]);
 
   // ── Client mode overflow info (cutoff timestamp) ──
   const clientOverflowInfo = useMemo(() => {
@@ -321,8 +287,9 @@ export function ResourceTable<T extends MRT_RowData>({
       buildTableColumns(config, {
         order: columns?.order,
         overrides: columns?.overrides,
+        moreColumns: moreColumns as InternalColumnDef<T>[] | undefined,
       }),
-    [config.fields, columns],
+    [config.fields, columns, moreColumns],
   );
 
   // ── MRT instance ──
@@ -368,10 +335,10 @@ export function ResourceTable<T extends MRT_RowData>({
         ? undefined
         : ({ row }) => ({
             onClick: () => {
-              const rid = row.original?.meta?.resource_id ?? '';
               if (typeof onRowClick === 'function') {
-                onRowClick(rid);
+                onRowClick(row.original);
               } else {
+                const rid = row.original?.meta?.resource_id ?? '';
                 navigate({
                   to: `${basePath}/$resourceId`,
                   params: { resourceId: rid },
@@ -443,6 +410,9 @@ export function ResourceTable<T extends MRT_RowData>({
           searchableFields={searchableFields}
           disableQB={disableQB}
           onSearchChange={handleSearchChange}
+          mrtColumnFilters={columnFilters}
+          mrtSorting={sorting}
+          onMrtSortingChange={setSorting}
         />
       )}
 

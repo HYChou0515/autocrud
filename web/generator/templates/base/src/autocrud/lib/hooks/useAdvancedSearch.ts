@@ -8,6 +8,7 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useNavigate, useLocation } from '@tanstack/react-router';
+import type { MRT_ColumnFiltersState, MRT_SortingState } from 'mantine-react-table';
 import type { ResourceConfig } from '../resources';
 import type {
   SearchCondition,
@@ -15,7 +16,8 @@ import type {
   NormalizedSearchableField,
   SearchableField,
 } from '../components/table/types';
-import { conditionToQB } from '../components/table/utils';
+import { conditionToQB, SERVER_META_FILTER_COLUMNS } from '../components/table/utils';
+import { fieldsToSearchableFields } from '../components/table/searchFieldUtils';
 import {
   type ActiveSearchState,
   type EditingState,
@@ -65,12 +67,18 @@ export function buildSortFieldOptions(
   configFields: readonly { name: string; label: string }[],
 ): { value: string; label: string }[] {
   const dataFields = normalizedFields.length > 0 ? normalizedFields : configFields;
-  return [
-    ...dataFields.map((f) => ({ value: f.name, label: f.label })),
+  const existing = new Set(dataFields.map((f) => f.name));
+
+  const metaOptions = [
     { value: 'created_time', label: '建立時間' },
     { value: 'updated_time', label: '更新時間' },
     { value: 'created_by', label: '建立者' },
     { value: 'updated_by', label: '更新者' },
+  ];
+
+  return [
+    ...dataFields.map((f) => ({ value: f.name, label: f.label })),
+    ...metaOptions.filter((m) => !existing.has(m.value)),
   ];
 }
 
@@ -89,6 +97,12 @@ export interface UseAdvancedSearchOptions {
   disableQB?: boolean;
   /** Called whenever the active (submitted) search state changes. */
   onSearchChange: (search: ActiveSearchState) => void;
+  /** MRT column filters — synced into advanced search conditions. */
+  mrtColumnFilters?: MRT_ColumnFiltersState;
+  /** MRT sorting — synced bidirectionally with advanced search sorts. */
+  mrtSorting?: MRT_SortingState;
+  /** Callback to sync advanced search sort back to MRT sorting. */
+  onMrtSortingChange?: (sorting: MRT_SortingState) => void;
 }
 
 export interface UseAdvancedSearchReturn {
@@ -120,16 +134,81 @@ export interface UseAdvancedSearchReturn {
   normalizedSearchableFields: NormalizedSearchableField[];
   sortFieldOptions: { value: string; label: string }[];
   activeBackendCount: number;
+
+  // Filter depth control
+  filterDepth: number;
+  setFilterDepth: (depth: number) => void;
+  maxFilterDepth: number;
+
+  // MRT-derived conditions (read-only display in SearchForm)
+  mrtDerivedConditions: SearchCondition[];
+  mrtDerivedMetaFilters: MetaFilters;
 }
 
 // ---------------------------------------------------------------------------
 // Hook
 // ---------------------------------------------------------------------------
 
+// ---------------------------------------------------------------------------
+// MRT ↔ Advanced Search sync helpers (exported for testing)
+// ---------------------------------------------------------------------------
+
+/** Convert MRT column filters to SearchCondition[] + MetaFilters. */
+export function mrtFiltersToConditions(columnFilters: MRT_ColumnFiltersState): {
+  dataConditions: SearchCondition[];
+  metaFilters: MetaFilters;
+} {
+  const dataConditions: SearchCondition[] = [];
+  const metaFilters: MetaFilters = {};
+
+  for (const filter of columnFilters) {
+    if (filter.value == null || filter.value === '') continue;
+
+    // Meta filter columns → metaFilters
+    if (filter.id in SERVER_META_FILTER_COLUMNS) {
+      if (filter.id === 'created_by') {
+        metaFilters.created_by = String(filter.value);
+      } else if (filter.id === 'updated_by') {
+        metaFilters.updated_by = String(filter.value);
+      }
+      // is_deleted is handled separately; skip for now
+      continue;
+    }
+
+    // Data field → SearchCondition
+    const operator = typeof filter.value === 'string' ? 'contains' : 'eq';
+    dataConditions.push({
+      field: filter.id,
+      operator,
+      value: filter.value as string | number | boolean,
+    });
+  }
+
+  return { dataConditions, metaFilters };
+}
+
+/** Convert MRT sorting to advanced search sortBy. */
+export function mrtSortingToSortBy(
+  sorting: MRT_SortingState,
+): { field: string; order: 'asc' | 'desc' }[] {
+  return sorting.map((s) => ({ field: s.id, order: s.desc ? 'desc' : 'asc' }));
+}
+
+/** Convert advanced search sortBy to MRT sorting. */
+export function sortByToMrtSorting(
+  sortBy: { field: string; order: 'asc' | 'desc' }[] | undefined,
+): MRT_SortingState {
+  if (!sortBy) return [];
+  return sortBy.filter((s) => s.field).map((s) => ({ id: s.field, desc: s.order === 'desc' }));
+}
+
 export function useAdvancedSearch({
   config,
   searchableFields,
   onSearchChange,
+  mrtColumnFilters,
+  mrtSorting,
+  onMrtSortingChange,
 }: UseAdvancedSearchOptions): UseAdvancedSearchReturn {
   const navigate = useNavigate();
   const location = useLocation();
@@ -138,6 +217,7 @@ export function useAdvancedSearch({
   const [advancedOpen, setAdvancedOpen] = useState(false);
   const [activeSearch, setActiveSearch] = useState<ActiveSearchState>(EMPTY_ACTIVE_SEARCH);
   const [editingState, setEditingState] = useState<EditingState>({ ...EMPTY_EDITING });
+  const [filterDepth, setFilterDepth] = useState(1);
 
   const lastPathnameRef = useRef<string>(location.pathname);
   const isInternalUpdate = useRef(false);
@@ -181,16 +261,68 @@ export function useAdvancedSearch({
     navigate({ to: location.pathname, search: searchParams, replace: true });
   }, [activeSearch, navigate, location.pathname]);
 
-  // ---- Normalised searchable fields ----
+  // ---- Auto-generate searchable fields when not manually provided ----
+  const autoSearchableFields = useMemo(() => {
+    if (searchableFields && searchableFields.length > 0) return undefined;
+    return fieldsToSearchableFields(config.fields, config.indexedFields, filterDepth);
+  }, [searchableFields, config.fields, config.indexedFields, filterDepth]);
+
+  const effectiveSearchableFields = searchableFields ?? autoSearchableFields;
+
   const normalizedSearchableFields = useMemo(
-    () => normalizeSearchableFields(searchableFields),
-    [searchableFields],
+    () => normalizeSearchableFields(effectiveSearchableFields),
+    [effectiveSearchableFields],
   );
+
+  const maxFilterDepth = useMemo(() => config.maxFormDepth ?? 1, [config.maxFormDepth]);
 
   const sortFieldOptions = useMemo(
     () => buildSortFieldOptions(normalizedSearchableFields, config.fields),
     [normalizedSearchableFields, config.fields],
   );
+
+  // ---- MRT column filters → derived conditions (read-only display) ----
+  const { mrtDerivedConditions, mrtDerivedMetaFilters } = useMemo(() => {
+    if (!mrtColumnFilters || mrtColumnFilters.length === 0) {
+      return {
+        mrtDerivedConditions: [] as SearchCondition[],
+        mrtDerivedMetaFilters: {} as MetaFilters,
+      };
+    }
+    const { dataConditions, metaFilters } = mrtFiltersToConditions(mrtColumnFilters);
+    return { mrtDerivedConditions: dataConditions, mrtDerivedMetaFilters: metaFilters };
+  }, [mrtColumnFilters]);
+
+  // ---- MRT sorting → editing sortBy sync (MRT → advanced search) ----
+  const isMrtSortSync = useRef(false);
+  const isAdvancedSortSync = useRef(false);
+
+  useEffect(() => {
+    if (!mrtSorting || isAdvancedSortSync.current) {
+      isAdvancedSortSync.current = false;
+      return;
+    }
+    isMrtSortSync.current = true;
+    const newSortBy = mrtSortingToSortBy(mrtSorting);
+    setEditingState((prev) => ({
+      ...prev,
+      sortBy: newSortBy.length > 0 ? newSortBy : undefined,
+    }));
+  }, [mrtSorting]);
+
+  // ---- Advanced search sortBy → MRT sorting sync (advanced search → MRT) ----
+  // Bug 3 fix: Only sync to MRT when activeSearch.sortBy changes (i.e. after
+  // the user presses the "搜尋" button), not on every editing change.
+  useEffect(() => {
+    if (isMrtSortSync.current) {
+      isMrtSortSync.current = false;
+      return;
+    }
+    if (!onMrtSortingChange) return;
+    isAdvancedSortSync.current = true;
+    const newMrtSorting = sortByToMrtSorting(activeSearch.sortBy);
+    onMrtSortingChange(newMrtSorting);
+  }, [activeSearch.sortBy, onMrtSortingChange]);
 
   // ---- Editing callbacks ----
   const handleMetaConditionChange = useCallback((filters: MetaFilters, _isDirty: boolean) => {
@@ -282,5 +414,10 @@ export function useAdvancedSearch({
     normalizedSearchableFields,
     sortFieldOptions,
     activeBackendCount,
+    filterDepth,
+    setFilterDepth,
+    maxFilterDepth,
+    mrtDerivedConditions,
+    mrtDerivedMetaFilters,
   };
 }
