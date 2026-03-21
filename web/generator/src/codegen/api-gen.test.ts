@@ -437,6 +437,36 @@ describe('genApiClient — custom action paths use BASE variable', () => {
     expect(api).toContain('${BASE}/import');
     expect(api).not.toContain('/character/import');
   });
+
+  it('generates API method for no-param custom action', () => {
+    const spec = {
+      paths: {
+        '/character': {
+          post: {
+            requestBody: { content: { 'application/json': { schema: { $ref: '#/components/schemas/Character' } } } },
+          },
+        },
+        '/character/{id}': { get: {} },
+      },
+      'x-autocrud-custom-create-actions': {
+        character: [
+          {
+            path: '/character/trigger',
+            label: 'Trigger',
+            operationId: 'trigger_character',
+          },
+        ],
+      },
+      components: {
+        schemas: { Character: { type: 'object', properties: { name: { type: 'string' } }, required: ['name'] } },
+      },
+    };
+    const resources = parse(spec);
+    const api = genApiClient(resources.find((r) => r.name === 'character')!, '');
+
+    expect(api).toContain('triggerCharacter');
+    expect(api).toContain('${BASE}/trigger');
+  });
 });
 
 // ============================================================================

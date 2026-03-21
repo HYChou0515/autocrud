@@ -289,6 +289,36 @@ describe('genResourcesConfig — custom create actions', () => {
     expect(code).toContain('customCreateActions');
     expect(code).toContain('Import from URL');
   });
+
+  it('generates customCreateActions for no-param actions', () => {
+    const spec = {
+      paths: {
+        '/article': {
+          post: {
+            requestBody: { content: { 'application/json': { schema: { $ref: '#/components/schemas/Article' } } } },
+          },
+        },
+      },
+      'x-autocrud-custom-create-actions': {
+        article: [
+          {
+            path: '/article/trigger',
+            label: 'Trigger',
+            operationId: 'trigger_article',
+          },
+        ],
+      },
+      components: {
+        schemas: {
+          Article: { type: 'object', properties: { content: { type: 'string' } }, required: ['content'] },
+        },
+      },
+    };
+    const code = parseAndGenConfig(spec);
+    expect(code).toContain('customCreateActions');
+    expect(code).toContain('Trigger');
+    expect(code).toContain('triggerArticle');
+  });
 });
 
 // ============================================================================

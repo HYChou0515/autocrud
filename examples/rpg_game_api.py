@@ -1354,6 +1354,16 @@ def configure_crud():
 
     @crud.create_action(
         "character",
+        label="New Character0",
+    )
+    async def create_new_character0():
+        return Character(
+            name="hi",
+            character_class=CharacterClass.WARRIOR,
+        )
+
+    @crud.create_action(
+        "character",
         label="New Character1",
         path="/{name}/new",
         async_mode="job",

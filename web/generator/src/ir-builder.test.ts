@@ -555,7 +555,7 @@ describe('extractCustomCreateActions — bodySchema', () => {
     expect(article!.customCreateActions).toBeUndefined();
   });
 
-  it('skips actions without any recognised param types', () => {
+  it('includes actions without any params (no-param trigger action)', () => {
     const spec = buildCharacterSpec({});
     spec['x-autocrud-custom-create-actions'].character[0] = {
       path: '/character/no-params',
@@ -564,7 +564,11 @@ describe('extractCustomCreateActions — bodySchema', () => {
     };
     const resources = buildIR(spec).resources;
     const character = resources.find((r) => r.name === 'character')!;
-    expect(character.customCreateActions).toBeUndefined();
+    expect(character.customCreateActions).toBeDefined();
+    expect(character.customCreateActions!.length).toBe(1);
+    expect(character.customCreateActions![0].name).toBe('no-params');
+    expect(character.customCreateActions![0].label).toBe('No Params');
+    expect(character.customCreateActions![0].fields).toEqual([]);
   });
 });
 

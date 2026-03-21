@@ -600,6 +600,13 @@ Object.assign(registry, {
     ],
     customCreateActions: [
       {
+        name: 'create-new-character0',
+        label: 'New Character0',
+        fields: [],
+        zodSchema: z.object({}),
+        apiMethod: characterApi.createNewCharacter0,
+      },
+      {
         name: 'new',
         label: 'New Character1',
         fields: [

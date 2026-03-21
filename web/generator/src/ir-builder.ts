@@ -260,13 +260,6 @@ export class IRBuilder {
           actionMeta.fileParams = raw.fileParams;
         }
 
-        if (fields.length === 0) {
-          console.warn(
-            `⚠️  Custom action '${raw.label}' for ${resource.name}: no bodySchema, pathParams, queryParams, inlineBodyParams, or fileParams, skipping`,
-          );
-          continue;
-        }
-
         actionMeta.fields = fields;
         actions.push(actionMeta);
       }
