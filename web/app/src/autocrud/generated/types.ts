@@ -190,7 +190,7 @@ export const listResourcesDataV1AutocrudCharacterDataGetResponseEquipmentsItemTw
 export const listResourcesDataV1AutocrudCharacterDataGetResponseEquipmentsItemTwoPriceDefault = 100;
 export const listResourcesDataV1AutocrudCharacterDataGetResponseEquipmentsItemTwoIconDefault = null;
 export const listResourcesDataV1AutocrudCharacterDataGetResponseEquipmentsDefault = [];
-export const listResourcesDataV1AutocrudCharacterDataGetResponseCreatedAtDefault = `2026-03-21T06:26:14.895241`;
+export const listResourcesDataV1AutocrudCharacterDataGetResponseCreatedAtDefault = `2026-03-21T17:08:09.388142`;
 
 export const ListResourcesDataV1AutocrudCharacterDataGetResponseItem = zod
   .object({
@@ -775,7 +775,7 @@ export const listResourcesFullV1AutocrudCharacterFullGetResponseDataEquipmentsIt
 export const listResourcesFullV1AutocrudCharacterFullGetResponseDataEquipmentsItemTwoIconDefault =
   null;
 export const listResourcesFullV1AutocrudCharacterFullGetResponseDataEquipmentsDefault = [];
-export const listResourcesFullV1AutocrudCharacterFullGetResponseDataCreatedAtDefault = `2026-03-21T06:26:14.895241`;
+export const listResourcesFullV1AutocrudCharacterFullGetResponseDataCreatedAtDefault = `2026-03-21T17:08:09.388142`;
 export const listResourcesFullV1AutocrudCharacterFullGetResponseRevisionInfoParentRevisionIdDefault =
   null;
 export const listResourcesFullV1AutocrudCharacterFullGetResponseRevisionInfoSchemaVersionDefault =
@@ -1220,7 +1220,7 @@ export const listResourcesV1AutocrudCharacterGetResponseDataEquipmentsItemTwoDes
 export const listResourcesV1AutocrudCharacterGetResponseDataEquipmentsItemTwoPriceDefault = 100;
 export const listResourcesV1AutocrudCharacterGetResponseDataEquipmentsItemTwoIconDefault = null;
 export const listResourcesV1AutocrudCharacterGetResponseDataEquipmentsDefault = [];
-export const listResourcesV1AutocrudCharacterGetResponseDataCreatedAtDefault = `2026-03-21T06:26:14.895241`;
+export const listResourcesV1AutocrudCharacterGetResponseDataCreatedAtDefault = `2026-03-21T17:08:09.388142`;
 export const listResourcesV1AutocrudCharacterGetResponseRevisionInfoParentRevisionIdDefault = null;
 export const listResourcesV1AutocrudCharacterGetResponseRevisionInfoSchemaVersionDefault = null;
 export const listResourcesV1AutocrudCharacterGetResponseMetaSchemaVersionDefault = null;
@@ -1457,7 +1457,7 @@ export const createResourceV1AutocrudCharacterPostBodyEquipmentsItemTwoDescripti
 export const createResourceV1AutocrudCharacterPostBodyEquipmentsItemTwoPriceDefault = 100;
 export const createResourceV1AutocrudCharacterPostBodyEquipmentsItemTwoIconDefault = null;
 export const createResourceV1AutocrudCharacterPostBodyEquipmentsDefault = [];
-export const createResourceV1AutocrudCharacterPostBodyCreatedAtDefault = `2026-03-21T06:26:14.895241`;
+export const createResourceV1AutocrudCharacterPostBodyCreatedAtDefault = `2026-03-21T17:08:09.388142`;
 
 export const CreateResourceV1AutocrudCharacterPostBody = zod
   .object({
@@ -2036,7 +2036,7 @@ export const getResourceFullV1AutocrudCharacterResourceIdFullGetResponseDataEqui
 export const getResourceFullV1AutocrudCharacterResourceIdFullGetResponseDataEquipmentsItemTwoIconDefault =
   null;
 export const getResourceFullV1AutocrudCharacterResourceIdFullGetResponseDataEquipmentsDefault = [];
-export const getResourceFullV1AutocrudCharacterResourceIdFullGetResponseDataCreatedAtDefault = `2026-03-21T06:26:14.895241`;
+export const getResourceFullV1AutocrudCharacterResourceIdFullGetResponseDataCreatedAtDefault = `2026-03-21T17:08:09.388142`;
 export const getResourceFullV1AutocrudCharacterResourceIdFullGetResponseRevisionInfoParentRevisionIdDefault =
   null;
 export const getResourceFullV1AutocrudCharacterResourceIdFullGetResponseRevisionInfoSchemaVersionDefault =
@@ -2508,7 +2508,7 @@ export const getResourceDataV1AutocrudCharacterResourceIdDataGetResponseEquipmen
 export const getResourceDataV1AutocrudCharacterResourceIdDataGetResponseEquipmentsItemTwoIconDefault =
   null;
 export const getResourceDataV1AutocrudCharacterResourceIdDataGetResponseEquipmentsDefault = [];
-export const getResourceDataV1AutocrudCharacterResourceIdDataGetResponseCreatedAtDefault = `2026-03-21T06:26:14.895241`;
+export const getResourceDataV1AutocrudCharacterResourceIdDataGetResponseCreatedAtDefault = `2026-03-21T17:08:09.388142`;
 
 export const GetResourceDataV1AutocrudCharacterResourceIdDataGetResponse = zod
   .object({
@@ -2739,7 +2739,7 @@ export const getResourceV1AutocrudCharacterResourceIdGetResponseDataEquipmentsIt
 export const getResourceV1AutocrudCharacterResourceIdGetResponseDataEquipmentsItemTwoIconDefault =
   null;
 export const getResourceV1AutocrudCharacterResourceIdGetResponseDataEquipmentsDefault = [];
-export const getResourceV1AutocrudCharacterResourceIdGetResponseDataCreatedAtDefault = `2026-03-21T06:26:14.895241`;
+export const getResourceV1AutocrudCharacterResourceIdGetResponseDataCreatedAtDefault = `2026-03-21T17:08:09.388142`;
 export const getResourceV1AutocrudCharacterResourceIdGetResponseRevisionInfoParentRevisionIdDefault =
   null;
 export const getResourceV1AutocrudCharacterResourceIdGetResponseRevisionInfoSchemaVersionDefault =
@@ -3012,7 +3012,7 @@ export const updateResourceV1AutocrudCharacterResourceIdPutBodyEquipmentsItemTwo
 export const updateResourceV1AutocrudCharacterResourceIdPutBodyEquipmentsItemTwoPriceDefault = 100;
 export const updateResourceV1AutocrudCharacterResourceIdPutBodyEquipmentsItemTwoIconDefault = null;
 export const updateResourceV1AutocrudCharacterResourceIdPutBodyEquipmentsDefault = [];
-export const updateResourceV1AutocrudCharacterResourceIdPutBodyCreatedAtDefault = `2026-03-21T06:26:14.895241`;
+export const updateResourceV1AutocrudCharacterResourceIdPutBodyCreatedAtDefault = `2026-03-21T17:08:09.388142`;
 
 export const UpdateResourceV1AutocrudCharacterResourceIdPutBody = zod
   .object({
@@ -4084,7 +4084,7 @@ export const ListResourcesDataV1AutocrudGuildDataGetQueryParams = zod.object({
 export const listResourcesDataV1AutocrudGuildDataGetResponseMemberCountDefault = 1;
 export const listResourcesDataV1AutocrudGuildDataGetResponseLevelDefault = 1;
 export const listResourcesDataV1AutocrudGuildDataGetResponseTreasuryDefault = 1000;
-export const listResourcesDataV1AutocrudGuildDataGetResponseFoundedAtDefault = `2026-03-21T06:26:14.895335`;
+export const listResourcesDataV1AutocrudGuildDataGetResponseFoundedAtDefault = `2026-03-21T17:08:09.388233`;
 
 export const ListResourcesDataV1AutocrudGuildDataGetResponseItem = zod
   .object({
@@ -4520,7 +4520,7 @@ export const ListResourcesFullV1AutocrudGuildFullGetQueryParams = zod.object({
 export const listResourcesFullV1AutocrudGuildFullGetResponseDataMemberCountDefault = 1;
 export const listResourcesFullV1AutocrudGuildFullGetResponseDataLevelDefault = 1;
 export const listResourcesFullV1AutocrudGuildFullGetResponseDataTreasuryDefault = 1000;
-export const listResourcesFullV1AutocrudGuildFullGetResponseDataFoundedAtDefault = `2026-03-21T06:26:14.895335`;
+export const listResourcesFullV1AutocrudGuildFullGetResponseDataFoundedAtDefault = `2026-03-21T17:08:09.388233`;
 export const listResourcesFullV1AutocrudGuildFullGetResponseRevisionInfoParentRevisionIdDefault =
   null;
 export const listResourcesFullV1AutocrudGuildFullGetResponseRevisionInfoSchemaVersionDefault = null;
@@ -4814,7 +4814,7 @@ export const ListResourcesV1AutocrudGuildGetQueryParams = zod.object({
 export const listResourcesV1AutocrudGuildGetResponseDataMemberCountDefault = 1;
 export const listResourcesV1AutocrudGuildGetResponseDataLevelDefault = 1;
 export const listResourcesV1AutocrudGuildGetResponseDataTreasuryDefault = 1000;
-export const listResourcesV1AutocrudGuildGetResponseDataFoundedAtDefault = `2026-03-21T06:26:14.895335`;
+export const listResourcesV1AutocrudGuildGetResponseDataFoundedAtDefault = `2026-03-21T17:08:09.388233`;
 export const listResourcesV1AutocrudGuildGetResponseRevisionInfoParentRevisionIdDefault = null;
 export const listResourcesV1AutocrudGuildGetResponseRevisionInfoSchemaVersionDefault = null;
 export const listResourcesV1AutocrudGuildGetResponseMetaSchemaVersionDefault = null;
@@ -4908,7 +4908,7 @@ export const ListResourcesV1AutocrudGuildGetResponse = zod.array(
 export const createResourceV1AutocrudGuildPostBodyMemberCountDefault = 1;
 export const createResourceV1AutocrudGuildPostBodyLevelDefault = 1;
 export const createResourceV1AutocrudGuildPostBodyTreasuryDefault = 1000;
-export const createResourceV1AutocrudGuildPostBodyFoundedAtDefault = `2026-03-21T06:26:14.895335`;
+export const createResourceV1AutocrudGuildPostBodyFoundedAtDefault = `2026-03-21T17:08:09.388233`;
 
 export const CreateResourceV1AutocrudGuildPostBody = zod
   .object({
@@ -5346,7 +5346,7 @@ export const GetResourceFullV1AutocrudGuildResourceIdFullGetQueryParams = zod.ob
 export const getResourceFullV1AutocrudGuildResourceIdFullGetResponseDataMemberCountDefault = 1;
 export const getResourceFullV1AutocrudGuildResourceIdFullGetResponseDataLevelDefault = 1;
 export const getResourceFullV1AutocrudGuildResourceIdFullGetResponseDataTreasuryDefault = 1000;
-export const getResourceFullV1AutocrudGuildResourceIdFullGetResponseDataFoundedAtDefault = `2026-03-21T06:26:14.895335`;
+export const getResourceFullV1AutocrudGuildResourceIdFullGetResponseDataFoundedAtDefault = `2026-03-21T17:08:09.388233`;
 export const getResourceFullV1AutocrudGuildResourceIdFullGetResponseRevisionInfoParentRevisionIdDefault =
   null;
 export const getResourceFullV1AutocrudGuildResourceIdFullGetResponseRevisionInfoSchemaVersionDefault =
@@ -5648,7 +5648,7 @@ export const GetResourceDataV1AutocrudGuildResourceIdDataGetQueryParams = zod.ob
 export const getResourceDataV1AutocrudGuildResourceIdDataGetResponseMemberCountDefault = 1;
 export const getResourceDataV1AutocrudGuildResourceIdDataGetResponseLevelDefault = 1;
 export const getResourceDataV1AutocrudGuildResourceIdDataGetResponseTreasuryDefault = 1000;
-export const getResourceDataV1AutocrudGuildResourceIdDataGetResponseFoundedAtDefault = `2026-03-21T06:26:14.895335`;
+export const getResourceDataV1AutocrudGuildResourceIdDataGetResponseFoundedAtDefault = `2026-03-21T17:08:09.388233`;
 
 export const GetResourceDataV1AutocrudGuildResourceIdDataGetResponse = zod
   .object({
@@ -5730,7 +5730,7 @@ export const GetResourceV1AutocrudGuildResourceIdGetQueryParams = zod.object({
 export const getResourceV1AutocrudGuildResourceIdGetResponseDataMemberCountDefault = 1;
 export const getResourceV1AutocrudGuildResourceIdGetResponseDataLevelDefault = 1;
 export const getResourceV1AutocrudGuildResourceIdGetResponseDataTreasuryDefault = 1000;
-export const getResourceV1AutocrudGuildResourceIdGetResponseDataFoundedAtDefault = `2026-03-21T06:26:14.895335`;
+export const getResourceV1AutocrudGuildResourceIdGetResponseDataFoundedAtDefault = `2026-03-21T17:08:09.388233`;
 export const getResourceV1AutocrudGuildResourceIdGetResponseRevisionInfoParentRevisionIdDefault =
   null;
 export const getResourceV1AutocrudGuildResourceIdGetResponseRevisionInfoSchemaVersionDefault = null;
@@ -5851,7 +5851,7 @@ export const UpdateResourceV1AutocrudGuildResourceIdPutQueryParams = zod.object(
 export const updateResourceV1AutocrudGuildResourceIdPutBodyMemberCountDefault = 1;
 export const updateResourceV1AutocrudGuildResourceIdPutBodyLevelDefault = 1;
 export const updateResourceV1AutocrudGuildResourceIdPutBodyTreasuryDefault = 1000;
-export const updateResourceV1AutocrudGuildResourceIdPutBodyFoundedAtDefault = `2026-03-21T06:26:14.895335`;
+export const updateResourceV1AutocrudGuildResourceIdPutBodyFoundedAtDefault = `2026-03-21T17:08:09.388233`;
 
 export const UpdateResourceV1AutocrudGuildResourceIdPutBody = zod
   .object({
@@ -22137,6 +22137,7 @@ export const listResourcesDataV1AutocrudGameEventDataGetResponsePayloadRewardExp
 export const listResourcesDataV1AutocrudGameEventDataGetResponsePayloadExtraDataDefault = {};
 export const listResourcesDataV1AutocrudGameEventDataGetResponsePayloadEventBodyDefault = null;
 export const listResourcesDataV1AutocrudGameEventDataGetResponsePayloadEventXDefault = null;
+export const listResourcesDataV1AutocrudGameEventDataGetResponsePayloadExtraValuesDefault = [];
 export const listResourcesDataV1AutocrudGameEventDataGetResponseStatusDefault = `pending`;
 export const listResourcesDataV1AutocrudGameEventDataGetResponseErrmsgDefault = null;
 export const listResourcesDataV1AutocrudGameEventDataGetResponseArtifactDefault = null;
@@ -22210,6 +22211,9 @@ export const ListResourcesDataV1AutocrudGameEventDataGetResponseItem = zod
               .describe('事件類型 X 的專屬數據'),
           ])
           .default(listResourcesDataV1AutocrudGameEventDataGetResponsePayloadEventXDefault),
+        extra_values: zod
+          .array(zod.any())
+          .default(listResourcesDataV1AutocrudGameEventDataGetResponsePayloadExtraValuesDefault),
       })
       .describe('遊戲事件載荷數據'),
     status: zod
@@ -22676,6 +22680,7 @@ export const listResourcesFullV1AutocrudGameEventFullGetResponseDataPayloadRewar
 export const listResourcesFullV1AutocrudGameEventFullGetResponseDataPayloadExtraDataDefault = {};
 export const listResourcesFullV1AutocrudGameEventFullGetResponseDataPayloadEventBodyDefault = null;
 export const listResourcesFullV1AutocrudGameEventFullGetResponseDataPayloadEventXDefault = null;
+export const listResourcesFullV1AutocrudGameEventFullGetResponseDataPayloadExtraValuesDefault = [];
 export const listResourcesFullV1AutocrudGameEventFullGetResponseDataStatusDefault = `pending`;
 export const listResourcesFullV1AutocrudGameEventFullGetResponseDataErrmsgDefault = null;
 export const listResourcesFullV1AutocrudGameEventFullGetResponseDataArtifactDefault = null;
@@ -22764,6 +22769,11 @@ export const ListResourcesFullV1AutocrudGameEventFullGetResponseItem = zod.objec
                 .describe('事件類型 X 的專屬數據'),
             ])
             .default(listResourcesFullV1AutocrudGameEventFullGetResponseDataPayloadEventXDefault),
+          extra_values: zod
+            .array(zod.any())
+            .default(
+              listResourcesFullV1AutocrudGameEventFullGetResponseDataPayloadExtraValuesDefault,
+            ),
         })
         .describe('遊戲事件載荷數據'),
       status: zod
@@ -23082,6 +23092,7 @@ export const listResourcesV1AutocrudGameEventGetResponseDataPayloadRewardExpDefa
 export const listResourcesV1AutocrudGameEventGetResponseDataPayloadExtraDataDefault = {};
 export const listResourcesV1AutocrudGameEventGetResponseDataPayloadEventBodyDefault = null;
 export const listResourcesV1AutocrudGameEventGetResponseDataPayloadEventXDefault = null;
+export const listResourcesV1AutocrudGameEventGetResponseDataPayloadExtraValuesDefault = [];
 export const listResourcesV1AutocrudGameEventGetResponseDataStatusDefault = `pending`;
 export const listResourcesV1AutocrudGameEventGetResponseDataErrmsgDefault = null;
 export const listResourcesV1AutocrudGameEventGetResponseDataArtifactDefault = null;
@@ -23159,6 +23170,9 @@ export const ListResourcesV1AutocrudGameEventGetResponseItem = zod.object({
                 .describe('事件類型 X 的專屬數據'),
             ])
             .default(listResourcesV1AutocrudGameEventGetResponseDataPayloadEventXDefault),
+          extra_values: zod
+            .array(zod.any())
+            .default(listResourcesV1AutocrudGameEventGetResponseDataPayloadExtraValuesDefault),
         })
         .describe('遊戲事件載荷數據'),
       status: zod
@@ -23274,6 +23288,7 @@ export const createResourceV1AutocrudGameEventPostBodyPayloadRewardExpDefault = 
 export const createResourceV1AutocrudGameEventPostBodyPayloadExtraDataDefault = {};
 export const createResourceV1AutocrudGameEventPostBodyPayloadEventBodyDefault = null;
 export const createResourceV1AutocrudGameEventPostBodyPayloadEventXDefault = null;
+export const createResourceV1AutocrudGameEventPostBodyPayloadExtraValuesDefault = [];
 export const createResourceV1AutocrudGameEventPostBodyStatusDefault = `pending`;
 export const createResourceV1AutocrudGameEventPostBodyErrmsgDefault = null;
 export const createResourceV1AutocrudGameEventPostBodyArtifactDefault = null;
@@ -23345,6 +23360,9 @@ export const CreateResourceV1AutocrudGameEventPostBody = zod
               .describe('事件類型 X 的專屬數據'),
           ])
           .default(createResourceV1AutocrudGameEventPostBodyPayloadEventXDefault),
+        extra_values: zod
+          .array(zod.any())
+          .default(createResourceV1AutocrudGameEventPostBodyPayloadExtraValuesDefault),
       })
       .describe('遊戲事件載荷數據'),
     status: zod
@@ -23819,6 +23837,8 @@ export const getResourceFullV1AutocrudGameEventResourceIdFullGetResponseDataPayl
   null;
 export const getResourceFullV1AutocrudGameEventResourceIdFullGetResponseDataPayloadEventXDefault =
   null;
+export const getResourceFullV1AutocrudGameEventResourceIdFullGetResponseDataPayloadExtraValuesDefault =
+  [];
 export const getResourceFullV1AutocrudGameEventResourceIdFullGetResponseDataStatusDefault = `pending`;
 export const getResourceFullV1AutocrudGameEventResourceIdFullGetResponseDataErrmsgDefault = null;
 export const getResourceFullV1AutocrudGameEventResourceIdFullGetResponseDataArtifactDefault = null;
@@ -23912,6 +23932,11 @@ export const GetResourceFullV1AutocrudGameEventResourceIdFullGetResponse = zod.o
             ])
             .default(
               getResourceFullV1AutocrudGameEventResourceIdFullGetResponseDataPayloadEventXDefault,
+            ),
+          extra_values: zod
+            .array(zod.any())
+            .default(
+              getResourceFullV1AutocrudGameEventResourceIdFullGetResponseDataPayloadExtraValuesDefault,
             ),
         })
         .describe('遊戲事件載荷數據'),
@@ -24255,6 +24280,8 @@ export const getResourceDataV1AutocrudGameEventResourceIdDataGetResponsePayloadE
 export const getResourceDataV1AutocrudGameEventResourceIdDataGetResponsePayloadEventBodyDefault =
   null;
 export const getResourceDataV1AutocrudGameEventResourceIdDataGetResponsePayloadEventXDefault = null;
+export const getResourceDataV1AutocrudGameEventResourceIdDataGetResponsePayloadExtraValuesDefault =
+  [];
 export const getResourceDataV1AutocrudGameEventResourceIdDataGetResponseStatusDefault = `pending`;
 export const getResourceDataV1AutocrudGameEventResourceIdDataGetResponseErrmsgDefault = null;
 export const getResourceDataV1AutocrudGameEventResourceIdDataGetResponseArtifactDefault = null;
@@ -24338,6 +24365,11 @@ export const GetResourceDataV1AutocrudGameEventResourceIdDataGetResponse = zod
               .describe('事件類型 X 的專屬數據'),
           ])
           .default(getResourceDataV1AutocrudGameEventResourceIdDataGetResponsePayloadEventXDefault),
+        extra_values: zod
+          .array(zod.any())
+          .default(
+            getResourceDataV1AutocrudGameEventResourceIdDataGetResponsePayloadExtraValuesDefault,
+          ),
       })
       .describe('遊戲事件載荷數據'),
     status: zod
@@ -24446,6 +24478,7 @@ export const getResourceV1AutocrudGameEventResourceIdGetResponseDataPayloadRewar
 export const getResourceV1AutocrudGameEventResourceIdGetResponseDataPayloadExtraDataDefault = {};
 export const getResourceV1AutocrudGameEventResourceIdGetResponseDataPayloadEventBodyDefault = null;
 export const getResourceV1AutocrudGameEventResourceIdGetResponseDataPayloadEventXDefault = null;
+export const getResourceV1AutocrudGameEventResourceIdGetResponseDataPayloadExtraValuesDefault = [];
 export const getResourceV1AutocrudGameEventResourceIdGetResponseDataStatusDefault = `pending`;
 export const getResourceV1AutocrudGameEventResourceIdGetResponseDataErrmsgDefault = null;
 export const getResourceV1AutocrudGameEventResourceIdGetResponseDataArtifactDefault = null;
@@ -24534,6 +24567,11 @@ export const GetResourceV1AutocrudGameEventResourceIdGetResponse = zod.object({
                 .describe('事件類型 X 的專屬數據'),
             ])
             .default(getResourceV1AutocrudGameEventResourceIdGetResponseDataPayloadEventXDefault),
+          extra_values: zod
+            .array(zod.any())
+            .default(
+              getResourceV1AutocrudGameEventResourceIdGetResponseDataPayloadExtraValuesDefault,
+            ),
         })
         .describe('遊戲事件載荷數據'),
       status: zod
@@ -24679,6 +24717,7 @@ export const updateResourceV1AutocrudGameEventResourceIdPutBodyPayloadRewardExpD
 export const updateResourceV1AutocrudGameEventResourceIdPutBodyPayloadExtraDataDefault = {};
 export const updateResourceV1AutocrudGameEventResourceIdPutBodyPayloadEventBodyDefault = null;
 export const updateResourceV1AutocrudGameEventResourceIdPutBodyPayloadEventXDefault = null;
+export const updateResourceV1AutocrudGameEventResourceIdPutBodyPayloadExtraValuesDefault = [];
 export const updateResourceV1AutocrudGameEventResourceIdPutBodyStatusDefault = `pending`;
 export const updateResourceV1AutocrudGameEventResourceIdPutBodyErrmsgDefault = null;
 export const updateResourceV1AutocrudGameEventResourceIdPutBodyArtifactDefault = null;
@@ -24752,6 +24791,9 @@ export const UpdateResourceV1AutocrudGameEventResourceIdPutBody = zod
               .describe('事件類型 X 的專屬數據'),
           ])
           .default(updateResourceV1AutocrudGameEventResourceIdPutBodyPayloadEventXDefault),
+        extra_values: zod
+          .array(zod.any())
+          .default(updateResourceV1AutocrudGameEventResourceIdPutBodyPayloadExtraValuesDefault),
       })
       .describe('遊戲事件載荷數據'),
     status: zod

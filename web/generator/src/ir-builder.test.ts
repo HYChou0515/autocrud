@@ -2172,3 +2172,113 @@ describe('x-autocrud-indexed-fields', () => {
     expect(hero!.indexedFields).toBeUndefined();
   });
 });
+
+// ─── parseField — list[Any] (array without items) ───────────────────────────
+
+describe('parseField — list[Any] (array without items)', () => {
+  it('parseField handles array without items (list[Any]) and returns valid type', () => {
+    const { builder } = createBuilder({
+      info: { title: 'Test', version: '1.0' },
+      paths: {},
+      components: { schemas: {} },
+    });
+    // list[Any] produces { type: 'array' } with NO items key
+    const field = builder.parseField('data', { type: 'array' }, true);
+    expect(field).toBeDefined();
+    expect(field!.isArray).toBe(true);
+    // type should be a valid Field type, not undefined
+    expect(field!.type).toBeDefined();
+    expect(field!.type).toBe('object');
+  });
+
+  it('parseField handles array with empty items schema (list[Any] variant)', () => {
+    const { builder } = createBuilder({
+      info: { title: 'Test', version: '1.0' },
+      paths: {},
+      components: { schemas: {} },
+    });
+    // Some serializers produce { type: 'array', items: {} }
+    const field = builder.parseField('data', { type: 'array', items: {} }, true);
+    expect(field).toBeDefined();
+    expect(field!.isArray).toBe(true);
+    expect(field!.type).toBeDefined();
+    expect(field!.type).toBe('object');
+  });
+
+  it('computeZodType produces z.array(z.any()) for list[Any]', () => {
+    const { builder } = createBuilder({
+      info: { title: 'Test', version: '1.0' },
+      paths: {},
+      components: { schemas: {} },
+    });
+    const field = builder.parseField('data', { type: 'array' }, true);
+    expect(field).toBeDefined();
+    const zodType = computeZodType(field!);
+    expect(zodType).toBe('z.array(z.any())');
+  });
+
+  it('nullable list[Any] produces correct zod type', () => {
+    const { builder } = createBuilder({
+      info: { title: 'Test', version: '1.0' },
+      paths: {},
+      components: { schemas: {} },
+    });
+    const field = builder.parseField(
+      'data',
+      {
+        anyOf: [{ type: 'array' }, { type: 'null' }],
+      },
+      false,
+    );
+    expect(field).toBeDefined();
+    expect(field!.isArray).toBe(true);
+    expect(field!.isNullable).toBe(true);
+    expect(field!.type).toBeDefined();
+    const zodType = computeZodType(field!);
+    expect(zodType).toBe('z.array(z.any()).nullable().optional()');
+  });
+
+  it('full resource with list[Any] field produces valid zod schema', () => {
+    const spec = {
+      info: { title: 'Test', version: '1.0' },
+      paths: {
+        '/item': {
+          post: {
+            requestBody: {
+              content: { 'application/json': { schema: { $ref: '#/components/schemas/Item' } } },
+            },
+          },
+        },
+        '/item/{id}': { get: {} },
+      },
+      components: {
+        schemas: {
+          Item: {
+            type: 'object',
+            properties: {
+              name: { type: 'string' },
+              tags: { type: 'array' },
+              metadata: { type: 'array', items: {} },
+            },
+            required: ['name', 'tags'],
+          },
+        },
+      },
+    };
+    const { resources } = createBuilder(spec);
+    const item = resources.find((r) => r.name === 'item');
+    expect(item).toBeDefined();
+
+    const tagsField = item!.fields.find((f) => f.name === 'tags');
+    expect(tagsField).toBeDefined();
+    expect(tagsField!.type).toBe('object');
+    expect(tagsField!.isArray).toBe(true);
+    expect(computeZodType(tagsField!)).toBe('z.array(z.any())');
+
+    const metadataField = item!.fields.find((f) => f.name === 'metadata');
+    expect(metadataField).toBeDefined();
+    expect(metadataField!.type).toBe('object');
+    expect(metadataField!.isArray).toBe(true);
+    expect(computeZodType(metadataField!)).toBe('z.array(z.any()).optional()');
+  });
+});

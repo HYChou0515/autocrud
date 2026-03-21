@@ -9,6 +9,7 @@ import { Badge, Code, Tooltip, Group, Text } from '@mantine/core';
 import { IconFileCode } from '@tabler/icons-react';
 import type { ResourceConfig } from '../../resources';
 import { ResourceTable } from '../table';
+import type { CellRenderProps } from '../table/buildColumns';
 
 export interface JobTableProps<T> {
   config: ResourceConfig<T>;
@@ -25,7 +26,8 @@ const statusColors: Record<string, string> = {
 /**
  * Render payload object with hover preview
  */
-function renderPayload(value: unknown) {
+function renderPayload(props: CellRenderProps<unknown>) {
+  const value = props.cell.getValue();
   if (!value || typeof value !== 'object') {
     return (
       <Text c="dimmed" size="sm">
@@ -96,8 +98,8 @@ export function JobTable<T extends Record<string, any>>({ config, basePath }: Jo
         // Status column with Badge
         status: {
           label: 'Status',
-          render: (value: unknown) => {
-            const status = String(value || 'pending');
+          render: (props: CellRenderProps<unknown>) => {
+            const status = String(props.cell.getValue() || 'pending');
             return (
               <Badge color={statusColors[status] || 'gray'} variant="filled">
                 {status.toUpperCase()}

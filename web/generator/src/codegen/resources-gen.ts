@@ -42,6 +42,16 @@ export function computeZodType(f: Field): string {
     return computeUnionZodType(f);
   }
 
+  // Array of unstructured items (list[Any] or list[dict] without properties).
+  // Use z.any() as inner type — more permissive and correct for Any items.
+  // This is the fallback path that generates z.array(z.any()) correctly from
+  // the start (used when Orval schema is unavailable or has dot-notation fields).
+  // The Orval path relies on postProcessOrvalOutput() to fix its invalid output.
+  if (f.isArray && f.type === 'object' && (!f.itemFields || f.itemFields.length === 0)) {
+    const zodType = 'z.array(z.any())';
+    return applyNullableOptionalZod(zodType, f.isNullable, f.isRequired);
+  }
+
   let zodType: string;
   switch (f.type) {
     case 'binary':

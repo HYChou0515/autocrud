@@ -828,3 +828,39 @@ describe('indexedFields generation', () => {
     expect(code).not.toContain('indexedFields');
   });
 });
+
+// ─── list[Any] (array without items) Zod output ────────────────────────────
+
+describe('genResourcesConfig — list[Any] zod output', () => {
+  it('should produce z.array(z.any()) for list[Any] field', () => {
+    const spec = {
+      info: { title: 'Test', version: '1.0' },
+      paths: {
+        '/item': {
+          post: {
+            requestBody: {
+              content: { 'application/json': { schema: { $ref: '#/components/schemas/Item' } } },
+            },
+          },
+        },
+        '/item/{id}': { get: {} },
+      },
+      components: {
+        schemas: {
+          Item: {
+            type: 'object',
+            properties: {
+              name: { type: 'string' },
+              tags: { type: 'array' },
+            },
+            required: ['name', 'tags'],
+          },
+        },
+      },
+    };
+    const code = parseAndGenConfig(spec);
+    // Should produce z.array(z.any()), NOT z.array() without inner type
+    expect(code).toContain('z.array(z.any())');
+    expect(code).not.toMatch(/z\.array\(\)/);
+  });
+});

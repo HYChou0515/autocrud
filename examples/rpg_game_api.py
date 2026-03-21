@@ -30,6 +30,7 @@ from typing import Annotated, Optional
 
 import msgspec
 import uvicorn
+from typing import Any
 from fastapi import APIRouter, Body, FastAPI, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
 from msgspec import Struct
@@ -311,6 +312,7 @@ class GameEventPayload(Struct):
     extra_data: dict = {}
     event_body: EventBodyA | EventBodyB | None = None
     event_x: EventBodyX | None = None
+    extra_values: list[Any] = []
 
 
 class GameEventArtifact(Struct):
