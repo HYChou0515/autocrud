@@ -1354,9 +1354,12 @@ def configure_crud():
 
     @crud.create_action(
         "character",
-        label="New Character0",
+        label="New Character 0",
     )
     async def create_new_character0():
+        import time
+
+        time.sleep(5)
         return Character(
             name="hi",
             character_class=CharacterClass.WARRIOR,

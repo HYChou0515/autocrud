@@ -65,6 +65,7 @@ export function ResourceForm<T extends Record<string, any>>({
     simpleUnionTypes,
     setSimpleUnionTypes,
     handleSubmit,
+    submitting,
   } = useResourceForm({ config, initialValues, onSubmit });
 
   // Expose form handle for external error setting (e.g. 409 unique constraint)
@@ -204,7 +205,9 @@ export function ResourceForm<T extends Record<string, any>>({
                   Cancel
                 </Button>
               )}
-              <Button type="submit">{submitLabel}</Button>
+              <Button type="submit" loading={submitting}>
+                {submitLabel}
+              </Button>
             </Group>
           </Stack>
         </form>
@@ -234,7 +237,9 @@ export function ResourceForm<T extends Record<string, any>>({
                 Cancel
               </Button>
             )}
-            <Button onClick={handleJsonSubmit}>{submitLabel}</Button>
+            <Button onClick={handleJsonSubmit} loading={submitting}>
+              {submitLabel}
+            </Button>
           </Group>
         </Stack>
       )}

@@ -44,7 +44,7 @@ export interface UseResourceFormReturn<T extends Record<string, any>> {
   setJsonError: (error: string | null) => void;
   handleSwitchToJson: () => void;
   handleSwitchToForm: () => void;
-  handleJsonSubmit: () => void;
+  handleJsonSubmit: () => Promise<void> | void;
   maxAvailableDepth: number;
   formDepth: number;
   setFormDepth: (depth: number) => void;
@@ -53,6 +53,8 @@ export interface UseResourceFormReturn<T extends Record<string, any>> {
   simpleUnionTypes: Record<string, string>;
   setSimpleUnionTypes: React.Dispatch<React.SetStateAction<Record<string, string>>>;
   handleSubmit: (values: T) => Promise<void>;
+  /** True while the onSubmit callback is pending (API in-flight). */
+  submitting: boolean;
 }
 
 export function useResourceForm<T extends Record<string, any>>({
@@ -64,6 +66,9 @@ export function useResourceForm<T extends Record<string, any>>({
   const [editMode, setEditMode] = useState<'form' | 'json'>('form');
   const [jsonText, setJsonText] = useState('');
   const [jsonError, setJsonError] = useState<string | null>(null);
+
+  // ── Submitting state ──
+  const [submitting, setSubmitting] = useState(false);
 
   // ── Depth state ──
   const maxAvailableDepth = useMemo(() => computeMaxAvailableDepth(config.fields), [config.fields]);
@@ -249,7 +254,7 @@ export function useResourceForm<T extends Record<string, any>>({
     setEditMode('form');
   };
 
-  const handleJsonSubmit = () => {
+  const handleJsonSubmit = async () => {
     const result = parseAndValidateJson(jsonText);
     if (!result.success) {
       setJsonError(result.error || 'Invalid JSON');
@@ -270,11 +275,17 @@ export function useResourceForm<T extends Record<string, any>>({
       }
     }
     setJsonError(null);
-    return onSubmit(parsed as T);
+    setSubmitting(true);
+    try {
+      return await onSubmit(parsed as T);
+    } finally {
+      setSubmitting(false);
+    }
   };
 
   // ── Submit ──
   const handleSubmit = async (values: T) => {
+    setSubmitting(true);
     try {
       const binaryFieldValues = new Map<string, BinaryFormValue | null>();
       const arrayItemBinaryValues = new Map<string, BinaryFormValue | null>();
@@ -346,10 +357,12 @@ export function useResourceForm<T extends Record<string, any>>({
         }
       }
 
-      return onSubmit(processed as T);
+      return await onSubmit(processed as T);
     } catch (error) {
-      console.error('[useResourceForm] Submit failed during binary processing:', error);
+      console.error('[useResourceForm] Submit failed:', error);
       throw error;
+    } finally {
+      setSubmitting(false);
     }
   };
 
@@ -371,6 +384,7 @@ export function useResourceForm<T extends Record<string, any>>({
     simpleUnionTypes,
     setSimpleUnionTypes,
     handleSubmit,
+    submitting,
   };
 }
 
