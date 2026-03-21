@@ -124,6 +124,7 @@ dependencies = [
     { name = "msgpack" },
     { name = "msgspec" },
     { name = "pydantic" },
+    { name = "python-multipart" },
     { name = "qqabc" },
     { name = "xxhash" },
 ]
@@ -308,6 +309,7 @@ requires-dist = [
     { name = "python-magic", marker = "extra == 'all'", specifier = ">=0.4.27" },
     { name = "python-magic", marker = "extra == 'dev'", specifier = ">=0.4.27" },
     { name = "python-magic", marker = "extra == 'magic'", specifier = ">=0.4.27" },
+    { name = "python-multipart", specifier = ">=0.0.22" },
     { name = "pyyaml", marker = "extra == 'benchmark'", specifier = ">=6.0" },
     { name = "qqabc", specifier = ">=0.2.1" },
     { name = "redis", marker = "extra == 'all'", specifier = ">=6.4.0" },
