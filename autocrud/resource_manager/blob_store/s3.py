@@ -1,12 +1,15 @@
 from typing import Any
 
-import boto3
-from botocore.exceptions import ClientError
 from msgspec import UNSET, UnsetType
 from xxhash import xxh3_128_hexdigest
 
 from autocrud.resource_manager.blob_store.simple import BasicBlobStore
 from autocrud.types import Binary
+
+try:
+    from botocore.exceptions import ClientError as _ClientError
+except ImportError:  # pragma: no cover
+    _ClientError = None  # type: ignore[assignment,misc]
 
 
 class S3BlobStore(BasicBlobStore):
@@ -20,6 +23,8 @@ class S3BlobStore(BasicBlobStore):
         prefix: str = "",
         client_kwargs: dict[str, Any] | None = None,
     ):
+        import boto3
+
         self.bucket = bucket
         self.prefix = prefix
         if client_kwargs is None:
@@ -35,7 +40,7 @@ class S3BlobStore(BasicBlobStore):
 
         try:
             self.client.head_bucket(Bucket=self.bucket)
-        except ClientError as e:
+        except _ClientError as e:
             # Check for both 404 (Not Found) AND NoSuchBucket
             error_code = e.response.get("Error", {}).get("Code")
             if error_code == "404" or error_code == "NoSuchBucket":
@@ -84,7 +89,7 @@ class S3BlobStore(BasicBlobStore):
                 data=content,
                 content_type=content_type,
             )
-        except ClientError as e:
+        except _ClientError as e:
             error_code = e.response.get("Error", {}).get("Code")
             if error_code == "NoSuchKey":
                 raise FileNotFoundError(f"Blob {file_id} not found")
@@ -95,7 +100,7 @@ class S3BlobStore(BasicBlobStore):
         try:
             self.client.head_object(Bucket=self.bucket, Key=key)
             return True
-        except ClientError as e:
+        except _ClientError as e:
             error_code = e.response.get("Error", {}).get("Code")
             if error_code == "404" or error_code == "NoSuchKey":
                 return False
@@ -117,5 +122,5 @@ class S3BlobStore(BasicBlobStore):
                 ExpiresIn=3600,
             )
             return url
-        except ClientError:
+        except _ClientError:
             return None

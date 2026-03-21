@@ -5,15 +5,17 @@ from concurrent.futures import ThreadPoolExecutor
 from contextlib import contextmanager
 from typing import IO
 
-import boto3
-from botocore.exceptions import ClientError
-
 from autocrud.resource_manager.basic import (
     Encoding,
     IResourceStore,
     MsgspecSerializer,
 )
 from autocrud.types import RevisionInfo
+
+try:
+    from botocore.exceptions import ClientError as _ClientError
+except ImportError:  # pragma: no cover
+    _ClientError = None  # type: ignore[assignment,misc]
 
 
 class S3ResourceStore(IResourceStore):
@@ -28,6 +30,8 @@ class S3ResourceStore(IResourceStore):
         prefix: str = "",
         client_kwargs: dict | None = None,
     ):
+        import boto3
+
         self.bucket = bucket
         self.prefix = f"{prefix}resources/"
         self._resource_prefix = f"{self.prefix}resource/"
@@ -50,7 +54,7 @@ class S3ResourceStore(IResourceStore):
         # 確保 bucket 存在
         try:
             self.client.head_bucket(Bucket=self.bucket)
-        except ClientError as e:
+        except _ClientError as e:
             # 檢查是否是 NoSuchBucket 錯誤 (支援 AWS 和 MinIO)
             error_code = e.response["Error"]["Code"]
             if error_code in ("NoSuchBucket", "404"):
@@ -150,7 +154,7 @@ class S3ResourceStore(IResourceStore):
         try:
             self.client.head_object(Bucket=self.bucket, Key=resource_key)
             return True
-        except ClientError as e:
+        except _ClientError as e:
             error_code = e.response["Error"]["Code"]
             if error_code in ("NoSuchKey", "404"):
                 return False
@@ -169,7 +173,7 @@ class S3ResourceStore(IResourceStore):
         try:
             response = self.client.get_object(Bucket=self.bucket, Key=resource_key)
             uid = response["Body"].read().decode("utf-8")
-        except ClientError as e:
+        except _ClientError as e:
             error_code = e.response["Error"]["Code"]
             if error_code in ("NoSuchKey", "404"):
                 raise KeyError(
@@ -184,7 +188,7 @@ class S3ResourceStore(IResourceStore):
             yield response["Body"]
             # data_bytes = response["Body"].read()
             # yield io.BytesIO(data_bytes)
-        except ClientError as e:
+        except _ClientError as e:
             error_code = e.response["Error"]["Code"]
             if error_code in ("NoSuchKey", "404"):
                 raise KeyError(f"Resource data not found: {uid}")
@@ -202,7 +206,7 @@ class S3ResourceStore(IResourceStore):
         try:
             response = self.client.get_object(Bucket=self.bucket, Key=resource_key)
             uid = response["Body"].read().decode("utf-8")
-        except ClientError as e:
+        except _ClientError as e:
             error_code = e.response["Error"]["Code"]
             if error_code in ("NoSuchKey", "404"):
                 raise KeyError(
@@ -216,7 +220,7 @@ class S3ResourceStore(IResourceStore):
             response = self.client.get_object(Bucket=self.bucket, Key=info_key)
             info_bytes = response["Body"].read()
             return self._info_serializer.decode(info_bytes)
-        except ClientError as e:
+        except _ClientError as e:
             error_code = e.response["Error"]["Code"]
             if error_code in ("NoSuchKey", "404"):
                 raise KeyError(f"Revision info not found: {uid}")
