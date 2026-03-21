@@ -490,6 +490,15 @@ export class IRBuilder {
       }
 
       type = prop.type;
+
+      // list[Any] — items schema is {} (no type).  Fall back to 'object' so
+      // computeZodType emits z.array(z.any()) instead of z.array() which
+      // would cause a tsc error.
+      // This is the IR-level fix (fallback path).  The Orval-generated path
+      // has a separate post-process fix in orval-runner.ts postProcessOrvalOutput().
+      if (!type) {
+        type = 'object';
+      }
     }
 
     // Detect Binary schema

@@ -110,6 +110,7 @@ export type GameEventFieldName =
   | 'payload.event_x.type'
   | 'payload.event_x.good'
   | 'payload.event_x.great'
+  | 'payload.extra_values'
   | 'status'
   | 'errmsg'
   | 'artifact.process_times'
@@ -1820,6 +1821,14 @@ Object.assign(registry, {
         isNullable: false,
       },
       {
+        name: 'payload.extra_values',
+        label: 'Extra Values',
+        type: 'object',
+        isArray: true,
+        isRequired: false,
+        isNullable: false,
+      },
+      {
         name: 'status',
         label: 'Status',
         isArray: false,
@@ -1933,6 +1942,7 @@ Object.assign(registry, {
             ])
             .nullable()
             .optional(),
+          extra_values: z.array(z.any()).optional(),
         })
         .nullable()
         .optional(),

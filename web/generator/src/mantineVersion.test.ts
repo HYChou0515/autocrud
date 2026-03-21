@@ -219,7 +219,8 @@ describe('mantineVersion', () => {
       const srcDir = path.join(tmpDir, 'src');
       const formDir = path.join(srcDir, 'autocrud/lib/components/form');
       await fs.mkdir(formDir, { recursive: true });
-      const original = "import { zodResolver } from 'mantine-form-zod-resolver';\nconst v = zodResolver(config.zodSchema);";
+      const original =
+        "import { zodResolver } from 'mantine-form-zod-resolver';\nconst v = zodResolver(config.zodSchema);";
       await fs.writeFile(path.join(formDir, 'useResourceForm.ts'), original);
 
       await patchSourceFiles(srcDir, '8');
