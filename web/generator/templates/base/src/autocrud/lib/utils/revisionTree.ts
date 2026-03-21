@@ -182,6 +182,25 @@ export function buildRevisionTreeLayout(
     }
   }
 
+  // --- Compute topological depth for stable tiebreaking ---
+  const depthMap = new Map<string, number>();
+  function getDepth(id: string): number {
+    if (depthMap.has(id)) {
+      return depthMap.get(id)!;
+    }
+    const item = byId.get(id);
+    if (!item || !item.parentId || !byId.has(item.parentId)) {
+      depthMap.set(id, 0);
+      return 0;
+    }
+    const depth = getDepth(item.parentId) + 1;
+    depthMap.set(id, depth);
+    return depth;
+  }
+  for (const item of items) {
+    getDepth(item.id);
+  }
+
   // Assign any remaining unassigned nodes via DFS from roots (handles fallback and edge cases)
   const itemsAsc = [...items].sort(sortByTimeAsc);
   for (const item of itemsAsc) {
@@ -214,8 +233,18 @@ export function buildRevisionTreeLayout(
   }
 
   const displayItems = [...items].sort((a, b) => {
-    const order = a.time.localeCompare(b.time);
-    return sortOrder === 'desc' ? -order : order;
+    const timeOrder = a.time.localeCompare(b.time);
+    if (timeOrder !== 0) {
+      return sortOrder === 'desc' ? -timeOrder : timeOrder;
+    }
+    // Tiebreaker 1: topological depth (parent before child in asc)
+    const depthOrder = (depthMap.get(a.id) ?? 0) - (depthMap.get(b.id) ?? 0);
+    if (depthOrder !== 0) {
+      return sortOrder === 'desc' ? -depthOrder : depthOrder;
+    }
+    // Tiebreaker 2: ID for deterministic ordering
+    const idOrder = a.id.localeCompare(b.id);
+    return sortOrder === 'desc' ? -idOrder : idOrder;
   });
 
   const nodes: RevisionTreeNode[] = displayItems.map((item, index) => {
