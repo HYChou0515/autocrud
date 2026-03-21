@@ -25,6 +25,8 @@ const titleOffset = 16;
 const nodeSize = 12;
 const dayAxisOffset = 24;
 const missingParentRowHeight = 32;
+const contentMinWidth = 220;
+const columnGap = 16;
 
 function formatDayLabel(time: string): string | null {
   if (!time) {
@@ -93,14 +95,15 @@ export function RevisionTreeTimeline({
   return (
     <Box
       ref={scrollRef}
-      style={{ maxHeight: treeViewportHeight, overflowY: 'auto', paddingRight: 12 }}
+      style={{ maxHeight: treeViewportHeight, overflowX: 'auto', overflowY: 'auto', paddingRight: 12 }}
     >
       <Box
         style={{
           display: 'grid',
-          gridTemplateColumns: `${dayWidth}px ${graphWidth}px 1fr`,
-          columnGap: 16,
+          gridTemplateColumns: `${dayWidth}px ${graphWidth}px minmax(${contentMinWidth}px, 1fr)`,
+          columnGap: columnGap,
           height: totalHeight,
+          minWidth: dayWidth + graphWidth + contentMinWidth + columnGap * 2,
         }}
       >
         <Box style={{ position: 'relative', width: dayWidth, height: totalHeight }}>
