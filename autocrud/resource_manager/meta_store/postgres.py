@@ -2,11 +2,9 @@ import time
 from collections.abc import Generator, Iterable
 from contextlib import contextmanager, suppress
 from enum import Enum as EnumType
+from typing import Any
 
-import psycopg2 as pg
-import psycopg2.pool
 from msgspec import UNSET
-from psycopg2.extras import DictCursor, execute_batch
 
 from autocrud.resource_manager.basic import (
     Encoding,
@@ -24,6 +22,16 @@ from autocrud.types import (
     ResourceMetaSearchSort,
     ResourceMetaSortDirection,
 )
+
+try:
+    import psycopg2 as pg
+    import psycopg2.pool
+    from psycopg2.extras import DictCursor, execute_batch
+except ImportError:  # pragma: no cover
+    pg = None  # type: ignore[assignment]
+    psycopg2 = None  # type: ignore[assignment]  # noqa: F811
+    DictCursor = None  # type: ignore[assignment,misc]
+    execute_batch = None  # type: ignore[assignment]
 
 
 class PostgresMetaStore(ISlowMetaStore):
@@ -70,7 +78,7 @@ class PostgresMetaStore(ISlowMetaStore):
         with suppress(Exception):
             self._conn_pool.closeall()
 
-    def get_conn(self) -> pg.extensions.connection:
+    def get_conn(self) -> Any:
         retry = 5
         last_error: Exception | None = None
         for attempt in range(retry):
