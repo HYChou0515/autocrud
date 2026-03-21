@@ -1,4 +1,5 @@
 import io
+import os
 from collections.abc import Generator, Iterable
 from contextlib import contextmanager
 from pathlib import Path
@@ -107,6 +108,22 @@ class MemoryResourceStore(IResourceStore):
                 self._raw_data_store.pop(uid, None)
                 self._raw_info_store.pop(uid, None)
         del self._store[resource_id]
+
+
+def relative_walk_up(path: Path, start: Path) -> Path:
+    """Compute a relative path from *start* to *path*, walking up if needed.
+
+    Uses ``Path.relative_to(walk_up=True)`` when available (Python 3.12+)
+    and falls back to ``os.path.relpath`` on older runtimes or when the
+    keyword is removed (Python 3.14+).
+    """
+    try:
+        return path.relative_to(start, walk_up=True)
+    except TypeError:
+        if path.drive != start.drive:
+            # fallback: return absolute instead of crash
+            return path
+        return Path(os.path.relpath(path, start))
 
 
 class DiskResourceStore(IResourceStore):
@@ -225,9 +242,7 @@ class DiskResourceStore(IResourceStore):
         # Remove existing symlink if it exists and create new one
         if symd.exists():
             symd.unlink()
-        symd.symlink_to(
-            reald.relative_to(symd.parent, walk_up=True), target_is_directory=True
-        )
+        symd.symlink_to(relative_walk_up(reald, symd.parent), target_is_directory=True)
 
         # Write data and info
         with self._get_raw_data_path(str(info.uid)).open("wb") as f:

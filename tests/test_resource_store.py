@@ -390,6 +390,48 @@ class TestIResourceStore:
         with pytest.raises((KeyError, FileNotFoundError)):
             resource_store.get_revision_info("nonexistent", "rev_001", "1.0")
 
+    def test_disk_symlink_uses_relative_path_no_walk_up(self, tmp_path):
+        """Test DiskResourceStore.save creates symlinks using os.path.relpath,
+        not Path.relative_to(walk_up=True) which requires Python 3.12+
+        and is removed in Python 3.14."""
+        from unittest.mock import patch
+
+        store = DiskResourceStore(encoding=Encoding.json, rootdir=tmp_path)
+        now = dt.datetime.now(dt.timezone.utc)
+        info = RevisionInfo(
+            uid=uuid4(),
+            resource_id="test_resource",
+            revision_id="rev_001",
+            schema_version="1.0",
+            status=RevisionStatus.stable,
+            created_time=now,
+            updated_time=now,
+            created_by="test_user",
+            updated_by="test_user",
+            parent_revision_id=None,
+            data_hash="test_hash",
+        )
+        data = io.BytesIO(b'{"test": "data"}')
+
+        # Patch Path.relative_to to raise TypeError if walk_up is used,
+        # simulating Python 3.11 behaviour.
+        original_relative_to = type(tmp_path).relative_to
+
+        def strict_relative_to(self_path, *args, **kwargs):
+            if kwargs.get("walk_up"):
+                raise TypeError(
+                    "relative_to() got an unexpected keyword argument 'walk_up'"
+                )
+            return original_relative_to(self_path, *args, **kwargs)
+
+        with patch.object(type(tmp_path), "relative_to", strict_relative_to):
+            store.save(info, data)
+
+        # Verify the symlink was created and points correctly
+        assert store.exists("test_resource", "rev_001", "1.0")
+        with store.get_data_bytes("test_resource", "rev_001", "1.0") as f:
+            assert f.read() == b'{"test": "data"}'
+
     def test_encoding_variants(self):
         """Test different encoding types."""
         now = dt.datetime.now(dt.timezone.utc)
