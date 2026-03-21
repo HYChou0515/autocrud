@@ -51,7 +51,7 @@ const MANTINE_8_DEPS: VersionDeps = {
     '@types/react': '^19.1.2',
     '@types/react-dom': '^19.1.2',
   },
-  removeDeps: ['mantine-form-zod-resolver'],
+  removeDeps: [],
   removeDevDeps: [],
   pnpmOverrides: {
     // mantine-react-table@2.0.0-beta.9 has peerDep @mantine/core ^7.9
@@ -143,21 +143,13 @@ interface SourcePatch {
   replace: string;
 }
 
-const MANTINE_8_SOURCE_PATCHES: SourcePatch[] = [
-  {
-    // zodResolver moved from external package to @mantine/form in v8
-    relativePath: 'autocrud/lib/components/form/useResourceForm.ts',
-    find: "import { zodResolver } from 'mantine-form-zod-resolver';",
-    replace: "import { zodResolver } from '@mantine/form';",
-  },
-  {
-    // Mantine 8 built-in zodResolver types are incompatible with Zod v4;
-    // use `as any` to bypass the strict type check.
-    relativePath: 'autocrud/lib/components/form/useResourceForm.ts',
-    find: 'zodResolver(config.zodSchema)',
-    replace: 'zodResolver(config.zodSchema as any)',
-  },
-];
+/**
+ * No source patches needed for Mantine 8.
+ * mantine-form-zod-resolver works with both Mantine 7 and 8,
+ * so we keep using it directly instead of the built-in @mantine/form zodResolver
+ * which has type incompatibilities with Zod v4.
+ */
+const MANTINE_8_SOURCE_PATCHES: SourcePatch[] = [];
 
 /**
  * Apply version-specific source file patches.

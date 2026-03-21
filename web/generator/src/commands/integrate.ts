@@ -288,7 +288,7 @@ function printChecklist(mantineVersion: MantineVersion = '7', proxyPath: string 
     ? '@mantine/core@^8 @mantine/dates@^8 @mantine/form@^8 @mantine/hooks@^8 @mantine/notifications@^8'
     : '@mantine/core @mantine/dates @mantine/form @mantine/hooks @mantine/notifications';
 
-  const zodResolverPkg = isV8 ? '' : 'mantine-form-zod-resolver';
+  const zodResolverPkg = 'mantine-form-zod-resolver';
   const reactPkgs = isV8 ? 'react@^19 react-dom@^19' : '';
 
   console.log('\n' + '='.repeat(60));
@@ -357,9 +357,7 @@ Please verify the following manual steps:
 ${
   isV8
     ? `
-6. ⚠️  Note: Mantine 8 requires React 19. zodResolver is now built into
-   @mantine/form — mantine-form-zod-resolver has been automatically patched
-   to import from @mantine/form instead.
+6. ⚠️  Note: Mantine 8 requires React 19.
    mantine-react-table peer dependency warnings can be safely ignored.
 
 7. 📄 See INTEGRATION.md for detailed step-by-step guide.
