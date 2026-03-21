@@ -74,12 +74,10 @@ describe('initProject', () => {
     const projectPath = path.join(tmpDir, 'test-app');
     const pkg = JSON.parse(await fs.readFile(path.join(projectPath, 'package.json'), 'utf-8'));
 
-    // Should keep original v7 deps
-    expect(pkg.dependencies['@mantine/core']).toMatch(/^\^7/);
+    // Template is v8-based; default init keeps template deps as-is
+    expect(pkg.dependencies['@mantine/core']).toBeDefined();
     // Should still have mantine-form-zod-resolver
     expect(pkg.dependencies['mantine-form-zod-resolver']).toBeDefined();
-    // Should NOT have pnpm overrides
-    expect(pkg.pnpm).toBeUndefined();
 
     // .autocrudrc.json should exist with version 7
     const rc = JSON.parse(await fs.readFile(path.join(projectPath, '.autocrudrc.json'), 'utf-8'));
@@ -97,8 +95,8 @@ describe('initProject', () => {
     expect(pkg.dependencies['@mantine/form']).toMatch(/^\^8/);
     // React should be upgraded
     expect(pkg.dependencies['react']).toMatch(/^\^19/);
-    // mantine-form-zod-resolver should be removed
-    expect(pkg.dependencies['mantine-form-zod-resolver']).toBeUndefined();
+    // mantine-form-zod-resolver should be preserved (works with both v7 and v8)
+    expect(pkg.dependencies['mantine-form-zod-resolver']).toBeDefined();
     // Should have pnpm overrides
     expect(pkg.pnpm?.overrides?.['@mantine/core']).toMatch(/^\^8/);
 
@@ -121,8 +119,9 @@ describe('initProject', () => {
       'useResourceForm.ts',
     );
     const content = await fs.readFile(formPath, 'utf-8');
-    expect(content).toContain("from '@mantine/form'");
-    expect(content).not.toContain('mantine-form-zod-resolver');
+    // zodResolver import should remain from mantine-form-zod-resolver
+    expect(content).toContain("from 'mantine-form-zod-resolver'");
+    expect(content).not.toContain('zodSchema as any');
   });
 });
 

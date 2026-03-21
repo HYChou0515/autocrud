@@ -62,7 +62,8 @@ describe('mantineVersion', () => {
       expect(deps.dependencies['@mantine/form']).toMatch(/^\^8/);
       expect(deps.dependencies['react']).toMatch(/^\^19/);
       expect(deps.dependencies['react-dom']).toMatch(/^\^19/);
-      expect(deps.removeDeps).toContain('mantine-form-zod-resolver');
+      // mantine-form-zod-resolver should NOT be removed — it works with both v7 and v8
+      expect(deps.removeDeps).not.toContain('mantine-form-zod-resolver');
     });
 
     it('includes pnpm overrides for v8 to handle MRT peerDep', () => {
@@ -129,8 +130,8 @@ describe('mantineVersion', () => {
       // React upgraded
       expect(pkg.dependencies['react']).toMatch(/^\^19/);
       expect(pkg.dependencies['react-dom']).toMatch(/^\^19/);
-      // mantine-form-zod-resolver removed
-      expect(pkg.dependencies['mantine-form-zod-resolver']).toBeUndefined();
+      // mantine-form-zod-resolver should be preserved (works with both v7 and v8)
+      expect(pkg.dependencies['mantine-form-zod-resolver']).toBe('^1.3.0');
       // devDeps @types upgraded
       expect(pkg.devDependencies['@types/react']).toMatch(/^\^19/);
       expect(pkg.devDependencies['@types/react-dom']).toMatch(/^\^19/);
@@ -189,7 +190,7 @@ describe('mantineVersion', () => {
       expect(content).toContain("from 'mantine-form-zod-resolver'");
     });
 
-    it('patches zodResolver import for v8', async () => {
+    it('does not patch zodResolver import for v8 (mantine-form-zod-resolver works with v8)', async () => {
       const srcDir = path.join(tmpDir, 'src');
       const formDir = path.join(srcDir, 'autocrud/lib/components/form');
       await fs.mkdir(formDir, { recursive: true });
@@ -201,24 +202,11 @@ describe('mantineVersion', () => {
       await patchSourceFiles(srcDir, '8');
 
       const content = await fs.readFile(path.join(formDir, 'useResourceForm.ts'), 'utf-8');
-      expect(content).toContain("import { zodResolver } from '@mantine/form';");
-      expect(content).not.toContain('mantine-form-zod-resolver');
-    });
-
-    it('patches zodResolver call with `as any` for v8 Zod v4 compatibility', async () => {
-      const srcDir = path.join(tmpDir, 'src');
-      const formDir = path.join(srcDir, 'autocrud/lib/components/form');
-      await fs.mkdir(formDir, { recursive: true });
-      await fs.writeFile(
-        path.join(formDir, 'useResourceForm.ts'),
-        "import { zodResolver } from 'mantine-form-zod-resolver';\nconst v = zodResolver(config.zodSchema);",
-      );
-
-      await patchSourceFiles(srcDir, '8');
-
-      const content = await fs.readFile(path.join(formDir, 'useResourceForm.ts'), 'utf-8');
-      expect(content).toContain('zodResolver(config.zodSchema as any)');
-      expect(content).not.toContain('zodResolver(config.zodSchema)');
+      // Import should remain unchanged — mantine-form-zod-resolver works with Mantine 8
+      expect(content).toContain("import { zodResolver } from 'mantine-form-zod-resolver';");
+      // No `as any` hack needed
+      expect(content).toContain('zodResolver(config.zodSchema)');
+      expect(content).not.toContain('zodResolver(config.zodSchema as any)');
     });
 
     it('skips gracefully if file does not exist', async () => {
@@ -227,19 +215,17 @@ describe('mantineVersion', () => {
       await expect(patchSourceFiles(srcDir, '8')).resolves.toBeUndefined();
     });
 
-    it('skips if file content does not contain the target string', async () => {
+    it('does nothing to files since no source patches are needed', async () => {
       const srcDir = path.join(tmpDir, 'src');
       const formDir = path.join(srcDir, 'autocrud/lib/components/form');
       await fs.mkdir(formDir, { recursive: true });
-      await fs.writeFile(
-        path.join(formDir, 'useResourceForm.ts'),
-        "import { zodResolver } from '@mantine/form'; // already patched",
-      );
+      const original = "import { zodResolver } from 'mantine-form-zod-resolver';\nconst v = zodResolver(config.zodSchema);";
+      await fs.writeFile(path.join(formDir, 'useResourceForm.ts'), original);
 
       await patchSourceFiles(srcDir, '8');
 
       const content = await fs.readFile(path.join(formDir, 'useResourceForm.ts'), 'utf-8');
-      expect(content).toBe("import { zodResolver } from '@mantine/form'; // already patched");
+      expect(content).toBe(original);
     });
   });
 
