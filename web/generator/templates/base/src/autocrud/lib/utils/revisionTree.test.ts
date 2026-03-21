@@ -259,6 +259,65 @@ describe('buildRevisionTreeLayout', () => {
     expect(layout.trunkIds.size).toBe(0);
   });
 
+  it('same timestamp: parent comes before child in asc order', () => {
+    // All three revisions have the exact same timestamp
+    const sameTime = '2024-06-15T12:00:00Z';
+    const layout = buildRevisionTreeLayout(
+      [
+        rev('r1', null, sameTime),
+        rev('r2', 'r1', sameTime),
+        rev('r3', 'r2', sameTime),
+      ],
+      'asc',
+    );
+
+    const ids = layout.nodes.map((n) => n.id);
+    expect(ids).toEqual(['r1', 'r2', 'r3']);
+  });
+
+  it('same timestamp: child comes before parent in desc order', () => {
+    const sameTime = '2024-06-15T12:00:00Z';
+    const layout = buildRevisionTreeLayout(
+      [
+        rev('r1', null, sameTime),
+        rev('r2', 'r1', sameTime),
+        rev('r3', 'r2', sameTime),
+      ],
+      'desc',
+    );
+
+    const ids = layout.nodes.map((n) => n.id);
+    expect(ids).toEqual(['r3', 'r2', 'r1']);
+  });
+
+  it('same timestamp and depth: deterministic order by id', () => {
+    // Two branches from root at the same time — same depth, same time
+    const sameTime = '2024-06-15T12:00:00Z';
+    const layout1 = buildRevisionTreeLayout(
+      [
+        rev('root', null, sameTime),
+        rev('b-child', 'root', sameTime),
+        rev('a-child', 'root', sameTime),
+      ],
+      'asc',
+    );
+    const layout2 = buildRevisionTreeLayout(
+      [
+        rev('root', null, sameTime),
+        rev('a-child', 'root', sameTime),
+        rev('b-child', 'root', sameTime),
+      ],
+      'asc',
+    );
+
+    // Both should produce the same order regardless of input order
+    const ids1 = layout1.nodes.map((n) => n.id);
+    const ids2 = layout2.nodes.map((n) => n.id);
+    expect(ids1).toEqual(ids2);
+    // root first (depth 0), then children in id order
+    expect(ids1).toEqual(['root', 'a-child', 'b-child']);
+  });
+
   it('multiple roots: trunk root on lane 0, other roots on higher lanes', () => {
     // Two roots: root1 and root2. trunk passes through root1.
     const layout = buildRevisionTreeLayout(
