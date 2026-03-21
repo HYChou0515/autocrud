@@ -45,6 +45,9 @@ export const characterApi = {
   switchRevision: (id: string, revisionId: string) =>
     client.post<ResourceMeta>(`${BASE}/${id}/switch/${revisionId}`),
 
+  createNewCharacter0: (allParams: Record<string, unknown>) =>
+    client.post<RevisionInfo>(`${BASE}/create-new-character0`, null),
+
   createNewCharacter1: (allParams: Record<string, unknown>) =>
     client.post<RevisionInfo>(`${BASE}/${allParams['name'] as string}/new`, null),
 
