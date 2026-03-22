@@ -42,6 +42,11 @@ vi.mock('../../utils/errorNotification', () => ({
   extractUniqueConflict: vi.fn().mockReturnValue(null),
 }));
 
+const mockNotificationsShow = vi.fn();
+vi.mock('@mantine/notifications', () => ({
+  notifications: { show: (...args: any[]) => mockNotificationsShow(...args) },
+}));
+
 import { render, screen, fireEvent, cleanup, waitFor } from '@testing-library/react';
 import { MantineProvider } from '@mantine/core';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
@@ -525,5 +530,88 @@ describe('ResourceCreate — custom action loading state', () => {
     await waitFor(() => {
       expect(importForm.getAttribute('data-submitting')).toBe('false');
     });
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Background async mode — toast notification
+// ---------------------------------------------------------------------------
+
+describe('ResourceCreate — background async mode toast', () => {
+  beforeEach(() => {
+    cleanup();
+    mockNavigate.mockReset();
+    mockNotificationsShow.mockReset();
+  });
+
+  it('shows toast notification for background async mode action', async () => {
+    const action: CustomCreateAction = {
+      name: 'generate',
+      label: 'Generate',
+      fields: [makeField('prompt')],
+      apiMethod: vi.fn().mockResolvedValue({ data: { message: 'Task accepted' } }),
+      asyncMode: 'background',
+    };
+
+    const config = makeConfig({ customCreateActions: [action] });
+    renderCreate(config, { customFormOnly: true });
+
+    fireEvent.click(screen.getByTestId('form-submit'));
+
+    await waitFor(() => {
+      expect(mockNotificationsShow).toHaveBeenCalledWith(
+        expect.objectContaining({
+          title: 'Generate',
+          color: 'blue',
+        }),
+      );
+    });
+
+    expect(mockNavigate).toHaveBeenCalledWith({ to: '/test' });
+  });
+
+  it('does NOT show toast for sync (non-background) action', async () => {
+    const action: CustomCreateAction = {
+      name: 'import',
+      label: 'Import',
+      fields: [makeField('url')],
+      apiMethod: vi.fn().mockResolvedValue({ data: { resource_id: 'r1' } }),
+      // no asyncMode → sync
+    };
+
+    const config = makeConfig({ customCreateActions: [action] });
+    renderCreate(config, { customFormOnly: true });
+
+    fireEvent.click(screen.getByTestId('form-submit'));
+
+    await waitFor(() => {
+      expect(mockNavigate).toHaveBeenCalledWith({ to: '/test' });
+    });
+
+    expect(mockNotificationsShow).not.toHaveBeenCalled();
+  });
+
+  it('does NOT show toast for job async mode action', async () => {
+    const action: CustomCreateAction = {
+      name: 'generate-job',
+      label: 'Generate Job',
+      fields: [makeField('prompt')],
+      apiMethod: vi.fn().mockResolvedValue({
+        data: { job_resource_name: 'gen-job', job_resource_id: 'j1', redirect_url: '/gen-job/j1' },
+      }),
+      asyncMode: 'job',
+      jobResourceName: 'gen-job',
+    };
+
+    const config = makeConfig({ customCreateActions: [action] });
+    renderCreate(config, { customFormOnly: true });
+
+    fireEvent.click(screen.getByTestId('form-submit'));
+
+    await waitFor(() => {
+      expect(mockNavigate).toHaveBeenCalledWith({ to: '/test' });
+    });
+
+    expect(mockNotificationsShow).not.toHaveBeenCalled();
   });
 });

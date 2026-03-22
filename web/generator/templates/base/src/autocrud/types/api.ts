@@ -35,6 +35,11 @@ export interface JobRedirectInfo {
   redirect_url: string;
 }
 
+/** Response from background create actions (HTTP 202). */
+export interface BackgroundTaskAccepted {
+  message: string;
+}
+
 export interface FullResource<T> {
   data: T;
   meta: ResourceMeta;

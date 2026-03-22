@@ -1365,6 +1365,18 @@ def configure_crud():
 
     @crud.create_action(
         "character",
+        label="New Character background",
+        async_mode="background",
+    )
+    async def create_new_character_background():
+        time.sleep(5)
+        return Character(
+            name=f"{time.time()} background",
+            character_class=CharacterClass.WARRIOR,
+        )
+
+    @crud.create_action(
+        "character",
         label="New Character1",
         path="/{name}/new",
         async_mode="job",

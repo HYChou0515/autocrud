@@ -48,6 +48,9 @@ export const characterApi = {
   createNewCharacter0: (allParams: Record<string, unknown>) =>
     client.post<RevisionInfo>(`${BASE}/create-new-character0`, null),
 
+  createNewCharacterBackground: (allParams: Record<string, unknown>) =>
+    client.post<RevisionInfo>(`${BASE}/create-new-character-background`, null),
+
   createNewCharacter1: (allParams: Record<string, unknown>) =>
     client.post<RevisionInfo>(`${BASE}/${allParams['name'] as string}/new`, null),
 

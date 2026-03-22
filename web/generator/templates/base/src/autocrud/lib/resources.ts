@@ -2,6 +2,7 @@ import type {
   ResourceMeta,
   RevisionInfo,
   JobRedirectInfo,
+  BackgroundTaskAccepted,
   FullResource,
   FullResourceRow,
   RevisionListParams,
@@ -115,7 +116,7 @@ export interface CustomCreateAction {
   /** Zod schema for validation (generated from action body schema) */
   zodSchema?: z.ZodObject<any>;
   /** API method to call when submitting this action */
-  apiMethod: (data: any) => Promise<{ data: RevisionInfo | JobRedirectInfo }>;
+  apiMethod: (data: any) => Promise<{ data: RevisionInfo | JobRedirectInfo | BackgroundTaskAccepted }>;
   /** When set, action runs asynchronously via a Job resource */
   asyncMode?: 'job' | 'background';
   /** Job resource name for async_mode='job' actions (e.g. "generate-article-job") */

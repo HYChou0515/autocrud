@@ -2638,6 +2638,23 @@ class JobRedirectInfo(Struct, kw_only=True):
     """A URL path to the Job detail endpoint."""
 
 
+class BackgroundTaskAccepted(Struct, kw_only=True):
+    """Response body returned by background create actions (HTTP 202).
+
+    When a custom create action uses ``async_mode='background'``, the
+    endpoint returns this struct immediately while the handler continues
+    executing in a FastAPI ``BackgroundTasks`` worker.  Unlike
+    ``async_mode='job'``, no Job model is created and the task cannot be
+    tracked from the frontend.
+
+    Attributes:
+        message: A human-readable acceptance message.
+    """
+
+    message: str
+    """A human-readable acceptance message."""
+
+
 class Job(Struct, Generic[T, D]):
     """A job wrapping a payload ``T`` with optional artifact type ``D``.
 
