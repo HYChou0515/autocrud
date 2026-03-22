@@ -607,6 +607,14 @@ Object.assign(registry, {
         apiMethod: characterApi.createNewCharacter0,
       },
       {
+        name: 'create-new-character-background',
+        label: 'New Character background',
+        fields: [],
+        zodSchema: z.object({}),
+        apiMethod: characterApi.createNewCharacterBackground,
+        asyncMode: 'background',
+      },
+      {
         name: 'new',
         label: 'New Character1',
         fields: [

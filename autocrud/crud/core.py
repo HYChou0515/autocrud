@@ -290,6 +290,9 @@ class AutoCRUD:
             Default encoding for stored payloads (e.g. json/msgpack).
         default_user:
             Default user (or factory) used when user is not specified.
+            When set, the ``DependencyProvider``'s default ``get_user``
+            returns this value instead of ``"anonymous"``.  A custom
+            ``get_user`` on the provider always takes priority.
         default_now:
             Default timestamp function used when time is not specified.
 
@@ -409,9 +412,12 @@ class AutoCRUD:
                 self.message_queue_factory = message_queue_factory
 
         # Update route_templates
-        # If dependency_provider is changed, we need to rebuild route_templates
+        # If dependency_provider or default_user is changed, we need to
+        # rebuild route_templates so the DependencyProvider picks up the
+        # correct default user.
         rebuild_templates = route_templates is not UNSET or (
-            dependency_provider is not UNSET and route_templates is UNSET
+            (dependency_provider is not UNSET or default_user is not UNSET)
+            and route_templates is UNSET
         )
 
         if rebuild_templates:
@@ -427,6 +433,17 @@ class AutoCRUD:
                 dep_provider = (
                     dependency_provider if dependency_provider is not UNSET else None
                 )
+
+                # Propagate default_user to the DependencyProvider so that
+                # route handlers receive the configured user instead of
+                # "anonymous" when no custom get_user is set.
+                effective_default_user = (
+                    default_user if default_user is not UNSET else self.default_user
+                )
+                if effective_default_user is not UNSET:
+                    base_dp = dep_provider or DependencyProvider()
+                    dep_provider = base_dp.with_default_user(effective_default_user)
+
                 for rt in [
                     CreateRouteTemplate,
                     ListRouteTemplate,
@@ -534,7 +551,10 @@ class AutoCRUD:
             dependency_provider: Dependency injection provider for routes.
             event_handlers: List of event handlers for lifecycle hooks.
             encoding: Default encoding format (json/msgpack).
-            default_user: Default user for operations when not specified.
+            default_user: Default user for operations when not specified.  When set,
+                the ``DependencyProvider``'s default ``get_user`` will return this
+                value instead of ``"anonymous"``.  A custom ``get_user`` on the
+                provider always takes priority.
             default_now: Default timestamp function for operations.
 
         Example:
@@ -733,6 +753,19 @@ class AutoCRUD:
         6. If the handler returns a resource object, auto-creates it and
            stores the ``RevisionInfo`` as the Job's artifact.
 
+        When ``async_mode='background'`` is set, the framework:
+
+        1. On POST, schedules the handler via FastAPI ``BackgroundTasks``.
+        2. Returns HTTP 202 with :class:`~autocrud.types.BackgroundTaskAccepted`
+           immediately.
+        3. The handler runs in the background; if it returns a resource object,
+           ``resource_manager.create()`` is called automatically.
+        4. No Job model is created — the task is fire-and-forget.
+        5. Errors are logged but not surfaced to the client.
+
+        This mode is suitable for tasks that take a few seconds to complete
+        and do not require progress tracking.
+
         Args:
             resource_name: The name of the resource this action belongs to.
             path: URL path suffix (e.g. ``"import-from-url"``).  If ``None``,
@@ -741,7 +774,9 @@ class AutoCRUD:
                 inferred from *path* (hyphens → spaces, title-cased).
             async_mode: Execution mode for the action.  ``None`` (default)
                 executes synchronously.  ``'job'`` executes asynchronously
-                via the message queue system.
+                via the message queue system.  ``'background'`` executes
+                asynchronously via FastAPI ``BackgroundTasks``
+                (fire-and-forget, no Job tracking).
             job_name: Custom resource name for the auto-generated Job model
                 (e.g. ``"my-custom-job"``).  If ``None``, derived automatically
                 from *path* and *resource_name*.  Only meaningful when
@@ -1785,11 +1820,15 @@ class AutoCRUD:
             # Async create-action metadata
             if action.async_mode is not None:
                 info["asyncMode"] = action.async_mode
-                from autocrud.crud.async_job_builder import derive_job_resource_name
+                if action.async_mode == "job":
+                    from autocrud.crud.async_job_builder import (
+                        derive_job_resource_name,
+                    )
 
-                info["jobResourceName"] = action.job_name or derive_job_resource_name(
-                    action.path, action.resource_name
-                )
+                    info["jobResourceName"] = (
+                        action.job_name
+                        or derive_job_resource_name(action.path, action.resource_name)
+                    )
             # Warn when two actions for the same resource share the same label —
             # duplicate labels cause frontend key collisions and confuse users.
             existing_labels = {
@@ -2146,7 +2185,7 @@ class AutoCRUD:
                     job_resource_name: Name of the job resource, used together
                         with *resource_managers* to locate the job RM.
                 """
-                _is_async = asyncio.iscoroutinefunction(handler)
+                _is_async = inspect.iscoroutinefunction(handler)
                 _conversions = param_conversions or {}
                 _has_binary_conv = any(
                     k == "upload_file" for k, _ in _conversions.values()
@@ -2253,7 +2292,11 @@ class AutoCRUD:
                 deps = rt.deps
                 break
         if deps is None:
+            # No route templates have a DP — create one that respects
+            # default_user if configured.
             deps = DependencyProvider()
+            if self.default_user is not UNSET:
+                deps = deps.with_default_user(self.default_user)
 
         def _is_msgspec_struct_type(ann: type) -> bool:
             """Check if *ann* is a msgspec.Struct subclass."""
@@ -2308,7 +2351,12 @@ class AutoCRUD:
                     kwargs[field_name] = str(val)
 
         def _build_fastapi_compatible_handler(
-            handler, resource_manager, *, async_job_config=None, deps=None
+            handler,
+            resource_manager,
+            *,
+            async_job_config=None,
+            background_mode=False,
+            deps=None,
         ):
             """Build a FastAPI-compatible endpoint function.
 
@@ -2339,6 +2387,11 @@ class AutoCRUD:
                     auto-generated payload Struct before creating the Job.
                     *param_conversions* maps field names that need
                     serialisation conversion at endpoint time.
+                background_mode: When ``True``, the wrapper uses
+                    FastAPI ``BackgroundTasks`` to schedule the handler
+                    execution in the background.  The endpoint returns
+                    HTTP 202 with :class:`BackgroundTaskAccepted`
+                    immediately.  No Job model is created.
                 deps: A :class:`DependencyProvider` instance used to inject
                     ``current_user`` and ``current_time`` into the wrapper
                     function signature via ``Depends()``.  When ``None`` a
@@ -2439,6 +2492,19 @@ class AutoCRUD:
             new_annotations["current_user"] = str
             new_annotations["current_time"] = dt.datetime
 
+            # Inject BackgroundTasks when background_mode is enabled
+            if background_mode:
+                from starlette.background import BackgroundTasks
+
+                new_params.append(
+                    inspect.Parameter(
+                        "background_tasks",
+                        inspect.Parameter.KEYWORD_ONLY,
+                        annotation=BackgroundTasks,
+                    )
+                )
+                new_annotations["background_tasks"] = BackgroundTasks
+
             new_sig = sig.replace(
                 parameters=new_params, return_annotation=inspect.Parameter.empty
             )
@@ -2464,8 +2530,8 @@ class AutoCRUD:
                 payload_param_name = next(iter(struct_params), None)
 
                 async def wrapper(*args, **kwargs):
-                    _current_user = kwargs.pop("current_user", "anonymous")
-                    _current_time = kwargs.pop("current_time", dt.datetime.now())
+                    _current_user = kwargs.pop("current_user")
+                    _current_time = kwargs.pop("current_time")
                     for pname, struct_type in struct_params.items():
                         if pname in kwargs:
                             kwargs[pname] = _msgspec.convert(
@@ -2516,12 +2582,64 @@ class AutoCRUD:
                         status_code=202,
                     )
 
-            # ---- sync mode: call handler + create resource --------------
-            elif asyncio.iscoroutinefunction(handler):
+            # ---- background mode: schedule via BackgroundTasks + 202 ----
+            elif background_mode:
+                from autocrud.types import BackgroundTaskAccepted
+
+                _bg_is_async = inspect.iscoroutinefunction(handler)
 
                 async def wrapper(*args, **kwargs):
-                    _current_user = kwargs.pop("current_user", "anonymous")
-                    _current_time = kwargs.pop("current_time", dt.datetime.now())
+                    _current_user = kwargs.pop("current_user")
+                    _current_time = kwargs.pop("current_time")
+                    _bg_tasks = kwargs.pop("background_tasks")
+                    # Convert raw dicts to Struct / Pydantic instances
+                    for pname, struct_type in struct_params.items():
+                        if pname in kwargs:
+                            kwargs[pname] = _msgspec.convert(
+                                _ensure_dict(kwargs[pname]), struct_type
+                            )
+                    for pname, pydantic_type in pydantic_params.items():
+                        if pname in kwargs:
+                            kwargs[pname] = pydantic_type(**_ensure_dict(kwargs[pname]))
+
+                    # Snapshot converted kwargs for the background closure
+                    _snapshot_kwargs = dict(kwargs)
+
+                    # Always define _run_bg as a sync function so that
+                    # Starlette dispatches it via ``run_in_threadpool``.
+                    # This ensures the HTTP 202 response is flushed to the
+                    # client *before* the background work starts.  If the
+                    # original handler is async we bridge into a new event
+                    # loop inside the worker thread with ``asyncio.run()``.
+                    def _run_bg() -> None:
+                        try:
+                            if _bg_is_async:
+                                result = asyncio.run(handler(*args, **_snapshot_kwargs))
+                            else:
+                                result = handler(*args, **_snapshot_kwargs)
+                            if result is not None:
+                                with resource_manager.meta_provide(
+                                    _current_user, _current_time
+                                ):
+                                    resource_manager.create(result)
+                        except Exception:
+                            logger.exception(
+                                "Background create action '%s' failed",
+                                handler.__name__,
+                            )
+
+                    _bg_tasks.add_task(_run_bg)
+                    return MsgspecResponse(
+                        BackgroundTaskAccepted(message="Task accepted"),
+                        status_code=202,
+                    )
+
+            # ---- sync mode: call handler + create resource --------------
+            elif inspect.iscoroutinefunction(handler):
+
+                async def wrapper(*args, **kwargs):
+                    _current_user = kwargs.pop("current_user")
+                    _current_time = kwargs.pop("current_time")
                     # Convert raw dicts to Struct instances
                     for pname, struct_type in struct_params.items():
                         if pname in kwargs:
@@ -2541,8 +2659,8 @@ class AutoCRUD:
             else:
 
                 def wrapper(*args, **kwargs):
-                    _current_user = kwargs.pop("current_user", "anonymous")
-                    _current_time = kwargs.pop("current_time", dt.datetime.now())
+                    _current_user = kwargs.pop("current_user")
+                    _current_time = kwargs.pop("current_time")
                     for pname, struct_type in struct_params.items():
                         if pname in kwargs:
                             kwargs[pname] = _msgspec.convert(
@@ -2627,6 +2745,27 @@ class AutoCRUD:
                         },
                     )(_wrapper)
                     continue
+
+            # --- async_mode='background': fire-and-forget via BackgroundTasks ---
+            if action.async_mode == "background":
+                _wrapper = _build_fastapi_compatible_handler(
+                    action.handler, rm, background_mode=True, deps=deps
+                )
+
+                router.post(
+                    route_path,
+                    response_model=None,
+                    status_code=202,
+                    summary=f"{action.label} ({action.resource_name})",
+                    tags=[f"{action.resource_name}"],
+                    openapi_extra={
+                        "x-autocrud-create-action": {
+                            "resource": action.resource_name,
+                            "label": action.label,
+                        },
+                    },
+                )(_wrapper)
+                continue
 
             # --- sync (default) handler ---
             _wrapper = _build_fastapi_compatible_handler(action.handler, rm, deps=deps)

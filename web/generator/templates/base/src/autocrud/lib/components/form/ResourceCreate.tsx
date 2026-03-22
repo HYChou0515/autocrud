@@ -1,6 +1,7 @@
 import { useRef, useState } from 'react';
 import { useNavigate } from '@tanstack/react-router';
 import { Container, Title, Stack, Button, Group, Paper, Tabs } from '@mantine/core';
+import { notifications } from '@mantine/notifications';
 import { IconArrowLeft } from '@tabler/icons-react';
 import type { ResourceConfig, CustomCreateAction, CreateConfig } from '../../resources';
 import { ResourceForm, type ResourceFormHandle } from './ResourceForm';
@@ -78,6 +79,14 @@ export function ResourceCreate<T extends Record<string, any>>({
       try {
         setCustomActionPending(action.name);
         await action.apiMethod(values);
+        // Show toast for background actions since there's no job tracking UI
+        if (action.asyncMode === 'background') {
+          notifications.show({
+            title: action.label,
+            message: '已提交背景任務',
+            color: 'blue',
+          });
+        }
         // Always navigate back to the parent resource list page.
         // For async job actions, the job will appear in PendingJobsAccordion.
         navigate({ to: basePath });
