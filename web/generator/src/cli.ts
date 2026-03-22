@@ -4,13 +4,14 @@ import { initProject } from './commands/init.js';
 import { generateCode } from './commands/generate.js';
 import { integrateProject } from './commands/integrate.js';
 import { validateMantineVersion } from './mantineVersion.js';
+import { resolveCliVersion } from './cliVersion.js';
 
 const program = new Command();
 
 program
   .name('autocrud-web')
   .description('AutoCRUD Web Code Generator - Generate React frontend from AutoCRUD API')
-  .version('0.3.2');
+  .version(resolveCliVersion());
 
 program
   .command('init')
