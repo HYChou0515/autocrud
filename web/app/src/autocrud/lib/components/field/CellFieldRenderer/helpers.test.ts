@@ -3,6 +3,7 @@
  */
 
 import { describe, it, expect } from 'vitest';
+import { isValidElement } from 'react';
 import {
   formatBinarySize,
   isImageContentType,
@@ -223,5 +224,24 @@ describe('renderObjectPreview', () => {
     expect(result).toBeTruthy();
     // Must complete in under 500ms (would hang for seconds without fix)
     expect(elapsed).toBeLessThan(500);
+  });
+
+  it('tooltip Code block has explicit readable text color (not inherited white)', () => {
+    // BUG: Mantine Tooltip default dark bg sets white text color, but the Code
+    // block inside has a light background → white text on light bg = invisible.
+    const result = renderObjectPreview({ name: 'Alice' });
+    expect(isValidElement(result)).toBe(true);
+
+    const tooltipEl = result as any;
+    const codeEl = tooltipEl.props.label;
+    expect(isValidElement(codeEl)).toBe(true);
+
+    // The Code block must have an explicit color style to override inherited white
+    const style = codeEl.props.style as Record<string, unknown>;
+    expect(style).toHaveProperty('color');
+    expect(style.color).toBeTruthy();
+    // Must not be white / #fff / #ffffff
+    const colorVal = String(style.color).toLowerCase().replace(/\s/g, '');
+    expect(colorVal).not.toMatch(/^(white|#fff|#ffffff)$/);
   });
 });

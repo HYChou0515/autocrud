@@ -172,7 +172,15 @@ export function renderObjectPreview(value: Record<string, unknown>): React.React
   return (
     <Tooltip
       label={
-        <Code block style={{ maxWidth: '400px', maxHeight: '300px', overflow: 'auto' }}>
+        <Code
+          block
+          style={{
+            maxWidth: '400px',
+            maxHeight: '300px',
+            overflow: 'auto',
+            color: 'var(--mantine-color-text)',
+          }}
+        >
           {safeStringify(value, 2)}
         </Code>
       }
