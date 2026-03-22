@@ -180,9 +180,7 @@ describe('MigrationStatus', () => {
       renderWithMantine(<MigrationStatus resourceNames={['character']} />);
 
       const testButtons = screen.getAllByRole('button', { name: /test/i });
-      const perModelTest = testButtons.find(
-        (btn) => btn.textContent?.trim() === 'Test',
-      );
+      const perModelTest = testButtons.find((btn) => btn.textContent?.trim() === 'Test');
       fireEvent.click(perModelTest!);
 
       // Wait for result to appear
@@ -211,9 +209,7 @@ describe('MigrationStatus', () => {
       renderWithMantine(<MigrationStatus resourceNames={['character']} />);
 
       const testButtons = screen.getAllByRole('button', { name: /test/i });
-      const perModelTest = testButtons.find(
-        (btn) => btn.textContent?.trim() === 'Test',
-      );
+      const perModelTest = testButtons.find((btn) => btn.textContent?.trim() === 'Test');
       fireEvent.click(perModelTest!);
 
       await waitFor(() => {
@@ -240,9 +236,7 @@ describe('MigrationStatus', () => {
       renderWithMantine(<MigrationStatus resourceNames={['character']} />);
 
       const testButtons = screen.getAllByRole('button', { name: /test/i });
-      const perModelTest = testButtons.find(
-        (btn) => btn.textContent?.trim() === 'Test',
-      );
+      const perModelTest = testButtons.find((btn) => btn.textContent?.trim() === 'Test');
       fireEvent.click(perModelTest!);
 
       await waitFor(() => {
@@ -265,9 +259,7 @@ describe('MigrationStatus', () => {
       renderWithMantine(<MigrationStatus resourceNames={['character']} />);
 
       const testButtons = screen.getAllByRole('button', { name: /test/i });
-      const perModelTest = testButtons.find(
-        (btn) => btn.textContent?.trim() === 'Test',
-      );
+      const perModelTest = testButtons.find((btn) => btn.textContent?.trim() === 'Test');
       fireEvent.click(perModelTest!);
 
       await waitFor(() => {
@@ -288,9 +280,7 @@ describe('MigrationStatus', () => {
       renderWithMantine(<MigrationStatus resourceNames={['character']} />);
 
       const testButtons = screen.getAllByRole('button', { name: /test/i });
-      const perModelTest = testButtons.find(
-        (btn) => btn.textContent?.trim() === 'Test',
-      );
+      const perModelTest = testButtons.find((btn) => btn.textContent?.trim() === 'Test');
       fireEvent.click(perModelTest!);
 
       await waitFor(() => {
@@ -301,9 +291,7 @@ describe('MigrationStatus', () => {
       fireEvent.click(screen.getByText('10 Error(s)'));
 
       await waitFor(() => {
-        expect(
-          screen.getByRole('button', { name: /Download All Errors \(10\)/i }),
-        ).toBeTruthy();
+        expect(screen.getByRole('button', { name: /Download All Errors \(10\)/i })).toBeTruthy();
       });
     });
 
@@ -316,8 +304,12 @@ describe('MigrationStatus', () => {
       globalThis.URL.createObjectURL = createObjectURLSpy;
       globalThis.URL.revokeObjectURL = revokeObjectURLSpy;
 
-      const appendChildSpy = vi.spyOn(document.body, 'appendChild').mockImplementation((node) => node);
-      const removeChildSpy = vi.spyOn(document.body, 'removeChild').mockImplementation((node) => node);
+      const appendChildSpy = vi
+        .spyOn(document.body, 'appendChild')
+        .mockImplementation((node) => node);
+      const removeChildSpy = vi
+        .spyOn(document.body, 'removeChild')
+        .mockImplementation((node) => node);
       const clickSpy = vi.fn();
       // Save original before spying to avoid recursive calls
       const origCreateElement = document.createElement.bind(document);
@@ -331,9 +323,7 @@ describe('MigrationStatus', () => {
       renderWithMantine(<MigrationStatus resourceNames={['character']} />);
 
       const testButtons = screen.getAllByRole('button', { name: /test/i });
-      const perModelTest = testButtons.find(
-        (btn) => btn.textContent?.trim() === 'Test',
-      );
+      const perModelTest = testButtons.find((btn) => btn.textContent?.trim() === 'Test');
       fireEvent.click(perModelTest!);
 
       await waitFor(() => {

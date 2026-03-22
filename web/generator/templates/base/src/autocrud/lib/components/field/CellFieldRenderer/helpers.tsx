@@ -21,6 +21,7 @@ import {
 // ---------------------------------------------------------------------------
 
 import { getBlobUrl } from '../../../client';
+import { truncateForCell } from '../../../utils/payloadTruncation';
 
 /** Size threshold (in bytes) below which images are shown as inline thumbnails. */
 export const INLINE_IMAGE_MAX_SIZE = 512 * 1024; // 512 KB
@@ -147,6 +148,10 @@ export function renderBinaryCell(value: Record<string, unknown>): React.ReactNod
 
 /**
  * Render an object value as a compact preview with hover tooltip showing full JSON.
+ *
+ * Large payloads are truncated via `truncateForCell()` before rendering
+ * to prevent the browser from freezing on objects with many keys or
+ * very large string values.
  */
 export function renderObjectPreview(value: Record<string, unknown>): React.ReactNode {
   const keys = Object.keys(value);
@@ -169,11 +174,22 @@ export function renderObjectPreview(value: Record<string, unknown>): React.React
 
   const shortPreview = previewText.length > 40 ? previewText.slice(0, 37) + '...' : previewText;
 
+  // Truncate the payload *before* serialising for the tooltip
+  const truncatedValue = truncateForCell(value);
+
   return (
     <Tooltip
       label={
-        <Code block style={{ maxWidth: '400px', maxHeight: '300px', overflow: 'auto', color: 'var(--mantine-color-text)' }}>
-          {safeStringify(value, 2)}
+        <Code
+          block
+          style={{
+            maxWidth: '400px',
+            maxHeight: '300px',
+            overflow: 'auto',
+            color: 'var(--mantine-color-text)',
+          }}
+        >
+          {safeStringify(truncatedValue, 2)}
         </Code>
       }
       position="bottom-start"
