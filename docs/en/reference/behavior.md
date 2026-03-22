@@ -18,11 +18,12 @@ This page documents lifecycle expectations and safe usage rules for `AutoCRUD`.
 - route template list
 - relationship metadata collected from `Ref` annotations
 - pending create actions
+- pending update actions
 
 Therefore:
 
-- **Do** call `configure()`, `add_model()`, `add_route_template()`, `create_action()`
-  during application startup.
+- **Do** call `configure()`, `add_model()`, `add_route_template()`, `create_action()`,
+  `update_action()` during application startup.
 - Avoid calling these after the app starts serving requests, because they mutate global
   structures and can lead to inconsistent behavior.
 
@@ -42,6 +43,7 @@ Calling `apply()` will:
 - install referential integrity event handlers
 - sort and apply route templates for each registered model
 - register custom create action routes
+- register custom update action routes
 - add ref-specific routes (referrers + relationships)
 - add global backup/restore routes
 
@@ -52,5 +54,6 @@ Calling `apply()` will:
 - AutoCRUD-related schemas into `components.schemas`
 - ref metadata extensions (`x-ref-*`, `x-ref-revision-*`) on schema properties
 - top-level extension for custom create actions (`x-autocrud-custom-create-actions`)
+- top-level extension for custom update actions (`x-autocrud-custom-update-actions`)
 
 In most cases you don't need to call `openapi()` manually because it is used by `apply()` flows.

@@ -657,3 +657,80 @@ describe('genApiIndex — migrate export', () => {
     expect(code).toContain('migrateApi');
   });
 });
+
+// ============================================================================
+// genApiClient — customUpdateActions
+// ============================================================================
+
+function buildUpdateActionSpec(basePath = '') {
+  const prefix = basePath || '';
+  return {
+    info: { title: 'Test', version: '1.0' },
+    paths: {
+      [`${prefix}/character`]: {
+        post: {
+          requestBody: { content: { 'application/json': { schema: { $ref: '#/components/schemas/Character' } } } },
+        },
+      },
+    },
+    'x-autocrud-custom-update-actions': {
+      character: [
+        {
+          path: '/character/{resource_id}/level-up',
+          label: 'Level Up',
+          operationId: 'level_up',
+          mode: 'update',
+          bodySchema: 'LevelUpInput',
+        },
+        {
+          path: '/character/{resource_id}/reset',
+          label: 'Reset',
+          operationId: 'reset_character',
+          mode: 'modify',
+        },
+      ],
+    },
+    components: {
+      schemas: {
+        Character: {
+          type: 'object',
+          properties: { name: { type: 'string' }, level: { type: 'integer' } },
+          required: ['name', 'level'],
+        },
+        LevelUpInput: {
+          type: 'object',
+          properties: { levels: { type: 'integer' } },
+          required: ['levels'],
+        },
+      },
+    },
+  };
+}
+
+describe('genApiClient — customUpdateActions', () => {
+  it('generates typed method for body-based update action', () => {
+    const resources = parse(buildUpdateActionSpec());
+    const char = resources.find((r) => r.name === 'character')!;
+    const code = genApiClient(char, '');
+    expect(code).toContain('levelUp');
+    expect(code).toContain('(id: string, data: LevelUpInput)');
+    expect(code).toContain('`${BASE}/${id}/level-up`');
+  });
+
+  it('generates simple method for no-body update action', () => {
+    const resources = parse(buildUpdateActionSpec());
+    const char = resources.find((r) => r.name === 'character')!;
+    const code = genApiClient(char, '');
+    expect(code).toContain('resetCharacter');
+    expect(code).toContain('(id: string)');
+    expect(code).toContain('`${BASE}/${id}/reset`');
+  });
+
+  it('imports update action body schema type', () => {
+    const resources = parse(buildUpdateActionSpec());
+    const char = resources.find((r) => r.name === 'character')!;
+    const code = genApiClient(char, '');
+    expect(code).toContain('LevelUpInput');
+    expect(code).toMatch(/import type \{.*LevelUpInput.*\}/);
+  });
+});

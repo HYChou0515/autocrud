@@ -68,4 +68,6 @@ export const characterApi = {
     const params = { x: allParams['x'], y: allParams['y'] };
     return client.post<RevisionInfo>(`${BASE}/create-new-character4`, formData, { params });
   },
+
+  updateCharName: (id: string) => client.post<RevisionInfo>(`${BASE}/${id}/update-char-name`),
 };

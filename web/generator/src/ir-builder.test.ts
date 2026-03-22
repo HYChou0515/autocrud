@@ -2286,3 +2286,147 @@ describe('parseField — list[Any] (array without items)', () => {
     expect(computeZodType(metadataField!)).toBe('z.array(z.any()).optional()');
   });
 });
+
+// ============================================================================
+// extractCustomUpdateActions
+// ============================================================================
+
+function buildUpdateActionSpec() {
+  return {
+    paths: {
+      '/character': {
+        post: {
+          requestBody: {
+            content: { 'application/json': { schema: { $ref: '#/components/schemas/Character' } } },
+          },
+        },
+      },
+      '/character/{resource_id}/level-up': {
+        post: {
+          summary: 'Level Up (character)',
+          'x-autocrud-update-action': { resource: 'character', label: 'Level Up' },
+          requestBody: {
+            content: {
+              'application/json': {
+                schema: {
+                  type: 'object',
+                  properties: { levels: { type: 'integer' } },
+                  required: ['levels'],
+                  title: 'LevelUpInput',
+                },
+              },
+            },
+          },
+        },
+      },
+      '/character/{resource_id}/reset': {
+        post: {
+          summary: 'Reset (character)',
+          'x-autocrud-update-action': { resource: 'character', label: 'Reset' },
+        },
+      },
+    },
+    'x-autocrud-custom-update-actions': {
+      character: [
+        {
+          path: '/character/{resource_id}/level-up',
+          label: 'Level Up',
+          operationId: 'level_up',
+          mode: 'update',
+          bodySchema: 'LevelUpInput',
+        },
+        {
+          path: '/character/{resource_id}/reset',
+          label: 'Reset',
+          operationId: 'reset_character',
+          mode: 'modify',
+        },
+      ],
+    },
+    components: {
+      schemas: {
+        Character: {
+          type: 'object',
+          properties: { name: { type: 'string' }, level: { type: 'integer' } },
+          required: ['name', 'level'],
+        },
+        LevelUpInput: {
+          type: 'object',
+          properties: { levels: { type: 'integer' } },
+          required: ['levels'],
+        },
+      },
+    },
+  };
+}
+
+describe('extractCustomUpdateActions — bodySchema', () => {
+  it('attaches custom update actions to matching resource', () => {
+    const resources = buildIR(buildUpdateActionSpec()).resources;
+    const character = resources.find((r) => r.name === 'character');
+    expect(character).toBeDefined();
+    expect(character!.customUpdateActions).toBeDefined();
+    expect(character!.customUpdateActions!.length).toBe(2);
+  });
+
+  it('populates action name, label, path, bodySchemaName, mode', () => {
+    const resources = buildIR(buildUpdateActionSpec()).resources;
+    const actions = resources.find((r) => r.name === 'character')!.customUpdateActions!;
+    expect(actions[0].name).toBe('level-up');
+    expect(actions[0].label).toBe('Level Up');
+    expect(actions[0].path).toBe('/character/{resource_id}/level-up');
+    expect(actions[0].bodySchemaName).toBe('LevelUpInput');
+    expect(actions[0].operationId).toBe('level_up');
+    expect(actions[0].mode).toBe('update');
+  });
+
+  it('extracts fields from action body schema', () => {
+    const resources = buildIR(buildUpdateActionSpec()).resources;
+    const actions = resources.find((r) => r.name === 'character')!.customUpdateActions!;
+    expect(actions[0].fields.length).toBe(1);
+    expect(actions[0].fields[0].name).toBe('levels');
+    expect(actions[0].fields[0].isRequired).toBe(true);
+  });
+
+  it('handles no-body update action (reset)', () => {
+    const resources = buildIR(buildUpdateActionSpec()).resources;
+    const actions = resources.find((r) => r.name === 'character')!.customUpdateActions!;
+    const resetAction = actions.find((a) => a.name === 'reset');
+    expect(resetAction).toBeDefined();
+    expect(resetAction!.mode).toBe('modify');
+    expect(resetAction!.bodySchemaName).toBeUndefined();
+    expect(resetAction!.fields.length).toBe(0);
+  });
+
+  it('does nothing when no x-autocrud-custom-update-actions', () => {
+    const spec = {
+      paths: {
+        '/article': {
+          post: {
+            requestBody: { content: { 'application/json': { schema: { $ref: '#/components/schemas/Article' } } } },
+          },
+        },
+      },
+      components: {
+        schemas: { Article: { type: 'object', properties: { content: { type: 'string' } }, required: ['content'] } },
+      },
+    };
+    const resources = buildIR(spec).resources;
+    const article = resources.find((r) => r.name === 'article');
+    expect(article).toBeDefined();
+    expect(article!.customUpdateActions).toBeUndefined();
+  });
+
+  it('handles query params in update actions', () => {
+    const spec = buildUpdateActionSpec();
+    spec['x-autocrud-custom-update-actions'].character[0].queryParams = [
+      { name: 'force', required: false, schema: { type: 'boolean' } },
+    ];
+    const resources = buildIR(spec).resources;
+    const actions = resources.find((r) => r.name === 'character')!.customUpdateActions!;
+    expect(actions[0].queryParams).toBeDefined();
+    expect(actions[0].queryParams!.length).toBe(1);
+    // fields should include both body fields and query param fields
+    expect(actions[0].fields.length).toBe(2);
+  });
+});

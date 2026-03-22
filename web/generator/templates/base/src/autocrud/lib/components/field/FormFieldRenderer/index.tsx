@@ -146,13 +146,15 @@ const FIELD_RENDERERS: Record<FieldKind, (ctx: FieldRenderContext) => React.Reac
 
   textarea: ({ field, form, effectiveVariant }) => {
     const v = effectiveVariant as Extract<FieldVariant, { type: 'textarea' }>;
+    const inputProps = form.getInputProps(field.name);
     return (
       <Textarea
         key={field.name}
         label={field.label}
         required={field.isRequired && !field.isNullable}
         rows={v.rows || 3}
-        {...form.getInputProps(field.name)}
+        {...inputProps}
+        value={inputProps.value ?? ''}
       />
     );
   },
@@ -210,6 +212,7 @@ const FIELD_RENDERERS: Record<FieldKind, (ctx: FieldRenderContext) => React.Reac
 
   numberSlider: ({ field, form, effectiveVariant }) => {
     const v = effectiveVariant as Extract<FieldVariant, { type: 'slider' }>;
+    const inputProps = form.getInputProps(field.name);
     return (
       <NumberInput
         key={field.name}
@@ -218,13 +221,15 @@ const FIELD_RENDERERS: Record<FieldKind, (ctx: FieldRenderContext) => React.Reac
         min={v.sliderMin}
         max={v.sliderMax}
         step={v.step}
-        {...form.getInputProps(field.name)}
+        {...inputProps}
+        value={inputProps.value ?? ''}
       />
     );
   },
 
   number: ({ field, form, effectiveVariant }) => {
     const v = effectiveVariant as Extract<FieldVariant, { type: 'number' }>;
+    const inputProps = form.getInputProps(field.name);
     return (
       <NumberInput
         key={field.name}
@@ -233,7 +238,8 @@ const FIELD_RENDERERS: Record<FieldKind, (ctx: FieldRenderContext) => React.Reac
         min={v.min}
         max={v.max}
         step={v.step}
-        {...form.getInputProps(field.name)}
+        {...inputProps}
+        value={inputProps.value ?? ''}
       />
     );
   },
@@ -292,14 +298,18 @@ const FIELD_RENDERERS: Record<FieldKind, (ctx: FieldRenderContext) => React.Reac
 
   /* ---- Default ---- */
 
-  text: ({ field, form }) => (
-    <TextInput
-      key={field.name}
-      label={field.label}
-      required={field.isRequired && !field.isNullable}
-      {...form.getInputProps(field.name)}
-    />
-  ),
+  text: ({ field, form }) => {
+    const inputProps = form.getInputProps(field.name);
+    return (
+      <TextInput
+        key={field.name}
+        label={field.label}
+        required={field.isRequired && !field.isNullable}
+        {...inputProps}
+        value={inputProps.value ?? ''}
+      />
+    );
+  },
 };
 
 // ---------------------------------------------------------------------------

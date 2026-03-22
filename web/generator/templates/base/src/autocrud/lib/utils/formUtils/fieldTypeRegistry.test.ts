@@ -818,8 +818,8 @@ describe('unionHandler', () => {
   });
 
   describe('emptyValue', () => {
-    it('returns null', () => {
-      expect(unionHandler.emptyValue(field())).toBe(null);
+    it('returns empty string for simple union', () => {
+      expect(unionHandler.emptyValue(field())).toBe('');
     });
   });
 
@@ -829,8 +829,8 @@ describe('unionHandler', () => {
       expect(unionHandler.toFormValue(complexVal, field())).toBe(complexVal);
     });
 
-    it('passes through null', () => {
-      expect(unionHandler.toFormValue(null, field())).toBe(null);
+    it('converts null to empty string for simple union', () => {
+      expect(unionHandler.toFormValue(null, field())).toBe('');
     });
   });
 

@@ -91,12 +91,14 @@ function renderSubField(sf: ResourceField, subPath: string, form: UseFormReturnT
     );
   }
   if (sf.type === 'number') {
+    const inputProps = form.getInputProps(subPath);
     return (
       <NumberInput
         key={subPath}
         label={sf.label}
         required={sf.isRequired && !sf.isNullable}
-        {...form.getInputProps(subPath)}
+        {...inputProps}
+        value={inputProps.value ?? ''}
       />
     );
   }
@@ -147,12 +149,14 @@ function renderSubField(sf: ResourceField, subPath: string, form: UseFormReturnT
   if (sf.itemFields && sf.itemFields.length > 0) {
     return <ArrayFieldRenderer key={subPath} field={{ ...sf, name: subPath }} form={form} />;
   }
+  const textInputProps = form.getInputProps(subPath);
   return (
     <TextInput
       key={subPath}
       label={sf.label}
       required={sf.isRequired && !sf.isNullable}
-      {...form.getInputProps(subPath)}
+      {...textInputProps}
+      value={textInputProps.value ?? ''}
     />
   );
 }
@@ -374,12 +378,14 @@ function StructuralVariantBody({
             if (!hasFields) {
               // Primitive array items (e.g., list[str])
               const primItemPath = `${itemsPath}.${index}`;
+              const primProps = form.getInputProps(primItemPath);
               return (
                 <Group key={index} gap="xs" align="flex-end">
                   <TextInput
                     style={{ flex: 1 }}
                     label={`#${index + 1}`}
-                    {...form.getInputProps(primItemPath)}
+                    {...primProps}
+                    value={primProps.value ?? ''}
                   />
                   <ActionIcon
                     size="sm"
@@ -473,21 +479,20 @@ function StructuralVariantBody({
                 </ActionIcon>
               </Group>
               <Stack gap="xs">
-                <TextInput
-                  label="Key"
-                  required
-                  {...form.getInputProps(`${entriesPath}.${index}.__key`)}
-                />
-                {hasValueFields ? (
-                  variant.dictValueFields!.map((sf) =>
-                    renderSubField(sf, `${entriesPath}.${index}.${sf.name}`, form),
-                  )
-                ) : (
-                  <TextInput
-                    label="Value"
-                    {...form.getInputProps(`${entriesPath}.${index}.__value`)}
-                  />
-                )}
+                {(() => {
+                  const keyProps = form.getInputProps(`${entriesPath}.${index}.__key`);
+                  return (
+                    <TextInput label="Key" required {...keyProps} value={keyProps.value ?? ''} />
+                  );
+                })()}
+                {hasValueFields
+                  ? variant.dictValueFields!.map((sf) =>
+                      renderSubField(sf, `${entriesPath}.${index}.${sf.name}`, form),
+                    )
+                  : (() => {
+                      const valProps = form.getInputProps(`${entriesPath}.${index}.__value`);
+                      return <TextInput label="Value" {...valProps} value={valProps.value ?? ''} />;
+                    })()}
               </Stack>
             </Paper>
           ))}
@@ -511,22 +516,26 @@ function StructuralVariantBody({
   // ── Primitive variant: single value input ──
   const valuePath = `${name}.value`;
   if (variant.type === 'number' || variant.type === 'integer') {
-    return <NumberInput label="Value" {...form.getInputProps(valuePath)} />;
+    const numProps = form.getInputProps(valuePath);
+    return <NumberInput label="Value" {...numProps} value={numProps.value ?? ''} />;
   }
   if (variant.type === 'boolean') {
     return <Switch label="Value" {...form.getInputProps(valuePath, { type: 'checkbox' })} />;
   }
   if (variant.type === 'string') {
-    return <TextInput label="Value" {...form.getInputProps(valuePath)} />;
+    const strProps = form.getInputProps(valuePath);
+    return <TextInput label="Value" {...strProps} value={strProps.value ?? ''} />;
   }
   // Fallback: JSON textarea for complex/unknown types
+  const fallbackProps = form.getInputProps(valuePath);
   return (
     <Textarea
       label="Value (JSON)"
       autosize
       minRows={3}
       placeholder='{"key": "value"}'
-      {...form.getInputProps(valuePath)}
+      {...fallbackProps}
+      value={fallbackProps.value ?? ''}
     />
   );
 }
@@ -769,19 +778,23 @@ export function UnionFieldRenderer({
       );
     }
     if (variant.type === 'number' || variant.type === 'integer') {
+      const numProps = form.getInputProps(name);
       return (
         <NumberInput
           label={`${label} value`}
           required={isRequired && !field.isNullable}
-          {...form.getInputProps(name)}
+          {...numProps}
+          value={numProps.value ?? ''}
         />
       );
     }
+    const textProps = form.getInputProps(name);
     return (
       <TextInput
         label={`${label} value`}
         required={isRequired && !field.isNullable}
-        {...form.getInputProps(name)}
+        {...textProps}
+        value={textProps.value ?? ''}
       />
     );
   };

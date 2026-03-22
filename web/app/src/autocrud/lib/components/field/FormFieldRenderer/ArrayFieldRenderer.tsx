@@ -161,12 +161,14 @@ export function ArrayFieldRenderer({ field, form }: ArrayFieldRendererProps) {
                 );
               }
               if (sf.type === 'number') {
+                const numProps = form.getInputProps(itemPath);
                 return (
                   <NumberInput
                     key={itemPath}
                     label={sf.label}
                     required={sf.isRequired && !sf.isNullable}
-                    {...form.getInputProps(itemPath)}
+                    {...numProps}
+                    value={numProps.value ?? ''}
                   />
                 );
               }
@@ -209,12 +211,14 @@ export function ArrayFieldRenderer({ field, form }: ArrayFieldRendererProps) {
                   />
                 );
               }
+              const textProps = form.getInputProps(itemPath);
               return (
                 <TextInput
                   key={itemPath}
                   label={sf.label}
                   required={sf.isRequired && !sf.isNullable}
-                  {...form.getInputProps(itemPath)}
+                  {...textProps}
+                  value={textProps.value ?? ''}
                 />
               );
             })}

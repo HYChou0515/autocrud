@@ -407,7 +407,7 @@ export const unionHandler: FieldTypeHandler = {
       }
       return { __variant: first.tag, value: '' };
     }
-    return null;
+    return '';
   },
 
   toFormValue(val, field) {
@@ -505,6 +505,9 @@ export const unionHandler: FieldTypeHandler = {
       // Null or unrecognized — default to first variant's empty
       return this.emptyValue(field);
     }
+    // Simple union (__type): convert null/undefined to empty string
+    // to avoid passing null to native <input> elements
+    if (val == null) return '';
     return val;
   },
 

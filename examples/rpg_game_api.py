@@ -55,6 +55,8 @@ from autocrud.types import (
     Job,
     RefType,
     Resource,
+    ResourceMeta,
+    RevisionInfo,
     Unique,
 )
 
@@ -1351,6 +1353,16 @@ def configure_crud():
         indexed_fields=[("status", str)],
         job_handler=process_game_event,
     )
+
+    @crud.update_action("character", label="New Character0", meta_param="xx")
+    async def update_char_name(
+        existing: Character, info: RevisionInfo, xx: ResourceMeta
+    ):
+        time.sleep(5)
+        existing.name = (
+            str(time.time()) + f"{info.updated_time}" + f"({xx.total_revision_count})"
+        )
+        return existing
 
     @crud.create_action(
         "character",

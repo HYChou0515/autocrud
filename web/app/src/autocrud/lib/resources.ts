@@ -125,6 +125,25 @@ export interface CustomCreateAction {
   jobResourceName?: string;
 }
 
+/**
+ * Custom update action — a POST endpoint that modifies an existing resource.
+ * Discovered from the backend's @crud.update_action() decorator via OpenAPI extensions.
+ */
+export interface CustomUpdateAction {
+  /** Path segment name, e.g. "level-up" */
+  name: string;
+  /** Human-readable label, e.g. "Level Up" */
+  label: string;
+  /** Update strategy: 'update' creates new revision, 'modify' edits draft in-place */
+  mode: 'update' | 'modify';
+  /** Fields for the action's request body form */
+  fields: ResourceField[];
+  /** Zod schema for validation (generated from action body schema) */
+  zodSchema?: z.ZodObject<any>;
+  /** API method to call when submitting this action */
+  apiMethod: (id: string, data: any) => Promise<{ data: RevisionInfo }>;
+}
+
 // ---------------------------------------------------------------------------
 // Component-level configuration interfaces
 // ---------------------------------------------------------------------------
@@ -239,6 +258,8 @@ export interface ResourceConfig<T = any> {
   defaultHiddenFields?: string[];
   /** Custom create actions — alternative ways to create this resource */
   customCreateActions?: CustomCreateAction[];
+  /** Custom update actions — actions that modify an existing resource */
+  customUpdateActions?: CustomUpdateAction[];
   /** Component-level config for ResourceTable (populated by applyCustomizations) */
   tableConfig?: TableConfig;
   /** Component-level config for ResourceCreate (populated by applyCustomizations) */

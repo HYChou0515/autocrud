@@ -140,6 +140,34 @@ export interface CustomCreateAction {
   jobResourceName?: string;
 }
 
+// ─── Custom Update Actions ───────────────────────────────────────────────────
+
+/**
+ * Custom update action discovered from x-autocrud-custom-update-actions.
+ * Each action represents a POST endpoint that modifies an existing resource,
+ * registered via the backend's @crud.update_action() decorator.
+ */
+export interface CustomUpdateAction {
+  /** URL path segment after resource_id, e.g. "level-up" */
+  name: string;
+  /** Full API path template, e.g. "/character/{resource_id}/level-up" */
+  path: string;
+  /** Human-readable label, e.g. "Level Up" */
+  label: string;
+  /** Python function name / OpenAPI operationId */
+  operationId: string;
+  /** Update strategy: 'update' creates new revision, 'modify' edits draft in-place */
+  mode: 'update' | 'modify';
+  /** Request body schema name in components (body-based actions) */
+  bodySchemaName?: string;
+  /** Property names belonging to the body schema (for API client body construction) */
+  bodySchemaFieldNames?: string[];
+  /** Query parameters (query-param-based actions) */
+  queryParams?: Array<{ name: string; required: boolean; schema: { type?: string } }>;
+  /** Extracted fields from the body schema and query params */
+  fields: Field[];
+}
+
 // ─── Resource-level types ────────────────────────────────────────────────────
 
 /**
@@ -158,6 +186,7 @@ export interface Resource {
   isUnion?: boolean;
   unionVariantSchemaNames?: string[];
   customCreateActions?: CustomCreateAction[];
+  customUpdateActions?: CustomUpdateAction[];
   /** Indexed field paths from backend (x-autocrud-indexed-fields). */
   indexedFields?: string[];
 }

@@ -155,6 +155,20 @@ class _PendingCreateAction:
     job_name: str | None = None
 
 
+@dataclass
+class _PendingUpdateAction:
+    """Metadata for a custom update action registered via @crud.update_action()."""
+
+    resource_name: str
+    path: str
+    label: str
+    handler: Callable
+    mode: Literal["update", "modify"] = "update"
+    existing_param: str = "existing"
+    info_param: str = "info"
+    meta_param: str = "meta"
+
+
 class LazyJobHandler:
     def __init__(self, factory):
         self._factory = factory
@@ -264,7 +278,7 @@ class AutoCRUD:
 
     Notes:
     - Call `configure()` / `add_model()` during application startup, before serving requests.
-    - `apply()` installs route templates, custom create actions, ref routes, and backup routes.
+    - `apply()` installs route templates, custom create/update actions, ref routes, and backup routes.
     - `openapi()` customizes OpenAPI schema to include AutoCRUD-specific schemas and extensions.
 
     Args:
@@ -341,6 +355,7 @@ class AutoCRUD:
         self.default_user = UNSET
         self.default_now = UNSET
         self._pending_create_actions: list[_PendingCreateAction] = []
+        self._pending_update_actions: list[_PendingUpdateAction] = []
 
         # Apply configuration using shared logic
         self._apply_configuration(
@@ -830,6 +845,111 @@ class AutoCRUD:
 
         return decorator
 
+    def update_action(
+        self,
+        resource_name: str,
+        *,
+        path: str | None = None,
+        label: str | None = None,
+        mode: Literal["update", "modify"] = "update",
+        existing_param: str = "existing",
+        info_param: str = "info",
+        meta_param: str = "meta",
+    ) -> Callable:
+        """Decorator to register a custom update action for a resource.
+
+        The decorated function receives the existing resource data (auto-injected)
+        and any custom input parameters.  If the handler returns a resource-type
+        object, AutoCRUD will automatically call ``resource_manager.update()`` (or
+        ``resource_manager.modify()`` when ``mode='modify'``) and respond with
+        ``RevisionInfo``.  If it returns ``None``, no update occurs.
+
+        The existing resource data is automatically fetched via
+        ``resource_manager.get(resource_id)`` and injected into the handler
+        parameter named by *existing_param* (default ``"existing"``).
+
+        Similarly, the handler may declare parameters named *info_param*
+        (default ``"info"``) and *meta_param* (default ``"meta"``) to
+        receive the existing resource's ``RevisionInfo`` and ``ResourceMeta``
+        respectively.  Like *existing_param*, these are detected by
+        **parameter name** and only injected when the handler declares them.
+
+        Args:
+            resource_name: The name of the resource this action belongs to.
+            path: URL path suffix (e.g. ``"level-up"``).  If ``None``,
+                inferred from the function name (underscores → hyphens).
+            label: Human-friendly label shown in the UI.  If ``None``,
+                inferred from *path* (hyphens → spaces, title-cased).
+            mode: Update mode.  ``"update"`` (default) creates a new
+                revision.  ``"modify"`` performs an in-place edit (only
+                valid for draft-status resources).
+            existing_param: The handler parameter name into which the
+                existing resource data will be injected.  Defaults to
+                ``"existing"``.
+            info_param: The handler parameter name into which the
+                existing resource's ``RevisionInfo`` will be injected.
+                Defaults to ``"info"``.
+            meta_param: The handler parameter name into which the
+                existing resource's ``ResourceMeta`` will be injected.
+                Defaults to ``"meta"``.
+
+        Returns:
+            A decorator that registers the handler and returns it unchanged.
+
+        Example:
+            ```python
+            class LevelUpInput(Struct):
+                levels: int = 1
+
+
+            @crud.update_action("character", label="Level Up")
+            def level_up(
+                existing: Character,
+                body: LevelUpInput = Body(...),
+            ) -> Character:
+                return Character(
+                    name=existing.name,
+                    level=existing.level + body.levels,
+                )
+
+
+            @crud.update_action("character", label="Stamp Info")
+            def stamp_info(
+                existing: Character,
+                info: RevisionInfo,
+                meta: ResourceMeta,
+            ) -> Character:
+                return Character(
+                    name=f"{existing.name}-rev:{info.revision_id}",
+                    level=meta.total_revision_count,
+                )
+            ```
+
+        Note:
+            This decorator is lazy — it stores metadata without registering any
+            route.  Routes are created when ``apply()`` is called.
+            The route is ``POST /{resource_name}/{resource_id}/{action_path}``.
+        """
+
+        def decorator(func: Callable) -> Callable:
+            action_path = path or func.__name__.replace("_", "-")
+            action_label = label or action_path.replace("-", " ").title()
+            self._pending_update_actions.append(
+                _PendingUpdateAction(
+                    resource_name=resource_name,
+                    path=action_path,
+                    label=action_label,
+                    handler=func,
+                    mode=mode,
+                    existing_param=existing_param,
+                    info_param=info_param,
+                    meta_param=meta_param,
+                )
+            )
+            return func
+
+        return decorator
+
     def add_model(
         self,
         model: "type[T] | Schema[T]",
@@ -1232,6 +1352,20 @@ class AutoCRUD:
                 )
                 continue
             action_body_structs.extend(self._collect_action_body_structs(action))
+        # Also include custom update action body schemas
+        for action in self._pending_update_actions:
+            if action.resource_name not in self.resource_managers:
+                continue
+            action_body_structs.extend(
+                self._collect_action_body_structs(
+                    action,
+                    skip_params={
+                        action.existing_param,
+                        action.info_param,
+                        action.meta_param,
+                    },
+                )
+            )
         if action_body_structs:
             app.openapi_schema["components"]["schemas"] |= jsonschema_to_openapi(
                 action_body_structs,
@@ -1242,6 +1376,9 @@ class AutoCRUD:
 
         # Inject x-autocrud-custom-create-actions top-level extension
         self._inject_custom_create_actions(app.openapi_schema)
+
+        # Inject x-autocrud-custom-update-actions top-level extension
+        self._inject_custom_update_actions(app.openapi_schema)
 
         # Inject x-autocrud-async-create-jobs mapping (job resource → parent)
         self._inject_async_create_jobs(app.openapi_schema)
@@ -1567,6 +1704,28 @@ class AutoCRUD:
                     rm=None,
                 )
 
+        # Also process custom update action body schemas
+        for action in self._pending_update_actions:
+            if action.resource_name not in self.resource_managers:
+                continue
+            for body_struct in self._collect_action_body_structs(
+                action,
+                skip_params={
+                    action.existing_param,
+                    action.info_param,
+                    action.meta_param,
+                },
+            ):
+                if body_struct in processed_structs:
+                    continue
+                processed_structs.add(body_struct)
+                _process_single_struct(
+                    body_struct,
+                    action.resource_name,
+                    inject_unique=False,
+                    rm=None,
+                )
+
         # Also inject a top-level x-autocrud-relationships extension
         if all_refs:
             schema["x-autocrud-relationships"] = [
@@ -1582,16 +1741,26 @@ class AutoCRUD:
             ]
 
     @staticmethod
-    def _get_body_schema_name(handler: Any) -> str | None:
+    def _get_body_schema_name(
+        handler: Any, *, skip_params: set[str] | None = None
+    ) -> str | None:
         """Extract the body parameter's schema name from a handler signature.
 
         Scans the handler's parameters for the first ``msgspec.Struct`` or
         Pydantic ``BaseModel`` type annotation and returns its ``__name__``.
+
+        Args:
+            handler: The handler function to inspect.
+            skip_params: Parameter names to skip (e.g. the ``existing_param``
+                in update actions whose type matches the resource struct).
         """
         import msgspec
 
+        _skip = skip_params or set()
         sig = inspect.signature(handler)
         for param in sig.parameters.values():
+            if param.name in _skip:
+                continue
             ann = param.annotation
             if ann is inspect.Parameter.empty:
                 continue
@@ -1611,17 +1780,27 @@ class AutoCRUD:
         return None
 
     @staticmethod
-    def _collect_action_body_structs(action: Any) -> list[type]:
+    def _collect_action_body_structs(
+        action: Any, *, skip_params: set[str] | None = None
+    ) -> list[type]:
         """Return all ``msgspec.Struct`` types found in *action* handler params.
 
         Used by both ``_customize_openapi()`` (to register component schemas)
         and ``_inject_ref_metadata()`` (to inject ``x-ref-*`` extensions).
+
+        Args:
+            action: The pending action dataclass.
+            skip_params: Parameter names to skip (e.g. the ``existing_param``
+                in update actions whose type matches the resource struct).
         """
         import msgspec
 
+        _skip = skip_params or set()
         structs: list[type] = []
         sig = inspect.signature(action.handler)
         for param in sig.parameters.values():
+            if param.name in _skip:
+                continue
             ann = param.annotation
             if ann is inspect.Parameter.empty:
                 continue
@@ -1847,6 +2026,160 @@ class AutoCRUD:
         if actions_by_resource:
             schema["x-autocrud-custom-create-actions"] = dict(actions_by_resource)
 
+    def _inject_custom_update_actions(self, schema: dict) -> None:
+        """Inject ``x-autocrud-custom-update-actions`` top-level extension.
+
+        Groups all registered update actions by resource name and writes a
+        lookup table into the OpenAPI schema so the web generator can
+        discover custom update actions for each resource.
+        """
+        if not self._pending_update_actions:
+            return
+
+        from collections import defaultdict
+
+        actions_by_resource: dict[str, list[dict]] = defaultdict(list)
+        for action in self._pending_update_actions:
+            if action.resource_name not in self.resource_managers:
+                continue
+            action_path_segment = action.path.lstrip("/")
+            info: dict[str, Any] = {
+                "path": f"/{action.resource_name}/{{resource_id}}/{action_path_segment}",
+                "label": action.label,
+                "operationId": action.handler.__name__,
+                "mode": action.mode,
+            }
+            body_schema = self._get_body_schema_name(
+                action.handler,
+                skip_params={
+                    action.existing_param,
+                    action.info_param,
+                    action.meta_param,
+                },
+            )
+            if body_schema:
+                info["bodySchema"] = body_schema
+            # Expose path / query parameters from the generated spec
+            paths = schema.get("paths", {})
+            operation_path = (
+                f"/{action.resource_name}/{{resource_id}}/{action_path_segment}"
+            )
+            path_item = paths.get(operation_path, {})
+            if not path_item:
+                suffix = operation_path
+                for spec_path, spec_item in paths.items():
+                    if spec_path.endswith(suffix) and "post" in spec_item:
+                        path_item = spec_item
+                        break
+            operation = path_item.get("post", {})
+            parameters = operation.get("parameters", [])
+            pp = [
+                {
+                    "name": p["name"],
+                    "required": p.get("required", True),
+                    "schema": p.get("schema", {}),
+                }
+                for p in parameters
+                if p.get("in") == "path" and p["name"] != "resource_id"
+            ]
+            qp = [
+                {
+                    "name": p["name"],
+                    "required": p.get("required", False),
+                    "schema": p.get("schema", {}),
+                }
+                for p in parameters
+                if p.get("in") == "query"
+            ]
+            # Inject x-ref-* metadata
+            ref_map = self._extract_handler_ref_map(action.handler)
+            for param_list in (pp, qp):
+                for p in param_list:
+                    ref_ext = ref_map.get(p["name"])
+                    if ref_ext:
+                        p["schema"].update(ref_ext)
+            if pp:
+                info["pathParams"] = pp
+            if qp:
+                info["queryParams"] = qp
+            # Extract inline body params and file params
+            content = operation.get("requestBody", {}).get("content", {})
+            rb = content.get("application/json", {}).get("schema", {})
+            if not rb:
+                rb = content.get("multipart/form-data", {}).get("schema", {})
+            if "$ref" in rb:
+                ref_name = rb["$ref"].split("/")[-1]
+                rb = schema.get("components", {}).get("schemas", {}).get(ref_name, {})
+            props: dict = rb.get("properties", {})
+            required_list: list = rb.get("required", [])
+            body_schema_prop_names: set[str] = set()
+            if body_schema:
+                for pname, pschema in props.items():
+                    ref_target = pschema.get("$ref", "")
+                    if not ref_target and "allOf" in pschema:
+                        for item in pschema["allOf"]:
+                            if "$ref" in item:
+                                ref_target = item["$ref"]
+                                break
+                    if ref_target and ref_target.split("/")[-1] == body_schema:
+                        body_schema_prop_names.add(pname)
+                    elif (
+                        not ref_target
+                        and pschema.get("title") == body_schema
+                        and pschema.get("type") == "object"
+                    ):
+                        body_schema_prop_names.add(pname)
+            if body_schema_prop_names:
+                info["bodySchemaParamName"] = next(iter(body_schema_prop_names))
+            file_params: list[dict] = []
+            inline_params: list[dict] = []
+            for pname, pschema in props.items():
+                if pname in body_schema_prop_names:
+                    continue
+                if pschema.get("format") == "binary":
+                    file_params.append(
+                        {
+                            "name": pname,
+                            "required": pname in required_list,
+                            "schema": {
+                                "type": pschema.get("type", "string"),
+                                "format": "binary",
+                            },
+                        }
+                    )
+                else:
+                    inline_params.append(
+                        {
+                            "name": pname,
+                            "required": pname in required_list,
+                            "schema": pschema,
+                        }
+                    )
+            for p in inline_params:
+                ref_ext = ref_map.get(p["name"])
+                if ref_ext:
+                    p["schema"].update(ref_ext)
+            if inline_params:
+                info["inlineBodyParams"] = inline_params
+            if file_params:
+                info["fileParams"] = file_params
+            # Warn on duplicate labels
+            existing_labels = {
+                a["label"] for a in actions_by_resource[action.resource_name]
+            }
+            if action.label in existing_labels:
+                warnings.warn(
+                    f"Resource '{action.resource_name}' already has an update action "
+                    f"with label '{action.label}' "
+                    f"(duplicate handler: '{action.handler.__name__}'). "
+                    f"Duplicate labels will cause frontend key collisions.",
+                    stacklevel=2,
+                )
+            actions_by_resource[action.resource_name].append(info)
+
+        if actions_by_resource:
+            schema["x-autocrud-custom-update-actions"] = dict(actions_by_resource)
+
     def _inject_async_create_jobs(self, schema: dict) -> None:
         """Inject ``x-autocrud-async-create-jobs`` top-level extension.
 
@@ -1990,6 +2323,9 @@ class AutoCRUD:
 
         # Register custom create action routes
         self._apply_create_actions(router)
+
+        # Register custom update action routes
+        self._apply_update_actions(router)
 
         # Add ref-specific routes (referrers + relationships)
         self._apply_ref_routes(router)
@@ -2780,6 +3116,274 @@ class AutoCRUD:
                     "x-autocrud-create-action": {
                         "resource": action.resource_name,
                         "label": action.label,
+                    },
+                },
+            )(_wrapper)
+
+    def _apply_update_actions(self, router: APIRouter) -> None:
+        """Register routes for all pending custom update actions."""
+        import msgspec as _msgspec
+
+        from autocrud.crud.route_templates.basic import (
+            BaseRouteTemplate,
+            DependencyProvider,
+            MsgspecResponse,
+            jsonschema_to_json_schema_extra,
+            struct_to_responses_type,
+        )
+
+        if not self._pending_update_actions:
+            return
+
+        # Resolve DependencyProvider (same logic as _apply_create_actions)
+        deps: DependencyProvider | None = None
+        for rt in self.route_templates:
+            if isinstance(rt, BaseRouteTemplate) and hasattr(rt, "deps"):
+                deps = rt.deps
+                break
+        if deps is None:
+            deps = DependencyProvider()
+            if self.default_user is not UNSET:
+                deps = deps.with_default_user(self.default_user)
+
+        def _is_msgspec_struct_type(ann: type) -> bool:
+            return isinstance(ann, type) and issubclass(ann, _msgspec.Struct)
+
+        def _build_fastapi_compatible_update_handler(
+            handler,
+            resource_manager,
+            *,
+            existing_param: str = "existing",
+            info_param: str = "info",
+            meta_param: str = "meta",
+            update_mode: str = "update",
+            deps=None,
+        ):
+            """Build a FastAPI-compatible endpoint for a custom update action.
+
+            Similar to ``_build_fastapi_compatible_handler`` but:
+            - Adds ``resource_id`` as a path parameter.
+            - Auto-fetches the existing resource via ``rm.get(resource_id)``
+              and injects it into the handler's *existing_param*.
+            - Auto-injects ``RevisionInfo`` into *info_param* and
+              ``ResourceMeta`` into *meta_param* when declared.
+            - Calls ``rm.update()`` or ``rm.modify()`` based on *update_mode*.
+            - Only supports synchronous execution (no job/background).
+            """
+            if deps is None:
+                deps = DependencyProvider()
+
+            sig = inspect.signature(handler)
+            _has_existing_param = existing_param in sig.parameters
+            _has_info_param = info_param in sig.parameters
+            _has_meta_param = meta_param in sig.parameters
+            struct_params: dict[str, type] = {}
+            pydantic_params: dict[str, type] = {}
+            new_params: list[inspect.Parameter] = []
+            new_annotations: dict[str, Any] = {}
+
+            # Add resource_id as first path parameter
+            new_params.append(
+                inspect.Parameter(
+                    "resource_id",
+                    inspect.Parameter.POSITIONAL_OR_KEYWORD,
+                    annotation=str,
+                )
+            )
+            new_annotations["resource_id"] = str
+
+            for name, param in sig.parameters.items():
+                # Skip params that will be injected at runtime
+                if name == existing_param:
+                    continue
+                if name == info_param or name == meta_param:
+                    continue
+                ann = param.annotation
+                if ann is inspect.Parameter.empty:
+                    new_params.append(param)
+                    continue
+
+                raw_ann, _ = unwrap_annotated(ann)
+
+                if _is_msgspec_struct_type(raw_ann):
+                    struct_params[name] = raw_ann
+                    new_default = Body(
+                        json_schema_extra=jsonschema_to_json_schema_extra(raw_ann),
+                    )
+                    new_param = param.replace(
+                        annotation=inspect.Parameter.empty,
+                        default=new_default,
+                    )
+                    new_params.append(new_param)
+                else:
+                    new_params.append(param)
+                    if ann is not inspect.Parameter.empty:
+                        new_annotations[name] = ann
+
+            # Inject current_user and current_time via Depends()
+            new_params.append(
+                inspect.Parameter(
+                    "current_user",
+                    inspect.Parameter.KEYWORD_ONLY,
+                    default=Depends(deps.get_user),
+                    annotation=str,
+                )
+            )
+            new_params.append(
+                inspect.Parameter(
+                    "current_time",
+                    inspect.Parameter.KEYWORD_ONLY,
+                    default=Depends(deps.get_now),
+                    annotation=dt.datetime,
+                )
+            )
+            new_annotations["current_user"] = str
+            new_annotations["current_time"] = dt.datetime
+
+            new_sig = sig.replace(
+                parameters=new_params, return_annotation=inspect.Parameter.empty
+            )
+
+            def _ensure_dict(val: Any) -> Any:
+                if isinstance(val, str):
+                    import json as _json
+
+                    return _json.loads(val)
+                return val
+
+            from autocrud.types import ResourceIDNotFoundError
+
+            if inspect.iscoroutinefunction(handler):
+
+                async def wrapper(*args, **kwargs):
+                    _resource_id = kwargs.pop("resource_id")
+                    _current_user = kwargs.pop("current_user")
+                    _current_time = kwargs.pop("current_time")
+                    for pname, struct_type in struct_params.items():
+                        if pname in kwargs:
+                            kwargs[pname] = _msgspec.convert(
+                                _ensure_dict(kwargs[pname]), struct_type
+                            )
+                    for pname, pydantic_type in pydantic_params.items():
+                        if pname in kwargs:
+                            kwargs[pname] = pydantic_type(**_ensure_dict(kwargs[pname]))
+                    # Fetch existing resource and inject (only if handler declares it)
+                    try:
+                        with resource_manager.meta_provide(
+                            _current_user, _current_time
+                        ):
+                            existing_resource = resource_manager.get(_resource_id)
+                    except ResourceIDNotFoundError:
+                        raise HTTPException(
+                            status_code=404,
+                            detail=f"Resource '{_resource_id}' not found.",
+                        )
+                    if _has_existing_param:
+                        kwargs[existing_param] = existing_resource.data
+                    if _has_info_param:
+                        kwargs[info_param] = existing_resource.info
+                    if _has_meta_param:
+                        with resource_manager.meta_provide(
+                            _current_user, _current_time
+                        ):
+                            kwargs[meta_param] = resource_manager.get_meta(_resource_id)
+                    result = await handler(**kwargs)
+                    if result is None:
+                        return None
+                    with resource_manager.meta_provide(_current_user, _current_time):
+                        if update_mode == "modify":
+                            info = resource_manager.modify(_resource_id, data=result)
+                        else:
+                            info = resource_manager.update(_resource_id, result)
+                    return MsgspecResponse(info)
+
+            else:
+
+                def wrapper(*args, **kwargs):
+                    _resource_id = kwargs.pop("resource_id")
+                    _current_user = kwargs.pop("current_user")
+                    _current_time = kwargs.pop("current_time")
+                    for pname, struct_type in struct_params.items():
+                        if pname in kwargs:
+                            kwargs[pname] = _msgspec.convert(
+                                _ensure_dict(kwargs[pname]), struct_type
+                            )
+                    for pname, pydantic_type in pydantic_params.items():
+                        if pname in kwargs:
+                            kwargs[pname] = pydantic_type(**_ensure_dict(kwargs[pname]))
+                    # Fetch existing resource and inject (only if handler declares it)
+                    try:
+                        with resource_manager.meta_provide(
+                            _current_user, _current_time
+                        ):
+                            existing_resource = resource_manager.get(_resource_id)
+                    except ResourceIDNotFoundError:
+                        raise HTTPException(
+                            status_code=404,
+                            detail=f"Resource '{_resource_id}' not found.",
+                        )
+                    if _has_existing_param:
+                        kwargs[existing_param] = existing_resource.data
+                    if _has_info_param:
+                        kwargs[info_param] = existing_resource.info
+                    if _has_meta_param:
+                        with resource_manager.meta_provide(
+                            _current_user, _current_time
+                        ):
+                            kwargs[meta_param] = resource_manager.get_meta(_resource_id)
+                    result = handler(**kwargs)
+                    if result is None:
+                        return None
+                    with resource_manager.meta_provide(_current_user, _current_time):
+                        if update_mode == "modify":
+                            info = resource_manager.modify(_resource_id, data=result)
+                        else:
+                            info = resource_manager.update(_resource_id, result)
+                    return MsgspecResponse(info)
+
+            wrapper.__name__ = handler.__name__
+            wrapper.__qualname__ = handler.__qualname__
+            wrapper.__module__ = handler.__module__
+            wrapper.__doc__ = handler.__doc__
+            wrapper.__signature__ = new_sig
+            wrapper.__annotations__ = new_annotations
+            return wrapper
+
+        for action in self._pending_update_actions:
+            rm = self.resource_managers.get(action.resource_name)
+            if rm is None:
+                logger.warning(
+                    f"update_action '{action.path}' targets resource "
+                    f"'{action.resource_name}' which is not registered. Skipping."
+                )
+                continue
+
+            action_path_segment = action.path.lstrip("/")
+            route_path = (
+                f"/{action.resource_name}/{{resource_id}}/{action_path_segment}"
+            )
+
+            _wrapper = _build_fastapi_compatible_update_handler(
+                action.handler,
+                rm,
+                existing_param=action.existing_param,
+                info_param=action.info_param,
+                meta_param=action.meta_param,
+                update_mode=action.mode,
+                deps=deps,
+            )
+
+            router.post(
+                route_path,
+                response_model=None,
+                responses=struct_to_responses_type(RevisionInfo),
+                summary=f"{action.label} ({action.resource_name})",
+                tags=[f"{action.resource_name}"],
+                openapi_extra={
+                    "x-autocrud-update-action": {
+                        "resource": action.resource_name,
+                        "label": action.label,
+                        "mode": action.mode,
                     },
                 },
             )(_wrapper)
