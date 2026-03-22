@@ -1354,7 +1354,9 @@ def configure_crud():
         job_handler=process_game_event,
     )
 
-    @crud.update_action("character", label="New Character0", meta_param="xx")
+    @crud.update_action(
+        "character", label="New Character0", meta_param="xx", async_mode="background"
+    )
     async def update_char_name(
         existing: Character, info: RevisionInfo, xx: ResourceMeta
     ):
@@ -1685,7 +1687,7 @@ def main():
 
     # Start all async create-job consumers for the 'character' resource
     crud.get_resource_manager(Character).start_consume(
-        block=False, custom_creation="all"
+        block=False, custom_creation="all", custom_update="all"
     )
 
     # 創建示範數據

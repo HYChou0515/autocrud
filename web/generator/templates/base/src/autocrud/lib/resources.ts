@@ -141,7 +141,14 @@ export interface CustomUpdateAction {
   /** Zod schema for validation (generated from action body schema) */
   zodSchema?: z.ZodObject<any>;
   /** API method to call when submitting this action */
-  apiMethod: (id: string, data: any) => Promise<{ data: RevisionInfo }>;
+  apiMethod: (
+    id: string,
+    data: any,
+  ) => Promise<{ data: RevisionInfo | JobRedirectInfo | BackgroundTaskAccepted }>;
+  /** When set, action runs asynchronously via a Job resource or background task */
+  asyncMode?: 'job' | 'background';
+  /** Job resource name for async_mode='job' actions (e.g. "train-job") */
+  jobResourceName?: string;
 }
 
 // ---------------------------------------------------------------------------
@@ -302,10 +309,24 @@ export const resources: Record<string, ResourceConfig> = {};
 export const asyncCreateJobs: Record<string, string> = {};
 
 /**
+ * Mapping of async-update-job resource names to their parent resource names.
+ * Populated by generated code from `x-autocrud-async-update-jobs`.
+ * Used by the detail page to show pending update jobs.
+ */
+export const asyncUpdateJobs: Record<string, string> = {};
+
+/**
  * Check whether a resource is an auto-generated async-create job.
  */
 export function isAsyncCreateJob(resourceName: string): boolean {
   return resourceName in asyncCreateJobs;
+}
+
+/**
+ * Check whether a resource is an auto-generated async-update job.
+ */
+export function isAsyncUpdateJob(resourceName: string): boolean {
+  return resourceName in asyncUpdateJobs;
 }
 
 /**
@@ -318,6 +339,15 @@ export function getAsyncCreateJobChildren(parentResourceName: string): string[] 
 }
 
 /**
+ * Get the child async-update job resource names for a parent resource.
+ */
+export function getAsyncUpdateJobChildren(parentResourceName: string): string[] {
+  return Object.entries(asyncUpdateJobs)
+    .filter(([, parent]) => parent === parentResourceName)
+    .map(([jobName]) => jobName);
+}
+
+/**
  * Check whether a resource is a Job resource (has status/rerun lifecycle).
  */
 export function isJobResource(resourceName: string): boolean {
@@ -325,12 +355,13 @@ export function isJobResource(resourceName: string): boolean {
 }
 
 /**
- * Get standalone job resource names — jobs that are NOT async-create jobs.
- * These should appear in a separate "Jobs" section in the sidebar.
+ * Get standalone job resource names — jobs that are NOT async-create or
+ * async-update jobs.  These should appear in a separate "Jobs" section
+ * in the sidebar.
  */
 export function getStandaloneJobNames(): string[] {
   return Object.keys(resources).filter(
-    (name) => resources[name]?.isJob === true && !(name in asyncCreateJobs),
+    (name) => resources[name]?.isJob === true && !(name in asyncCreateJobs) && !(name in asyncUpdateJobs),
   );
 }
 

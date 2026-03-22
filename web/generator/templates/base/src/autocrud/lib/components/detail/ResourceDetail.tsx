@@ -35,7 +35,9 @@ import type {
   CustomUpdateAction,
 } from '../../resources';
 import { isAsyncCreateJob, asyncCreateJobs } from '../../resources';
+import { useQueryClient } from '@tanstack/react-query';
 import { useResourceDetail } from '../../hooks/useResourceDetail';
+import { resourceKeys } from '../../hooks/queryKeys';
 import { useFieldDepth } from '../../hooks/useFieldDepth';
 import { ResourceForm, type ResourceFormHandle } from '../form/ResourceForm';
 import { MetadataSection } from './MetadataSection';
@@ -51,6 +53,7 @@ import { JobLogsPanel } from '../job/JobLogsPanel';
 import type { ResourceListRoute } from '../../../generated/resources';
 import { showErrorNotification, extractUniqueConflict } from '../../utils/errorNotification';
 import { getByPath } from '@/autocrud/lib/utils/formUtils';
+import { notifications } from '@mantine/notifications';
 
 // ---------------------------------------------------------------------------
 // Field grouping — groups dot-notation sub-fields under their parent
@@ -190,6 +193,8 @@ export function ResourceDetail<T extends Record<string, any>>({
     onRevisionChange?.(revision);
   };
 
+  const queryClient = useQueryClient();
+
   const {
     resource,
     loading,
@@ -253,6 +258,18 @@ export function ResourceDetail<T extends Record<string, any>>({
         await action.apiMethod(resourceId, values);
         setActiveUpdateAction(null);
         setEditOpen(false);
+        // Show toast for background actions since there's no job tracking UI
+        if (action.asyncMode === 'background') {
+          notifications.show({
+            title: action.label,
+            message: '已提交背景任務',
+            color: 'blue',
+          });
+        }
+        // Invalidate update-job queries so PendingUpdateJobsAccordion re-fetches
+        if (action.asyncMode === 'job' && action.jobResourceName) {
+          queryClient.invalidateQueries({ queryKey: resourceKeys.lists(action.jobResourceName) });
+        }
         // Refresh to show updated data
         _refresh();
       } catch (error) {

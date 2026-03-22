@@ -212,6 +212,72 @@ describe('genDetailRoute', () => {
     expect(code).toContain("createFileRoute('/autocrud-admin/character/$resourceId')");
     expect(code).toContain('ResourceDetail');
   });
+
+  it('includes PendingUpdateJobsAccordion when resource has async job update actions', () => {
+    const resources = parse(buildSimpleSpec());
+    const charResource = resources.find((r) => r.name === 'character')!;
+
+    charResource.customUpdateActions = [
+      {
+        name: 'train',
+        path: '/character/{resource_id}/train',
+        label: 'Train',
+        operationId: 'train',
+        mode: 'update',
+        fields: [],
+        asyncMode: 'job',
+        jobResourceName: 'train-character-job',
+      },
+    ];
+
+    const code = genDetailRoute(charResource);
+
+    expect(code).toContain('PendingUpdateJobsAccordion');
+    expect(code).toContain('parentResourceName="character"');
+    expect(code).toContain('Stack');
+  });
+
+  it('does NOT include PendingUpdateJobsAccordion for background async update actions', () => {
+    const resources = parse(buildSimpleSpec());
+    const charResource = resources.find((r) => r.name === 'character')!;
+
+    charResource.customUpdateActions = [
+      {
+        name: 'bg-heal',
+        path: '/character/{resource_id}/bg-heal',
+        label: 'BG Heal',
+        operationId: 'bg_heal',
+        mode: 'update',
+        fields: [],
+        asyncMode: 'background',
+      },
+    ];
+
+    const code = genDetailRoute(charResource);
+
+    expect(code).not.toContain('PendingUpdateJobsAccordion');
+    expect(code).not.toContain('Stack');
+  });
+
+  it('does NOT include PendingUpdateJobsAccordion for sync update actions', () => {
+    const resources = parse(buildSimpleSpec());
+    const charResource = resources.find((r) => r.name === 'character')!;
+
+    charResource.customUpdateActions = [
+      {
+        name: 'level-up',
+        path: '/character/{resource_id}/level-up',
+        label: 'Level Up',
+        operationId: 'level_up',
+        mode: 'update',
+        fields: [],
+      },
+    ];
+
+    const code = genDetailRoute(charResource);
+
+    expect(code).not.toContain('PendingUpdateJobsAccordion');
+  });
 });
 
 // ============================================================================

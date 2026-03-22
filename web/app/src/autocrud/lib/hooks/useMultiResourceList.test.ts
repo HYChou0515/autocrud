@@ -294,4 +294,34 @@ describe('useMultiResourceList', () => {
     expect(result.current.items[0].meta?.resource_id).toBe('has-time');
     expect(result.current.items[1].meta?.resource_id).toBe('no-time');
   });
+
+  it('passes refetchInterval option to useQueries', async () => {
+    const listFn = vi.fn().mockResolvedValue({ data: [makeRow('r1', '2024-01-01T00:00:00Z')] });
+    const countFn = vi.fn().mockResolvedValue({ data: 1 });
+    const config = makeConfig('poll', {
+      apiClient: { list: listFn, count: countFn } as any,
+    });
+
+    const { Wrapper } = createWrapper();
+    const { result } = renderHook(
+      () => useMultiResourceList([{ config }], {}, { refetchInterval: 3000 }),
+      { wrapper: Wrapper },
+    );
+
+    await waitFor(() => {
+      expect(result.current.loading).toBe(false);
+    });
+
+    // Initial fetch should have completed
+    expect(result.current.items).toHaveLength(1);
+    expect(listFn).toHaveBeenCalledTimes(1);
+
+    // Wait for the refetch interval to trigger a second call
+    await vi.waitFor(
+      () => {
+        expect(listFn.mock.calls.length).toBeGreaterThanOrEqual(2);
+      },
+      { timeout: 5000, interval: 500 },
+    );
+  });
 });

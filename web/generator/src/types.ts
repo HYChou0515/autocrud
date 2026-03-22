@@ -166,6 +166,10 @@ export interface CustomUpdateAction {
   queryParams?: Array<{ name: string; required: boolean; schema: { type?: string } }>;
   /** Extracted fields from the body schema and query params */
   fields: Field[];
+  /** Async execution mode — 'job' delegates to a Job resource */
+  asyncMode?: 'job' | 'background';
+  /** Job resource name for async_mode='job' actions (e.g. "train-job") */
+  jobResourceName?: string;
 }
 
 // ─── Resource-level types ────────────────────────────────────────────────────

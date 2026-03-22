@@ -132,6 +132,52 @@ Key differences from `create_action()`:
 
 `update_action()` is lazy — routes are registered at `apply()` time.
 
+### Async update actions
+
+Both `create_action()` and `update_action()` support an `async_mode` parameter for
+long-running operations:
+
+* **`async_mode="job"`** — creates a Job resource in the message queue system.
+  The endpoint returns HTTP 202 with a `JobRedirectInfo`. The actual update runs
+  in the MQ consumer, which lazy-fetches the existing resource before calling your handler.
+
+* **`async_mode="background"`** — schedules the handler via FastAPI `BackgroundTasks`.
+  The endpoint returns HTTP 202 immediately. No Job model is created (fire-and-forget).
+
+```python
+from msgspec import Struct
+from fastapi import Body
+from autocrud import crud
+
+
+class TrainInput(Struct):
+    hours: int = 1
+
+
+# Job mode — creates a trackable Job resource
+@crud.update_action("character", label="Train", async_mode="job")
+def train(existing: Character, body: TrainInput = Body(...)) -> Character:
+    import time
+    time.sleep(body.hours * 10)  # long-running training
+    return Character(name=existing.name, level=existing.level + body.hours)
+
+
+# Background mode — fire-and-forget
+@crud.update_action("character", label="Background Heal", async_mode="background")
+def bg_heal(existing: Character) -> Character:
+    import time
+    time.sleep(5)
+    return Character(name=existing.name, level=existing.level + 1)
+```
+
+Key points:
+
+* Job mode payloads automatically include `resource_id` — the existing resource is
+  lazy-fetched at job execution time (not at endpoint time).
+* Both `mode="update"` (new revision) and `mode="modify"` (in-place) work with async modes.
+* Use `job_name` to override the auto-generated Job resource name.
+* If the handler returns `None`, no update is performed.
+
 ## Relationships (refs)
 
 If you use `Ref(...)` fields, AutoCRUD may install relationship-related routes and behaviors.

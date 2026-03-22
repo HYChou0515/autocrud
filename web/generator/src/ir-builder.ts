@@ -312,6 +312,13 @@ export class IRBuilder {
           mode: raw.mode || 'update',
         };
 
+        if (raw.asyncMode) {
+          actionMeta.asyncMode = raw.asyncMode;
+        }
+        if (raw.jobResourceName) {
+          actionMeta.jobResourceName = raw.jobResourceName;
+        }
+
         const fields: Field[] = [];
 
         let bodySchemaName: string | undefined;

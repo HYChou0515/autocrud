@@ -895,6 +895,7 @@ Object.assign(registry, {
         fields: [],
         zodSchema: z.object({}),
         apiMethod: characterApi.updateCharName,
+        asyncMode: 'background',
       },
     ],
   },

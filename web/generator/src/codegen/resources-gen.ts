@@ -221,6 +221,7 @@ export function genResourcesConfig(
 
   // Extract async-create-jobs mapping early so it can be used during config generation
   const asyncJobsMap: Record<string, string> = spec['x-autocrud-async-create-jobs'] ?? {};
+  const asyncUpdateJobsMap: Record<string, string> = spec['x-autocrud-async-update-jobs'] ?? {};
 
   const configs = resources.map((r) => {
     const fields = r.fields.map((f) => serializeField(f));
@@ -263,6 +264,14 @@ ${actionEntries.join(',\n')}
         const actionFields = action.fields.map((f) => serializeField(f));
         const actionZodFields = buildNestedZodFields(action.fields);
         const methodName = toCamel(action.operationId);
+        const asyncLines: string[] = [];
+        if (action.asyncMode) {
+          asyncLines.push(`        asyncMode: '${action.asyncMode}',`);
+        }
+        if (action.jobResourceName) {
+          asyncLines.push(`        jobResourceName: '${action.jobResourceName}',`);
+        }
+        const asyncBlock = asyncLines.length > 0 ? '\n' + asyncLines.join('\n') : '';
         return `      {
         name: '${action.name}',
         label: '${action.label}',
@@ -271,7 +280,7 @@ ${actionEntries.join(',\n')}
         zodSchema: z.object({
 ${actionZodFields}
         }),
-        apiMethod: ${r.camel}Api.${methodName},
+        apiMethod: ${r.camel}Api.${methodName},${asyncBlock}
       }`;
       });
       customUpdateActionsBlock = `
@@ -305,7 +314,7 @@ ${displayNameLine}    schema: '${r.schemaName}',
     isUnion: true,`
         : ''
     }${customActionsBlock}${customUpdateActionsBlock}${
-      r.name in asyncJobsMap
+      r.name in asyncJobsMap || r.name in asyncUpdateJobsMap
         ? `
     tableConfig: { canCreate: false },`
         : ''
@@ -342,6 +351,19 @@ ${displayNameLine}    schema: '${r.schemaName}',
     asyncJobsBlock = `
 import { asyncCreateJobs } from '../lib/resources';
 Object.assign(asyncCreateJobs, {
+${entries},
+});
+`;
+  }
+
+  let asyncUpdateJobsBlock = '';
+  if (Object.keys(asyncUpdateJobsMap).length > 0) {
+    const entries = Object.entries(asyncUpdateJobsMap)
+      .map(([jobName, parentName]) => `  '${jobName}': '${parentName}'`)
+      .join(',\n');
+    asyncUpdateJobsBlock = `
+import { asyncUpdateJobs } from '../lib/resources';
+Object.assign(asyncUpdateJobs, {
 ${entries},
 });
 `;
@@ -403,7 +425,7 @@ export function getResourceListRoute(resource: ResourceName): ResourceListRoute 
 Object.assign(registry, {
 ${configs.join(',\n')}
 });
-${asyncJobsBlock}
+${asyncJobsBlock}${asyncUpdateJobsBlock}
 /**
  * Apply type-safe customizations to the generated resources.
  * Call this in main.tsx after the resources are registered.

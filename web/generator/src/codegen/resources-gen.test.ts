@@ -969,3 +969,140 @@ describe('genResourcesConfig — customUpdateActions', () => {
     expect(code).toContain('characterApi.resetCharacter');
   });
 });
+
+// ============================================================================
+// genResourcesConfig — async update action metadata
+// ============================================================================
+describe('genResourcesConfig — async update action metadata', () => {
+  function buildAsyncUpdateActionSpec() {
+    return {
+      paths: {
+        '/character': {
+          post: {
+            requestBody: { content: { 'application/json': { schema: { $ref: '#/components/schemas/Character' } } } },
+          },
+        },
+        '/character/{resource_id}/train': {
+          post: {
+            summary: 'Train (character)',
+            'x-autocrud-update-action': { resource: 'character', label: 'Train' },
+            requestBody: {
+              content: {
+                'application/json': {
+                  schema: {
+                    type: 'object',
+                    properties: { hours: { type: 'integer' } },
+                    required: ['hours'],
+                    title: 'TrainInput',
+                  },
+                },
+              },
+            },
+          },
+        },
+        '/train-character-job': { get: {} },
+        '/train-character-job/{id}': { get: {} },
+      },
+      'x-autocrud-custom-update-actions': {
+        character: [
+          {
+            path: '/character/{resource_id}/train',
+            label: 'Train',
+            operationId: 'train',
+            mode: 'update',
+            bodySchema: 'TrainInput',
+            asyncMode: 'job',
+            jobResourceName: 'train-character-job',
+          },
+        ],
+      },
+      'x-autocrud-async-update-jobs': { 'train-character-job': 'character' },
+      components: {
+        schemas: {
+          Character: {
+            type: 'object',
+            properties: { name: { type: 'string' }, level: { type: 'integer' } },
+            required: ['name', 'level'],
+          },
+          TrainInput: {
+            type: 'object',
+            properties: { hours: { type: 'integer' } },
+            required: ['hours'],
+          },
+        },
+      },
+    };
+  }
+
+  it('emits asyncMode and jobResourceName in update action config', () => {
+    const code = parseAndGenConfig(buildAsyncUpdateActionSpec());
+    expect(code).toContain("asyncMode: 'job'");
+    expect(code).toContain("jobResourceName: 'train-character-job'");
+  });
+
+  it('does not emit asyncMode for sync update actions', () => {
+    // Build a sync-only update action spec (no asyncMode)
+    const syncSpec = {
+      paths: {
+        '/character': {
+          post: {
+            requestBody: { content: { 'application/json': { schema: { $ref: '#/components/schemas/Character' } } } },
+          },
+        },
+        '/character/{resource_id}/level-up': {
+          post: {
+            summary: 'Level Up (character)',
+            'x-autocrud-update-action': { resource: 'character', label: 'Level Up' },
+            requestBody: {
+              content: {
+                'application/json': {
+                  schema: {
+                    type: 'object',
+                    properties: { levels: { type: 'integer' } },
+                    required: ['levels'],
+                    title: 'LevelUpInput',
+                  },
+                },
+              },
+            },
+          },
+        },
+      },
+      'x-autocrud-custom-update-actions': {
+        character: [
+          {
+            path: '/character/{resource_id}/level-up',
+            label: 'Level Up',
+            operationId: 'level_up',
+            mode: 'update',
+            bodySchema: 'LevelUpInput',
+          },
+        ],
+      },
+      components: {
+        schemas: {
+          Character: {
+            type: 'object',
+            properties: { name: { type: 'string' }, level: { type: 'integer' } },
+            required: ['name', 'level'],
+          },
+          LevelUpInput: {
+            type: 'object',
+            properties: { levels: { type: 'integer' } },
+            required: ['levels'],
+          },
+        },
+      },
+    };
+    const code = parseAndGenConfig(syncSpec);
+    // customUpdateActions block should exist but without asyncMode
+    expect(code).toContain('customUpdateActions');
+    expect(code).not.toMatch(/customUpdateActions[\s\S]*asyncMode/);
+  });
+
+  it('emits asyncUpdateJobs mapping from x-autocrud-async-update-jobs', () => {
+    const code = parseAndGenConfig(buildAsyncUpdateActionSpec());
+    expect(code).toContain('asyncUpdateJobs');
+    expect(code).toContain("'train-character-job': 'character'");
+  });
+});
