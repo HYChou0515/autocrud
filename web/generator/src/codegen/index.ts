@@ -120,6 +120,11 @@ export class CodeGenerator {
           if (a.bodySchemaName) names.add(a.bodySchemaName);
         }
       }
+      if (r.customUpdateActions) {
+        for (const a of r.customUpdateActions) {
+          if (a.bodySchemaName) names.add(a.bodySchemaName);
+        }
+      }
     }
 
     // Only add types that don't already exist as exports

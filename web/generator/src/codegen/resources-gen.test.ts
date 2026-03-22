@@ -894,3 +894,78 @@ describe('genResourcesConfig — list[Any] zod output', () => {
     expect(code).not.toMatch(/z\.array\(\)/);
   });
 });
+
+// ============================================================================
+// customUpdateActions generation
+// ============================================================================
+
+describe('genResourcesConfig — customUpdateActions', () => {
+  function buildUpdateActionSpec() {
+    return {
+      info: { title: 'Test', version: '1.0' },
+      paths: {
+        '/character': {
+          post: {
+            requestBody: { content: { 'application/json': { schema: { $ref: '#/components/schemas/Character' } } } },
+          },
+        },
+      },
+      'x-autocrud-custom-update-actions': {
+        character: [
+          {
+            path: '/character/{resource_id}/level-up',
+            label: 'Level Up',
+            operationId: 'level_up',
+            mode: 'update',
+            bodySchema: 'LevelUpInput',
+          },
+          {
+            path: '/character/{resource_id}/reset',
+            label: 'Reset',
+            operationId: 'reset_character',
+            mode: 'modify',
+          },
+        ],
+      },
+      components: {
+        schemas: {
+          Character: {
+            type: 'object',
+            properties: { name: { type: 'string' }, level: { type: 'integer' } },
+            required: ['name', 'level'],
+          },
+          LevelUpInput: {
+            type: 'object',
+            properties: { levels: { type: 'integer' } },
+            required: ['levels'],
+          },
+        },
+      },
+    };
+  }
+
+  it('generates customUpdateActions block', () => {
+    const code = parseAndGenConfig(buildUpdateActionSpec());
+    expect(code).toContain('customUpdateActions');
+    expect(code).toContain('Level Up');
+    expect(code).toContain("mode: 'update'");
+  });
+
+  it('generates mode for modify actions', () => {
+    const code = parseAndGenConfig(buildUpdateActionSpec());
+    expect(code).toContain("mode: 'modify'");
+  });
+
+  it('generates zodSchema for update action with body', () => {
+    const code = parseAndGenConfig(buildUpdateActionSpec());
+    // The Level Up action should have a zod schema with 'levels' field
+    expect(code).toContain('z.object(');
+    expect(code).toContain('levels');
+  });
+
+  it('references API method for update action', () => {
+    const code = parseAndGenConfig(buildUpdateActionSpec());
+    expect(code).toContain('characterApi.levelUp');
+    expect(code).toContain('characterApi.resetCharacter');
+  });
+});

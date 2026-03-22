@@ -6,7 +6,7 @@ when you call `apply(router)`.
 > Important: the final set of endpoints depends on:
 > - `model_naming` / `add_model(name=...)`
 > - `route_templates` (default or customized)
-> - whether you use `create_action()` / ref routes / backup routes
+> - whether you use `create_action()` / `update_action()` / ref routes / backup routes
 
 ## Minimal usage
 
@@ -99,6 +99,38 @@ async def import_from_url(body: ImportFromUrl = Body(...)):
 ```
 
 `create_action()` is lazy: it stores metadata and routes are created at `apply()` time.
+
+## Custom update actions
+
+Use `update_action()` to add custom update endpoints for an existing resource.
+The handler automatically receives the current resource data (injected by parameter name),
+and can optionally receive `RevisionInfo` and `ResourceMeta`.
+
+```python
+from msgspec import Struct
+from fastapi import Body
+from autocrud import crud
+
+class LevelUpInput(Struct):
+    levels: int = 1
+
+@crud.update_action("character", label="Level Up")
+def level_up(existing: Character, body: LevelUpInput = Body(...)) -> Character:
+    return Character(
+        name=existing.name,
+        level=existing.level + body.levels,
+    )
+```
+
+Key differences from `create_action()`:
+
+* Route: `POST /{resource}/{resource_id}/{action_path}` (includes `resource_id`)
+* The existing resource is auto-fetched via `rm.get(resource_id)` and injected into the
+  parameter named by `existing_param` (default `"existing"`)
+* `mode="update"` (default) creates a new revision; `mode="modify"` edits the draft in-place
+* If the handler returns `None`, no update is performed
+
+`update_action()` is lazy — routes are registered at `apply()` time.
 
 ## Relationships (refs)
 

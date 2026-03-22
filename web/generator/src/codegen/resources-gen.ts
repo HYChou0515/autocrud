@@ -257,6 +257,29 @@ ${actionEntries.join(',\n')}
     ],`;
     }
 
+    let customUpdateActionsBlock = '';
+    if (r.customUpdateActions && r.customUpdateActions.length > 0) {
+      const updateActionEntries = r.customUpdateActions.map((action) => {
+        const actionFields = action.fields.map((f) => serializeField(f));
+        const actionZodFields = buildNestedZodFields(action.fields);
+        const methodName = toCamel(action.operationId);
+        return `      {
+        name: '${action.name}',
+        label: '${action.label}',
+        mode: '${action.mode}',
+        fields: ${JSON.stringify(actionFields, null, 10).replace(/"([^"]+)":/g, '$1:')},
+        zodSchema: z.object({
+${actionZodFields}
+        }),
+        apiMethod: ${r.camel}Api.${methodName},
+      }`;
+      });
+      customUpdateActionsBlock = `
+    customUpdateActions: [
+${updateActionEntries.join(',\n')}
+    ],`;
+    }
+
     return `  '${r.name}': {
     name: '${r.name}',
     label: '${r.label}',
@@ -280,7 +303,7 @@ ${displayNameLine}    schema: '${r.schemaName}',
         ? `
     isUnion: true,`
         : ''
-    }${customActionsBlock}${
+    }${customActionsBlock}${customUpdateActionsBlock}${
       r.name in asyncJobsMap
         ? `
     tableConfig: { canCreate: false },`

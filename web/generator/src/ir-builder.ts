@@ -9,7 +9,7 @@
  *   raw spec → preScanSpec() → swagger-parser.dereference() → IRBuilder.build() → Resource[]
  */
 
-import type { Field, FieldRef, UnionVariant, Resource, CustomCreateAction } from './types.js';
+import type { Field, FieldRef, UnionVariant, Resource, CustomCreateAction, CustomUpdateAction } from './types.js';
 import {
   sanitizeTsName,
   toPascal,
@@ -108,6 +108,7 @@ export class IRBuilder {
     this.resources = [];
     this.extractResources();
     this.extractCustomCreateActions();
+    this.extractCustomUpdateActions();
     return this.resources;
   }
 
@@ -282,6 +283,85 @@ export class IRBuilder {
 
       if (actions.length > 0) {
         resource.customCreateActions = actions;
+      }
+    }
+  }
+
+  // ── Custom Update Actions ─────────────────────────────────────────────────
+
+  private extractCustomUpdateActions() {
+    const actionsMap: Record<string, any[]> = this.spec['x-autocrud-custom-update-actions'] ?? {};
+    if (Object.keys(actionsMap).length === 0) return;
+
+    for (const resource of this.resources) {
+      const rawActions = actionsMap[resource.name];
+      if (!rawActions || rawActions.length === 0) continue;
+
+      const actions: CustomUpdateAction[] = [];
+      for (const raw of rawActions) {
+        const fullPath: string = raw.path;
+        // Extract the last segment after {resource_id}/
+        const segments = fullPath.split('/');
+        const pathSegment = segments[segments.length - 1] || raw.operationId;
+
+        const actionMeta: any = {
+          name: pathSegment,
+          path: fullPath,
+          label: raw.label,
+          operationId: raw.operationId,
+          mode: raw.mode || 'update',
+        };
+
+        const fields: Field[] = [];
+
+        let bodySchemaName: string | undefined;
+        if (raw.bodySchema) {
+          bodySchemaName = raw.bodySchema as string;
+          const schema = this.getSchema(bodySchemaName!);
+          if (!schema?.properties) {
+            console.warn(`⚠️  Custom update action '${raw.label}': schema '${bodySchemaName}' not found, skipping`);
+            continue;
+          }
+          actionMeta.bodySchemaName = bodySchemaName;
+          actionMeta.bodySchemaFieldNames = Object.keys(schema.properties);
+        }
+
+        if (raw.queryParams?.length > 0) {
+          const qpFields = (raw.queryParams as any[]).map((p: any) => this.queryParamToField(p));
+          fields.push(...qpFields);
+          actionMeta.queryParams = raw.queryParams;
+        }
+
+        if (bodySchemaName) {
+          const schema = this.getSchema(bodySchemaName);
+          const hasOtherParams = !!raw.queryParams?.length;
+          const prefix = hasOtherParams ? '' : '';
+          const bodyFields = this.extractFields(schema!, prefix, 1, 10);
+          fields.push(...bodyFields);
+        }
+
+        actionMeta.fields = fields;
+        actions.push(actionMeta);
+      }
+
+      // Deduplicate labels
+      const seenOriginalLabels = new Map<string, number>();
+      for (const action of actions) {
+        const originalLabel = action.label;
+        const count = seenOriginalLabels.get(originalLabel) ?? 0;
+        seenOriginalLabels.set(originalLabel, count + 1);
+        if (count > 0) {
+          const newLabel = `${originalLabel} (${count + 1})`;
+          console.warn(
+            `⚠️  Duplicate update action label '${originalLabel}' for resource '${resource.name}' ` +
+              `(operationId: '${action.operationId}'). Renaming to '${newLabel}' to prevent frontend crash.`,
+          );
+          action.label = newLabel;
+        }
+      }
+
+      if (actions.length > 0) {
+        resource.customUpdateActions = actions;
       }
     }
   }

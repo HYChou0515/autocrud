@@ -123,8 +123,9 @@ AutoCRUD will:
 3. Sort templates by `order`
 4. Apply each template to each model (best-effort)
 5. Register custom create-action routes
-6. Register ref-specific routes (referrers + relationships)
-7. Register global backup / restore routes
+6. Register custom update-action routes
+7. Register ref-specific routes (referrers + relationships)
+8. Register global backup / restore routes
 
 Key portion (simplified):
 

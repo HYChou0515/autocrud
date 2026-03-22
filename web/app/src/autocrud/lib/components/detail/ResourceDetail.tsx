@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef, useMemo } from 'react';
+import { useState, useEffect, useRef, useMemo, useCallback } from 'react';
 import { Link, useNavigate } from '@tanstack/react-router';
 import {
   Container,
@@ -15,6 +15,7 @@ import {
   Table,
   NumberInput,
   Tooltip,
+  Tabs,
 } from '@mantine/core';
 import {
   IconEdit,
@@ -27,7 +28,12 @@ import {
   IconHistory,
   IconRefresh,
 } from '@tabler/icons-react';
-import type { ResourceConfig, ResourceField, DetailConfig } from '../../resources';
+import type {
+  ResourceConfig,
+  ResourceField,
+  DetailConfig,
+  CustomUpdateAction,
+} from '../../resources';
 import { isAsyncCreateJob, asyncCreateJobs } from '../../resources';
 import { useResourceDetail } from '../../hooks/useResourceDetail';
 import { useFieldDepth } from '../../hooks/useFieldDepth';
@@ -168,6 +174,11 @@ export function ResourceDetail<T extends Record<string, any>>({
   const [selectedRevision, setSelectedRevision] = useState<string | null>(initialRevision ?? null);
   const editFormRef = useRef<ResourceFormHandle | null>(null);
 
+  // ── Custom update actions ──
+  const updateActions: CustomUpdateAction[] = config.customUpdateActions ?? [];
+  const [activeUpdateAction, setActiveUpdateAction] = useState<CustomUpdateAction | null>(null);
+  const [updateActionSubmitting, setUpdateActionSubmitting] = useState(false);
+
   // Sync with external revision changes (e.g., browser back/forward)
   useEffect(() => {
     setSelectedRevision(initialRevision ?? null);
@@ -234,6 +245,24 @@ export function ResourceDetail<T extends Record<string, any>>({
     if (!isJob) return [];
     return collapsedGroups.filter((g) => isArtifactField(g.path));
   }, [collapsedGroups, isJob]);
+
+  const handleUpdateAction = useCallback(
+    async (action: CustomUpdateAction, values: Record<string, any>) => {
+      setUpdateActionSubmitting(true);
+      try {
+        await action.apiMethod(resourceId, values);
+        setActiveUpdateAction(null);
+        setEditOpen(false);
+        // Refresh to show updated data
+        _refresh();
+      } catch (error) {
+        showErrorNotification(error, `${action.label} Failed`);
+      } finally {
+        setUpdateActionSubmitting(false);
+      }
+    },
+    [resourceId, _refresh],
+  );
 
   if (loading) {
     const loader = <Loader />;
@@ -624,11 +653,83 @@ export function ResourceDetail<T extends Record<string, any>>({
 
       <Modal
         opened={editOpen}
-        onClose={() => setEditOpen(false)}
+        onClose={() => {
+          setEditOpen(false);
+          setActiveUpdateAction(null);
+        }}
         title={`Edit ${config.label}`}
         size="lg"
       >
-        {editOpen && (
+        {editOpen && updateActions.length > 0 ? (
+          <Tabs defaultValue={activeUpdateAction?.name ?? 'standard'}>
+            <Tabs.List>
+              <Tabs.Tab value="standard">Edit</Tabs.Tab>
+              {updateActions.map((action) => (
+                <Tabs.Tab key={action.name} value={action.name}>
+                  {action.label}
+                </Tabs.Tab>
+              ))}
+            </Tabs.List>
+
+            <Tabs.Panel value="standard" pt="md">
+              <ResourceForm
+                config={config}
+                initialValues={config.isUnion ? ({ data } as unknown as Partial<T>) : data}
+                onSubmit={handleEdit}
+                onCancel={() => {
+                  setEditOpen(false);
+                  setActiveUpdateAction(null);
+                }}
+                submitLabel="Update"
+                submitting={isUpdatePending}
+                formRef={editFormRef}
+              />
+            </Tabs.Panel>
+
+            {updateActions.map((action) => (
+              <Tabs.Panel key={action.name} value={action.name} pt="md">
+                {action.fields.length > 0 ? (
+                  <ResourceForm
+                    config={{
+                      ...config,
+                      fields: action.fields,
+                      zodSchema: action.zodSchema,
+                      maxFormDepth: undefined,
+                    }}
+                    onSubmit={(values) => handleUpdateAction(action, values)}
+                    onCancel={() => {
+                      setEditOpen(false);
+                      setActiveUpdateAction(null);
+                    }}
+                    submitLabel={action.label}
+                    submitting={updateActionSubmitting}
+                  />
+                ) : (
+                  <Stack>
+                    <Text size="sm">Are you sure you want to execute this action?</Text>
+                    <Group justify="flex-end">
+                      <Button
+                        variant="default"
+                        onClick={() => {
+                          setEditOpen(false);
+                          setActiveUpdateAction(null);
+                        }}
+                      >
+                        Cancel
+                      </Button>
+                      <Button
+                        onClick={() => handleUpdateAction(action, {})}
+                        loading={updateActionSubmitting}
+                      >
+                        {action.label}
+                      </Button>
+                    </Group>
+                  </Stack>
+                )}
+              </Tabs.Panel>
+            ))}
+          </Tabs>
+        ) : editOpen ? (
           <ResourceForm
             config={config}
             initialValues={config.isUnion ? ({ data } as unknown as Partial<T>) : data}
@@ -638,7 +739,7 @@ export function ResourceDetail<T extends Record<string, any>>({
             submitting={isUpdatePending}
             formRef={editFormRef}
           />
-        )}
+        ) : null}
       </Modal>
     </>
   );

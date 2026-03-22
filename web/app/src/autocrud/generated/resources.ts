@@ -887,6 +887,16 @@ Object.assign(registry, {
         jobResourceName: 'create-new-character4-job',
       },
     ],
+    customUpdateActions: [
+      {
+        name: 'update-char-name',
+        label: 'New Character0',
+        mode: 'update',
+        fields: [],
+        zodSchema: z.object({}),
+        apiMethod: characterApi.updateCharName,
+      },
+    ],
   },
   guild: {
     name: 'guild',
