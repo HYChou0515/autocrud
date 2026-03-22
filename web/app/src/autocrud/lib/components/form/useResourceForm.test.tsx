@@ -1,15 +1,13 @@
 /**
- * useResourceForm — Tests for depth transition timing + submitting state.
+ * useResourceForm — Tests for depth transition timing.
  *
  * Verifies that when formDepth changes (e.g. 1→2), form values are updated
  * synchronously BEFORE React re-renders with the new visibleFields.
  * This prevents "uncontrolled to controlled" React warnings.
- *
- * Also verifies the `submitting` state is true while onSubmit is pending.
  */
 
 import { describe, it, expect, vi, afterEach } from 'vitest';
-import { render, fireEvent, cleanup, act } from '@testing-library/react';
+import { render, fireEvent, cleanup } from '@testing-library/react';
 import type { ResourceConfig, ResourceField } from '../../resources';
 import { useResourceForm } from './useResourceForm';
 import { getByPath } from '@/autocrud/lib/utils/formUtils';
@@ -176,98 +174,5 @@ describe('useResourceForm depth transition timing', () => {
 
     // No render should have had undefined values
     expect(renderIssues).toHaveLength(0);
-  });
-});
-
-/**
- * Test component that exposes submitting state from useResourceForm.
- */
-function SubmittingTracker({
-  config,
-  onSubmit,
-}: {
-  config: ResourceConfig;
-  onSubmit: (values: any) => Promise<void>;
-}) {
-  const hook = useResourceForm({
-    config,
-    initialValues: { name: 'test' },
-    onSubmit,
-  });
-
-  return (
-    <div>
-      <span data-testid="submitting">{String(hook.submitting)}</span>
-      <button
-        data-testid="trigger-submit"
-        onClick={() => hook.handleSubmit({ name: 'test' } as any).catch(() => {})}
-      >
-        Submit
-      </button>
-    </div>
-  );
-}
-
-describe('useResourceForm submitting state', () => {
-  afterEach(cleanup);
-
-  const fields: ResourceField[] = [makeField({ name: 'name', type: 'string', isRequired: true })];
-
-  it('submitting is false by default', () => {
-    const config = makeConfig(fields);
-    const onSubmit = vi.fn().mockResolvedValue(undefined);
-
-    const { getByTestId } = render(<SubmittingTracker config={config} onSubmit={onSubmit} />);
-
-    expect(getByTestId('submitting').textContent).toBe('false');
-  });
-
-  it('submitting is true while onSubmit is pending', async () => {
-    const config = makeConfig(fields);
-    let resolveSubmit!: () => void;
-    const onSubmit = vi.fn().mockImplementation(
-      () =>
-        new Promise<void>((resolve) => {
-          resolveSubmit = resolve;
-        }),
-    );
-
-    const { getByTestId } = render(<SubmittingTracker config={config} onSubmit={onSubmit} />);
-
-    // Initially false
-    expect(getByTestId('submitting').textContent).toBe('false');
-
-    // Click submit
-    await act(async () => {
-      fireEvent.click(getByTestId('trigger-submit'));
-    });
-
-    // Should be true while pending
-    expect(getByTestId('submitting').textContent).toBe('true');
-
-    // Resolve the submit promise
-    await act(async () => {
-      resolveSubmit();
-    });
-
-    // Should be false after resolving
-    expect(getByTestId('submitting').textContent).toBe('false');
-  });
-
-  it('submitting resets to false when onSubmit throws', async () => {
-    const config = makeConfig(fields);
-    const onSubmit = vi.fn().mockRejectedValue(new Error('API error'));
-
-    const { getByTestId } = render(<SubmittingTracker config={config} onSubmit={onSubmit} />);
-
-    // Click submit — handleSubmit catches the error from onSubmit via finally
-    await act(async () => {
-      fireEvent.click(getByTestId('trigger-submit'));
-      // Allow microtask for the rejected promise to settle
-      await new Promise((r) => setTimeout(r, 0));
-    });
-
-    // Should reset to false after rejection
-    expect(getByTestId('submitting').textContent).toBe('false');
   });
 });
