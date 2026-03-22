@@ -250,6 +250,8 @@ export interface ResourceConfig<T = any> {
   maxFormDepth?: number;
   /** Whether this resource is a union type (e.g. Cat | Dog) */
   isUnion?: boolean;
+  /** Whether this resource is a Job resource (has status/rerun lifecycle) */
+  isJob?: boolean;
   // Zod schema for validation (generated from OpenAPI)
   zodSchema?: z.ZodObject<any>;
   /** Fields to hide by default in create/edit forms (e.g. job management fields).
@@ -313,6 +315,23 @@ export function getAsyncCreateJobChildren(parentResourceName: string): string[] 
   return Object.entries(asyncCreateJobs)
     .filter(([, parent]) => parent === parentResourceName)
     .map(([jobName]) => jobName);
+}
+
+/**
+ * Check whether a resource is a Job resource (has status/rerun lifecycle).
+ */
+export function isJobResource(resourceName: string): boolean {
+  return resources[resourceName]?.isJob === true;
+}
+
+/**
+ * Get standalone job resource names — jobs that are NOT async-create jobs.
+ * These should appear in a separate "Jobs" section in the sidebar.
+ */
+export function getStandaloneJobNames(): string[] {
+  return Object.keys(resources).filter(
+    (name) => resources[name]?.isJob === true && !(name in asyncCreateJobs),
+  );
 }
 
 /**

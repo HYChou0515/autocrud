@@ -228,9 +228,9 @@ describe('genResourcesConfig — Job defaultHiddenFields', () => {
     expect(code).not.toContain('defaultHiddenFields');
   });
 
-  it('does NOT include isJob property in output', () => {
+  it('includes isJob: true for job resources', () => {
     const code = parseAndGenConfig(buildJobSpec());
-    expect(code).not.toContain('isJob:');
+    expect(code).toContain('isJob: true');
   });
 });
 
