@@ -1,0 +1,142 @@
+/**
+ * ResourceForm — Regression tests for submit button loading state.
+ *
+ * Covers:
+ * - Submit button does NOT have loading state when submitting is false/undefined
+ * - Submit button HAS loading state when submitting=true (form mode)
+ * - Submit button HAS loading state when submitting=true (JSON mode)
+ * - Both Cancel and Submit buttons rendered correctly
+ */
+
+import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { render } from '@testing-library/react';
+import { MantineProvider } from '@mantine/core';
+import React from 'react';
+
+// ---------------------------------------------------------------------------
+// Mocks — vi.hoisted ensures variables are available during module mock hoisting
+// ---------------------------------------------------------------------------
+
+const { mockUseResourceFormReturn } = vi.hoisted(() => {
+  const _mockForm = {
+    onSubmit: (_handler: any) => (e: any) => {
+      e?.preventDefault?.();
+    },
+    getValues: () => ({}),
+    getInputProps: () => ({}),
+    setFieldError: vi.fn(),
+  };
+
+  const mockUseResourceFormReturn = {
+    form: _mockForm,
+    editMode: 'form' as const,
+    jsonText: '',
+    setJsonText: vi.fn(),
+    jsonError: null,
+    setJsonError: vi.fn(),
+    handleSwitchToJson: vi.fn(),
+    handleSwitchToForm: vi.fn(),
+    handleJsonSubmit: vi.fn(),
+    maxAvailableDepth: 1,
+    formDepth: 1,
+    setFormDepth: vi.fn(),
+    visibleFields: [] as any[],
+    collapsedGroups: [] as any[],
+    simpleUnionTypes: {} as Record<string, string>,
+    setSimpleUnionTypes: vi.fn(),
+    handleSubmit: vi.fn(),
+  };
+
+  return { mockUseResourceFormReturn };
+});
+
+vi.mock('./useResourceForm', () => ({
+  useResourceForm: vi.fn().mockReturnValue(mockUseResourceFormReturn),
+}));
+
+vi.mock('../field/FormFieldRenderer', () => ({
+  FieldRenderer: () => null,
+}));
+
+vi.mock('@/autocrud/lib/utils/formUtils', () => ({
+  getByPath: vi.fn(),
+  collapseFieldToJson: vi.fn().mockReturnValue('{}'),
+  groupFieldsByParent: vi.fn().mockReturnValue([]),
+}));
+
+import { ResourceForm } from './ResourceForm';
+import { useResourceForm } from './useResourceForm';
+
+// ---------------------------------------------------------------------------
+// Helpers
+// ---------------------------------------------------------------------------
+
+function makeConfig(): any {
+  return {
+    name: 'test',
+    label: 'Test',
+    fields: [],
+    apiClient: {},
+  };
+}
+
+function renderForm(props: Partial<React.ComponentProps<typeof ResourceForm>> = {}) {
+  return render(
+    <MantineProvider>
+      <ResourceForm config={makeConfig()} onSubmit={vi.fn()} submitLabel="Create" {...props} />
+    </MantineProvider>,
+  );
+}
+
+// ---------------------------------------------------------------------------
+// Tests
+// ---------------------------------------------------------------------------
+
+describe('ResourceForm submit button loading state', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    // Reset to form mode
+    (useResourceForm as any).mockReturnValue({
+      ...mockUseResourceFormReturn,
+      editMode: 'form',
+    });
+  });
+
+  it('submit button does NOT have loading when submitting is undefined', () => {
+    const { container } = renderForm();
+    const btn = container.querySelector('button[type="submit"]')!;
+    expect(btn).toBeTruthy();
+    expect(btn.hasAttribute('data-loading')).toBe(false);
+  });
+
+  it('submit button does NOT have loading when submitting=false', () => {
+    const { container } = renderForm({ submitting: false });
+    const btn = container.querySelector('button[type="submit"]')!;
+    expect(btn).toBeTruthy();
+    expect(btn.hasAttribute('data-loading')).toBe(false);
+  });
+
+  it('submit button HAS loading state when submitting=true (form mode)', () => {
+    const { container } = renderForm({ submitting: true });
+    const btn = container.querySelector('button[type="submit"]')!;
+    expect(btn).toBeTruthy();
+    expect(btn.hasAttribute('data-loading')).toBe(true);
+  });
+
+  it('submit button HAS loading state when submitting=true (JSON mode)', () => {
+    (useResourceForm as any).mockReturnValue({
+      ...mockUseResourceFormReturn,
+      editMode: 'json',
+      jsonText: '{}',
+    });
+
+    const { container } = renderForm({ submitting: true });
+    // In JSON mode, submit is a regular button (not type=submit)
+    const buttons = container.querySelectorAll('button');
+    const btn = Array.from(buttons).find(
+      (b) => b.textContent === 'Create' && b.getAttribute('type') !== 'submit',
+    )!;
+    expect(btn).toBeTruthy();
+    expect(btn.hasAttribute('data-loading')).toBe(true);
+  });
+});

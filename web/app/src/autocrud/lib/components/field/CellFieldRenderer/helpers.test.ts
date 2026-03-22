@@ -10,6 +10,7 @@ import {
   getContentTypeIcon,
   renderBinaryCell,
   renderObjectPreview,
+  safeStringify,
   INLINE_IMAGE_MAX_SIZE,
 } from './helpers';
 import { getBaseUrl } from '../../../client';
@@ -155,6 +156,37 @@ describe('renderBinaryCell', () => {
   });
 });
 
+describe('safeStringify', () => {
+  it('returns normal JSON for small objects', () => {
+    expect(safeStringify({ a: 1, b: 2 })).toBe('{"a":1,"b":2}');
+  });
+
+  it('supports indent parameter', () => {
+    expect(safeStringify({ a: 1 }, 2)).toBe('{\n  "a": 1\n}');
+  });
+
+  it('truncates output exceeding maxLen', () => {
+    const huge = { data: 'x'.repeat(200_000) };
+    const result = safeStringify(huge, undefined, 1000);
+    expect(result.length).toBeLessThanOrEqual(1100); // small tolerance for suffix
+    expect(result).toContain('…[truncated');
+  });
+
+  it('uses default MAX_SAFE_JSON_LENGTH when maxLen not provided', () => {
+    // Create object with a 2 MB string value — should be truncated by default
+    const huge = { blob: 'A'.repeat(2_000_000) };
+    const result = safeStringify(huge);
+    expect(result.length).toBeLessThan(200_000);
+    expect(result).toContain('…[truncated');
+  });
+
+  it('returns full JSON when under the limit', () => {
+    const small = { name: 'Alice', age: 30 };
+    const result = safeStringify(small);
+    expect(result).toBe(JSON.stringify(small));
+  });
+});
+
 describe('renderObjectPreview', () => {
   it('renders empty object as {}', () => {
     const result = renderObjectPreview({});
@@ -176,5 +208,20 @@ describe('renderObjectPreview', () => {
       very_long_key_name: 'very long value that should get truncated because it exceeds 40 chars',
     });
     expect(result).toBeTruthy();
+  });
+
+  it('handles object with huge blob value without hanging', () => {
+    // Simulate a payload containing a large base64 blob
+    const hugePayload = {
+      name: 'test',
+      image_data: 'A'.repeat(5_000_000), // 5 MB base64 string
+    };
+    const start = performance.now();
+    const result = renderObjectPreview(hugePayload);
+    const elapsed = performance.now() - start;
+
+    expect(result).toBeTruthy();
+    // Must complete in under 500ms (would hang for seconds without fix)
+    expect(elapsed).toBeLessThan(500);
   });
 });

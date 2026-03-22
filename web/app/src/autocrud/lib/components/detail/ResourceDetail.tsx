@@ -193,6 +193,11 @@ export function ResourceDetail<T extends Record<string, any>>({
     logs,
     logsLoading,
     fetchLogs,
+    isUpdatePending,
+    isDeletePending,
+    isRestorePending,
+    isSwitchRevisionPending,
+    isRerunPending,
   } = useResourceDetail(config, resourceId, selectedRevision);
 
   // Depth control — shared hook (detail mode strips itemFields instead of collapsing)
@@ -289,13 +294,9 @@ export function ResourceDetail<T extends Record<string, any>>({
     }
   };
 
-  const handleDelete = async () => {
+  const handleDelete = () => {
     if (confirm('Are you sure you want to delete this resource?')) {
-      try {
-        await deleteResource();
-      } catch (error) {
-        showErrorNotification(error, 'Delete Failed');
-      }
+      deleteResource();
     }
   };
 
@@ -308,18 +309,14 @@ export function ResourceDetail<T extends Record<string, any>>({
       try {
         await permanentlyDelete();
         navigate({ to: effectiveBackPath });
-      } catch (error) {
-        showErrorNotification(error, 'Permanently Delete Failed');
+      } catch {
+        // Notification already handled by mutation hook.
       }
     }
   };
 
-  const handleRestore = async () => {
-    try {
-      await restore();
-    } catch (error) {
-      showErrorNotification(error, 'Restore Failed');
-    }
+  const handleRestore = () => {
+    restore();
   };
 
   const handleRevert = async () => {
@@ -328,18 +325,14 @@ export function ResourceDetail<T extends Record<string, any>>({
       try {
         await switchRevision(selectedRevision);
         handleRevisionSelect(null);
-      } catch (error) {
-        showErrorNotification(error, 'Revert Failed');
+      } catch {
+        // Notification already handled by mutation hook.
       }
     }
   };
 
-  const handleRerun = async () => {
-    try {
-      await rerun();
-    } catch (error) {
-      showErrorNotification(error, 'Rerun Failed');
-    }
+  const handleRerun = () => {
+    rerun();
   };
 
   const defaultTitle = isJob ? 'Job Detail' : `${config.label} Detail`;
@@ -396,6 +389,7 @@ export function ResourceDetail<T extends Record<string, any>>({
                       color="blue"
                       leftSection={<IconRefresh size={16} />}
                       onClick={handleRerun}
+                      loading={isRerunPending}
                     >
                       Rerun
                     </Button>
@@ -415,6 +409,7 @@ export function ResourceDetail<T extends Record<string, any>>({
                     variant="light"
                     leftSection={<IconTrash size={16} />}
                     onClick={handleDelete}
+                    loading={isDeletePending}
                   >
                     Delete
                   </Button>
@@ -427,6 +422,7 @@ export function ResourceDetail<T extends Record<string, any>>({
                   color="green"
                   leftSection={<IconRestore size={16} />}
                   onClick={handleRestore}
+                  loading={isRestorePending}
                 >
                   Restore
                 </Button>
@@ -436,6 +432,7 @@ export function ResourceDetail<T extends Record<string, any>>({
                     variant="filled"
                     leftSection={<IconTrashX size={16} />}
                     onClick={handlePermanentlyDelete}
+                    loading={isDeletePending}
                   >
                     Permanently Delete
                   </Button>
@@ -466,6 +463,7 @@ export function ResourceDetail<T extends Record<string, any>>({
               size="xs"
               leftSection={<IconHistory size={14} />}
               onClick={handleRevert}
+              loading={isSwitchRevisionPending}
               mt="xs"
             >
               Revert to this revision
@@ -637,6 +635,7 @@ export function ResourceDetail<T extends Record<string, any>>({
             onSubmit={handleEdit}
             onCancel={() => setEditOpen(false)}
             submitLabel="Update"
+            submitting={isUpdatePending}
             formRef={editFormRef}
           />
         )}

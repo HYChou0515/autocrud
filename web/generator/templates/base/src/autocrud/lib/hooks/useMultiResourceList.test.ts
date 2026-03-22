@@ -14,6 +14,8 @@
 
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { renderHook, act, waitFor } from '@testing-library/react';
+import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
+import React from 'react';
 import { useMultiResourceList, type MultiResourceEntry } from './useMultiResourceList';
 import type { ResourceConfig } from '../resources';
 
@@ -36,6 +38,18 @@ function makeConfig(name: string, overrides: Partial<ResourceConfig> = {}): Reso
   };
 }
 
+/** Create a fresh QueryClient + wrapper for each test */
+function createWrapper() {
+  const queryClient = new QueryClient({
+    defaultOptions: {
+      queries: { retry: false, gcTime: 0 },
+    },
+  });
+  const Wrapper = ({ children }: { children: React.ReactNode }) =>
+    React.createElement(QueryClientProvider, { client: queryClient }, children);
+  return { Wrapper, queryClient };
+}
+
 function makeRow(rid: string, updatedTime: string, data: Record<string, unknown> = {}) {
   return {
     meta: { resource_id: rid, updated_time: updatedTime, created_time: updatedTime },
@@ -53,7 +67,8 @@ describe('useMultiResourceList', () => {
   });
 
   it('returns empty items immediately when entries is empty', async () => {
-    const { result } = renderHook(() => useMultiResourceList([]));
+    const { Wrapper } = createWrapper();
+    const { result } = renderHook(() => useMultiResourceList([]), { wrapper: Wrapper });
 
     // Should not even show loading state for empty entries
     await waitFor(() => {
@@ -77,7 +92,8 @@ describe('useMultiResourceList', () => {
     });
 
     const entries: MultiResourceEntry[] = [{ config }];
-    const { result } = renderHook(() => useMultiResourceList(entries));
+    const { Wrapper } = createWrapper();
+    const { result } = renderHook(() => useMultiResourceList(entries), { wrapper: Wrapper });
 
     await waitFor(() => {
       expect(result.current.loading).toBe(false);
@@ -111,7 +127,8 @@ describe('useMultiResourceList', () => {
     });
 
     const entries: MultiResourceEntry[] = [{ config: configA }, { config: configB }];
-    const { result } = renderHook(() => useMultiResourceList(entries));
+    const { Wrapper } = createWrapper();
+    const { result } = renderHook(() => useMultiResourceList(entries), { wrapper: Wrapper });
 
     await waitFor(() => {
       expect(result.current.loading).toBe(false);
@@ -139,8 +156,9 @@ describe('useMultiResourceList', () => {
 
     const entries: MultiResourceEntry[] = [{ config, params: { limit: 50 } }];
     const sharedParams = { limit: 10, offset: 0 };
+    const { Wrapper } = createWrapper();
 
-    renderHook(() => useMultiResourceList(entries, sharedParams));
+    renderHook(() => useMultiResourceList(entries, sharedParams), { wrapper: Wrapper });
 
     await waitFor(() => {
       // Entry's limit=50 should override shared limit=10
@@ -169,7 +187,8 @@ describe('useMultiResourceList', () => {
     const consoleSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
 
     const entries: MultiResourceEntry[] = [{ config: configOk }, { config: configFail }];
-    const { result } = renderHook(() => useMultiResourceList(entries));
+    const { Wrapper } = createWrapper();
+    const { result } = renderHook(() => useMultiResourceList(entries), { wrapper: Wrapper });
 
     await waitFor(() => {
       expect(result.current.loading).toBe(false);
@@ -195,8 +214,9 @@ describe('useMultiResourceList', () => {
     });
 
     const consoleSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
+    const { Wrapper } = createWrapper();
 
-    const { result } = renderHook(() => useMultiResourceList([{ config }]));
+    const { result } = renderHook(() => useMultiResourceList([{ config }]), { wrapper: Wrapper });
 
     await waitFor(() => {
       expect(result.current.loading).toBe(false);
@@ -216,7 +236,8 @@ describe('useMultiResourceList', () => {
       apiClient: { list: listFn, count: countFn } as any,
     });
 
-    const { result } = renderHook(() => useMultiResourceList([{ config }]));
+    const { Wrapper } = createWrapper();
+    const { result } = renderHook(() => useMultiResourceList([{ config }]), { wrapper: Wrapper });
 
     await waitFor(() => {
       expect(result.current.loading).toBe(false);
@@ -241,7 +262,8 @@ describe('useMultiResourceList', () => {
       } as any,
     });
 
-    const { result } = renderHook(() => useMultiResourceList([{ config }]));
+    const { Wrapper } = createWrapper();
+    const { result } = renderHook(() => useMultiResourceList([{ config }]), { wrapper: Wrapper });
 
     expect(result.current.loading).toBe(true);
     expect(result.current.items).toEqual([]);
@@ -260,7 +282,8 @@ describe('useMultiResourceList', () => {
       } as any,
     });
 
-    const { result } = renderHook(() => useMultiResourceList([{ config }]));
+    const { Wrapper } = createWrapper();
+    const { result } = renderHook(() => useMultiResourceList([{ config }]), { wrapper: Wrapper });
 
     await waitFor(() => {
       expect(result.current.loading).toBe(false);

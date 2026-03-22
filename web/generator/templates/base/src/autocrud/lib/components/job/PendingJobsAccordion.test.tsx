@@ -11,7 +11,7 @@
  */
 
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { render, screen } from '@testing-library/react';
+import { render, screen, fireEvent, act } from '@testing-library/react';
 import { MantineProvider } from '@mantine/core';
 
 // ---------------------------------------------------------------------------
@@ -221,5 +221,57 @@ describe('PendingJobsAccordion', () => {
     const entries = mockUseMultiResourceList.mock.calls[0][0];
     expect(entries).toHaveLength(1);
     expect(entries[0].config.name).toBe('job-found');
+  });
+
+  // ── Deferred rendering tests ──
+
+  it('does not render MultiResourceTable when accordion is collapsed', () => {
+    mockGetAsyncCreateJobChildren.mockReturnValue(['job-a']);
+    mockGetResource.mockReturnValue(makeJobConfig('job-a'));
+
+    mockMultiResult = {
+      items: [{ _source: 'job-a', meta: { resource_id: 'j1' }, data: { status: 'pending' } }],
+      totals: { 'job-a': 1 },
+      totalCount: 1,
+      loading: false,
+      error: null,
+      refresh: vi.fn(),
+    };
+
+    renderWith(<PendingJobsAccordion parentResourceName="character" />);
+
+    // The accordion renders but MultiResourceTable should NOT be mounted yet
+    const labels = screen.getAllByText('Creating in progress');
+    expect(labels.length).toBeGreaterThanOrEqual(1);
+    expect(screen.queryByTestId('multi-resource-table')).toBeNull();
+  });
+
+  it('renders MultiResourceTable only after accordion is expanded', () => {
+    mockGetAsyncCreateJobChildren.mockReturnValue(['job-a']);
+    mockGetResource.mockReturnValue(makeJobConfig('job-a'));
+
+    mockMultiResult = {
+      items: [{ _source: 'job-a', meta: { resource_id: 'j1' }, data: { status: 'pending' } }],
+      totals: { 'job-a': 1 },
+      totalCount: 1,
+      loading: false,
+      error: null,
+      refresh: vi.fn(),
+    };
+
+    const { container } = renderWith(<PendingJobsAccordion parentResourceName="character" />);
+
+    // Not mounted yet
+    expect(screen.queryByTestId('multi-resource-table')).toBeNull();
+
+    // Click the accordion control button to expand
+    const control = container.querySelector('button[data-accordion-control]') as HTMLElement;
+    expect(control).toBeTruthy();
+    act(() => {
+      fireEvent.click(control);
+    });
+
+    // After expansion, MultiResourceTable is mounted
+    expect(screen.getByTestId('multi-resource-table')).toBeTruthy();
   });
 });

@@ -25,6 +25,27 @@ import { getBlobUrl } from '../../../client';
 /** Size threshold (in bytes) below which images are shown as inline thumbnails. */
 export const INLINE_IMAGE_MAX_SIZE = 512 * 1024; // 512 KB
 
+/** Maximum safe JSON string length (100 KB) to avoid freezing the browser. */
+export const MAX_SAFE_JSON_LENGTH = 100_000;
+
+/**
+ * JSON.stringify with a safety net — if the result exceeds `maxLen` characters
+ * the output is truncated and a human-readable suffix is appended.
+ *
+ * This prevents the browser from hanging when a payload contains large binary
+ * blobs (e.g. base64-encoded images).
+ */
+export function safeStringify(
+  value: unknown,
+  indent?: number,
+  maxLen: number = MAX_SAFE_JSON_LENGTH,
+): string {
+  const json = JSON.stringify(value, null, indent);
+  if (json.length <= maxLen) return json;
+  const truncatedKB = Math.round(json.length / 1024);
+  return json.slice(0, maxLen) + `\n…[truncated — total ${truncatedKB} KB]`;
+}
+
 // ---------------------------------------------------------------------------
 // Pure helpers
 // ---------------------------------------------------------------------------
@@ -140,10 +161,11 @@ export function renderObjectPreview(value: Record<string, unknown>): React.React
 
   const firstKey = keys[0];
   const firstValue = value[firstKey];
+  const firstValueStr = safeStringify(firstValue, undefined, 200);
   const previewText =
     keys.length === 1
-      ? `${firstKey}: ${JSON.stringify(firstValue)}`
-      : `${firstKey}: ${JSON.stringify(firstValue)}, +${keys.length - 1} more`;
+      ? `${firstKey}: ${firstValueStr}`
+      : `${firstKey}: ${firstValueStr}, +${keys.length - 1} more`;
 
   const shortPreview = previewText.length > 40 ? previewText.slice(0, 37) + '...' : previewText;
 
@@ -151,7 +173,7 @@ export function renderObjectPreview(value: Record<string, unknown>): React.React
     <Tooltip
       label={
         <Code block style={{ maxWidth: '400px', maxHeight: '300px', overflow: 'auto' }}>
-          {JSON.stringify(value, null, 2)}
+          {safeStringify(value, 2)}
         </Code>
       }
       position="bottom-start"

@@ -160,4 +160,80 @@ describe('useResourceList', () => {
       expect(listFn).toHaveBeenCalledTimes(2);
     });
   });
+
+  // ── New options tests ────────────────────────────────────────────
+
+  it('exposes raw TanStack Query result via query field', async () => {
+    const config = makeConfig();
+    const { Wrapper } = createWrapper();
+
+    const { result } = renderHook(() => useResourceList(config, { limit: 10 }), {
+      wrapper: Wrapper,
+    });
+
+    await waitFor(() => {
+      expect(result.current.loading).toBe(false);
+    });
+
+    // query should be a full UseQueryResult object
+    expect(result.current.query).toBeTruthy();
+    expect(result.current.query.isSuccess).toBe(true);
+    expect(result.current.query.data).toEqual({
+      data: [{ meta: { resource_id: '1' }, data: { a: 1 } }],
+      total: 1,
+    });
+  });
+
+  it('accepts options.enabled = false to prevent fetching', async () => {
+    const listFn = vi.fn().mockResolvedValue({ data: [] });
+    const countFn = vi.fn().mockResolvedValue({ data: 0 });
+    const config = makeConfig({
+      apiClient: { list: listFn, count: countFn } as any,
+    });
+
+    const { Wrapper } = createWrapper();
+
+    const { result } = renderHook(
+      () => useResourceList(config, { limit: 10 }, { enabled: false }),
+      { wrapper: Wrapper },
+    );
+
+    // Should not fetch when enabled=false
+    expect(listFn).not.toHaveBeenCalled();
+    expect(result.current.data).toEqual([]);
+  });
+
+  it('accepts options.staleTime', async () => {
+    const config = makeConfig();
+    const { Wrapper } = createWrapper();
+
+    const { result } = renderHook(
+      () => useResourceList(config, { limit: 10 }, { staleTime: 60_000 }),
+      { wrapper: Wrapper },
+    );
+
+    await waitFor(() => {
+      expect(result.current.loading).toBe(false);
+    });
+
+    // The query should have completed successfully
+    expect(result.current.query.isStale).toBe(false);
+  });
+
+  it('works with zero options (backward compat)', async () => {
+    const config = makeConfig();
+    const { Wrapper } = createWrapper();
+
+    // Calling without the 3rd arg = same as before
+    const { result } = renderHook(() => useResourceList(config, { limit: 5 }), {
+      wrapper: Wrapper,
+    });
+
+    await waitFor(() => {
+      expect(result.current.loading).toBe(false);
+    });
+
+    expect(result.current.data).toHaveLength(1);
+    expect(result.current.total).toBe(1);
+  });
 });
