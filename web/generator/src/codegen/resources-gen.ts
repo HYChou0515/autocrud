@@ -296,7 +296,8 @@ ${displayNameLine}    schema: '${r.schemaName}',
     }${
       r.isJob
         ? `
-    defaultHiddenFields: ${JSON.stringify(getJobHiddenFields(r))},`
+    defaultHiddenFields: ${JSON.stringify(getJobHiddenFields(r))},
+    isJob: true,`
         : ''
     }${
       r.isUnion

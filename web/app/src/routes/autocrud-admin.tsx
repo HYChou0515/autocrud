@@ -5,6 +5,7 @@ import {
   getResource,
   isAsyncCreateJob,
   getAsyncCreateJobChildren,
+  getStandaloneJobNames,
 } from '@/autocrud/lib/resources';
 import {
   IconHome,
@@ -12,6 +13,7 @@ import {
   IconDatabaseExport,
   IconArrowsTransferUp,
   IconPlayerPlay,
+  IconSettingsAutomation,
 } from '@tabler/icons-react';
 
 export const Route = createFileRoute('/autocrud-admin')({
@@ -22,6 +24,7 @@ function AutoCRUDLayout() {
   const location = useLocation();
   const navigate = useNavigate();
   const resourceNames = getResourceNames();
+  const standaloneJobNames = getStandaloneJobNames();
 
   return (
     <AppShell header={{ height: 60 }} navbar={{ width: 240, breakpoint: 'sm' }} padding="md">
@@ -51,7 +54,7 @@ function AutoCRUDLayout() {
             Resources
           </Text>
           {resourceNames
-            .filter((name) => !isAsyncCreateJob(name))
+            .filter((name) => !isAsyncCreateJob(name) && !standaloneJobNames.includes(name))
             .map((name) => {
               const config = getResource(name)!;
               const jobChildren = getAsyncCreateJobChildren(name);
@@ -105,6 +108,29 @@ function AutoCRUDLayout() {
                 />
               );
             })}
+          {standaloneJobNames.length > 0 && (
+            <>
+              <Text size="xs" fw={500} c="dimmed" px="sm" py="xs">
+                Jobs
+              </Text>
+              {standaloneJobNames.map((name) => {
+                const config = getResource(name)!;
+                const isActive =
+                  location.pathname === `/autocrud-admin/${name}` ||
+                  location.pathname.startsWith(`/autocrud-admin/${name}/`);
+                return (
+                  <NavLink
+                    key={name}
+                    component={Link}
+                    to={`/autocrud-admin/${name}`}
+                    label={config.label}
+                    leftSection={<IconSettingsAutomation size={16} />}
+                    active={isActive}
+                  />
+                );
+              })}
+            </>
+          )}
         </AppShell.Section>
         <AppShell.Section>
           <Text size="xs" fw={500} c="dimmed" px="sm" py="xs">

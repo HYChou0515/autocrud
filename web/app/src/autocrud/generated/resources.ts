@@ -1525,6 +1525,7 @@ Object.assign(registry, {
       'periodic_initial_delay_seconds',
       'last_heartbeat_at',
     ],
+    isJob: true,
   },
   quest: {
     name: 'quest',
@@ -2002,6 +2003,7 @@ Object.assign(registry, {
       'periodic_initial_delay_seconds',
       'last_heartbeat_at',
     ],
+    isJob: true,
   },
   'new-char1-job': {
     name: 'new-char1-job',
@@ -2128,6 +2130,7 @@ Object.assign(registry, {
       'periodic_initial_delay_seconds',
       'last_heartbeat_at',
     ],
+    isJob: true,
     tableConfig: { canCreate: false },
   },
   'create-new-character2-job': {
@@ -2255,6 +2258,7 @@ Object.assign(registry, {
       'periodic_initial_delay_seconds',
       'last_heartbeat_at',
     ],
+    isJob: true,
     tableConfig: { canCreate: false },
   },
   'create-new-character4-job': {
@@ -2590,6 +2594,7 @@ Object.assign(registry, {
       'periodic_initial_delay_seconds',
       'last_heartbeat_at',
     ],
+    isJob: true,
     tableConfig: { canCreate: false },
   },
   pet: {
