@@ -26,6 +26,8 @@ export interface ResourceFormProps<T> {
   onSubmit: (values: T) => void | Promise<void>;
   onCancel?: () => void;
   submitLabel?: string;
+  /** Whether a mutation is currently in-flight — shows loading on the submit button. */
+  submitting?: boolean;
   /** Ref exposing form methods for external error handling (e.g. 409 unique conflict) */
   formRef?: React.MutableRefObject<ResourceFormHandle | null>;
 }
@@ -45,6 +47,7 @@ export function ResourceForm<T extends Record<string, any>>({
   onSubmit,
   onCancel,
   submitLabel = 'Submit',
+  submitting,
   formRef,
 }: ResourceFormProps<T>) {
   const {
@@ -204,7 +207,9 @@ export function ResourceForm<T extends Record<string, any>>({
                   Cancel
                 </Button>
               )}
-              <Button type="submit">{submitLabel}</Button>
+              <Button type="submit" loading={submitting}>
+                {submitLabel}
+              </Button>
             </Group>
           </Stack>
         </form>
@@ -234,7 +239,9 @@ export function ResourceForm<T extends Record<string, any>>({
                 Cancel
               </Button>
             )}
-            <Button onClick={handleJsonSubmit}>{submitLabel}</Button>
+            <Button onClick={handleJsonSubmit} loading={submitting}>
+              {submitLabel}
+            </Button>
           </Group>
         </Stack>
       )}

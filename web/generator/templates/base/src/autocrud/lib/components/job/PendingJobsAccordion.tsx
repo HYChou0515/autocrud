@@ -12,8 +12,8 @@
  * async-create custom actions will automatically display this section.
  */
 
-import { useMemo } from 'react';
-import { Accordion, Badge, Group, Text } from '@mantine/core';
+import { useMemo, useState, useTransition } from 'react';
+import { Accordion, Badge, Center, Group, Loader, Text } from '@mantine/core';
 import { IconLoader2 } from '@tabler/icons-react';
 import { getAsyncCreateJobChildren, getResource, type ResourceConfig } from '../../resources';
 import type { UseResourceListParams } from '../../hooks/useResourceList';
@@ -65,6 +65,8 @@ const JOB_COLUMN_OPTIONS = {
         );
       },
     },
+    // Hide payload to avoid rendering large blob data that can freeze the UI
+    payload: { hidden: true },
     retries: { label: 'Retries' },
     created_time: { label: 'Created' },
     updated_time: { label: 'Updated' },
@@ -87,12 +89,24 @@ export function PendingJobsAccordion({ parentResourceName }: PendingJobsAccordio
 
   const { totalCount, loading } = useMultiResourceList(entries, PENDING_PARAMS);
 
+  // ── Deferred rendering: only mount the heavy MultiResourceTable after
+  //    the accordion has been opened at least once, using startTransition
+  //    so the expand animation is not blocked by the table mount. ──
+  const [hasOpened, setHasOpened] = useState(false);
+  const [, startTransition] = useTransition();
+
+  const handleAccordionChange = (value: string | null) => {
+    if (value && !hasOpened) {
+      startTransition(() => setHasOpened(true));
+    }
+  };
+
   // ── Render nothing when no child jobs or no pending items ──
   if (jobConfigs.length === 0) return null;
   if (!loading && totalCount === 0) return null;
 
   return (
-    <Accordion variant="contained" defaultValue={null}>
+    <Accordion variant="contained" onChange={handleAccordionChange}>
       <Accordion.Item value="pending-jobs">
         <Accordion.Control>
           <Group gap="sm">
@@ -106,12 +120,18 @@ export function PendingJobsAccordion({ parentResourceName }: PendingJobsAccordio
           </Group>
         </Accordion.Control>
         <Accordion.Panel>
-          <MultiResourceTable
-            configs={jobConfigs}
-            params={PENDING_PARAMS}
-            columns={JOB_COLUMN_OPTIONS}
-            emptyMessage={null}
-          />
+          {hasOpened ? (
+            <MultiResourceTable
+              configs={jobConfigs}
+              params={PENDING_PARAMS}
+              columns={JOB_COLUMN_OPTIONS}
+              emptyMessage={null}
+            />
+          ) : (
+            <Center py="md">
+              <Loader size="sm" />
+            </Center>
+          )}
         </Accordion.Panel>
       </Accordion.Item>
     </Accordion>

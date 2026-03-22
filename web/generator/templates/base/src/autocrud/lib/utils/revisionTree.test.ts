@@ -263,11 +263,7 @@ describe('buildRevisionTreeLayout', () => {
     // All three revisions have the exact same timestamp
     const sameTime = '2024-06-15T12:00:00Z';
     const layout = buildRevisionTreeLayout(
-      [
-        rev('r1', null, sameTime),
-        rev('r2', 'r1', sameTime),
-        rev('r3', 'r2', sameTime),
-      ],
+      [rev('r1', null, sameTime), rev('r2', 'r1', sameTime), rev('r3', 'r2', sameTime)],
       'asc',
     );
 
@@ -278,11 +274,7 @@ describe('buildRevisionTreeLayout', () => {
   it('same timestamp: child comes before parent in desc order', () => {
     const sameTime = '2024-06-15T12:00:00Z';
     const layout = buildRevisionTreeLayout(
-      [
-        rev('r1', null, sameTime),
-        rev('r2', 'r1', sameTime),
-        rev('r3', 'r2', sameTime),
-      ],
+      [rev('r1', null, sameTime), rev('r2', 'r1', sameTime), rev('r3', 'r2', sameTime)],
       'desc',
     );
 

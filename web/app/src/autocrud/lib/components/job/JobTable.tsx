@@ -10,6 +10,7 @@ import { IconFileCode } from '@tabler/icons-react';
 import type { ResourceConfig } from '../../resources';
 import { ResourceTable } from '../table';
 import type { CellRenderProps } from '../table/buildColumns';
+import { safeStringify } from '../field/CellFieldRenderer/helpers';
 
 export interface JobTableProps<T> {
   config: ResourceConfig<T>;
@@ -50,10 +51,11 @@ function renderPayload(props: CellRenderProps<unknown>) {
   // Show first key-value pair as preview
   const firstKey = keys[0];
   const firstValue = obj[firstKey];
+  const firstValueStr = safeStringify(firstValue, undefined, 200);
   const previewText =
     keys.length === 1
-      ? `${firstKey}: ${JSON.stringify(firstValue)}`
-      : `${firstKey}: ${JSON.stringify(firstValue)}, +${keys.length - 1} more`;
+      ? `${firstKey}: ${firstValueStr}`
+      : `${firstKey}: ${firstValueStr}, +${keys.length - 1} more`;
 
   const shortPreview = previewText.length > 40 ? previewText.slice(0, 37) + '...' : previewText;
 
@@ -61,7 +63,7 @@ function renderPayload(props: CellRenderProps<unknown>) {
     <Tooltip
       label={
         <Code block style={{ maxWidth: '400px', maxHeight: '300px', overflow: 'auto' }}>
-          {JSON.stringify(obj, null, 2)}
+          {safeStringify(obj, 2)}
         </Code>
       }
       position="bottom-start"

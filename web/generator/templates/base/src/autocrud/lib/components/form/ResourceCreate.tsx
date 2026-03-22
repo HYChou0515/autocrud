@@ -1,9 +1,10 @@
-import { useRef } from 'react';
+import { useRef, useState } from 'react';
 import { useNavigate } from '@tanstack/react-router';
 import { Container, Title, Stack, Button, Group, Paper, Tabs } from '@mantine/core';
 import { IconArrowLeft } from '@tabler/icons-react';
 import type { ResourceConfig, CustomCreateAction, CreateConfig } from '../../resources';
 import { ResourceForm, type ResourceFormHandle } from './ResourceForm';
+import { useCreateResource } from '../../hooks/useCreateResource';
 import { showErrorNotification, extractUniqueConflict } from '../../utils/errorNotification';
 
 export interface ResourceCreateProps<T> extends Partial<CreateConfig> {
@@ -47,32 +48,43 @@ export function ResourceCreate<T extends Record<string, any>>({
   const hasCustomActions =
     config.customCreateActions != null && config.customCreateActions.length > 0;
 
-  const handleStandardSubmit = async (values: T) => {
-    try {
-      // Union resource: form wraps in { data: ... }, API expects the unwrapped union object
-      const submitValues = config.isUnion ? ((values as any).data as T) : values;
-      const result = await config.apiClient.create(submitValues);
-      navigate({ to: `${basePath}/${result.data.resource_id}` });
-    } catch (error) {
+  // Track which custom action is currently submitting (if any)
+  const [customActionPending, setCustomActionPending] = useState<string | null>(null);
+
+  // ── Create mutation via TanStack Query ──
+  const { createAsync, isPending } = useCreateResource<T>(config, {
+    onError: (error) => {
       const conflict = extractUniqueConflict(error);
       if (conflict && formRef.current) {
         formRef.current.setFieldError(conflict.field, `此值已被使用 (unique constraint)`);
-        showErrorNotification(error, 'Create Failed');
-      } else {
-        showErrorNotification(error, 'Create Failed');
       }
+    },
+  });
+
+  const handleStandardSubmit = async (values: T) => {
+    // Union resource: form wraps in { data: ... }, API expects the unwrapped union object
+    const submitValues = config.isUnion ? ((values as any).data as T) : values;
+    try {
+      const result = await createAsync(submitValues);
+      navigate({ to: `${basePath}/${result.resource_id}` });
+    } catch {
+      // Error notification and unique-constraint field errors are
+      // handled by the useCreateResource hook's onError callback.
     }
   };
 
   const makeCustomActionSubmit =
     (action: CustomCreateAction) => async (values: Record<string, any>) => {
       try {
+        setCustomActionPending(action.name);
         await action.apiMethod(values);
         // Always navigate back to the parent resource list page.
         // For async job actions, the job will appear in PendingJobsAccordion.
         navigate({ to: basePath });
       } catch (error) {
         showErrorNotification(error, `${action.label} Failed`);
+      } finally {
+        setCustomActionPending(null);
       }
     };
 
@@ -83,6 +95,7 @@ export function ResourceCreate<T extends Record<string, any>>({
         onSubmit={handleStandardSubmit}
         onCancel={cancelHandler}
         submitLabel="Create"
+        submitting={isPending}
         formRef={formRef}
       />
     </Paper>
@@ -108,6 +121,7 @@ export function ResourceCreate<T extends Record<string, any>>({
             onSubmit={makeCustomActionSubmit(action)}
             onCancel={cancelHandler}
             submitLabel={action.label}
+            submitting={customActionPending === action.name}
           />
         </Paper>
       );
@@ -135,6 +149,7 @@ export function ResourceCreate<T extends Record<string, any>>({
                   onSubmit={makeCustomActionSubmit(action)}
                   onCancel={cancelHandler}
                   submitLabel={action.label}
+                  submitting={customActionPending === action.name}
                 />
               </Paper>
             </Tabs.Panel>
@@ -172,6 +187,7 @@ export function ResourceCreate<T extends Record<string, any>>({
                 onSubmit={makeCustomActionSubmit(action)}
                 onCancel={cancelHandler}
                 submitLabel={action.label}
+                submitting={customActionPending === action.name}
               />
             </Paper>
           </Tabs.Panel>

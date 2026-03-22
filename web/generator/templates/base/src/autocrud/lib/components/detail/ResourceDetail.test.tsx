@@ -32,7 +32,20 @@ vi.mock('../../hooks/useFieldDepth', () => ({
 }));
 
 vi.mock('../form/ResourceForm', () => ({
-  ResourceForm: () => null,
+  ResourceForm: (props: any) => (
+    <div
+      data-testid="edit-form"
+      data-submitting={props.submitting ? 'true' : 'false'}
+      data-submit-label={props.submitLabel}
+    >
+      <button data-testid="edit-submit" onClick={() => props.onSubmit?.({})}>
+        {props.submitLabel}
+      </button>
+      <button data-testid="edit-cancel" onClick={props.onCancel}>
+        Cancel
+      </button>
+    </div>
+  ),
 }));
 
 vi.mock('./MetadataSection', () => ({
@@ -183,6 +196,12 @@ function makeMockDetail(dataOverrides: Record<string, any> = {}): UseResourceDet
     logs: null,
     logsLoading: false,
     fetchLogs: vi.fn(),
+    query: {} as any,
+    isUpdatePending: false,
+    isDeletePending: false,
+    isRestorePending: false,
+    isSwitchRevisionPending: false,
+    isRerunPending: false,
   };
 }
 
@@ -256,7 +275,7 @@ describe('ResourceDetail — Rerun button', () => {
     });
   });
 
-  it('shows error notification on rerun failure', async () => {
+  it('does not crash when rerun fails (hook handles error notification)', async () => {
     const rerunError = new Error('Queue unavailable');
     const detail = makeMockDetail({ status: 'failed' });
     detail.rerun = vi.fn().mockRejectedValue(rerunError);
@@ -267,8 +286,12 @@ describe('ResourceDetail — Rerun button', () => {
     fireEvent.click(screen.getByText('Rerun'));
 
     await waitFor(() => {
-      expect(showErrorNotification).toHaveBeenCalledWith(rerunError, 'Rerun Failed');
+      expect(detail.rerun).toHaveBeenCalled();
     });
+
+    // Error notification is now handled by the useResourceDetail hook,
+    // not the component — so showErrorNotification is NOT called here.
+    // The component simply delegates to rerun() which swallows errors.
   });
 });
 
@@ -589,5 +612,52 @@ describe('ResourceDetail — async create job back button', () => {
     const backLink = screen.getByTestId('back-link');
     // Should navigate to parent (character), not to the job list
     expect(backLink.getAttribute('data-to')).toBe('/autocrud-admin/character');
+  });
+});
+
+// ============================================================================
+// ResourceDetail — Edit form loading state regression
+// ============================================================================
+
+describe('ResourceDetail — edit form loading state regression', () => {
+  beforeEach(() => {
+    cleanup();
+    Object.keys(mockAsyncCreateJobs).forEach((k) => delete mockAsyncCreateJobs[k]);
+  });
+
+  function openEditModal(isJob = false) {
+    const config = makeConfig();
+    const result = render(
+      <MantineProvider>
+        <ResourceDetail config={config} resourceId="r1" basePath={'/test' as any} isJob={isJob} />
+      </MantineProvider>,
+    );
+    // Click Edit to open the modal
+    fireEvent.click(screen.getByText('Edit'));
+    return result;
+  }
+
+  it('passes submitting=false to ResourceForm when update is not pending', async () => {
+    mockDetailResult = makeMockDetail();
+    mockDetailResult.isUpdatePending = false;
+
+    openEditModal();
+
+    await waitFor(() => {
+      const form = screen.getByTestId('edit-form');
+      expect(form.getAttribute('data-submitting')).toBe('false');
+    });
+  });
+
+  it('passes submitting=true to ResourceForm when update mutation is in-flight', async () => {
+    mockDetailResult = makeMockDetail();
+    mockDetailResult.isUpdatePending = true;
+
+    openEditModal();
+
+    await waitFor(() => {
+      const form = screen.getByTestId('edit-form');
+      expect(form.getAttribute('data-submitting')).toBe('true');
+    });
   });
 });

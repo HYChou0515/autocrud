@@ -1026,12 +1026,9 @@ describe('conditionToQB', () => {
   // --- order_by + limit combined ---
 
   it('chains order_by and limit together', () => {
-    const result = conditionToQB(
-      {},
-      [{ field: 'level', operator: 'gte', value: 6 }],
-      10,
-      [{ field: 'updated_time', order: 'desc' }],
-    );
+    const result = conditionToQB({}, [{ field: 'level', operator: 'gte', value: 6 }], 10, [
+      { field: 'updated_time', order: 'desc' },
+    ]);
     expect(result).toBe('(QB["level"] >= 6).order_by("-updated_time").limit(10)');
   });
 

@@ -21,8 +21,12 @@ vi.mock('@tanstack/react-router', () => ({
 }));
 
 vi.mock('./ResourceForm', () => ({
-  ResourceForm: ({ onCancel, onSubmit, submitLabel }: any) => (
-    <div data-testid="resource-form" data-submit-label={submitLabel}>
+  ResourceForm: ({ onCancel, onSubmit, submitLabel, submitting }: any) => (
+    <div
+      data-testid="resource-form"
+      data-submit-label={submitLabel}
+      data-submitting={submitting ? 'true' : 'false'}
+    >
       <button data-testid="form-cancel" onClick={onCancel}>
         Cancel
       </button>
@@ -40,6 +44,7 @@ vi.mock('../../utils/errorNotification', () => ({
 
 import { render, screen, fireEvent, cleanup, waitFor } from '@testing-library/react';
 import { MantineProvider } from '@mantine/core';
+import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { ResourceCreate } from './ResourceCreate';
 
 function makeField(name: string): ResourceField {
@@ -89,10 +94,15 @@ function renderCreate(
   config: ResourceConfig<any>,
   props: Partial<React.ComponentProps<typeof ResourceCreate>> = {},
 ) {
+  const queryClient = new QueryClient({
+    defaultOptions: { queries: { retry: false }, mutations: { retry: false } },
+  });
   return render(
-    <MantineProvider>
-      <ResourceCreate config={config} basePath="/test" {...props} />
-    </MantineProvider>,
+    <QueryClientProvider client={queryClient}>
+      <MantineProvider>
+        <ResourceCreate config={config} basePath="/test" {...props} />
+      </MantineProvider>
+    </QueryClientProvider>,
   );
 }
 
@@ -301,6 +311,219 @@ describe('ResourceCreate — customization props', () => {
     await waitFor(() => {
       expect(mockApiMethod).toHaveBeenCalled();
       expect(mockNavigate).toHaveBeenCalledWith({ to: '/test' });
+    });
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Loading state regression — submit button must show loading during POST
+// ---------------------------------------------------------------------------
+
+describe('ResourceCreate — loading state regression', () => {
+  beforeEach(() => {
+    cleanup();
+    mockNavigate.mockReset();
+  });
+
+  it('passes submitting=false to ResourceForm when no mutation is in-flight', () => {
+    const config = makeConfig();
+    renderCreate(config);
+
+    const form = screen.getByTestId('resource-form');
+    expect(form.getAttribute('data-submitting')).toBe('false');
+  });
+
+  it('passes submitting=true to ResourceForm when create mutation is in-flight', async () => {
+    // Create a config where apiClient.create hangs forever (never resolves)
+    let resolveCreate!: (v: any) => void;
+    const hangingCreate = () =>
+      new Promise((resolve) => {
+        resolveCreate = resolve;
+      });
+
+    const config = makeConfig({
+      apiClient: {
+        ...makeConfig().apiClient,
+        create: vi.fn().mockImplementation(hangingCreate),
+      },
+    });
+    renderCreate(config);
+
+    // Trigger form submit
+    fireEvent.click(screen.getByTestId('form-submit'));
+
+    // While the create is pending, submitting should be true
+    await waitFor(() => {
+      const form = screen.getByTestId('resource-form');
+      expect(form.getAttribute('data-submitting')).toBe('true');
+    });
+
+    // Resolve to clean up
+    resolveCreate({ data: { resource_id: 'r1', revision_id: 'rev1' } });
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Custom action loading state — submit button shows loading during POST
+// ---------------------------------------------------------------------------
+
+describe('ResourceCreate — custom action loading state', () => {
+  beforeEach(() => {
+    cleanup();
+    mockNavigate.mockReset();
+  });
+
+  it('shows loading on custom action form while apiMethod is pending (single action)', async () => {
+    let resolveApi!: (v: any) => void;
+    const hangingApi = vi.fn(
+      () =>
+        new Promise((resolve) => {
+          resolveApi = resolve;
+        }),
+    ) as any;
+
+    const action: CustomCreateAction = {
+      name: 'import',
+      label: 'Import',
+      fields: [makeField('url')],
+      apiMethod: hangingApi,
+    };
+
+    const config = makeConfig({ customCreateActions: [action] });
+    renderCreate(config, { customFormOnly: true });
+
+    // Before submit — not submitting
+    const form = screen.getByTestId('resource-form');
+    expect(form.getAttribute('data-submitting')).toBe('false');
+
+    // Trigger submit
+    fireEvent.click(screen.getByTestId('form-submit'));
+
+    // While pending — submitting should be true
+    await waitFor(() => {
+      expect(form.getAttribute('data-submitting')).toBe('true');
+    });
+
+    // Resolve and verify it resets
+    resolveApi({ data: { resource_id: 'r1' } });
+    await waitFor(() => {
+      expect(form.getAttribute('data-submitting')).toBe('false');
+    });
+  });
+
+  it('shows loading on custom action form while apiMethod is pending (tabbed actions)', async () => {
+    let resolveApi!: (v: any) => void;
+    const hangingApi = vi.fn(
+      () =>
+        new Promise((resolve) => {
+          resolveApi = resolve;
+        }),
+    ) as any;
+
+    const action1: CustomCreateAction = {
+      name: 'import',
+      label: 'Import',
+      fields: [makeField('url')],
+      apiMethod: hangingApi,
+    };
+    const action2: CustomCreateAction = {
+      name: 'clone',
+      label: 'Clone',
+      fields: [makeField('source')],
+      apiMethod: vi.fn().mockResolvedValue({}),
+    };
+
+    const config = makeConfig({ customCreateActions: [action1, action2] });
+    renderCreate(config, { customFormOnly: true });
+
+    // The first tab (Import) is active by default
+    const forms = screen.getAllByTestId('resource-form');
+    const importForm = forms[0];
+    expect(importForm.getAttribute('data-submitting')).toBe('false');
+
+    // Trigger submit on Import action
+    const submitButtons = screen.getAllByTestId('form-submit');
+    fireEvent.click(submitButtons[0]);
+
+    await waitFor(() => {
+      expect(importForm.getAttribute('data-submitting')).toBe('true');
+    });
+
+    // Resolve
+    resolveApi({ data: { resource_id: 'r1' } });
+    await waitFor(() => {
+      expect(importForm.getAttribute('data-submitting')).toBe('false');
+    });
+  });
+
+  it('resets loading state when custom action apiMethod fails', async () => {
+    const failingApi = vi.fn().mockRejectedValue(new Error('Network error'));
+
+    const action: CustomCreateAction = {
+      name: 'import',
+      label: 'Import',
+      fields: [makeField('url')],
+      apiMethod: failingApi,
+    };
+
+    const config = makeConfig({ customCreateActions: [action] });
+    renderCreate(config, { customFormOnly: true });
+
+    const form = screen.getByTestId('resource-form');
+
+    // Trigger submit
+    fireEvent.click(screen.getByTestId('form-submit'));
+
+    // After the rejection settles, submitting should be false again
+    await waitFor(() => {
+      expect(failingApi).toHaveBeenCalled();
+      expect(form.getAttribute('data-submitting')).toBe('false');
+    });
+  });
+
+  it('shows loading on custom action form in standard+custom tabs mode', async () => {
+    let resolveApi!: (v: any) => void;
+    const hangingApi = vi.fn(
+      () =>
+        new Promise((resolve) => {
+          resolveApi = resolve;
+        }),
+    ) as any;
+
+    const action: CustomCreateAction = {
+      name: 'import',
+      label: 'Import',
+      fields: [makeField('url')],
+      apiMethod: hangingApi,
+    };
+
+    const config = makeConfig({ customCreateActions: [action] });
+    // customFormOnly=false (default) → Standard + Import tabs
+    renderCreate(config);
+
+    // There should be Standard and Import tabs
+    expect(screen.getByText('Standard')).toBeTruthy();
+    expect(screen.getByText('Import')).toBeTruthy();
+
+    // Click Import tab to switch
+    fireEvent.click(screen.getByText('Import'));
+
+    // Get the custom action form (second form)
+    const forms = screen.getAllByTestId('resource-form');
+    const importForm = forms[forms.length - 1];
+    expect(importForm.getAttribute('data-submitting')).toBe('false');
+
+    // Submit the import form
+    const submitButtons = screen.getAllByTestId('form-submit');
+    fireEvent.click(submitButtons[submitButtons.length - 1]);
+
+    await waitFor(() => {
+      expect(importForm.getAttribute('data-submitting')).toBe('true');
+    });
+
+    resolveApi({ data: { resource_id: 'r1' } });
+    await waitFor(() => {
+      expect(importForm.getAttribute('data-submitting')).toBe('false');
     });
   });
 });

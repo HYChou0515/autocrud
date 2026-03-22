@@ -1357,8 +1357,9 @@ def configure_crud():
         label="New Character0",
     )
     async def create_new_character0():
+        time.sleep(5)
         return Character(
-            name="hi",
+            name=str(time.time()),
             character_class=CharacterClass.WARRIOR,
         )
 

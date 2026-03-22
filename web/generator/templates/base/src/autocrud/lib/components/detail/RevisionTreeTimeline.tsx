@@ -95,7 +95,12 @@ export function RevisionTreeTimeline({
   return (
     <Box
       ref={scrollRef}
-      style={{ maxHeight: treeViewportHeight, overflowX: 'auto', overflowY: 'auto', paddingRight: 12 }}
+      style={{
+        maxHeight: treeViewportHeight,
+        overflowX: 'auto',
+        overflowY: 'auto',
+        paddingRight: 12,
+      }}
     >
       <Box
         style={{
