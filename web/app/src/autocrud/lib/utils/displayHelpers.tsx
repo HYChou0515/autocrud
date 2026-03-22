@@ -5,6 +5,8 @@
 
 import { Code, Text } from '@mantine/core';
 import { TimeDisplay } from '../components/common/TimeDisplay';
+import { safeStringify } from '../components/field/CellFieldRenderer/helpers';
+import { truncateForDetail } from './payloadTruncation';
 
 /** Check if a string looks like an ISO datetime (e.g. "2024-01-01T00:00:00...") */
 export function isISODateString(value: unknown): value is string {
@@ -41,12 +43,12 @@ export function renderSimpleValue(value: unknown): React.ReactNode {
         </Text>
       );
     if (typeof value[0] === 'object' && value[0] !== null) {
-      return <Code block>{JSON.stringify(value, null, 2)}</Code>;
+      return <Code block>{safeStringify(truncateForDetail(value), 2)}</Code>;
     }
     return value.join(', ');
   }
   if (typeof value === 'object' && value !== null) {
-    return <Code block>{JSON.stringify(value, null, 2)}</Code>;
+    return <Code block>{safeStringify(truncateForDetail(value), 2)}</Code>;
   }
   return String(value);
 }

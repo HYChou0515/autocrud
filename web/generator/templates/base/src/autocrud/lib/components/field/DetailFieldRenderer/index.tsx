@@ -18,6 +18,8 @@ import { resolveFieldKind, type FieldKind } from '../resolveFieldKind';
 import { RefLink, RefLinkList, RefRevisionLink, RefRevisionLinkList } from '../../common/RefLink';
 import { TimeDisplay } from '../../common/TimeDisplay';
 import { isBlobObject, renderSimpleValue, NA } from '../../../utils/displayHelpers';
+import { safeStringify } from '../CellFieldRenderer/helpers';
+import { truncateForDetail } from '../../../utils/payloadTruncation';
 import { BinaryFieldDisplay } from './BinaryFieldDisplay';
 import { ArrayFieldDisplay } from './ArrayFieldDisplay';
 import { UnionFieldDisplay } from './UnionFieldDisplay';
@@ -89,7 +91,7 @@ const DETAIL_RENDERERS: Record<FieldKind, (ctx: DetailRenderContext) => React.Re
 
   file: ({ value }) => {
     if (typeof value === 'object' && value !== null) {
-      return <Code block>{JSON.stringify(value, null, 2)}</Code>;
+      return <Code block>{safeStringify(truncateForDetail(value), 2)}</Code>;
     }
     return NA;
   },
@@ -167,7 +169,7 @@ const DETAIL_RENDERERS: Record<FieldKind, (ctx: DetailRenderContext) => React.Re
     ) {
       return <BinaryFieldDisplay value={value as Record<string, unknown>} />;
     }
-    return <Code block>{JSON.stringify(value, null, 2)}</Code>;
+    return <Code block>{safeStringify(truncateForDetail(value), 2)}</Code>;
   },
 
   /* ---- Text-like ---- */

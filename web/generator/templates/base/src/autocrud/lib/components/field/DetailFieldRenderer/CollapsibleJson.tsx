@@ -8,6 +8,8 @@
 import { useState } from 'react';
 import { Code, UnstyledButton, Group, Text } from '@mantine/core';
 import { IconChevronRight, IconChevronDown } from '@tabler/icons-react';
+import { truncateForDetail } from '../../../utils/payloadTruncation';
+import { safeStringify } from '../CellFieldRenderer/helpers';
 
 export interface CollapsibleJsonProps {
   value: unknown;
@@ -42,7 +44,9 @@ export function CollapsibleJson({ value, defaultExpanded = false }: CollapsibleJ
     return <Code>{String(value)}</Code>;
   }
 
-  const jsonStr = JSON.stringify(value, null, 2);
+  // Truncate large payloads before serialising to avoid freezing
+  const truncated = truncateForDetail(value);
+  const jsonStr = safeStringify(truncated, 2);
 
   // Small enough to show inline (≤ 120 chars) — just show it
   if (jsonStr.length <= 120) {
