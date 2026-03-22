@@ -592,10 +592,28 @@ describe('genMigrateApiClient', () => {
     expect(code).toContain('signal?: AbortSignal');
   });
 
-  it('test and execute accept revisionId parameter', () => {
+  it('generates MigrateOptions interface with limit and qb fields', () => {
     const code = genMigrateApiClient('');
+    expect(code).toContain('export interface MigrateOptions');
+    expect(code).toContain('onProgress?: (p: MigrateProgress) => void');
+    expect(code).toContain('signal?: AbortSignal');
     expect(code).toContain('revisionId?: RevisionScope');
+    expect(code).toContain('limit?: number');
+    expect(code).toContain('qb?: string');
+  });
+
+  it('test and execute accept MigrateOptions parameter', () => {
+    const code = genMigrateApiClient('');
+    expect(code).toContain('options?: MigrateOptions');
     expect(code).toContain('buildMigrateUrl(');
+  });
+
+  it('buildMigrateUrl constructs query params for limit and qb', () => {
+    const code = genMigrateApiClient('');
+    expect(code).toContain('URLSearchParams');
+    expect(code).toContain("'revision_id'");
+    expect(code).toContain("'limit'");
+    expect(code).toContain("'qb'");
   });
 
   it('imports getBaseUrl from shared client module', () => {

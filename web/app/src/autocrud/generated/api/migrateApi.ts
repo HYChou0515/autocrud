@@ -89,19 +89,21 @@ async function streamMigrate(
 }
 
 /**
- * Build the migration URL with optional revision_id query parameter.
+ * Build the migration URL with query parameters.
  */
 function buildMigrateUrl(
   base: string,
   modelName: string,
   action: 'test' | 'execute',
-  revisionId?: string | null,
+  options?: { revisionId?: RevisionScope; limit?: number; qb?: string },
 ): string {
   const url = `${base}/${modelName}/migrate/${action}`;
-  if (revisionId) {
-    return `${url}?revision_id=${encodeURIComponent(revisionId)}`;
-  }
-  return url;
+  const params = new URLSearchParams();
+  if (options?.revisionId) params.set('revision_id', encodeURIComponent(options.revisionId));
+  if (options?.limit != null) params.set('limit', String(options.limit));
+  if (options?.qb) params.set('qb', options.qb);
+  const qs = params.toString();
+  return qs ? `${url}?${qs}` : url;
 }
 
 /** Revision scope for batch migration. */
@@ -110,40 +112,40 @@ export type RevisionScope =
   | 'all' // every revision of each resource
   | string; // specific revision ID
 
+/** Options for batch migration API calls. */
+export interface MigrateOptions {
+  /** Callback invoked for each resource as it is migrated. */
+  onProgress?: (p: MigrateProgress) => void;
+  /** AbortSignal to cancel the migration. */
+  signal?: AbortSignal;
+  /** Revision scope: omit/null for current, "all" for every revision, or a specific ID. */
+  revisionId?: RevisionScope;
+  /** Maximum number of resources to migrate. When omitted, the server default (10) is used. */
+  limit?: number;
+  /** QB expression to filter which resources to migrate. Example: "QB['status'] == 'active'" */
+  qb?: string;
+}
+
 export const migrateApi = {
   /**
    * Test migration (dry run) for a model.
    * No data is written — safe to run on production.
-   *
-   * @param revisionId - Revision scope: omit/null for current, "all" for every revision, or a specific ID.
    */
-  test: (
-    modelName: string,
-    onProgress?: (p: MigrateProgress) => void,
-    signal?: AbortSignal,
-    revisionId?: RevisionScope,
-  ): Promise<MigrateResult> =>
+  test: (modelName: string, options?: MigrateOptions): Promise<MigrateResult> =>
     streamMigrate(
-      buildMigrateUrl(`${getBaseUrl()}/v1/autocrud`, modelName, 'test', revisionId),
-      onProgress,
-      signal,
+      buildMigrateUrl(`${getBaseUrl()}/v1/autocrud`, modelName, 'test', options),
+      options?.onProgress,
+      options?.signal,
     ),
 
   /**
    * Execute migration for a model.
    * Migrated data is written back to storage.
-   *
-   * @param revisionId - Revision scope: omit/null for current, "all" for every revision, or a specific ID.
    */
-  execute: (
-    modelName: string,
-    onProgress?: (p: MigrateProgress) => void,
-    signal?: AbortSignal,
-    revisionId?: RevisionScope,
-  ): Promise<MigrateResult> =>
+  execute: (modelName: string, options?: MigrateOptions): Promise<MigrateResult> =>
     streamMigrate(
-      buildMigrateUrl(`${getBaseUrl()}/v1/autocrud`, modelName, 'execute', revisionId),
-      onProgress,
-      signal,
+      buildMigrateUrl(`${getBaseUrl()}/v1/autocrud`, modelName, 'execute', options),
+      options?.onProgress,
+      options?.signal,
     ),
 };

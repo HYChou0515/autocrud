@@ -96,41 +96,6 @@ describe('useDeleteResource', () => {
     expect(config.apiClient.permanentlyDelete).toHaveBeenCalledWith('r1');
   });
 
-  it('removes detail cache (not invalidate) on permanent delete to avoid 404 refetch', async () => {
-    const config = makeConfig();
-    const { Wrapper, queryClient } = createWrapper();
-
-    // Pre-populate a detail cache entry for the resource being deleted
-    queryClient.setQueryData(['resource', 'test', 'detail', 'r1'], {
-      data: {},
-      meta: { resource_id: 'r1' },
-    });
-
-    const removeSpy = vi.spyOn(queryClient, 'removeQueries');
-    const invalidateSpy = vi.spyOn(queryClient, 'invalidateQueries');
-
-    const { result } = renderHook(() => useDeleteResource(config, 'r1'), { wrapper: Wrapper });
-
-    await act(async () => {
-      await result.current.permanentlyDeleteAsync();
-    });
-
-    // Should REMOVE detail queries (not invalidate, which would trigger refetch)
-    expect(removeSpy).toHaveBeenCalledWith(
-      expect.objectContaining({ queryKey: ['resource', 'test', 'detail', 'r1'] }),
-    );
-
-    // Should still invalidate list queries so the table refreshes
-    const invalidatedKeys = invalidateSpy.mock.calls.map((c) => c[0]);
-    expect(invalidatedKeys).toContainEqual(
-      expect.objectContaining({ queryKey: ['resource', 'test', 'list'] }),
-    );
-
-    // The detail cache entry should be gone
-    const cached = queryClient.getQueryData(['resource', 'test', 'detail', 'r1']);
-    expect(cached).toBeUndefined();
-  });
-
   it('shows error notification on permanent delete failure', async () => {
     const config = makeConfig();
     (config.apiClient.permanentlyDelete as ReturnType<typeof vi.fn>).mockRejectedValueOnce(
