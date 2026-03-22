@@ -4,7 +4,9 @@ import {
   getResourceNames,
   getResource,
   isAsyncCreateJob,
+  isAsyncUpdateJob,
   getAsyncCreateJobChildren,
+  getAsyncUpdateJobChildren,
   getStandaloneJobNames,
 } from '@/autocrud/lib/resources';
 import {
@@ -13,6 +15,7 @@ import {
   IconDatabaseExport,
   IconArrowsTransferUp,
   IconPlayerPlay,
+  IconRefresh,
   IconSettingsAutomation,
 } from '@tabler/icons-react';
 
@@ -54,20 +57,27 @@ function AutoCRUDLayout() {
             Resources
           </Text>
           {resourceNames
-            .filter((name) => !isAsyncCreateJob(name) && !standaloneJobNames.includes(name))
+            .filter(
+              (name) =>
+                !isAsyncCreateJob(name) &&
+                !isAsyncUpdateJob(name) &&
+                !standaloneJobNames.includes(name),
+            )
             .map((name) => {
               const config = getResource(name)!;
-              const jobChildren = getAsyncCreateJobChildren(name);
+              const createJobChildren = getAsyncCreateJobChildren(name);
+              const updateJobChildren = getAsyncUpdateJobChildren(name);
+              const allJobChildren = [...createJobChildren, ...updateJobChildren];
               const isActive =
                 location.pathname === `/autocrud-admin/${name}` ||
                 location.pathname.startsWith(`/autocrud-admin/${name}/`);
-              const hasActiveChild = jobChildren.some(
+              const hasActiveChild = allJobChildren.some(
                 (jn) =>
                   location.pathname === `/autocrud-admin/${jn}` ||
                   location.pathname.startsWith(`/autocrud-admin/${jn}/`),
               );
 
-              if (jobChildren.length > 0) {
+              if (allJobChildren.length > 0) {
                 return (
                   <NavLink
                     key={name}
@@ -77,7 +87,7 @@ function AutoCRUDLayout() {
                     defaultOpened={isActive || hasActiveChild}
                     onClick={() => navigate({ to: `/autocrud-admin/${name}` })}
                   >
-                    {jobChildren.map((jn) => {
+                    {createJobChildren.map((jn) => {
                       const jConfig = getResource(jn)!;
                       return (
                         <NavLink
@@ -86,6 +96,22 @@ function AutoCRUDLayout() {
                           to={`/autocrud-admin/${jn}`}
                           label={jConfig.label}
                           leftSection={<IconPlayerPlay size={14} />}
+                          active={
+                            location.pathname === `/autocrud-admin/${jn}` ||
+                            location.pathname.startsWith(`/autocrud-admin/${jn}/`)
+                          }
+                        />
+                      );
+                    })}
+                    {updateJobChildren.map((jn) => {
+                      const jConfig = getResource(jn)!;
+                      return (
+                        <NavLink
+                          key={jn}
+                          component={Link}
+                          to={`/autocrud-admin/${jn}`}
+                          label={jConfig.label}
+                          leftSection={<IconRefresh size={14} />}
                           active={
                             location.pathname === `/autocrud-admin/${jn}` ||
                             location.pathname.startsWith(`/autocrud-admin/${jn}/`)

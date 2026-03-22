@@ -1,15 +1,18 @@
-"""Dynamic Job model builder for async create actions.
+"""Dynamic Job model builder for async create/update actions.
 
-When a custom create action is registered with ``async_mode='job'``, the
-framework needs a ``Job[PayloadType, ArtifactType]`` subclass to manage the
-background work.  This module provides :func:`build_async_job_model` which
-dynamically creates such a model at ``apply()`` time.
+When a custom create or update action is registered with
+``async_mode='job'``, the framework needs a ``Job[PayloadType, ArtifactType]``
+subclass to manage the background work.  This module provides
+:func:`build_async_job_model` (for create actions) and
+:func:`build_async_update_job_model` (for update actions) which dynamically
+create such models at ``apply()`` time.
 
 The generated model:
 
 * Inherits from ``Job[PayloadType, dict]`` (artifact is a dict containing
   ``RevisionInfo``-like data).
-* Has a ``_is_async_create_job = True`` class attribute for identification.
+* Has a ``_is_async_create_job = True`` or ``_is_async_update_job = True``
+  class attribute for identification.
 * Has a ``_target_resource_name`` attribute linking back to the parent resource.
 * Is recognised by ``_is_job_subclass()`` via standard MRO checks.
 """
@@ -177,14 +180,69 @@ def build_async_job_model(
     return job_model
 
 
+def build_async_update_job_model(
+    action_name: str,
+    resource_name: str,
+    payload_type: type,
+    *,
+    update_mode: str = "update",
+) -> type:
+    """Build a dynamic ``Job`` subclass for an async update action.
+
+    Similar to :func:`build_async_job_model` but marks the generated class
+    with ``_is_async_update_job = True`` and stores the *update_mode* so the
+    job handler knows whether to call ``rm.update()`` or ``rm.modify()``.
+
+    Args:
+        action_name: The action path (e.g. ``"train"``).
+        resource_name: The parent resource name (e.g. ``"character"``).
+        payload_type: The msgspec.Struct type of the handler's body parameter
+            (includes the auto-injected ``resource_id`` field).
+        update_mode: ``"update"`` or ``"modify"``.
+
+    Returns:
+        A new ``Job`` subclass class.
+
+    Example:
+        >>> from msgspec import Struct
+        >>> class Req(Struct):
+        ...     resource_id: str
+        ...     levels: int
+        >>> JobModel = build_async_update_job_model("train", "character", Req)
+        >>> JobModel.__name__
+        'TrainCharacterJob'
+        >>> JobModel._is_async_update_job
+        True
+        >>> JobModel._update_mode
+        'update'
+    """
+    clean_name = _clean_action_name(action_name) or resource_name
+    action_pascal = clean_name.replace("-", " ").title().replace(" ", "")
+    resource_pascal = resource_name.replace("-", " ").title().replace(" ", "")
+    class_name = f"{action_pascal}{resource_pascal}Job"
+
+    # Create a Job subclass with concrete payload type and dict artifact
+    job_model = types.new_class(class_name, (Job[payload_type, dict],), {})
+
+    # Attach metadata for identification and linking
+    job_model._is_async_update_job = True  # type: ignore[attr-defined]
+    job_model._target_resource_name = resource_name  # type: ignore[attr-defined]
+    job_model._action_name = action_name  # type: ignore[attr-defined]
+    job_model._update_mode = update_mode  # type: ignore[attr-defined]
+
+    return job_model
+
+
 def build_auto_payload_struct(
     action_name: str,
     resource_name: str,
     param_fields: list[tuple[str, type]],
+    *,
+    extra_fields: list[tuple[str, type]] | None = None,
 ) -> type:
     """Build a dynamic payload ``Struct`` from handler parameter types.
 
-    When a create-action handler has no explicit ``msgspec.Struct`` body
+    When an action handler has no explicit ``msgspec.Struct`` body
     parameter — e.g. it only takes scalar query/path parameters — this
     function auto-generates a payload Struct so that all inputs can be
     captured inside a ``Job`` payload for async processing.
@@ -193,17 +251,20 @@ def build_auto_payload_struct(
         action_name: The action path (e.g. ``"create-character"``).
         resource_name: The parent resource name.
         param_fields: ``[(name, type), ...]`` for each serialisable parameter.
+        extra_fields: Additional fields to prepend (e.g.
+            ``[("resource_id", str)]`` for update actions).
 
     Returns:
         A new ``msgspec.Struct`` subclass with fields matching the handler's
-        parameters.
+        parameters (plus any *extra_fields*).
     """
     clean_name = _clean_action_name(action_name) or resource_name
     action_pascal = clean_name.replace("-", " ").title().replace(" ", "")
     resource_pascal = resource_name.replace("-", " ").title().replace(" ", "")
     class_name = f"{action_pascal}{resource_pascal}Payload"
 
-    return msgspec.defstruct(class_name, param_fields)
+    all_fields = list(extra_fields or []) + param_fields
+    return msgspec.defstruct(class_name, all_fields)
 
 
 def derive_job_resource_name(action_name: str, resource_name: str = "") -> str:

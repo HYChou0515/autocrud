@@ -2332,27 +2332,40 @@ class IResourceManager(ABC, Generic[T]):
         *,
         block: bool = True,
         custom_creation: "Literal['all'] | list[str] | None" = None,
+        custom_update: "Literal['all'] | list[str] | None" = None,
     ) -> None:
         """Start consuming jobs from the message queue.
 
-        When *custom_creation* is ``None`` (default), starts this resource’s
-        own message-queue consumer.
+        When both *custom_creation* and *custom_update* are ``None``
+        (default), starts this resource’s own message-queue consumer.
 
         When *custom_creation* is ``"all"``, starts all async-create-job
         consumers that target this resource.
 
         When *custom_creation* is a list of job resource names, starts only
-        those specific consumers.
+        those specific create-job consumers.
+
+        When *custom_update* is ``"all"``, starts all async-update-job
+        consumers that target this resource.
+
+        When *custom_update* is a list of job resource names, starts only
+        those specific update-job consumers.
+
+        Both *custom_creation* and *custom_update* can be used together
+        in the same call.
 
         Args:
             block: If ``True`` (default), block until the consumer thread(s)
                 finish.  ``False`` returns immediately.
             custom_creation: Which async-create-job consumers to start.
+            custom_update: Which async-update-job consumers to start.
 
         Raises:
             NotImplementedError: if message queue is not configured
-                (when *custom_creation* is ``None``).
-            ValueError: if a name in *custom_creation* is not registered.
+                (when both *custom_creation* and *custom_update* are
+                ``None``).
+            ValueError: if a name in *custom_creation* or *custom_update*
+                is not registered.
         """
 
 

@@ -2430,3 +2430,93 @@ describe('extractCustomUpdateActions — bodySchema', () => {
     expect(actions[0].fields.length).toBe(2);
   });
 });
+
+// ============================================================================
+// extractCustomUpdateActions — asyncMode
+// ============================================================================
+describe('extractCustomUpdateActions — asyncMode', () => {
+  function buildAsyncUpdateActionSpec() {
+    return {
+      paths: {
+        '/character': {
+          post: {
+            requestBody: {
+              content: { 'application/json': { schema: { $ref: '#/components/schemas/Character' } } },
+            },
+          },
+        },
+        '/character/{resource_id}/train': {
+          post: {
+            summary: 'Train (character)',
+            'x-autocrud-update-action': { resource: 'character', label: 'Train' },
+            requestBody: {
+              content: {
+                'application/json': {
+                  schema: {
+                    type: 'object',
+                    properties: { hours: { type: 'integer' } },
+                    required: ['hours'],
+                    title: 'TrainInput',
+                  },
+                },
+              },
+            },
+          },
+        },
+        '/train-character-job': { get: {} },
+        '/train-character-job/{id}': { get: {} },
+      },
+      'x-autocrud-custom-update-actions': {
+        character: [
+          {
+            path: '/character/{resource_id}/train',
+            label: 'Train',
+            operationId: 'train',
+            mode: 'update',
+            bodySchema: 'TrainInput',
+            asyncMode: 'job',
+            jobResourceName: 'train-character-job',
+          },
+        ],
+      },
+      'x-autocrud-async-update-jobs': { 'train-character-job': 'character' },
+      components: {
+        schemas: {
+          Character: {
+            type: 'object',
+            properties: { name: { type: 'string' }, level: { type: 'integer' } },
+            required: ['name', 'level'],
+          },
+          TrainInput: {
+            type: 'object',
+            properties: { hours: { type: 'integer' } },
+            required: ['hours'],
+          },
+        },
+      },
+    };
+  }
+
+  it('parses asyncMode and jobResourceName from update action extension', () => {
+    const resources = buildIR(buildAsyncUpdateActionSpec()).resources;
+    const action = resources.find((r) => r.name === 'character')!.customUpdateActions![0];
+    expect(action.asyncMode).toBe('job');
+    expect(action.jobResourceName).toBe('train-character-job');
+  });
+
+  it('sync update actions have no asyncMode or jobResourceName', () => {
+    const resources = buildIR(buildUpdateActionSpec()).resources;
+    const action = resources.find((r) => r.name === 'character')!.customUpdateActions![0];
+    expect(action.asyncMode).toBeUndefined();
+    expect(action.jobResourceName).toBeUndefined();
+  });
+
+  it('parses background asyncMode without jobResourceName', () => {
+    const spec = buildUpdateActionSpec();
+    spec['x-autocrud-custom-update-actions'].character[0].asyncMode = 'background';
+    const resources = buildIR(spec).resources;
+    const action = resources.find((r) => r.name === 'character')!.customUpdateActions![0];
+    expect(action.asyncMode).toBe('background');
+    expect(action.jobResourceName).toBeUndefined();
+  });
+});

@@ -167,6 +167,8 @@ class _PendingUpdateAction:
     existing_param: str = "existing"
     info_param: str = "info"
     meta_param: str = "meta"
+    async_mode: Literal["job", "background"] | None = None
+    job_name: str | None = None
 
 
 class LazyJobHandler:
@@ -855,6 +857,8 @@ class AutoCRUD:
         existing_param: str = "existing",
         info_param: str = "info",
         meta_param: str = "meta",
+        async_mode: Literal["job", "background"] | None = None,
+        job_name: str | None = None,
     ) -> Callable:
         """Decorator to register a custom update action for a resource.
 
@@ -874,6 +878,29 @@ class AutoCRUD:
         respectively.  Like *existing_param*, these are detected by
         **parameter name** and only injected when the handler declares them.
 
+        When ``async_mode='job'`` is set, the framework automatically:
+
+        1. Generates a ``Job`` model with the handler's body type as payload
+           (plus an auto-injected ``resource_id`` field).
+        2. Registers the Job model with a message queue.
+        3. On POST, creates a Job instance (PENDING) and enqueues it.
+        4. Returns HTTP 202 with :class:`~autocrud.types.JobRedirectInfo`.
+        5. In the background, fetches existing resource (lazy), executes
+           the handler with the payload and existing data.
+        6. If the handler returns a resource object, auto-updates it and
+           stores the ``RevisionInfo`` as the Job's artifact.
+
+        When ``async_mode='background'`` is set, the framework:
+
+        1. On POST, schedules the handler via FastAPI ``BackgroundTasks``.
+        2. Returns HTTP 202 with :class:`~autocrud.types.BackgroundTaskAccepted`
+           immediately.
+        3. The handler runs in the background; if it returns a resource object,
+           ``resource_manager.update()`` (or ``modify()``) is called
+           automatically.
+        4. No Job model is created — the task is fire-and-forget.
+        5. Errors are logged but not surfaced to the client.
+
         Args:
             resource_name: The name of the resource this action belongs to.
             path: URL path suffix (e.g. ``"level-up"``).  If ``None``,
@@ -892,6 +919,15 @@ class AutoCRUD:
             meta_param: The handler parameter name into which the
                 existing resource's ``ResourceMeta`` will be injected.
                 Defaults to ``"meta"``.
+            async_mode: Execution mode for the action.  ``None`` (default)
+                executes synchronously.  ``'job'`` executes asynchronously
+                via the message queue system.  ``'background'`` executes
+                asynchronously via FastAPI ``BackgroundTasks``
+                (fire-and-forget, no Job tracking).
+            job_name: Custom resource name for the auto-generated Job model
+                (e.g. ``"my-custom-job"``).  If ``None``, derived automatically
+                from *path* and *resource_name*.  Only meaningful when
+                ``async_mode='job'``.
 
         Returns:
             A decorator that registers the handler and returns it unchanged.
@@ -913,16 +949,34 @@ class AutoCRUD:
                 )
 
 
-            @crud.update_action("character", label="Stamp Info")
-            def stamp_info(
+            @crud.update_action(
+                "character",
+                label="Train",
+                async_mode="job",
+            )
+            def train(
                 existing: Character,
-                info: RevisionInfo,
-                meta: ResourceMeta,
+                body: LevelUpInput = Body(...),
             ) -> Character:
+                import time
+
+                time.sleep(10)  # long-running training
                 return Character(
-                    name=f"{existing.name}-rev:{info.revision_id}",
-                    level=meta.total_revision_count,
+                    name=existing.name,
+                    level=existing.level + body.levels,
                 )
+
+
+            @crud.update_action(
+                "character",
+                label="Background Heal",
+                async_mode="background",
+            )
+            def bg_heal(existing: Character) -> Character:
+                import time
+
+                time.sleep(5)
+                return Character(name=existing.name, level=existing.level + 1)
             ```
 
         Note:
@@ -944,6 +998,8 @@ class AutoCRUD:
                     existing_param=existing_param,
                     info_param=info_param,
                     meta_param=meta_param,
+                    async_mode=async_mode,
+                    job_name=job_name,
                 )
             )
             return func
@@ -1382,6 +1438,9 @@ class AutoCRUD:
 
         # Inject x-autocrud-async-create-jobs mapping (job resource → parent)
         self._inject_async_create_jobs(app.openapi_schema)
+
+        # Inject x-autocrud-async-update-jobs mapping (job resource → parent)
+        self._inject_async_update_jobs(app.openapi_schema)
 
         # Inject x-autocrud-indexed-fields mapping (resource → indexed field paths)
         self._inject_indexed_fields(app.openapi_schema)
@@ -2163,6 +2222,18 @@ class AutoCRUD:
                 info["inlineBodyParams"] = inline_params
             if file_params:
                 info["fileParams"] = file_params
+            # Async update-action metadata
+            if action.async_mode is not None:
+                info["asyncMode"] = action.async_mode
+                if action.async_mode == "job":
+                    from autocrud.crud.async_job_builder import (
+                        derive_job_resource_name,
+                    )
+
+                    info["jobResourceName"] = (
+                        action.job_name
+                        or derive_job_resource_name(action.path, action.resource_name)
+                    )
             # Warn on duplicate labels
             existing_labels = {
                 a["label"] for a in actions_by_resource[action.resource_name]
@@ -2202,6 +2273,33 @@ class AutoCRUD:
 
         if mapping:
             schema["x-autocrud-async-create-jobs"] = mapping
+
+    def _inject_async_update_jobs(self, schema: dict) -> None:
+        """Inject ``x-autocrud-async-update-jobs`` top-level extension.
+
+        Maps each auto-generated update-job resource name to its parent
+        resource name so the frontend generator can build pending-job
+        accordions on the detail page.
+        """
+        if not self._async_update_job_registry:
+            return
+
+        mapping: dict[str, str] = {}
+        for (
+            job_resource_name,
+            _job_model,
+            target_rm,
+            _auto_payload_type,
+            _param_conversions,
+            _update_mode,
+            _existing_param,
+            _info_param,
+            _meta_param,
+        ) in self._async_update_job_registry.values():
+            mapping[job_resource_name] = target_rm.resource_name
+
+        if mapping:
+            schema["x-autocrud-async-update-jobs"] = mapping
 
     def _inject_indexed_fields(self, schema: dict) -> None:
         """Inject ``x-autocrud-indexed-fields`` top-level extension.
@@ -2312,6 +2410,9 @@ class AutoCRUD:
         # Auto-register Job models for async create actions BEFORE applying
         # route templates so the Jobs get their own CRUD endpoints.
         self._register_async_job_models()
+
+        # Auto-register Job models for async update actions.
+        self._register_async_update_job_models()
 
         self.route_templates.sort()
         for model_name, resource_manager in self.resource_managers.items():
@@ -2606,6 +2707,316 @@ class AutoCRUD:
             # target_rm.start_consume(custom_creation=...) can locate jobs.
             job_rm = self.resource_managers[job_resource_name]
             target_rm.register_async_create_job(job_resource_name, job_rm)
+
+    def _register_async_update_job_models(self) -> None:
+        """Auto-register Job models for ``async_mode='job'`` update actions.
+
+        For each pending update action with ``async_mode='job'``:
+
+        1. Inspects the handler to find the body parameter's Struct type
+           (skipping the *existing_param*, *info_param*, *meta_param*
+           parameters which are auto-injected at runtime).
+        2. Creates a dynamic payload Struct that includes a ``resource_id``
+           field alongside the handler's body fields.
+        3. Creates a dynamic ``Job[PayloadType, dict]`` subclass via
+           :func:`build_async_update_job_model`.
+        4. Wraps the user handler so that the job consumer lazy-fetches
+           the existing resource, calls the handler, and then calls
+           ``rm.update()`` or ``rm.modify()`` based on the action's mode.
+        5. Registers the Job model via ``add_model()`` with a message queue.
+
+        The mapping ``_async_update_job_registry`` is populated so that
+        ``_apply_update_actions()`` can create the correct endpoint handlers.
+        """
+        import msgspec as _msgspec
+
+        from autocrud.crud.async_job_builder import (
+            build_async_update_job_model,
+            build_auto_payload_struct,
+            derive_job_resource_name,
+            resolve_payload_field_type,
+        )
+
+        # Registry: action handler id → (job_resource_name, job_model, target_rm,
+        #   auto_payload_type, param_conversions, update_mode, existing_param,
+        #   info_param, meta_param)
+        self._async_update_job_registry: dict[int, tuple] = {}
+
+        for action in self._pending_update_actions:
+            if action.async_mode != "job":
+                continue
+
+            target_rm = self.resource_managers.get(action.resource_name)
+            if target_rm is None:
+                logger.warning(
+                    f"async update_action '{action.path}' targets resource "
+                    f"'{action.resource_name}' which is not registered. Skipping."
+                )
+                continue
+
+            # Discover the handler's body parameter type (first Struct param),
+            # skipping auto-injected params (existing, info, meta).
+            skip_params = {action.existing_param, action.info_param, action.meta_param}
+            sig = inspect.signature(action.handler)
+            payload_type = None
+            auto_payload_type = None
+            for name, param in sig.parameters.items():
+                if name in skip_params:
+                    continue
+                ann = param.annotation
+                if ann is inspect.Parameter.empty:
+                    continue
+                raw_ann, _ = unwrap_annotated(ann)
+                if isinstance(raw_ann, type) and issubclass(raw_ann, _msgspec.Struct):
+                    payload_type = raw_ann
+                    break
+
+            # If no explicit Struct param, auto-generate a payload Struct
+            # from the handler's parameters (excluding skip_params).
+            # Always prepend a resource_id: str field.
+            if payload_type is None:
+                param_fields: list[tuple[str, type]] = []
+                param_conversions: dict[str, tuple[str, type]] = {}
+
+                for pname, param in sig.parameters.items():
+                    if pname in skip_params:
+                        continue
+                    ann = param.annotation
+                    if ann is inspect.Parameter.empty:
+                        continue
+                    raw_ann, _ = unwrap_annotated(ann)
+
+                    ser_type, conv_kind = resolve_payload_field_type(raw_ann)
+                    param_fields.append((pname, ser_type))
+                    if conv_kind is not None:
+                        param_conversions[pname] = (conv_kind, raw_ann)
+
+                if not param_fields:
+                    # No body params — still need resource_id in payload
+                    pass
+
+                # Build a dynamic payload Struct with resource_id prepended
+                auto_payload_type = build_auto_payload_struct(
+                    action_name=action.path,
+                    resource_name=action.resource_name,
+                    param_fields=param_fields,
+                    extra_fields=[("resource_id", str)],
+                )
+                payload_type = auto_payload_type
+            else:
+                # Explicit Struct param — wrap it with resource_id
+                # Create a new Struct: { resource_id: str, payload: OriginalStruct }
+                wrapper_fields = [
+                    ("resource_id", str),
+                    ("payload_data", payload_type),
+                ]
+                clean_name = action.path.replace("-", " ").title().replace(" ", "")
+                resource_pascal = (
+                    action.resource_name.replace("-", " ").title().replace(" ", "")
+                )
+                wrapper_name = f"{clean_name}{resource_pascal}UpdatePayload"
+                auto_payload_type = _msgspec.defstruct(wrapper_name, wrapper_fields)
+                payload_type = auto_payload_type
+                param_conversions = {}
+
+            # Build dynamic Job model
+            job_model = build_async_update_job_model(
+                action_name=action.path,
+                resource_name=action.resource_name,
+                payload_type=payload_type,
+                update_mode=action.mode,
+            )
+            job_resource_name = action.job_name or derive_job_resource_name(
+                action.path, action.resource_name
+            )
+
+            # Build the job handler that wraps the user's update-action handler
+            original_handler = action.handler
+            target_resource_manager = target_rm
+            _is_auto_payload = auto_payload_type is not None
+            _update_mode = action.mode
+            _existing_param = action.existing_param
+            _info_param = action.info_param
+            _meta_param = action.meta_param
+
+            def _make_update_job_handler(
+                handler,
+                trm,
+                *,
+                auto_payload=False,
+                has_explicit_struct=False,
+                param_conversions=None,
+                resource_managers=None,
+                job_resource_name=None,
+                update_mode="update",
+                existing_param="existing",
+                info_param="info",
+                meta_param="meta",
+            ):
+                """Create a closure for the update-action job handler.
+
+                At job-execution time:
+                1. Extracts ``resource_id`` from the payload.
+                2. Lazy-fetches existing resource via ``trm.get(resource_id)``.
+                3. Injects existing/info/meta into handler kwargs.
+                4. Calls the user handler.
+                5. Calls ``trm.update()`` or ``trm.modify()`` based on mode.
+                6. Stores the artifact.
+
+                Args:
+                    handler: The user's update-action function.
+                    trm: The target resource's ResourceManager.
+                    auto_payload: When ``True`` the payload fields mirror
+                        the handler's parameters (plus ``resource_id``).
+                    has_explicit_struct: When ``True`` the original handler
+                        had an explicit Struct body param, and the payload
+                        wraps it as ``payload_data``.
+                    param_conversions: For type reconstruction.
+                    resource_managers: For binary restoration.
+                    job_resource_name: Name of the job resource.
+                    update_mode: ``"update"`` or ``"modify"``.
+                    existing_param: Handler param name for existing data.
+                    info_param: Handler param name for RevisionInfo.
+                    meta_param: Handler param name for ResourceMeta.
+                """
+                _is_async = inspect.iscoroutinefunction(handler)
+                _conversions = param_conversions or {}
+                _has_binary_conv = any(
+                    k == "upload_file" for k, _ in _conversions.values()
+                )
+                _rms = resource_managers
+                _jrn = job_resource_name
+                _sig = inspect.signature(handler)
+                _has_existing = existing_param in _sig.parameters
+                _has_info = info_param in _sig.parameters
+                _has_meta = meta_param in _sig.parameters
+
+                def job_handler(resource, job_context=None):
+                    payload = resource.data.payload
+                    # Extract resource_id from payload
+                    _resource_id = payload.resource_id
+
+                    if has_explicit_struct:
+                        # Payload wraps the original Struct as payload_data
+                        kwargs = {
+                            next(
+                                (
+                                    n
+                                    for n in _sig.parameters
+                                    if n not in {existing_param, info_param, meta_param}
+                                    and isinstance(_sig.parameters[n].annotation, type)
+                                ),
+                                "body",
+                            ): payload.payload_data
+                        }
+                    elif auto_payload:
+                        # Restore Binary.data from blob store if needed
+                        if _has_binary_conv and _rms and _jrn:
+                            jrm = _rms.get(_jrn)
+                            if jrm is not None:
+                                restored = jrm.restore_binary(resource.data)
+                                payload = restored.payload
+
+                        kwargs = {
+                            f: getattr(payload, f)
+                            for f in payload.__struct_fields__
+                            if f != "resource_id"
+                        }
+                        if _conversions:
+                            kwargs = AutoCRUD._reconstruct_params(kwargs, _conversions)
+                    else:
+                        kwargs = {}
+
+                    # Lazy-fetch existing resource
+                    _job_user = resource.info.created_by or "system"
+                    with trm.meta_provide(_job_user, dt.datetime.now()):
+                        existing_resource = trm.get(_resource_id)
+                    if _has_existing:
+                        kwargs[existing_param] = existing_resource.data
+                    if _has_info:
+                        kwargs[info_param] = existing_resource.info
+                    if _has_meta:
+                        with trm.meta_provide(_job_user, dt.datetime.now()):
+                            kwargs[meta_param] = trm.get_meta(_resource_id)
+
+                    raw_result = handler(**kwargs)
+
+                    # Handle async handlers called from the sync MQ consumer
+                    if _is_async:
+                        result = asyncio.run(raw_result)
+                    else:
+                        result = raw_result
+
+                    if result is not None:
+                        with trm.meta_provide(_job_user, dt.datetime.now()):
+                            if update_mode == "modify":
+                                info = trm.modify(_resource_id, data=result)
+                            else:
+                                info = trm.update(_resource_id, result)
+                        artifact = {
+                            "resource_id": info.resource_id,
+                            "revision_id": info.revision_id,
+                            "resource_name": trm.resource_name,
+                        }
+                        if job_context is not None:
+                            job_context.set_artifact(artifact)
+                        else:
+                            resource.data.artifact = artifact
+
+                return job_handler
+
+            # Detect if the handler had an explicit Struct param
+            _has_explicit_struct = False
+            for _pname, _pparam in sig.parameters.items():
+                if _pname in skip_params:
+                    continue
+                _ann = _pparam.annotation
+                if _ann is inspect.Parameter.empty:
+                    continue
+                _raw_ann, _ = unwrap_annotated(_ann)
+                if isinstance(_raw_ann, type) and issubclass(_raw_ann, _msgspec.Struct):
+                    _has_explicit_struct = True
+                    break
+
+            wrapped_handler = _make_update_job_handler(
+                original_handler,
+                target_resource_manager,
+                auto_payload=_is_auto_payload,
+                has_explicit_struct=_has_explicit_struct,
+                param_conversions=param_conversions
+                if not _has_explicit_struct
+                else None,
+                resource_managers=self.resource_managers,
+                job_resource_name=job_resource_name,
+                update_mode=_update_mode,
+                existing_param=_existing_param,
+                info_param=_info_param,
+                meta_param=_meta_param,
+            )
+
+            # Register the Job model with add_model (includes MQ setup)
+            self.add_model(
+                job_model,
+                name=job_resource_name,
+                job_handler=wrapped_handler,
+            )
+
+            # Store reference for _apply_update_actions
+            self._async_update_job_registry[id(action.handler)] = (
+                job_resource_name,
+                job_model,
+                target_rm,
+                auto_payload_type,
+                param_conversions if not _has_explicit_struct else None,
+                action.mode,
+                action.existing_param,
+                action.info_param,
+                action.meta_param,
+            )
+
+            # Populate reverse mapping on target RM
+            job_rm = self.resource_managers[job_resource_name]
+            target_rm.register_async_update_job(job_resource_name, job_rm)
 
     def _apply_create_actions(self, router: APIRouter) -> None:
         """Register routes for all pending custom create actions."""
@@ -3157,6 +3568,8 @@ class AutoCRUD:
             info_param: str = "info",
             meta_param: str = "meta",
             update_mode: str = "update",
+            async_job_config=None,
+            background_mode=False,
             deps=None,
         ):
             """Build a FastAPI-compatible endpoint for a custom update action.
@@ -3168,7 +3581,22 @@ class AutoCRUD:
             - Auto-injects ``RevisionInfo`` into *info_param* and
               ``ResourceMeta`` into *meta_param* when declared.
             - Calls ``rm.update()`` or ``rm.modify()`` based on *update_mode*.
-            - Only supports synchronous execution (no job/background).
+
+            Args:
+                handler: The user's update-action endpoint function.
+                resource_manager: The target resource's ResourceManager.
+                existing_param: Handler param name for existing resource data.
+                info_param: Handler param name for RevisionInfo.
+                meta_param: Handler param name for ResourceMeta.
+                update_mode: ``"update"`` or ``"modify"``.
+                async_job_config: When set, a tuple
+                    ``(job_rm, job_resource_name, auto_payload_type,
+                    param_conversions)`` that switches the wrapper into
+                    async-job mode (creates a Job + returns HTTP 202).
+                background_mode: When ``True``, schedules the handler via
+                    FastAPI ``BackgroundTasks`` and returns HTTP 202.
+                deps: A :class:`DependencyProvider` for injecting
+                    ``current_user`` and ``current_time``.
             """
             if deps is None:
                 deps = DependencyProvider()
@@ -3240,6 +3668,19 @@ class AutoCRUD:
             new_annotations["current_user"] = str
             new_annotations["current_time"] = dt.datetime
 
+            # Inject BackgroundTasks when background_mode is enabled
+            if background_mode:
+                from starlette.background import BackgroundTasks
+
+                new_params.append(
+                    inspect.Parameter(
+                        "background_tasks",
+                        inspect.Parameter.KEYWORD_ONLY,
+                        annotation=BackgroundTasks,
+                    )
+                )
+                new_annotations["background_tasks"] = BackgroundTasks
+
             new_sig = sig.replace(
                 parameters=new_params, return_annotation=inspect.Parameter.empty
             )
@@ -3253,7 +3694,133 @@ class AutoCRUD:
 
             from autocrud.types import ResourceIDNotFoundError
 
-            if inspect.iscoroutinefunction(handler):
+            # ---- async-job mode: create Job + return 202 ----------------
+            if async_job_config is not None:
+                from autocrud.types import JobRedirectInfo
+
+                job_rm, job_resource_name, auto_payload_type, _param_convs = (
+                    async_job_config
+                )
+                _param_convs = _param_convs or {}
+                payload_param_name = next(iter(struct_params), None)
+
+                async def wrapper(*args, **kwargs):
+                    _resource_id = kwargs.pop("resource_id")
+                    _current_user = kwargs.pop("current_user")
+                    _current_time = kwargs.pop("current_time")
+                    for pname, struct_type in struct_params.items():
+                        if pname in kwargs:
+                            kwargs[pname] = _msgspec.convert(
+                                _ensure_dict(kwargs[pname]), struct_type
+                            )
+
+                    if auto_payload_type is not None and payload_param_name is not None:
+                        # Explicit Struct param — wrap as payload_data
+                        inner_data = kwargs.get(payload_param_name)
+                        payload_data = auto_payload_type(
+                            resource_id=_resource_id, payload_data=inner_data
+                        )
+                    elif auto_payload_type is not None:
+                        # Auto-generated payload: pack individual kwargs
+                        payload_data = auto_payload_type(
+                            resource_id=_resource_id,
+                            **{
+                                f: kwargs[f]
+                                for f in auto_payload_type.__struct_fields__
+                                if f in kwargs and f != "resource_id"
+                            },
+                        )
+                    else:
+                        raise HTTPException(
+                            status_code=400,
+                            detail="Missing payload for async update action.",
+                        )
+
+                    job_data = job_rm.resource_type(payload=payload_data)
+                    with job_rm.meta_provide(_current_user, _current_time):
+                        info = job_rm.create(job_data)
+
+                    redirect_url = f"/{job_resource_name}/{info.resource_id}"
+                    return MsgspecResponse(
+                        JobRedirectInfo(
+                            job_resource_name=job_resource_name,
+                            job_resource_id=info.resource_id,
+                            redirect_url=redirect_url,
+                        ),
+                        status_code=202,
+                    )
+
+            # ---- background mode: schedule via BackgroundTasks + 202 ----
+            elif background_mode:
+                from autocrud.types import BackgroundTaskAccepted
+
+                _bg_is_async = inspect.iscoroutinefunction(handler)
+
+                async def wrapper(*args, **kwargs):
+                    _resource_id = kwargs.pop("resource_id")
+                    _current_user = kwargs.pop("current_user")
+                    _current_time = kwargs.pop("current_time")
+                    _bg_tasks = kwargs.pop("background_tasks")
+                    for pname, struct_type in struct_params.items():
+                        if pname in kwargs:
+                            kwargs[pname] = _msgspec.convert(
+                                _ensure_dict(kwargs[pname]), struct_type
+                            )
+                    for pname, pydantic_type in pydantic_params.items():
+                        if pname in kwargs:
+                            kwargs[pname] = pydantic_type(**_ensure_dict(kwargs[pname]))
+
+                    _snapshot_kwargs = dict(kwargs)
+
+                    def _run_bg() -> None:
+                        try:
+                            # Lazy-fetch existing resource at BG execution time
+                            with resource_manager.meta_provide(
+                                _current_user, _current_time
+                            ):
+                                existing_resource = resource_manager.get(_resource_id)
+                            if _has_existing_param:
+                                _snapshot_kwargs[existing_param] = (
+                                    existing_resource.data
+                                )
+                            if _has_info_param:
+                                _snapshot_kwargs[info_param] = existing_resource.info
+                            if _has_meta_param:
+                                with resource_manager.meta_provide(
+                                    _current_user, _current_time
+                                ):
+                                    _snapshot_kwargs[meta_param] = (
+                                        resource_manager.get_meta(_resource_id)
+                                    )
+
+                            if _bg_is_async:
+                                result = asyncio.run(handler(*args, **_snapshot_kwargs))
+                            else:
+                                result = handler(*args, **_snapshot_kwargs)
+                            if result is not None:
+                                with resource_manager.meta_provide(
+                                    _current_user, _current_time
+                                ):
+                                    if update_mode == "modify":
+                                        resource_manager.modify(
+                                            _resource_id, data=result
+                                        )
+                                    else:
+                                        resource_manager.update(_resource_id, result)
+                        except Exception:
+                            logger.exception(
+                                "Background update action '%s' failed",
+                                handler.__name__,
+                            )
+
+                    _bg_tasks.add_task(_run_bg)
+                    return MsgspecResponse(
+                        BackgroundTaskAccepted(message="Task accepted"),
+                        status_code=202,
+                    )
+
+            # ---- sync mode: call handler + update resource --------------
+            elif inspect.iscoroutinefunction(handler):
 
                 async def wrapper(*args, **kwargs):
                     _resource_id = kwargs.pop("resource_id")
@@ -3363,6 +3930,92 @@ class AutoCRUD:
                 f"/{action.resource_name}/{{resource_id}}/{action_path_segment}"
             )
 
+            # --- async_mode='job': build an endpoint that creates a Job ---
+            if action.async_mode == "job":
+                registry_entry = self._async_update_job_registry.get(id(action.handler))
+                if registry_entry is None:
+                    logger.warning(
+                        f"async update_action '{action.path}' has no registered "
+                        f"Job model. Falling back to sync."
+                    )
+                    action.async_mode = None
+                    # Fall through to sync handler below
+                else:
+                    (
+                        job_resource_name,
+                        job_model,
+                        target_rm,
+                        auto_payload_type,
+                        param_conversions,
+                        _update_mode,
+                        _existing_param,
+                        _info_param,
+                        _meta_param,
+                    ) = registry_entry
+                    job_rm = self.resource_managers[job_resource_name]
+
+                    _wrapper = _build_fastapi_compatible_update_handler(
+                        action.handler,
+                        rm,
+                        existing_param=action.existing_param,
+                        info_param=action.info_param,
+                        meta_param=action.meta_param,
+                        update_mode=action.mode,
+                        async_job_config=(
+                            job_rm,
+                            job_resource_name,
+                            auto_payload_type,
+                            param_conversions,
+                        ),
+                        deps=deps,
+                    )
+
+                    router.post(
+                        route_path,
+                        response_model=None,
+                        status_code=202,
+                        summary=f"{action.label} ({action.resource_name})",
+                        tags=[f"{action.resource_name}"],
+                        openapi_extra={
+                            "x-autocrud-update-action": {
+                                "resource": action.resource_name,
+                                "label": action.label,
+                                "mode": action.mode,
+                            },
+                        },
+                    )(_wrapper)
+                    continue
+
+            # --- async_mode='background': fire-and-forget via BackgroundTasks ---
+            if action.async_mode == "background":
+                _wrapper = _build_fastapi_compatible_update_handler(
+                    action.handler,
+                    rm,
+                    existing_param=action.existing_param,
+                    info_param=action.info_param,
+                    meta_param=action.meta_param,
+                    update_mode=action.mode,
+                    background_mode=True,
+                    deps=deps,
+                )
+
+                router.post(
+                    route_path,
+                    response_model=None,
+                    status_code=202,
+                    summary=f"{action.label} ({action.resource_name})",
+                    tags=[f"{action.resource_name}"],
+                    openapi_extra={
+                        "x-autocrud-update-action": {
+                            "resource": action.resource_name,
+                            "label": action.label,
+                            "mode": action.mode,
+                        },
+                    },
+                )(_wrapper)
+                continue
+
+            # --- sync (default) handler ---
             _wrapper = _build_fastapi_compatible_update_handler(
                 action.handler,
                 rm,

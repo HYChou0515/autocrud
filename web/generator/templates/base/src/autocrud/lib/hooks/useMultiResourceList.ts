@@ -50,6 +50,8 @@ export interface UseMultiResourceListOptions {
   gcTime?: number;
   /** Set to false to disable automatic fetching. */
   enabled?: boolean;
+  /** Polling interval in ms. Set to automatically refetch on this interval. */
+  refetchInterval?: number | false;
 }
 
 export interface UseMultiResourceListResult {
@@ -108,6 +110,7 @@ export function useMultiResourceList(
             options.enabled !== undefined ? options.enabled : !!entry.config && entries.length > 0,
           staleTime: options.staleTime,
           gcTime: options.gcTime,
+          refetchInterval: options.refetchInterval,
         };
       }),
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -117,6 +120,7 @@ export function useMultiResourceList(
       options.enabled,
       options.staleTime,
       options.gcTime,
+      options.refetchInterval,
     ],
   );
 

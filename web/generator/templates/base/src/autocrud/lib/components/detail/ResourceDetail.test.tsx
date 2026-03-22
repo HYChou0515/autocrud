@@ -107,11 +107,24 @@ vi.mock('../../resources', async (importOriginal) => {
   };
 });
 
+import React from 'react';
 import { render, screen, fireEvent, waitFor, cleanup } from '@testing-library/react';
+import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { MantineProvider } from '@mantine/core';
 import { ResourceDetail } from './ResourceDetail';
 import { groupFieldsForDisplay, type DisplayGroup } from './ResourceDetail';
 import { showErrorNotification } from '../../utils/errorNotification';
+
+function createWrapper() {
+  const queryClient = new QueryClient({
+    defaultOptions: { queries: { retry: false, gcTime: 0 } },
+  });
+  return ({ children }: { children: React.ReactNode }) => (
+    <QueryClientProvider client={queryClient}>
+      <MantineProvider>{children}</MantineProvider>
+    </QueryClientProvider>
+  );
+}
 
 function makeField(name: string): ResourceField {
   return {
@@ -207,9 +220,8 @@ function makeMockDetail(dataOverrides: Record<string, any> = {}): UseResourceDet
 
 function renderDetail(config: ResourceConfig<any>, isJob = true) {
   return render(
-    <MantineProvider>
-      <ResourceDetail config={config} resourceId="r1" basePath={'/test' as any} isJob={isJob} />
-    </MantineProvider>,
+    <ResourceDetail config={config} resourceId="r1" basePath={'/test' as any} isJob={isJob} />,
+    { wrapper: createWrapper() },
   );
 }
 
@@ -425,15 +437,14 @@ describe('ResourceDetail — customization props', () => {
     mockDetailResult = makeMockDetail();
     const config = makeConfig(configOverrides);
     return render(
-      <MantineProvider>
-        <ResourceDetail
-          config={config}
-          resourceId="r1"
-          basePath={'/test' as any}
-          isJob={isJob}
-          {...props}
-        />
-      </MantineProvider>,
+      <ResourceDetail
+        config={config}
+        resourceId="r1"
+        basePath={'/test' as any}
+        isJob={isJob}
+        {...props}
+      />,
+      { wrapper: createWrapper() },
     );
   }
 
@@ -577,14 +588,13 @@ describe('ResourceDetail — async create job back button', () => {
 
     const config = makeConfig({ name: 'pet-job' });
     render(
-      <MantineProvider>
-        <ResourceDetail
-          config={config}
-          resourceId="r1"
-          basePath={'/autocrud-admin/pet-job' as any}
-          isJob={true}
-        />
-      </MantineProvider>,
+      <ResourceDetail
+        config={config}
+        resourceId="r1"
+        basePath={'/autocrud-admin/pet-job' as any}
+        isJob={true}
+      />,
+      { wrapper: createWrapper() },
     );
 
     const backLink = screen.getByTestId('back-link');
@@ -599,14 +609,13 @@ describe('ResourceDetail — async create job back button', () => {
 
     const config = makeConfig({ name: 'new-char1-job' });
     render(
-      <MantineProvider>
-        <ResourceDetail
-          config={config}
-          resourceId="r1"
-          basePath={'/autocrud-admin/new-char1-job' as any}
-          isJob={true}
-        />
-      </MantineProvider>,
+      <ResourceDetail
+        config={config}
+        resourceId="r1"
+        basePath={'/autocrud-admin/new-char1-job' as any}
+        isJob={true}
+      />,
+      { wrapper: createWrapper() },
     );
 
     const backLink = screen.getByTestId('back-link');
@@ -628,9 +637,8 @@ describe('ResourceDetail — edit form loading state regression', () => {
   function openEditModal(isJob = false) {
     const config = makeConfig();
     const result = render(
-      <MantineProvider>
-        <ResourceDetail config={config} resourceId="r1" basePath={'/test' as any} isJob={isJob} />
-      </MantineProvider>,
+      <ResourceDetail config={config} resourceId="r1" basePath={'/test' as any} isJob={isJob} />,
+      { wrapper: createWrapper() },
     );
     // Click Edit to open the modal
     fireEvent.click(screen.getByText('Edit'));
@@ -659,5 +667,197 @@ describe('ResourceDetail — edit form loading state regression', () => {
       const form = screen.getByTestId('edit-form');
       expect(form.getAttribute('data-submitting')).toBe('true');
     });
+  });
+});
+
+// ============================================================================
+// ResourceDetail — update action job query invalidation
+// ============================================================================
+
+vi.mock('@mantine/notifications', () => ({
+  notifications: { show: vi.fn() },
+}));
+
+// Spy on queryClient.invalidateQueries — we capture the query client from the provider
+const { mockInvalidateQueries: mockInvalidate } = vi.hoisted(() => ({
+  mockInvalidateQueries: vi.fn(),
+}));
+
+// Re-import after mocks are set up
+const { notifications: notifModule } = await import('@mantine/notifications');
+
+describe('ResourceDetail — update action invalidates job queries', () => {
+  beforeEach(() => {
+    cleanup();
+    mockInvalidate.mockClear();
+    vi.mocked(notifModule.show).mockClear();
+    Object.keys(mockAsyncCreateJobs).forEach((k) => delete mockAsyncCreateJobs[k]);
+  });
+
+  function makeUpdateConfig(
+    actions: any[],
+    overrides: Partial<ResourceConfig<any>> = {},
+  ): ResourceConfig<any> {
+    return makeConfig({
+      name: 'character',
+      label: 'Character',
+      customUpdateActions: actions,
+      ...overrides,
+    });
+  }
+
+  it('invalidates job resource queries after job-mode update action', async () => {
+    const apiMethod = vi.fn().mockResolvedValue({ data: { resource_id: 'r1' } });
+    const detail = makeMockDetail();
+    mockDetailResult = detail;
+
+    const config = makeUpdateConfig([
+      {
+        name: 'level-up',
+        label: 'Level Up',
+        mode: 'update',
+        fields: [],
+        zodSchema: { parse: (v: any) => v, safeParse: (v: any) => ({ success: true, data: v }) },
+        apiMethod,
+        asyncMode: 'job',
+        jobResourceName: 'level-up-job',
+      },
+    ]);
+
+    // We spy on the QueryClient prototype to intercept invalidateQueries
+    const spy = vi.spyOn(QueryClient.prototype, 'invalidateQueries');
+
+    render(
+      <ResourceDetail config={config} resourceId="r1" basePath={'/test' as any} />,
+      { wrapper: createWrapper() },
+    );
+
+    // Open edit modal
+    fireEvent.click(screen.getByText('Edit'));
+
+    // Click the "Level Up" tab
+    await waitFor(() => {
+      const tab = screen.getByRole('tab', { name: 'Level Up' });
+      fireEvent.click(tab);
+    });
+
+    // Click the action button
+    await waitFor(() => {
+      const buttons = screen.getAllByRole('button');
+      const actionBtn = buttons.find((b) => b.textContent === 'Level Up');
+      expect(actionBtn).toBeTruthy();
+      fireEvent.click(actionBtn!);
+    });
+
+    await waitFor(() => {
+      expect(apiMethod).toHaveBeenCalledWith('r1', {});
+      // Should invalidate job queries
+      const calls = spy.mock.calls;
+      const jobInvalidation = calls.find(
+        (c) => JSON.stringify(c[0]).includes('level-up-job'),
+      );
+      expect(jobInvalidation).toBeTruthy();
+    });
+
+    spy.mockRestore();
+  });
+
+  it('shows background notification for background-mode update action', async () => {
+    const apiMethod = vi.fn().mockResolvedValue({ data: { resource_id: 'r1' } });
+    mockDetailResult = makeMockDetail();
+
+    const config = makeUpdateConfig([
+      {
+        name: 'heal',
+        label: 'Heal',
+        mode: 'update',
+        fields: [],
+        zodSchema: { parse: (v: any) => v, safeParse: (v: any) => ({ success: true, data: v }) },
+        apiMethod,
+        asyncMode: 'background',
+      },
+    ]);
+
+    render(
+      <ResourceDetail config={config} resourceId="r1" basePath={'/test' as any} />,
+      { wrapper: createWrapper() },
+    );
+
+    fireEvent.click(screen.getByText('Edit'));
+
+    await waitFor(() => {
+      const tab = screen.getByRole('tab', { name: 'Heal' });
+      fireEvent.click(tab);
+    });
+
+    await waitFor(() => {
+      const buttons = screen.getAllByRole('button');
+      const actionBtn = buttons.find((b) => b.textContent === 'Heal');
+      expect(actionBtn).toBeTruthy();
+      fireEvent.click(actionBtn!);
+    });
+
+    await waitFor(() => {
+      expect(apiMethod).toHaveBeenCalledWith('r1', {});
+      expect(notifModule.show).toHaveBeenCalledWith(
+        expect.objectContaining({
+          title: 'Heal',
+          message: '已提交背景任務',
+          color: 'blue',
+        }),
+      );
+    });
+  });
+
+  it('does NOT invalidate job queries for sync update action', async () => {
+    const apiMethod = vi.fn().mockResolvedValue({ data: { resource_id: 'r1' } });
+    mockDetailResult = makeMockDetail();
+
+    const config = makeUpdateConfig([
+      {
+        name: 'rename',
+        label: 'Rename',
+        mode: 'update',
+        fields: [],
+        zodSchema: { parse: (v: any) => v, safeParse: (v: any) => ({ success: true, data: v }) },
+        apiMethod,
+        // No asyncMode → sync
+      },
+    ]);
+
+    const spy = vi.spyOn(QueryClient.prototype, 'invalidateQueries');
+
+    render(
+      <ResourceDetail config={config} resourceId="r1" basePath={'/test' as any} />,
+      { wrapper: createWrapper() },
+    );
+
+    fireEvent.click(screen.getByText('Edit'));
+
+    await waitFor(() => {
+      const tab = screen.getByRole('tab', { name: 'Rename' });
+      fireEvent.click(tab);
+    });
+
+    await waitFor(() => {
+      const buttons = screen.getAllByRole('button');
+      const actionBtn = buttons.find((b) => b.textContent === 'Rename');
+      expect(actionBtn).toBeTruthy();
+      fireEvent.click(actionBtn!);
+    });
+
+    await waitFor(() => {
+      expect(apiMethod).toHaveBeenCalledWith('r1', {});
+      // Should NOT have called invalidateQueries for any job resource
+      const calls = spy.mock.calls;
+      const jobInvalidation = calls.find(
+        (c) => JSON.stringify(c[0]).includes('-job'),
+      );
+      expect(jobInvalidation).toBeUndefined();
+      // Should NOT show notification
+      expect(notifModule.show).not.toHaveBeenCalled();
+    });
+
+    spy.mockRestore();
   });
 });

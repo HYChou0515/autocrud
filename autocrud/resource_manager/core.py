@@ -706,6 +706,11 @@ class ResourceManager(IResourceManager[T], Generic[T]):
         # that target this resource.
         self._async_create_job_rms: dict[str, "ResourceManager"] = {}
 
+        # Reverse mapping filled by AutoCRUD._register_async_update_job_models().
+        # Maps job resource name → job ResourceManager for async update actions
+        # that target this resource.
+        self._async_update_job_rms: dict[str, "ResourceManager"] = {}
+
     def register_async_create_job(
         self, job_resource_name: str, job_rm: "ResourceManager"
     ) -> None:
@@ -738,6 +743,39 @@ class ResourceManager(IResourceManager[T], Generic[T]):
             :meth:`register_async_create_job`.
         """
         return list(self._async_create_job_rms.keys())
+
+    def register_async_update_job(
+        self, job_resource_name: str, job_rm: "ResourceManager"
+    ) -> None:
+        """Register an async update-job ResourceManager for this resource.
+
+        Called by :meth:`AutoCRUD._register_async_update_job_models` to
+        populate the reverse mapping so that consumers can locate child
+        job resources.
+
+        Args:
+            job_resource_name: The registered name of the Job resource.
+            job_rm: The :class:`ResourceManager` instance for the Job resource.
+
+        Raises:
+            ValueError: If *job_resource_name* is already registered.
+        """
+        if job_resource_name in self._async_update_job_rms:
+            raise ValueError(
+                f"Async update-job '{job_resource_name}' is already registered "
+                f"on resource '{self.resource_name}'."
+            )
+        self._async_update_job_rms[job_resource_name] = job_rm
+
+    @property
+    def async_update_job_names(self) -> list[str]:
+        """Return the names of all registered async update-job resources.
+
+        Returns:
+            A list of job resource names registered via
+            :meth:`register_async_update_job`.
+        """
+        return list(self._async_update_job_rms.keys())
 
     def _register_unique_fields(self) -> None:
         """Auto-detect ``Unique``-annotated fields on the model and register a
@@ -1204,36 +1242,51 @@ class ResourceManager(IResourceManager[T], Generic[T]):
         *,
         block: bool = True,
         custom_creation: "Literal['all'] | list[str] | None" = None,
+        custom_update: "Literal['all'] | list[str] | None" = None,
     ) -> None:
         """Start consuming jobs from the message queue.
 
-        When *custom_creation* is ``None`` (default) the resource’s own
-        message-queue consumer is started.
+        When both *custom_creation* and *custom_update* are ``None``
+        (default) the resource’s own message-queue consumer is started.
 
         When *custom_creation* is ``"all"``, all async-create-job consumers
         that target this resource are started (but **not** this resource’s
         own consumer).
 
         When *custom_creation* is a list of job resource names, only those
-        specific consumers are started.
+        specific create-job consumers are started.
+
+        When *custom_update* is ``"all"``, all async-update-job consumers
+        that target this resource are started.
+
+        When *custom_update* is a list of job resource names, only those
+        specific update-job consumers are started.
+
+        Both *custom_creation* and *custom_update* can be used together
+        in the same call.
 
         Args:
             block: If ``True`` (default), block until the consumer thread(s)
                 finish.  ``False`` returns immediately after launching the
                 daemon thread(s).
             custom_creation: Which async-create-job consumers to start.
-                ``None`` → this resource’s own MQ consumer.
+                ``None`` → ignored (no create-job consumers started).
                 ``"all"`` → every registered async create-job consumer.
+                ``["name", ...]`` → only the listed job resource names.
+            custom_update: Which async-update-job consumers to start.
+                ``None`` → ignored (no update-job consumers started).
+                ``"all"`` → every registered async update-job consumer.
                 ``["name", ...]`` → only the listed job resource names.
 
         Raises:
-            NotImplementedError: If *custom_creation* is ``None`` and no
-                message queue is configured on this resource.
-            ValueError: If a name in *custom_creation* is not a registered
-                async create-job for this resource.
+            NotImplementedError: If both *custom_creation* and *custom_update*
+                are ``None`` and no message queue is configured on this
+                resource.
+            ValueError: If a name in *custom_creation* or *custom_update*
+                is not a registered async job for this resource.
         """
-        if custom_creation is None:
-            # Original behaviour: start this RM's own MQ consumer.
+        if custom_creation is None and custom_update is None:
+            # Original behaviour: start this RM’s own MQ consumer.
             if self.message_queue is None:
                 raise NotImplementedError("Message queue is not configured")
             worker_thread = threading.Thread(
@@ -1244,25 +1297,47 @@ class ResourceManager(IResourceManager[T], Generic[T]):
                 worker_thread.join()
             return worker_thread
 
-        # --- custom_creation mode ---
-        if custom_creation == "all":
-            targets = list(self._async_create_job_rms.values())
-        else:
-            targets = []
-            for name in custom_creation:
-                job_rm = self._async_create_job_rms.get(name)
-                if job_rm is None:
-                    raise ValueError(
-                        f"'{name}' is not a registered async create-job "
-                        f"for resource '{self.resource_name}'. "
-                        f"Available: {list(self._async_create_job_rms.keys())}"
-                    )
-                targets.append(job_rm)
-
         threads = []
-        for job_rm in targets:
-            t = job_rm.start_consume(block=False)
-            threads.append(t)
+
+        # --- custom_creation mode ---
+        if custom_creation is not None:
+            if custom_creation == "all":
+                create_targets = list(self._async_create_job_rms.values())
+            else:
+                create_targets = []
+                for name in custom_creation:
+                    job_rm = self._async_create_job_rms.get(name)
+                    if job_rm is None:
+                        raise ValueError(
+                            f"'{name}' is not a registered async create-job "
+                            f"for resource '{self.resource_name}'. "
+                            f"Available: {list(self._async_create_job_rms.keys())}"
+                        )
+                    create_targets.append(job_rm)
+
+            for job_rm in create_targets:
+                t = job_rm.start_consume(block=False)
+                threads.append(t)
+
+        # --- custom_update mode ---
+        if custom_update is not None:
+            if custom_update == "all":
+                update_targets = list(self._async_update_job_rms.values())
+            else:
+                update_targets = []
+                for name in custom_update:
+                    job_rm = self._async_update_job_rms.get(name)
+                    if job_rm is None:
+                        raise ValueError(
+                            f"'{name}' is not a registered async update-job "
+                            f"for resource '{self.resource_name}'. "
+                            f"Available: {list(self._async_update_job_rms.keys())}"
+                        )
+                    update_targets.append(job_rm)
+
+            for job_rm in update_targets:
+                t = job_rm.start_consume(block=False)
+                threads.append(t)
 
         if block:
             for t in threads:
