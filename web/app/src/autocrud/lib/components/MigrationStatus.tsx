@@ -38,11 +38,13 @@ import {
   IconPlayerPlay,
   IconRefresh,
   IconX,
+  IconDownload,
 } from '@tabler/icons-react';
 import {
   migrateApi,
   type MigrateProgress,
   type MigrateResult,
+  type MigrateOptions,
   type RevisionScope,
 } from '../../generated/api/migrateApi';
 
@@ -91,6 +93,29 @@ function statusColor(status: string): string {
 /** Revision scope UI mode */
 type RevisionScopeMode = 'current' | 'all' | 'specific';
 
+/** The limit value used to effectively migrate all resources. */
+const MIGRATE_ALL_LIMIT = 10_000_000;
+
+/** Maximum number of rows to display in result tables to avoid freezing the page. */
+const TABLE_DISPLAY_LIMIT = 100;
+
+/**
+ * Trigger a file download in the browser.
+ *
+ * Creates a temporary anchor element to download the given content as a file.
+ */
+function downloadFile(filename: string, content: string, mimeType = 'application/json') {
+  const blob = new Blob([content], { type: mimeType });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = filename;
+  document.body.appendChild(a);
+  a.click();
+  document.body.removeChild(a);
+  URL.revokeObjectURL(url);
+}
+
 /** Resolve UI mode + input to RevisionScope for the API. */
 function resolveRevisionScope(mode: RevisionScopeMode, specificId: string): RevisionScope {
   switch (mode) {
@@ -119,6 +144,14 @@ export function MigrationStatus({ resourceNames }: MigrationStatusProps) {
     Object.fromEntries(resourceNames.map((name) => [name, ''])),
   );
 
+  // Per-model QB expression
+  const [qbExpressions, setQbExpressions] = useState<Record<string, string>>(() =>
+    Object.fromEntries(resourceNames.map((name) => [name, ''])),
+  );
+
+  // Global QB expression
+  const [globalQbExpression, setGlobalQbExpression] = useState('');
+
   // Global revision scope
   const [globalRevisionMode, setGlobalRevisionMode] = useState<RevisionScopeMode>('current');
   const [globalRevisionInput, setGlobalRevisionInput] = useState('');
@@ -139,7 +172,12 @@ export function MigrationStatus({ resourceNames }: MigrationStatusProps) {
   );
 
   const handleMigrate = useCallback(
-    async (modelName: string, mode: 'test' | 'execute', revisionScope?: RevisionScope) => {
+    async (
+      modelName: string,
+      mode: 'test' | 'execute',
+      revisionScope?: RevisionScope,
+      qb?: string,
+    ) => {
       clearMessages();
 
       // Abort any existing operation for this model
@@ -160,9 +198,8 @@ export function MigrationStatus({ resourceNames }: MigrationStatusProps) {
 
       try {
         const apiFn = mode === 'test' ? migrateApi.test : migrateApi.execute;
-        const result = await apiFn(
-          modelName,
-          (progress) => {
+        const options: MigrateOptions = {
+          onProgress: (progress) => {
             setStates((prev) => ({
               ...prev,
               [modelName]: {
@@ -171,9 +208,12 @@ export function MigrationStatus({ resourceNames }: MigrationStatusProps) {
               },
             }));
           },
-          controller.signal,
-          revisionScope,
-        );
+          signal: controller.signal,
+          revisionId: revisionScope,
+          limit: MIGRATE_ALL_LIMIT,
+          qb: qb && qb.trim() ? qb.trim() : undefined,
+        };
+        const result = await apiFn(modelName, options);
 
         updateModelState(modelName, {
           running: false,
@@ -210,14 +250,22 @@ export function MigrationStatus({ resourceNames }: MigrationStatusProps) {
     async (mode: 'test' | 'execute') => {
       clearMessages();
       const scope = resolveRevisionScope(globalRevisionMode, globalRevisionInput);
+      const qb = globalQbExpression.trim() || undefined;
       for (const name of resourceNames) {
-        await handleMigrate(name, mode, scope);
+        await handleMigrate(name, mode, scope, qb);
       }
       setGlobalSuccess(
         mode === 'test' ? 'All models tested successfully.' : 'All models migrated successfully.',
       );
     },
-    [clearMessages, resourceNames, handleMigrate, globalRevisionMode, globalRevisionInput],
+    [
+      clearMessages,
+      resourceNames,
+      handleMigrate,
+      globalRevisionMode,
+      globalRevisionInput,
+      globalQbExpression,
+    ],
   );
 
   return (
@@ -289,6 +337,22 @@ export function MigrationStatus({ resourceNames }: MigrationStatusProps) {
                 )}
               </Group>
             </Stack>
+            <Stack gap="xs">
+              <Text size="sm" fw={500}>
+                Resource Filter (QB)
+              </Text>
+              <TextInput
+                size="xs"
+                placeholder="QB.all() — leave empty to migrate all resources"
+                value={globalQbExpression}
+                onChange={(e) => setGlobalQbExpression(e.currentTarget.value)}
+                style={{ maxWidth: 500 }}
+              />
+              <Text size="xs" c="dimmed">
+                Use QB expressions to filter resources. Examples: QB[&apos;status&apos;] ==
+                &apos;active&apos;, QB[&apos;age&apos;] &gt; 18
+              </Text>
+            </Stack>
             <Group>
               <Button
                 variant="light"
@@ -317,8 +381,8 @@ export function MigrationStatus({ resourceNames }: MigrationStatusProps) {
               key={modelName}
               modelName={modelName}
               state={state}
-              onTest={(scope) => handleMigrate(modelName, 'test', scope)}
-              onExecute={(scope) => handleMigrate(modelName, 'execute', scope)}
+              onTest={(scope, qb) => handleMigrate(modelName, 'test', scope, qb)}
+              onExecute={(scope, qb) => handleMigrate(modelName, 'execute', scope, qb)}
               onCancel={() => handleCancel(modelName)}
               revisionMode={revisionModes[modelName] || 'current'}
               onRevisionModeChange={(m) =>
@@ -327,6 +391,10 @@ export function MigrationStatus({ resourceNames }: MigrationStatusProps) {
               revisionInput={revisionInputs[modelName] || ''}
               onRevisionInputChange={(v) =>
                 setRevisionInputs((prev) => ({ ...prev, [modelName]: v }))
+              }
+              qbExpression={qbExpressions[modelName] || ''}
+              onQbExpressionChange={(v) =>
+                setQbExpressions((prev) => ({ ...prev, [modelName]: v }))
               }
             />
           );
@@ -341,13 +409,15 @@ export function MigrationStatus({ resourceNames }: MigrationStatusProps) {
 interface ModelMigrationCardProps {
   modelName: string;
   state: ModelMigrationState;
-  onTest: (scope?: RevisionScope) => void;
-  onExecute: (scope?: RevisionScope) => void;
+  onTest: (scope?: RevisionScope, qb?: string) => void;
+  onExecute: (scope?: RevisionScope, qb?: string) => void;
   onCancel: () => void;
   revisionMode: RevisionScopeMode;
   onRevisionModeChange: (mode: RevisionScopeMode) => void;
   revisionInput: string;
   onRevisionInputChange: (value: string) => void;
+  qbExpression: string;
+  onQbExpressionChange: (value: string) => void;
 }
 
 function ModelMigrationCard({
@@ -360,6 +430,8 @@ function ModelMigrationCard({
   onRevisionModeChange,
   revisionInput,
   onRevisionInputChange,
+  qbExpression,
+  onQbExpressionChange,
 }: ModelMigrationCardProps) {
   const { running, mode, progressItems, result, error } = state;
   const total = progressItems.length;
@@ -368,6 +440,7 @@ function ModelMigrationCard({
   const skippedCount = progressItems.filter((p) => p.status === 'skipped').length;
 
   const currentScope = resolveRevisionScope(revisionMode, revisionInput);
+  const currentQb = qbExpression.trim() || undefined;
 
   return (
     <Card shadow="sm" padding="lg" radius="md" withBorder>
@@ -400,7 +473,7 @@ function ModelMigrationCard({
               variant="light"
               size="xs"
               leftSection={<IconTestPipe size={14} />}
-              onClick={() => onTest(currentScope)}
+              onClick={() => onTest(currentScope, currentQb)}
               disabled={running}
             >
               Test
@@ -408,7 +481,7 @@ function ModelMigrationCard({
             <Button
               size="xs"
               leftSection={<IconPlayerPlay size={14} />}
-              onClick={() => onExecute(currentScope)}
+              onClick={() => onExecute(currentScope, currentQb)}
               disabled={running}
             >
               Migrate
@@ -440,6 +513,20 @@ function ModelMigrationCard({
               style={{ flex: 1, maxWidth: 220 }}
             />
           )}
+        </Group>
+
+        {/* QB Expression */}
+        <Group gap="xs">
+          <Text size="xs" fw={500} c="dimmed">
+            Filter:
+          </Text>
+          <TextInput
+            size="xs"
+            placeholder="QB.all() — leave empty to migrate all"
+            value={qbExpression}
+            onChange={(e) => onQbExpressionChange(e.currentTarget.value)}
+            style={{ flex: 1, maxWidth: 350 }}
+          />
         </Group>
 
         {/* Error */}
@@ -501,28 +588,48 @@ function ModelMigrationCard({
                     {result.errors.length} Error(s)
                   </Accordion.Control>
                   <Accordion.Panel>
-                    <Table striped withTableBorder>
-                      <Table.Thead>
-                        <Table.Tr>
-                          <Table.Th>Resource ID</Table.Th>
-                          <Table.Th>Error</Table.Th>
-                        </Table.Tr>
-                      </Table.Thead>
-                      <Table.Tbody>
-                        {result.errors.map((err, idx) => (
-                          <Table.Tr key={idx}>
-                            <Table.Td>
-                              <Code>{err.resource_id}</Code>
-                            </Table.Td>
-                            <Table.Td>
-                              <Text size="sm" c="red">
-                                {err.error}
-                              </Text>
-                            </Table.Td>
+                    <Stack gap="xs">
+                      <Table striped withTableBorder>
+                        <Table.Thead>
+                          <Table.Tr>
+                            <Table.Th>Resource ID</Table.Th>
+                            <Table.Th>Error</Table.Th>
                           </Table.Tr>
-                        ))}
-                      </Table.Tbody>
-                    </Table>
+                        </Table.Thead>
+                        <Table.Tbody>
+                          {result.errors.slice(0, TABLE_DISPLAY_LIMIT).map((err, idx) => (
+                            <Table.Tr key={idx}>
+                              <Table.Td>
+                                <Code>{err.resource_id}</Code>
+                              </Table.Td>
+                              <Table.Td>
+                                <Text size="sm" c="red">
+                                  {err.error}
+                                </Text>
+                              </Table.Td>
+                            </Table.Tr>
+                          ))}
+                        </Table.Tbody>
+                      </Table>
+                      {result.errors.length > TABLE_DISPLAY_LIMIT && (
+                        <Text size="xs" c="dimmed">
+                          Showing {TABLE_DISPLAY_LIMIT} of {result.errors.length} errors.
+                        </Text>
+                      )}
+                      <Button
+                        variant="subtle"
+                        size="xs"
+                        leftSection={<IconDownload size={14} />}
+                        onClick={() =>
+                          downloadFile(
+                            `${modelName}-errors.json`,
+                            JSON.stringify(result.errors, null, 2),
+                          )
+                        }
+                      >
+                        Download All Errors ({result.errors.length})
+                      </Button>
+                    </Stack>
                   </Accordion.Panel>
                 </Accordion.Item>
               </Accordion>
@@ -536,32 +643,52 @@ function ModelMigrationCard({
             <Accordion.Item value="details">
               <Accordion.Control>Details ({progressItems.length} resources)</Accordion.Control>
               <Accordion.Panel>
-                <Table striped withTableBorder>
-                  <Table.Thead>
-                    <Table.Tr>
-                      <Table.Th>Resource ID</Table.Th>
-                      <Table.Th>Status</Table.Th>
-                      <Table.Th>Message</Table.Th>
-                    </Table.Tr>
-                  </Table.Thead>
-                  <Table.Tbody>
-                    {progressItems.map((p, idx) => (
-                      <Table.Tr key={idx}>
-                        <Table.Td>
-                          <Code>{p.resource_id}</Code>
-                        </Table.Td>
-                        <Table.Td>
-                          <Badge color={statusColor(p.status)} variant="light" size="sm">
-                            {p.status}
-                          </Badge>
-                        </Table.Td>
-                        <Table.Td>
-                          <Text size="sm">{p.error || p.message || '—'}</Text>
-                        </Table.Td>
+                <Stack gap="xs">
+                  <Table striped withTableBorder>
+                    <Table.Thead>
+                      <Table.Tr>
+                        <Table.Th>Resource ID</Table.Th>
+                        <Table.Th>Status</Table.Th>
+                        <Table.Th>Message</Table.Th>
                       </Table.Tr>
-                    ))}
-                  </Table.Tbody>
-                </Table>
+                    </Table.Thead>
+                    <Table.Tbody>
+                      {progressItems.slice(0, TABLE_DISPLAY_LIMIT).map((p, idx) => (
+                        <Table.Tr key={idx}>
+                          <Table.Td>
+                            <Code>{p.resource_id}</Code>
+                          </Table.Td>
+                          <Table.Td>
+                            <Badge color={statusColor(p.status)} variant="light" size="sm">
+                              {p.status}
+                            </Badge>
+                          </Table.Td>
+                          <Table.Td>
+                            <Text size="sm">{p.error || p.message || '—'}</Text>
+                          </Table.Td>
+                        </Table.Tr>
+                      ))}
+                    </Table.Tbody>
+                  </Table>
+                  {progressItems.length > TABLE_DISPLAY_LIMIT && (
+                    <Text size="xs" c="dimmed">
+                      Showing {TABLE_DISPLAY_LIMIT} of {progressItems.length} results.
+                    </Text>
+                  )}
+                  <Button
+                    variant="subtle"
+                    size="xs"
+                    leftSection={<IconDownload size={14} />}
+                    onClick={() =>
+                      downloadFile(
+                        `${modelName}-migration-details.json`,
+                        JSON.stringify(progressItems, null, 2),
+                      )
+                    }
+                  >
+                    Download All Results ({progressItems.length})
+                  </Button>
+                </Stack>
               </Accordion.Panel>
             </Accordion.Item>
           </Accordion>
