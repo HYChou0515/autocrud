@@ -1,56 +1,45 @@
 # Quickstart
 
-我們設想了幾個可能的應用場景, 可以根據需求從不同的角度出發使用autocrud解決您的問題。
+根據不同的使用場景，你可以從以下入口快速開始使用 autocrud。
 
-1. 我想要快速demo我的businses logic -> [fast demo](/quickstart/fast-demo.md)
-1. 我想要在現有的程式碼使用autocrud的功能 -> [integrate](/quickstart/integrate-existing.md)
-1. 我想使用job queue包含所有常見配套 -> [job queue](/quickstart/job-queue.md)
-1. 我不想寫前端
-1. schema變動我想要做資料migration
-1. 我想要讓我的data都內建版本控制, 軟刪除, 軟更新
-1. 我希望我能自訂post data的API
-1. 我希望需要處理較久的data可以在background執行
+如果你是第一次接觸，建議從「Fast Demo」開始。
 
-This quickstart uses `DiskStorageFactory` as the **minimal viable** persistent backend.
+---
 
-## Install
+## 🚀 快速上手
 
-```bash
-pip install autocrud
-```
+- **快速驗證 business logic（推薦）**  
+  → [Fast Demo](/quickstart/fast-demo.md)
 
-## Minimal FastAPI app
+- **在現有專案中導入 autocrud**  
+  → [Integrate with existing code](/quickstart/integrate-existing.md)
 
-```python
-from pathlib import Path
-from fastapi import FastAPI
-from msgspec import Struct
+---
 
-from autocrud import crud
-from autocrud.resource_manager.storage_factory import DiskStorageFactory
+## ⚙️ Job 與背景任務
 
-class User(Struct):
-    name: str
-    age: int
+- **建立完整的 job queue 系統（含 retry、log、rerun）**  
+  → [Job Queue](/quickstart/job-queue.md)
 
-app = FastAPI()
+- **將長時間任務放到 background 執行**  
+  → [Async Create](/quickstart/.md)
 
-# 1) configure once at startup (global instance pattern)
-crud.configure(
-    storage_factory=DiskStorageFactory(Path("./data")),
-    model_naming="kebab",
-)
+---
 
-# 2) register models
-crud.add_model(User)
+## 🧱 資料管理與 schema
 
-# 3) generate routes
-crud.apply(app)
-```
+- **為資料提供版本控制、軟刪除與歷史紀錄**  
+  → [Data Versioning](/quickstart/data-versioning.md)
 
-## What to check next
+- **schema 變動與資料 migration**  
+  → [Schema Migration](/quickstart/schema-migration.md)
 
-* Route generation and customization: `docs/howto/routes.md`
-* Storage backends overview: `docs/guides/storage.md`
-* Why msgspec Struct is used as schema: `docs/concepts/schema.md`
+---
 
+## 🌐 API 與前端
+
+- **不撰寫前端，直接使用自動生成 UI**  
+  → [Web UI](/howto/web-ui.md)
+
+- **自訂資料提交 API（post data）**  
+  → [Routes generation (FastAPI)](/howto/routes.md)
