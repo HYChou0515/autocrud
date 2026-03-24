@@ -131,7 +131,7 @@ class ListRouteTemplate(BaseRouteTemplate):
                 query = build_query(query_params)
                 fields = get_partial_fields(request, query_params)
 
-                with resource_manager.meta_provide(current_user, current_time):
+                with resource_manager.using(current_user, current_time):
                     results = resource_manager.list_resources(
                         query,
                         returns=["data"],
@@ -236,7 +236,7 @@ class ListRouteTemplate(BaseRouteTemplate):
                         else:
                             meta_partial.append(f)
 
-                with resource_manager.meta_provide(current_user, current_time):
+                with resource_manager.using(current_user, current_time):
                     results = resource_manager.list_resources(
                         query,
                         returns=["meta"],
@@ -332,7 +332,7 @@ class ListRouteTemplate(BaseRouteTemplate):
                         else:
                             info_partial.append(f)
 
-                with resource_manager.meta_provide(current_user, current_time):
+                with resource_manager.using(current_user, current_time):
                     results = resource_manager.list_resources(
                         query,
                         returns=["info"],
@@ -356,7 +356,7 @@ class ListRouteTemplate(BaseRouteTemplate):
                 query = build_query(query_params)
                 fields = get_partial_fields(request, query_params)
 
-                with resource_manager.meta_provide(current_user, current_time):
+                with resource_manager.using(current_user, current_time):
                     results = resource_manager.list_resources(
                         query,
                         returns=returns,
@@ -458,7 +458,7 @@ class ListRouteTemplate(BaseRouteTemplate):
                 query = build_query(query_params)
                 # count 不應受 limit/offset 影響，移除分頁限制以回傳真實總數
                 query = msgspec.structs.replace(query, limit=2**63 - 1, offset=0)
-                with resource_manager.meta_provide(current_user, current_time):
+                with resource_manager.using(current_user, current_time):
                     count = resource_manager.count_resources(query)
                 return count
             except Exception as e:

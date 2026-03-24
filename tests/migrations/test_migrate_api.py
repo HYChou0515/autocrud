@@ -62,10 +62,13 @@ def mock_resource_manager() -> Mock:
     manager.schema_version = "2.0"
     manager.resource_type = User
 
-    # Mock meta_provide context manager
+    # Mock using() context manager (replaces meta_provide)
     context_manager = Mock()
     context_manager.__enter__ = Mock(return_value=None)
     context_manager.__exit__ = Mock(return_value=None)
+    manager.using.return_value = context_manager
+
+    # Keep meta_provide alias for backward compat
     manager.meta_provide.return_value = context_manager
 
     return manager

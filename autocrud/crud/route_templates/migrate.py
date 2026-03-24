@@ -101,7 +101,7 @@ class MigrateRouteTemplate(BaseRouteTemplate):
                 ``None``, the current revision is migrated.
         """
         try:
-            with resource_manager.meta_provide(current_user, current_time):
+            with resource_manager.using(current_user, current_time):
                 # 檢查是否需要遷移
                 meta = resource_manager.get_meta(resource_id)
                 old_version = meta.schema_version
@@ -167,7 +167,7 @@ class MigrateRouteTemplate(BaseRouteTemplate):
                   each resource.
         """
         try:
-            with resource_manager.meta_provide(current_user, current_time):
+            with resource_manager.using(current_user, current_time):
                 # 根據 query 搜尋需要遷移的資源
                 if query:
                     search_result = resource_manager.search_resources(query)

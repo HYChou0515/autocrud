@@ -176,7 +176,7 @@ class RabbitMQMessageQueue(DelayableMessageQueue[T], Generic[T]):
                     # Use draft status so HeartbeatThread can use modify()
                     updated_job = resource.data
                     updated_job.status = TaskStatus.PROCESSING
-                    with self._rm_meta_provide(resource.info.created_by):
+                    with self._rm_using(resource.info.created_by):
                         self.rm.create_or_update(
                             resource_id,
                             updated_job,
@@ -404,7 +404,7 @@ class RabbitMQMessageQueue(DelayableMessageQueue[T], Generic[T]):
                 job.errmsg = error_msg
                 job.retries = retry_count + 1
                 try:
-                    with self._rm_meta_provide(resource.info.created_by):
+                    with self._rm_using(resource.info.created_by):
                         self.rm.create_or_update(resource_id, job)
                 except Exception:
                     pass  # Best effort
@@ -492,7 +492,7 @@ class RabbitMQMessageQueue(DelayableMessageQueue[T], Generic[T]):
                     resource = self.rm.get(resource_id)
                     job = resource.data
                     job.status = TaskStatus.PROCESSING
-                    with self._rm_meta_provide(resource.info.created_by):
+                    with self._rm_using(resource.info.created_by):
                         self.rm.create_or_update(
                             resource_id,
                             job,
@@ -514,7 +514,7 @@ class RabbitMQMessageQueue(DelayableMessageQueue[T], Generic[T]):
                         job.status = TaskStatus.FAILED
                         job.errmsg = str(e)
                         job.retries = retry_count + 1
-                        with self._rm_meta_provide(resource.info.created_by):
+                        with self._rm_using(resource.info.created_by):
                             self.rm.create_or_update(resource_id, job)
                     except Exception:
                         # If we can't update, just log and continue

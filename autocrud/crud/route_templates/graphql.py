@@ -397,7 +397,7 @@ class GraphQLRouteTemplate(BaseRouteTemplate, Generic[T]):
                         now = context["now"]
 
                         try:
-                            with rm.meta_provide(user, now):
+                            with rm.using(user, now):
                                 # Fetch meta first
                                 meta = rm.get_meta(resource_id)
 
@@ -565,7 +565,7 @@ class GraphQLRouteTemplate(BaseRouteTemplate, Generic[T]):
                                 search_query.sorts = sorts
 
                         try:
-                            with rm.meta_provide(user, now):
+                            with rm.using(user, now):
                                 metas = rm.search_resources(search_query)
                                 results = []
 

@@ -311,6 +311,12 @@ class AutoCRUD:
             ``get_user`` on the provider always takes priority.
         default_now:
             Default timestamp function used when time is not specified.
+        strict_operation_context:
+            When ``True``, all write operations (create, update, delete, etc.)
+            will raise :class:`MissingOperationContextError` if required
+            context fields (``user``, ``now``) are not fully resolved from
+            any source (explicit kwargs, ``using()`` scope, or manager
+            defaults).  Defaults to ``False``.
 
     See also:
         - `Schema`: declare schema/validation/migration for a resource.
@@ -338,6 +344,7 @@ class AutoCRUD:
         encoding: Encoding = Encoding.json,
         default_user: str | Callable[[], str] | UnsetType = UNSET,
         default_now: Callable[[], dt.datetime] | UnsetType = UNSET,
+        strict_operation_context: bool = False,
     ):
         # Initialize empty collections
         self.resource_managers: OrderedDict[str, IResourceManager] = OrderedDict()
@@ -356,6 +363,7 @@ class AutoCRUD:
         self.default_encoding = Encoding.json
         self.default_user = UNSET
         self.default_now = UNSET
+        self.strict_operation_context = False
         self._pending_create_actions: list[_PendingCreateAction] = []
         self._pending_update_actions: list[_PendingUpdateAction] = []
 
@@ -372,6 +380,7 @@ class AutoCRUD:
             encoding=encoding,
             default_user=default_user,
             default_now=default_now,
+            strict_operation_context=strict_operation_context,
         )
 
     def _apply_configuration(
@@ -393,6 +402,7 @@ class AutoCRUD:
         encoding: Encoding | UnsetType = UNSET,
         default_user: str | Callable[[], str] | UnsetType = UNSET,
         default_now: Callable[[], dt.datetime] | UnsetType = UNSET,
+        strict_operation_context: bool | UnsetType = UNSET,
     ) -> None:
         """Apply configuration settings to the AutoCRUD instance.
 
@@ -528,6 +538,10 @@ class AutoCRUD:
         if default_now is not UNSET:
             self.default_now = default_now
 
+        # Update strict_operation_context
+        if strict_operation_context is not UNSET:
+            self.strict_operation_context = strict_operation_context
+
     def configure(
         self,
         *,
@@ -546,6 +560,7 @@ class AutoCRUD:
         encoding: Encoding | UnsetType = UNSET,
         default_user: str | Callable[[], str] | UnsetType = UNSET,
         default_now: Callable[[], dt.datetime] | UnsetType = UNSET,
+        strict_operation_context: bool | UnsetType = UNSET,
     ) -> None:
         """Configure the AutoCRUD instance dynamically.
 
@@ -573,6 +588,11 @@ class AutoCRUD:
                 value instead of ``"anonymous"``.  A custom ``get_user`` on the
                 provider always takes priority.
             default_now: Default timestamp function for operations.
+            strict_operation_context: When ``True``, write operations on all
+                registered models will raise
+                :class:`MissingOperationContextError` if ``user`` and ``now``
+                are not resolved from any source (explicit kwargs,
+                ``using()`` scope, or manager defaults).
 
         Example:
             ```python
@@ -609,6 +629,7 @@ class AutoCRUD:
             encoding=encoding,
             default_user=default_user,
             default_now=default_now,
+            strict_operation_context=strict_operation_context,
         )
 
     def get_resource_manager(self, model: type[T] | str) -> IResourceManager[T]:
@@ -1283,6 +1304,7 @@ class AutoCRUD:
             validator=validator,
             pydantic_type=pydantic_model,
             constraint_checkers=constraint_checkers,
+            strict_operation_context=self.strict_operation_context,
             **other_options,
         )
         self.resource_managers[model_name] = resource_manager
@@ -2662,7 +2684,7 @@ class AutoCRUD:
                         # Propagate the user who created the Job to the
                         # target resource so created_by is traceable.
                         _job_user = resource.info.created_by or "system"
-                        with trm.meta_provide(_job_user, dt.datetime.now()):
+                        with trm.using(_job_user, dt.datetime.now()):
                             info = trm.create(result)
                         # Store RevisionInfo as artifact (dict form for
                         # serialisability)
@@ -2929,14 +2951,14 @@ class AutoCRUD:
 
                     # Lazy-fetch existing resource
                     _job_user = resource.info.created_by or "system"
-                    with trm.meta_provide(_job_user, dt.datetime.now()):
+                    with trm.using(_job_user, dt.datetime.now()):
                         existing_resource = trm.get(_resource_id)
                     if _has_existing:
                         kwargs[existing_param] = existing_resource.data
                     if _has_info:
                         kwargs[info_param] = existing_resource.info
                     if _has_meta:
-                        with trm.meta_provide(_job_user, dt.datetime.now()):
+                        with trm.using(_job_user, dt.datetime.now()):
                             kwargs[meta_param] = trm.get_meta(_resource_id)
 
                     raw_result = handler(**kwargs)
@@ -2948,7 +2970,7 @@ class AutoCRUD:
                         result = raw_result
 
                     if result is not None:
-                        with trm.meta_provide(_job_user, dt.datetime.now()):
+                        with trm.using(_job_user, dt.datetime.now()):
                             if update_mode == "modify":
                                 info = trm.modify(_resource_id, data=result)
                             else:
@@ -3316,7 +3338,7 @@ class AutoCRUD:
                         )
 
                     job_data = job_rm.resource_type(payload=payload_data)
-                    with job_rm.meta_provide(_current_user, _current_time):
+                    with job_rm.using(_current_user, _current_time):
                         info = job_rm.create(job_data)
 
                     redirect_url = f"/{job_resource_name}/{info.resource_id}"
@@ -3365,7 +3387,7 @@ class AutoCRUD:
                             else:
                                 result = handler(*args, **_snapshot_kwargs)
                             if result is not None:
-                                with resource_manager.meta_provide(
+                                with resource_manager.using(
                                     _current_user, _current_time
                                 ):
                                     resource_manager.create(result)
@@ -3399,7 +3421,7 @@ class AutoCRUD:
                     result = await handler(*args, **kwargs)
                     if result is None:
                         return None
-                    with resource_manager.meta_provide(_current_user, _current_time):
+                    with resource_manager.using(_current_user, _current_time):
                         info = resource_manager.create(result)
                     return MsgspecResponse(info)
 
@@ -3419,7 +3441,7 @@ class AutoCRUD:
                     result = handler(*args, **kwargs)
                     if result is None:
                         return None
-                    with resource_manager.meta_provide(_current_user, _current_time):
+                    with resource_manager.using(_current_user, _current_time):
                         info = resource_manager.create(result)
                     return MsgspecResponse(info)
 
@@ -3737,7 +3759,7 @@ class AutoCRUD:
                         )
 
                     job_data = job_rm.resource_type(payload=payload_data)
-                    with job_rm.meta_provide(_current_user, _current_time):
+                    with job_rm.using(_current_user, _current_time):
                         info = job_rm.create(job_data)
 
                     redirect_url = f"/{job_resource_name}/{info.resource_id}"
@@ -3775,9 +3797,7 @@ class AutoCRUD:
                     def _run_bg() -> None:
                         try:
                             # Lazy-fetch existing resource at BG execution time
-                            with resource_manager.meta_provide(
-                                _current_user, _current_time
-                            ):
+                            with resource_manager.using(_current_user, _current_time):
                                 existing_resource = resource_manager.get(_resource_id)
                             if _has_existing_param:
                                 _snapshot_kwargs[existing_param] = (
@@ -3786,7 +3806,7 @@ class AutoCRUD:
                             if _has_info_param:
                                 _snapshot_kwargs[info_param] = existing_resource.info
                             if _has_meta_param:
-                                with resource_manager.meta_provide(
+                                with resource_manager.using(
                                     _current_user, _current_time
                                 ):
                                     _snapshot_kwargs[meta_param] = (
@@ -3798,7 +3818,7 @@ class AutoCRUD:
                             else:
                                 result = handler(*args, **_snapshot_kwargs)
                             if result is not None:
-                                with resource_manager.meta_provide(
+                                with resource_manager.using(
                                     _current_user, _current_time
                                 ):
                                     if update_mode == "modify":
@@ -3836,9 +3856,7 @@ class AutoCRUD:
                             kwargs[pname] = pydantic_type(**_ensure_dict(kwargs[pname]))
                     # Fetch existing resource and inject (only if handler declares it)
                     try:
-                        with resource_manager.meta_provide(
-                            _current_user, _current_time
-                        ):
+                        with resource_manager.using(_current_user, _current_time):
                             existing_resource = resource_manager.get(_resource_id)
                     except ResourceIDNotFoundError:
                         raise HTTPException(
@@ -3850,14 +3868,12 @@ class AutoCRUD:
                     if _has_info_param:
                         kwargs[info_param] = existing_resource.info
                     if _has_meta_param:
-                        with resource_manager.meta_provide(
-                            _current_user, _current_time
-                        ):
+                        with resource_manager.using(_current_user, _current_time):
                             kwargs[meta_param] = resource_manager.get_meta(_resource_id)
                     result = await handler(**kwargs)
                     if result is None:
                         return None
-                    with resource_manager.meta_provide(_current_user, _current_time):
+                    with resource_manager.using(_current_user, _current_time):
                         if update_mode == "modify":
                             info = resource_manager.modify(_resource_id, data=result)
                         else:
@@ -3880,9 +3896,7 @@ class AutoCRUD:
                             kwargs[pname] = pydantic_type(**_ensure_dict(kwargs[pname]))
                     # Fetch existing resource and inject (only if handler declares it)
                     try:
-                        with resource_manager.meta_provide(
-                            _current_user, _current_time
-                        ):
+                        with resource_manager.using(_current_user, _current_time):
                             existing_resource = resource_manager.get(_resource_id)
                     except ResourceIDNotFoundError:
                         raise HTTPException(
@@ -3894,14 +3908,12 @@ class AutoCRUD:
                     if _has_info_param:
                         kwargs[info_param] = existing_resource.info
                     if _has_meta_param:
-                        with resource_manager.meta_provide(
-                            _current_user, _current_time
-                        ):
+                        with resource_manager.using(_current_user, _current_time):
                             kwargs[meta_param] = resource_manager.get_meta(_resource_id)
                     result = handler(**kwargs)
                     if result is None:
                         return None
-                    with resource_manager.meta_provide(_current_user, _current_time):
+                    with resource_manager.using(_current_user, _current_time):
                         if update_mode == "modify":
                             info = resource_manager.modify(_resource_id, data=result)
                         else:

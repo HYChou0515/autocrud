@@ -53,7 +53,7 @@ class RerunRouteTemplate(BaseRouteTemplate):
             current_time: dt.datetime = Depends(self.deps.get_now),
         ):
             try:
-                with resource_manager.meta_provide(current_user, current_time):
+                with resource_manager.using(current_user, current_time):
                     resource = resource_manager.get(resource_id)
                     job = resource.data
 

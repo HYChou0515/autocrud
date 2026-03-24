@@ -151,7 +151,7 @@ class CeleryMessageQueue(DelayableMessageQueue[T], Generic[T]):
                 resource = queue.rm.get(resource_id)
                 job = resource.data
                 job.status = TaskStatus.PROCESSING
-                with queue._rm_meta_provide(resource.info.created_by):
+                with queue._rm_using(resource.info.created_by):
                     queue.rm.create_or_update(
                         resource_id,
                         job,
@@ -207,7 +207,7 @@ class CeleryMessageQueue(DelayableMessageQueue[T], Generic[T]):
                     job.status = TaskStatus.FAILED
                     job.errmsg = error_msg
                     job.retries = retry_count + 1
-                    with queue._rm_meta_provide(resource.info.created_by):
+                    with queue._rm_using(resource.info.created_by):
                         queue.rm.create_or_update(resource_id, job)
                 except Exception:
                     pass  # Best effort - still stop retrying
@@ -225,7 +225,7 @@ class CeleryMessageQueue(DelayableMessageQueue[T], Generic[T]):
                     job.status = TaskStatus.FAILED
                     job.errmsg = error_msg
                     job.retries = retry_count + 1
-                    with queue._rm_meta_provide(resource.info.created_by):
+                    with queue._rm_using(resource.info.created_by):
                         queue.rm.create_or_update(resource_id, job)
                 except Exception:
                     # If we can't update, just continue with retry
@@ -397,14 +397,14 @@ class CeleryMessageQueue(DelayableMessageQueue[T], Generic[T]):
         if should_continue:
             # Reset retry count for next run, but keep status as COMPLETED
             job.retries = 0
-            with self._rm_meta_provide(completed_resource.info.created_by):
+            with self._rm_using(completed_resource.info.created_by):
                 self.rm.create_or_update(resource_id, job)
 
             # Schedule next run
             self._schedule_delayed_job(resource_id, job.periodic_interval_seconds)
         else:
             # Reached max runs or stop requested, just update the periodic_runs count
-            with self._rm_meta_provide(completed_resource.info.created_by):
+            with self._rm_using(completed_resource.info.created_by):
                 self.rm.create_or_update(resource_id, job)
 
     def stop_consuming(self) -> None:

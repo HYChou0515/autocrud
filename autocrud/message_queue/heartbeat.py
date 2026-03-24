@@ -21,7 +21,7 @@ class HeartbeatThread:
     shutdown if ``stop()`` is not called.
 
     Args:
-        mq: The message queue instance (provides ``rm`` and ``_rm_meta_provide``).
+        mq: The message queue instance (provides ``rm`` and ``_rm_using``).
         resource_id: The job resource to heartbeat.
         interval_seconds: Seconds between heartbeat ticks.
     """
@@ -77,7 +77,7 @@ class HeartbeatThread:
             rm = self._mq.rm
             resource = rm.get(self._resource_id)
             resource.data.last_heartbeat_at = dt.datetime.now(dt.timezone.utc)
-            with self._mq._rm_meta_provide(resource.info.created_by):
+            with self._mq._rm_using(resource.info.created_by):
                 rm.modify(self._resource_id, resource.data)
         except Exception:
             # Best effort – a single failed tick should not kill the thread.

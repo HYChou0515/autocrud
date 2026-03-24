@@ -119,7 +119,7 @@ class RBACPermissionChecker(
         for obj in possible_objects:
             try:
                 # 設置為 root 來執行搜尋，避免無限遞歸
-                with self.pm.meta_provide(self.root_user, context.now):
+                with self.pm.using(self.root_user, context.now):
                     # 構建搜尋查詢
                     query = ResourceMetaSearchQuery(
                         data_conditions=[
@@ -220,7 +220,7 @@ class RBACPermissionChecker(
             if p != PermissionResult.not_applicable:
                 return p
 
-            with self.pm.meta_provide(self.root_user, context.now):
+            with self.pm.using(self.root_user, context.now):
                 role_metas = self.pm.search_resources(
                     ResourceMetaSearchQuery(
                         data_conditions=[

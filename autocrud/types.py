@@ -1698,6 +1698,36 @@ class IResourceManager(ABC, Generic[T]):
         """
 
     @abstractmethod
+    def using(
+        self,
+        user: str | UnsetType = UNSET,
+        now: dt.datetime | UnsetType = UNSET,
+        *,
+        resource_id: str | UnsetType = UNSET,
+    ) -> AbstractContextManager:
+        """Context manager to provide operation context for write operations.
+
+        This is the recommended way to provide ``user``, ``now``, and
+        ``resource_id`` context when performing multiple write operations.
+
+        Resolution order (highest to lowest priority):
+            1. Explicit keyword arguments on the method call
+            2. Active ``using()`` scope
+            3. Manager defaults (``default_user``, ``default_now``)
+
+        Scopes can be nested; inner scopes override only the fields they
+        provide while inheriting the rest from outer scopes.
+
+        Args:
+            user: The user performing the action.
+            now: The current timestamp.
+            resource_id: Specific resource ID to use for ``create()``.
+
+        Yields:
+            IResourceManager: The manager itself.
+        """
+
+    @abstractmethod
     def meta_provide(
         self,
         user: str | UnsetType = UNSET,
@@ -1706,6 +1736,10 @@ class IResourceManager(ABC, Generic[T]):
         resource_id: str | UnsetType = UNSET,
     ) -> AbstractContextManager:
         """Context manager to provide metadata context (user, time, resource_id).
+
+        .. deprecated::
+            Use :meth:`using` instead.  ``meta_provide`` will be removed
+            in a future release.
 
         Args:
             user: The user performing the action.
@@ -1718,7 +1752,13 @@ class IResourceManager(ABC, Generic[T]):
 
     @abstractmethod
     def create(
-        self, data: T, *, status: RevisionStatus | UnsetType = UNSET
+        self,
+        data: T,
+        *,
+        status: RevisionStatus | UnsetType = UNSET,
+        user: str | UnsetType = UNSET,
+        now: dt.datetime | UnsetType = UNSET,
+        resource_id: str | UnsetType = UNSET,
     ) -> RevisionInfo:
         """Create a new resource.
 
@@ -1728,6 +1768,12 @@ class IResourceManager(ABC, Generic[T]):
         Args:
             data: The resource data object conforming to the resource type.
             status: The initial status of the resource (default: stable).
+            user: The user performing the action.  Overrides any active
+                ``using()`` scope or manager default.
+            now: The current timestamp.  Overrides any active ``using()``
+                scope or manager default.
+            resource_id: Specific resource ID to use instead of
+                auto-generating one.
 
         Returns:
             RevisionInfo: Metadata about the created revision including
@@ -2000,12 +2046,21 @@ class IResourceManager(ABC, Generic[T]):
         """
 
     @abstractmethod
-    def update(self, resource_id: str, data: T) -> RevisionInfo:
+    def update(
+        self,
+        resource_id: str,
+        data: T,
+        *,
+        user: str | UnsetType = UNSET,
+        now: dt.datetime | UnsetType = UNSET,
+    ) -> RevisionInfo:
         """Update the data of the resource by creating a new revision.
 
         Args:
             resource_id (str): the id of the resource to update.
             data (T): the data to replace the current one.
+            user: The user performing the action.
+            now: The current timestamp.
 
         Returns:
             info (RevisionInfo): the metadata of the newly created revision.
@@ -2027,7 +2082,14 @@ class IResourceManager(ABC, Generic[T]):
         """
 
     @abstractmethod
-    def create_or_update(self, resource_id: str, data: T) -> RevisionInfo:
+    def create_or_update(
+        self,
+        resource_id: str,
+        data: T,
+        *,
+        user: str | UnsetType = UNSET,
+        now: dt.datetime | UnsetType = UNSET,
+    ) -> RevisionInfo:
         pass
 
     @abstractmethod
@@ -2036,6 +2098,9 @@ class IResourceManager(ABC, Generic[T]):
         resource_id: str,
         data: T | JsonPatch | UnsetType = UNSET,
         status: RevisionStatus | UnsetType = UNSET,
+        *,
+        user: str | UnsetType = UNSET,
+        now: dt.datetime | UnsetType = UNSET,
     ) -> RevisionInfo:
         """Modify the data of the resource by update the current revision.
 
@@ -2051,12 +2116,21 @@ class IResourceManager(ABC, Generic[T]):
         """
 
     @abstractmethod
-    def patch(self, resource_id: str, patch_data: JsonPatch) -> RevisionInfo:
+    def patch(
+        self,
+        resource_id: str,
+        patch_data: JsonPatch,
+        *,
+        user: str | UnsetType = UNSET,
+        now: dt.datetime | UnsetType = UNSET,
+    ) -> RevisionInfo:
         """Apply RFC 6902 JSON Patch operations to the resource.
 
         Args:
             resource_id (str): the id of the resource to patch.
             patch_data (JsonPatch): RFC 6902 JSON Patch operations to apply.
+            user: The user performing the action.
+            now: The current timestamp.
 
         Returns:
             info (RevisionInfo): the metadata of the newly created revision.
@@ -2081,12 +2155,21 @@ class IResourceManager(ABC, Generic[T]):
         """
 
     @abstractmethod
-    def switch(self, resource_id: str, revision_id: str) -> ResourceMeta:
+    def switch(
+        self,
+        resource_id: str,
+        revision_id: str,
+        *,
+        user: str | UnsetType = UNSET,
+        now: dt.datetime | UnsetType = UNSET,
+    ) -> ResourceMeta:
         """Switch the current revision to a specific revision.
 
         Args:
             resource_id (str): the id of the resource.
             revision_id (str): the id of the revision to switch to.
+            user: The user performing the action.
+            now: The current timestamp.
 
         Returns:
             meta (ResourceMeta): the metadata of the resource after switching.
@@ -2113,11 +2196,19 @@ class IResourceManager(ABC, Generic[T]):
         """
 
     @abstractmethod
-    def delete(self, resource_id: str) -> ResourceMeta:
+    def delete(
+        self,
+        resource_id: str,
+        *,
+        user: str | UnsetType = UNSET,
+        now: dt.datetime | UnsetType = UNSET,
+    ) -> ResourceMeta:
         """Mark the resource as deleted (soft delete).
 
         Args:
             resource_id (str): the id of the resource to delete.
+            user: The user performing the action.
+            now: The current timestamp.
 
         Returns:
             meta (ResourceMeta): the updated metadata with is_deleted=True.
@@ -2144,11 +2235,19 @@ class IResourceManager(ABC, Generic[T]):
         """
 
     @abstractmethod
-    def restore(self, resource_id: str) -> ResourceMeta:
+    def restore(
+        self,
+        resource_id: str,
+        *,
+        user: str | UnsetType = UNSET,
+        now: dt.datetime | UnsetType = UNSET,
+    ) -> ResourceMeta:
         """Restore a previously deleted resource (undo soft delete).
 
         Args:
             resource_id (str): the id of the resource to restore.
+            user: The user performing the action.
+            now: The current timestamp.
 
         Returns:
             meta (ResourceMeta): the updated metadata with is_deleted=False.
@@ -2179,7 +2278,13 @@ class IResourceManager(ABC, Generic[T]):
         """
 
     @abstractmethod
-    def permanently_delete(self, resource_id: str) -> ResourceMeta:
+    def permanently_delete(
+        self,
+        resource_id: str,
+        *,
+        user: str | UnsetType = UNSET,
+        now: dt.datetime | UnsetType = UNSET,
+    ) -> ResourceMeta:
         """Permanently delete a resource and all its revision data.
 
         This is an irreversible operation that removes the resource metadata
@@ -2187,6 +2292,10 @@ class IResourceManager(ABC, Generic[T]):
 
         Args:
             resource_id (str): the id of the resource to permanently delete.
+            user: The user performing the action.  Overrides any active
+                ``using()`` scope or manager default.
+            now: The current timestamp.  Overrides any active ``using()``
+                scope or manager default.
 
         Returns:
             meta (ResourceMeta): the metadata of the resource before deletion.
@@ -2478,6 +2587,44 @@ class DuplicateResourceError(ResourceConflictError):
             f"Duplicate resource '{resource_id}' already exists during load."
         )
         self.resource_id = resource_id
+
+
+class MissingOperationContextError(Exception):
+    """Raised when a write operation is missing required context fields.
+
+    This error occurs when a mutating method (create, update, delete, etc.)
+    is called without the required ``user`` and/or ``now`` context.  Context
+    can be supplied via:
+
+    1. Explicit keyword arguments: ``mgr.create(data, user=..., now=...)``
+    2. A ``using()`` scope: ``with mgr.using(user=..., now=...): ...``
+    3. Manager defaults: ``ResourceManager(..., default_user=..., default_now=...)``
+
+    Attributes:
+        missing_fields: Names of the context fields that were not resolved.
+        method_name: The name of the method that required the context.
+    """
+
+    def __init__(
+        self,
+        missing_fields: list[str],
+        method_name: str | None = None,
+    ) -> None:
+        self.missing_fields = missing_fields
+        self.method_name = method_name
+        fields_str = ", ".join(missing_fields)
+        if method_name:
+            msg = (
+                f"Missing required operation context for '{method_name}': "
+                f"{fields_str}. "
+                f"Provide via explicit kwargs, using() scope, or manager defaults."
+            )
+        else:
+            msg = (
+                f"Missing required operation context: {fields_str}. "
+                f"Provide via explicit kwargs, using() scope, or manager defaults."
+            )
+        super().__init__(msg)
 
 
 class ValidationError(ValueError):

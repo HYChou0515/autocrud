@@ -69,7 +69,7 @@ class DeleteRouteTemplate(BaseRouteTemplate):
             current_time: dt.datetime = Depends(self.deps.get_now),
         ):
             try:
-                with resource_manager.meta_provide(current_user, current_time):
+                with resource_manager.using(current_user, current_time):
                     meta = resource_manager.delete(resource_id)
                 return MsgspecResponse(meta)
             except Exception as e:
@@ -118,7 +118,7 @@ class PermanentlyDeleteRouteTemplate(BaseRouteTemplate):
             current_time: dt.datetime = Depends(self.deps.get_now),
         ):
             try:
-                with resource_manager.meta_provide(current_user, current_time):
+                with resource_manager.using(current_user, current_time):
                     meta = resource_manager.permanently_delete(resource_id)
                 return MsgspecResponse(meta)
             except Exception as e:
@@ -180,7 +180,7 @@ class BatchDeleteRouteTemplate(BaseRouteTemplate):
                 # 強制覆蓋 is_deleted = False，只搜尋未刪除的資源
                 query_params.is_deleted = False
                 query = build_query(query_params)
-                with resource_manager.meta_provide(current_user, current_time):
+                with resource_manager.using(current_user, current_time):
                     metas = resource_manager.search_resources(query)
                     results: list[ResourceMeta] = []
                     for meta in metas:
@@ -247,7 +247,7 @@ class RestoreRouteTemplate(BaseRouteTemplate):
             current_time: dt.datetime = Depends(self.deps.get_now),
         ):
             try:
-                with resource_manager.meta_provide(current_user, current_time):
+                with resource_manager.using(current_user, current_time):
                     meta = resource_manager.restore(resource_id)
                 return MsgspecResponse(meta)
             except Exception as e:
@@ -309,7 +309,7 @@ class BatchRestoreRouteTemplate(BaseRouteTemplate):
                 # 強制覆蓋 is_deleted = True，只搜尋已刪除的資源
                 query_params.is_deleted = True
                 query = build_query(query_params)
-                with resource_manager.meta_provide(current_user, current_time):
+                with resource_manager.using(current_user, current_time):
                     metas = resource_manager.search_resources(query)
                     results: list[ResourceMeta] = []
                     for meta in metas:
