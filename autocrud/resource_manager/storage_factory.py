@@ -1,3 +1,4 @@
+import warnings
 from abc import ABC, abstractmethod
 from pathlib import Path
 from typing import Any
@@ -8,6 +9,7 @@ from autocrud.resource_manager.core import SimpleStorage
 from autocrud.resource_manager.meta_store.postgres import PostgresMetaStore
 from autocrud.resource_manager.meta_store.simple import DiskMetaStore, MemoryMetaStore
 from autocrud.resource_manager.meta_store.sqlite3 import S3SqliteMetaStore
+from autocrud.resource_manager.resource_store.postgres import PostgresResourceStore
 from autocrud.resource_manager.resource_store.s3 import S3ResourceStore
 from autocrud.resource_manager.resource_store.simple import (
     DiskResourceStore,
@@ -56,7 +58,73 @@ class DiskStorageFactory(IStorageFactory):
         return SimpleStorage(meta_store, resource_store)
 
 
-class PostgreSQLStorageFactory(IStorageFactory):
+class PostgresStorageFactory(IStorageFactory):
+    """PostgreSQL-only Storage Factory.
+
+    Uses PostgreSQL for both metadata storage and resource data storage.
+    No external object storage (S3) dependency — all data lives in PostgreSQL.
+    Suitable for deployments that want a single-database architecture without
+    additional infrastructure.
+
+    Args:
+        connection_string: PostgreSQL connection string
+            (e.g. ``"postgresql://user:pass@host:port/db"``).
+        encoding: Encoding format for data serialization
+            (default: ``Encoding.msgpack``).
+        table_prefix: Prefix for PostgreSQL table names (default: ``""``).  The
+            meta table will be named ``<prefix><model>_meta`` and the resource
+            tables ``<prefix><model>_resource_data`` /
+            ``<prefix><model>_resource_index``.
+    """
+
+    def __init__(
+        self,
+        connection_string: str,
+        encoding: Encoding = Encoding.msgpack,
+        table_prefix: str = "",
+    ):
+        self.connection_string = connection_string
+        self.encoding = encoding
+        self.table_prefix = table_prefix
+
+    def build(
+        self,
+        model_name: str,
+    ) -> IStorage:
+        """Build a PostgreSQL-only storage for the specified model.
+
+        Args:
+            model_name: Model name (used for table naming).
+
+        Returns:
+            Storage combining PostgreSQL meta store and PostgreSQL resource store.
+        """
+        table_name = (
+            f"{self.table_prefix}{model_name}_meta"
+            if self.table_prefix
+            else f"{model_name}_meta"
+        )
+        meta_store = PostgresMetaStore(
+            pg_dsn=self.connection_string,
+            encoding=self.encoding,
+            table_name=table_name,
+        )
+
+        resource_table_prefix = (
+            f"{self.table_prefix}{model_name}_"
+            if self.table_prefix
+            else f"{model_name}_"
+        )
+        resource_store = PostgresResourceStore(
+            pg_dsn=self.connection_string,
+            encoding=self.encoding,
+            table_prefix=resource_table_prefix,
+        )
+
+        return SimpleStorage(meta_store, resource_store)
+
+
+class PostgreSQLS3StorageFactory(IStorageFactory):
     """PostgreSQL + S3 Storage Factory for production use.
 
     Uses PostgreSQL for metadata storage (fast queries, indexes) and S3 for resource data.
@@ -313,3 +381,22 @@ class S3StorageFactory(IStorageFactory):
             prefix=f"{self.prefix}blobs/",
             client_kwargs=self.client_kwargs,
         )
+
+
+class PostgreSQLStorageFactory(PostgreSQLS3StorageFactory):
+    """Deprecated alias for :class:`PostgreSQLS3StorageFactory`.
+
+    .. deprecated:: 0.9.0
+        Use :class:`PostgreSQLS3StorageFactory` (PostgreSQL meta + S3 resource)
+        or :class:`PostgresStorageFactory` (PostgreSQL-only) instead.
+    """
+
+    def __init__(self, *args, **kwargs):
+        warnings.warn(
+            "PostgreSQLStorageFactory is deprecated and will be removed in a future "
+            "version. Use PostgreSQLS3StorageFactory (PostgreSQL meta + S3 resource) "
+            "or PostgresStorageFactory (PostgreSQL-only) instead.",
+            DeprecationWarning,
+            stacklevel=2,
+        )
+        super().__init__(*args, **kwargs)

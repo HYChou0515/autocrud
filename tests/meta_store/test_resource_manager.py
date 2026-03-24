@@ -126,6 +126,24 @@ def get_resource_store(
             s3.cleanup()
         except Exception as e:
             print(f"Error cleaning up S3 store: {e}")
+    elif store_type == "postgres":
+        from autocrud.resource_manager.resource_store.postgres import (
+            PostgresResourceStore,
+        )
+
+        pg_dsn = "postgresql://admin:password@localhost:5432/your_database"
+        table_prefix = f"test_{faker.pystr(min_chars=6, max_chars=10)}_"
+        store = PostgresResourceStore(
+            pg_dsn=pg_dsn,
+            encoding="msgpack",
+            table_prefix=table_prefix,
+        )
+        with suppress(Exception):
+            yield store
+        try:
+            store.drop_tables()
+        except Exception as e:
+            print(f"Error cleaning up Postgres resource store: {e}")
 
 
 @pytest.mark.flaky(retries=6, delay=1)
@@ -133,7 +151,7 @@ def get_resource_store(
     "meta_store_type",
     ALL_META_STORE_TYPES,
 )
-@pytest.mark.parametrize("res_store_type", ["memory", "disk", "s3"])
+@pytest.mark.parametrize("res_store_type", ["memory", "disk", "s3", "postgres"])
 class TestResourceManager:
     @pytest.fixture(autouse=True)
     def setup_method(

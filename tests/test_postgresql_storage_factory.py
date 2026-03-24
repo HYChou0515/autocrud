@@ -1,7 +1,7 @@
 """
-PostgreSQL Storage Factory Tests
+PostgreSQL S3 Storage Factory Tests
 
-Tests for PostgreSQLStorageFactory combining PostgreSQL MetaStore with S3 ResourceStore.
+Tests for PostgreSQLS3StorageFactory combining PostgreSQL MetaStore with S3 ResourceStore.
 Tests use mock S3 (moto) and in-memory PostgreSQL (sqlite) to avoid external dependencies.
 """
 
@@ -11,7 +11,7 @@ import pytest
 from msgspec import Struct
 
 from autocrud.resource_manager.basic import Encoding
-from autocrud.resource_manager.storage_factory import PostgreSQLStorageFactory
+from autocrud.resource_manager.storage_factory import PostgreSQLS3StorageFactory
 
 # Use mock backends for testing
 USE_MOCK = True
@@ -37,7 +37,7 @@ def mock_postgres_factory():
         patch("autocrud.resource_manager.storage_factory.S3BlobStore") as mock_blob,
     ):
         # Create factory
-        factory = PostgreSQLStorageFactory(
+        factory = PostgreSQLS3StorageFactory(
             connection_string="postgresql://test:test@localhost:5432/testdb",
             s3_bucket="test-bucket",
             s3_region="us-east-1",
@@ -52,8 +52,8 @@ def mock_postgres_factory():
 
 
 def test_postgresql_storage_factory_initialization():
-    """Test PostgreSQLStorageFactory initialization with all parameters."""
-    factory = PostgreSQLStorageFactory(
+    """Test PostgreSQLS3StorageFactory initialization with all parameters."""
+    factory = PostgreSQLS3StorageFactory(
         connection_string="postgresql://admin:password@localhost:5432/your_database",
         s3_bucket="my-bucket",
         s3_region="ap-northeast-1",
@@ -84,8 +84,8 @@ def test_postgresql_storage_factory_initialization():
 
 
 def test_postgresql_storage_factory_defaults():
-    """Test PostgreSQLStorageFactory with default parameters."""
-    factory = PostgreSQLStorageFactory(
+    """Test PostgreSQLS3StorageFactory with default parameters."""
+    factory = PostgreSQLS3StorageFactory(
         connection_string="postgresql://localhost/db",
         s3_bucket="bucket",
     )
@@ -159,7 +159,7 @@ def test_postgresql_storage_factory_table_prefix():
         patch("autocrud.resource_manager.storage_factory.S3ResourceStore"),
     ):
         # Without prefix
-        factory1 = PostgreSQLStorageFactory(
+        factory1 = PostgreSQLS3StorageFactory(
             connection_string="postgresql://localhost/db",
             s3_bucket="bucket",
             table_prefix="",
@@ -170,7 +170,7 @@ def test_postgresql_storage_factory_table_prefix():
 
         # With prefix
         mock_pg.reset_mock()
-        factory2 = PostgreSQLStorageFactory(
+        factory2 = PostgreSQLS3StorageFactory(
             connection_string="postgresql://localhost/db",
             s3_bucket="bucket",
             table_prefix="app_",
@@ -183,7 +183,7 @@ def test_postgresql_storage_factory_table_prefix():
 def test_postgresql_storage_factory_separate_blob_bucket():
     """Test using separate bucket for blobs."""
     with patch("autocrud.resource_manager.storage_factory.S3BlobStore") as mock_blob:
-        factory = PostgreSQLStorageFactory(
+        factory = PostgreSQLS3StorageFactory(
             connection_string="postgresql://localhost/db",
             s3_bucket="data-bucket",
             blob_bucket="blob-bucket",
@@ -209,7 +209,7 @@ def test_postgresql_storage_factory_s3_client_kwargs():
             "config": {"retries": {"max_attempts": 5}},
         }
 
-        factory = PostgreSQLStorageFactory(
+        factory = PostgreSQLS3StorageFactory(
             connection_string="postgresql://localhost/db",
             s3_bucket="bucket",
             s3_client_kwargs=custom_kwargs,

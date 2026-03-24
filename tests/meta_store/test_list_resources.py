@@ -60,6 +60,23 @@ def get_resource_store(
         d = tmpdir / faker.pystr()
         d.mkdir()
         yield DiskResourceStore(encoding="msgpack", rootdir=d)
+    elif store_type == "postgres":
+        from autocrud.resource_manager.resource_store.postgres import (
+            PostgresResourceStore,
+        )
+
+        pg_dsn = "postgresql://admin:password@localhost:5432/your_database"
+        table_prefix = f"test_{faker.pystr(min_chars=6, max_chars=10)}_"
+        store = PostgresResourceStore(
+            pg_dsn=pg_dsn,
+            encoding="msgpack",
+            table_prefix=table_prefix,
+        )
+        yield store
+        try:
+            store.drop_tables()
+        except Exception:
+            pass
 
 
 @pytest.fixture
@@ -70,7 +87,7 @@ def my_tmpdir():
 
 @pytest.mark.flaky(retries=3, delay=1)
 @pytest.mark.parametrize("meta_store_type", ["memory", "sql3-mem"])
-@pytest.mark.parametrize("res_store_type", ["memory"])
+@pytest.mark.parametrize("res_store_type", ["memory", "postgres"])
 class TestListResources:
     @pytest.fixture(autouse=True)
     def setup_method(

@@ -358,7 +358,7 @@ function getStorageImport(storage: WizardState["storage"]): string | null {
     case "s3":
       return "from autocrud.resource_manager.storage_factory import S3StorageFactory";
     case "postgresql":
-      return "from autocrud.resource_manager.storage_factory import PostgreSQLStorageFactory";
+      return "from autocrud.resource_manager.storage_factory import PostgreSQLS3StorageFactory";
     default:
       return null;
   }
@@ -1218,7 +1218,7 @@ export function generateConfigureCall(state: WizardState): string {
         `blob_bucket="${sc.blobBucket || sc.s3Bucket || "autocrud"}"`,
       );
       args.push(
-        `storage_factory=PostgreSQLStorageFactory(\n        ${pgArgs.join(",\n        ")},\n    )`,
+        `storage_factory=PostgreSQLS3StorageFactory(\n        ${pgArgs.join(",\n        ")},\n    )`,
       );
       break;
     }

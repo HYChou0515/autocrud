@@ -9,6 +9,7 @@ from autocrud.resource_manager.resource_store.etag_cached_s3 import (
 from autocrud.resource_manager.resource_store.mq_cached_s3 import (
     MQCachedS3ResourceStore,
 )
+from autocrud.resource_manager.resource_store.postgres import PostgresResourceStore
 from autocrud.resource_manager.resource_store.s3 import S3ResourceStore
 from autocrud.resource_manager.resource_store.simple import (
     DiskResourceStore,
@@ -22,4 +23,5 @@ __all__ = [
     "CachedS3ResourceStore",
     "MQCachedS3ResourceStore",
     "ETagCachedS3ResourceStore",
+    "PostgresResourceStore",
 ]
