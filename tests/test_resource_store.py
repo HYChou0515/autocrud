@@ -21,12 +21,22 @@ try:
 except ImportError:
     S3_AVAILABLE = False
 
+# Try to import PostgresResourceStore, but make it optional
+try:
+    from autocrud.resource_manager.resource_store.postgres import PostgresResourceStore
+
+    PG_AVAILABLE = True
+except ImportError:
+    PG_AVAILABLE = False
+
 
 class TestIResourceStore:
     """Test suite for IResourceStore interface implementations."""
 
     @pytest.fixture(
-        params=["memory", "disk"] + (["s3", "cached_s3"] if S3_AVAILABLE else [])
+        params=["memory", "disk"]
+        + (["s3", "cached_s3"] if S3_AVAILABLE else [])
+        + (["postgres"] if PG_AVAILABLE else [])
     )
     def resource_store(self, request, tmp_path):
         """Parametrized fixture that creates different resource store implementations."""
@@ -74,6 +84,23 @@ class TestIResourceStore:
             yield store
             try:
                 store.cleanup()
+            except Exception:
+                pass
+        elif request.param == "postgres" and PG_AVAILABLE:
+            pg_dsn = "postgresql://admin:password@localhost:5432/your_database"
+            table_prefix = f"test_{tmp_path.name.replace('-', '_')}_"
+            store = PostgresResourceStore(
+                pg_dsn=pg_dsn,
+                encoding=Encoding.json,
+                table_prefix=table_prefix,
+            )
+            try:
+                store.cleanup()
+            except Exception:
+                pass
+            yield store
+            try:
+                store.drop_tables()
             except Exception:
                 pass
         else:
