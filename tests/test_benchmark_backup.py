@@ -1,7 +1,7 @@
 """Benchmark: backup (dump) & restore (load) with PostgreSQL + S3 storage.
 
 Measures end-to-end throughput of AutoCRUD's ``.acbak`` archive export and
-import using ``PostgreSQLStorageFactory`` (PostgreSQL meta + S3 resource/blob).
+import using ``PostgreSQLS3StorageFactory`` (PostgreSQL meta + S3 resource/blob).
 
 Requirements
 ~~~~~~~~~~~~
@@ -178,10 +178,10 @@ class Avatar(Struct):
 
 
 def _make_storage_factory():
-    """Build a PostgreSQLStorageFactory from environment variables."""
-    from autocrud.resource_manager.storage_factory import PostgreSQLStorageFactory
+    """Build a PostgreSQLS3StorageFactory from environment variables."""
+    from autocrud.resource_manager.storage_factory import PostgreSQLS3StorageFactory
 
-    return PostgreSQLStorageFactory(
+    return PostgreSQLS3StorageFactory(
         connection_string=POSTGRES_DSN,
         s3_bucket=S3_BUCKET,
         s3_region=S3_REGION,
