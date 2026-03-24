@@ -21,8 +21,8 @@
 - **建立完整的 job queue 系統（含 retry、log、rerun）**  
   → [Job Queue](/quickstart/job-queue.md)
 
-- **將長時間任務放到 background 執行**  
-  → [Async Create](/quickstart/.md)
+- **將操作轉為背景任務（支援 background / job）**  
+  → [Async Actions](/quickstart/async-action.md)
 
 ---
 
