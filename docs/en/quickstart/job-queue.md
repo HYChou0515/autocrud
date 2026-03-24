@@ -27,4 +27,85 @@ autocrud 在這一層之上提供了一個更高階的抽象，讓開發者可�
 - 為每個 job 提供獨立的 log 紀錄與下載能力
 - 支援 retry 與 rerun，並保留 execution lineage
 
-在接下來的章節中，我們會一步一步帶你建立一個完整可用的 job queue 系統。
+接著我們會一步一步帶你建立一個完整可用的 job queue 系統。
+
+## 1. 定義 job schema 與 job handler
+
+首先，我們先定義這個 job 的輸入（`Payload`）、輸出產物（`Artifact`），以及對應的 job type。
+
+在這個例子中，我們要建立一個模型訓練任務。  
+使用者提交 job 時，會提供資料集 ID、演算法名稱與訓練參數；而 job 執行完成後，則會產生一個 `model_id` 作為訓練結果。
+
+```python
+from typing import Any, Literal
+
+import msgspec
+
+from autocrud.types import Job, Resource
+
+
+class TrainingPayload(msgspec.Struct):
+    data_id: str
+    algo: Literal["random-forest", "mlp"]
+    params: dict[str, Any]
+
+
+class TrainingArtifact(msgspec.Struct):
+    model_id: str
+
+
+class TrainingJob(Job[TrainingPayload, TrainingArtifact]):
+    pass
+
+
+def training(job: Resource[TrainingJob]) -> TrainingJob:
+    print(f"start training job created by {job.info.created_by}")
+
+    data = get_data(job.data.payload.data_id)
+    model = train(
+        job.data.payload.algo,
+        data,
+        job.data.payload.params,
+    )
+
+    job.data.artifact = TrainingArtifact(model_id=model.id)
+    return job.data
+```
+
+在這裡：
+
+- `TrainingPayload` 定義這次 job 的輸入
+- `TrainingArtifact` 定義這次 job 執行後的輸出結果
+- `TrainingJob` 是實際註冊到 autocrud 的 job type
+- `training()` 則是這個 job 對應的 handler，負責真正執行任務邏輯
+
+## 2. 在 autocrud 中註冊 job type
+
+定義完 schema 與 handler 後，就可以將這個 job type 註冊到 autocrud。
+
+```python
+from autocrud import Schema, crud
+
+crud.add(
+    Schema(TrainingJob, "v1"),
+    job_handler=training,
+)
+```
+
+完成註冊後，autocrud 就會知道：
+
+- 這個 job 的 schema 是 `TrainingJob`
+- 這個 job 要由 `training` handler 來執行
+
+## 3. 啟動 job consumer
+
+最後，取得對應的 resource manager，並啟動 job consumer，讓系統開始處理進入 queue 的 job。
+
+```python
+mgr = crud.get_resource_manager("training-job")
+mgr.start_consume(
+    # block=False  # 如果在同一個 process 內啟動，建議設為 False 以避免阻塞
+)
+```
+
+啟動後，系統就會開始持續監聽 queue，並在有新的 `training-job` 進入時自動呼叫 `training()` handler 進行處理。
