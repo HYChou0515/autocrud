@@ -55,6 +55,7 @@ dev = [
     "ruff>=0.12.4",
     "pytest-asyncio>=1.1.0",
     "autocrud[all]",
+    "pytest-markdown-docs>=0.9.1",
 ]
 s3 = [
     "boto3>=1.40.21",

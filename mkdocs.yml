@@ -151,7 +151,8 @@ plugins:
           default: true
           nav:
             - Home: index.md
-            - Quickstart: quickstart.md
+            - Installation: installation.md
+            - Quickstart: quickstart/index.md
             - Concepts:
               - concepts/why-autocrud.md
               - concepts/overview.md
