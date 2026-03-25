@@ -1344,9 +1344,11 @@ class AutoCRUD:
             structs: Optional list of additional msgspec Structs to include in the schema.
 
         Note:
-            This method is automatically called when you use `autocrud.apply(app)` if
-            you haven't disabled it. You typically don't need to call this manually
-            unless you are doing advanced customization of the OpenAPI schema.
+            When :meth:`apply` is called with a ``FastAPI`` instance as the
+            first argument, this method is called automatically at the end of
+            ``apply()``.  You only need to call it manually if you passed a
+            bare ``APIRouter`` to ``apply()`` or need to customise the
+            ``structs`` parameter separately.
         """
 
         # Handle root_path by setting servers if not already set
@@ -2349,51 +2351,79 @@ class AutoCRUD:
             target_rm = self.resource_managers[target_name]
             target_rm.event_handlers.append(handler)
 
-    def apply(self, router: APIRouter) -> APIRouter:
-        """Apply all route templates to generate API endpoints on the given router.
+    def apply(
+        self,
+        app: FastAPI | APIRouter,
+        *,
+        router: APIRouter | None = None,
+        structs: list[type] | None = None,
+        auto_include: bool = True,
+    ) -> APIRouter:
+        """Apply all route templates to generate API endpoints.
 
-        This method generates all the CRUD endpoints for all registered models
-        and applies them to the provided FastAPI router. This is typically the
-        final step in setting up your AutoCRUD API.
+        This method generates all the CRUD endpoints for all registered models.
+        When ``app`` is a :class:`~fastapi.FastAPI` instance, the OpenAPI schema
+        is automatically customised via :meth:`openapi` after route generation.
 
         Args:
-            router: FastAPI APIRouter or FastAPI app instance to add routes to.
+            app: The FastAPI application or an APIRouter to attach routes to.
+                When a ``FastAPI`` instance is provided, :meth:`openapi` is
+                called automatically after route generation.
+            router: Optional sub-router.  When provided, routes are generated
+                on this router instead of directly on ``app``.  If
+                ``auto_include`` is ``True`` and ``app`` is a ``FastAPI``
+                instance, the router is automatically included on ``app``
+                via ``app.include_router(router)`` before OpenAPI generation.
+            structs: Additional ``msgspec.Struct`` types to include in the
+                OpenAPI ``components/schemas``.  Forwarded to :meth:`openapi`.
+            auto_include: When ``True`` (the default) and both ``app`` is a
+                ``FastAPI`` instance and ``router`` is provided, automatically
+                call ``app.include_router(router)`` so that the sub-router's
+                routes are reachable and visible in the OpenAPI schema.
+                Set to ``False`` if you have already called
+                ``app.include_router(router)`` yourself.
 
         Returns:
-            The same router instance with all generated routes added.
+            The router that routes were generated on — either ``router``
+            (if provided) or ``app``.
 
         Example:
             ```python
-            from fastapi import FastAPI
+            from fastapi import FastAPI, APIRouter
             from autocrud import AutoCRUD
 
             app = FastAPI()
             autocrud = AutoCRUD()
-
-            # Add your models
             autocrud.add_model(User)
             autocrud.add_model(Post)
 
-            # Generate and apply all routes
+            # 1. Simplest — routes on app, auto OpenAPI
             autocrud.apply(app)
 
-            # Or with a sub-router
+            # 2. With a sub-router — auto include + auto OpenAPI
+            api_router = APIRouter(prefix="/api/v1")
+            autocrud.apply(app, router=api_router)
+
+            # 3. Manual include (e.g. already included elsewhere)
+            api_router = APIRouter(prefix="/api/v1")
+            autocrud.apply(app, router=api_router, auto_include=False)
+            app.include_router(api_router)
+            autocrud.openapi(app)
+
+            # 4. Pure APIRouter (no FastAPI, no OpenAPI)
             api_router = APIRouter(prefix="/api/v1")
             autocrud.apply(api_router)
-            app.include_router(api_router)
             ```
 
-        Generated Routes:
-            For each model, applies all route templates in order to create
-            a comprehensive set of CRUD endpoints. The exact endpoints depend
-            on the route templates configured.
-
         Note:
-            - Call this method after adding all models and custom route templates
-            - Each route template is applied to each model in the order specified
-            - Routes are generated dynamically based on model structure
-            - This method is idempotent - calling it multiple times is safe
+            - Call this method after adding all models and custom route templates.
+            - When ``app`` is a bare ``APIRouter``, OpenAPI customisation is
+              skipped (``APIRouter`` has no OpenAPI schema).
+            - ``structs`` is ignored when ``app`` is not a ``FastAPI`` instance.
         """
+        # Determine the target router for route generation
+        target = router if router is not None else app
+
         # Validate all Ref targets point to registered resources
         registered = set(self.resource_managers.keys())
         for ref_info in self.relationships:
@@ -2418,23 +2448,35 @@ class AutoCRUD:
         for model_name, resource_manager in self.resource_managers.items():
             for route_template in self.route_templates:
                 try:
-                    route_template.apply(model_name, resource_manager, router)
+                    route_template.apply(model_name, resource_manager, target)
                 except Exception:
                     pass
 
         # Register custom create action routes
-        self._apply_create_actions(router)
+        self._apply_create_actions(target)
 
         # Register custom update action routes
-        self._apply_update_actions(router)
+        self._apply_update_actions(target)
 
         # Add ref-specific routes (referrers + relationships)
-        self._apply_ref_routes(router)
+        self._apply_ref_routes(target)
 
         # Global backup / restore endpoints
-        self._apply_backup_routes(router)
+        self._apply_backup_routes(target)
 
-        return router
+        # Auto include_router + auto openapi when app is a FastAPI instance
+        is_fastapi = isinstance(app, FastAPI)
+        if is_fastapi:
+            if router is not None and auto_include:
+                app.include_router(router)
+            # Only generate OpenAPI when routes are actually on the app.
+            # When router is provided but auto_include is False, the routes
+            # live on the sub-router and are not yet reachable from app.routes,
+            # so skip openapi and let the user call it manually.
+            if router is None or auto_include:
+                self.openapi(app, structs or [])
+
+        return target
 
     @staticmethod
     def _reconstruct_params(
