@@ -1,45 +1,47 @@
 # Quickstart
 
-根據不同的使用場景，你可以從以下入口快速開始使用 autocrud。
+AutoCRUD is schema-first — most features start from defining a resource.
 
-如果你是第一次接觸，建議從「Fast Demo」開始。
+Choose a starting point based on your use case.
+
+If this is your first time using AutoCRUD, start with [**Fast Demo**](/quickstart/fast-demo.md).
 
 ---
 
-## 🚀 快速上手
+## 🚀 Getting Started
 
-- **快速驗證 business logic（推薦）**  
+- **Build a full CRUD app from a single schema (recommended)**  
   → [Fast Demo](/quickstart/fast-demo.md)
 
-- **在現有專案中導入 autocrud**  
+- **Integrate AutoCRUD into an existing codebase**  
   → [Integrate with existing code](/quickstart/integrate-existing.md)
 
 ---
 
-## ⚙️ Job 與背景任務
+## ⚙️ Jobs & Background Processing
 
-- **建立完整的 job queue 系統（含 retry、log、rerun）**  
+- **Build a complete job queue system (retry, logs, rerun)**  
   → [Job Queue](/quickstart/job-queue.md)
 
-- **將操作轉為背景任務（支援 background / job）**  
+- **Run operations asynchronously (background / job execution)**  
   → [Async Actions](/quickstart/async-action.md)
 
 ---
 
-## 🧱 資料管理與 schema
+## 🧱 Data & Schema Management
 
-- **為資料提供版本控制、軟刪除與歷史紀錄**  
+- **Keep full history with revision control (versioning, soft delete)**  
   → [Data Versioning](/quickstart/data-versioning.md)
 
-- **schema 變動與資料 migration**  
+- **Handle schema evolution and data migration**  
   → [Schema Migration](/quickstart/schema-migration.md)
 
 ---
 
-## 🌐 API 與前端
+## 🌐 API & Frontend
 
-- **不撰寫前端，直接使用自動生成 UI**  
+- **Use the auto-generated UI without writing frontend code**  
   → [Web UI](/howto/web-ui.md)
 
-- **自訂資料提交 API（post data）**  
+- **Customize data submission and API behavior**  
   → [Routes generation (FastAPI)](/howto/routes.md)

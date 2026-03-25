@@ -175,9 +175,13 @@ def ping():
 
 crud.add_model(Schema(Issue, "v1"))
 crud.apply(app, router=router)
-
-app.include_router(router)
 ```
+
+When `router` is provided, `apply()` automatically:
+
+1. Generates routes on the router
+2. Calls `app.include_router(router)` to mount the router
+3. Calls `openapi(app)` to generate the OpenAPI schema
 
 This allows you to:
 
@@ -186,6 +190,14 @@ This allows you to:
 - integrate AutoCRUD without modifying your main app layout
 
 If no router is provided, AutoCRUD will attach routes directly to the app.
+
+If you need to include the router yourself (e.g. with custom tags or dependencies), pass `auto_include=False`:
+
+```python
+crud.apply(app, router=router, auto_include=False)
+app.include_router(router, tags=["my-custom-tag"])
+crud.openapi(app)
+```
 
 ---
 
@@ -411,5 +423,4 @@ crud.add_model(
 )
 
 crud.apply(app, router=router)
-app.include_router(router)
 ```
