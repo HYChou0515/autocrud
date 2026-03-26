@@ -74,7 +74,9 @@ class TestUsingBasic:
     def test_using_as_operator(self):
         rm = make_rm()
         with rm.using(user="alice", now=NOW) as op:
-            assert op is rm
+            from autocrud.resource_manager.core import ResourceOps
+
+            assert isinstance(op, ResourceOps)
             info = op.create(Item(name="c"))
         assert info.created_by == "alice"
 
