@@ -1680,9 +1680,8 @@ def main():
     router = APIRouter(prefix="/v1/autocrud")
 
     # 應用到 FastAPI
-    crud.apply(router)
-    app.include_router(router)
-    crud.openapi(app)
+    crud.apply(app, router=router)
+
     crud.get_resource_manager(GameEvent).start_consume(block=False)
 
     # Start all async create-job consumers for the 'character' resource
