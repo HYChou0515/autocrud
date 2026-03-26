@@ -89,6 +89,21 @@ Blob-specific errors:
 * **400** — blob store not configured (`NotImplementedError`)
 * **500** — blob data missing
 
+### Upload-session routes
+
+`POST /blobs/upload-sessions`, `GET /blobs/upload-sessions/{upload_id}`,
+`PUT /blobs/upload-sessions/{upload_id}/content`,
+`POST /blobs/upload-sessions/{upload_id}/finalize`,
+`POST /blobs/upload-sessions/{upload_id}/abort`
+
+* **501** — blob store not configured
+* **404** — `upload_id` not found
+* **409 Conflict** — invalid state transition (e.g. finalize without
+  content, finalize twice, abort after finalization, upload content to
+  a non-pending session)
+* **400** — other errors from the blob store or route layer
+* **204** — successful abort (no body)
+
 ---
 
 ## Create routes (`create.py`)

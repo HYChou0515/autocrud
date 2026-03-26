@@ -57,12 +57,7 @@ function AutoCRUDLayout() {
             Resources
           </Text>
           {resourceNames
-            .filter(
-              (name) =>
-                !isAsyncCreateJob(name) &&
-                !isAsyncUpdateJob(name) &&
-                !standaloneJobNames.includes(name),
-            )
+            .filter((name) => !isAsyncCreateJob(name) && !isAsyncUpdateJob(name) && !standaloneJobNames.includes(name))
             .map((name) => {
               const config = getResource(name)!;
               const createJobChildren = getAsyncCreateJobChildren(name);

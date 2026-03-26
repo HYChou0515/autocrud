@@ -12,6 +12,7 @@ from msgspec import UNSET, Struct, UnsetType
 
 from autocrud.types import (
     Binary,
+    BlobUploadSession,
     DataSearchCondition,
     DataSearchGroup,
     DataSearchLogicOperator,
@@ -589,6 +590,25 @@ class ISlowMetaStore(IMetaStore):
 
 
 class IBlobStore(ABC):
+    """Interface for storing and retrieving binary blobs.
+
+    Implementations use content-hash addressing by default: the ``file_id``
+    is derived from an xxh3-128 digest so identical payloads are
+    automatically deduplicated.
+
+    In addition to the basic ``put``/``get``/``exists`` operations, every
+    implementation **must** provide the five *upload session* methods
+    (``create_upload_session``, ``get_upload_session``,
+    ``upload_to_session``, ``finalize_upload_session``,
+    ``abort_upload_session``) that allow chunked or client-direct uploads.
+
+    Exception conventions for session methods:
+
+    * ``FileNotFoundError`` — session does not exist.
+    * ``ValueError`` — invalid status transition (e.g. finalizing a
+      pending session or uploading to an already-finalized session).
+    """
+
     @abstractmethod
     def put(
         self,
@@ -631,6 +651,97 @@ class IBlobStore(ABC):
         Returns None if not supported (e.g. local storage without a public server).
         """
         return None
+
+    # ------------------------------------------------------------------
+    # Upload session API
+    # ------------------------------------------------------------------
+
+    @abstractmethod
+    def create_upload_session(
+        self,
+        *,
+        key: str | None = None,
+        content_type: str | UnsetType = UNSET,
+        size: int | None = None,
+    ) -> BlobUploadSession:
+        """Create an upload session.
+
+        Returns session metadata including ``upload_url`` for the client
+        to deliver bytes.
+
+        Args:
+            key: Optional caller-specified storage key.  When ``None``
+                the key is derived from a content hash at finalize time.
+            content_type: MIME type hint.
+            size: Expected size of the content in bytes (``None`` if unknown).
+
+        Returns:
+            A :class:`BlobUploadSession` with ``upload_id``, ``upload_method``,
+            and ``upload_url`` populated.
+        """
+
+    @abstractmethod
+    def get_upload_session(self, upload_id: str) -> BlobUploadSession:
+        """Return current state of an upload session.
+
+        Args:
+            upload_id: The upload session identifier.
+
+        Returns:
+            A :class:`BlobUploadSession` reflecting the current state.
+
+        Raises:
+            FileNotFoundError: If the session does not exist.
+        """
+
+    @abstractmethod
+    def upload_to_session(self, upload_id: str, data: bytes) -> None:
+        """Store bytes for a proxy upload session.
+
+        This does **not** commit data to the blob store; it only buffers
+        the bytes within the session.  Call :meth:`finalize_upload_session`
+        to persist.
+
+        Args:
+            upload_id: The upload session identifier.
+            data: Raw bytes to buffer.
+
+        Raises:
+            FileNotFoundError: If the session does not exist.
+            ValueError: If the session status does not allow uploading
+                (e.g. already uploaded, finalized, or aborted).
+        """
+
+    @abstractmethod
+    def finalize_upload_session(self, upload_id: str) -> Binary:
+        """Finalize session: commit bytes to the blob store.
+
+        Returns a :class:`Binary` descriptor (without raw ``data``).
+
+        Args:
+            upload_id: The upload session identifier.
+
+        Returns:
+            A :class:`Binary` with ``file_id``, ``size``, and
+            ``content_type`` populated (``data`` is ``UNSET``).
+
+        Raises:
+            FileNotFoundError: If the session does not exist.
+            ValueError: If the session status does not allow finalizing
+                (e.g. still pending, already finalized, or aborted).
+        """
+
+    @abstractmethod
+    def abort_upload_session(self, upload_id: str) -> None:
+        """Abort session and discard any buffered bytes.
+
+        Args:
+            upload_id: The upload session identifier.
+
+        Raises:
+            FileNotFoundError: If the session does not exist.
+            ValueError: If the session has already been finalized.
+        """
 
 
 class IResourceStore(ABC):

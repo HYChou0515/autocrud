@@ -1,7 +1,7 @@
 import warnings
 from abc import ABC, abstractmethod
 from pathlib import Path
-from typing import Any
+from typing import Any, Literal
 
 from autocrud.resource_manager.basic import Encoding, IBlobStore, IStorage
 from autocrud.resource_manager.blob_store.s3 import S3BlobStore
@@ -142,6 +142,12 @@ class PostgreSQLS3StorageFactory(IStorageFactory):
         table_prefix: Prefix for PostgreSQL table names (default: "")
         blob_bucket: S3 bucket name for blob storage (default: same as s3_bucket)
         blob_prefix: Prefix for blob storage in S3 (default: "blobs/")
+        upload_method: How upload sessions deliver bytes to S3:
+            ``"proxy"`` (default) — bytes flow through the server;
+            ``"single_put"`` — a presigned PUT URL is returned so the
+            client uploads directly to S3.
+        presigned_url_expiry: Expiry in seconds for presigned URLs
+            (default ``3600``).
     """
 
     def __init__(
@@ -157,6 +163,8 @@ class PostgreSQLS3StorageFactory(IStorageFactory):
         table_prefix: str = "",
         blob_bucket: str | None = None,
         blob_prefix: str = "blobs/",
+        upload_method: Literal["proxy", "single_put"] = "proxy",
+        presigned_url_expiry: int = 3600,
     ):
         self.connection_string = connection_string
         self.s3_bucket = s3_bucket
@@ -169,6 +177,8 @@ class PostgreSQLS3StorageFactory(IStorageFactory):
         self.table_prefix = table_prefix
         self.blob_bucket = blob_bucket or s3_bucket
         self.blob_prefix = blob_prefix
+        self.upload_method = upload_method
+        self.presigned_url_expiry = presigned_url_expiry
 
     def build(
         self,
@@ -209,6 +219,8 @@ class PostgreSQLS3StorageFactory(IStorageFactory):
             secret_access_key=self.s3_secret_access_key,
             endpoint_url=self.s3_endpoint_url,
             prefix=self.blob_prefix,
+            upload_method=self.upload_method,
+            presigned_url_expiry=self.presigned_url_expiry,
             client_kwargs=self.s3_client_kwargs,
         )
 
@@ -292,6 +304,12 @@ class S3StorageFactory(IStorageFactory):
         auto_reload_on_conflict: Auto-reload from S3 on conflict detection (default: False)
         check_etag_on_read: Check ETag and reload on read if changed (default: True)
         client_kwargs: Additional boto3 client kwargs (default: None)
+        upload_method: How upload sessions deliver bytes to S3:
+            ``"proxy"`` (default) — bytes flow through the server;
+            ``"single_put"`` — a presigned PUT URL is returned so the
+            client uploads directly to S3.
+        presigned_url_expiry: Expiry in seconds for presigned URLs
+            (default ``3600``).
     """
 
     def __init__(
@@ -309,6 +327,8 @@ class S3StorageFactory(IStorageFactory):
         auto_reload_on_conflict: bool = False,
         check_etag_on_read: bool = True,
         client_kwargs: dict[str, Any] | None = None,
+        upload_method: Literal["proxy", "single_put"] = "proxy",
+        presigned_url_expiry: int = 3600,
     ):
         self.bucket = bucket
         self.access_key_id = access_key_id
@@ -323,6 +343,8 @@ class S3StorageFactory(IStorageFactory):
         self.auto_reload_on_conflict = auto_reload_on_conflict
         self.check_etag_on_read = check_etag_on_read
         self.client_kwargs = client_kwargs or {}
+        self.upload_method = upload_method
+        self.presigned_url_expiry = presigned_url_expiry
 
     def build(self, model_name: str) -> IStorage:
         """Build S3 backend storage for the specified model.
@@ -379,6 +401,8 @@ class S3StorageFactory(IStorageFactory):
             endpoint_url=self.endpoint_url,
             bucket=self.bucket,
             prefix=f"{self.prefix}blobs/",
+            upload_method=self.upload_method,
+            presigned_url_expiry=self.presigned_url_expiry,
             client_kwargs=self.client_kwargs,
         )
 

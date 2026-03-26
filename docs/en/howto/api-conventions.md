@@ -221,6 +221,44 @@ Blob bytes are retrieved via the dedicated endpoint:
   * `content_type` from `Binary` if available
   * otherwise `application/octet-stream`
 
+### Upload sessions
+
+In addition to the one-shot `POST /blobs/upload`, AutoCRUD provides a
+two-step **upload-session** flow for larger files or when pre-signed URLs
+are needed:
+
+| Step | Method | Endpoint |
+|------|--------|----------|
+| 1. Create session | `POST` | `/blobs/upload-sessions` |
+| 2. Check status | `GET` | `/blobs/upload-sessions/{upload_id}` |
+| 3. Upload bytes | `PUT` | `/blobs/upload-sessions/{upload_id}/content` |
+| 4a. Finalize | `POST` | `/blobs/upload-sessions/{upload_id}/finalize` |
+| 4b. Abort | `POST` | `/blobs/upload-sessions/{upload_id}/abort` |
+
+**Lifecycle:** `pending` → `uploaded` → `finalized` (or `aborted`)
+
+The response from Step 1 includes an `upload_method` field:
+
+* `"proxy"` — Upload bytes via `PUT .../content` (Step 3).
+* `"single_put"` — Upload bytes directly to the `upload_url` returned in the session (e.g. an S3 presigned URL). Step 3 is skipped.
+
+After finalization, the response is a `Binary` descriptor (same as the
+one-shot upload).
+
+#### Fallback behavior
+
+If the underlying `IBlobStore` does not natively support upload sessions
+(e.g. `MemoryBlobStore`, `DiskBlobStore`), the route layer provides a
+real stateful fallback facade:
+
+* `PUT .../content` stores bytes in temporary memory — does **not** write
+  to the blob store.
+* `POST .../finalize` reads the buffered bytes and calls
+  `blob_store.put(...)` — only then writes to the blob store.
+* `POST .../abort` discards temporary bytes.
+
+This makes the upload-session API available with any blob store backend.
+
 ---
 
 ## Query / search conventions (recommended: `qb`)

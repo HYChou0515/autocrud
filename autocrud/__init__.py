@@ -4,6 +4,7 @@ from autocrud.resource_manager.pydantic_converter import struct_to_pydantic
 from autocrud.schema import Schema
 from autocrud.types import (
     BackgroundTaskAccepted,
+    BlobUploadSession,
     DisplayName,
     DuplicateResourceError,
     IConstraintChecker,
@@ -30,6 +31,7 @@ crud = AutoCRUD()
 __all__ = [
     "AutoCRUD",
     "BackgroundTaskAccepted",
+    "BlobUploadSession",
     "DisplayName",
     "DuplicateResourceError",
     "IConstraintChecker",

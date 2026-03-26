@@ -727,9 +727,10 @@ describe('ResourceDetail — update action invalidates job queries', () => {
     // We spy on the QueryClient prototype to intercept invalidateQueries
     const spy = vi.spyOn(QueryClient.prototype, 'invalidateQueries');
 
-    render(<ResourceDetail config={config} resourceId="r1" basePath={'/test' as any} />, {
-      wrapper: createWrapper(),
-    });
+    render(
+      <ResourceDetail config={config} resourceId="r1" basePath={'/test' as any} />,
+      { wrapper: createWrapper() },
+    );
 
     // Open edit modal
     fireEvent.click(screen.getByText('Edit'));
@@ -752,7 +753,9 @@ describe('ResourceDetail — update action invalidates job queries', () => {
       expect(apiMethod).toHaveBeenCalledWith('r1', {});
       // Should invalidate job queries
       const calls = spy.mock.calls;
-      const jobInvalidation = calls.find((c) => JSON.stringify(c[0]).includes('level-up-job'));
+      const jobInvalidation = calls.find(
+        (c) => JSON.stringify(c[0]).includes('level-up-job'),
+      );
       expect(jobInvalidation).toBeTruthy();
     });
 
@@ -775,9 +778,10 @@ describe('ResourceDetail — update action invalidates job queries', () => {
       },
     ]);
 
-    render(<ResourceDetail config={config} resourceId="r1" basePath={'/test' as any} />, {
-      wrapper: createWrapper(),
-    });
+    render(
+      <ResourceDetail config={config} resourceId="r1" basePath={'/test' as any} />,
+      { wrapper: createWrapper() },
+    );
 
     fireEvent.click(screen.getByText('Edit'));
 
@@ -823,9 +827,10 @@ describe('ResourceDetail — update action invalidates job queries', () => {
 
     const spy = vi.spyOn(QueryClient.prototype, 'invalidateQueries');
 
-    render(<ResourceDetail config={config} resourceId="r1" basePath={'/test' as any} />, {
-      wrapper: createWrapper(),
-    });
+    render(
+      <ResourceDetail config={config} resourceId="r1" basePath={'/test' as any} />,
+      { wrapper: createWrapper() },
+    );
 
     fireEvent.click(screen.getByText('Edit'));
 
@@ -845,7 +850,9 @@ describe('ResourceDetail — update action invalidates job queries', () => {
       expect(apiMethod).toHaveBeenCalledWith('r1', {});
       // Should NOT have called invalidateQueries for any job resource
       const calls = spy.mock.calls;
-      const jobInvalidation = calls.find((c) => JSON.stringify(c[0]).includes('-job'));
+      const jobInvalidation = calls.find(
+        (c) => JSON.stringify(c[0]).includes('-job'),
+      );
       expect(jobInvalidation).toBeUndefined();
       // Should NOT show notification
       expect(notifModule.show).not.toHaveBeenCalled();

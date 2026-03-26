@@ -38,7 +38,7 @@
 | ✅ 局部更新 (Partial Update / PATCH) | JSON Patch精準更新, 提速省頻寬 |
 | ✅ 局部讀取 (Partial Read) | msgspec 解碼階段跳過不必要欄位, 提速省頻寬 |
 | ✅ GraphQL 整合 | 自動產生 Strawberry GraphQL Endpoint |
-| ✅ Blob優化 | BlobStore 去重、延遲載入 |
+| ✅ Blob優化 | BlobStore 去重、延遲載入、Upload Session（支援 proxy 與 presigned URL） |
 | ✅ 權限控制 (Permissions) | Global / Model / Resource 三層 RBAC 與自定義檢查器 |
 | ✅ Event Hooks | 每種操作都可以自訂 Before / After / OnSuccess / OnError |
 | ✅ Route Templates | 標準 CRUD 與plug-in自定義端點 |

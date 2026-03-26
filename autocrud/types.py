@@ -443,6 +443,42 @@ class Binary(Struct):
     """Binary content. Used for input or specific retrieval, usually None in storage."""
 
 
+class BlobUploadSession(Struct, kw_only=True):
+    """Represents an active or completed blob upload session.
+
+    Lifecycle: ``pending`` → ``uploaded`` → ``finalized`` (or ``aborted``).
+
+    ``upload_method`` indicates how the client should deliver file bytes:
+
+    - ``"proxy"``: PUT bytes to ``/blobs/upload-sessions/{upload_id}/content``
+    - ``"single_put"``: upload directly to ``upload_url`` (e.g. S3 presigned PUT)
+    """
+
+    upload_id: str
+    """Unique identifier for this upload session."""
+
+    file_id: str
+    """Pre-allocated file ID (may be a placeholder until finalize)."""
+
+    status: Literal["pending", "uploaded", "finalized", "aborted"] = "pending"
+    """Current lifecycle state of the session."""
+
+    upload_method: Literal["proxy", "single_put"] = "proxy"
+    """How the client should deliver file bytes."""
+
+    upload_url: str = ""
+    """URL for the client to upload bytes (only relevant for ``single_put``)."""
+
+    content_type: str | UnsetType = UNSET
+    """MIME type of the content being uploaded."""
+
+    size: int | None = None
+    """Expected size of the content in bytes (``None`` if unknown)."""
+
+    expires_at: dt.datetime | None = None
+    """When this upload session expires (``None`` for no expiry)."""
+
+
 class RawResource(Struct):
     info: RevisionInfo
     raw_data: bytes
