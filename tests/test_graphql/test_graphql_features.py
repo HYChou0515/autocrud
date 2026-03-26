@@ -458,7 +458,7 @@ class DefaultFieldModel(msgspec.Struct):
 class MockListResourceManager:
     resource_type = list[SimpleStruct]
 
-    def meta_provide(self, user, now):
+    def using(self, user, now):
         from contextlib import contextmanager
 
         @contextmanager
@@ -466,6 +466,9 @@ class MockListResourceManager:
             yield
 
         return cm()
+
+    # Keep for backward compat
+    meta_provide = using
 
     def get_meta(self, resource_id):
         return ResourceMeta(
@@ -516,7 +519,7 @@ class MockListResourceManager:
 class MockDictResourceManager:
     resource_type = dict
 
-    def meta_provide(self, *args):
+    def using(self, *args):
         from contextlib import contextmanager
 
         @contextmanager
@@ -524,6 +527,9 @@ class MockDictResourceManager:
             yield
 
         return cm()
+
+    # Keep for backward compat
+    meta_provide = using
 
     def get_meta(self, resource_id):
         return ResourceMeta(

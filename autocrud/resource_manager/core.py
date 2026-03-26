@@ -4,8 +4,9 @@ import inspect
 import io
 import threading
 import traceback
+import warnings
 from collections.abc import Callable, Generator, Iterable, Sequence
-from contextlib import contextmanager, suppress
+from contextlib import ExitStack, contextmanager, suppress
 from functools import cached_property, wraps
 from typing import (
     IO,
@@ -493,6 +494,7 @@ def execute_with_events(
     result: str | Callable[[Any], dict[str, Any]],
     *,
     inputs: dict[str, str | UnsetType] | None = None,
+    context_aware: bool = False,
 ):
     contexts = _Contexts(*contexts)
     if isinstance(result, str):
@@ -502,6 +504,9 @@ def execute_with_events(
 
     else:
         _build_result = result
+
+    # Names of the context kwargs that context_aware methods accept.
+    _CTX_KWARGS = ("user", "now", "resource_id")
 
     def wrapper(func):
         sig = inspect.signature(func)
@@ -514,45 +519,83 @@ def execute_with_events(
             func_inputs = dict(bound_args.arguments)
             del func_inputs["self"]
 
-            inputs_ = func_inputs | {
-                "user": self.user_or_unset,
-                "now": self.now_or_unset,
-                "resource_name": self.resource_name,
-            }
-            if inputs:
+            # ── context_aware: push explicit kwargs into ContextVar ──
+            if context_aware:
+                stack = ExitStack()
+                ctx_user = func_inputs.get("user", UNSET)
+                ctx_now = func_inputs.get("now", UNSET)
+                ctx_rid = func_inputs.get("resource_id", UNSET)
+                if ctx_user is not UNSET:
+                    stack.enter_context(self.user_ctx.ctx(ctx_user))
+                if ctx_now is not UNSET:
+                    stack.enter_context(self.now_ctx.ctx(ctx_now))
+                if ctx_rid is not UNSET:
+                    stack.enter_context(self.id_ctx.ctx(ctx_rid))
+            else:
+                stack = None
 
-                def get_from_path(d, path: str):
-                    parts = path.split(".")
-                    current = d
-                    for part in parts:
-                        if hasattr(current, part):
-                            current = getattr(current, part)
-                        else:
-                            current = current[part]
-                    return current
+            # Strip context-only kwargs from func_inputs so they don't
+            # leak into event contexts as raw UNSET values.  A kwarg is
+            # "context-only" when its default is UNSET in the function
+            # signature (user, now, and — for create — resource_id).
+            # Positional parameters with the same name (e.g. resource_id
+            # in update/delete) must be preserved for event payloads.
+            if context_aware:
+                for name in ("user", "now", "resource_id"):
+                    param = sig.parameters.get(name)
+                    if param is not None and param.default is UNSET:
+                        func_inputs.pop(name, None)
 
-                for k, v in inputs.items():
-                    if v is UNSET:
-                        del inputs_[k]
-                    else:
-                        inputs_[k] = get_from_path(func_inputs, v)
-            self._handle_event(contexts.before(**inputs_))
             try:
-                result = func(self, *args, **kwargs)
-                built_result = _build_result(result)
-                self._handle_event(contexts.on_success(**inputs_, **built_result))
-                return result
-            except Exception as e:
-                self._handle_event(
-                    contexts.on_failure(
-                        **inputs_,
-                        error=str(e),
-                        stack_trace=traceback.format_exc(),
+                if stack is not None:
+                    stack.__enter__()
+
+                # Strict mode validation (after ContextVar push)
+                if context_aware and self._strict_operation_context:
+                    self._validate_write_context(func.__name__)
+
+                inputs_ = func_inputs | {
+                    "user": self.user_or_unset,
+                    "now": self.now_or_unset,
+                    "resource_name": self.resource_name,
+                }
+                if inputs:
+
+                    def get_from_path(d, path: str):
+                        parts = path.split(".")
+                        current = d
+                        for part in parts:
+                            if hasattr(current, part):
+                                current = getattr(current, part)
+                            else:
+                                current = current[part]
+                        return current
+
+                    for k, v in inputs.items():
+                        if v is UNSET:
+                            del inputs_[k]
+                        else:
+                            inputs_[k] = get_from_path(func_inputs, v)
+                self._handle_event(contexts.before(**inputs_))
+                try:
+                    result = func(self, *args, **kwargs)
+                    built_result = _build_result(result)
+                    self._handle_event(contexts.on_success(**inputs_, **built_result))
+                    return result
+                except Exception as e:
+                    self._handle_event(
+                        contexts.on_failure(
+                            **inputs_,
+                            error=str(e),
+                            stack_trace=traceback.format_exc(),
+                        )
                     )
-                )
-                raise
+                    raise
+                finally:
+                    self._handle_event(contexts.after(**inputs_))
             finally:
-                self._handle_event(contexts.after(**inputs_))
+                if stack is not None:
+                    stack.__exit__(None, None, None)
 
         return wrapped
 
@@ -580,8 +623,22 @@ class ResourceManager(IResourceManager[T], Generic[T]):
         validator: "Callable[[T], None] | IValidator | type | None" = None,
         pydantic_type: type | None = None,
         constraint_checkers: "Sequence[IConstraintChecker | Callable[[ResourceManager], IConstraintChecker]] | None" = None,
+        strict_operation_context: bool = False,
     ):
+        """Initialize a ResourceManager.
+
+
+        Args:
+        strict_operation_context (bool):
+            Whether strict operation context validation is enabled.
+
+            When ``True``, write operations (create, update, delete, etc.) will
+            raise :class:`MissingOperationContextError` if required context
+            fields (``user``, ``now``) are not fully resolved from any source
+            (explicit kwargs, ``using()`` scope, or manager defaults).
+        """
         self._pydantic_type = pydantic_type
+        self._strict_operation_context = strict_operation_context
 
         # ── Resolve Schema vs legacy migration/validator ──────────────
         from autocrud.schema import Schema as _Schema
@@ -987,6 +1044,11 @@ class ResourceManager(IResourceManager[T], Generic[T]):
         return self._resource_name
 
     @property
+    def strict_operation_context(self) -> bool:
+        """Whether strict operation context validation is enabled."""
+        return self._strict_operation_context
+
+    @property
     def indexed_fields(self) -> list[IndexableField]:
         """取得被索引的 data 欄位列表"""
         return self._indexed_fields
@@ -1018,6 +1080,49 @@ class ResourceManager(IResourceManager[T], Generic[T]):
             return self.decode(data_io.read())
 
     @contextmanager
+    def using(
+        self,
+        user: str | UnsetType = UNSET,
+        now: dt.datetime | UnsetType = UNSET,
+        *,
+        resource_id: str | UnsetType = UNSET,
+    ):
+        """Context manager to provide operation context for write operations.
+
+        This is the recommended way to provide ``user``, ``now``, and
+        ``resource_id`` context when performing multiple write operations.
+
+        Resolution order (highest to lowest priority):
+            1. Explicit keyword arguments on the method call
+            2. Active ``using()`` scope
+            3. Manager defaults (``default_user``, ``default_now``)
+
+        Scopes can be nested; inner scopes override only the fields they
+        provide while inheriting the rest from outer scopes.
+
+        Args:
+            user: The user performing the action.
+            now: The current timestamp.
+            resource_id: Specific resource ID to use for ``create()``.
+
+        Yields:
+            ResourceManager: The manager itself, so ``as op`` returns
+                the same instance.
+
+        Example::
+
+            with mgr.using(user="alice", now=datetime.now()) as op:
+                op.create(data1)
+                op.update(rid, data2)
+        """
+        with (
+            self.user_ctx.ctx(user) if user is not UNSET else suppress(),
+            self.now_ctx.ctx(now) if now is not UNSET else suppress(),
+            self.id_ctx.ctx(resource_id) if resource_id is not UNSET else suppress(),
+        ):
+            yield self
+
+    @contextmanager
     def meta_provide(
         self,
         user: str | UnsetType = UNSET,
@@ -1025,20 +1130,52 @@ class ResourceManager(IResourceManager[T], Generic[T]):
         *,
         resource_id: str | UnsetType = UNSET,
     ):
-        """
-        Context manager to provide metadata context (user, time, resource_id).
+        """Context manager to provide metadata context (user, time, resource_id).
+
+        .. deprecated::
+            Use :meth:`using` instead.  ``meta_provide`` will be removed
+            in a future release.
 
         Arguments:
             user (str, optional): The user performing the action.
             now (datetime, optional): The current timestamp.
             resource_id (str, optional): Specific resource ID to use.
         """
+        warnings.warn(
+            "meta_provide() is deprecated, use using() instead",
+            DeprecationWarning,
+            stacklevel=2,
+        )
+        with self.using(user, now, resource_id=resource_id):
+            yield
+
+    @contextmanager
+    def _apply_context(
+        self,
+        user: str | UnsetType = UNSET,
+        now: dt.datetime | UnsetType = UNSET,
+        *,
+        resource_id: str | UnsetType = UNSET,
+    ):
+        """Internal context manager — same as using() but without yielding self."""
         with (
             self.user_ctx.ctx(user) if user is not UNSET else suppress(),
             self.now_ctx.ctx(now) if now is not UNSET else suppress(),
             self.id_ctx.ctx(resource_id) if resource_id is not UNSET else suppress(),
         ):
             yield
+
+    def _validate_write_context(self, method_name: str | None = None) -> None:
+        """Validate that required context fields are available for write ops."""
+        from autocrud.types import MissingOperationContextError
+
+        missing: list[str] = []
+        if self.user_or_unset is UNSET:
+            missing.append("user")
+        if self.now_or_unset is UNSET:
+            missing.append("now")
+        if missing:
+            raise MissingOperationContextError(missing, method_name)
 
     def _res_meta(
         self,
@@ -1496,9 +1633,16 @@ class ResourceManager(IResourceManager[T], Generic[T]):
     @execute_with_events(
         (BeforeCreate, AfterCreate, OnSuccessCreate, OnFailureCreate),
         "info",
+        context_aware=True,
     )
     def create(
-        self, data: T, *, status: RevisionStatus | UnsetType = UNSET
+        self,
+        data: T,
+        *,
+        status: RevisionStatus | UnsetType = UNSET,
+        user: str | UnsetType = UNSET,
+        now: dt.datetime | UnsetType = UNSET,
+        resource_id: str | UnsetType = UNSET,
     ) -> RevisionInfo:
         """
         Create a new resource.
@@ -1506,6 +1650,12 @@ class ResourceManager(IResourceManager[T], Generic[T]):
         Arguments:
             data (T): The resource data object.
             status (RevisionStatus | UnsetType): The initial status of the resource (default: stable).
+            user (str | UnsetType): The user performing the action.
+                Overrides any active ``using()`` scope or manager default.
+            now (datetime | UnsetType): The current timestamp.
+                Overrides any active ``using()`` scope or manager default.
+            resource_id (str | UnsetType): Specific resource ID to use
+                instead of auto-generating one.
 
         Returns:
             info (RevisionInfo): The revision info of the created resource.
@@ -1675,9 +1825,16 @@ class ResourceManager(IResourceManager[T], Generic[T]):
     @execute_with_events(
         (BeforeUpdate, AfterUpdate, OnSuccessUpdate, OnFailureUpdate),
         "revision_info",
+        context_aware=True,
     )
     def update(
-        self, resource_id: str, data: T, *, status: RevisionStatus | UnsetType = UNSET
+        self,
+        resource_id: str,
+        data: T,
+        *,
+        status: RevisionStatus | UnsetType = UNSET,
+        user: str | UnsetType = UNSET,
+        now: dt.datetime | UnsetType = UNSET,
     ) -> RevisionInfo:
         """
         Update an existing resource with new data (creates a new revision).
@@ -1686,6 +1843,8 @@ class ResourceManager(IResourceManager[T], Generic[T]):
             resource_id (str): The ID of the resource to update.
             data (T): The new resource data.
             status (RevisionStatus | UnsetType): The status of the new revision (default: stable).
+            user (str | UnsetType): The user performing the action.
+            now (datetime | UnsetType): The current timestamp.
 
         Returns:
             info (RevisionInfo): The revision info of the updated resource.
@@ -1709,7 +1868,13 @@ class ResourceManager(IResourceManager[T], Generic[T]):
         return rev_info
 
     def create_or_update(
-        self, resource_id, data, *, status: RevisionStatus | UnsetType = UNSET
+        self,
+        resource_id,
+        data,
+        *,
+        status: RevisionStatus | UnsetType = UNSET,
+        user: str | UnsetType = UNSET,
+        now: dt.datetime | UnsetType = UNSET,
     ):
         """
         Create a new resource or update if it already exists.
@@ -1718,25 +1883,32 @@ class ResourceManager(IResourceManager[T], Generic[T]):
             resource_id (str): The ID of the resource.
             data (T): The resource data.
             status (RevisionStatus | UnsetType): The status (default: stable).
+            user (str | UnsetType): The user performing the action.
+            now (datetime | UnsetType): The current timestamp.
 
         Returns:
             info (RevisionInfo): The revision info.
         """
-        try:
-            return self.update(resource_id, data, status=status)
-        except ResourceIDNotFoundError:
-            return self.create(data, status=status)
+        with self._apply_context(user=user, now=now, resource_id=resource_id):
+            try:
+                return self.update(resource_id, data, status=status)
+            except ResourceIDNotFoundError:
+                return self.create(data, status=status)
 
     @coerce_data_to_resource_type
     @execute_with_events(
         (BeforeModify, AfterModify, OnSuccessModify, OnFailureModify),
         "revision_info",
+        context_aware=True,
     )
     def modify(
         self,
         resource_id: str,
         data: T | JsonPatch | UnsetType = UNSET,
         status: RevisionStatus | UnsetType = UNSET,
+        *,
+        user: str | UnsetType = UNSET,
+        now: dt.datetime | UnsetType = UNSET,
     ) -> RevisionInfo:
         """
         Modify a resource without creating a new revision (only for DRAFT status).
@@ -1745,6 +1917,8 @@ class ResourceManager(IResourceManager[T], Generic[T]):
             resource_id (str): The ID of the resource.
             data (T | JsonPatch | UnsetType): The new data or JSON patch to apply.
             status (RevisionStatus | UnsetType): The new status.
+            user (str | UnsetType): The user performing the action.
+            now (datetime | UnsetType): The current timestamp.
 
         Returns:
             info (RevisionInfo): The updated revision info.
@@ -1806,14 +1980,24 @@ class ResourceManager(IResourceManager[T], Generic[T]):
         (BeforePatch, AfterPatch, OnSuccessPatch, OnFailurePatch),
         "revision_info",
         inputs={"patch_data": "patch_data.patch"},
+        context_aware=True,
     )
-    def patch(self, resource_id: str, patch_data: JsonPatch) -> RevisionInfo:
+    def patch(
+        self,
+        resource_id: str,
+        patch_data: JsonPatch,
+        *,
+        user: str | UnsetType = UNSET,
+        now: dt.datetime | UnsetType = UNSET,
+    ) -> RevisionInfo:
         """
         Apply RFC 6902 JSON Patch operations to the resource.
 
         Arguments:
             resource_id (str): the id of the resource to patch.
             patch_data (JsonPatch): RFC 6902 JSON Patch operations to apply.
+            user (str | UnsetType): The user performing the action.
+            now (datetime | UnsetType): The current timestamp.
 
         Returns:
             info (RevisionInfo): the metadata of the newly created revision.
@@ -1834,14 +2018,24 @@ class ResourceManager(IResourceManager[T], Generic[T]):
     @execute_with_events(
         (BeforeSwitch, AfterSwitch, OnSuccessSwitch, OnFailureSwitch),
         "meta",
+        context_aware=True,
     )
-    def switch(self, resource_id: str, revision_id: str) -> ResourceMeta:
+    def switch(
+        self,
+        resource_id: str,
+        revision_id: str,
+        *,
+        user: str | UnsetType = UNSET,
+        now: dt.datetime | UnsetType = UNSET,
+    ) -> ResourceMeta:
         """
         Switch specific resource to another revision.
 
         Arguments:
             resource_id (str): The ID of the resource.
             revision_id (str): The revision ID to switch to.
+            user (str | UnsetType): The user performing the action.
+            now (datetime | UnsetType): The current timestamp.
 
         Returns:
             meta (ResourceMeta): The updated metadata.
@@ -1888,13 +2082,22 @@ class ResourceManager(IResourceManager[T], Generic[T]):
     @execute_with_events(
         (BeforeDelete, AfterDelete, OnSuccessDelete, OnFailureDelete),
         "meta",
+        context_aware=True,
     )
-    def delete(self, resource_id: str) -> ResourceMeta:
+    def delete(
+        self,
+        resource_id: str,
+        *,
+        user: str | UnsetType = UNSET,
+        now: dt.datetime | UnsetType = UNSET,
+    ) -> ResourceMeta:
         """
         Soft delete a resource.
 
         Arguments:
             resource_id (str): The ID of the resource to delete.
+            user (str | UnsetType): The user performing the action.
+            now (datetime | UnsetType): The current timestamp.
 
         Returns:
             meta (ResourceMeta): The updated metadata (is_deleted=True).
@@ -1912,13 +2115,22 @@ class ResourceManager(IResourceManager[T], Generic[T]):
     @execute_with_events(
         (BeforeRestore, AfterRestore, OnSuccessRestore, OnFailureRestore),
         "meta",
+        context_aware=True,
     )
-    def restore(self, resource_id: str) -> ResourceMeta:
+    def restore(
+        self,
+        resource_id: str,
+        *,
+        user: str | UnsetType = UNSET,
+        now: dt.datetime | UnsetType = UNSET,
+    ) -> ResourceMeta:
         """
         Restore a soft-deleted resource.
 
         Arguments:
             resource_id (str): The ID of the resource to restore.
+            user (str | UnsetType): The user performing the action.
+            now (datetime | UnsetType): The current timestamp.
 
         Returns:
             meta (ResourceMeta): The updated metadata (is_deleted=False).
@@ -1942,19 +2154,29 @@ class ResourceManager(IResourceManager[T], Generic[T]):
             OnFailurePermanentlyDelete,
         ),
         "meta",
+        context_aware=True,
     )
-    def permanently_delete(self, resource_id: str) -> ResourceMeta:
-        """
-        Permanently delete a resource and all its revision data.
+    def permanently_delete(
+        self,
+        resource_id: str,
+        *,
+        user: str | UnsetType = UNSET,
+        now: dt.datetime | UnsetType = UNSET,
+    ) -> ResourceMeta:
+        """Permanently delete a resource and all its revision data.
 
         This is an irreversible operation that removes the resource metadata
         and all associated revision data from storage.
 
-        Arguments:
-            resource_id (str): The ID of the resource to permanently delete.
+        Args:
+            resource_id: The ID of the resource to permanently delete.
+            user: The user performing the action.  Overrides any active
+                ``using()`` scope or manager default.
+            now: The current timestamp.  Overrides any active ``using()``
+                scope or manager default.
 
         Returns:
-            meta (ResourceMeta): The metadata of the resource before deletion.
+            The metadata of the resource before deletion.
 
         Raises:
             ResourceIDNotFoundError: If the resource ID does not exist.

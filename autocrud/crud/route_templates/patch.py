@@ -136,7 +136,7 @@ class PatchRouteTemplate(BaseRouteTemplate):
                     detail="change_status can only be used with mode 'modify'",
                 )
             try:
-                with resource_manager.meta_provide(current_user, current_time):
+                with resource_manager.using(current_user, current_time):
                     patch = JsonPatch(body)
                     if mode == "update":
                         info = resource_manager.patch(resource_id, patch)

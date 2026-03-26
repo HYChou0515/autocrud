@@ -137,12 +137,17 @@ class BasicMessageQueue(IMessageQueue[T], Generic[T]):
             )
         return self._rm
 
-    def _rm_meta_provide(self, user: str):
-        """Helper to provide meta context for ResourceManager operations."""
-        return self.rm.meta_provide(
+    def _rm_using(self, user: str):
+        """Helper to provide operation context for ResourceManager operations."""
+        return self.rm.using(
             now=self.rm.now_or_unset or dt.datetime.now(),
             user=self.rm.user_or_unset or user,
         )
+
+    # Keep deprecated alias for backward compatibility
+    def _rm_meta_provide(self, user: str):
+        """Deprecated: use ``_rm_using`` instead."""
+        return self._rm_using(user)
 
     # ------------------------------------------------------------------
     # Log helpers
@@ -209,7 +214,7 @@ class BasicMessageQueue(IMessageQueue[T], Generic[T]):
         if _artifact is not None:
             job.artifact = _artifact
 
-        with self._rm_meta_provide(resource.info.created_by):
+        with self._rm_using(resource.info.created_by):
             self.rm.create_or_update(resource_id, job)
         resource.data = job
         return resource
@@ -227,7 +232,7 @@ class BasicMessageQueue(IMessageQueue[T], Generic[T]):
         job.status = TaskStatus.FAILED
         job.errmsg = error
 
-        with self._rm_meta_provide(resource.info.created_by):
+        with self._rm_using(resource.info.created_by):
             self.rm.create_or_update(resource_id, job)
         resource.data = job
         return resource
@@ -280,7 +285,7 @@ class BasicMessageQueue(IMessageQueue[T], Generic[T]):
                     "Recovered stale job: worker was likely killed "
                     "while processing this job."
                 )
-                with self._rm_meta_provide(resource.info.created_by):
+                with self._rm_using(resource.info.created_by):
                     self.rm.create_or_update(meta.resource_id, job)
                 recovered.append(meta.resource_id)
             except Exception:
@@ -416,14 +421,14 @@ class DelayableMessageQueue(BasicMessageQueue[T], Generic[T]):
         if should_continue:
             # Reset retry count for next run, but keep status as COMPLETED
             job.retries = 0
-            with self._rm_meta_provide(completed_resource.info.created_by):
+            with self._rm_using(completed_resource.info.created_by):
                 self.rm.create_or_update(resource_id, job)
 
             # Schedule next run
             self._schedule_delayed_job(resource_id, job.periodic_interval_seconds)
         else:
             # Reached max runs, just update the periodic_runs count
-            with self._rm_meta_provide(completed_resource.info.created_by):
+            with self._rm_using(completed_resource.info.created_by):
                 self.rm.create_or_update(resource_id, job)
 
     def _handle_delay_retry(
@@ -448,7 +453,7 @@ class DelayableMessageQueue(BasicMessageQueue[T], Generic[T]):
 
         # Reset retry count
         job_data.retries = 0
-        with self._rm_meta_provide(created_by):
+        with self._rm_using(created_by):
             self.rm.create_or_update(resource_id, job_data)
 
         # Schedule delayed retry

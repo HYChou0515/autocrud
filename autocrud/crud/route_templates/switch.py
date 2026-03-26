@@ -72,7 +72,7 @@ class SwitchRevisionRouteTemplate(BaseRouteTemplate):
             current_time: dt.datetime = Depends(self.deps.get_now),
         ):
             try:
-                with resource_manager.meta_provide(current_user, current_time):
+                with resource_manager.using(current_user, current_time):
                     meta = resource_manager.switch(resource_id, revision_id)
                 return MsgspecResponse(meta)
             except Exception as e:

@@ -74,7 +74,7 @@ class SimpleMessageQueue(DelayableMessageQueue[T], Generic[T]):
             # Set status to COMPLETED so pop() won't pick it up immediately
             # _check_periodic_jobs will set it back to PENDING when ready
             job.status = TaskStatus.COMPLETED
-            with self._rm_meta_provide(resource.info.created_by):
+            with self._rm_using(resource.info.created_by):
                 self.rm.create_or_update(resource_id, job)
 
             # Schedule for delayed execution
@@ -119,7 +119,7 @@ class SimpleMessageQueue(DelayableMessageQueue[T], Generic[T]):
                 # Optimistic locking via revision check could be implemented here
                 # if ResourceManager supported atomic find-and-update.
                 # For now, we fetch, check status, and update.
-                with self._rm_meta_provide(meta.created_by):
+                with self._rm_using(meta.created_by):
                     resource = self.rm.get(meta.resource_id)
 
                 if resource.data.status != TaskStatus.PENDING:
@@ -130,7 +130,7 @@ class SimpleMessageQueue(DelayableMessageQueue[T], Generic[T]):
                 updated_job.status = TaskStatus.PROCESSING
 
                 # Update revision as draft so heartbeat can use modify()
-                with self._rm_meta_provide(meta.created_by):
+                with self._rm_using(meta.created_by):
                     self.rm.create_or_update(
                         resource.info.resource_id,
                         updated_job,
@@ -189,7 +189,7 @@ class SimpleMessageQueue(DelayableMessageQueue[T], Generic[T]):
                 resource = self.rm.get(resource_id)
                 job = resource.data
                 job.status = TaskStatus.PENDING
-                with self._rm_meta_provide(resource.info.created_by):
+                with self._rm_using(resource.info.created_by):
                     self.rm.create_or_update(resource_id, job)
             except Exception:
                 # If update fails, just skip this job
@@ -318,7 +318,7 @@ class SimpleMessageQueue(DelayableMessageQueue[T], Generic[T]):
                     ctx.error(f"Job failed permanently: {error_msg}")
 
             try:
-                with self._rm_meta_provide(job.info.created_by):
+                with self._rm_using(job.info.created_by):
                     self.rm.create_or_update(job.info.resource_id, updated_job)
             except Exception:
                 # Primary update failed - fallback to fail() to ensure

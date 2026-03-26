@@ -70,7 +70,7 @@ class CreateRouteTemplate(BaseRouteTemplate):
             try:
                 data = msgspec.convert(body, resource_type)
 
-                with resource_manager.meta_provide(current_user, current_time):
+                with resource_manager.using(current_user, current_time):
                     info = resource_manager.create(data)
                 return MsgspecResponse(info)
             except Exception as e:
