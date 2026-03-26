@@ -602,6 +602,193 @@ def execute_with_events(
     return wrapper
 
 
+class ResourceOps(Generic[T]):
+    """Context-capturing proxy returned by :meth:`ResourceManager.using`.
+
+    ``ResourceOps`` captures ``user``, ``now``, and ``resource_id`` at
+    creation time.  Each method call **re-applies** these values via the
+    manager's context system, ensuring that multiple ``ResourceOps``
+    instances created from the same manager do not interfere with each
+    other.
+
+    This enables the *multiple using()* pattern::
+
+        with mgr.using(user="u1") as op1, mgr.using(user="u2") as op2:
+            op1.create(data1)  # created_by = "u1"
+            op2.create(data2)  # created_by = "u2"
+
+    After the ``with`` block exits, or if an exception propagates, the
+    proxy is **deactivated** and any subsequent method call raises
+    :class:`RuntimeError`.
+
+    Note:
+        Calling ``op.using(...)`` or ``op.meta_provide(...)`` is
+        forbidden and raises :class:`RuntimeError`.
+    """
+
+    __slots__ = ("_mgr", "_user", "_now", "_resource_id", "_active")
+
+    def __init__(
+        self,
+        mgr: "IResourceManager[T]",
+        user: "str | UnsetType",
+        now: "dt.datetime | UnsetType",
+        resource_id: "str | UnsetType",
+    ) -> None:
+        object.__setattr__(self, "_mgr", mgr)
+        object.__setattr__(self, "_user", user)
+        object.__setattr__(self, "_now", now)
+        object.__setattr__(self, "_resource_id", resource_id)
+        object.__setattr__(self, "_active", True)
+
+    def _deactivate(self) -> None:
+        """Mark this proxy as inactive (called automatically on context exit)."""
+        object.__setattr__(self, "_active", False)
+
+    def __getattr__(self, name: str) -> Any:
+        if name in ("using", "meta_provide"):
+            raise RuntimeError("Cannot rebind context through ResourceOps")
+        if not self._active:
+            raise RuntimeError("ResourceOps is no longer active")
+        attr = getattr(self._mgr, name)
+        if inspect.ismethod(attr):
+
+            @wraps(attr)
+            def _wrapper(*args: Any, **kwargs: Any) -> Any:
+                if not self._active:
+                    raise RuntimeError("ResourceOps is no longer active")
+                with self._mgr._apply_context(
+                    self._user, self._now, resource_id=self._resource_id
+                ):
+                    return attr(*args, **kwargs)
+
+            return _wrapper
+        return attr
+
+    if TYPE_CHECKING:
+        # -- Stubs for IDE auto-complete / type checking --
+        def create(
+            self,
+            data: T,
+            *,
+            status: RevisionStatus | UnsetType = ...,
+            user: str | UnsetType = ...,
+            now: dt.datetime | UnsetType = ...,
+            resource_id: str | UnsetType = ...,
+        ) -> RevisionInfo: ...
+        def update(
+            self,
+            resource_id: str,
+            data: T,
+            *,
+            user: str | UnsetType = ...,
+            now: dt.datetime | UnsetType = ...,
+        ) -> RevisionInfo: ...
+        def create_or_update(
+            self,
+            resource_id: str,
+            data: T,
+            *,
+            user: str | UnsetType = ...,
+            now: dt.datetime | UnsetType = ...,
+        ) -> RevisionInfo: ...
+        def get(
+            self,
+            resource_id: str,
+            *,
+            revision_id: str | UnsetType = ...,
+            schema_version: str | None | UnsetType = ...,
+        ) -> Resource[T]: ...
+        def get_partial(
+            self,
+            resource_id: str,
+            revision_id: str,
+            partial: Iterable[str | JsonPointer],
+        ) -> Struct: ...
+        def get_revision_info(
+            self,
+            resource_id: str,
+            revision_id: str | UnsetType = ...,
+        ) -> RevisionInfo: ...
+        def get_resource_revision(
+            self,
+            resource_id: str,
+            revision_id: str,
+            schema_version: str | None | UnsetType = ...,
+        ) -> Resource[T]: ...
+        def list_revisions(self, resource_id: str) -> list[str]: ...
+        def get_meta(
+            self, resource_id: str, include_deleted: bool = ...
+        ) -> ResourceMeta: ...
+        def exists(self, resource_id: str) -> bool: ...
+        def revision_exists(self, resource_id: str, revision_id: str) -> bool: ...
+        def count_resources(self, query: ResourceMetaSearchQuery) -> int: ...
+        def search_resources(
+            self, query: ResourceMetaSearchQuery
+        ) -> list[ResourceMeta]: ...
+        def list_resources(
+            self,
+            query: ResourceMetaSearchQuery,
+            *,
+            returns: list[str] | None = ...,
+            partial: list[str] | None = ...,
+        ) -> list[SearchedResource[T]]: ...
+        def modify(
+            self,
+            resource_id: str,
+            data: T | JsonPatch | UnsetType = ...,
+            status: RevisionStatus | UnsetType = ...,
+            *,
+            user: str | UnsetType = ...,
+            now: dt.datetime | UnsetType = ...,
+        ) -> RevisionInfo: ...
+        def patch(
+            self,
+            resource_id: str,
+            patch_data: JsonPatch,
+            *,
+            user: str | UnsetType = ...,
+            now: dt.datetime | UnsetType = ...,
+        ) -> RevisionInfo: ...
+        def switch(
+            self,
+            resource_id: str,
+            revision_id: str,
+            *,
+            user: str | UnsetType = ...,
+            now: dt.datetime | UnsetType = ...,
+        ) -> ResourceMeta: ...
+        def delete(
+            self,
+            resource_id: str,
+            *,
+            user: str | UnsetType = ...,
+            now: dt.datetime | UnsetType = ...,
+        ) -> ResourceMeta: ...
+        def restore(
+            self,
+            resource_id: str,
+            *,
+            user: str | UnsetType = ...,
+            now: dt.datetime | UnsetType = ...,
+        ) -> ResourceMeta: ...
+        def permanently_delete(
+            self,
+            resource_id: str,
+            *,
+            user: str | UnsetType = ...,
+            now: dt.datetime | UnsetType = ...,
+        ) -> ResourceMeta: ...
+        def migrate(
+            self,
+            resource_id: str,
+            *,
+            revision_id: str | UnsetType = ...,
+        ) -> ResourceMeta: ...
+        def get_blob(self, file_id: str) -> Binary: ...
+        def get_blob_url(self, file_id: str) -> str | None: ...
+
+
 class ResourceManager(IResourceManager[T], Generic[T]):
     def __init__(
         self,
@@ -1086,19 +1273,18 @@ class ResourceManager(IResourceManager[T], Generic[T]):
         now: dt.datetime | UnsetType = UNSET,
         *,
         resource_id: str | UnsetType = UNSET,
-    ):
+    ) -> Generator[ResourceOps[T], None, None]:
         """Context manager to provide operation context for write operations.
 
-        This is the recommended way to provide ``user``, ``now``, and
-        ``resource_id`` context when performing multiple write operations.
+        Returns a :class:`ResourceOps` proxy that **captures** the supplied
+        ``user``, ``now``, and ``resource_id`` values.  Each method call on
+        the proxy re-applies its captured context, so multiple proxies
+        created from the same manager do not interfere with each other.
 
         Resolution order (highest to lowest priority):
             1. Explicit keyword arguments on the method call
-            2. Active ``using()`` scope
+            2. Active ``using()`` scope (via the :class:`ResourceOps` proxy)
             3. Manager defaults (``default_user``, ``default_now``)
-
-        Scopes can be nested; inner scopes override only the fields they
-        provide while inheriting the rest from outer scopes.
 
         Args:
             user: The user performing the action.
@@ -1106,21 +1292,31 @@ class ResourceManager(IResourceManager[T], Generic[T]):
             resource_id: Specific resource ID to use for ``create()``.
 
         Yields:
-            ResourceManager: The manager itself, so ``as op`` returns
-                the same instance.
+            ResourceOps[T]: A context-capturing proxy.  Calling methods
+                on it is equivalent to calling them on the manager with
+                the captured context.
 
         Example::
 
+            # Single context
             with mgr.using(user="alice", now=datetime.now()) as op:
                 op.create(data1)
                 op.update(rid, data2)
+
+            # Multiple contexts (safe — each proxy has its own capture)
+            with (
+                mgr.using(user="u1", now=now) as op1,
+                mgr.using(user="u2", now=now) as op2,
+            ):
+                op1.create(data1)  # created_by = "u1"
+                op2.create(data2)  # created_by = "u2"
         """
-        with (
-            self.user_ctx.ctx(user) if user is not UNSET else suppress(),
-            self.now_ctx.ctx(now) if now is not UNSET else suppress(),
-            self.id_ctx.ctx(resource_id) if resource_id is not UNSET else suppress(),
-        ):
-            yield self
+        ops = ResourceOps(self, user, now, resource_id)
+        with self._apply_context(user=user, now=now, resource_id=resource_id):
+            try:
+                yield ops
+            finally:
+                ops._deactivate()
 
     @contextmanager
     def meta_provide(

@@ -1704,19 +1704,19 @@ class IResourceManager(ABC, Generic[T]):
         now: dt.datetime | UnsetType = UNSET,
         *,
         resource_id: str | UnsetType = UNSET,
-    ) -> AbstractContextManager:
+    ) -> AbstractContextManager[Any]:
         """Context manager to provide operation context for write operations.
 
-        This is the recommended way to provide ``user``, ``now``, and
-        ``resource_id`` context when performing multiple write operations.
+        Returns a context-capturing proxy (``ResourceOps``) that records
+        the supplied ``user``, ``now``, and ``resource_id`` values.  Each
+        method call on the proxy re-applies its captured context, so
+        multiple proxies created from the same manager do not interfere
+        with each other.
 
         Resolution order (highest to lowest priority):
             1. Explicit keyword arguments on the method call
-            2. Active ``using()`` scope
+            2. Active ``using()`` scope (via the proxy)
             3. Manager defaults (``default_user``, ``default_now``)
-
-        Scopes can be nested; inner scopes override only the fields they
-        provide while inheriting the rest from outer scopes.
 
         Args:
             user: The user performing the action.
@@ -1724,7 +1724,7 @@ class IResourceManager(ABC, Generic[T]):
             resource_id: Specific resource ID to use for ``create()``.
 
         Yields:
-            IResourceManager: The manager itself.
+            ResourceOps: A context-capturing proxy.
         """
 
     @abstractmethod

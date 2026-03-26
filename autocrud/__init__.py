@@ -1,4 +1,5 @@
 from autocrud.crud.core import AutoCRUD, LoadStats
+from autocrud.resource_manager.core import ResourceOps
 from autocrud.resource_manager.pydantic_converter import struct_to_pydantic
 from autocrud.schema import Schema
 from autocrud.types import (
@@ -40,6 +41,7 @@ __all__ = [
     "OnDuplicate",
     "Ref",
     "RefRevision",
+    "ResourceOps",
     "RefType",
     "RevisionNotMigratedError",
     "Schema",
