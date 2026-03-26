@@ -3,7 +3,7 @@ from dataclasses import dataclass
 from pathlib import Path
 
 import msgspec
-from msgspec import UNSET, UnsetType
+from msgspec import UNSET, Struct, UnsetType
 from xxhash import xxh3_128_hexdigest
 
 from autocrud.resource_manager.basic import IBlobStore
@@ -184,15 +184,63 @@ class MemoryBlobStore(BasicBlobStore):
         state.status = "aborted"
 
 
+class _DiskSessionMeta(Struct, kw_only=True):
+    """Serializable session metadata persisted alongside uploaded data.
+
+    Unlike ``_UploadSessionState`` (which is in-memory only), this struct
+    is msgpack-encoded to disk so that **any** ``DiskBlobStore`` instance
+    sharing the same ``root_path`` (e.g. via a Kubernetes PVC) can read
+    and mutate the session state — essential for HPA / multi-pod setups.
+    """
+
+    upload_id: str
+    status: str = "pending"  # pending | uploaded | finalized | aborted
+    content_type: str | UnsetType = UNSET
+    size: int | None = None
+    key: str | None = None
+
+
 class DiskBlobStore(BasicBlobStore):
-    """Disk-based blob store — data persisted to local filesystem."""
+    """Disk-based blob store — data persisted to local filesystem.
+
+    Upload sessions are persisted to disk under ``root_path/_sessions/``
+    so that multiple processes (or Kubernetes pods sharing a PVC) can
+    cooperate on the same upload lifecycle.
+    """
 
     def __init__(self, root_path: str | Path):
         self.root_path = Path(root_path)
         self.root_path.mkdir(parents=True, exist_ok=True)
         self.encoder = msgspec.msgpack.Encoder()
         self.decoder = msgspec.msgpack.Decoder(Binary)
-        self._sessions: dict[str, _UploadSessionState] = {}
+        self._sessions_dir = self.root_path / "_sessions"
+        self._sessions_dir.mkdir(exist_ok=True)
+        self._session_meta_encoder = msgspec.msgpack.Encoder()
+        self._session_meta_decoder = msgspec.msgpack.Decoder(_DiskSessionMeta)
+
+    # -- Internal helpers for disk-persisted sessions ---------------------
+
+    def _session_meta_path(self, upload_id: str) -> Path:
+        """Path for the msgpack-encoded session metadata file."""
+        return self._sessions_dir / f"{upload_id}.meta"
+
+    def _session_data_path(self, upload_id: str) -> Path:
+        """Path for the raw uploaded bytes."""
+        return self._sessions_dir / f"{upload_id}.data"
+
+    def _save_session_meta(self, meta: _DiskSessionMeta) -> None:
+        """Persist session metadata to disk."""
+        encoded = self._session_meta_encoder.encode(meta)
+        self._session_meta_path(meta.upload_id).write_bytes(encoded)
+
+    def _load_session_meta(self, upload_id: str) -> _DiskSessionMeta:
+        """Load session metadata from disk, raising ``FileNotFoundError``."""
+        path = self._session_meta_path(upload_id)
+        if not path.exists():
+            raise FileNotFoundError(f"Upload session {upload_id} not found")
+        return self._session_meta_decoder.decode(path.read_bytes())
+
+    # -- Blob put / get / exists ------------------------------------------
 
     def put(
         self,
@@ -236,7 +284,7 @@ class DiskBlobStore(BasicBlobStore):
     def exists(self, file_id: str) -> bool:
         return (self.root_path / file_id).exists()
 
-    # -- Upload session methods -------------------------------------------
+    # -- Upload session methods (disk-persisted) --------------------------
 
     def create_upload_session(
         self,
@@ -246,13 +294,13 @@ class DiskBlobStore(BasicBlobStore):
         size: int | None = None,
     ) -> BlobUploadSession:
         upload_id = uuid.uuid4().hex
-        state = _UploadSessionState(
+        meta = _DiskSessionMeta(
             upload_id=upload_id,
             content_type=content_type,
             size=size,
             key=key,
         )
-        self._sessions[upload_id] = state
+        self._save_session_meta(meta)
         return BlobUploadSession(
             upload_id=upload_id,
             file_id="",
@@ -264,41 +312,42 @@ class DiskBlobStore(BasicBlobStore):
         )
 
     def get_upload_session(self, upload_id: str) -> BlobUploadSession:
-        state = self._sessions.get(upload_id)
-        if state is None:
-            raise FileNotFoundError(f"Upload session {upload_id} not found")
+        meta = self._load_session_meta(upload_id)
         return BlobUploadSession(
-            upload_id=state.upload_id,
+            upload_id=meta.upload_id,
             file_id="",
-            status=state.status,
+            status=meta.status,
             upload_method="proxy",
-            content_type=state.content_type,
-            size=state.size,
+            content_type=meta.content_type,
+            size=meta.size,
         )
 
     def upload_to_session(self, upload_id: str, data: bytes) -> None:
-        state = self._sessions.get(upload_id)
-        if state is None:
-            raise FileNotFoundError(f"Upload session {upload_id} not found")
-        if state.status != "pending":
-            raise ValueError(f"Session status is '{state.status}', expected 'pending'")
-        state.data = data
-        state.size = len(data)
-        state.status = "uploaded"
+        meta = self._load_session_meta(upload_id)
+        if meta.status != "pending":
+            raise ValueError(f"Session status is '{meta.status}', expected 'pending'")
+        # Write data to disk first, then update metadata atomically
+        self._session_data_path(upload_id).write_bytes(data)
+        meta.size = len(data)
+        meta.status = "uploaded"
+        self._save_session_meta(meta)
 
     def finalize_upload_session(self, upload_id: str) -> Binary:
-        state = self._sessions.get(upload_id)
-        if state is None:
-            raise FileNotFoundError(f"Upload session {upload_id} not found")
-        if state.status != "uploaded":
-            raise ValueError(f"Session status is '{state.status}', expected 'uploaded'")
-        stored = self.put(
-            state.data,  # type: ignore[arg-type]
-            key=state.key,
-            content_type=state.content_type,
-        )
-        state.status = "finalized"
-        state.data = None  # free memory
+        meta = self._load_session_meta(upload_id)
+        if meta.status != "uploaded":
+            raise ValueError(f"Session status is '{meta.status}', expected 'uploaded'")
+        # Read the uploaded data from disk
+        data_path = self._session_data_path(upload_id)
+        if not data_path.exists():
+            raise FileNotFoundError(
+                f"Uploaded data for session {upload_id} not found on disk"
+            )
+        data = data_path.read_bytes()
+        stored = self.put(data, key=meta.key, content_type=meta.content_type)
+        # Update session status and clean up data file
+        meta.status = "finalized"
+        self._save_session_meta(meta)
+        data_path.unlink(missing_ok=True)
         return Binary(
             file_id=stored.file_id,
             size=stored.size,
@@ -306,10 +355,10 @@ class DiskBlobStore(BasicBlobStore):
         )
 
     def abort_upload_session(self, upload_id: str) -> None:
-        state = self._sessions.get(upload_id)
-        if state is None:
-            raise FileNotFoundError(f"Upload session {upload_id} not found")
-        if state.status == "finalized":
+        meta = self._load_session_meta(upload_id)
+        if meta.status == "finalized":
             raise ValueError("Cannot abort a finalized session")
-        state.data = None
-        state.status = "aborted"
+        meta.status = "aborted"
+        self._save_session_meta(meta)
+        # Clean up any uploaded data
+        self._session_data_path(upload_id).unlink(missing_ok=True)

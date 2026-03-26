@@ -1,10 +1,10 @@
 from __future__ import annotations
 
 import uuid
-from dataclasses import dataclass
 from typing import Any, Literal
 
-from msgspec import UNSET, UnsetType
+import msgspec
+from msgspec import UNSET, Struct, UnsetType
 from xxhash import xxh3_128_hexdigest
 
 from autocrud.resource_manager.blob_store.simple import BasicBlobStore
@@ -17,26 +17,50 @@ except ImportError:  # pragma: no cover
 
 
 # ---------------------------------------------------------------------------
-# Internal session state
+# Session metadata — persisted to S3 (HPA-safe)
 # ---------------------------------------------------------------------------
 
 
-@dataclass
-class _S3UploadSessionState:
-    """In-memory state for an S3 upload session."""
+class _S3SessionMeta(Struct, kw_only=True):
+    """Session metadata stored in S3 for cross-instance persistence.
+
+    Unlike an in-memory dict, this struct is serialised to a well-known
+    S3 key so that *any* service instance sharing the same bucket/prefix
+    can load the session — critical for HPA / multi-pod deployments.
+
+    Upload data (proxy mode) is stored separately at ``s3_key``.
+    """
 
     upload_id: str
     s3_key: str
-    upload_method: Literal["proxy", "single_put"]
+    upload_method: str  # "proxy" | "single_put"
     status: str = "pending"  # pending | uploaded | finalized | aborted
-    content_type: str | UnsetType = UNSET
+    content_type: str | None = None  # None represents UNSET at the boundary
     size: int | None = None
     key: str | None = None  # caller-specified file_id key
-    data: bytes | None = None  # buffered bytes (proxy mode only)
+
+
+_meta_enc = msgspec.json.Encoder()
+_meta_dec = msgspec.json.Decoder(_S3SessionMeta)
+
+
+def _ct_to_meta(ct: str | UnsetType) -> str | None:
+    """Convert public ``content_type`` (str | UNSET) to storage form (str | None)."""
+    return ct if ct is not UNSET else None
+
+
+def _ct_from_meta(ct: str | None) -> str | UnsetType:
+    """Convert stored ``content_type`` (str | None) back to public form."""
+    return ct if ct is not None else UNSET
 
 
 class S3BlobStore(BasicBlobStore):
-    """S3-backed blob store with optional presigned-URL upload sessions.
+    """S3-backed blob store with upload sessions persisted to S3.
+
+    Session metadata is stored in S3 at ``{prefix}_sessions/{upload_id}``
+    as JSON, making it safe for multi-instance / HPA deployments.
+    Upload data (proxy mode) or client-uploaded objects (single_put mode)
+    are stored at ``{prefix}_uploads/{upload_id}``.
 
     Args:
         access_key_id: AWS access key (default ``"minioadmin"`` for MinIO).
@@ -92,8 +116,6 @@ class S3BlobStore(BasicBlobStore):
                 self.client.create_bucket(Bucket=self.bucket)
             else:
                 raise
-
-        self._sessions: dict[str, _S3UploadSessionState] = {}
 
     def put(
         self,
@@ -165,6 +187,41 @@ class S3BlobStore(BasicBlobStore):
         except _ClientError:
             return None
 
+    # -- Session persistence helpers ------------------------------------
+
+    def _session_meta_key(self, upload_id: str) -> str:
+        """S3 key where session metadata JSON is stored."""
+        return f"{self.prefix}_sessions/{upload_id}"
+
+    def _save_session(self, meta: _S3SessionMeta) -> None:
+        """Persist session metadata to S3."""
+        self.client.put_object(
+            Bucket=self.bucket,
+            Key=self._session_meta_key(meta.upload_id),
+            Body=_meta_enc.encode(meta),
+            ContentType="application/json",
+        )
+
+    def _load_session(self, upload_id: str) -> _S3SessionMeta:
+        """Load session metadata from S3.
+
+        Raises:
+            FileNotFoundError: if the session does not exist.
+        """
+        try:
+            resp = self.client.get_object(
+                Bucket=self.bucket,
+                Key=self._session_meta_key(upload_id),
+            )
+            return _meta_dec.decode(resp["Body"].read())
+        except _ClientError as e:
+            code = e.response.get("Error", {}).get("Code")
+            if code in ("NoSuchKey", "404"):
+                raise FileNotFoundError(
+                    f"Upload session {upload_id} not found"
+                ) from None
+            raise
+
     # -- Upload session methods -------------------------------------------
 
     def create_upload_session(
@@ -175,21 +232,19 @@ class S3BlobStore(BasicBlobStore):
         size: int | None = None,
     ) -> BlobUploadSession:
         upload_id = uuid.uuid4().hex
-        # Use the caller key or a temporary key based on upload_id
         file_id_placeholder = key or ""
         s3_key = f"{self.prefix}_uploads/{upload_id}"
 
-        state = _S3UploadSessionState(
+        meta = _S3SessionMeta(
             upload_id=upload_id,
             s3_key=s3_key,
             upload_method=self.upload_method,
-            content_type=content_type,
+            content_type=_ct_to_meta(content_type),
             size=size,
             key=key,
         )
 
         if self.upload_method == "single_put":
-            # Generate presigned PUT URL for direct client upload
             params: dict[str, Any] = {
                 "Bucket": self.bucket,
                 "Key": s3_key,
@@ -201,7 +256,7 @@ class S3BlobStore(BasicBlobStore):
                 Params=params,
                 ExpiresIn=self.presigned_url_expiry,
             )
-            self._sessions[upload_id] = state
+            self._save_session(meta)
             return BlobUploadSession(
                 upload_id=upload_id,
                 file_id=file_id_placeholder,
@@ -213,7 +268,7 @@ class S3BlobStore(BasicBlobStore):
             )
 
         # Proxy mode
-        self._sessions[upload_id] = state
+        self._save_session(meta)
         return BlobUploadSession(
             upload_id=upload_id,
             file_id=file_id_placeholder,
@@ -225,68 +280,93 @@ class S3BlobStore(BasicBlobStore):
         )
 
     def get_upload_session(self, upload_id: str) -> BlobUploadSession:
-        state = self._sessions.get(upload_id)
-        if state is None:
-            raise FileNotFoundError(f"Upload session {upload_id} not found")
+        meta = self._load_session(upload_id)
         return BlobUploadSession(
-            upload_id=state.upload_id,
-            file_id=state.key or "",
-            status=state.status,
-            upload_method=state.upload_method,
-            content_type=state.content_type,
-            size=state.size,
+            upload_id=meta.upload_id,
+            file_id=meta.key or "",
+            status=meta.status,
+            upload_method=meta.upload_method,
+            content_type=_ct_from_meta(meta.content_type),
+            size=meta.size,
         )
 
     def upload_to_session(self, upload_id: str, data: bytes) -> None:
-        state = self._sessions.get(upload_id)
-        if state is None:
-            raise FileNotFoundError(f"Upload session {upload_id} not found")
-        if state.upload_method == "single_put":
+        meta = self._load_session(upload_id)
+        if meta.upload_method == "single_put":
             raise NotImplementedError(
                 "single_put mode: client uploads directly to S3 via presigned URL"
             )
-        if state.status != "pending":
-            raise ValueError(f"Session status is '{state.status}', expected 'pending'")
-        state.data = data
-        state.size = len(data)
-        state.status = "uploaded"
+        if meta.status != "pending":
+            raise ValueError(f"Session status is '{meta.status}', expected 'pending'")
+
+        # Store data at the temp S3 key (instead of in-memory)
+        put_kwargs: dict[str, Any] = {
+            "Bucket": self.bucket,
+            "Key": meta.s3_key,
+            "Body": data,
+        }
+        if meta.content_type:
+            put_kwargs["ContentType"] = meta.content_type
+        self.client.put_object(**put_kwargs)
+
+        meta.size = len(data)
+        meta.status = "uploaded"
+        self._save_session(meta)
 
     def finalize_upload_session(self, upload_id: str) -> Binary:
-        state = self._sessions.get(upload_id)
-        if state is None:
-            raise FileNotFoundError(f"Upload session {upload_id} not found")
+        meta = self._load_session(upload_id)
+        if meta.upload_method == "single_put":
+            return self._finalize_single_put(meta)
+        return self._finalize_proxy(meta)
 
-        if state.upload_method == "single_put":
-            return self._finalize_single_put(state)
-        return self._finalize_proxy(state)
+    def _finalize_proxy(self, meta: _S3SessionMeta) -> Binary:
+        """Finalize a proxy-mode session: read data from temp key, store at final location."""
+        if meta.status != "uploaded":
+            raise ValueError(f"Session status is '{meta.status}', expected 'uploaded'")
 
-    def _finalize_proxy(self, state: _S3UploadSessionState) -> Binary:
-        """Finalize a proxy-mode session: put buffered bytes to S3."""
-        if state.status != "uploaded":
-            raise ValueError(f"Session status is '{state.status}', expected 'uploaded'")
+        # Read data from the temp S3 key
+        try:
+            resp = self.client.get_object(Bucket=self.bucket, Key=meta.s3_key)
+            data = resp["Body"].read()
+        except _ClientError as e:
+            code = e.response.get("Error", {}).get("Code")
+            if code in ("NoSuchKey", "404"):
+                raise ValueError("Upload data not found in S3") from None
+            raise
+
         stored = self.put(
-            state.data,  # type: ignore[arg-type]
-            key=state.key,
-            content_type=state.content_type,
+            data,
+            key=meta.key,
+            content_type=_ct_from_meta(meta.content_type),
         )
-        state.status = "finalized"
-        state.data = None
+
+        meta.status = "finalized"
+        self._save_session(meta)
+
+        # Clean up temp upload key (best-effort, only if different from final)
+        final_s3_key = f"{self.prefix}{stored.file_id}"
+        if meta.s3_key != final_s3_key:
+            try:
+                self.client.delete_object(Bucket=self.bucket, Key=meta.s3_key)
+            except _ClientError:
+                pass
+
         return Binary(
             file_id=stored.file_id,
             size=stored.size,
             content_type=stored.content_type,
         )
 
-    def _finalize_single_put(self, state: _S3UploadSessionState) -> Binary:
+    def _finalize_single_put(self, meta: _S3SessionMeta) -> Binary:
         """Finalize a single_put session: verify the object exists in S3."""
-        if state.status == "finalized":
+        if meta.status == "finalized":
             raise ValueError("Session has already been finalized")
-        if state.status == "aborted":
+        if meta.status == "aborted":
             raise ValueError("Session has been aborted")
 
         # Verify the client actually uploaded the object
         try:
-            head = self.client.head_object(Bucket=self.bucket, Key=state.s3_key)
+            head = self.client.head_object(Bucket=self.bucket, Key=meta.s3_key)
         except _ClientError as e:
             error_code = e.response.get("Error", {}).get("Code")
             if error_code == "404" or error_code == "NoSuchKey":
@@ -296,25 +376,25 @@ class S3BlobStore(BasicBlobStore):
         size = head.get("ContentLength", 0)
         content_type: str | UnsetType = head.get("ContentType", UNSET)
 
-        # If a caller key was provided, copy to the final location;
-        # otherwise use the upload_id as file_id.
-        if state.key:
-            final_s3_key = f"{self.prefix}{state.key}"
-            file_id = state.key
+        if meta.key:
+            final_s3_key = f"{self.prefix}{meta.key}"
+            file_id = meta.key
         else:
-            file_id = state.upload_id
+            file_id = meta.upload_id
             final_s3_key = f"{self.prefix}{file_id}"
 
         # Move from temp upload key to final key (unless already there)
-        if state.s3_key != final_s3_key:
+        if meta.s3_key != final_s3_key:
             self.client.copy_object(
                 Bucket=self.bucket,
-                CopySource={"Bucket": self.bucket, "Key": state.s3_key},
+                CopySource={"Bucket": self.bucket, "Key": meta.s3_key},
                 Key=final_s3_key,
             )
-            self.client.delete_object(Bucket=self.bucket, Key=state.s3_key)
+            self.client.delete_object(Bucket=self.bucket, Key=meta.s3_key)
 
-        state.status = "finalized"
+        meta.status = "finalized"
+        self._save_session(meta)
+
         return Binary(
             file_id=file_id,
             size=size,
@@ -322,18 +402,18 @@ class S3BlobStore(BasicBlobStore):
         )
 
     def abort_upload_session(self, upload_id: str) -> None:
-        state = self._sessions.get(upload_id)
-        if state is None:
-            raise FileNotFoundError(f"Upload session {upload_id} not found")
-        if state.status == "finalized":
+        meta = self._load_session(upload_id)
+        if meta.status == "finalized":
             raise ValueError("Cannot abort a finalized session")
 
-        # For single_put, try to clean up the S3 object
-        if state.upload_method == "single_put":
+        # Clean up the temp S3 object (best-effort)
+        if meta.upload_method == "single_put" or (
+            meta.upload_method == "proxy" and meta.status == "uploaded"
+        ):
             try:
-                self.client.delete_object(Bucket=self.bucket, Key=state.s3_key)
+                self.client.delete_object(Bucket=self.bucket, Key=meta.s3_key)
             except _ClientError:
-                pass  # best-effort cleanup
+                pass
 
-        state.data = None
-        state.status = "aborted"
+        meta.status = "aborted"
+        self._save_session(meta)

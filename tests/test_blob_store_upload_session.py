@@ -313,10 +313,10 @@ class TestS3SinglePutFinalize:
         session = store.create_upload_session(content_type="text/plain")
 
         # Simulate client uploading directly to S3 via the temp key
-        state = store._sessions[session.upload_id]
+        s3_key = f"{store.prefix}_uploads/{session.upload_id}"
         store.client.put_object(
             Bucket=store.bucket,
-            Key=state.s3_key,
+            Key=s3_key,
             Body=SAMPLE_BYTES,
             ContentType="text/plain",
         )
@@ -342,10 +342,10 @@ class TestS3SinglePutFinalize:
         session = store.create_upload_session(key="sp-custom-key")
 
         # Simulate client upload
-        state = store._sessions[session.upload_id]
+        s3_key = f"{store.prefix}_uploads/{session.upload_id}"
         store.client.put_object(
             Bucket=store.bucket,
-            Key=state.s3_key,
+            Key=s3_key,
             Body=SAMPLE_BYTES,
         )
 
@@ -358,14 +358,14 @@ class TestS3SinglePutFinalize:
         """Abort should attempt to delete the temp S3 object."""
         store = s3_single_put_store
         session = store.create_upload_session()
-        state = store._sessions[session.upload_id]
+        s3_key = f"{store.prefix}_uploads/{session.upload_id}"
 
         # Simulate client upload
-        store.client.put_object(Bucket=store.bucket, Key=state.s3_key, Body=b"discard")
+        store.client.put_object(Bucket=store.bucket, Key=s3_key, Body=b"discard")
         store.abort_upload_session(session.upload_id)
 
         # Temp object should be gone
-        assert not store.exists(state.s3_key.removeprefix(store.prefix))
+        assert not store.exists(s3_key.removeprefix(store.prefix))
         retrieved = store.get_upload_session(session.upload_id)
         assert retrieved.status == "aborted"
 
@@ -373,10 +373,10 @@ class TestS3SinglePutFinalize:
         """Finalizing an already-finalized session should raise ValueError."""
         store = s3_single_put_store
         session = store.create_upload_session(content_type="text/plain")
-        state = store._sessions[session.upload_id]
+        s3_key = f"{store.prefix}_uploads/{session.upload_id}"
         store.client.put_object(
             Bucket=store.bucket,
-            Key=state.s3_key,
+            Key=s3_key,
             Body=SAMPLE_BYTES,
             ContentType="text/plain",
         )
