@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from fastapi import APIRouter, HTTPException, Path, Response, UploadFile
+from fastapi import APIRouter, HTTPException, Path, Query, Response, UploadFile
 from fastapi.responses import RedirectResponse
 from msgspec import UNSET, UnsetType
 from pydantic import BaseModel
@@ -19,6 +19,7 @@ from autocrud.types import Binary, IResourceManager
 class _CreateUploadSessionRequest(BaseModel):
     content_type: str | None = None
     size: int | None = None
+    total_parts: int | None = None
 
 
 class BlobRouteTemplate(BaseRouteTemplate):
@@ -160,6 +161,7 @@ class BlobRouteTemplate(BaseRouteTemplate):
                     session = self._blob_store.create_upload_session(
                         content_type=ct_for_store,
                         size=body.size,
+                        total_parts=body.total_parts,
                     )
                     return MsgspecResponse(session)
                 except Exception as e:
@@ -188,15 +190,19 @@ class BlobRouteTemplate(BaseRouteTemplate):
                 "/blobs/upload-sessions/{upload_id}/content",
                 summary="Upload bytes for an upload session (proxy mode)",
                 description=(
-                    "Upload a chunk of bytes for a proxy-mode upload session. "
-                    "May be called multiple times to upload data in chunks. "
-                    "Returns the current session state including `uploaded_size`."
+                    "Upload a numbered part for a proxy-mode upload session. "
+                    "May be called multiple times with different part numbers, "
+                    "potentially in parallel. Returns the current session state "
+                    "including `uploaded_size` and `parts_received`."
                 ),
                 tags=["Blobs"],
             )
             async def upload_session_content(
                 file: UploadFile,
                 upload_id: str = Path(..., description="Upload session ID"),
+                part_number: int = Query(
+                    ..., ge=1, description="1-based part number for this chunk"
+                ),
             ):
                 if self._blob_store is None:
                     raise HTTPException(
@@ -206,7 +212,9 @@ class BlobRouteTemplate(BaseRouteTemplate):
                 data = await file.read()
 
                 try:
-                    self._blob_store.upload_to_session(upload_id, data)
+                    self._blob_store.upload_to_session(
+                        upload_id, data, part_number=part_number
+                    )
                     session = self._blob_store.get_upload_session(upload_id)
                     return MsgspecResponse(session)
                 except ValueError as e:

@@ -154,36 +154,44 @@ class TestGetUploadSession:
 class TestUploadToSession:
     def test_upload_bytes(self, proxy_blob_store: IBlobStore):
         session = proxy_blob_store.create_upload_session(content_type=SAMPLE_CT)
-        proxy_blob_store.upload_to_session(session.upload_id, SAMPLE_BYTES)
+        proxy_blob_store.upload_to_session(
+            session.upload_id, SAMPLE_BYTES, part_number=1
+        )
         retrieved = proxy_blob_store.get_upload_session(session.upload_id)
         assert retrieved.status == "uploading"
         assert retrieved.uploaded_size == len(SAMPLE_BYTES)
 
     def test_not_found_raises(self, proxy_blob_store: IBlobStore):
         with pytest.raises(FileNotFoundError):
-            proxy_blob_store.upload_to_session("nonexistent", b"data")
+            proxy_blob_store.upload_to_session("nonexistent", b"data", part_number=1)
 
     def test_upload_twice_appends_chunks(self, proxy_blob_store: IBlobStore):
         """Uploading twice appends data (chunked upload support)."""
         session = proxy_blob_store.create_upload_session()
-        proxy_blob_store.upload_to_session(session.upload_id, b"first")
-        proxy_blob_store.upload_to_session(session.upload_id, b"second")
+        proxy_blob_store.upload_to_session(session.upload_id, b"first", part_number=1)
+        proxy_blob_store.upload_to_session(session.upload_id, b"second", part_number=2)
         retrieved = proxy_blob_store.get_upload_session(session.upload_id)
         assert retrieved.status == "uploading"
         assert retrieved.uploaded_size == len(b"first") + len(b"second")
 
     def test_cannot_upload_after_finalize(self, proxy_blob_store: IBlobStore):
         session = proxy_blob_store.create_upload_session()
-        proxy_blob_store.upload_to_session(session.upload_id, SAMPLE_BYTES)
+        proxy_blob_store.upload_to_session(
+            session.upload_id, SAMPLE_BYTES, part_number=1
+        )
         proxy_blob_store.finalize_upload_session(session.upload_id)
         with pytest.raises(ValueError, match="finalized"):
-            proxy_blob_store.upload_to_session(session.upload_id, b"more")
+            proxy_blob_store.upload_to_session(
+                session.upload_id, b"more", part_number=2
+            )
 
     def test_cannot_upload_after_abort(self, proxy_blob_store: IBlobStore):
         session = proxy_blob_store.create_upload_session()
         proxy_blob_store.abort_upload_session(session.upload_id)
         with pytest.raises(ValueError, match="aborted"):
-            proxy_blob_store.upload_to_session(session.upload_id, b"more")
+            proxy_blob_store.upload_to_session(
+                session.upload_id, b"more", part_number=1
+            )
 
     def test_s3_single_put_raises_not_implemented(self, tmp_path):
         """In single_put mode, upload_to_session is not supported."""
@@ -196,7 +204,7 @@ class TestUploadToSession:
         )
         session = store.create_upload_session()
         with pytest.raises(NotImplementedError, match="single_put"):
-            store.upload_to_session(session.upload_id, b"data")
+            store.upload_to_session(session.upload_id, b"data", part_number=1)
 
 
 # ===================================================================
@@ -208,7 +216,9 @@ class TestFinalizeUploadSession:
     def test_happy_path(self, proxy_blob_store: IBlobStore):
         """create → upload → finalize → data retrievable via get()."""
         session = proxy_blob_store.create_upload_session(content_type=SAMPLE_CT)
-        proxy_blob_store.upload_to_session(session.upload_id, SAMPLE_BYTES)
+        proxy_blob_store.upload_to_session(
+            session.upload_id, SAMPLE_BYTES, part_number=1
+        )
         result = proxy_blob_store.finalize_upload_session(session.upload_id)
 
         assert result.file_id
@@ -225,7 +235,9 @@ class TestFinalizeUploadSession:
 
     def test_finalize_twice_raises(self, proxy_blob_store: IBlobStore):
         session = proxy_blob_store.create_upload_session()
-        proxy_blob_store.upload_to_session(session.upload_id, SAMPLE_BYTES)
+        proxy_blob_store.upload_to_session(
+            session.upload_id, SAMPLE_BYTES, part_number=1
+        )
         proxy_blob_store.finalize_upload_session(session.upload_id)
         with pytest.raises(ValueError, match="finalized"):
             proxy_blob_store.finalize_upload_session(session.upload_id)
@@ -236,7 +248,9 @@ class TestFinalizeUploadSession:
 
     def test_session_status_after_finalize(self, proxy_blob_store: IBlobStore):
         session = proxy_blob_store.create_upload_session()
-        proxy_blob_store.upload_to_session(session.upload_id, SAMPLE_BYTES)
+        proxy_blob_store.upload_to_session(
+            session.upload_id, SAMPLE_BYTES, part_number=1
+        )
         proxy_blob_store.finalize_upload_session(session.upload_id)
         retrieved = proxy_blob_store.get_upload_session(session.upload_id)
         assert retrieved.status == "finalized"
@@ -246,7 +260,9 @@ class TestFinalizeUploadSession:
         session = proxy_blob_store.create_upload_session(
             key="my-custom-blob-key", content_type=SAMPLE_CT
         )
-        proxy_blob_store.upload_to_session(session.upload_id, SAMPLE_BYTES)
+        proxy_blob_store.upload_to_session(
+            session.upload_id, SAMPLE_BYTES, part_number=1
+        )
         result = proxy_blob_store.finalize_upload_session(session.upload_id)
         assert result.file_id == "my-custom-blob-key"
         blob = proxy_blob_store.get("my-custom-blob-key")
@@ -267,14 +283,18 @@ class TestAbortUploadSession:
 
     def test_abort_uploaded(self, proxy_blob_store: IBlobStore):
         session = proxy_blob_store.create_upload_session()
-        proxy_blob_store.upload_to_session(session.upload_id, SAMPLE_BYTES)
+        proxy_blob_store.upload_to_session(
+            session.upload_id, SAMPLE_BYTES, part_number=1
+        )
         proxy_blob_store.abort_upload_session(session.upload_id)
         retrieved = proxy_blob_store.get_upload_session(session.upload_id)
         assert retrieved.status == "aborted"
 
     def test_abort_finalized_raises(self, proxy_blob_store: IBlobStore):
         session = proxy_blob_store.create_upload_session()
-        proxy_blob_store.upload_to_session(session.upload_id, SAMPLE_BYTES)
+        proxy_blob_store.upload_to_session(
+            session.upload_id, SAMPLE_BYTES, part_number=1
+        )
         proxy_blob_store.finalize_upload_session(session.upload_id)
         with pytest.raises(ValueError, match="finalized"):
             proxy_blob_store.abort_upload_session(session.upload_id)
@@ -286,7 +306,9 @@ class TestAbortUploadSession:
     def test_abort_then_finalize_raises(self, proxy_blob_store: IBlobStore):
         """After abort, finalize must fail."""
         session = proxy_blob_store.create_upload_session()
-        proxy_blob_store.upload_to_session(session.upload_id, SAMPLE_BYTES)
+        proxy_blob_store.upload_to_session(
+            session.upload_id, SAMPLE_BYTES, part_number=1
+        )
         proxy_blob_store.abort_upload_session(session.upload_id)
         with pytest.raises(ValueError, match="aborted"):
             proxy_blob_store.finalize_upload_session(session.upload_id)
@@ -408,7 +430,7 @@ class TestFullLifecycle:
         session = proxy_blob_store.create_upload_session(
             content_type="application/octet-stream"
         )
-        proxy_blob_store.upload_to_session(session.upload_id, content)
+        proxy_blob_store.upload_to_session(session.upload_id, content, part_number=1)
         result = proxy_blob_store.finalize_upload_session(session.upload_id)
         assert result.file_id
         blob = proxy_blob_store.get(result.file_id)
@@ -416,7 +438,9 @@ class TestFullLifecycle:
 
     def test_create_abort_then_finalize_fails(self, proxy_blob_store: IBlobStore):
         session = proxy_blob_store.create_upload_session()
-        proxy_blob_store.upload_to_session(session.upload_id, SAMPLE_BYTES)
+        proxy_blob_store.upload_to_session(
+            session.upload_id, SAMPLE_BYTES, part_number=1
+        )
         proxy_blob_store.abort_upload_session(session.upload_id)
         with pytest.raises(ValueError):
             proxy_blob_store.finalize_upload_session(session.upload_id)
@@ -425,8 +449,8 @@ class TestFullLifecycle:
         """Multiple concurrent sessions don't interfere with each other."""
         s1 = proxy_blob_store.create_upload_session()
         s2 = proxy_blob_store.create_upload_session()
-        proxy_blob_store.upload_to_session(s1.upload_id, b"data1")
-        proxy_blob_store.upload_to_session(s2.upload_id, b"data2")
+        proxy_blob_store.upload_to_session(s1.upload_id, b"data1", part_number=1)
+        proxy_blob_store.upload_to_session(s2.upload_id, b"data2", part_number=1)
         r1 = proxy_blob_store.finalize_upload_session(s1.upload_id)
         r2 = proxy_blob_store.finalize_upload_session(s2.upload_id)
         assert proxy_blob_store.get(r1.file_id).data == b"data1"

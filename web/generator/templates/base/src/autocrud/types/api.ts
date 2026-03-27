@@ -98,6 +98,8 @@ export interface BlobUploadSession {
   content_type?: string;
   size?: number | null;
   uploaded_size: number;
+  total_parts?: number | null;
+  parts_received?: number[];
   expires_at?: string | null;
 }
 

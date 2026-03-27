@@ -41,6 +41,8 @@ class _S3SessionMeta(Struct, kw_only=True):
     uploaded_size: int = 0
     multipart_upload_id: str | None = None  # S3 multipart upload ID
     parts: list[dict] = []  # [{"ETag": ..., "PartNumber": ...}]
+    total_parts: int | None = None
+    parts_received: list[int] = []  # sorted list of received part numbers
 
 
 _meta_enc = msgspec.json.Encoder()
@@ -233,6 +235,7 @@ class S3BlobStore(BasicBlobStore):
         key: str | None = None,
         content_type: str | UnsetType = UNSET,
         size: int | None = None,
+        total_parts: int | None = None,
     ) -> BlobUploadSession:
         upload_id = uuid.uuid4().hex
         file_id_placeholder = key or ""
@@ -245,6 +248,7 @@ class S3BlobStore(BasicBlobStore):
             content_type=_ct_to_meta(content_type),
             size=size,
             key=key,
+            total_parts=total_parts,
         )
 
         if self.upload_method == "single_put":
@@ -268,6 +272,7 @@ class S3BlobStore(BasicBlobStore):
                 upload_url=upload_url,
                 content_type=content_type,
                 size=size,
+                total_parts=total_parts,
             )
 
         # Proxy mode
@@ -280,6 +285,7 @@ class S3BlobStore(BasicBlobStore):
             upload_url=f"/blobs/upload-sessions/{upload_id}/content",
             content_type=content_type,
             size=size,
+            total_parts=total_parts,
         )
 
     def get_upload_session(self, upload_id: str) -> BlobUploadSession:
@@ -292,9 +298,15 @@ class S3BlobStore(BasicBlobStore):
             content_type=_ct_from_meta(meta.content_type),
             size=meta.size,
             uploaded_size=meta.uploaded_size,
+            total_parts=meta.total_parts,
+            parts_received=list(meta.parts_received),
         )
 
-    def upload_to_session(self, upload_id: str, data: bytes) -> None:
+    def upload_to_session(
+        self, upload_id: str, data: bytes, *, part_number: int
+    ) -> None:
+        if part_number < 1:
+            raise ValueError("part_number must be >= 1")
         meta = self._load_session(upload_id)
         if meta.upload_method == "single_put":
             raise NotImplementedError(
@@ -317,7 +329,7 @@ class S3BlobStore(BasicBlobStore):
             meta.multipart_upload_id = mpu["UploadId"]
             meta.parts = []
 
-        part_number = len(meta.parts) + 1
+        # Use caller-specified part_number (supports parallel & retry)
         resp = self.client.upload_part(
             Bucket=self.bucket,
             Key=meta.s3_key,
@@ -325,8 +337,15 @@ class S3BlobStore(BasicBlobStore):
             PartNumber=part_number,
             Body=data,
         )
+
+        # Replace existing entry for this part_number (retry) or add new
+        meta.parts = [p for p in meta.parts if p["PartNumber"] != part_number]
         meta.parts.append({"ETag": resp["ETag"], "PartNumber": part_number})
+
         meta.uploaded_size += len(data)
+        if part_number not in meta.parts_received:
+            meta.parts_received.append(part_number)
+            meta.parts_received.sort()
         meta.status = "uploading"
         self._save_session(meta)
 
@@ -343,13 +362,21 @@ class S3BlobStore(BasicBlobStore):
                 f"Session status is '{meta.status}', expected 'uploaded' or 'uploading'"
             )
 
-        # Complete the S3 multipart upload
+        # Validate total_parts
+        num_received = len(meta.parts_received)
+        if meta.total_parts is not None and num_received != meta.total_parts:
+            raise ValueError(
+                f"Expected {meta.total_parts} parts but received {num_received}"
+            )
+
+        # Complete the S3 multipart upload (parts must be sorted by PartNumber)
         if meta.multipart_upload_id and meta.parts:
+            sorted_parts = sorted(meta.parts, key=lambda p: p["PartNumber"])
             self.client.complete_multipart_upload(
                 Bucket=self.bucket,
                 Key=meta.s3_key,
                 UploadId=meta.multipart_upload_id,
-                MultipartUpload={"Parts": meta.parts},
+                MultipartUpload={"Parts": sorted_parts},
             )
         elif meta.status == "uploaded":
             # Legacy: single upload_to_session wrote to s3_key directly

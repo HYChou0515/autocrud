@@ -43,7 +43,7 @@ class TestDiskSessionPersistence:
         session = store_a.create_upload_session(content_type=SAMPLE_CT)
 
         store_b = DiskBlobStore(shared_root)
-        store_b.upload_to_session(session.upload_id, SAMPLE_BYTES)
+        store_b.upload_to_session(session.upload_id, SAMPLE_BYTES, part_number=1)
 
         # Verify status visible from yet another instance
         store_c = DiskBlobStore(shared_root)
@@ -57,7 +57,7 @@ class TestDiskSessionPersistence:
         session = store_a.create_upload_session(content_type=SAMPLE_CT)
 
         store_b = DiskBlobStore(shared_root)
-        store_b.upload_to_session(session.upload_id, SAMPLE_BYTES)
+        store_b.upload_to_session(session.upload_id, SAMPLE_BYTES, part_number=1)
 
         store_c = DiskBlobStore(shared_root)
         result = store_c.finalize_upload_session(session.upload_id)
@@ -86,7 +86,7 @@ class TestDiskSessionPersistence:
         """After finalize, get_upload_session on another instance shows finalized."""
         store_a = DiskBlobStore(shared_root)
         session = store_a.create_upload_session()
-        store_a.upload_to_session(session.upload_id, SAMPLE_BYTES)
+        store_a.upload_to_session(session.upload_id, SAMPLE_BYTES, part_number=1)
         store_a.finalize_upload_session(session.upload_id)
 
         store_b = DiskBlobStore(shared_root)
@@ -115,7 +115,7 @@ class TestDiskSessionPersistence:
         """Uploaded bytes must be persisted so finalize on another instance works."""
         store_a = DiskBlobStore(shared_root)
         session = store_a.create_upload_session(key="my-key", content_type=SAMPLE_CT)
-        store_a.upload_to_session(session.upload_id, SAMPLE_BYTES)
+        store_a.upload_to_session(session.upload_id, SAMPLE_BYTES, part_number=1)
 
         store_b = DiskBlobStore(shared_root)
         result = store_b.finalize_upload_session(session.upload_id)

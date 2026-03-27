@@ -1,5 +1,5 @@
 import uuid
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from pathlib import Path
 
 import msgspec
@@ -60,15 +60,25 @@ class BasicBlobStore(IBlobStore):
 
 @dataclass
 class _UploadSessionState:
-    """In-memory state for an upload session."""
+    """In-memory state for an upload session with eager-merge support.
+
+    Parts arriving in order are immediately appended to ``merged``.
+    Out-of-order parts are buffered in ``buffered`` and flushed as
+    soon as the gap fills.
+    """
 
     upload_id: str
     status: str = "pending"  # pending | uploading | uploaded | finalized | aborted
     content_type: str | UnsetType = UNSET
     size: int | None = None
     key: str | None = None
-    chunks: list[bytes] | None = None  # buffered byte chunks
-    uploaded_size: int = 0  # total bytes uploaded so far
+    total_parts: int | None = None
+    # Eager-merge state
+    merged: list[bytes] = field(default_factory=list)
+    buffered: dict[int, bytes] = field(default_factory=dict)
+    next_expected: int = 1
+    parts_received: list[int] = field(default_factory=list)
+    uploaded_size: int = 0
 
 
 class MemoryBlobStore(BasicBlobStore):
@@ -114,6 +124,7 @@ class MemoryBlobStore(BasicBlobStore):
         key: str | None = None,
         content_type: str | UnsetType = UNSET,
         size: int | None = None,
+        total_parts: int | None = None,
     ) -> BlobUploadSession:
         upload_id = uuid.uuid4().hex
         state = _UploadSessionState(
@@ -121,6 +132,7 @@ class MemoryBlobStore(BasicBlobStore):
             content_type=content_type,
             size=size,
             key=key,
+            total_parts=total_parts,
         )
         self._sessions[upload_id] = state
         return BlobUploadSession(
@@ -131,6 +143,7 @@ class MemoryBlobStore(BasicBlobStore):
             upload_url=f"/blobs/upload-sessions/{upload_id}/content",
             content_type=content_type,
             size=size,
+            total_parts=total_parts,
         )
 
     def get_upload_session(self, upload_id: str) -> BlobUploadSession:
@@ -145,9 +158,15 @@ class MemoryBlobStore(BasicBlobStore):
             content_type=state.content_type,
             size=state.size,
             uploaded_size=state.uploaded_size,
+            total_parts=state.total_parts,
+            parts_received=list(state.parts_received),
         )
 
-    def upload_to_session(self, upload_id: str, data: bytes) -> None:
+    def upload_to_session(
+        self, upload_id: str, data: bytes, *, part_number: int
+    ) -> None:
+        if part_number < 1:
+            raise ValueError("part_number must be >= 1")
         state = self._sessions.get(upload_id)
         if state is None:
             raise FileNotFoundError(f"Upload session {upload_id} not found")
@@ -155,10 +174,35 @@ class MemoryBlobStore(BasicBlobStore):
             raise ValueError(
                 f"Session status is '{state.status}', expected 'pending' or 'uploading'"
             )
-        if state.chunks is None:
-            state.chunks = []
-        state.chunks.append(data)
-        state.uploaded_size += len(data)
+        # Idempotent: if already merged (part_number < next_expected), ignore
+        if part_number < state.next_expected:
+            return
+
+        # Eager-merge strategy
+        if part_number == state.next_expected:
+            # In-order: append to merged and flush consecutive buffered parts
+            state.merged.append(data)
+            state.uploaded_size += len(data)
+            if part_number not in state.parts_received:
+                state.parts_received.append(part_number)
+                state.parts_received.sort()
+            state.next_expected += 1
+            # Flush buffered consecutive parts
+            while state.next_expected in state.buffered:
+                buffered_data = state.buffered.pop(state.next_expected)
+                state.merged.append(buffered_data)
+                state.next_expected += 1
+        else:
+            # Out-of-order: buffer (overwrite if retry)
+            if part_number in state.buffered:
+                # Retry: adjust uploaded_size
+                state.uploaded_size -= len(state.buffered[part_number])
+            state.buffered[part_number] = data
+            state.uploaded_size += len(data)
+            if part_number not in state.parts_received:
+                state.parts_received.append(part_number)
+                state.parts_received.sort()
+
         state.status = "uploading"
 
     def finalize_upload_session(self, upload_id: str) -> Binary:
@@ -169,14 +213,28 @@ class MemoryBlobStore(BasicBlobStore):
             raise ValueError(
                 f"Session status is '{state.status}', expected 'uploaded' or 'uploading'"
             )
-        combined = b"".join(state.chunks or [])
+        # Validate total_parts
+        num_received = len(state.parts_received)
+        if state.total_parts is not None and num_received != state.total_parts:
+            raise ValueError(
+                f"Expected {state.total_parts} parts but received {num_received}"
+            )
+        # Check for gaps (buffered parts that couldn't be merged)
+        if state.buffered:
+            missing = sorted(state.buffered.keys())
+            raise ValueError(
+                f"Cannot finalize: parts still buffered (missing earlier parts). "
+                f"Buffered part numbers: {missing}"
+            )
+        combined = b"".join(state.merged)
         stored = self.put(
             combined,
             key=state.key,
             content_type=state.content_type,
         )
         state.status = "finalized"
-        state.chunks = None  # free memory
+        state.merged.clear()
+        state.buffered.clear()
         return Binary(
             file_id=stored.file_id,
             size=stored.size,
@@ -189,7 +247,8 @@ class MemoryBlobStore(BasicBlobStore):
             raise FileNotFoundError(f"Upload session {upload_id} not found")
         if state.status == "finalized":
             raise ValueError("Cannot abort a finalized session")
-        state.chunks = None
+        state.merged.clear()
+        state.buffered.clear()
         state.status = "aborted"
 
 
@@ -208,6 +267,9 @@ class _DiskSessionMeta(Struct, kw_only=True):
     size: int | None = None
     key: str | None = None
     uploaded_size: int = 0
+    total_parts: int | None = None
+    parts_received: list[int] = []
+    next_expected: int = 1
 
 
 class DiskBlobStore(BasicBlobStore):
@@ -235,8 +297,12 @@ class DiskBlobStore(BasicBlobStore):
         return self._sessions_dir / f"{upload_id}.meta"
 
     def _session_data_path(self, upload_id: str) -> Path:
-        """Path for the raw uploaded bytes."""
+        """Path for the raw uploaded bytes (merged/final data)."""
         return self._sessions_dir / f"{upload_id}.data"
+
+    def _session_part_path(self, upload_id: str, part_number: int) -> Path:
+        """Path for an out-of-order part file."""
+        return self._sessions_dir / f"{upload_id}.part.{part_number}"
 
     def _save_session_meta(self, meta: _DiskSessionMeta) -> None:
         """Persist session metadata to disk."""
@@ -302,6 +368,7 @@ class DiskBlobStore(BasicBlobStore):
         key: str | None = None,
         content_type: str | UnsetType = UNSET,
         size: int | None = None,
+        total_parts: int | None = None,
     ) -> BlobUploadSession:
         upload_id = uuid.uuid4().hex
         meta = _DiskSessionMeta(
@@ -309,6 +376,7 @@ class DiskBlobStore(BasicBlobStore):
             content_type=content_type,
             size=size,
             key=key,
+            total_parts=total_parts,
         )
         self._save_session_meta(meta)
         return BlobUploadSession(
@@ -319,6 +387,7 @@ class DiskBlobStore(BasicBlobStore):
             upload_url=f"/blobs/upload-sessions/{upload_id}/content",
             content_type=content_type,
             size=size,
+            total_parts=total_parts,
         )
 
     def get_upload_session(self, upload_id: str) -> BlobUploadSession:
@@ -331,18 +400,59 @@ class DiskBlobStore(BasicBlobStore):
             content_type=meta.content_type,
             size=meta.size,
             uploaded_size=meta.uploaded_size,
+            total_parts=meta.total_parts,
+            parts_received=list(meta.parts_received),
         )
 
-    def upload_to_session(self, upload_id: str, data: bytes) -> None:
+    def upload_to_session(
+        self, upload_id: str, data: bytes, *, part_number: int
+    ) -> None:
+        if part_number < 1:
+            raise ValueError("part_number must be >= 1")
         meta = self._load_session_meta(upload_id)
         if meta.status not in ("pending", "uploading"):
             raise ValueError(
                 f"Session status is '{meta.status}', expected 'pending' or 'uploading'"
             )
-        # Append data to disk file
-        with open(self._session_data_path(upload_id), "ab") as f:
-            f.write(data)
-        meta.uploaded_size += len(data)
+
+        # Idempotent: if already merged (part_number < next_expected), ignore
+        if part_number < meta.next_expected:
+            return
+
+        data_path = self._session_data_path(upload_id)
+
+        if part_number == meta.next_expected:
+            # In-order: append directly to .data file
+            with open(data_path, "ab") as f:
+                f.write(data)
+            meta.uploaded_size += len(data)
+            if part_number not in meta.parts_received:
+                meta.parts_received.append(part_number)
+                meta.parts_received.sort()
+            meta.next_expected += 1
+
+            # Flush consecutive buffered parts
+            while True:
+                part_path = self._session_part_path(upload_id, meta.next_expected)
+                if not part_path.exists():
+                    break
+                buffered_data = part_path.read_bytes()
+                with open(data_path, "ab") as f:
+                    f.write(buffered_data)
+                part_path.unlink()
+                meta.next_expected += 1
+        else:
+            # Out-of-order: write to part file
+            part_path = self._session_part_path(upload_id, part_number)
+            if part_path.exists():
+                # Retry: adjust uploaded_size
+                meta.uploaded_size -= part_path.stat().st_size
+            part_path.write_bytes(data)
+            meta.uploaded_size += len(data)
+            if part_number not in meta.parts_received:
+                meta.parts_received.append(part_number)
+                meta.parts_received.sort()
+
         meta.status = "uploading"
         self._save_session_meta(meta)
 
@@ -352,6 +462,25 @@ class DiskBlobStore(BasicBlobStore):
             raise ValueError(
                 f"Session status is '{meta.status}', expected 'uploaded' or 'uploading'"
             )
+
+        # Validate total_parts
+        num_received = len(meta.parts_received)
+        if meta.total_parts is not None and num_received != meta.total_parts:
+            raise ValueError(
+                f"Expected {meta.total_parts} parts but received {num_received}"
+            )
+
+        # Check for remaining buffered part files (gaps)
+        remaining_parts = sorted(
+            int(p.name.split(".")[-1])
+            for p in self._sessions_dir.glob(f"{upload_id}.part.*")
+        )
+        if remaining_parts:
+            raise ValueError(
+                f"Cannot finalize: parts still buffered (missing earlier parts). "
+                f"Buffered part numbers: {remaining_parts}"
+            )
+
         # Read the uploaded data from disk
         data_path = self._session_data_path(upload_id)
         if not data_path.exists():
@@ -376,5 +505,7 @@ class DiskBlobStore(BasicBlobStore):
             raise ValueError("Cannot abort a finalized session")
         meta.status = "aborted"
         self._save_session_meta(meta)
-        # Clean up any uploaded data
+        # Clean up data file and all part files
         self._session_data_path(upload_id).unlink(missing_ok=True)
+        for part_file in self._sessions_dir.glob(f"{upload_id}.part.*"):
+            part_file.unlink(missing_ok=True)

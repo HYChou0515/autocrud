@@ -3,7 +3,12 @@
  *
  * Files smaller than `CHUNK_THRESHOLD` (default 10 MB) are uploaded via
  * simple `POST /blobs/upload`.  Larger files use the upload-session API
- * with chunked uploads for progress tracking and resumability.
+ * with **parallel** chunked uploads for maximum bandwidth utilisation.
+ *
+ * Each chunk is sent with a `?part_number=N` query parameter so the
+ * back-end can reassemble them in the correct order even when they
+ * arrive out of sequence.  The `concurrency` option controls how many
+ * chunks upload in parallel (default 4).
  *
  * @example
  * ```tsx
@@ -26,6 +31,9 @@ const CHUNK_SIZE = 10 * 1024 * 1024;
 
 /** Files larger than this use chunked upload sessions */
 const CHUNK_THRESHOLD = 10 * 1024 * 1024;
+
+/** Default number of concurrent chunk uploads */
+const DEFAULT_CONCURRENCY = 4;
 
 export type BlobUploadStatus = 'idle' | 'uploading' | 'finalizing' | 'done' | 'error' | 'cancelled';
 
@@ -60,17 +68,20 @@ export interface UseBlobUploadReturn {
 }
 
 /**
- * Hook for uploading files with automatic chunked upload for large files.
+ * Hook for uploading files with automatic parallel chunked upload for large files.
  *
  * @param options.chunkSize - Chunk size in bytes (default 10 MB)
  * @param options.chunkThreshold - File size threshold for chunked upload (default 10 MB)
+ * @param options.concurrency - Max concurrent chunk uploads (default 4)
  */
 export function useBlobUpload(options?: {
   chunkSize?: number;
   chunkThreshold?: number;
+  concurrency?: number;
 }): UseBlobUploadReturn {
   const chunkSize = options?.chunkSize ?? CHUNK_SIZE;
   const chunkThreshold = options?.chunkThreshold ?? CHUNK_THRESHOLD;
+  const concurrency = options?.concurrency ?? DEFAULT_CONCURRENCY;
 
   const [status, setStatus] = useState<BlobUploadStatus>('idle');
   const [progress, setProgress] = useState<BlobUploadProgress>({ loaded: 0, total: 0, percent: 0 });
@@ -121,53 +132,96 @@ export function useBlobUpload(options?: {
             setProgress({ loaded, total: file.size, percent });
           });
         } else {
-          // ---------- Chunked upload session ----------
+          // ---------- Parallel chunked upload session ----------
           const bp = getApiBasePath();
+          const totalChunks = Math.ceil(file.size / chunkSize);
 
-          // 1. Create session
+          // 1. Create session with total_parts
           const sessionResp = await client.post(
             `${bp}/blobs/upload-sessions`,
-            { content_type: file.type || 'application/octet-stream', size: file.size },
+            {
+              content_type: file.type || 'application/octet-stream',
+              size: file.size,
+              total_parts: totalChunks,
+            },
             { signal: controller.signal },
           );
           const uploadId: string = sessionResp.data.upload_id;
           uploadIdRef.current = uploadId;
 
-          // 2. Upload chunks
-          let totalUploaded = 0;
-          const totalChunks = Math.ceil(file.size / chunkSize);
+          // 2. Upload chunks in parallel with concurrency pool
+          // Track per-part in-flight progress for accurate overall progress
+          const partProgress = new Map<number, number>();
 
-          for (let i = 0; i < totalChunks; i++) {
-            if (controller.signal.aborted) {
-              setStatus('cancelled');
-              return null;
+          const updateProgress = () => {
+            let loaded = 0;
+            for (const bytes of partProgress.values()) {
+              loaded += bytes;
             }
+            const percent = file.size > 0 ? Math.round((loaded / file.size) * 100) : 100;
+            setProgress({ loaded, total: file.size, percent: Math.min(percent, 99) });
+          };
 
+          // Build list of chunk tasks
+          const chunkTasks: Array<{ partNumber: number; start: number; end: number }> = [];
+          for (let i = 0; i < totalChunks; i++) {
             const start = i * chunkSize;
             const end = Math.min(start + chunkSize, file.size);
-            const chunk = file.slice(start, end);
+            chunkTasks.push({ partNumber: i + 1, start, end });
+          }
 
-            const form = new FormData();
-            form.append('file', chunk, file.name);
+          // Concurrency pool: run at most `concurrency` uploads at once
+          let taskIndex = 0;
+          let firstError: Error | null = null;
 
-            await client.put(`${bp}/blobs/upload-sessions/${uploadId}/content`, form, {
-              headers: { 'Content-Type': 'multipart/form-data' },
-              signal: controller.signal,
-              onUploadProgress: (e: AxiosProgressEvent) => {
-                const chunkLoaded = e.loaded ?? 0;
-                const loaded = totalUploaded + chunkLoaded;
-                const percent = file.size > 0 ? Math.round((loaded / file.size) * 100) : 100;
-                setProgress({ loaded, total: file.size, percent: Math.min(percent, 99) });
-              },
-            });
+          const runWorker = async () => {
+            while (taskIndex < chunkTasks.length && !firstError) {
+              if (controller.signal.aborted) return;
+              const idx = taskIndex++;
+              if (idx >= chunkTasks.length) break;
 
-            totalUploaded = end;
-            const percent = file.size > 0 ? Math.round((totalUploaded / file.size) * 100) : 100;
-            setProgress({
-              loaded: totalUploaded,
-              total: file.size,
-              percent: Math.min(percent, 99),
-            });
+              const { partNumber, start, end } = chunkTasks[idx];
+              const chunk = file.slice(start, end);
+              const chunkBytes = end - start;
+
+              const form = new FormData();
+              form.append('file', chunk, file.name);
+
+              try {
+                await client.put(
+                  `${bp}/blobs/upload-sessions/${uploadId}/content`,
+                  form,
+                  {
+                    params: { part_number: partNumber },
+                    headers: { 'Content-Type': 'multipart/form-data' },
+                    signal: controller.signal,
+                    onUploadProgress: (e: AxiosProgressEvent) => {
+                      partProgress.set(partNumber, Math.min(e.loaded ?? 0, chunkBytes));
+                      updateProgress();
+                    },
+                  },
+                );
+                // Mark part as fully uploaded
+                partProgress.set(partNumber, chunkBytes);
+                updateProgress();
+              } catch (err) {
+                if (!firstError) firstError = err as Error;
+                return;
+              }
+            }
+          };
+
+          // Launch `concurrency` workers
+          const workers = Array.from({ length: Math.min(concurrency, totalChunks) }, () => runWorker());
+          await Promise.all(workers);
+
+          // Check for errors or cancellation
+          if (controller.signal.aborted) {
+            setStatus('cancelled');
+            return null;
+          }
+          if (firstError) {
+            throw firstError;
           }
 
           // 3. Finalize
@@ -197,7 +251,7 @@ export function useBlobUpload(options?: {
         abortRef.current = null;
       }
     },
-    [chunkSize, chunkThreshold],
+    [chunkSize, chunkThreshold, concurrency],
   );
 
   return { upload, cancel, progress, status, error, reset };

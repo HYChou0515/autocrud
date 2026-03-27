@@ -54,19 +54,19 @@ class TestChunkedUploadHappyPath:
         assert session.uploaded_size == 0
 
         # Upload chunk 1
-        blob_store.upload_to_session(uid, CHUNK_1)
+        blob_store.upload_to_session(uid, CHUNK_1, part_number=1)
         s1 = blob_store.get_upload_session(uid)
         assert s1.status == "uploading"
         assert s1.uploaded_size == len(CHUNK_1)
 
         # Upload chunk 2
-        blob_store.upload_to_session(uid, CHUNK_2)
+        blob_store.upload_to_session(uid, CHUNK_2, part_number=2)
         s2 = blob_store.get_upload_session(uid)
         assert s2.status == "uploading"
         assert s2.uploaded_size == len(CHUNK_1) + len(CHUNK_2)
 
         # Upload chunk 3
-        blob_store.upload_to_session(uid, CHUNK_3)
+        blob_store.upload_to_session(uid, CHUNK_3, part_number=3)
         s3 = blob_store.get_upload_session(uid)
         assert s3.status == "uploading"
         assert s3.uploaded_size == len(ALL_DATA)
@@ -85,8 +85,8 @@ class TestChunkedUploadHappyPath:
         session = blob_store.create_upload_session(key="my-file")
         uid = session.upload_id
 
-        blob_store.upload_to_session(uid, CHUNK_1)
-        blob_store.upload_to_session(uid, CHUNK_2)
+        blob_store.upload_to_session(uid, CHUNK_1, part_number=1)
+        blob_store.upload_to_session(uid, CHUNK_2, part_number=2)
         result = blob_store.finalize_upload_session(uid)
 
         assert result.file_id == "my-file"
@@ -102,8 +102,8 @@ class TestChunkedUploadProgress:
         uid = session.upload_id
 
         expected_size = 0
-        for chunk in [CHUNK_1, CHUNK_2, CHUNK_3]:
-            blob_store.upload_to_session(uid, chunk)
+        for i, chunk in enumerate([CHUNK_1, CHUNK_2, CHUNK_3], start=1):
+            blob_store.upload_to_session(uid, chunk, part_number=i)
             expected_size += len(chunk)
             s = blob_store.get_upload_session(uid)
             assert s.uploaded_size == expected_size
@@ -122,8 +122,8 @@ class TestChunkedUploadAbort:
         session = blob_store.create_upload_session()
         uid = session.upload_id
 
-        blob_store.upload_to_session(uid, CHUNK_1)
-        blob_store.upload_to_session(uid, CHUNK_2)
+        blob_store.upload_to_session(uid, CHUNK_1, part_number=1)
+        blob_store.upload_to_session(uid, CHUNK_2, part_number=2)
         s = blob_store.get_upload_session(uid)
         assert s.status == "uploading"
 
@@ -135,17 +135,17 @@ class TestChunkedUploadAbort:
         session = blob_store.create_upload_session()
         uid = session.upload_id
 
-        blob_store.upload_to_session(uid, CHUNK_1)
+        blob_store.upload_to_session(uid, CHUNK_1, part_number=1)
         blob_store.abort_upload_session(uid)
 
         with pytest.raises(ValueError, match="aborted"):
-            blob_store.upload_to_session(uid, CHUNK_2)
+            blob_store.upload_to_session(uid, CHUNK_2, part_number=2)
 
     def test_cannot_finalize_after_abort(self, blob_store: IBlobStore):
         session = blob_store.create_upload_session()
         uid = session.upload_id
 
-        blob_store.upload_to_session(uid, CHUNK_1)
+        blob_store.upload_to_session(uid, CHUNK_1, part_number=1)
         blob_store.abort_upload_session(uid)
 
         with pytest.raises(ValueError):
@@ -159,11 +159,11 @@ class TestChunkedUploadErrors:
         session = blob_store.create_upload_session()
         uid = session.upload_id
 
-        blob_store.upload_to_session(uid, CHUNK_1)
+        blob_store.upload_to_session(uid, CHUNK_1, part_number=1)
         blob_store.finalize_upload_session(uid)
 
         with pytest.raises(ValueError):
-            blob_store.upload_to_session(uid, CHUNK_2)
+            blob_store.upload_to_session(uid, CHUNK_2, part_number=2)
 
     def test_cannot_finalize_pending_session(self, blob_store: IBlobStore):
         session = blob_store.create_upload_session()
@@ -179,7 +179,7 @@ class TestBackwardCompatibility:
         uid = session.upload_id
 
         data = b"single upload data"
-        blob_store.upload_to_session(uid, data)
+        blob_store.upload_to_session(uid, data, part_number=1)
 
         s = blob_store.get_upload_session(uid)
         assert s.status == "uploading"

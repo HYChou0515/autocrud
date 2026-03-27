@@ -111,6 +111,65 @@ class FakeS3Client:
             f"/{params.get('Key')}?presigned&expires={ExpiresIn}"
         )
 
+    # -- Multipart upload ops ---------------------------------------------
+
+    def create_multipart_upload(self, **kwargs: Any) -> dict[str, Any]:
+        bucket, key = kwargs["Bucket"], kwargs["Key"]
+        upload_id = f"mpu-{len(self._objects)}"
+        if not hasattr(self, "_multipart_uploads"):
+            self._multipart_uploads: dict[str, dict[str, Any]] = {}
+        self._multipart_uploads[upload_id] = {
+            "Bucket": bucket,
+            "Key": key,
+            "Parts": {},
+        }
+        return {"UploadId": upload_id}
+
+    def upload_part(self, **kwargs: Any) -> dict[str, Any]:
+        upload_id = kwargs["UploadId"]
+        part_number = kwargs["PartNumber"]
+        body = kwargs["Body"]
+        if isinstance(body, (bytes, bytearray)):
+            body = bytes(body)
+        if not hasattr(self, "_multipart_uploads"):
+            self._multipart_uploads = {}
+        mpu = self._multipart_uploads.get(upload_id)
+        if mpu is None:
+            raise ClientError(
+                {"Error": {"Code": "NoSuchUpload", "Message": "Not Found"}},
+                "UploadPart",
+            )
+        mpu["Parts"][part_number] = body
+        etag = f'"etag-{upload_id}-{part_number}"'
+        return {"ETag": etag}
+
+    def complete_multipart_upload(self, **kwargs: Any) -> dict[str, Any]:
+        upload_id = kwargs["UploadId"]
+        bucket, key = kwargs["Bucket"], kwargs["Key"]
+        if not hasattr(self, "_multipart_uploads"):
+            self._multipart_uploads = {}
+        mpu = self._multipart_uploads.pop(upload_id, None)
+        if mpu is None:
+            raise ClientError(
+                {"Error": {"Code": "NoSuchUpload", "Message": "Not Found"}},
+                "CompleteMultipartUpload",
+            )
+        # Assemble parts in order
+        sorted_parts = sorted(mpu["Parts"].items())
+        combined = b"".join(data for _, data in sorted_parts)
+        self._objects[(bucket, key)] = {
+            "Body": combined,
+            "ContentType": None,
+            "ContentLength": len(combined),
+        }
+        return {}
+
+    def abort_multipart_upload(self, **kwargs: Any) -> None:
+        upload_id = kwargs["UploadId"]
+        if not hasattr(self, "_multipart_uploads"):
+            self._multipart_uploads = {}
+        self._multipart_uploads.pop(upload_id, None)
+
 
 # ---------------------------------------------------------------------------
 # Helper: create S3BlobStore with injected FakeS3Client
@@ -158,7 +217,7 @@ class TestCrossInstanceProxy:
         store_b = _make_store(fake, prefix="b/")
 
         session = store_a.create_upload_session(content_type="text/plain")
-        store_b.upload_to_session(session.upload_id, SAMPLE_BYTES)
+        store_b.upload_to_session(session.upload_id, SAMPLE_BYTES, part_number=1)
         result = store_a.finalize_upload_session(session.upload_id)
 
         assert result.file_id
@@ -184,8 +243,8 @@ class TestCrossInstanceProxy:
         session = store_a.create_upload_session()
         assert store_b.get_upload_session(session.upload_id).status == "pending"
 
-        store_a.upload_to_session(session.upload_id, SAMPLE_BYTES)
-        assert store_b.get_upload_session(session.upload_id).status == "uploaded"
+        store_a.upload_to_session(session.upload_id, SAMPLE_BYTES, part_number=1)
+        assert store_b.get_upload_session(session.upload_id).status == "uploading"
 
         store_a.finalize_upload_session(session.upload_id)
         assert store_b.get_upload_session(session.upload_id).status == "finalized"
@@ -199,7 +258,7 @@ class TestCrossInstanceProxy:
             key="custom-blob-key",
             content_type="text/plain",
         )
-        store_b.upload_to_session(session.upload_id, SAMPLE_BYTES)
+        store_b.upload_to_session(session.upload_id, SAMPLE_BYTES, part_number=1)
         result = store_a.finalize_upload_session(session.upload_id)
         assert result.file_id == "custom-blob-key"
         blob = store_b.get("custom-blob-key")
@@ -270,10 +329,10 @@ class TestSingleInstanceProxy:
         assert session.status == "pending"
         assert session.upload_method == "proxy"
 
-        store.upload_to_session(session.upload_id, SAMPLE_BYTES)
+        store.upload_to_session(session.upload_id, SAMPLE_BYTES, part_number=1)
         retrieved = store.get_upload_session(session.upload_id)
-        assert retrieved.status == "uploaded"
-        assert retrieved.size == len(SAMPLE_BYTES)
+        assert retrieved.status == "uploading"
+        assert retrieved.uploaded_size == len(SAMPLE_BYTES)
 
         result = store.finalize_upload_session(session.upload_id)
         assert result.file_id
@@ -287,21 +346,22 @@ class TestSingleInstanceProxy:
         with pytest.raises(FileNotFoundError):
             store.get_upload_session("nonexistent")
 
-    def test_cannot_upload_twice(self):
+    def test_cannot_upload_after_finalize(self):
         fake = FakeS3Client()
         store = _make_store(fake, prefix="ut/")
 
         session = store.create_upload_session()
-        store.upload_to_session(session.upload_id, b"first")
-        with pytest.raises(ValueError, match="uploaded"):
-            store.upload_to_session(session.upload_id, b"second")
+        store.upload_to_session(session.upload_id, b"first", part_number=1)
+        store.finalize_upload_session(session.upload_id)
+        with pytest.raises(ValueError, match="finalized"):
+            store.upload_to_session(session.upload_id, b"second", part_number=2)
 
     def test_abort_then_finalize_fails(self):
         fake = FakeS3Client()
         store = _make_store(fake, prefix="af/")
 
         session = store.create_upload_session()
-        store.upload_to_session(session.upload_id, SAMPLE_BYTES)
+        store.upload_to_session(session.upload_id, SAMPLE_BYTES, part_number=1)
         store.abort_upload_session(session.upload_id)
         with pytest.raises(ValueError, match="aborted"):
             store.finalize_upload_session(session.upload_id)
@@ -319,7 +379,7 @@ class TestSingleInstanceProxy:
         store = _make_store(fake, prefix="abf/")
 
         session = store.create_upload_session()
-        store.upload_to_session(session.upload_id, SAMPLE_BYTES)
+        store.upload_to_session(session.upload_id, SAMPLE_BYTES, part_number=1)
         store.finalize_upload_session(session.upload_id)
         with pytest.raises(ValueError, match="finalized"):
             store.abort_upload_session(session.upload_id)
@@ -364,7 +424,7 @@ class TestSingleInstanceSinglePut:
 
         session = store.create_upload_session()
         with pytest.raises(NotImplementedError, match="single_put"):
-            store.upload_to_session(session.upload_id, b"data")
+            store.upload_to_session(session.upload_id, b"data", part_number=1)
 
     def test_finalize_already_finalized_raises(self):
         fake = FakeS3Client()

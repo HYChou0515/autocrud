@@ -663,6 +663,7 @@ class IBlobStore(ABC):
         key: str | None = None,
         content_type: str | UnsetType = UNSET,
         size: int | None = None,
+        total_parts: int | None = None,
     ) -> BlobUploadSession:
         """Create an upload session.
 
@@ -674,6 +675,9 @@ class IBlobStore(ABC):
                 the key is derived from a content hash at finalize time.
             content_type: MIME type hint.
             size: Expected size of the content in bytes (``None`` if unknown).
+            total_parts: Expected number of parts for parallel chunked upload
+                (``None`` if unknown).  When set, :meth:`finalize_upload_session`
+                validates that exactly this many parts have been received.
 
         Returns:
             A :class:`BlobUploadSession` with ``upload_id``, ``upload_method``,
@@ -695,27 +699,40 @@ class IBlobStore(ABC):
         """
 
     @abstractmethod
-    def upload_to_session(self, upload_id: str, data: bytes) -> None:
-        """Buffer bytes for a proxy upload session.
+    def upload_to_session(
+        self, upload_id: str, data: bytes, *, part_number: int
+    ) -> None:
+        """Upload a numbered part for a proxy upload session.
 
-        May be called **multiple times** to upload data in chunks.
-        Each call appends the provided bytes.  The session transitions
-        from ``"pending"`` to ``"uploading"`` on the first call and
-        stays in ``"uploading"`` for subsequent calls.
+        May be called **multiple times** with different ``part_number``
+        values — potentially **in parallel** from the client.  Parts
+        may arrive out of order.
+
+        Implementations use an *eager-merge* strategy where possible:
+        parts that arrive in sequence are immediately appended to the
+        final data buffer, while out-of-order parts are buffered
+        temporarily and flushed as soon as the gap is filled.
+
+        The session transitions from ``"pending"`` to ``"uploading"``
+        on the first call and stays in ``"uploading"`` for subsequent
+        calls.
 
         This does **not** commit data to the blob store; call
         :meth:`finalize_upload_session` to persist.
 
         Args:
             upload_id: The upload session identifier.
-            data: Raw bytes to buffer (appended to any previously
-                uploaded bytes).
+            data: Raw bytes for this part.
+            part_number: 1-based part index.  Must be ≥ 1.
+                Duplicate ``part_number`` values are idempotent: if the
+                part has already been merged it is silently ignored; if
+                it is still buffered it is overwritten (retry-safe).
 
         Raises:
             FileNotFoundError: If the session does not exist.
             ValueError: If the session status does not allow uploading
-                (e.g. already finalized or aborted).  The allowed
-                statuses are ``"pending"`` and ``"uploading"``.
+                (e.g. already finalized or aborted), or if
+                ``part_number < 1``.
         """
 
     @abstractmethod

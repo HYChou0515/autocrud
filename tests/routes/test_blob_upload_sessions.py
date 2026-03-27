@@ -70,10 +70,15 @@ def _create_session(client, content_type=SAMPLE_CONTENT_TYPE, size=None):
 
 
 def _put_content(
-    client, upload_id, data=SAMPLE_BYTES, content_type=SAMPLE_CONTENT_TYPE
+    client,
+    upload_id,
+    data=SAMPLE_BYTES,
+    content_type=SAMPLE_CONTENT_TYPE,
+    part_number=1,
 ):
     return client.put(
         f"/blobs/upload-sessions/{upload_id}/content",
+        params={"part_number": part_number},
         files={"file": ("test.bin", io.BytesIO(data), content_type)},
     )
 
@@ -170,8 +175,8 @@ class TestPutContent:
     def test_put_content_twice_appends(self, client):
         """Uploading content twice is now allowed (chunked upload)."""
         upload_id = _create_session(client).json()["upload_id"]
-        _put_content(client, upload_id)
-        resp = _put_content(client, upload_id)
+        _put_content(client, upload_id, part_number=1)
+        resp = _put_content(client, upload_id, part_number=2)
         assert resp.status_code == 200
         assert resp.json()["uploaded_size"] == len(SAMPLE_BYTES) * 2
 
@@ -339,7 +344,9 @@ class _NativeBlobStore:
         return None
 
     # Native session support
-    def create_upload_session(self, *, key=None, content_type=None, size=None):
+    def create_upload_session(
+        self, *, key=None, content_type=None, size=None, total_parts=None
+    ):
         uid = uuid.uuid4().hex
         fid = key or uuid.uuid4().hex
         sess = BlobUploadSession(
@@ -361,7 +368,7 @@ class _NativeBlobStore:
             raise FileNotFoundError(upload_id)
         return self._sessions[upload_id]["session"]
 
-    def upload_to_session(self, upload_id, data):
+    def upload_to_session(self, upload_id, data, *, part_number=1):
         if upload_id not in self._sessions:
             raise FileNotFoundError(upload_id)
         self._sessions[upload_id]["data"] = data
@@ -517,7 +524,7 @@ class _ErrorBlobStore(_NativeBlobStore):
     def get_upload_session(self, upload_id):
         raise ValueError("native error")
 
-    def upload_to_session(self, upload_id, data):
+    def upload_to_session(self, upload_id, data, *, part_number=1):
         raise ValueError("native error")
 
     def finalize_upload_session(self, upload_id):

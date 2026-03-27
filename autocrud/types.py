@@ -487,6 +487,12 @@ class BlobUploadSession(Struct, kw_only=True):
     uploaded_size: int = 0
     """Number of bytes already uploaded (useful for progress tracking)."""
 
+    total_parts: int | None = None
+    """Expected number of parts for parallel chunked upload (``None`` if unknown)."""
+
+    parts_received: list[int] = []
+    """Sorted list of 1-based part numbers that have been received so far."""
+
     expires_at: dt.datetime | None = None
     """When this upload session expires (``None`` for no expiry)."""
 

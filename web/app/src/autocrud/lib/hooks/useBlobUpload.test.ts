@@ -124,10 +124,10 @@ describe('useBlobUpload', () => {
     });
     expect(result.current.status).toBe('done');
 
-    // createSession POST
+    // createSession POST (includes total_parts for parallel upload)
     expect(mockPost).toHaveBeenCalledWith(
       '/v1/blobs/upload-sessions',
-      { content_type: 'application/octet-stream', size: 120 },
+      { content_type: 'application/octet-stream', size: 120, total_parts: 3 },
       expect.objectContaining({ signal: expect.any(AbortSignal) }),
     );
 
@@ -349,10 +349,10 @@ describe('useBlobUpload', () => {
       await result.current.upload(file);
     });
 
-    // Should have sent 'application/octet-stream' as fallback
+    // Should have sent 'application/octet-stream' as fallback (with total_parts)
     expect(mockPost).toHaveBeenCalledWith(
       '/v1/blobs/upload-sessions',
-      { content_type: 'application/octet-stream', size: 6 },
+      { content_type: 'application/octet-stream', size: 6, total_parts: 1 },
       expect.any(Object),
     );
   });
