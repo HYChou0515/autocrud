@@ -1,4 +1,7 @@
+import fcntl
+import threading
 import uuid
+from contextlib import contextmanager
 from dataclasses import dataclass, field
 from pathlib import Path
 
@@ -87,6 +90,8 @@ class MemoryBlobStore(BasicBlobStore):
     def __init__(self):
         self._store: dict[str, Binary] = {}
         self._sessions: dict[str, _UploadSessionState] = {}
+        self._session_locks: dict[str, threading.Lock] = {}
+        self._global_lock = threading.Lock()
 
     def put(
         self,
@@ -115,6 +120,15 @@ class MemoryBlobStore(BasicBlobStore):
 
     def exists(self, file_id: str) -> bool:
         return file_id in self._store
+
+    # -- Session locking ------------------------------------------------
+
+    def _get_session_lock(self, upload_id: str) -> threading.Lock:
+        """Return a per-session ``threading.Lock``, creating it on first access."""
+        with self._global_lock:
+            if upload_id not in self._session_locks:
+                self._session_locks[upload_id] = threading.Lock()
+            return self._session_locks[upload_id]
 
     # -- Upload session methods -------------------------------------------
 
@@ -167,89 +181,92 @@ class MemoryBlobStore(BasicBlobStore):
     ) -> None:
         if part_number < 1:
             raise ValueError("part_number must be >= 1")
-        state = self._sessions.get(upload_id)
-        if state is None:
-            raise FileNotFoundError(f"Upload session {upload_id} not found")
-        if state.status not in ("pending", "uploading"):
-            raise ValueError(
-                f"Session status is '{state.status}', expected 'pending' or 'uploading'"
-            )
-        # Idempotent: if already merged (part_number < next_expected), ignore
-        if part_number < state.next_expected:
-            return
+        with self._get_session_lock(upload_id):
+            state = self._sessions.get(upload_id)
+            if state is None:
+                raise FileNotFoundError(f"Upload session {upload_id} not found")
+            if state.status not in ("pending", "uploading"):
+                raise ValueError(
+                    f"Session status is '{state.status}', expected 'pending' or 'uploading'"
+                )
+            # Idempotent: if already merged (part_number < next_expected), ignore
+            if part_number < state.next_expected:
+                return
 
-        # Eager-merge strategy
-        if part_number == state.next_expected:
-            # In-order: append to merged and flush consecutive buffered parts
-            state.merged.append(data)
-            state.uploaded_size += len(data)
-            if part_number not in state.parts_received:
-                state.parts_received.append(part_number)
-                state.parts_received.sort()
-            state.next_expected += 1
-            # Flush buffered consecutive parts
-            while state.next_expected in state.buffered:
-                buffered_data = state.buffered.pop(state.next_expected)
-                state.merged.append(buffered_data)
+            # Eager-merge strategy
+            if part_number == state.next_expected:
+                # In-order: append to merged and flush consecutive buffered parts
+                state.merged.append(data)
+                state.uploaded_size += len(data)
+                if part_number not in state.parts_received:
+                    state.parts_received.append(part_number)
+                    state.parts_received.sort()
                 state.next_expected += 1
-        else:
-            # Out-of-order: buffer (overwrite if retry)
-            if part_number in state.buffered:
-                # Retry: adjust uploaded_size
-                state.uploaded_size -= len(state.buffered[part_number])
-            state.buffered[part_number] = data
-            state.uploaded_size += len(data)
-            if part_number not in state.parts_received:
-                state.parts_received.append(part_number)
-                state.parts_received.sort()
+                # Flush buffered consecutive parts
+                while state.next_expected in state.buffered:
+                    buffered_data = state.buffered.pop(state.next_expected)
+                    state.merged.append(buffered_data)
+                    state.next_expected += 1
+            else:
+                # Out-of-order: buffer (overwrite if retry)
+                if part_number in state.buffered:
+                    # Retry: adjust uploaded_size
+                    state.uploaded_size -= len(state.buffered[part_number])
+                state.buffered[part_number] = data
+                state.uploaded_size += len(data)
+                if part_number not in state.parts_received:
+                    state.parts_received.append(part_number)
+                    state.parts_received.sort()
 
-        state.status = "uploading"
+            state.status = "uploading"
 
     def finalize_upload_session(self, upload_id: str) -> Binary:
-        state = self._sessions.get(upload_id)
-        if state is None:
-            raise FileNotFoundError(f"Upload session {upload_id} not found")
-        if state.status not in ("uploaded", "uploading"):
-            raise ValueError(
-                f"Session status is '{state.status}', expected 'uploaded' or 'uploading'"
+        with self._get_session_lock(upload_id):
+            state = self._sessions.get(upload_id)
+            if state is None:
+                raise FileNotFoundError(f"Upload session {upload_id} not found")
+            if state.status not in ("uploaded", "uploading"):
+                raise ValueError(
+                    f"Session status is '{state.status}', expected 'uploaded' or 'uploading'"
+                )
+            # Validate total_parts
+            num_received = len(state.parts_received)
+            if state.total_parts is not None and num_received != state.total_parts:
+                raise ValueError(
+                    f"Expected {state.total_parts} parts but received {num_received}"
+                )
+            # Check for gaps (buffered parts that couldn't be merged)
+            if state.buffered:
+                missing = sorted(state.buffered.keys())
+                raise ValueError(
+                    f"Cannot finalize: parts still buffered (missing earlier parts). "
+                    f"Buffered part numbers: {missing}"
+                )
+            combined = b"".join(state.merged)
+            stored = self.put(
+                combined,
+                key=state.key,
+                content_type=state.content_type,
             )
-        # Validate total_parts
-        num_received = len(state.parts_received)
-        if state.total_parts is not None and num_received != state.total_parts:
-            raise ValueError(
-                f"Expected {state.total_parts} parts but received {num_received}"
+            state.status = "finalized"
+            state.merged.clear()
+            state.buffered.clear()
+            return Binary(
+                file_id=stored.file_id,
+                size=stored.size,
+                content_type=stored.content_type,
             )
-        # Check for gaps (buffered parts that couldn't be merged)
-        if state.buffered:
-            missing = sorted(state.buffered.keys())
-            raise ValueError(
-                f"Cannot finalize: parts still buffered (missing earlier parts). "
-                f"Buffered part numbers: {missing}"
-            )
-        combined = b"".join(state.merged)
-        stored = self.put(
-            combined,
-            key=state.key,
-            content_type=state.content_type,
-        )
-        state.status = "finalized"
-        state.merged.clear()
-        state.buffered.clear()
-        return Binary(
-            file_id=stored.file_id,
-            size=stored.size,
-            content_type=stored.content_type,
-        )
 
     def abort_upload_session(self, upload_id: str) -> None:
-        state = self._sessions.get(upload_id)
-        if state is None:
-            raise FileNotFoundError(f"Upload session {upload_id} not found")
-        if state.status == "finalized":
-            raise ValueError("Cannot abort a finalized session")
-        state.merged.clear()
-        state.buffered.clear()
-        state.status = "aborted"
+        with self._get_session_lock(upload_id):
+            state = self._sessions.get(upload_id)
+            if state is None:
+                raise FileNotFoundError(f"Upload session {upload_id} not found")
+            if state.status == "finalized":
+                raise ValueError("Cannot abort a finalized session")
+            state.merged.clear()
+            state.buffered.clear()
+            state.status = "aborted"
 
 
 class _DiskSessionMeta(Struct, kw_only=True):
@@ -304,10 +321,35 @@ class DiskBlobStore(BasicBlobStore):
         """Path for an out-of-order part file."""
         return self._sessions_dir / f"{upload_id}.part.{part_number}"
 
+    def _session_lock_path(self, upload_id: str) -> Path:
+        """Path for the per-session POSIX lock file."""
+        return self._sessions_dir / f"{upload_id}.lock"
+
+    @contextmanager
+    def _lock_session(self, upload_id: str):
+        """Acquire an exclusive POSIX ``flock`` for the given session.
+
+        Serialises all read-modify-write cycles on the session metadata
+        and data files so that concurrent workers / pods do not corrupt
+        them.  The lock is automatically released when the context exits
+        (including on exceptions or process crashes).
+        """
+        lock_path = self._session_lock_path(upload_id)
+        fd = lock_path.open("w")
+        try:
+            fcntl.flock(fd, fcntl.LOCK_EX)
+            yield
+        finally:
+            fcntl.flock(fd, fcntl.LOCK_UN)
+            fd.close()
+
     def _save_session_meta(self, meta: _DiskSessionMeta) -> None:
-        """Persist session metadata to disk."""
+        """Persist session metadata atomically (write-to-tmp + rename)."""
         encoded = self._session_meta_encoder.encode(meta)
-        self._session_meta_path(meta.upload_id).write_bytes(encoded)
+        path = self._session_meta_path(meta.upload_id)
+        tmp = path.with_suffix(".meta.tmp")
+        tmp.write_bytes(encoded)
+        tmp.rename(path)
 
     def _load_session_meta(self, upload_id: str) -> _DiskSessionMeta:
         """Load session metadata from disk, raising ``FileNotFoundError``."""
@@ -409,103 +451,106 @@ class DiskBlobStore(BasicBlobStore):
     ) -> None:
         if part_number < 1:
             raise ValueError("part_number must be >= 1")
-        meta = self._load_session_meta(upload_id)
-        if meta.status not in ("pending", "uploading"):
-            raise ValueError(
-                f"Session status is '{meta.status}', expected 'pending' or 'uploading'"
-            )
+        with self._lock_session(upload_id):
+            meta = self._load_session_meta(upload_id)
+            if meta.status not in ("pending", "uploading"):
+                raise ValueError(
+                    f"Session status is '{meta.status}', expected 'pending' or 'uploading'"
+                )
 
-        # Idempotent: if already merged (part_number < next_expected), ignore
-        if part_number < meta.next_expected:
-            return
+            # Idempotent: if already merged (part_number < next_expected), ignore
+            if part_number < meta.next_expected:
+                return
 
-        data_path = self._session_data_path(upload_id)
+            data_path = self._session_data_path(upload_id)
 
-        if part_number == meta.next_expected:
-            # In-order: append directly to .data file
-            with open(data_path, "ab") as f:
-                f.write(data)
-            meta.uploaded_size += len(data)
-            if part_number not in meta.parts_received:
-                meta.parts_received.append(part_number)
-                meta.parts_received.sort()
-            meta.next_expected += 1
-
-            # Flush consecutive buffered parts
-            while True:
-                part_path = self._session_part_path(upload_id, meta.next_expected)
-                if not part_path.exists():
-                    break
-                buffered_data = part_path.read_bytes()
+            if part_number == meta.next_expected:
+                # In-order: append directly to .data file
                 with open(data_path, "ab") as f:
-                    f.write(buffered_data)
-                part_path.unlink()
+                    f.write(data)
+                meta.uploaded_size += len(data)
+                if part_number not in meta.parts_received:
+                    meta.parts_received.append(part_number)
+                    meta.parts_received.sort()
                 meta.next_expected += 1
-        else:
-            # Out-of-order: write to part file
-            part_path = self._session_part_path(upload_id, part_number)
-            if part_path.exists():
-                # Retry: adjust uploaded_size
-                meta.uploaded_size -= part_path.stat().st_size
-            part_path.write_bytes(data)
-            meta.uploaded_size += len(data)
-            if part_number not in meta.parts_received:
-                meta.parts_received.append(part_number)
-                meta.parts_received.sort()
 
-        meta.status = "uploading"
-        self._save_session_meta(meta)
+                # Flush consecutive buffered parts
+                while True:
+                    part_path = self._session_part_path(upload_id, meta.next_expected)
+                    if not part_path.exists():
+                        break
+                    buffered_data = part_path.read_bytes()
+                    with open(data_path, "ab") as f:
+                        f.write(buffered_data)
+                    part_path.unlink()
+                    meta.next_expected += 1
+            else:
+                # Out-of-order: write to part file
+                part_path = self._session_part_path(upload_id, part_number)
+                if part_path.exists():
+                    # Retry: adjust uploaded_size
+                    meta.uploaded_size -= part_path.stat().st_size
+                part_path.write_bytes(data)
+                meta.uploaded_size += len(data)
+                if part_number not in meta.parts_received:
+                    meta.parts_received.append(part_number)
+                    meta.parts_received.sort()
+
+            meta.status = "uploading"
+            self._save_session_meta(meta)
 
     def finalize_upload_session(self, upload_id: str) -> Binary:
-        meta = self._load_session_meta(upload_id)
-        if meta.status not in ("uploaded", "uploading"):
-            raise ValueError(
-                f"Session status is '{meta.status}', expected 'uploaded' or 'uploading'"
-            )
+        with self._lock_session(upload_id):
+            meta = self._load_session_meta(upload_id)
+            if meta.status not in ("uploaded", "uploading"):
+                raise ValueError(
+                    f"Session status is '{meta.status}', expected 'uploaded' or 'uploading'"
+                )
 
-        # Validate total_parts
-        num_received = len(meta.parts_received)
-        if meta.total_parts is not None and num_received != meta.total_parts:
-            raise ValueError(
-                f"Expected {meta.total_parts} parts but received {num_received}"
-            )
+            # Validate total_parts
+            num_received = len(meta.parts_received)
+            if meta.total_parts is not None and num_received != meta.total_parts:
+                raise ValueError(
+                    f"Expected {meta.total_parts} parts but received {num_received}"
+                )
 
-        # Check for remaining buffered part files (gaps)
-        remaining_parts = sorted(
-            int(p.name.split(".")[-1])
-            for p in self._sessions_dir.glob(f"{upload_id}.part.*")
-        )
-        if remaining_parts:
-            raise ValueError(
-                f"Cannot finalize: parts still buffered (missing earlier parts). "
-                f"Buffered part numbers: {remaining_parts}"
+            # Check for remaining buffered part files (gaps)
+            remaining_parts = sorted(
+                int(p.name.split(".")[-1])
+                for p in self._sessions_dir.glob(f"{upload_id}.part.*")
             )
+            if remaining_parts:
+                raise ValueError(
+                    f"Cannot finalize: parts still buffered (missing earlier parts). "
+                    f"Buffered part numbers: {remaining_parts}"
+                )
 
-        # Read the uploaded data from disk
-        data_path = self._session_data_path(upload_id)
-        if not data_path.exists():
-            raise FileNotFoundError(
-                f"Uploaded data for session {upload_id} not found on disk"
+            # Read the uploaded data from disk
+            data_path = self._session_data_path(upload_id)
+            if not data_path.exists():
+                raise FileNotFoundError(
+                    f"Uploaded data for session {upload_id} not found on disk"
+                )
+            data = data_path.read_bytes()
+            stored = self.put(data, key=meta.key, content_type=meta.content_type)
+            # Update session status and clean up data file
+            meta.status = "finalized"
+            self._save_session_meta(meta)
+            data_path.unlink(missing_ok=True)
+            return Binary(
+                file_id=stored.file_id,
+                size=stored.size,
+                content_type=stored.content_type,
             )
-        data = data_path.read_bytes()
-        stored = self.put(data, key=meta.key, content_type=meta.content_type)
-        # Update session status and clean up data file
-        meta.status = "finalized"
-        self._save_session_meta(meta)
-        data_path.unlink(missing_ok=True)
-        return Binary(
-            file_id=stored.file_id,
-            size=stored.size,
-            content_type=stored.content_type,
-        )
 
     def abort_upload_session(self, upload_id: str) -> None:
-        meta = self._load_session_meta(upload_id)
-        if meta.status == "finalized":
-            raise ValueError("Cannot abort a finalized session")
-        meta.status = "aborted"
-        self._save_session_meta(meta)
-        # Clean up data file and all part files
-        self._session_data_path(upload_id).unlink(missing_ok=True)
-        for part_file in self._sessions_dir.glob(f"{upload_id}.part.*"):
-            part_file.unlink(missing_ok=True)
+        with self._lock_session(upload_id):
+            meta = self._load_session_meta(upload_id)
+            if meta.status == "finalized":
+                raise ValueError("Cannot abort a finalized session")
+            meta.status = "aborted"
+            self._save_session_meta(meta)
+            # Clean up data file and all part files
+            self._session_data_path(upload_id).unlink(missing_ok=True)
+            for part_file in self._sessions_dir.glob(f"{upload_id}.part.*"):
+                part_file.unlink(missing_ok=True)
