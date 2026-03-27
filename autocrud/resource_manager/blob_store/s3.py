@@ -34,10 +34,13 @@ class _S3SessionMeta(Struct, kw_only=True):
     upload_id: str
     s3_key: str
     upload_method: str  # "proxy" | "single_put"
-    status: str = "pending"  # pending | uploaded | finalized | aborted
+    status: str = "pending"  # pending | uploading | uploaded | finalized | aborted
     content_type: str | None = None  # None represents UNSET at the boundary
     size: int | None = None
     key: str | None = None  # caller-specified file_id key
+    uploaded_size: int = 0
+    multipart_upload_id: str | None = None  # S3 multipart upload ID
+    parts: list[dict] = []  # [{"ETag": ..., "PartNumber": ...}]
 
 
 _meta_enc = msgspec.json.Encoder()
@@ -288,6 +291,7 @@ class S3BlobStore(BasicBlobStore):
             upload_method=meta.upload_method,
             content_type=_ct_from_meta(meta.content_type),
             size=meta.size,
+            uploaded_size=meta.uploaded_size,
         )
 
     def upload_to_session(self, upload_id: str, data: bytes) -> None:
@@ -296,21 +300,34 @@ class S3BlobStore(BasicBlobStore):
             raise NotImplementedError(
                 "single_put mode: client uploads directly to S3 via presigned URL"
             )
-        if meta.status != "pending":
-            raise ValueError(f"Session status is '{meta.status}', expected 'pending'")
+        if meta.status not in ("pending", "uploading"):
+            raise ValueError(
+                f"Session status is '{meta.status}', expected 'pending' or 'uploading'"
+            )
 
-        # Store data at the temp S3 key (instead of in-memory)
-        put_kwargs: dict[str, Any] = {
-            "Bucket": self.bucket,
-            "Key": meta.s3_key,
-            "Body": data,
-        }
-        if meta.content_type:
-            put_kwargs["ContentType"] = meta.content_type
-        self.client.put_object(**put_kwargs)
+        # Lazy-init S3 multipart upload on first chunk
+        if meta.multipart_upload_id is None:
+            create_kwargs: dict[str, Any] = {
+                "Bucket": self.bucket,
+                "Key": meta.s3_key,
+            }
+            if meta.content_type:
+                create_kwargs["ContentType"] = meta.content_type
+            mpu = self.client.create_multipart_upload(**create_kwargs)
+            meta.multipart_upload_id = mpu["UploadId"]
+            meta.parts = []
 
-        meta.size = len(data)
-        meta.status = "uploaded"
+        part_number = len(meta.parts) + 1
+        resp = self.client.upload_part(
+            Bucket=self.bucket,
+            Key=meta.s3_key,
+            UploadId=meta.multipart_upload_id,
+            PartNumber=part_number,
+            Body=data,
+        )
+        meta.parts.append({"ETag": resp["ETag"], "PartNumber": part_number})
+        meta.uploaded_size += len(data)
+        meta.status = "uploading"
         self._save_session(meta)
 
     def finalize_upload_session(self, upload_id: str) -> Binary:
@@ -320,11 +337,27 @@ class S3BlobStore(BasicBlobStore):
         return self._finalize_proxy(meta)
 
     def _finalize_proxy(self, meta: _S3SessionMeta) -> Binary:
-        """Finalize a proxy-mode session: read data from temp key, store at final location."""
-        if meta.status != "uploaded":
-            raise ValueError(f"Session status is '{meta.status}', expected 'uploaded'")
+        """Finalize a proxy-mode session using S3 multipart upload."""
+        if meta.status not in ("uploaded", "uploading"):
+            raise ValueError(
+                f"Session status is '{meta.status}', expected 'uploaded' or 'uploading'"
+            )
 
-        # Read data from the temp S3 key
+        # Complete the S3 multipart upload
+        if meta.multipart_upload_id and meta.parts:
+            self.client.complete_multipart_upload(
+                Bucket=self.bucket,
+                Key=meta.s3_key,
+                UploadId=meta.multipart_upload_id,
+                MultipartUpload={"Parts": meta.parts},
+            )
+        elif meta.status == "uploaded":
+            # Legacy: single upload_to_session wrote to s3_key directly
+            pass
+        else:
+            raise ValueError("No data uploaded to session")
+
+        # Read the assembled object and store at final location via put()
         try:
             resp = self.client.get_object(Bucket=self.bucket, Key=meta.s3_key)
             data = resp["Body"].read()
@@ -406,9 +439,20 @@ class S3BlobStore(BasicBlobStore):
         if meta.status == "finalized":
             raise ValueError("Cannot abort a finalized session")
 
+        # Abort S3 multipart upload if one was started
+        if meta.multipart_upload_id:
+            try:
+                self.client.abort_multipart_upload(
+                    Bucket=self.bucket,
+                    Key=meta.s3_key,
+                    UploadId=meta.multipart_upload_id,
+                )
+            except _ClientError:
+                pass
+
         # Clean up the temp S3 object (best-effort)
         if meta.upload_method == "single_put" or (
-            meta.upload_method == "proxy" and meta.status == "uploaded"
+            meta.upload_method == "proxy" and meta.status in ("uploaded", "uploading")
         ):
             try:
                 self.client.delete_object(Bucket=self.bucket, Key=meta.s3_key)

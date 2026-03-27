@@ -48,8 +48,8 @@ class TestDiskSessionPersistence:
         # Verify status visible from yet another instance
         store_c = DiskBlobStore(shared_root)
         retrieved = store_c.get_upload_session(session.upload_id)
-        assert retrieved.status == "uploaded"
-        assert retrieved.size == len(SAMPLE_BYTES)
+        assert retrieved.status == "uploading"
+        assert retrieved.uploaded_size == len(SAMPLE_BYTES)
 
     def test_finalize_on_different_instance(self, shared_root):
         """Full lifecycle across instances: create(A) → upload(B) → finalize(C)."""

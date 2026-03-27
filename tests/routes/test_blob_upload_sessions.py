@@ -156,23 +156,24 @@ class TestPutContent:
         upload_id = _create_session(client).json()["upload_id"]
         resp = _put_content(client, upload_id)
         assert resp.status_code == 200
-        assert resp.json()["status"] == "uploaded"
+        assert resp.json()["status"] == "uploading"
 
         # Also verify via GET
         sess = _get_session(client, upload_id).json()
-        assert sess["status"] == "uploaded"
-        assert sess["size"] == len(SAMPLE_BYTES)
+        assert sess["status"] == "uploading"
+        assert sess["uploaded_size"] == len(SAMPLE_BYTES)
 
     def test_unknown_upload_id_404(self, client):
         resp = _put_content(client, uuid.uuid4().hex)
         assert resp.status_code == 404
 
-    def test_cannot_put_content_twice(self, client):
-        """Once content has been uploaded (status=uploaded), a second PUT is rejected."""
+    def test_put_content_twice_appends(self, client):
+        """Uploading content twice is now allowed (chunked upload)."""
         upload_id = _create_session(client).json()["upload_id"]
         _put_content(client, upload_id)
         resp = _put_content(client, upload_id)
-        assert resp.status_code == 409
+        assert resp.status_code == 200
+        assert resp.json()["uploaded_size"] == len(SAMPLE_BYTES) * 2
 
     def test_cannot_put_content_after_finalize(self, client):
         upload_id = _create_session(client).json()["upload_id"]

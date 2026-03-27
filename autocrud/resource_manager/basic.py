@@ -696,25 +696,34 @@ class IBlobStore(ABC):
 
     @abstractmethod
     def upload_to_session(self, upload_id: str, data: bytes) -> None:
-        """Store bytes for a proxy upload session.
+        """Buffer bytes for a proxy upload session.
 
-        This does **not** commit data to the blob store; it only buffers
-        the bytes within the session.  Call :meth:`finalize_upload_session`
-        to persist.
+        May be called **multiple times** to upload data in chunks.
+        Each call appends the provided bytes.  The session transitions
+        from ``"pending"`` to ``"uploading"`` on the first call and
+        stays in ``"uploading"`` for subsequent calls.
+
+        This does **not** commit data to the blob store; call
+        :meth:`finalize_upload_session` to persist.
 
         Args:
             upload_id: The upload session identifier.
-            data: Raw bytes to buffer.
+            data: Raw bytes to buffer (appended to any previously
+                uploaded bytes).
 
         Raises:
             FileNotFoundError: If the session does not exist.
             ValueError: If the session status does not allow uploading
-                (e.g. already uploaded, finalized, or aborted).
+                (e.g. already finalized or aborted).  The allowed
+                statuses are ``"pending"`` and ``"uploading"``.
         """
 
     @abstractmethod
     def finalize_upload_session(self, upload_id: str) -> Binary:
         """Finalize session: commit bytes to the blob store.
+
+        Accepts sessions in ``"uploaded"`` (single upload, backwards
+        compatible) or ``"uploading"`` (chunked upload) status.
 
         Returns a :class:`Binary` descriptor (without raw ``data``).
 

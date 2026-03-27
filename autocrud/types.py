@@ -446,11 +446,18 @@ class Binary(Struct):
 class BlobUploadSession(Struct, kw_only=True):
     """Represents an active or completed blob upload session.
 
-    Lifecycle: ``pending`` → ``uploaded`` → ``finalized`` (or ``aborted``).
+    Lifecycle (single upload)::
+
+        pending → uploaded → finalized  (or → aborted)
+
+    Lifecycle (chunked upload)::
+
+        pending → uploading → … → uploading → finalized  (or → aborted)
 
     ``upload_method`` indicates how the client should deliver file bytes:
 
-    - ``"proxy"``: PUT bytes to ``/blobs/upload-sessions/{upload_id}/content``
+    - ``"proxy"``: PUT bytes to ``/blobs/upload-sessions/{upload_id}/content``.
+      May be called multiple times for chunked uploads.
     - ``"single_put"``: upload directly to ``upload_url`` (e.g. S3 presigned PUT)
     """
 
@@ -460,7 +467,9 @@ class BlobUploadSession(Struct, kw_only=True):
     file_id: str
     """Pre-allocated file ID (may be a placeholder until finalize)."""
 
-    status: Literal["pending", "uploaded", "finalized", "aborted"] = "pending"
+    status: Literal["pending", "uploading", "uploaded", "finalized", "aborted"] = (
+        "pending"
+    )
     """Current lifecycle state of the session."""
 
     upload_method: Literal["proxy", "single_put"] = "proxy"
@@ -474,6 +483,9 @@ class BlobUploadSession(Struct, kw_only=True):
 
     size: int | None = None
     """Expected size of the content in bytes (``None`` if unknown)."""
+
+    uploaded_size: int = 0
+    """Number of bytes already uploaded (useful for progress tracking)."""
 
     expires_at: dt.datetime | None = None
     """When this upload session expires (``None`` for no expiry)."""

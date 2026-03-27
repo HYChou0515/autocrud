@@ -108,9 +108,9 @@ function buildMigrateUrl(
 
 /** Revision scope for batch migration. */
 export type RevisionScope =
-  | null       // current revision only (default)
-  | 'all'      // every revision of each resource
-  | string;    // specific revision ID
+  | null // current revision only (default)
+  | 'all' // every revision of each resource
+  | string; // specific revision ID
 
 /** Options for batch migration API calls. */
 export interface MigrateOptions {
@@ -131,10 +131,7 @@ export const migrateApi = {
    * Test migration (dry run) for a model.
    * No data is written — safe to run on production.
    */
-  test: (
-    modelName: string,
-    options?: MigrateOptions,
-  ): Promise<MigrateResult> =>
+  test: (modelName: string, options?: MigrateOptions): Promise<MigrateResult> =>
     streamMigrate(
       buildMigrateUrl(`${getBaseUrl()}/v1/autocrud`, modelName, 'test', options),
       options?.onProgress,
@@ -145,10 +142,7 @@ export const migrateApi = {
    * Execute migration for a model.
    * Migrated data is written back to storage.
    */
-  execute: (
-    modelName: string,
-    options?: MigrateOptions,
-  ): Promise<MigrateResult> =>
+  execute: (modelName: string, options?: MigrateOptions): Promise<MigrateResult> =>
     streamMigrate(
       buildMigrateUrl(`${getBaseUrl()}/v1/autocrud`, modelName, 'execute', options),
       options?.onProgress,

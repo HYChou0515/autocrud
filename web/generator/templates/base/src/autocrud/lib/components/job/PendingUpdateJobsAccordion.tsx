@@ -69,7 +69,10 @@ const JOB_COLUMN_OPTIONS = {
 // Component
 // ---------------------------------------------------------------------------
 
-export function PendingUpdateJobsAccordion({ parentResourceName, resourceId }: PendingUpdateJobsAccordionProps) {
+export function PendingUpdateJobsAccordion({
+  parentResourceName,
+  resourceId,
+}: PendingUpdateJobsAccordionProps) {
   // ── Resolve child update-job configs ──
   const jobConfigs = useMemo(() => {
     const names = getAsyncUpdateJobChildren(parentResourceName);

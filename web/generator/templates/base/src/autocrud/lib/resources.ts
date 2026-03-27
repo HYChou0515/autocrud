@@ -361,7 +361,8 @@ export function isJobResource(resourceName: string): boolean {
  */
 export function getStandaloneJobNames(): string[] {
   return Object.keys(resources).filter(
-    (name) => resources[name]?.isJob === true && !(name in asyncCreateJobs) && !(name in asyncUpdateJobs),
+    (name) =>
+      resources[name]?.isJob === true && !(name in asyncCreateJobs) && !(name in asyncUpdateJobs),
   );
 }
 

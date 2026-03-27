@@ -3,7 +3,7 @@
  */
 import { describe, it, expect } from 'vitest';
 import { buildIR } from '../test-helpers.js';
-import { genApiClient, genApiIndex, genBackupApiClient, genMigrateApiClient } from './api-gen.js';
+import { genApiClient, genApiIndex, genBackupApiClient, genBlobApiClient, genMigrateApiClient } from './api-gen.js';
 
 // ─── Helpers ────────────────────────────────────────────────────────────────
 
@@ -732,5 +732,64 @@ describe('genApiClient — customUpdateActions', () => {
     const code = genApiClient(char, '');
     expect(code).toContain('LevelUpInput');
     expect(code).toMatch(/import type \{.*LevelUpInput.*\}/);
+  });
+});
+
+// ─── genBlobApiClient ─────────────────────────────────────────────────────────
+
+describe('genBlobApiClient', () => {
+  it('generates a blobApi object with all upload-session methods', () => {
+    const code = genBlobApiClient('/v1');
+    expect(code).toContain("const BLOBS = '/v1/blobs'");
+    expect(code).toContain('export const blobApi');
+    // Simple upload
+    expect(code).toContain('upload:');
+    expect(code).toContain('`${BLOBS}/upload`');
+    // Upload session methods
+    expect(code).toContain('createUploadSession:');
+    expect(code).toContain('`${BLOBS}/upload-sessions`');
+    expect(code).toContain('getUploadSession:');
+    expect(code).toContain('uploadChunk:');
+    expect(code).toContain('`${BLOBS}/upload-sessions/${uploadId}/content`');
+    expect(code).toContain('finalizeUploadSession:');
+    expect(code).toContain('`${BLOBS}/upload-sessions/${uploadId}/finalize`');
+    expect(code).toContain('abortUploadSession:');
+    expect(code).toContain('`${BLOBS}/upload-sessions/${uploadId}/abort`');
+  });
+
+  it('imports BlobUploadSession and BlobFinalizeResult types', () => {
+    const code = genBlobApiClient('');
+    expect(code).toContain("import type { BlobUploadSession, BlobFinalizeResult } from '../../types/api'");
+  });
+
+  it('imports AxiosProgressEvent', () => {
+    const code = genBlobApiClient('');
+    expect(code).toContain("import type { AxiosProgressEvent } from 'axios'");
+  });
+
+  it('uses onUploadProgress in upload and uploadChunk', () => {
+    const code = genBlobApiClient('');
+    expect(code).toContain('onUploadProgress');
+  });
+
+  it('uses abort signal in uploadChunk', () => {
+    const code = genBlobApiClient('');
+    expect(code).toContain('signal?: AbortSignal');
+    expect(code).toContain('signal,');
+  });
+
+  it('respects basePath prefix', () => {
+    const code = genBlobApiClient('/api/v2');
+    expect(code).toContain("const BLOBS = '/api/v2/blobs'");
+  });
+});
+
+// ─── genApiIndex — includes blobApi ──────────────────────────────────────────
+
+describe('genApiIndex — blobApi export', () => {
+  it('exports blobApi in the index barrel', () => {
+    const resources = parse(buildSimpleSpec());
+    const code = genApiIndex(resources);
+    expect(code).toContain("export { blobApi } from './blobApi'");
   });
 });

@@ -187,6 +187,11 @@ class BlobRouteTemplate(BaseRouteTemplate):
             @router.put(
                 "/blobs/upload-sessions/{upload_id}/content",
                 summary="Upload bytes for an upload session (proxy mode)",
+                description=(
+                    "Upload a chunk of bytes for a proxy-mode upload session. "
+                    "May be called multiple times to upload data in chunks. "
+                    "Returns the current session state including `uploaded_size`."
+                ),
                 tags=["Blobs"],
             )
             async def upload_session_content(

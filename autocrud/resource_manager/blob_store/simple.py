@@ -63,11 +63,12 @@ class _UploadSessionState:
     """In-memory state for an upload session."""
 
     upload_id: str
-    status: str = "pending"  # pending | uploaded | finalized | aborted
+    status: str = "pending"  # pending | uploading | uploaded | finalized | aborted
     content_type: str | UnsetType = UNSET
     size: int | None = None
     key: str | None = None
-    data: bytes | None = None  # buffered bytes (None until upload_to_session)
+    chunks: list[bytes] | None = None  # buffered byte chunks
+    uploaded_size: int = 0  # total bytes uploaded so far
 
 
 class MemoryBlobStore(BasicBlobStore):
@@ -143,31 +144,39 @@ class MemoryBlobStore(BasicBlobStore):
             upload_method="proxy",
             content_type=state.content_type,
             size=state.size,
+            uploaded_size=state.uploaded_size,
         )
 
     def upload_to_session(self, upload_id: str, data: bytes) -> None:
         state = self._sessions.get(upload_id)
         if state is None:
             raise FileNotFoundError(f"Upload session {upload_id} not found")
-        if state.status != "pending":
-            raise ValueError(f"Session status is '{state.status}', expected 'pending'")
-        state.data = data
-        state.size = len(data)
-        state.status = "uploaded"
+        if state.status not in ("pending", "uploading"):
+            raise ValueError(
+                f"Session status is '{state.status}', expected 'pending' or 'uploading'"
+            )
+        if state.chunks is None:
+            state.chunks = []
+        state.chunks.append(data)
+        state.uploaded_size += len(data)
+        state.status = "uploading"
 
     def finalize_upload_session(self, upload_id: str) -> Binary:
         state = self._sessions.get(upload_id)
         if state is None:
             raise FileNotFoundError(f"Upload session {upload_id} not found")
-        if state.status != "uploaded":
-            raise ValueError(f"Session status is '{state.status}', expected 'uploaded'")
+        if state.status not in ("uploaded", "uploading"):
+            raise ValueError(
+                f"Session status is '{state.status}', expected 'uploaded' or 'uploading'"
+            )
+        combined = b"".join(state.chunks or [])
         stored = self.put(
-            state.data,  # type: ignore[arg-type]
+            combined,
             key=state.key,
             content_type=state.content_type,
         )
         state.status = "finalized"
-        state.data = None  # free memory
+        state.chunks = None  # free memory
         return Binary(
             file_id=stored.file_id,
             size=stored.size,
@@ -180,7 +189,7 @@ class MemoryBlobStore(BasicBlobStore):
             raise FileNotFoundError(f"Upload session {upload_id} not found")
         if state.status == "finalized":
             raise ValueError("Cannot abort a finalized session")
-        state.data = None
+        state.chunks = None
         state.status = "aborted"
 
 
@@ -194,10 +203,11 @@ class _DiskSessionMeta(Struct, kw_only=True):
     """
 
     upload_id: str
-    status: str = "pending"  # pending | uploaded | finalized | aborted
+    status: str = "pending"  # pending | uploading | uploaded | finalized | aborted
     content_type: str | UnsetType = UNSET
     size: int | None = None
     key: str | None = None
+    uploaded_size: int = 0
 
 
 class DiskBlobStore(BasicBlobStore):
@@ -320,22 +330,28 @@ class DiskBlobStore(BasicBlobStore):
             upload_method="proxy",
             content_type=meta.content_type,
             size=meta.size,
+            uploaded_size=meta.uploaded_size,
         )
 
     def upload_to_session(self, upload_id: str, data: bytes) -> None:
         meta = self._load_session_meta(upload_id)
-        if meta.status != "pending":
-            raise ValueError(f"Session status is '{meta.status}', expected 'pending'")
-        # Write data to disk first, then update metadata atomically
-        self._session_data_path(upload_id).write_bytes(data)
-        meta.size = len(data)
-        meta.status = "uploaded"
+        if meta.status not in ("pending", "uploading"):
+            raise ValueError(
+                f"Session status is '{meta.status}', expected 'pending' or 'uploading'"
+            )
+        # Append data to disk file
+        with open(self._session_data_path(upload_id), "ab") as f:
+            f.write(data)
+        meta.uploaded_size += len(data)
+        meta.status = "uploading"
         self._save_session_meta(meta)
 
     def finalize_upload_session(self, upload_id: str) -> Binary:
         meta = self._load_session_meta(upload_id)
-        if meta.status != "uploaded":
-            raise ValueError(f"Session status is '{meta.status}', expected 'uploaded'")
+        if meta.status not in ("uploaded", "uploading"):
+            raise ValueError(
+                f"Session status is '{meta.status}', expected 'uploaded' or 'uploading'"
+            )
         # Read the uploaded data from disk
         data_path = self._session_data_path(upload_id)
         if not data_path.exists():

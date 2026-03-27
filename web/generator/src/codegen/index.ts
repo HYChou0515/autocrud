@@ -12,7 +12,7 @@ import path from 'node:path';
 import type { Resource } from '../types.js';
 import type { IRBuilder } from '../ir-builder.js';
 import { genResourcesConfig } from './resources-gen.js';
-import { genApiClient, genApiIndex, genBackupApiClient, genMigrateApiClient } from './api-gen.js';
+import { genApiClient, genApiIndex, genBackupApiClient, genBlobApiClient, genMigrateApiClient } from './api-gen.js';
 import {
   genListRoute,
   genCreateRoute,
@@ -72,6 +72,9 @@ export class CodeGenerator {
     // Backup / restore
     this.writeFile(path.join(this.GEN, 'api', 'backupApi.ts'), genBackupApiClient(this.resources, this.basePath));
     this.writeFile(path.join(this.ROUTES, 'autocrud-admin', 'backup.tsx'), genBackupPage(this.resources));
+
+    // Blob upload session API
+    this.writeFile(path.join(this.GEN, 'api', 'blobApi.ts'), genBlobApiClient(this.basePath));
 
     // Migrate
     this.writeFile(path.join(this.GEN, 'api', 'migrateApi.ts'), genMigrateApiClient(this.basePath));

@@ -156,18 +156,21 @@ class TestUploadToSession:
         session = proxy_blob_store.create_upload_session(content_type=SAMPLE_CT)
         proxy_blob_store.upload_to_session(session.upload_id, SAMPLE_BYTES)
         retrieved = proxy_blob_store.get_upload_session(session.upload_id)
-        assert retrieved.status == "uploaded"
-        assert retrieved.size == len(SAMPLE_BYTES)
+        assert retrieved.status == "uploading"
+        assert retrieved.uploaded_size == len(SAMPLE_BYTES)
 
     def test_not_found_raises(self, proxy_blob_store: IBlobStore):
         with pytest.raises(FileNotFoundError):
             proxy_blob_store.upload_to_session("nonexistent", b"data")
 
-    def test_cannot_upload_twice(self, proxy_blob_store: IBlobStore):
+    def test_upload_twice_appends_chunks(self, proxy_blob_store: IBlobStore):
+        """Uploading twice appends data (chunked upload support)."""
         session = proxy_blob_store.create_upload_session()
         proxy_blob_store.upload_to_session(session.upload_id, b"first")
-        with pytest.raises(ValueError, match="uploaded"):
-            proxy_blob_store.upload_to_session(session.upload_id, b"second")
+        proxy_blob_store.upload_to_session(session.upload_id, b"second")
+        retrieved = proxy_blob_store.get_upload_session(session.upload_id)
+        assert retrieved.status == "uploading"
+        assert retrieved.uploaded_size == len(b"first") + len(b"second")
 
     def test_cannot_upload_after_finalize(self, proxy_blob_store: IBlobStore):
         session = proxy_blob_store.create_upload_session()
