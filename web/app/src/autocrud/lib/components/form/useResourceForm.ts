@@ -3,6 +3,7 @@
  * effects, validation, and submission logic.
  *
  * Pure orchestration: delegates to formUtils for all data transformations.
+ * Binary file uploads are deferred until form submission for better UX.
  */
 
 import { useState, useMemo, useCallback, useRef } from 'react';
@@ -12,7 +13,6 @@ import type { ResourceConfig, ResourceField } from '../../resources';
 import {
   getByPath,
   setByPath,
-  binaryFormValueToApi,
   computeVisibleFieldsAndGroups,
   computeMaxAvailableDepth,
   processInitialValues,
@@ -28,12 +28,41 @@ import {
   _collectUnionBinaryKeys,
   type BinaryFormValue,
 } from '@/autocrud/lib/utils/formUtils';
+import { uploadFileToBlob, computeEta, type BlobUploadProgress } from '../../hooks/useBlobUpload';
 
 export interface UseResourceFormOptions<T> {
   config: ResourceConfig<T>;
   initialValues: Partial<T>;
   onSubmit: (values: T) => void | Promise<void>;
 }
+
+/** Aggregate state for deferred blob uploads during form submission */
+export interface BlobUploadState {
+  /** Whether blob files are currently being uploaded */
+  isUploading: boolean;
+  /** Field name of the current file being uploaded */
+  currentFieldName: string | null;
+  /** File name of the current file being uploaded */
+  currentFileName: string | null;
+  /** Total number of files to upload */
+  totalFiles: number;
+  /** Number of files completed so far */
+  completedFiles: number;
+  /** Aggregate progress across all files */
+  progress: BlobUploadProgress;
+  /** Error message if upload failed */
+  error: string | null;
+}
+
+const INITIAL_BLOB_UPLOAD_STATE: BlobUploadState = {
+  isUploading: false,
+  currentFieldName: null,
+  currentFileName: null,
+  totalFiles: 0,
+  completedFiles: 0,
+  progress: { loaded: 0, total: 0, percent: 0, elapsed: 0, eta: null },
+  error: null,
+};
 
 export interface UseResourceFormReturn<T extends Record<string, any>> {
   form: UseFormReturnType<T>;
@@ -53,6 +82,10 @@ export interface UseResourceFormReturn<T extends Record<string, any>> {
   simpleUnionTypes: Record<string, string>;
   setSimpleUnionTypes: React.Dispatch<React.SetStateAction<Record<string, string>>>;
   handleSubmit: (values: T) => Promise<void>;
+  /** Aggregate blob upload state during form submission */
+  blobUploadState: BlobUploadState;
+  /** Cancel all in-progress blob uploads */
+  cancelBlobUpload: () => void;
 }
 
 export function useResourceForm<T extends Record<string, any>>({
@@ -273,6 +306,26 @@ export function useResourceForm<T extends Record<string, any>>({
     return onSubmit(parsed as T);
   };
 
+  // ── Blob upload state (deferred: uploads happen at submit time) ──
+  const [blobUploadState, setBlobUploadState] =
+    useState<BlobUploadState>(INITIAL_BLOB_UPLOAD_STATE);
+  const blobAbortRef = useRef<AbortController | null>(null);
+  const blobTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
+
+  const cancelBlobUpload = useCallback(() => {
+    blobAbortRef.current?.abort();
+    blobAbortRef.current = null;
+    if (blobTimerRef.current) {
+      clearInterval(blobTimerRef.current);
+      blobTimerRef.current = null;
+    }
+    setBlobUploadState((prev) => ({
+      ...prev,
+      isUploading: false,
+      error: 'Upload cancelled',
+    }));
+  }, []);
+
   // ── Submit ──
   const handleSubmit = async (values: T) => {
     try {
@@ -317,16 +370,183 @@ export function useResourceForm<T extends Record<string, any>>({
         dateFieldNames,
       );
 
+      // ── Deferred blob upload: collect all pending uploads ──
+      type PendingUpload = {
+        key: string;
+        bv: BinaryFormValue | null | undefined;
+        fieldName: string;
+        fileName: string;
+        fileSize: number;
+      };
+      const pendingUploads: PendingUpload[] = [];
+
+      // Collect from sub-field keys (array items, union variants)
       for (const key of binarySubFieldKeys) {
         const bv = arrayItemBinaryValues.get(key);
-        const apiVal = await binaryFormValueToApi(bv);
-        setByPath(processed, key, apiVal);
+        if (bv && ((bv._mode === 'file' && bv.file) || (bv._mode === 'url' && bv.url))) {
+          const fileName = bv._mode === 'file' && bv.file ? bv.file.name : (bv.url ?? 'download');
+          const fileSize = bv._mode === 'file' && bv.file ? bv.file.size : 0;
+          pendingUploads.push({ key, bv, fieldName: key, fileName, fileSize });
+        } else {
+          // Handle existing / empty modes directly
+          const apiVal = _binaryFormValueToApiDirect(bv);
+          setByPath(processed, key, apiVal);
+        }
       }
+
+      // Collect from top-level binary fields
       for (const fieldName of skippedBinaryFields) {
         const bv = binaryFieldValues.get(fieldName);
-        const apiVal = await binaryFormValueToApi(bv);
-        setByPath(processed, fieldName, apiVal);
+        if (bv && ((bv._mode === 'file' && bv.file) || (bv._mode === 'url' && bv.url))) {
+          const fileName = bv._mode === 'file' && bv.file ? bv.file.name : (bv.url ?? 'download');
+          const fileSize = bv._mode === 'file' && bv.file ? bv.file.size : 0;
+          pendingUploads.push({ key: fieldName, bv, fieldName, fileName, fileSize });
+        } else {
+          // Handle existing / empty modes directly
+          const apiVal = _binaryFormValueToApiDirect(bv);
+          setByPath(processed, fieldName, apiVal);
+        }
       }
+
+      // ── Upload pending files with aggregate progress tracking ──
+      if (pendingUploads.length > 0) {
+        const totalSize = pendingUploads.reduce((sum, p) => sum + p.fileSize, 0);
+        const abortController = new AbortController();
+        blobAbortRef.current = abortController;
+
+        const startTime = Date.now();
+        let completedBytes = 0; // bytes from fully completed files
+
+        // Progress refs for timer-based elapsed/ETA update
+        const progressRef = { completedBytes: 0, currentFileLoaded: 0 };
+
+        setBlobUploadState({
+          isUploading: true,
+          currentFieldName: null,
+          currentFileName: null,
+          totalFiles: pendingUploads.length,
+          completedFiles: 0,
+          progress: { loaded: 0, total: totalSize, percent: 0, elapsed: 0, eta: null },
+          error: null,
+        });
+
+        // Start timer for elapsed/ETA updates
+        blobTimerRef.current = setInterval(() => {
+          const elapsed = (Date.now() - startTime) / 1000;
+          const loaded = progressRef.completedBytes + progressRef.currentFileLoaded;
+          const percent = totalSize > 0 ? Math.round((loaded / totalSize) * 100) : 0;
+          const eta = computeEta(loaded, totalSize, elapsed);
+          setBlobUploadState((prev) => ({
+            ...prev,
+            progress: { loaded, total: totalSize, percent: Math.min(percent, 99), elapsed, eta },
+          }));
+        }, 500);
+
+        try {
+          for (let i = 0; i < pendingUploads.length; i++) {
+            if (abortController.signal.aborted) {
+              throw new Error('Upload cancelled');
+            }
+
+            const pending = pendingUploads[i];
+            setBlobUploadState((prev) => ({
+              ...prev,
+              currentFieldName: pending.fieldName,
+              currentFileName: pending.fileName,
+              completedFiles: i,
+            }));
+
+            let fileToUpload: File;
+            if (pending.bv?._mode === 'url' && pending.bv.url) {
+              // Fetch URL content first
+              const resp = await fetch(pending.bv.url);
+              const blob = await resp.blob();
+              fileToUpload = new File([blob], 'download', {
+                type: blob.type || 'application/octet-stream',
+              });
+              // Update the actual file size now that we know it
+              pending.fileSize = fileToUpload.size;
+            } else if (pending.bv?._mode === 'file' && pending.bv.file) {
+              fileToUpload = pending.bv.file;
+            } else {
+              continue;
+            }
+
+            const result = await uploadFileToBlob(fileToUpload, {
+              signal: abortController.signal,
+              onProgress: (loaded, _total) => {
+                progressRef.currentFileLoaded = loaded;
+                const totalLoaded = completedBytes + loaded;
+                const elapsed = (Date.now() - startTime) / 1000;
+                const percent = totalSize > 0 ? Math.round((totalLoaded / totalSize) * 100) : 0;
+                const eta = computeEta(totalLoaded, totalSize, elapsed);
+                setBlobUploadState((prev) => ({
+                  ...prev,
+                  progress: {
+                    loaded: totalLoaded,
+                    total: totalSize,
+                    percent: Math.min(percent, 99),
+                    elapsed,
+                    eta,
+                  },
+                }));
+              },
+            });
+
+            if (!result) {
+              throw new Error(`Upload cancelled for ${pending.fileName}`);
+            }
+
+            setByPath(processed, pending.key, {
+              file_id: result.file_id,
+              content_type: result.content_type,
+              size: result.size,
+            });
+
+            completedBytes += pending.fileSize;
+            progressRef.completedBytes = completedBytes;
+            progressRef.currentFileLoaded = 0;
+          }
+
+          // All uploads done
+          if (blobTimerRef.current) {
+            clearInterval(blobTimerRef.current);
+            blobTimerRef.current = null;
+          }
+          const finalElapsed = (Date.now() - startTime) / 1000;
+          setBlobUploadState({
+            isUploading: false,
+            currentFieldName: null,
+            currentFileName: null,
+            totalFiles: pendingUploads.length,
+            completedFiles: pendingUploads.length,
+            progress: {
+              loaded: totalSize,
+              total: totalSize,
+              percent: 100,
+              elapsed: finalElapsed,
+              eta: 0,
+            },
+            error: null,
+          });
+        } catch (uploadError: any) {
+          if (blobTimerRef.current) {
+            clearInterval(blobTimerRef.current);
+            blobTimerRef.current = null;
+          }
+          const msg =
+            uploadError?.response?.data?.detail || uploadError?.message || 'Upload failed';
+          setBlobUploadState((prev) => ({
+            ...prev,
+            isUploading: false,
+            error: msg,
+          }));
+          blobAbortRef.current = null;
+          throw uploadError;
+        }
+        blobAbortRef.current = null;
+      }
+
       // Restore File objects after JSON deep copy
       for (const [fieldName, file] of fileFieldValues) {
         setByPath(processed, fieldName, file);
@@ -371,7 +591,26 @@ export function useResourceForm<T extends Record<string, any>>({
     simpleUnionTypes,
     setSimpleUnionTypes,
     handleSubmit,
+    blobUploadState,
+    cancelBlobUpload,
   };
+}
+
+/**
+ * Convert a BinaryFormValue to API-ready payload for non-upload modes.
+ * Handles 'existing' and 'empty' modes synchronously (no upload needed).
+ *
+ * @internal
+ */
+function _binaryFormValueToApiDirect(
+  val: BinaryFormValue | null | undefined,
+): Record<string, any> | null {
+  if (!val || val._mode === 'empty') return null;
+  if (val._mode === 'existing') {
+    return { file_id: val.file_id };
+  }
+  // 'file' and 'url' modes should have been handled by the upload loop
+  return null;
 }
 
 /**

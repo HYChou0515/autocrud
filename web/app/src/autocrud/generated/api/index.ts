@@ -11,4 +11,5 @@ export { createNewCharacter2JobApi } from './create-new-character2-jobApi';
 export { createNewCharacter4JobApi } from './create-new-character4-jobApi';
 export { petApi } from './petApi';
 export { backupApi } from './backupApi';
+export { blobApi } from './blobApi';
 export { migrateApi } from './migrateApi';

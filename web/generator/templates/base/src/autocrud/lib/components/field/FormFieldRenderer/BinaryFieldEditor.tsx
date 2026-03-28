@@ -7,14 +7,20 @@ import {
   Text,
   Tooltip,
   ActionIcon,
-  Progress,
 } from '@mantine/core';
-import { IconLink, IconUpload, IconX } from '@tabler/icons-react';
+import { IconLink, IconX } from '@tabler/icons-react';
 import type { BinaryFormValue } from '@/autocrud/lib/utils/formUtils';
 import { getBlobUrl } from '../../../client';
-import { useBlobUpload } from '../../../hooks/useBlobUpload';
+import { formatBytes } from '../../../hooks/useBlobUpload';
 
-/** Binary field editor — file upload (with chunked upload + progress bar) or URL input */
+/**
+ * Binary field editor — deferred file upload or URL input.
+ *
+ * Files are NOT uploaded eagerly. Instead, the selected File object is
+ * stored in form state and uploaded in bulk when the form is submitted.
+ * This provides a better UX: users can fill out the entire form before
+ * any network activity begins.
+ */
 export function BinaryFieldEditor({
   label,
   required,
@@ -28,35 +34,19 @@ export function BinaryFieldEditor({
 }) {
   const mode = value?._mode ?? 'empty';
   const activeMode = mode === 'existing' || mode === 'empty' ? 'file' : mode;
-  const { upload, cancel, progress, status, error, reset } = useBlobUpload();
-
-  const isUploading = status === 'uploading' || status === 'finalizing';
 
   const handleModeChange = (m: string) => {
-    if (isUploading) return;
     if (m === 'file') onChange({ _mode: 'file', file: null });
     else onChange({ _mode: 'url', url: '' });
   };
 
-  const handleFileChange = async (file: File | null) => {
+  const handleFileChange = (file: File | null) => {
     if (!file) {
       onChange({ _mode: 'file', file: null });
       return;
     }
-
-    // Start eager upload immediately
+    // Store the File object — upload happens at form submit time
     onChange({ _mode: 'file', file });
-    const result = await upload(file);
-
-    if (result) {
-      // Upload complete — switch to 'existing' mode with the file_id
-      onChange({
-        _mode: 'existing',
-        file_id: result.file_id,
-        content_type: result.content_type,
-        size: result.size,
-      });
-    }
   };
 
   const handleUrlChange = (url: string) => {
@@ -64,10 +54,6 @@ export function BinaryFieldEditor({
   };
 
   const handleClear = () => {
-    if (isUploading) {
-      cancel();
-    }
-    reset();
     onChange({ _mode: 'empty' });
   };
 
@@ -86,7 +72,7 @@ export function BinaryFieldEditor({
             <a href={blobUrl} target="_blank" rel="noreferrer">
               {value?.content_type}
             </a>
-            {value?.size != null && `, ${(value.size / 1024).toFixed(1)} KB`})
+            {value?.size != null && `, ${formatBytes(value.size)}`})
           </Text>
         )}
       </Group>
@@ -99,16 +85,10 @@ export function BinaryFieldEditor({
             { label: 'Upload', value: 'file' },
             { label: 'URL', value: 'url' },
           ]}
-          disabled={isUploading}
         />
-        {(mode !== 'empty' || isUploading) && (
-          <Tooltip label={isUploading ? 'Cancel upload' : 'Clear'}>
-            <ActionIcon
-              variant="subtle"
-              color={isUploading ? 'red' : 'gray'}
-              size="sm"
-              onClick={handleClear}
-            >
+        {mode !== 'empty' && (
+          <Tooltip label="Clear">
+            <ActionIcon variant="subtle" color="gray" size="sm" onClick={handleClear}>
               <IconX size={14} />
             </ActionIcon>
           </Tooltip>
@@ -121,32 +101,10 @@ export function BinaryFieldEditor({
             value={value?._mode === 'file' ? (value.file ?? null) : null}
             onChange={handleFileChange}
             clearable
-            disabled={isUploading}
-            leftSection={isUploading ? <IconUpload size={14} /> : undefined}
           />
-          {isUploading && (
-            <Stack gap={2}>
-              <Progress
-                value={progress.percent}
-                size="sm"
-                animated
-                color={status === 'finalizing' ? 'yellow' : 'blue'}
-              />
-              <Text size="xs" c="dimmed">
-                {status === 'finalizing'
-                  ? 'Finalizing...'
-                  : `Uploading... ${formatBytes(progress.loaded)} / ${formatBytes(progress.total)} (${progress.percent}%)`}
-              </Text>
-            </Stack>
-          )}
-          {status === 'done' && (
-            <Text size="xs" c="green">
-              Upload complete ✓
-            </Text>
-          )}
-          {status === 'error' && (
-            <Text size="xs" c="red">
-              Upload failed: {error}
+          {value?._mode === 'file' && value.file && (
+            <Text size="xs" c="dimmed">
+              Selected: {value.file.name} ({formatBytes(value.file.size)}) — will upload on submit
             </Text>
           )}
         </>
@@ -160,13 +118,4 @@ export function BinaryFieldEditor({
       )}
     </Stack>
   );
-}
-
-/** Format bytes into human-readable string */
-function formatBytes(bytes: number): string {
-  if (bytes === 0) return '0 B';
-  const k = 1024;
-  const sizes = ['B', 'KB', 'MB', 'GB'];
-  const i = Math.floor(Math.log(bytes) / Math.log(k));
-  return `${(bytes / Math.pow(k, i)).toFixed(1)} ${sizes[i]}`;
 }

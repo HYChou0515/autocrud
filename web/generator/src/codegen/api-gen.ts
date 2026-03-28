@@ -306,7 +306,10 @@ export const blobApi = {
    * Simple single-file upload via multipart/form-data.
    * For small files that don't need chunked upload.
    */
-  upload: (file: File, onUploadProgress?: (e: AxiosProgressEvent) => void) => {
+  upload: (
+    file: File,
+    options?: { onUploadProgress?: (e: AxiosProgressEvent) => void; signal?: AbortSignal },
+  ) => {
     const form = new FormData();
     form.append('file', file);
     return client.post<{ file_id: string; size: number; content_type: string }>(
@@ -314,16 +317,19 @@ export const blobApi = {
       form,
       {
         headers: { 'Content-Type': 'multipart/form-data' },
-        onUploadProgress,
+        onUploadProgress: options?.onUploadProgress,
+        signal: options?.signal,
       },
     );
   },
 
   /**
-   * Create an upload session for proxy-mode uploads.
+   * Create an upload session for chunked / parallel uploads.
    */
-  createUploadSession: (params?: { content_type?: string; size?: number }) =>
-    client.post<BlobUploadSession>(\`\${BLOBS}/upload-sessions\`, params ?? {}),
+  createUploadSession: (
+    params: { content_type: string; size: number; total_parts?: number },
+    signal?: AbortSignal,
+  ) => client.post<BlobUploadSession>(\`\${BLOBS}/upload-sessions\`, params, { signal }),
 
   /**
    * Get the current state of an upload session.
@@ -332,24 +338,29 @@ export const blobApi = {
     client.get<BlobUploadSession>(\`\${BLOBS}/upload-sessions/\${uploadId}\`),
 
   /**
-   * Upload a chunk of bytes to a proxy-mode upload session.
-   * May be called multiple times for chunked uploads.
+   * Upload a chunk of bytes to an upload session.
+   * Use \`partNumber\` for parallel uploads so the server can reassemble in order.
    */
   uploadChunk: (
     uploadId: string,
     chunk: Blob,
-    onUploadProgress?: (e: AxiosProgressEvent) => void,
-    signal?: AbortSignal,
+    options?: {
+      fileName?: string;
+      partNumber?: number;
+      onUploadProgress?: (e: AxiosProgressEvent) => void;
+      signal?: AbortSignal;
+    },
   ) => {
     const form = new FormData();
-    form.append('file', chunk);
+    form.append('file', chunk, options?.fileName);
     return client.put<BlobUploadSession>(
       \`\${BLOBS}/upload-sessions/\${uploadId}/content\`,
       form,
       {
+        params: options?.partNumber != null ? { part_number: options.partNumber } : undefined,
         headers: { 'Content-Type': 'multipart/form-data' },
-        onUploadProgress,
-        signal,
+        onUploadProgress: options?.onUploadProgress,
+        signal: options?.signal,
       },
     );
   },
@@ -358,8 +369,8 @@ export const blobApi = {
    * Finalize an upload session — commits buffered bytes to the blob store.
    * Returns final Binary metadata (file_id, size, content_type).
    */
-  finalizeUploadSession: (uploadId: string) =>
-    client.post<BlobFinalizeResult>(\`\${BLOBS}/upload-sessions/\${uploadId}/finalize\`),
+  finalizeUploadSession: (uploadId: string, signal?: AbortSignal) =>
+    client.post<BlobFinalizeResult>(\`\${BLOBS}/upload-sessions/\${uploadId}/finalize\`, null, { signal }),
 
   /**
    * Abort an upload session — discards all uploaded data.

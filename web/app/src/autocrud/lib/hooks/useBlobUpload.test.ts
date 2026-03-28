@@ -4,33 +4,57 @@
  * Covers:
  * - Simple upload for small files (<=10 MB threshold)
  * - Chunked upload session for large files (>10 MB threshold)
- * - Progress tracking during upload
- * - Cancel aborts the upload and sends abort request
+ * - Progress tracking during upload (with elapsed/ETA)
+ * - Cancel aborts the upload
  * - Error handling sets status to 'error'
  * - Reset returns to idle state
+ * - Standalone uploadFileToBlob function
+ * - Utility functions: computeEta, formatDuration, formatBytes
+ *
+ * Mocks the generated blobApi module — tests useBlobUpload in isolation
+ * from the Axios client layer.
  */
 
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { renderHook, act, waitFor } from '@testing-library/react';
-import { useBlobUpload } from './useBlobUpload';
+import {
+  useBlobUpload,
+  uploadFileToBlob,
+  computeEta,
+  formatDuration,
+  formatBytes,
+} from './useBlobUpload';
 
-// Mock the client module
-vi.mock('../client', () => ({
-  client: {
-    post: vi.fn(),
-    put: vi.fn(),
+// ---------------------------------------------------------------------------
+// Mock the generated blobApi module
+// ---------------------------------------------------------------------------
+vi.mock('@/autocrud/generated/api/blobApi', () => ({
+  blobApi: {
+    upload: vi.fn(),
+    createUploadSession: vi.fn(),
+    uploadChunk: vi.fn(),
+    finalizeUploadSession: vi.fn(),
+    abortUploadSession: vi.fn(),
   },
-  getApiBasePath: vi.fn(() => '/v1'),
 }));
 
-import { client } from '../client';
+import { blobApi } from '@/autocrud/generated/api/blobApi';
 
-const mockPost = vi.mocked(client.post);
-const mockPut = vi.mocked(client.put);
+const mockUpload = vi.mocked(blobApi.upload);
+const mockCreateSession = vi.mocked(blobApi.createUploadSession);
+const mockUploadChunk = vi.mocked(blobApi.uploadChunk);
+const mockFinalize = vi.mocked(blobApi.finalizeUploadSession);
 
+// Helper: cast mock implementation for esbuild compat (avoids `} as any)` parse error)
+
+const asAny = <T>(v: T): any => v;
+
+// ===========================================================================
+// useBlobUpload hook
+// ===========================================================================
 describe('useBlobUpload', () => {
   beforeEach(() => {
-    vi.clearAllMocks();
+    vi.resetAllMocks();
   });
 
   afterEach(() => {
@@ -40,28 +64,33 @@ describe('useBlobUpload', () => {
   it('starts in idle state', () => {
     const { result } = renderHook(() => useBlobUpload());
     expect(result.current.status).toBe('idle');
-    expect(result.current.progress).toEqual({ loaded: 0, total: 0, percent: 0 });
+    expect(result.current.progress).toEqual({
+      loaded: 0,
+      total: 0,
+      percent: 0,
+      elapsed: 0,
+      eta: null,
+    });
     expect(result.current.error).toBeNull();
   });
 
-  it('uploads small files via simple POST /blobs/upload', async () => {
-    // 1 KB file — below default threshold of 10 MB
+  it('uploads small files via blobApi.upload', async () => {
     const file = new File(['x'.repeat(1024)], 'small.txt', { type: 'text/plain' });
 
-    mockPost.mockImplementationOnce((_url: any, _data: any, config: any) => {
-      // Simulate Axios calling onUploadProgress
-      if (config?.onUploadProgress) {
-        config.onUploadProgress({ loaded: 512, total: 1024 });
-        config.onUploadProgress({ loaded: 1024, total: 1024 });
-      }
-      return Promise.resolve({
-        data: { file_id: 'f1', size: 1024, content_type: 'text/plain' },
-      });
-    });
+    mockUpload.mockImplementationOnce(
+      asAny((_file: File, options?: Record<string, unknown>) => {
+        const onUp = options?.onUploadProgress as ((e: unknown) => void) | undefined;
+        onUp?.({ loaded: 512, total: 1024 });
+        onUp?.({ loaded: 1024, total: 1024 });
+        return Promise.resolve({
+          data: { file_id: 'f1', size: 1024, content_type: 'text/plain' },
+        });
+      }),
+    );
 
     const { result } = renderHook(() => useBlobUpload());
 
-    let uploadResult: any;
+    let uploadResult: unknown;
     await act(async () => {
       uploadResult = await result.current.upload(file);
     });
@@ -69,18 +98,17 @@ describe('useBlobUpload', () => {
     expect(uploadResult).toEqual({ file_id: 'f1', size: 1024, content_type: 'text/plain' });
     expect(result.current.status).toBe('done');
     expect(result.current.progress.percent).toBe(100);
+    expect(mockUpload).toHaveBeenCalledTimes(1);
   });
 
   it('uses chunked upload session for large files', async () => {
-    // Use a small threshold for testing (100 bytes)
     const chunkSize = 50;
     const chunkThreshold = 100;
     const fileContent = 'x'.repeat(120); // 120 bytes, >100 threshold
     const file = new File([fileContent], 'large.bin', { type: 'application/octet-stream' });
 
-    // 1. createSession
-    mockPost
-      .mockResolvedValueOnce({
+    mockCreateSession.mockResolvedValueOnce(
+      asAny({
         data: {
           upload_id: 'sess1',
           file_id: 'pre-f1',
@@ -89,30 +117,41 @@ describe('useBlobUpload', () => {
           upload_url: '',
           uploaded_size: 0,
         },
-      } as any)
-      // 3. finalize
-      .mockResolvedValueOnce({
-        data: { file_id: 'final-f1', size: 120, content_type: 'application/octet-stream' },
-      } as any);
+      }),
+    );
 
-    // 2. uploadChunk (3 chunks: 50 + 50 + 20) — trigger onUploadProgress
-    mockPut
-      .mockImplementationOnce((_url: any, _data: any, config: any) => {
-        config?.onUploadProgress?.({ loaded: 50 });
-        return Promise.resolve({ data: { uploaded_size: 50 } });
-      })
-      .mockImplementationOnce((_url: any, _data: any, config: any) => {
-        config?.onUploadProgress?.({ loaded: 50 });
-        return Promise.resolve({ data: { uploaded_size: 100 } });
-      })
-      .mockImplementationOnce((_url: any, _data: any, config: any) => {
-        config?.onUploadProgress?.({ loaded: 20 });
-        return Promise.resolve({ data: { uploaded_size: 120 } });
-      });
+    mockUploadChunk
+      .mockImplementationOnce(
+        asAny((_id: string, _chunk: Blob, options?: Record<string, unknown>) => {
+          const onUp = options?.onUploadProgress as ((e: unknown) => void) | undefined;
+          onUp?.({ loaded: 50 });
+          return Promise.resolve({ data: { uploaded_size: 50 } });
+        }),
+      )
+      .mockImplementationOnce(
+        asAny((_id: string, _chunk: Blob, options?: Record<string, unknown>) => {
+          const onUp = options?.onUploadProgress as ((e: unknown) => void) | undefined;
+          onUp?.({ loaded: 50 });
+          return Promise.resolve({ data: { uploaded_size: 100 } });
+        }),
+      )
+      .mockImplementationOnce(
+        asAny((_id: string, _chunk: Blob, options?: Record<string, unknown>) => {
+          const onUp = options?.onUploadProgress as ((e: unknown) => void) | undefined;
+          onUp?.({ loaded: 20 });
+          return Promise.resolve({ data: { uploaded_size: 120 } });
+        }),
+      );
+
+    mockFinalize.mockResolvedValueOnce(
+      asAny({
+        data: { file_id: 'final-f1', size: 120, content_type: 'application/octet-stream' },
+      }),
+    );
 
     const { result } = renderHook(() => useBlobUpload({ chunkSize, chunkThreshold }));
 
-    let uploadResult: any;
+    let uploadResult: unknown;
     await act(async () => {
       uploadResult = await result.current.upload(file);
     });
@@ -124,31 +163,26 @@ describe('useBlobUpload', () => {
     });
     expect(result.current.status).toBe('done');
 
-    // createSession POST (includes total_parts for parallel upload)
-    expect(mockPost).toHaveBeenCalledWith(
-      '/v1/blobs/upload-sessions',
+    // createUploadSession called with correct params
+    expect(mockCreateSession).toHaveBeenCalledWith(
       { content_type: 'application/octet-stream', size: 120, total_parts: 3 },
-      expect.objectContaining({ signal: expect.any(AbortSignal) }),
+      expect.any(AbortSignal),
     );
 
-    // 3 chunk PUTs
-    expect(mockPut).toHaveBeenCalledTimes(3);
+    // 3 chunk uploads
+    expect(mockUploadChunk).toHaveBeenCalledTimes(3);
 
-    // finalize POST
-    expect(mockPost).toHaveBeenCalledWith(
-      '/v1/blobs/upload-sessions/sess1/finalize',
-      null,
-      expect.objectContaining({ signal: expect.any(AbortSignal) }),
-    );
+    // finalize called with session ID and signal
+    expect(mockFinalize).toHaveBeenCalledWith('sess1', expect.any(AbortSignal));
   });
 
   it('sets error status on upload failure', async () => {
     const file = new File(['data'], 'fail.txt', { type: 'text/plain' });
-    mockPost.mockRejectedValueOnce(new Error('Network error'));
+    mockUpload.mockRejectedValueOnce(new Error('Network error'));
 
     const { result } = renderHook(() => useBlobUpload());
 
-    let uploadResult: any;
+    let uploadResult: unknown;
     await act(async () => {
       uploadResult = await result.current.upload(file);
     });
@@ -160,13 +194,13 @@ describe('useBlobUpload', () => {
 
   it('sets error status with response detail', async () => {
     const file = new File(['data'], 'fail.txt', { type: 'text/plain' });
-    mockPost.mockRejectedValueOnce({
+    mockUpload.mockRejectedValueOnce({
       response: { data: { detail: 'Blob store not configured' } },
     });
 
     const { result } = renderHook(() => useBlobUpload());
 
-    let uploadResult: any;
+    let uploadResult: unknown;
     await act(async () => {
       uploadResult = await result.current.upload(file);
     });
@@ -178,9 +212,9 @@ describe('useBlobUpload', () => {
 
   it('reset returns to idle state', async () => {
     const file = new File(['data'], 'file.txt', { type: 'text/plain' });
-    mockPost.mockResolvedValueOnce({
-      data: { file_id: 'f1', size: 4, content_type: 'text/plain' },
-    } as any);
+    mockUpload.mockResolvedValueOnce(
+      asAny({ data: { file_id: 'f1', size: 4, content_type: 'text/plain' } }),
+    );
 
     const { result } = renderHook(() => useBlobUpload());
 
@@ -194,66 +228,56 @@ describe('useBlobUpload', () => {
     });
 
     expect(result.current.status).toBe('idle');
-    expect(result.current.progress).toEqual({ loaded: 0, total: 0, percent: 0 });
+    expect(result.current.progress).toEqual({
+      loaded: 0,
+      total: 0,
+      percent: 0,
+      elapsed: 0,
+      eta: null,
+    });
     expect(result.current.error).toBeNull();
   });
 
-  it('cancel sends abort request for active session', async () => {
-    // Use chunked upload to test session abort
+  it('cancel aborts the upload and sets status to cancelled', async () => {
     const chunkThreshold = 10;
     const chunkSize = 50;
     const file = new File(['x'.repeat(100)], 'big.bin', { type: 'application/octet-stream' });
 
-    // createSession resolves but chunk PUT hangs
-    mockPost.mockResolvedValueOnce({
-      data: {
-        upload_id: 'sess-cancel',
-        file_id: 'pre-f',
-        status: 'pending',
-        upload_method: 'proxy',
-      },
-    } as any);
-
-    // Make chunk upload hang (never resolves) — simulates in-progress upload
-    mockPut.mockImplementation(
-      () => new Promise(() => {}), // never resolves
+    mockCreateSession.mockResolvedValueOnce(
+      asAny({
+        data: { upload_id: 'sess-cancel', file_id: 'pre-f', status: 'pending' },
+      }),
     );
 
-    // abort session call (best-effort)
-    mockPost.mockResolvedValueOnce({} as any);
+    // Chunk upload hangs forever — simulates in-progress upload
+    mockUploadChunk.mockImplementation(asAny(() => new Promise(() => {})));
 
     const { result } = renderHook(() => useBlobUpload({ chunkSize, chunkThreshold }));
 
-    // Start upload (won't complete because chunk hangs)
     act(() => {
       result.current.upload(file);
     });
 
-    // Wait for status to change to uploading
     await waitFor(() => {
       expect(result.current.status).toBe('uploading');
     });
 
-    // Cancel
     act(() => {
       result.current.cancel();
     });
 
     expect(result.current.status).toBe('cancelled');
-
-    // Best-effort abort POST should have been called
-    expect(mockPost).toHaveBeenCalledWith('/v1/blobs/upload-sessions/sess-cancel/abort');
   });
 
   it('handles ERR_CANCELED error code', async () => {
     const file = new File(['data'], 'cancel.txt', { type: 'text/plain' });
     const cancelErr = new Error('Request aborted');
-    (cancelErr as any).code = 'ERR_CANCELED';
-    mockPost.mockRejectedValueOnce(cancelErr);
+    (cancelErr as unknown as Record<string, string>).code = 'ERR_CANCELED';
+    mockUpload.mockRejectedValueOnce(cancelErr);
 
     const { result } = renderHook(() => useBlobUpload());
 
-    let uploadResult: any;
+    let uploadResult: unknown;
     await act(async () => {
       uploadResult = await result.current.upload(file);
     });
@@ -264,11 +288,11 @@ describe('useBlobUpload', () => {
 
   it('falls back to "Upload failed" when error has no message', async () => {
     const file = new File(['data'], 'fail.txt', { type: 'text/plain' });
-    mockPost.mockRejectedValueOnce({});
+    mockUpload.mockRejectedValueOnce({});
 
     const { result } = renderHook(() => useBlobUpload());
 
-    let uploadResult: any;
+    let uploadResult: unknown;
     await act(async () => {
       uploadResult = await result.current.upload(file);
     });
@@ -281,13 +305,13 @@ describe('useBlobUpload', () => {
   it('handles zero-size file in simple upload', async () => {
     const file = new File([], 'empty.txt', { type: 'text/plain' });
 
-    mockPost.mockResolvedValueOnce({
-      data: { file_id: 'f-empty', size: 0, content_type: 'text/plain' },
-    } as any);
+    mockUpload.mockResolvedValueOnce(
+      asAny({ data: { file_id: 'f-empty', size: 0, content_type: 'text/plain' } }),
+    );
 
     const { result } = renderHook(() => useBlobUpload());
 
-    let uploadResult: any;
+    let uploadResult: unknown;
     await act(async () => {
       uploadResult = await result.current.upload(file);
     });
@@ -298,34 +322,33 @@ describe('useBlobUpload', () => {
   });
 
   it('calls upload with custom chunkSize and chunkThreshold', async () => {
-    // Tiny threshold: 5 bytes, chunk size: 3 bytes
     const chunkSize = 3;
     const chunkThreshold = 5;
     const file = new File(['abcdefgh'], 'tiny.txt', { type: 'text/plain' }); // 8 bytes
 
-    mockPost
-      .mockResolvedValueOnce({
-        data: { upload_id: 'sess2', file_id: 'pre-f2', status: 'pending', upload_method: 'proxy' },
-      } as any)
-      .mockResolvedValueOnce({
-        data: { file_id: 'final-f2', size: 8, content_type: 'text/plain' },
-      } as any);
+    mockCreateSession.mockResolvedValueOnce(
+      asAny({ data: { upload_id: 'sess2', file_id: 'pre-f2', status: 'pending' } }),
+    );
 
     // 3 chunks: 3+3+2
-    mockPut
-      .mockResolvedValueOnce({ data: { uploaded_size: 3 } } as any)
-      .mockResolvedValueOnce({ data: { uploaded_size: 6 } } as any)
-      .mockResolvedValueOnce({ data: { uploaded_size: 8 } } as any);
+    mockUploadChunk
+      .mockResolvedValueOnce(asAny({ data: { uploaded_size: 3 } }))
+      .mockResolvedValueOnce(asAny({ data: { uploaded_size: 6 } }))
+      .mockResolvedValueOnce(asAny({ data: { uploaded_size: 8 } }));
+
+    mockFinalize.mockResolvedValueOnce(
+      asAny({ data: { file_id: 'final-f2', size: 8, content_type: 'text/plain' } }),
+    );
 
     const { result } = renderHook(() => useBlobUpload({ chunkSize, chunkThreshold }));
 
-    let uploadResult: any;
+    let uploadResult: unknown;
     await act(async () => {
       uploadResult = await result.current.upload(file);
     });
 
     expect(uploadResult).toEqual({ file_id: 'final-f2', size: 8, content_type: 'text/plain' });
-    expect(mockPut).toHaveBeenCalledTimes(3);
+    expect(mockUploadChunk).toHaveBeenCalledTimes(3);
     expect(result.current.status).toBe('done');
   });
 
@@ -333,15 +356,17 @@ describe('useBlobUpload', () => {
     const chunkThreshold = 5;
     const file = new File(['abcdef'], 'noext', { type: '' }); // empty type
 
-    mockPost
-      .mockResolvedValueOnce({
-        data: { upload_id: 'sess3', file_id: 'pre-f3', status: 'pending' },
-      } as any)
-      .mockResolvedValueOnce({
-        data: { file_id: 'final-f3', size: 6, content_type: 'application/octet-stream' },
-      } as any);
+    mockCreateSession.mockResolvedValueOnce(
+      asAny({ data: { upload_id: 'sess3', file_id: 'pre-f3', status: 'pending' } }),
+    );
 
-    mockPut.mockResolvedValueOnce({ data: { uploaded_size: 6 } } as any);
+    mockUploadChunk.mockResolvedValueOnce(asAny({ data: { uploaded_size: 6 } }));
+
+    mockFinalize.mockResolvedValueOnce(
+      asAny({
+        data: { file_id: 'final-f3', size: 6, content_type: 'application/octet-stream' },
+      }),
+    );
 
     const { result } = renderHook(() => useBlobUpload({ chunkThreshold }));
 
@@ -349,11 +374,10 @@ describe('useBlobUpload', () => {
       await result.current.upload(file);
     });
 
-    // Should have sent 'application/octet-stream' as fallback (with total_parts)
-    expect(mockPost).toHaveBeenCalledWith(
-      '/v1/blobs/upload-sessions',
+    // Should have sent 'application/octet-stream' as fallback
+    expect(mockCreateSession).toHaveBeenCalledWith(
       { content_type: 'application/octet-stream', size: 6, total_parts: 1 },
-      expect.any(Object),
+      expect.any(AbortSignal),
     );
   });
 
@@ -362,14 +386,15 @@ describe('useBlobUpload', () => {
     const chunkSize = 3;
     const file = new File(['abcdefgh'], 'mid-abort.txt', { type: 'text/plain' }); // 8 bytes
 
-    mockPost.mockResolvedValueOnce({
-      data: { upload_id: 'sess-mid', file_id: 'pre-f-mid', status: 'pending' },
-    } as any);
+    mockCreateSession.mockResolvedValueOnce(
+      asAny({ data: { upload_id: 'sess-mid', file_id: 'pre-f-mid', status: 'pending' } }),
+    );
 
-    // First chunk succeeds
-    mockPut.mockImplementationOnce((_url: any, _data: any, _config: any) => {
-      return Promise.resolve({ data: { uploaded_size: 3 } });
-    });
+    mockUploadChunk.mockImplementationOnce(
+      asAny(() => {
+        return Promise.resolve({ data: { uploaded_size: 3 } });
+      }),
+    );
 
     const { result } = renderHook(() => useBlobUpload({ chunkSize, chunkThreshold }));
 
@@ -377,8 +402,208 @@ describe('useBlobUpload', () => {
       result.current.upload(file);
     });
 
-    // The upload completed normally because we can't intercept between synchronous loop iterations
-    // This at least exercises the branch logic
+    // Exercises the branch logic — upload completes or partial
     expect(result.current.status).not.toBe('idle');
+  });
+});
+
+// ===========================================================================
+// computeEta
+// ===========================================================================
+describe('computeEta', () => {
+  it('returns null when loaded is 0', () => {
+    expect(computeEta(0, 100, 5)).toBeNull();
+  });
+
+  it('returns null when elapsed is less than 0.5s', () => {
+    expect(computeEta(50, 100, 0.3)).toBeNull();
+  });
+
+  it('returns null when total is 0', () => {
+    expect(computeEta(10, 0, 5)).toBeNull();
+  });
+
+  it('computes correct ETA', () => {
+    expect(computeEta(50, 100, 10)).toBe(10);
+  });
+
+  it('computes ETA for nearly complete upload', () => {
+    expect(computeEta(90, 100, 9)).toBeCloseTo(1, 1);
+  });
+});
+
+// ===========================================================================
+// formatDuration
+// ===========================================================================
+describe('formatDuration', () => {
+  it('returns "--" for null', () => {
+    expect(formatDuration(null)).toBe('--');
+  });
+
+  it('returns "--" for undefined', () => {
+    expect(formatDuration(undefined)).toBe('--');
+  });
+
+  it('returns "--" for negative values', () => {
+    expect(formatDuration(-5)).toBe('--');
+  });
+
+  it('formats seconds only', () => {
+    expect(formatDuration(30)).toBe('30s');
+  });
+
+  it('formats minutes and seconds', () => {
+    expect(formatDuration(90)).toBe('1m 30s');
+  });
+
+  it('formats hours and minutes', () => {
+    expect(formatDuration(3725)).toBe('1h 2m');
+  });
+
+  it('formats 0 seconds', () => {
+    expect(formatDuration(0)).toBe('0s');
+  });
+});
+
+// ===========================================================================
+// formatBytes
+// ===========================================================================
+describe('formatBytes', () => {
+  it('formats 0 bytes', () => {
+    expect(formatBytes(0)).toBe('0 B');
+  });
+
+  it('formats bytes', () => {
+    expect(formatBytes(512)).toBe('512.0 B');
+  });
+
+  it('formats kilobytes', () => {
+    expect(formatBytes(1024)).toBe('1.0 KB');
+  });
+
+  it('formats megabytes', () => {
+    expect(formatBytes(5 * 1024 * 1024)).toBe('5.0 MB');
+  });
+
+  it('formats gigabytes', () => {
+    expect(formatBytes(2.5 * 1024 * 1024 * 1024)).toBe('2.5 GB');
+  });
+});
+
+// ===========================================================================
+// uploadFileToBlob (standalone function)
+// ===========================================================================
+describe('uploadFileToBlob', () => {
+  beforeEach(() => {
+    vi.resetAllMocks();
+  });
+
+  afterEach(() => {
+    vi.restoreAllMocks();
+  });
+
+  it('uploads small files via blobApi.upload', async () => {
+    const file = new File(['hello'], 'test.txt', { type: 'text/plain' });
+
+    mockUpload.mockImplementationOnce(
+      asAny((_file: File, options?: Record<string, unknown>) => {
+        const onUp = options?.onUploadProgress as ((e: unknown) => void) | undefined;
+        onUp?.({ loaded: 5, total: 5 });
+        return Promise.resolve({
+          data: { file_id: 'f1', size: 5, content_type: 'text/plain' },
+        });
+      }),
+    );
+
+    const progressCalls: Array<[number, number]> = [];
+    const result = await uploadFileToBlob(file, {
+      onProgress: (loaded, total) => progressCalls.push([loaded, total]),
+    });
+
+    expect(result).toEqual({ file_id: 'f1', size: 5, content_type: 'text/plain' });
+    expect(progressCalls.length).toBeGreaterThan(0);
+    expect(mockUpload).toHaveBeenCalledTimes(1);
+  });
+
+  it('uploads large files via chunked session', async () => {
+    const content = 'x'.repeat(120);
+    const file = new File([content], 'large.bin', { type: 'application/octet-stream' });
+
+    mockCreateSession.mockResolvedValueOnce(
+      asAny({
+        data: { upload_id: 'sess1', file_id: 'pre-f1', status: 'pending' },
+      }),
+    );
+
+    mockUploadChunk
+      .mockResolvedValueOnce(asAny({ data: { uploaded_size: 50 } }))
+      .mockResolvedValueOnce(asAny({ data: { uploaded_size: 100 } }))
+      .mockResolvedValueOnce(asAny({ data: { uploaded_size: 120 } }));
+
+    mockFinalize.mockResolvedValueOnce(
+      asAny({
+        data: { file_id: 'final-f1', size: 120, content_type: 'application/octet-stream' },
+      }),
+    );
+
+    const statusChanges: string[] = [];
+    const result = await uploadFileToBlob(file, {
+      chunkSize: 50,
+      chunkThreshold: 100,
+      onStatusChange: (s) => statusChanges.push(s),
+    });
+
+    expect(result).toEqual({
+      file_id: 'final-f1',
+      size: 120,
+      content_type: 'application/octet-stream',
+    });
+    expect(statusChanges).toContain('uploading');
+    expect(statusChanges).toContain('finalizing');
+    expect(statusChanges).toContain('done');
+    expect(mockUploadChunk).toHaveBeenCalledTimes(3);
+  });
+
+  it('returns null when signal is aborted', async () => {
+    const file = new File(['data'], 'abort.txt', { type: 'text/plain' });
+    const controller = new AbortController();
+    controller.abort();
+
+    const cancelErr = new Error('Request aborted');
+    (cancelErr as unknown as Record<string, string>).code = 'ERR_CANCELED';
+    mockUpload.mockRejectedValueOnce(cancelErr);
+
+    const result = await uploadFileToBlob(file, { signal: controller.signal });
+    expect(result).toBeNull();
+  });
+
+  it('throws on non-cancel errors', async () => {
+    const file = new File(['data'], 'fail.txt', { type: 'text/plain' });
+    mockUpload.mockRejectedValueOnce(new Error('Server error'));
+
+    await expect(uploadFileToBlob(file)).rejects.toThrow('Server error');
+  });
+
+  it('calls onProgress callback with loaded and total', async () => {
+    const file = new File(['hello world'], 'progress.txt', { type: 'text/plain' });
+
+    mockUpload.mockImplementationOnce(
+      asAny((_file: File, options?: Record<string, unknown>) => {
+        const onUp = options?.onUploadProgress as ((e: unknown) => void) | undefined;
+        onUp?.({ loaded: 5 });
+        onUp?.({ loaded: 11 });
+        return Promise.resolve({
+          data: { file_id: 'f2', size: 11, content_type: 'text/plain' },
+        });
+      }),
+    );
+
+    const progressCalls: Array<[number, number]> = [];
+    await uploadFileToBlob(file, {
+      onProgress: (l, t) => progressCalls.push([l, t]),
+    });
+
+    expect(progressCalls).toContainEqual([5, 11]);
+    expect(progressCalls[progressCalls.length - 1]).toEqual([11, 11]);
   });
 });

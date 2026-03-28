@@ -9,8 +9,9 @@ import {
   Text,
   Tooltip,
   Fieldset,
+  Progress,
 } from '@mantine/core';
-import { IconLayersSubtract } from '@tabler/icons-react';
+import { IconLayersSubtract, IconX } from '@tabler/icons-react';
 import type { ResourceConfig } from '../../resources';
 import {
   getByPath,
@@ -19,6 +20,7 @@ import {
 } from '@/autocrud/lib/utils/formUtils';
 import { useResourceForm } from './useResourceForm';
 import { FieldRenderer } from '../field/FormFieldRenderer';
+import { formatBytes, formatDuration } from '../../hooks/useBlobUpload';
 
 export interface ResourceFormProps<T> {
   config: ResourceConfig<T>;
@@ -68,7 +70,11 @@ export function ResourceForm<T extends Record<string, any>>({
     simpleUnionTypes,
     setSimpleUnionTypes,
     handleSubmit,
+    blobUploadState,
+    cancelBlobUpload,
   } = useResourceForm({ config, initialValues, onSubmit });
+
+  const isUploadingBlobs = blobUploadState.isUploading;
 
   // Expose form handle for external error setting (e.g. 409 unique constraint)
   if (formRef) {
@@ -201,13 +207,59 @@ export function ResourceForm<T extends Record<string, any>>({
 
               return [...renderedGroups, ...topLevelCollapsed];
             })()}
+            {/* ── Blob upload progress (shown during deferred uploads at submit time) ── */}
+            {isUploadingBlobs && (
+              <Alert variant="light" color="blue" p="sm">
+                <Stack gap={4}>
+                  <Group justify="space-between" align="center">
+                    <Text size="sm" fw={500}>
+                      Uploading files ({blobUploadState.completedFiles}/{blobUploadState.totalFiles}
+                      )
+                    </Text>
+                    <Tooltip label="Cancel upload">
+                      <Button
+                        variant="subtle"
+                        color="red"
+                        size="compact-xs"
+                        onClick={cancelBlobUpload}
+                        leftSection={<IconX size={14} />}
+                      >
+                        Cancel
+                      </Button>
+                    </Tooltip>
+                  </Group>
+                  <Progress value={blobUploadState.progress.percent} size="sm" animated />
+                  <Group justify="space-between">
+                    <Text size="xs" c="dimmed">
+                      {blobUploadState.currentFileName && (
+                        <>Uploading: {blobUploadState.currentFileName} — </>
+                      )}
+                      {formatBytes(blobUploadState.progress.loaded)} /{' '}
+                      {formatBytes(blobUploadState.progress.total)} (
+                      {blobUploadState.progress.percent}%)
+                    </Text>
+                    <Text size="xs" c="dimmed">
+                      Elapsed: {formatDuration(blobUploadState.progress.elapsed)}
+                      {blobUploadState.progress.eta != null && (
+                        <> — ETA: {formatDuration(blobUploadState.progress.eta)}</>
+                      )}
+                    </Text>
+                  </Group>
+                </Stack>
+              </Alert>
+            )}
+            {blobUploadState.error && !isUploadingBlobs && (
+              <Alert color="red" variant="light">
+                Upload failed: {blobUploadState.error}
+              </Alert>
+            )}
             <Group justify="flex-end" mt="md">
               {onCancel && (
                 <Button variant="subtle" onClick={onCancel}>
                   Cancel
                 </Button>
               )}
-              <Button type="submit" loading={submitting}>
+              <Button type="submit" loading={submitting || isUploadingBlobs}>
                 {submitLabel}
               </Button>
             </Group>
@@ -239,7 +291,7 @@ export function ResourceForm<T extends Record<string, any>>({
                 Cancel
               </Button>
             )}
-            <Button onClick={handleJsonSubmit} loading={submitting}>
+            <Button onClick={handleJsonSubmit} loading={submitting || isUploadingBlobs}>
               {submitLabel}
             </Button>
           </Group>
