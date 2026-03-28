@@ -5,7 +5,7 @@ from typing import Any, Literal
 
 import msgspec
 from msgspec import UNSET, Struct, UnsetType
-from xxhash import xxh3_128_hexdigest
+from xxhash import xxh3_128, xxh3_128_hexdigest
 
 from autocrud.resource_manager.blob_store.simple import BasicBlobStore
 from autocrud.types import Binary, BlobUploadSession
@@ -43,6 +43,10 @@ class _S3SessionMeta(Struct, kw_only=True):
     parts: list[dict] = []  # [{"ETag": ..., "PartNumber": ...}]
     total_parts: int | None = None
     parts_received: list[int] = []  # sorted list of received part numbers
+    next_expected: int = 1  # eager-merge: next consecutive part number
+    part_sizes: dict[
+        str, int
+    ] = {}  # {str(part_number): size} for accurate uploaded_size
 
 
 _meta_enc = msgspec.json.Encoder()
@@ -93,6 +97,7 @@ class S3BlobStore(BasicBlobStore):
         prefix: str = "",
         upload_method: Literal["proxy", "single_put"] = "proxy",
         presigned_url_expiry: int = 3600,
+        prefer_presigned_url: bool = False,
         client_kwargs: dict[str, Any] | None = None,
     ):
         import boto3
@@ -101,6 +106,7 @@ class S3BlobStore(BasicBlobStore):
         self.prefix = prefix
         self.upload_method = upload_method
         self.presigned_url_expiry = presigned_url_expiry
+        self.prefer_presigned_url = prefer_presigned_url
         if client_kwargs is None:
             client_kwargs = {}
         self.client = boto3.client(
@@ -191,6 +197,57 @@ class S3BlobStore(BasicBlobStore):
             return url
         except _ClientError:
             return None
+
+    def get_response(self, file_id: str):
+        """Return the preferred download response for a blob.
+
+        When ``prefer_presigned_url`` is ``True``, tries presigned URL
+        redirect first (suitable when the client can reach S3 directly).
+        Otherwise falls back to the default order:
+        ``get_stream()`` → ``get()`` → ``get_url()``.
+        """
+        from autocrud.types import BlobResponse
+
+        if self.prefer_presigned_url:
+            url = self.get_url(file_id)
+            if url is not None:
+                # Verify the blob exists (get_url may generate a URL
+                # for a non-existent key depending on S3 implementation)
+                if self.exists(file_id):
+                    return BlobResponse("redirect", url=url)
+            # Fall through to default strategy
+        return super().get_response(file_id)
+
+    def get_stream(self, file_id: str):
+        """Stream blob content from S3 in 8 MB chunks (constant memory)."""
+        from autocrud.types import BlobStreamInfo
+
+        key = f"{self.prefix}{file_id}"
+        try:
+            head = self.client.head_object(Bucket=self.bucket, Key=key)
+        except _ClientError as e:
+            error_code = e.response.get("Error", {}).get("Code")
+            if error_code in ("404", "NoSuchKey"):
+                raise FileNotFoundError(f"Blob {file_id} not found")
+            raise
+
+        size = head.get("ContentLength", 0)
+        content_type = head.get("ContentType", UNSET)
+        if content_type is None:
+            content_type = UNSET
+
+        def _iterate():
+            resp = self.client.get_object(Bucket=self.bucket, Key=key)
+            body = resp["Body"]
+            while True:
+                chunk = body.read(8 * 1024 * 1024)  # 8 MB
+                if not chunk:
+                    break
+                yield chunk
+
+        return BlobStreamInfo(
+            _iterate(), size=size, content_type=content_type, file_id=file_id
+        )
 
     # -- Session persistence helpers ------------------------------------
 
@@ -342,10 +399,19 @@ class S3BlobStore(BasicBlobStore):
         meta.parts = [p for p in meta.parts if p["PartNumber"] != part_number]
         meta.parts.append({"ETag": resp["ETag"], "PartNumber": part_number})
 
-        meta.uploaded_size += len(data)
+        # Track per-part size for accurate uploaded_size (handles retries)
+        meta.part_sizes[str(part_number)] = len(data)
+        meta.uploaded_size = sum(meta.part_sizes.values())
+
         if part_number not in meta.parts_received:
             meta.parts_received.append(part_number)
             meta.parts_received.sort()
+
+        # Eager-merge tracking: advance next_expected through consecutive parts
+        received_set = set(meta.parts_received)
+        while meta.next_expected in received_set:
+            meta.next_expected += 1
+
         meta.status = "uploading"
         self._save_session(meta)
 
@@ -384,37 +450,74 @@ class S3BlobStore(BasicBlobStore):
         else:
             raise ValueError("No data uploaded to session")
 
-        # Read the assembled object and store at final location via put()
+        # Determine content type
+        final_content_type: str | UnsetType = _ct_from_meta(meta.content_type)
+
+        # Get size from the assembled object
         try:
-            resp = self.client.get_object(Bucket=self.bucket, Key=meta.s3_key)
-            data = resp["Body"].read()
+            head = self.client.head_object(Bucket=self.bucket, Key=meta.s3_key)
         except _ClientError as e:
             code = e.response.get("Error", {}).get("Code")
             if code in ("NoSuchKey", "404"):
                 raise ValueError("Upload data not found in S3") from None
             raise
+        size = head.get("ContentLength", 0)
 
-        stored = self.put(
-            data,
-            key=meta.key,
-            content_type=_ct_from_meta(meta.content_type),
-        )
+        # Determine file_id
+        if meta.key is not None:
+            file_id = meta.key
+            # Guess content type from object header if not provided
+            if not final_content_type or final_content_type is UNSET:
+                try:
+                    resp = self.client.get_object(Bucket=self.bucket, Key=meta.s3_key)
+                    header = resp["Body"].read(8192)
+                    final_content_type = self.guess_content_type(header, UNSET)
+                except _ClientError:
+                    pass
+        else:
+            # Streaming hash — constant memory regardless of file size
+            try:
+                resp = self.client.get_object(Bucket=self.bucket, Key=meta.s3_key)
+            except _ClientError as e:
+                code = e.response.get("Error", {}).get("Code")
+                if code in ("NoSuchKey", "404"):
+                    raise ValueError("Upload data not found in S3") from None
+                raise
+            body = resp["Body"]
+            hasher = xxh3_128()
+            first = True
+            while True:
+                chunk = body.read(8 * 1024 * 1024)  # 8 MB chunks
+                if not chunk:
+                    break
+                hasher.update(chunk)
+                if first and (not final_content_type or final_content_type is UNSET):
+                    final_content_type = self.guess_content_type(chunk, UNSET)
+                    first = False
+            file_id = hasher.hexdigest()
 
-        meta.status = "finalized"
-        self._save_session(meta)
-
-        # Clean up temp upload key (best-effort, only if different from final)
-        final_s3_key = f"{self.prefix}{stored.file_id}"
+        # Move to final location via S3 server-side copy (no data through us)
+        final_s3_key = f"{self.prefix}{file_id}"
         if meta.s3_key != final_s3_key:
             try:
+                self.client.copy_object(
+                    Bucket=self.bucket,
+                    CopySource={"Bucket": self.bucket, "Key": meta.s3_key},
+                    Key=final_s3_key,
+                )
                 self.client.delete_object(Bucket=self.bucket, Key=meta.s3_key)
             except _ClientError:
                 pass
 
+        meta.status = "finalized"
+        self._save_session(meta)
+
         return Binary(
-            file_id=stored.file_id,
-            size=stored.size,
-            content_type=stored.content_type,
+            file_id=file_id,
+            size=size,
+            content_type=final_content_type
+            if (final_content_type and final_content_type is not UNSET)
+            else UNSET,
         )
 
     def _finalize_single_put(self, meta: _S3SessionMeta) -> Binary:

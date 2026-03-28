@@ -1570,6 +1570,29 @@ class ResourceManager(IResourceManager[T], Generic[T]):
             raise NotImplementedError("Blob store is not configured")
         return self.blob_store.get_url(file_id)
 
+    def get_blob_stream(self, file_id: str):
+        """Return a streaming iterator for blob content, or ``None``."""
+        if self.blob_store is None:
+            raise NotImplementedError("Blob store is not configured")
+        get_stream = getattr(self.blob_store, "get_stream", None)
+        if get_stream is None:
+            return None
+        return get_stream(file_id)
+
+    def get_blob_response(self, file_id: str):
+        """Return the blob store's preferred download response."""
+        from autocrud.types import BlobResponse
+
+        if self.blob_store is None:
+            raise NotImplementedError("Blob store is not configured")
+        response = self.blob_store.get_response(file_id)
+        if response is not None:
+            return response
+        # Fallback for blob stores that don't implement get_response:
+        # use the RM's own get_blob (which may be overridden in subclasses)
+        blob = self.get_blob(file_id)
+        return BlobResponse("data", blob=blob)
+
     def start_consume(
         self,
         *,

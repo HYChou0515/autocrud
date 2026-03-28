@@ -4,6 +4,7 @@ from fastapi import APIRouter, HTTPException, Path, Query, Response, UploadFile
 from fastapi.responses import RedirectResponse
 from msgspec import UNSET, UnsetType
 from pydantic import BaseModel
+from starlette.responses import StreamingResponse
 
 from autocrud.crud.route_templates.basic import BaseRouteTemplate, MsgspecResponse
 from autocrud.crud.route_templates.exception_handlers import to_http_exception
@@ -84,19 +85,41 @@ class BlobRouteTemplate(BaseRouteTemplate):
                     )
 
                 try:
-                    # Try to get redirect URL first
-                    if (url := self._blob_getter_rm.get_blob_url(file_id)) is not None:
-                        return RedirectResponse(url=url)
+                    blob_resp = self._blob_getter_rm.get_blob_response(file_id)
 
-                    content = self._blob_getter_rm.get_blob(file_id)
-                    if content.data is UNSET:
-                        raise HTTPException(status_code=500, detail="Blob data missing")
+                    if blob_resp.kind == "stream" and blob_resp.stream is not None:
+                        media_type = "application/octet-stream"
+                        if (
+                            blob_resp.stream.content_type
+                            and blob_resp.stream.content_type is not UNSET
+                        ):
+                            media_type = blob_resp.stream.content_type
+                        return StreamingResponse(
+                            blob_resp.stream.iterator,
+                            media_type=media_type,
+                            headers={
+                                "Content-Length": str(blob_resp.stream.size),
+                            },
+                        )
 
-                    media_type = "application/octet-stream"
-                    if content.content_type is not UNSET:
-                        media_type = content.content_type
+                    if blob_resp.kind == "redirect" and blob_resp.url is not None:
+                        return RedirectResponse(url=blob_resp.url)
 
-                    return Response(content=content.data, media_type=media_type)
+                    if blob_resp.kind == "data" and blob_resp.blob is not None:
+                        content = blob_resp.blob
+                        if content.data is UNSET:
+                            raise HTTPException(
+                                status_code=500, detail="Blob data missing"
+                            )
+                        media_type = "application/octet-stream"
+                        if content.content_type is not UNSET:
+                            media_type = content.content_type
+                        return Response(content=content.data, media_type=media_type)
+
+                    raise HTTPException(
+                        status_code=500,
+                        detail="Blob store returned invalid response",
+                    )
                 except Exception as e:
                     raise to_http_exception(e)
 

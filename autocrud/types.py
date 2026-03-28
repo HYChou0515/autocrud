@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import datetime as dt
 from abc import ABC, abstractmethod
-from collections.abc import Generator, Iterable
+from collections.abc import Generator, Iterable, Iterator
 from contextlib import AbstractContextManager
 from enum import Enum, Flag, StrEnum, auto
 from typing import (
@@ -441,6 +441,60 @@ class Binary(Struct):
 
     data: bytes | UnsetType = UNSET
     """Binary content. Used for input or specific retrieval, usually None in storage."""
+
+
+class BlobStreamInfo:
+    """Metadata + chunk iterator for streaming blob downloads.
+
+    Returned by :meth:`IBlobStore.get_stream` to enable
+    :class:`~starlette.responses.StreamingResponse` without loading
+    the entire blob into memory.
+    """
+
+    __slots__ = ("iterator", "size", "content_type", "file_id")
+
+    def __init__(
+        self,
+        iterator: "Iterator[bytes]",
+        *,
+        size: int,
+        content_type: "str | UnsetType" = UNSET,
+        file_id: str = "",
+    ):
+        self.iterator = iterator
+        self.size = size
+        self.content_type = content_type
+        self.file_id = file_id
+
+
+class BlobResponse:
+    """Encapsulates the blob store's preferred download strategy.
+
+    Each blob store decides its own response order via
+    :meth:`IBlobStore.get_response`.  The route handler converts
+    this object into the appropriate Starlette response.
+
+    Attributes:
+        kind: One of ``"stream"``, ``"redirect"``, or ``"data"``.
+        stream: A :class:`BlobStreamInfo` when *kind* is ``"stream"``.
+        url: A redirect URL string when *kind* is ``"redirect"``.
+        blob: A :class:`Binary` when *kind* is ``"data"``.
+    """
+
+    __slots__ = ("kind", "stream", "url", "blob")
+
+    def __init__(
+        self,
+        kind: str,
+        *,
+        stream: "BlobStreamInfo | None" = None,
+        url: "str | None" = None,
+        blob: "Binary | None" = None,
+    ):
+        self.kind = kind
+        self.stream = stream
+        self.url = url
+        self.blob = blob
 
 
 class BlobUploadSession(Struct, kw_only=True):
@@ -2039,6 +2093,20 @@ class IResourceManager(ABC, Generic[T]):
     @abstractmethod
     def get_blob_url(self, file_id: str) -> str | None:
         """Get the direct download URL for a blob by its file ID, if available."""
+        pass
+
+    @abstractmethod
+    def get_blob_stream(self, file_id: str) -> "BlobStreamInfo | None":
+        """Get a streaming iterator for blob content, if supported."""
+        pass
+
+    @abstractmethod
+    def get_blob_response(self, file_id: str) -> "BlobResponse":
+        """Get the blob store's preferred download response for a blob.
+
+        Delegates to the underlying :meth:`IBlobStore.get_response` so
+        that the blob store itself decides the download strategy.
+        """
         pass
 
     @abstractmethod

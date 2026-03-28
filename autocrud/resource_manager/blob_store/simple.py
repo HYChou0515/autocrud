@@ -7,10 +7,10 @@ from pathlib import Path
 
 import msgspec
 from msgspec import UNSET, Struct, UnsetType
-from xxhash import xxh3_128_hexdigest
+from xxhash import xxh3_128, xxh3_128_hexdigest
 
 from autocrud.resource_manager.basic import IBlobStore
-from autocrud.types import Binary, BlobUploadSession
+from autocrud.types import Binary, BlobResponse, BlobStreamInfo, BlobUploadSession
 
 
 def _fallback_content_type_guesser(data: bytes) -> UnsetType:
@@ -54,6 +54,62 @@ class BasicBlobStore(IBlobStore):
         if not hasattr(self, "content_type_guesser"):
             self.content_type_guesser = get_content_type_guesser()
         return self.content_type_guesser(data)
+
+    def get_url(self, file_id: str) -> str | None:
+        """
+        Get a direct download URL for the blob if supported.
+        Returns None if not supported (e.g. local storage without a public server).
+        """
+        return None
+
+    def get_stream(self, file_id: str) -> BlobStreamInfo | None:
+        """Return a streaming iterator for blob content.
+
+        Returns a :class:`BlobStreamInfo` containing a chunk iterator,
+        file size, and content type — suitable for
+        :class:`~starlette.responses.StreamingResponse`.
+
+        Returns ``None`` when the implementation does not support
+        streaming (e.g. :class:`MemoryBlobStore` where data is already
+        in memory).  The caller should fall back to :meth:`get` in that
+        case.
+
+        Raises:
+            FileNotFoundError: If the blob does not exist.
+        """
+        return None
+
+    def get_response(self, file_id: str) -> BlobResponse:
+        """Return the preferred download response for a blob.
+
+        The blob store decides its own download strategy.  The default
+        order is:
+
+        1. **stream** — :meth:`get_stream` (constant memory, works
+           through proxies).
+        2. **data** — :meth:`get` (full body in memory).
+        3. **redirect** — :meth:`get_url` (presigned URL / CDN).
+
+        Subclasses may override this to change the priority (e.g.
+        :class:`S3BlobStore` can put ``get_url`` first when
+        ``prefer_presigned_url=True``).
+
+        Raises:
+            FileNotFoundError: If the blob does not exist.
+        """
+        stream = self.get_stream(file_id)
+        if stream is not None:
+            return BlobResponse("stream", stream=stream)
+
+        blob = self.get(file_id)
+        if blob is not None:
+            return BlobResponse("data", blob=blob)
+
+        url = self.get_url(file_id)
+        if url is not None:
+            return BlobResponse("redirect", url=url)
+
+        raise FileNotFoundError(f"Blob {file_id} not found")
 
 
 # ---------------------------------------------------------------------------
@@ -289,6 +345,19 @@ class _DiskSessionMeta(Struct, kw_only=True):
     next_expected: int = 1
 
 
+class _DiskBlobMeta(Struct, kw_only=True):
+    """Metadata sidecar for a DiskBlobStore blob.
+
+    Stored alongside the raw blob file (as ``<safe_name>.blobmeta``) so
+    that the blob data itself is never msgpack-encoded — eliminating the
+    4 GB ``msgpack`` binary encoding limit.
+    """
+
+    file_id: str
+    size: int
+    content_type: str | UnsetType = UNSET
+
+
 class DiskBlobStore(BasicBlobStore):
     """Disk-based blob store — data persisted to local filesystem.
 
@@ -306,6 +375,7 @@ class DiskBlobStore(BasicBlobStore):
         self._sessions_dir.mkdir(exist_ok=True)
         self._session_meta_encoder = msgspec.msgpack.Encoder()
         self._session_meta_decoder = msgspec.msgpack.Decoder(_DiskSessionMeta)
+        self._blob_meta_decoder = msgspec.msgpack.Decoder(_DiskBlobMeta)
 
     # -- Internal helpers for disk-persisted sessions ---------------------
 
@@ -360,6 +430,10 @@ class DiskBlobStore(BasicBlobStore):
 
     # -- Blob put / get / exists ------------------------------------------
 
+    def _blob_meta_path(self, safe_name: str) -> Path:
+        """Path for the ``.blobmeta`` sidecar of a stored blob."""
+        return self.root_path / f"{safe_name}.blobmeta"
+
     def put(
         self,
         data: bytes,
@@ -375,15 +449,15 @@ class DiskBlobStore(BasicBlobStore):
         final_content_type = self.guess_content_type(data, content_type)
         # When key is caller-specified, always overwrite; for hash keys skip if exists
         if key is not None or not file_path.exists():
-            stored_binary = Binary(
+            # Store raw bytes — no msgpack encoding, no 4 GB size limit
+            file_path.write_bytes(data)
+            # Write metadata sidecar (tiny msgpack — metadata only, not data)
+            blob_meta = _DiskBlobMeta(
                 file_id=file_id,
                 size=len(data),
-                data=data,
                 content_type=final_content_type,
             )
-            encoded = self.encoder.encode(stored_binary)
-            with open(file_path, "wb") as f:
-                f.write(encoded)
+            self._blob_meta_path(safe_name).write_bytes(self.encoder.encode(blob_meta))
         return Binary(
             file_id=file_id,
             size=len(data),
@@ -392,15 +466,55 @@ class DiskBlobStore(BasicBlobStore):
         )
 
     def get(self, file_id: str) -> Binary:
-        file_path = self.root_path / file_id
+        safe_name = file_id.replace("/", "_").replace("..", "_")
+        file_path = self.root_path / safe_name
         if not file_path.exists():
             raise FileNotFoundError(f"Blob {file_id} not found")
-        with open(file_path, "rb") as f:
-            encoded = f.read()
-            return self.decoder.decode(encoded)
+        data = file_path.read_bytes()
+        meta_path = self._blob_meta_path(safe_name)
+        if meta_path.exists():
+            # New format: raw bytes + sidecar metadata
+            blob_meta = self._blob_meta_decoder.decode(meta_path.read_bytes())
+            return Binary(
+                file_id=blob_meta.file_id,
+                size=blob_meta.size,
+                data=data,
+                content_type=blob_meta.content_type,
+            )
+        # Legacy fallback: msgpack-encoded Binary
+        return self.decoder.decode(data)
 
     def exists(self, file_id: str) -> bool:
-        return (self.root_path / file_id).exists()
+        safe_name = file_id.replace("/", "_").replace("..", "_")
+        return (self.root_path / safe_name).exists()
+
+    def get_stream(self, file_id: str):
+        """Stream blob content in 8 MB chunks without loading into memory."""
+        from autocrud.types import BlobStreamInfo
+
+        safe_name = file_id.replace("/", "_").replace("..", "_")
+        file_path = self.root_path / safe_name
+        if not file_path.exists():
+            raise FileNotFoundError(f"Blob {file_id} not found")
+
+        size = file_path.stat().st_size
+        content_type = UNSET
+        meta_path = self._blob_meta_path(safe_name)
+        if meta_path.exists():
+            blob_meta = self._blob_meta_decoder.decode(meta_path.read_bytes())
+            content_type = blob_meta.content_type
+
+        def _iterate():
+            with open(file_path, "rb") as f:
+                while True:
+                    chunk = f.read(8 * 1024 * 1024)  # 8 MB
+                    if not chunk:
+                        break
+                    yield chunk
+
+        return BlobStreamInfo(
+            _iterate(), size=size, content_type=content_type, file_id=file_id
+        )
 
     # -- Upload session methods (disk-persisted) --------------------------
 
@@ -446,55 +560,88 @@ class DiskBlobStore(BasicBlobStore):
             parts_received=list(meta.parts_received),
         )
 
+    # -- Two-phase upload helpers -----------------------------------------
+
+    def _flush_merged_parts(self, upload_id: str, meta: _DiskSessionMeta) -> None:
+        """Merge consecutive ``.part.N`` files into ``.data`` from *next_expected*.
+
+        Called inside the lock.  Each part file was fully written during
+        the lock-free phase, so reading them here is safe and fast
+        (typically already in OS page cache).
+
+        Any flushed part number is also recorded in ``parts_received``
+        because it may have been written by a different thread that
+        hasn't entered the lock yet.
+        """
+        data_path = self._session_data_path(upload_id)
+        while True:
+            part_path = self._session_part_path(upload_id, meta.next_expected)
+            if not part_path.exists():
+                break
+            with open(data_path, "ab") as f:
+                f.write(part_path.read_bytes())
+            part_path.unlink()
+            # Record the part written by another thread's phase-1
+            if meta.next_expected not in meta.parts_received:
+                meta.parts_received.append(meta.next_expected)
+            meta.next_expected += 1
+        meta.parts_received.sort()
+
+    def _compute_uploaded_size(self, upload_id: str) -> int:
+        """Derive ``uploaded_size`` from actual disk state.
+
+        = size of ``.data`` (merged bytes)
+        + sum of remaining ``.part.*`` files (buffered bytes)
+
+        Computing from disk eliminates incremental accounting bugs that
+        are nearly impossible to get right under concurrency + retries.
+        """
+        data_path = self._session_data_path(upload_id)
+        size = data_path.stat().st_size if data_path.exists() else 0
+        for part_file in self._sessions_dir.glob(f"{upload_id}.part.*"):
+            size += part_file.stat().st_size
+        return size
+
+    # -- Upload session methods (disk-persisted) --------------------------
+
     def upload_to_session(
         self, upload_id: str, data: bytes, *, part_number: int
     ) -> None:
         if part_number < 1:
             raise ValueError("part_number must be >= 1")
+
+        # ---- Phase 1 (NO LOCK): write chunk to its own part file ----
+        # Each part_number maps to a unique file path, so concurrent
+        # uploads of *different* parts never interfere.  A retry of the
+        # *same* part_number simply overwrites the file (idempotent).
+        part_path = self._session_part_path(upload_id, part_number)
+        part_path.write_bytes(data)
+
+        # ---- Phase 2 (SHORT LOCK): update meta + eager-merge --------
         with self._lock_session(upload_id):
             meta = self._load_session_meta(upload_id)
             if meta.status not in ("pending", "uploading"):
+                part_path.unlink(missing_ok=True)
                 raise ValueError(
-                    f"Session status is '{meta.status}', expected 'pending' or 'uploading'"
+                    f"Session status is '{meta.status}', "
+                    f"expected 'pending' or 'uploading'"
                 )
 
-            # Idempotent: if already merged (part_number < next_expected), ignore
+            # Idempotent: already merged past this part
             if part_number < meta.next_expected:
+                part_path.unlink(missing_ok=True)
                 return
 
-            data_path = self._session_data_path(upload_id)
+            # Record the part
+            if part_number not in meta.parts_received:
+                meta.parts_received.append(part_number)
+                meta.parts_received.sort()
 
-            if part_number == meta.next_expected:
-                # In-order: append directly to .data file
-                with open(data_path, "ab") as f:
-                    f.write(data)
-                meta.uploaded_size += len(data)
-                if part_number not in meta.parts_received:
-                    meta.parts_received.append(part_number)
-                    meta.parts_received.sort()
-                meta.next_expected += 1
+            # Eager-merge consecutive parts starting from next_expected
+            self._flush_merged_parts(upload_id, meta)
 
-                # Flush consecutive buffered parts
-                while True:
-                    part_path = self._session_part_path(upload_id, meta.next_expected)
-                    if not part_path.exists():
-                        break
-                    buffered_data = part_path.read_bytes()
-                    with open(data_path, "ab") as f:
-                        f.write(buffered_data)
-                    part_path.unlink()
-                    meta.next_expected += 1
-            else:
-                # Out-of-order: write to part file
-                part_path = self._session_part_path(upload_id, part_number)
-                if part_path.exists():
-                    # Retry: adjust uploaded_size
-                    meta.uploaded_size -= part_path.stat().st_size
-                part_path.write_bytes(data)
-                meta.uploaded_size += len(data)
-                if part_number not in meta.parts_received:
-                    meta.parts_received.append(part_number)
-                    meta.parts_received.sort()
+            # Derive uploaded_size from disk state (no incremental bugs)
+            meta.uploaded_size = self._compute_uploaded_size(upload_id)
 
             meta.status = "uploading"
             self._save_session_meta(meta)
@@ -525,22 +672,59 @@ class DiskBlobStore(BasicBlobStore):
                     f"Buffered part numbers: {remaining_parts}"
                 )
 
-            # Read the uploaded data from disk
             data_path = self._session_data_path(upload_id)
             if not data_path.exists():
                 raise FileNotFoundError(
                     f"Uploaded data for session {upload_id} not found on disk"
                 )
-            data = data_path.read_bytes()
-            stored = self.put(data, key=meta.key, content_type=meta.content_type)
-            # Update session status and clean up data file
+
+            # Determine content type from file header (constant memory)
+            final_content_type = meta.content_type
+            if not final_content_type:
+                with open(data_path, "rb") as f:
+                    header = f.read(8192)
+                final_content_type = self.guess_content_type(header, UNSET)
+
+            size = data_path.stat().st_size
+
+            # Determine file_id
+            if meta.key is not None:
+                file_id = meta.key
+            else:
+                # Streaming hash — constant memory regardless of file size
+                hasher = xxh3_128()
+                with open(data_path, "rb") as f:
+                    while True:
+                        chunk = f.read(8 * 1024 * 1024)  # 8 MB chunks
+                        if not chunk:
+                            break
+                        hasher.update(chunk)
+                file_id = hasher.hexdigest()
+
+            safe_name = file_id.replace("/", "_").replace("..", "_")
+            final_path = self.root_path / safe_name
+
+            # Move data to final blob location (zero-copy on same filesystem)
+            if meta.key is not None or not final_path.exists():
+                data_path.rename(final_path)
+            else:
+                # Content-addressed blob already exists — discard duplicate
+                data_path.unlink()
+
+            # Write metadata sidecar
+            blob_meta = _DiskBlobMeta(
+                file_id=file_id,
+                size=size,
+                content_type=final_content_type,
+            )
+            self._blob_meta_path(safe_name).write_bytes(self.encoder.encode(blob_meta))
+
             meta.status = "finalized"
             self._save_session_meta(meta)
-            data_path.unlink(missing_ok=True)
             return Binary(
-                file_id=stored.file_id,
-                size=stored.size,
-                content_type=stored.content_type,
+                file_id=file_id,
+                size=size,
+                content_type=final_content_type,
             )
 
     def abort_upload_session(self, upload_id: str) -> None:

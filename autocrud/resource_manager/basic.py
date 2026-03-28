@@ -12,6 +12,8 @@ from msgspec import UNSET, Struct, UnsetType
 
 from autocrud.types import (
     Binary,
+    BlobResponse,
+    BlobStreamInfo,
     BlobUploadSession,
     DataSearchCondition,
     DataSearchGroup,
@@ -645,12 +647,52 @@ class IBlobStore(ABC):
         """Check if blob exists."""
         pass
 
+    @abstractmethod
     def get_url(self, file_id: str) -> str | None:
         """
         Get a direct download URL for the blob if supported.
         Returns None if not supported (e.g. local storage without a public server).
         """
-        return None
+        pass
+
+    @abstractmethod
+    def get_stream(self, file_id: str) -> BlobStreamInfo | None:
+        """Return a streaming iterator for blob content.
+
+        Returns a :class:`BlobStreamInfo` containing a chunk iterator,
+        file size, and content type — suitable for
+        :class:`~starlette.responses.StreamingResponse`.
+
+        Returns ``None`` when the implementation does not support
+        streaming (e.g. :class:`MemoryBlobStore` where data is already
+        in memory).  The caller should fall back to :meth:`get` in that
+        case.
+
+        Raises:
+            FileNotFoundError: If the blob does not exist.
+        """
+        pass
+
+    @abstractmethod
+    def get_response(self, file_id: str) -> BlobResponse:
+        """Return the preferred download response for a blob.
+
+        The blob store decides its own download strategy.  The default
+        order is:
+
+        1. **stream** — :meth:`get_stream` (constant memory, works
+           through proxies).
+        2. **data** — :meth:`get` (full body in memory).
+        3. **redirect** — :meth:`get_url` (presigned URL / CDN).
+
+        Subclasses may override this to change the priority (e.g.
+        :class:`S3BlobStore` can put ``get_url`` first when
+        ``prefer_presigned_url=True``).
+
+        Raises:
+            FileNotFoundError: If the blob does not exist.
+        """
+        pass
 
     # ------------------------------------------------------------------
     # Upload session API
