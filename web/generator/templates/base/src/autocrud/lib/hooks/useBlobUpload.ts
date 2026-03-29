@@ -25,8 +25,8 @@ import { useCallback, useRef, useState } from 'react';
 import { blobApi } from '@/autocrud/generated/api/blobApi';
 import type { AxiosProgressEvent } from 'axios';
 
-/** Default chunk size: 10 MB */
-const CHUNK_SIZE = 10 * 1024 * 1024;
+/** Default chunk size: 1 MB */
+const CHUNK_SIZE = 1000 * 1024 * 1024;
 
 /** Files larger than this use chunked upload sessions */
 const CHUNK_THRESHOLD = 10 * 1024 * 1024;
@@ -228,6 +228,8 @@ export function useBlobUpload(options?: {
 
   const abortRef = useRef<AbortController | null>(null);
   const startTimeRef = useRef<number>(0);
+  /** Timestamp when the first progress byte was received (0 = not yet). */
+  const firstByteTimeRef = useRef<number>(0);
   const timerRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const progressRef = useRef<{ loaded: number; total: number }>({ loaded: 0, total: 0 });
 
@@ -244,6 +246,7 @@ export function useBlobUpload(options?: {
     setProgress({ loaded: 0, total: 0, percent: 0, elapsed: 0, eta: null });
     setError(null);
     progressRef.current = { loaded: 0, total: 0 };
+    firstByteTimeRef.current = 0;
   }, [stopTimer]);
 
   const cancel = useCallback(() => {
@@ -261,6 +264,7 @@ export function useBlobUpload(options?: {
       setError(null);
       progressRef.current = { loaded: 0, total: file.size };
       startTimeRef.current = Date.now();
+      firstByteTimeRef.current = 0;
 
       const controller = new AbortController();
       abortRef.current = controller;
@@ -268,10 +272,16 @@ export function useBlobUpload(options?: {
       // Start a 1-second interval timer for elapsed/ETA updates
       stopTimer();
       timerRef.current = setInterval(() => {
-        const elapsed = (Date.now() - startTimeRef.current) / 1000;
+        const now = Date.now();
+        const elapsed = (now - startTimeRef.current) / 1000;
         const { loaded, total } = progressRef.current;
         const percent = total > 0 ? Math.round((loaded / total) * 100) : 0;
-        const eta = loaded > 0 && elapsed > 0.5 ? ((total - loaded) / loaded) * elapsed : null;
+        const fbt = firstByteTimeRef.current;
+        const transferElapsed = fbt > 0 ? (now - fbt) / 1000 : 0;
+        const eta =
+          loaded > 0 && transferElapsed > 0.5
+            ? ((total - loaded) / loaded) * transferElapsed
+            : null;
         setProgress({ loaded, total, percent: Math.min(percent, 99), elapsed, eta });
       }, 1000);
 
@@ -283,9 +293,18 @@ export function useBlobUpload(options?: {
           signal: controller.signal,
           onProgress: (loaded, total) => {
             progressRef.current = { loaded, total };
-            const elapsed = (Date.now() - startTimeRef.current) / 1000;
+            const now = Date.now();
+            if (loaded > 0 && firstByteTimeRef.current === 0) {
+              firstByteTimeRef.current = now;
+            }
+            const elapsed = (now - startTimeRef.current) / 1000;
             const percent = total > 0 ? Math.round((loaded / total) * 100) : 100;
-            const eta = loaded > 0 && elapsed > 0.5 ? ((total - loaded) / loaded) * elapsed : null;
+            const fbt = firstByteTimeRef.current;
+            const transferElapsed = fbt > 0 ? (now - fbt) / 1000 : 0;
+            const eta =
+              loaded > 0 && transferElapsed > 0.5
+                ? ((total - loaded) / loaded) * transferElapsed
+                : null;
             setProgress({ loaded, total, percent: Math.min(percent, 99), elapsed, eta });
           },
           onStatusChange: (s) => {
@@ -324,12 +343,18 @@ export function useBlobUpload(options?: {
 }
 
 /**
- * Compute estimated time remaining based on elapsed time and progress.
- * Returns null if not enough data to estimate (less than 0.5s elapsed or no progress).
+ * Compute estimated time remaining based on transfer elapsed time and progress.
+ *
+ * **Important:** `transferElapsed` should be the time since the first byte
+ * was received — *not* total wall-clock time since upload started.  If total
+ * elapsed time is used, long initial response waits (server processing,
+ * connection setup) will inflate the ETA dramatically.
+ *
+ * Returns null if not enough data to estimate (< 0.5 s of transfer or no progress).
  */
-export function computeEta(loaded: number, total: number, elapsed: number): number | null {
-  if (loaded <= 0 || elapsed < 0.5 || total <= 0) return null;
-  return ((total - loaded) / loaded) * elapsed;
+export function computeEta(loaded: number, total: number, transferElapsed: number): number | null {
+  if (loaded <= 0 || transferElapsed < 0.5 || total <= 0) return null;
+  return ((total - loaded) / loaded) * transferElapsed;
 }
 
 /**

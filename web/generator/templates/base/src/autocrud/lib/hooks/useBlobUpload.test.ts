@@ -405,6 +405,71 @@ describe('useBlobUpload', () => {
     // Exercises the branch logic — upload completes or partial
     expect(result.current.status).not.toBe('idle');
   });
+
+  it('ETA excludes initial response wait time before first byte', async () => {
+    vi.useFakeTimers();
+
+    const file = new File(['x'.repeat(1024)], 'slow-start.txt', { type: 'text/plain' });
+
+    let capturedOnUploadProgress: ((e: unknown) => void) | undefined;
+    let resolveUpload: (v: unknown) => void;
+
+    mockUpload.mockImplementationOnce(
+      asAny((_f: File, opts?: Record<string, unknown>) => {
+        capturedOnUploadProgress = opts?.onUploadProgress as (e: unknown) => void;
+        return new Promise((r) => {
+          resolveUpload = r;
+        });
+      }),
+    );
+
+    const { result } = renderHook(() => useBlobUpload());
+
+    // t=0: start upload
+    await act(async () => {
+      result.current.upload(file);
+    });
+
+    // t=30s: server was slow to respond, no data until now
+    await act(async () => {
+      vi.advanceTimersByTime(30_000);
+    });
+
+    // First byte arrives at t=30s — 50% of the file
+    act(() => {
+      capturedOnUploadProgress!({ loaded: 512, total: 1024 });
+    });
+
+    // t=31s: 1 second of actual data transfer
+    await act(async () => {
+      vi.advanceTimersByTime(1_000);
+    });
+
+    // Another progress event at t=31s — still 50%
+    act(() => {
+      capturedOnUploadProgress!({ loaded: 512, total: 1024 });
+    });
+
+    // ETA should be based on transfer time (~1s since first byte), NOT
+    // total elapsed (~31s).  Transfer rate = 512 bytes / 1s = 512 B/s,
+    // remaining = 512 bytes → ETA ≈ 1s.
+    // Bug: ETA = (512/512)*31 = 31s — way too high.
+    const eta = result.current.progress.eta;
+    expect(eta).not.toBeNull();
+    expect(eta!).toBeLessThan(5);
+
+    // progress.elapsed should still reflect total wall-clock time
+    expect(result.current.progress.elapsed).toBeGreaterThanOrEqual(30);
+
+    // Clean up: finish the upload
+    act(() => {
+      capturedOnUploadProgress!({ loaded: 1024, total: 1024 });
+    });
+    resolveUpload!({ data: { file_id: 'f1', size: 1024, content_type: 'text/plain' } });
+    await act(async () => {});
+
+    vi.useRealTimers();
+  });
 });
 
 // ===========================================================================
@@ -415,7 +480,7 @@ describe('computeEta', () => {
     expect(computeEta(0, 100, 5)).toBeNull();
   });
 
-  it('returns null when elapsed is less than 0.5s', () => {
+  it('returns null when transferElapsed is less than 0.5s', () => {
     expect(computeEta(50, 100, 0.3)).toBeNull();
   });
 
@@ -423,12 +488,20 @@ describe('computeEta', () => {
     expect(computeEta(10, 0, 5)).toBeNull();
   });
 
-  it('computes correct ETA', () => {
+  it('computes correct ETA from transfer elapsed', () => {
+    // 50/100 in 10s of transfer → remaining 50 at 5/s → 10s
     expect(computeEta(50, 100, 10)).toBe(10);
   });
 
   it('computes ETA for nearly complete upload', () => {
     expect(computeEta(90, 100, 9)).toBeCloseTo(1, 1);
+  });
+
+  it('gives accurate ETA when transfer elapsed excludes initial wait', () => {
+    // Scenario: 30s waiting for server, then 1s of actual transfer at 50%.
+    // Caller passes transferElapsed=1 (not totalElapsed=31).
+    // ETA = (50/50) * 1 = 1s  (correct, not 31s)
+    expect(computeEta(50, 100, 1)).toBe(1);
   });
 });
 
