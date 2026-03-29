@@ -54,4 +54,4 @@ __all__ = [
     "crud",
     "struct_to_pydantic",
 ]
-__version__ = "0.8.3a12"
+__version__ = "0.8.3a13"
