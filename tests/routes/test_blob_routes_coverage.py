@@ -4,7 +4,7 @@ from msgspec import UNSET
 
 from autocrud.crud.route_templates.blob import BlobRouteTemplate
 from autocrud.resource_manager.core import ResourceManager
-from autocrud.types import Binary
+from autocrud.types import Binary, BlobResponse
 
 
 class MockBlobStore:
@@ -27,13 +27,11 @@ class MockManager(ResourceManager):
         self._blob_data = blob_data
         self._content_type = content_type
 
-    def get_blob(self, file_id):
-        return Binary(
+    def get_blob_response(self, file_id):
+        blob = Binary(
             file_id=file_id, data=self._blob_data, content_type=self._content_type
         )
-
-    def get_blob_url(self, file_id):
-        return None
+        return BlobResponse("data", blob=blob)
 
 
 def test_blob_data_missing_500():
@@ -87,7 +85,7 @@ def test_blob_default_content_type():
 
 def test_blob_not_found_404():
     class MockManagerNotFound(MockManager):
-        def get_blob(self, file_id):
+        def get_blob_response(self, file_id):
             raise FileNotFoundError("not found")
 
     manager = MockManagerNotFound(blob_data=UNSET)

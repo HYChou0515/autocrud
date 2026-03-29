@@ -12,6 +12,9 @@ from msgspec import UNSET, Struct, UnsetType
 
 from autocrud.types import (
     Binary,
+    BlobResponse,
+    BlobStreamInfo,
+    BlobUploadSession,
     DataSearchCondition,
     DataSearchGroup,
     DataSearchLogicOperator,
@@ -589,6 +592,25 @@ class ISlowMetaStore(IMetaStore):
 
 
 class IBlobStore(ABC):
+    """Interface for storing and retrieving binary blobs.
+
+    Implementations use content-hash addressing by default: the ``file_id``
+    is derived from an xxh3-128 digest so identical payloads are
+    automatically deduplicated.
+
+    In addition to the basic ``put``/``get``/``exists`` operations, every
+    implementation **must** provide the five *upload session* methods
+    (``create_upload_session``, ``get_upload_session``,
+    ``upload_to_session``, ``finalize_upload_session``,
+    ``abort_upload_session``) that allow chunked or client-direct uploads.
+
+    Exception conventions for session methods:
+
+    * ``FileNotFoundError`` — session does not exist.
+    * ``ValueError`` — invalid status transition (e.g. finalizing a
+      pending session or uploading to an already-finalized session).
+    """
+
     @abstractmethod
     def put(
         self,
@@ -625,12 +647,169 @@ class IBlobStore(ABC):
         """Check if blob exists."""
         pass
 
+    @abstractmethod
     def get_url(self, file_id: str) -> str | None:
         """
         Get a direct download URL for the blob if supported.
         Returns None if not supported (e.g. local storage without a public server).
         """
-        return None
+        pass
+
+    @abstractmethod
+    def get_stream(self, file_id: str) -> BlobStreamInfo | None:
+        """Return a streaming iterator for blob content.
+
+        Returns a :class:`BlobStreamInfo` containing a chunk iterator,
+        file size, and content type — suitable for
+        :class:`~starlette.responses.StreamingResponse`.
+
+        Returns ``None`` when the implementation does not support
+        streaming (e.g. :class:`MemoryBlobStore` where data is already
+        in memory).  The caller should fall back to :meth:`get` in that
+        case.
+
+        Raises:
+            FileNotFoundError: If the blob does not exist.
+        """
+        pass
+
+    @abstractmethod
+    def get_response(self, file_id: str) -> BlobResponse:
+        """Return the preferred download response for a blob.
+
+        The blob store decides its own download strategy.  The default
+        order is:
+
+        1. **stream** — :meth:`get_stream` (constant memory, works
+           through proxies).
+        2. **data** — :meth:`get` (full body in memory).
+        3. **redirect** — :meth:`get_url` (presigned URL / CDN).
+
+        Subclasses may override this to change the priority (e.g.
+        :class:`S3BlobStore` can put ``get_url`` first when
+        ``prefer_presigned_url=True``).
+
+        Raises:
+            FileNotFoundError: If the blob does not exist.
+        """
+        pass
+
+    # ------------------------------------------------------------------
+    # Upload session API
+    # ------------------------------------------------------------------
+
+    @abstractmethod
+    def create_upload_session(
+        self,
+        *,
+        key: str | None = None,
+        content_type: str | UnsetType = UNSET,
+        size: int | None = None,
+        total_parts: int | None = None,
+    ) -> BlobUploadSession:
+        """Create an upload session.
+
+        Returns session metadata including ``upload_url`` for the client
+        to deliver bytes.
+
+        Args:
+            key: Optional caller-specified storage key.  When ``None``
+                the key is derived from a content hash at finalize time.
+            content_type: MIME type hint.
+            size: Expected size of the content in bytes (``None`` if unknown).
+            total_parts: Expected number of parts for parallel chunked upload
+                (``None`` if unknown).  When set, :meth:`finalize_upload_session`
+                validates that exactly this many parts have been received.
+
+        Returns:
+            A :class:`BlobUploadSession` with ``upload_id``, ``upload_method``,
+            and ``upload_url`` populated.
+        """
+
+    @abstractmethod
+    def get_upload_session(self, upload_id: str) -> BlobUploadSession:
+        """Return current state of an upload session.
+
+        Args:
+            upload_id: The upload session identifier.
+
+        Returns:
+            A :class:`BlobUploadSession` reflecting the current state.
+
+        Raises:
+            FileNotFoundError: If the session does not exist.
+        """
+
+    @abstractmethod
+    def upload_to_session(
+        self, upload_id: str, data: bytes, *, part_number: int
+    ) -> None:
+        """Upload a numbered part for a proxy upload session.
+
+        May be called **multiple times** with different ``part_number``
+        values — potentially **in parallel** from the client.  Parts
+        may arrive out of order.
+
+        Implementations use an *eager-merge* strategy where possible:
+        parts that arrive in sequence are immediately appended to the
+        final data buffer, while out-of-order parts are buffered
+        temporarily and flushed as soon as the gap is filled.
+
+        The session transitions from ``"pending"`` to ``"uploading"``
+        on the first call and stays in ``"uploading"`` for subsequent
+        calls.
+
+        This does **not** commit data to the blob store; call
+        :meth:`finalize_upload_session` to persist.
+
+        Args:
+            upload_id: The upload session identifier.
+            data: Raw bytes for this part.
+            part_number: 1-based part index.  Must be ≥ 1.
+                Duplicate ``part_number`` values are idempotent: if the
+                part has already been merged it is silently ignored; if
+                it is still buffered it is overwritten (retry-safe).
+
+        Raises:
+            FileNotFoundError: If the session does not exist.
+            ValueError: If the session status does not allow uploading
+                (e.g. already finalized or aborted), or if
+                ``part_number < 1``.
+        """
+
+    @abstractmethod
+    def finalize_upload_session(self, upload_id: str) -> Binary:
+        """Finalize session: commit bytes to the blob store.
+
+        Accepts sessions in ``"uploaded"`` (single upload, backwards
+        compatible) or ``"uploading"`` (chunked upload) status.
+
+        Returns a :class:`Binary` descriptor (without raw ``data``).
+
+        Args:
+            upload_id: The upload session identifier.
+
+        Returns:
+            A :class:`Binary` with ``file_id``, ``size``, and
+            ``content_type`` populated (``data`` is ``UNSET``).
+
+        Raises:
+            FileNotFoundError: If the session does not exist.
+            ValueError: If the session status does not allow finalizing
+                (e.g. still pending, already finalized, or aborted).
+        """
+
+    @abstractmethod
+    def abort_upload_session(self, upload_id: str) -> None:
+        """Abort session and discard any buffered bytes.
+
+        Args:
+            upload_id: The upload session identifier.
+
+        Raises:
+            FileNotFoundError: If the session does not exist.
+            ValueError: If the session has already been finalized.
+        """
 
 
 class IResourceStore(ABC):

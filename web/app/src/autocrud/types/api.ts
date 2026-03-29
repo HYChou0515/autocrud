@@ -87,3 +87,25 @@ export interface SearchParams {
   offset?: number;
   partial?: string[];
 }
+
+/** Blob upload session returned by the upload-session endpoints. */
+export interface BlobUploadSession {
+  upload_id: string;
+  file_id: string;
+  status: 'pending' | 'uploading' | 'uploaded' | 'finalized' | 'aborted';
+  upload_method: 'proxy' | 'single_put';
+  upload_url: string;
+  content_type?: string;
+  size?: number | null;
+  uploaded_size: number;
+  total_parts?: number | null;
+  parts_received?: number[];
+  expires_at?: string | null;
+}
+
+/** Result returned after finalizing an upload session. */
+export interface BlobFinalizeResult {
+  file_id: string;
+  size: number;
+  content_type: string;
+}

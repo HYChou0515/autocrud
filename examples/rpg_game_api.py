@@ -48,7 +48,10 @@ from autocrud.message_queue.context import JobContext
 from autocrud.message_queue.rabbitmq import RabbitMQMessageQueueFactory
 from autocrud.message_queue.simple import SimpleMessageQueueFactory
 from autocrud.query import QB
-from autocrud.resource_manager.storage_factory import DiskStorageFactory
+from autocrud.resource_manager.storage_factory import (
+    DiskStorageFactory,
+    S3StorageFactory,
+)
 from autocrud.types import (
     Binary,
     DisplayName,
@@ -1263,13 +1266,23 @@ def demonstrate_qb_queries():
 
 def configure_crud():
     """設定全域 crud 實例"""
-    storage_type = input("使用memory or disk storage？ [[M]emory/(D)isk]: ")
+    storage_type = input("使用memory or disk storage？ [[M]emory/(D)isk/(S)3]: ")
 
     if storage_type.lower() in ("d", "disk"):
         storage_path = (
             input("請輸入磁盤存儲路徑（預設: ./rpg_game_data）: ") or "./rpg_game_data"
         )
         storage_factory = DiskStorageFactory(rootdir=storage_path)
+    elif storage_type.lower() in ("s", "s3"):
+        storage_factory = S3StorageFactory(
+            bucket="autocrud",
+            endpoint_url="http://localhost:9000",
+            access_key_id="minioadmin",
+            secret_access_key="minioadmin",
+            prefix="rpg_game_data/",
+            auto_sync=True,
+            sync_interval=0,  # 立即同步
+        )
     else:
         storage_factory = None
 

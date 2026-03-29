@@ -130,15 +130,15 @@ def test_blob_route_not_implemented_error():
         def get_url(self, file_id):
             return None
 
+        def get_response(self, file_id):
+            raise NotImplementedError("Mocked")
+
     class MockManager(ResourceManager):
         def __init__(self):
             self.blob_store = MockBlobStore()  # Not None to pass check in apply
 
         def get(self, resource_id):
             return "ok"
-
-        def get_blob(self, file_id):
-            raise NotImplementedError("Mocked")
 
         @contextmanager
         def meta_provide(self, **kwargs):
@@ -186,10 +186,15 @@ def test_blob_route_skip_non_resource_manager():
 def test_blob_redirect():
     """Test that blob route redirects if blob store provides a URL"""
     from autocrud.resource_manager.core import ResourceManager
+    from autocrud.types import BlobResponse
 
     class MockRedirectBlobStore:
         def get_url(self, file_id):
             return f"https://example.com/blobs/{file_id}"
+
+        def get_response(self, file_id):
+            url = self.get_url(file_id)
+            return BlobResponse("redirect", url=url)
 
         def put(self, *args, **kwargs):
             pass

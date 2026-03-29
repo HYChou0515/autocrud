@@ -11,7 +11,10 @@ import pytest
 from msgspec import Struct
 
 from autocrud.resource_manager.basic import Encoding
-from autocrud.resource_manager.storage_factory import PostgreSQLS3StorageFactory
+from autocrud.resource_manager.storage_factory import (
+    PostgreSQLS3StorageFactory,
+    S3StorageFactory,
+)
 
 # Use mock backends for testing
 USE_MOCK = True
@@ -65,6 +68,8 @@ def test_postgresql_storage_factory_initialization():
         table_prefix="prod_",
         blob_bucket="blob-bucket",
         blob_prefix="files/",
+        upload_method="single_put",
+        presigned_url_expiry=7200,
     )
 
     assert (
@@ -81,6 +86,8 @@ def test_postgresql_storage_factory_initialization():
     assert factory.table_prefix == "prod_"
     assert factory.blob_bucket == "blob-bucket"
     assert factory.blob_prefix == "files/"
+    assert factory.upload_method == "single_put"
+    assert factory.presigned_url_expiry == 7200
 
 
 def test_postgresql_storage_factory_defaults():
@@ -99,6 +106,8 @@ def test_postgresql_storage_factory_defaults():
     assert factory.table_prefix == ""
     assert factory.blob_bucket == "bucket"  # Same as s3_bucket
     assert factory.blob_prefix == "blobs/"
+    assert factory.upload_method == "proxy"
+    assert factory.presigned_url_expiry == 3600
 
 
 def test_postgresql_storage_factory_build(mock_postgres_factory):
@@ -146,6 +155,8 @@ def test_postgresql_storage_factory_build_blob_store(mock_postgres_factory):
         secret_access_key="test-secret",
         endpoint_url="http://localhost:9000",
         prefix="blobs/",
+        upload_method="proxy",
+        presigned_url_expiry=3600,
         client_kwargs={},
     )
 
@@ -197,6 +208,23 @@ def test_postgresql_storage_factory_separate_blob_bucket():
         assert call_kwargs["prefix"] == "uploads/"
 
 
+def test_postgresql_storage_factory_upload_method_single_put():
+    """Test build_blob_store passes upload_method and presigned_url_expiry."""
+    with patch("autocrud.resource_manager.storage_factory.S3BlobStore") as mock_blob:
+        factory = PostgreSQLS3StorageFactory(
+            connection_string="postgresql://localhost/db",
+            s3_bucket="bucket",
+            upload_method="single_put",
+            presigned_url_expiry=1800,
+        )
+
+        factory.build_blob_store()
+
+        call_kwargs = mock_blob.call_args[1]
+        assert call_kwargs["upload_method"] == "single_put"
+        assert call_kwargs["presigned_url_expiry"] == 1800
+
+
 def test_postgresql_storage_factory_s3_client_kwargs():
     """Test passing custom S3 client kwargs."""
     with (
@@ -219,6 +247,52 @@ def test_postgresql_storage_factory_s3_client_kwargs():
 
         call_kwargs = mock_s3.call_args[1]
         assert call_kwargs["client_kwargs"] == custom_kwargs
+
+
+# ---------------------------------------------------------------------------
+# S3StorageFactory tests
+# ---------------------------------------------------------------------------
+
+
+def test_s3_storage_factory_build_blob_store_defaults():
+    """Test S3StorageFactory.build_blob_store() passes default upload params."""
+    with patch("autocrud.resource_manager.storage_factory.S3BlobStore") as mock_blob:
+        factory = S3StorageFactory(
+            bucket="my-bucket",
+            endpoint_url="http://localhost:9000",
+        )
+
+        factory.build_blob_store()
+
+        call_kwargs = mock_blob.call_args[1]
+        assert call_kwargs["bucket"] == "my-bucket"
+        assert call_kwargs["prefix"] == "blobs/"
+        assert call_kwargs["upload_method"] == "proxy"
+        assert call_kwargs["presigned_url_expiry"] == 3600
+
+
+def test_s3_storage_factory_build_blob_store_single_put():
+    """Test S3StorageFactory.build_blob_store() passes custom upload params."""
+    with patch("autocrud.resource_manager.storage_factory.S3BlobStore") as mock_blob:
+        factory = S3StorageFactory(
+            bucket="my-bucket",
+            endpoint_url="http://localhost:9000",
+            upload_method="single_put",
+            presigned_url_expiry=900,
+        )
+
+        factory.build_blob_store()
+
+        call_kwargs = mock_blob.call_args[1]
+        assert call_kwargs["upload_method"] == "single_put"
+        assert call_kwargs["presigned_url_expiry"] == 900
+
+
+def test_s3_storage_factory_upload_method_defaults():
+    """Test S3StorageFactory stores upload_method and presigned_url_expiry."""
+    factory = S3StorageFactory(bucket="b")
+    assert factory.upload_method == "proxy"
+    assert factory.presigned_url_expiry == 3600
 
 
 if __name__ == "__main__":

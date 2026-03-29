@@ -11,8 +11,16 @@ import {
 import { IconLink, IconX } from '@tabler/icons-react';
 import type { BinaryFormValue } from '@/autocrud/lib/utils/formUtils';
 import { getBlobUrl } from '../../../client';
+import { formatBytes } from '../../../hooks/useBlobUpload';
 
-/** Binary field editor — file upload or URL input */
+/**
+ * Binary field editor — deferred file upload or URL input.
+ *
+ * Files are NOT uploaded eagerly. Instead, the selected File object is
+ * stored in form state and uploaded in bulk when the form is submitted.
+ * This provides a better UX: users can fill out the entire form before
+ * any network activity begins.
+ */
 export function BinaryFieldEditor({
   label,
   required,
@@ -33,6 +41,11 @@ export function BinaryFieldEditor({
   };
 
   const handleFileChange = (file: File | null) => {
+    if (!file) {
+      onChange({ _mode: 'file', file: null });
+      return;
+    }
+    // Store the File object — upload happens at form submit time
     onChange({ _mode: 'file', file });
   };
 
@@ -59,7 +72,7 @@ export function BinaryFieldEditor({
             <a href={blobUrl} target="_blank" rel="noreferrer">
               {value?.content_type}
             </a>
-            {value?.size != null && `, ${(value.size / 1024).toFixed(1)} KB`})
+            {value?.size != null && `, ${formatBytes(value.size)}`})
           </Text>
         )}
       </Group>
@@ -82,12 +95,19 @@ export function BinaryFieldEditor({
         )}
       </Group>
       {activeMode === 'file' ? (
-        <FileInput
-          placeholder="Choose file..."
-          value={value?._mode === 'file' ? (value.file ?? null) : null}
-          onChange={handleFileChange}
-          clearable
-        />
+        <>
+          <FileInput
+            placeholder="Choose file..."
+            value={value?._mode === 'file' ? (value.file ?? null) : null}
+            onChange={handleFileChange}
+            clearable
+          />
+          {value?._mode === 'file' && value.file && (
+            <Text size="xs" c="dimmed">
+              Selected: {value.file.name} ({formatBytes(value.file.size)}) — will upload on submit
+            </Text>
+          )}
+        </>
       ) : (
         <TextInput
           placeholder="https://example.com/image.png"

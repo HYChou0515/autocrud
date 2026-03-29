@@ -4,6 +4,7 @@
 
 import { client, getBlobUploadPath } from '../../client';
 import type { BinaryFormValue } from './types';
+import type { AxiosProgressEvent } from 'axios';
 
 /**
  * Convert snake_case or kebab-case string to Title Case label
@@ -137,7 +138,11 @@ export interface BlobUploadResult {
  * `file_id` can be used in create/update requests to reference the uploaded
  * binary without base64 encoding.
  *
+ * For large files, prefer the `useBlobUpload` hook which supports chunked
+ * upload sessions with progress tracking and cancel.
+ *
  * @param file - File object to upload
+ * @param onUploadProgress - Optional Axios progress callback
  * @returns Promise resolving to blob metadata
  *
  * @example
@@ -145,11 +150,15 @@ export interface BlobUploadResult {
  * // result = { file_id: 'abc123', size: 1024, content_type: 'image/png' }
  * // Then use in create: { avatar: { file_id: result.file_id } }
  */
-export async function uploadBlob(file: File): Promise<BlobUploadResult> {
+export async function uploadBlob(
+  file: File,
+  onUploadProgress?: (e: AxiosProgressEvent) => void,
+): Promise<BlobUploadResult> {
   const formData = new FormData();
   formData.append('file', file);
   const resp = await client.post<BlobUploadResult>(getBlobUploadPath(), formData, {
     headers: { 'Content-Type': 'multipart/form-data' },
+    onUploadProgress,
   });
   return resp.data;
 }

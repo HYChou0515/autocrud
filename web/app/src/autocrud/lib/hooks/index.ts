@@ -66,3 +66,12 @@ export type { UseSwitchRevisionOptions, UseSwitchRevisionResult } from './useSwi
 
 export { useRerunResource } from './useRerunResource';
 export type { UseRerunResourceOptions, UseRerunResourceResult } from './useRerunResource';
+
+// Blob upload hook
+export { useBlobUpload } from './useBlobUpload';
+export type {
+  BlobUploadStatus,
+  BlobUploadProgress,
+  BlobUploadResult,
+  UseBlobUploadReturn,
+} from './useBlobUpload';
