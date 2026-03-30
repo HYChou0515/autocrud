@@ -3,6 +3,7 @@
  */
 
 import type { ResourceConfig, TableConfig } from '../../resources';
+import type { MRT_RowData } from 'mantine-react-table';
 import type { InternalColumnDef, CellRenderProps } from './buildColumns';
 
 /**
@@ -91,7 +92,7 @@ export interface NormalizedSearchableField extends Omit<SearchableField, 'label'
  *
  * Props override values from `config.tableConfig` (set via `ResourceCustomizationConfig.table`).
  */
-export interface ResourceTableProps<T> extends Partial<TableConfig> {
+export interface ResourceTableProps<T extends MRT_RowData = MRT_RowData> extends Partial<TableConfig<T>> {
   config: ResourceConfig<T>;
   basePath: string;
   columns?: {

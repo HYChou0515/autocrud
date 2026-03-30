@@ -127,6 +127,7 @@ export function ResourceTable<T extends MRT_RowData>({
   defaultSort: defaultSortProp,
   title: titleProp,
   density: densityProp,
+  mrtOptions: mrtOptionsProp,
 }: ResourceTableProps<T>) {
   const navigate = useNavigate();
 
@@ -144,6 +145,7 @@ export function ResourceTable<T extends MRT_RowData>({
   const defaultSortOverride = defaultSortProp ?? tc.defaultSort;
   const tableTitle = titleProp ?? tc.title ?? config.label;
   const density = densityProp ?? tc.density ?? 'xs';
+  const mrtOptions = mrtOptionsProp ?? tc.mrtOptions ?? {};
 
   // ── MRT state ──
   const [sorting, setSorting] = useState<MRT_SortingState>(defaultSortOverride ?? DEFAULT_SORTING);
@@ -296,6 +298,10 @@ export function ResourceTable<T extends MRT_RowData>({
   const isServer = mode === 'server';
 
   const table = useMantineReactTable({
+    // ── User pass-through options (lowest priority) ──
+    ...(mrtOptions as Record<string, unknown>),
+
+    // ── Internal settings (override mrtOptions) ──
     columns: tableColumns,
     data: data as FullResourceRow<T>[],
 
