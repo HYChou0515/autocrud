@@ -459,19 +459,55 @@ export function buildRequestParams({
   }
 
   // --- Always-on search conditions (e.g. filter for a specific tag) ---
-  if (alwaysSearchCondition && alwaysSearchCondition.length > 0) {
-    const alwaysConditions = alwaysSearchCondition.map((c) => ({
-      field_path: c.field,
-      operator: c.operator,
-      value: c.value,
-    }));
-    const existing = baseParams.data_conditions
-      ? (JSON.parse(baseParams.data_conditions as string) as unknown[])
-      : [];
-    baseParams.data_conditions = JSON.stringify([...existing, ...alwaysConditions]);
-  }
+  applyAlwaysSearchConditions(baseParams, alwaysSearchCondition);
 
   return baseParams;
+}
+
+// ---------------------------------------------------------------------------
+// Always-on search conditions — shared by ResourceTable & RefTableSelectModal
+// ---------------------------------------------------------------------------
+
+/**
+ * Merge always-on search conditions into the request params.
+ *
+ * - **Meta fields** (e.g. `is_deleted`, `created_by`) that are in
+ *   `SERVER_META_FILTER_COLUMNS` are converted to direct query params
+ *   via the column's `convert()` helper — just like MRT column filters.
+ * - **Data fields** are appended to the existing `data_conditions` array
+ *   so they are always sent to the backend on every request.
+ *
+ * This is a pure helper — it mutates `params` in-place for convenience.
+ */
+export function applyAlwaysSearchConditions(
+  params: Record<string, unknown>,
+  conditions?: { field: string; operator: string; value: unknown }[],
+): void {
+  if (!conditions || conditions.length === 0) return;
+
+  const dataConditions: { field_path: string; operator: string; value: unknown }[] = [];
+
+  for (const c of conditions) {
+    const metaDef = SERVER_META_FILTER_COLUMNS[c.field];
+    if (metaDef) {
+      // Meta field → convert to direct query param (e.g. is_deleted=false)
+      Object.assign(params, metaDef.convert(c.value));
+    } else {
+      // Data field → collect into data_conditions
+      dataConditions.push({
+        field_path: c.field,
+        operator: c.operator,
+        value: c.value,
+      });
+    }
+  }
+
+  if (dataConditions.length > 0) {
+    const existing = params.data_conditions
+      ? (JSON.parse(params.data_conditions as string) as unknown[])
+      : [];
+    params.data_conditions = JSON.stringify([...existing, ...dataConditions]);
+  }
 }
 
 // ---------------------------------------------------------------------------

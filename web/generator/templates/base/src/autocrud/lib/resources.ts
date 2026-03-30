@@ -10,7 +10,7 @@ import type {
 } from '../types/api';
 import type { z } from 'zod';
 import type { SearchCondition } from './components/table/types';
-import type { MRT_SortingState } from 'mantine-react-table';
+import type { MRT_SortingState, MRT_TableOptions, MRT_RowData } from 'mantine-react-table';
 
 /**
  * Field variant types - allows customization of input component
@@ -156,12 +156,21 @@ export interface CustomUpdateAction {
 // ---------------------------------------------------------------------------
 
 /**
+ * Keys in `MRT_TableOptions` that are fully managed by `ResourceTable` internals.
+ * These are excluded from `mrtOptions` to prevent accidental breakage.
+ */
+type ManagedMRTKeys = 'columns' | 'data' | 'state';
+
+/**
  * Configuration options for ResourceTable component.
+ *
+ * @typeParam T - Row data type passed through to `MRT_TableOptions<T>` for
+ *   the `mrtOptions` escape-hatch.  Defaults to `MRT_RowData`.
  *
  * Can be set via `ResourceCustomizationConfig.table` (config-first) or
  * passed directly as props to `<ResourceTable>` (props override config).
  */
-export interface TableConfig {
+export interface TableConfig<T extends MRT_RowData = MRT_RowData> {
   /** Whether to show the "Create" button in the table header. Defaults to `true`. */
   canCreate?: boolean;
   /** Search conditions that are always applied to every API request.
@@ -194,6 +203,29 @@ export interface TableConfig {
   title?: string;
   /** Table density. Defaults to `'xs'`. */
   density?: 'xs' | 'md' | 'xl';
+  /**
+   * Pass-through options forwarded directly to `useMantineReactTable()`.
+   *
+   * Use this escape-hatch to access any MRT feature not covered by the
+   * first-class `TableConfig` properties.  Options set here have **lower
+   * priority** than ResourceTable's internal settings — if you set a key
+   * that the component also controls (e.g. `manualPagination`), the
+   * internal value wins.
+   *
+   * `columns`, `data`, and `state` are fully managed and therefore
+   * excluded from this type.
+   *
+   * @example
+   * ```ts
+   * table: {
+   *   mrtOptions: {
+   *     enableRowSelection: true,
+   *     enableColumnOrdering: true,
+   *   },
+   * }
+   * ```
+   */
+  mrtOptions?: Partial<Omit<MRT_TableOptions<T>, ManagedMRTKeys>>;
 }
 
 /**
@@ -451,8 +483,22 @@ export function applyCustomizations(customizations: ResourceCustomizations<any>)
       resource.defaultHiddenFields = resource.defaultHiddenFields.filter((f) => !showSet.has(f));
     }
 
-    // Component-level config overrides
-    if (config.table) resource.tableConfig = { ...resource.tableConfig, ...config.table };
+    // Component-level config overrides (deep-merge mrtOptions)
+    if (config.table) {
+      const { mrtOptions: incomingMrt, ...restTable } = config.table;
+      resource.tableConfig = {
+        ...resource.tableConfig,
+        ...restTable,
+        ...(incomingMrt
+          ? {
+              mrtOptions: {
+                ...resource.tableConfig?.mrtOptions,
+                ...incomingMrt,
+              } as TableConfig['mrtOptions'],
+            }
+          : {}),
+      };
+    }
     if (config.create) resource.createConfig = { ...resource.createConfig, ...config.create };
     if (config.detail) resource.detailConfig = { ...resource.detailConfig, ...config.detail };
 

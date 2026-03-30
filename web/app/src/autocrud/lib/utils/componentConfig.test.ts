@@ -310,4 +310,119 @@ describe('applyCustomizations — component-level configs', () => {
     );
     warnSpy.mockRestore();
   });
+
+  // ── mrtOptions ──
+
+  it('sets tableConfig.mrtOptions from customization', () => {
+    registerResource();
+
+    applyCustomizations({
+      'test-resource': {
+        table: {
+          mrtOptions: {
+            enableRowSelection: true,
+            enableColumnOrdering: true,
+          },
+        },
+      },
+    } as any);
+
+    expect(resources['test-resource'].tableConfig?.mrtOptions).toEqual({
+      enableRowSelection: true,
+      enableColumnOrdering: true,
+    });
+  });
+
+  it('deep-merges mrtOptions with existing tableConfig.mrtOptions', () => {
+    registerResource({
+      tableConfig: {
+        canCreate: true,
+        mrtOptions: {
+          enableRowSelection: true,
+          enableColumnDragging: false,
+        },
+      },
+    });
+
+    applyCustomizations({
+      'test-resource': {
+        table: {
+          mrtOptions: {
+            enableColumnOrdering: true,
+            enableRowSelection: false, // override existing
+          },
+        },
+      },
+    } as any);
+
+    expect(resources['test-resource'].tableConfig).toEqual({
+      canCreate: true,
+      mrtOptions: {
+        enableRowSelection: false, // overridden
+        enableColumnDragging: false, // preserved
+        enableColumnOrdering: true, // new
+      },
+    });
+  });
+
+  it('preserves existing mrtOptions when customization.table has no mrtOptions', () => {
+    registerResource({
+      tableConfig: {
+        canCreate: true,
+        mrtOptions: { enableRowSelection: true },
+      },
+    });
+
+    applyCustomizations({
+      'test-resource': {
+        table: { canCreate: false },
+      },
+    } as any);
+
+    expect(resources['test-resource'].tableConfig).toEqual({
+      canCreate: false,
+      mrtOptions: { enableRowSelection: true },
+    });
+  });
+
+  it('merges first-class table props alongside mrtOptions', () => {
+    registerResource();
+
+    applyCustomizations({
+      'test-resource': {
+        table: {
+          initPageSize: 50,
+          density: 'md',
+          mrtOptions: { enableRowSelection: true },
+        },
+      },
+    } as any);
+
+    expect(resources['test-resource'].tableConfig).toEqual({
+      initPageSize: 50,
+      density: 'md',
+      mrtOptions: { enableRowSelection: true },
+    });
+  });
+
+  it('accumulates mrtOptions across multiple applyCustomizations calls', () => {
+    registerResource();
+
+    applyCustomizations({
+      'test-resource': {
+        table: { mrtOptions: { enableRowSelection: true } },
+      },
+    } as any);
+
+    applyCustomizations({
+      'test-resource': {
+        table: { mrtOptions: { enableColumnOrdering: true } },
+      },
+    } as any);
+
+    expect(resources['test-resource'].tableConfig?.mrtOptions).toEqual({
+      enableRowSelection: true,
+      enableColumnOrdering: true,
+    });
+  });
 });

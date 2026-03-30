@@ -8,14 +8,27 @@
  *
  * RefRevisionSelect — used for RefRevision fields, lists current_revision_id of all resources.
  * RefRevisionMultiSelect — same but for list[Annotated[str, RefRevision(...)]].
+ *
+ * Both dropdown mode and table mode share the same data pipeline:
+ * `buildRequestParams()` → `useResourceList()`, with support for
+ * `alwaysSearchCondition` to pre-filter the selectable items.
  */
-import { useCallback, useEffect, useState } from 'react';
+import { useMemo, useState } from 'react';
 import { Select, MultiSelect, Loader, ActionIcon, Group, Tooltip } from '@mantine/core';
 import { useDisclosure } from '@mantine/hooks';
 import { IconTableFilled } from '@tabler/icons-react';
 import { getResource } from '../../../resources';
 import type { FieldRef } from '../../../resources';
+import type { FullResource } from '../../../../types/api';
+import { useResourceList } from '../../../hooks/useResourceList';
+import type { SearchCondition } from '../../table/types';
+import { EMPTY_ACTIVE_SEARCH } from '../../table/searchUtils';
+import { buildRequestParams } from '../../table/utils';
 import { RefTableSelectModal } from './RefTableSelectModal';
+
+// ---------------------------------------------------------------------------
+// Shared props & helpers
+// ---------------------------------------------------------------------------
 
 interface RefSelectProps {
   /** Field label */
@@ -32,6 +45,26 @@ interface RefSelectProps {
   error?: string;
   /** Whether the field is clearable (nullable) */
   clearable?: boolean;
+  /** Search conditions always applied when fetching options.
+   *  Useful for narrowing selectable items (e.g. only type='weapon'). */
+  alwaysSearchCondition?: SearchCondition[];
+}
+
+interface RefMultiSelectProps {
+  /** Field label */
+  label: string;
+  /** Whether the field is required */
+  required?: boolean;
+  /** Ref metadata from the field definition */
+  fieldRef: FieldRef;
+  /** Current values */
+  value: string[];
+  /** Change handler */
+  onChange: (value: string[]) => void;
+  /** Error message (from form validation) */
+  error?: string;
+  /** Search conditions always applied when fetching options. */
+  alwaysSearchCondition?: SearchCondition[];
 }
 
 interface SelectOption {
@@ -44,46 +77,68 @@ function getByPath(obj: Record<string, any>, path: string | undefined): unknown 
   return path.split('.').reduce((acc, key) => acc?.[key], obj);
 }
 
-function useRefOptions(resource: string) {
-  const [options, setOptions] = useState<SelectOption[]>([]);
-  const [loading, setLoading] = useState(false);
+/** Default dropdown fetch limit */
+const DROPDOWN_FETCH_LIMIT = 100;
 
-  const fetchOptions = useCallback(async () => {
-    const targetResource = getResource(resource);
-    if (!targetResource?.apiClient) return;
-
-    setLoading(true);
-    try {
-      const resp = await targetResource.apiClient.list({ limit: 100, is_deleted: false });
-      const items = resp.data || [];
-      const newOptions: SelectOption[] = items.map((item: any) => {
-        const resourceId = item.meta?.resource_id ?? '';
-        const data = item.data ?? {};
-        const preferred = getByPath(data, targetResource.displayNameField);
-        const displayName =
-          typeof preferred === 'string' && preferred.trim().length > 0
-            ? preferred
-            : data.name || data.title || data.label || resourceId;
-        return {
-          value: resourceId,
-          label: `${displayName} (${resourceId.slice(0, 8)}…)`,
-        };
-      });
-      setOptions(newOptions);
-    } catch (err) {
-      console.error(`RefSelect: failed to fetch ${resource}`, err);
-      setOptions([]);
-    } finally {
-      setLoading(false);
-    }
-  }, [resource]);
-
-  useEffect(() => {
-    fetchOptions();
-  }, [fetchOptions]);
-
-  return { options, loading };
+/**
+ * Build request params for the dropdown list fetch.
+ *
+ * Uses the shared `buildRequestParams` from the table utils so that
+ * `alwaysSearchCondition` is handled identically in dropdown and table modes.
+ */
+function buildDropdownParams(alwaysSearchCondition?: SearchCondition[]): Record<string, unknown> {
+  const params = buildRequestParams({
+    mode: 'server',
+    pagination: { pageIndex: 0, pageSize: DROPDOWN_FETCH_LIMIT },
+    activeSearch: EMPTY_ACTIVE_SEARCH,
+    sorting: [],
+    columnFilters: [],
+    alwaysSearchCondition,
+  });
+  // Dropdown always filters out soft-deleted resources
+  params.is_deleted = false;
+  return params;
 }
+
+/**
+ * Map raw resource list data to SelectOption[] for the dropdown.
+ * `valueField` controls which meta field is used as the option value.
+ */
+function toSelectOptions(
+  data: FullResource<unknown>[],
+  displayNameField: string | undefined,
+  valueField: 'resource_id' | 'current_revision_id',
+): SelectOption[] {
+  return data.map((item: any) => {
+    const meta = item.meta ?? {};
+    const d = item.data ?? {};
+    const resourceId = meta.resource_id ?? '';
+    const preferred = getByPath(d, displayNameField);
+    const displayName =
+      typeof preferred === 'string' && preferred.trim().length > 0
+        ? preferred
+        : d.name || d.title || d.label || resourceId;
+
+    if (valueField === 'current_revision_id') {
+      const revisionId = meta.current_revision_id ?? '';
+      const shortRevision =
+        revisionId.length > 12 ? `${revisionId.slice(0, 4)}…${revisionId.slice(-4)}` : revisionId;
+      return {
+        value: revisionId,
+        label: `${displayName} (rev: ${shortRevision})`,
+      };
+    }
+
+    return {
+      value: resourceId,
+      label: `${displayName} (${resourceId.slice(0, 8)}…)`,
+    };
+  });
+}
+
+// ---------------------------------------------------------------------------
+// RefSelect — single select for Ref fields
+// ---------------------------------------------------------------------------
 
 export function RefSelect({
   label,
@@ -93,8 +148,16 @@ export function RefSelect({
   onChange,
   error,
   clearable = true,
+  alwaysSearchCondition,
 }: RefSelectProps) {
-  const { options, loading } = useRefOptions(fieldRef.resource);
+  const config = getResource(fieldRef.resource);
+  const params = useMemo(() => buildDropdownParams(alwaysSearchCondition), [alwaysSearchCondition]);
+  const { data, loading } = useResourceList(config!, params);
+  const options = useMemo(
+    () => toSelectOptions(data, config?.displayNameField, 'resource_id'),
+    [data, config?.displayNameField],
+  );
+
   const [searchValue, setSearchValue] = useState('');
   const [tableOpened, { open: openTable, close: closeTable }] = useDisclosure(false);
 
@@ -131,25 +194,15 @@ export function RefSelect({
         mode="single"
         selectedValues={value ? [value] : []}
         valueField="resource_id"
+        alwaysSearchCondition={alwaysSearchCondition}
       />
     </>
   );
 }
 
-interface RefMultiSelectProps {
-  /** Field label */
-  label: string;
-  /** Whether the field is required */
-  required?: boolean;
-  /** Ref metadata from the field definition */
-  fieldRef: FieldRef;
-  /** Current values */
-  value: string[];
-  /** Change handler */
-  onChange: (value: string[]) => void;
-  /** Error message (from form validation) */
-  error?: string;
-}
+// ---------------------------------------------------------------------------
+// RefMultiSelect — multi select for Ref fields (N:N)
+// ---------------------------------------------------------------------------
 
 /**
  * Multi-select for list[Annotated[str, Ref(...)]] fields (N:N relationships).
@@ -161,8 +214,16 @@ export function RefMultiSelect({
   value,
   onChange,
   error,
+  alwaysSearchCondition,
 }: RefMultiSelectProps) {
-  const { options, loading } = useRefOptions(fieldRef.resource);
+  const config = getResource(fieldRef.resource);
+  const params = useMemo(() => buildDropdownParams(alwaysSearchCondition), [alwaysSearchCondition]);
+  const { data, loading } = useResourceList(config!, params);
+  const options = useMemo(
+    () => toSelectOptions(data, config?.displayNameField, 'resource_id'),
+    [data, config?.displayNameField],
+  );
+
   const [searchValue, setSearchValue] = useState('');
   const [tableOpened, { open: openTable, close: closeTable }] = useDisclosure(false);
 
@@ -199,6 +260,7 @@ export function RefMultiSelect({
         mode="multi"
         selectedValues={value}
         valueField="resource_id"
+        alwaysSearchCondition={alwaysSearchCondition}
       />
     </>
   );
@@ -221,51 +283,8 @@ interface RefRevisionSelectProps {
   error?: string;
   /** Whether the field is clearable (nullable) */
   clearable?: boolean;
-}
-
-function useRefRevisionOptions(resource: string) {
-  const [options, setOptions] = useState<SelectOption[]>([]);
-  const [loading, setLoading] = useState(false);
-
-  const fetchOptions = useCallback(async () => {
-    const targetResource = getResource(resource);
-    if (!targetResource?.apiClient) return;
-
-    setLoading(true);
-    try {
-      const resp = await targetResource.apiClient.list({ limit: 100, is_deleted: false });
-      const items = resp.data || [];
-      const newOptions: SelectOption[] = items.map((item: any) => {
-        const meta = item.meta ?? {};
-        const data = item.data ?? {};
-        const resourceId = meta.resource_id ?? '';
-        const revisionId = meta.current_revision_id ?? '';
-        const preferred = getByPath(data, targetResource.displayNameField);
-        const displayName =
-          typeof preferred === 'string' && preferred.trim().length > 0
-            ? preferred
-            : data.name || data.title || data.label || resourceId;
-        const shortRevision =
-          revisionId.length > 12 ? `${revisionId.slice(0, 4)}…${revisionId.slice(-4)}` : revisionId;
-        return {
-          value: revisionId,
-          label: `${displayName} (rev: ${shortRevision})`,
-        };
-      });
-      setOptions(newOptions);
-    } catch (err) {
-      console.error(`RefRevisionSelect: failed to fetch ${resource}`, err);
-      setOptions([]);
-    } finally {
-      setLoading(false);
-    }
-  }, [resource]);
-
-  useEffect(() => {
-    fetchOptions();
-  }, [fetchOptions]);
-
-  return { options, loading };
+  /** Search conditions always applied when fetching options. */
+  alwaysSearchCondition?: SearchCondition[];
 }
 
 /**
@@ -280,8 +299,16 @@ export function RefRevisionSelect({
   onChange,
   error,
   clearable = true,
+  alwaysSearchCondition,
 }: RefRevisionSelectProps) {
-  const { options, loading } = useRefRevisionOptions(fieldRef.resource);
+  const config = getResource(fieldRef.resource);
+  const params = useMemo(() => buildDropdownParams(alwaysSearchCondition), [alwaysSearchCondition]);
+  const { data, loading } = useResourceList(config!, params);
+  const options = useMemo(
+    () => toSelectOptions(data, config?.displayNameField, 'current_revision_id'),
+    [data, config?.displayNameField],
+  );
+
   const [searchValue, setSearchValue] = useState('');
   const [tableOpened, { open: openTable, close: closeTable }] = useDisclosure(false);
 
@@ -318,6 +345,7 @@ export function RefRevisionSelect({
         mode="single"
         selectedValues={value ? [value] : []}
         valueField="current_revision_id"
+        alwaysSearchCondition={alwaysSearchCondition}
       />
     </>
   );
@@ -336,6 +364,8 @@ interface RefRevisionMultiSelectProps {
   onChange: (value: string[]) => void;
   /** Error message (from form validation) */
   error?: string;
+  /** Search conditions always applied when fetching options. */
+  alwaysSearchCondition?: SearchCondition[];
 }
 
 /**
@@ -348,8 +378,16 @@ export function RefRevisionMultiSelect({
   value,
   onChange,
   error,
+  alwaysSearchCondition,
 }: RefRevisionMultiSelectProps) {
-  const { options, loading } = useRefRevisionOptions(fieldRef.resource);
+  const config = getResource(fieldRef.resource);
+  const params = useMemo(() => buildDropdownParams(alwaysSearchCondition), [alwaysSearchCondition]);
+  const { data, loading } = useResourceList(config!, params);
+  const options = useMemo(
+    () => toSelectOptions(data, config?.displayNameField, 'current_revision_id'),
+    [data, config?.displayNameField],
+  );
+
   const [searchValue, setSearchValue] = useState('');
   const [tableOpened, { open: openTable, close: closeTable }] = useDisclosure(false);
 
@@ -386,6 +424,7 @@ export function RefRevisionMultiSelect({
         mode="multi"
         selectedValues={value}
         valueField="current_revision_id"
+        alwaysSearchCondition={alwaysSearchCondition}
       />
     </>
   );
