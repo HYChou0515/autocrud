@@ -32,6 +32,7 @@ import {
   type MRT_ColumnFiltersState,
   type MRT_PaginationState,
   type MRT_RowData,
+  type MRT_RowSelectionState,
 } from 'mantine-react-table';
 import { useResourceList } from '../../hooks/useResourceList';
 import type { FullResourceRow } from '../../../types/api';
@@ -128,6 +129,11 @@ export function ResourceTable<T extends MRT_RowData>({
   title: titleProp,
   density: densityProp,
   mrtOptions: mrtOptionsProp,
+  // ── Row selection props ──
+  selectionMode,
+  selectedIds,
+  onSelectionChange,
+  getRowId: getRowIdProp,
 }: ResourceTableProps<T>) {
   const navigate = useNavigate();
 
@@ -146,6 +152,49 @@ export function ResourceTable<T extends MRT_RowData>({
   const tableTitle = titleProp ?? tc.title ?? config.label;
   const density = densityProp ?? tc.density ?? 'xs';
   const mrtOptions = mrtOptionsProp ?? tc.mrtOptions ?? {};
+
+  // ── Row selection ──
+  const selectionEnabled = selectionMode != null;
+  const getRowId = useMemo(() => {
+    if (getRowIdProp) return getRowIdProp;
+    return (row: FullResourceRow<T>) => row?.meta?.resource_id ?? '';
+  }, [getRowIdProp]);
+
+  const [rowSelection, setRowSelection] = useState<MRT_RowSelectionState>(() => {
+    if (!selectedIds) return {};
+    const init: MRT_RowSelectionState = {};
+    for (const id of selectedIds) init[id] = true;
+    return init;
+  });
+
+  // Sync controlled selectedIds → internal rowSelection
+  const prevSelectedIdsRef = useRef(selectedIds);
+  useEffect(() => {
+    if (selectedIds && selectedIds !== prevSelectedIdsRef.current) {
+      prevSelectedIdsRef.current = selectedIds;
+      const next: MRT_RowSelectionState = {};
+      for (const id of selectedIds) next[id] = true;
+      setRowSelection(next);
+    }
+  }, [selectedIds]);
+
+  // Fire onSelectionChange when rowSelection changes
+  const handleRowSelectionChange = useCallback(
+    (
+      updaterOrValue:
+        | MRT_RowSelectionState
+        | ((prev: MRT_RowSelectionState) => MRT_RowSelectionState),
+    ) => {
+      setRowSelection((prev) => {
+        const next = typeof updaterOrValue === 'function' ? updaterOrValue(prev) : updaterOrValue;
+        return next;
+      });
+    },
+    [],
+  );
+
+  // Notify parent when rowSelection stabilises (via effect to access latest data)
+  const dataRef = useRef([] as FullResourceRow<T>[]);
 
   // ── MRT state ──
   const [sorting, setSorting] = useState<MRT_SortingState>(defaultSortOverride ?? DEFAULT_SORTING);
@@ -256,6 +305,26 @@ export function ResourceTable<T extends MRT_RowData>({
     return result;
   }, [rawData, activeSearch.condition?.data, activeSearch.sortBy, config.indexedFields]);
 
+  // Keep dataRef in sync so the selection-change effect can look up rows.
+  dataRef.current = data as FullResourceRow<T>[];
+
+  // Fire onSelectionChange when rowSelection changes
+  useEffect(() => {
+    if (!selectionEnabled || !onSelectionChange) return;
+    const selectedKeys = Object.keys(rowSelection).filter((k) => rowSelection[k]);
+    // Build a lookup map from current data for O(1) access
+    const idMap = new Map<string, FullResourceRow<T>>();
+    for (const row of dataRef.current) {
+      const id = getRowId(row);
+      if (id) idMap.set(id, row);
+    }
+    const selectedRows = selectedKeys
+      .map((k) => idMap.get(k))
+      .filter((r): r is FullResourceRow<T> => r != null);
+    onSelectionChange(selectedRows);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [rowSelection, selectionEnabled]);
+
   // ── Client mode overflow info (cutoff timestamp) ──
   const clientOverflowInfo = useMemo(() => {
     if (mode !== 'client' || total <= data.length || data.length === 0) return null;
@@ -305,6 +374,16 @@ export function ResourceTable<T extends MRT_RowData>({
     columns: tableColumns,
     data: data as FullResourceRow<T>[],
 
+    // Row selection
+    ...(selectionEnabled
+      ? {
+          enableRowSelection: true,
+          enableMultiRowSelection: selectionMode === 'multi',
+          getRowId: (row: FullResourceRow<T>) => getRowId(row),
+          onRowSelectionChange: handleRowSelectionChange,
+        }
+      : {}),
+
     // Global filter
     enableGlobalFilter: !disableGlobalSearch,
     onGlobalFilterChange: disableGlobalSearch ? undefined : setGlobalFilter,
@@ -334,10 +413,24 @@ export function ResourceTable<T extends MRT_RowData>({
       globalFilter: disableGlobalSearch ? undefined : globalFilter,
       columnFilters,
       pagination,
+      ...(selectionEnabled ? { rowSelection } : {}),
     },
 
-    mantineTableBodyRowProps:
-      onRowClick === false
+    mantineTableBodyRowProps: selectionEnabled
+      ? ({ row }) => ({
+          onClick: () => {
+            if (selectionMode === 'single') {
+              setRowSelection({ [row.id]: true });
+            } else {
+              setRowSelection((prev) => ({
+                ...prev,
+                [row.id]: !prev[row.id],
+              }));
+            }
+          },
+          style: { cursor: 'pointer' },
+        })
+      : onRowClick === false
         ? undefined
         : ({ row }) => ({
             onClick: () => {

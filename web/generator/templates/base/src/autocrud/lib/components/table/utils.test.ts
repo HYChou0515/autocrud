@@ -1130,4 +1130,29 @@ describe('applyAlwaysSearchConditions', () => {
     expect(parsed[0]).toEqual({ field_path: 'type', operator: 'eq', value: 'sword' });
     expect(parsed[1]).toEqual({ field_path: 'rarity', operator: 'gte', value: 3 });
   });
+
+  it('converts is_deleted meta condition to direct query param instead of data_conditions', () => {
+    const params: Record<string, unknown> = {};
+    applyAlwaysSearchConditions(params, [{ field: 'is_deleted', operator: 'eq', value: false }]);
+    expect(params.is_deleted).toBe(false);
+    expect(params.data_conditions).toBeUndefined();
+  });
+
+  it('converts created_by meta condition to direct query param', () => {
+    const params: Record<string, unknown> = {};
+    applyAlwaysSearchConditions(params, [{ field: 'created_by', operator: 'eq', value: 'admin' }]);
+    expect(params.created_bys).toEqual(['admin']);
+    expect(params.data_conditions).toBeUndefined();
+  });
+
+  it('splits meta and data conditions correctly', () => {
+    const params: Record<string, unknown> = {};
+    applyAlwaysSearchConditions(params, [
+      { field: 'is_deleted', operator: 'eq', value: false },
+      { field: 'type', operator: 'eq', value: 'sword' },
+    ]);
+    expect(params.is_deleted).toBe(false);
+    const parsed = JSON.parse(params.data_conditions as string);
+    expect(parsed).toEqual([{ field_path: 'type', operator: 'eq', value: 'sword' }]);
+  });
 });

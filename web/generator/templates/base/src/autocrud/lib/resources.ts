@@ -490,7 +490,12 @@ export function applyCustomizations(customizations: ResourceCustomizations<any>)
         ...resource.tableConfig,
         ...restTable,
         ...(incomingMrt
-          ? { mrtOptions: { ...resource.tableConfig?.mrtOptions, ...incomingMrt } as TableConfig['mrtOptions'] }
+          ? {
+              mrtOptions: {
+                ...resource.tableConfig?.mrtOptions,
+                ...incomingMrt,
+              } as TableConfig['mrtOptions'],
+            }
           : {}),
       };
     }

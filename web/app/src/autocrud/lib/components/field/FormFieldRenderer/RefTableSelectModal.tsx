@@ -1,15 +1,16 @@
 /**
- * RefTableSelectModal — A modal with a full-featured MRT table for selecting
+ * RefTableSelectModal — A modal with a full-featured ResourceTable for selecting
  * referenced resources (or revisions).
  *
  * Features:
- * - Server-side pagination
- * - Global text search (client-side, current page)
- * - Advanced search (server-side conditions + QB)
+ * - Server-side pagination (via ResourceTable)
+ * - Global text search + advanced search (via ResourceTable)
  * - Column sorting & filtering
- * - Row checkbox selection (single or multi)
+ * - Row checkbox selection (single or multi) via ResourceTable's selectionMode
  * - Pre-selects already-chosen values
  * - Fullscreen modal with flex layout for proper table fitting
+ *
+ * Delegates all table logic to ResourceTable — no duplicate MRT setup.
  *
  * Used by RefSelect / RefMultiSelect / RefRevisionSelect / RefRevisionMultiSelect
  * as a "table mode" alternative to the dropdown picker.
@@ -19,24 +20,15 @@ import { useCallback, useEffect, useMemo, useState } from 'react';
 import { ActionIcon, Button, Group, Modal, Stack, Text, Tooltip } from '@mantine/core';
 import { IconArrowsMaximize, IconArrowsMinimize } from '@tabler/icons-react';
 import {
-  MantineReactTable,
   MRT_ShowHideColumnsButton,
   MRT_ToggleDensePaddingButton,
   MRT_ToggleFiltersButton,
   MRT_ToggleGlobalFilterButton,
-  useMantineReactTable,
-  type MRT_PaginationState,
-  type MRT_RowSelectionState,
-  type MRT_SortingState,
 } from 'mantine-react-table';
 import { getResource } from '../../../resources';
 import type { FullResourceRow } from '../../../../types/api';
-import { useResourceList } from '../../../hooks/useResourceList';
-import { buildTableColumns } from '../../table/buildColumns';
-import { AdvancedSearchPanel } from '../../table/AdvancedSearchPanel';
 import type { SearchCondition } from '../../table/types';
-import { EMPTY_ACTIVE_SEARCH, type ActiveSearchState } from '../../table/searchUtils';
-import { buildRequestParams } from '../../table/utils';
+import { ResourceTable } from '../../table/ResourceTable';
 
 // ---------------------------------------------------------------------------
 // Props
@@ -64,6 +56,15 @@ export interface RefTableSelectModalProps {
 }
 
 // ---------------------------------------------------------------------------
+// is_deleted=false condition (reused across renders)
+// ---------------------------------------------------------------------------
+const IS_NOT_DELETED_CONDITION: SearchCondition = {
+  field: 'is_deleted',
+  operator: 'eq',
+  value: false,
+};
+
+// ---------------------------------------------------------------------------
 // Component
 // ---------------------------------------------------------------------------
 
@@ -79,140 +80,73 @@ export function RefTableSelectModal({
 }: RefTableSelectModalProps) {
   const config = getResource(resourceName);
 
-  const [pagination, setPagination] = useState<MRT_PaginationState>({
-    pageIndex: 0,
-    pageSize: 10,
-  });
-  const [sorting, setSorting] = useState<MRT_SortingState>([]);
-  const [globalFilter, setGlobalFilter] = useState('');
-  const [rowSelection, setRowSelection] = useState<MRT_RowSelectionState>({});
   const [isFullScreen, setIsFullScreen] = useState(false);
 
-  // Advanced search state (mirrors ResourceTable pattern)
-  const [activeSearch, setActiveSearch] = useState<ActiveSearchState>(EMPTY_ACTIVE_SEARCH);
+  // Track selected rows from ResourceTable
+  const [selectedRows, setSelectedRows] = useState<FullResourceRow<unknown>[]>([]);
 
-  const handleSearchChange = useCallback((search: ActiveSearchState) => {
-    setActiveSearch(search);
-    setPagination((prev) => ({ ...prev, pageIndex: 0 }));
-  }, []);
+  // Key to force remount ResourceTable when modal re-opens (resets internal state)
+  const [tableKey, setTableKey] = useState(0);
 
-  // Reset selection state when modal opens
+  // Reset state when modal opens
   useEffect(() => {
     if (opened && config) {
-      const initial: MRT_RowSelectionState = {};
-      for (const v of selectedValues) {
-        initial[v] = true;
-      }
-      setRowSelection(initial);
-      setPagination({ pageIndex: 0, pageSize: 10 });
-      setGlobalFilter('');
       setIsFullScreen(false);
-      setActiveSearch(EMPTY_ACTIVE_SEARCH);
+      setSelectedRows([]);
+      setTableKey((k) => k + 1);
     }
-  }, [opened, config, selectedValues]);
+  }, [opened, config]);
 
-  // Build params using shared buildRequestParams (same logic as ResourceTable)
-  const params = useMemo(() => {
-    const p = buildRequestParams({
-      mode: 'server',
-      pagination,
-      activeSearch,
-      sorting,
-      columnFilters: [],
-      alwaysSearchCondition,
-    });
-    // RefTableSelectModal always filters out soft-deleted resources
-    p.is_deleted = false;
-    return p;
-  }, [pagination, activeSearch, sorting, alwaysSearchCondition]);
+  // Merge alwaysSearchCondition with is_deleted=false
+  const mergedAlwaysCondition = useMemo(() => {
+    const base = alwaysSearchCondition ?? [];
+    return [...base, IS_NOT_DELETED_CONDITION];
+  }, [alwaysSearchCondition]);
 
-  const { data, total, loading } = useResourceList(config!, params);
+  // Custom getRowId based on valueField
+  const getRowId = useCallback(
+    (row: FullResourceRow<unknown>) => row?.meta?.[valueField] ?? '',
+    [valueField],
+  );
 
-  // Build columns using the shared helper
-  const tableColumns = useMemo(() => {
-    if (!config) return [];
-    return buildTableColumns(config, {
-      overrides: {
-        schema_version: { hidden: true },
-        is_deleted: { hidden: true },
-        created_by: { hidden: true },
-        updated_by: { hidden: true },
-      },
-    });
-  }, [config]);
+  const handleSelectionChange = useCallback((rows: FullResourceRow<unknown>[]) => {
+    setSelectedRows(rows);
+  }, []);
 
-  // Map data rows to use valueField as the row ID for MRT selection
-  const getRowId = (row: FullResourceRow<unknown>) => {
-    return row?.meta?.[valueField] ?? '';
-  };
-
-  const table = useMantineReactTable({
-    columns: tableColumns,
-    data: data as FullResourceRow<unknown>[],
-    manualPagination: true,
-    rowCount: total,
-    getRowId,
-    // Selection
-    enableRowSelection: true,
-    enableMultiRowSelection: mode === 'multi',
-    // Search & filter
-    enableGlobalFilter: true,
-    enableColumnFilters: true,
-    enableSorting: true,
-    // State
-    state: {
-      isLoading: loading,
-      pagination,
-      sorting,
-      globalFilter,
-      rowSelection,
-    },
-    onPaginationChange: setPagination,
-    onSortingChange: setSorting,
-    onGlobalFilterChange: setGlobalFilter,
-    onRowSelectionChange: setRowSelection,
-    // Disable MRT's built-in fullscreen (its CSS conflicts with Modal)
-    enableFullScreenToggle: false,
-    // Custom toolbar: re-add standard MRT buttons + our own fullscreen toggle
-    renderToolbarInternalActions: ({ table: t }) => (
-      <>
-        <MRT_ToggleGlobalFilterButton table={t} />
-        <MRT_ToggleFiltersButton table={t} />
-        <MRT_ShowHideColumnsButton table={t} />
-        <MRT_ToggleDensePaddingButton table={t} />
-        <Tooltip label={isFullScreen ? '離開全螢幕' : '全螢幕'}>
-          <ActionIcon
-            color="gray"
-            size="lg"
-            variant="subtle"
-            onClick={() => setIsFullScreen((v) => !v)}
-            aria-label="Toggle fullscreen"
-          >
-            {isFullScreen ? <IconArrowsMinimize size={18} /> : <IconArrowsMaximize size={18} />}
-          </ActionIcon>
-        </Tooltip>
-      </>
-    ),
-    // Appearance
-    initialState: { density: 'xs' },
-    mantineTableBodyRowProps: ({ row }) => ({
-      onClick: () => {
-        if (mode === 'single') {
-          setRowSelection({ [row.id]: true });
-        }
-      },
-      style: { cursor: 'pointer' },
-    }),
-  });
-
-  // Derive selected count
-  const selectedCount = Object.keys(rowSelection).filter((k) => rowSelection[k]).length;
+  const selectedCount = selectedRows.length;
 
   const handleConfirm = () => {
-    const selected = Object.keys(rowSelection).filter((k) => rowSelection[k]);
+    const selected = selectedRows.map((r) => getRowId(r)).filter(Boolean);
     onConfirm(selected);
     onClose();
   };
+
+  // MRT options: custom toolbar with fullscreen toggle, disable MRT's built-in fullscreen
+  const mrtOptions = useMemo(
+    () => ({
+      enableFullScreenToggle: false,
+      renderToolbarInternalActions: ({ table: t }: { table: any }) => (
+        <>
+          <MRT_ToggleGlobalFilterButton table={t} />
+          <MRT_ToggleFiltersButton table={t} />
+          <MRT_ShowHideColumnsButton table={t} />
+          <MRT_ToggleDensePaddingButton table={t} />
+          <Tooltip label={isFullScreen ? '離開全螢幕' : '全螢幕'}>
+            <ActionIcon
+              color="gray"
+              size="lg"
+              variant="subtle"
+              onClick={() => setIsFullScreen((v) => !v)}
+              aria-label="Toggle fullscreen"
+            >
+              {isFullScreen ? <IconArrowsMinimize size={18} /> : <IconArrowsMaximize size={18} />}
+            </ActionIcon>
+          </Tooltip>
+        </>
+      ),
+    }),
+    [isFullScreen],
+  );
 
   if (!config) {
     return null;
@@ -260,12 +194,32 @@ export function RefTableSelectModal({
             : undefined
         }
       >
-        {/* 進階搜尋面板 */}
-        <AdvancedSearchPanel config={config} onSearchChange={handleSearchChange} />
-
-        {/* 表格 */}
+        {/* 表格（使用 ResourceTable 含 selection） */}
         <div style={isFullScreen ? { flex: 1, minHeight: 0, overflow: 'auto' } : undefined}>
-          <MantineReactTable table={table} />
+          <ResourceTable
+            key={tableKey}
+            config={config}
+            basePath=""
+            selectionMode={mode}
+            selectedIds={selectedValues}
+            onSelectionChange={handleSelectionChange}
+            getRowId={getRowId}
+            alwaysSearchCondition={mergedAlwaysCondition}
+            wrappedInContainer={false}
+            initPageSize={10}
+            canCreate={false}
+            title={undefined}
+            defaultSort={[]}
+            columns={{
+              overrides: {
+                schema_version: { hidden: true },
+                is_deleted: { hidden: true },
+                created_by: { hidden: true },
+                updated_by: { hidden: true },
+              },
+            }}
+            mrtOptions={mrtOptions}
+          />
         </div>
 
         {/* Footer — 選擇計數 + 確認/取消 */}

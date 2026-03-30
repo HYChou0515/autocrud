@@ -5,6 +5,7 @@
 import type { ResourceConfig, TableConfig } from '../../resources';
 import type { MRT_RowData } from 'mantine-react-table';
 import type { InternalColumnDef, CellRenderProps } from './buildColumns';
+import type { FullResourceRow } from '../../../types/api';
 
 /**
  * 搜尋條件介面
@@ -106,6 +107,23 @@ export interface ResourceTableProps<T extends MRT_RowData = MRT_RowData> extends
   moreColumns?: InternalColumnDef<T>[];
   searchableFields?: SearchableField[]; // 可搜尋的欄位（用於後端 filter 表單）
   disableQB?: boolean; // 是否啟用 QB 語法搜尋（預設 false）
+
+  // ── Row selection props ──
+
+  /** Enable row selection mode.
+   *  - `'single'`: radio-style — only one row can be selected at a time.
+   *  - `'multi'`: checkbox-style — multiple rows can be selected.
+   *  When omitted, row selection is disabled. */
+  selectionMode?: 'single' | 'multi';
+  /** Controlled selected row IDs (external state).
+   *  Each ID is matched against `getRowId()` (defaults to `meta.resource_id`). */
+  selectedIds?: string[];
+  /** Callback fired whenever the set of selected rows changes.
+   *  Receives the full `FullResourceRow<T>[]` objects for all currently‑selected rows. */
+  onSelectionChange?: (selectedRows: FullResourceRow<T>[]) => void;
+  /** Custom function to extract a unique ID from each row.
+   *  Defaults to `(row) => row.meta.resource_id`. */
+  getRowId?: (row: FullResourceRow<T>) => string;
 }
 
 /**
