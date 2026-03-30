@@ -34,8 +34,9 @@ import type { FullResourceRow } from '../../../../types/api';
 import { useResourceList } from '../../../hooks/useResourceList';
 import { buildTableColumns } from '../../table/buildColumns';
 import { AdvancedSearchPanel } from '../../table/AdvancedSearchPanel';
-import type { ActiveSearchState } from '../../table/searchUtils';
-import { sortByToSorts } from '../../table/utils';
+import type { SearchCondition } from '../../table/types';
+import { EMPTY_ACTIVE_SEARCH, type ActiveSearchState } from '../../table/searchUtils';
+import { buildRequestParams } from '../../table/utils';
 
 // ---------------------------------------------------------------------------
 // Props
@@ -56,6 +57,10 @@ export interface RefTableSelectModalProps {
   selectedValues: string[];
   /** Which meta field to use as the row ID */
   valueField: 'resource_id' | 'current_revision_id';
+  /** Search conditions that are always applied to every API request.
+   *  Useful for narrowing the selectable items (e.g. only show items
+   *  with a specific type). */
+  alwaysSearchCondition?: SearchCondition[];
 }
 
 // ---------------------------------------------------------------------------
@@ -70,6 +75,7 @@ export function RefTableSelectModal({
   mode,
   selectedValues,
   valueField,
+  alwaysSearchCondition,
 }: RefTableSelectModalProps) {
   const config = getResource(resourceName);
 
@@ -83,13 +89,7 @@ export function RefTableSelectModal({
   const [isFullScreen, setIsFullScreen] = useState(false);
 
   // Advanced search state (mirrors ResourceTable pattern)
-  const [activeSearch, setActiveSearch] = useState<ActiveSearchState>({
-    mode: 'condition',
-    condition: { meta: {}, data: [] },
-    qb: '',
-    resultLimit: undefined,
-    sortBy: undefined,
-  });
+  const [activeSearch, setActiveSearch] = useState<ActiveSearchState>(EMPTY_ACTIVE_SEARCH);
 
   const handleSearchChange = useCallback((search: ActiveSearchState) => {
     setActiveSearch(search);
@@ -107,59 +107,24 @@ export function RefTableSelectModal({
       setPagination({ pageIndex: 0, pageSize: 10 });
       setGlobalFilter('');
       setIsFullScreen(false);
-      setActiveSearch({
-        mode: 'condition',
-        condition: { meta: {}, data: [] },
-        qb: '',
-        resultLimit: undefined,
-        sortBy: undefined,
-      });
+      setActiveSearch(EMPTY_ACTIVE_SEARCH);
     }
   }, [opened, config, selectedValues]);
 
-  // Build params from pagination + advanced search (same logic as ResourceTable)
+  // Build params using shared buildRequestParams (same logic as ResourceTable)
   const params = useMemo(() => {
-    const baseParams: Record<string, unknown> = {
-      limit: pagination.pageSize,
-      offset: pagination.pageIndex * pagination.pageSize,
-      is_deleted: false,
-    };
-
-    if (activeSearch.mode === 'qb' && activeSearch.qb) {
-      baseParams.qb = activeSearch.qb;
-    } else {
-      const { meta, data } = activeSearch.condition;
-
-      if (activeSearch.resultLimit) {
-        baseParams.limit = activeSearch.resultLimit;
-      }
-
-      if (activeSearch.sortBy && activeSearch.sortBy.length > 0) {
-        const sortsStr = sortByToSorts(activeSearch.sortBy);
-        if (sortsStr) {
-          baseParams.sorts = sortsStr;
-        }
-      }
-
-      if (data.length > 0) {
-        const dataConditions = data.map((condition) => ({
-          field_path: condition.field,
-          operator: condition.operator,
-          value: condition.value,
-        }));
-        baseParams.data_conditions = JSON.stringify(dataConditions);
-      }
-
-      if (meta.created_time_start) baseParams.created_time_start = meta.created_time_start;
-      if (meta.created_time_end) baseParams.created_time_end = meta.created_time_end;
-      if (meta.updated_time_start) baseParams.updated_time_start = meta.updated_time_start;
-      if (meta.updated_time_end) baseParams.updated_time_end = meta.updated_time_end;
-      if (meta.created_by) baseParams.created_bys = [meta.created_by];
-      if (meta.updated_by) baseParams.updated_bys = [meta.updated_by];
-    }
-
-    return baseParams;
-  }, [pagination.pageSize, pagination.pageIndex, activeSearch]);
+    const p = buildRequestParams({
+      mode: 'server',
+      pagination,
+      activeSearch,
+      sorting,
+      columnFilters: [],
+      alwaysSearchCondition,
+    });
+    // RefTableSelectModal always filters out soft-deleted resources
+    p.is_deleted = false;
+    return p;
+  }, [pagination, activeSearch, sorting, alwaysSearchCondition]);
 
   const { data, total, loading } = useResourceList(config!, params);
 

@@ -16,6 +16,7 @@ import {
   mrtFiltersToParams,
   DEFAULT_SORTING,
   buildRequestParams,
+  applyAlwaysSearchConditions,
   splitConditionsByIndex,
   applyClientConditions,
   applyClientSort,
@@ -1080,5 +1081,53 @@ describe('conditionToQB', () => {
       [{ field: 'name', order: 'asc' }],
     );
     expect(result).toBe('QB["name"].contains("test").order_by("name")');
+  });
+});
+
+// ---------------------------------------------------------------------------
+// applyAlwaysSearchConditions
+// ---------------------------------------------------------------------------
+
+describe('applyAlwaysSearchConditions', () => {
+  it('does nothing when conditions is undefined', () => {
+    const params: Record<string, unknown> = { limit: 20 };
+    applyAlwaysSearchConditions(params, undefined);
+    expect(params.data_conditions).toBeUndefined();
+  });
+
+  it('does nothing when conditions is empty array', () => {
+    const params: Record<string, unknown> = { limit: 20 };
+    applyAlwaysSearchConditions(params, []);
+    expect(params.data_conditions).toBeUndefined();
+  });
+
+  it('creates data_conditions when none exist', () => {
+    const params: Record<string, unknown> = { limit: 20 };
+    applyAlwaysSearchConditions(params, [{ field: 'type', operator: 'eq', value: 'weapon' }]);
+    const parsed = JSON.parse(params.data_conditions as string);
+    expect(parsed).toEqual([{ field_path: 'type', operator: 'eq', value: 'weapon' }]);
+  });
+
+  it('merges with existing data_conditions', () => {
+    const params: Record<string, unknown> = {
+      data_conditions: JSON.stringify([{ field_path: 'name', operator: 'eq', value: 'hero' }]),
+    };
+    applyAlwaysSearchConditions(params, [{ field: 'active', operator: 'eq', value: true }]);
+    const parsed = JSON.parse(params.data_conditions as string);
+    expect(parsed).toHaveLength(2);
+    expect(parsed[0]).toEqual({ field_path: 'name', operator: 'eq', value: 'hero' });
+    expect(parsed[1]).toEqual({ field_path: 'active', operator: 'eq', value: true });
+  });
+
+  it('handles multiple always conditions', () => {
+    const params: Record<string, unknown> = {};
+    applyAlwaysSearchConditions(params, [
+      { field: 'type', operator: 'eq', value: 'sword' },
+      { field: 'rarity', operator: 'gte', value: 3 },
+    ]);
+    const parsed = JSON.parse(params.data_conditions as string);
+    expect(parsed).toHaveLength(2);
+    expect(parsed[0]).toEqual({ field_path: 'type', operator: 'eq', value: 'sword' });
+    expect(parsed[1]).toEqual({ field_path: 'rarity', operator: 'gte', value: 3 });
   });
 });

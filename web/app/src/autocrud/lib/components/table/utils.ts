@@ -459,19 +459,37 @@ export function buildRequestParams({
   }
 
   // --- Always-on search conditions (e.g. filter for a specific tag) ---
-  if (alwaysSearchCondition && alwaysSearchCondition.length > 0) {
-    const alwaysConditions = alwaysSearchCondition.map((c) => ({
-      field_path: c.field,
-      operator: c.operator,
-      value: c.value,
-    }));
-    const existing = baseParams.data_conditions
-      ? (JSON.parse(baseParams.data_conditions as string) as unknown[])
-      : [];
-    baseParams.data_conditions = JSON.stringify([...existing, ...alwaysConditions]);
-  }
+  applyAlwaysSearchConditions(baseParams, alwaysSearchCondition);
 
   return baseParams;
+}
+
+// ---------------------------------------------------------------------------
+// Always-on search conditions — shared by ResourceTable & RefTableSelectModal
+// ---------------------------------------------------------------------------
+
+/**
+ * Merge always-on search conditions into the request params.
+ *
+ * Conditions are appended to the existing `data_conditions` array (if any)
+ * so they are **always** sent to the backend on every request.
+ *
+ * This is a pure helper — it mutates `params` in-place for convenience.
+ */
+export function applyAlwaysSearchConditions(
+  params: Record<string, unknown>,
+  conditions?: { field: string; operator: string; value: unknown }[],
+): void {
+  if (!conditions || conditions.length === 0) return;
+  const mapped = conditions.map((c) => ({
+    field_path: c.field,
+    operator: c.operator,
+    value: c.value,
+  }));
+  const existing = params.data_conditions
+    ? (JSON.parse(params.data_conditions as string) as unknown[])
+    : [];
+  params.data_conditions = JSON.stringify([...existing, ...mapped]);
 }
 
 // ---------------------------------------------------------------------------
