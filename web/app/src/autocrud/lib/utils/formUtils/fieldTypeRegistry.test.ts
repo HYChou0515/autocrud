@@ -23,6 +23,7 @@ import {
   binaryHandler,
   unionHandler,
   arrayHandler,
+  fileHandler,
   type FieldTypeHandler,
   type ResourceFieldMinimal,
 } from './fieldTypeRegistry';
@@ -1358,5 +1359,112 @@ describe('Handler dispatch integration', () => {
     expect(handler.toApiValue('', f)).toBe(null);
     // non-empty → as-is
     expect(handler.toApiValue('alice', f)).toBe('alice');
+  });
+});
+
+// ============================================================================
+// File Handler
+// ============================================================================
+describe('fileHandler', () => {
+  describe('defaultVariant', () => {
+    it('returns file variant', () => {
+      expect(fileHandler.defaultVariant(field())).toEqual({ type: 'file' });
+    });
+  });
+
+  describe('emptyValue', () => {
+    it('returns null', () => {
+      expect(fileHandler.emptyValue(field())).toBeNull();
+    });
+  });
+
+  describe('toFormValue', () => {
+    it('returns value as-is', () => {
+      const val = { file_id: 'abc', content_type: 'text/plain' };
+      expect(fileHandler.toFormValue(val, field())).toEqual(val);
+    });
+
+    it('returns null for null', () => {
+      expect(fileHandler.toFormValue(null, field())).toBeNull();
+    });
+
+    it('returns null for undefined', () => {
+      expect(fileHandler.toFormValue(undefined, field())).toBeNull();
+    });
+  });
+
+  describe('toApiValue', () => {
+    it('passes through value', () => {
+      const val = { file_id: 'abc' };
+      expect(fileHandler.toApiValue(val, field())).toBe(val);
+    });
+  });
+
+  describe('fromJsonValue', () => {
+    it('returns value as-is', () => {
+      const val = { file_id: 'abc' };
+      expect(fileHandler.fromJsonValue(val, field())).toEqual(val);
+    });
+
+    it('returns null for null', () => {
+      expect(fileHandler.fromJsonValue(null, field())).toBeNull();
+    });
+
+    it('returns null for undefined', () => {
+      expect(fileHandler.fromJsonValue(undefined, field())).toBeNull();
+    });
+  });
+});
+
+// ============================================================================
+// Union Handler: Dict variant detection
+// ============================================================================
+describe('unionHandler dict variant handling', () => {
+  const dictUnionField = field({
+    type: 'union',
+    name: 'data',
+    unionMeta: {
+      discriminatorField: '__variant',
+      variants: [
+        { tag: 'ObjType', fields: [{ name: 'key1', type: 'string' }] },
+        { tag: 'DictType', isDict: true },
+      ],
+    },
+  });
+
+  it('toFormValue wraps dict-like value as __entries when no obj variant matches', () => {
+    const val = { color: 'red', size: 10 };
+    const result = unionHandler.toFormValue(val, dictUnionField);
+    expect(result.__variant).toBe('DictType');
+    expect(result.__entries).toBeDefined();
+    expect(result.__entries.length).toBe(2);
+    // Each entry should have __key
+    const keys = result.__entries.map((e: any) => e.__key);
+    expect(keys).toContain('color');
+    expect(keys).toContain('size');
+  });
+
+  it('toFormValue wraps dict value with primitive values using __value', () => {
+    const val = { name: 'test' };
+    const result = unionHandler.toFormValue(val, dictUnionField);
+    expect(result.__variant).toBe('DictType');
+    const nameEntry = result.__entries.find((e: any) => e.__key === 'name');
+    expect(nameEntry.__value).toBe('test');
+  });
+
+  it('toFormValue wraps dict value with object values by spreading', () => {
+    const val = { nested: { a: 1, b: 2 } };
+    const result = unionHandler.toFormValue(val, dictUnionField);
+    expect(result.__variant).toBe('DictType');
+    const nestedEntry = result.__entries.find((e: any) => e.__key === 'nested');
+    expect(nestedEntry.a).toBe(1);
+    expect(nestedEntry.b).toBe(2);
+  });
+
+  it('toFormValue prefers obj variant when keys overlap', () => {
+    // key1 matches the ObjType field
+    const val = { key1: 'hello' };
+    const result = unionHandler.toFormValue(val, dictUnionField);
+    expect(result.__variant).toBe('ObjType');
   });
 });

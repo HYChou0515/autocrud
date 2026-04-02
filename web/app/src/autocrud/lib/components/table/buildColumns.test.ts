@@ -210,6 +210,41 @@ describe('buildRawColumns', () => {
     const row = { data: { address: { city: 'Taipei' } }, meta: {} } as any;
     expect(cityCol.accessorFn(row)).toBe('Taipei');
   });
+
+  it('meta column accessorFn returns correct meta values', () => {
+    const config = makeConfig([]);
+    const cols = buildRawColumns(config);
+    const findCol = (id: string) => cols.find((c) => c.id === id)!;
+
+    const row = {
+      data: {},
+      meta: {
+        resource_id: 'res-123',
+        updated_time: '2024-01-01',
+        current_revision_id: 'rev-456',
+        schema_version: 'v2',
+        is_deleted: false,
+        created_time: '2024-01-01',
+      },
+    } as any;
+
+    expect(findCol('resource_id').accessorFn(row)).toBe('res-123');
+    expect(findCol('updated_time').accessorFn(row)).toBe('2024-01-01');
+    expect(findCol('current_revision_id').accessorFn(row)).toBe('rev-456');
+    expect(findCol('schema_version').accessorFn(row)).toBe('v2');
+    expect(findCol('is_deleted').accessorFn(row)).toBe(false);
+    expect(findCol('created_time').accessorFn(row)).toBe('2024-01-01');
+  });
+
+  it('meta column customRender renders ResourceIdCell for resource_id', () => {
+    const config = makeConfig([]);
+    const cols = buildRawColumns(config);
+    const ridCol = cols.find((c) => c.id === 'resource_id')!;
+    const revCol = cols.find((c) => c.id === 'current_revision_id')!;
+
+    expect(ridCol.customRender).toBeDefined();
+    expect(revCol.customRender).toBeDefined();
+  });
 });
 
 // ---------------------------------------------------------------------------
@@ -607,5 +642,133 @@ describe('customRender (CellRenderProps)', () => {
       renderedCellValue: null,
     } as any);
     expect(result).toBe('John Doe');
+  });
+});
+
+describe('renderMetaCell — time variants', () => {
+  it('renders relative-time variant', () => {
+    const result = renderMetaCell('relative-time', '2024-01-01T00:00:00Z');
+    expect(typeof result).toBe('string');
+  });
+
+  it('renders full-time variant', () => {
+    const result = renderMetaCell('full-time', '2024-06-15T12:30:00Z');
+    expect(typeof result).toBe('string');
+  });
+
+  it('renders short-time variant', () => {
+    const result = renderMetaCell('short-time', '2024-01-01T00:00:00Z');
+    expect(typeof result).toBe('string');
+  });
+
+  it('renders date variant', () => {
+    const result = renderMetaCell('date', '2024-01-01T00:00:00Z');
+    expect(typeof result).toBe('string');
+  });
+
+  it('renders json variant with object', () => {
+    const result = renderMetaCell('json', { a: 1 });
+    expect(result).toBe('{"a":1}');
+  });
+
+  it('renders json variant with string', () => {
+    const result = renderMetaCell('json', 'plaintext');
+    expect(result).toBe('plaintext');
+  });
+
+  it('renders array variant with non-array', () => {
+    const result = renderMetaCell('array', 'not-an-array');
+    expect(result).toBe('not-an-array');
+  });
+});
+
+describe('buildTableColumns — Cell callback paths', () => {
+  it('Cell uses renderCellValue for data field columns', () => {
+    const config = makeConfig([makeField({ name: 'hp', label: 'HP', type: 'number' })]);
+    const mrtCols = buildTableColumns(config);
+    const hpCol = mrtCols.find((c) => c.id === 'hp')!;
+    expect(hpCol.Cell).toBeDefined();
+    // Call Cell with a mock cell that returns a value
+    const result = hpCol.Cell!({
+      cell: { getValue: () => 100 },
+      column: {},
+      row: { original: { data: { hp: 100 }, meta: {} } },
+      table: {},
+      renderedCellValue: null,
+    } as any);
+    // renderCellValue returns React element or string
+    expect(result !== undefined).toBe(true);
+  });
+
+  it('Cell uses renderMetaCell for meta columns without customRender', () => {
+    const config = makeConfig([]);
+    const mrtCols = buildTableColumns(config, {
+      overrides: { schema_version: { hidden: false } },
+    });
+    const schemaCol = mrtCols.find((c) => c.id === 'schema_version')!;
+    expect(schemaCol.Cell).toBeDefined();
+    const result = schemaCol.Cell!({
+      cell: { getValue: () => 'v2' },
+      column: {},
+      row: { original: { data: {}, meta: { schema_version: 'v2' } } },
+      table: {},
+      renderedCellValue: null,
+    } as any);
+    expect(result).toBe('v2');
+  });
+
+  it('Cell renders boolean meta variant', () => {
+    const config = makeConfig([]);
+    const mrtCols = buildTableColumns(config, {
+      overrides: { is_deleted: { hidden: false } },
+    });
+    const deletedCol = mrtCols.find((c) => c.id === 'is_deleted')!;
+    const trueResult = deletedCol.Cell!({
+      cell: { getValue: () => true },
+      column: {},
+      row: { original: { data: {}, meta: { is_deleted: true } } },
+      table: {},
+      renderedCellValue: null,
+    } as any);
+    expect(trueResult).toBe('✅');
+  });
+
+  it('Cell renders created_time meta column', () => {
+    const config = makeConfig([]);
+    const mrtCols = buildTableColumns(config);
+    const createdCol = mrtCols.find((c) => c.id === 'created_time')!;
+    const result = createdCol.Cell!({
+      cell: { getValue: () => '2024-01-01T00:00:00Z' },
+      column: {},
+      row: { original: { data: {}, meta: {} } },
+      table: {},
+      renderedCellValue: null,
+    } as any);
+    expect(typeof result).toBe('string');
+  });
+
+  it('accessorFn for meta columns reads meta correctly', () => {
+    const config = makeConfig([]);
+    const raw = buildRawColumns(config);
+    const updatedBy = raw.find((c) => c.id === 'updated_by')!;
+    expect(updatedBy.accessorFn({ data: {}, meta: { updated_by: 'admin' } } as any)).toBe('admin');
+  });
+
+  it('accessorFn for created_by reads meta correctly', () => {
+    const config = makeConfig([]);
+    const raw = buildRawColumns(config);
+    const createdBy = raw.find((c) => c.id === 'created_by')!;
+    expect(createdBy.accessorFn({ data: {}, meta: { created_by: 'system' } } as any)).toBe(
+      'system',
+    );
+  });
+
+  it('current_revision_id has customRender defined', () => {
+    const config = makeConfig([]);
+    const raw = buildRawColumns(config);
+    const revCol = raw.find((c) => c.id === 'current_revision_id')!;
+    expect(revCol.customRender).toBeDefined();
+    // Note: customRender calls ResourceIdCell which uses React hooks,
+    // so we can't invoke it directly outside React context
   });
 });

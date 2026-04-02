@@ -6,7 +6,14 @@
  */
 
 import { describe, it, expect } from 'vitest';
-import { getBaseUrl, getBlobUrl } from './client';
+import {
+  getBaseUrl,
+  getBlobUrl,
+  setApiBasePath,
+  getApiBasePath,
+  getBlobUploadPath,
+  client,
+} from './client';
 
 describe('getBaseUrl', () => {
   it('returns a string', () => {
@@ -43,5 +50,41 @@ describe('getBlobUrl', () => {
     const url = getBlobUrl('test');
     expect(url).not.toContain('localhost');
     expect(url).toBe(`${getBaseUrl()}/blobs/test`);
+  });
+});
+
+describe('setApiBasePath / getApiBasePath', () => {
+  it('setApiBasePath updates the stored path', () => {
+    setApiBasePath('/v1/autocrud');
+    expect(getApiBasePath()).toBe('/v1/autocrud');
+  });
+
+  it('getBlobUrl includes the apiBasePath', () => {
+    setApiBasePath('/v1/autocrud');
+    const url = getBlobUrl('abc');
+    expect(url).toContain('/v1/autocrud/blobs/abc');
+  });
+
+  it('getBlobUploadPath returns correct path', () => {
+    setApiBasePath('/v1/autocrud');
+    expect(getBlobUploadPath()).toBe('/v1/autocrud/blobs/upload');
+  });
+
+  it('getBlobUploadPath with empty base path', () => {
+    setApiBasePath('');
+    expect(getBlobUploadPath()).toBe('/blobs/upload');
+  });
+});
+
+describe('client Axios instance', () => {
+  it('is an Axios instance with standard methods', () => {
+    expect(typeof client.get).toBe('function');
+    expect(typeof client.post).toBe('function');
+    expect(typeof client.put).toBe('function');
+    expect(typeof client.delete).toBe('function');
+  });
+
+  it('has response interceptors configured', () => {
+    expect(client.interceptors.response).toBeDefined();
   });
 });

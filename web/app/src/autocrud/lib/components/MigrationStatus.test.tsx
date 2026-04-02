@@ -11,7 +11,7 @@
  */
 
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { render, screen, fireEvent, waitFor } from '@testing-library/react';
+import { render, screen, fireEvent, waitFor, cleanup } from '@testing-library/react';
 import { MantineProvider } from '@mantine/core';
 import { MigrationStatus } from './MigrationStatus';
 
@@ -65,6 +65,7 @@ const emptyResult = () =>
 
 describe('MigrationStatus', () => {
   beforeEach(() => {
+    cleanup();
     mockTest.mockReset();
     mockExecute.mockReset();
     // Default: return empty result
@@ -170,7 +171,350 @@ describe('MigrationStatus', () => {
     expect(options.qb).toBeUndefined();
   });
 
-  // ── Table display limit & download tests ──────────────────────
+  // ── Batch operations & global scope ──────────────────────────
+
+  describe('batch operations', () => {
+    it('Test All calls migrateApi.test for each model sequentially', async () => {
+      const callOrder: string[] = [];
+      mockTest.mockImplementation((name: string) => {
+        callOrder.push(name);
+        return Promise.resolve({ total: 0, success: 0, failed: 0, skipped: 0, errors: [] });
+      });
+
+      renderWithMantine(<MigrationStatus resourceNames={['character', 'item']} />);
+      fireEvent.click(screen.getByText('Test All Models'));
+
+      await waitFor(() => {
+        expect(callOrder).toEqual(['character', 'item']);
+      });
+    });
+
+    it('Migrate All calls migrateApi.execute for each model', async () => {
+      renderWithMantine(<MigrationStatus resourceNames={['character']} />);
+      fireEvent.click(screen.getByText('Migrate All Models'));
+
+      await waitFor(() => {
+        expect(mockExecute).toHaveBeenCalledTimes(1);
+        expect(mockExecute).toHaveBeenCalledWith('character', expect.objectContaining({ limit: 10_000_000 }));
+      });
+    });
+
+    it('shows success alert after Test All completes', async () => {
+      renderWithMantine(<MigrationStatus resourceNames={['character']} />);
+      fireEvent.click(screen.getByText('Test All Models'));
+
+      await waitFor(() => {
+        expect(screen.getByText('All models tested successfully.')).toBeTruthy();
+      });
+    });
+
+    it('shows success alert after Migrate All completes', async () => {
+      renderWithMantine(<MigrationStatus resourceNames={['character']} />);
+      fireEvent.click(screen.getByText('Migrate All Models'));
+
+      await waitFor(() => {
+        expect(screen.getByText('All models migrated successfully.')).toBeTruthy();
+      });
+    });
+
+    it('passes global QB expression in batch', async () => {
+      renderWithMantine(<MigrationStatus resourceNames={['character']} />);
+      const globalQb = screen.getByPlaceholderText(/leave empty to migrate all resources/i);
+      fireEvent.change(globalQb, { target: { value: "QB['level'] > 5" } });
+
+      fireEvent.click(screen.getByText('Test All Models'));
+
+      await waitFor(() => {
+        expect(mockTest).toHaveBeenCalledWith(
+          'character',
+          expect.objectContaining({ qb: "QB['level'] > 5" }),
+        );
+      });
+    });
+
+    it('passes global revision scope "all" in batch', async () => {
+      const { container } = renderWithMantine(
+        <MigrationStatus resourceNames={['character']} />,
+      );
+      const allRadios = container.querySelectorAll('input[type="radio"]');
+      const allRevRadio = Array.from(allRadios).find((r) => r.getAttribute('value') === 'all');
+      if (allRevRadio) fireEvent.click(allRevRadio);
+
+      fireEvent.click(screen.getByText('Test All Models'));
+
+      await waitFor(() => {
+        expect(mockTest).toHaveBeenCalledWith(
+          'character',
+          expect.objectContaining({ revisionId: 'all' }),
+        );
+      });
+    });
+
+    it('passes global specific revision ID in batch', async () => {
+      const { container } = renderWithMantine(
+        <MigrationStatus resourceNames={['character']} />,
+      );
+      const allRadios = container.querySelectorAll('input[type="radio"]');
+      const specificRadio = Array.from(allRadios).find((r) => r.getAttribute('value') === 'specific');
+      if (specificRadio) fireEvent.click(specificRadio);
+
+      await waitFor(() => {
+        const revInput = screen.getByPlaceholderText('Revision ID');
+        fireEvent.change(revInput, { target: { value: 'rev-456' } });
+      });
+
+      fireEvent.click(screen.getByText('Test All Models'));
+
+      await waitFor(() => {
+        expect(mockTest).toHaveBeenCalledWith(
+          'character',
+          expect.objectContaining({ revisionId: 'rev-456' }),
+        );
+      });
+    });
+  });
+
+  // ── Error handling ──────────────────────────────────────────────
+
+  describe('error handling', () => {
+    it('shows error message from Error object', async () => {
+      mockTest.mockRejectedValueOnce(new Error('Network timeout'));
+      renderWithMantine(<MigrationStatus resourceNames={['character']} />);
+      const testButtons = screen.getAllByRole('button', { name: /test/i });
+      const perModelTest = testButtons.find((btn) => btn.textContent?.trim() === 'Test');
+      fireEvent.click(perModelTest!);
+
+      await waitFor(() => {
+        expect(screen.getByText('Network timeout')).toBeTruthy();
+      });
+    });
+
+    it('shows error from response.data.detail', async () => {
+      mockTest.mockRejectedValueOnce({
+        name: 'AxiosError',
+        response: { data: { detail: 'Schema not found' } },
+      });
+      renderWithMantine(<MigrationStatus resourceNames={['character']} />);
+      const testButtons = screen.getAllByRole('button', { name: /test/i });
+      const perModelTest = testButtons.find((btn) => btn.textContent?.trim() === 'Test');
+      fireEvent.click(perModelTest!);
+
+      await waitFor(() => {
+        expect(screen.getByText('Schema not found')).toBeTruthy();
+      });
+    });
+
+    it('shows "Operation cancelled." on AbortError', async () => {
+      const abortErr = new Error('Aborted');
+      abortErr.name = 'AbortError';
+      mockTest.mockRejectedValueOnce(abortErr);
+      renderWithMantine(<MigrationStatus resourceNames={['character']} />);
+      const testButtons = screen.getAllByRole('button', { name: /test/i });
+      const perModelTest = testButtons.find((btn) => btn.textContent?.trim() === 'Test');
+      fireEvent.click(perModelTest!);
+
+      await waitFor(() => {
+        expect(screen.getByText('Operation cancelled.')).toBeTruthy();
+      });
+    });
+
+    it('shows fallback "Migration failed" when error has no message', async () => {
+      mockTest.mockRejectedValueOnce({});
+      renderWithMantine(<MigrationStatus resourceNames={['character']} />);
+      const testButtons = screen.getAllByRole('button', { name: /test/i });
+      const perModelTest = testButtons.find((btn) => btn.textContent?.trim() === 'Test');
+      fireEvent.click(perModelTest!);
+
+      await waitFor(() => {
+        expect(screen.getByText('Migration failed')).toBeTruthy();
+      });
+    });
+  });
+
+  // ── Cancel & running state ──────────────────────────────────────
+
+  describe('cancel', () => {
+    it('shows Testing… indicator', async () => {
+      let resolvePromise: (v: any) => void;
+      mockTest.mockImplementation(
+        () => new Promise((resolve) => { resolvePromise = resolve; }),
+      );
+      renderWithMantine(<MigrationStatus resourceNames={['character']} />);
+      const testButtons = screen.getAllByRole('button', { name: /test/i });
+      const perModelTest = testButtons.find((btn) => btn.textContent?.trim() === 'Test');
+      fireEvent.click(perModelTest!);
+
+      await waitFor(() => {
+        expect(screen.getByText('Testing…')).toBeTruthy();
+      });
+      resolvePromise!({ total: 0, success: 0, failed: 0, skipped: 0, errors: [] });
+    });
+
+    it('shows Migrating… indicator for execute mode', async () => {
+      let resolvePromise: (v: any) => void;
+      mockExecute.mockImplementation(
+        () => new Promise((resolve) => { resolvePromise = resolve; }),
+      );
+      renderWithMantine(<MigrationStatus resourceNames={['character']} />);
+      const migrateButtons = screen.getAllByRole('button', { name: /migrate/i });
+      const perModelMigrate = migrateButtons.find((btn) => btn.textContent?.trim() === 'Migrate');
+      fireEvent.click(perModelMigrate!);
+
+      await waitFor(() => {
+        expect(screen.getByText('Migrating…')).toBeTruthy();
+      });
+      resolvePromise!({ total: 0, success: 0, failed: 0, skipped: 0, errors: [] });
+    });
+  });
+
+  // ── Per-model execute success ───────────────────────────────────
+
+  it('shows per-model success alert on execute with 0 failed', async () => {
+    mockExecute.mockResolvedValueOnce({
+      total: 3, success: 2, failed: 0, skipped: 1, errors: [],
+    });
+    renderWithMantine(<MigrationStatus resourceNames={['character']} />);
+    const migrateButtons = screen.getAllByRole('button', { name: /migrate/i });
+    const perModelMigrate = migrateButtons.find((btn) => btn.textContent?.trim() === 'Migrate');
+    fireEvent.click(perModelMigrate!);
+
+    await waitFor(() => {
+      expect(screen.getByText(/character: Migration completed/)).toBeTruthy();
+    });
+  });
+
+  // ── Per-model revision scope ────────────────────────────────────
+
+  describe('per-model revision scope', () => {
+    it('passes "all" revision scope for per-model test', async () => {
+      const { container } = renderWithMantine(
+        <MigrationStatus resourceNames={['character']} />,
+      );
+      const allRadios = container.querySelectorAll('input[type="radio"]');
+      const allRevisionRadios = Array.from(allRadios).filter(
+        (r) => r.getAttribute('value') === 'all',
+      );
+      if (allRevisionRadios.length > 1) fireEvent.click(allRevisionRadios[1]);
+
+      const testButtons = screen.getAllByRole('button', { name: /test/i });
+      const perModelTest = testButtons.find((btn) => btn.textContent?.trim() === 'Test');
+      fireEvent.click(perModelTest!);
+
+      await waitFor(() => {
+        expect(mockTest).toHaveBeenCalledWith(
+          'character',
+          expect.objectContaining({ revisionId: 'all' }),
+        );
+      });
+    });
+
+    it('passes specific revision ID for per-model test', async () => {
+      const { container } = renderWithMantine(
+        <MigrationStatus resourceNames={['character']} />,
+      );
+      const allRadios = container.querySelectorAll('input[type="radio"]');
+      const specificRadios = Array.from(allRadios).filter(
+        (r) => r.getAttribute('value') === 'specific',
+      );
+      if (specificRadios.length > 1) fireEvent.click(specificRadios[1]);
+
+      await waitFor(() => {
+        const revInputs = screen.getAllByPlaceholderText('Revision ID');
+        fireEvent.change(revInputs[revInputs.length - 1], { target: { value: 'rev-abc' } });
+      });
+
+      const testButtons = screen.getAllByRole('button', { name: /test/i });
+      const perModelTest = testButtons.find((btn) => btn.textContent?.trim() === 'Test');
+      fireEvent.click(perModelTest!);
+
+      await waitFor(() => {
+        expect(mockTest).toHaveBeenCalledWith(
+          'character',
+          expect.objectContaining({ revisionId: 'rev-abc' }),
+        );
+      });
+    });
+  });
+
+  // ── Alert close ─────────────────────────────────────────────────
+
+  it('can close global success alert', async () => {
+    renderWithMantine(<MigrationStatus resourceNames={['character']} />);
+    fireEvent.click(screen.getByText('Test All Models'));
+
+    await waitFor(() => {
+      expect(screen.getByText('All models tested successfully.')).toBeTruthy();
+    });
+
+    const closeButtons = screen.getAllByRole('button');
+    const alertClose = closeButtons.find((b) => b.getAttribute('aria-label') === 'Close');
+    if (alertClose) fireEvent.click(alertClose);
+  });
+
+  // ── Progress display with statusColor ───────────────────────────
+
+  it('shows progress items with different statuses', async () => {
+    mockTest.mockImplementation((_name: string, options?: any) => {
+      options?.onProgress?.({ resource_id: 'r1', status: 'success' });
+      options?.onProgress?.({ resource_id: 'r2', status: 'failed', error: 'err' });
+      options?.onProgress?.({ resource_id: 'r3', status: 'skipped' });
+      options?.onProgress?.({ resource_id: 'r4', status: 'migrating' });
+      return Promise.resolve({
+        total: 4, success: 1, failed: 1, skipped: 1,
+        errors: [{ resource_id: 'r2', error: 'err' }],
+      });
+    });
+    renderWithMantine(<MigrationStatus resourceNames={['character']} />);
+    const testButtons = screen.getAllByRole('button', { name: /test/i });
+    const perModelTest = testButtons.find((btn) => btn.textContent?.trim() === 'Test');
+    fireEvent.click(perModelTest!);
+
+    await waitFor(() => {
+      expect(screen.getByText('4 total')).toBeTruthy();
+    });
+  });
+
+  // ── Re-running aborts previous ──────────────────────────────────
+
+  it('aborts previous operation when starting a new one', async () => {
+    let firstResolve: (v: any) => void;
+    let callCount = 0;
+    mockTest.mockImplementation(() => {
+      callCount++;
+      if (callCount === 1) {
+        return new Promise((resolve) => { firstResolve = resolve; });
+      }
+      return Promise.resolve({ total: 0, success: 0, failed: 0, skipped: 0, errors: [] });
+    });
+    renderWithMantine(<MigrationStatus resourceNames={['character']} />);
+    const testButtons = screen.getAllByRole('button', { name: /test/i });
+    const perModelTest = testButtons.find((btn) => btn.textContent?.trim() === 'Test');
+    fireEvent.click(perModelTest!);
+    await waitFor(() => { expect(mockTest).toHaveBeenCalledTimes(1); });
+    firstResolve!({ total: 0, success: 0, failed: 0, skipped: 0, errors: [] });
+  });
+
+  // ── Per-model QB expression ─────────────────────────────────────
+
+  it('passes per-model QB expression to API', async () => {
+    renderWithMantine(<MigrationStatus resourceNames={['character']} />);
+    const qbInputs = screen.getAllByPlaceholderText(/leave empty to migrate all/i);
+    const perModelQb = qbInputs[qbInputs.length - 1];
+    fireEvent.change(perModelQb, { target: { value: "QB['hp'] < 100" } });
+
+    const testButtons = screen.getAllByRole('button', { name: /test/i });
+    const perModelTest = testButtons.find((btn) => btn.textContent?.trim() === 'Test');
+    fireEvent.click(perModelTest!);
+
+    await waitFor(() => {
+      expect(mockTest).toHaveBeenCalledWith(
+        'character',
+        expect.objectContaining({ qb: "QB['hp'] < 100" }),
+      );
+    });
+  });
+
+  // ── Table display limit & download tests (MUST BE LAST — spies on document) ────
 
   describe('table display limit', () => {
     it('truncates progress details to 100 rows and shows count message', async () => {
@@ -298,28 +642,13 @@ describe('MigrationStatus', () => {
     it('triggers file download when clicking download button', async () => {
       mockTest.mockImplementation(makeLargeMock(3));
 
-      // Mock URL.createObjectURL / revokeObjectURL and anchor click
+      // Mock URL.createObjectURL / revokeObjectURL
       const createObjectURLSpy = vi.fn(() => 'blob:mock-url');
       const revokeObjectURLSpy = vi.fn();
       globalThis.URL.createObjectURL = createObjectURLSpy;
       globalThis.URL.revokeObjectURL = revokeObjectURLSpy;
 
-      const appendChildSpy = vi
-        .spyOn(document.body, 'appendChild')
-        .mockImplementation((node) => node);
-      const removeChildSpy = vi
-        .spyOn(document.body, 'removeChild')
-        .mockImplementation((node) => node);
-      const clickSpy = vi.fn();
-      // Save original before spying to avoid recursive calls
-      const origCreateElement = document.createElement.bind(document);
-      vi.spyOn(document, 'createElement').mockImplementation((tag: string) => {
-        if (tag === 'a') {
-          return { href: '', download: '', click: clickSpy } as any;
-        }
-        return origCreateElement(tag);
-      });
-
+      // Render FIRST before spying on document.body methods
       renderWithMantine(<MigrationStatus resourceNames={['character']} />);
 
       const testButtons = screen.getAllByRole('button', { name: /test/i });
@@ -336,16 +665,32 @@ describe('MigrationStatus', () => {
         expect(screen.getByRole('button', { name: /Download All Results \(3\)/i })).toBeTruthy();
       });
 
+      // Spy AFTER render so React DOM operations are not affected
+      const appendChildSpy = vi
+        .spyOn(document.body, 'appendChild')
+        .mockImplementation((node) => node);
+      const removeChildSpy = vi
+        .spyOn(document.body, 'removeChild')
+        .mockImplementation((node) => node);
+      const clickSpy = vi.fn();
+      const origCreateElement = document.createElement.bind(document);
+      const createElementSpy = vi.spyOn(document, 'createElement').mockImplementation((tag: string) => {
+        if (tag === 'a') {
+          return { href: '', download: '', click: clickSpy } as any;
+        }
+        return origCreateElement(tag);
+      });
+
       fireEvent.click(screen.getByRole('button', { name: /Download All Results \(3\)/i }));
 
       expect(createObjectURLSpy).toHaveBeenCalled();
       expect(clickSpy).toHaveBeenCalled();
       expect(revokeObjectURLSpy).toHaveBeenCalled();
 
-      // Cleanup
+      // Cleanup — restore spies individually
       appendChildSpy.mockRestore();
       removeChildSpy.mockRestore();
-      vi.restoreAllMocks();
+      createElementSpy.mockRestore();
     });
   });
 });

@@ -94,4 +94,41 @@ describe('JsonEditor', () => {
     fireEvent.change(textarea, { target: { value: '{"new": true}' } });
     expect(handleChange).toHaveBeenCalledWith('{"new": true}');
   });
+
+  it('toggles expand/collapse when ActionIcon is clicked', () => {
+    const { container } = renderWithMantine(
+      <JsonEditor label="Data" value="{}" onChange={() => {}} height={200} />,
+    );
+    const buttons = container.querySelectorAll('button');
+    expect(buttons.length).toBeGreaterThanOrEqual(1);
+    // Click expand
+    fireEvent.click(buttons[0]);
+    // Click collapse
+    fireEvent.click(buttons[0]);
+  });
+
+  it('returns empty string for undefined value', () => {
+    const result = renderWithMantine(
+      <JsonEditor label="Data" value={undefined} onChange={() => {}} />,
+    );
+    const textarea = getMonaco(result);
+    expect(textarea.value).toBe('');
+  });
+
+  it('returns empty string for empty string value', () => {
+    const result = renderWithMantine(
+      <JsonEditor label="Data" value="" onChange={() => {}} />,
+    );
+    const textarea = getMonaco(result);
+    expect(textarea.value).toBe('');
+  });
+
+  it('uses custom height prop', () => {
+    const result = renderWithMantine(
+      <JsonEditor label="Data" value="" onChange={() => {}} height={400} />,
+    );
+    const textarea = getMonaco(result);
+    // Mock passes height as style; value may include px unit
+    expect(textarea.style.height).toMatch(/400/);
+  });
 });
