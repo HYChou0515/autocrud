@@ -17,18 +17,21 @@ import type { UseResourceDetailResult } from '../../hooks/useResourceDetail';
 // Mock return value for useResourceDetail
 let mockDetailResult: UseResourceDetailResult<any>;
 
+// Mutable mock return value for useFieldDepth
+let mockFieldDepthResult = {
+  maxAvailableDepth: 1,
+  depth: 1,
+  setDepth: vi.fn(),
+  visibleFields: [] as ResourceField[],
+  collapsedGroups: [] as any[],
+};
+
 vi.mock('../../hooks/useResourceDetail', () => ({
   useResourceDetail: () => mockDetailResult,
 }));
 
 vi.mock('../../hooks/useFieldDepth', () => ({
-  useFieldDepth: () => ({
-    maxAvailableDepth: 1,
-    depth: 1,
-    setDepth: vi.fn(),
-    visibleFields: [],
-    collapsedGroups: [],
-  }),
+  useFieldDepth: () => mockFieldDepthResult,
 }));
 
 vi.mock('../form/ResourceForm', () => ({
@@ -621,6 +624,376 @@ describe('ResourceDetail — async create job back button', () => {
     const backLink = screen.getByTestId('back-link');
     // Should navigate to parent (character), not to the job list
     expect(backLink.getAttribute('data-to')).toBe('/autocrud-admin/character');
+  });
+});
+
+// ============================================================================
+// ResourceDetail — handleDelete
+// ============================================================================
+
+describe('ResourceDetail — handleDelete', () => {
+  beforeEach(() => {
+    cleanup();
+    Object.keys(mockAsyncCreateJobs).forEach((k) => delete mockAsyncCreateJobs[k]);
+  });
+
+  it('calls deleteResource when user confirms', () => {
+    const detail = makeMockDetail();
+    mockDetailResult = detail;
+    window.confirm = vi.fn(() => true);
+
+    renderDetail(makeConfig());
+    fireEvent.click(screen.getByText('Delete'));
+
+    expect(window.confirm).toHaveBeenCalled();
+    expect(detail.deleteResource).toHaveBeenCalled();
+  });
+
+  it('does NOT call deleteResource when user cancels', () => {
+    const detail = makeMockDetail();
+    mockDetailResult = detail;
+    window.confirm = vi.fn(() => false);
+
+    renderDetail(makeConfig());
+    fireEvent.click(screen.getByText('Delete'));
+
+    expect(detail.deleteResource).not.toHaveBeenCalled();
+  });
+});
+
+// ============================================================================
+// ResourceDetail — handlePermanentlyDelete
+// ============================================================================
+
+describe('ResourceDetail — handlePermanentlyDelete', () => {
+  beforeEach(() => {
+    cleanup();
+    Object.keys(mockAsyncCreateJobs).forEach((k) => delete mockAsyncCreateJobs[k]);
+  });
+
+  function renderDeletedDetail() {
+    const detail = makeMockDetail();
+    detail.resource!.meta.is_deleted = true;
+    detail.permanentlyDelete = vi.fn().mockResolvedValue(undefined);
+    mockDetailResult = detail;
+    const config = makeConfig();
+    render(<ResourceDetail config={config} resourceId="r1" basePath={'/test' as any} />, {
+      wrapper: createWrapper(),
+    });
+    return detail;
+  }
+
+  it('calls permanentlyDelete and navigates when user confirms', async () => {
+    const detail = renderDeletedDetail();
+    window.confirm = vi.fn(() => true);
+
+    fireEvent.click(screen.getByText('Permanently Delete'));
+
+    await waitFor(() => {
+      expect(detail.permanentlyDelete).toHaveBeenCalled();
+    });
+  });
+
+  it('does NOT call permanentlyDelete when user cancels', () => {
+    const detail = renderDeletedDetail();
+    window.confirm = vi.fn(() => false);
+
+    fireEvent.click(screen.getByText('Permanently Delete'));
+    expect(detail.permanentlyDelete).not.toHaveBeenCalled();
+  });
+
+  it('handles permanentlyDelete error gracefully', async () => {
+    const detail = makeMockDetail();
+    detail.resource!.meta.is_deleted = true;
+    detail.permanentlyDelete = vi.fn().mockRejectedValue(new Error('fail'));
+    mockDetailResult = detail;
+    window.confirm = vi.fn(() => true);
+
+    const config = makeConfig();
+    render(<ResourceDetail config={config} resourceId="r1" basePath={'/test' as any} />, {
+      wrapper: createWrapper(),
+    });
+
+    fireEvent.click(screen.getByText('Permanently Delete'));
+
+    await waitFor(() => {
+      expect(detail.permanentlyDelete).toHaveBeenCalled();
+    });
+    // Should not throw — catch block swallows error
+  });
+});
+
+// ============================================================================
+// ResourceDetail — handleRestore
+// ============================================================================
+
+describe('ResourceDetail — handleRestore', () => {
+  beforeEach(() => {
+    cleanup();
+    Object.keys(mockAsyncCreateJobs).forEach((k) => delete mockAsyncCreateJobs[k]);
+  });
+
+  it('calls restore when Restore button is clicked', () => {
+    const detail = makeMockDetail();
+    detail.resource!.meta.is_deleted = true;
+    mockDetailResult = detail;
+
+    renderDetail(makeConfig());
+    fireEvent.click(screen.getByText('Restore'));
+    expect(detail.restore).toHaveBeenCalled();
+  });
+});
+
+// ============================================================================
+// ResourceDetail — handleRevert (historical revision)
+// ============================================================================
+
+describe('ResourceDetail — handleRevert', () => {
+  beforeEach(() => {
+    cleanup();
+    Object.keys(mockAsyncCreateJobs).forEach((k) => delete mockAsyncCreateJobs[k]);
+  });
+
+  it('calls switchRevision when user confirms revert', async () => {
+    const detail = makeMockDetail();
+    detail.switchRevision = vi.fn().mockResolvedValue(undefined);
+    mockDetailResult = detail;
+    window.confirm = vi.fn(() => true);
+
+    const config = makeConfig();
+    render(
+      <ResourceDetail
+        config={config}
+        resourceId="r1"
+        basePath={'/test' as any}
+        initialRevision="rev-old"
+      />,
+      { wrapper: createWrapper() },
+    );
+
+    // Should show "Revert to this revision" button for historical revision
+    const revertBtn = screen.getByText('Revert to this revision');
+    fireEvent.click(revertBtn);
+
+    await waitFor(() => {
+      expect(detail.switchRevision).toHaveBeenCalledWith('rev-old');
+    });
+  });
+
+  it('does NOT call switchRevision when user cancels revert', () => {
+    const detail = makeMockDetail();
+    detail.switchRevision = vi.fn();
+    mockDetailResult = detail;
+    window.confirm = vi.fn(() => false);
+
+    const config = makeConfig();
+    render(
+      <ResourceDetail
+        config={config}
+        resourceId="r1"
+        basePath={'/test' as any}
+        initialRevision="rev-old"
+      />,
+      { wrapper: createWrapper() },
+    );
+
+    fireEvent.click(screen.getByText('Revert to this revision'));
+    expect(detail.switchRevision).not.toHaveBeenCalled();
+  });
+
+  it('handles switchRevision error gracefully', async () => {
+    const detail = makeMockDetail();
+    detail.switchRevision = vi.fn().mockRejectedValue(new Error('fail'));
+    mockDetailResult = detail;
+    window.confirm = vi.fn(() => true);
+
+    const config = makeConfig();
+    render(
+      <ResourceDetail
+        config={config}
+        resourceId="r1"
+        basePath={'/test' as any}
+        initialRevision="rev-old"
+      />,
+      { wrapper: createWrapper() },
+    );
+
+    fireEvent.click(screen.getByText('Revert to this revision'));
+
+    await waitFor(() => {
+      expect(detail.switchRevision).toHaveBeenCalled();
+    });
+  });
+});
+
+// ============================================================================
+// ResourceDetail — handleEdit
+// ============================================================================
+
+describe('ResourceDetail — handleEdit', () => {
+  beforeEach(() => {
+    cleanup();
+    Object.keys(mockAsyncCreateJobs).forEach((k) => delete mockAsyncCreateJobs[k]);
+    vi.mocked(showErrorNotification).mockReset();
+  });
+
+  it('calls update on edit form submission', async () => {
+    const detail = makeMockDetail();
+    detail.update = vi.fn().mockResolvedValue(undefined);
+    mockDetailResult = detail;
+
+    renderDetail(makeConfig());
+
+    // Open edit modal
+    fireEvent.click(screen.getByText('Edit'));
+
+    await waitFor(() => {
+      const submitBtn = screen.getByTestId('edit-submit');
+      fireEvent.click(submitBtn);
+    });
+
+    await waitFor(() => {
+      expect(detail.update).toHaveBeenCalled();
+    });
+  });
+
+  it('shows error notification when update fails', async () => {
+    const detail = makeMockDetail();
+    detail.update = vi.fn().mockRejectedValue(new Error('Update failed'));
+    mockDetailResult = detail;
+
+    renderDetail(makeConfig());
+    fireEvent.click(screen.getByText('Edit'));
+
+    await waitFor(() => {
+      fireEvent.click(screen.getByTestId('edit-submit'));
+    });
+
+    await waitFor(() => {
+      expect(showErrorNotification).toHaveBeenCalled();
+    });
+  });
+
+  it('closes edit modal on cancel', async () => {
+    mockDetailResult = makeMockDetail();
+    renderDetail(makeConfig());
+
+    fireEvent.click(screen.getByText('Edit'));
+
+    await waitFor(() => {
+      const cancelBtn = screen.getByTestId('edit-cancel');
+      fireEvent.click(cancelBtn);
+    });
+
+    // Modal should close — edit form should no longer be visible
+    await waitFor(() => {
+      expect(screen.queryByTestId('edit-form')).toBeNull();
+    });
+  });
+});
+
+// ============================================================================
+// ResourceDetail — field display rendering with visible fields
+// ============================================================================
+
+describe('ResourceDetail — field display rendering', () => {
+  beforeEach(() => {
+    cleanup();
+    Object.keys(mockAsyncCreateJobs).forEach((k) => delete mockAsyncCreateJobs[k]);
+  });
+
+  it('displays field labels from visibleFields', () => {
+    // Override the mutable mock to return some fields
+    mockFieldDepthResult = {
+      maxAvailableDepth: 1,
+      depth: 1,
+      setDepth: vi.fn(),
+      visibleFields: [makeField('name'), makeField('level')],
+      collapsedGroups: [],
+    };
+
+    const detail = makeMockDetail({ name: 'Hero', level: 42 });
+    mockDetailResult = detail;
+
+    const config = makeConfig({
+      fields: [makeField('name'), makeField('level')],
+    });
+    render(<ResourceDetail config={config} resourceId="r1" basePath={'/test' as any} />, {
+      wrapper: createWrapper(),
+    });
+
+    // Field labels should be visible in the table
+    expect(screen.getByText('name')).toBeTruthy();
+    expect(screen.getByText('level')).toBeTruthy();
+
+    // Reset mock
+    mockFieldDepthResult = {
+      maxAvailableDepth: 1,
+      depth: 1,
+      setDepth: vi.fn(),
+      visibleFields: [],
+      collapsedGroups: [],
+    };
+  });
+
+  it('renders loading state', () => {
+    mockDetailResult = {
+      ...makeMockDetail(),
+      loading: true,
+      resource: null,
+    };
+
+    const { container } = renderDetail(makeConfig());
+    expect(container.querySelector('.mantine-Loader-root')).toBeTruthy();
+  });
+
+  it('renders error state', () => {
+    mockDetailResult = {
+      ...makeMockDetail(),
+      error: new Error('Not found'),
+      resource: null,
+    };
+
+    renderDetail(makeConfig());
+    expect(screen.getByText(/Not found/)).toBeTruthy();
+  });
+
+  it('renders error state with default message when error has no message', () => {
+    mockDetailResult = {
+      ...makeMockDetail(),
+      error: null,
+      resource: null,
+    };
+
+    renderDetail(makeConfig());
+    expect(screen.getByText(/Resource not found/)).toBeTruthy();
+  });
+
+  it('shows deleted alert for deleted resource', () => {
+    const detail = makeMockDetail();
+    detail.resource!.meta.is_deleted = true;
+    mockDetailResult = detail;
+
+    renderDetail(makeConfig());
+    expect(screen.getByText('This resource has been deleted.')).toBeTruthy();
+  });
+
+  it('shows job status badge for job resource', () => {
+    mockDetailResult = makeMockDetail({ status: 'completed' });
+    renderDetail(makeConfig(), true);
+    expect(screen.getByText('COMPLETED')).toBeTruthy();
+  });
+
+  it('displays displayNameField value when present', () => {
+    const detail = makeMockDetail({ display_name: 'My Hero' });
+    mockDetailResult = detail;
+
+    const config = makeConfig({ displayNameField: 'display_name' });
+    render(<ResourceDetail config={config} resourceId="r1" basePath={'/test' as any} />, {
+      wrapper: createWrapper(),
+    });
+
+    expect(screen.getByText('My Hero')).toBeTruthy();
   });
 });
 

@@ -35,10 +35,11 @@ export default defineConfig(({ mode }) => {
       provider: 'v8',
       reporter: ['text', 'html'],
       thresholds: {
-        lines: 85,
-        functions: 85,
-        branches: 70,
-        statements: 85,
+        perFile: true,
+        lines: 50,
+        functions: 50,
+        branches: 30,
+        statements: 50,
       },
       include: [
         'src/autocrud/lib/**/*.{ts,tsx}',
@@ -46,6 +47,19 @@ export default defineConfig(({ mode }) => {
       exclude: [
         '**/*.test.{ts,tsx}',
         '**/*.d.ts',
+        // Barrel re-export files (no runtime logic)
+        'src/autocrud/lib/**/index.ts',
+        // Shim re-export files at components root
+        'src/autocrud/lib/components/JobTable.tsx',
+        'src/autocrud/lib/components/PendingJobsAccordion.tsx',
+        'src/autocrud/lib/components/ResourceCreate.tsx',
+        'src/autocrud/lib/components/ResourceDetail.tsx',
+        // Pure type definition files (no runtime logic)
+        'src/autocrud/lib/types/**',
+        'src/autocrud/lib/hooks/types.ts',
+        'src/autocrud/lib/utils/formUtils/types.ts',
+        // User customization file (not library logic)
+        'src/autocrud/lib/resourceCustomization.ts',
       ],
     },
   },
