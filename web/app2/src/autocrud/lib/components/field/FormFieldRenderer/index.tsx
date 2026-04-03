@@ -1,0 +1,342 @@
+/**
+ * FieldRenderer — Renders a single field based on its resolved FieldKind.
+ *
+ * 1. `resolveFieldKind()` determines the kind (pure, testable).
+ * 2. `FIELD_RENDERERS` map dispatches to the appropriate render function.
+ */
+
+import {
+  TextInput,
+  NumberInput,
+  Textarea,
+  Checkbox,
+  Select,
+  Switch,
+  FileInput,
+  TagsInput,
+} from '@mantine/core';
+import { DateTimePicker } from '@mantine/dates';
+import type { UseFormReturnType } from '@mantine/form';
+import type { ResourceField, FieldVariant } from '../../../resources';
+import { RefSelect, RefMultiSelect, RefRevisionSelect, RefRevisionMultiSelect } from './RefSelect';
+import { JsonEditor } from './JsonEditor';
+import { MarkdownEditor } from './MarkdownEditor';
+import { BinaryFieldEditor } from './BinaryFieldEditor';
+import { UnionFieldRenderer } from './UnionFieldRenderer';
+import { ArrayFieldRenderer } from './ArrayFieldRenderer';
+import { resolveFieldKind, type FieldKind } from '../resolveFieldKind';
+import { getDefaultVariant, getByPath, type BinaryFormValue } from '@/autocrud/lib/utils/formUtils';
+
+// ---------------------------------------------------------------------------
+// Shared context passed to every renderer function
+// ---------------------------------------------------------------------------
+
+export interface FieldRenderContext {
+  field: ResourceField;
+  form: UseFormReturnType<any>;
+  effectiveVariant: FieldVariant;
+  simpleUnionTypes: Record<string, string>;
+  setSimpleUnionTypes: React.Dispatch<React.SetStateAction<Record<string, string>>>;
+}
+
+// ---------------------------------------------------------------------------
+// Renderer map — one entry per FieldKind
+// ---------------------------------------------------------------------------
+
+const FIELD_RENDERERS: Record<FieldKind, (ctx: FieldRenderContext) => React.ReactElement | null> = {
+  /* ---- Hidden (const value from tagged struct discriminator) ---- */
+  hidden: () => null,
+
+  /* ---- Complex / delegate ---- */
+
+  itemFields: ({ field, form }) => <ArrayFieldRenderer field={field} form={form} />,
+
+  union: ({ field, form, simpleUnionTypes, setSimpleUnionTypes }) => (
+    <UnionFieldRenderer
+      field={field}
+      unionMeta={field.unionMeta!}
+      form={form}
+      simpleUnionTypes={simpleUnionTypes}
+      setSimpleUnionTypes={setSimpleUnionTypes}
+    />
+  ),
+
+  binary: ({ field, form }) => {
+    const binaryVal = getByPath(form.getValues(), field.name) as unknown as BinaryFormValue | null;
+    return (
+      <BinaryFieldEditor
+        key={field.name}
+        label={field.label}
+        required={field.isRequired && !field.isNullable}
+        value={binaryVal}
+        onChange={(val) => form.setFieldValue(field.name as any, val as any)}
+      />
+    );
+  },
+
+  file: ({ field, form }) => {
+    const fileVariant = field.variant as Extract<FieldVariant, { type: 'file' }> | undefined;
+    return (
+      <FileInput
+        key={field.name}
+        label={field.label}
+        required={field.isRequired && !field.isNullable}
+        placeholder="Choose file…"
+        accept={fileVariant?.accept}
+        {...form.getInputProps(field.name)}
+      />
+    );
+  },
+
+  /* ---- Text-like ---- */
+
+  json: ({ field, form, effectiveVariant }) => {
+    const v = effectiveVariant as Extract<FieldVariant, { type: 'json' }>;
+    const inputProps = form.getInputProps(field.name);
+    return (
+      <JsonEditor
+        key={field.name}
+        label={field.label}
+        required={field.isRequired && !field.isNullable}
+        value={inputProps.value ?? ''}
+        onChange={(val) => form.setFieldValue(field.name as any, val as any)}
+        height={v.height ?? 200}
+        error={inputProps.error as string | undefined}
+      />
+    );
+  },
+
+  markdown: ({ field, form, effectiveVariant }) => {
+    const v = effectiveVariant as Extract<FieldVariant, { type: 'markdown' }>;
+    const inputProps = form.getInputProps(field.name);
+    return (
+      <MarkdownEditor
+        key={field.name}
+        label={field.label}
+        required={field.isRequired && !field.isNullable}
+        value={inputProps.value ?? ''}
+        onChange={(val) => form.setFieldValue(field.name as any, val as any)}
+        height={v.height ?? 300}
+        error={inputProps.error as string | undefined}
+      />
+    );
+  },
+
+  arrayString: ({ field, form }) => (
+    <TagsInput
+      key={field.name}
+      label={field.label}
+      required={field.isRequired && !field.isNullable}
+      placeholder="Type and press Enter"
+      clearable
+      {...form.getInputProps(field.name)}
+    />
+  ),
+
+  tags: ({ field, form }) => (
+    <TagsInput
+      key={field.name}
+      label={field.label}
+      required={field.isRequired && !field.isNullable}
+      placeholder="Type and press Enter"
+      clearable
+      {...form.getInputProps(field.name)}
+    />
+  ),
+
+  textarea: ({ field, form, effectiveVariant }) => {
+    const v = effectiveVariant as Extract<FieldVariant, { type: 'textarea' }>;
+    const inputProps = form.getInputProps(field.name);
+    return (
+      <Textarea
+        key={field.name}
+        label={field.label}
+        required={field.isRequired && !field.isNullable}
+        rows={v.rows || 3}
+        {...inputProps}
+        value={inputProps.value ?? ''}
+      />
+    );
+  },
+
+  /* ---- Select / enum ---- */
+
+  select: ({ field, form, effectiveVariant }) => {
+    const v = effectiveVariant as Extract<FieldVariant, { type: 'select' }>;
+    const inputProps = form.getInputProps(field.name);
+    return (
+      <Select
+        key={field.name}
+        label={field.label}
+        required={field.isRequired && !field.isNullable}
+        data={v.options || []}
+        clearable={field.isNullable}
+        {...inputProps}
+        onChange={(val) => form.setFieldValue(field.name as any, (val ?? null) as any)}
+      />
+    );
+  },
+
+  /* ---- Boolean ---- */
+
+  checkbox: ({ field, form }) => (
+    <Checkbox
+      key={field.name}
+      label={field.label}
+      {...form.getInputProps(field.name, { type: 'checkbox' })}
+    />
+  ),
+
+  switch: ({ field, form }) => (
+    <Switch
+      key={field.name}
+      label={field.label}
+      {...form.getInputProps(field.name, { type: 'checkbox' })}
+    />
+  ),
+
+  /* ---- Date ---- */
+
+  date: ({ field, form }) => (
+    <DateTimePicker
+      key={field.name}
+      label={field.label}
+      required={field.isRequired && !field.isNullable}
+      valueFormat="YYYY-MM-DD HH:mm:ss"
+      clearable
+      {...form.getInputProps(field.name)}
+    />
+  ),
+
+  /* ---- Number ---- */
+
+  numberSlider: ({ field, form, effectiveVariant }) => {
+    const v = effectiveVariant as Extract<FieldVariant, { type: 'slider' }>;
+    const inputProps = form.getInputProps(field.name);
+    return (
+      <NumberInput
+        key={field.name}
+        label={field.label}
+        required={field.isRequired && !field.isNullable}
+        min={v.sliderMin}
+        max={v.sliderMax}
+        step={v.step}
+        {...inputProps}
+        value={inputProps.value ?? ''}
+      />
+    );
+  },
+
+  number: ({ field, form, effectiveVariant }) => {
+    const v = effectiveVariant as Extract<FieldVariant, { type: 'number' }>;
+    const inputProps = form.getInputProps(field.name);
+    return (
+      <NumberInput
+        key={field.name}
+        label={field.label}
+        required={field.isRequired && !field.isNullable}
+        min={v.min}
+        max={v.max}
+        step={v.step}
+        {...inputProps}
+        value={inputProps.value ?? ''}
+      />
+    );
+  },
+
+  /* ---- Ref ---- */
+
+  refResourceId: ({ field, form }) => (
+    <RefSelect
+      key={field.name}
+      label={field.label}
+      required={field.isRequired && !field.isNullable}
+      fieldRef={field.ref!}
+      value={getByPath(form.getValues(), field.name) as string | null}
+      onChange={(val) => form.setFieldValue(field.name as any, val as any)}
+      error={form.errors[field.name as string] as string | undefined}
+      clearable={field.isNullable}
+    />
+  ),
+
+  refResourceIdMulti: ({ field, form }) => (
+    <RefMultiSelect
+      key={field.name}
+      label={field.label}
+      required={field.isRequired && !field.isNullable}
+      fieldRef={field.ref!}
+      value={(getByPath(form.getValues(), field.name) as string[] | undefined) ?? []}
+      onChange={(val) => form.setFieldValue(field.name as any, val as any)}
+      error={form.errors[field.name as string] as string | undefined}
+    />
+  ),
+
+  refRevisionId: ({ field, form }) => (
+    <RefRevisionSelect
+      key={field.name}
+      label={field.label}
+      required={field.isRequired && !field.isNullable}
+      fieldRef={field.ref!}
+      value={getByPath(form.getValues(), field.name) as string | null}
+      onChange={(val) => form.setFieldValue(field.name as any, val as any)}
+      error={form.errors[field.name as string] as string | undefined}
+      clearable={field.isNullable}
+    />
+  ),
+
+  refRevisionIdMulti: ({ field, form }) => (
+    <RefRevisionMultiSelect
+      key={field.name}
+      label={field.label}
+      required={field.isRequired && !field.isNullable}
+      fieldRef={field.ref!}
+      value={(getByPath(form.getValues(), field.name) as string[] | undefined) ?? []}
+      onChange={(val) => form.setFieldValue(field.name as any, val as any)}
+      error={form.errors[field.name as string] as string | undefined}
+    />
+  ),
+
+  /* ---- Default ---- */
+
+  text: ({ field, form }) => {
+    const inputProps = form.getInputProps(field.name);
+    return (
+      <TextInput
+        key={field.name}
+        label={field.label}
+        required={field.isRequired && !field.isNullable}
+        {...inputProps}
+        value={inputProps.value ?? ''}
+      />
+    );
+  },
+};
+
+// ---------------------------------------------------------------------------
+// Public component
+// ---------------------------------------------------------------------------
+
+interface FieldRendererProps {
+  field: ResourceField;
+  form: UseFormReturnType<any>;
+  simpleUnionTypes: Record<string, string>;
+  setSimpleUnionTypes: React.Dispatch<React.SetStateAction<Record<string, string>>>;
+}
+
+export function FieldRenderer({
+  field,
+  form,
+  simpleUnionTypes,
+  setSimpleUnionTypes,
+}: FieldRendererProps) {
+  const kind = resolveFieldKind(field);
+  const effectiveVariant = field.variant || getDefaultVariant(field);
+
+  return FIELD_RENDERERS[kind]({
+    field,
+    form,
+    effectiveVariant,
+    simpleUnionTypes,
+    setSimpleUnionTypes,
+  });
+}
