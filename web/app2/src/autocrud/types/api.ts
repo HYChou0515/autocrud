@@ -1,0 +1,111 @@
+/** Shared AutoCRUD API types - these are the same across all resources */
+
+export interface ResourceMeta {
+  resource_id: string;
+  current_revision_id: string;
+  schema_version: string | null;
+  total_revision_count: number;
+  created_time: string;
+  updated_time: string;
+  created_by: string;
+  updated_by: string;
+  is_deleted: boolean;
+  indexed_data?: Record<string, unknown>;
+}
+
+export interface RevisionInfo {
+  uid: string;
+  resource_id: string;
+  revision_id: string;
+  parent_revision_id: string | null;
+  parent_schema_version: string | null;
+  schema_version: string | null;
+  data_hash: string;
+  status: 'draft' | 'stable';
+  created_time: string;
+  updated_time: string;
+  created_by: string;
+  updated_by: string;
+}
+
+/** Response from async create actions (HTTP 202). */
+export interface JobRedirectInfo {
+  job_resource_name: string;
+  job_resource_id: string;
+  redirect_url: string;
+}
+
+/** Response from background create actions (HTTP 202). */
+export interface BackgroundTaskAccepted {
+  message: string;
+}
+
+export interface FullResource<T> {
+  data: T;
+  meta: ResourceMeta;
+  revision_info: RevisionInfo;
+}
+
+/**
+ * FullResource that also satisfies MRT_RowData (Record<string, any>).
+ * Use this in MRT_ColumnDef / useMantineReactTable generics so TypeScript
+ * does not complain about the `extends MRT_RowData` constraint.
+ */
+export type FullResourceRow<T> = FullResource<T> & Record<string, unknown>;
+
+export interface RevisionListResponse {
+  meta: ResourceMeta;
+  revisions: RevisionInfo[];
+  total: number;
+  has_more: boolean;
+}
+
+export interface RevisionListParams {
+  limit?: number;
+  offset?: number;
+  sort?: 'created_time' | '-created_time';
+  created_time_start?: string;
+  created_time_end?: string;
+  from_revision_id?: string;
+  chain_only?: boolean;
+  include_deleted?: boolean;
+}
+
+export interface SearchParams {
+  qb?: string;
+  is_deleted?: boolean;
+  created_time_start?: string;
+  created_time_end?: string;
+  updated_time_start?: string;
+  updated_time_end?: string;
+  created_bys?: string[];
+  updated_bys?: string[];
+  data_conditions?: string;
+  conditions?: string;
+  sorts?: string;
+  limit?: number;
+  offset?: number;
+  partial?: string[];
+}
+
+/** Blob upload session returned by the upload-session endpoints. */
+export interface BlobUploadSession {
+  upload_id: string;
+  file_id: string;
+  status: 'pending' | 'uploading' | 'uploaded' | 'finalized' | 'aborted';
+  upload_method: 'proxy' | 'single_put';
+  upload_url: string;
+  content_type?: string;
+  size?: number | null;
+  uploaded_size: number;
+  total_parts?: number | null;
+  parts_received?: number[];
+  expires_at?: string | null;
+}
+
+/** Result returned after finalizing an upload session. */
+export interface BlobFinalizeResult {
+  file_id: string;
+  size: number;
+  content_type: string;
+}
