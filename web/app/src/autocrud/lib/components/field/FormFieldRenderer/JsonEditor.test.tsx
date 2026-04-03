@@ -116,9 +116,7 @@ describe('JsonEditor', () => {
   });
 
   it('returns empty string for empty string value', () => {
-    const result = renderWithMantine(
-      <JsonEditor label="Data" value="" onChange={() => {}} />,
-    );
+    const result = renderWithMantine(<JsonEditor label="Data" value="" onChange={() => {}} />);
     const textarea = getMonaco(result);
     expect(textarea.value).toBe('');
   });

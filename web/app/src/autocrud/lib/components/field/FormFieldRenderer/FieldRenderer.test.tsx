@@ -18,25 +18,33 @@ vi.mock('./RefSelect', () => ({
   RefSelect: (props: any) => (
     <div data-testid="ref-select">
       {props.label}
-      <button data-testid="ref-select-change" onClick={() => props.onChange?.('new-id')}>change</button>
+      <button data-testid="ref-select-change" onClick={() => props.onChange?.('new-id')}>
+        change
+      </button>
     </div>
   ),
   RefMultiSelect: (props: any) => (
     <div data-testid="ref-multi-select">
       {props.label}
-      <button data-testid="ref-multi-change" onClick={() => props.onChange?.(['id1', 'id2'])}>change</button>
+      <button data-testid="ref-multi-change" onClick={() => props.onChange?.(['id1', 'id2'])}>
+        change
+      </button>
     </div>
   ),
   RefRevisionSelect: (props: any) => (
     <div data-testid="ref-revision-select">
       {props.label}
-      <button data-testid="ref-rev-change" onClick={() => props.onChange?.('rev-1')}>change</button>
+      <button data-testid="ref-rev-change" onClick={() => props.onChange?.('rev-1')}>
+        change
+      </button>
     </div>
   ),
   RefRevisionMultiSelect: (props: any) => (
     <div data-testid="ref-revision-multi-select">
       {props.label}
-      <button data-testid="ref-rev-multi-change" onClick={() => props.onChange?.(['r1', 'r2'])}>change</button>
+      <button data-testid="ref-rev-multi-change" onClick={() => props.onChange?.(['r1', 'r2'])}>
+        change
+      </button>
     </div>
   ),
 }));
@@ -45,7 +53,9 @@ vi.mock('./JsonEditor', () => ({
   JsonEditor: (props: any) => (
     <div data-testid="json-editor">
       {props.label}
-      <button data-testid="json-editor-change" onClick={() => props.onChange?.('{"new":true}')}>change</button>
+      <button data-testid="json-editor-change" onClick={() => props.onChange?.('{"new":true}')}>
+        change
+      </button>
     </div>
   ),
 }));
@@ -54,7 +64,9 @@ vi.mock('./MarkdownEditor', () => ({
   MarkdownEditor: (props: any) => (
     <div data-testid="markdown-editor">
       {props.label}
-      <button data-testid="md-editor-change" onClick={() => props.onChange?.('# New')}>change</button>
+      <button data-testid="md-editor-change" onClick={() => props.onChange?.('# New')}>
+        change
+      </button>
     </div>
   ),
 }));
@@ -63,7 +75,12 @@ vi.mock('./BinaryFieldEditor', () => ({
   BinaryFieldEditor: (props: any) => (
     <div data-testid="binary-editor">
       {props.label}
-      <button data-testid="binary-change" onClick={() => props.onChange?.({ _mode: 'file', file: null })}>change</button>
+      <button
+        data-testid="binary-change"
+        onClick={() => props.onChange?.({ _mode: 'file', file: null })}
+      >
+        change
+      </button>
     </div>
   ),
 }));
@@ -347,9 +364,7 @@ describe('FieldRenderer', () => {
           label: 'Items',
           type: 'array',
           isArray: true,
-          itemFields: [
-            makeField({ name: 'items.name', label: 'Name' }),
-          ],
+          itemFields: [makeField({ name: 'items.name', label: 'Name' })],
         })}
         initialValues={{ items: [] }}
       />,

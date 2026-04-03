@@ -5,7 +5,11 @@ import { MetadataSection, type MetadataSectionProps } from './MetadataSection';
 
 // Mock child components to simplify testing
 vi.mock('../common/TimeDisplay', () => ({
-  TimeDisplay: ({ time, format }: any) => <span data-testid="time-display">{time} ({format})</span>,
+  TimeDisplay: ({ time, format }: any) => (
+    <span data-testid="time-display">
+      {time} ({format})
+    </span>
+  ),
 }));
 
 vi.mock('../common/ResourceIdCell', () => ({

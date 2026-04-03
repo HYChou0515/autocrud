@@ -137,7 +137,14 @@ describe('applyCustomizations', () => {
   it('applies field variant customization', () => {
     registerResource('user', {
       fields: [
-        { name: 'bio', label: 'Bio', type: 'string', isArray: false, isRequired: false, isNullable: false },
+        {
+          name: 'bio',
+          label: 'Bio',
+          type: 'string',
+          isArray: false,
+          isRequired: false,
+          isNullable: false,
+        },
       ],
     });
     applyCustomizations({
@@ -153,7 +160,14 @@ describe('applyCustomizations', () => {
   it('applies field label customization', () => {
     registerResource('user', {
       fields: [
-        { name: 'bio', label: 'Bio', type: 'string', isArray: false, isRequired: false, isNullable: false },
+        {
+          name: 'bio',
+          label: 'Bio',
+          type: 'string',
+          isArray: false,
+          isRequired: false,
+          isNullable: false,
+        },
       ],
     });
     applyCustomizations({
@@ -165,7 +179,14 @@ describe('applyCustomizations', () => {
   it('applies field ref customization', () => {
     registerResource('post', {
       fields: [
-        { name: 'author_id', label: 'Author', type: 'string', isArray: false, isRequired: false, isNullable: false },
+        {
+          name: 'author_id',
+          label: 'Author',
+          type: 'string',
+          isArray: false,
+          isRequired: false,
+          isNullable: false,
+        },
       ],
     });
     applyCustomizations({

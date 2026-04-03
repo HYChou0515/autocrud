@@ -163,11 +163,7 @@ describe('JobArtifactSection', () => {
   it('renders when artifact exists but groups are empty', () => {
     render(
       <MantineProvider>
-        <JobArtifactSection
-          data={{ artifact: { value: 42 } }}
-          groups={[]}
-          collapsedGroups={[]}
-        />
+        <JobArtifactSection data={{ artifact: { value: 42 } }} groups={[]} collapsedGroups={[]} />
       </MantineProvider>,
     );
     expect(screen.getByText('Artifact')).toBeDefined();

@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeEach } from 'vitest';
-import { render, screen, cleanup } from '@testing-library/react';
+import { render, cleanup } from '@testing-library/react';
 import { MantineProvider } from '@mantine/core';
 import { JobStatusSection, JOB_STATUS_COLORS, JOB_STATUS_FIELDS } from './JobStatusSection';
 
@@ -60,9 +60,7 @@ describe('JobStatusSection', () => {
   });
 
   it('renders retries without max_retries', () => {
-    const { container } = wrap(
-      <JobStatusSection data={{ status: 'processing', retries: 3 }} />,
-    );
+    const { container } = wrap(<JobStatusSection data={{ status: 'processing', retries: 3 }} />);
     expect(container.textContent).toContain('Retries');
     expect(container.textContent).toContain('3');
   });
@@ -80,7 +78,9 @@ describe('JobStatusSection', () => {
 
   it('renders last heartbeat timestamp', () => {
     const { container } = wrap(
-      <JobStatusSection data={{ status: 'processing', last_heartbeat_at: '2024-01-15T10:30:00Z' }} />,
+      <JobStatusSection
+        data={{ status: 'processing', last_heartbeat_at: '2024-01-15T10:30:00Z' }}
+      />,
     );
     expect(container.textContent).toContain('2024-01-15T10:30:00Z');
   });

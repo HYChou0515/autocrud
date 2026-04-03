@@ -195,7 +195,10 @@ describe('MigrationStatus', () => {
 
       await waitFor(() => {
         expect(mockExecute).toHaveBeenCalledTimes(1);
-        expect(mockExecute).toHaveBeenCalledWith('character', expect.objectContaining({ limit: 10_000_000 }));
+        expect(mockExecute).toHaveBeenCalledWith(
+          'character',
+          expect.objectContaining({ limit: 10_000_000 }),
+        );
       });
     });
 
@@ -233,9 +236,7 @@ describe('MigrationStatus', () => {
     });
 
     it('passes global revision scope "all" in batch', async () => {
-      const { container } = renderWithMantine(
-        <MigrationStatus resourceNames={['character']} />,
-      );
+      const { container } = renderWithMantine(<MigrationStatus resourceNames={['character']} />);
       const allRadios = container.querySelectorAll('input[type="radio"]');
       const allRevRadio = Array.from(allRadios).find((r) => r.getAttribute('value') === 'all');
       if (allRevRadio) fireEvent.click(allRevRadio);
@@ -251,11 +252,11 @@ describe('MigrationStatus', () => {
     });
 
     it('passes global specific revision ID in batch', async () => {
-      const { container } = renderWithMantine(
-        <MigrationStatus resourceNames={['character']} />,
-      );
+      const { container } = renderWithMantine(<MigrationStatus resourceNames={['character']} />);
       const allRadios = container.querySelectorAll('input[type="radio"]');
-      const specificRadio = Array.from(allRadios).find((r) => r.getAttribute('value') === 'specific');
+      const specificRadio = Array.from(allRadios).find(
+        (r) => r.getAttribute('value') === 'specific',
+      );
       if (specificRadio) fireEvent.click(specificRadio);
 
       await waitFor(() => {
@@ -337,7 +338,10 @@ describe('MigrationStatus', () => {
     it('shows Testing… indicator', async () => {
       let resolvePromise: (v: any) => void;
       mockTest.mockImplementation(
-        () => new Promise((resolve) => { resolvePromise = resolve; }),
+        () =>
+          new Promise((resolve) => {
+            resolvePromise = resolve;
+          }),
       );
       renderWithMantine(<MigrationStatus resourceNames={['character']} />);
       const testButtons = screen.getAllByRole('button', { name: /test/i });
@@ -353,7 +357,10 @@ describe('MigrationStatus', () => {
     it('shows Migrating… indicator for execute mode', async () => {
       let resolvePromise: (v: any) => void;
       mockExecute.mockImplementation(
-        () => new Promise((resolve) => { resolvePromise = resolve; }),
+        () =>
+          new Promise((resolve) => {
+            resolvePromise = resolve;
+          }),
       );
       renderWithMantine(<MigrationStatus resourceNames={['character']} />);
       const migrateButtons = screen.getAllByRole('button', { name: /migrate/i });
@@ -371,7 +378,11 @@ describe('MigrationStatus', () => {
 
   it('shows per-model success alert on execute with 0 failed', async () => {
     mockExecute.mockResolvedValueOnce({
-      total: 3, success: 2, failed: 0, skipped: 1, errors: [],
+      total: 3,
+      success: 2,
+      failed: 0,
+      skipped: 1,
+      errors: [],
     });
     renderWithMantine(<MigrationStatus resourceNames={['character']} />);
     const migrateButtons = screen.getAllByRole('button', { name: /migrate/i });
@@ -387,9 +398,7 @@ describe('MigrationStatus', () => {
 
   describe('per-model revision scope', () => {
     it('passes "all" revision scope for per-model test', async () => {
-      const { container } = renderWithMantine(
-        <MigrationStatus resourceNames={['character']} />,
-      );
+      const { container } = renderWithMantine(<MigrationStatus resourceNames={['character']} />);
       const allRadios = container.querySelectorAll('input[type="radio"]');
       const allRevisionRadios = Array.from(allRadios).filter(
         (r) => r.getAttribute('value') === 'all',
@@ -409,9 +418,7 @@ describe('MigrationStatus', () => {
     });
 
     it('passes specific revision ID for per-model test', async () => {
-      const { container } = renderWithMantine(
-        <MigrationStatus resourceNames={['character']} />,
-      );
+      const { container } = renderWithMantine(<MigrationStatus resourceNames={['character']} />);
       const allRadios = container.querySelectorAll('input[type="radio"]');
       const specificRadios = Array.from(allRadios).filter(
         (r) => r.getAttribute('value') === 'specific',
@@ -460,7 +467,10 @@ describe('MigrationStatus', () => {
       options?.onProgress?.({ resource_id: 'r3', status: 'skipped' });
       options?.onProgress?.({ resource_id: 'r4', status: 'migrating' });
       return Promise.resolve({
-        total: 4, success: 1, failed: 1, skipped: 1,
+        total: 4,
+        success: 1,
+        failed: 1,
+        skipped: 1,
         errors: [{ resource_id: 'r2', error: 'err' }],
       });
     });
@@ -482,7 +492,9 @@ describe('MigrationStatus', () => {
     mockTest.mockImplementation(() => {
       callCount++;
       if (callCount === 1) {
-        return new Promise((resolve) => { firstResolve = resolve; });
+        return new Promise((resolve) => {
+          firstResolve = resolve;
+        });
       }
       return Promise.resolve({ total: 0, success: 0, failed: 0, skipped: 0, errors: [] });
     });
@@ -490,7 +502,9 @@ describe('MigrationStatus', () => {
     const testButtons = screen.getAllByRole('button', { name: /test/i });
     const perModelTest = testButtons.find((btn) => btn.textContent?.trim() === 'Test');
     fireEvent.click(perModelTest!);
-    await waitFor(() => { expect(mockTest).toHaveBeenCalledTimes(1); });
+    await waitFor(() => {
+      expect(mockTest).toHaveBeenCalledTimes(1);
+    });
     firstResolve!({ total: 0, success: 0, failed: 0, skipped: 0, errors: [] });
   });
 
@@ -674,12 +688,14 @@ describe('MigrationStatus', () => {
         .mockImplementation((node) => node);
       const clickSpy = vi.fn();
       const origCreateElement = document.createElement.bind(document);
-      const createElementSpy = vi.spyOn(document, 'createElement').mockImplementation((tag: string) => {
-        if (tag === 'a') {
-          return { href: '', download: '', click: clickSpy } as any;
-        }
-        return origCreateElement(tag);
-      });
+      const createElementSpy = vi
+        .spyOn(document, 'createElement')
+        .mockImplementation((tag: string) => {
+          if (tag === 'a') {
+            return { href: '', download: '', click: clickSpy } as any;
+          }
+          return origCreateElement(tag);
+        });
 
       fireEvent.click(screen.getByRole('button', { name: /Download All Results \(3\)/i }));
 

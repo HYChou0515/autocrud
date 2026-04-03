@@ -6,13 +6,11 @@ import { getRevisionViewMode } from '../../utils/customization';
 
 // ── Mock child components ──
 vi.mock('../common/TimeDisplay', () => ({
-  TimeDisplay: ({ time, format }: any) => <span data-testid="time-display">{time}</span>,
+  TimeDisplay: ({ time, format: _format }: any) => <span data-testid="time-display">{time}</span>,
 }));
 
 vi.mock('../common/RevisionIdCell', () => ({
-  RevisionIdCell: ({ revisionId }: any) => (
-    <span data-testid="revision-id-cell">{revisionId}</span>
-  ),
+  RevisionIdCell: ({ revisionId }: any) => <span data-testid="revision-id-cell">{revisionId}</span>,
 }));
 
 vi.mock('./RevisionTreeTimeline', () => ({
@@ -88,11 +86,7 @@ function renderComponent(props: Partial<React.ComponentProps<typeof RevisionHist
   const config = props.config || makeConfig();
   return render(
     <MantineProvider>
-      <RevisionHistorySection
-        config={config as any}
-        resourceId="res-1"
-        {...props}
-      />
+      <RevisionHistorySection config={config as any} resourceId="res-1" {...props} />
     </MantineProvider>,
   );
 }

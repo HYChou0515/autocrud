@@ -22,8 +22,19 @@ const defaultHookReturn = {
   searchMode: 'condition' as const,
   advancedOpen: false,
   setAdvancedOpen: mockSetAdvancedOpen,
-  activeSearch: { mode: 'condition' as const, condition: { meta: {}, data: [] }, qb: '', resultLimit: undefined, sortBy: undefined },
-  editingState: { condition: { meta: {}, data: [] }, qb: '', resultLimit: undefined, sortBy: undefined as { field: string; order: 'asc' | 'desc' }[] | undefined },
+  activeSearch: {
+    mode: 'condition' as const,
+    condition: { meta: {}, data: [] },
+    qb: '',
+    resultLimit: undefined,
+    sortBy: undefined,
+  },
+  editingState: {
+    condition: { meta: {}, data: [] },
+    qb: '',
+    resultLimit: undefined,
+    sortBy: undefined as { field: string; order: 'asc' | 'desc' }[] | undefined,
+  },
   handleMetaConditionChange: mockHandleMetaConditionChange,
   handleDataConditionChange: mockHandleDataConditionChange,
   handleQBTextChange: mockHandleQBTextChange,
@@ -50,11 +61,11 @@ vi.mock('../../hooks/useAdvancedSearch', () => ({
 }));
 
 vi.mock('./SearchForm', () => ({
-  SearchForm: (props: any) => <div data-testid="search-form" />,
+  SearchForm: (_props: any) => <div data-testid="search-form" />,
 }));
 
 vi.mock('./MetaSearchForm', () => ({
-  MetaSearchForm: (props: any) => <div data-testid="meta-search-form" />,
+  MetaSearchForm: (_props: any) => <div data-testid="meta-search-form" />,
 }));
 
 beforeEach(() => {
@@ -73,11 +84,7 @@ const mockConfig = {
 function renderComponent(props: Partial<React.ComponentProps<typeof AdvancedSearchPanel>> = {}) {
   return render(
     <MantineProvider>
-      <AdvancedSearchPanel
-        config={mockConfig as any}
-        onSearchChange={vi.fn()}
-        {...props}
-      />
+      <AdvancedSearchPanel config={mockConfig as any} onSearchChange={vi.fn()} {...props} />
     </MantineProvider>,
   );
 }

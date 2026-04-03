@@ -12,7 +12,11 @@ import { MarkdownEditor } from './MarkdownEditor';
 // Mock Monaco Editor
 vi.mock('@monaco-editor/react', () => ({
   default: ({ value, onChange }: any) => (
-    <textarea data-testid="monaco-editor" value={value} onChange={(e: any) => onChange(e.target.value)} />
+    <textarea
+      data-testid="monaco-editor"
+      value={value}
+      onChange={(e: any) => onChange(e.target.value)}
+    />
   ),
 }));
 
@@ -24,9 +28,7 @@ const wrap = (ui: React.ReactElement) => render(<MantineProvider>{ui}</MantinePr
 
 describe('MarkdownEditor', () => {
   it('renders label', () => {
-    wrap(
-      <MarkdownEditor label="Content" value="" onChange={vi.fn()} />,
-    );
+    wrap(<MarkdownEditor label="Content" value="" onChange={vi.fn()} />);
     expect(screen.getByText('Content')).toBeDefined();
   });
 
@@ -38,9 +40,7 @@ describe('MarkdownEditor', () => {
   });
 
   it('renders in edit mode by default', () => {
-    wrap(
-      <MarkdownEditor label="Test" value="hello" onChange={vi.fn()} />,
-    );
+    wrap(<MarkdownEditor label="Test" value="hello" onChange={vi.fn()} />);
     expect(screen.getByTestId('monaco-editor')).toBeDefined();
   });
 
@@ -60,9 +60,7 @@ describe('MarkdownEditor', () => {
   });
 
   it('shows "Nothing to preview" when value is empty in preview mode', () => {
-    const { container } = wrap(
-      <MarkdownEditor label="Test" value="" onChange={vi.fn()} />,
-    );
+    const { container } = wrap(<MarkdownEditor label="Test" value="" onChange={vi.fn()} />);
     const previewLabel = Array.from(container.querySelectorAll('label')).find(
       (l) => l.textContent === 'Preview',
     );
@@ -73,41 +71,31 @@ describe('MarkdownEditor', () => {
   });
 
   it('displays error message', () => {
-    wrap(
-      <MarkdownEditor label="Test" value="" onChange={vi.fn()} error="Required field" />,
-    );
+    wrap(<MarkdownEditor label="Test" value="" onChange={vi.fn()} error="Required field" />);
     expect(screen.getByText('Required field')).toBeDefined();
   });
 
   it('does not display error when none provided', () => {
-    const { container } = wrap(
-      <MarkdownEditor label="Test" value="" onChange={vi.fn()} />,
-    );
+    const { container } = wrap(<MarkdownEditor label="Test" value="" onChange={vi.fn()} />);
     expect(container.textContent).not.toContain('Required field');
   });
 
   it('calls onChange when editor value changes', () => {
     const onChange = vi.fn();
-    wrap(
-      <MarkdownEditor label="Test" value="" onChange={onChange} />,
-    );
+    wrap(<MarkdownEditor label="Test" value="" onChange={onChange} />);
     const editor = screen.getByTestId('monaco-editor');
     fireEvent.change(editor, { target: { value: 'new content' } });
     expect(onChange).toHaveBeenCalledWith('new content');
   });
 
   it('uses custom height', () => {
-    wrap(
-      <MarkdownEditor label="Test" value="" onChange={vi.fn()} height={500} />,
-    );
+    wrap(<MarkdownEditor label="Test" value="" onChange={vi.fn()} height={500} />);
     // Monaco editor renders with the height prop
     expect(screen.getByTestId('monaco-editor')).toBeDefined();
   });
 
   it('renders Edit / Preview segment control', () => {
-    const { container } = wrap(
-      <MarkdownEditor label="Test" value="" onChange={vi.fn()} />,
-    );
+    const { container } = wrap(<MarkdownEditor label="Test" value="" onChange={vi.fn()} />);
     expect(container.textContent).toContain('Edit');
     expect(container.textContent).toContain('Preview');
   });

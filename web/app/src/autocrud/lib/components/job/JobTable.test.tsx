@@ -5,7 +5,7 @@ import { JobTable } from './JobTable';
 
 // ── Mock ResourceTable ──
 vi.mock('../table', () => ({
-  ResourceTable: ({ config, basePath, columns }: any) => (
+  ResourceTable: ({ config: _config, basePath, columns }: any) => (
     <div data-testid="resource-table" data-base-path={basePath}>
       <span data-testid="columns">{JSON.stringify(columns)}</span>
     </div>

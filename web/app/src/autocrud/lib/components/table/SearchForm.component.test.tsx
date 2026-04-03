@@ -50,17 +50,15 @@ describe('SearchForm rendering', () => {
     const onSubmit = vi.fn();
     const { container } = wrap(<SearchForm fields={fields} onSubmit={onSubmit} hideButtons />);
     const buttons = container.querySelectorAll('button');
-    const searchBtn = Array.from(buttons).find(
-      (b) => b.textContent?.includes('搜尋'),
-    );
+    const searchBtn = Array.from(buttons).find((b) => b.textContent?.includes('搜尋'));
     expect(searchBtn).toBeUndefined();
   });
 
   it('adds a condition row on click', () => {
     const onSubmit = vi.fn();
     const { container } = wrap(<SearchForm fields={fields} onSubmit={onSubmit} />);
-    const addBtn = Array.from(container.querySelectorAll('button')).find(
-      (b) => b.textContent?.includes('新增條件'),
+    const addBtn = Array.from(container.querySelectorAll('button')).find((b) =>
+      b.textContent?.includes('新增條件'),
     );
     expect(addBtn).toBeDefined();
     fireEvent.click(addBtn!);
@@ -72,8 +70,8 @@ describe('SearchForm rendering', () => {
     const onSubmit = vi.fn();
     const { container } = wrap(<SearchForm fields={fields} onSubmit={onSubmit} />);
     // Add a condition
-    const addBtn = Array.from(container.querySelectorAll('button')).find(
-      (b) => b.textContent?.includes('新增條件'),
+    const addBtn = Array.from(container.querySelectorAll('button')).find((b) =>
+      b.textContent?.includes('新增條件'),
     );
     fireEvent.click(addBtn!);
 
@@ -110,8 +108,8 @@ describe('SearchForm rendering', () => {
         initialConditions={[{ field: 'name', operator: 'eq', value: 'test' }]}
       />,
     );
-    const searchBtn = Array.from(container.querySelectorAll('button')).find(
-      (b) => b.textContent?.includes('搜尋'),
+    const searchBtn = Array.from(container.querySelectorAll('button')).find((b) =>
+      b.textContent?.includes('搜尋'),
     );
     if (searchBtn) {
       fireEvent.click(searchBtn);
@@ -125,8 +123,8 @@ describe('SearchForm rendering', () => {
     const { container } = wrap(
       <SearchForm fields={fields} onSubmit={onSubmit} onChange={onChange} />,
     );
-    const addBtn = Array.from(container.querySelectorAll('button')).find(
-      (b) => b.textContent?.includes('新增條件'),
+    const addBtn = Array.from(container.querySelectorAll('button')).find((b) =>
+      b.textContent?.includes('新增條件'),
     );
     fireEvent.click(addBtn!);
     // onChange should be called via useEffect
@@ -143,8 +141,8 @@ describe('SearchForm rendering', () => {
         initialConditions={[{ field: 'name', operator: 'eq', value: '' }]}
       />,
     );
-    const clearBtn = Array.from(container.querySelectorAll('button')).find(
-      (b) => b.textContent?.includes('清除'),
+    const clearBtn = Array.from(container.querySelectorAll('button')).find((b) =>
+      b.textContent?.includes('清除'),
     );
     if (clearBtn) {
       fireEvent.click(clearBtn);

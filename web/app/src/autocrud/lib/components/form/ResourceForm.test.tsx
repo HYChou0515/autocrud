@@ -419,7 +419,7 @@ describe('ResourceForm JSON mode rendering', () => {
       jsonText: '{}',
     });
 
-    const { getByText } = renderForm({ onCancel });
+    renderForm({ onCancel });
     // Find the Cancel button (may appear alongside submit)
     const buttons = document.querySelectorAll('button');
     const cancelBtn = Array.from(buttons).find((b) => b.textContent === 'Cancel');

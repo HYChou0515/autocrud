@@ -39,10 +39,7 @@ beforeEach(() => {
 function renderComponent(parentResourceName = 'character', resourceId = 'res-1') {
   return render(
     <MantineProvider>
-      <PendingUpdateJobsAccordion
-        parentResourceName={parentResourceName}
-        resourceId={resourceId}
-      />
+      <PendingUpdateJobsAccordion parentResourceName={parentResourceName} resourceId={resourceId} />
     </MantineProvider>,
   );
 }

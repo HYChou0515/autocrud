@@ -7,11 +7,7 @@
 
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { renderHook, act, cleanup } from '@testing-library/react';
-import {
-  useResourceForm,
-  type UseResourceFormOptions,
-  type BlobUploadState,
-} from './useResourceForm';
+import { useResourceForm } from './useResourceForm';
 
 import {
   computeVisibleFieldsAndGroups,
@@ -473,9 +469,7 @@ describe('useResourceForm — internal helpers', () => {
 
     await act(async () => {
       await result.current.handleSubmit({
-        items: [
-          { name: 'item1', image: { _mode: 'existing', file_id: 'f1' } },
-        ],
+        items: [{ name: 'item1', image: { _mode: 'existing', file_id: 'f1' } }],
       } as any);
     });
 

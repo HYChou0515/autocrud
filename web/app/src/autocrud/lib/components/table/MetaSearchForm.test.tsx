@@ -12,13 +12,13 @@ import { MantineProvider } from '@mantine/core';
 // Mock DateTimePicker to a simple input that triggers onChange with a Date string
 vi.mock('@mantine/dates', () => ({
   DatesProvider: ({ children }: any) => children,
-  DateTimePicker: ({ label, value, onChange, ...rest }: any) => (
+  DateTimePicker: ({ label, value, onChange, ..._rest }: any) => (
     <div>
       <label>{label}</label>
       <input
         data-testid={`dtp-${label}`}
         type="text"
-        value={value ? value.toISOString?.() ?? String(value) : ''}
+        value={value ? (value.toISOString?.() ?? String(value)) : ''}
         onChange={(e: any) => {
           const d = e.target.value ? new Date(e.target.value) : null;
           onChange?.(d);
@@ -84,10 +84,7 @@ describe('MetaSearchForm', () => {
   it('calls onSubmit when search is clicked after input change', () => {
     const onSubmit = vi.fn();
     const { container } = wrap(
-      <MetaSearchForm
-        onSubmit={onSubmit}
-        initialValues={{ created_by: 'admin' }}
-      />,
+      <MetaSearchForm onSubmit={onSubmit} initialValues={{ created_by: 'admin' }} />,
     );
     // With initial values set, the form should have active content
     const searchBtn = Array.from(container.querySelectorAll('button')).find((b) =>

@@ -16,7 +16,12 @@ import { MantineProvider } from '@mantine/core';
 // Mock router
 vi.mock('@tanstack/react-router', () => ({
   Link: ({ children, to, params, search, ...rest }: any) => (
-    <a href={to} data-params={JSON.stringify(params)} data-search={JSON.stringify(search)} {...rest}>
+    <a
+      href={to}
+      data-params={JSON.stringify(params)}
+      data-search={JSON.stringify(search)}
+      {...rest}
+    >
       {children}
     </a>
   ),
@@ -262,17 +267,21 @@ describe('RefRevisionLinkList', () => {
 
   it('shows expand when exceeding maxVisible', () => {
     const values = ['a:1', 'b:2', 'c:3', 'd:4'];
-    const { container } = wrap(<RefRevisionLinkList values={values} fieldRef={revRef} maxVisible={2} />);
+    const { container } = wrap(
+      <RefRevisionLinkList values={values} fieldRef={revRef} maxVisible={2} />,
+    );
     expect(container.textContent).toContain('+2 more...');
   });
 
   it('expands and collapses', () => {
     const values = ['a:1', 'b:2', 'c:3', 'd:4'];
-    const { container } = wrap(<RefRevisionLinkList values={values} fieldRef={revRef} maxVisible={2} />);
-    
+    const { container } = wrap(
+      <RefRevisionLinkList values={values} fieldRef={revRef} maxVisible={2} />,
+    );
+
     // Find "+2 more..." text and click it
     const moreText = Array.from(container.querySelectorAll('*')).find(
-      el => el.textContent?.trim() === '+2 more...'
+      (el) => el.textContent?.trim() === '+2 more...',
     ) as HTMLElement;
     expect(moreText).toBeDefined();
     fireEvent.click(moreText);
@@ -280,7 +289,7 @@ describe('RefRevisionLinkList', () => {
 
     // Collapse
     const collapseText = Array.from(container.querySelectorAll('*')).find(
-      el => el.textContent?.trim() === '收起'
+      (el) => el.textContent?.trim() === '收起',
     ) as HTMLElement;
     fireEvent.click(collapseText);
     expect(container.textContent).toContain('+2 more...');

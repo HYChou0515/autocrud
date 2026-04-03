@@ -8,13 +8,7 @@ beforeEach(() => cleanup());
 function renderPanel(props: Partial<React.ComponentProps<typeof JobLogsPanel>> = {}) {
   return render(
     <MantineProvider>
-      <JobLogsPanel
-        logs={null}
-        loading={false}
-        onFetch={vi.fn()}
-        available={true}
-        {...props}
-      />
+      <JobLogsPanel logs={null} loading={false} onFetch={vi.fn()} available={true} {...props} />
     </MantineProvider>,
   );
 }
@@ -63,6 +57,8 @@ describe('JobLogsPanel', () => {
     const btn = Array.from(container.querySelectorAll('button')).find(
       (b) => b.textContent === 'Refresh',
     );
-    expect(btn?.hasAttribute('data-disabled') || btn?.getAttribute('disabled') !== null).toBeTruthy();
+    expect(
+      btn?.hasAttribute('data-disabled') || btn?.getAttribute('disabled') !== null,
+    ).toBeTruthy();
   });
 });
