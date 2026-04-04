@@ -18,8 +18,15 @@ Before diving into the API, here are the choices you'll face and the reasoning b
 **Which storage factory?** Pick based on your deployment stage:
 - `MemoryStorageFactory` — tests and demos (data lost on restart)
 - `DiskStorageFactory` — local dev and small production (SQLite + filesystem)
-- `S3StorageFactory` — cloud deployment (SQLite-in-S3 + S3 objects)
-- `PostgresStorageFactory` — large-scale production (full PostgreSQL)
+- `S3StorageFactory` — cloud deployment (SQLite-in-S3 + S3 objects) — requires `s3` extra
+- `PostgresStorageFactory` — large-scale production (full PostgreSQL) — requires `postgresql` extra
+
+Different storage and feature backends require installing extra dependencies. See the **Extra Dependencies by Feature** table below for the full mapping.
+
+**Which message queue factory?** Pick based on your infrastructure:
+- `SimpleMessageQueueFactory` — in-process queue, no infrastructure needed (default)
+- `RabbitMQMessageQueueFactory` — distributed, production-ready — requires `mq` extra
+- `CeleryMessageQueueFactory` — distributed via Celery workers — requires `celery` extra
 
 **`update()` vs `modify()`?** `update()` creates a new immutable revision — use it when you want to preserve history (the default for most workflows). `modify()` edits the current revision in-place — use it only for draft content that isn't finalized yet (e.g., a form being composed step by step).
 
@@ -401,12 +408,31 @@ crud.add_model(Guild)
 crud.add_model(Character)  # AutoCRUD auto-installs referential integrity handlers
 ```
 
+## Extra Dependencies by Feature
+
+Different storage factories, message queue backends, and optional features require installing the corresponding extra dependency:
+
+| Feature / Factory | Extra | Install Command |
+|---|---|---|
+| `MemoryStorageFactory` | *(none)* | `pip install autocrud` |
+| `DiskStorageFactory` | *(none)* | `pip install autocrud` |
+| `S3StorageFactory` | `s3` | `pip install "autocrud[s3]"` |
+| `PostgresStorageFactory` | `postgresql` | `pip install "autocrud[postgresql]"` |
+| `RabbitMQMessageQueueFactory` | `mq` | `pip install "autocrud[mq]"` |
+| `CeleryMessageQueueFactory` | `celery` | `pip install "autocrud[celery]"` |
+| `GraphQLRouteTemplate` | `graphql` | `pip install "autocrud[graphql]"` |
+| `BlobRouteTemplate` (MIME detection) | `magic` | `pip install "autocrud[magic]"` |
+| Redis MetaStore | `redis` | `pip install "autocrud[redis]"` |
+| CLI tools | `cli` | `pip install "autocrud[cli]"` |
+
+Combine multiple extras: `pip install "autocrud[s3,postgresql,mq]"`
+
 ## Install
 
 ```bash
 pip install autocrud              # core only
 pip install "autocrud[all]"       # all extras
-# Individual extras: s3, postgresql, redis, mq, celery, graphql, cli
+# Individual extras: s3, postgresql, redis, mq, celery, graphql, cli, magic
 ```
 
 ## Key Conventions

@@ -18,6 +18,8 @@ A `StorageFactory` creates all three for each registered model.
 
 In-memory storage. Data lost on process exit. Best for testing and demos.
 
+No extra dependency required.
+
 ```python
 from autocrud.resource_manager.storage_factory import MemoryStorageFactory
 
@@ -33,6 +35,8 @@ crud.configure(storage_factory=MemoryStorageFactory())
 ### DiskStorageFactory
 
 Local filesystem. SQLite for metadata, files for revisions. Zero infrastructure.
+
+No extra dependency required.
 
 ```python
 from autocrud.resource_manager.storage_factory import DiskStorageFactory
@@ -51,6 +55,8 @@ crud.configure(storage_factory=DiskStorageFactory(rootdir="./data"))
 ### S3StorageFactory
 
 Cloud object storage. SQLite DB synced to S3 for metadata, S3 for data.
+
+**Requires:** `pip install "autocrud[s3]"`
 
 ```python
 from autocrud.resource_manager.storage_factory import S3StorageFactory
@@ -84,6 +90,8 @@ crud.configure(storage_factory=S3StorageFactory(
 ### PostgresStorageFactory
 
 All data in PostgreSQL. No external object storage needed.
+
+**Requires:** `pip install "autocrud[postgresql]"`
 
 ```python
 from autocrud.resource_manager.storage_factory import PostgresStorageFactory
@@ -152,15 +160,17 @@ AutoCRUD integrates async job processing directly into the resource model. Jobs 
 ### Message Queue Factories
 
 ```python
-# In-process (default) — no infrastructure needed
+# In-process (default) — no infrastructure needed, no extra dependency required
 from autocrud.message_queue.simple import SimpleMessageQueueFactory
 crud.configure(message_queue_factory=SimpleMessageQueueFactory())
 
 # RabbitMQ — distributed, production-ready
+# Requires: pip install "autocrud[mq]"
 from autocrud.message_queue.rabbitmq import RabbitMQMessageQueueFactory
 crud.configure(message_queue_factory=RabbitMQMessageQueueFactory())
 
 # Celery — distributed via Celery workers
+# Requires: pip install "autocrud[celery]"
 from autocrud.message_queue.celery_queue import CeleryMessageQueueFactory
 crud.configure(message_queue_factory=CeleryMessageQueueFactory(broker="redis://..."))
 ```
