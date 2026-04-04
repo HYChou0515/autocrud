@@ -7,6 +7,8 @@ description: Build FastAPI REST APIs with AutoCRUD — model-driven CRUD generat
 
 AutoCRUD is a **model-driven FastAPI framework** that generates complete REST APIs with **versioning, permissions, search, binary storage, schema migration, and async job processing** from Python data models. See `references/` for detailed API reference.
 
+> Setting up a new project or registering models? Read `references/setup-gotchas.md` first — it covers the most common import path and naming mistakes.
+
 ## Key Decisions
 
 Before diving into the API, here are the choices you'll face and the reasoning behind each:
@@ -84,6 +86,8 @@ from autocrud import (
     IConstraintChecker, IValidator, ValidationError,
     UniqueConstraintError, DuplicateResourceError, RevisionNotMigratedError,
     SearchedResource, ResourceOps,
+    BackgroundTaskAccepted, BlobUploadSession, JobRedirectInfo,
+    MissingOperationContextError,
 )
 ```
 
@@ -317,7 +321,9 @@ async def rename(existing: Character, info: RevisionInfo, meta: ResourceMeta):
 ## Job System (Message Queue) (see references/storage-and-mq.md for details)
 
 ```python
-from autocrud.types import Job, Resource, JobContext, DelayRetry
+from autocrud.types import Job, Resource
+from autocrud.message_queue.context import JobContext
+from autocrud.message_queue.basic import DelayRetry
 
 class TaskPayload(Struct):
     query: str
