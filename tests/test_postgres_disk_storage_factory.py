@@ -102,7 +102,7 @@ class TestPostgresDiskStorageFactoryBuild:
         mock_pg.assert_called_once_with(
             pg_dsn="postgresql://test:test@localhost:5432/testdb",
             encoding=Encoding.msgpack,
-            table_name="bench_TestItem_meta",
+            table_name="bench_test_item_meta",
         )
 
     def test_build_creates_correct_resource_store(self, mock_factory):
@@ -132,8 +132,8 @@ class TestPostgresDiskStorageFactoryBuild:
 
         # Verify different table names and directories
         pg_calls = mock_pg.call_args_list
-        assert pg_calls[0][1]["table_name"] == "bench_User_meta"
-        assert pg_calls[1][1]["table_name"] == "bench_Post_meta"
+        assert pg_calls[0][1]["table_name"] == "bench_user_meta"
+        assert pg_calls[1][1]["table_name"] == "bench_post_meta"
 
         disk_calls = mock_disk.call_args_list
         assert disk_calls[0][1]["rootdir"] == Path("/tmp/autocrud-test/User/data")
@@ -159,7 +159,7 @@ class TestPostgresDiskStorageFactoryTablePrefix:
             factory.build("User")
 
             call_kwargs = mock_pg.call_args[1]
-            assert call_kwargs["table_name"] == "User_meta"
+            assert call_kwargs["table_name"] == "user_meta"
 
     def test_table_name_with_prefix(self):
         """Test table name with prefix."""
@@ -177,7 +177,7 @@ class TestPostgresDiskStorageFactoryTablePrefix:
             factory.build("User")
 
             call_kwargs = mock_pg.call_args[1]
-            assert call_kwargs["table_name"] == "app_User_meta"
+            assert call_kwargs["table_name"] == "app_user_meta"
 
     def test_table_name_with_long_prefix(self):
         """Test table name with a longer prefix."""
@@ -195,7 +195,7 @@ class TestPostgresDiskStorageFactoryTablePrefix:
             factory.build("Character")
 
             call_kwargs = mock_pg.call_args[1]
-            assert call_kwargs["table_name"] == "my_project_v2_Character_meta"
+            assert call_kwargs["table_name"] == "my_project_v2_character_meta"
 
 
 class TestPostgresDiskStorageFactoryEncoding:
