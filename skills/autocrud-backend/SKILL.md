@@ -1,11 +1,31 @@
 ---
 name: autocrud-backend
-description: Build FastAPI REST APIs with AutoCRUD — model-driven CRUD generation with built-in versioning, permissions, search, GraphQL, binary storage, schema migration, and message queue. Use this skill whenever the user works with AutoCRUD in Python, including defining data models (msgspec.Struct or Pydantic), configuring storage backends (Memory/Disk/S3/PostgreSQL), writing Query Builder (QB) expressions, using ResourceManager methods (create/get/update/delete/search/migrate/switch), setting up Schema migrations, adding route templates, creating custom create/update actions, handling events, processing async jobs with Job[T]/JobContext/DelayRetry, managing relationships with Ref/OnDelete, or building any FastAPI application powered by AutoCRUD. Trigger on mentions of autocrud, crud.configure, crud.add_model, crud.apply, crud.create_action, crud.update_action, Schema, ResourceManager, QB, DependencyProvider, DiskStorageFactory, S3StorageFactory, PostgresStorageFactory, or any AutoCRUD-specific API.
+description: Build FastAPI REST APIs with AutoCRUD — model-driven CRUD generation with built-in versioning, permissions, search, GraphQL, binary storage, schema migration, and message queue. Use this skill whenever the user works with AutoCRUD in Python, including defining data models (msgspec.Struct or Pydantic), configuring storage backends (Memory/Disk/S3/PostgreSQL), writing Query Builder (QB) expressions, using ResourceManager methods (create/get/update/delete/search/migrate/switch), setting up Schema migrations, adding route templates, creating custom create/update actions, handling events, processing async jobs with Job[T]/JobContext/DelayRetry, managing relationships with Ref/OnDelete, or building any FastAPI application powered by AutoCRUD. Also trigger when users ask about generating REST endpoints, building CRUD APIs, auto-generating API routes from models, data versioning or revision history, audit trails, soft delete and restore, file/binary/blob uploads, schema evolution or data migration, background job processing or async tasks, foreign key relationships between resources, or searching/filtering/querying API data — even if they don't explicitly mention AutoCRUD by name. Trigger on mentions of autocrud, crud.configure, crud.add_model, crud.apply, crud.create_action, crud.update_action, Schema, ResourceManager, QB, DependencyProvider, DiskStorageFactory, S3StorageFactory, PostgresStorageFactory, or any AutoCRUD-specific API.
 ---
 
 # AutoCRUD Backend Skill
 
 AutoCRUD is a **model-driven FastAPI framework** that generates complete REST APIs with **versioning, permissions, search, binary storage, schema migration, and async job processing** from Python data models. See `references/` for detailed API reference.
+
+## Key Decisions
+
+Before diving into the API, here are the choices you'll face and the reasoning behind each:
+
+**Struct vs Pydantic?** Use `msgspec.Struct` (recommended) for performance and native AutoCRUD compatibility. Use Pydantic `BaseModel` when you need Pydantic validators or are migrating existing Pydantic code — AutoCRUD converts it internally via `pydantic_to_struct()`.
+
+**Which storage factory?** Pick based on your deployment stage:
+- `MemoryStorageFactory` — tests and demos (data lost on restart)
+- `DiskStorageFactory` — local dev and small production (SQLite + filesystem)
+- `S3StorageFactory` — cloud deployment (SQLite-in-S3 + S3 objects)
+- `PostgresStorageFactory` — large-scale production (full PostgreSQL)
+
+**`update()` vs `modify()`?** `update()` creates a new immutable revision — use it when you want to preserve history (the default for most workflows). `modify()` edits the current revision in-place — use it only for draft content that isn't finalized yet (e.g., a form being composed step by step).
+
+**`draft` vs `stable` status?** `stable` revisions are immutable (you must `update()` to create a new one). `draft` revisions can be `modify()`-ed in place. Set `default_status="draft"` if your workflow involves iterative editing before publishing.
+
+**When to use Schema versioning?** Skip it for early development. Add `Schema(Model, "v1")` when your data structure stabilizes. Add migration steps (`Schema(V2, "v2").step("v1", fn)`) only when you change the model shape and have existing data that needs to migrate.
+
+**`UNSET` vs `None`?** `None` means "this field is explicitly null." `UNSET` means "this field was not provided at all." This distinction matters in PATCH operations — an `UNSET` field is left unchanged, while `None` actively clears the value.
 
 ## Quick Start
 
@@ -156,39 +176,7 @@ crud.configure(
 )
 ```
 
-### Storage Factories (see references/storage-and-mq.md for full options)
-
-```python
-from autocrud.resource_manager.storage_factory import (
-    MemoryStorageFactory,     # In-memory (testing/demos, data lost on restart)
-    DiskStorageFactory,       # SQLite meta + filesystem data (dev/small prod)
-    S3StorageFactory,         # SQLite-in-S3 meta + S3 data (cloud)
-    PostgresStorageFactory,   # PostgreSQL meta + PostgreSQL data (large-scale)
-)
-
-crud.configure(storage_factory=MemoryStorageFactory())          # testing
-crud.configure(storage_factory=DiskStorageFactory("./data"))    # local dev
-crud.configure(storage_factory=S3StorageFactory(bucket="b", endpoint_url="http://localhost:9000"))  # cloud
-crud.configure(storage_factory=PostgresStorageFactory(connection_string="postgresql://..."))        # production
-
-# Per-model override
-crud.add_model(User)  # uses global storage
-crud.add_model(Image, storage=S3StorageFactory(bucket="images"))  # S3 for images
-```
-
-### Message Queue & DependencyProvider
-
-```python
-from autocrud.message_queue.simple import SimpleMessageQueueFactory        # in-process
-from autocrud.message_queue.rabbitmq import RabbitMQMessageQueueFactory    # distributed
-from autocrud.message_queue.celery_queue import CeleryMessageQueueFactory  # Celery workers
-from autocrud.crud.route_templates.basic import DependencyProvider
-
-crud.configure(message_queue_factory=SimpleMessageQueueFactory())  # or RabbitMQ / Celery
-crud.configure(dependency_provider=DependencyProvider(
-    get_user=lambda: "admin", get_now=lambda: dt.datetime.now(),
-))
-```
+See `references/storage-and-mq.md` for storage factory constructors, per-model overrides, message queue options, and DependencyProvider setup.
 
 ## Model Registration (`crud.add_model`)
 
@@ -210,87 +198,29 @@ crud.apply(app)  # generates all routes
 crud.apply(app, router=APIRouter(prefix="/v1"))  # mount under prefix
 ```
 
-### Validators
-
-```python
-# Function-based
-def validate_user(user: User) -> None:
-    if user.age < 0:
-        raise ValueError("Age cannot be negative")
-
-crud.add_model(Schema(User, "v1", validator=validate_user))
-
-# Class-based (IValidator protocol)
-class UserValidator:
-    def validate(self, data: User) -> None:
-        if not data.email:
-            raise ValueError("Email required")
-
-crud.add_model(Schema(User, "v1", validator=UserValidator()))
-```
+Validators can be a function `(data) → None` that raises on invalid input, or an `IValidator` class with a `.validate()` method. See `references/resource-manager.md` for examples.
 
 ## ResourceManager API
 
-Get a ResourceManager to perform CRUD operations programmatically:
+Get a ResourceManager for programmatic CRUD outside of HTTP routes:
 
 ```python
 rm = crud.get_resource_manager(User)     # by type
 rm = crud.get_resource_manager("user")   # by name
-```
 
-### Context for Write Operations
-
-```python
-# Context manager — sets audit user/time for all operations inside
+# Context manager sets audit user/time for all operations inside
 with rm.using(user="admin", now=dt.datetime.now()):
-    info = rm.create(User(name="Alice", email="a@b.com"))
-    rm.update(info.resource_id, User(name="Alice Updated", email="a@b.com"))
-
-# Or pass user/now per-call
-info = rm.create(data, user="admin", now=dt.datetime.now())
-```
-
-### Core Methods
-
-| Method | Signature | Description |
-|--------|-----------|-------------|
-| `create` | `(data, *, status, user, now, resource_id) → RevisionInfo` | Create new resource |
-| `get` | `(resource_id, *, revision_id) → Resource[T]` | Get resource (latest or specific revision) |
-| `update` | `(resource_id, data, *, status, user, now) → RevisionInfo` | Create new revision |
-| `modify` | `(resource_id, data, status, *, user, now) → RevisionInfo` | Edit current revision in-place (draft) |
-| `patch` | `(resource_id, patch_data, *, user, now) → RevisionInfo` | RFC 6902 JSON Patch |
-| `create_or_update` | `(resource_id, data, *) → RevisionInfo` | Upsert |
-| `delete` | `(resource_id, *, user, now) → ResourceMeta` | Soft delete |
-| `restore` | `(resource_id, *, user, now) → ResourceMeta` | Restore soft-deleted |
-| `permanently_delete` | `(resource_id, *, user, now) → ResourceMeta` | Hard delete all revisions |
-| `switch` | `(resource_id, revision_id, *, user, now) → ResourceMeta` | Change active revision |
-| `migrate` | `(resource_id, *, revision_id) → ResourceMeta` | Migrate to latest schema |
-| `exists` | `(resource_id) → bool` | Check existence |
-| `get_meta` | `(resource_id) → ResourceMeta` | Get metadata only |
-| `get_revision_info` | `(resource_id, revision_id) → RevisionInfo` | Get revision metadata |
-| `list_revisions` | `(resource_id) → list[str]` | List all revision IDs |
-| `search_resources` | `(query) → list[ResourceMeta]` | Search → metadata list |
-| `list_resources` | `(query, *, returns, partial) → list[SearchedResource]` | Search → full data |
-| `count_resources` | `(query) → int` | Count matching resources |
-| `get_blob` | `(file_id) → Binary` | Get binary blob by ID |
-| `start_consume` | `(*, block, custom_creation, custom_update)` | Start MQ consumer |
-| `dump` | `(query) → Generator` | Export records |
-
-### Usage Example (see references/resource-manager.md for complete API)
-
-```python
-rm = crud.get_resource_manager(User)
-with rm.using("admin", dt.datetime.now()):
     info = rm.create(User(name="Alice", email="a@b.com"))     # → RevisionInfo
     resource = rm.get(info.resource_id)                        # → Resource[User]
     rm.update(info.resource_id, User(name="Alice V2", email="a@b.com"))  # new revision
     rm.modify(info.resource_id, User(name="Draft", email="a@b.com"))     # in-place edit
-    rm.switch(info.resource_id, info.revision_id)              # switch back to r1
+    rm.switch(info.resource_id, info.revision_id)              # switch active revision
     rm.delete(info.resource_id)                                # soft delete
-    rm.restore(info.resource_id)                               # restore
+    rm.restore(info.resource_id)                               # undo delete
     metas = rm.search_resources(QB["name"].contains("Ali").sort("-created_at").limit(10))
-    results = rm.list_resources(QB["name"].contains("Ali").limit(10))  # full data
 ```
+
+Key methods: `create`, `get`, `update`, `modify`, `patch`, `create_or_update`, `delete`, `restore`, `permanently_delete`, `switch`, `migrate`, `exists`, `get_meta`, `search_resources`, `list_resources`, `count_resources`, `get_blob`, `start_consume`, `dump`. See `references/resource-manager.md` for the full method table with signatures.
 
 ## Schema & Migration (see references/query-and-schema.md for details)
 
@@ -312,14 +242,6 @@ def migrate_v1_to_v2(old: UserV1) -> UserV2:
 # Runtime migration
 rm.migrate(resource_id)                          # current revision
 rm.migrate(resource_id, revision_id="abc:1")     # specific old revision
-
-# Switch to unmigrated revision
-from autocrud import RevisionNotMigratedError
-try:
-    rm.switch(resource_id, old_revision_id)
-except RevisionNotMigratedError:
-    rm.migrate(resource_id, revision_id=old_revision_id)
-    rm.switch(resource_id, old_revision_id)
 ```
 
 ## Query Builder (QB) (see references/query-and-schema.md for full operator table)
@@ -337,7 +259,6 @@ q = QB["role"].in_(["admin", "user"])  # also: is_null, is_not_null, between
 q = (QB["age"].gte(18) & QB["role"].eq("admin"))   # AND
 q = (QB["age"].lt(18) | QB["role"].eq("guest"))     # OR
 q = ~QB["name"].eq("Bob")                            # NOT
-q = QB["level"].gte(1).filter(QB["name"].contains("A")).exclude(QB["role"].eq("banned"))
 
 # Metadata fields — QB.created_time(), QB.updated_by(), QB.is_deleted(), QB.resource_id(), etc.
 q = QB.created_time().gte(dt.datetime(2024, 1, 1))
@@ -345,11 +266,6 @@ q = QB.created_time().gte(dt.datetime(2024, 1, 1))
 # Sorting & pagination
 q = QB["level"].gte(1).sort("-level", "+name").limit(10).offset(20)
 q = QB["level"].gte(1).page(2, 10)   # page 2, 10 per page
-q = QB["level"].gte(1).first()        # limit(1) shorthand
-
-# Helpers
-q = QB.all(QB["age"].gte(18), QB["role"].eq("admin"))  # AND group
-q = QB.any(QB["status"].eq("active"), QB["status"].eq("trial"))  # OR group
 
 # HTTP: GET /user?qb=QB["age"] > 18
 ```
@@ -427,7 +343,7 @@ def process_event(
 crud.add_model(GameEvent, indexed_fields=[("status", str)], job_handler=process_event)
 crud.apply(app)
 rm = crud.get_resource_manager(GameEvent)
-rm.start_consume(block=False)  # background thread; also: custom_creation="all", custom_update="all"
+rm.start_consume(block=False)  # background thread
 ```
 
 ## Event Handlers
@@ -489,10 +405,10 @@ pip install "autocrud[all]"       # all extras
 
 ## Key Conventions
 
-- **Versioning**: Every `update()` creates a new immutable revision; `modify()` edits draft in-place
-- **UNSET pattern**: `msgspec.UNSET` / `UnsetType` distinguishes "not provided" from `None`
-- **Soft delete**: `delete()` sets `is_deleted=True`; `restore()` reverses; `permanently_delete()` removes all data
-- **Data coercion**: Accepts `dict`, `Struct`, or `BaseModel` — internally always `Struct`
-- **Model naming**: `model_naming="kebab"` → `UserProfile` becomes `/user-profile` in URLs
-- **Indexed fields**: Use tuple format `[("field", type)]` for `indexed_fields` parameter
-- **Return types**: `create/update/modify/patch` → `RevisionInfo`; `delete/restore/switch/migrate` → `ResourceMeta`; `get` → `Resource[T]`
+- **Versioning**: Every `update()` creates a new immutable revision (like Git commits), giving you full edit history and the ability to roll back. `modify()` edits a draft in-place — only use it for iterative authoring before publishing
+- **UNSET pattern**: `msgspec.UNSET` / `UnsetType` distinguishes "not provided" from `None` — essential for PATCH semantics where omitted fields should remain unchanged while `None` actively clears a value
+- **Soft delete**: `delete()` marks `is_deleted=True` (recoverable, data preserved); `restore()` reverses it; `permanently_delete()` removes all data and revisions irreversibly — use the soft approach by default so users can recover from mistakes
+- **Data coercion**: Accepts `dict`, `Struct`, or `BaseModel` as input — internally always converts to `Struct` for consistent serialization. Never return Pydantic instances from ResourceManager
+- **Model naming**: `model_naming="kebab"` → `UserProfile` becomes `/user-profile` in URLs. Choose the naming convention that matches your frontend's expectations
+- **Indexed fields**: Use tuple format `[("field", type)]` — indexed fields become searchable via QB and appear as filter options in the admin UI. Index the fields users will query most often
+- **Return types**: `create/update/modify/patch` → `RevisionInfo` (contains `resource_id` + `revision_id`); `delete/restore/switch/migrate` → `ResourceMeta` (full metadata); `get` → `Resource[T]` (metadata + typed data)
