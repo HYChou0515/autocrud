@@ -37,6 +37,8 @@ class Issue(msgspec.Struct):
 
 This schema is enough for AutoCRUD to understand the resource shape, form fields, and API payloads.
 
+Why `msgspec`? Check [here](/concepts/schema.md).
+
 ## 2. Create the app
 
 Create a `main.py` and register the schema as a resource.
