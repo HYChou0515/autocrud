@@ -228,124 +228,63 @@ Components follow a three-layer rendering pattern based on context:
 
 `resolveFieldKind.ts` dispatches to the correct renderer based on field type, variant, and annotations. The resolution order: hidden → itemFields → union → binary → file → json → markdown → arrayString → tags → select → checkbox → switch → date → number → textarea → ref → text.
 
-### Key Components
+### All Components
 
-| Component | Purpose |
-|-----------|---------|
-| `ResourceTable` | List/search with server-side pagination (mantine-react-table) |
-| `ResourceCreate` | Auto-generated create form from schema |
-| `ResourceForm` | Reusable form for create/edit |
-| `ResourceDetail` | Detail + edit + revision history + RevisionTreeTimeline |
-| `Dashboard` | Resource overview with counts |
-| `BackupRestore` | Export/import UI |
-| `JobTable` | Message queue job management |
-| `RefLink` | Clickable link to referenced resource |
-| `RefSelect` | Searchable dropdown for ref fields |
+| Category | Components |
+|----------|------------|
+| **Page** | `ResourceTable`, `ResourceCreate`, `ResourceDetail`, `Dashboard`, `BackupRestore`, `JobTable`, `MigrationStatus`, `PendingJobsAccordion` |
+| **Form** | `ResourceForm` (dual mode: structured form / JSON editor, deferred blob upload) |
+| **Detail** | `MetadataSection`, `RevisionHistorySection`, `RevisionTreeTimeline` |
+| **Table/Search** | `MultiResourceTable`, `AdvancedSearchPanel`, `SearchForm`, `MetaSearchForm`, `buildColumns` |
+| **Job** | `JobStatusSection`, `JobFieldsSection`, `JobArtifactSection`, `JobLogsPanel`, `PendingUpdateJobsAccordion` |
+| **Common** | `RefLink`/`RefLinkList`, `RefRevisionLink`/`RefRevisionLinkList`, `ResourceIdCell`, `RevisionIdCell`, `TimeDisplay` |
+| **Cell Renderers** | 21 FieldKind renderers — compact single-line table display |
+| **Detail Renderers** | `BinaryFieldDisplay`, `ArrayFieldDisplay`, `UnionFieldDisplay`, `StructuralUnionFieldDisplay`, `CollapsibleJson` |
+| **Form Renderers** | `RefSelect`/`RefMultiSelect`, `ArrayFieldRenderer`, `UnionFieldRenderer`, `BinaryFieldEditor`, `JsonEditor`, `MarkdownEditor` |
+
+> **Full reference** with props, behavior, and patterns: see `references/components.md`
 
 ## Hooks Reference
 
-### Query Hooks (read data)
+All hooks are exported from `@/autocrud/lib/hooks`.
 
-```typescript
-import {
-  useResourceList,
-  useResourceDetail,
-  useMultiResourceList,
-  useAdvancedSearch,
-  useFieldDepth,
-} from '@/autocrud/lib/hooks';
+### Query Hooks
 
-// Paginated list with search
-const { data, isLoading, totalCount } = useResourceList('character', {
-  limit: 20,
-  offset: 0,
-  search: 'warrior',
-});
+| Hook | Purpose | Returns |
+|------|---------|--------|
+| `useResourceList(config, params?, options?)` | Paginated list with search/sort | `{ data, total, loading, refresh }` |
+| `useResourceDetail(config, id, options?)` | Detail + integrated mutations | `{ resource, update, deleteResource, restore, switchRevision, rerun, logs, ... }` |
+| `useMultiResourceList(entries, params?, options?)` | Aggregate multiple resources | `{ items, totals, totalCount }` |
 
-// Single resource detail
-const { data: character, isLoading } = useResourceDetail('character', resourceId);
+### Mutation Hooks
 
-// Multiple resources at once
-const { rows, isLoading } = useMultiResourceList([
-  { resourceName: 'character', limit: 5 },
-  { resourceName: 'guild', limit: 5 },
-]);
+All mutation hooks return `{ action, actionAsync, isPending, error, reset }`. Options: `{ onSuccess?, onError?, showErrorNotification?, invalidateOnSuccess? }`.
 
-// Advanced search with QB-like conditions
-const { conditions, addCondition, removeCondition, results } =
-  useAdvancedSearch('character');
+| Hook | API Call | Invalidates |
+|------|----------|------------|
+| `useCreateResource(config, options?)` | `apiClient.create(data)` | `lists` |
+| `useUpdateResource(config, id, options?)` | `apiClient.update(id, data)` | `details` + `lists` |
+| `useDeleteResource(config, id, options?)` | `apiClient.delete(id)` / `permanentlyDelete(id)` | `details` + `lists` |
+| `useRestoreResource(config, id, options?)` | `apiClient.restore(id)` | `details` + `lists` |
+| `useSwitchRevision(config, id, options?)` | `apiClient.switchRevision(id, revId)` | `details` + `lists` + `revisions` |
+| `useRerunResource(config, id, options?)` | `apiClient.rerun(id)` | `details` + `lists` |
+| `useBlobUpload(options?)` | Chunked upload with progress | N/A (stateful: status, progress, cancel) |
 
-// Analyze field nesting depth
-const maxDepth = useFieldDepth(resource.fields);
-```
+### Utility Hooks
 
-### Mutation Hooks (modify data)
+| Hook | Purpose |
+|------|--------|
+| `useAdvancedSearch(options)` | Manages condition/QB search state, syncs URL + MRT table |
+| `useFieldDepth(options)` | Computes visible/collapsed fields by nesting depth |
 
-```typescript
-import {
-  useCreateResource,
-  useUpdateResource,
-  useDeleteResource,
-  useRestoreResource,
-  useSwitchRevision,
-  useRerunResource,
-  useBlobUpload,
-} from '@/autocrud/lib/hooks';
+### Non-Hook Exports
 
-// Create
-const { mutate: create } = useCreateResource('character');
-create({ name: 'Alice', level: 1 });
+| Export | Purpose |
+|--------|--------|
+| `resourceKeys` | TanStack Query key factory: `.all()`, `.lists()`, `.list()`, `.details()`, `.detail()`, `.revisions()`, `.logs()` |
+| `fetchResourceList`, `fetchResourceDetail`, `fetchResourceRevisions`, `fetchResourceLogs` | Primitive async fetchers for use outside React |
 
-// Update
-const { mutate: update } = useUpdateResource('character', resourceId);
-update({ name: 'Alice Updated', level: 2 });
-
-// Delete (soft)
-const { mutate: remove } = useDeleteResource('character');
-remove(resourceId);
-
-// Restore
-const { mutate: restore } = useRestoreResource('character');
-restore(resourceId);
-
-// Switch revision
-const { mutate: switchRev } = useSwitchRevision('character', resourceId);
-switchRev(revisionId);
-
-// Rerun failed job
-const { mutate: rerun } = useRerunResource('character', resourceId);
-rerun();
-
-// Upload blob
-const { upload, progress, isUploading } = useBlobUpload('character');
-upload(resourceId, file);
-```
-
-### Query Key Factory
-
-```typescript
-import { resourceKeys } from '@/autocrud/lib/hooks';
-
-// For cache invalidation with TanStack Query
-resourceKeys.lists('character');           // all character lists
-resourceKeys.detail('character', id);      // specific character
-resourceKeys.revisions('character', id);   // revision history
-```
-
-### Primitive Fetchers (non-hook)
-
-```typescript
-import {
-  fetchResourceList,
-  fetchResourceDetail,
-  fetchResourceRevisions,
-  fetchResourceLogs,
-} from '@/autocrud/lib/hooks';
-
-// Use in loaders, server components, or outside React
-const characters = await fetchResourceList('character', { limit: 10 });
-const detail = await fetchResourceDetail('character', id);
-```
+> **Full reference** with signatures, parameter types, return types, and query key patterns: see `references/hooks.md`
 
 ## Axios Client Configuration
 
@@ -362,6 +301,67 @@ const imageUrl = getBlobUrl(fileId);  // → /api/v1/autocrud/blobs/{fileId}
 ```
 
 Environment variable `VITE_API_URL` controls the base URL (defaults to `/api`).
+
+## URL Path & Proxy Configuration
+
+In development, API requests flow: **Axios** (`VITE_API_URL` + `basePath` + resource) → **Vite proxy** (strips `VITE_API_URL` prefix) → **Backend** (receives `basePath` + resource).
+
+Key variables in `.env`:
+- `VITE_API_URL` — Axios base URL + Vite proxy match prefix (default `/api`)
+- `API_PROXY_TARGET` — Backend URL (e.g., `http://localhost:8000`)
+
+The generator auto-detects `basePath` from OpenAPI spec (e.g., `/v1/autocrud`) and injects it into generated API clients via `setApiBasePath()`.
+
+### When You Change Backend root_path or Router Prefix
+
+**Correct procedure**: (1) Start backend with new config → (2) `make regen-app` → (3) Restart Vite dev server. The generator re-detects paths automatically.
+
+**Important**: `root_path` only affects OpenAPI spec metadata, not actual routes. `APIRouter(prefix=...)` is what physically changes route paths.
+
+**Custom proxy mapping**: If your proxy prefix maps to a different backend prefix (not just removal), edit `vite.config.ts` rewrite manually — the generator does not modify `vite.config.ts` after initial `init`.
+
+> **Full reference** with request chain diagrams, troubleshooting checklist, and common mistakes: see `references/url-path-proxy.md`
+
+## Error Handling
+
+Three utility functions in `lib/utils/errorNotification.ts`:
+
+| Function | Purpose |
+|----------|--------|
+| `extractErrorMessage(error)` | Parses Axios errors → human-readable string. Handles FastAPI `HTTPException` (string detail) and `ValidationError` (array detail with field paths) |
+| `extractUniqueConflict(error)` | Detects 409 unique constraint → `{ field, message, conflictingResourceId? }` or `null` |
+| `showErrorNotification(error, title?)` | Shows Mantine notification (red, 8s, multi-line) |
+
+Mutation hooks auto-call `showErrorNotification` by default (configurable via `showErrorNotification: false`). Two calling patterns: `create()` (fire-and-forget, notification only) vs `createAsync()` (awaitable, throws for try/catch).
+
+Axios interceptor in `lib/client.ts` logs all errors: `console.error('[API Error]', status, data)`.
+
+> **Full reference** with patterns, component-level handling, and testing guide: see `references/error-handling.md`
+
+## Advanced Component Development
+
+The three-layer field renderer system (Cell/Detail/Form) uses registry-based dispatch via `resolveFieldKind()`. Each layer has a `Record<FieldKind, Component>` map ensuring TypeScript exhaustiveness.
+
+To **add a new FieldKind**: (1) extend the `FieldKind` type, (2) add resolution logic, (3) implement renderer for all three layers, (4) register in all three registry maps.
+
+To **customize rendering**: use `resourceCustomization.ts` for config-level changes (variant overrides), or edit the renderer component directly for visual changes.
+
+Key patterns: **Deferred blob upload** (file stored in form state, uploaded on submit), **Lazy table upgrade** (server-side → client-side when needed), **Field depth control** (collapse nested fields beyond a depth threshold).
+
+> **Full reference** with step-by-step guide and code examples: see `references/advanced-components.md`
+
+## Template Sync Mechanism
+
+During development, `app/` is the source of truth. `make sync-templates` runs rsync to copy `app/ → generator/templates/base/`, excluding generated files (`src/autocrud/generated`, `src/routes/autocrud-admin`, `routeTree.gen.ts`) and build artifacts (`node_modules`, `dist`, `.vite`, `coverage`).
+
+**Key rules**:
+- Never edit `generator/templates/base/` directly — always edit in `app/` and sync
+- Never edit `src/autocrud/generated/` — overwritten by `generate`
+- `resourceCustomization.ts` is safe — generator skips it if it already exists
+
+**Flows**: `make sync-templates` (dev → templates), `init` (templates → new app), `generate` (backend OpenAPI → generated/).
+
+> **Full reference** with rsync breakdown, exclude list, and workflow details: see `references/template-sync.md`
 
 ## Common Recipes
 
