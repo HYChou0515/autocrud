@@ -1,311 +1,150 @@
 # Design philosophy
 
-AutoCRUD exists to solve a common problem in backend development:
+This page explains the **principles and trade-offs** behind AutoCRUD.
 
-> Most applications repeatedly reimplement the same infrastructure around data.
-
-Developers spend a large amount of time writing code for:
-
-- CRUD endpoints
-- metadata handling
-- validation
-- version tracking
-- permissions
-- search and filtering
-- background job management
-
-Yet most of this logic is **not the application's business logic**.
-
-AutoCRUD attempts to move this infrastructure into a reusable framework so developers can focus on the domain itself.
+If [Why AutoCRUD exists](/autocrud/concepts/why-autocrud) explains the problem, this page explains the design choices used to solve it.
 
 ---
 
-# The problem with traditional CRUD
+## 1. Generate infrastructure from the model
 
-In a typical FastAPI project, a resource might require:
+The first principle is that developers should define the domain model once and avoid rebuilding the same supporting infrastructure repeatedly.
 
-- database models
-- Pydantic schemas
-- CRUD functions
-- routers
-- validation logic
-- search filters
-- pagination logic
-- background jobs
-- audit history
+From that model, AutoCRUD can derive:
 
-A simple entity often expands into multiple files:
+- API routes
+- validation flow
+- storage coordination
+- indexing and search behavior
+- revision history
 
-```
-
-models.py
-schemas.py
-crud.py
-routes.py
-services.py
-filters.py
-tasks.py
-
-```
-
-While flexible, this approach often leads to:
-
-- duplicated patterns
-- inconsistent APIs
-- difficult version tracking
-- complex migrations
-- ad-hoc job processing
-
-AutoCRUD approaches the problem differently.
+The goal is not to remove application logic. The goal is to remove repetitive framework glue.
 
 ---
 
-# Model-driven architecture
+## 2. Treat history as a first-class concern
 
-AutoCRUD is built around a **model-driven design**.
+Many CRUD systems treat updates as destructive overwrites.
 
-Instead of building infrastructure around models manually, developers define a domain model once:
+AutoCRUD instead assumes that revision history is often operationally useful:
 
-```python
-class User(Struct):
-    name: str
-    email: str
-```
+- for auditing
+- for rollback
+- for draft workflows
+- for debugging and recovery
 
-The framework automatically derives:
-
-* API routes
-* validation
-* storage
-* indexing
-* search
-* revision history
-
-This shifts development from:
-
-```
-build infrastructure → implement business logic
-```
-
-to:
-
-```
-define model → implement business logic
-```
+That is why versioned resources are central to the design rather than an optional add-on.
 
 ---
 
-# Resource-first design
+## 3. Separate payload data from operational metadata
 
-AutoCRUD treats application data as **resources**.
+AutoCRUD keeps the resource payload separate from metadata such as revision pointers, timestamps, deletion state, and indexed values.
 
-A resource is not just a row in a database table.
+This makes it easier to support:
 
-Instead, a resource is a **versioned entity with metadata**.
-
-Conceptually:
-
-```
-Resource
- ├── ResourceMeta
- └── Revisions
-       └── Data
-```
-
-This design enables built-in support for:
-
-* audit history
-* rollback
-* draft workflows
-* revision switching
-* time-travel debugging
-
-These capabilities normally require significant custom infrastructure.
+- consistent lifecycle handling
+- predictable search behavior
+- faster operational queries
+- flexible storage strategies
 
 ---
 
-# Versioning by default
+## 4. Centralize lifecycle rules in the ResourceManager
 
-Most CRUD systems treat updates as destructive operations:
+A second core principle is that validation, permissions, revision creation, and event hooks should pass through one enforcement layer.
 
-```
-old data → overwritten
-```
+That layer is the ResourceManager.
 
-AutoCRUD instead records **revisions**:
-
-```
-r1 → r2 → r3
-```
-
-This provides several advantages:
-
-* full audit history
-* easier debugging
-* safer deployments
-* better data recovery
-
-The framework also supports **draft editing**:
-
-* `update()` creates a new revision
-* `modify()` edits the current revision in place (typically for drafts)
-
-This makes it possible to support editorial workflows naturally.
+This helps keep behavior consistent across different routes and storage backends instead of scattering the rules across controllers, helpers, and direct storage calls.
 
 ---
 
-# ResourceManager as the single interface
+## 5. Stay flexible about storage
 
-One core principle of AutoCRUD is:
+AutoCRUD is designed to be API- and model-oriented rather than tied to a single database engine.
 
-> Developers should not need to interact with storage systems directly.
+That is why metadata, revisions, and blobs can be backed by different storage layers depending on the deployment needs.
 
-Instead, everything goes through the **ResourceManager**.
+This allows the same conceptual model to work in:
 
-```
-ResourceManager
-    ↓
-Storage
-```
-
-This ensures:
-
-* consistent validation
-* centralized permissions
-* correct revision handling
-* consistent event hooks
-
-It also means developers never need to write:
-
-* SQL queries
-* S3 storage logic
-* file system operations
-
-The framework handles these details.
+- local development
+- single-node deployments
+- cloud or object-storage-heavy setups
 
 ---
 
-# Separation of metadata and data
+## 6. Prefer practical automation over framework sprawl
 
-AutoCRUD separates resource metadata from revision data.
+AutoCRUD is intentionally opinionated around a specific class of applications:
 
-```
-ResourceManager
-    ↓
-IStorage
-    ├── MetaStore
-    └── RevisionStore
-```
+- API-centric systems
+- operational tools
+- version-aware admin or content workflows
+- services that benefit from generated CRUD plus custom business logic
 
-This allows:
-
-* efficient search
-* fast metadata queries
-* immutable revision storage
-* scalable storage backends
-
-Binary data is handled separately through **blob stores**.
+It is not trying to be a universal replacement for every web framework pattern.
 
 ---
 
-# Search as a first-class feature
+## The trade-off
 
-Many frameworks treat search as an afterthought.
+This design gives you strong consistency and less repetitive code, but it also means AutoCRUD is most valuable when your project fits a **model-driven, API-first** workflow.
 
-AutoCRUD instead treats search as a core capability.
+If your team wants a traditional full-stack monolith or a purely database-first GraphQL layer, another tool may be a better fit.
 
-Resources maintain an **indexed projection of their data**:
+### When AutoCRUD is usually the better fit
 
-```
-ResourceMeta.indexed_data
-```
+AutoCRUD is especially effective for applications such as:
 
-This allows search queries to run without scanning revision payloads.
+- internal admin and operations tools
+- configuration or content management systems
+- resource-heavy business APIs that need audit history
+- job and workflow backends where task state should be tracked like normal resources
+- FastAPI services that benefit from generated CRUD plus custom business logic
 
-Typical flow:
+Typical signals that AutoCRUD fits well:
 
-```
-QueryBuilder
-    ↓
-ResourceManager.search()
-    ↓
-MetaStore.search()
-```
+- you want revision history and restore behavior by default
+- your team prefers Python models as the source of truth
+- you want API-first development rather than server-rendered pages
+- you may want an auto-generated admin UI later
 
-The result is a simple but efficient search model.
+### When Django is usually the better fit
 
----
+Django is often a better choice for:
 
-# Jobs as resources
+- traditional business applications with server-rendered pages
+- form-heavy back-office systems that rely on the Django admin and ORM
+- teams already standardized on Django conventions and reusable apps
+- projects where the full-stack monolith is a feature, not a limitation
 
-Background jobs are often managed by separate systems:
+Typical signals that Django fits well:
 
-* Celery
-* RQ
-* Temporal
-* custom task queues
+- templates, forms, session-based auth, and admin are central to the product
+- your team wants a mature batteries-included web framework
+- the project is not primarily API-first
 
-AutoCRUD takes a different approach:
+### When other approaches may fit better
 
-> Jobs are just another type of resource.
+A database-first GraphQL solution such as Hasura is often a better fit when:
 
-This means jobs automatically inherit:
+- PostgreSQL is already the main source of truth
+- frontend teams want GraphQL quickly
+- most of the complexity is in relational querying rather than Python-side lifecycle logic
 
-* version history
-* retry tracking (per-job or queue-level)
-* status fields
-* audit history
+A more custom FastAPI setup may be better when:
 
-When a resource manager has a message queue configured, new jobs can automatically be queued:
+- the service is small and highly specialized
+- the domain is not CRUD-oriented
+- you need very custom request handling, protocols, or orchestration that gains little from generation
 
-```python
-create()
-    ↓
-message_queue.put(resource_id)
-```
-
-This integrates asynchronous processing with the same data model.
+In short, AutoCRUD works best when the problem looks like **versioned resources + repeatable APIs + operational tooling**.
 
 ---
 
-# Storage independence
+## Read next
 
-AutoCRUD does not require a specific database.
-
-Storage is abstracted through `IStorage` and `StorageFactory`.
-
-This allows deployments such as:
-
-| Storage  | Meta        | Revision | Blob       |
-| -------- | ----------- | -------- | ---------- |
-| Memory   | memory      | memory   | memory     |
-| Disk     | SQLite      | files    | filesystem |
-| S3       | SQLite (S3) | S3       | S3         |
-| Postgres | PostgreSQL  | S3       | S3         |
-
-Developers can also implement custom storage backends.
-
-This flexibility allows AutoCRUD to work in:
-
-* local development environments
-* single-node deployments
-* cloud-native distributed systems
-
----
-
-# The goal of AutoCRUD
-
-AutoCRUD is designed to reduce the amount of infrastructure code developers need to write.
-
-Instead of implementing the same patterns repeatedly, the framework provides a consistent system for:
-
-* versioned resources
-* search and indexing
-* validation
-* permissions
-* background jobs
-* storage abstraction
-
-This allows developers to focus on the most important part of their application:
-
-> the business logic.
+- [Architecture](/autocrud/concepts/architecture) — how these principles appear in the system design
+- [Resource lifecycle](/autocrud/concepts/resource-lifecycle) — how the revision model behaves in practice
+- [AutoCRUD vs Hasura vs Django](/autocrud/concepts/autocrud-vs-hasura-vs-django) — when AutoCRUD is the better fit

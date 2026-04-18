@@ -61,6 +61,18 @@ Calling `apply()` will:
 
 In most cases you don't need to call `openapi()` manually because it is used by `apply()` flows.
 
+## Practical startup checklist
+
+For a predictable setup, follow this order:
+
+1. create or import the AutoCRUD instance
+2. call `configure()` if you need custom defaults
+3. register all models
+4. add route templates or custom actions
+5. call `apply()` once startup wiring is ready
+
+Treat steps 2–4 as startup-time operations rather than request-time operations.
+
 ## Common failure patterns
 
 If your app behaves unexpectedly, the most common causes are:
@@ -69,5 +81,6 @@ If your app behaves unexpectedly, the most common causes are:
 - registering models after startup has already moved on
 - mutating routes or templates after `apply()`
 - confusing initialization issues with revision lifecycle issues
+- mixing the global instance pattern with ad-hoc manual instances without realizing which one owns the routes
 
 For symptom-to-fix guidance, see the [troubleshooting guide](/autocrud/howto/troubleshooting).

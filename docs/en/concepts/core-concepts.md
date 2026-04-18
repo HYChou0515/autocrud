@@ -1,42 +1,34 @@
 # Core Concepts
 
-This page goes one step deeper than the overview page.
+This page defines the **core terms** used throughout the rest of the documentation.
 
-It explains how the main AutoCRUD building blocks behave in practice and why that behavior matters when you build real applications.
-
----
-
-## 1. Resource vs. revision
-
-A resource is the long-lived logical entity, such as a user, document, job, or configuration object.
-
-A revision is one version of that resource at a point in time.
-
-This distinction matters because the resource ID stays stable while the actual content can evolve through multiple revisions.
+If [Overview](/autocrud/concepts/overview) gives you the map, this page gives you the vocabulary.
 
 ---
 
-## 2. Immutable history vs. draft editing
+## 1. Resource
 
-By default, write operations such as `update` and `patch` create a new revision.
+A resource is the long-lived logical entity your application manages, such as a user, document, job, or configuration object.
 
-That gives you a revision trail like this:
-
-```text
-revision1 -> revision2 -> revision3
-```
-
-When you use `modify`, AutoCRUD updates the current draft in place instead.
-
-Use the default immutable path when you care about history and auditing. Use draft-style modification only when that editing model is truly needed.
+A resource keeps the same identity even when its content changes.
 
 ---
 
-## 3. Metadata is a first-class layer
+## 2. Revision
 
-AutoCRUD keeps metadata separate from the resource payload.
+A revision is one version of a resource at a specific point in time.
 
-That metadata includes things like:
+This distinction matters because the resource ID stays stable while the actual content evolves through multiple revisions.
+
+By default, operations such as update and patch create a new revision rather than overwriting history.
+
+---
+
+## 3. Metadata
+
+AutoCRUD keeps metadata separate from the main resource payload.
+
+Metadata includes values such as:
 
 - the current revision pointer
 - creation and update timestamps
@@ -44,13 +36,15 @@ That metadata includes things like:
 - deletion status
 - indexed values used for search
 
-This separation is what makes search, lifecycle handling, and operational tooling much easier to keep consistent.
+This separation makes lifecycle operations, search behavior, and operational tooling easier to keep consistent.
 
 ---
 
-## 4. The ResourceManager is the enforcement layer
+## 4. ResourceManager
 
-The ResourceManager is not just a helper object. It is the place where the framework coordinates:
+The ResourceManager is the enforcement layer for resource behavior.
+
+It coordinates:
 
 - validation
 - revision creation
@@ -60,31 +54,28 @@ The ResourceManager is not just a helper object. It is the place where the frame
 - permission checks
 - storage access
 
-That is why most behavior in AutoCRUD becomes predictable once you understand how the manager mediates operations.
+Once you understand the manager’s role, most AutoCRUD behavior becomes much easier to predict.
 
 ---
 
-## 5. Binary data is handled outside the main payload
+## 5. Schema version
 
-When a model includes `Binary`, the file bytes are stored in the blob backend while the resource keeps the associated metadata such as file ID and size.
+A schema version tells AutoCRUD how a revision’s data shape relates to the current model definition.
 
-This keeps normal resource payloads manageable while still supporting file-heavy workflows.
+This becomes important when your application evolves and you need migration paths between versions.
 
 See also:
 
-- [Binary data](/autocrud/howto/binary-data)
+- [Schema](/autocrud/concepts/schema)
+- [Migrations](/autocrud/howto/migrations)
 
 ---
 
-## 6. Querying depends on indexed fields
+## 6. Indexed search fields
 
 AutoCRUD search is built around indexed metadata rather than full-payload scans.
 
-That is an important design choice:
-
-- it makes search behavior more predictable
-- it improves operational performance
-- it encourages you to think about searchable fields up front
+That design keeps search behavior more predictable and encourages you to identify important searchable fields explicitly.
 
 See also:
 
@@ -93,13 +84,9 @@ See also:
 
 ---
 
-## 7. Why these concepts matter together
+## Read next
 
-The core concepts are most useful when you see them as one system:
+- [Resource lifecycle](/autocrud/concepts/resource-lifecycle) — how revisions change over time
+- [Architecture](/autocrud/concepts/architecture) — how the major components fit together
+- [Binary data](/autocrud/howto/binary-data) — how files are handled outside the main payload
 
-- resources provide identity
-- revisions provide history
-- metadata provides indexable operational state
-- ResourceManager enforces the lifecycle rules
-
-That combination is what allows AutoCRUD to generate practical APIs while keeping behavior consistent across different storage and integration patterns.
