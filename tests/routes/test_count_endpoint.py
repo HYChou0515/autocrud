@@ -33,7 +33,7 @@ def client() -> TestClient:
 
 @pytest.fixture
 def many_items(client: TestClient) -> list[str]:
-    """建立超過 default limit (10) 的測試資料"""
+    """建立超過舊預設分頁大小的測試資料。"""
     created_ids = []
     for i in range(25):
         response = client.post(
@@ -45,7 +45,7 @@ def many_items(client: TestClient) -> list[str]:
 
 
 class TestCountEndpointIgnoresDefaultLimit:
-    """count endpoint 不應受到 default limit=10 的限制"""
+    """count endpoint 不應受到預設分頁限制的影響。"""
 
     def test_count_returns_total_without_limit(
         self, client: TestClient, many_items: list[str]
@@ -86,10 +86,10 @@ class TestCountEndpointIgnoresDefaultLimit:
         assert response.status_code == 200
         assert response.json() == 10
 
-    def test_list_still_respects_default_limit(
+    def test_list_default_does_not_hide_small_result_sets(
         self, client: TestClient, many_items: list[str]
     ) -> None:
-        """確保 list endpoint 仍遵循 default limit=10"""
+        """預設 list 行為不應把 25 筆資料默默截成 10 筆。"""
         response = client.get("/item")
         assert response.status_code == 200
-        assert len(response.json()) == 10
+        assert len(response.json()) == 25

@@ -9,6 +9,7 @@ from fastapi import APIRouter, HTTPException, Query, Request, Response
 from pydantic import BaseModel
 
 from autocrud.types import (
+    DEFAULT_QUERY_LIMIT,
     DataSearchCondition,
     DataSearchOperator,
     IResourceManager,
@@ -330,7 +331,13 @@ class QueryInputs(BaseModel):
         None,
         description='Sort conditions in JSON format. Example: \'[{"type": "meta", "key": "created_time", "direction": "+"}, {"type": "data", "field_path": "name", "direction": "-"}]\'',
     )
-    limit: int = Query(10, description="Maximum number of results")
+    limit: int = Query(
+        DEFAULT_QUERY_LIMIT,
+        description=(
+            "Maximum number of results. Responses are paginated by default; "
+            "set limit explicitly or use the /count endpoint if you need the full total."
+        ),
+    )
     offset: int = Query(0, description="Number of results to skip")
     partial: Optional[list[str]] = Query(
         None,
@@ -397,7 +404,7 @@ def build_query(q: QueryInputs) -> ResourceMetaSearchQuery:
             query = qb_result.build()
 
             # 覆寫 limit 和 offset（如果 QB 表達式中有設置，URL 參數會覆蓋它）
-            if q.limit != 10 or q.offset != 0:  # 檢查是否有設置非默認值
+            if q.limit != DEFAULT_QUERY_LIMIT or q.offset != 0:
                 query = msgspec.structs.replace(query, limit=q.limit, offset=q.offset)
 
             return query

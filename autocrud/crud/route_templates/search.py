@@ -112,7 +112,7 @@ class ListRouteTemplate(BaseRouteTemplate):
                 - Direct access to resource content only
 
                 **Examples:**
-                - `GET /{model_name}/data` - Get first 10 resources (data only)
+                - `GET /{model_name}/data` - Get the default first page of resources (data only)
                 - `GET /{model_name}/data?limit=20&offset=40` - Get resources 41-60 (data only)
                 - `GET /{model_name}/data?is_deleted=false&limit=5` - Get 5 non-deleted resources (data only)
                 - `GET /{model_name}/data?partial=/name&partial=/email` - Get specific fields for all resources
@@ -208,7 +208,7 @@ class ListRouteTemplate(BaseRouteTemplate):
                 - System monitoring and statistics
 
                 **Examples:**
-                - `GET /{model_name}/meta` - Get metadata for first 10 resources
+                - `GET /{model_name}/meta` - Get metadata for the default first page of resources
                 - `GET /{model_name}/meta?is_deleted=true` - Get metadata for deleted resources
                 - `GET /{model_name}/meta?created_bys=admin&limit=50` - Get metadata for admin-created resources
 
@@ -304,8 +304,8 @@ class ListRouteTemplate(BaseRouteTemplate):
                 - Change tracking and audit trails
 
                 **Examples:**
-                - `GET /{model_name}/revision-info` - Get current revision info for first 10 resources
-                - `GET /{model_name}/revision-info?limit=100` - Get revision info for first 100 resources
+                - `GET /{model_name}/revision-info` - Get current revision info for the default first page of resources
+                - `GET /{model_name}/revision-info?limit=100` - Get revision info for the first 100 resources
                 - `GET /{model_name}/revision-info?updated_bys=editor` - Get revision info for editor-modified resources
 
                 **Error Responses:**

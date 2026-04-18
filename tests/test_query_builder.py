@@ -2526,7 +2526,7 @@ class TestQueryBuilderEdgeCases:
         # Should have no conditions (UNSET)
         assert query.conditions is UNSET
         # Should still support chaining
-        assert query.limit == 10  # default limit
+        assert query.limit == 100  # default limit
 
     def test_all_empty_with_chaining(self):
         """Test QB.all() with no conditions supports method chaining."""

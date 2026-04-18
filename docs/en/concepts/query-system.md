@@ -207,6 +207,8 @@ You can still pass `limit` and `offset` in the URL:
 GET /users?qb=QB["age"].gt(18)&limit=20&offset=40
 ```
 
+List-style endpoints are paginated by default and currently return up to 100 items unless you override the limit explicitly.
+
 If both are present, the URL values override any `.limit()`, `.offset()`, or `.page()` settings defined inside the QB expression.
 
 When `qb` mode is used, treat the QB expression as the main filter definition. In practice, if you need delete-status filtering, express it inside QB itself, for example with `QB.is_deleted().is_false()`.

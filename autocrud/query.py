@@ -3,6 +3,7 @@ from typing import Any, Self
 from msgspec import UNSET
 
 from autocrud.types import (
+    DEFAULT_QUERY_LIMIT,
     DataSearchCondition,
     DataSearchFilter,
     DataSearchGroup,
@@ -22,7 +23,7 @@ class Query:
 
     def __init__(self, condition: DataSearchFilter | None = None):
         self._condition = condition
-        self._limit: int = 10
+        self._limit: int = DEFAULT_QUERY_LIMIT
         self._offset: int = 0
         self._sorts: list[ResourceMetaSearchSort | ResourceDataSearchSort] = []
 

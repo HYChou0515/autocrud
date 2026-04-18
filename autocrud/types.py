@@ -699,6 +699,14 @@ class ResourceMetaSearchSort(Struct, kw_only=True, tag=True):
     key: ResourceMetaSortKey
 
 
+DEFAULT_QUERY_LIMIT = 100
+"""Default page size for list-style search endpoints.
+
+Chosen to reduce the chance that callers mistake pagination for missing data,
+while still keeping responses bounded by default.
+"""
+
+
 class ResourceMetaSearchQuery(Struct, kw_only=True):
     is_deleted: bool | UnsetType = UNSET
     """Filter by deletion status of the resource."""
@@ -723,7 +731,7 @@ class ResourceMetaSearchQuery(Struct, kw_only=True):
     conditions: list[DataSearchFilter] | UnsetType = UNSET
     """Conditions to filter resources based on their metadata or indexed data fields."""
 
-    limit: int = 10
+    limit: int = DEFAULT_QUERY_LIMIT
     """Maximum number of results to return."""
     offset: int = 0
     """Number of results to skip before starting to collect the result set."""
