@@ -186,6 +186,8 @@ plugins:
                 - howto/query-builder.md
                 - howto/graphql.md
                 - howto/binary-data.md
+                - howto/pydantic-integration.md
+                - howto/backup-restore.md
                 - howto/web-ui.md
                 - howto/relationships.md
                 - howto/constraints.md
@@ -204,7 +206,6 @@ plugins:
             - Reference:
                 - reference/python_api.md
                 - reference/behavior.md
-                - reference/constraints.md
             
 # Extensions
 markdown_extensions:

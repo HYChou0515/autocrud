@@ -157,6 +157,8 @@ Practical guides for using AutoCRUD in real projects:
 * [Error Handling](/autocrud/howto/errors)
 * [GraphQL](/autocrud/howto/graphql)
 * [Binary data](/autocrud/howto/binary-data)
+* [Pydantic integration](/autocrud/howto/pydantic-integration)
+* [Backup and restore](/autocrud/howto/backup-restore)
 
 # Examples
 
