@@ -114,13 +114,13 @@ Use metadata helper methods when the filter targets resource metadata instead of
 
 ```python
 QB.resource_id().starts_with("task-")
-QB.revision_id().eq("rev-123")
+QB.current_revision_id().eq("rev-123")
 QB.created_by().eq("admin")
 QB.is_deleted().is_false()
 QB.total_revision_count() > 3
 ```
 
-For built-in metadata sorting, use `resource_id`, `created_time`, or `updated_time`.
+All built-in metadata accessors are filterable and sortable, including `resource_id`, `current_revision_id`, `created_time`, `updated_time`, `created_by`, `updated_by`, `is_deleted`, `schema_version`, and `total_revision_count`.
 
 ---
 

@@ -167,6 +167,23 @@ class TestSafeQBParser:
         query = result.build()
         assert query.conditions is not None
 
+    @pytest.mark.parametrize(
+        ("expression", "expected_field"),
+        [
+            ("QB.current_revision_id().eq('rev-123')", "current_revision_id"),
+            ("QB.schema_version().eq('v2')", "schema_version"),
+            ("QB.total_revision_count().gt(3)", "total_revision_count"),
+        ],
+    )
+    def test_extended_meta_attributes_parse(self, expression, expected_field):
+        """測試所有 QB metadata accessor 都能被安全解析。"""
+        parser = SafeQBParser()
+        result = parser.parse(expression)
+        query = result.build()
+        assert query.conditions is not None
+        cond = query.conditions[0]
+        assert cond.field_path == expected_field
+
     def test_datetime_integration(self):
         """測試 datetime 整合"""
         parser = SafeQBParser()

@@ -70,7 +70,7 @@ QB["some.field.with.dots"]
 | Field | Meaning |
 |------|---------|
 | `QB.resource_id()` | Resource identifier |
-| `QB.revision_id()` | The current revision ID |
+| `QB.current_revision_id()` | The current revision ID |
 | `QB.created_time()` | Resource creation time |
 | `QB.updated_time()` | Resource last update time |
 | `QB.created_by()` | Creator |
@@ -88,7 +88,7 @@ QB.updated_by().ne("guest")
 QB.is_deleted().is_false()
 ```
 
-> Filtering works for all of the accessors above. Built-in metadata sorting is limited to `resource_id`, `created_time`, and `updated_time`.
+> Filtering and built-in metadata sorting both work for all of the accessors above. For revision filtering and sorting, use `QB.current_revision_id()`.
 
 ---
 

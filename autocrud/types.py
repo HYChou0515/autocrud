@@ -691,9 +691,17 @@ class ResourceDataSearchSort(Struct, kw_only=True, tag=True):
 
 
 class ResourceMetaSortKey(StrEnum):
+    """Built-in metadata sort keys supported by QB and search APIs."""
+
     created_time = "created_time"
     updated_time = "updated_time"
     resource_id = "resource_id"
+    current_revision_id = "current_revision_id"
+    created_by = "created_by"
+    updated_by = "updated_by"
+    is_deleted = "is_deleted"
+    schema_version = "schema_version"
+    total_revision_count = "total_revision_count"
 
 
 class ResourceMetaSearchSort(Struct, kw_only=True, tag=True):

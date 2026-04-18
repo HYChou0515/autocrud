@@ -1196,16 +1196,21 @@ class QB(metaclass=QueryBuilderMeta):
         return Field("resource_id")
 
     @staticmethod
-    def revision_id() -> Field:
+    def current_revision_id() -> Field:
         """Current revision identifier.
 
         Returns:
             Field for current_revision_id
 
         Example:
-            QB.revision_id().eq("rev-456")
+            QB.current_revision_id().eq("rev-456")
         """
         return Field("current_revision_id")
+
+    @staticmethod
+    def revision_id() -> Field:
+        """Backward-compatible alias for current_revision_id()."""
+        return QB.current_revision_id()
 
     @staticmethod
     def created_time() -> Field:

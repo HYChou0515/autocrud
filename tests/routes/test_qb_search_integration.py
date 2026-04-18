@@ -560,6 +560,27 @@ def test_qb_meta_attributes(client: TestClient, sample_users: list[str]) -> None
     assert len(data) >= 0  # 可能因為實作不同而有不同結果
 
 
+@pytest.mark.parametrize(
+    ("expression", "expected_count"),
+    [
+        ("QB.current_revision_id().is_not_null()", 5),
+        ("QB.schema_version().is_null()", 5),
+        ("QB.total_revision_count().eq(1)", 5),
+    ],
+)
+def test_qb_extended_meta_attributes(
+    client: TestClient,
+    sample_users: list[str],
+    expression: str,
+    expected_count: int,
+) -> None:
+    """測試新增 metadata accessor 在 API 層可實際過濾。"""
+    response = client.get("/user/data", params={"qb": expression})
+    assert response.status_code == 200
+    data = response.json()
+    assert len(data) == expected_count
+
+
 def test_qb_case_insensitive_methods(
     client: TestClient, sample_users: list[str]
 ) -> None:

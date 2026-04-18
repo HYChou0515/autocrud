@@ -5,6 +5,7 @@ import pytest
 from msgspec import UNSET
 
 from autocrud.query import QB, ConditionBuilder
+from autocrud.resource_manager.basic import get_sort_fn
 from autocrud.resource_manager.core import ResourceManager, SimpleStorage
 from autocrud.resource_manager.meta_store.simple import MemoryMetaStore
 from autocrud.resource_manager.resource_store.simple import MemoryResourceStore
@@ -17,6 +18,7 @@ from autocrud.types import (
     ResourceDataSearchSort,
     ResourceMeta,
     ResourceMetaSearchQuery,
+    ResourceMetaSearchSort,
     ResourceMetaSortDirection,
     ResourceMetaSortKey,
 )
@@ -642,8 +644,8 @@ class TestQueryBuilder:
         cond = q.build().conditions[0]
         assert cond.field_path == "schema_version"
 
-        # Test revision_id (current_revision_id)
-        q = QB.revision_id().eq("rev-456")
+        # Test current_revision_id
+        q = QB.current_revision_id().eq("rev-456")
         cond = q.build().conditions[0]
         assert cond.field_path == "current_revision_id"
 
@@ -1274,6 +1276,80 @@ class TestQueryBuilder:
         assert len(query.sorts) == 1
         assert query.sorts[0].key == ResourceMetaSortKey.created_time
         assert query.sorts[0].direction == ResourceMetaSortDirection.descending
+
+    def test_all_metadata_accessors_are_sortable(self):
+        """All built-in metadata accessors should produce meta sorts, not data sorts."""
+        sort_cases = [
+            (QB.resource_id().asc(), ResourceMetaSortKey.resource_id),
+            (QB.current_revision_id().desc(), ResourceMetaSortKey.current_revision_id),
+            (QB.created_time().asc(), ResourceMetaSortKey.created_time),
+            (QB.updated_time().desc(), ResourceMetaSortKey.updated_time),
+            (QB.created_by().asc(), ResourceMetaSortKey.created_by),
+            (QB.updated_by().desc(), ResourceMetaSortKey.updated_by),
+            (QB.is_deleted().asc(), ResourceMetaSortKey.is_deleted),
+            (QB.schema_version().desc(), ResourceMetaSortKey.schema_version),
+            (
+                QB.total_revision_count().desc(),
+                ResourceMetaSortKey.total_revision_count,
+            ),
+        ]
+
+        for sort_obj, expected_key in sort_cases:
+            query = QB["age"].gt(0).sort(sort_obj).build()
+            assert len(query.sorts) == 1
+            assert isinstance(query.sorts[0], ResourceMetaSearchSort)
+            assert query.sorts[0].key == expected_key
+
+    def test_extended_metadata_sort_execution(self):
+        """Extended metadata keys should affect actual result ordering."""
+        now = dt.datetime(2025, 1, 1, tzinfo=ZoneInfo("UTC"))
+        metas = [
+            ResourceMeta(
+                current_revision_id="rev-2",
+                resource_id="b",
+                schema_version="v2",
+                total_revision_count=3,
+                created_time=now + dt.timedelta(days=1),
+                updated_time=now + dt.timedelta(days=2),
+                created_by="bob",
+                updated_by="zoe",
+                is_deleted=True,
+            ),
+            ResourceMeta(
+                current_revision_id="rev-1",
+                resource_id="a",
+                schema_version="v1",
+                total_revision_count=1,
+                created_time=now,
+                updated_time=now + dt.timedelta(days=1),
+                created_by="alice",
+                updated_by="amy",
+                is_deleted=False,
+            ),
+        ]
+
+        sort_cases = [
+            (ResourceMetaSortKey.current_revision_id, ["a", "b"]),
+            (ResourceMetaSortKey.created_by, ["a", "b"]),
+            (ResourceMetaSortKey.updated_by, ["a", "b"]),
+            (ResourceMetaSortKey.is_deleted, ["a", "b"]),
+            (ResourceMetaSortKey.schema_version, ["a", "b"]),
+            (ResourceMetaSortKey.total_revision_count, ["a", "b"]),
+        ]
+
+        for sort_key, expected_order in sort_cases:
+            sorted_metas = sorted(
+                metas,
+                key=get_sort_fn(
+                    [
+                        ResourceMetaSearchSort(
+                            direction=ResourceMetaSortDirection.ascending,
+                            key=sort_key,
+                        )
+                    ]
+                ),
+            )
+            assert [meta.resource_id for meta in sorted_metas] == expected_order
 
     def test_sort_with_multiple_strings(self):
         """Test sort() with multiple string parameters."""

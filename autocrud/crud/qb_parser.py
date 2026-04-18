@@ -110,11 +110,15 @@ class SafeQBParser:
     # 允許的 QB 類方法/屬性
     ALLOWED_QB_ATTRS = {
         "resource_id",
+        "current_revision_id",
+        "revision_id",
         "created_time",
         "updated_time",
         "created_by",
         "updated_by",
         "is_deleted",
+        "schema_version",
+        "total_revision_count",
         "all",
         "any",
     }
