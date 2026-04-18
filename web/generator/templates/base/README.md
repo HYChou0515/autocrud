@@ -25,21 +25,25 @@ pnpm dev
 
 ## 架構
 
-```
+```text
 src/
-├── types/api.ts          # 共用 API 型別 (ResourceMeta, RevisionInfo, etc.)
-├── lib/client.ts         # Axios 基礎客戶端
-├── routes/__root.tsx     # 根路由 (AppShell + 導航)
-├── generated/            # ⚡ 自動生成的程式碼
-│   ├── types.ts          # 資源 TypeScript 型別
-│   ├── resources.ts      # 資源註冊表
-│   └── api/              # 每個資源的 API 客戶端
-└── routes/               # ⚡ 自動生成的路由頁面
-    ├── index.tsx          # Dashboard (資源總覽)
-    └── {resource}/
-        ├── index.tsx      # 列表頁 (搜尋/篩選/分頁)
-        ├── create.tsx     # 新建頁 (自動表單)
-        └── $resourceId.tsx # 詳情頁 (檢視/編輯/版本歷史)
+├── autocrud/
+│   ├── types/api.ts            # 共用 API 型別 (ResourceMeta, RevisionInfo, etc.)
+│   ├── lib/client.ts           # Axios 基礎客戶端
+│   └── generated/              # ⚡ 自動生成的程式碼
+│       ├── types.ts            # 資源 TypeScript 型別
+│       ├── resources.ts        # 資源註冊表
+│       └── api/                # 每個資源的 API 客戶端
+└── routes/
+    ├── __root.tsx              # 根路由 (AppShell + 導航)
+    ├── autocrud-admin.tsx      # Admin layout
+    ├── index.tsx               # 首頁
+    └── autocrud-admin/
+        ├── index.tsx           # Dashboard (資源總覽)
+        └── {resource}/
+            ├── index.tsx       # 列表頁 (搜尋/篩選/分頁)
+            ├── create.tsx      # 新建頁 (自動表單)
+            └── $resourceId.tsx # 詳情頁 (檢視/編輯/版本歷史)
 ```
 
 ## Generator 生成的內容

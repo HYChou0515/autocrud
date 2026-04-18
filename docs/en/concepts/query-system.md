@@ -1,66 +1,61 @@
 # Query System
 
-AutoCRUD provides a flexible query system for searching resources.
+AutoCRUD provides two ways to express search queries:
 
-The recommended method is the **Query Builder (QB)** syntax, which allows
-expressive queries using a safe AST-based parser.
+- the recommended **Query Builder** expression, passed through the `qb` query parameter or used directly in Python
+- structured JSON query inputs such as `data_conditions`, `conditions`, and `sorts`
 
-This page describes:
-
-- the Query Builder (`QB`)
-- how to query resource metadata and data fields
-- logical operators
-- how queries are passed through HTTP APIs
+For most applications, **QB is the preferred interface** because it is more readable, supports nested logic, and is parsed safely with an AST-based parser instead of `eval`.
 
 ---
 
 # Query Builder (`QB`)
 
-The `QB` class provides a Python-style syntax for building queries.
+`QB` provides Python-like syntax for building search filters.
 
-Example:
+HTTP examples:
 
 ```text
 qb=QB["age"] > 18
-```
-
-Example with multiple conditions:
-
-```text
 qb=(QB["age"] > 18) & (QB["status"] == "active")
+qb=QB["age"].gt(18).sort("-created_time").page(2, 20)
 ```
 
-This syntax is parsed safely using an AST parser rather than `eval`.
+Python example:
+
+```python
+from autocrud.query import QB
+
+query = (
+    (QB["age"] > 18)
+    & QB["status"].eq("active")
+).sort("-created_time").page(1, 20)
+
+results = manager.search_resources(query)
+```
 
 ---
 
 # Data field queries
 
-Data fields are accessed using bracket notation.
+Data fields use bracket notation:
 
-```
-
+```python
 QB["field_name"]
-
 ```
 
 Examples:
 
-```
+```python
 QB["name"] == "Alice"
 QB["age"] > 18
 QB["price"] >= 100
-```
-
-Nested fields are supported:
-
-```python
 QB["user.email"] == "alice@example.com"
 ```
 
-Field names with special characters are supported:
+Field paths may include dots or special characters because the field name is always passed as a string:
 
-```
+```python
 QB["class"]
 QB["field-name"]
 QB["some.field.with.dots"]
@@ -70,198 +65,171 @@ QB["some.field.with.dots"]
 
 # Resource metadata fields
 
-`QB` also provides built-in accessors for resource metadata.
+`QB` also exposes helper accessors for resource metadata stored on `ResourceMeta`.
 
-These correspond to fields stored in **ResourceMeta**.
-
-| Field | Description |
-|------|-------------|
+| Field | Meaning |
+|------|---------|
 | `QB.resource_id()` | Resource identifier |
-| `QB.revision_id()` | Current revision ID |
-| `QB.created_time()` | Resource creation timestamp |
-| `QB.updated_time()` | Resource last update timestamp |
+| `QB.revision_id()` | The current revision ID |
+| `QB.created_time()` | Resource creation time |
+| `QB.updated_time()` | Resource last update time |
 | `QB.created_by()` | Creator |
 | `QB.updated_by()` | Last updater |
-| `QB.is_deleted()` | Soft delete status |
-| `QB.schema_version()` | Resource schema version |
-| `QB.total_revision_count()` | Number of revisions |
+| `QB.is_deleted()` | Soft-delete flag |
+| `QB.schema_version()` | Current schema version |
+| `QB.total_revision_count()` | Total number of revisions |
 
 Examples:
 
-```
-QB.resource_id().eq("abc-123")
-
-QB.created_time() >= datetime(2024, 1, 1)
-
+```python
+QB.resource_id().starts_with("user-")
+QB.created_time() >= datetime.datetime(2024, 1, 1)
 QB.updated_by().ne("guest")
-
-QB.is_deleted() == False
+QB.is_deleted().is_false()
 ```
+
+> Filtering works for all of the accessors above. Built-in metadata sorting is limited to `resource_id`, `created_time`, and `updated_time`.
 
 ---
 
 # Logical operators
 
-QB supports logical combinations.
+QB supports nested boolean logic.
 
 ## AND (`&`)
 
-```
+```python
 (QB["age"] > 18) & (QB["status"] == "active")
 ```
 
 Equivalent to:
 
-```
+```python
 QB.all(QB["age"] > 18, QB["status"] == "active")
 ```
 
----
-
 ## OR (`|`)
 
-```
+```python
 (QB["status"] == "draft") | (QB["status"] == "review")
 ```
 
 Equivalent to:
 
-```
+```python
 QB.any(
     QB["status"] == "draft",
-    QB["status"] == "review"
+    QB["status"] == "review",
 )
+```
+
+## NOT (`~`)
+
+```python
+~QB["archived"].eq(True)
 ```
 
 ---
 
 # `QB.all()` and `QB.any()`
 
-These helper functions combine multiple conditions.
+Use these helpers when you want to build grouped conditions more explicitly.
 
 ### AND group
 
-```
+```python
 QB.all(
     QB["age"] > 18,
     QB["status"] == "active",
-    QB["score"] >= 80
+    QB["score"] >= 80,
 )
 ```
 
-Equivalent to:
-
-```
-(QB["age"] > 18) &
-(QB["status"] == "active") &
-(QB["score"] >= 80)
-```
-
-If no conditions are provided:
-
-```
-QB.all()
-```
-
-This matches **all resources**.
-
----
+`QB.all()` with no arguments matches all resources.
 
 ### OR group
 
-```
+```python
 QB.any(
     QB["status"] == "draft",
     QB["status"] == "pending",
-    QB["status"] == "review"
+    QB["status"] == "review",
 )
-```
-
-Equivalent to:
-
-```
-(QB["status"] == "draft") |
-(QB["status"] == "pending") |
-(QB["status"] == "review")
 ```
 
 `QB.any()` requires at least one condition.
 
 ---
 
+# Common helper methods
+
+QB includes more than basic comparison operators. Common helpers include:
+
+- comparison: `eq`, `ne`, `gt`, `gte`, `lt`, `lte`, `between`, `in_range`
+- strings: `contains`, `starts_with`, `ends_with`, `icontains`, `regex`, `match`, `like`
+- collections: `in_`, `not_in`, `one_of`
+- null and value checks: `is_null`, `is_not_null`, `has_value`, `is_empty`, `is_blank`
+- boolean helpers: `is_true`, `is_false`, `is_truthy`, `is_falsy`
+- grouping helpers: `filter`, `exclude`, `all`, `any`
+- sorting and pagination: `sort`, `order_by`, `limit`, `offset`, `page`, `first`
+- date helpers: `today`, `yesterday`, `this_week`, `this_month`, `this_year`, `last_n_days`
+- transforms: `length()` for string or collection length checks
+
+---
+
 # HTTP usage
 
-Queries are passed via the `qb` query parameter.
-
-Example:
-
-```
-
-GET /users?qb=QB["age"] > 18
-
-```
-
-Example with multiple conditions:
-
-```
-
-GET /users?qb=(QB["age"] > 18) & (QB["status"] == "active")
-
-```
-
-Example using metadata fields:
+For HTTP APIs, pass the expression as the `qb` query parameter.
 
 ```text
+GET /users?qb=QB["age"].gt(18)
+GET /users?qb=(QB["age"] > 18) & QB["status"].eq("active")
 GET /users?qb=QB.created_by().eq("admin")
 ```
 
----
+In real clients, the query string should be URL-encoded automatically.
 
-## Read next
+## Conflict rules
 
-- [Search indexing](/autocrud/concepts/search-indexing)
-- [Query Builder](/autocrud/howto/query-builder)
-- [Routes generation](/autocrud/howto/routes)
-- [Troubleshooting](/autocrud/howto/troubleshooting)
-
-# Limit and offset
-
-Pagination is controlled separately:
-
-```
-
-GET /users?qb=QB["age"] > 18&limit=20&offset=40
-
-```
-
-These parameters override defaults defined in the query builder.
-
----
-
-# QB vs JSON conditions
-
-AutoCRUD also supports structured JSON query parameters:
+When `qb` is present, do not also send:
 
 - `data_conditions`
 - `conditions`
 - `sorts`
 
-However **QB is recommended** because:
+That combination is rejected by the API.
 
-- it is easier to read
-- it supports nested logic
-- it avoids complex JSON encoding
-- it is parsed safely using AST
+## Pagination behavior
 
-If `qb` is provided, it **cannot be combined** with:
+You can still pass `limit` and `offset` in the URL:
 
+```text
+GET /users?qb=QB["age"].gt(18)&limit=20&offset=40
 ```
 
-data_conditions
-conditions
-sorts
+If both are present, the URL values override any `.limit()`, `.offset()`, or `.page()` settings defined inside the QB expression.
 
-```
+When `qb` mode is used, treat the QB expression as the main filter definition. In practice, if you need delete-status filtering, express it inside QB itself, for example with `QB.is_deleted().is_false()`.
+
+## Error behavior
+
+- an invalid QB expression returns a client error
+- combining `qb` with the conflicting JSON query parameters returns a validation error
+
+---
+
+# QB vs JSON conditions
+
+AutoCRUD still supports the lower-level JSON query parameters for clients that prefer explicit structured payloads.
+
+Use QB when you want:
+
+- more readable expressions
+- nested boolean logic
+- less manual JSON encoding
+- one query string that maps closely to Python usage
+
+Use the JSON parameters when you are generating requests mechanically from another tool.
 
 ---
 
@@ -269,53 +237,37 @@ sorts
 
 ### Basic filter
 
-```
-
+```text
 GET /users?qb=QB["age"] > 18
-
 ```
-
----
 
 ### Multiple conditions
 
-```
-
+```text
 GET /users?qb=(QB["age"] > 18) & (QB["status"] == "active")
-
 ```
-
----
 
 ### Metadata query
 
-```
-
+```text
 GET /users?qb=QB.created_by().eq("admin")
-
 ```
-
----
 
 ### Date filter
 
+```text
+GET /orders?qb=QB.created_time() >= datetime.datetime(2024, 1, 1)
 ```
-
-GET /orders?qb=QB.created_time() >= datetime(2024,1,1)
-
-```
-
----
 
 ### Complex query
 
-```
+```text
 GET /users?qb=QB.all(
     QB["age"] > 18,
     QB.any(
         QB["status"] == "active",
-        QB["status"] == "trial"
-    )
+        QB["status"] == "trial",
+    ),
 )
 ```
 
@@ -325,14 +277,17 @@ GET /users?qb=QB.all(
 
 Key points:
 
-- `QB` is the **recommended query interface**
+- `QB` is the recommended query interface
 - data fields use `QB["field"]`
-- metadata fields use `QB.resource_id()` etc.
-- conditions can be combined with `&`, `|`, `QB.all()`, `QB.any()`
-- queries are passed via the `qb` HTTP parameter
+- metadata fields use helpers such as `QB.resource_id()` and `QB.created_time()`
+- conditions can be combined with `&`, `|`, `~`, `QB.all()`, and `QB.any()`
+- the HTTP API accepts the expression through the `qb` query parameter
 
 ---
 
-See also:
+## Read next
 
 - [Search indexing](/autocrud/concepts/search-indexing)
+- [Query Builder](/autocrud/howto/query-builder)
+- [Routes generation](/autocrud/howto/routes)
+- [Troubleshooting](/autocrud/howto/troubleshooting)

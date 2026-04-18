@@ -1,8 +1,8 @@
 # Query Builder
 
-AutoCRUD includes a programmatic query system for searching indexed resource fields.
+AutoCRUD includes a high-level query builder for searching indexed resource fields and resource metadata.
 
-Use it when you want expressive filtering logic in Python instead of building raw metadata query objects by hand.
+Use it when you want expressive filtering logic in Python or when you want your HTTP `qb` expressions to mirror the same mental model.
 
 ---
 
@@ -11,68 +11,120 @@ Use it when you want expressive filtering logic in Python instead of building ra
 The query builder is useful for:
 
 - filtering lists by field values
-- combining multiple conditions with AND or OR
-- building reusable search logic in services
-- keeping search code readable in tests and admin workflows
+- combining multiple conditions with AND, OR, and NOT
+- building reusable search logic in services or tests
+- keeping search code readable instead of hand-writing JSON filter payloads
 
 ---
 
-## Basic idea
-
-AutoCRUD search works on indexed metadata and indexed fields.
-
-A typical flow looks like this:
+## Basic Python usage
 
 ```python
+from autocrud.query import QB
+
+query = (
+    QB["status"].eq("active")
+    .filter(QB["priority"] >= 3)
+    .exclude(QB["archived"].eq(True))
+    .sort("-created_time")
+    .page(1, 20)
+)
+
 results = manager.search_resources(query)
 ```
 
-The query object can be assembled either from low-level search structs or through the higher-level query builder helpers.
+`QB[...]` returns a field-aware builder object, so comparison operators and helper methods can be chained naturally.
 
-## Practical example
+---
 
-Imagine you want all active tasks with priority $\ge 3$.
+## HTTP usage
 
-```python
-query = ResourceMetaSearchQuery(
-    conditions=[
-        DataSearchCondition(
-            field_path="status",
-            operator=DataSearchOperator.equals,
-            value="active",
-        ),
-        DataSearchCondition(
-            field_path="priority",
-            operator=DataSearchOperator.greater_than_or_equal,
-            value=3,
-        ),
-    ]
-)
+The same ideas can be passed to the API through the `qb` query parameter:
+
+```text
+GET /tasks?qb=(QB["status"] == "active") & (QB["priority"] >= 3)
+GET /tasks?qb=QB["owner"].one_of(["alice", "bob"])
+GET /tasks?qb=QB.created_time().last_n_days(7)
 ```
 
-When a search returns nothing, first verify that the fields are actually indexed and that the operator matches the field type.
+The server parses the expression with a safe AST parser.
 
 ---
 
-## Field comparisons
+## Common patterns
 
-The system supports common operators such as:
+### Simple comparisons
 
-- equals
-- not equals
-- greater than or greater than or equal
-- less than or less than or equal
-- contains
-- starts with and ends with
-- in-list and not-in-list
-- null and existence checks
-- regex
+```python
+QB["age"] > 18
+QB["status"].eq("active")
+QB["score"].between(80, 100)
+```
 
-These map to the built-in search operators used by the metadata layer.
+### String matching
+
+```python
+QB["name"].contains("ali")
+QB["email"].ends_with("@example.com")
+QB["title"].icontains("urgent")
+QB["code"].regex(r"^[A-Z]{3}")
+```
+
+### List membership
+
+```python
+QB["status"].in_(["draft", "review"])
+QB["role"].not_in(["guest"])
+QB["owner"].one_of(["alice", "bob"])
+```
+
+### Null and value checks
+
+```python
+QB["deleted_at"].is_null()
+QB["email"].is_not_null()
+QB["nickname"].is_blank()
+QB["profile"].has_value()
+```
+
+### Date helpers
+
+```python
+QB.created_time().today()
+QB.updated_time().this_week()
+QB.created_time().last_n_days(30)
+```
+
+### Sorting and pagination
+
+```python
+QB["status"].eq("active").sort("-created_time", "+name")
+QB["status"].eq("active").limit(10).offset(20)
+QB["status"].eq("active").page(2, 10)
+QB["status"].eq("active").first()
+```
 
 ---
 
-## Low-level example with search conditions
+## Metadata accessors
+
+Use metadata helper methods when the filter targets resource metadata instead of indexed data.
+
+```python
+QB.resource_id().starts_with("task-")
+QB.revision_id().eq("rev-123")
+QB.created_by().eq("admin")
+QB.is_deleted().is_false()
+QB.total_revision_count() > 3
+```
+
+For built-in metadata sorting, use `resource_id`, `created_time`, or `updated_time`.
+
+---
+
+## Low-level alternative
+
+If you need fully explicit structured queries, you can still build `ResourceMetaSearchQuery` objects manually:
 
 ```python
 from autocrud.types import (
@@ -100,58 +152,25 @@ query = ResourceMetaSearchQuery(
 results = manager.search_resources(query)
 ```
 
----
-
-## Sorting results
-
-You can sort by metadata fields or indexed data fields.
-
-```python
-from autocrud.types import (
-    ResourceDataSearchSort,
-    ResourceMetaSearchQuery,
-    ResourceMetaSortDirection,
-)
-
-query = ResourceMetaSearchQuery(
-    sorts=[
-        ResourceDataSearchSort(
-            direction=ResourceMetaSortDirection.descending,
-            field_path="priority",
-        )
-    ]
-)
-```
+This is useful for generated clients or integrations that prefer explicit JSON-like structures.
 
 ---
 
-## Combining conditions
+## Important limitations
 
-For more complex logic, use grouped search conditions so your queries can express nested boolean rules.
-
-This is especially useful for filters such as:
-
-- open issues assigned to Alice or Bob
-- resources created this week and not deleted
-- items matching either a tag filter or a text prefix
-
----
-
-## Important limitation
-
-Queries only work reliably on fields that are indexed or available in metadata.
-
-If a field is not indexed, searching by that field may not behave as you expect on every backend.
+- queries only work reliably on metadata fields and indexed fields
+- if `qb` is used in HTTP requests, do not combine it with `data_conditions`, `conditions`, or `sorts`
+- URL `limit` and `offset` override pagination values defined inside the QB expression
+- if you need delete-status filtering in QB mode, include it directly in the expression, for example `QB.is_deleted().is_false()`
 
 ---
 
 ## Good practices
 
 - index fields that you plan to search frequently
-- keep filters small and explicit at first
-- use grouped conditions when OR logic is required
-- sort on fields that are already indexed to keep queries efficient
-- treat the query layer as part of your application design, not only an API convenience
+- start with small filters and expand only when needed
+- use `QB.all()` and `QB.any()` for nested grouped logic
+- prefer QB for readability and JSON conditions for machine-generated requests
 
 ---
 

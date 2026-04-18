@@ -79,13 +79,13 @@ npx autocrud-web-generator init my-app
 - 從 AutoCRUD API 抓取 `/openapi.json`
 - 解析 OpenAPI spec 找出所有 resources
 - 生成以下檔案到 `src/` 目錄：
-  - `generated/types.ts` - TypeScript 介面
-  - `generated/resources.ts` - Resource 註冊表
-  - `generated/api/*.ts` - 各 resource 的 API client
-  - `routes/index.tsx` - Dashboard
-  - `routes/{resource}/index.tsx` - List 頁面
-  - `routes/{resource}/create.tsx` - Create 頁面
-  - `routes/{resource}/$resourceId.tsx` - Detail 頁面
+  - `autocrud/generated/types.ts` - TypeScript 介面
+  - `autocrud/generated/resources.ts` - Resource 註冊表
+  - `autocrud/generated/api/*.ts` - 各 resource 的 API client
+  - `routes/autocrud-admin/index.tsx` - Dashboard
+  - `routes/autocrud-admin/{resource}/index.tsx` - List 頁面
+  - `routes/autocrud-admin/{resource}/create.tsx` - Create 頁面
+  - `routes/autocrud-admin/{resource}/$resourceId.tsx` - Detail 頁面
 
 實作位置：`src/commands/generate.ts`（977 行，主要邏輯）
 
@@ -103,7 +103,7 @@ npx autocrud-web-generator init my-app
 ### 模板系統
 - 模板位於 `templates/base/`
 - `init` 命令直接複製整個目錄
-- 不包含 `node_modules`、`dist`、`scripts`、`src/generated`、`src/routes/{resource}`
+- 不包含 `node_modules`、`dist`、`scripts`、`src/autocrud/generated`、`src/routes/autocrud-admin`
 
 ### 檔案生成
 - 使用字串模板（template literals）
@@ -156,7 +156,7 @@ A: 因為它會讀取 `process.cwd()` 來決定輸出位置。可以用 `-o` 參
 
 ### Q: 如何更新已經生成的專案？
 
-A: 直接再次執行 `pnpm generate`，會覆蓋 `src/generated/` 和 `src/routes/` 下的自動生成檔案。
+A: 直接再次執行 `pnpm generate`，會覆蓋 `src/autocrud/generated/` 和 `src/routes/autocrud-admin/` 下的自動生成檔案。
 
 ### Q: 模板中的 package.json 為什麼不包含 autocrud-web-generator？
 
