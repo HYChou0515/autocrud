@@ -98,8 +98,9 @@ class ListRouteTemplate(BaseRouteTemplate):
                 - Example: `[{{"type": "meta", "key": "created_time", "direction": "+"}}, {{"type": "data", "field_path": "name", "direction": "-"}}]`
 
                 **Pagination:**
-                - `limit`: Maximum number of results to return (default: 10)
+                - `limit`: Maximum number of results to return (default comes from `AUTOCRUD_DEFAULT_QUERY_LIMIT` at startup)
                 - `offset`: Number of results to skip for pagination (default: 0)
+                - If you need an exact full total, use the `/count` endpoint or pass an explicit `limit`.
 
                 **Partial Response:**
                 - `partial`: List of fields to retrieve (e.g. '/field1', '/nested/field2')
@@ -198,8 +199,9 @@ class ListRouteTemplate(BaseRouteTemplate):
                 - Example: `[{{"type": "meta", "key": "updated_time", "direction": "-"}}, {{"type": "data", "field_path": "department", "direction": "+"}}]`
 
                 **Pagination:**
-                - `limit`: Maximum number of results to return (default: 10)
+                - `limit`: Maximum number of results to return (default comes from `AUTOCRUD_DEFAULT_QUERY_LIMIT` at startup)
                 - `offset`: Number of results to skip for pagination (default: 0)
+                - If you need an exact full total, use the `/count` endpoint or pass an explicit `limit`.
 
                 **Use Cases:**
                 - Resource management and administration
@@ -294,8 +296,9 @@ class ListRouteTemplate(BaseRouteTemplate):
                 - Example: `[{{"field_path": "status", "operator": "eq", "value": "active"}}]`
 
                 **Pagination:**
-                - `limit`: Maximum number of results to return (default: 10)
+                - `limit`: Maximum number of results to return (default comes from `AUTOCRUD_DEFAULT_QUERY_LIMIT` at startup)
                 - `offset`: Number of results to skip for pagination (default: 0)
+                - If you need an exact full total, use the `/count` endpoint or pass an explicit `limit`.
 
                 **Use Cases:**
                 - Version control system integration

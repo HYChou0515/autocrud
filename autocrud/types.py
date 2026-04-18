@@ -1,6 +1,8 @@
 from __future__ import annotations
 
 import datetime as dt
+import os
+import warnings
 from abc import ABC, abstractmethod
 from collections.abc import Generator, Iterable, Iterator
 from contextlib import AbstractContextManager
@@ -699,11 +701,55 @@ class ResourceMetaSearchSort(Struct, kw_only=True, tag=True):
     key: ResourceMetaSortKey
 
 
-DEFAULT_QUERY_LIMIT = 100
+DEFAULT_QUERY_LIMIT_ENV_VAR = "AUTOCRUD_DEFAULT_QUERY_LIMIT"
+DEFAULT_QUERY_LIMIT_FALLBACK = 2**32 - 1
+
+
+def _read_default_query_limit() -> int:
+    """Read the startup default query limit from the environment.
+
+    The value is intentionally configurable so operators can decide whether
+    list endpoints should behave more like a small page or an effectively
+    unbounded first page in their deployment.
+    """
+
+    raw = os.getenv(DEFAULT_QUERY_LIMIT_ENV_VAR)
+    if raw is None or raw.strip() == "":
+        return DEFAULT_QUERY_LIMIT_FALLBACK
+
+    try:
+        value = int(raw)
+    except ValueError:
+        warnings.warn(
+            (
+                f"Invalid {DEFAULT_QUERY_LIMIT_ENV_VAR}={raw!r}; "
+                f"falling back to {DEFAULT_QUERY_LIMIT_FALLBACK}."
+            ),
+            RuntimeWarning,
+            stacklevel=2,
+        )
+        return DEFAULT_QUERY_LIMIT_FALLBACK
+
+    if value < 1:
+        warnings.warn(
+            (
+                f"{DEFAULT_QUERY_LIMIT_ENV_VAR} must be >= 1, got {value}; "
+                f"falling back to {DEFAULT_QUERY_LIMIT_FALLBACK}."
+            ),
+            RuntimeWarning,
+            stacklevel=2,
+        )
+        return DEFAULT_QUERY_LIMIT_FALLBACK
+
+    return value
+
+
+DEFAULT_QUERY_LIMIT = _read_default_query_limit()
 """Default page size for list-style search endpoints.
 
-Chosen to reduce the chance that callers mistake pagination for missing data,
-while still keeping responses bounded by default.
+Configurable at process startup through the AUTOCRUD_DEFAULT_QUERY_LIMIT
+environment variable. Falls back to a very large first-page limit so users do
+not easily mistake pagination for missing data.
 """
 
 

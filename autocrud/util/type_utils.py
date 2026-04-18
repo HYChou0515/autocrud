@@ -88,16 +88,106 @@ def resolve_struct_origin(type_hint: Any) -> type[Struct] | None:
     return None
 
 
+class _ResolvedFieldInfo:
+    """Lightweight proxy that overrides only the resolved ``type`` attribute."""
+
+    __slots__ = ("_original", "type")
+
+    def __init__(self, original: msgspec.structs.FieldInfo, resolved_type: Any):
+        self._original = original
+        self.type = resolved_type
+
+    def __getattr__(self, name: str) -> Any:
+        return getattr(self._original, name)
+
+
+def _is_typevar_instance(obj: Any) -> bool:
+    """Return whether *obj* looks like a ``TypeVar`` instance.
+
+    This is intentionally structural so it still works when user code keeps
+    references created before a module reload.
+    """
+    return (
+        hasattr(obj, "__name__")
+        and hasattr(obj, "__constraints__")
+        and hasattr(obj, "__bound__")
+        and not isinstance(obj, type)
+    )
+
+
+def _substitute_typevars(hint: Any, tv_map: dict[TypeVar, type]) -> Any:
+    """Recursively replace TypeVars in *hint* using *tv_map*."""
+    if _is_typevar_instance(hint):
+        resolved = tv_map.get(hint)
+        if resolved is not None:
+            return resolved
+        hint_name = getattr(hint, "__name__", None)
+        for key, value in tv_map.items():
+            if getattr(key, "__name__", None) == hint_name:
+                return value
+        return hint
+
+    if is_annotated_type(hint):
+        inner, metadata = unwrap_annotated(hint)
+        converted = _substitute_typevars(inner, tv_map)
+        if converted is inner or not metadata:
+            return converted
+        return Annotated[converted, *metadata]
+
+    origin = get_generic_origin(hint)
+    if origin is None:
+        return hint
+
+    args = get_generic_args(hint)
+    if not args:
+        return hint
+
+    converted_args = tuple(_substitute_typevars(arg, tv_map) for arg in args)
+    if converted_args == args:
+        return hint
+
+    if is_union_type(hint):
+        return Union[converted_args]
+    return origin[converted_args]
+
+
 def get_struct_fields(
     type_hint: Any,
 ) -> tuple[msgspec.structs.FieldInfo, ...]:
     """Return the fields of a ``Struct`` type or generic alias.
 
-    ``msgspec.structs.fields()`` natively supports both concrete types **and**
-    generic aliases (resolving TypeVars automatically), so this is a thin
-    wrapper that makes the intent explicit and keeps the import in one place.
+    On some Python/msgspec reload paths, ``msgspec.structs.fields()`` may leave
+    inherited ``TypeVar`` entries unresolved for concrete subclasses such as
+    ``class MyJob(Job[Payload])``. Resolve them here so callers always see the
+    concrete field type.
     """
-    return msgspec.structs.fields(type_hint)
+    fields = msgspec.structs.fields(type_hint)
+
+    tv_map: dict[TypeVar, type] = {}
+    origin = get_origin(type_hint)
+    if origin is not None:
+        if isinstance(origin, type):
+            tv_map.update(build_typevar_map(origin))
+        params = getattr(origin, "__parameters__", ())
+        args = get_args(type_hint)
+        tv_map.update({p: a for p, a in zip(params, args)})
+    elif isinstance(type_hint, type):
+        tv_map.update(build_typevar_map(type_hint))
+
+    if not tv_map:
+        return fields
+
+    resolved: list[msgspec.structs.FieldInfo] = []
+    changed = False
+    for field in fields:
+        resolved_type = _substitute_typevars(field.type, tv_map)
+        if resolved_type is not field.type:
+            changed = True
+            resolved.append(_ResolvedFieldInfo(field, resolved_type))
+        else:
+            resolved.append(field)
+
+    return tuple(resolved) if changed else fields
 
 
 # ── Union / Optional ────────────────────────────────────────────────────────
@@ -324,13 +414,25 @@ def build_typevar_map(cls: type) -> dict[TypeVar, type]:
     for base in getattr(cls, "__orig_bases__", ()):
         origin = get_origin(base)
         args = get_args(base)
-        if origin is not None and args:
-            params = getattr(origin, "__parameters__", ())
-            for param, arg in zip(params, args):
-                if isinstance(param, TypeVar):
-                    mapping[param] = arg
-            # Recurse into the origin class for deeper generic chains
-            mapping.update(build_typevar_map(origin))
+        if origin is None or not args:
+            continue
+
+        # Recurse first, then overlay the current concrete bindings so they
+        # cannot be accidentally overwritten by a parent Generic[T, ...] base.
+        for param, arg in build_typevar_map(origin).items():
+            mapping.setdefault(param, arg)
+
+        params = getattr(origin, "__parameters__", ())
+        for param, arg in zip(params, args):
+            if not _is_typevar_instance(param):
+                continue
+            if _is_typevar_instance(arg):
+                arg_name = getattr(arg, "__name__", None)
+                for key, value in mapping.items():
+                    if getattr(key, "__name__", None) == arg_name:
+                        arg = value
+                        break
+            mapping[param] = arg
     return mapping
 
 
@@ -364,7 +466,7 @@ def collect_nested_struct_types(
     tv_map = build_typevar_map(struct_type)
 
     for hint in hints.values():
-        resolved = tv_map.get(hint, hint) if isinstance(hint, TypeVar) else hint
+        resolved = _substitute_typevars(hint, tv_map)
         _walk_hint_for_structs(resolved, visited, result, tv_map)
     return result
 
@@ -377,12 +479,14 @@ def _walk_hint_for_structs(
 ) -> None:
     """Internal: walk a single type hint and collect Struct types into *out*."""
     # Resolve lingering TypeVars
-    if isinstance(hint, TypeVar):
+    if _is_typevar_instance(hint):
         resolved = tv_map.get(hint)
         if resolved is not None:
             hint = resolved
         else:
             return
+
+    hint = _substitute_typevars(hint, tv_map)
 
     # Annotated — unwrap and recurse into the inner type
     if is_annotated_type(hint):
@@ -529,7 +633,11 @@ def find_annotated_fields(struct_type: type, marker_cls: type) -> list[str]:
         if is_annotated_type(hint):
             _inner, metadata = unwrap_annotated(hint)
             for meta in metadata:
-                if isinstance(meta, marker_cls):
+                if isinstance(meta, marker_cls) or (
+                    getattr(meta.__class__, "__name__", None) == marker_cls.__name__
+                    and getattr(meta.__class__, "__module__", None)
+                    == marker_cls.__module__
+                ):
                     result.append(field_name)
                     break  # One match per field is enough
     return result

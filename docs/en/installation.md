@@ -67,6 +67,26 @@ If that command prints a version string, the installation is ready.
 
 ---
 
+## Configure the default list limit
+
+List-style endpoints are paginated by default. You can control the startup default
+with the `AUTOCRUD_DEFAULT_QUERY_LIMIT` environment variable.
+
+Example:
+
+```bash
+export AUTOCRUD_DEFAULT_QUERY_LIMIT=1000
+uvicorn main:app --reload
+```
+
+Notes:
+
+- if unset, AutoCRUD falls back to a very large default first page size
+- a request-level `limit` still overrides the startup default
+- if you need an exact total count, use the `/count` endpoint
+
+---
+
 ## Minimal usage example
 
 ```python

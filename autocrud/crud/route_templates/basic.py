@@ -334,7 +334,8 @@ class QueryInputs(BaseModel):
     limit: int = Query(
         DEFAULT_QUERY_LIMIT,
         description=(
-            "Maximum number of results. Responses are paginated by default; "
+            "Maximum number of results. Default comes from the "
+            "AUTOCRUD_DEFAULT_QUERY_LIMIT environment variable at startup; "
             "set limit explicitly or use the /count endpoint if you need the full total."
         ),
     )

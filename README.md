@@ -60,6 +60,15 @@ Start the server:
 uvicorn main:app
 ```
 
+Optional startup tuning:
+
+```bash
+export AUTOCRUD_DEFAULT_QUERY_LIMIT=1000
+```
+
+This controls the default page size for list endpoints. Per-request `limit`
+still overrides it.
+
 You now automatically get:
 
 ```

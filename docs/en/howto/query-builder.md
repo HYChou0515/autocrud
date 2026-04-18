@@ -47,7 +47,7 @@ GET /tasks?qb=QB["owner"].one_of(["alice", "bob"])
 GET /tasks?qb=QB.created_time().last_n_days(7)
 ```
 
-List endpoints are paginated by default, with a default limit of 100 unless you pass a different `limit` value.
+List endpoints are paginated by default. The startup default comes from the AUTOCRUD_DEFAULT_QUERY_LIMIT environment variable, and you can still pass a different limit per request.
 
 The server parses the expression with a safe AST parser.
 

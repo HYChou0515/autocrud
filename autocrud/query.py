@@ -17,6 +17,12 @@ from autocrud.types import (
     ResourceMetaSortKey,
 )
 
+_PREV_Query = globals().get("Query")
+_PREV_ConditionBuilder = globals().get("ConditionBuilder")
+_PREV_Field = globals().get("Field")
+_PREV_QueryBuilderMeta = globals().get("QueryBuilderMeta")
+_PREV_QB = globals().get("QB")
+
 
 class Query:
     """Builder for ResourceMetaSearchQuery."""
@@ -1347,3 +1353,15 @@ class QB(metaclass=QueryBuilderMeta):
                 conditions=[c._condition for c in conditions],
             )
         )
+
+
+if _PREV_Query is not None:  # pragma: no cover - exercised via reload tests
+    Query = _PREV_Query
+if _PREV_ConditionBuilder is not None:  # pragma: no cover
+    ConditionBuilder = _PREV_ConditionBuilder
+if _PREV_Field is not None:  # pragma: no cover
+    Field = _PREV_Field
+if _PREV_QueryBuilderMeta is not None:  # pragma: no cover
+    QueryBuilderMeta = _PREV_QueryBuilderMeta
+if _PREV_QB is not None:  # pragma: no cover
+    QB = _PREV_QB
