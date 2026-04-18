@@ -20,7 +20,7 @@ This is the simplest setup and is useful for local experiments.
 
 ```python
 from autocrud import crud
-from autocrud.permission.simple import AllowAll
+from autocrud.permission import AllowAll
 
 crud.configure(permission_checker=AllowAll())
 ```
@@ -33,7 +33,7 @@ If you want a single operator account to manage everything, use `RootOnly`.
 
 ```python
 from autocrud import crud
-from autocrud.permission.simple import RootOnly
+from autocrud.permission import RootOnly
 
 crud.configure(permission_checker=RootOnly("admin@example.com"))
 ```
@@ -50,8 +50,13 @@ For per-user or per-role rules, use `ACLPermissionChecker`.
 import datetime as dt
 
 from autocrud import crud
-from autocrud.permission.acl import ACLPermission, ACLPermissionChecker, Policy
-from autocrud.types import PermissionResult, ResourceAction
+from autocrud.permission import (
+    ACLPermission,
+    ACLPermissionChecker,
+    PermissionResult,
+    Policy,
+    ResourceAction,
+)
 
 checker = ACLPermissionChecker(policy=Policy.strict)
 crud.configure(permission_checker=checker)
@@ -98,12 +103,13 @@ For role-based systems, use `RBACPermissionChecker`.
 import datetime as dt
 
 from autocrud import crud
-from autocrud.permission.rbac import (
+from autocrud.permission import (
+    PermissionResult,
     RBACPermissionChecker,
     RBACPermissionEntry,
+    ResourceAction,
     RoleMembership,
 )
-from autocrud.types import PermissionResult, ResourceAction
 
 checker = RBACPermissionChecker()
 crud.configure(permission_checker=checker)

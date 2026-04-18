@@ -22,7 +22,7 @@ The query builder is useful for:
 ## Basic Python usage
 
 ```python
-from autocrud.query import QB
+from autocrud import QB
 
 query = (
     QB["status"].eq("active")

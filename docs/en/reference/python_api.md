@@ -70,6 +70,7 @@ Use this when you want separate instances with different configuration.
 
 ### Search and operations
 
+- `QB` — high-level query builder for indexed fields and metadata
 - `SearchedResource` — typed search result container
 - `ResourceOps` — operation information used in lifecycle processing
 
@@ -88,6 +89,12 @@ Use this when you want separate instances with different configuration.
 - `BackgroundTaskAccepted` — response type for background task submission
 - `BlobUploadSession` — upload-session metadata for blob workflows
 - `JobRedirectInfo` — redirect payload for job-style async actions
+
+### Curated advanced namespaces
+
+- `autocrud.permission` — permission helpers, checkers, and action enums
+- `autocrud.events` — event hook interfaces and builder helpers
+- `autocrud.errors` — public exception families for cleaner error handling
 
 ---
 

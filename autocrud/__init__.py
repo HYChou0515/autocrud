@@ -1,4 +1,5 @@
 from autocrud.crud.core import AutoCRUD, LoadStats
+from autocrud.query import QB
 from autocrud.resource_manager.core import ResourceOps
 from autocrud.resource_manager.pydantic_converter import struct_to_pydantic
 from autocrud.schema import Schema
@@ -41,6 +42,7 @@ __all__ = [
     "MissingOperationContextError",
     "OnDelete",
     "OnDuplicate",
+    "QB",
     "Ref",
     "RefRevision",
     "ResourceOps",
