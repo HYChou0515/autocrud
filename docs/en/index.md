@@ -155,6 +155,12 @@ Practical guides for using AutoCRUD in real projects:
 * [Constraints](/autocrud/howto/constraints)
 * [Migrations](/autocrud/howto/migrations)
 * [Error Handling](/autocrud/howto/errors)
+* [GraphQL](/autocrud/howto/graphql)
+* [Binary data](/autocrud/howto/binary-data)
+
+# Examples
+
+If you prefer to learn from running code, start with the [examples overview](/autocrud/examples/).
 
 ---
 
