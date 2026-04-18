@@ -179,6 +179,9 @@ plugins:
             - How-to:
                 - howto/api-conventions.md
                 - howto/routes.md
+                - howto/permissions.md
+                - howto/event-handlers.md
+                - howto/query-builder.md
                 - howto/web-ui.md
                 - howto/relationships.md
                 - howto/constraints.md
