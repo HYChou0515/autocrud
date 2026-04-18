@@ -1,6 +1,93 @@
 # Python API Reference
 
-This page is generated from docstrings of the public API exported by `autocrud`.
+This page documents the main public Python API exposed by AutoCRUD.
+
+Use it as a practical map of the package surface, then scroll down for the auto-generated reference from docstrings.
+
+---
+
+## Recommended entry points
+
+Most applications start with one of these two patterns:
+
+### Global instance pattern
+
+```python
+from fastapi import FastAPI
+from autocrud import crud
+
+app = FastAPI()
+crud.add_model(User)
+crud.apply(app)
+```
+
+Use this when you want a simple application-wide AutoCRUD instance.
+
+### Manual instance pattern
+
+```python
+from autocrud import AutoCRUD
+
+crud = AutoCRUD()
+```
+
+Use this when you want separate instances with different configuration.
+
+---
+
+## Public API groups
+
+### Core setup
+
+- `AutoCRUD` — main entry point for model registration and route generation
+- `crud` — pre-created global instance for simple usage
+- `LoadStats` — summary information returned by bulk load operations
+
+### Schema and model conversion
+
+- `Schema` — declare schema versions, migration steps, and validators
+- `struct_to_pydantic` — convert AutoCRUD struct types to Pydantic models when needed
+
+### Relationships and lifecycle helpers
+
+- `Ref`, `RefRevision`, `RefType` — declare resource relationships
+- `Unique` — declare unique fields or constraints
+- `OnDelete` — configure deletion behavior for referenced resources
+- `OnDuplicate` — define how import or bulk load handles duplicates
+- `DisplayName` — provide readable labels for resources or fields
+
+### Search and operations
+
+- `SearchedResource` — typed search result container
+- `ResourceOps` — operation information used in lifecycle processing
+
+### Interfaces and exceptions
+
+- `IConstraintChecker` — custom constraint hook interface
+- `IValidator` — custom validation interface
+- `ValidationError` — validation failure
+- `UniqueConstraintError` — uniqueness violation
+- `DuplicateResourceError` — duplicate create or import condition
+- `RevisionNotMigratedError` — schema migration mismatch during revision access
+- `MissingOperationContextError` — required lifecycle context was not provided
+
+### Async and blob-related types
+
+- `BackgroundTaskAccepted` — response type for background task submission
+- `BlobUploadSession` — upload-session metadata for blob workflows
+- `JobRedirectInfo` — redirect payload for job-style async actions
+
+---
+
+## Where to go next
+
+- For usage patterns, start with the quickstart guides.
+- For API shape and endpoints, inspect your generated OpenAPI docs.
+- For route behavior, see the behavior and constraints references.
+
+---
+
+## Auto-generated reference
 
 ## autocrud
 
