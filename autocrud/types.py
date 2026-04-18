@@ -2875,8 +2875,9 @@ class IConstraintChecker(ABC):
                 ID so the checker can allow the resource to keep its own values.
 
         Raises:
-            Any exception to signal a constraint violation.  The framework
-            will catch it, execute compensation, and re-raise.
+            Exception: Raised by the checker to signal a constraint violation.
+                The framework catches it, executes compensation, and re-raises
+                it.
         """
         ...
 

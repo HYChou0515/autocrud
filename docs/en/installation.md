@@ -99,8 +99,8 @@ Then open:
 
 ---
 
-## What to read next
+## Choose your next step
 
-- [Fast demo](/autocrud/quickstart/fast-demo)
-- [Integrate with an existing FastAPI app](/autocrud/quickstart/integrate-existing)
-- [Routes generation](/autocrud/howto/routes)
+- [Fast demo](/autocrud/quickstart/fast-demo) if you want the quickest end-to-end example
+- [Integrate with an existing FastAPI app](/autocrud/quickstart/integrate-existing) if you already have a project
+- [Routes generation](/autocrud/howto/routes) if you want to understand what gets exposed automatically

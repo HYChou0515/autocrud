@@ -134,6 +134,17 @@ All endpoints come with **OpenAPI documentation**, **validation**, and **version
 
 ---
 
+# Start here
+
+If you are new to the project, this is the recommended path:
+
+1. [Installation](/autocrud/installation/)
+2. [Fast demo](/autocrud/quickstart/fast-demo)
+3. [Routes](/autocrud/howto/routes)
+4. one feature guide based on your current task
+
+---
+
 # Core Concepts
 
 To understand how AutoCRUD works internally:
@@ -155,6 +166,7 @@ Practical guides for using AutoCRUD in real projects:
 * [Constraints](/autocrud/howto/constraints)
 * [Migrations](/autocrud/howto/migrations)
 * [Error Handling](/autocrud/howto/errors)
+* [Troubleshooting](/autocrud/howto/troubleshooting)
 * [GraphQL](/autocrud/howto/graphql)
 * [Binary data](/autocrud/howto/binary-data)
 * [Pydantic integration](/autocrud/howto/pydantic-integration)
@@ -177,7 +189,6 @@ If you prefer to learn from running code, start with the [examples overview](/au
 * [Architecture](/autocrud/concepts/architecture)
 * [Data model](/autocrud/concepts/data-model)
 * [Query system](/autocrud/concepts/query-system)
-
 
 ---
 
