@@ -201,6 +201,46 @@ def test_qb_conflict_with_sorts(client: TestClient, sample_users: list[str]) -> 
     assert "sorts" in detail
 
 
+@pytest.mark.parametrize(
+    ("extra_params", "expected_params"),
+    [
+        ({"is_deleted": "false"}, ["is_deleted"]),
+        ({"created_time_start": "2025-01-01T00:00:00"}, ["created_time_start"]),
+        ({"created_time_end": "2025-01-31T23:59:59"}, ["created_time_end"]),
+        ({"updated_time_start": "2025-02-01T00:00:00"}, ["updated_time_start"]),
+        ({"updated_time_end": "2025-02-28T23:59:59"}, ["updated_time_end"]),
+        ({"created_bys": ["alice"]}, ["created_bys"]),
+        ({"updated_bys": ["bob"]}, ["updated_bys"]),
+        (
+            {
+                "is_deleted": "false",
+                "created_bys": ["alice"],
+                "updated_bys": ["bob"],
+            },
+            ["is_deleted", "created_bys", "updated_bys"],
+        ),
+    ],
+)
+def test_qb_conflict_with_meta_filters(
+    client: TestClient,
+    sample_users: list[str],
+    extra_params: dict[str, Any],
+    expected_params: list[str],
+) -> None:
+    """測試 qb 與 metadata filters 衝突時應返回 422。"""
+    response = client.get(
+        "/user/data",
+        params={
+            "qb": "QB['age'].gt(25)",
+            **extra_params,
+        },
+    )
+    assert response.status_code == 422
+    detail = response.json()["detail"]
+    for param_name in expected_params:
+        assert param_name in detail
+
+
 def test_qb_invalid_expression(client: TestClient, sample_users: list[str]) -> None:
     """測試無效的 QB 表達式應返回 400"""
     response = client.get("/user/data", params={"qb": "QB['age'].invalid_method(25)"})

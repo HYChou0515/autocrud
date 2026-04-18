@@ -129,7 +129,7 @@ class ListRouteTemplate(BaseRouteTemplate):
             current_time: dt.datetime = Depends(self.deps.get_now),
         ) -> list[T]:
             try:
-                query = build_query(query_params)
+                query = build_query(query_params, request)
                 fields = get_partial_fields(request, query_params)
 
                 with resource_manager.using(current_user, current_time):
@@ -225,7 +225,7 @@ class ListRouteTemplate(BaseRouteTemplate):
             current_time: dt.datetime = Depends(self.deps.get_now),
         ):
             try:
-                query = build_query(query_params)
+                query = build_query(query_params, request)
                 fields = get_partial_fields(request, query_params)
                 # For meta-only, prepend "meta/" prefix to unprefixed fields
                 meta_partial = None
@@ -322,7 +322,7 @@ class ListRouteTemplate(BaseRouteTemplate):
             current_time: dt.datetime = Depends(self.deps.get_now),
         ):
             try:
-                query = build_query(query_params)
+                query = build_query(query_params, request)
                 fields = get_partial_fields(request, query_params)
                 # For info-only, prepend "info/" prefix to unprefixed fields
                 info_partial = None
@@ -356,7 +356,7 @@ class ListRouteTemplate(BaseRouteTemplate):
             # Map route-level "revision_info" to RM-level "info"
             returns = ["info" if r == "revision_info" else r for r in raw_returns]
             try:
-                query = build_query(query_params)
+                query = build_query(query_params, request)
                 fields = get_partial_fields(request, query_params)
 
                 with resource_manager.using(current_user, current_time):
@@ -452,13 +452,14 @@ class ListRouteTemplate(BaseRouteTemplate):
             ),
         )
         async def get_resources_count(
+            request: Request,
             query_params: QueryInputs = Query(...),
             current_user: str = Depends(self.deps.get_user),
             current_time: dt.datetime = Depends(self.deps.get_now),
         ) -> int:
             try:
                 # 構建查詢對象
-                query = build_query(query_params)
+                query = build_query(query_params, request)
                 # count 不應受 limit/offset 影響，移除分頁限制以回傳真實總數
                 query = msgspec.structs.replace(query, limit=2**63 - 1, offset=0)
                 with resource_manager.using(current_user, current_time):

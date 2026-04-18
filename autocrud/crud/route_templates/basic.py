@@ -295,7 +295,13 @@ class QueryInputs(BaseModel):
     # ResourceMetaSearchQuery 的查詢參數
     qb: Optional[str] = Query(
         None,
-        description="Query Builder expression. Example: \"QB['foo'] == 123\" or \"QB['age'].gt(18) & QB['status'].eq('active')\"",
+        description=(
+            "Query Builder expression. Example: \"QB['foo'] == 123\" or "
+            "\"QB['age'].gt(18) & QB['status'].eq('active')\". "
+            "When qb is used, do not combine it with metadata filter params, "
+            "data_conditions, conditions, or sorts; only limit and offset may "
+            "override pagination."
+        ),
     )
     is_deleted: Optional[bool] = Query(
         False,
@@ -377,10 +383,20 @@ def get_partial_fields(
     return fields
 
 
-def build_query(q: QueryInputs) -> ResourceMetaSearchQuery:
+def build_query(
+    q: QueryInputs,
+    request: Request | None = None,
+    forced_conflicting_params: set[str] | None = None,
+) -> ResourceMetaSearchQuery:
     # 如果提供了 QB 表達式，檢查是否與其他參數衝突
     if q.qb:
-        # 檢查是否同時提供了其他查詢參數
+        provided_params = (
+            set(request.query_params.keys()) if request is not None else set()
+        )
+        if forced_conflicting_params:
+            provided_params.update(forced_conflicting_params)
+
+        # 只有 limit / offset 可以和 QB 一起使用；其他篩選必須寫進 QB 表達式。
         conflicting_params = []
         if q.data_conditions:
             conflicting_params.append("data_conditions")
@@ -389,10 +405,27 @@ def build_query(q: QueryInputs) -> ResourceMetaSearchQuery:
         if q.sorts:
             conflicting_params.append("sorts")
 
+        for param_name in [
+            "is_deleted",
+            "created_time_start",
+            "created_time_end",
+            "updated_time_start",
+            "updated_time_end",
+            "created_bys",
+            "updated_bys",
+        ]:
+            if param_name in provided_params and getattr(q, param_name) is not None:
+                conflicting_params.append(param_name)
+
         if conflicting_params:
             raise HTTPException(
                 status_code=422,
-                detail=f"Cannot use 'qb' parameter together with: {', '.join(conflicting_params)}. Please use either 'qb' or the individual query parameters.",
+                detail=(
+                    "Cannot use 'qb' parameter together with: "
+                    f"{', '.join(conflicting_params)}. Please use either 'qb' "
+                    "or the individual query parameters. In QB mode, include "
+                    "metadata filters directly in the QB expression."
+                ),
             )
 
         try:
