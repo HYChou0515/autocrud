@@ -137,7 +137,7 @@ A simple polling loop is often enough to verify the workflow during development:
 
 ```python
 import time
-from autocrud.types import TaskStatus
+from autocrud import TaskStatus
 
 job_id = job_info.resource_id
 
@@ -175,8 +175,8 @@ from typing import Any, Literal
 
 import msgspec
 
-from autocrud import Schema, crud
-from autocrud.types import Job, Resource, TaskStatus
+from autocrud import Job, Schema, TaskStatus, crud
+from autocrud.types import Resource
 
 
 class TrainingPayload(msgspec.Struct):

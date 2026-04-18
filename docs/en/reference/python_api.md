@@ -58,6 +58,7 @@ Use this when you want separate instances with different configuration.
 ### Schema and model conversion
 
 - `Schema` — declare schema versions, migration steps, and validators
+- `pydantic_to_struct` — convert Pydantic models into AutoCRUD-compatible struct types
 - `struct_to_pydantic` — convert AutoCRUD struct types to Pydantic models when needed
 
 ### Relationships and lifecycle helpers
@@ -88,10 +89,13 @@ Use this when you want separate instances with different configuration.
 
 - `BackgroundTaskAccepted` — response type for background task submission
 - `BlobUploadSession` — upload-session metadata for blob workflows
+- `Job` — typed job payload model for async queue workflows
+- `TaskStatus` — enum for polling async job state such as pending, processing, completed, and failed
 - `JobRedirectInfo` — redirect payload for job-style async actions
 
 ### Curated advanced namespaces
 
+- `autocrud.resource_manager` — ResourceManager, storage factories, encoding, and storage interfaces
 - `autocrud.permission` — permission helpers, checkers, and action enums
 - `autocrud.events` — event hook interfaces and builder helpers
 - `autocrud.errors` — public exception families for cleaner error handling

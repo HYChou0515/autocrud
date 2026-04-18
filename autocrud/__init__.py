@@ -1,7 +1,10 @@
 from autocrud.crud.core import AutoCRUD, LoadStats
 from autocrud.query import QB
 from autocrud.resource_manager.core import ResourceOps
-from autocrud.resource_manager.pydantic_converter import struct_to_pydantic
+from autocrud.resource_manager.pydantic_converter import (
+    pydantic_to_struct,
+    struct_to_pydantic,
+)
 from autocrud.schema import Schema
 from autocrud.types import (
     BackgroundTaskAccepted,
@@ -10,6 +13,7 @@ from autocrud.types import (
     DuplicateResourceError,
     IConstraintChecker,
     IValidator,
+    Job,
     JobRedirectInfo,
     MissingOperationContextError,
     OnDelete,
@@ -19,6 +23,7 @@ from autocrud.types import (
     RefType,
     RevisionNotMigratedError,
     SearchedResource,
+    TaskStatus,
     Unique,
     UniqueConstraintError,
     ValidationError,
@@ -37,6 +42,7 @@ __all__ = [
     "DuplicateResourceError",
     "IConstraintChecker",
     "IValidator",
+    "Job",
     "JobRedirectInfo",
     "LoadStats",
     "MissingOperationContextError",
@@ -50,10 +56,12 @@ __all__ = [
     "RevisionNotMigratedError",
     "Schema",
     "SearchedResource",
+    "TaskStatus",
     "Unique",
     "UniqueConstraintError",
     "ValidationError",
     "crud",
+    "pydantic_to_struct",
     "struct_to_pydantic",
 ]
 __version__ = "0.8.3a13"

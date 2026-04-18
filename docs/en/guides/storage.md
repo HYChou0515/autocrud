@@ -30,7 +30,7 @@ Example:
 
 ```python
 from autocrud import AutoCRUD
-from autocrud.storage.disk import DiskStorageFactory
+from autocrud.resource_manager import DiskStorageFactory
 
 crud = AutoCRUD(
     storage_factory=DiskStorageFactory("./data")
@@ -69,7 +69,8 @@ Stores revisions and blobs in object storage (S3 compatible).
 Example:
 
 ```python
-from autocrud.storage.s3 import S3StorageFactory
+from autocrud import AutoCRUD
+from autocrud.resource_manager import S3StorageFactory
 
 crud = AutoCRUD(
     storage_factory=S3StorageFactory(
@@ -111,7 +112,8 @@ Stores metadata in PostgreSQL while keeping large data in S3.
 Example:
 
 ```python
-from autocrud.storage.postgres import PostgresStorageFactory
+from autocrud import AutoCRUD
+from autocrud.resource_manager import PostgresStorageFactory
 
 crud = AutoCRUD(
     storage_factory=PostgresStorageFactory(
@@ -153,7 +155,8 @@ Stores everything in memory.
 Example:
 
 ```python
-from autocrud.storage.memory import MemoryStorageFactory
+from autocrud import AutoCRUD
+from autocrud.resource_manager import MemoryStorageFactory
 
 crud = AutoCRUD(
     storage_factory=MemoryStorageFactory()
