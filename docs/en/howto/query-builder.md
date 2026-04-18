@@ -162,8 +162,18 @@ This is useful for generated clients or integrations that prefer explicit JSON-l
 
 - queries only work reliably on metadata fields and indexed fields
 - if `qb` is used in HTTP requests, do not combine it with `data_conditions`, `conditions`, `sorts`, or metadata filter query params such as `is_deleted`, `created_time_start`, `created_time_end`, `updated_time_start`, `updated_time_end`, `created_bys`, or `updated_bys`; conflicting requests return HTTP 422
+- invalid or unsupported QB expressions return HTTP 400
 - URL `limit` and `offset` override pagination values defined inside the QB expression
 - if you need delete-status or other metadata filtering in QB mode, include it directly in the expression, for example `QB.is_deleted().is_false()` or `QB.created_time().last_n_days(7)`
+
+### QB error responses at a glance
+
+| Situation | HTTP | What to do |
+|-----------|------|------------|
+| malformed or unsupported QB expression | 400 | fix the expression itself |
+| `qb` combined with JSON conditions, sorts, or metadata filter params | 422 | choose either QB mode or individual query parameters |
+
+For the shared route-level error mapping, see the HTTP error reference page.
 
 ---
 
