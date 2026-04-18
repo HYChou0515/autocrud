@@ -148,8 +148,8 @@ job_info = mgr.create(
 
 除了 Python API，autocrud 也支援透過 HTTP API 與 Web UI 建立 job，適合用於服務整合或人工操作。
 
-- [Routes generation (FastAPI)](/howto/routes.md)
-- [Web UI](/howto/web-ui.md)
+- [Routes generation (FastAPI)](/autocrud/howto/routes)
+- [Web UI](/autocrud/howto/web-ui)
 
 ## 5. 驗證 job 是否成功執行
 

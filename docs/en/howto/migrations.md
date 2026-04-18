@@ -1,6 +1,7 @@
 # Migrations with Schema
 
 `Schema[T]` is the unified descriptor for:
+
 - **target schema version**
 - optional **validator**
 - **migration graph** (chain + parallel paths)
@@ -69,8 +70,8 @@ You can also mix typed and legacy steps in the same chain.
 ```python
 schema = (
     Schema(User, "v3")
-    .step("v1", v1_to_v2)  # inferred to "v2" from next step's from_ver
-    .step("v2", v2_to_v3)  # inferred to "v3" from Schema target version
+    .step("v2", v2_to_v3)  # inferred to "v3" from "v2"
+    .step("v1", v1_to_v2)  # inferred to "v2" from "v1"
 )
 ```
 
@@ -84,8 +85,8 @@ Rules:
 ```python
 schema = (
     Schema(User, "v3")
-    .step("v1", v1_to_v2)
-    .step("v2", v2_to_v3)
+    .step("v2", v2_to_v3) # v2->v3
+    .step("v1", v1_to_v2) # v1->v2
     .plus("v1", v1_to_v3_shortcut)  # new chain: v1 -> v3
 )
 ```

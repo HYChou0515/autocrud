@@ -110,5 +110,5 @@ In HTTP APIs, search/list endpoints generally accept:
 
 See also:
 
-* `concepts/query-system.md`
-* `howto/routes.md`
+- [Query System](/autocrud/concepts/query-system)
+- [Routes](/autocrud/howto/routes)

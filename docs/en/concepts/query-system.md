@@ -21,17 +21,13 @@ The `QB` class provides a Python-style syntax for building queries.
 Example:
 
 ```
-
 qb=QB["age"] > 18
-
 ```
 
 Example with multiple conditions:
 
 ```
-
 qb=(QB["age"] > 18) & (QB["status"] == "active")
-
 ```
 
 This syntax is parsed safely using an AST parser rather than `eval`.
@@ -51,29 +47,23 @@ QB["field_name"]
 Examples:
 
 ```
-
 QB["name"] == "Alice"
 QB["age"] > 18
 QB["price"] >= 100
-
 ```
 
 Nested fields are supported:
 
 ```
-
 QB["user.email"] == "[alice@example.com](mailto:alice@example.com)"
-
 ```
 
 Field names with special characters are supported:
 
 ```
-
 QB["class"]
 QB["field-name"]
 QB["some.field.with.dots"]
-
 ```
 
 ---
@@ -99,7 +89,6 @@ These correspond to fields stored in **ResourceMeta**.
 Examples:
 
 ```
-
 QB.resource_id().eq("abc-123")
 
 QB.created_time() >= datetime(2024, 1, 1)
@@ -107,7 +96,6 @@ QB.created_time() >= datetime(2024, 1, 1)
 QB.updated_by().ne("guest")
 
 QB.is_deleted() == False
-
 ```
 
 ---
@@ -119,17 +107,13 @@ QB supports logical combinations.
 ## AND (`&`)
 
 ```
-
 (QB["age"] > 18) & (QB["status"] == "active")
-
 ```
 
 Equivalent to:
 
 ```
-
 QB.all(QB["age"] > 18, QB["status"] == "active")
-
 ```
 
 ---
@@ -137,20 +121,16 @@ QB.all(QB["age"] > 18, QB["status"] == "active")
 ## OR (`|`)
 
 ```
-
 (QB["status"] == "draft") | (QB["status"] == "review")
-
 ```
 
 Equivalent to:
 
 ```
-
 QB.any(
-QB["status"] == "draft",
-QB["status"] == "review"
+    QB["status"] == "draft",
+    QB["status"] == "review"
 )
-
 ```
 
 ---
@@ -162,31 +142,25 @@ These helper functions combine multiple conditions.
 ### AND group
 
 ```
-
 QB.all(
-QB["age"] > 18,
-QB["status"] == "active",
-QB["score"] >= 80
+    QB["age"] > 18,
+    QB["status"] == "active",
+    QB["score"] >= 80
 )
-
 ```
 
 Equivalent to:
 
 ```
-
 (QB["age"] > 18) &
 (QB["status"] == "active") &
 (QB["score"] >= 80)
-
 ```
 
 If no conditions are provided:
 
 ```
-
 QB.all()
-
 ```
 
 This matches **all resources**.
@@ -196,23 +170,19 @@ This matches **all resources**.
 ### OR group
 
 ```
-
 QB.any(
-QB["status"] == "draft",
-QB["status"] == "pending",
-QB["status"] == "review"
+    QB["status"] == "draft",
+    QB["status"] == "pending",
+    QB["status"] == "review"
 )
-
 ```
 
 Equivalent to:
 
 ```
-
 (QB["status"] == "draft") |
 (QB["status"] == "pending") |
 (QB["status"] == "review")
-
 ```
 
 `QB.any()` requires at least one condition.
@@ -335,15 +305,13 @@ GET /orders?qb=QB.created_time() >= datetime(2024,1,1)
 ### Complex query
 
 ```
-
 GET /users?qb=QB.all(
-QB["age"] > 18,
-QB.any(
-QB["status"] == "active",
-QB["status"] == "trial"
+    QB["age"] > 18,
+    QB.any(
+        QB["status"] == "active",
+        QB["status"] == "trial"
+    )
 )
-)
-
 ```
 
 ---
@@ -361,4 +329,5 @@ Key points:
 ---
 
 See also:
-- [Search indexing](search-indexing.md)
+
+- [Search indexing](/autocrud/concepts/search-indexing)

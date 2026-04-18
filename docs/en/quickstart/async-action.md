@@ -129,7 +129,7 @@ Use this when:
 - you need observability
 - you need retry or failure handling
 
-👉 See: [Job Queue](/quickstart/job-queue.md)
+👉 See: [Job Queue](/autocrud/quickstart/job-queue)
 
 ---
 
@@ -236,5 +236,5 @@ This allows you to:
 
 ## Next Steps
 
-- [Job Queue](/quickstart/job-queue.md)
-- [Integrate Existing](/quickstart/integrate-existing.md)
+- [Job Queue](/autocrud/quickstart/job-queue)
+- [Integrate Existing](/autocrud/quickstart/integrate-existing)

@@ -198,4 +198,8 @@ Key points:
 ## Relationships (refs)
 
 If you use `Ref(...)` fields, AutoCRUD may install relationship-related routes and behaviors.
-See: `docs/howto/relationships.md` and `docs/concepts/refs.md`.
+
+See also:
+
+- [Relationships](/autocrud/howto/relationships)
+- [Behavior Reference](/autocrud/concepts/refs)

@@ -440,5 +440,6 @@ Switching to older revisions requires those revisions to be migrated first.
 ---
 
 See also:
-- [Data model](data-model.md)
-- [Architecture](architecture.md)
+
+- [Data model](/autocrud/concepts/data-model)
+- [Architecture](/autocrud/concepts/architecture)

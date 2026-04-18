@@ -138,11 +138,11 @@ All endpoints come with **OpenAPI documentation**, **validation**, and **version
 
 To understand how AutoCRUD works internally:
 
-* [Overview](concepts/overview.md)
-* [Core Concepts](concepts/core-concepts.md)
-* [Resource Lifecycle](concepts/resource-lifecycle.md)
-* [Query System](concepts/query-system.md)
-* [Schema](concepts/schema.md)
+* [Overview](/autocrud/concepts/overview)
+* [Core Concepts](/autocrud/concepts/core-concepts)
+* [Resource Lifecycle](/autocrud/concepts/resource-lifecycle)
+* [Query System](/autocrud/concepts/query-system)
+* [Schema](/autocrud/concepts/schema)
 
 ---
 
@@ -150,33 +150,33 @@ To understand how AutoCRUD works internally:
 
 Practical guides for using AutoCRUD in real projects:
 
-* [Routes](howto/routes.md)
-* [Relationships](howto/relationships.md)
-* [Constraints](howto/constraints.md)
-* [Migrations](howto/migrations.md)
-* [Error Handling](howto/errors.md)
+* [Routes](/autocrud/howto/routes)
+* [Relationships](/autocrud/howto/relationships)
+* [Constraints](/autocrud/howto/constraints)
+* [Migrations](/autocrud/howto/migrations)
+* [Error Handling](/autocrud/howto/errors)
 
 ---
 
 # Advanced Topics
 
-* [Storage Backends](guides/storage.md)
-* [Performance](guides/performance.md)
+* [Storage Backends](/autocrud/guides/storage)
+* [Performance](/autocrud/guides/performance)
 
 # Learn more
 
-* [Why AutoCRUD exists](concepts/why-autocrud.md)
-* [Architecture](concepts/architecture.md)
-* [Data model](concepts/data-model.md)
-* [Query system](concepts/query-system.md)
+* [Why AutoCRUD exists](/autocrud/concepts/why-autocrud)
+* [Architecture](/autocrud/concepts/architecture)
+* [Data model](/autocrud/concepts/data-model)
+* [Query system](/autocrud/concepts/query-system)
 
 
 ---
 
 # Reference
 
-* [Python API](reference/python_api.md)
-* [Behavior Reference](reference/behavior.md)
+* [Python API](/autocrud/reference/python_api)
+* [Behavior Reference](/autocrud/reference/behavior)
 
 ---
 

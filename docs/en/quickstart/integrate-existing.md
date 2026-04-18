@@ -343,8 +343,8 @@ AutoCRUD also supports:
 
 See:
 
-- [Web UI](/howto/web-ui.md)
-- [Job Queue](/quickstart/job-queue.md)
+- [Web UI](/autocrud/howto/web-ui)
+- [Job Queue](/autocrud/quickstart/job-queue)
 
 ---
 
@@ -360,8 +360,8 @@ From here, you can explore:
 
 Next Steps:
 
-- [Fast Demo](/quickstart/fast-demo.md)
-- [Job Queue](/quickstart/job-queue.md)
+- [Fast Demo](/autocrud/quickstart/fast-demo)
+- [Job Queue](/autocrud/quickstart/job-queue)
 
 ---
 
