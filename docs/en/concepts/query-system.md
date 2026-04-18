@@ -7,6 +7,8 @@ AutoCRUD provides two ways to express search queries:
 
 For most applications, **QB is the preferred interface** because it is more readable, supports nested logic, and is parsed safely with an AST-based parser instead of `eval`.
 
+If you want the full list of supported helpers, operators, and metadata accessors, use the [Query Builder reference](/autocrud/reference/query-builder) alongside this overview.
+
 ---
 
 # Query Builder (`QB`)
@@ -289,6 +291,7 @@ Key points:
 
 ## Read next
 
+- [Query Builder reference](/autocrud/reference/query-builder)
 - [Search indexing](/autocrud/concepts/search-indexing)
 - [Query Builder](/autocrud/howto/query-builder)
 - [Routes generation](/autocrud/howto/routes)

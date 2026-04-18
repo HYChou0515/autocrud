@@ -111,7 +111,6 @@ class SafeQBParser:
     ALLOWED_QB_ATTRS = {
         "resource_id",
         "current_revision_id",
-        "revision_id",
         "created_time",
         "updated_time",
         "created_by",

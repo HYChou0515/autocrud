@@ -649,6 +649,9 @@ class TestQueryBuilder:
         cond = q.build().conditions[0]
         assert cond.field_path == "current_revision_id"
 
+        # revision_id alias should not be exposed anymore
+        assert not hasattr(QB, "revision_id")
+
         # Test total_revision_count
         q = QB.total_revision_count() > 5
         cond = q.build().conditions[0]

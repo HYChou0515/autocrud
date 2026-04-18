@@ -4,6 +4,8 @@ AutoCRUD includes a high-level query builder for searching indexed resource fiel
 
 Use it when you want expressive filtering logic in Python or when you want your HTTP `qb` expressions to mirror the same mental model.
 
+If you need a complete method-by-method lookup, see the [Query Builder reference](/autocrud/reference/query-builder).
+
 ---
 
 ## When to use it
@@ -188,6 +190,7 @@ For the shared route-level error mapping, see the HTTP error reference page.
 
 ## Related pages
 
+- [Query Builder reference](/autocrud/reference/query-builder)
 - [Query system](/autocrud/concepts/query-system)
 - [Search indexing](/autocrud/concepts/search-indexing)
 - [Routes generation](/autocrud/howto/routes)

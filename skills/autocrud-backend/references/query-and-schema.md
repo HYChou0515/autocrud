@@ -94,9 +94,8 @@ Built-in accessors for `ResourceMeta` fields:
 | Accessor | Type | Example |
 |----------|------|---------|
 | `QB.resource_id()` | str | `QB.resource_id().eq("abc-123")` |
-| `QB.revision_id()` | str | `QB.revision_id().contains("abc")` |
-| `QB.created_time()` | datetime | `QB.created_time().gte(dt.datetime(2024, 1, 1))` |
-| `QB.updated_time()` | datetime | `QB.updated_time().lte(dt.datetime.now())` |
+| `QB.current_revision_id()` | str | `QB.current_revision_id().contains("abc")` |
+| `QB.created_time()` | datetime | `QB.created_time().gte(dt.datetime(2024, 1, 1))` || `QB.updated_time()` | datetime | `QB.updated_time().lte(dt.datetime.now())` |
 | `QB.created_by()` | str | `QB.created_by().eq("admin")` |
 | `QB.updated_by()` | str | `QB.updated_by().ne("guest")` |
 | `QB.is_deleted()` | bool | `QB.is_deleted().eq(False)` |

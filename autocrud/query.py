@@ -1208,11 +1208,6 @@ class QB(metaclass=QueryBuilderMeta):
         return Field("current_revision_id")
 
     @staticmethod
-    def revision_id() -> Field:
-        """Backward-compatible alias for current_revision_id()."""
-        return QB.current_revision_id()
-
-    @staticmethod
     def created_time() -> Field:
         """Resource creation timestamp.
 

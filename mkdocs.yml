@@ -209,6 +209,7 @@ plugins:
             - Reference:
                 - reference/index.md
                 - reference/python_api.md
+                - reference/query-builder.md
                 - reference/behavior.md
             
 # Extensions

@@ -9,6 +9,7 @@ Use it when you already understand the basics and need precise, implementation-f
 ## Reference map
 
 - [Python API](/autocrud/reference/python_api) — public entry points, types, and exported helpers
+- [Query Builder reference](/autocrud/reference/query-builder) — complete QB method catalog, metadata helpers, and pagination behavior
 - [Behavior & initialization](/autocrud/reference/behavior) — startup order, mutation safety, and runtime expectations
 
 ---
