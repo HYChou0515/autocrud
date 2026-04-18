@@ -1,6 +1,8 @@
 # Errors & troubleshooting
 
-This page summarizes the most common AutoCRUD exceptions and what to do when you see them.
+This page summarizes the most common AutoCRUD exceptions and what they usually mean.
+
+For a more step-by-step debugging path, see the dedicated [troubleshooting guide](/autocrud/howto/troubleshooting).
 
 ## Quick map
 

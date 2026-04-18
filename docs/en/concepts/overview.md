@@ -1,133 +1,63 @@
 # Overview
 
-AutoCRUD is a **model-driven backend framework for FastAPI** that manages application data as **versioned resources**.
+AutoCRUD is a model-driven backend framework for FastAPI.
 
-Instead of manually implementing CRUD APIs, validation, search, and storage logic, AutoCRUD generates these capabilities automatically from your resource models.
-
----
-
-# The core idea
-
-AutoCRUD manages data using three fundamental concepts:
-
-- **Resource**
-- **Revision**
-- **ResourceManager**
-
-Together they form the foundation of the framework.
+Its purpose is simple: define your data model once, then let the framework generate and manage the repetitive infrastructure around it.
 
 ---
 
-# Resource
+## The mental model
 
-A **resource** represents a logical entity in your application.
+If you are new to AutoCRUD, keep these three ideas in mind:
 
-Examples:
+- a **resource** is the logical thing your application manages
+- a **revision** is one version of that resource over time
+- the **ResourceManager** is the component that performs the operations
 
-- `User`
-- `Article`
-- `Job`
-- `Configuration`
+That is enough to understand the rest of the system at a high level.
 
-Resources are defined as Python data models.
+---
+
+## What this means in practice
+
+Instead of writing CRUD endpoints, validation glue, search filters, and version bookkeeping by hand, you typically:
+
+1. define a Python model
+2. register it with AutoCRUD
+3. apply the generated routes to your FastAPI app
 
 ```python
+from fastapi import FastAPI
+from msgspec import Struct
+
+from autocrud import crud
+
+
 class User(Struct):
     name: str
     email: str
-```
 
-Each resource has a unique identifier (`resource_id`) and associated metadata.
+
+app = FastAPI()
+crud.add_model(User)
+crud.apply(app)
+```
 
 ---
 
-# Revision
+## What to read next
 
-AutoCRUD stores data as **immutable revisions**.
+This page is intentionally brief.
 
-Instead of overwriting data, updates create new revisions.
+Use the following pages depending on what you need:
 
-```
-Resource
- ├── r1
- ├── r2
- └── r3
-```
-
-The currently active revision is tracked by metadata:
-
-```
-ResourceMeta.current_revision_id
-```
-
-This enables built-in support for:
-
-* audit history
-* rollback
-* draft workflows
-* debugging
+- [Why AutoCRUD exists](/autocrud/concepts/why-autocrud) — what problems it is trying to solve
+- [Core concepts](/autocrud/concepts/core-concepts) — a deeper explanation of resources, revisions, metadata, and managers
+- [Architecture](/autocrud/concepts/architecture) — how the major pieces fit together
+- [Resource lifecycle](/autocrud/concepts/resource-lifecycle) — how data evolves over time
 
 ---
 
-# ResourceManager
+## Summary
 
-All operations on resources go through the **ResourceManager**.
-
-Example:
-
-```python
-resource_manager.create(data)
-resource_manager.get(resource_id)
-resource_manager.update(resource_id, new_data)
-```
-
-The manager coordinates:
-
-* validation
-* revision creation
-* metadata updates
-* storage operations
-* event handlers
-
-Developers do not interact directly with storage systems.
-
----
-
-# Schema and validation
-
-Resources may define schemas that control validation and constraints.
-
-Examples include:
-
-* field validation
-* uniqueness constraints
-* custom validation hooks
-
-These checks run automatically when resources are created or updated.
-
----
-
-# References
-
-Resources and revisions can be referenced using:
-
-* `Ref` – reference to a resource
-* `RefRevision` – reference to a specific revision
-
-These types allow relationships between resources while preserving revision history.
-
----
-
-# Summary
-
-AutoCRUD is built around a simple mental model:
-
-```
-ResourceManager
-    ↓
-Resource
-    ↓
-Revisions
-```
-
-By combining versioned resources, metadata indexing, and storage abstraction, AutoCRUD provides a consistent way to build APIs without writing repetitive infrastructure code.
+AutoCRUD gives you a stable model for building APIs around versioned resources, while keeping the operational details consistent across routes, storage, validation, and search.

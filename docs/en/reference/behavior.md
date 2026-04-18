@@ -1,6 +1,9 @@
-# Behavior & lifecycle guarantees
+# Behavior & initialization guarantees
 
-This page documents lifecycle expectations and safe usage rules for `AutoCRUD`.
+This page documents safe startup and runtime usage rules for `AutoCRUD`.
+
+> This page is about initialization, configuration timing, and runtime mutation safety.
+> For data evolution and revision history semantics, see [Resource lifecycle](/autocrud/concepts/resource-lifecycle).
 
 ## Recommended initialization order
 
@@ -57,3 +60,14 @@ Calling `apply()` will:
 - top-level extension for custom update actions (`x-autocrud-custom-update-actions`)
 
 In most cases you don't need to call `openapi()` manually because it is used by `apply()` flows.
+
+## Common failure patterns
+
+If your app behaves unexpectedly, the most common causes are:
+
+- calling `configure()` too late
+- registering models after startup has already moved on
+- mutating routes or templates after `apply()`
+- confusing initialization issues with revision lifecycle issues
+
+For symptom-to-fix guidance, see the [troubleshooting guide](/autocrud/howto/troubleshooting).

@@ -193,6 +193,7 @@ plugins:
                 - howto/constraints.md
                 - howto/migrations.md
                 - howto/errors.md
+                - howto/troubleshooting.md
                 - howto/http-errors.md
 
             - Guides:
