@@ -1,3 +1,0 @@
-# autocrud.cli
-
-::: autocrud.cli
