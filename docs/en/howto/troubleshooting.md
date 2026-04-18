@@ -44,6 +44,7 @@ See also:
 
 - [Errors](/autocrud/howto/errors)
 - [Constraints](/autocrud/howto/constraints)
+- [Validation](/autocrud/concepts/validation)
 - [Schema migration](/autocrud/quickstart/schema-migration)
 
 ---
@@ -88,6 +89,7 @@ See also:
 - [Query builder](/autocrud/howto/query-builder)
 - [Query system](/autocrud/concepts/query-system)
 - [Search indexing](/autocrud/concepts/search-indexing)
+- [Routes generation](/autocrud/howto/routes)
 
 ---
 

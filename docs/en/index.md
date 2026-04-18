@@ -1,8 +1,8 @@
 # AutoCRUD
 
-**AutoCRUD** is a **model-driven FastAPI automation framework** with built-in **versioning, permissions, search, and API generation**.
+**AutoCRUD** is a **model-driven FastAPI framework** with built-in **versioning, permissions, search, and API generation**.
 
-It helps you spend less time wiring repetitive infrastructure and more time on domain logic.
+It helps you spend less time wiring repetitive infrastructure and more time on your domain logic.
 
 ---
 
@@ -40,7 +40,7 @@ Read these pages first:
 - [Architecture](/autocrud/concepts/architecture)
 - [From demo to production](/autocrud/guides/from-demo-to-production)
 
-### I already know what feature I need
+### I already know which feature I need
 
 Go directly to:
 
@@ -79,7 +79,7 @@ crud.add_model(User)
 crud.apply(app)
 ```
 
-AutoCRUD will generate the standard CRUD surface, OpenAPI docs, validation handling, and revision tracking.
+AutoCRUD will generate the standard CRUD surface, OpenAPI documentation, validation handling, and revision tracking.
 
 ---
 

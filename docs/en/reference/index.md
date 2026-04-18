@@ -1,6 +1,6 @@
 # Reference
 
-This section is for behavior guarantees and API surface details.
+This section is for behavior guarantees and public API details.
 
 Use it when you already understand the basics and need precise, implementation-facing information.
 

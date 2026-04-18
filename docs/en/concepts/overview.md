@@ -2,7 +2,7 @@
 
 This page is the **system map** for AutoCRUD.
 
-Its purpose is to show how the major pieces fit together before you dive into details.
+Its purpose is to show how the major pieces fit together before you dive into the details.
 
 ---
 

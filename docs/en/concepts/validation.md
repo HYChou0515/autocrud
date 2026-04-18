@@ -42,6 +42,33 @@ class PriceValidator(IValidator):
 If you register a Pydantic `BaseModel` as the model type, AutoCRUD can use it as a validator
 (by converting it and validating through Pydantic), when no validator is provided elsewhere.
 
+## Practical example
+
+A useful mental model is:
+
+- let **msgspec** check whether the payload shape and field types are valid
+- let **AutoCRUD validators** check whether the data makes sense for your business rules
+
+For example:
+
+```python
+from msgspec import Struct
+
+class User(Struct):
+    name: str
+    age: int
+
+
+def validate_user(u: User) -> None:
+    if u.age < 18:
+        raise ValueError("user must be an adult")
+```
+
+In this example:
+
+- `{"age": "abc"}` fails at the msgspec/type-validation layer
+- `{"age": 12}` passes type validation but fails the domain validation rule
+
 ## Where to attach validators
 
 ### Attach via `add_model(...)`
@@ -70,4 +97,18 @@ Practical rule:
 
 * in validators, raise `ValueError` with a clear message
 * AutoCRUD will surface it as `ValidationError` (or pass through if already `ValidationError`)
+
+## Common debugging pattern
+
+If a write is rejected and you are not sure why, check the failure in this order:
+
+1. did the payload fail type validation before your validator even ran?
+2. did your custom validator reject a business rule?
+3. is the real problem actually a uniqueness or schema-migration issue instead?
+
+See also:
+
+- [Constraints](/autocrud/howto/constraints)
+- [Troubleshooting](/autocrud/howto/troubleshooting)
+- [Pydantic integration](/autocrud/howto/pydantic-integration)
 

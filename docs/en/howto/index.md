@@ -44,4 +44,4 @@ If you are still learning the project, start here instead:
 
 1. [Installation](/autocrud/installation/)
 2. [Fast Demo](/autocrud/quickstart/fast-demo)
-3. return to this section for the feature you need
+3. Return to this section for the feature you need

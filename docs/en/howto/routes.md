@@ -203,3 +203,11 @@ See also:
 
 - [Relationships](/autocrud/howto/relationships)
 - [Behavior Reference](/autocrud/concepts/refs)
+
+## Common follow-ups
+
+After your routes are generated, the next questions are usually:
+
+- how to validate writes reliably → [Validation](/autocrud/concepts/validation)
+- how to filter and search results → [Query Builder](/autocrud/howto/query-builder)
+- what to check when something behaves unexpectedly → [Troubleshooting](/autocrud/howto/troubleshooting)

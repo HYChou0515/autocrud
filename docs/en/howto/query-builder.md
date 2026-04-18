@@ -29,6 +29,29 @@ results = manager.search_resources(query)
 
 The query object can be assembled either from low-level search structs or through the higher-level query builder helpers.
 
+## Practical example
+
+Imagine you want all active tasks with priority $\ge 3$.
+
+```python
+query = ResourceMetaSearchQuery(
+    conditions=[
+        DataSearchCondition(
+            field_path="status",
+            operator=DataSearchOperator.equals,
+            value="active",
+        ),
+        DataSearchCondition(
+            field_path="priority",
+            operator=DataSearchOperator.greater_than_or_equal,
+            value=3,
+        ),
+    ]
+)
+```
+
+When a search returns nothing, first verify that the fields are actually indexed and that the operator matches the field type.
+
 ---
 
 ## Field comparisons
@@ -137,3 +160,4 @@ If a field is not indexed, searching by that field may not behave as you expect 
 - [Query system](/autocrud/concepts/query-system)
 - [Search indexing](/autocrud/concepts/search-indexing)
 - [Routes generation](/autocrud/howto/routes)
+- [Troubleshooting](/autocrud/howto/troubleshooting)

@@ -20,13 +20,13 @@ The `QB` class provides a Python-style syntax for building queries.
 
 Example:
 
-```
+```text
 qb=QB["age"] > 18
 ```
 
 Example with multiple conditions:
 
-```
+```text
 qb=(QB["age"] > 18) & (QB["status"] == "active")
 ```
 
@@ -54,8 +54,8 @@ QB["price"] >= 100
 
 Nested fields are supported:
 
-```
-QB["user.email"] == "[alice@example.com](mailto:alice@example.com)"
+```python
+QB["user.email"] == "alice@example.com"
 ```
 
 Field names with special characters are supported:
@@ -211,13 +211,18 @@ GET /users?qb=(QB["age"] > 18) & (QB["status"] == "active")
 
 Example using metadata fields:
 
-```
-
+```text
 GET /users?qb=QB.created_by().eq("admin")
-
 ```
 
 ---
+
+## Read next
+
+- [Search indexing](/autocrud/concepts/search-indexing)
+- [Query Builder](/autocrud/howto/query-builder)
+- [Routes generation](/autocrud/howto/routes)
+- [Troubleshooting](/autocrud/howto/troubleshooting)
 
 # Limit and offset
 

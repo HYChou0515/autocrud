@@ -62,3 +62,12 @@ If you see `UniqueConstraintError`:
 * verify that the conflicting resource is not deleted
 * verify the field value being written is not `None`
 * verify your storage backend supports searching indexed fields correctly
+
+## Practical example
+
+Suppose you already created a user with `username="alice"`.
+
+If you try to create another non-deleted user with the same username, AutoCRUD will reject the write with `409 Conflict`.
+
+That means the uniqueness rule is enforced at the API layer in a predictable way, not left to ad-hoc application code.
+

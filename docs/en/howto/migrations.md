@@ -58,8 +58,8 @@ Multi-step typed chain:
 ```python
 schema = (
     Schema(UserV3, "v3")
-    .step("v1", v1_to_v2, source_type=UserV1)
     .step("v2", v2_to_v3, source_type=UserV2)
+    .step("v1", v1_to_v2, source_type=UserV1)
 )
 ```
 

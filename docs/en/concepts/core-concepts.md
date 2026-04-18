@@ -2,7 +2,7 @@
 
 This page defines the **core terms** used throughout the rest of the documentation.
 
-If [Overview](/autocrud/concepts/overview) gives you the map, this page gives you the vocabulary.
+If [Overview](/autocrud/concepts/overview) gives you the map, this page gives you the vocabulary used throughout the docs.
 
 ---
 
@@ -73,7 +73,7 @@ See also:
 
 ## 6. Indexed search fields
 
-AutoCRUD search is built around indexed metadata rather than full-payload scans.
+AutoCRUD search is built around indexed metadata rather than full payload scans.
 
 That design keeps search behavior more predictable and encourages you to identify important searchable fields explicitly.
 
