@@ -179,6 +179,7 @@ plugins:
               - concepts/validation.md
               - concepts/route-templates.md
             - How-to:
+                - howto/index.md
                 - howto/api-conventions.md
                 - howto/routes.md
                 - howto/permissions.md
@@ -197,6 +198,7 @@ plugins:
                 - howto/http-errors.md
 
             - Guides:
+                - guides/index.md
                 - guides/storage.md
                 - guides/performance.md
                 - guides/from-demo-to-production.md
@@ -205,6 +207,7 @@ plugins:
                 - contributing/docs.md
 
             - Reference:
+                - reference/index.md
                 - reference/python_api.md
                 - reference/behavior.md
             
