@@ -2,6 +2,12 @@
 
 This page summarizes the most common AutoCRUD exceptions and what they usually mean.
 
+Recommended import style:
+
+```python
+from autocrud.errors import ValidationError, UniqueConstraintError
+```
+
 For a more step-by-step debugging path, see the dedicated [troubleshooting guide](/autocrud/howto/troubleshooting).
 
 ## Quick map
@@ -75,7 +81,7 @@ For a more step-by-step debugging path, see the dedicated [troubleshooting guide
 ---
 
 ## Conflict family
-
+Import these from `autocrud.errors`.
 ### ResourceConflictError (base)
 Base class for “write cannot proceed due to conflict” errors.
 

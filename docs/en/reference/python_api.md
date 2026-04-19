@@ -73,17 +73,11 @@ Use this when you want separate instances with different configuration.
 
 - `QB` — high-level query builder for indexed fields and metadata
 - `SearchedResource` — typed search result container
-- `ResourceOps` — operation information used in lifecycle processing
 
-### Interfaces and exceptions
+### Interfaces
 
 - `IConstraintChecker` — custom constraint hook interface
 - `IValidator` — custom validation interface
-- `ValidationError` — validation failure
-- `UniqueConstraintError` — uniqueness violation
-- `DuplicateResourceError` — duplicate create or import condition
-- `RevisionNotMigratedError` — schema migration mismatch during revision access
-- `MissingOperationContextError` — required lifecycle context was not provided
 
 ### Async and blob-related types
 
@@ -95,10 +89,10 @@ Use this when you want separate instances with different configuration.
 
 ### Curated advanced namespaces
 
-- `autocrud.resource_manager` — ResourceManager, storage factories, encoding, and storage interfaces
+- `autocrud.resource_manager` — ResourceManager, ResourceOps, storage factories, encoding, and storage interfaces
 - `autocrud.permission` — permission helpers, checkers, and action enums
 - `autocrud.events` — event hook interfaces and builder helpers
-- `autocrud.errors` — public exception families for cleaner error handling
+- `autocrud.errors` — canonical public exception families for cleaner error handling
 
 ---
 

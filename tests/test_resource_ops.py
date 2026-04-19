@@ -300,8 +300,3 @@ class TestTypeIdentity:
         with rm.using(user="alice", now=NOW) as op:
             assert isinstance(op, ResourceOps)
             assert op is not rm
-
-    def test_importable_from_autocrud(self):
-        from autocrud import ResourceOps as ROps
-
-        assert ROps is ResourceOps

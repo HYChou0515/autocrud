@@ -25,6 +25,11 @@ from autocrud.types import (
 
 
 class TestQueryBuilder:
+    def test_resource_meta_sort_key_is_reexported_from_basic(self):
+        from autocrud.resource_manager.basic import ResourceMetaSortKey as BasicSortKey
+
+        assert BasicSortKey is ResourceMetaSortKey
+
     def test_simple_condition(self):
         q = QB["name"].eq("Alice")
         assert isinstance(q, ConditionBuilder)

@@ -27,6 +27,9 @@ from autocrud.types import (
     ResourceMetaSortDirection,
     RevisionInfo,
 )
+from autocrud.types import (
+    ResourceMetaSortKey as ResourceMetaSortKey,
+)
 from autocrud.util.datetime_utils import ensure_aware
 
 T = TypeVar("T")

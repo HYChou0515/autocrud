@@ -1,5 +1,7 @@
 """Tests for the curated public import surface."""
 
+import pytest
+
 from autocrud.types import ResourceMetaSearchQuery
 
 
@@ -37,12 +39,14 @@ def test_events_namespace_exposes_builder_api():
 def test_errors_namespace_exposes_public_exception_families():
     """Public exception types should be grouped in a dedicated namespace."""
     from autocrud.errors import (
+        CannotModifyResourceError,
         ResourceNotFoundError,
         UniqueConstraintError,
         ValidationError,
     )
 
     assert issubclass(ResourceNotFoundError, Exception)
+    assert issubclass(CannotModifyResourceError, Exception)
     assert issubclass(UniqueConstraintError, Exception)
     assert issubclass(ValidationError, Exception)
 
@@ -73,6 +77,12 @@ def test_root_exports_both_pydantic_conversion_directions():
 
     assert callable(pydantic_to_struct)
     assert callable(struct_to_pydantic)
+
+
+def test_root_does_not_export_resource_ops():
+    """ResourceOps should stay in the resource-manager namespace."""
+    with pytest.raises(ImportError):
+        from autocrud import ResourceOps  # noqa: F401
 
 
 def test_root_exports_job_for_async_workflows():
