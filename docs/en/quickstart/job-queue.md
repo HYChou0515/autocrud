@@ -30,7 +30,8 @@ crud.configure(
 ```
 
 Use this for local development and same-process consumers.
-For broker-backed worker deployments, switch to `RabbitMQMessageQueueFactory()` or `CeleryMessageQueueFactory()`.
+For production worker deployments, prefer `RabbitMQMessageQueueFactory()`.
+Use `CeleryMessageQueueFactory()` mainly when your platform already standardizes on Celery.
 
 ---
 

@@ -41,15 +41,16 @@ Recommended starting points:
 | Situation | Recommended choice |
 | --------- | ------------------ |
 | local or single-node deployment | `DiskStorageFactory` |
-| cloud deployment with object storage | `S3StorageFactory` |
-| query-heavy or larger-scale deployment | `PostgreSQLS3StorageFactory` |
+| recommended production deployment | `PostgresDiskS3StorageFactory` + `RabbitMQMessageQueueFactory` |
+| cloud deployment with object storage for all payloads | `PostgreSQLS3StorageFactory` |
 | PostgreSQL-centric API without durable uploads | `PostgresStorageFactory` |
 
 Rule of thumb:
 
 * use memory for tests and demos
-* use disk for simple production systems
-* use Postgres and/or S3 when you need stronger scalability
+* use disk for simple local systems
+* use PostgreSQL + Disk + S3 blobs + RabbitMQ for the default production path
+* use PostgreSQL + S3 when you specifically want object storage for resource payloads too
 
 If you need a deeper comparison, see the [storage guide](/autocrud/guides/storage).
 

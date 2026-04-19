@@ -1,12 +1,14 @@
 """
 PostgreSQL + S3 Backend Example
 
-This example demonstrates how to use PostgreSQLStorageFactory for production-grade applications.
+This example demonstrates an object-storage-first production deployment.
+It is useful when you want PostgreSQL-backed metadata queries while keeping
+resource payloads and blobs in S3-compatible storage.
 
 Architecture:
 - PostgreSQL: Metadata storage with indexing and fast queries
 - S3: Resource data and binary blob storage
-- Suitable for: Medium to large scale applications (10K+ resources)
+- Queue: pair with RabbitMQ for the default production worker recommendation
 
 Requirements:
 1. PostgreSQL database
@@ -131,7 +133,9 @@ storage_factory = PostgreSQLStorageFactory(
     table_prefix="rpg_",  # Tables will be: rpg_Character_meta, rpg_Item_meta, etc.
 )
 
-# Initialize AutoCRUD with PostgreSQL + S3 backend
+# Initialize AutoCRUD with PostgreSQL + S3 backend.
+# This example is a valid production reference, but the default recommendation
+# now prefers PostgreSQL metadata + Disk resource storage + S3 blobs.
 crud = AutoCRUD(storage_factory=storage_factory)
 
 # Register models with indexed fields for fast queries

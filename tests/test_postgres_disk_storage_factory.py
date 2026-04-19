@@ -12,7 +12,10 @@ import pytest
 from msgspec import Struct
 
 from autocrud.resource_manager.basic import Encoding
-from autocrud.resource_manager.storage_factory import PostgresDiskStorageFactory
+from autocrud.resource_manager.storage_factory import (
+    PostgresDiskS3StorageFactory,
+    PostgresDiskStorageFactory,
+)
 
 
 class SampleItem(Struct):
@@ -196,6 +199,107 @@ class TestPostgresDiskStorageFactoryTablePrefix:
 
             call_kwargs = mock_pg.call_args[1]
             assert call_kwargs["table_name"] == "my_project_v2_character_meta"
+
+
+class TestPostgresDiskS3StorageFactory:
+    """Tests for PostgresDiskS3StorageFactory."""
+
+    def test_initialization_all_params(self):
+        """Test initialization with PostgreSQL, disk, and S3 blob parameters."""
+        factory = PostgresDiskS3StorageFactory(
+            connection_string="postgresql://admin:password@localhost:5432/mydb",
+            rootdir="/data/autocrud",
+            s3_bucket="blob-bucket",
+            s3_region="ap-northeast-1",
+            s3_access_key_id="my-key",
+            s3_secret_access_key="my-secret",
+            s3_endpoint_url="http://minio:9000",
+            s3_client_kwargs={"use_ssl": True},
+            encoding=Encoding.json,
+            table_prefix="prod_",
+            blob_prefix="uploads/",
+            upload_method="single_put",
+            presigned_url_expiry=7200,
+        )
+
+        assert (
+            factory.connection_string
+            == "postgresql://admin:password@localhost:5432/mydb"
+        )
+        assert factory.rootdir == Path("/data/autocrud")
+        assert factory.s3_bucket == "blob-bucket"
+        assert factory.s3_region == "ap-northeast-1"
+        assert factory.s3_access_key_id == "my-key"
+        assert factory.s3_secret_access_key == "my-secret"
+        assert factory.s3_endpoint_url == "http://minio:9000"
+        assert factory.s3_client_kwargs == {"use_ssl": True}
+        assert factory.encoding == Encoding.json
+        assert factory.table_prefix == "prod_"
+        assert factory.blob_prefix == "uploads/"
+        assert factory.upload_method == "single_put"
+        assert factory.presigned_url_expiry == 7200
+
+    def test_build_creates_postgres_and_disk_stores(self):
+        """Test build() keeps the PostgreSQL + disk behavior."""
+        with (
+            patch(
+                "autocrud.resource_manager.storage_factory.PostgresMetaStore"
+            ) as mock_pg,
+            patch(
+                "autocrud.resource_manager.storage_factory.DiskResourceStore"
+            ) as mock_disk,
+        ):
+            factory = PostgresDiskS3StorageFactory(
+                connection_string="postgresql://localhost/db",
+                rootdir="/tmp/test",
+                s3_bucket="blob-bucket",
+                table_prefix="app_",
+            )
+
+            storage = factory.build("UserProfile")
+
+            mock_pg.assert_called_once_with(
+                pg_dsn="postgresql://localhost/db",
+                encoding=Encoding.msgpack,
+                table_name="app_user_profile_meta",
+            )
+            mock_disk.assert_called_once_with(
+                rootdir=Path("/tmp/test") / "UserProfile" / "data",
+            )
+            assert storage is not None
+
+    def test_build_blob_store_creates_s3_blob_store(self):
+        """Test build_blob_store() creates S3-backed blob storage."""
+        with patch(
+            "autocrud.resource_manager.storage_factory.S3BlobStore"
+        ) as mock_blob:
+            factory = PostgresDiskS3StorageFactory(
+                connection_string="postgresql://localhost/db",
+                rootdir="/tmp/test",
+                s3_bucket="blob-bucket",
+                s3_region="us-east-1",
+                s3_access_key_id="key",
+                s3_secret_access_key="secret",
+                s3_endpoint_url="http://localhost:9000",
+                blob_prefix="blobs/",
+                upload_method="proxy",
+                presigned_url_expiry=1800,
+            )
+
+            blob_store = factory.build_blob_store()
+
+            mock_blob.assert_called_once_with(
+                bucket="blob-bucket",
+                region_name="us-east-1",
+                access_key_id="key",
+                secret_access_key="secret",
+                endpoint_url="http://localhost:9000",
+                prefix="blobs/",
+                upload_method="proxy",
+                presigned_url_expiry=1800,
+                client_kwargs={},
+            )
+            assert blob_store is not None
 
 
 class TestPostgresDiskStorageFactoryEncoding:

@@ -38,14 +38,15 @@ That order keeps the storage, blob behavior, and queue behavior aligned from the
 
 ## Recommended starting points
 
-| Situation | Storage factory | Blob behavior | Queue choice |
+| Situation | Recommended setup | Blob behavior | Queue choice |
 | --- | --- | --- | --- |
 | tests or throwaway demos | `MemoryStorageFactory()` | in memory | default simple queue is enough |
 | local development / MVP | `DiskStorageFactory("./data")` | local filesystem under the same data root | `SimpleMessageQueueFactory()` if you use jobs |
-| production with strong search + durable files | `PostgreSQLS3StorageFactory(...)` | S3 | `RabbitMQMessageQueueFactory()` or `CeleryMessageQueueFactory()` |
+| recommended production path | `PostgresDiskS3StorageFactory(...)` | S3 | `RabbitMQMessageQueueFactory()` |
+| alternative for object-storage-first deployments | `PostgreSQLS3StorageFactory(...)` | S3 | `RabbitMQMessageQueueFactory()` or `CeleryMessageQueueFactory()` |
 | production without binary uploads | `PostgresStorageFactory(...)` | in memory by default, so only safe if you do not need durable blobs | optional |
 
-If you are unsure, start with `DiskStorageFactory` locally and move to `PostgreSQLS3StorageFactory` when you need multi-node durability.
+If you are unsure, start with `DiskStorageFactory` locally and move to PostgreSQL + Disk + S3 blobs + RabbitMQ for production.
 
 ---
 
@@ -103,9 +104,14 @@ Use this when you want the fastest path from demo to something your team can res
 
 ---
 
-## 3. Production setup with PostgreSQL and S3
+## 3. Recommended production setup
 
-This is the recommended production shape when you need searchable metadata plus durable object storage.
+The current recommended production shape is:
+
+- PostgreSQL for searchable metadata
+- Disk for resource payload storage
+- S3 for durable blobs and uploaded files
+- RabbitMQ for background workers
 
 ```python
 import os
@@ -115,7 +121,7 @@ from msgspec import Struct
 
 from autocrud import crud
 from autocrud.message_queue import RabbitMQMessageQueueFactory
-from autocrud.resource_manager import Encoding, PostgreSQLS3StorageFactory
+from autocrud.resource_manager import PostgresDiskS3StorageFactory
 
 
 class Document(Struct):
@@ -126,14 +132,13 @@ class Document(Struct):
 app = FastAPI()
 
 crud.configure(
-    storage_factory=PostgreSQLS3StorageFactory(
+    storage_factory=PostgresDiskS3StorageFactory(
         connection_string=os.environ["POSTGRES_DSN"],
+        rootdir="./data",
         s3_bucket=os.environ["S3_BUCKET"],
-        s3_region=os.getenv("S3_REGION", "us-east-1"),
         s3_access_key_id=os.environ["AWS_ACCESS_KEY_ID"],
         s3_secret_access_key=os.environ["AWS_SECRET_ACCESS_KEY"],
         s3_endpoint_url=os.getenv("S3_ENDPOINT_URL"),
-        encoding=Encoding.msgpack,
         table_prefix="app_",
     ),
     message_queue_factory=RabbitMQMessageQueueFactory(),
@@ -143,14 +148,14 @@ crud.add_model(Document)
 crud.apply(app)
 ```
 
-This layout keeps:
+This production layout keeps:
 
 - searchable metadata in PostgreSQL
-- resource payloads in S3
-- blobs in S3
-- background jobs on a real broker
+- resource payloads on local or mounted disk
+- blobs in S3-compatible storage
+- RabbitMQ-backed job workers
 
-Use this when you expect multiple app instances, persistent uploads, or operator-managed workers.
+If you prefer object storage for both resource payloads and blobs, `PostgreSQLS3StorageFactory(...)` remains a valid alternative.
 
 ---
 
@@ -166,11 +171,12 @@ The easiest way to avoid surprises is to map the factory to the four backend con
 | `PostgresStorageFactory(...)` | PostgreSQL | PostgreSQL | memory by default |
 | `PostgreSQLS3StorageFactory(...)` | PostgreSQL | S3 | S3 |
 | `PostgresDiskStorageFactory(...)` | PostgreSQL | local disk | memory by default |
+| `PostgresDiskS3StorageFactory(...)` | PostgreSQL | local disk | S3 |
 
 Two important consequences:
 
 1. If your resource includes binary uploads, do not assume every PostgreSQL-based setup automatically persists blobs.
-2. If you need durable files, prefer `DiskStorageFactory`, `S3StorageFactory`, or `PostgreSQLS3StorageFactory` unless you are providing your own blob-store wiring.
+2. The current recommended production shape is `PostgresDiskS3StorageFactory(...)` together with `RabbitMQMessageQueueFactory()` for workers.
 
 ---
 

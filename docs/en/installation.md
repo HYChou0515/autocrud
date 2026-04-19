@@ -63,7 +63,9 @@ Use a bundle that matches your deployment stage:
 | PostgreSQL-backed API | `pip install 'autocrud[postgresql]'` |
 | object storage and blob uploads | `pip install 'autocrud[s3]'` |
 | production jobs and workers | `pip install 'autocrud[mq]'` |
-| full production stack | `pip install 'autocrud[postgresql,s3,mq]'` |
+| recommended production stack | `pip install 'autocrud[postgresql,s3,mq]'` |
+
+The recommended production stack is `PostgresDiskS3StorageFactory(...)` plus `RabbitMQMessageQueueFactory()`.
 
 If you are not sure which one to choose, continue with the [backend setup guide](/autocrud/guides/backend-setup).
 

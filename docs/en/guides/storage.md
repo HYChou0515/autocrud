@@ -26,6 +26,7 @@ You can also override storage per model when one resource needs a different dura
 | `PostgresStorageFactory(...)` | PostgreSQL | PostgreSQL | memory by default |
 | `PostgreSQLS3StorageFactory(...)` | PostgreSQL | S3 | S3 |
 | `PostgresDiskStorageFactory(...)` | PostgreSQL | local disk | memory by default |
+| `PostgresDiskS3StorageFactory(...)` | PostgreSQL | local disk | S3 |
 
 That last column matters.
 If your app uses file uploads or binary fields, do not assume every SQL-backed setup automatically gives you durable blobs.
@@ -127,7 +128,76 @@ Cons:
 - requires database infrastructure
 - blob data is **not** durable by default, so binary-upload workloads need an additional plan
 
-If you need durable file uploads as well, prefer `PostgreSQLS3StorageFactory`.
+If you need durable file uploads as well, prefer `PostgresDiskS3StorageFactory` for the default production path, or use `PostgreSQLS3StorageFactory` when you want S3 for resource payloads too.
+
+---
+
+### PostgresDiskStorageFactory
+
+```python
+from autocrud import crud
+from autocrud.resource_manager import PostgresDiskStorageFactory
+
+crud.configure(
+    storage_factory=PostgresDiskStorageFactory(
+        connection_string="postgresql://user:pass@host:5432/appdb",
+        rootdir="./data",
+    )
+)
+```
+
+Best for:
+
+- the recommended production setup
+- systems that want PostgreSQL-backed metadata and search
+- deployments that prefer keeping structured resource payloads on mounted disk
+
+Pros:
+
+- strong metadata querying in PostgreSQL
+- straightforward local or mounted-volume resource persistence
+- a good fit when blob uploads are handled separately in S3
+
+Cons:
+
+- blob durability is still a separate configuration decision
+- not as stateless as storing resource payloads fully in object storage
+
+Pair this setup with S3-backed blob handling when your application stores uploads or binary artifacts.
+
+---
+
+### PostgresDiskS3StorageFactory
+
+```python
+from autocrud import crud
+from autocrud.resource_manager import PostgresDiskS3StorageFactory
+
+crud.configure(
+    storage_factory=PostgresDiskS3StorageFactory(
+        connection_string="postgresql://user:pass@host:5432/appdb",
+        rootdir="./data",
+        s3_bucket="my-blob-bucket",
+    )
+)
+```
+
+Best for:
+
+- the default production-ready storage setup
+- PostgreSQL-backed search and metadata
+- disk-backed resource payloads plus durable S3 blob uploads
+
+Pros:
+
+- keeps structured payloads on local or mounted disk
+- stores blobs durably in S3-compatible storage
+- works out of the box with the current recommended architecture
+
+Cons:
+
+- still requires both database and object storage infrastructure
+- resource payloads remain tied to mounted disk rather than full object storage
 
 ---
 
@@ -193,18 +263,17 @@ Best for:
 | --- | --- |
 | unit tests and demos | `MemoryStorageFactory()` |
 | local development or MVP | `DiskStorageFactory("./data")` |
-| production without binary uploads | `PostgresStorageFactory(...)` |
-| production with durable uploads | `PostgreSQLS3StorageFactory(...)` |
+| recommended production setup | `PostgresDiskS3StorageFactory(...)` |
+| object-storage-first production | `PostgreSQLS3StorageFactory(...)` |
 | cloud-first object storage setup | `S3StorageFactory(...)` |
 
 Rule of thumb:
 
 ```text
 start local → DiskStorageFactory
-need shared durable objects → S3StorageFactory
-need SQL-backed search and durable blobs → PostgreSQLS3StorageFactory
+recommended production → PostgresDiskS3StorageFactory + RabbitMQ
+prefer fully object-backed resource payloads → PostgreSQLS3StorageFactory
 ```
-
 ---
 
 ## Per-model override
