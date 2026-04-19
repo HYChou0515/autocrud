@@ -4,6 +4,8 @@ This page helps you find the most useful runnable examples in the repository.
 
 If you want to learn AutoCRUD by copying a working project instead of starting from a blank file, begin here.
 
+If your first question is how to choose metadata, resource, blob, and queue backends, read the [backend setup guide](/autocrud/guides/backend-setup) before picking a production-style example.
+
 ---
 
 ## Recommended order

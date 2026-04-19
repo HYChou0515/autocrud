@@ -6,11 +6,31 @@ That means background work is not just pushed into a broker and forgotten. Each 
 
 This quickstart shows the smallest useful setup:
 
+- choose a queue backend
 - define a job payload
 - register a job handler
 - start a consumer
 - submit a job
 - poll for completion
+
+---
+
+## 0. Choose a queue backend
+
+For first-time setup, make the queue backend explicit.
+That removes ambiguity about where jobs are processed.
+
+```python
+from autocrud import crud
+from autocrud.message_queue import SimpleMessageQueueFactory
+
+crud.configure(
+    message_queue_factory=SimpleMessageQueueFactory(),
+)
+```
+
+Use this for local development and same-process consumers.
+For broker-backed worker deployments, switch to `RabbitMQMessageQueueFactory()` or `CeleryMessageQueueFactory()`.
 
 ---
 
@@ -78,6 +98,11 @@ Once the schema and handler are ready, register them with AutoCRUD:
 
 ```python
 from autocrud import Schema, crud
+from autocrud.message_queue import SimpleMessageQueueFactory
+
+crud.configure(
+    message_queue_factory=SimpleMessageQueueFactory(),
+)
 
 crud.add_model(
     Schema(TrainingJob, "v1"),
@@ -176,6 +201,7 @@ from typing import Any, Literal
 import msgspec
 
 from autocrud import Job, Schema, TaskStatus, crud
+from autocrud.message_queue import SimpleMessageQueueFactory
 from autocrud.types import Resource
 
 
@@ -221,6 +247,10 @@ def training(job: Resource[TrainingJob]) -> TrainingJob:
 
 
 def main() -> None:
+    crud.configure(
+        message_queue_factory=SimpleMessageQueueFactory(),
+    )
+
     crud.add_model(
         Schema(TrainingJob, "v1"),
         job_handler=training,

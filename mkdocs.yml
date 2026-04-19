@@ -199,6 +199,7 @@ plugins:
 
             - Guides:
                 - guides/index.md
+                - guides/backend-setup.md
                 - guides/storage.md
                 - guides/performance.md
                 - guides/from-demo-to-production.md

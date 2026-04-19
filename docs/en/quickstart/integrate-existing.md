@@ -57,6 +57,24 @@ def ping():
 
 Your app is already running and serving endpoints.
 
+### Recommended before you continue: choose persistence now
+
+If you do nothing else, AutoCRUD starts with in-memory storage.
+That is fine for a demo, but it means data disappears on restart.
+
+For a real project, configure persistence before registering the model:
+
+```python
+from autocrud import crud
+from autocrud.resource_manager import DiskStorageFactory
+
+crud.configure(
+    storage_factory=DiskStorageFactory("./data")
+)
+```
+
+If you need a production-style deployment with PostgreSQL, S3, or workers, see the [backend setup guide](/autocrud/guides/backend-setup).
+
 ---
 
 ## 2. Add a schema for the resource you want to manage
@@ -129,6 +147,7 @@ import msgspec
 from fastapi import FastAPI
 
 from autocrud import crud, Schema
+from autocrud.resource_manager import DiskStorageFactory
 
 
 class Issue(msgspec.Struct):
@@ -149,6 +168,9 @@ def ping():
     return {"message": "pong"}
 
 
+crud.configure(
+    storage_factory=DiskStorageFactory("./data")
+)
 crud.add_model(Schema(Issue, "v1"))
 crud.apply(app)
 ```

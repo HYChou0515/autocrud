@@ -53,6 +53,20 @@ Example:
 pip install 'autocrud[graphql,mq]'
 ```
 
+### Common backend bundles
+
+Use a bundle that matches your deployment stage:
+
+| Goal | Recommended install |
+| --- | --- |
+| local MVP with durable files | `pip install autocrud` |
+| PostgreSQL-backed API | `pip install 'autocrud[postgresql]'` |
+| object storage and blob uploads | `pip install 'autocrud[s3]'` |
+| production jobs and workers | `pip install 'autocrud[mq]'` |
+| full production stack | `pip install 'autocrud[postgresql,s3,mq]'` |
+
+If you are not sure which one to choose, continue with the [backend setup guide](/autocrud/guides/backend-setup).
+
 ---
 
 ## Verify the installation
@@ -122,5 +136,6 @@ Then open:
 ## Choose your next step
 
 - [Fast demo](/autocrud/quickstart/fast-demo) if you want the quickest end-to-end example
+- [Backend setup](/autocrud/guides/backend-setup) if you need to choose metadata, resource, blob, or queue backends
 - [Integrate with an existing FastAPI app](/autocrud/quickstart/integrate-existing) if you already have a project
 - [Routes generation](/autocrud/howto/routes) if you want to understand what gets exposed automatically

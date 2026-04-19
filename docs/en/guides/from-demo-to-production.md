@@ -42,7 +42,8 @@ Recommended starting points:
 | --------- | ------------------ |
 | local or single-node deployment | `DiskStorageFactory` |
 | cloud deployment with object storage | `S3StorageFactory` |
-| query-heavy or larger-scale deployment | `PostgresStorageFactory` |
+| query-heavy or larger-scale deployment | `PostgreSQLS3StorageFactory` |
+| PostgreSQL-centric API without durable uploads | `PostgresStorageFactory` |
 
 Rule of thumb:
 
@@ -86,6 +87,10 @@ For small single-node deployments, filesystem-based storage is often enough.
 
 For multi-node or cloud deployments, prefer shared object storage such as S3-compatible
 storage so application instances can stay stateless.
+
+If your deployment uses `PostgresStorageFactory`, remember that binary-upload durability
+is still a separate decision. For file-heavy systems, prefer `DiskStorageFactory`,
+`S3StorageFactory`, or `PostgreSQLS3StorageFactory`.
 
 This matters for:
 
