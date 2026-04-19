@@ -4,6 +4,8 @@ This page is the **system map** for AutoCRUD.
 
 Its purpose is to show how the major pieces fit together before you dive into the details.
 
+If you are new to the project, a good reading order is: **Overview → Core Concepts → Architecture → Resource Lifecycle**.
+
 ---
 
 ## The shortest mental model

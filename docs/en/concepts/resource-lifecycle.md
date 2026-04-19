@@ -67,6 +67,8 @@ If not configured, the default is:
 stable
 ```
 
+Both `stable` and `draft` are supported. Use `draft` when you want an editing workflow that relies on in-place `modify` operations before promoting or replacing the current revision.
+
 ### Example
 
 ```text

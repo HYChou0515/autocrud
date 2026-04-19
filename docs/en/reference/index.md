@@ -3,6 +3,7 @@
 This section is for behavior guarantees and public API details.
 
 Use it when you already understand the basics and need precise, implementation-facing information.
+It is a lookup section, not the best first stop for brand-new users.
 
 ---
 

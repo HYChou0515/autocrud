@@ -46,6 +46,8 @@ Or with pnpm:
 pnpm add -g autocrud-web-generator
 ```
 
+> The published package name is `autocrud-web-generator`, while the command you run after installation is `autocrud-web`.
+
 ### 2. Create a new frontend project
 
 ```bash
@@ -95,7 +97,7 @@ A typical project contains these important areas:
 src/
 ├── autocrud/
 │   ├── generated/   # generated types, API clients, resource metadata
-│   └── lib/         # reusable tracked components and customization hooks
+│   └── lib/         # reusable customizable components and customization hooks
 └── routes/          # application routes
 ```
 

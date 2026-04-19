@@ -15,6 +15,9 @@ For a more step-by-step debugging path, see the dedicated [troubleshooting guide
 ### Permission / access
 - `PermissionDeniedError`
 
+### Context / write setup
+- `MissingOperationContextError`
+
 ### Not found
 - `ResourceNotFoundError`
 - `ResourceIDNotFoundError`
@@ -44,6 +47,30 @@ For a more step-by-step debugging path, see the dedicated [troubleshooting guide
 **What to check**
 - whether your `permission_checker` is configured as expected (AllowAll vs RBAC/custom)
 - whether the endpoint is protected by dependencies/guards in route templates
+
+---
+
+## Context / write setup
+
+### MissingOperationContextError
+**Meaning**: a mutating operation was called without the required `user` and/or `now` context.
+
+**Typical causes**
+- calling `ResourceManager` write methods directly in scripts or tests without a context scope
+- forgetting to wrap operations in `with rm.using(user=..., now=...):`
+- not providing manager defaults for background or system-driven operations
+
+**How to fix**
+Provide the write context explicitly or configure defaults:
+
+```python
+from datetime import datetime
+
+with resource_manager.using(user="system", now=datetime.now()):
+    resource_manager.create(data)
+```
+
+If you are inside an HTTP request flow, also confirm your dependency wiring is actually passing the current user and timestamp into the route layer.
 
 ---
 
