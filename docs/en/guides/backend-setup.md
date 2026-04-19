@@ -21,18 +21,27 @@ If you choose these four pieces deliberately at the start, the rest of the produ
 Configure your backend before registering models.
 
 ```python
-from autocrud import crud
-from autocrud.resource_manager import DiskStorageFactory
+from autocrud import BackendBinding, BackendConfig, ConnectionProfile, crud
 
 crud.configure(
-    storage_factory=DiskStorageFactory("./data"),
+    backend=BackendConfig(
+        connections={
+            "local": ConnectionProfile(
+                type="disk",
+                options={"rootdir": "./data"},
+            )
+        },
+        meta=BackendBinding(use="local"),
+        resource=BackendBinding(use="local"),
+        blob=BackendBinding(use="local"),
+    )
 )
 
 crud.add_model(User)
 crud.apply(app)
 ```
 
-That order keeps the storage, blob behavior, and queue behavior aligned from the beginning.
+That order keeps metadata, resource data, blob behavior, and queue behavior aligned from the beginning. The older `storage_factory=` and `message_queue_factory=` arguments still work, but `backend=` is now the preferred entry point.
 
 ---
 
@@ -66,7 +75,45 @@ If you only need local persistence, the base package plus `DiskStorageFactory` i
 
 ---
 
-## 2. Local persistent setup for a real MVP
+## 2. JSON config-file setup
+
+If you want deployment-friendly backend setup, place the unified config in a JSON file and load it directly.
+
+```json
+{
+  "version": 1,
+  "connections": {
+    "local": {
+      "type": "disk",
+      "options": {
+        "rootdir": "./data"
+      }
+    },
+    "jobs": {
+      "type": "simple",
+      "options": {
+        "max_retries": 3
+      }
+    }
+  },
+  "meta": {"use": "local"},
+  "resource": {"use": "local"},
+  "blob": {"use": "local"},
+  "mq": {"use": "jobs"}
+}
+```
+
+```python
+from autocrud import crud
+
+crud.configure(backend="./backend.json")
+```
+
+This keeps connection information centralized and makes it easier to share the same backend setup across environments.
+
+---
+
+## 3. Local persistent setup for a real MVP
 
 This is the simplest durable setup for a single-node deployment.
 
@@ -104,7 +151,7 @@ Use this when you want the fastest path from demo to something your team can res
 
 ---
 
-## 3. Recommended production setup
+## 4. Recommended production setup
 
 The current recommended production shape is:
 
@@ -159,7 +206,7 @@ If you prefer object storage for both resource payloads and blobs, `PostgreSQLS3
 
 ---
 
-## 4. Understand what each storage factory really does
+## 5. Understand what each storage factory really does
 
 The easiest way to avoid surprises is to map the factory to the four backend concerns.
 
@@ -180,7 +227,7 @@ Two important consequences:
 
 ---
 
-## 5. Choose a queue only when jobs matter
+## 6. Choose a queue only when jobs matter
 
 If your app never uses `Job[...]` resources or background execution, you can keep the default simple setup.
 
@@ -216,7 +263,7 @@ If jobs stay in `pending`, check that:
 
 ---
 
-## 6. First deployment checklist
+## 7. First deployment checklist
 
 Before calling your backend ready for adoption, verify all of the following:
 
@@ -236,7 +283,7 @@ A quick persistence smoke test is simple:
 
 ---
 
-## 7. What to read next
+## 8. What to read next
 
 - [Storage](/autocrud/guides/storage)
 - [From demo to production](/autocrud/guides/from-demo-to-production)

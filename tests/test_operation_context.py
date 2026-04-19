@@ -1,6 +1,7 @@
 """Tests for the operation context system (using(), explicit kwargs, strict mode)."""
 
 import datetime as dt
+import threading
 import warnings
 
 import pytest
@@ -62,6 +63,51 @@ class TestUsingBasic:
             info = rm.create(Item(name="a"))
         assert info.created_by == "alice"
         assert info.created_time == NOW
+
+    def test_using_overlapping_threads_do_not_cross_reset_tokens(self):
+        rm = make_rm(default_user="system", default_now=lambda: NOW)
+        first_entered = threading.Event()
+        second_entered = threading.Event()
+        release_first = threading.Event()
+        release_second = threading.Event()
+        errors: list[Exception] = []
+
+        def worker_one() -> None:
+            try:
+                with rm.using(user="alice", now=NOW):
+                    first_entered.set()
+                    assert rm.user_or_unset == "alice"
+                    second_entered.wait(timeout=2)
+                    release_first.wait(timeout=2)
+            except Exception as exc:  # pragma: no cover - captured for assertion
+                errors.append(exc)
+
+        def worker_two() -> None:
+            try:
+                first_entered.wait(timeout=2)
+                with rm.using(user="bob", now=NOW2):
+                    second_entered.set()
+                    assert rm.user_or_unset == "bob"
+                    release_second.wait(timeout=2)
+            except Exception as exc:  # pragma: no cover - captured for assertion
+                errors.append(exc)
+
+        t1 = threading.Thread(target=worker_one)
+        t2 = threading.Thread(target=worker_two)
+        t1.start()
+        t2.start()
+
+        assert first_entered.wait(timeout=2)
+        assert second_entered.wait(timeout=2)
+
+        release_first.set()
+        t1.join(timeout=2)
+        release_second.set()
+        t2.join(timeout=2)
+
+        assert errors == []
+        assert rm.user_or_unset == "system"
+        assert rm.now_or_unset == NOW
 
     def test_using_nested_override(self):
         rm = make_rm()

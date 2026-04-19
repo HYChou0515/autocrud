@@ -35,7 +35,17 @@ from fastapi.middleware.cors import CORSMiddleware
 from msgspec import Struct
 from pydantic_core import Url
 
-from autocrud import IValidator, OnDelete, Ref, Schema, crud, struct_to_pydantic
+from autocrud import (
+    BackendBinding,
+    BackendConfig,
+    ConnectionProfile,
+    IValidator,
+    OnDelete,
+    Ref,
+    Schema,
+    crud,
+    struct_to_pydantic,
+)
 
 # 預先將 Struct 轉為 Pydantic Model，供 FastAPI 端點作為型別標註使用
 # 直接在 annotation 寫 struct_to_pydantic(Skill) 會被 Pylance 報 reportInvalidTypeForm
@@ -45,13 +55,7 @@ from autocrud.crud.route_templates.graphql import GraphQLRouteTemplate
 from autocrud.crud.route_templates.migrate import MigrateRouteTemplate
 from autocrud.message_queue.basic import DelayRetry
 from autocrud.message_queue.context import JobContext
-from autocrud.message_queue.rabbitmq import RabbitMQMessageQueueFactory
-from autocrud.message_queue.simple import SimpleMessageQueueFactory
 from autocrud.query import QB
-from autocrud.resource_manager.storage_factory import (
-    DiskStorageFactory,
-    S3StorageFactory,
-)
 from autocrud.types import (
     Binary,
     DisplayName,
@@ -1267,30 +1271,47 @@ def demonstrate_qb_queries():
 def configure_crud():
     """設定全域 crud 實例"""
     storage_type = input("使用memory or disk storage？ [[M]emory/(D)isk/(S)3]: ")
+    connections: dict[str, ConnectionProfile] = {}
 
     if storage_type.lower() in ("d", "disk"):
         storage_path = (
             input("請輸入磁盤存儲路徑（預設: ./rpg_game_data）: ") or "./rpg_game_data"
         )
-        storage_factory = DiskStorageFactory(rootdir=storage_path)
-    elif storage_type.lower() in ("s", "s3"):
-        storage_factory = S3StorageFactory(
-            bucket="autocrud",
-            endpoint_url="http://localhost:9000",
-            access_key_id="minioadmin",
-            secret_access_key="minioadmin",
-            prefix="rpg_game_data/",
-            auto_sync=True,
-            sync_interval=0,  # 立即同步
+        connections["storage"] = ConnectionProfile(
+            type="disk",
+            options={"rootdir": storage_path},
         )
+        storage_binding = BackendBinding(use="storage")
+    elif storage_type.lower() in ("s", "s3"):
+        connections["storage"] = ConnectionProfile(
+            type="s3",
+            options={
+                "bucket": "autocrud",
+                "endpoint_url": "http://localhost:9000",
+                "access_key_id": "minioadmin",
+                "secret_access_key": "minioadmin",
+                "prefix": "rpg_game_data/",
+                "auto_sync": True,
+                "sync_interval": 0,
+            },
+        )
+        storage_binding = BackendBinding(use="storage")
     else:
-        storage_factory = None
+        storage_binding = BackendBinding(type="memory")
 
     mq_type = input("使用rabbit mq嗎？ [y/N]: ")
     if mq_type.lower() == "y":
-        mq_factory = RabbitMQMessageQueueFactory()
+        connections["mq"] = ConnectionProfile(type="rabbitmq")
     else:
-        mq_factory = SimpleMessageQueueFactory()
+        connections["mq"] = ConnectionProfile(type="simple")
+
+    backend = BackendConfig(
+        connections=connections,
+        meta=storage_binding,
+        resource=storage_binding,
+        blob=storage_binding,
+        mq=BackendBinding(use="mq"),
+    )
 
     # 使用全域 crud 實例的 configure 方法
     dp = DependencyProvider(
@@ -1300,8 +1321,7 @@ def configure_crud():
         ),  # 簡單的時間提供者，實際應用中可以使用更精確的時間源
     )
     crud.configure(
-        storage_factory=storage_factory,
-        message_queue_factory=mq_factory,
+        backend=backend,
         dependency_provider=dp,
     )
 

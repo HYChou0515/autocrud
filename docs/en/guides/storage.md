@@ -6,13 +6,74 @@ AutoCRUD separates persistence into three related but distinct layers:
 - **resource data** — the structured payload of the resource itself
 - **blob data** — binary uploads and file-like artifacts
 
-You choose the default backend with:
+The preferred way to choose the default backend is now the unified backend config:
 
 ```python
-crud.configure(storage_factory=...)
+from autocrud import BackendBinding, BackendConfig, ConnectionProfile, crud
+
+crud.configure(
+    backend=BackendConfig(
+        connections={
+            "local": ConnectionProfile(
+                type="disk",
+                options={"rootdir": "./data"},
+            ),
+            "jobs": ConnectionProfile(
+                type="simple",
+                options={"max_retries": 3},
+            ),
+        },
+        meta=BackendBinding(use="local"),
+        resource=BackendBinding(use="local"),
+        blob=BackendBinding(use="local"),
+        mq=BackendBinding(use="jobs"),
+    )
+)
 ```
 
-You can also override storage per model when one resource needs a different durability strategy.
+You can also load the same shape from a JSON file:
+
+```python
+crud.configure(backend="./backend.json")
+```
+
+The older split parameters such as `storage_factory=` and `message_queue_factory=` are still supported during the transition window.
+
+---
+
+## Unified backend schema
+
+The unified config is schema-first and uses `type` as the backend discriminator.
+
+```json
+{
+  "version": 1,
+  "connections": {
+    "local": {
+      "type": "disk",
+      "options": {
+        "rootdir": "./data"
+      }
+    },
+    "jobs": {
+      "type": "simple",
+      "options": {
+        "max_retries": 3
+      }
+    }
+  },
+  "meta": {"use": "local"},
+  "resource": {"use": "local"},
+  "blob": {"use": "local"},
+  "mq": {"use": "jobs"}
+}
+```
+
+This structure lets you:
+
+- reuse one connection profile across multiple backend roles
+- configure metadata, resource, blob, and queue backends together
+- register custom backend providers under a new `type` and reference them from config
 
 ---
 
