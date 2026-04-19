@@ -15,6 +15,12 @@ from autocrud.resource_manager.resource_store.simple import (
     DiskResourceStore,
     MemoryResourceStore,
 )
+from autocrud.util.naming import NameConverter
+
+
+def _pg_safe_name(model_name: str) -> str:
+    """Convert a model name to a PostgreSQL-safe snake_case identifier."""
+    return NameConverter(model_name).to("snake")
 
 
 class IStorageFactory(ABC):
@@ -99,10 +105,11 @@ class PostgresStorageFactory(IStorageFactory):
         Returns:
             Storage combining PostgreSQL meta store and PostgreSQL resource store.
         """
+        safe_name = _pg_safe_name(model_name)
         table_name = (
-            f"{self.table_prefix}{model_name}_meta"
+            f"{self.table_prefix}{safe_name}_meta"
             if self.table_prefix
-            else f"{model_name}_meta"
+            else f"{safe_name}_meta"
         )
         meta_store = PostgresMetaStore(
             pg_dsn=self.connection_string,
@@ -111,9 +118,7 @@ class PostgresStorageFactory(IStorageFactory):
         )
 
         resource_table_prefix = (
-            f"{self.table_prefix}{model_name}_"
-            if self.table_prefix
-            else f"{model_name}_"
+            f"{self.table_prefix}{safe_name}_" if self.table_prefix else f"{safe_name}_"
         )
         resource_store = PostgresResourceStore(
             pg_dsn=self.connection_string,
@@ -185,10 +190,11 @@ class PostgreSQLS3StorageFactory(IStorageFactory):
         model_name: str,
     ) -> IStorage:
         # Use PostgreSQL for metadata (indexes, search queries)
+        safe_name = _pg_safe_name(model_name)
         table_name = (
-            f"{self.table_prefix}{model_name}_meta"
+            f"{self.table_prefix}{safe_name}_meta"
             if self.table_prefix
-            else f"{model_name}_meta"
+            else f"{safe_name}_meta"
         )
         meta_store = PostgresMetaStore(
             pg_dsn=self.connection_string,
@@ -265,10 +271,11 @@ class PostgresDiskStorageFactory(IStorageFactory):
             Storage combining PostgreSQL meta store and disk resource store.
         """
         # Use PostgreSQL for metadata (indexes, search queries)
+        safe_name = _pg_safe_name(model_name)
         table_name = (
-            f"{self.table_prefix}{model_name}_meta"
+            f"{self.table_prefix}{safe_name}_meta"
             if self.table_prefix
-            else f"{model_name}_meta"
+            else f"{safe_name}_meta"
         )
         meta_store = PostgresMetaStore(
             pg_dsn=self.connection_string,

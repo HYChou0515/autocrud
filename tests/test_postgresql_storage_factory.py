@@ -121,7 +121,7 @@ def test_postgresql_storage_factory_build(mock_postgres_factory):
     mock_pg_class.assert_called_once_with(
         pg_dsn="postgresql://test:test@localhost:5432/testdb",
         encoding=Encoding.msgpack,
-        table_name="test_GameCharacter_meta",
+        table_name="test_game_character_meta",
     )
 
     # Verify S3ResourceStore was called correctly
@@ -177,7 +177,7 @@ def test_postgresql_storage_factory_table_prefix():
         )
         factory1.build("User")
         call_kwargs = mock_pg.call_args[1]
-        assert call_kwargs["table_name"] == "User_meta"
+        assert call_kwargs["table_name"] == "user_meta"
 
         # With prefix
         mock_pg.reset_mock()
@@ -188,7 +188,7 @@ def test_postgresql_storage_factory_table_prefix():
         )
         factory2.build("User")
         call_kwargs = mock_pg.call_args[1]
-        assert call_kwargs["table_name"] == "app_User_meta"
+        assert call_kwargs["table_name"] == "app_user_meta"
 
 
 def test_postgresql_storage_factory_separate_blob_bucket():
