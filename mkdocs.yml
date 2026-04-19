@@ -199,16 +199,19 @@ plugins:
 
             - Guides:
                 - guides/index.md
+                - guides/backend-setup.md
                 - guides/storage.md
                 - guides/performance.md
                 - guides/from-demo-to-production.md
 
             - Contributing:
                 - contributing/docs.md
+                - contributing/ai-skills.md
 
             - Reference:
                 - reference/index.md
                 - reference/python_api.md
+                - reference/backend-configuration.md
                 - reference/query-builder.md
                 - reference/behavior.md
             

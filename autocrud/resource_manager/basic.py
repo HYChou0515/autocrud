@@ -4,7 +4,7 @@ import re
 from abc import ABC, abstractmethod
 from collections.abc import Callable, Generator, Iterable, MutableMapping
 from contextlib import AbstractContextManager, contextmanager
-from contextvars import ContextVar, Token
+from contextvars import ContextVar
 from enum import Flag, StrEnum
 from typing import IO, Any, Generic, TypeVar
 
@@ -53,7 +53,6 @@ class Ctx(Generic[T]):
     ):
         self.strict_type = strict_type
         self.v = ContextVar[T](name)
-        self.tok: list[Token[T]] = []
         self.default = default
         self.default_factory = default_factory
 
@@ -61,12 +60,11 @@ class Ctx(Generic[T]):
     def ctx(self, value: T | UnsetType):
         if self.strict_type is not UNSET and not isinstance(value, self.strict_type):
             raise TypeError(f"Context value must be of type {self.strict_type}")
-        self.tok.append(self.v.set(value))
+        token = self.v.set(value)
         try:
             yield
         finally:
-            if self.tok:
-                self.v.reset(self.tok.pop())
+            self.v.reset(token)
 
     def get(self) -> T:
         if self.default is NO_DEFAULT and self.default_factory is NO_DEFAULT:

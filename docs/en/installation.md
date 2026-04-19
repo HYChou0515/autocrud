@@ -53,6 +53,22 @@ Example:
 pip install 'autocrud[graphql,mq]'
 ```
 
+### Common backend bundles
+
+Use a bundle that matches your deployment stage:
+
+| Goal | Recommended install |
+| --- | --- |
+| local MVP with durable files | `pip install autocrud` |
+| PostgreSQL-backed API | `pip install 'autocrud[postgresql]'` |
+| object storage and blob uploads | `pip install 'autocrud[s3]'` |
+| production jobs and workers | `pip install 'autocrud[mq]'` |
+| recommended production stack | `pip install 'autocrud[postgresql,s3,mq]'` |
+
+The recommended production stack is `PostgresDiskS3StorageFactory(...)` plus `RabbitMQMessageQueueFactory()`.
+
+If you are not sure which one to choose, continue with the [backend setup guide](/autocrud/guides/backend-setup).
+
 ---
 
 ## Verify the installation
@@ -93,7 +109,7 @@ Notes:
 from fastapi import FastAPI
 from msgspec import Struct
 
-from autocrud import crud
+from autocrud import crud, Schema
 
 
 class User(Struct):
@@ -102,7 +118,8 @@ class User(Struct):
 
 
 app = FastAPI()
-crud.add_model(User)
+crud.configure()
+crud.add_model(Schema(User, "v1"))
 crud.apply(app)
 ```
 
@@ -122,5 +139,6 @@ Then open:
 ## Choose your next step
 
 - [Fast demo](/autocrud/quickstart/fast-demo) if you want the quickest end-to-end example
+- [Backend setup](/autocrud/guides/backend-setup) if you need to choose metadata, resource, blob, or queue backends
 - [Integrate with an existing FastAPI app](/autocrud/quickstart/integrate-existing) if you already have a project
 - [Routes generation](/autocrud/howto/routes) if you want to understand what gets exposed automatically

@@ -8,6 +8,7 @@ import warnings
 from collections import OrderedDict
 from collections.abc import Callable, Sequence
 from dataclasses import dataclass
+from pathlib import Path
 from typing import (
     IO,
     Any,
@@ -20,6 +21,7 @@ from fastapi.openapi.utils import get_openapi
 from fastapi.params import Body
 from msgspec import UNSET, UnsetType
 
+from autocrud.backend import BackendConfig, build_backend_bundle
 from autocrud.crud.route_templates.backup import (
     ExportRouteTemplate,
     ImportRouteTemplate,
@@ -68,14 +70,13 @@ from autocrud.resource_manager.basic import (
     Encoding,
     IStorage,
 )
-from autocrud.resource_manager.blob_store.simple import DiskBlobStore, MemoryBlobStore
+from autocrud.resource_manager.blob_store.simple import MemoryBlobStore
 from autocrud.resource_manager.core import ResourceManager
 from autocrud.resource_manager.pydantic_converter import (
     is_pydantic_model,
     pydantic_to_struct,
 )
 from autocrud.resource_manager.storage_factory import (
-    DiskStorageFactory,
     IStorageFactory,
     MemoryStorageFactory,
 )
@@ -290,10 +291,15 @@ class AutoCRUD:
         route_templates:
             Route templates to apply. When `None` or a `dict`, default templates are used and
             can be configured via `{TemplateClass: kwargs}`.
+        backend:
+            Higher-level unified backend configuration. Accepts a typed config object,
+            a plain dict, or a JSON file path. This is the easiest way to configure
+            metadata, resource, blob, and message-queue backends together.
         storage_factory:
-            Default storage factory for models that don't specify `storage`.
+            Lower-level storage factory for models that don't specify `storage`.
+            Use this when you want more explicit control over storage composition.
         message_queue_factory:
-            Default message queue factory used for Job models (when enabled).
+            Lower-level message queue factory used for Job models (when enabled).
         admin:
             If provided and `permission_checker` is not set, enables RBAC with `admin` as root user.
         permission_checker:
@@ -335,6 +341,7 @@ class AutoCRUD:
         route_templates: list[IRouteTemplate]
         | dict[type, dict[str, Any]]
         | None = None,
+        backend: BackendConfig | dict[str, Any] | str | Path | None = None,
         storage_factory: IStorageFactory | None = None,
         message_queue_factory: IMessageQueueFactory | None = None,
         admin: str | None = None,
@@ -366,11 +373,13 @@ class AutoCRUD:
         self.strict_operation_context = False
         self._pending_create_actions: list[_PendingCreateAction] = []
         self._pending_update_actions: list[_PendingUpdateAction] = []
+        self.backend: BackendConfig | None = None
 
         # Apply configuration using shared logic
         self._apply_configuration(
             model_naming=model_naming,
             route_templates=route_templates,
+            backend=backend,
             storage_factory=storage_factory,
             message_queue_factory=message_queue_factory,
             admin=admin,
@@ -393,6 +402,7 @@ class AutoCRUD:
         | dict[type, dict[str, Any]]
         | None
         | UnsetType = UNSET,
+        backend: BackendConfig | dict[str, Any] | str | Path | None | UnsetType = UNSET,
         storage_factory: IStorageFactory | None | UnsetType = UNSET,
         message_queue_factory: IMessageQueueFactory | None | UnsetType = UNSET,
         admin: str | None | UnsetType = UNSET,
@@ -414,29 +424,62 @@ class AutoCRUD:
         if model_naming is not UNSET:
             self.model_naming = model_naming
 
-        # Update storage_factory and blob_store
-        if storage_factory is not UNSET:
-            if storage_factory is None:
-                self.storage_factory = MemoryStorageFactory()
-            else:
-                self.storage_factory = storage_factory
+        # Update backend / storage / blob / message queue through one resolver
+        has_unified_backend = backend is not UNSET and backend is not None
+        if (
+            has_unified_backend
+            or storage_factory is not UNSET
+            or message_queue_factory is not UNSET
+        ):
+            has_explicit_legacy_backend = (
+                storage_factory is not UNSET and storage_factory is not None
+            ) or (
+                message_queue_factory is not UNSET and message_queue_factory is not None
+            )
+            if has_unified_backend and has_explicit_legacy_backend:
+                warnings.warn(
+                    "The unified 'backend' parameter takes precedence over "
+                    "'storage_factory' and 'message_queue_factory'. The split "
+                    "parameters are deprecated and will be removed in a future version.",
+                    DeprecationWarning,
+                    stacklevel=2,
+                )
+            elif has_explicit_legacy_backend:
+                warnings.warn(
+                    "'storage_factory' and 'message_queue_factory' are deprecated. "
+                    "Prefer the unified 'backend' configuration.",
+                    DeprecationWarning,
+                    stacklevel=2,
+                )
 
-            # Recreate blob_store based on new storage_factory
-            if isinstance(self.storage_factory, DiskStorageFactory):
-                self.blob_store = DiskBlobStore(self.storage_factory.rootdir / "_blobs")
-            elif hasattr(self.storage_factory, "build_blob_store"):
-                self.blob_store = self.storage_factory.build_blob_store()
-            else:
-                self.blob_store = MemoryBlobStore()
+            legacy_storage_factory = (
+                self.storage_factory
+                if storage_factory is UNSET
+                else (
+                    MemoryStorageFactory()
+                    if storage_factory is None
+                    else storage_factory
+                )
+            )
 
-        # Update message_queue_factory
-        if message_queue_factory is not UNSET:
-            if message_queue_factory is None:
+            if message_queue_factory is UNSET:
+                legacy_message_queue_factory = self.message_queue_factory
+            elif message_queue_factory is None:
                 from autocrud.message_queue.simple import SimpleMessageQueueFactory
 
-                self.message_queue_factory = SimpleMessageQueueFactory()
+                legacy_message_queue_factory = SimpleMessageQueueFactory()
             else:
-                self.message_queue_factory = message_queue_factory
+                legacy_message_queue_factory = message_queue_factory
+
+            bundle = build_backend_bundle(
+                backend if has_unified_backend else None,
+                storage_factory=legacy_storage_factory,
+                message_queue_factory=legacy_message_queue_factory,
+            )
+            self.backend = bundle.config
+            self.storage_factory = bundle.storage_factory
+            self.blob_store = bundle.blob_store
+            self.message_queue_factory = bundle.message_queue_factory
 
         # Update route_templates
         # If dependency_provider or default_user is changed, we need to
@@ -551,8 +594,9 @@ class AutoCRUD:
         route_templates: list[IRouteTemplate]
         | dict[type, dict[str, Any]]
         | UnsetType = UNSET,
-        storage_factory: IStorageFactory | UnsetType = UNSET,
-        message_queue_factory: IMessageQueueFactory | UnsetType = UNSET,
+        backend: BackendConfig | dict[str, Any] | str | Path | None | UnsetType = UNSET,
+        storage_factory: IStorageFactory | None | UnsetType = UNSET,
+        message_queue_factory: IMessageQueueFactory | None | UnsetType = UNSET,
         admin: str | None | UnsetType = UNSET,
         permission_checker: IPermissionChecker | UnsetType = UNSET,
         dependency_provider: DependencyProvider | UnsetType = UNSET,
@@ -576,8 +620,12 @@ class AutoCRUD:
         Args:
             model_naming: Controls how model names are converted to URL paths.
             route_templates: Custom list of route templates or configuration dict.
-            storage_factory: Storage backend to use for all models.
-            message_queue_factory: Message queue factory for async job processing.
+            backend: Unified backend configuration. Accepts a typed config object,
+                a plain dict, or a JSON file path.
+            storage_factory: Lower-level storage backend to use for all models.
+                This path offers more direct control than the unified ``backend=`` API.
+            message_queue_factory: Lower-level message queue factory for async job
+                processing.
             admin: Admin user for RBAC permission system.
             permission_checker: Custom permission checker implementation.
             dependency_provider: Dependency injection provider for routes.
@@ -596,12 +644,21 @@ class AutoCRUD:
 
         Example:
             ```python
-            from autocrud import crud
-            from autocrud.resource_manager.storage_factory import DiskStorageFactory
+            from autocrud import BackendBinding, BackendConfig, ConnectionProfile, crud
 
-            # Configure the global instance
+            # Configure the global instance with the higher-level backend API
             crud.configure(
-                storage_factory=DiskStorageFactory("./data"),
+                backend=BackendConfig(
+                    connections={
+                        "local": ConnectionProfile(
+                            type="disk",
+                            options={"rootdir": "./data"},
+                        )
+                    },
+                    meta=BackendBinding(use="local"),
+                    resource=BackendBinding(use="local"),
+                    blob=BackendBinding(use="local"),
+                ),
                 model_naming="snake",
                 admin="root@example.com",
             )
@@ -620,6 +677,7 @@ class AutoCRUD:
         self._apply_configuration(
             model_naming=model_naming,
             route_templates=route_templates,
+            backend=backend,
             storage_factory=storage_factory,
             message_queue_factory=message_queue_factory,
             admin=admin,

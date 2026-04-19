@@ -68,9 +68,10 @@ class PostgresStorageFactory(IStorageFactory):
     """PostgreSQL-only Storage Factory.
 
     Uses PostgreSQL for both metadata storage and resource data storage.
-    No external object storage (S3) dependency — all data lives in PostgreSQL.
-    Suitable for deployments that want a single-database architecture without
-    additional infrastructure.
+    No external object storage (S3) dependency — all structured data lives in
+    PostgreSQL. This is useful for database-centric deployments, but it is not
+    the project's default recommendation when durable blob uploads are part of
+    the system.
 
     Args:
         connection_string: PostgreSQL connection string
@@ -130,10 +131,11 @@ class PostgresStorageFactory(IStorageFactory):
 
 
 class PostgreSQLS3StorageFactory(IStorageFactory):
-    """PostgreSQL + S3 Storage Factory for production use.
+    """PostgreSQL + S3 Storage Factory for object-storage-first production use.
 
     Uses PostgreSQL for metadata storage (fast queries, indexes) and S3 for resource data.
-    Suitable for medium to large scale applications requiring high availability and scalability.
+    This remains a strong option for medium to large scale applications, especially
+    when deployments prefer object storage for payloads as well as blobs.
 
     Args:
         connection_string: PostgreSQL connection string (e.g., "postgresql://user:pass@host:port/db")
@@ -234,9 +236,14 @@ class PostgreSQLS3StorageFactory(IStorageFactory):
 class PostgresDiskStorageFactory(IStorageFactory):
     """PostgreSQL + Disk Storage Factory for hybrid deployments.
 
-    Uses PostgreSQL for metadata storage (fast queries, indexes) and local disk
-    for resource data. Suitable for single-node deployments that benefit from
-    PostgreSQL's query capabilities without requiring S3 infrastructure.
+    Uses PostgreSQL for metadata storage (fast queries, indexes) and local or
+    mounted disk for resource data. This is a good fit when you want strong
+    metadata querying while keeping structured payloads on local or mounted
+    storage.
+
+    Blob durability is a separate concern. If your application stores uploads
+    or binary artifacts, use :class:`PostgresDiskS3StorageFactory` or provide
+    your own explicit blob-store wiring.
 
     Args:
         connection_string: PostgreSQL connection string
@@ -289,6 +296,81 @@ class PostgresDiskStorageFactory(IStorageFactory):
         )
 
         return SimpleStorage(meta_store, resource_store)
+
+
+class PostgresDiskS3StorageFactory(PostgresDiskStorageFactory):
+    """PostgreSQL + Disk + S3 blob Storage Factory for production use.
+
+    Uses PostgreSQL for metadata storage, local or mounted disk for resource
+    data, and S3-compatible storage for blobs. This is the out-of-the-box
+    production-oriented factory when you want searchable metadata, durable
+    resource files on disk, and durable binary uploads in object storage.
+
+    Args:
+        connection_string: PostgreSQL connection string
+            (e.g., ``"postgresql://user:pass@host:port/db"``).
+        rootdir: Root directory for disk-based resource data storage.
+        s3_bucket: S3 bucket name for blob storage.
+        s3_region: AWS region for the S3 bucket (default: ``"us-east-1"``).
+        s3_access_key_id: AWS access key ID (default: ``"minioadmin"``).
+        s3_secret_access_key: AWS secret access key (default: ``"minioadmin"``).
+        s3_endpoint_url: S3 endpoint URL for MinIO or S3-compatible services.
+        s3_client_kwargs: Additional boto3 client kwargs.
+        encoding: Encoding format for data serialization (default: ``Encoding.msgpack``).
+        table_prefix: Prefix for PostgreSQL table names (default: ``""``).
+        blob_bucket: Optional dedicated bucket for blobs. Defaults to ``s3_bucket``.
+        blob_prefix: Prefix for blob storage in S3 (default: ``"blobs/"``).
+        upload_method: How upload sessions deliver bytes to S3.
+        presigned_url_expiry: Expiry in seconds for presigned URLs.
+    """
+
+    def __init__(
+        self,
+        connection_string: str,
+        rootdir: Path | str,
+        s3_bucket: str,
+        s3_region: str = "us-east-1",
+        s3_access_key_id: str = "minioadmin",
+        s3_secret_access_key: str = "minioadmin",
+        s3_endpoint_url: str | None = None,
+        s3_client_kwargs: dict | None = None,
+        encoding: Encoding = Encoding.msgpack,
+        table_prefix: str = "",
+        blob_bucket: str | None = None,
+        blob_prefix: str = "blobs/",
+        upload_method: Literal["proxy", "single_put"] = "proxy",
+        presigned_url_expiry: int = 3600,
+    ):
+        super().__init__(
+            connection_string=connection_string,
+            rootdir=rootdir,
+            encoding=encoding,
+            table_prefix=table_prefix,
+        )
+        self.s3_bucket = s3_bucket
+        self.s3_region = s3_region
+        self.s3_access_key_id = s3_access_key_id
+        self.s3_secret_access_key = s3_secret_access_key
+        self.s3_endpoint_url = s3_endpoint_url
+        self.s3_client_kwargs = s3_client_kwargs or {}
+        self.blob_bucket = blob_bucket or s3_bucket
+        self.blob_prefix = blob_prefix
+        self.upload_method = upload_method
+        self.presigned_url_expiry = presigned_url_expiry
+
+    def build_blob_store(self) -> IBlobStore:
+        """Build S3-based blob store for binary data."""
+        return S3BlobStore(
+            bucket=self.blob_bucket,
+            region_name=self.s3_region,
+            access_key_id=self.s3_access_key_id,
+            secret_access_key=self.s3_secret_access_key,
+            endpoint_url=self.s3_endpoint_url,
+            prefix=self.blob_prefix,
+            upload_method=self.upload_method,
+            presigned_url_expiry=self.presigned_url_expiry,
+            client_kwargs=self.s3_client_kwargs,
+        )
 
 
 class S3StorageFactory(IStorageFactory):
@@ -412,6 +494,9 @@ class S3StorageFactory(IStorageFactory):
             presigned_url_expiry=self.presigned_url_expiry,
             client_kwargs=self.client_kwargs,
         )
+
+
+PostgreSQLDiskS3StorageFactory = PostgresDiskS3StorageFactory
 
 
 class PostgreSQLStorageFactory(PostgreSQLS3StorageFactory):

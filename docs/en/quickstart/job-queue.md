@@ -4,13 +4,36 @@ AutoCRUD can treat jobs as first-class resources.
 
 That means background work is not just pushed into a broker and forgotten. Each job can carry structured input, status, history, and management metadata.
 
+Queue setup is part of the broader backend story. This page focuses on the job-specific workflow, while the [backend setup guide](/autocrud/guides/backend-setup) helps when you are ready to choose the right persistence and queue shape for your environment.
+
 This quickstart shows the smallest useful setup:
 
+- choose a queue backend
 - define a job payload
 - register a job handler
 - start a consumer
 - submit a job
 - poll for completion
+
+---
+
+## 0. Choose a queue backend
+
+For first-time setup, make the queue backend explicit.
+That removes ambiguity about where jobs are processed.
+
+```python
+from autocrud import crud
+from autocrud.message_queue import SimpleMessageQueueFactory
+
+crud.configure(
+    message_queue_factory=SimpleMessageQueueFactory(),
+)
+```
+
+Use this for local development and same-process consumers.
+For production worker deployments, prefer `RabbitMQMessageQueueFactory()`.
+Use `CeleryMessageQueueFactory()` mainly when your platform already standardizes on Celery.
 
 ---
 
@@ -78,6 +101,11 @@ Once the schema and handler are ready, register them with AutoCRUD:
 
 ```python
 from autocrud import Schema, crud
+from autocrud.message_queue import SimpleMessageQueueFactory
+
+crud.configure(
+    message_queue_factory=SimpleMessageQueueFactory(),
+)
 
 crud.add_model(
     Schema(TrainingJob, "v1"),
@@ -126,6 +154,7 @@ You can also trigger jobs through the HTTP API or the generated Web UI when thos
 
 See also:
 
+- [Backend setup guide](/autocrud/guides/backend-setup)
 - [Routes generation (FastAPI)](/autocrud/howto/routes)
 - [Web UI](/autocrud/howto/web-ui)
 
@@ -176,6 +205,7 @@ from typing import Any, Literal
 import msgspec
 
 from autocrud import Job, Schema, TaskStatus, crud
+from autocrud.message_queue import SimpleMessageQueueFactory
 from autocrud.types import Resource
 
 
@@ -221,6 +251,10 @@ def training(job: Resource[TrainingJob]) -> TrainingJob:
 
 
 def main() -> None:
+    crud.configure(
+        message_queue_factory=SimpleMessageQueueFactory(),
+    )
+
     crud.add_model(
         Schema(TrainingJob, "v1"),
         job_handler=training,

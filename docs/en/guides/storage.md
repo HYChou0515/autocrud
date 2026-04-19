@@ -1,173 +1,327 @@
 # Storage backends
 
-AutoCRUD separates **metadata** and **resource data** storage via `IStorage` / `IStorageFactory`.
+AutoCRUD separates persistence into three related but distinct layers:
 
-A storage factory is configured at `AutoCRUD(...)` construction time or via:
+- **metadata** — IDs, revision information, search/index state, lifecycle flags
+- **resource data** — the structured payload of the resource itself
+- **blob data** — binary uploads and file-like artifacts
+
+There are two supported setup levels for backend wiring:
+
+- the higher-level unified backend config via `backend=`
+- the lower-level storage and queue factories for more explicit control
+
+This page starts with the unified backend config, then maps the lower-level factory behavior in detail.
+
+The unified backend config is the most compact way to choose the default backend:
 
 ```python
-crud.configure(storage_factory=...)
+from autocrud import BackendBinding, BackendConfig, ConnectionProfile, crud
+
+crud.configure(
+    backend=BackendConfig(
+        connections={
+            "local": ConnectionProfile(
+                type="disk",
+                options={"rootdir": "./data"},
+            ),
+            "jobs": ConnectionProfile(
+                type="simple",
+                options={"max_retries": 3},
+            ),
+        },
+        meta=BackendBinding(use="local"),
+        resource=BackendBinding(use="local"),
+        blob=BackendBinding(use="local"),
+        mq=BackendBinding(use="jobs"),
+    )
+)
 ```
 
-Per model, you can also pass an explicit storage backend to `add_model()`.
+You can also load the same shape from a JSON file:
 
-This allows different resources to use different storage systems.
+```python
+crud.configure(backend="./backend.json")
+```
+
+The lower-level `storage_factory=` and `message_queue_factory=` parameters remain fully supported when you need more direct control over the underlying storage composition.
+
+For a full option-by-option backend settings reference, see [Backend configuration reference](/autocrud/reference/backend-configuration).
+
+---
+
+## Unified backend schema
+
+The unified config is schema-first and uses `type` as the backend discriminator.
+
+```json
+{
+  "version": 1,
+  "connections": {
+    "local": {
+      "type": "disk",
+      "options": {
+        "rootdir": "./data"
+      }
+    },
+    "jobs": {
+      "type": "simple",
+      "options": {
+        "max_retries": 3
+      }
+    }
+  },
+  "meta": {"use": "local"},
+  "resource": {"use": "local"},
+  "blob": {"use": "local"},
+  "mq": {"use": "jobs"}
+}
+```
+
+This structure lets you:
+
+- reuse one connection profile across multiple backend roles
+- configure metadata, resource, blob, and queue backends together
+- register custom backend providers under a new `type` and reference them from config
+
+---
+
+## What the storage factory controls
+
+| Factory | Metadata | Resource data | Blob data |
+| --- | --- | --- | --- |
+| `MemoryStorageFactory()` | memory | memory | memory |
+| `DiskStorageFactory("./data")` | local files | local files | local files |
+| `S3StorageFactory(...)` | SQLite synced to S3 | S3 | S3 |
+| `PostgresStorageFactory(...)` | PostgreSQL | PostgreSQL | memory by default |
+| `PostgreSQLS3StorageFactory(...)` | PostgreSQL | S3 | S3 |
+| `PostgresDiskStorageFactory(...)` | PostgreSQL | local disk | memory by default |
+| `PostgresDiskS3StorageFactory(...)` | PostgreSQL | local disk | S3 |
+
+That last column matters.
+If your app uses file uploads or binary fields, do not assume every SQL-backed setup automatically gives you durable blobs.
 
 ---
 
 ## Options
 
-### DiskStorageFactory (minimal viable production)
-
-Stores everything locally.
-
-| Component | Backend          |
-| --------- | ---------------- |
-| meta      | SQLite file      |
-| revision  | filesystem files |
-| blob      | filesystem       |
-
-Example:
+### DiskStorageFactory
 
 ```python
-from autocrud import AutoCRUD
+from autocrud import crud
 from autocrud.resource_manager import DiskStorageFactory
 
-crud = AutoCRUD(
+crud.configure(
     storage_factory=DiskStorageFactory("./data")
 )
 ```
 
 Best for:
 
-* local development
-* single-node deployments
-* small to medium systems
+- local development
+- single-node deployments
+- MVPs that need restart-safe persistence
 
 Pros:
 
-* zero infrastructure
-* simple backups
-* easy debugging
+- zero extra infrastructure
+- easy local inspection and backups
+- blob persistence works out of the box
 
 Cons:
 
-* not horizontally scalable
-* limited concurrent writers
+- not ideal for multi-node deployments
+- limited concurrent write scalability
 
 ---
 
 ### S3StorageFactory
 
-Stores revisions and blobs in object storage (S3 compatible).
-
-| Component | Backend             |
-| --------- | ------------------- |
-| meta      | SQLite stored in S3 |
-| revision  | S3 objects          |
-| blob      | S3                  |
-
-Example:
-
 ```python
-from autocrud import AutoCRUD
+from autocrud import crud
 from autocrud.resource_manager import S3StorageFactory
 
-crud = AutoCRUD(
+crud.configure(
     storage_factory=S3StorageFactory(
         bucket="my-bucket",
-        endpoint_url="https://s3.amazonaws.com"
+        endpoint_url="https://s3.amazonaws.com",
     )
 )
 ```
 
 Best for:
 
-* cloud deployments
-* large datasets
-* multi-node services
+- cloud deployments
+- shared storage across app instances
+- object-storage-first architectures
 
 Pros:
 
-* highly scalable
-* cheap storage
-* cloud-native
+- durable resource and blob storage
+- works with AWS S3 and S3-compatible services such as MinIO
+- no separate database required for the simplest cloud setup
 
 Cons:
 
-* metadata queries slower than SQL
-* requires object storage infrastructure
+- metadata queries are less SQL-like than PostgreSQL-backed setups
+- still requires object storage infrastructure and credentials
 
 ---
 
 ### PostgresStorageFactory
 
-Stores metadata in PostgreSQL while keeping large data in S3.
-
-| Component | Backend          |
-| --------- | ---------------- |
-| meta      | PostgreSQL table |
-| revision  | S3 objects       |
-| blob      | S3               |
-
-Example:
-
 ```python
-from autocrud import AutoCRUD
+from autocrud import crud
 from autocrud.resource_manager import PostgresStorageFactory
 
-crud = AutoCRUD(
+crud.configure(
     storage_factory=PostgresStorageFactory(
-        postgres_url="postgresql://user:pass@host/db",
-        bucket="my-bucket"
+        connection_string="postgresql://user:pass@host:5432/appdb",
     )
 )
 ```
 
 Best for:
 
-* production systems
-* heavy query workloads
-* large datasets with indexing
+- production systems with query-heavy workloads
+- teams that want a database-centric architecture
+- APIs that mainly serve structured records rather than uploaded files
 
 Pros:
 
-* fast queries
-* scalable storage
-* powerful indexing
+- fast searchable metadata
+- strong indexing and SQL operations
+- all structured data stays in PostgreSQL
 
 Cons:
 
-* requires database infrastructure
-* slightly more complex setup
+- requires database infrastructure
+- blob data is **not** durable by default, so binary-upload workloads need an additional plan
+
+If you need durable file uploads as well, prefer `PostgresDiskS3StorageFactory` for the default production path, or use `PostgreSQLS3StorageFactory` when you want S3 for resource payloads too.
+
+---
+
+### PostgresDiskStorageFactory
+
+```python
+from autocrud import crud
+from autocrud.resource_manager import PostgresDiskStorageFactory
+
+crud.configure(
+    storage_factory=PostgresDiskStorageFactory(
+        connection_string="postgresql://user:pass@host:5432/appdb",
+        rootdir="./data",
+    )
+)
+```
+
+Best for:
+
+- the recommended production setup
+- systems that want PostgreSQL-backed metadata and search
+- deployments that prefer keeping structured resource payloads on mounted disk
+
+Pros:
+
+- strong metadata querying in PostgreSQL
+- straightforward local or mounted-volume resource persistence
+- a good fit when blob uploads are handled separately in S3
+
+Cons:
+
+- blob durability is still a separate configuration decision
+- not as stateless as storing resource payloads fully in object storage
+
+Pair this setup with S3-backed blob handling when your application stores uploads or binary artifacts.
+
+---
+
+### PostgresDiskS3StorageFactory
+
+```python
+from autocrud import crud
+from autocrud.resource_manager import PostgresDiskS3StorageFactory
+
+crud.configure(
+    storage_factory=PostgresDiskS3StorageFactory(
+        connection_string="postgresql://user:pass@host:5432/appdb",
+        rootdir="./data",
+        s3_bucket="my-blob-bucket",
+    )
+)
+```
+
+Best for:
+
+- the default production-ready storage setup
+- PostgreSQL-backed search and metadata
+- disk-backed resource payloads plus durable S3 blob uploads
+
+Pros:
+
+- keeps structured payloads on local or mounted disk
+- stores blobs durably in S3-compatible storage
+- works out of the box with the current recommended architecture
+
+Cons:
+
+- still requires both database and object storage infrastructure
+- resource payloads remain tied to mounted disk rather than full object storage
+
+---
+
+### PostgreSQLS3StorageFactory
+
+```python
+from autocrud import crud
+from autocrud.resource_manager import Encoding, PostgreSQLS3StorageFactory
+
+crud.configure(
+    storage_factory=PostgreSQLS3StorageFactory(
+        connection_string="postgresql://user:pass@host:5432/appdb",
+        s3_bucket="my-bucket",
+        s3_region="us-east-1",
+        encoding=Encoding.msgpack,
+    )
+)
+```
+
+Best for:
+
+- production systems with durable uploads
+- multi-node services
+- teams that want PostgreSQL search plus object-storage durability
+
+Pros:
+
+- searchable metadata in PostgreSQL
+- resource data and blobs stored durably in S3
+- strong fit for production deployments
+
+Cons:
+
+- requires both database and object storage infrastructure
+- more moving parts than local disk setups
 
 ---
 
 ### MemoryStorageFactory
 
-Stores everything in memory.
-
-| Component | Backend        |
-| --------- | -------------- |
-| meta      | in-memory dict |
-| revision  | in-memory dict |
-| blob      | memory         |
-
-Example:
-
 ```python
-from autocrud import AutoCRUD
+from autocrud import crud
 from autocrud.resource_manager import MemoryStorageFactory
 
-crud = AutoCRUD(
+crud.configure(
     storage_factory=MemoryStorageFactory()
 )
 ```
 
 Best for:
 
-* testing
-* unit tests
-* demos
+- tests
+- short-lived demos
+- experiments where restart durability does not matter
 
 ⚠️ Data is lost when the process exits.
 
@@ -175,31 +329,31 @@ Best for:
 
 ## Choosing a backend
 
-| Use case               | Recommended backend      |
-| ---------------------- | ------------------------ |
-| unit tests             | `MemoryStorageFactory`   |
-| local development      | `DiskStorageFactory`     |
-| simple production      | `DiskStorageFactory`     |
-| cloud storage          | `S3StorageFactory`       |
-| large-scale production | `PostgresStorageFactory` |
+| Use case | Recommended backend |
+| --- | --- |
+| unit tests and demos | `MemoryStorageFactory()` |
+| local development or MVP | `DiskStorageFactory("./data")` |
+| recommended production setup | `PostgresDiskS3StorageFactory(...)` |
+| object-storage-first production | `PostgreSQLS3StorageFactory(...)` |
+| cloud-first object storage setup | `S3StorageFactory(...)` |
 
 Rule of thumb:
 
+```text
+start local → DiskStorageFactory
+recommended production → PostgresDiskS3StorageFactory + RabbitMQ
+prefer fully object-backed resource payloads → PostgreSQLS3StorageFactory
 ```
-small project → Disk
-cloud system → S3
-large system → Postgres + S3
-```
-
 ---
 
 ## Per-model override
 
 Different resources can use different storage backends.
 
-Example:
-
 ```python
+from autocrud import AutoCRUD
+from autocrud.resource_manager import DiskStorageFactory, S3StorageFactory
+
 crud = AutoCRUD(
     storage_factory=DiskStorageFactory("./data")
 )
@@ -212,10 +366,20 @@ crud.add_model(
 )
 ```
 
-This allows:
+This is useful when:
 
-* hot data in Postgres
-* large data in S3
-* local data on disk
+- one resource is local-only while another needs cloud durability
+- binary-heavy resources should live in object storage
+- you want to migrate one model at a time rather than the whole system at once
 
-All resources still share the same `ResourceManager` API.
+All resources still share the same AutoCRUD programming model.
+
+---
+
+## Common gotchas
+
+- call `crud.configure(...)` before `add_model(...)`
+- do not use in-memory storage if restarts must preserve data
+- if the app stores files, verify the selected factory gives you durable blob storage
+- for jobs and workers, combine the storage decision with a queue decision from the [Job Queue quickstart](/autocrud/quickstart/job-queue)
+

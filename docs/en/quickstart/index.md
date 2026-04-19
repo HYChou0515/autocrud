@@ -6,6 +6,8 @@ Choose a starting point based on your use case.
 
 If this is your first time using AutoCRUD, start with [**Fast Demo**](/autocrud/quickstart/fast-demo).
 
+This page is a scenario chooser: pick the story line that best matches your current situation, get to a first success, and then follow the next steps inside that path.
+
 ---
 
 ## 🚀 Getting Started

@@ -236,5 +236,8 @@ This allows you to:
 
 ## Next Steps
 
+If you decide to run actions in `job` mode, the next step is to configure the backend and queue setup so workers have a real execution path.
+
+- [Set up backend persistence and queue choices](/autocrud/guides/backend-setup)
 - [Job Queue](/autocrud/quickstart/job-queue)
 - [Integrate Existing](/autocrud/quickstart/integrate-existing)

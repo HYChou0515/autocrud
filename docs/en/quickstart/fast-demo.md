@@ -49,6 +49,7 @@ from fastapi import FastAPI
 
 app = FastAPI()
 
+crud.configure()
 crud.add_model(Schema(Issue, "v1"))
 
 crud.apply(app)
@@ -163,9 +164,13 @@ From here, you can explore:
 - custom routes
 - frontend customization
 
+Once this demo is working, one natural next step is backend setup. If you want your data to survive restarts, or you want real blob and job infrastructure, move from the demo defaults into a deliberate backend configuration.
+
 Next Steps:
 
-- [Switch to production persistence](/autocrud/guides/from-demo-to-production)
+- [Set up your backend properly](/autocrud/guides/backend-setup)
+- [Move from demo to production](/autocrud/guides/from-demo-to-production)
+- [Generate or customize the Web UI](/autocrud/howto/web-ui)
 
 
 ## Appendix: Full example (main.py)
@@ -215,6 +220,7 @@ def validate_and_finalize_issue(new: Issue, old: Issue | None = None) -> Issue:
 
 app = FastAPI()
 
+crud.configure()
 crud.add_model(
     Schema(Issue, "v1", validator=validate_and_finalize_issue),
 )
