@@ -205,6 +205,7 @@ plugins:
 
             - Contributing:
                 - contributing/docs.md
+                - contributing/ai-skills.md
 
             - Reference:
                 - reference/index.md
