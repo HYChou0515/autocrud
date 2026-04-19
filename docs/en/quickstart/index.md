@@ -6,15 +6,14 @@ Choose a starting point based on your use case.
 
 If this is your first time using AutoCRUD, start with [**Fast Demo**](/autocrud/quickstart/fast-demo).
 
+This page is a scenario chooser: pick the story line that best matches your current situation, get to a first success, and then follow the next steps inside that path.
+
 ---
 
 ## 🚀 Getting Started
 
 - **Build a full CRUD app from a single schema (recommended)**  
   → [Fast Demo](/autocrud/quickstart/fast-demo)
-
-- **Set up persistent backend storage, blobs, and jobs**  
-  → [Backend setup guide](/autocrud/guides/backend-setup)
 
 - **Integrate AutoCRUD into an existing codebase**  
   → [Integrate with existing code](/autocrud/quickstart/integrate-existing)

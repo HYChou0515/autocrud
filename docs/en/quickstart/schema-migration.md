@@ -110,6 +110,7 @@ Attach the migration step when registering the new schema:
 ```python
 from autocrud import crud, Schema
 
+crud.configure()
 crud.add_model(
     Schema(Issue, "v2").step(
         "v1",
@@ -165,3 +166,15 @@ With AutoCRUD:
 - historical data is never lost
 
 You evolve your schema without breaking your system.
+
+---
+
+## What’s next
+
+If your application is evolving in place, backend setup becomes an important follow-up so migrations run against durable storage.
+
+Next Steps:
+
+- [Set up backend persistence and deployment choices](/autocrud/guides/backend-setup)
+- [Learn how revision history behaves in practice](/autocrud/quickstart/data-versioning)
+- [Move from demo to production](/autocrud/guides/from-demo-to-production)

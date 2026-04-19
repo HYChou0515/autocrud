@@ -59,7 +59,7 @@ Define a model:
 
 ```python
 from msgspec import Struct
-from autocrud import AutoCRUD
+from autocrud import Schema
 
 class User(Struct):
     name: str
@@ -70,12 +70,12 @@ Create a FastAPI app:
 
 ```python
 from fastapi import FastAPI
-from autocrud import AutoCRUD
+from autocrud import crud
 
 app = FastAPI()
 
-crud = AutoCRUD()
-crud.add_model(User)
+crud.configure()
+crud.add_model(Schema(User, "v1"))
 crud.apply(app)
 ```
 

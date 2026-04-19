@@ -211,6 +211,7 @@ plugins:
             - Reference:
                 - reference/index.md
                 - reference/python_api.md
+                - reference/backend-configuration.md
                 - reference/query-builder.md
                 - reference/behavior.md
             

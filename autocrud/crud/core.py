@@ -291,10 +291,15 @@ class AutoCRUD:
         route_templates:
             Route templates to apply. When `None` or a `dict`, default templates are used and
             can be configured via `{TemplateClass: kwargs}`.
+        backend:
+            Higher-level unified backend configuration. Accepts a typed config object,
+            a plain dict, or a JSON file path. This is the easiest way to configure
+            metadata, resource, blob, and message-queue backends together.
         storage_factory:
-            Default storage factory for models that don't specify `storage`.
+            Lower-level storage factory for models that don't specify `storage`.
+            Use this when you want more explicit control over storage composition.
         message_queue_factory:
-            Default message queue factory used for Job models (when enabled).
+            Lower-level message queue factory used for Job models (when enabled).
         admin:
             If provided and `permission_checker` is not set, enables RBAC with `admin` as root user.
         permission_checker:
@@ -617,8 +622,10 @@ class AutoCRUD:
             route_templates: Custom list of route templates or configuration dict.
             backend: Unified backend configuration. Accepts a typed config object,
                 a plain dict, or a JSON file path.
-            storage_factory: Storage backend to use for all models.
-            message_queue_factory: Message queue factory for async job processing.
+            storage_factory: Lower-level storage backend to use for all models.
+                This path offers more direct control than the unified ``backend=`` API.
+            message_queue_factory: Lower-level message queue factory for async job
+                processing.
             admin: Admin user for RBAC permission system.
             permission_checker: Custom permission checker implementation.
             dependency_provider: Dependency injection provider for routes.
@@ -637,12 +644,21 @@ class AutoCRUD:
 
         Example:
             ```python
-            from autocrud import crud
-            from autocrud.resource_manager.storage_factory import DiskStorageFactory
+            from autocrud import BackendBinding, BackendConfig, ConnectionProfile, crud
 
-            # Configure the global instance
+            # Configure the global instance with the higher-level backend API
             crud.configure(
-                storage_factory=DiskStorageFactory("./data"),
+                backend=BackendConfig(
+                    connections={
+                        "local": ConnectionProfile(
+                            type="disk",
+                            options={"rootdir": "./data"},
+                        )
+                    },
+                    meta=BackendBinding(use="local"),
+                    resource=BackendBinding(use="local"),
+                    blob=BackendBinding(use="local"),
+                ),
                 model_naming="snake",
                 admin="root@example.com",
             )

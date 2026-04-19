@@ -4,6 +4,8 @@ AutoCRUD can treat jobs as first-class resources.
 
 That means background work is not just pushed into a broker and forgotten. Each job can carry structured input, status, history, and management metadata.
 
+Queue setup is part of the broader backend story. This page focuses on the job-specific workflow, while the [backend setup guide](/autocrud/guides/backend-setup) helps when you are ready to choose the right persistence and queue shape for your environment.
+
 This quickstart shows the smallest useful setup:
 
 - choose a queue backend
@@ -152,6 +154,7 @@ You can also trigger jobs through the HTTP API or the generated Web UI when thos
 
 See also:
 
+- [Backend setup guide](/autocrud/guides/backend-setup)
 - [Routes generation (FastAPI)](/autocrud/howto/routes)
 - [Web UI](/autocrud/howto/web-ui)
 

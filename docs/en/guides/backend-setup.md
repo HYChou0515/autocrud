@@ -3,6 +3,13 @@
 For most real projects, the first important adoption step is not route generation.
 It is choosing where your backend state will live.
 
+This guide intentionally shows **two setup levels**:
+
+1. the higher-level `backend=` API for a unified backend configuration story
+2. the lower-level factory path for teams that want finer control over storage and queue wiring
+
+Both are valid and fully supported. This guide starts with the higher-level backend API because it keeps the backend story unified, then moves to factories for cases that need more explicit control.
+
 AutoCRUD separates backend setup into four concerns:
 
 | Concern | What it stores | Typical choices |
@@ -21,7 +28,7 @@ If you choose these four pieces deliberately at the start, the rest of the produ
 Configure your backend before registering models.
 
 ```python
-from autocrud import BackendBinding, BackendConfig, ConnectionProfile, crud
+from autocrud import BackendBinding, BackendConfig, ConnectionProfile, Schema, crud
 
 crud.configure(
     backend=BackendConfig(
@@ -37,25 +44,32 @@ crud.configure(
     )
 )
 
-crud.add_model(User)
+crud.add_model(Schema(User, "v1"))
 crud.apply(app)
 ```
 
-That order keeps metadata, resource data, blob behavior, and queue behavior aligned from the beginning. The older `storage_factory=` and `message_queue_factory=` arguments still work, but `backend=` is now the preferred entry point.
+That order keeps metadata, resource data, blob behavior, and queue behavior aligned from the beginning. The lower-level `storage_factory=` and `message_queue_factory=` arguments still work well when you want more explicit composition in Python.
 
 ---
+
+## Two setup levels at a glance
+
+| Level | Entry point | Best for | Tradeoff |
+| --- | --- | --- | --- |
+| higher-level | `crud.configure(backend=...)` | most projects, shared config files, easier onboarding | less explicit low-level wiring in user code |
+| lower-level | `crud.configure(storage_factory=..., message_queue_factory=...)` | advanced deployments and precise backend composition | more setup detail and more concepts to manage |
 
 ## Recommended starting points
 
 | Situation | Recommended setup | Blob behavior | Queue choice |
 | --- | --- | --- | --- |
-| tests or throwaway demos | `MemoryStorageFactory()` | in memory | default simple queue is enough |
-| local development / MVP | `DiskStorageFactory("./data")` | local filesystem under the same data root | `SimpleMessageQueueFactory()` if you use jobs |
-| recommended production path | `PostgresDiskS3StorageFactory(...)` | S3 | `RabbitMQMessageQueueFactory()` |
-| alternative for object-storage-first deployments | `PostgreSQLS3StorageFactory(...)` | S3 | `RabbitMQMessageQueueFactory()` or `CeleryMessageQueueFactory()` |
-| production without binary uploads | `PostgresStorageFactory(...)` | in memory by default, so only safe if you do not need durable blobs | optional |
+| tests or throwaway demos | `backend=` with in-memory bindings | in memory | default simple queue is enough |
+| local development / MVP | `backend=` with a `disk` connection | local filesystem under the same data root | `simple` queue if you use jobs |
+| recommended production path | `backend=` with PostgreSQL metadata, disk resource storage, S3 blobs | S3 | RabbitMQ |
+| object-storage-first production | `backend=` with PostgreSQL + S3 bindings | S3 | RabbitMQ or Celery |
+| advanced custom composition | lower-level storage and queue factories | depends on your factory choice | depends on your queue factory |
 
-If you are unsure, start with `DiskStorageFactory` locally and move to PostgreSQL + Disk + S3 blobs + RabbitMQ for production.
+A common progression is to begin with the unified backend API and move to the lower-level factories only when you need more explicit control.
 
 ---
 
@@ -109,20 +123,19 @@ from autocrud import crud
 crud.configure(backend="./backend.json")
 ```
 
-This keeps connection information centralized and makes it easier to share the same backend setup across environments.
+This keeps connection information centralized and makes it easier to share the same backend setup across environments. JSON values also support environment-variable expansion such as `${POSTGRES_DSN}`.
 
 ---
 
 ## 3. Local persistent setup for a real MVP
 
-This is the simplest durable setup for a single-node deployment.
+This is the simplest durable setup for a single-node deployment using the higher-level backend API.
 
 ```python
 from fastapi import FastAPI
 from msgspec import Struct
 
-from autocrud import crud
-from autocrud.resource_manager import DiskStorageFactory
+from autocrud import BackendBinding, BackendConfig, ConnectionProfile, Schema, crud
 
 
 class User(Struct):
@@ -133,10 +146,20 @@ class User(Struct):
 app = FastAPI()
 
 crud.configure(
-    storage_factory=DiskStorageFactory("./data"),
+    backend=BackendConfig(
+        connections={
+            "local": ConnectionProfile(
+                type="disk",
+                options={"rootdir": "./data"},
+            )
+        },
+        meta=BackendBinding(use="local"),
+        resource=BackendBinding(use="local"),
+        blob=BackendBinding(use="local"),
+    )
 )
 
-crud.add_model(User)
+crud.add_model(Schema(User, "v1"))
 crud.apply(app)
 ```
 
@@ -166,9 +189,7 @@ import os
 from fastapi import FastAPI
 from msgspec import Struct
 
-from autocrud import crud
-from autocrud.message_queue import RabbitMQMessageQueueFactory
-from autocrud.resource_manager import PostgresDiskS3StorageFactory
+from autocrud import BackendBinding, BackendConfig, BackendDefaults, ConnectionProfile, Schema, crud
 
 
 class Document(Struct):
@@ -179,19 +200,41 @@ class Document(Struct):
 app = FastAPI()
 
 crud.configure(
-    storage_factory=PostgresDiskS3StorageFactory(
-        connection_string=os.environ["POSTGRES_DSN"],
-        rootdir="./data",
-        s3_bucket=os.environ["S3_BUCKET"],
-        s3_access_key_id=os.environ["AWS_ACCESS_KEY_ID"],
-        s3_secret_access_key=os.environ["AWS_SECRET_ACCESS_KEY"],
-        s3_endpoint_url=os.getenv("S3_ENDPOINT_URL"),
-        table_prefix="app_",
-    ),
-    message_queue_factory=RabbitMQMessageQueueFactory(),
+    backend=BackendConfig(
+        defaults=BackendDefaults(
+            table_prefix="app_",
+            blob_prefix="uploads/",
+        ),
+        connections={
+            "pg": ConnectionProfile(
+                type="postgres",
+                options={"dsn": os.environ["POSTGRES_DSN"]},
+            ),
+            "blob-s3": ConnectionProfile(
+                type="s3",
+                options={
+                    "bucket": os.environ["S3_BUCKET"],
+                    "access_key_id": os.environ["AWS_ACCESS_KEY_ID"],
+                    "secret_access_key": os.environ["AWS_SECRET_ACCESS_KEY"],
+                    "endpoint_url": os.getenv("S3_ENDPOINT_URL"),
+                },
+            ),
+            "jobs": ConnectionProfile(
+                type="rabbitmq",
+                options={"amqp_url": os.environ["RABBITMQ_URL"]},
+            ),
+        },
+        meta=BackendBinding(use="pg"),
+        resource=BackendBinding(
+            type="disk",
+            options={"rootdir": "./data"},
+        ),
+        blob=BackendBinding(use="blob-s3"),
+        mq=BackendBinding(use="jobs"),
+    )
 )
 
-crud.add_model(Document)
+crud.add_model(Schema(Document, "v1"))
 crud.apply(app)
 ```
 
@@ -202,11 +245,40 @@ This production layout keeps:
 - blobs in S3-compatible storage
 - RabbitMQ-backed job workers
 
-If you prefer object storage for both resource payloads and blobs, `PostgreSQLS3StorageFactory(...)` remains a valid alternative.
+If you prefer object storage for both resource payloads and blobs, use S3 for both the `resource` and `blob` bindings.
 
 ---
 
-## 5. Understand what each storage factory really does
+## 5. When to use the lower-level factory path
+
+The factory-style configuration is still a strong option when you want explicit control over the storage and queue objects being wired into AutoCRUD.
+
+```python
+from autocrud import crud
+from autocrud.message_queue import RabbitMQMessageQueueFactory
+from autocrud.resource_manager import PostgresDiskS3StorageFactory
+
+crud.configure(
+    storage_factory=PostgresDiskS3StorageFactory(
+        connection_string="postgresql://user:pass@host:5432/appdb",
+        rootdir="./data",
+        s3_bucket="my-blob-bucket",
+    ),
+    message_queue_factory=RabbitMQMessageQueueFactory(),
+)
+```
+
+Use this path when you want to:
+
+- construct backend objects directly in Python
+- expose advanced options through concrete factory classes
+- control storage composition at a lower level than the unified config schema
+
+If your team is deciding between the two styles, think of `backend=` as the easier unified entry point and factories as the deeper control surface.
+
+---
+
+## 6. Understand what each storage factory really does
 
 The easiest way to avoid surprises is to map the factory to the four backend concerns.
 
@@ -227,7 +299,7 @@ Two important consequences:
 
 ---
 
-## 6. Choose a queue only when jobs matter
+## 7. Choose a queue only when jobs matter
 
 If your app never uses `Job[...]` resources or background execution, you can keep the default simple setup.
 
@@ -263,7 +335,7 @@ If jobs stay in `pending`, check that:
 
 ---
 
-## 7. First deployment checklist
+## 8. First deployment checklist
 
 Before calling your backend ready for adoption, verify all of the following:
 
@@ -283,8 +355,9 @@ A quick persistence smoke test is simple:
 
 ---
 
-## 8. What to read next
+## 9. What to read next
 
+- [Backend configuration reference](/autocrud/reference/backend-configuration)
 - [Storage](/autocrud/guides/storage)
 - [From demo to production](/autocrud/guides/from-demo-to-production)
 - [Job Queue quickstart](/autocrud/quickstart/job-queue)

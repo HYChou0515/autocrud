@@ -42,7 +42,13 @@ BackendRole = Literal["meta", "resource", "blob", "mq"]
 
 
 class BackendDefaults(Struct, kw_only=True, omit_defaults=True):
-    """Shared defaults for unified backend configuration."""
+    """Shared defaults applied across unified backend configuration.
+
+    These values provide the common baseline for backend providers created
+    through ``BackendConfig``. Individual connection profiles or role bindings
+    may still supply provider-specific options to override the shared defaults
+    when needed.
+    """
 
     encoding: Encoding = Encoding.json
     table_prefix: str = ""
@@ -52,7 +58,12 @@ class BackendDefaults(Struct, kw_only=True, omit_defaults=True):
 
 
 class ConnectionProfile(Struct, kw_only=True, omit_defaults=True):
-    """Reusable connection profile for a backend role."""
+    """Reusable named backend connection.
+
+    A connection profile defines a backend ``type`` plus its provider-specific
+    options once, then lets multiple backend roles reuse that definition by
+    referring to it from ``BackendBinding(use=...)``.
+    """
 
     type: str
     options: dict[str, Any] = field(default_factory=dict)
@@ -61,7 +72,11 @@ class ConnectionProfile(Struct, kw_only=True, omit_defaults=True):
 
 
 class BackendBinding(Struct, kw_only=True, omit_defaults=True):
-    """Binding of a backend role to either a named connection or inline type."""
+    """Map one backend role to either a named connection or an inline provider.
+
+    Bindings are used for the four AutoCRUD backend concerns: metadata,
+    structured resource payloads, blob storage, and the message queue.
+    """
 
     use: str | None = None
     type: str | None = None
@@ -70,7 +85,12 @@ class BackendBinding(Struct, kw_only=True, omit_defaults=True):
 
 
 class BackendConfig(Struct, kw_only=True, omit_defaults=True):
-    """Schema-first configuration for external AutoCRUD backends."""
+    """Schema-first unified backend configuration for AutoCRUD.
+
+    This higher-level API lets you configure metadata, resource, blob, and
+    message-queue backends together through one typed object, a plain mapping,
+    or a JSON file.
+    """
 
     version: int = 1
     defaults: BackendDefaults = field(default_factory=BackendDefaults)

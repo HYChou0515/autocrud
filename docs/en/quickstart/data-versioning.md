@@ -188,6 +188,18 @@ You never lose data — you only move forward through revisions.
 
 ---
 
+## What’s next
+
+If you plan to rely on revision history in a real deployment, backend setup is a natural follow-up so that history persists beyond a throwaway demo.
+
+Next Steps:
+
+- [Set up backend persistence and storage](/autocrud/guides/backend-setup)
+- [Handle schema evolution safely](/autocrud/quickstart/schema-migration)
+- [Move from demo to production](/autocrud/guides/from-demo-to-production)
+
+---
+
 ## Appendix: Full example
 
 ```python
@@ -212,6 +224,7 @@ class Issue(msgspec.Struct):
 
 app = FastAPI()
 
+crud.configure()
 crud.add_model(Schema(Issue, "v1"))
 crud.apply(app)
 

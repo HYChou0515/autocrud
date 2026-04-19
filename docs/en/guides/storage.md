@@ -6,7 +6,14 @@ AutoCRUD separates persistence into three related but distinct layers:
 - **resource data** — the structured payload of the resource itself
 - **blob data** — binary uploads and file-like artifacts
 
-The preferred way to choose the default backend is now the unified backend config:
+There are two supported setup levels for backend wiring:
+
+- the higher-level unified backend config via `backend=`
+- the lower-level storage and queue factories for more explicit control
+
+This page starts with the unified backend config, then maps the lower-level factory behavior in detail.
+
+The unified backend config is the most compact way to choose the default backend:
 
 ```python
 from autocrud import BackendBinding, BackendConfig, ConnectionProfile, crud
@@ -37,7 +44,9 @@ You can also load the same shape from a JSON file:
 crud.configure(backend="./backend.json")
 ```
 
-The older split parameters such as `storage_factory=` and `message_queue_factory=` are still supported during the transition window.
+The lower-level `storage_factory=` and `message_queue_factory=` parameters remain fully supported when you need more direct control over the underlying storage composition.
+
+For a full option-by-option backend settings reference, see [Backend configuration reference](/autocrud/reference/backend-configuration).
 
 ---
 

@@ -109,7 +109,7 @@ Notes:
 from fastapi import FastAPI
 from msgspec import Struct
 
-from autocrud import crud
+from autocrud import crud, Schema
 
 
 class User(Struct):
@@ -118,7 +118,8 @@ class User(Struct):
 
 
 app = FastAPI()
-crud.add_model(User)
+crud.configure()
+crud.add_model(Schema(User, "v1"))
 crud.apply(app)
 ```
 
