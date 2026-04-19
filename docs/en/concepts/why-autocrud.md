@@ -1,285 +1,85 @@
 # Why AutoCRUD exists
 
-Modern backend development repeatedly solves the same problem:
+This page explains the **motivation** behind AutoCRUD.
 
-> Building infrastructure around application data.
+If you want the system map, read [Overview](/autocrud/concepts/overview). If you want precise terminology, read [Core concepts](/autocrud/concepts/core-concepts).
 
-In most FastAPI projects, developers implement the same patterns again and again.
+---
 
-Typical responsibilities include:
+## The recurring cost in API projects
 
-- CRUD APIs
-- data validation
-- pagination
-- filtering and search
-- version history
+Many FastAPI applications end up rebuilding the same operational layers around data:
+
+- CRUD routes
+- validation and input shaping
+- pagination and filtering
+- search and indexing
 - permissions
-- audit logs
+- audit history
 - background jobs
+- internal admin tooling
 
-However, most of this code is **not business logic**.
+These capabilities matter, but they are rarely the part of the product that makes it unique.
 
-It is infrastructure.
-
-AutoCRUD exists to remove this repetition.
+The problem is not that this work is unnecessary. The problem is that teams keep rewriting it from scratch.
 
 ---
 
-# The problem with typical FastAPI projects
+## The model-driven shift
 
-Consider a simple resource such as `User`.
+AutoCRUD changes the development flow from:
 
-A typical project structure might look like this:
-
-```
-
-models.py
-schemas.py
-crud.py
-routes.py
-services.py
-filters.py
-tasks.py
-
-```
-
-Even for simple resources, developers must write:
-
-- route handlers
-- database queries
-- pagination logic
-- search filters
-- validation
-- background jobs
-
-Much of this code follows the same patterns across projects.
-
-Over time, applications accumulate large amounts of infrastructure code that is not directly related to the domain.
-
----
-
-# The idea: model-driven APIs
-
-AutoCRUD introduces a **model-driven approach**.
-
-Instead of building infrastructure manually, developers define a model once:
-
-```python
-class User(Struct):
-    name: str
-    email: str
-```
-
-From this model, the framework can automatically derive:
-
-* CRUD routes
-* OpenAPI documentation
-* validation
-* indexing
-* search
-* version history
-
-This shifts development from:
-
-```
-build infrastructure → implement logic
-```
+$$
+\text{build infrastructure first} \rightarrow \text{write domain logic later}
+$$
 
 to:
 
-```
-define model → implement logic
-```
+$$
+\text{define the domain model} \rightarrow \text{generate the infrastructure around it}
+$$
+
+That shift is most useful when you want predictable APIs and operational behavior without spending most of the project on plumbing.
 
 ---
 
-# Resources instead of rows
+## Problems AutoCRUD is trying to reduce
 
-Traditional CRUD systems treat data as **rows in a database**.
+AutoCRUD is a good fit when your project needs:
 
-AutoCRUD instead treats data as **resources with revision history**.
+- repeatable CRUD APIs
+- version-aware data handling
+- consistent search behavior
+- extension points for permissions and events
+- optional job processing and admin workflows
 
-```
-Resource
- ├── ResourceMeta
- └── Revisions
-```
+It is especially useful for:
 
-Each resource maintains a list of immutable revisions.
-
-```
-r1
-r2
-r3
-```
-
-The active revision is tracked by metadata.
-
-```
-ResourceMeta.current_revision_id
-```
-
-This design provides built-in support for:
-
-* audit history
-* rollback
-* draft workflows
-* debugging
-
-without requiring additional infrastructure.
+- internal tools
+- administrative systems
+- content and configuration management
+- operational dashboards
+- job-oriented backend services
 
 ---
 
-# ResourceManager as the single interface
+## What it is not optimized for
 
-AutoCRUD centralizes all operations through the **ResourceManager**.
+AutoCRUD is not trying to replace every backend style.
 
-Developers never interact directly with:
+It is not primarily:
 
-* SQL queries
-* file storage
-* object storage
+- a full event-sourcing platform
+- a general workflow engine
+- a distributed data mesh
+- a traditional server-rendered full-stack framework
 
-Instead, everything flows through the manager:
-
-```python
-resource_manager.create(data)
-resource_manager.get(resource_id)
-resource_manager.update(resource_id, new_data)
-```
-
-The manager ensures that all operations consistently apply:
-
-* validation
-* metadata updates
-* revision creation
-* event handlers
-* message queue integration
+Its value comes from making a common class of API-centric backend work simpler and more consistent.
 
 ---
 
-# Built-in search
+## Read next
 
-Search functionality is frequently implemented separately in many applications.
-
-AutoCRUD treats search as a core capability.
-
-Searchable fields are extracted into metadata:
-
-```
-ResourceMeta.indexed_data
-```
-
-Example:
-
-```
-{
-    "user.email": "alice@example.com"
-}
-```
-
-Queries operate on metadata rather than scanning revision payloads.
-
-This allows efficient filtering, sorting, and pagination.
-
----
-
-# Jobs as resources
-
-Background jobs are usually implemented with separate systems such as:
-
-* Celery
-* RQ
-* custom job queues
-
-AutoCRUD integrates jobs directly into the resource model.
-
-A job is simply another resource type.
-
-```
-Job
- ├── status
- ├── retries
- ├── max_retries   # per-job override (None → queue default)
- └── errmsg
-```
-
-Creating a job automatically places it in the queue:
-
-```
-create()
- ↓
-message_queue.put(resource_id)
-```
-
-Workers process jobs through the same ResourceManager interface.
-
----
-
-# Storage independence
-
-AutoCRUD abstracts persistence through `IStorage`.
-
-This allows multiple storage strategies:
-
-| Backend  | Meta       | Revision   | Blob       |
-| -------- | ---------- | ---------- | ---------- |
-| Memory   | memory     | memory     | memory     |
-| Disk     | SQLite     | filesystem | filesystem |
-| S3       | SQLite     | S3         | S3         |
-| Postgres | PostgreSQL | S3         | S3         |
-
-Because storage is abstracted, application code remains unchanged.
-
----
-
-# What AutoCRUD is not
-
-AutoCRUD is not designed to replace every backend architecture.
-
-It is **not**:
-
-* a full event sourcing system
-* a workflow orchestration engine
-* a distributed data platform
-
-Instead, AutoCRUD focuses on one goal:
-
-> Making model-driven APIs simple and consistent.
-
----
-
-# When AutoCRUD is useful
-
-AutoCRUD works well for applications where:
-
-* APIs follow CRUD patterns
-* version history is useful
-* consistent API behavior is important
-* developers want to focus on domain logic
-
-Typical use cases include:
-
-* internal tools
-* administrative systems
-* content management systems
-* configuration management
-* job processing systems
-
----
-
-# The goal
-
-AutoCRUD aims to reduce the amount of infrastructure code developers must write.
-
-By combining:
-
-* model-driven APIs
-* versioned resources
-* metadata indexing
-* storage abstraction
-* automatic route generation
-
-developers can focus on what matters most:
-
-> the business logic of their application.
+- [Overview](/autocrud/concepts/overview) — the high-level system map
+- [Core concepts](/autocrud/concepts/core-concepts) — the key terms you need to know
+- [Quickstart](/autocrud/quickstart/) — the fastest path to a working app

@@ -49,6 +49,19 @@ The **ResourceConflictError** family includes:
 
 ---
 
+## QB error conventions
+
+When using the HTTP `qb` query parameter, AutoCRUD applies two explicit rules so clients can distinguish syntax problems from invalid parameter combinations.
+
+| Situation | HTTP | Meaning | Typical trigger |
+|-----------|------|---------|-----------------|
+| Invalid QB expression | 400 | the QB string could not be parsed or uses unsupported operations | syntax error, unknown QB method, unsafe expression |
+| QB parameter conflict | 422 | the request mixes QB mode with incompatible filter inputs | combining `qb` with `data_conditions`, `conditions`, `sorts`, or metadata filter params |
+
+In QB mode, only `limit` and `offset` should be sent alongside `qb`. If you need delete status or other metadata filtering, put those conditions directly into the QB expression itself.
+
+---
+
 ## Read routes (`get.py`)
 
 ### Canonical GET resource

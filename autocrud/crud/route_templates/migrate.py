@@ -8,6 +8,7 @@ from fastapi import (
     Depends,
     HTTPException,
     Query,
+    Request,
     WebSocket,
     WebSocketDisconnect,
 )
@@ -342,6 +343,7 @@ class MigrateRouteTemplate(BaseRouteTemplate):
 
         @router.post(f"/{model_name}/migrate/test", tags=[f"{model_name}"])
         async def test_migrate_resources(
+            request: Request,
             query_params: MigrateQueryInputs = Query(...),
             current_user: str = Depends(self.deps.get_user),
             current_time: dt.datetime = Depends(self.deps.get_now),
@@ -356,7 +358,7 @@ class MigrateRouteTemplate(BaseRouteTemplate):
               - `"all"`: test every revision of each resource
               - A specific revision ID: test only that revision
             """
-            query = build_query(query_params)
+            query = build_query(query_params, request)
 
             return StreamingResponse(
                 self._migrate_with_message(
@@ -374,6 +376,7 @@ class MigrateRouteTemplate(BaseRouteTemplate):
 
         @router.post(f"/{model_name}/migrate/execute", tags=[f"{model_name}"])
         async def execute_migrate_resources(
+            request: Request,
             query_params: MigrateQueryInputs = Query(...),
             current_user: str = Depends(self.deps.get_user),
             current_time: dt.datetime = Depends(self.deps.get_now),
@@ -387,7 +390,7 @@ class MigrateRouteTemplate(BaseRouteTemplate):
               - `"all"`: migrate every revision of each resource
               - A specific revision ID: migrate only that revision
             """
-            query = build_query(query_params)
+            query = build_query(query_params, request)
 
             return StreamingResponse(
                 self._migrate_with_message(

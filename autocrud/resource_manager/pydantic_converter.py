@@ -126,7 +126,10 @@ def build_validator(
     if validator is None:
         return None
 
-    if isinstance(validator, IValidator):
+    if isinstance(validator, IValidator) or (
+        not isinstance(validator, type)
+        and callable(getattr(validator, "validate", None))
+    ):
         return validator.validate
 
     if is_pydantic_model(validator):
@@ -166,7 +169,7 @@ def _iter_model_fields(
             # downstream code (extract_refs, extract_display_name) can
             # discover the metadata on the resulting Struct type hints.
             if fi.metadata:
-                annotation = Annotated[tuple([annotation, *fi.metadata])]
+                annotation = Annotated[annotation, *fi.metadata]
             result.append(
                 (name, annotation, fi.is_required(), fi.default, fi.discriminator)
             )
@@ -236,7 +239,7 @@ def _convert_annotation(annotation: Any, cache: dict) -> Any:
             converted_inner = _convert_annotation(inner_type, cache)
             if converted_inner is inner_type:
                 return annotation
-            return Annotated[tuple([converted_inner, *metadata])]
+            return Annotated[converted_inner, *metadata]
         return annotation  # pragma: no cover
 
     # Handle generic types: list[X], dict[K, V], Optional[X], Union[X, Y]

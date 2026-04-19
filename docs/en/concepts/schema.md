@@ -15,7 +15,7 @@ In most cases you will define your resource using **`msgspec.Struct`**.
 
 ---
 
-# Resource models (msgspec.Struct)
+## Resource models (`msgspec.Struct`)
 
 AutoCRUD primarily uses **`msgspec.Struct`** to define resource models.
 
@@ -31,46 +31,61 @@ These models define the **payload stored in the resource system**.
 
 ---
 
-## Why msgspec.Struct
+### Why `msgspec.Struct`
 
-### 1. Union types are ergonomic
+#### 1. `msgspec.Struct` keeps the schema explicit
 
-`msgspec` provides strong support for union types, which are common when schemas evolve.
+`msgspec.Struct` represents data as-is, without adding hidden behavior to the schema itself.
+This encourages developers to focus on what is actually stored when modeling resources.
+
+Some modeling libraries support embedding validation logic, computed fields, or other behaviors directly in the schema class. While this can feel convenient at first, it can also encourage coupling persisted data with application logic. Over time, that coupling can make schema evolution and data migration harder as business requirements change.
+
+With `msgspec.Struct`, the persisted model stays explicit and predictable. We recommend keeping resource schemas focused on stored data, while placing validation and business logic in separate layers.
+
+This approach also helps avoid the need to create multiple near-duplicate models for the same concept, such as separate input and output models for every resource.
+
+In AutoCRUD, we encourage a clean architecture style: the resource schema is the durable domain model, while input/output layers can be adapted separately when needed.
+
+#### 2. Union types are ergonomic
+
+`msgspec` provides strong support for union types, which is especially useful when schemas evolve over time.
 
 ```python
 class Payment(Struct):
-    method: "Card | Cash"
+    method: Card | Cash
 ```
 
-This makes it easy to represent variant payloads without complex validation logic.
+This makes it straightforward to model variant payloads without introducing large amounts of custom validation code.
 
 ---
 
-### 2. High performance
+#### 3. High performance
 
-`msgspec` is designed for **fast serialization and deserialization**, which is important for:
+`msgspec` is designed for **fast serialization and deserialization**, which is useful for:
 
 * high-throughput CRUD workloads
 * large resource payloads
-* heavy query operations
+* heavy read/write operations
+
+This makes it a strong fit for systems that need predictable performance at scale.
 
 ---
 
-### 3. Partial decoding
+#### 4. Partial decoding
 
-`msgspec` allows efficient **partial decoding**, meaning only the required fields need to be decoded.
+`msgspec` supports efficient **partial decoding**, so only the required fields need to be decoded.
 
-This helps reduce CPU and memory overhead in metadata-heavy workflows.
+This can reduce CPU and memory overhead in metadata-heavy or projection-based workflows.
 
 ---
 
-# Other supported model types
+## Other supported model types
 
 AutoCRUD can also accept other model types.
 
-### Pydantic BaseModel
+### Pydantic `BaseModel`
 
-Pydantic models are supported and automatically converted to structs internally.
+Pydantic models are supported and converted into AutoCRUD's internal struct-based representation.
 
 ```python
 from pydantic import BaseModel
@@ -82,20 +97,34 @@ class User(BaseModel):
 
 Behavior:
 
-* AutoCRUD converts the model into a struct for storage
-* the Pydantic model can be used as a **validator**
+* AutoCRUD converts the model into its internal struct-based representation for storage
+* the Pydantic model can still be used for **validation** at integration boundaries
 
 ---
 
-### dataclass / TypedDict
+### `dataclass` / `TypedDict`
 
-These may work depending on configuration, but they are **not the recommended primary schema type**.
-
-`msgspec.Struct` is the most predictable and performant option.
+AutoCRUD is designed primarily around `msgspec.Struct`. Other model styles may work in limited integrations, but they are not part of the recommended default workflow.
 
 ---
 
-# Schema (migration & validation)
+## What to use when
+
+Use **`msgspec.Struct` only** when:
+
+* your stored resource shape is already stable
+* you do not need versioned migrations
+* validation can live at the application boundary
+
+Add **`Schema`** when:
+
+* stored resource versions need to evolve over time
+* you need migration steps between versions
+* you want schema-level validation hooks during loading or migration
+
+---
+
+## Schema (migration & validation)
 
 AutoCRUD also provides the **`Schema` descriptor**, which defines:
 
@@ -120,13 +149,13 @@ When AutoCRUD loads stored resources:
 * finds the **shortest migration path**
 * executes migration steps automatically
 
-See:
-
-* **How-to → Migrations**
+See also the migration guide for end-to-end examples.
 
 ---
 
-# Practical guidance
+## Practical guidance
+
+Start with plain **`msgspec.Struct`**. Introduce **`Schema`** only when you need versioned migrations or validation hooks.
 
 Recommended workflow:
 
@@ -156,9 +185,9 @@ crud.add_model(
 
 ---
 
-# Summary
+## Summary
 
 | Concept          | Purpose                                       |
 | ---------------- | --------------------------------------------- |
-| `msgspec.Struct` | defines the resource payload                  |
-| `Schema`         | defines versioning, migration, and validation |
+| `msgspec.Struct` | use it to define stored resource data         |
+| `Schema`         | add it for versioning, migration, validation  |

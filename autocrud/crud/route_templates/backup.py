@@ -13,7 +13,7 @@ import io
 import textwrap
 from typing import TypeVar
 
-from fastapi import APIRouter, File, HTTPException, Query, UploadFile
+from fastapi import APIRouter, File, HTTPException, Query, Request, UploadFile
 from fastapi.responses import StreamingResponse
 
 from autocrud.crud.route_templates.basic import (
@@ -73,6 +73,7 @@ class ExportRouteTemplate(BaseRouteTemplate):
             },
         )
         async def export_model(
+            request: Request,
             query_params: QueryInputs = Query(...),
         ) -> StreamingResponse:
             from autocrud.resource_manager.dump_format import (
@@ -87,7 +88,7 @@ class ExportRouteTemplate(BaseRouteTemplate):
             query_for_dump = None
             if query_params.qb:
                 try:
-                    query_for_dump = build_query(query_params)
+                    query_for_dump = build_query(query_params, request)
                 except Exception as e:
                     raise to_http_exception(e)
 

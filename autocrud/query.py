@@ -3,6 +3,7 @@ from typing import Any, Self
 from msgspec import UNSET
 
 from autocrud.types import (
+    DEFAULT_QUERY_LIMIT,
     DataSearchCondition,
     DataSearchFilter,
     DataSearchGroup,
@@ -16,13 +17,19 @@ from autocrud.types import (
     ResourceMetaSortKey,
 )
 
+_PREV_Query = globals().get("Query")
+_PREV_ConditionBuilder = globals().get("ConditionBuilder")
+_PREV_Field = globals().get("Field")
+_PREV_QueryBuilderMeta = globals().get("QueryBuilderMeta")
+_PREV_QB = globals().get("QB")
+
 
 class Query:
     """Builder for ResourceMetaSearchQuery."""
 
     def __init__(self, condition: DataSearchFilter | None = None):
         self._condition = condition
-        self._limit: int = 10
+        self._limit: int = DEFAULT_QUERY_LIMIT
         self._offset: int = 0
         self._sorts: list[ResourceMetaSearchSort | ResourceDataSearchSort] = []
 
@@ -1189,14 +1196,14 @@ class QB(metaclass=QueryBuilderMeta):
         return Field("resource_id")
 
     @staticmethod
-    def revision_id() -> Field:
+    def current_revision_id() -> Field:
         """Current revision identifier.
 
         Returns:
             Field for current_revision_id
 
         Example:
-            QB.revision_id().eq("rev-456")
+            QB.current_revision_id().eq("rev-456")
         """
         return Field("current_revision_id")
 
@@ -1346,3 +1353,15 @@ class QB(metaclass=QueryBuilderMeta):
                 conditions=[c._condition for c in conditions],
             )
         )
+
+
+if _PREV_Query is not None:  # pragma: no cover - exercised via reload tests
+    Query = _PREV_Query
+if _PREV_ConditionBuilder is not None:  # pragma: no cover
+    ConditionBuilder = _PREV_ConditionBuilder
+if _PREV_Field is not None:  # pragma: no cover
+    Field = _PREV_Field
+if _PREV_QueryBuilderMeta is not None:  # pragma: no cover
+    QueryBuilderMeta = _PREV_QueryBuilderMeta
+if _PREV_QB is not None:  # pragma: no cover
+    QB = _PREV_QB

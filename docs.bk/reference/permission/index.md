@@ -1,3 +1,0 @@
-# autocrud.permission
-
-::: autocrud.permission

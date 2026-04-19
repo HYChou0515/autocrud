@@ -1,133 +1,78 @@
 # Overview
 
-AutoCRUD is a **model-driven backend framework for FastAPI** that manages application data as **versioned resources**.
+This page is the **system map** for AutoCRUD.
 
-Instead of manually implementing CRUD APIs, validation, search, and storage logic, AutoCRUD generates these capabilities automatically from your resource models.
+Its purpose is to show how the major pieces fit together before you dive into the details.
 
----
-
-# The core idea
-
-AutoCRUD manages data using three fundamental concepts:
-
-- **Resource**
-- **Revision**
-- **ResourceManager**
-
-Together they form the foundation of the framework.
+If you are new to the project, a good reading order is: **Overview → Core Concepts → Architecture → Resource Lifecycle**.
 
 ---
 
-# Resource
+## The shortest mental model
 
-A **resource** represents a logical entity in your application.
+At a high level, the workflow looks like this:
 
-Examples:
+1. define a Python model
+2. register it with AutoCRUD
+3. let AutoCRUD create the operational layer around it
+4. expose the result through FastAPI routes and OpenAPI
 
-- `User`
-- `Article`
-- `Job`
-- `Configuration`
+That operational layer includes revision tracking, metadata handling, validation flow, and optional search or UI generation.
 
-Resources are defined as Python data models.
+---
+
+## The main building blocks
+
+### Resource
+
+A resource is the logical entity your application manages, such as a user, document, job, or configuration object.
+
+### Revision
+
+A revision is one version of that resource over time.
+
+### ResourceManager
+
+The ResourceManager is the component that applies lifecycle rules such as validation, revision creation, permissions, and storage access.
+
+### Route templates
+
+Route templates generate the API surface for each resource, so common CRUD behavior does not need to be wired manually.
+
+### Storage layers
+
+AutoCRUD separates metadata, revision data, and blobs so storage strategies can stay flexible.
+
+---
+
+## What this means in practice
+
+A minimal app often looks like this:
 
 ```python
+from fastapi import FastAPI
+from msgspec import Struct
+
+from autocrud import crud
+
+
 class User(Struct):
     name: str
     email: str
+
+
+app = FastAPI()
+crud.add_model(User)
+crud.apply(app)
 ```
 
-Each resource has a unique identifier (`resource_id`) and associated metadata.
+From that small definition, AutoCRUD can generate the repetitive infrastructure needed for a usable API.
 
 ---
 
-# Revision
+## Read next
 
-AutoCRUD stores data as **immutable revisions**.
-
-Instead of overwriting data, updates create new revisions.
-
-```
-Resource
- ├── r1
- ├── r2
- └── r3
-```
-
-The currently active revision is tracked by metadata:
-
-```
-ResourceMeta.current_revision_id
-```
-
-This enables built-in support for:
-
-* audit history
-* rollback
-* draft workflows
-* debugging
-
----
-
-# ResourceManager
-
-All operations on resources go through the **ResourceManager**.
-
-Example:
-
-```python
-resource_manager.create(data)
-resource_manager.get(resource_id)
-resource_manager.update(resource_id, new_data)
-```
-
-The manager coordinates:
-
-* validation
-* revision creation
-* metadata updates
-* storage operations
-* event handlers
-
-Developers do not interact directly with storage systems.
-
----
-
-# Schema and validation
-
-Resources may define schemas that control validation and constraints.
-
-Examples include:
-
-* field validation
-* uniqueness constraints
-* custom validation hooks
-
-These checks run automatically when resources are created or updated.
-
----
-
-# References
-
-Resources and revisions can be referenced using:
-
-* `Ref` – reference to a resource
-* `RefRevision` – reference to a specific revision
-
-These types allow relationships between resources while preserving revision history.
-
----
-
-# Summary
-
-AutoCRUD is built around a simple mental model:
-
-```
-ResourceManager
-    ↓
-Resource
-    ↓
-Revisions
-```
-
-By combining versioned resources, metadata indexing, and storage abstraction, AutoCRUD provides a consistent way to build APIs without writing repetitive infrastructure code.
+- [Why AutoCRUD exists](/autocrud/concepts/why-autocrud) — the motivation and problem statement
+- [Core concepts](/autocrud/concepts/core-concepts) — the key terminology
+- [Architecture](/autocrud/concepts/architecture) — the component-level view
+- [Resource lifecycle](/autocrud/concepts/resource-lifecycle) — how resources evolve over time

@@ -149,8 +149,10 @@ class ConstraintEventHandler(IEventHandler):
         if not isinstance(context, EventContextProto):
             return False
         with suppress(AttributeError):
+            action = getattr(context, "action", None)
+            action_name = getattr(action, "name", None)
             return (
-                context.action in _SUPPORTED_ACTIONS
+                action_name in {a.name for a in _SUPPORTED_ACTIONS}
                 and context.phase in _SUPPORTED_PHASES
             )
         return False

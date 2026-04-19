@@ -98,8 +98,9 @@ class ListRouteTemplate(BaseRouteTemplate):
                 - Example: `[{{"type": "meta", "key": "created_time", "direction": "+"}}, {{"type": "data", "field_path": "name", "direction": "-"}}]`
 
                 **Pagination:**
-                - `limit`: Maximum number of results to return (default: 10)
+                - `limit`: Maximum number of results to return (default comes from `AUTOCRUD_DEFAULT_QUERY_LIMIT` at startup)
                 - `offset`: Number of results to skip for pagination (default: 0)
+                - If you need an exact full total, use the `/count` endpoint or pass an explicit `limit`.
 
                 **Partial Response:**
                 - `partial`: List of fields to retrieve (e.g. '/field1', '/nested/field2')
@@ -112,7 +113,7 @@ class ListRouteTemplate(BaseRouteTemplate):
                 - Direct access to resource content only
 
                 **Examples:**
-                - `GET /{model_name}/data` - Get first 10 resources (data only)
+                - `GET /{model_name}/data` - Get the default first page of resources (data only)
                 - `GET /{model_name}/data?limit=20&offset=40` - Get resources 41-60 (data only)
                 - `GET /{model_name}/data?is_deleted=false&limit=5` - Get 5 non-deleted resources (data only)
                 - `GET /{model_name}/data?partial=/name&partial=/email` - Get specific fields for all resources
@@ -128,7 +129,7 @@ class ListRouteTemplate(BaseRouteTemplate):
             current_time: dt.datetime = Depends(self.deps.get_now),
         ) -> list[T]:
             try:
-                query = build_query(query_params)
+                query = build_query(query_params, request)
                 fields = get_partial_fields(request, query_params)
 
                 with resource_manager.using(current_user, current_time):
@@ -198,8 +199,9 @@ class ListRouteTemplate(BaseRouteTemplate):
                 - Example: `[{{"type": "meta", "key": "updated_time", "direction": "-"}}, {{"type": "data", "field_path": "department", "direction": "+"}}]`
 
                 **Pagination:**
-                - `limit`: Maximum number of results to return (default: 10)
+                - `limit`: Maximum number of results to return (default comes from `AUTOCRUD_DEFAULT_QUERY_LIMIT` at startup)
                 - `offset`: Number of results to skip for pagination (default: 0)
+                - If you need an exact full total, use the `/count` endpoint or pass an explicit `limit`.
 
                 **Use Cases:**
                 - Resource management and administration
@@ -208,7 +210,7 @@ class ListRouteTemplate(BaseRouteTemplate):
                 - System monitoring and statistics
 
                 **Examples:**
-                - `GET /{model_name}/meta` - Get metadata for first 10 resources
+                - `GET /{model_name}/meta` - Get metadata for the default first page of resources
                 - `GET /{model_name}/meta?is_deleted=true` - Get metadata for deleted resources
                 - `GET /{model_name}/meta?created_bys=admin&limit=50` - Get metadata for admin-created resources
 
@@ -223,7 +225,7 @@ class ListRouteTemplate(BaseRouteTemplate):
             current_time: dt.datetime = Depends(self.deps.get_now),
         ):
             try:
-                query = build_query(query_params)
+                query = build_query(query_params, request)
                 fields = get_partial_fields(request, query_params)
                 # For meta-only, prepend "meta/" prefix to unprefixed fields
                 meta_partial = None
@@ -294,8 +296,9 @@ class ListRouteTemplate(BaseRouteTemplate):
                 - Example: `[{{"field_path": "status", "operator": "eq", "value": "active"}}]`
 
                 **Pagination:**
-                - `limit`: Maximum number of results to return (default: 10)
+                - `limit`: Maximum number of results to return (default comes from `AUTOCRUD_DEFAULT_QUERY_LIMIT` at startup)
                 - `offset`: Number of results to skip for pagination (default: 0)
+                - If you need an exact full total, use the `/count` endpoint or pass an explicit `limit`.
 
                 **Use Cases:**
                 - Version control system integration
@@ -304,8 +307,8 @@ class ListRouteTemplate(BaseRouteTemplate):
                 - Change tracking and audit trails
 
                 **Examples:**
-                - `GET /{model_name}/revision-info` - Get current revision info for first 10 resources
-                - `GET /{model_name}/revision-info?limit=100` - Get revision info for first 100 resources
+                - `GET /{model_name}/revision-info` - Get current revision info for the default first page of resources
+                - `GET /{model_name}/revision-info?limit=100` - Get revision info for the first 100 resources
                 - `GET /{model_name}/revision-info?updated_bys=editor` - Get revision info for editor-modified resources
 
                 **Error Responses:**
@@ -319,7 +322,7 @@ class ListRouteTemplate(BaseRouteTemplate):
             current_time: dt.datetime = Depends(self.deps.get_now),
         ):
             try:
-                query = build_query(query_params)
+                query = build_query(query_params, request)
                 fields = get_partial_fields(request, query_params)
                 # For info-only, prepend "info/" prefix to unprefixed fields
                 info_partial = None
@@ -353,7 +356,7 @@ class ListRouteTemplate(BaseRouteTemplate):
             # Map route-level "revision_info" to RM-level "info"
             returns = ["info" if r == "revision_info" else r for r in raw_returns]
             try:
-                query = build_query(query_params)
+                query = build_query(query_params, request)
                 fields = get_partial_fields(request, query_params)
 
                 with resource_manager.using(current_user, current_time):
@@ -449,13 +452,14 @@ class ListRouteTemplate(BaseRouteTemplate):
             ),
         )
         async def get_resources_count(
+            request: Request,
             query_params: QueryInputs = Query(...),
             current_user: str = Depends(self.deps.get_user),
             current_time: dt.datetime = Depends(self.deps.get_now),
         ) -> int:
             try:
                 # 構建查詢對象
-                query = build_query(query_params)
+                query = build_query(query_params, request)
                 # count 不應受 limit/offset 影響，移除分頁限制以回傳真實總數
                 query = msgspec.structs.replace(query, limit=2**63 - 1, offset=0)
                 with resource_manager.using(current_user, current_time):

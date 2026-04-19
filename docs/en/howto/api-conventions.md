@@ -1,6 +1,7 @@
 # API conventions
 
 This document describes AutoCRUD’s **HTTP API conventions** — especially the parts that are *not* obvious from plain REST CRUD:
+
 - `returns=` (select response sections)
 - `partial=` (field-level projection across `data` / `meta` / `revision_info`)
 - `include_deleted=` (soft-delete visibility)
@@ -280,7 +281,16 @@ Rules:
   * `data_conditions`
   * `conditions`
   * `sorts`
+  * metadata filter query params such as `is_deleted`, `created_time_start`, `created_time_end`, `updated_time_start`, `updated_time_end`, `created_bys`, and `updated_bys`
+* In practice, only `limit` and `offset` should be sent alongside `qb`.
 * `limit` / `offset` in URL can override defaults.
+
+Quick error guide:
+
+| Situation | HTTP | Reason |
+|-----------|------|--------|
+| malformed or unsupported QB expression | 400 | the expression itself could not be parsed safely |
+| `qb` mixed with incompatible query inputs, including metadata filters | 422 | QB mode and structured-condition mode are intentionally separate |
 
 ### Structured JSON conditions
 

@@ -23,6 +23,9 @@ It is extracted from the resource data (`T`) during:
 * `update()`
 * `modify()` (when data changes)
 
+Important: `indexed_data` is **not** a copy of the full resource payload.
+Only the fields explicitly declared in `indexed_fields` are extracted into it.
+
 The main purpose:
 
 * enable fast filtering / sorting without decoding or scanning revisions
@@ -52,6 +55,8 @@ This matches the Query Builder behavior:
 
 * `QB["user.email"]` targets the key `"user.email"` in `indexed_data`
 
+If a configured path is missing or cannot be resolved, AutoCRUD simply skips that value instead of failing the indexing step. In practice, missing-key situations are ignored and the field is left out of `indexed_data`.
+
 ## What does search query over?
 
 A search query only considers:
@@ -66,6 +71,32 @@ It does **not**:
 * scan raw payload bytes
 
 This makes performance predictable and aligns with the “current state” semantics of most APIs.
+
+## Small example
+
+Imagine the current resource data looks like this:
+
+```json
+{
+  "name": "Alice",
+  "profile": {
+    "email": "alice@example.com"
+  },
+  "status": "active"
+}
+```
+
+A practical indexed projection could look like this:
+
+```json
+{
+  "name": "Alice",
+  "profile.email": "alice@example.com",
+  "status": "active"
+}
+```
+
+That is why a query such as `QB["profile.email"] == "alice@example.com"` can run efficiently without scanning the whole revision payload.
 
 ## Sorting
 
@@ -110,5 +141,5 @@ In HTTP APIs, search/list endpoints generally accept:
 
 See also:
 
-* `concepts/query-system.md`
-* `howto/routes.md`
+- [Query System](/autocrud/concepts/query-system)
+- [Routes](/autocrud/howto/routes)

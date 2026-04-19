@@ -74,6 +74,18 @@ pip install "autocrud[magic]"
 
 https://hychou0515.github.io/autocrud/
 
+## 查詢分頁預設值設定
+
+列表型端點預設會分頁。若想調整啟動時的預設上限，可設定環境變數：
+
+```bash
+export AUTOCRUD_DEFAULT_QUERY_LIMIT=1000
+```
+
+- 若未設定，系統會使用非常大的 fallback
+- 單次請求仍可用 `limit` 參數覆寫
+- 若需要精確總數，請呼叫 `/count`
+
 ## AutoCRUD Web Generator
 
 [`autocrud-web-generator`](https://www.npmjs.com/package/autocrud-web-generator) 可以直接從 AutoCRUD 後端的 OpenAPI 規格，在幾秒內生成一個完整的 React 管理後台，不需要手寫任何前端樣板程式碼。

@@ -1,26 +1,36 @@
 # AutoCRUD vs Hasura vs Django
 
-Several frameworks aim to simplify backend development by automatically generating APIs and infrastructure around data models.
+These three tools can all help you build data-driven backends faster, but they solve the problem from very different starting points.
 
-This article compares three different approaches:
+This page is a **decision guide** rather than a winner-takes-all comparison.
 
-- **AutoCRUD** – model-driven backend platform for FastAPI
+It compares:
+
+- **AutoCRUD** – model-driven backend automation for FastAPI
 - **Hasura** – database-driven GraphQL engine
 - **Django** – full-stack web framework with ORM and admin interface
 
-Although they solve similar problems, they are built around very different architectural philosophies.
+Use it to decide which tool best matches your architecture, team workflow, and product needs.
 
 ---
 
 # Quick comparison
 
+| If your starting point is... | Best fit | Why |
+| --- | --- | --- |
+| FastAPI + Python models + versioned data | **AutoCRUD** | You get generated APIs, revision history, search, and automation from a Python-first workflow. |
+| PostgreSQL schema + GraphQL-first frontend | **Hasura** | It exposes GraphQL rapidly from an existing relational schema. |
+| Full-stack web app with ORM and admin | **Django** | It provides the classic batteries-included web stack. |
+
+## Feature comparison
+
 | Feature | AutoCRUD | Hasura | Django |
-|---|---|---|---|
+| --- | --- | --- | --- |
 | Primary model | Python models | Database schema | ORM models |
-| REST API | ✅ | ❌ | ✅ |
+| REST API | ✅ | ⚠️ usually external | ✅ |
 | GraphQL API | ✅ | ✅ | ⚠️ (via libraries) |
 | Version history | ✅ built-in | ❌ | ❌ |
-| Search engine | ✅ metadata indexing | SQL queries | ORM queries |
+| Search engine | ✅ metadata indexing | SQL queries / filters | ORM queries |
 | Storage | pluggable | PostgreSQL | relational databases |
 | Background jobs | built-in resource jobs | external systems | Celery / external |
 | Admin / UI | auto-generated UI | console only | Django admin |
@@ -226,13 +236,15 @@ Hasura provides a management console, while Django includes a built-in admin int
 
 ---
 
-# When to choose AutoCRUD
+# When each is the better fit
 
-AutoCRUD is a good choice when:
+## Choose AutoCRUD when
+
+AutoCRUD is a strong choice when:
 
 * you are building APIs with **FastAPI**
 * you want **automatic REST and GraphQL APIs**
-* version history is important
+* version history and auditability matter
 * infrastructure code should be minimized
 * you want automatic admin UI generation
 
@@ -244,26 +256,23 @@ Typical use cases include:
 * job processing systems
 * administrative APIs
 
----
+## Choose Hasura when
 
-# When to choose Hasura
-
-Hasura is a good choice when:
+Hasura is a strong choice when:
 
 * your system is **database-first**
-* you want **GraphQL APIs**
+* you want **GraphQL APIs** quickly
 * your data is primarily relational
-* you want instant API generation from SQL schemas
+* PostgreSQL is already the center of your design
 
----
+## Choose Django when
 
-# When to choose Django
-
-Django is a good choice when:
+Django is a strong choice when:
 
 * you want a **full-stack framework**
 * your application includes server-rendered pages
 * you want a mature ecosystem and admin interface
+* your team already works comfortably with Django conventions
 
 ---
 
@@ -271,37 +280,19 @@ Django is a good choice when:
 
 Each framework targets a different architecture.
 
-| Framework | Best for                              |
-| --------- | ------------------------------------- |
-| AutoCRUD  | model-driven FastAPI backend platform |
-| Hasura    | GraphQL over PostgreSQL               |
-| Django    | full-stack web applications           |
+| Framework | Best for |
+| --------- | -------- |
+| AutoCRUD  | model-driven FastAPI backends with built-in revision history |
+| Hasura    | GraphQL over PostgreSQL |
+| Django    | full-stack web applications |
 
-AutoCRUD focuses on enabling **model-driven APIs with built-in version history, search, and automation**.
+In short:
 
+```text
+GraphQL over PostgreSQL -> Hasura
+Full-stack web framework -> Django
+FastAPI + model-driven APIs + revision history -> AutoCRUD
 ```
 
----
+If you want to continue exploring AutoCRUD specifically, read [Why AutoCRUD exists](/autocrud/concepts/why-autocrud), [Overview](/autocrud/concepts/overview), or [Core Concepts](/autocrud/concepts/core-concepts).
 
-# 我建議再補一個小 section（會更強）
-
-在文件最後加：
-
-```
-
-# Decision guide
-
-```
-
-例如：
-
-```
-
-Do you want GraphQL over PostgreSQL?
-→ Hasura
-
-Do you want a full-stack web framework?
-→ Django
-
-Do you want model-driven APIs with FastAPI?
-→ AutoCRUD

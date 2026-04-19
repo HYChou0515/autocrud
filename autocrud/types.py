@@ -1,6 +1,8 @@
 from __future__ import annotations
 
 import datetime as dt
+import os
+import warnings
 from abc import ABC, abstractmethod
 from collections.abc import Generator, Iterable, Iterator
 from contextlib import AbstractContextManager
@@ -689,14 +691,74 @@ class ResourceDataSearchSort(Struct, kw_only=True, tag=True):
 
 
 class ResourceMetaSortKey(StrEnum):
+    """Built-in metadata sort keys supported by QB and search APIs."""
+
     created_time = "created_time"
     updated_time = "updated_time"
     resource_id = "resource_id"
+    current_revision_id = "current_revision_id"
+    created_by = "created_by"
+    updated_by = "updated_by"
+    is_deleted = "is_deleted"
+    schema_version = "schema_version"
+    total_revision_count = "total_revision_count"
 
 
 class ResourceMetaSearchSort(Struct, kw_only=True, tag=True):
     direction: ResourceMetaSortDirection = ResourceMetaSortDirection.ascending
     key: ResourceMetaSortKey
+
+
+DEFAULT_QUERY_LIMIT_ENV_VAR = "AUTOCRUD_DEFAULT_QUERY_LIMIT"
+DEFAULT_QUERY_LIMIT_FALLBACK = 2**32 - 1
+
+
+def _read_default_query_limit() -> int:
+    """Read the startup default query limit from the environment.
+
+    The value is intentionally configurable so operators can decide whether
+    list endpoints should behave more like a small page or an effectively
+    unbounded first page in their deployment.
+    """
+
+    raw = os.getenv(DEFAULT_QUERY_LIMIT_ENV_VAR)
+    if raw is None or raw.strip() == "":
+        return DEFAULT_QUERY_LIMIT_FALLBACK
+
+    try:
+        value = int(raw)
+    except ValueError:
+        warnings.warn(
+            (
+                f"Invalid {DEFAULT_QUERY_LIMIT_ENV_VAR}={raw!r}; "
+                f"falling back to {DEFAULT_QUERY_LIMIT_FALLBACK}."
+            ),
+            RuntimeWarning,
+            stacklevel=2,
+        )
+        return DEFAULT_QUERY_LIMIT_FALLBACK
+
+    if value < 1:
+        warnings.warn(
+            (
+                f"{DEFAULT_QUERY_LIMIT_ENV_VAR} must be >= 1, got {value}; "
+                f"falling back to {DEFAULT_QUERY_LIMIT_FALLBACK}."
+            ),
+            RuntimeWarning,
+            stacklevel=2,
+        )
+        return DEFAULT_QUERY_LIMIT_FALLBACK
+
+    return value
+
+
+DEFAULT_QUERY_LIMIT = _read_default_query_limit()
+"""Default page size for list-style search endpoints.
+
+Configurable at process startup through the AUTOCRUD_DEFAULT_QUERY_LIMIT
+environment variable. Falls back to a very large first-page limit so users do
+not easily mistake pagination for missing data.
+"""
 
 
 class ResourceMetaSearchQuery(Struct, kw_only=True):
@@ -723,7 +785,7 @@ class ResourceMetaSearchQuery(Struct, kw_only=True):
     conditions: list[DataSearchFilter] | UnsetType = UNSET
     """Conditions to filter resources based on their metadata or indexed data fields."""
 
-    limit: int = 10
+    limit: int = DEFAULT_QUERY_LIMIT
     """Maximum number of results to return."""
     offset: int = 0
     """Number of results to skip before starting to collect the result set."""
@@ -2875,8 +2937,9 @@ class IConstraintChecker(ABC):
                 ID so the checker can allow the resource to keep its own values.
 
         Raises:
-            Any exception to signal a constraint violation.  The framework
-            will catch it, execute compensation, and re-raise.
+            Exception: Raised by the checker to signal a constraint violation.
+                The framework catches it, executes compensation, and re-raises
+                it.
         """
         ...
 

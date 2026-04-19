@@ -2,7 +2,7 @@ import datetime as dt
 import textwrap
 from typing import TypeVar
 
-from fastapi import APIRouter, Depends, Query
+from fastapi import APIRouter, Depends, Query, Request
 
 from autocrud.crud.route_templates.basic import (
     BaseRouteTemplate,
@@ -172,6 +172,7 @@ class BatchDeleteRouteTemplate(BaseRouteTemplate):
             ),
         )
         async def batch_delete(
+            request: Request,
             query_params: QueryInputs = Query(...),
             current_user: str = Depends(self.deps.get_user),
             current_time: dt.datetime = Depends(self.deps.get_now),
@@ -179,7 +180,7 @@ class BatchDeleteRouteTemplate(BaseRouteTemplate):
             try:
                 # 強制覆蓋 is_deleted = False，只搜尋未刪除的資源
                 query_params.is_deleted = False
-                query = build_query(query_params)
+                query = build_query(query_params, request, {"is_deleted"})
                 with resource_manager.using(current_user, current_time):
                     metas = resource_manager.search_resources(query)
                     results: list[ResourceMeta] = []
@@ -301,6 +302,7 @@ class BatchRestoreRouteTemplate(BaseRouteTemplate):
             ),
         )
         async def batch_restore(
+            request: Request,
             query_params: QueryInputs = Query(...),
             current_user: str = Depends(self.deps.get_user),
             current_time: dt.datetime = Depends(self.deps.get_now),
@@ -308,7 +310,7 @@ class BatchRestoreRouteTemplate(BaseRouteTemplate):
             try:
                 # 強制覆蓋 is_deleted = True，只搜尋已刪除的資源
                 query_params.is_deleted = True
-                query = build_query(query_params)
+                query = build_query(query_params, request, {"is_deleted"})
                 with resource_manager.using(current_user, current_time):
                     metas = resource_manager.search_resources(query)
                     results: list[ResourceMeta] = []

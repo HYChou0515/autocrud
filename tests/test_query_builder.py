@@ -5,6 +5,7 @@ import pytest
 from msgspec import UNSET
 
 from autocrud.query import QB, ConditionBuilder
+from autocrud.resource_manager.basic import get_sort_fn
 from autocrud.resource_manager.core import ResourceManager, SimpleStorage
 from autocrud.resource_manager.meta_store.simple import MemoryMetaStore
 from autocrud.resource_manager.resource_store.simple import MemoryResourceStore
@@ -17,12 +18,18 @@ from autocrud.types import (
     ResourceDataSearchSort,
     ResourceMeta,
     ResourceMetaSearchQuery,
+    ResourceMetaSearchSort,
     ResourceMetaSortDirection,
     ResourceMetaSortKey,
 )
 
 
 class TestQueryBuilder:
+    def test_resource_meta_sort_key_is_reexported_from_basic(self):
+        from autocrud.resource_manager.basic import ResourceMetaSortKey as BasicSortKey
+
+        assert BasicSortKey is ResourceMetaSortKey
+
     def test_simple_condition(self):
         q = QB["name"].eq("Alice")
         assert isinstance(q, ConditionBuilder)
@@ -642,10 +649,13 @@ class TestQueryBuilder:
         cond = q.build().conditions[0]
         assert cond.field_path == "schema_version"
 
-        # Test revision_id (current_revision_id)
-        q = QB.revision_id().eq("rev-456")
+        # Test current_revision_id
+        q = QB.current_revision_id().eq("rev-456")
         cond = q.build().conditions[0]
         assert cond.field_path == "current_revision_id"
+
+        # revision_id alias should not be exposed anymore
+        assert not hasattr(QB, "revision_id")
 
         # Test total_revision_count
         q = QB.total_revision_count() > 5
@@ -1274,6 +1284,80 @@ class TestQueryBuilder:
         assert len(query.sorts) == 1
         assert query.sorts[0].key == ResourceMetaSortKey.created_time
         assert query.sorts[0].direction == ResourceMetaSortDirection.descending
+
+    def test_all_metadata_accessors_are_sortable(self):
+        """All built-in metadata accessors should produce meta sorts, not data sorts."""
+        sort_cases = [
+            (QB.resource_id().asc(), ResourceMetaSortKey.resource_id),
+            (QB.current_revision_id().desc(), ResourceMetaSortKey.current_revision_id),
+            (QB.created_time().asc(), ResourceMetaSortKey.created_time),
+            (QB.updated_time().desc(), ResourceMetaSortKey.updated_time),
+            (QB.created_by().asc(), ResourceMetaSortKey.created_by),
+            (QB.updated_by().desc(), ResourceMetaSortKey.updated_by),
+            (QB.is_deleted().asc(), ResourceMetaSortKey.is_deleted),
+            (QB.schema_version().desc(), ResourceMetaSortKey.schema_version),
+            (
+                QB.total_revision_count().desc(),
+                ResourceMetaSortKey.total_revision_count,
+            ),
+        ]
+
+        for sort_obj, expected_key in sort_cases:
+            query = QB["age"].gt(0).sort(sort_obj).build()
+            assert len(query.sorts) == 1
+            assert isinstance(query.sorts[0], ResourceMetaSearchSort)
+            assert query.sorts[0].key == expected_key
+
+    def test_extended_metadata_sort_execution(self):
+        """Extended metadata keys should affect actual result ordering."""
+        now = dt.datetime(2025, 1, 1, tzinfo=ZoneInfo("UTC"))
+        metas = [
+            ResourceMeta(
+                current_revision_id="rev-2",
+                resource_id="b",
+                schema_version="v2",
+                total_revision_count=3,
+                created_time=now + dt.timedelta(days=1),
+                updated_time=now + dt.timedelta(days=2),
+                created_by="bob",
+                updated_by="zoe",
+                is_deleted=True,
+            ),
+            ResourceMeta(
+                current_revision_id="rev-1",
+                resource_id="a",
+                schema_version="v1",
+                total_revision_count=1,
+                created_time=now,
+                updated_time=now + dt.timedelta(days=1),
+                created_by="alice",
+                updated_by="amy",
+                is_deleted=False,
+            ),
+        ]
+
+        sort_cases = [
+            (ResourceMetaSortKey.current_revision_id, ["a", "b"]),
+            (ResourceMetaSortKey.created_by, ["a", "b"]),
+            (ResourceMetaSortKey.updated_by, ["a", "b"]),
+            (ResourceMetaSortKey.is_deleted, ["a", "b"]),
+            (ResourceMetaSortKey.schema_version, ["a", "b"]),
+            (ResourceMetaSortKey.total_revision_count, ["a", "b"]),
+        ]
+
+        for sort_key, expected_order in sort_cases:
+            sorted_metas = sorted(
+                metas,
+                key=get_sort_fn(
+                    [
+                        ResourceMetaSearchSort(
+                            direction=ResourceMetaSortDirection.ascending,
+                            key=sort_key,
+                        )
+                    ]
+                ),
+            )
+            assert [meta.resource_id for meta in sorted_metas] == expected_order
 
     def test_sort_with_multiple_strings(self):
         """Test sort() with multiple string parameters."""
@@ -2526,7 +2610,9 @@ class TestQueryBuilderEdgeCases:
         # Should have no conditions (UNSET)
         assert query.conditions is UNSET
         # Should still support chaining
-        assert query.limit == 10  # default limit
+        from autocrud.types import DEFAULT_QUERY_LIMIT
+
+        assert query.limit == DEFAULT_QUERY_LIMIT  # default limit
 
     def test_all_empty_with_chaining(self):
         """Test QB.all() with no conditions supports method chaining."""
@@ -2633,3 +2719,76 @@ class TestQueryBuilderEdgeCases:
         assert second.field_path == "character_class"
         assert second.operator == DataSearchOperator.equals
         assert second.value == CharacterClass.WARRIOR
+
+
+class TestQueryLimitConfiguration:
+    """Tests for _read_default_query_limit() helper.
+
+    We test the helper function directly rather than reloading modules,
+    because importlib.reload() corrupts class identities (ABC, isinstance
+    checks, Struct subclasses) and causes failures in unrelated test files
+    within the same pytest session.
+    """
+
+    def test_env_var_sets_limit(self, monkeypatch):
+        """Environment variable should be read as the limit."""
+        from autocrud.types import _read_default_query_limit
+
+        monkeypatch.setenv("AUTOCRUD_DEFAULT_QUERY_LIMIT", "12345")
+        assert _read_default_query_limit() == 12345
+
+    def test_unset_env_returns_fallback(self, monkeypatch):
+        """Unset environment variable should return the fallback value."""
+        from autocrud.types import (
+            DEFAULT_QUERY_LIMIT_FALLBACK,
+            _read_default_query_limit,
+        )
+
+        monkeypatch.delenv("AUTOCRUD_DEFAULT_QUERY_LIMIT", raising=False)
+        assert _read_default_query_limit() == DEFAULT_QUERY_LIMIT_FALLBACK
+
+    def test_empty_string_returns_fallback(self, monkeypatch):
+        """Empty string environment variable should return the fallback value."""
+        from autocrud.types import (
+            DEFAULT_QUERY_LIMIT_FALLBACK,
+            _read_default_query_limit,
+        )
+
+        monkeypatch.setenv("AUTOCRUD_DEFAULT_QUERY_LIMIT", "   ")
+        assert _read_default_query_limit() == DEFAULT_QUERY_LIMIT_FALLBACK
+
+    def test_invalid_value_warns_and_falls_back(self, monkeypatch):
+        """Invalid environment values should warn and return the fallback."""
+        from autocrud.types import (
+            DEFAULT_QUERY_LIMIT_FALLBACK,
+            _read_default_query_limit,
+        )
+
+        monkeypatch.setenv("AUTOCRUD_DEFAULT_QUERY_LIMIT", "not-a-number")
+        with pytest.warns(RuntimeWarning, match="AUTOCRUD_DEFAULT_QUERY_LIMIT"):
+            result = _read_default_query_limit()
+        assert result == DEFAULT_QUERY_LIMIT_FALLBACK
+
+    def test_zero_warns_and_falls_back(self, monkeypatch):
+        """Zero is not a valid limit; should warn and return the fallback."""
+        from autocrud.types import (
+            DEFAULT_QUERY_LIMIT_FALLBACK,
+            _read_default_query_limit,
+        )
+
+        monkeypatch.setenv("AUTOCRUD_DEFAULT_QUERY_LIMIT", "0")
+        with pytest.warns(RuntimeWarning, match="AUTOCRUD_DEFAULT_QUERY_LIMIT"):
+            result = _read_default_query_limit()
+        assert result == DEFAULT_QUERY_LIMIT_FALLBACK
+
+    def test_negative_value_warns_and_falls_back(self, monkeypatch):
+        """Negative limit should warn and return the fallback."""
+        from autocrud.types import (
+            DEFAULT_QUERY_LIMIT_FALLBACK,
+            _read_default_query_limit,
+        )
+
+        monkeypatch.setenv("AUTOCRUD_DEFAULT_QUERY_LIMIT", "-5")
+        with pytest.warns(RuntimeWarning, match="AUTOCRUD_DEFAULT_QUERY_LIMIT"):
+            result = _read_default_query_limit()
+        assert result == DEFAULT_QUERY_LIMIT_FALLBACK

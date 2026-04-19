@@ -1579,6 +1579,38 @@ class AutoCRUD:
             components[comp_name] = _rewrite_defs_refs(components[comp_name])
 
     @staticmethod
+    def _inline_embedded_schema_ref(schema_extra: dict, source_type: Any) -> dict:
+        """Inline a top-level component ref for embedded FastAPI field schemas.
+
+        When a custom action mixes ``UploadFile`` with a ``msgspec.Struct``
+        body parameter, FastAPI builds a synthetic multipart wrapper model.
+        In that context, a bare ``{"$ref": "#/components/schemas/X"}``
+        inside ``json_schema_extra`` can be resolved before AutoCRUD later
+        injects the referenced component, which raises a ``KeyError`` during
+        OpenAPI generation.
+
+        Resolving the direct component ref to its inline schema keeps the
+        multipart wrapper self-contained while preserving the same field shape.
+        """
+        if not isinstance(schema_extra, dict) or "$ref" not in schema_extra:
+            return schema_extra
+
+        try:
+            from copy import deepcopy
+
+            from autocrud.crud.route_templates.basic import jsonschema_to_openapi
+
+            _, components = jsonschema_to_openapi([source_type])
+            ref_name = schema_extra["$ref"].split("/")[-1]
+            resolved = components.get(ref_name)
+            if isinstance(resolved, dict):
+                return deepcopy(resolved)
+        except Exception:
+            pass
+
+        return schema_extra
+
+    @staticmethod
     def _resolve_missing_schema_refs(schema: dict) -> None:
         """Add alias entries for dangling ``$ref`` pointers in the OpenAPI schema.
 
@@ -3252,8 +3284,13 @@ class AutoCRUD:
                 if _is_msgspec_struct_type(raw_ann):
                     # Replace with untyped Body(json_schema_extra=...)
                     struct_params[name] = raw_ann
+                    schema_extra = jsonschema_to_json_schema_extra(raw_ann)
+                    if _has_upload_file:
+                        schema_extra = self._inline_embedded_schema_ref(
+                            schema_extra, raw_ann
+                        )
                     new_default = Body(
-                        json_schema_extra=jsonschema_to_json_schema_extra(raw_ann),
+                        json_schema_extra=schema_extra,
                     )
                     new_param = param.replace(
                         annotation=inspect.Parameter.empty,

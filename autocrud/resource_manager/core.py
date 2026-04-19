@@ -2441,7 +2441,7 @@ class ResourceManager(IResourceManager[T], Generic[T]):
 
         # Build meta iterator
         if query is not None:
-            if isinstance(query, Query):
+            if hasattr(query, "build") and callable(query.build):
                 query = query.build()
             q = msgspec.structs.replace(query, limit=2**31 - 1, offset=0)
             metas = self.storage.iter_search(q)

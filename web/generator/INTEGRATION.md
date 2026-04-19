@@ -116,10 +116,10 @@ npx autocrud-web integrate --url http://localhost:8000 --output src
 ```
 
 這會：
-1. 複製 `src/lib/`（components、hooks、utils、client.ts）
-2. 複製 `src/types/`（API type definitions）
+1. 複製 `src/autocrud/lib/`（components、hooks、utils、client.ts）
+2. 複製 `src/autocrud/types/`（API type definitions）
 3. 複製 layout route 檔案（`__root.tsx`、`autocrud-admin.tsx`）
-4. 從你的後端生成 `src/generated/`（types、API clients）
+4. 從你的後端生成 `src/autocrud/generated/`（types、API clients）
 5. 生成路由頁面到 `src/routes/autocrud-admin/`
 6. 寫入 `.env` 設定 `VITE_API_URL`
 
@@ -206,19 +206,19 @@ pnpm dev
 integrate 命令會建立/複製以下檔案：
 
 ### 自動複製（library）
-- `src/lib/client.ts` — Axios HTTP client
-- `src/lib/resources.ts` — Resource registry
-- `src/lib/resourceCustomization.ts` — Customization utilities
-- `src/lib/components/` — 所有 UI 組件
-- `src/lib/hooks/` — React hooks
-- `src/lib/utils/` — Utility functions
-- `src/lib/types/` — Internal types
-- `src/types/api.ts` — API type definitions
+- `src/autocrud/lib/client.ts` — Axios HTTP client
+- `src/autocrud/lib/resources.ts` — Resource registry
+- `src/autocrud/lib/resourceCustomization.ts` — Customization utilities
+- `src/autocrud/lib/components/` — 所有 UI 組件
+- `src/autocrud/lib/hooks/` — React hooks
+- `src/autocrud/lib/utils/` — Utility functions
+- `src/autocrud/lib/types/` — Internal types
+- `src/autocrud/types/api.ts` — API type definitions
 
 ### 自動生成（from OpenAPI）
-- `src/generated/types.ts` — TypeScript interfaces
-- `src/generated/resources.ts` — Resource metadata
-- `src/generated/api/` — API clients (one per resource)
+- `src/autocrud/generated/types.ts` — TypeScript interfaces
+- `src/autocrud/generated/resources.ts` — Resource metadata
+- `src/autocrud/generated/api/` — API clients (one per resource)
 
 ### 自動生成（routes）
 - `src/routes/index.tsx` — Root page
@@ -254,9 +254,9 @@ integrate/generate 命令會自動寫入 `.env`。
 ### Q: 我可以修改生成的檔案嗎？
 
 可以！生成的路由和 API client 可以自由修改。但注意：
-- `src/generated/` 下的檔案會在 re-generate 時被覆蓋
+- `src/autocrud/generated/` 下的檔案會在 re-generate 時被覆蓋
 - `src/routes/autocrud-admin/` 下的路由也會被重新生成
-- `src/lib/` 下的 library 檔案不會被 `generate` 覆蓋，只有 `integrate` 會更新
+- `src/autocrud/lib/` 下的 library 檔案不會被 `generate` 覆蓋，只有 `integrate` 會更新
 
 ### Q: 如何更新 library 到新版本？
 

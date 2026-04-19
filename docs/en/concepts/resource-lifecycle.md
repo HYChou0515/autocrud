@@ -1,20 +1,25 @@
 # Resource Lifecycle
 
-This document describes the lifecycle of a resource in AutoCRUD, including
-creation, updates, revisions, deletion, restoration, and schema migration.
+This page explains how a resource changes over time in AutoCRUD.
 
-AutoCRUD manages resources using a **versioned revision model** similar to Git.
+It focuses on the practical lifecycle of a resource: **create, update, modify, switch, delete, restore, and migrate**.
 
-Each resource has:
-
-- a **stable resource ID**
-- a **revision history**
-- **resource-level metadata**
-- **revision-level metadata**
+If you are looking for terminology, read [Core Concepts](/autocrud/concepts/core-concepts) first. If you want the component view, see [Architecture](/autocrud/concepts/architecture).
 
 ---
 
-# Resource structure
+## Why this matters
+
+The lifecycle model is what gives AutoCRUD its built-in support for:
+
+- revision history
+- rollback and restore flows
+- draft editing
+- safe schema evolution over time
+
+---
+
+## Resource structure
 
 Each resource consists of three conceptual layers:
 
@@ -26,22 +31,18 @@ Each resource consists of three conceptual layers:
 
 The API can return these layers separately:
 
-```
-
+```text
 GET /{model}/{resource_id}?returns=data,revision_info,meta
-
 ```
 
 ---
 
-# Resource creation
+## 1. Create a resource
 
 A resource is created using:
 
-```
-
+```text
 POST /{model}
-
 ```
 
 ### ID generation
@@ -56,49 +57,41 @@ POST /{model}
 
 The initial revision status is configured when the model is registered:
 
-```
-
+```python
 crud.add_model(..., default_status=...)
-
 ```
 
 If not configured, the default is:
 
-```
-
+```text
 stable
-
 ```
+
+Both `stable` and `draft` are supported. Use `draft` when you want an editing workflow that relies on in-place `modify` operations before promoting or replacing the current revision.
 
 ### Example
 
-```
-
+```text
 resource_id = 550e8400-e29b-41d4-a716-446655440000
 revision_id = 550e8400-e29b-41d4-a716-446655440000:1
-
 ```
 
 Revision graph after creation:
 
-```
-
+```text
 r1 (HEAD)
-
 ```
 
 ---
 
-# Revision model
+## 2. Understand the revision model
 
 Revisions form a **directed graph similar to Git history**.
 
 Normal updates append new revisions:
 
-```
-
+```text
 r1 -> r2 -> r3 (HEAD)
-
 ```
 
 Each revision stores:
@@ -114,15 +107,13 @@ Revision metadata is stored in `RevisionInfo`.
 
 ---
 
-# Update (create new revision)
+## 3. Update creates a new revision
 
 Update creates a **new revision**.
 
-```
-
+```text
 PUT /{model}/{resource_id}
 PATCH /{model}/{resource_id}
-
 ```
 
 Behavior:
@@ -146,15 +137,13 @@ r1 -> r2 -> r3 (HEAD)
 
 ---
 
-# Modify (draft update)
+## 4. Modify edits the current draft in place
 
 Modify updates the **current revision in-place**.
 
-```
-
+```text
 PUT /{model}/{resource_id}?mode=modify
 PATCH /{model}/{resource_id}?mode=modify
-
 ```
 
 Behavior:
@@ -172,68 +161,57 @@ This mode is typically used for **draft editing workflows**.
 
 ---
 
-# Revision status
+## 5. Revision status
 
 Revisions have a status defined by:
 
-```
-
+```text
 RevisionStatus
-
 ```
 
 Current values:
 
-```
-
+```text
 draft
 stable
-
 ```
 
 ---
 
-# Switching the current revision
+## 6. Switch the current revision
 
 AutoCRUD allows changing which revision is considered **current (HEAD)**.
 
 Example:
 
-```
-
+```text
 r1 -> r2 -> r3 (HEAD)
-
 ```
 
 Switch to `r2`:
 
-```
-
+```text
 r1 -> r2 (HEAD) -> r3
-
 ```
 
 If a new update occurs:
 
-```
-
+```text
 r1 -> r2 -> r4 (HEAD)
       |-> r3
-
 ```
 
 This behavior is similar to **Git branching from an older commit**.
 
 ---
 
-# Resource metadata (`meta`)
+## 7. Resource metadata
 
 Resource-level metadata is stored separately from revision data.
 
 Example fields:
 
-```
-
+```text
 resource_id
 current_revision_id
 schema_version
@@ -242,27 +220,23 @@ updated_time
 created_by
 updated_by
 is_deleted
-
 ```
 
 Metadata is accessed via:
 
-```
-
+```text
 GET /{model}/{resource_id}?returns=meta
-
 ```
 
 ---
 
-# Revision metadata (`revision_info`)
+## 8. Revision metadata
 
 Revision-level metadata is stored in `RevisionInfo`.
 
 Important fields:
 
-```
-
+```text
 revision_id
 parent_revision_id
 schema_version
@@ -272,27 +246,22 @@ updated_time
 created_by
 updated_by
 data_hash
-
 ```
 
 Accessed via:
 
-```
-
+```text
 GET /{model}/{resource_id}?returns=revision_info
-
 ```
 
 ---
 
-# Soft delete
+## 9. Soft delete and restore
 
 AutoCRUD uses **soft deletion**.
 
-```
-
+```text
 DELETE /{model}/{resource_id}
-
 ```
 
 Behavior:
@@ -309,14 +278,10 @@ Revision history remains intact.
 
 ---
 
-# Restore
-
 A soft-deleted resource can be restored.
 
-```
-
+```text
 POST /{model}/{resource_id}/restore
-
 ```
 
 Behavior:
@@ -330,7 +295,7 @@ No new revision is created.
 
 ---
 
-# Schema migration
+## 10. Schema migration
 
 Each revision stores a `schema_version`.
 
@@ -394,12 +359,11 @@ Migration can also be executed across resources using **search-based migration A
 
 ---
 
-# Summary
+## Summary
 
-Resource lifecycle overview:
+A typical lifecycle looks like this:
 
-```
-
+```text
 create
 ↓
 r1 (HEAD)
@@ -415,30 +379,27 @@ r2 (HEAD)
 update
 ↓
 r4 (HEAD)
-
 ```
 
-Deletion does not affect revisions:
+Deletion does not remove revision history:
 
-```
-
+```text
 meta.is_deleted = True
-
 ```
 
-Restoration simply flips the flag:
+Restoration flips the deletion flag back:
 
-```
-
+```text
 meta.is_deleted = False
-
 ```
 
-Schema changes are handled through explicit migrations.
-Switching to older revisions requires those revisions to be migrated first.
+Schema changes are handled through explicit migrations, and switching to older revisions may require those revisions to be migrated first.
 
 ---
 
-See also:
-- [Data model](data-model.md)
-- [Architecture](architecture.md)
+## Read next
+
+- [Data model](/autocrud/concepts/data-model)
+- [Architecture](/autocrud/concepts/architecture)
+- [Schema](/autocrud/concepts/schema)
+- [Migrations](/autocrud/howto/migrations)

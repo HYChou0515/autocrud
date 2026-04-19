@@ -1,222 +1,92 @@
 # Core Concepts
 
-This page introduces the fundamental concepts used by AutoCRUD.
+This page defines the **core terms** used throughout the rest of the documentation.
 
-AutoCRUD is built around a **versioned resource model** where each resource
-maintains a revision history and metadata.
-
----
-
-# Resource
-
-A **Resource** is the logical entity stored in the system.
-
-Examples:
-
-- User
-- Order
-- Document
-- Image
-
-Each resource has a stable identifier:
-
-```
-
-resource_id
-
-```
-
-Example:
-
-```
-
-user_123
-order_456
-
-```
-
-The resource ID does **not change across revisions**.
+If [Overview](/autocrud/concepts/overview) gives you the map, this page gives you the vocabulary used throughout the docs.
 
 ---
 
-# Revision
+## 1. Resource
 
-A **Revision** represents a specific version of a resource.
+A resource is the long-lived logical entity your application manages, such as a user, document, job, or configuration object.
 
-Each revision has:
-
-```
-
-revision_id
-parent_revision_id
-status
-created_time
-created_by
-
-```
-
-### Immutable mode (default)
-
-Using `update` or `patch` creates a new revision.
-
-```
-
-revision1 -> revision2 -> revision3
-
-```
-
-### Draft mode (`modify`)
-
-`modify` updates the current revision **in-place**.
-
-This mode is intended for draft editing workflows.
+A resource keeps the same identity even when its content changes.
 
 ---
 
-# Resource Metadata
+## 2. Revision
 
-Metadata is stored separately from resource data.
+A revision is one version of a resource at a specific point in time.
 
-Example fields:
+This distinction matters because the resource ID stays stable while the actual content evolves through multiple revisions.
 
-```
-
-resource_id
-current_revision_id
-created_time
-updated_time
-created_by
-updated_by
-schema_version
-is_deleted
-
-```
-
-Metadata is accessed via:
-
-```
-
-GET /{model}/{resource_id}?returns=meta
-
-```
+By default, operations such as update and patch create a new revision rather than overwriting history.
 
 ---
 
-# Resource Data
+## 3. Metadata
 
-The **data** section contains the actual resource payload defined by the schema.
+AutoCRUD keeps metadata separate from the main resource payload.
 
-Example:
+Metadata includes values such as:
 
-```
+- the current revision pointer
+- creation and update timestamps
+- schema version
+- deletion status
+- indexed values used for search
 
-class User(msgspec.Struct):
-name: str
-email: str
-age: int
-
-```
-
-This section is returned via:
-
-```
-
-GET /{model}/{resource_id}?returns=data
-
-```
+This separation makes lifecycle operations, search behavior, and operational tooling easier to keep consistent.
 
 ---
 
-# Revision Info
+## 4. ResourceManager
 
-Revision info describes a specific version of a resource.
+The ResourceManager is the enforcement layer for resource behavior.
 
-Example fields:
+It coordinates:
 
-```
+- validation
+- revision creation
+- metadata updates
+- constraints
+- event handlers
+- permission checks
+- storage access
 
-revision_id
-parent_revision_id
-status
-schema_version
-
-```
-
-Accessed via:
-
-```
-
-GET /{model}/{resource_id}?returns=revision_info
-
-```
+Once you understand the manager’s role, most AutoCRUD behavior becomes much easier to predict.
 
 ---
 
-# ResourceManager
+## 5. Schema version
 
-`ResourceManager` is the core component responsible for managing resources.
+A schema version tells AutoCRUD how a revision’s data shape relates to the current model definition.
 
-Responsibilities:
+This becomes important when your application evolves and you need migration paths between versions.
 
-- create resources
-- update revisions
-- validate data
-- enforce constraints
-- manage metadata
-- perform queries
+See also:
 
-Example:
-
-```python
-rm = crud.add_model(User)
-```
+- [Schema](/autocrud/concepts/schema)
+- [Migrations](/autocrud/howto/migrations)
 
 ---
 
-# Blob
+## 6. Indexed search fields
 
-AutoCRUD supports binary data through the `Binary` type.
+AutoCRUD search is built around indexed metadata rather than full payload scans.
 
-Binary data is stored outside the main resource payload.
+That design keeps search behavior more predictable and encourages you to identify important searchable fields explicitly.
 
-Example:
+See also:
 
-```python
-class Image(msgspec.Struct):
-file: Binary
-```
-
-Binary storage:
-
-```
-
-Binary(data=...)
-
--> stored in blob store
--> replaced with file_id
-
-```
-
-Retrieval:
-
-```
-
-GET /{model}/{resource_id}/blobs/{file_id}
-
-```
+- [Query system](/autocrud/concepts/query-system)
+- [Query builder](/autocrud/howto/query-builder)
 
 ---
 
-# Query System
+## Read next
 
-Resources can be queried using the **QB (Query Builder)** syntax.
+- [Resource lifecycle](/autocrud/concepts/resource-lifecycle) — how revisions change over time
+- [Architecture](/autocrud/concepts/architecture) — how the major components fit together
+- [Binary data](/autocrud/howto/binary-data) — how files are handled outside the main payload
 
-Example:
-
-```
-
-qb=QB["age"].gt(18) & QB["status"].eq("active")
-
-```
-
-This is the **recommended query method**.

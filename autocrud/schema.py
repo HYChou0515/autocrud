@@ -525,7 +525,10 @@ class Schema(Generic[T]):
         """
         from autocrud.types import IMigration
 
-        if not isinstance(migration, IMigration):
+        if not isinstance(migration, IMigration) and not (
+            callable(getattr(migration, "migrate", None))
+            and hasattr(migration, "schema_version")
+        ):
             raise TypeError(
                 f"Expected IMigration instance, got {type(migration).__name__}"
             )

@@ -1,93 +1,59 @@
 # AutoCRUD
 
-**AutoCRUD** is a **model-driven FastAPI automation framework** with built-in **versioning, permissions, and search**—so you can focus on business logic and ship faster.
+**AutoCRUD** is a **model-driven FastAPI framework** with built-in **versioning, permissions, search, and API generation**.
 
-Instead of writing repetitive CRUD endpoints, metadata handling, indexing, and validation logic, AutoCRUD generates and manages these automatically from your **domain model**.
-
----
-
-## Why AutoCRUD?
-
-### Focus on Business Logic
-
-Developers only need to define **domain models** and **business logic**.
-
-Common infrastructure concerns such as:
-
-- metadata
-- indexing
-- events
-- permissions
-- version management
-
-are automatically handled by the framework.
+It helps you spend less time wiring repetitive infrastructure and more time on your domain logic.
 
 ---
 
-### Automatic FastAPI APIs
+## What you get
 
-Register a model and AutoCRUD will generate:
+With a Python model as the source of truth, AutoCRUD can generate and manage:
 
-- CRUD endpoints
-- OpenAPI / Swagger documentation
-- validation and schema handling
-
-All with **zero boilerplate and zero manual wiring**.
-
----
-
-### Built-in Version Control
-
-AutoCRUD treats resources as **versioned objects**.
-
-Features include:
-
-- complete revision history
-- draft editing without creating new revisions
-- switching between revisions
-- rollback and restore
-
-This makes it suitable for:
-
-- auditing
-- change tracking
-- draft workflows
-- data recovery
+- REST APIs
+- GraphQL APIs
+- OpenAPI documentation
+- revision history and rollback workflows
+- search and query support
+- permissions and event hooks
+- admin UI generation from your API schema
 
 ---
 
-### Highly Customizable
+## Choose your path
 
-The framework is flexible and extensible.
+### I am new to AutoCRUD
 
-You can customize:
+Start here in order:
 
-- route naming conventions
-- indexed fields
-- event handlers
-- permission checks
-- storage backends
+1. [Installation](/autocrud/installation/)
+2. [Quickstart](/autocrud/quickstart/)
+3. [Core Concepts](/autocrud/concepts/core-concepts)
+4. [How-to Guides](/autocrud/howto/)
 
-AutoCRUD adapts to your architecture instead of forcing one.
+### I want to evaluate whether AutoCRUD fits my project
+
+Read these pages first:
+
+- [Why AutoCRUD](/autocrud/concepts/why-autocrud)
+- [AutoCRUD vs Hasura vs Django](/autocrud/concepts/autocrud-vs-hasura-vs-django)
+- [Architecture](/autocrud/concepts/architecture)
+- [From demo to production](/autocrud/guides/from-demo-to-production)
+
+### I already know which feature I need
+
+Go directly to:
+
+- [Routes](/autocrud/howto/routes)
+- [Relationships](/autocrud/howto/relationships)
+- [Permissions](/autocrud/howto/permissions)
+- [Query builder](/autocrud/howto/query-builder)
+- [Web UI](/autocrud/howto/web-ui)
+- [Backup and restore](/autocrud/howto/backup-restore)
 
 ---
 
-### Message Queue Integration
-
-AutoCRUD includes **built-in asynchronous job processing**.
-
-Jobs are treated as **resources**, meaning they benefit from:
-
-- versioning
-- status tracking
-- retries (per-job or queue-level)
-- audit history
-
-This enables reliable background processing without adding a separate task framework.
-
----
-
-# Quick Example
+## Quick example
 
 Define a model:
 
@@ -113,80 +79,40 @@ crud.add_model(User)
 crud.apply(app)
 ```
 
-Run the server:
-
-```bash
-uvicorn main:app --reload
-```
-
-AutoCRUD will automatically generate:
-
-```
-POST   /user
-GET    /user
-GET    /user/{resource_id}
-PUT    /user/{resource_id}
-PATCH  /user/{resource_id}
-DELETE /user/{resource_id}
-```
-
-All endpoints come with **OpenAPI documentation**, **validation**, and **version tracking**.
+AutoCRUD will generate the standard CRUD surface, OpenAPI documentation, validation handling, and revision tracking.
 
 ---
 
-# Core Concepts
+## Documentation map
 
-To understand how AutoCRUD works internally:
+### Learn the basics
 
-* [Overview](concepts/overview.md)
-* [Core Concepts](concepts/core-concepts.md)
-* [Resource Lifecycle](concepts/resource-lifecycle.md)
-* [Query System](concepts/query-system.md)
-* [Schema](concepts/schema.md)
+- [Quickstart](/autocrud/quickstart/)
+- [Examples](/autocrud/examples/)
+- [Overview](/autocrud/concepts/overview)
 
----
+### Understand the system design
 
-# Guides
+- [Core Concepts](/autocrud/concepts/core-concepts)
+- [Resource Lifecycle](/autocrud/concepts/resource-lifecycle)
+- [Schema](/autocrud/concepts/schema)
+- [Query System](/autocrud/concepts/query-system)
 
-Practical guides for using AutoCRUD in real projects:
+### Build real features
 
-* [Routes](howto/routes.md)
-* [Relationships](howto/relationships.md)
-* [Constraints](howto/constraints.md)
-* [Migrations](howto/migrations.md)
-* [Error Handling](howto/errors.md)
-
----
-
-# Advanced Topics
-
-* [Storage Backends](guides/storage.md)
-* [Performance](guides/performance.md)
-
-# Learn more
-
-* [Why AutoCRUD exists](concepts/why-autocrud.md)
-* [Architecture](concepts/architecture.md)
-* [Data model](concepts/data-model.md)
-* [Query system](concepts/query-system.md)
-
+- [How-to Guides](/autocrud/howto/)
+- [Guides](/autocrud/guides/)
+- [Reference](/autocrud/reference/)
 
 ---
 
-# Reference
+## Project links
 
-* [Python API](reference/python_api.md)
-* [Behavior Reference](reference/behavior.md)
-
----
-
-# Project
-
-* GitHub: [https://github.com/HYChou0515/autocrud](https://github.com/HYChou0515/autocrud)
-* PyPI: [https://pypi.org/project/autocrud/](https://pypi.org/project/autocrud/)
+- GitHub: [https://github.com/HYChou0515/autocrud](https://github.com/HYChou0515/autocrud)
+- PyPI: [https://pypi.org/project/autocrud/](https://pypi.org/project/autocrud/)
 
 ---
 
-If you want to quickly build **versioned APIs with FastAPI**, AutoCRUD provides the infrastructure so you can focus on what matters: **your business logic**.
+If you want to build **versioned APIs with FastAPI** and avoid repetitive boilerplate, AutoCRUD gives you a strong starting point without locking you into a full-stack monolith.
 
 

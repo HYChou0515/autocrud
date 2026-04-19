@@ -1,3 +1,4 @@
+import datetime as dt
 import functools
 import re
 from abc import ABC, abstractmethod
@@ -24,8 +25,10 @@ from autocrud.types import (
     ResourceMetaSearchQuery,
     ResourceMetaSearchSort,
     ResourceMetaSortDirection,
-    ResourceMetaSortKey,
     RevisionInfo,
+)
+from autocrud.types import (
+    ResourceMetaSortKey as ResourceMetaSortKey,
 )
 from autocrud.util.datetime_utils import ensure_aware
 
@@ -309,6 +312,28 @@ def bool_to_sign(b: bool) -> int:
     return 1 if b else -1
 
 
+def _compare_sort_values(v1: Any, v2: Any) -> int:
+    """Compare sort values with stable handling for missing and datetime values."""
+    missing1 = v1 is UNSET or v1 is None
+    missing2 = v2 is UNSET or v2 is None
+
+    if missing1 and missing2:
+        return 0
+    if missing1:
+        return -1
+    if missing2:
+        return 1
+
+    if isinstance(v1, dt.datetime) and isinstance(v2, dt.datetime):
+        v1 = ensure_aware(v1)
+        v2 = ensure_aware(v2)
+
+    if v1 == v2:
+        return 0
+
+    return bool_to_sign(v1 > v2)
+
+
 def get_sort_fn(qsorts: list[ResourceMetaSearchSort | ResourceDataSearchSort]):
     """Return a ``functools.cmp_to_key`` comparator for *qsorts*.
 
@@ -321,40 +346,25 @@ def get_sort_fn(qsorts: list[ResourceMetaSearchSort | ResourceDataSearchSort]):
     def compare(meta1: ResourceMeta, meta2: ResourceMeta) -> int:
         for sort in qsorts:
             if isinstance(sort, ResourceMetaSearchSort):
-                if sort.key == ResourceMetaSortKey.created_time:
-                    t1 = ensure_aware(meta1.created_time)
-                    t2 = ensure_aware(meta2.created_time)
-                    if t1 != t2:
-                        return bool_to_sign(t1 > t2) * (
-                            1
-                            if sort.direction == ResourceMetaSortDirection.ascending
-                            else -1
-                        )
-                elif sort.key == ResourceMetaSortKey.updated_time:
-                    t1 = ensure_aware(meta1.updated_time)
-                    t2 = ensure_aware(meta2.updated_time)
-                    if t1 != t2:
-                        return bool_to_sign(t1 > t2) * (
-                            1
-                            if sort.direction == ResourceMetaSortDirection.ascending
-                            else -1
-                        )
-                elif sort.key == ResourceMetaSortKey.resource_id:
-                    if meta1.resource_id != meta2.resource_id:
-                        return bool_to_sign(meta1.resource_id > meta2.resource_id) * (
-                            1
-                            if sort.direction == ResourceMetaSortDirection.ascending
-                            else -1
-                        )
+                v1 = getattr(meta1, sort.key.value)
+                v2 = getattr(meta2, sort.key.value)
             else:
-                v1 = meta1.indexed_data.get(sort.field_path)
-                v2 = meta2.indexed_data.get(sort.field_path)
-                if v1 != v2:
-                    return bool_to_sign(v1 > v2) * (
-                        1
-                        if sort.direction == ResourceMetaSortDirection.ascending
-                        else -1
-                    )
+                v1 = (
+                    meta1.indexed_data.get(sort.field_path)
+                    if meta1.indexed_data is not UNSET
+                    else UNSET
+                )
+                v2 = (
+                    meta2.indexed_data.get(sort.field_path)
+                    if meta2.indexed_data is not UNSET
+                    else UNSET
+                )
+
+            cmp = _compare_sort_values(v1, v2)
+            if cmp != 0:
+                return cmp * (
+                    1 if sort.direction == ResourceMetaSortDirection.ascending else -1
+                )
         return 0
 
     return functools.cmp_to_key(compare)

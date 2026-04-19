@@ -1,7 +1,7 @@
 # Routes generation (FastAPI)
 
 AutoCRUD generates API endpoints by applying **route templates** to each registered resource
-when you call `apply(router)`.
+when you call `apply()`.
 
 > Important: the final set of endpoints depends on:
 > - `model_naming` / `add_model(name=...)`
@@ -17,8 +17,25 @@ from autocrud import crud
 app = FastAPI()
 
 crud.add_model(User)
-crud.apply(app)
+crud.apply(app)  # routes + OpenAPI schema generated automatically
 ```
+
+## Using a sub-router
+
+```python
+from fastapi import APIRouter, FastAPI
+from autocrud import crud
+
+app = FastAPI()
+router = APIRouter(prefix="/api/v1")
+
+crud.add_model(User)
+crud.apply(app, router=router)  # auto include_router + auto openapi
+```
+
+When `app` is a `FastAPI` instance, `apply()` automatically calls `openapi(app)` to
+generate the OpenAPI schema. When `router` is provided, `app.include_router(router)`
+is called before OpenAPI generation (controlled by `auto_include`, default `True`).
 
 ## Resource name → base path
 
@@ -181,4 +198,16 @@ Key points:
 ## Relationships (refs)
 
 If you use `Ref(...)` fields, AutoCRUD may install relationship-related routes and behaviors.
-See: `docs/howto/relationships.md` and `docs/concepts/refs.md`.
+
+See also:
+
+- [Relationships](/autocrud/howto/relationships)
+- [Behavior Reference](/autocrud/concepts/refs)
+
+## Common follow-ups
+
+After your routes are generated, the next questions are usually:
+
+- how to validate writes reliably → [Validation](/autocrud/concepts/validation)
+- how to filter and search results → [Query Builder](/autocrud/howto/query-builder)
+- what to check when something behaves unexpectedly → [Troubleshooting](/autocrud/howto/troubleshooting)
