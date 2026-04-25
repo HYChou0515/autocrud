@@ -22,6 +22,7 @@ import { RefSelect, RefMultiSelect, RefRevisionSelect, RefRevisionMultiSelect } 
 import { JsonEditor } from './JsonEditor';
 import { MarkdownEditor } from './MarkdownEditor';
 import { BinaryFieldEditor } from './BinaryFieldEditor';
+import { BinaryArrayFieldRenderer } from './BinaryArrayFieldRenderer';
 import { UnionFieldRenderer } from './UnionFieldRenderer';
 import { ArrayFieldRenderer } from './ArrayFieldRenderer';
 import { resolveFieldKind, type FieldKind } from '../resolveFieldKind';
@@ -73,6 +74,8 @@ const FIELD_RENDERERS: Record<FieldKind, (ctx: FieldRenderContext) => React.Reac
       />
     );
   },
+
+  binaryArray: ({ field, form }) => <BinaryArrayFieldRenderer field={field} form={form} />,
 
   file: ({ field, form }) => {
     const fileVariant = field.variant as Extract<FieldVariant, { type: 'file' }> | undefined;

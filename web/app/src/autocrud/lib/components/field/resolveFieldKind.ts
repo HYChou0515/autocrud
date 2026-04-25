@@ -17,6 +17,7 @@ export type FieldKind =
   | 'itemFields'
   | 'union'
   | 'binary'
+  | 'binaryArray'
   | 'file'
   | 'json'
   | 'markdown'
@@ -60,6 +61,9 @@ export function resolveFieldKind(field: ResourceField): FieldKind {
   }
 
   // 3. Binary
+  if (field.type === 'binary' && field.isArray) {
+    return 'binaryArray';
+  }
   if (field.type === 'binary') {
     return 'binary';
   }

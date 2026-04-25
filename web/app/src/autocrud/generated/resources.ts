@@ -53,6 +53,7 @@ export type CharacterFieldName =
   | 'special_ability'
   | 'skill_ids'
   | 'equipments'
+  | 'screenshots'
   | 'created_at';
 export type GuildFieldName =
   | 'name'
@@ -537,6 +538,14 @@ Object.assign(registry, {
         },
       },
       {
+        name: 'screenshots',
+        label: 'Screenshots',
+        type: 'binary',
+        isArray: true,
+        isRequired: false,
+        isNullable: false,
+      },
+      {
         name: 'created_at',
         label: 'Created At',
         type: 'date',
@@ -585,6 +594,7 @@ Object.assign(registry, {
           ]),
         )
         .optional(),
+      screenshots: z.array(z.any()).optional(),
       created_at: z.union([z.string(), z.date()]).optional(),
     }),
     apiClient: characterApi,

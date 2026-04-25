@@ -34,6 +34,7 @@ const ALL_FIELD_KINDS: FieldKind[] = [
   'itemFields',
   'union',
   'binary',
+  'binaryArray',
   'file',
   'json',
   'markdown',
@@ -67,7 +68,7 @@ describe('CELL_RENDERERS registry completeness', () => {
   });
 
   it('ALL_FIELD_KINDS contains every FieldKind value', () => {
-    expect(ALL_FIELD_KINDS.length).toBe(21);
+    expect(ALL_FIELD_KINDS.length).toBe(22);
   });
 });
 

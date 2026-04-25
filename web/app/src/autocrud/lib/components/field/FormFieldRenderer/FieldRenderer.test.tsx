@@ -93,6 +93,12 @@ vi.mock('./ArrayFieldRenderer', () => ({
   ArrayFieldRenderer: (props: any) => <div data-testid="array-renderer">{props.field.label}</div>,
 }));
 
+vi.mock('./BinaryArrayFieldRenderer', () => ({
+  BinaryArrayFieldRenderer: (props: any) => (
+    <div data-testid="binary-array-renderer">{props.field.label}</div>
+  ),
+}));
+
 beforeEach(() => {
   cleanup();
 });
@@ -370,6 +376,21 @@ describe('FieldRenderer', () => {
       />,
     );
     expect(screen.getByTestId('array-renderer')).toBeDefined();
+  });
+
+  it('renders BinaryArrayFieldRenderer for isArray binary field', () => {
+    render(
+      <TestFieldRenderer
+        field={makeField({
+          name: 'screenshots',
+          label: 'Screenshots',
+          type: 'binary',
+          isArray: true,
+        })}
+        initialValues={{ screenshots: [] }}
+      />,
+    );
+    expect(screen.getByTestId('binary-array-renderer')).toBeDefined();
   });
 
   it('renders NumberInput with slider variant', () => {

@@ -69,8 +69,9 @@ import * as zod from 'zod';
 - Example: `[{"type": "meta", "key": "created_time", "direction": "+"}, {"type": "data", "field_path": "name", "direction": "-"}]`
 
 **Pagination:**
-- `limit`: Maximum number of results to return (default: 10)
+- `limit`: Maximum number of results to return (default comes from `AUTOCRUD_DEFAULT_QUERY_LIMIT` at startup)
 - `offset`: Number of results to skip for pagination (default: 0)
+- If you need an exact full total, use the `/count` endpoint or pass an explicit `limit`.
 
 **Partial Response:**
 - `partial`: List of fields to retrieve (e.g. '/field1', '/nested/field2')
@@ -83,7 +84,7 @@ import * as zod from 'zod';
 - Direct access to resource content only
 
 **Examples:**
-- `GET /character/data` - Get first 10 resources (data only)
+- `GET /character/data` - Get the default first page of resources (data only)
 - `GET /character/data?limit=20&offset=40` - Get resources 41-60 (data only)
 - `GET /character/data?is_deleted=false&limit=5` - Get 5 non-deleted resources (data only)
 - `GET /character/data?partial=/name&partial=/email` - Get specific fields for all resources
@@ -94,7 +95,7 @@ import * as zod from 'zod';
  * @summary List character Data Only
  */
 export const listResourcesDataV1AutocrudCharacterDataGetQueryIsDeletedDefault = false;
-export const listResourcesDataV1AutocrudCharacterDataGetQueryLimitDefault = 10;
+export const listResourcesDataV1AutocrudCharacterDataGetQueryLimitDefault = 4294967295;
 export const listResourcesDataV1AutocrudCharacterDataGetQueryOffsetDefault = 0;
 
 export const ListResourcesDataV1AutocrudCharacterDataGetQueryParams = zod.object({
@@ -102,7 +103,7 @@ export const ListResourcesDataV1AutocrudCharacterDataGetQueryParams = zod.object
     .union([zod.string(), zod.null()])
     .optional()
     .describe(
-      "Query Builder expression. Example: \"QB['foo'] == 123\" or \"QB['age'].gt(18) & QB['status'].eq('active')\"",
+      "Query Builder expression. Example: \"QB['foo'] == 123\" or \"QB['age'].gt(18) & QB['status'].eq('active')\". When qb is used, do not combine it with data_conditions, conditions, or sorts; only limit, offset, and is_deleted may be used alongside qb.",
     ),
   is_deleted: zod
     .union([zod.boolean(), zod.null()])
@@ -153,7 +154,9 @@ export const ListResourcesDataV1AutocrudCharacterDataGetQueryParams = zod.object
   limit: zod
     .number()
     .default(listResourcesDataV1AutocrudCharacterDataGetQueryLimitDefault)
-    .describe('Maximum number of results'),
+    .describe(
+      'Maximum number of results. Default comes from the AUTOCRUD_DEFAULT_QUERY_LIMIT environment variable at startup; set limit explicitly or use the \/count endpoint if you need the full total.',
+    ),
   offset: zod
     .number()
     .default(listResourcesDataV1AutocrudCharacterDataGetQueryOffsetDefault)
@@ -190,7 +193,8 @@ export const listResourcesDataV1AutocrudCharacterDataGetResponseEquipmentsItemTw
 export const listResourcesDataV1AutocrudCharacterDataGetResponseEquipmentsItemTwoPriceDefault = 100;
 export const listResourcesDataV1AutocrudCharacterDataGetResponseEquipmentsItemTwoIconDefault = null;
 export const listResourcesDataV1AutocrudCharacterDataGetResponseEquipmentsDefault = [];
-export const listResourcesDataV1AutocrudCharacterDataGetResponseCreatedAtDefault = `2026-04-03T14:48:54.131332`;
+export const listResourcesDataV1AutocrudCharacterDataGetResponseScreenshotsDefault = [];
+export const listResourcesDataV1AutocrudCharacterDataGetResponseCreatedAtDefault = `2026-04-25T19:35:28.991480`;
 
 export const ListResourcesDataV1AutocrudCharacterDataGetResponseItem = zod
   .object({
@@ -324,6 +328,20 @@ export const ListResourcesDataV1AutocrudCharacterDataGetResponseItem = zod
         ]),
       )
       .default(listResourcesDataV1AutocrudCharacterDataGetResponseEquipmentsDefault),
+    screenshots: zod
+      .array(
+        zod
+          .object({
+            file_id: zod.string().optional(),
+            size: zod.number().optional(),
+            content_type: zod.string().optional(),
+            data: zod.string().optional(),
+          })
+          .describe(
+            'A wrapper for binary data that handles storage optimization.\n\nWhen creating a resource, you can populate the `data` field with bytes.\nThe system will automatically extract it, store it in the blob store,\nand populate `file_id` (which is the hash of the content) and `size`.\nThe `data` field will be cleared in the stored resource.',
+          ),
+      )
+      .default(listResourcesDataV1AutocrudCharacterDataGetResponseScreenshotsDefault),
     created_at: zod
       .string()
       .default(listResourcesDataV1AutocrudCharacterDataGetResponseCreatedAtDefault),
@@ -383,8 +401,9 @@ export const ListResourcesDataV1AutocrudCharacterDataGetResponse = zod.array(
 - Example: `[{"type": "meta", "key": "updated_time", "direction": "-"}, {"type": "data", "field_path": "department", "direction": "+"}]`
 
 **Pagination:**
-- `limit`: Maximum number of results to return (default: 10)
+- `limit`: Maximum number of results to return (default comes from `AUTOCRUD_DEFAULT_QUERY_LIMIT` at startup)
 - `offset`: Number of results to skip for pagination (default: 0)
+- If you need an exact full total, use the `/count` endpoint or pass an explicit `limit`.
 
 **Use Cases:**
 - Resource management and administration
@@ -393,7 +412,7 @@ export const ListResourcesDataV1AutocrudCharacterDataGetResponse = zod.array(
 - System monitoring and statistics
 
 **Examples:**
-- `GET /character/meta` - Get metadata for first 10 resources
+- `GET /character/meta` - Get metadata for the default first page of resources
 - `GET /character/meta?is_deleted=true` - Get metadata for deleted resources
 - `GET /character/meta?created_bys=admin&limit=50` - Get metadata for admin-created resources
 
@@ -403,7 +422,7 @@ export const ListResourcesDataV1AutocrudCharacterDataGetResponse = zod.array(
  * @summary List character Metadata Only
  */
 export const listResourcesMetaV1AutocrudCharacterMetaGetQueryIsDeletedDefault = false;
-export const listResourcesMetaV1AutocrudCharacterMetaGetQueryLimitDefault = 10;
+export const listResourcesMetaV1AutocrudCharacterMetaGetQueryLimitDefault = 4294967295;
 export const listResourcesMetaV1AutocrudCharacterMetaGetQueryOffsetDefault = 0;
 
 export const ListResourcesMetaV1AutocrudCharacterMetaGetQueryParams = zod.object({
@@ -411,7 +430,7 @@ export const ListResourcesMetaV1AutocrudCharacterMetaGetQueryParams = zod.object
     .union([zod.string(), zod.null()])
     .optional()
     .describe(
-      "Query Builder expression. Example: \"QB['foo'] == 123\" or \"QB['age'].gt(18) & QB['status'].eq('active')\"",
+      "Query Builder expression. Example: \"QB['foo'] == 123\" or \"QB['age'].gt(18) & QB['status'].eq('active')\". When qb is used, do not combine it with data_conditions, conditions, or sorts; only limit, offset, and is_deleted may be used alongside qb.",
     ),
   is_deleted: zod
     .union([zod.boolean(), zod.null()])
@@ -462,7 +481,9 @@ export const ListResourcesMetaV1AutocrudCharacterMetaGetQueryParams = zod.object
   limit: zod
     .number()
     .default(listResourcesMetaV1AutocrudCharacterMetaGetQueryLimitDefault)
-    .describe('Maximum number of results'),
+    .describe(
+      'Maximum number of results. Default comes from the AUTOCRUD_DEFAULT_QUERY_LIMIT environment variable at startup; set limit explicitly or use the \/count endpoint if you need the full total.',
+    ),
   offset: zod
     .number()
     .default(listResourcesMetaV1AutocrudCharacterMetaGetQueryOffsetDefault)
@@ -541,8 +562,9 @@ export const ListResourcesMetaV1AutocrudCharacterMetaGetResponse = zod.array(
 - Example: `[{"field_path": "status", "operator": "eq", "value": "active"}]`
 
 **Pagination:**
-- `limit`: Maximum number of results to return (default: 10)
+- `limit`: Maximum number of results to return (default comes from `AUTOCRUD_DEFAULT_QUERY_LIMIT` at startup)
 - `offset`: Number of results to skip for pagination (default: 0)
+- If you need an exact full total, use the `/count` endpoint or pass an explicit `limit`.
 
 **Use Cases:**
 - Version control system integration
@@ -551,8 +573,8 @@ export const ListResourcesMetaV1AutocrudCharacterMetaGetResponse = zod.array(
 - Change tracking and audit trails
 
 **Examples:**
-- `GET /character/revision-info` - Get current revision info for first 10 resources
-- `GET /character/revision-info?limit=100` - Get revision info for first 100 resources
+- `GET /character/revision-info` - Get current revision info for the default first page of resources
+- `GET /character/revision-info?limit=100` - Get revision info for the first 100 resources
 - `GET /character/revision-info?updated_bys=editor` - Get revision info for editor-modified resources
 
 **Error Responses:**
@@ -561,7 +583,7 @@ export const ListResourcesMetaV1AutocrudCharacterMetaGetResponse = zod.array(
  * @summary List character Current Revision Info
  */
 export const listResourcesRevisionInfoV1AutocrudCharacterRevisionInfoGetQueryIsDeletedDefault = false;
-export const listResourcesRevisionInfoV1AutocrudCharacterRevisionInfoGetQueryLimitDefault = 10;
+export const listResourcesRevisionInfoV1AutocrudCharacterRevisionInfoGetQueryLimitDefault = 4294967295;
 export const listResourcesRevisionInfoV1AutocrudCharacterRevisionInfoGetQueryOffsetDefault = 0;
 
 export const ListResourcesRevisionInfoV1AutocrudCharacterRevisionInfoGetQueryParams = zod.object({
@@ -569,7 +591,7 @@ export const ListResourcesRevisionInfoV1AutocrudCharacterRevisionInfoGetQueryPar
     .union([zod.string(), zod.null()])
     .optional()
     .describe(
-      "Query Builder expression. Example: \"QB['foo'] == 123\" or \"QB['age'].gt(18) & QB['status'].eq('active')\"",
+      "Query Builder expression. Example: \"QB['foo'] == 123\" or \"QB['age'].gt(18) & QB['status'].eq('active')\". When qb is used, do not combine it with data_conditions, conditions, or sorts; only limit, offset, and is_deleted may be used alongside qb.",
     ),
   is_deleted: zod
     .union([zod.boolean(), zod.null()])
@@ -620,7 +642,9 @@ export const ListResourcesRevisionInfoV1AutocrudCharacterRevisionInfoGetQueryPar
   limit: zod
     .number()
     .default(listResourcesRevisionInfoV1AutocrudCharacterRevisionInfoGetQueryLimitDefault)
-    .describe('Maximum number of results'),
+    .describe(
+      'Maximum number of results. Default comes from the AUTOCRUD_DEFAULT_QUERY_LIMIT environment variable at startup; set limit explicitly or use the \/count endpoint if you need the full total.',
+    ),
   offset: zod
     .number()
     .default(listResourcesRevisionInfoV1AutocrudCharacterRevisionInfoGetQueryOffsetDefault)
@@ -672,7 +696,7 @@ export const ListResourcesRevisionInfoV1AutocrudCharacterRevisionInfoGetResponse
  * @summary List character Complete Information
  */
 export const listResourcesFullV1AutocrudCharacterFullGetQueryIsDeletedDefault = false;
-export const listResourcesFullV1AutocrudCharacterFullGetQueryLimitDefault = 10;
+export const listResourcesFullV1AutocrudCharacterFullGetQueryLimitDefault = 4294967295;
 export const listResourcesFullV1AutocrudCharacterFullGetQueryOffsetDefault = 0;
 export const listResourcesFullV1AutocrudCharacterFullGetQueryReturnsDefault = `data,revision_info,meta`;
 
@@ -681,7 +705,7 @@ export const ListResourcesFullV1AutocrudCharacterFullGetQueryParams = zod.object
     .union([zod.string(), zod.null()])
     .optional()
     .describe(
-      "Query Builder expression. Example: \"QB['foo'] == 123\" or \"QB['age'].gt(18) & QB['status'].eq('active')\"",
+      "Query Builder expression. Example: \"QB['foo'] == 123\" or \"QB['age'].gt(18) & QB['status'].eq('active')\". When qb is used, do not combine it with data_conditions, conditions, or sorts; only limit, offset, and is_deleted may be used alongside qb.",
     ),
   is_deleted: zod
     .union([zod.boolean(), zod.null()])
@@ -732,7 +756,9 @@ export const ListResourcesFullV1AutocrudCharacterFullGetQueryParams = zod.object
   limit: zod
     .number()
     .default(listResourcesFullV1AutocrudCharacterFullGetQueryLimitDefault)
-    .describe('Maximum number of results'),
+    .describe(
+      'Maximum number of results. Default comes from the AUTOCRUD_DEFAULT_QUERY_LIMIT environment variable at startup; set limit explicitly or use the \/count endpoint if you need the full total.',
+    ),
   offset: zod
     .number()
     .default(listResourcesFullV1AutocrudCharacterFullGetQueryOffsetDefault)
@@ -775,7 +801,8 @@ export const listResourcesFullV1AutocrudCharacterFullGetResponseDataEquipmentsIt
 export const listResourcesFullV1AutocrudCharacterFullGetResponseDataEquipmentsItemTwoIconDefault =
   null;
 export const listResourcesFullV1AutocrudCharacterFullGetResponseDataEquipmentsDefault = [];
-export const listResourcesFullV1AutocrudCharacterFullGetResponseDataCreatedAtDefault = `2026-04-03T14:48:54.131332`;
+export const listResourcesFullV1AutocrudCharacterFullGetResponseDataScreenshotsDefault = [];
+export const listResourcesFullV1AutocrudCharacterFullGetResponseDataCreatedAtDefault = `2026-04-25T19:35:28.991480`;
 export const listResourcesFullV1AutocrudCharacterFullGetResponseRevisionInfoParentRevisionIdDefault =
   null;
 export const listResourcesFullV1AutocrudCharacterFullGetResponseRevisionInfoSchemaVersionDefault =
@@ -922,6 +949,20 @@ export const ListResourcesFullV1AutocrudCharacterFullGetResponseItem = zod.objec
           ]),
         )
         .default(listResourcesFullV1AutocrudCharacterFullGetResponseDataEquipmentsDefault),
+      screenshots: zod
+        .array(
+          zod
+            .object({
+              file_id: zod.string().optional(),
+              size: zod.number().optional(),
+              content_type: zod.string().optional(),
+              data: zod.string().optional(),
+            })
+            .describe(
+              'A wrapper for binary data that handles storage optimization.\n\nWhen creating a resource, you can populate the `data` field with bytes.\nThe system will automatically extract it, store it in the blob store,\nand populate `file_id` (which is the hash of the content) and `size`.\nThe `data` field will be cleared in the stored resource.',
+            ),
+        )
+        .default(listResourcesFullV1AutocrudCharacterFullGetResponseDataScreenshotsDefault),
       created_at: zod
         .string()
         .default(listResourcesFullV1AutocrudCharacterFullGetResponseDataCreatedAtDefault),
@@ -1024,7 +1065,7 @@ export const ListResourcesFullV1AutocrudCharacterFullGetResponse = zod.array(
  * @summary Count character Resources
  */
 export const getResourcesCountV1AutocrudCharacterCountGetQueryIsDeletedDefault = false;
-export const getResourcesCountV1AutocrudCharacterCountGetQueryLimitDefault = 10;
+export const getResourcesCountV1AutocrudCharacterCountGetQueryLimitDefault = 4294967295;
 export const getResourcesCountV1AutocrudCharacterCountGetQueryOffsetDefault = 0;
 
 export const GetResourcesCountV1AutocrudCharacterCountGetQueryParams = zod.object({
@@ -1032,7 +1073,7 @@ export const GetResourcesCountV1AutocrudCharacterCountGetQueryParams = zod.objec
     .union([zod.string(), zod.null()])
     .optional()
     .describe(
-      "Query Builder expression. Example: \"QB['foo'] == 123\" or \"QB['age'].gt(18) & QB['status'].eq('active')\"",
+      "Query Builder expression. Example: \"QB['foo'] == 123\" or \"QB['age'].gt(18) & QB['status'].eq('active')\". When qb is used, do not combine it with data_conditions, conditions, or sorts; only limit, offset, and is_deleted may be used alongside qb.",
     ),
   is_deleted: zod
     .union([zod.boolean(), zod.null()])
@@ -1083,7 +1124,9 @@ export const GetResourcesCountV1AutocrudCharacterCountGetQueryParams = zod.objec
   limit: zod
     .number()
     .default(getResourcesCountV1AutocrudCharacterCountGetQueryLimitDefault)
-    .describe('Maximum number of results'),
+    .describe(
+      'Maximum number of results. Default comes from the AUTOCRUD_DEFAULT_QUERY_LIMIT environment variable at startup; set limit explicitly or use the \/count endpoint if you need the full total.',
+    ),
   offset: zod
     .number()
     .default(getResourcesCountV1AutocrudCharacterCountGetQueryOffsetDefault)
@@ -1120,7 +1163,7 @@ By default all sections are returned: `data`, `revision_info`, `meta`.
  * @summary List character resources
  */
 export const listResourcesV1AutocrudCharacterGetQueryIsDeletedDefault = false;
-export const listResourcesV1AutocrudCharacterGetQueryLimitDefault = 10;
+export const listResourcesV1AutocrudCharacterGetQueryLimitDefault = 4294967295;
 export const listResourcesV1AutocrudCharacterGetQueryOffsetDefault = 0;
 export const listResourcesV1AutocrudCharacterGetQueryReturnsDefault = `data,revision_info,meta`;
 
@@ -1129,7 +1172,7 @@ export const ListResourcesV1AutocrudCharacterGetQueryParams = zod.object({
     .union([zod.string(), zod.null()])
     .optional()
     .describe(
-      "Query Builder expression. Example: \"QB['foo'] == 123\" or \"QB['age'].gt(18) & QB['status'].eq('active')\"",
+      "Query Builder expression. Example: \"QB['foo'] == 123\" or \"QB['age'].gt(18) & QB['status'].eq('active')\". When qb is used, do not combine it with data_conditions, conditions, or sorts; only limit, offset, and is_deleted may be used alongside qb.",
     ),
   is_deleted: zod
     .union([zod.boolean(), zod.null()])
@@ -1180,7 +1223,9 @@ export const ListResourcesV1AutocrudCharacterGetQueryParams = zod.object({
   limit: zod
     .number()
     .default(listResourcesV1AutocrudCharacterGetQueryLimitDefault)
-    .describe('Maximum number of results'),
+    .describe(
+      'Maximum number of results. Default comes from the AUTOCRUD_DEFAULT_QUERY_LIMIT environment variable at startup; set limit explicitly or use the \/count endpoint if you need the full total.',
+    ),
   offset: zod
     .number()
     .default(listResourcesV1AutocrudCharacterGetQueryOffsetDefault)
@@ -1220,7 +1265,8 @@ export const listResourcesV1AutocrudCharacterGetResponseDataEquipmentsItemTwoDes
 export const listResourcesV1AutocrudCharacterGetResponseDataEquipmentsItemTwoPriceDefault = 100;
 export const listResourcesV1AutocrudCharacterGetResponseDataEquipmentsItemTwoIconDefault = null;
 export const listResourcesV1AutocrudCharacterGetResponseDataEquipmentsDefault = [];
-export const listResourcesV1AutocrudCharacterGetResponseDataCreatedAtDefault = `2026-04-03T14:48:54.131332`;
+export const listResourcesV1AutocrudCharacterGetResponseDataScreenshotsDefault = [];
+export const listResourcesV1AutocrudCharacterGetResponseDataCreatedAtDefault = `2026-04-25T19:35:28.991480`;
 export const listResourcesV1AutocrudCharacterGetResponseRevisionInfoParentRevisionIdDefault = null;
 export const listResourcesV1AutocrudCharacterGetResponseRevisionInfoSchemaVersionDefault = null;
 export const listResourcesV1AutocrudCharacterGetResponseMetaSchemaVersionDefault = null;
@@ -1357,6 +1403,20 @@ export const ListResourcesV1AutocrudCharacterGetResponseItem = zod.object({
           ]),
         )
         .default(listResourcesV1AutocrudCharacterGetResponseDataEquipmentsDefault),
+      screenshots: zod
+        .array(
+          zod
+            .object({
+              file_id: zod.string().optional(),
+              size: zod.number().optional(),
+              content_type: zod.string().optional(),
+              data: zod.string().optional(),
+            })
+            .describe(
+              'A wrapper for binary data that handles storage optimization.\n\nWhen creating a resource, you can populate the `data` field with bytes.\nThe system will automatically extract it, store it in the blob store,\nand populate `file_id` (which is the hash of the content) and `size`.\nThe `data` field will be cleared in the stored resource.',
+            ),
+        )
+        .default(listResourcesV1AutocrudCharacterGetResponseDataScreenshotsDefault),
       created_at: zod
         .string()
         .default(listResourcesV1AutocrudCharacterGetResponseDataCreatedAtDefault),
@@ -1457,7 +1517,8 @@ export const createResourceV1AutocrudCharacterPostBodyEquipmentsItemTwoDescripti
 export const createResourceV1AutocrudCharacterPostBodyEquipmentsItemTwoPriceDefault = 100;
 export const createResourceV1AutocrudCharacterPostBodyEquipmentsItemTwoIconDefault = null;
 export const createResourceV1AutocrudCharacterPostBodyEquipmentsDefault = [];
-export const createResourceV1AutocrudCharacterPostBodyCreatedAtDefault = `2026-04-03T14:48:54.131332`;
+export const createResourceV1AutocrudCharacterPostBodyScreenshotsDefault = [];
+export const createResourceV1AutocrudCharacterPostBodyCreatedAtDefault = `2026-04-25T19:35:28.991480`;
 
 export const CreateResourceV1AutocrudCharacterPostBody = zod
   .object({
@@ -1577,6 +1638,20 @@ export const CreateResourceV1AutocrudCharacterPostBody = zod
         ]),
       )
       .default(createResourceV1AutocrudCharacterPostBodyEquipmentsDefault),
+    screenshots: zod
+      .array(
+        zod
+          .object({
+            file_id: zod.string().optional(),
+            size: zod.number().optional(),
+            content_type: zod.string().optional(),
+            data: zod.string().optional(),
+          })
+          .describe(
+            'A wrapper for binary data that handles storage optimization.\n\nWhen creating a resource, you can populate the `data` field with bytes.\nThe system will automatically extract it, store it in the blob store,\nand populate `file_id` (which is the hash of the content) and `size`.\nThe `data` field will be cleared in the stored resource.',
+          ),
+      )
+      .default(createResourceV1AutocrudCharacterPostBodyScreenshotsDefault),
     created_at: zod.string().default(createResourceV1AutocrudCharacterPostBodyCreatedAtDefault),
   })
   .describe('遊戲角色');
@@ -1634,7 +1709,7 @@ export const CreateResourceV1AutocrudCharacterPostResponse = zod
  * @summary Batch delete character
  */
 export const batchDeleteV1AutocrudCharacterDeleteQueryIsDeletedDefault = false;
-export const batchDeleteV1AutocrudCharacterDeleteQueryLimitDefault = 10;
+export const batchDeleteV1AutocrudCharacterDeleteQueryLimitDefault = 4294967295;
 export const batchDeleteV1AutocrudCharacterDeleteQueryOffsetDefault = 0;
 
 export const BatchDeleteV1AutocrudCharacterDeleteQueryParams = zod.object({
@@ -1642,7 +1717,7 @@ export const BatchDeleteV1AutocrudCharacterDeleteQueryParams = zod.object({
     .union([zod.string(), zod.null()])
     .optional()
     .describe(
-      "Query Builder expression. Example: \"QB['foo'] == 123\" or \"QB['age'].gt(18) & QB['status'].eq('active')\"",
+      "Query Builder expression. Example: \"QB['foo'] == 123\" or \"QB['age'].gt(18) & QB['status'].eq('active')\". When qb is used, do not combine it with data_conditions, conditions, or sorts; only limit, offset, and is_deleted may be used alongside qb.",
     ),
   is_deleted: zod
     .union([zod.boolean(), zod.null()])
@@ -1693,7 +1768,9 @@ export const BatchDeleteV1AutocrudCharacterDeleteQueryParams = zod.object({
   limit: zod
     .number()
     .default(batchDeleteV1AutocrudCharacterDeleteQueryLimitDefault)
-    .describe('Maximum number of results'),
+    .describe(
+      'Maximum number of results. Default comes from the AUTOCRUD_DEFAULT_QUERY_LIMIT environment variable at startup; set limit explicitly or use the \/count endpoint if you need the full total.',
+    ),
   offset: zod
     .number()
     .default(batchDeleteV1AutocrudCharacterDeleteQueryOffsetDefault)
@@ -1739,7 +1816,7 @@ which resources are included.
  * @summary Export character data
  */
 export const exportModelV1AutocrudCharacterExportGetQueryIsDeletedDefault = false;
-export const exportModelV1AutocrudCharacterExportGetQueryLimitDefault = 10;
+export const exportModelV1AutocrudCharacterExportGetQueryLimitDefault = 4294967295;
 export const exportModelV1AutocrudCharacterExportGetQueryOffsetDefault = 0;
 
 export const ExportModelV1AutocrudCharacterExportGetQueryParams = zod.object({
@@ -1747,7 +1824,7 @@ export const ExportModelV1AutocrudCharacterExportGetQueryParams = zod.object({
     .union([zod.string(), zod.null()])
     .optional()
     .describe(
-      "Query Builder expression. Example: \"QB['foo'] == 123\" or \"QB['age'].gt(18) & QB['status'].eq('active')\"",
+      "Query Builder expression. Example: \"QB['foo'] == 123\" or \"QB['age'].gt(18) & QB['status'].eq('active')\". When qb is used, do not combine it with data_conditions, conditions, or sorts; only limit, offset, and is_deleted may be used alongside qb.",
     ),
   is_deleted: zod
     .union([zod.boolean(), zod.null()])
@@ -1798,7 +1875,9 @@ export const ExportModelV1AutocrudCharacterExportGetQueryParams = zod.object({
   limit: zod
     .number()
     .default(exportModelV1AutocrudCharacterExportGetQueryLimitDefault)
-    .describe('Maximum number of results'),
+    .describe(
+      'Maximum number of results. Default comes from the AUTOCRUD_DEFAULT_QUERY_LIMIT environment variable at startup; set limit explicitly or use the \/count endpoint if you need the full total.',
+    ),
   offset: zod
     .number()
     .default(exportModelV1AutocrudCharacterExportGetQueryOffsetDefault)
@@ -2036,7 +2115,8 @@ export const getResourceFullV1AutocrudCharacterResourceIdFullGetResponseDataEqui
 export const getResourceFullV1AutocrudCharacterResourceIdFullGetResponseDataEquipmentsItemTwoIconDefault =
   null;
 export const getResourceFullV1AutocrudCharacterResourceIdFullGetResponseDataEquipmentsDefault = [];
-export const getResourceFullV1AutocrudCharacterResourceIdFullGetResponseDataCreatedAtDefault = `2026-04-03T14:48:54.131332`;
+export const getResourceFullV1AutocrudCharacterResourceIdFullGetResponseDataScreenshotsDefault = [];
+export const getResourceFullV1AutocrudCharacterResourceIdFullGetResponseDataCreatedAtDefault = `2026-04-25T19:35:28.991480`;
 export const getResourceFullV1AutocrudCharacterResourceIdFullGetResponseRevisionInfoParentRevisionIdDefault =
   null;
 export const getResourceFullV1AutocrudCharacterResourceIdFullGetResponseRevisionInfoSchemaVersionDefault =
@@ -2190,6 +2270,20 @@ export const GetResourceFullV1AutocrudCharacterResourceIdFullGetResponse = zod.o
           ]),
         )
         .default(getResourceFullV1AutocrudCharacterResourceIdFullGetResponseDataEquipmentsDefault),
+      screenshots: zod
+        .array(
+          zod
+            .object({
+              file_id: zod.string().optional(),
+              size: zod.number().optional(),
+              content_type: zod.string().optional(),
+              data: zod.string().optional(),
+            })
+            .describe(
+              'A wrapper for binary data that handles storage optimization.\n\nWhen creating a resource, you can populate the `data` field with bytes.\nThe system will automatically extract it, store it in the blob store,\nand populate `file_id` (which is the hash of the content) and `size`.\nThe `data` field will be cleared in the stored resource.',
+            ),
+        )
+        .default(getResourceFullV1AutocrudCharacterResourceIdFullGetResponseDataScreenshotsDefault),
       created_at: zod
         .string()
         .default(getResourceFullV1AutocrudCharacterResourceIdFullGetResponseDataCreatedAtDefault),
@@ -2508,7 +2602,8 @@ export const getResourceDataV1AutocrudCharacterResourceIdDataGetResponseEquipmen
 export const getResourceDataV1AutocrudCharacterResourceIdDataGetResponseEquipmentsItemTwoIconDefault =
   null;
 export const getResourceDataV1AutocrudCharacterResourceIdDataGetResponseEquipmentsDefault = [];
-export const getResourceDataV1AutocrudCharacterResourceIdDataGetResponseCreatedAtDefault = `2026-04-03T14:48:54.131332`;
+export const getResourceDataV1AutocrudCharacterResourceIdDataGetResponseScreenshotsDefault = [];
+export const getResourceDataV1AutocrudCharacterResourceIdDataGetResponseCreatedAtDefault = `2026-04-25T19:35:28.991480`;
 
 export const GetResourceDataV1AutocrudCharacterResourceIdDataGetResponse = zod
   .object({
@@ -2648,6 +2743,20 @@ export const GetResourceDataV1AutocrudCharacterResourceIdDataGetResponse = zod
         ]),
       )
       .default(getResourceDataV1AutocrudCharacterResourceIdDataGetResponseEquipmentsDefault),
+    screenshots: zod
+      .array(
+        zod
+          .object({
+            file_id: zod.string().optional(),
+            size: zod.number().optional(),
+            content_type: zod.string().optional(),
+            data: zod.string().optional(),
+          })
+          .describe(
+            'A wrapper for binary data that handles storage optimization.\n\nWhen creating a resource, you can populate the `data` field with bytes.\nThe system will automatically extract it, store it in the blob store,\nand populate `file_id` (which is the hash of the content) and `size`.\nThe `data` field will be cleared in the stored resource.',
+          ),
+      )
+      .default(getResourceDataV1AutocrudCharacterResourceIdDataGetResponseScreenshotsDefault),
     created_at: zod
       .string()
       .default(getResourceDataV1AutocrudCharacterResourceIdDataGetResponseCreatedAtDefault),
@@ -2739,7 +2848,8 @@ export const getResourceV1AutocrudCharacterResourceIdGetResponseDataEquipmentsIt
 export const getResourceV1AutocrudCharacterResourceIdGetResponseDataEquipmentsItemTwoIconDefault =
   null;
 export const getResourceV1AutocrudCharacterResourceIdGetResponseDataEquipmentsDefault = [];
-export const getResourceV1AutocrudCharacterResourceIdGetResponseDataCreatedAtDefault = `2026-04-03T14:48:54.131332`;
+export const getResourceV1AutocrudCharacterResourceIdGetResponseDataScreenshotsDefault = [];
+export const getResourceV1AutocrudCharacterResourceIdGetResponseDataCreatedAtDefault = `2026-04-25T19:35:28.991480`;
 export const getResourceV1AutocrudCharacterResourceIdGetResponseRevisionInfoParentRevisionIdDefault =
   null;
 export const getResourceV1AutocrudCharacterResourceIdGetResponseRevisionInfoSchemaVersionDefault =
@@ -2886,6 +2996,20 @@ export const GetResourceV1AutocrudCharacterResourceIdGetResponse = zod.object({
           ]),
         )
         .default(getResourceV1AutocrudCharacterResourceIdGetResponseDataEquipmentsDefault),
+      screenshots: zod
+        .array(
+          zod
+            .object({
+              file_id: zod.string().optional(),
+              size: zod.number().optional(),
+              content_type: zod.string().optional(),
+              data: zod.string().optional(),
+            })
+            .describe(
+              'A wrapper for binary data that handles storage optimization.\n\nWhen creating a resource, you can populate the `data` field with bytes.\nThe system will automatically extract it, store it in the blob store,\nand populate `file_id` (which is the hash of the content) and `size`.\nThe `data` field will be cleared in the stored resource.',
+            ),
+        )
+        .default(getResourceV1AutocrudCharacterResourceIdGetResponseDataScreenshotsDefault),
       created_at: zod
         .string()
         .default(getResourceV1AutocrudCharacterResourceIdGetResponseDataCreatedAtDefault),
@@ -3012,7 +3136,8 @@ export const updateResourceV1AutocrudCharacterResourceIdPutBodyEquipmentsItemTwo
 export const updateResourceV1AutocrudCharacterResourceIdPutBodyEquipmentsItemTwoPriceDefault = 100;
 export const updateResourceV1AutocrudCharacterResourceIdPutBodyEquipmentsItemTwoIconDefault = null;
 export const updateResourceV1AutocrudCharacterResourceIdPutBodyEquipmentsDefault = [];
-export const updateResourceV1AutocrudCharacterResourceIdPutBodyCreatedAtDefault = `2026-04-03T14:48:54.131332`;
+export const updateResourceV1AutocrudCharacterResourceIdPutBodyScreenshotsDefault = [];
+export const updateResourceV1AutocrudCharacterResourceIdPutBodyCreatedAtDefault = `2026-04-25T19:35:28.991480`;
 
 export const UpdateResourceV1AutocrudCharacterResourceIdPutBody = zod
   .object({
@@ -3144,6 +3269,20 @@ export const UpdateResourceV1AutocrudCharacterResourceIdPutBody = zod
         ]),
       )
       .default(updateResourceV1AutocrudCharacterResourceIdPutBodyEquipmentsDefault),
+    screenshots: zod
+      .array(
+        zod
+          .object({
+            file_id: zod.string().optional(),
+            size: zod.number().optional(),
+            content_type: zod.string().optional(),
+            data: zod.string().optional(),
+          })
+          .describe(
+            'A wrapper for binary data that handles storage optimization.\n\nWhen creating a resource, you can populate the `data` field with bytes.\nThe system will automatically extract it, store it in the blob store,\nand populate `file_id` (which is the hash of the content) and `size`.\nThe `data` field will be cleared in the stored resource.',
+          ),
+      )
+      .default(updateResourceV1AutocrudCharacterResourceIdPutBodyScreenshotsDefault),
     created_at: zod
       .string()
       .default(updateResourceV1AutocrudCharacterResourceIdPutBodyCreatedAtDefault),
@@ -3563,7 +3702,7 @@ export const RestoreResourceV1AutocrudCharacterResourceIdRestorePostResponse = z
  * @summary Batch restore deleted character
  */
 export const batchRestoreV1AutocrudCharacterRestorePostQueryIsDeletedDefault = false;
-export const batchRestoreV1AutocrudCharacterRestorePostQueryLimitDefault = 10;
+export const batchRestoreV1AutocrudCharacterRestorePostQueryLimitDefault = 4294967295;
 export const batchRestoreV1AutocrudCharacterRestorePostQueryOffsetDefault = 0;
 
 export const BatchRestoreV1AutocrudCharacterRestorePostQueryParams = zod.object({
@@ -3571,7 +3710,7 @@ export const BatchRestoreV1AutocrudCharacterRestorePostQueryParams = zod.object(
     .union([zod.string(), zod.null()])
     .optional()
     .describe(
-      "Query Builder expression. Example: \"QB['foo'] == 123\" or \"QB['age'].gt(18) & QB['status'].eq('active')\"",
+      "Query Builder expression. Example: \"QB['foo'] == 123\" or \"QB['age'].gt(18) & QB['status'].eq('active')\". When qb is used, do not combine it with data_conditions, conditions, or sorts; only limit, offset, and is_deleted may be used alongside qb.",
     ),
   is_deleted: zod
     .union([zod.boolean(), zod.null()])
@@ -3622,7 +3761,9 @@ export const BatchRestoreV1AutocrudCharacterRestorePostQueryParams = zod.object(
   limit: zod
     .number()
     .default(batchRestoreV1AutocrudCharacterRestorePostQueryLimitDefault)
-    .describe('Maximum number of results'),
+    .describe(
+      'Maximum number of results. Default comes from the AUTOCRUD_DEFAULT_QUERY_LIMIT environment variable at startup; set limit explicitly or use the \/count endpoint if you need the full total.',
+    ),
   offset: zod
     .number()
     .default(batchRestoreV1AutocrudCharacterRestorePostQueryOffsetDefault)
@@ -3761,7 +3902,7 @@ No data will be written back to storage - memory-only testing.
  * @summary Test Migrate Resources
  */
 export const testMigrateResourcesV1AutocrudCharacterMigrateTestPostQueryIsDeletedDefault = false;
-export const testMigrateResourcesV1AutocrudCharacterMigrateTestPostQueryLimitDefault = 10;
+export const testMigrateResourcesV1AutocrudCharacterMigrateTestPostQueryLimitDefault = 4294967295;
 export const testMigrateResourcesV1AutocrudCharacterMigrateTestPostQueryOffsetDefault = 0;
 
 export const TestMigrateResourcesV1AutocrudCharacterMigrateTestPostQueryParams = zod.object({
@@ -3769,7 +3910,7 @@ export const TestMigrateResourcesV1AutocrudCharacterMigrateTestPostQueryParams =
     .union([zod.string(), zod.null()])
     .optional()
     .describe(
-      "Query Builder expression. Example: \"QB['foo'] == 123\" or \"QB['age'].gt(18) & QB['status'].eq('active')\"",
+      "Query Builder expression. Example: \"QB['foo'] == 123\" or \"QB['age'].gt(18) & QB['status'].eq('active')\". When qb is used, do not combine it with data_conditions, conditions, or sorts; only limit, offset, and is_deleted may be used alongside qb.",
     ),
   is_deleted: zod
     .union([zod.boolean(), zod.null()])
@@ -3820,7 +3961,9 @@ export const TestMigrateResourcesV1AutocrudCharacterMigrateTestPostQueryParams =
   limit: zod
     .number()
     .default(testMigrateResourcesV1AutocrudCharacterMigrateTestPostQueryLimitDefault)
-    .describe('Maximum number of results'),
+    .describe(
+      'Maximum number of results. Default comes from the AUTOCRUD_DEFAULT_QUERY_LIMIT environment variable at startup; set limit explicitly or use the \/count endpoint if you need the full total.',
+    ),
   offset: zod
     .number()
     .default(testMigrateResourcesV1AutocrudCharacterMigrateTestPostQueryOffsetDefault)
@@ -3850,7 +3993,7 @@ export const TestMigrateResourcesV1AutocrudCharacterMigrateTestPostResponse = zo
  * @summary Execute Migrate Resources
  */
 export const executeMigrateResourcesV1AutocrudCharacterMigrateExecutePostQueryIsDeletedDefault = false;
-export const executeMigrateResourcesV1AutocrudCharacterMigrateExecutePostQueryLimitDefault = 10;
+export const executeMigrateResourcesV1AutocrudCharacterMigrateExecutePostQueryLimitDefault = 4294967295;
 export const executeMigrateResourcesV1AutocrudCharacterMigrateExecutePostQueryOffsetDefault = 0;
 
 export const ExecuteMigrateResourcesV1AutocrudCharacterMigrateExecutePostQueryParams = zod.object({
@@ -3858,7 +4001,7 @@ export const ExecuteMigrateResourcesV1AutocrudCharacterMigrateExecutePostQueryPa
     .union([zod.string(), zod.null()])
     .optional()
     .describe(
-      "Query Builder expression. Example: \"QB['foo'] == 123\" or \"QB['age'].gt(18) & QB['status'].eq('active')\"",
+      "Query Builder expression. Example: \"QB['foo'] == 123\" or \"QB['age'].gt(18) & QB['status'].eq('active')\". When qb is used, do not combine it with data_conditions, conditions, or sorts; only limit, offset, and is_deleted may be used alongside qb.",
     ),
   is_deleted: zod
     .union([zod.boolean(), zod.null()])
@@ -3909,7 +4052,9 @@ export const ExecuteMigrateResourcesV1AutocrudCharacterMigrateExecutePostQueryPa
   limit: zod
     .number()
     .default(executeMigrateResourcesV1AutocrudCharacterMigrateExecutePostQueryLimitDefault)
-    .describe('Maximum number of results'),
+    .describe(
+      'Maximum number of results. Default comes from the AUTOCRUD_DEFAULT_QUERY_LIMIT environment variable at startup; set limit explicitly or use the \/count endpoint if you need the full total.',
+    ),
   offset: zod
     .number()
     .default(executeMigrateResourcesV1AutocrudCharacterMigrateExecutePostQueryOffsetDefault)
@@ -4048,8 +4193,9 @@ export const MigrateSingleResourceV1AutocrudCharacterMigrateSingleResourceIdPost
 - Example: `[{"type": "meta", "key": "created_time", "direction": "+"}, {"type": "data", "field_path": "name", "direction": "-"}]`
 
 **Pagination:**
-- `limit`: Maximum number of results to return (default: 10)
+- `limit`: Maximum number of results to return (default comes from `AUTOCRUD_DEFAULT_QUERY_LIMIT` at startup)
 - `offset`: Number of results to skip for pagination (default: 0)
+- If you need an exact full total, use the `/count` endpoint or pass an explicit `limit`.
 
 **Partial Response:**
 - `partial`: List of fields to retrieve (e.g. '/field1', '/nested/field2')
@@ -4062,7 +4208,7 @@ export const MigrateSingleResourceV1AutocrudCharacterMigrateSingleResourceIdPost
 - Direct access to resource content only
 
 **Examples:**
-- `GET /guild/data` - Get first 10 resources (data only)
+- `GET /guild/data` - Get the default first page of resources (data only)
 - `GET /guild/data?limit=20&offset=40` - Get resources 41-60 (data only)
 - `GET /guild/data?is_deleted=false&limit=5` - Get 5 non-deleted resources (data only)
 - `GET /guild/data?partial=/name&partial=/email` - Get specific fields for all resources
@@ -4073,7 +4219,7 @@ export const MigrateSingleResourceV1AutocrudCharacterMigrateSingleResourceIdPost
  * @summary List guild Data Only
  */
 export const listResourcesDataV1AutocrudGuildDataGetQueryIsDeletedDefault = false;
-export const listResourcesDataV1AutocrudGuildDataGetQueryLimitDefault = 10;
+export const listResourcesDataV1AutocrudGuildDataGetQueryLimitDefault = 4294967295;
 export const listResourcesDataV1AutocrudGuildDataGetQueryOffsetDefault = 0;
 
 export const ListResourcesDataV1AutocrudGuildDataGetQueryParams = zod.object({
@@ -4081,7 +4227,7 @@ export const ListResourcesDataV1AutocrudGuildDataGetQueryParams = zod.object({
     .union([zod.string(), zod.null()])
     .optional()
     .describe(
-      "Query Builder expression. Example: \"QB['foo'] == 123\" or \"QB['age'].gt(18) & QB['status'].eq('active')\"",
+      "Query Builder expression. Example: \"QB['foo'] == 123\" or \"QB['age'].gt(18) & QB['status'].eq('active')\". When qb is used, do not combine it with data_conditions, conditions, or sorts; only limit, offset, and is_deleted may be used alongside qb.",
     ),
   is_deleted: zod
     .union([zod.boolean(), zod.null()])
@@ -4132,7 +4278,9 @@ export const ListResourcesDataV1AutocrudGuildDataGetQueryParams = zod.object({
   limit: zod
     .number()
     .default(listResourcesDataV1AutocrudGuildDataGetQueryLimitDefault)
-    .describe('Maximum number of results'),
+    .describe(
+      'Maximum number of results. Default comes from the AUTOCRUD_DEFAULT_QUERY_LIMIT environment variable at startup; set limit explicitly or use the \/count endpoint if you need the full total.',
+    ),
   offset: zod
     .number()
     .default(listResourcesDataV1AutocrudGuildDataGetQueryOffsetDefault)
@@ -4146,7 +4294,7 @@ export const ListResourcesDataV1AutocrudGuildDataGetQueryParams = zod.object({
 export const listResourcesDataV1AutocrudGuildDataGetResponseMemberCountDefault = 1;
 export const listResourcesDataV1AutocrudGuildDataGetResponseLevelDefault = 1;
 export const listResourcesDataV1AutocrudGuildDataGetResponseTreasuryDefault = 1000;
-export const listResourcesDataV1AutocrudGuildDataGetResponseFoundedAtDefault = `2026-04-03T14:48:54.131419`;
+export const listResourcesDataV1AutocrudGuildDataGetResponseFoundedAtDefault = `2026-04-25T19:35:28.991655`;
 
 export const ListResourcesDataV1AutocrudGuildDataGetResponseItem = zod
   .object({
@@ -4217,8 +4365,9 @@ export const ListResourcesDataV1AutocrudGuildDataGetResponse = zod.array(
 - Example: `[{"type": "meta", "key": "updated_time", "direction": "-"}, {"type": "data", "field_path": "department", "direction": "+"}]`
 
 **Pagination:**
-- `limit`: Maximum number of results to return (default: 10)
+- `limit`: Maximum number of results to return (default comes from `AUTOCRUD_DEFAULT_QUERY_LIMIT` at startup)
 - `offset`: Number of results to skip for pagination (default: 0)
+- If you need an exact full total, use the `/count` endpoint or pass an explicit `limit`.
 
 **Use Cases:**
 - Resource management and administration
@@ -4227,7 +4376,7 @@ export const ListResourcesDataV1AutocrudGuildDataGetResponse = zod.array(
 - System monitoring and statistics
 
 **Examples:**
-- `GET /guild/meta` - Get metadata for first 10 resources
+- `GET /guild/meta` - Get metadata for the default first page of resources
 - `GET /guild/meta?is_deleted=true` - Get metadata for deleted resources
 - `GET /guild/meta?created_bys=admin&limit=50` - Get metadata for admin-created resources
 
@@ -4237,7 +4386,7 @@ export const ListResourcesDataV1AutocrudGuildDataGetResponse = zod.array(
  * @summary List guild Metadata Only
  */
 export const listResourcesMetaV1AutocrudGuildMetaGetQueryIsDeletedDefault = false;
-export const listResourcesMetaV1AutocrudGuildMetaGetQueryLimitDefault = 10;
+export const listResourcesMetaV1AutocrudGuildMetaGetQueryLimitDefault = 4294967295;
 export const listResourcesMetaV1AutocrudGuildMetaGetQueryOffsetDefault = 0;
 
 export const ListResourcesMetaV1AutocrudGuildMetaGetQueryParams = zod.object({
@@ -4245,7 +4394,7 @@ export const ListResourcesMetaV1AutocrudGuildMetaGetQueryParams = zod.object({
     .union([zod.string(), zod.null()])
     .optional()
     .describe(
-      "Query Builder expression. Example: \"QB['foo'] == 123\" or \"QB['age'].gt(18) & QB['status'].eq('active')\"",
+      "Query Builder expression. Example: \"QB['foo'] == 123\" or \"QB['age'].gt(18) & QB['status'].eq('active')\". When qb is used, do not combine it with data_conditions, conditions, or sorts; only limit, offset, and is_deleted may be used alongside qb.",
     ),
   is_deleted: zod
     .union([zod.boolean(), zod.null()])
@@ -4296,7 +4445,9 @@ export const ListResourcesMetaV1AutocrudGuildMetaGetQueryParams = zod.object({
   limit: zod
     .number()
     .default(listResourcesMetaV1AutocrudGuildMetaGetQueryLimitDefault)
-    .describe('Maximum number of results'),
+    .describe(
+      'Maximum number of results. Default comes from the AUTOCRUD_DEFAULT_QUERY_LIMIT environment variable at startup; set limit explicitly or use the \/count endpoint if you need the full total.',
+    ),
   offset: zod
     .number()
     .default(listResourcesMetaV1AutocrudGuildMetaGetQueryOffsetDefault)
@@ -4375,8 +4526,9 @@ export const ListResourcesMetaV1AutocrudGuildMetaGetResponse = zod.array(
 - Example: `[{"field_path": "status", "operator": "eq", "value": "active"}]`
 
 **Pagination:**
-- `limit`: Maximum number of results to return (default: 10)
+- `limit`: Maximum number of results to return (default comes from `AUTOCRUD_DEFAULT_QUERY_LIMIT` at startup)
 - `offset`: Number of results to skip for pagination (default: 0)
+- If you need an exact full total, use the `/count` endpoint or pass an explicit `limit`.
 
 **Use Cases:**
 - Version control system integration
@@ -4385,8 +4537,8 @@ export const ListResourcesMetaV1AutocrudGuildMetaGetResponse = zod.array(
 - Change tracking and audit trails
 
 **Examples:**
-- `GET /guild/revision-info` - Get current revision info for first 10 resources
-- `GET /guild/revision-info?limit=100` - Get revision info for first 100 resources
+- `GET /guild/revision-info` - Get current revision info for the default first page of resources
+- `GET /guild/revision-info?limit=100` - Get revision info for the first 100 resources
 - `GET /guild/revision-info?updated_bys=editor` - Get revision info for editor-modified resources
 
 **Error Responses:**
@@ -4395,7 +4547,7 @@ export const ListResourcesMetaV1AutocrudGuildMetaGetResponse = zod.array(
  * @summary List guild Current Revision Info
  */
 export const listResourcesRevisionInfoV1AutocrudGuildRevisionInfoGetQueryIsDeletedDefault = false;
-export const listResourcesRevisionInfoV1AutocrudGuildRevisionInfoGetQueryLimitDefault = 10;
+export const listResourcesRevisionInfoV1AutocrudGuildRevisionInfoGetQueryLimitDefault = 4294967295;
 export const listResourcesRevisionInfoV1AutocrudGuildRevisionInfoGetQueryOffsetDefault = 0;
 
 export const ListResourcesRevisionInfoV1AutocrudGuildRevisionInfoGetQueryParams = zod.object({
@@ -4403,7 +4555,7 @@ export const ListResourcesRevisionInfoV1AutocrudGuildRevisionInfoGetQueryParams 
     .union([zod.string(), zod.null()])
     .optional()
     .describe(
-      "Query Builder expression. Example: \"QB['foo'] == 123\" or \"QB['age'].gt(18) & QB['status'].eq('active')\"",
+      "Query Builder expression. Example: \"QB['foo'] == 123\" or \"QB['age'].gt(18) & QB['status'].eq('active')\". When qb is used, do not combine it with data_conditions, conditions, or sorts; only limit, offset, and is_deleted may be used alongside qb.",
     ),
   is_deleted: zod
     .union([zod.boolean(), zod.null()])
@@ -4454,7 +4606,9 @@ export const ListResourcesRevisionInfoV1AutocrudGuildRevisionInfoGetQueryParams 
   limit: zod
     .number()
     .default(listResourcesRevisionInfoV1AutocrudGuildRevisionInfoGetQueryLimitDefault)
-    .describe('Maximum number of results'),
+    .describe(
+      'Maximum number of results. Default comes from the AUTOCRUD_DEFAULT_QUERY_LIMIT environment variable at startup; set limit explicitly or use the \/count endpoint if you need the full total.',
+    ),
   offset: zod
     .number()
     .default(listResourcesRevisionInfoV1AutocrudGuildRevisionInfoGetQueryOffsetDefault)
@@ -4504,7 +4658,7 @@ export const ListResourcesRevisionInfoV1AutocrudGuildRevisionInfoGetResponse = z
  * @summary List guild Complete Information
  */
 export const listResourcesFullV1AutocrudGuildFullGetQueryIsDeletedDefault = false;
-export const listResourcesFullV1AutocrudGuildFullGetQueryLimitDefault = 10;
+export const listResourcesFullV1AutocrudGuildFullGetQueryLimitDefault = 4294967295;
 export const listResourcesFullV1AutocrudGuildFullGetQueryOffsetDefault = 0;
 export const listResourcesFullV1AutocrudGuildFullGetQueryReturnsDefault = `data,revision_info,meta`;
 
@@ -4513,7 +4667,7 @@ export const ListResourcesFullV1AutocrudGuildFullGetQueryParams = zod.object({
     .union([zod.string(), zod.null()])
     .optional()
     .describe(
-      "Query Builder expression. Example: \"QB['foo'] == 123\" or \"QB['age'].gt(18) & QB['status'].eq('active')\"",
+      "Query Builder expression. Example: \"QB['foo'] == 123\" or \"QB['age'].gt(18) & QB['status'].eq('active')\". When qb is used, do not combine it with data_conditions, conditions, or sorts; only limit, offset, and is_deleted may be used alongside qb.",
     ),
   is_deleted: zod
     .union([zod.boolean(), zod.null()])
@@ -4564,7 +4718,9 @@ export const ListResourcesFullV1AutocrudGuildFullGetQueryParams = zod.object({
   limit: zod
     .number()
     .default(listResourcesFullV1AutocrudGuildFullGetQueryLimitDefault)
-    .describe('Maximum number of results'),
+    .describe(
+      'Maximum number of results. Default comes from the AUTOCRUD_DEFAULT_QUERY_LIMIT environment variable at startup; set limit explicitly or use the \/count endpoint if you need the full total.',
+    ),
   offset: zod
     .number()
     .default(listResourcesFullV1AutocrudGuildFullGetQueryOffsetDefault)
@@ -4582,7 +4738,7 @@ export const ListResourcesFullV1AutocrudGuildFullGetQueryParams = zod.object({
 export const listResourcesFullV1AutocrudGuildFullGetResponseDataMemberCountDefault = 1;
 export const listResourcesFullV1AutocrudGuildFullGetResponseDataLevelDefault = 1;
 export const listResourcesFullV1AutocrudGuildFullGetResponseDataTreasuryDefault = 1000;
-export const listResourcesFullV1AutocrudGuildFullGetResponseDataFoundedAtDefault = `2026-04-03T14:48:54.131419`;
+export const listResourcesFullV1AutocrudGuildFullGetResponseDataFoundedAtDefault = `2026-04-25T19:35:28.991655`;
 export const listResourcesFullV1AutocrudGuildFullGetResponseRevisionInfoParentRevisionIdDefault =
   null;
 export const listResourcesFullV1AutocrudGuildFullGetResponseRevisionInfoSchemaVersionDefault = null;
@@ -4702,7 +4858,7 @@ export const ListResourcesFullV1AutocrudGuildFullGetResponse = zod.array(
  * @summary Count guild Resources
  */
 export const getResourcesCountV1AutocrudGuildCountGetQueryIsDeletedDefault = false;
-export const getResourcesCountV1AutocrudGuildCountGetQueryLimitDefault = 10;
+export const getResourcesCountV1AutocrudGuildCountGetQueryLimitDefault = 4294967295;
 export const getResourcesCountV1AutocrudGuildCountGetQueryOffsetDefault = 0;
 
 export const GetResourcesCountV1AutocrudGuildCountGetQueryParams = zod.object({
@@ -4710,7 +4866,7 @@ export const GetResourcesCountV1AutocrudGuildCountGetQueryParams = zod.object({
     .union([zod.string(), zod.null()])
     .optional()
     .describe(
-      "Query Builder expression. Example: \"QB['foo'] == 123\" or \"QB['age'].gt(18) & QB['status'].eq('active')\"",
+      "Query Builder expression. Example: \"QB['foo'] == 123\" or \"QB['age'].gt(18) & QB['status'].eq('active')\". When qb is used, do not combine it with data_conditions, conditions, or sorts; only limit, offset, and is_deleted may be used alongside qb.",
     ),
   is_deleted: zod
     .union([zod.boolean(), zod.null()])
@@ -4761,7 +4917,9 @@ export const GetResourcesCountV1AutocrudGuildCountGetQueryParams = zod.object({
   limit: zod
     .number()
     .default(getResourcesCountV1AutocrudGuildCountGetQueryLimitDefault)
-    .describe('Maximum number of results'),
+    .describe(
+      'Maximum number of results. Default comes from the AUTOCRUD_DEFAULT_QUERY_LIMIT environment variable at startup; set limit explicitly or use the \/count endpoint if you need the full total.',
+    ),
   offset: zod
     .number()
     .default(getResourcesCountV1AutocrudGuildCountGetQueryOffsetDefault)
@@ -4798,7 +4956,7 @@ By default all sections are returned: `data`, `revision_info`, `meta`.
  * @summary List guild resources
  */
 export const listResourcesV1AutocrudGuildGetQueryIsDeletedDefault = false;
-export const listResourcesV1AutocrudGuildGetQueryLimitDefault = 10;
+export const listResourcesV1AutocrudGuildGetQueryLimitDefault = 4294967295;
 export const listResourcesV1AutocrudGuildGetQueryOffsetDefault = 0;
 export const listResourcesV1AutocrudGuildGetQueryReturnsDefault = `data,revision_info,meta`;
 
@@ -4807,7 +4965,7 @@ export const ListResourcesV1AutocrudGuildGetQueryParams = zod.object({
     .union([zod.string(), zod.null()])
     .optional()
     .describe(
-      "Query Builder expression. Example: \"QB['foo'] == 123\" or \"QB['age'].gt(18) & QB['status'].eq('active')\"",
+      "Query Builder expression. Example: \"QB['foo'] == 123\" or \"QB['age'].gt(18) & QB['status'].eq('active')\". When qb is used, do not combine it with data_conditions, conditions, or sorts; only limit, offset, and is_deleted may be used alongside qb.",
     ),
   is_deleted: zod
     .union([zod.boolean(), zod.null()])
@@ -4858,7 +5016,9 @@ export const ListResourcesV1AutocrudGuildGetQueryParams = zod.object({
   limit: zod
     .number()
     .default(listResourcesV1AutocrudGuildGetQueryLimitDefault)
-    .describe('Maximum number of results'),
+    .describe(
+      'Maximum number of results. Default comes from the AUTOCRUD_DEFAULT_QUERY_LIMIT environment variable at startup; set limit explicitly or use the \/count endpoint if you need the full total.',
+    ),
   offset: zod
     .number()
     .default(listResourcesV1AutocrudGuildGetQueryOffsetDefault)
@@ -4876,7 +5036,7 @@ export const ListResourcesV1AutocrudGuildGetQueryParams = zod.object({
 export const listResourcesV1AutocrudGuildGetResponseDataMemberCountDefault = 1;
 export const listResourcesV1AutocrudGuildGetResponseDataLevelDefault = 1;
 export const listResourcesV1AutocrudGuildGetResponseDataTreasuryDefault = 1000;
-export const listResourcesV1AutocrudGuildGetResponseDataFoundedAtDefault = `2026-04-03T14:48:54.131419`;
+export const listResourcesV1AutocrudGuildGetResponseDataFoundedAtDefault = `2026-04-25T19:35:28.991655`;
 export const listResourcesV1AutocrudGuildGetResponseRevisionInfoParentRevisionIdDefault = null;
 export const listResourcesV1AutocrudGuildGetResponseRevisionInfoSchemaVersionDefault = null;
 export const listResourcesV1AutocrudGuildGetResponseMetaSchemaVersionDefault = null;
@@ -4970,7 +5130,7 @@ export const ListResourcesV1AutocrudGuildGetResponse = zod.array(
 export const createResourceV1AutocrudGuildPostBodyMemberCountDefault = 1;
 export const createResourceV1AutocrudGuildPostBodyLevelDefault = 1;
 export const createResourceV1AutocrudGuildPostBodyTreasuryDefault = 1000;
-export const createResourceV1AutocrudGuildPostBodyFoundedAtDefault = `2026-04-03T14:48:54.131419`;
+export const createResourceV1AutocrudGuildPostBodyFoundedAtDefault = `2026-04-25T19:35:28.991655`;
 
 export const CreateResourceV1AutocrudGuildPostBody = zod
   .object({
@@ -5037,7 +5197,7 @@ export const CreateResourceV1AutocrudGuildPostResponse = zod
  * @summary Batch delete guild
  */
 export const batchDeleteV1AutocrudGuildDeleteQueryIsDeletedDefault = false;
-export const batchDeleteV1AutocrudGuildDeleteQueryLimitDefault = 10;
+export const batchDeleteV1AutocrudGuildDeleteQueryLimitDefault = 4294967295;
 export const batchDeleteV1AutocrudGuildDeleteQueryOffsetDefault = 0;
 
 export const BatchDeleteV1AutocrudGuildDeleteQueryParams = zod.object({
@@ -5045,7 +5205,7 @@ export const BatchDeleteV1AutocrudGuildDeleteQueryParams = zod.object({
     .union([zod.string(), zod.null()])
     .optional()
     .describe(
-      "Query Builder expression. Example: \"QB['foo'] == 123\" or \"QB['age'].gt(18) & QB['status'].eq('active')\"",
+      "Query Builder expression. Example: \"QB['foo'] == 123\" or \"QB['age'].gt(18) & QB['status'].eq('active')\". When qb is used, do not combine it with data_conditions, conditions, or sorts; only limit, offset, and is_deleted may be used alongside qb.",
     ),
   is_deleted: zod
     .union([zod.boolean(), zod.null()])
@@ -5096,7 +5256,9 @@ export const BatchDeleteV1AutocrudGuildDeleteQueryParams = zod.object({
   limit: zod
     .number()
     .default(batchDeleteV1AutocrudGuildDeleteQueryLimitDefault)
-    .describe('Maximum number of results'),
+    .describe(
+      'Maximum number of results. Default comes from the AUTOCRUD_DEFAULT_QUERY_LIMIT environment variable at startup; set limit explicitly or use the \/count endpoint if you need the full total.',
+    ),
   offset: zod
     .number()
     .default(batchDeleteV1AutocrudGuildDeleteQueryOffsetDefault)
@@ -5142,7 +5304,7 @@ which resources are included.
  * @summary Export guild data
  */
 export const exportModelV1AutocrudGuildExportGetQueryIsDeletedDefault = false;
-export const exportModelV1AutocrudGuildExportGetQueryLimitDefault = 10;
+export const exportModelV1AutocrudGuildExportGetQueryLimitDefault = 4294967295;
 export const exportModelV1AutocrudGuildExportGetQueryOffsetDefault = 0;
 
 export const ExportModelV1AutocrudGuildExportGetQueryParams = zod.object({
@@ -5150,7 +5312,7 @@ export const ExportModelV1AutocrudGuildExportGetQueryParams = zod.object({
     .union([zod.string(), zod.null()])
     .optional()
     .describe(
-      "Query Builder expression. Example: \"QB['foo'] == 123\" or \"QB['age'].gt(18) & QB['status'].eq('active')\"",
+      "Query Builder expression. Example: \"QB['foo'] == 123\" or \"QB['age'].gt(18) & QB['status'].eq('active')\". When qb is used, do not combine it with data_conditions, conditions, or sorts; only limit, offset, and is_deleted may be used alongside qb.",
     ),
   is_deleted: zod
     .union([zod.boolean(), zod.null()])
@@ -5201,7 +5363,9 @@ export const ExportModelV1AutocrudGuildExportGetQueryParams = zod.object({
   limit: zod
     .number()
     .default(exportModelV1AutocrudGuildExportGetQueryLimitDefault)
-    .describe('Maximum number of results'),
+    .describe(
+      'Maximum number of results. Default comes from the AUTOCRUD_DEFAULT_QUERY_LIMIT environment variable at startup; set limit explicitly or use the \/count endpoint if you need the full total.',
+    ),
   offset: zod
     .number()
     .default(exportModelV1AutocrudGuildExportGetQueryOffsetDefault)
@@ -5408,7 +5572,7 @@ export const GetResourceFullV1AutocrudGuildResourceIdFullGetQueryParams = zod.ob
 export const getResourceFullV1AutocrudGuildResourceIdFullGetResponseDataMemberCountDefault = 1;
 export const getResourceFullV1AutocrudGuildResourceIdFullGetResponseDataLevelDefault = 1;
 export const getResourceFullV1AutocrudGuildResourceIdFullGetResponseDataTreasuryDefault = 1000;
-export const getResourceFullV1AutocrudGuildResourceIdFullGetResponseDataFoundedAtDefault = `2026-04-03T14:48:54.131419`;
+export const getResourceFullV1AutocrudGuildResourceIdFullGetResponseDataFoundedAtDefault = `2026-04-25T19:35:28.991655`;
 export const getResourceFullV1AutocrudGuildResourceIdFullGetResponseRevisionInfoParentRevisionIdDefault =
   null;
 export const getResourceFullV1AutocrudGuildResourceIdFullGetResponseRevisionInfoSchemaVersionDefault =
@@ -5710,7 +5874,7 @@ export const GetResourceDataV1AutocrudGuildResourceIdDataGetQueryParams = zod.ob
 export const getResourceDataV1AutocrudGuildResourceIdDataGetResponseMemberCountDefault = 1;
 export const getResourceDataV1AutocrudGuildResourceIdDataGetResponseLevelDefault = 1;
 export const getResourceDataV1AutocrudGuildResourceIdDataGetResponseTreasuryDefault = 1000;
-export const getResourceDataV1AutocrudGuildResourceIdDataGetResponseFoundedAtDefault = `2026-04-03T14:48:54.131419`;
+export const getResourceDataV1AutocrudGuildResourceIdDataGetResponseFoundedAtDefault = `2026-04-25T19:35:28.991655`;
 
 export const GetResourceDataV1AutocrudGuildResourceIdDataGetResponse = zod
   .object({
@@ -5792,7 +5956,7 @@ export const GetResourceV1AutocrudGuildResourceIdGetQueryParams = zod.object({
 export const getResourceV1AutocrudGuildResourceIdGetResponseDataMemberCountDefault = 1;
 export const getResourceV1AutocrudGuildResourceIdGetResponseDataLevelDefault = 1;
 export const getResourceV1AutocrudGuildResourceIdGetResponseDataTreasuryDefault = 1000;
-export const getResourceV1AutocrudGuildResourceIdGetResponseDataFoundedAtDefault = `2026-04-03T14:48:54.131419`;
+export const getResourceV1AutocrudGuildResourceIdGetResponseDataFoundedAtDefault = `2026-04-25T19:35:28.991655`;
 export const getResourceV1AutocrudGuildResourceIdGetResponseRevisionInfoParentRevisionIdDefault =
   null;
 export const getResourceV1AutocrudGuildResourceIdGetResponseRevisionInfoSchemaVersionDefault = null;
@@ -5913,7 +6077,7 @@ export const UpdateResourceV1AutocrudGuildResourceIdPutQueryParams = zod.object(
 export const updateResourceV1AutocrudGuildResourceIdPutBodyMemberCountDefault = 1;
 export const updateResourceV1AutocrudGuildResourceIdPutBodyLevelDefault = 1;
 export const updateResourceV1AutocrudGuildResourceIdPutBodyTreasuryDefault = 1000;
-export const updateResourceV1AutocrudGuildResourceIdPutBodyFoundedAtDefault = `2026-04-03T14:48:54.131419`;
+export const updateResourceV1AutocrudGuildResourceIdPutBodyFoundedAtDefault = `2026-04-25T19:35:28.991655`;
 
 export const UpdateResourceV1AutocrudGuildResourceIdPutBody = zod
   .object({
@@ -6342,7 +6506,7 @@ export const RestoreResourceV1AutocrudGuildResourceIdRestorePostResponse = zod
  * @summary Batch restore deleted guild
  */
 export const batchRestoreV1AutocrudGuildRestorePostQueryIsDeletedDefault = false;
-export const batchRestoreV1AutocrudGuildRestorePostQueryLimitDefault = 10;
+export const batchRestoreV1AutocrudGuildRestorePostQueryLimitDefault = 4294967295;
 export const batchRestoreV1AutocrudGuildRestorePostQueryOffsetDefault = 0;
 
 export const BatchRestoreV1AutocrudGuildRestorePostQueryParams = zod.object({
@@ -6350,7 +6514,7 @@ export const BatchRestoreV1AutocrudGuildRestorePostQueryParams = zod.object({
     .union([zod.string(), zod.null()])
     .optional()
     .describe(
-      "Query Builder expression. Example: \"QB['foo'] == 123\" or \"QB['age'].gt(18) & QB['status'].eq('active')\"",
+      "Query Builder expression. Example: \"QB['foo'] == 123\" or \"QB['age'].gt(18) & QB['status'].eq('active')\". When qb is used, do not combine it with data_conditions, conditions, or sorts; only limit, offset, and is_deleted may be used alongside qb.",
     ),
   is_deleted: zod
     .union([zod.boolean(), zod.null()])
@@ -6401,7 +6565,9 @@ export const BatchRestoreV1AutocrudGuildRestorePostQueryParams = zod.object({
   limit: zod
     .number()
     .default(batchRestoreV1AutocrudGuildRestorePostQueryLimitDefault)
-    .describe('Maximum number of results'),
+    .describe(
+      'Maximum number of results. Default comes from the AUTOCRUD_DEFAULT_QUERY_LIMIT environment variable at startup; set limit explicitly or use the \/count endpoint if you need the full total.',
+    ),
   offset: zod
     .number()
     .default(batchRestoreV1AutocrudGuildRestorePostQueryOffsetDefault)
@@ -6451,7 +6617,7 @@ No data will be written back to storage - memory-only testing.
  * @summary Test Migrate Resources
  */
 export const testMigrateResourcesV1AutocrudGuildMigrateTestPostQueryIsDeletedDefault = false;
-export const testMigrateResourcesV1AutocrudGuildMigrateTestPostQueryLimitDefault = 10;
+export const testMigrateResourcesV1AutocrudGuildMigrateTestPostQueryLimitDefault = 4294967295;
 export const testMigrateResourcesV1AutocrudGuildMigrateTestPostQueryOffsetDefault = 0;
 
 export const TestMigrateResourcesV1AutocrudGuildMigrateTestPostQueryParams = zod.object({
@@ -6459,7 +6625,7 @@ export const TestMigrateResourcesV1AutocrudGuildMigrateTestPostQueryParams = zod
     .union([zod.string(), zod.null()])
     .optional()
     .describe(
-      "Query Builder expression. Example: \"QB['foo'] == 123\" or \"QB['age'].gt(18) & QB['status'].eq('active')\"",
+      "Query Builder expression. Example: \"QB['foo'] == 123\" or \"QB['age'].gt(18) & QB['status'].eq('active')\". When qb is used, do not combine it with data_conditions, conditions, or sorts; only limit, offset, and is_deleted may be used alongside qb.",
     ),
   is_deleted: zod
     .union([zod.boolean(), zod.null()])
@@ -6510,7 +6676,9 @@ export const TestMigrateResourcesV1AutocrudGuildMigrateTestPostQueryParams = zod
   limit: zod
     .number()
     .default(testMigrateResourcesV1AutocrudGuildMigrateTestPostQueryLimitDefault)
-    .describe('Maximum number of results'),
+    .describe(
+      'Maximum number of results. Default comes from the AUTOCRUD_DEFAULT_QUERY_LIMIT environment variable at startup; set limit explicitly or use the \/count endpoint if you need the full total.',
+    ),
   offset: zod
     .number()
     .default(testMigrateResourcesV1AutocrudGuildMigrateTestPostQueryOffsetDefault)
@@ -6540,7 +6708,7 @@ export const TestMigrateResourcesV1AutocrudGuildMigrateTestPostResponse = zod.un
  * @summary Execute Migrate Resources
  */
 export const executeMigrateResourcesV1AutocrudGuildMigrateExecutePostQueryIsDeletedDefault = false;
-export const executeMigrateResourcesV1AutocrudGuildMigrateExecutePostQueryLimitDefault = 10;
+export const executeMigrateResourcesV1AutocrudGuildMigrateExecutePostQueryLimitDefault = 4294967295;
 export const executeMigrateResourcesV1AutocrudGuildMigrateExecutePostQueryOffsetDefault = 0;
 
 export const ExecuteMigrateResourcesV1AutocrudGuildMigrateExecutePostQueryParams = zod.object({
@@ -6548,7 +6716,7 @@ export const ExecuteMigrateResourcesV1AutocrudGuildMigrateExecutePostQueryParams
     .union([zod.string(), zod.null()])
     .optional()
     .describe(
-      "Query Builder expression. Example: \"QB['foo'] == 123\" or \"QB['age'].gt(18) & QB['status'].eq('active')\"",
+      "Query Builder expression. Example: \"QB['foo'] == 123\" or \"QB['age'].gt(18) & QB['status'].eq('active')\". When qb is used, do not combine it with data_conditions, conditions, or sorts; only limit, offset, and is_deleted may be used alongside qb.",
     ),
   is_deleted: zod
     .union([zod.boolean(), zod.null()])
@@ -6599,7 +6767,9 @@ export const ExecuteMigrateResourcesV1AutocrudGuildMigrateExecutePostQueryParams
   limit: zod
     .number()
     .default(executeMigrateResourcesV1AutocrudGuildMigrateExecutePostQueryLimitDefault)
-    .describe('Maximum number of results'),
+    .describe(
+      'Maximum number of results. Default comes from the AUTOCRUD_DEFAULT_QUERY_LIMIT environment variable at startup; set limit explicitly or use the \/count endpoint if you need the full total.',
+    ),
   offset: zod
     .number()
     .default(executeMigrateResourcesV1AutocrudGuildMigrateExecutePostQueryOffsetDefault)
@@ -6732,8 +6902,9 @@ export const MigrateSingleResourceV1AutocrudGuildMigrateSingleResourceIdPostResp
 - Example: `[{"type": "meta", "key": "created_time", "direction": "+"}, {"type": "data", "field_path": "name", "direction": "-"}]`
 
 **Pagination:**
-- `limit`: Maximum number of results to return (default: 10)
+- `limit`: Maximum number of results to return (default comes from `AUTOCRUD_DEFAULT_QUERY_LIMIT` at startup)
 - `offset`: Number of results to skip for pagination (default: 0)
+- If you need an exact full total, use the `/count` endpoint or pass an explicit `limit`.
 
 **Partial Response:**
 - `partial`: List of fields to retrieve (e.g. '/field1', '/nested/field2')
@@ -6746,7 +6917,7 @@ export const MigrateSingleResourceV1AutocrudGuildMigrateSingleResourceIdPostResp
 - Direct access to resource content only
 
 **Examples:**
-- `GET /skill/data` - Get first 10 resources (data only)
+- `GET /skill/data` - Get the default first page of resources (data only)
 - `GET /skill/data?limit=20&offset=40` - Get resources 41-60 (data only)
 - `GET /skill/data?is_deleted=false&limit=5` - Get 5 non-deleted resources (data only)
 - `GET /skill/data?partial=/name&partial=/email` - Get specific fields for all resources
@@ -6757,7 +6928,7 @@ export const MigrateSingleResourceV1AutocrudGuildMigrateSingleResourceIdPostResp
  * @summary List skill Data Only
  */
 export const listResourcesDataV1AutocrudSkillDataGetQueryIsDeletedDefault = false;
-export const listResourcesDataV1AutocrudSkillDataGetQueryLimitDefault = 10;
+export const listResourcesDataV1AutocrudSkillDataGetQueryLimitDefault = 4294967295;
 export const listResourcesDataV1AutocrudSkillDataGetQueryOffsetDefault = 0;
 
 export const ListResourcesDataV1AutocrudSkillDataGetQueryParams = zod.object({
@@ -6765,7 +6936,7 @@ export const ListResourcesDataV1AutocrudSkillDataGetQueryParams = zod.object({
     .union([zod.string(), zod.null()])
     .optional()
     .describe(
-      "Query Builder expression. Example: \"QB['foo'] == 123\" or \"QB['age'].gt(18) & QB['status'].eq('active')\"",
+      "Query Builder expression. Example: \"QB['foo'] == 123\" or \"QB['age'].gt(18) & QB['status'].eq('active')\". When qb is used, do not combine it with data_conditions, conditions, or sorts; only limit, offset, and is_deleted may be used alongside qb.",
     ),
   is_deleted: zod
     .union([zod.boolean(), zod.null()])
@@ -6816,7 +6987,9 @@ export const ListResourcesDataV1AutocrudSkillDataGetQueryParams = zod.object({
   limit: zod
     .number()
     .default(listResourcesDataV1AutocrudSkillDataGetQueryLimitDefault)
-    .describe('Maximum number of results'),
+    .describe(
+      'Maximum number of results. Default comes from the AUTOCRUD_DEFAULT_QUERY_LIMIT environment variable at startup; set limit explicitly or use the \/count endpoint if you need the full total.',
+    ),
   offset: zod
     .number()
     .default(listResourcesDataV1AutocrudSkillDataGetQueryOffsetDefault)
@@ -6955,8 +7128,9 @@ export const ListResourcesDataV1AutocrudSkillDataGetResponse = zod.array(
 - Example: `[{"type": "meta", "key": "updated_time", "direction": "-"}, {"type": "data", "field_path": "department", "direction": "+"}]`
 
 **Pagination:**
-- `limit`: Maximum number of results to return (default: 10)
+- `limit`: Maximum number of results to return (default comes from `AUTOCRUD_DEFAULT_QUERY_LIMIT` at startup)
 - `offset`: Number of results to skip for pagination (default: 0)
+- If you need an exact full total, use the `/count` endpoint or pass an explicit `limit`.
 
 **Use Cases:**
 - Resource management and administration
@@ -6965,7 +7139,7 @@ export const ListResourcesDataV1AutocrudSkillDataGetResponse = zod.array(
 - System monitoring and statistics
 
 **Examples:**
-- `GET /skill/meta` - Get metadata for first 10 resources
+- `GET /skill/meta` - Get metadata for the default first page of resources
 - `GET /skill/meta?is_deleted=true` - Get metadata for deleted resources
 - `GET /skill/meta?created_bys=admin&limit=50` - Get metadata for admin-created resources
 
@@ -6975,7 +7149,7 @@ export const ListResourcesDataV1AutocrudSkillDataGetResponse = zod.array(
  * @summary List skill Metadata Only
  */
 export const listResourcesMetaV1AutocrudSkillMetaGetQueryIsDeletedDefault = false;
-export const listResourcesMetaV1AutocrudSkillMetaGetQueryLimitDefault = 10;
+export const listResourcesMetaV1AutocrudSkillMetaGetQueryLimitDefault = 4294967295;
 export const listResourcesMetaV1AutocrudSkillMetaGetQueryOffsetDefault = 0;
 
 export const ListResourcesMetaV1AutocrudSkillMetaGetQueryParams = zod.object({
@@ -6983,7 +7157,7 @@ export const ListResourcesMetaV1AutocrudSkillMetaGetQueryParams = zod.object({
     .union([zod.string(), zod.null()])
     .optional()
     .describe(
-      "Query Builder expression. Example: \"QB['foo'] == 123\" or \"QB['age'].gt(18) & QB['status'].eq('active')\"",
+      "Query Builder expression. Example: \"QB['foo'] == 123\" or \"QB['age'].gt(18) & QB['status'].eq('active')\". When qb is used, do not combine it with data_conditions, conditions, or sorts; only limit, offset, and is_deleted may be used alongside qb.",
     ),
   is_deleted: zod
     .union([zod.boolean(), zod.null()])
@@ -7034,7 +7208,9 @@ export const ListResourcesMetaV1AutocrudSkillMetaGetQueryParams = zod.object({
   limit: zod
     .number()
     .default(listResourcesMetaV1AutocrudSkillMetaGetQueryLimitDefault)
-    .describe('Maximum number of results'),
+    .describe(
+      'Maximum number of results. Default comes from the AUTOCRUD_DEFAULT_QUERY_LIMIT environment variable at startup; set limit explicitly or use the \/count endpoint if you need the full total.',
+    ),
   offset: zod
     .number()
     .default(listResourcesMetaV1AutocrudSkillMetaGetQueryOffsetDefault)
@@ -7113,8 +7289,9 @@ export const ListResourcesMetaV1AutocrudSkillMetaGetResponse = zod.array(
 - Example: `[{"field_path": "status", "operator": "eq", "value": "active"}]`
 
 **Pagination:**
-- `limit`: Maximum number of results to return (default: 10)
+- `limit`: Maximum number of results to return (default comes from `AUTOCRUD_DEFAULT_QUERY_LIMIT` at startup)
 - `offset`: Number of results to skip for pagination (default: 0)
+- If you need an exact full total, use the `/count` endpoint or pass an explicit `limit`.
 
 **Use Cases:**
 - Version control system integration
@@ -7123,8 +7300,8 @@ export const ListResourcesMetaV1AutocrudSkillMetaGetResponse = zod.array(
 - Change tracking and audit trails
 
 **Examples:**
-- `GET /skill/revision-info` - Get current revision info for first 10 resources
-- `GET /skill/revision-info?limit=100` - Get revision info for first 100 resources
+- `GET /skill/revision-info` - Get current revision info for the default first page of resources
+- `GET /skill/revision-info?limit=100` - Get revision info for the first 100 resources
 - `GET /skill/revision-info?updated_bys=editor` - Get revision info for editor-modified resources
 
 **Error Responses:**
@@ -7133,7 +7310,7 @@ export const ListResourcesMetaV1AutocrudSkillMetaGetResponse = zod.array(
  * @summary List skill Current Revision Info
  */
 export const listResourcesRevisionInfoV1AutocrudSkillRevisionInfoGetQueryIsDeletedDefault = false;
-export const listResourcesRevisionInfoV1AutocrudSkillRevisionInfoGetQueryLimitDefault = 10;
+export const listResourcesRevisionInfoV1AutocrudSkillRevisionInfoGetQueryLimitDefault = 4294967295;
 export const listResourcesRevisionInfoV1AutocrudSkillRevisionInfoGetQueryOffsetDefault = 0;
 
 export const ListResourcesRevisionInfoV1AutocrudSkillRevisionInfoGetQueryParams = zod.object({
@@ -7141,7 +7318,7 @@ export const ListResourcesRevisionInfoV1AutocrudSkillRevisionInfoGetQueryParams 
     .union([zod.string(), zod.null()])
     .optional()
     .describe(
-      "Query Builder expression. Example: \"QB['foo'] == 123\" or \"QB['age'].gt(18) & QB['status'].eq('active')\"",
+      "Query Builder expression. Example: \"QB['foo'] == 123\" or \"QB['age'].gt(18) & QB['status'].eq('active')\". When qb is used, do not combine it with data_conditions, conditions, or sorts; only limit, offset, and is_deleted may be used alongside qb.",
     ),
   is_deleted: zod
     .union([zod.boolean(), zod.null()])
@@ -7192,7 +7369,9 @@ export const ListResourcesRevisionInfoV1AutocrudSkillRevisionInfoGetQueryParams 
   limit: zod
     .number()
     .default(listResourcesRevisionInfoV1AutocrudSkillRevisionInfoGetQueryLimitDefault)
-    .describe('Maximum number of results'),
+    .describe(
+      'Maximum number of results. Default comes from the AUTOCRUD_DEFAULT_QUERY_LIMIT environment variable at startup; set limit explicitly or use the \/count endpoint if you need the full total.',
+    ),
   offset: zod
     .number()
     .default(listResourcesRevisionInfoV1AutocrudSkillRevisionInfoGetQueryOffsetDefault)
@@ -7242,7 +7421,7 @@ export const ListResourcesRevisionInfoV1AutocrudSkillRevisionInfoGetResponse = z
  * @summary List skill Complete Information
  */
 export const listResourcesFullV1AutocrudSkillFullGetQueryIsDeletedDefault = false;
-export const listResourcesFullV1AutocrudSkillFullGetQueryLimitDefault = 10;
+export const listResourcesFullV1AutocrudSkillFullGetQueryLimitDefault = 4294967295;
 export const listResourcesFullV1AutocrudSkillFullGetQueryOffsetDefault = 0;
 export const listResourcesFullV1AutocrudSkillFullGetQueryReturnsDefault = `data,revision_info,meta`;
 
@@ -7251,7 +7430,7 @@ export const ListResourcesFullV1AutocrudSkillFullGetQueryParams = zod.object({
     .union([zod.string(), zod.null()])
     .optional()
     .describe(
-      "Query Builder expression. Example: \"QB['foo'] == 123\" or \"QB['age'].gt(18) & QB['status'].eq('active')\"",
+      "Query Builder expression. Example: \"QB['foo'] == 123\" or \"QB['age'].gt(18) & QB['status'].eq('active')\". When qb is used, do not combine it with data_conditions, conditions, or sorts; only limit, offset, and is_deleted may be used alongside qb.",
     ),
   is_deleted: zod
     .union([zod.boolean(), zod.null()])
@@ -7302,7 +7481,9 @@ export const ListResourcesFullV1AutocrudSkillFullGetQueryParams = zod.object({
   limit: zod
     .number()
     .default(listResourcesFullV1AutocrudSkillFullGetQueryLimitDefault)
-    .describe('Maximum number of results'),
+    .describe(
+      'Maximum number of results. Default comes from the AUTOCRUD_DEFAULT_QUERY_LIMIT environment variable at startup; set limit explicitly or use the \/count endpoint if you need the full total.',
+    ),
   offset: zod
     .number()
     .default(listResourcesFullV1AutocrudSkillFullGetQueryOffsetDefault)
@@ -7496,7 +7677,7 @@ export const ListResourcesFullV1AutocrudSkillFullGetResponse = zod.array(
  * @summary Count skill Resources
  */
 export const getResourcesCountV1AutocrudSkillCountGetQueryIsDeletedDefault = false;
-export const getResourcesCountV1AutocrudSkillCountGetQueryLimitDefault = 10;
+export const getResourcesCountV1AutocrudSkillCountGetQueryLimitDefault = 4294967295;
 export const getResourcesCountV1AutocrudSkillCountGetQueryOffsetDefault = 0;
 
 export const GetResourcesCountV1AutocrudSkillCountGetQueryParams = zod.object({
@@ -7504,7 +7685,7 @@ export const GetResourcesCountV1AutocrudSkillCountGetQueryParams = zod.object({
     .union([zod.string(), zod.null()])
     .optional()
     .describe(
-      "Query Builder expression. Example: \"QB['foo'] == 123\" or \"QB['age'].gt(18) & QB['status'].eq('active')\"",
+      "Query Builder expression. Example: \"QB['foo'] == 123\" or \"QB['age'].gt(18) & QB['status'].eq('active')\". When qb is used, do not combine it with data_conditions, conditions, or sorts; only limit, offset, and is_deleted may be used alongside qb.",
     ),
   is_deleted: zod
     .union([zod.boolean(), zod.null()])
@@ -7555,7 +7736,9 @@ export const GetResourcesCountV1AutocrudSkillCountGetQueryParams = zod.object({
   limit: zod
     .number()
     .default(getResourcesCountV1AutocrudSkillCountGetQueryLimitDefault)
-    .describe('Maximum number of results'),
+    .describe(
+      'Maximum number of results. Default comes from the AUTOCRUD_DEFAULT_QUERY_LIMIT environment variable at startup; set limit explicitly or use the \/count endpoint if you need the full total.',
+    ),
   offset: zod
     .number()
     .default(getResourcesCountV1AutocrudSkillCountGetQueryOffsetDefault)
@@ -7592,7 +7775,7 @@ By default all sections are returned: `data`, `revision_info`, `meta`.
  * @summary List skill resources
  */
 export const listResourcesV1AutocrudSkillGetQueryIsDeletedDefault = false;
-export const listResourcesV1AutocrudSkillGetQueryLimitDefault = 10;
+export const listResourcesV1AutocrudSkillGetQueryLimitDefault = 4294967295;
 export const listResourcesV1AutocrudSkillGetQueryOffsetDefault = 0;
 export const listResourcesV1AutocrudSkillGetQueryReturnsDefault = `data,revision_info,meta`;
 
@@ -7601,7 +7784,7 @@ export const ListResourcesV1AutocrudSkillGetQueryParams = zod.object({
     .union([zod.string(), zod.null()])
     .optional()
     .describe(
-      "Query Builder expression. Example: \"QB['foo'] == 123\" or \"QB['age'].gt(18) & QB['status'].eq('active')\"",
+      "Query Builder expression. Example: \"QB['foo'] == 123\" or \"QB['age'].gt(18) & QB['status'].eq('active')\". When qb is used, do not combine it with data_conditions, conditions, or sorts; only limit, offset, and is_deleted may be used alongside qb.",
     ),
   is_deleted: zod
     .union([zod.boolean(), zod.null()])
@@ -7652,7 +7835,9 @@ export const ListResourcesV1AutocrudSkillGetQueryParams = zod.object({
   limit: zod
     .number()
     .default(listResourcesV1AutocrudSkillGetQueryLimitDefault)
-    .describe('Maximum number of results'),
+    .describe(
+      'Maximum number of results. Default comes from the AUTOCRUD_DEFAULT_QUERY_LIMIT environment variable at startup; set limit explicitly or use the \/count endpoint if you need the full total.',
+    ),
   offset: zod
     .number()
     .default(listResourcesV1AutocrudSkillGetQueryOffsetDefault)
@@ -7933,7 +8118,7 @@ export const CreateResourceV1AutocrudSkillPostResponse = zod
  * @summary Batch delete skill
  */
 export const batchDeleteV1AutocrudSkillDeleteQueryIsDeletedDefault = false;
-export const batchDeleteV1AutocrudSkillDeleteQueryLimitDefault = 10;
+export const batchDeleteV1AutocrudSkillDeleteQueryLimitDefault = 4294967295;
 export const batchDeleteV1AutocrudSkillDeleteQueryOffsetDefault = 0;
 
 export const BatchDeleteV1AutocrudSkillDeleteQueryParams = zod.object({
@@ -7941,7 +8126,7 @@ export const BatchDeleteV1AutocrudSkillDeleteQueryParams = zod.object({
     .union([zod.string(), zod.null()])
     .optional()
     .describe(
-      "Query Builder expression. Example: \"QB['foo'] == 123\" or \"QB['age'].gt(18) & QB['status'].eq('active')\"",
+      "Query Builder expression. Example: \"QB['foo'] == 123\" or \"QB['age'].gt(18) & QB['status'].eq('active')\". When qb is used, do not combine it with data_conditions, conditions, or sorts; only limit, offset, and is_deleted may be used alongside qb.",
     ),
   is_deleted: zod
     .union([zod.boolean(), zod.null()])
@@ -7992,7 +8177,9 @@ export const BatchDeleteV1AutocrudSkillDeleteQueryParams = zod.object({
   limit: zod
     .number()
     .default(batchDeleteV1AutocrudSkillDeleteQueryLimitDefault)
-    .describe('Maximum number of results'),
+    .describe(
+      'Maximum number of results. Default comes from the AUTOCRUD_DEFAULT_QUERY_LIMIT environment variable at startup; set limit explicitly or use the \/count endpoint if you need the full total.',
+    ),
   offset: zod
     .number()
     .default(batchDeleteV1AutocrudSkillDeleteQueryOffsetDefault)
@@ -8038,7 +8225,7 @@ which resources are included.
  * @summary Export skill data
  */
 export const exportModelV1AutocrudSkillExportGetQueryIsDeletedDefault = false;
-export const exportModelV1AutocrudSkillExportGetQueryLimitDefault = 10;
+export const exportModelV1AutocrudSkillExportGetQueryLimitDefault = 4294967295;
 export const exportModelV1AutocrudSkillExportGetQueryOffsetDefault = 0;
 
 export const ExportModelV1AutocrudSkillExportGetQueryParams = zod.object({
@@ -8046,7 +8233,7 @@ export const ExportModelV1AutocrudSkillExportGetQueryParams = zod.object({
     .union([zod.string(), zod.null()])
     .optional()
     .describe(
-      "Query Builder expression. Example: \"QB['foo'] == 123\" or \"QB['age'].gt(18) & QB['status'].eq('active')\"",
+      "Query Builder expression. Example: \"QB['foo'] == 123\" or \"QB['age'].gt(18) & QB['status'].eq('active')\". When qb is used, do not combine it with data_conditions, conditions, or sorts; only limit, offset, and is_deleted may be used alongside qb.",
     ),
   is_deleted: zod
     .union([zod.boolean(), zod.null()])
@@ -8097,7 +8284,9 @@ export const ExportModelV1AutocrudSkillExportGetQueryParams = zod.object({
   limit: zod
     .number()
     .default(exportModelV1AutocrudSkillExportGetQueryLimitDefault)
-    .describe('Maximum number of results'),
+    .describe(
+      'Maximum number of results. Default comes from the AUTOCRUD_DEFAULT_QUERY_LIMIT environment variable at startup; set limit explicitly or use the \/count endpoint if you need the full total.',
+    ),
   offset: zod
     .number()
     .default(exportModelV1AutocrudSkillExportGetQueryOffsetDefault)
@@ -9466,7 +9655,7 @@ export const RestoreResourceV1AutocrudSkillResourceIdRestorePostResponse = zod
  * @summary Batch restore deleted skill
  */
 export const batchRestoreV1AutocrudSkillRestorePostQueryIsDeletedDefault = false;
-export const batchRestoreV1AutocrudSkillRestorePostQueryLimitDefault = 10;
+export const batchRestoreV1AutocrudSkillRestorePostQueryLimitDefault = 4294967295;
 export const batchRestoreV1AutocrudSkillRestorePostQueryOffsetDefault = 0;
 
 export const BatchRestoreV1AutocrudSkillRestorePostQueryParams = zod.object({
@@ -9474,7 +9663,7 @@ export const BatchRestoreV1AutocrudSkillRestorePostQueryParams = zod.object({
     .union([zod.string(), zod.null()])
     .optional()
     .describe(
-      "Query Builder expression. Example: \"QB['foo'] == 123\" or \"QB['age'].gt(18) & QB['status'].eq('active')\"",
+      "Query Builder expression. Example: \"QB['foo'] == 123\" or \"QB['age'].gt(18) & QB['status'].eq('active')\". When qb is used, do not combine it with data_conditions, conditions, or sorts; only limit, offset, and is_deleted may be used alongside qb.",
     ),
   is_deleted: zod
     .union([zod.boolean(), zod.null()])
@@ -9525,7 +9714,9 @@ export const BatchRestoreV1AutocrudSkillRestorePostQueryParams = zod.object({
   limit: zod
     .number()
     .default(batchRestoreV1AutocrudSkillRestorePostQueryLimitDefault)
-    .describe('Maximum number of results'),
+    .describe(
+      'Maximum number of results. Default comes from the AUTOCRUD_DEFAULT_QUERY_LIMIT environment variable at startup; set limit explicitly or use the \/count endpoint if you need the full total.',
+    ),
   offset: zod
     .number()
     .default(batchRestoreV1AutocrudSkillRestorePostQueryOffsetDefault)
@@ -9575,7 +9766,7 @@ No data will be written back to storage - memory-only testing.
  * @summary Test Migrate Resources
  */
 export const testMigrateResourcesV1AutocrudSkillMigrateTestPostQueryIsDeletedDefault = false;
-export const testMigrateResourcesV1AutocrudSkillMigrateTestPostQueryLimitDefault = 10;
+export const testMigrateResourcesV1AutocrudSkillMigrateTestPostQueryLimitDefault = 4294967295;
 export const testMigrateResourcesV1AutocrudSkillMigrateTestPostQueryOffsetDefault = 0;
 
 export const TestMigrateResourcesV1AutocrudSkillMigrateTestPostQueryParams = zod.object({
@@ -9583,7 +9774,7 @@ export const TestMigrateResourcesV1AutocrudSkillMigrateTestPostQueryParams = zod
     .union([zod.string(), zod.null()])
     .optional()
     .describe(
-      "Query Builder expression. Example: \"QB['foo'] == 123\" or \"QB['age'].gt(18) & QB['status'].eq('active')\"",
+      "Query Builder expression. Example: \"QB['foo'] == 123\" or \"QB['age'].gt(18) & QB['status'].eq('active')\". When qb is used, do not combine it with data_conditions, conditions, or sorts; only limit, offset, and is_deleted may be used alongside qb.",
     ),
   is_deleted: zod
     .union([zod.boolean(), zod.null()])
@@ -9634,7 +9825,9 @@ export const TestMigrateResourcesV1AutocrudSkillMigrateTestPostQueryParams = zod
   limit: zod
     .number()
     .default(testMigrateResourcesV1AutocrudSkillMigrateTestPostQueryLimitDefault)
-    .describe('Maximum number of results'),
+    .describe(
+      'Maximum number of results. Default comes from the AUTOCRUD_DEFAULT_QUERY_LIMIT environment variable at startup; set limit explicitly or use the \/count endpoint if you need the full total.',
+    ),
   offset: zod
     .number()
     .default(testMigrateResourcesV1AutocrudSkillMigrateTestPostQueryOffsetDefault)
@@ -9664,7 +9857,7 @@ export const TestMigrateResourcesV1AutocrudSkillMigrateTestPostResponse = zod.un
  * @summary Execute Migrate Resources
  */
 export const executeMigrateResourcesV1AutocrudSkillMigrateExecutePostQueryIsDeletedDefault = false;
-export const executeMigrateResourcesV1AutocrudSkillMigrateExecutePostQueryLimitDefault = 10;
+export const executeMigrateResourcesV1AutocrudSkillMigrateExecutePostQueryLimitDefault = 4294967295;
 export const executeMigrateResourcesV1AutocrudSkillMigrateExecutePostQueryOffsetDefault = 0;
 
 export const ExecuteMigrateResourcesV1AutocrudSkillMigrateExecutePostQueryParams = zod.object({
@@ -9672,7 +9865,7 @@ export const ExecuteMigrateResourcesV1AutocrudSkillMigrateExecutePostQueryParams
     .union([zod.string(), zod.null()])
     .optional()
     .describe(
-      "Query Builder expression. Example: \"QB['foo'] == 123\" or \"QB['age'].gt(18) & QB['status'].eq('active')\"",
+      "Query Builder expression. Example: \"QB['foo'] == 123\" or \"QB['age'].gt(18) & QB['status'].eq('active')\". When qb is used, do not combine it with data_conditions, conditions, or sorts; only limit, offset, and is_deleted may be used alongside qb.",
     ),
   is_deleted: zod
     .union([zod.boolean(), zod.null()])
@@ -9723,7 +9916,9 @@ export const ExecuteMigrateResourcesV1AutocrudSkillMigrateExecutePostQueryParams
   limit: zod
     .number()
     .default(executeMigrateResourcesV1AutocrudSkillMigrateExecutePostQueryLimitDefault)
-    .describe('Maximum number of results'),
+    .describe(
+      'Maximum number of results. Default comes from the AUTOCRUD_DEFAULT_QUERY_LIMIT environment variable at startup; set limit explicitly or use the \/count endpoint if you need the full total.',
+    ),
   offset: zod
     .number()
     .default(executeMigrateResourcesV1AutocrudSkillMigrateExecutePostQueryOffsetDefault)
@@ -9856,8 +10051,9 @@ export const MigrateSingleResourceV1AutocrudSkillMigrateSingleResourceIdPostResp
 - Example: `[{"type": "meta", "key": "created_time", "direction": "+"}, {"type": "data", "field_path": "name", "direction": "-"}]`
 
 **Pagination:**
-- `limit`: Maximum number of results to return (default: 10)
+- `limit`: Maximum number of results to return (default comes from `AUTOCRUD_DEFAULT_QUERY_LIMIT` at startup)
 - `offset`: Number of results to skip for pagination (default: 0)
+- If you need an exact full total, use the `/count` endpoint or pass an explicit `limit`.
 
 **Partial Response:**
 - `partial`: List of fields to retrieve (e.g. '/field1', '/nested/field2')
@@ -9870,7 +10066,7 @@ export const MigrateSingleResourceV1AutocrudSkillMigrateSingleResourceIdPostResp
 - Direct access to resource content only
 
 **Examples:**
-- `GET /equipment/data` - Get first 10 resources (data only)
+- `GET /equipment/data` - Get the default first page of resources (data only)
 - `GET /equipment/data?limit=20&offset=40` - Get resources 41-60 (data only)
 - `GET /equipment/data?is_deleted=false&limit=5` - Get 5 non-deleted resources (data only)
 - `GET /equipment/data?partial=/name&partial=/email` - Get specific fields for all resources
@@ -9881,7 +10077,7 @@ export const MigrateSingleResourceV1AutocrudSkillMigrateSingleResourceIdPostResp
  * @summary List equipment Data Only
  */
 export const listResourcesDataV1AutocrudEquipmentDataGetQueryIsDeletedDefault = false;
-export const listResourcesDataV1AutocrudEquipmentDataGetQueryLimitDefault = 10;
+export const listResourcesDataV1AutocrudEquipmentDataGetQueryLimitDefault = 4294967295;
 export const listResourcesDataV1AutocrudEquipmentDataGetQueryOffsetDefault = 0;
 
 export const ListResourcesDataV1AutocrudEquipmentDataGetQueryParams = zod.object({
@@ -9889,7 +10085,7 @@ export const ListResourcesDataV1AutocrudEquipmentDataGetQueryParams = zod.object
     .union([zod.string(), zod.null()])
     .optional()
     .describe(
-      "Query Builder expression. Example: \"QB['foo'] == 123\" or \"QB['age'].gt(18) & QB['status'].eq('active')\"",
+      "Query Builder expression. Example: \"QB['foo'] == 123\" or \"QB['age'].gt(18) & QB['status'].eq('active')\". When qb is used, do not combine it with data_conditions, conditions, or sorts; only limit, offset, and is_deleted may be used alongside qb.",
     ),
   is_deleted: zod
     .union([zod.boolean(), zod.null()])
@@ -9940,7 +10136,9 @@ export const ListResourcesDataV1AutocrudEquipmentDataGetQueryParams = zod.object
   limit: zod
     .number()
     .default(listResourcesDataV1AutocrudEquipmentDataGetQueryLimitDefault)
-    .describe('Maximum number of results'),
+    .describe(
+      'Maximum number of results. Default comes from the AUTOCRUD_DEFAULT_QUERY_LIMIT environment variable at startup; set limit explicitly or use the \/count endpoint if you need the full total.',
+    ),
   offset: zod
     .number()
     .default(listResourcesDataV1AutocrudEquipmentDataGetQueryOffsetDefault)
@@ -10054,8 +10252,9 @@ export const ListResourcesDataV1AutocrudEquipmentDataGetResponse = zod.array(
 - Example: `[{"type": "meta", "key": "updated_time", "direction": "-"}, {"type": "data", "field_path": "department", "direction": "+"}]`
 
 **Pagination:**
-- `limit`: Maximum number of results to return (default: 10)
+- `limit`: Maximum number of results to return (default comes from `AUTOCRUD_DEFAULT_QUERY_LIMIT` at startup)
 - `offset`: Number of results to skip for pagination (default: 0)
+- If you need an exact full total, use the `/count` endpoint or pass an explicit `limit`.
 
 **Use Cases:**
 - Resource management and administration
@@ -10064,7 +10263,7 @@ export const ListResourcesDataV1AutocrudEquipmentDataGetResponse = zod.array(
 - System monitoring and statistics
 
 **Examples:**
-- `GET /equipment/meta` - Get metadata for first 10 resources
+- `GET /equipment/meta` - Get metadata for the default first page of resources
 - `GET /equipment/meta?is_deleted=true` - Get metadata for deleted resources
 - `GET /equipment/meta?created_bys=admin&limit=50` - Get metadata for admin-created resources
 
@@ -10074,7 +10273,7 @@ export const ListResourcesDataV1AutocrudEquipmentDataGetResponse = zod.array(
  * @summary List equipment Metadata Only
  */
 export const listResourcesMetaV1AutocrudEquipmentMetaGetQueryIsDeletedDefault = false;
-export const listResourcesMetaV1AutocrudEquipmentMetaGetQueryLimitDefault = 10;
+export const listResourcesMetaV1AutocrudEquipmentMetaGetQueryLimitDefault = 4294967295;
 export const listResourcesMetaV1AutocrudEquipmentMetaGetQueryOffsetDefault = 0;
 
 export const ListResourcesMetaV1AutocrudEquipmentMetaGetQueryParams = zod.object({
@@ -10082,7 +10281,7 @@ export const ListResourcesMetaV1AutocrudEquipmentMetaGetQueryParams = zod.object
     .union([zod.string(), zod.null()])
     .optional()
     .describe(
-      "Query Builder expression. Example: \"QB['foo'] == 123\" or \"QB['age'].gt(18) & QB['status'].eq('active')\"",
+      "Query Builder expression. Example: \"QB['foo'] == 123\" or \"QB['age'].gt(18) & QB['status'].eq('active')\". When qb is used, do not combine it with data_conditions, conditions, or sorts; only limit, offset, and is_deleted may be used alongside qb.",
     ),
   is_deleted: zod
     .union([zod.boolean(), zod.null()])
@@ -10133,7 +10332,9 @@ export const ListResourcesMetaV1AutocrudEquipmentMetaGetQueryParams = zod.object
   limit: zod
     .number()
     .default(listResourcesMetaV1AutocrudEquipmentMetaGetQueryLimitDefault)
-    .describe('Maximum number of results'),
+    .describe(
+      'Maximum number of results. Default comes from the AUTOCRUD_DEFAULT_QUERY_LIMIT environment variable at startup; set limit explicitly or use the \/count endpoint if you need the full total.',
+    ),
   offset: zod
     .number()
     .default(listResourcesMetaV1AutocrudEquipmentMetaGetQueryOffsetDefault)
@@ -10212,8 +10413,9 @@ export const ListResourcesMetaV1AutocrudEquipmentMetaGetResponse = zod.array(
 - Example: `[{"field_path": "status", "operator": "eq", "value": "active"}]`
 
 **Pagination:**
-- `limit`: Maximum number of results to return (default: 10)
+- `limit`: Maximum number of results to return (default comes from `AUTOCRUD_DEFAULT_QUERY_LIMIT` at startup)
 - `offset`: Number of results to skip for pagination (default: 0)
+- If you need an exact full total, use the `/count` endpoint or pass an explicit `limit`.
 
 **Use Cases:**
 - Version control system integration
@@ -10222,8 +10424,8 @@ export const ListResourcesMetaV1AutocrudEquipmentMetaGetResponse = zod.array(
 - Change tracking and audit trails
 
 **Examples:**
-- `GET /equipment/revision-info` - Get current revision info for first 10 resources
-- `GET /equipment/revision-info?limit=100` - Get revision info for first 100 resources
+- `GET /equipment/revision-info` - Get current revision info for the default first page of resources
+- `GET /equipment/revision-info?limit=100` - Get revision info for the first 100 resources
 - `GET /equipment/revision-info?updated_bys=editor` - Get revision info for editor-modified resources
 
 **Error Responses:**
@@ -10232,7 +10434,7 @@ export const ListResourcesMetaV1AutocrudEquipmentMetaGetResponse = zod.array(
  * @summary List equipment Current Revision Info
  */
 export const listResourcesRevisionInfoV1AutocrudEquipmentRevisionInfoGetQueryIsDeletedDefault = false;
-export const listResourcesRevisionInfoV1AutocrudEquipmentRevisionInfoGetQueryLimitDefault = 10;
+export const listResourcesRevisionInfoV1AutocrudEquipmentRevisionInfoGetQueryLimitDefault = 4294967295;
 export const listResourcesRevisionInfoV1AutocrudEquipmentRevisionInfoGetQueryOffsetDefault = 0;
 
 export const ListResourcesRevisionInfoV1AutocrudEquipmentRevisionInfoGetQueryParams = zod.object({
@@ -10240,7 +10442,7 @@ export const ListResourcesRevisionInfoV1AutocrudEquipmentRevisionInfoGetQueryPar
     .union([zod.string(), zod.null()])
     .optional()
     .describe(
-      "Query Builder expression. Example: \"QB['foo'] == 123\" or \"QB['age'].gt(18) & QB['status'].eq('active')\"",
+      "Query Builder expression. Example: \"QB['foo'] == 123\" or \"QB['age'].gt(18) & QB['status'].eq('active')\". When qb is used, do not combine it with data_conditions, conditions, or sorts; only limit, offset, and is_deleted may be used alongside qb.",
     ),
   is_deleted: zod
     .union([zod.boolean(), zod.null()])
@@ -10291,7 +10493,9 @@ export const ListResourcesRevisionInfoV1AutocrudEquipmentRevisionInfoGetQueryPar
   limit: zod
     .number()
     .default(listResourcesRevisionInfoV1AutocrudEquipmentRevisionInfoGetQueryLimitDefault)
-    .describe('Maximum number of results'),
+    .describe(
+      'Maximum number of results. Default comes from the AUTOCRUD_DEFAULT_QUERY_LIMIT environment variable at startup; set limit explicitly or use the \/count endpoint if you need the full total.',
+    ),
   offset: zod
     .number()
     .default(listResourcesRevisionInfoV1AutocrudEquipmentRevisionInfoGetQueryOffsetDefault)
@@ -10343,7 +10547,7 @@ export const ListResourcesRevisionInfoV1AutocrudEquipmentRevisionInfoGetResponse
  * @summary List equipment Complete Information
  */
 export const listResourcesFullV1AutocrudEquipmentFullGetQueryIsDeletedDefault = false;
-export const listResourcesFullV1AutocrudEquipmentFullGetQueryLimitDefault = 10;
+export const listResourcesFullV1AutocrudEquipmentFullGetQueryLimitDefault = 4294967295;
 export const listResourcesFullV1AutocrudEquipmentFullGetQueryOffsetDefault = 0;
 export const listResourcesFullV1AutocrudEquipmentFullGetQueryReturnsDefault = `data,revision_info,meta`;
 
@@ -10352,7 +10556,7 @@ export const ListResourcesFullV1AutocrudEquipmentFullGetQueryParams = zod.object
     .union([zod.string(), zod.null()])
     .optional()
     .describe(
-      "Query Builder expression. Example: \"QB['foo'] == 123\" or \"QB['age'].gt(18) & QB['status'].eq('active')\"",
+      "Query Builder expression. Example: \"QB['foo'] == 123\" or \"QB['age'].gt(18) & QB['status'].eq('active')\". When qb is used, do not combine it with data_conditions, conditions, or sorts; only limit, offset, and is_deleted may be used alongside qb.",
     ),
   is_deleted: zod
     .union([zod.boolean(), zod.null()])
@@ -10403,7 +10607,9 @@ export const ListResourcesFullV1AutocrudEquipmentFullGetQueryParams = zod.object
   limit: zod
     .number()
     .default(listResourcesFullV1AutocrudEquipmentFullGetQueryLimitDefault)
-    .describe('Maximum number of results'),
+    .describe(
+      'Maximum number of results. Default comes from the AUTOCRUD_DEFAULT_QUERY_LIMIT environment variable at startup; set limit explicitly or use the \/count endpoint if you need the full total.',
+    ),
   offset: zod
     .number()
     .default(listResourcesFullV1AutocrudEquipmentFullGetQueryOffsetDefault)
@@ -10573,7 +10779,7 @@ export const ListResourcesFullV1AutocrudEquipmentFullGetResponse = zod.array(
  * @summary Count equipment Resources
  */
 export const getResourcesCountV1AutocrudEquipmentCountGetQueryIsDeletedDefault = false;
-export const getResourcesCountV1AutocrudEquipmentCountGetQueryLimitDefault = 10;
+export const getResourcesCountV1AutocrudEquipmentCountGetQueryLimitDefault = 4294967295;
 export const getResourcesCountV1AutocrudEquipmentCountGetQueryOffsetDefault = 0;
 
 export const GetResourcesCountV1AutocrudEquipmentCountGetQueryParams = zod.object({
@@ -10581,7 +10787,7 @@ export const GetResourcesCountV1AutocrudEquipmentCountGetQueryParams = zod.objec
     .union([zod.string(), zod.null()])
     .optional()
     .describe(
-      "Query Builder expression. Example: \"QB['foo'] == 123\" or \"QB['age'].gt(18) & QB['status'].eq('active')\"",
+      "Query Builder expression. Example: \"QB['foo'] == 123\" or \"QB['age'].gt(18) & QB['status'].eq('active')\". When qb is used, do not combine it with data_conditions, conditions, or sorts; only limit, offset, and is_deleted may be used alongside qb.",
     ),
   is_deleted: zod
     .union([zod.boolean(), zod.null()])
@@ -10632,7 +10838,9 @@ export const GetResourcesCountV1AutocrudEquipmentCountGetQueryParams = zod.objec
   limit: zod
     .number()
     .default(getResourcesCountV1AutocrudEquipmentCountGetQueryLimitDefault)
-    .describe('Maximum number of results'),
+    .describe(
+      'Maximum number of results. Default comes from the AUTOCRUD_DEFAULT_QUERY_LIMIT environment variable at startup; set limit explicitly or use the \/count endpoint if you need the full total.',
+    ),
   offset: zod
     .number()
     .default(getResourcesCountV1AutocrudEquipmentCountGetQueryOffsetDefault)
@@ -10669,7 +10877,7 @@ By default all sections are returned: `data`, `revision_info`, `meta`.
  * @summary List equipment resources
  */
 export const listResourcesV1AutocrudEquipmentGetQueryIsDeletedDefault = false;
-export const listResourcesV1AutocrudEquipmentGetQueryLimitDefault = 10;
+export const listResourcesV1AutocrudEquipmentGetQueryLimitDefault = 4294967295;
 export const listResourcesV1AutocrudEquipmentGetQueryOffsetDefault = 0;
 export const listResourcesV1AutocrudEquipmentGetQueryReturnsDefault = `data,revision_info,meta`;
 
@@ -10678,7 +10886,7 @@ export const ListResourcesV1AutocrudEquipmentGetQueryParams = zod.object({
     .union([zod.string(), zod.null()])
     .optional()
     .describe(
-      "Query Builder expression. Example: \"QB['foo'] == 123\" or \"QB['age'].gt(18) & QB['status'].eq('active')\"",
+      "Query Builder expression. Example: \"QB['foo'] == 123\" or \"QB['age'].gt(18) & QB['status'].eq('active')\". When qb is used, do not combine it with data_conditions, conditions, or sorts; only limit, offset, and is_deleted may be used alongside qb.",
     ),
   is_deleted: zod
     .union([zod.boolean(), zod.null()])
@@ -10729,7 +10937,9 @@ export const ListResourcesV1AutocrudEquipmentGetQueryParams = zod.object({
   limit: zod
     .number()
     .default(listResourcesV1AutocrudEquipmentGetQueryLimitDefault)
-    .describe('Maximum number of results'),
+    .describe(
+      'Maximum number of results. Default comes from the AUTOCRUD_DEFAULT_QUERY_LIMIT environment variable at startup; set limit explicitly or use the \/count endpoint if you need the full total.',
+    ),
   offset: zod
     .number()
     .default(listResourcesV1AutocrudEquipmentGetQueryOffsetDefault)
@@ -10970,7 +11180,7 @@ export const CreateResourceV1AutocrudEquipmentPostResponse = zod
  * @summary Batch delete equipment
  */
 export const batchDeleteV1AutocrudEquipmentDeleteQueryIsDeletedDefault = false;
-export const batchDeleteV1AutocrudEquipmentDeleteQueryLimitDefault = 10;
+export const batchDeleteV1AutocrudEquipmentDeleteQueryLimitDefault = 4294967295;
 export const batchDeleteV1AutocrudEquipmentDeleteQueryOffsetDefault = 0;
 
 export const BatchDeleteV1AutocrudEquipmentDeleteQueryParams = zod.object({
@@ -10978,7 +11188,7 @@ export const BatchDeleteV1AutocrudEquipmentDeleteQueryParams = zod.object({
     .union([zod.string(), zod.null()])
     .optional()
     .describe(
-      "Query Builder expression. Example: \"QB['foo'] == 123\" or \"QB['age'].gt(18) & QB['status'].eq('active')\"",
+      "Query Builder expression. Example: \"QB['foo'] == 123\" or \"QB['age'].gt(18) & QB['status'].eq('active')\". When qb is used, do not combine it with data_conditions, conditions, or sorts; only limit, offset, and is_deleted may be used alongside qb.",
     ),
   is_deleted: zod
     .union([zod.boolean(), zod.null()])
@@ -11029,7 +11239,9 @@ export const BatchDeleteV1AutocrudEquipmentDeleteQueryParams = zod.object({
   limit: zod
     .number()
     .default(batchDeleteV1AutocrudEquipmentDeleteQueryLimitDefault)
-    .describe('Maximum number of results'),
+    .describe(
+      'Maximum number of results. Default comes from the AUTOCRUD_DEFAULT_QUERY_LIMIT environment variable at startup; set limit explicitly or use the \/count endpoint if you need the full total.',
+    ),
   offset: zod
     .number()
     .default(batchDeleteV1AutocrudEquipmentDeleteQueryOffsetDefault)
@@ -11075,7 +11287,7 @@ which resources are included.
  * @summary Export equipment data
  */
 export const exportModelV1AutocrudEquipmentExportGetQueryIsDeletedDefault = false;
-export const exportModelV1AutocrudEquipmentExportGetQueryLimitDefault = 10;
+export const exportModelV1AutocrudEquipmentExportGetQueryLimitDefault = 4294967295;
 export const exportModelV1AutocrudEquipmentExportGetQueryOffsetDefault = 0;
 
 export const ExportModelV1AutocrudEquipmentExportGetQueryParams = zod.object({
@@ -11083,7 +11295,7 @@ export const ExportModelV1AutocrudEquipmentExportGetQueryParams = zod.object({
     .union([zod.string(), zod.null()])
     .optional()
     .describe(
-      "Query Builder expression. Example: \"QB['foo'] == 123\" or \"QB['age'].gt(18) & QB['status'].eq('active')\"",
+      "Query Builder expression. Example: \"QB['foo'] == 123\" or \"QB['age'].gt(18) & QB['status'].eq('active')\". When qb is used, do not combine it with data_conditions, conditions, or sorts; only limit, offset, and is_deleted may be used alongside qb.",
     ),
   is_deleted: zod
     .union([zod.boolean(), zod.null()])
@@ -11134,7 +11346,9 @@ export const ExportModelV1AutocrudEquipmentExportGetQueryParams = zod.object({
   limit: zod
     .number()
     .default(exportModelV1AutocrudEquipmentExportGetQueryLimitDefault)
-    .describe('Maximum number of results'),
+    .describe(
+      'Maximum number of results. Default comes from the AUTOCRUD_DEFAULT_QUERY_LIMIT environment variable at startup; set limit explicitly or use the \/count endpoint if you need the full total.',
+    ),
   offset: zod
     .number()
     .default(exportModelV1AutocrudEquipmentExportGetQueryOffsetDefault)
@@ -12420,7 +12634,7 @@ export const RestoreResourceV1AutocrudEquipmentResourceIdRestorePostResponse = z
  * @summary Batch restore deleted equipment
  */
 export const batchRestoreV1AutocrudEquipmentRestorePostQueryIsDeletedDefault = false;
-export const batchRestoreV1AutocrudEquipmentRestorePostQueryLimitDefault = 10;
+export const batchRestoreV1AutocrudEquipmentRestorePostQueryLimitDefault = 4294967295;
 export const batchRestoreV1AutocrudEquipmentRestorePostQueryOffsetDefault = 0;
 
 export const BatchRestoreV1AutocrudEquipmentRestorePostQueryParams = zod.object({
@@ -12428,7 +12642,7 @@ export const BatchRestoreV1AutocrudEquipmentRestorePostQueryParams = zod.object(
     .union([zod.string(), zod.null()])
     .optional()
     .describe(
-      "Query Builder expression. Example: \"QB['foo'] == 123\" or \"QB['age'].gt(18) & QB['status'].eq('active')\"",
+      "Query Builder expression. Example: \"QB['foo'] == 123\" or \"QB['age'].gt(18) & QB['status'].eq('active')\". When qb is used, do not combine it with data_conditions, conditions, or sorts; only limit, offset, and is_deleted may be used alongside qb.",
     ),
   is_deleted: zod
     .union([zod.boolean(), zod.null()])
@@ -12479,7 +12693,9 @@ export const BatchRestoreV1AutocrudEquipmentRestorePostQueryParams = zod.object(
   limit: zod
     .number()
     .default(batchRestoreV1AutocrudEquipmentRestorePostQueryLimitDefault)
-    .describe('Maximum number of results'),
+    .describe(
+      'Maximum number of results. Default comes from the AUTOCRUD_DEFAULT_QUERY_LIMIT environment variable at startup; set limit explicitly or use the \/count endpoint if you need the full total.',
+    ),
   offset: zod
     .number()
     .default(batchRestoreV1AutocrudEquipmentRestorePostQueryOffsetDefault)
@@ -12529,7 +12745,7 @@ No data will be written back to storage - memory-only testing.
  * @summary Test Migrate Resources
  */
 export const testMigrateResourcesV1AutocrudEquipmentMigrateTestPostQueryIsDeletedDefault = false;
-export const testMigrateResourcesV1AutocrudEquipmentMigrateTestPostQueryLimitDefault = 10;
+export const testMigrateResourcesV1AutocrudEquipmentMigrateTestPostQueryLimitDefault = 4294967295;
 export const testMigrateResourcesV1AutocrudEquipmentMigrateTestPostQueryOffsetDefault = 0;
 
 export const TestMigrateResourcesV1AutocrudEquipmentMigrateTestPostQueryParams = zod.object({
@@ -12537,7 +12753,7 @@ export const TestMigrateResourcesV1AutocrudEquipmentMigrateTestPostQueryParams =
     .union([zod.string(), zod.null()])
     .optional()
     .describe(
-      "Query Builder expression. Example: \"QB['foo'] == 123\" or \"QB['age'].gt(18) & QB['status'].eq('active')\"",
+      "Query Builder expression. Example: \"QB['foo'] == 123\" or \"QB['age'].gt(18) & QB['status'].eq('active')\". When qb is used, do not combine it with data_conditions, conditions, or sorts; only limit, offset, and is_deleted may be used alongside qb.",
     ),
   is_deleted: zod
     .union([zod.boolean(), zod.null()])
@@ -12588,7 +12804,9 @@ export const TestMigrateResourcesV1AutocrudEquipmentMigrateTestPostQueryParams =
   limit: zod
     .number()
     .default(testMigrateResourcesV1AutocrudEquipmentMigrateTestPostQueryLimitDefault)
-    .describe('Maximum number of results'),
+    .describe(
+      'Maximum number of results. Default comes from the AUTOCRUD_DEFAULT_QUERY_LIMIT environment variable at startup; set limit explicitly or use the \/count endpoint if you need the full total.',
+    ),
   offset: zod
     .number()
     .default(testMigrateResourcesV1AutocrudEquipmentMigrateTestPostQueryOffsetDefault)
@@ -12618,7 +12836,7 @@ export const TestMigrateResourcesV1AutocrudEquipmentMigrateTestPostResponse = zo
  * @summary Execute Migrate Resources
  */
 export const executeMigrateResourcesV1AutocrudEquipmentMigrateExecutePostQueryIsDeletedDefault = false;
-export const executeMigrateResourcesV1AutocrudEquipmentMigrateExecutePostQueryLimitDefault = 10;
+export const executeMigrateResourcesV1AutocrudEquipmentMigrateExecutePostQueryLimitDefault = 4294967295;
 export const executeMigrateResourcesV1AutocrudEquipmentMigrateExecutePostQueryOffsetDefault = 0;
 
 export const ExecuteMigrateResourcesV1AutocrudEquipmentMigrateExecutePostQueryParams = zod.object({
@@ -12626,7 +12844,7 @@ export const ExecuteMigrateResourcesV1AutocrudEquipmentMigrateExecutePostQueryPa
     .union([zod.string(), zod.null()])
     .optional()
     .describe(
-      "Query Builder expression. Example: \"QB['foo'] == 123\" or \"QB['age'].gt(18) & QB['status'].eq('active')\"",
+      "Query Builder expression. Example: \"QB['foo'] == 123\" or \"QB['age'].gt(18) & QB['status'].eq('active')\". When qb is used, do not combine it with data_conditions, conditions, or sorts; only limit, offset, and is_deleted may be used alongside qb.",
     ),
   is_deleted: zod
     .union([zod.boolean(), zod.null()])
@@ -12677,7 +12895,9 @@ export const ExecuteMigrateResourcesV1AutocrudEquipmentMigrateExecutePostQueryPa
   limit: zod
     .number()
     .default(executeMigrateResourcesV1AutocrudEquipmentMigrateExecutePostQueryLimitDefault)
-    .describe('Maximum number of results'),
+    .describe(
+      'Maximum number of results. Default comes from the AUTOCRUD_DEFAULT_QUERY_LIMIT environment variable at startup; set limit explicitly or use the \/count endpoint if you need the full total.',
+    ),
   offset: zod
     .number()
     .default(executeMigrateResourcesV1AutocrudEquipmentMigrateExecutePostQueryOffsetDefault)
@@ -12816,8 +13036,9 @@ export const MigrateSingleResourceV1AutocrudEquipmentMigrateSingleResourceIdPost
 - Example: `[{"type": "meta", "key": "created_time", "direction": "+"}, {"type": "data", "field_path": "name", "direction": "-"}]`
 
 **Pagination:**
-- `limit`: Maximum number of results to return (default: 10)
+- `limit`: Maximum number of results to return (default comes from `AUTOCRUD_DEFAULT_QUERY_LIMIT` at startup)
 - `offset`: Number of results to skip for pagination (default: 0)
+- If you need an exact full total, use the `/count` endpoint or pass an explicit `limit`.
 
 **Partial Response:**
 - `partial`: List of fields to retrieve (e.g. '/field1', '/nested/field2')
@@ -12830,7 +13051,7 @@ export const MigrateSingleResourceV1AutocrudEquipmentMigrateSingleResourceIdPost
 - Direct access to resource content only
 
 **Examples:**
-- `GET /pet/data` - Get first 10 resources (data only)
+- `GET /pet/data` - Get the default first page of resources (data only)
 - `GET /pet/data?limit=20&offset=40` - Get resources 41-60 (data only)
 - `GET /pet/data?is_deleted=false&limit=5` - Get 5 non-deleted resources (data only)
 - `GET /pet/data?partial=/name&partial=/email` - Get specific fields for all resources
@@ -12841,7 +13062,7 @@ export const MigrateSingleResourceV1AutocrudEquipmentMigrateSingleResourceIdPost
  * @summary List pet Data Only
  */
 export const listResourcesDataV1AutocrudPetDataGetQueryIsDeletedDefault = false;
-export const listResourcesDataV1AutocrudPetDataGetQueryLimitDefault = 10;
+export const listResourcesDataV1AutocrudPetDataGetQueryLimitDefault = 4294967295;
 export const listResourcesDataV1AutocrudPetDataGetQueryOffsetDefault = 0;
 
 export const ListResourcesDataV1AutocrudPetDataGetQueryParams = zod.object({
@@ -12849,7 +13070,7 @@ export const ListResourcesDataV1AutocrudPetDataGetQueryParams = zod.object({
     .union([zod.string(), zod.null()])
     .optional()
     .describe(
-      "Query Builder expression. Example: \"QB['foo'] == 123\" or \"QB['age'].gt(18) & QB['status'].eq('active')\"",
+      "Query Builder expression. Example: \"QB['foo'] == 123\" or \"QB['age'].gt(18) & QB['status'].eq('active')\". When qb is used, do not combine it with data_conditions, conditions, or sorts; only limit, offset, and is_deleted may be used alongside qb.",
     ),
   is_deleted: zod
     .union([zod.boolean(), zod.null()])
@@ -12900,7 +13121,9 @@ export const ListResourcesDataV1AutocrudPetDataGetQueryParams = zod.object({
   limit: zod
     .number()
     .default(listResourcesDataV1AutocrudPetDataGetQueryLimitDefault)
-    .describe('Maximum number of results'),
+    .describe(
+      'Maximum number of results. Default comes from the AUTOCRUD_DEFAULT_QUERY_LIMIT environment variable at startup; set limit explicitly or use the \/count endpoint if you need the full total.',
+    ),
   offset: zod
     .number()
     .default(listResourcesDataV1AutocrudPetDataGetQueryOffsetDefault)
@@ -12998,8 +13221,9 @@ export const ListResourcesDataV1AutocrudPetDataGetResponse = zod.array(
 - Example: `[{"type": "meta", "key": "updated_time", "direction": "-"}, {"type": "data", "field_path": "department", "direction": "+"}]`
 
 **Pagination:**
-- `limit`: Maximum number of results to return (default: 10)
+- `limit`: Maximum number of results to return (default comes from `AUTOCRUD_DEFAULT_QUERY_LIMIT` at startup)
 - `offset`: Number of results to skip for pagination (default: 0)
+- If you need an exact full total, use the `/count` endpoint or pass an explicit `limit`.
 
 **Use Cases:**
 - Resource management and administration
@@ -13008,7 +13232,7 @@ export const ListResourcesDataV1AutocrudPetDataGetResponse = zod.array(
 - System monitoring and statistics
 
 **Examples:**
-- `GET /pet/meta` - Get metadata for first 10 resources
+- `GET /pet/meta` - Get metadata for the default first page of resources
 - `GET /pet/meta?is_deleted=true` - Get metadata for deleted resources
 - `GET /pet/meta?created_bys=admin&limit=50` - Get metadata for admin-created resources
 
@@ -13018,7 +13242,7 @@ export const ListResourcesDataV1AutocrudPetDataGetResponse = zod.array(
  * @summary List pet Metadata Only
  */
 export const listResourcesMetaV1AutocrudPetMetaGetQueryIsDeletedDefault = false;
-export const listResourcesMetaV1AutocrudPetMetaGetQueryLimitDefault = 10;
+export const listResourcesMetaV1AutocrudPetMetaGetQueryLimitDefault = 4294967295;
 export const listResourcesMetaV1AutocrudPetMetaGetQueryOffsetDefault = 0;
 
 export const ListResourcesMetaV1AutocrudPetMetaGetQueryParams = zod.object({
@@ -13026,7 +13250,7 @@ export const ListResourcesMetaV1AutocrudPetMetaGetQueryParams = zod.object({
     .union([zod.string(), zod.null()])
     .optional()
     .describe(
-      "Query Builder expression. Example: \"QB['foo'] == 123\" or \"QB['age'].gt(18) & QB['status'].eq('active')\"",
+      "Query Builder expression. Example: \"QB['foo'] == 123\" or \"QB['age'].gt(18) & QB['status'].eq('active')\". When qb is used, do not combine it with data_conditions, conditions, or sorts; only limit, offset, and is_deleted may be used alongside qb.",
     ),
   is_deleted: zod
     .union([zod.boolean(), zod.null()])
@@ -13077,7 +13301,9 @@ export const ListResourcesMetaV1AutocrudPetMetaGetQueryParams = zod.object({
   limit: zod
     .number()
     .default(listResourcesMetaV1AutocrudPetMetaGetQueryLimitDefault)
-    .describe('Maximum number of results'),
+    .describe(
+      'Maximum number of results. Default comes from the AUTOCRUD_DEFAULT_QUERY_LIMIT environment variable at startup; set limit explicitly or use the \/count endpoint if you need the full total.',
+    ),
   offset: zod
     .number()
     .default(listResourcesMetaV1AutocrudPetMetaGetQueryOffsetDefault)
@@ -13156,8 +13382,9 @@ export const ListResourcesMetaV1AutocrudPetMetaGetResponse = zod.array(
 - Example: `[{"field_path": "status", "operator": "eq", "value": "active"}]`
 
 **Pagination:**
-- `limit`: Maximum number of results to return (default: 10)
+- `limit`: Maximum number of results to return (default comes from `AUTOCRUD_DEFAULT_QUERY_LIMIT` at startup)
 - `offset`: Number of results to skip for pagination (default: 0)
+- If you need an exact full total, use the `/count` endpoint or pass an explicit `limit`.
 
 **Use Cases:**
 - Version control system integration
@@ -13166,8 +13393,8 @@ export const ListResourcesMetaV1AutocrudPetMetaGetResponse = zod.array(
 - Change tracking and audit trails
 
 **Examples:**
-- `GET /pet/revision-info` - Get current revision info for first 10 resources
-- `GET /pet/revision-info?limit=100` - Get revision info for first 100 resources
+- `GET /pet/revision-info` - Get current revision info for the default first page of resources
+- `GET /pet/revision-info?limit=100` - Get revision info for the first 100 resources
 - `GET /pet/revision-info?updated_bys=editor` - Get revision info for editor-modified resources
 
 **Error Responses:**
@@ -13176,7 +13403,7 @@ export const ListResourcesMetaV1AutocrudPetMetaGetResponse = zod.array(
  * @summary List pet Current Revision Info
  */
 export const listResourcesRevisionInfoV1AutocrudPetRevisionInfoGetQueryIsDeletedDefault = false;
-export const listResourcesRevisionInfoV1AutocrudPetRevisionInfoGetQueryLimitDefault = 10;
+export const listResourcesRevisionInfoV1AutocrudPetRevisionInfoGetQueryLimitDefault = 4294967295;
 export const listResourcesRevisionInfoV1AutocrudPetRevisionInfoGetQueryOffsetDefault = 0;
 
 export const ListResourcesRevisionInfoV1AutocrudPetRevisionInfoGetQueryParams = zod.object({
@@ -13184,7 +13411,7 @@ export const ListResourcesRevisionInfoV1AutocrudPetRevisionInfoGetQueryParams = 
     .union([zod.string(), zod.null()])
     .optional()
     .describe(
-      "Query Builder expression. Example: \"QB['foo'] == 123\" or \"QB['age'].gt(18) & QB['status'].eq('active')\"",
+      "Query Builder expression. Example: \"QB['foo'] == 123\" or \"QB['age'].gt(18) & QB['status'].eq('active')\". When qb is used, do not combine it with data_conditions, conditions, or sorts; only limit, offset, and is_deleted may be used alongside qb.",
     ),
   is_deleted: zod
     .union([zod.boolean(), zod.null()])
@@ -13235,7 +13462,9 @@ export const ListResourcesRevisionInfoV1AutocrudPetRevisionInfoGetQueryParams = 
   limit: zod
     .number()
     .default(listResourcesRevisionInfoV1AutocrudPetRevisionInfoGetQueryLimitDefault)
-    .describe('Maximum number of results'),
+    .describe(
+      'Maximum number of results. Default comes from the AUTOCRUD_DEFAULT_QUERY_LIMIT environment variable at startup; set limit explicitly or use the \/count endpoint if you need the full total.',
+    ),
   offset: zod
     .number()
     .default(listResourcesRevisionInfoV1AutocrudPetRevisionInfoGetQueryOffsetDefault)
@@ -13285,7 +13514,7 @@ export const ListResourcesRevisionInfoV1AutocrudPetRevisionInfoGetResponse = zod
  * @summary List pet Complete Information
  */
 export const listResourcesFullV1AutocrudPetFullGetQueryIsDeletedDefault = false;
-export const listResourcesFullV1AutocrudPetFullGetQueryLimitDefault = 10;
+export const listResourcesFullV1AutocrudPetFullGetQueryLimitDefault = 4294967295;
 export const listResourcesFullV1AutocrudPetFullGetQueryOffsetDefault = 0;
 export const listResourcesFullV1AutocrudPetFullGetQueryReturnsDefault = `data,revision_info,meta`;
 
@@ -13294,7 +13523,7 @@ export const ListResourcesFullV1AutocrudPetFullGetQueryParams = zod.object({
     .union([zod.string(), zod.null()])
     .optional()
     .describe(
-      "Query Builder expression. Example: \"QB['foo'] == 123\" or \"QB['age'].gt(18) & QB['status'].eq('active')\"",
+      "Query Builder expression. Example: \"QB['foo'] == 123\" or \"QB['age'].gt(18) & QB['status'].eq('active')\". When qb is used, do not combine it with data_conditions, conditions, or sorts; only limit, offset, and is_deleted may be used alongside qb.",
     ),
   is_deleted: zod
     .union([zod.boolean(), zod.null()])
@@ -13345,7 +13574,9 @@ export const ListResourcesFullV1AutocrudPetFullGetQueryParams = zod.object({
   limit: zod
     .number()
     .default(listResourcesFullV1AutocrudPetFullGetQueryLimitDefault)
-    .describe('Maximum number of results'),
+    .describe(
+      'Maximum number of results. Default comes from the AUTOCRUD_DEFAULT_QUERY_LIMIT environment variable at startup; set limit explicitly or use the \/count endpoint if you need the full total.',
+    ),
   offset: zod
     .number()
     .default(listResourcesFullV1AutocrudPetFullGetQueryOffsetDefault)
@@ -13503,7 +13734,7 @@ export const ListResourcesFullV1AutocrudPetFullGetResponse = zod.array(
  * @summary Count pet Resources
  */
 export const getResourcesCountV1AutocrudPetCountGetQueryIsDeletedDefault = false;
-export const getResourcesCountV1AutocrudPetCountGetQueryLimitDefault = 10;
+export const getResourcesCountV1AutocrudPetCountGetQueryLimitDefault = 4294967295;
 export const getResourcesCountV1AutocrudPetCountGetQueryOffsetDefault = 0;
 
 export const GetResourcesCountV1AutocrudPetCountGetQueryParams = zod.object({
@@ -13511,7 +13742,7 @@ export const GetResourcesCountV1AutocrudPetCountGetQueryParams = zod.object({
     .union([zod.string(), zod.null()])
     .optional()
     .describe(
-      "Query Builder expression. Example: \"QB['foo'] == 123\" or \"QB['age'].gt(18) & QB['status'].eq('active')\"",
+      "Query Builder expression. Example: \"QB['foo'] == 123\" or \"QB['age'].gt(18) & QB['status'].eq('active')\". When qb is used, do not combine it with data_conditions, conditions, or sorts; only limit, offset, and is_deleted may be used alongside qb.",
     ),
   is_deleted: zod
     .union([zod.boolean(), zod.null()])
@@ -13562,7 +13793,9 @@ export const GetResourcesCountV1AutocrudPetCountGetQueryParams = zod.object({
   limit: zod
     .number()
     .default(getResourcesCountV1AutocrudPetCountGetQueryLimitDefault)
-    .describe('Maximum number of results'),
+    .describe(
+      'Maximum number of results. Default comes from the AUTOCRUD_DEFAULT_QUERY_LIMIT environment variable at startup; set limit explicitly or use the \/count endpoint if you need the full total.',
+    ),
   offset: zod
     .number()
     .default(getResourcesCountV1AutocrudPetCountGetQueryOffsetDefault)
@@ -13599,7 +13832,7 @@ By default all sections are returned: `data`, `revision_info`, `meta`.
  * @summary List pet resources
  */
 export const listResourcesV1AutocrudPetGetQueryIsDeletedDefault = false;
-export const listResourcesV1AutocrudPetGetQueryLimitDefault = 10;
+export const listResourcesV1AutocrudPetGetQueryLimitDefault = 4294967295;
 export const listResourcesV1AutocrudPetGetQueryOffsetDefault = 0;
 export const listResourcesV1AutocrudPetGetQueryReturnsDefault = `data,revision_info,meta`;
 
@@ -13608,7 +13841,7 @@ export const ListResourcesV1AutocrudPetGetQueryParams = zod.object({
     .union([zod.string(), zod.null()])
     .optional()
     .describe(
-      "Query Builder expression. Example: \"QB['foo'] == 123\" or \"QB['age'].gt(18) & QB['status'].eq('active')\"",
+      "Query Builder expression. Example: \"QB['foo'] == 123\" or \"QB['age'].gt(18) & QB['status'].eq('active')\". When qb is used, do not combine it with data_conditions, conditions, or sorts; only limit, offset, and is_deleted may be used alongside qb.",
     ),
   is_deleted: zod
     .union([zod.boolean(), zod.null()])
@@ -13659,7 +13892,9 @@ export const ListResourcesV1AutocrudPetGetQueryParams = zod.object({
   limit: zod
     .number()
     .default(listResourcesV1AutocrudPetGetQueryLimitDefault)
-    .describe('Maximum number of results'),
+    .describe(
+      'Maximum number of results. Default comes from the AUTOCRUD_DEFAULT_QUERY_LIMIT environment variable at startup; set limit explicitly or use the \/count endpoint if you need the full total.',
+    ),
   offset: zod
     .number()
     .default(listResourcesV1AutocrudPetGetQueryOffsetDefault)
@@ -13869,7 +14104,7 @@ export const CreateResourceV1AutocrudPetPostResponse = zod
  * @summary Batch delete pet
  */
 export const batchDeleteV1AutocrudPetDeleteQueryIsDeletedDefault = false;
-export const batchDeleteV1AutocrudPetDeleteQueryLimitDefault = 10;
+export const batchDeleteV1AutocrudPetDeleteQueryLimitDefault = 4294967295;
 export const batchDeleteV1AutocrudPetDeleteQueryOffsetDefault = 0;
 
 export const BatchDeleteV1AutocrudPetDeleteQueryParams = zod.object({
@@ -13877,7 +14112,7 @@ export const BatchDeleteV1AutocrudPetDeleteQueryParams = zod.object({
     .union([zod.string(), zod.null()])
     .optional()
     .describe(
-      "Query Builder expression. Example: \"QB['foo'] == 123\" or \"QB['age'].gt(18) & QB['status'].eq('active')\"",
+      "Query Builder expression. Example: \"QB['foo'] == 123\" or \"QB['age'].gt(18) & QB['status'].eq('active')\". When qb is used, do not combine it with data_conditions, conditions, or sorts; only limit, offset, and is_deleted may be used alongside qb.",
     ),
   is_deleted: zod
     .union([zod.boolean(), zod.null()])
@@ -13928,7 +14163,9 @@ export const BatchDeleteV1AutocrudPetDeleteQueryParams = zod.object({
   limit: zod
     .number()
     .default(batchDeleteV1AutocrudPetDeleteQueryLimitDefault)
-    .describe('Maximum number of results'),
+    .describe(
+      'Maximum number of results. Default comes from the AUTOCRUD_DEFAULT_QUERY_LIMIT environment variable at startup; set limit explicitly or use the \/count endpoint if you need the full total.',
+    ),
   offset: zod
     .number()
     .default(batchDeleteV1AutocrudPetDeleteQueryOffsetDefault)
@@ -13974,7 +14211,7 @@ which resources are included.
  * @summary Export pet data
  */
 export const exportModelV1AutocrudPetExportGetQueryIsDeletedDefault = false;
-export const exportModelV1AutocrudPetExportGetQueryLimitDefault = 10;
+export const exportModelV1AutocrudPetExportGetQueryLimitDefault = 4294967295;
 export const exportModelV1AutocrudPetExportGetQueryOffsetDefault = 0;
 
 export const ExportModelV1AutocrudPetExportGetQueryParams = zod.object({
@@ -13982,7 +14219,7 @@ export const ExportModelV1AutocrudPetExportGetQueryParams = zod.object({
     .union([zod.string(), zod.null()])
     .optional()
     .describe(
-      "Query Builder expression. Example: \"QB['foo'] == 123\" or \"QB['age'].gt(18) & QB['status'].eq('active')\"",
+      "Query Builder expression. Example: \"QB['foo'] == 123\" or \"QB['age'].gt(18) & QB['status'].eq('active')\". When qb is used, do not combine it with data_conditions, conditions, or sorts; only limit, offset, and is_deleted may be used alongside qb.",
     ),
   is_deleted: zod
     .union([zod.boolean(), zod.null()])
@@ -14033,7 +14270,9 @@ export const ExportModelV1AutocrudPetExportGetQueryParams = zod.object({
   limit: zod
     .number()
     .default(exportModelV1AutocrudPetExportGetQueryLimitDefault)
-    .describe('Maximum number of results'),
+    .describe(
+      'Maximum number of results. Default comes from the AUTOCRUD_DEFAULT_QUERY_LIMIT environment variable at startup; set limit explicitly or use the \/count endpoint if you need the full total.',
+    ),
   offset: zod
     .number()
     .default(exportModelV1AutocrudPetExportGetQueryOffsetDefault)
@@ -15244,7 +15483,7 @@ export const RestoreResourceV1AutocrudPetResourceIdRestorePostResponse = zod
  * @summary Batch restore deleted pet
  */
 export const batchRestoreV1AutocrudPetRestorePostQueryIsDeletedDefault = false;
-export const batchRestoreV1AutocrudPetRestorePostQueryLimitDefault = 10;
+export const batchRestoreV1AutocrudPetRestorePostQueryLimitDefault = 4294967295;
 export const batchRestoreV1AutocrudPetRestorePostQueryOffsetDefault = 0;
 
 export const BatchRestoreV1AutocrudPetRestorePostQueryParams = zod.object({
@@ -15252,7 +15491,7 @@ export const BatchRestoreV1AutocrudPetRestorePostQueryParams = zod.object({
     .union([zod.string(), zod.null()])
     .optional()
     .describe(
-      "Query Builder expression. Example: \"QB['foo'] == 123\" or \"QB['age'].gt(18) & QB['status'].eq('active')\"",
+      "Query Builder expression. Example: \"QB['foo'] == 123\" or \"QB['age'].gt(18) & QB['status'].eq('active')\". When qb is used, do not combine it with data_conditions, conditions, or sorts; only limit, offset, and is_deleted may be used alongside qb.",
     ),
   is_deleted: zod
     .union([zod.boolean(), zod.null()])
@@ -15303,7 +15542,9 @@ export const BatchRestoreV1AutocrudPetRestorePostQueryParams = zod.object({
   limit: zod
     .number()
     .default(batchRestoreV1AutocrudPetRestorePostQueryLimitDefault)
-    .describe('Maximum number of results'),
+    .describe(
+      'Maximum number of results. Default comes from the AUTOCRUD_DEFAULT_QUERY_LIMIT environment variable at startup; set limit explicitly or use the \/count endpoint if you need the full total.',
+    ),
   offset: zod
     .number()
     .default(batchRestoreV1AutocrudPetRestorePostQueryOffsetDefault)
@@ -15351,7 +15592,7 @@ No data will be written back to storage - memory-only testing.
  * @summary Test Migrate Resources
  */
 export const testMigrateResourcesV1AutocrudPetMigrateTestPostQueryIsDeletedDefault = false;
-export const testMigrateResourcesV1AutocrudPetMigrateTestPostQueryLimitDefault = 10;
+export const testMigrateResourcesV1AutocrudPetMigrateTestPostQueryLimitDefault = 4294967295;
 export const testMigrateResourcesV1AutocrudPetMigrateTestPostQueryOffsetDefault = 0;
 
 export const TestMigrateResourcesV1AutocrudPetMigrateTestPostQueryParams = zod.object({
@@ -15359,7 +15600,7 @@ export const TestMigrateResourcesV1AutocrudPetMigrateTestPostQueryParams = zod.o
     .union([zod.string(), zod.null()])
     .optional()
     .describe(
-      "Query Builder expression. Example: \"QB['foo'] == 123\" or \"QB['age'].gt(18) & QB['status'].eq('active')\"",
+      "Query Builder expression. Example: \"QB['foo'] == 123\" or \"QB['age'].gt(18) & QB['status'].eq('active')\". When qb is used, do not combine it with data_conditions, conditions, or sorts; only limit, offset, and is_deleted may be used alongside qb.",
     ),
   is_deleted: zod
     .union([zod.boolean(), zod.null()])
@@ -15410,7 +15651,9 @@ export const TestMigrateResourcesV1AutocrudPetMigrateTestPostQueryParams = zod.o
   limit: zod
     .number()
     .default(testMigrateResourcesV1AutocrudPetMigrateTestPostQueryLimitDefault)
-    .describe('Maximum number of results'),
+    .describe(
+      'Maximum number of results. Default comes from the AUTOCRUD_DEFAULT_QUERY_LIMIT environment variable at startup; set limit explicitly or use the \/count endpoint if you need the full total.',
+    ),
   offset: zod
     .number()
     .default(testMigrateResourcesV1AutocrudPetMigrateTestPostQueryOffsetDefault)
@@ -15440,7 +15683,7 @@ export const TestMigrateResourcesV1AutocrudPetMigrateTestPostResponse = zod.unkn
  * @summary Execute Migrate Resources
  */
 export const executeMigrateResourcesV1AutocrudPetMigrateExecutePostQueryIsDeletedDefault = false;
-export const executeMigrateResourcesV1AutocrudPetMigrateExecutePostQueryLimitDefault = 10;
+export const executeMigrateResourcesV1AutocrudPetMigrateExecutePostQueryLimitDefault = 4294967295;
 export const executeMigrateResourcesV1AutocrudPetMigrateExecutePostQueryOffsetDefault = 0;
 
 export const ExecuteMigrateResourcesV1AutocrudPetMigrateExecutePostQueryParams = zod.object({
@@ -15448,7 +15691,7 @@ export const ExecuteMigrateResourcesV1AutocrudPetMigrateExecutePostQueryParams =
     .union([zod.string(), zod.null()])
     .optional()
     .describe(
-      "Query Builder expression. Example: \"QB['foo'] == 123\" or \"QB['age'].gt(18) & QB['status'].eq('active')\"",
+      "Query Builder expression. Example: \"QB['foo'] == 123\" or \"QB['age'].gt(18) & QB['status'].eq('active')\". When qb is used, do not combine it with data_conditions, conditions, or sorts; only limit, offset, and is_deleted may be used alongside qb.",
     ),
   is_deleted: zod
     .union([zod.boolean(), zod.null()])
@@ -15499,7 +15742,9 @@ export const ExecuteMigrateResourcesV1AutocrudPetMigrateExecutePostQueryParams =
   limit: zod
     .number()
     .default(executeMigrateResourcesV1AutocrudPetMigrateExecutePostQueryLimitDefault)
-    .describe('Maximum number of results'),
+    .describe(
+      'Maximum number of results. Default comes from the AUTOCRUD_DEFAULT_QUERY_LIMIT environment variable at startup; set limit explicitly or use the \/count endpoint if you need the full total.',
+    ),
   offset: zod
     .number()
     .default(executeMigrateResourcesV1AutocrudPetMigrateExecutePostQueryOffsetDefault)
@@ -15629,8 +15874,9 @@ export const MigrateSingleResourceV1AutocrudPetMigrateSingleResourceIdPostRespon
 - Example: `[{"type": "meta", "key": "created_time", "direction": "+"}, {"type": "data", "field_path": "name", "direction": "-"}]`
 
 **Pagination:**
-- `limit`: Maximum number of results to return (default: 10)
+- `limit`: Maximum number of results to return (default comes from `AUTOCRUD_DEFAULT_QUERY_LIMIT` at startup)
 - `offset`: Number of results to skip for pagination (default: 0)
+- If you need an exact full total, use the `/count` endpoint or pass an explicit `limit`.
 
 **Partial Response:**
 - `partial`: List of fields to retrieve (e.g. '/field1', '/nested/field2')
@@ -15643,7 +15889,7 @@ export const MigrateSingleResourceV1AutocrudPetMigrateSingleResourceIdPostRespon
 - Direct access to resource content only
 
 **Examples:**
-- `GET /pet-job/data` - Get first 10 resources (data only)
+- `GET /pet-job/data` - Get the default first page of resources (data only)
 - `GET /pet-job/data?limit=20&offset=40` - Get resources 41-60 (data only)
 - `GET /pet-job/data?is_deleted=false&limit=5` - Get 5 non-deleted resources (data only)
 - `GET /pet-job/data?partial=/name&partial=/email` - Get specific fields for all resources
@@ -15654,7 +15900,7 @@ export const MigrateSingleResourceV1AutocrudPetMigrateSingleResourceIdPostRespon
  * @summary List pet-job Data Only
  */
 export const listResourcesDataV1AutocrudPetJobDataGetQueryIsDeletedDefault = false;
-export const listResourcesDataV1AutocrudPetJobDataGetQueryLimitDefault = 10;
+export const listResourcesDataV1AutocrudPetJobDataGetQueryLimitDefault = 4294967295;
 export const listResourcesDataV1AutocrudPetJobDataGetQueryOffsetDefault = 0;
 
 export const ListResourcesDataV1AutocrudPetJobDataGetQueryParams = zod.object({
@@ -15662,7 +15908,7 @@ export const ListResourcesDataV1AutocrudPetJobDataGetQueryParams = zod.object({
     .union([zod.string(), zod.null()])
     .optional()
     .describe(
-      "Query Builder expression. Example: \"QB['foo'] == 123\" or \"QB['age'].gt(18) & QB['status'].eq('active')\"",
+      "Query Builder expression. Example: \"QB['foo'] == 123\" or \"QB['age'].gt(18) & QB['status'].eq('active')\". When qb is used, do not combine it with data_conditions, conditions, or sorts; only limit, offset, and is_deleted may be used alongside qb.",
     ),
   is_deleted: zod
     .union([zod.boolean(), zod.null()])
@@ -15713,7 +15959,9 @@ export const ListResourcesDataV1AutocrudPetJobDataGetQueryParams = zod.object({
   limit: zod
     .number()
     .default(listResourcesDataV1AutocrudPetJobDataGetQueryLimitDefault)
-    .describe('Maximum number of results'),
+    .describe(
+      'Maximum number of results. Default comes from the AUTOCRUD_DEFAULT_QUERY_LIMIT environment variable at startup; set limit explicitly or use the \/count endpoint if you need the full total.',
+    ),
   offset: zod
     .number()
     .default(listResourcesDataV1AutocrudPetJobDataGetQueryOffsetDefault)
@@ -15868,8 +16116,9 @@ export const ListResourcesDataV1AutocrudPetJobDataGetResponse = zod.array(
 - Example: `[{"type": "meta", "key": "updated_time", "direction": "-"}, {"type": "data", "field_path": "department", "direction": "+"}]`
 
 **Pagination:**
-- `limit`: Maximum number of results to return (default: 10)
+- `limit`: Maximum number of results to return (default comes from `AUTOCRUD_DEFAULT_QUERY_LIMIT` at startup)
 - `offset`: Number of results to skip for pagination (default: 0)
+- If you need an exact full total, use the `/count` endpoint or pass an explicit `limit`.
 
 **Use Cases:**
 - Resource management and administration
@@ -15878,7 +16127,7 @@ export const ListResourcesDataV1AutocrudPetJobDataGetResponse = zod.array(
 - System monitoring and statistics
 
 **Examples:**
-- `GET /pet-job/meta` - Get metadata for first 10 resources
+- `GET /pet-job/meta` - Get metadata for the default first page of resources
 - `GET /pet-job/meta?is_deleted=true` - Get metadata for deleted resources
 - `GET /pet-job/meta?created_bys=admin&limit=50` - Get metadata for admin-created resources
 
@@ -15888,7 +16137,7 @@ export const ListResourcesDataV1AutocrudPetJobDataGetResponse = zod.array(
  * @summary List pet-job Metadata Only
  */
 export const listResourcesMetaV1AutocrudPetJobMetaGetQueryIsDeletedDefault = false;
-export const listResourcesMetaV1AutocrudPetJobMetaGetQueryLimitDefault = 10;
+export const listResourcesMetaV1AutocrudPetJobMetaGetQueryLimitDefault = 4294967295;
 export const listResourcesMetaV1AutocrudPetJobMetaGetQueryOffsetDefault = 0;
 
 export const ListResourcesMetaV1AutocrudPetJobMetaGetQueryParams = zod.object({
@@ -15896,7 +16145,7 @@ export const ListResourcesMetaV1AutocrudPetJobMetaGetQueryParams = zod.object({
     .union([zod.string(), zod.null()])
     .optional()
     .describe(
-      "Query Builder expression. Example: \"QB['foo'] == 123\" or \"QB['age'].gt(18) & QB['status'].eq('active')\"",
+      "Query Builder expression. Example: \"QB['foo'] == 123\" or \"QB['age'].gt(18) & QB['status'].eq('active')\". When qb is used, do not combine it with data_conditions, conditions, or sorts; only limit, offset, and is_deleted may be used alongside qb.",
     ),
   is_deleted: zod
     .union([zod.boolean(), zod.null()])
@@ -15947,7 +16196,9 @@ export const ListResourcesMetaV1AutocrudPetJobMetaGetQueryParams = zod.object({
   limit: zod
     .number()
     .default(listResourcesMetaV1AutocrudPetJobMetaGetQueryLimitDefault)
-    .describe('Maximum number of results'),
+    .describe(
+      'Maximum number of results. Default comes from the AUTOCRUD_DEFAULT_QUERY_LIMIT environment variable at startup; set limit explicitly or use the \/count endpoint if you need the full total.',
+    ),
   offset: zod
     .number()
     .default(listResourcesMetaV1AutocrudPetJobMetaGetQueryOffsetDefault)
@@ -16026,8 +16277,9 @@ export const ListResourcesMetaV1AutocrudPetJobMetaGetResponse = zod.array(
 - Example: `[{"field_path": "status", "operator": "eq", "value": "active"}]`
 
 **Pagination:**
-- `limit`: Maximum number of results to return (default: 10)
+- `limit`: Maximum number of results to return (default comes from `AUTOCRUD_DEFAULT_QUERY_LIMIT` at startup)
 - `offset`: Number of results to skip for pagination (default: 0)
+- If you need an exact full total, use the `/count` endpoint or pass an explicit `limit`.
 
 **Use Cases:**
 - Version control system integration
@@ -16036,8 +16288,8 @@ export const ListResourcesMetaV1AutocrudPetJobMetaGetResponse = zod.array(
 - Change tracking and audit trails
 
 **Examples:**
-- `GET /pet-job/revision-info` - Get current revision info for first 10 resources
-- `GET /pet-job/revision-info?limit=100` - Get revision info for first 100 resources
+- `GET /pet-job/revision-info` - Get current revision info for the default first page of resources
+- `GET /pet-job/revision-info?limit=100` - Get revision info for the first 100 resources
 - `GET /pet-job/revision-info?updated_bys=editor` - Get revision info for editor-modified resources
 
 **Error Responses:**
@@ -16046,7 +16298,7 @@ export const ListResourcesMetaV1AutocrudPetJobMetaGetResponse = zod.array(
  * @summary List pet-job Current Revision Info
  */
 export const listResourcesRevisionInfoV1AutocrudPetJobRevisionInfoGetQueryIsDeletedDefault = false;
-export const listResourcesRevisionInfoV1AutocrudPetJobRevisionInfoGetQueryLimitDefault = 10;
+export const listResourcesRevisionInfoV1AutocrudPetJobRevisionInfoGetQueryLimitDefault = 4294967295;
 export const listResourcesRevisionInfoV1AutocrudPetJobRevisionInfoGetQueryOffsetDefault = 0;
 
 export const ListResourcesRevisionInfoV1AutocrudPetJobRevisionInfoGetQueryParams = zod.object({
@@ -16054,7 +16306,7 @@ export const ListResourcesRevisionInfoV1AutocrudPetJobRevisionInfoGetQueryParams
     .union([zod.string(), zod.null()])
     .optional()
     .describe(
-      "Query Builder expression. Example: \"QB['foo'] == 123\" or \"QB['age'].gt(18) & QB['status'].eq('active')\"",
+      "Query Builder expression. Example: \"QB['foo'] == 123\" or \"QB['age'].gt(18) & QB['status'].eq('active')\". When qb is used, do not combine it with data_conditions, conditions, or sorts; only limit, offset, and is_deleted may be used alongside qb.",
     ),
   is_deleted: zod
     .union([zod.boolean(), zod.null()])
@@ -16105,7 +16357,9 @@ export const ListResourcesRevisionInfoV1AutocrudPetJobRevisionInfoGetQueryParams
   limit: zod
     .number()
     .default(listResourcesRevisionInfoV1AutocrudPetJobRevisionInfoGetQueryLimitDefault)
-    .describe('Maximum number of results'),
+    .describe(
+      'Maximum number of results. Default comes from the AUTOCRUD_DEFAULT_QUERY_LIMIT environment variable at startup; set limit explicitly or use the \/count endpoint if you need the full total.',
+    ),
   offset: zod
     .number()
     .default(listResourcesRevisionInfoV1AutocrudPetJobRevisionInfoGetQueryOffsetDefault)
@@ -16157,7 +16411,7 @@ export const ListResourcesRevisionInfoV1AutocrudPetJobRevisionInfoGetResponse = 
  * @summary List pet-job Complete Information
  */
 export const listResourcesFullV1AutocrudPetJobFullGetQueryIsDeletedDefault = false;
-export const listResourcesFullV1AutocrudPetJobFullGetQueryLimitDefault = 10;
+export const listResourcesFullV1AutocrudPetJobFullGetQueryLimitDefault = 4294967295;
 export const listResourcesFullV1AutocrudPetJobFullGetQueryOffsetDefault = 0;
 export const listResourcesFullV1AutocrudPetJobFullGetQueryReturnsDefault = `data,revision_info,meta`;
 
@@ -16166,7 +16420,7 @@ export const ListResourcesFullV1AutocrudPetJobFullGetQueryParams = zod.object({
     .union([zod.string(), zod.null()])
     .optional()
     .describe(
-      "Query Builder expression. Example: \"QB['foo'] == 123\" or \"QB['age'].gt(18) & QB['status'].eq('active')\"",
+      "Query Builder expression. Example: \"QB['foo'] == 123\" or \"QB['age'].gt(18) & QB['status'].eq('active')\". When qb is used, do not combine it with data_conditions, conditions, or sorts; only limit, offset, and is_deleted may be used alongside qb.",
     ),
   is_deleted: zod
     .union([zod.boolean(), zod.null()])
@@ -16217,7 +16471,9 @@ export const ListResourcesFullV1AutocrudPetJobFullGetQueryParams = zod.object({
   limit: zod
     .number()
     .default(listResourcesFullV1AutocrudPetJobFullGetQueryLimitDefault)
-    .describe('Maximum number of results'),
+    .describe(
+      'Maximum number of results. Default comes from the AUTOCRUD_DEFAULT_QUERY_LIMIT environment variable at startup; set limit explicitly or use the \/count endpoint if you need the full total.',
+    ),
   offset: zod
     .number()
     .default(listResourcesFullV1AutocrudPetJobFullGetQueryOffsetDefault)
@@ -16437,7 +16693,7 @@ export const ListResourcesFullV1AutocrudPetJobFullGetResponse = zod.array(
  * @summary Count pet-job Resources
  */
 export const getResourcesCountV1AutocrudPetJobCountGetQueryIsDeletedDefault = false;
-export const getResourcesCountV1AutocrudPetJobCountGetQueryLimitDefault = 10;
+export const getResourcesCountV1AutocrudPetJobCountGetQueryLimitDefault = 4294967295;
 export const getResourcesCountV1AutocrudPetJobCountGetQueryOffsetDefault = 0;
 
 export const GetResourcesCountV1AutocrudPetJobCountGetQueryParams = zod.object({
@@ -16445,7 +16701,7 @@ export const GetResourcesCountV1AutocrudPetJobCountGetQueryParams = zod.object({
     .union([zod.string(), zod.null()])
     .optional()
     .describe(
-      "Query Builder expression. Example: \"QB['foo'] == 123\" or \"QB['age'].gt(18) & QB['status'].eq('active')\"",
+      "Query Builder expression. Example: \"QB['foo'] == 123\" or \"QB['age'].gt(18) & QB['status'].eq('active')\". When qb is used, do not combine it with data_conditions, conditions, or sorts; only limit, offset, and is_deleted may be used alongside qb.",
     ),
   is_deleted: zod
     .union([zod.boolean(), zod.null()])
@@ -16496,7 +16752,9 @@ export const GetResourcesCountV1AutocrudPetJobCountGetQueryParams = zod.object({
   limit: zod
     .number()
     .default(getResourcesCountV1AutocrudPetJobCountGetQueryLimitDefault)
-    .describe('Maximum number of results'),
+    .describe(
+      'Maximum number of results. Default comes from the AUTOCRUD_DEFAULT_QUERY_LIMIT environment variable at startup; set limit explicitly or use the \/count endpoint if you need the full total.',
+    ),
   offset: zod
     .number()
     .default(getResourcesCountV1AutocrudPetJobCountGetQueryOffsetDefault)
@@ -16533,7 +16791,7 @@ By default all sections are returned: `data`, `revision_info`, `meta`.
  * @summary List pet-job resources
  */
 export const listResourcesV1AutocrudPetJobGetQueryIsDeletedDefault = false;
-export const listResourcesV1AutocrudPetJobGetQueryLimitDefault = 10;
+export const listResourcesV1AutocrudPetJobGetQueryLimitDefault = 4294967295;
 export const listResourcesV1AutocrudPetJobGetQueryOffsetDefault = 0;
 export const listResourcesV1AutocrudPetJobGetQueryReturnsDefault = `data,revision_info,meta`;
 
@@ -16542,7 +16800,7 @@ export const ListResourcesV1AutocrudPetJobGetQueryParams = zod.object({
     .union([zod.string(), zod.null()])
     .optional()
     .describe(
-      "Query Builder expression. Example: \"QB['foo'] == 123\" or \"QB['age'].gt(18) & QB['status'].eq('active')\"",
+      "Query Builder expression. Example: \"QB['foo'] == 123\" or \"QB['age'].gt(18) & QB['status'].eq('active')\". When qb is used, do not combine it with data_conditions, conditions, or sorts; only limit, offset, and is_deleted may be used alongside qb.",
     ),
   is_deleted: zod
     .union([zod.boolean(), zod.null()])
@@ -16593,7 +16851,9 @@ export const ListResourcesV1AutocrudPetJobGetQueryParams = zod.object({
   limit: zod
     .number()
     .default(listResourcesV1AutocrudPetJobGetQueryLimitDefault)
-    .describe('Maximum number of results'),
+    .describe(
+      'Maximum number of results. Default comes from the AUTOCRUD_DEFAULT_QUERY_LIMIT environment variable at startup; set limit explicitly or use the \/count endpoint if you need the full total.',
+    ),
   offset: zod
     .number()
     .default(listResourcesV1AutocrudPetJobGetQueryOffsetDefault)
@@ -16906,7 +17166,7 @@ export const CreateResourceV1AutocrudPetJobPostResponse = zod
  * @summary Batch delete pet-job
  */
 export const batchDeleteV1AutocrudPetJobDeleteQueryIsDeletedDefault = false;
-export const batchDeleteV1AutocrudPetJobDeleteQueryLimitDefault = 10;
+export const batchDeleteV1AutocrudPetJobDeleteQueryLimitDefault = 4294967295;
 export const batchDeleteV1AutocrudPetJobDeleteQueryOffsetDefault = 0;
 
 export const BatchDeleteV1AutocrudPetJobDeleteQueryParams = zod.object({
@@ -16914,7 +17174,7 @@ export const BatchDeleteV1AutocrudPetJobDeleteQueryParams = zod.object({
     .union([zod.string(), zod.null()])
     .optional()
     .describe(
-      "Query Builder expression. Example: \"QB['foo'] == 123\" or \"QB['age'].gt(18) & QB['status'].eq('active')\"",
+      "Query Builder expression. Example: \"QB['foo'] == 123\" or \"QB['age'].gt(18) & QB['status'].eq('active')\". When qb is used, do not combine it with data_conditions, conditions, or sorts; only limit, offset, and is_deleted may be used alongside qb.",
     ),
   is_deleted: zod
     .union([zod.boolean(), zod.null()])
@@ -16965,7 +17225,9 @@ export const BatchDeleteV1AutocrudPetJobDeleteQueryParams = zod.object({
   limit: zod
     .number()
     .default(batchDeleteV1AutocrudPetJobDeleteQueryLimitDefault)
-    .describe('Maximum number of results'),
+    .describe(
+      'Maximum number of results. Default comes from the AUTOCRUD_DEFAULT_QUERY_LIMIT environment variable at startup; set limit explicitly or use the \/count endpoint if you need the full total.',
+    ),
   offset: zod
     .number()
     .default(batchDeleteV1AutocrudPetJobDeleteQueryOffsetDefault)
@@ -17011,7 +17273,7 @@ which resources are included.
  * @summary Export pet-job data
  */
 export const exportModelV1AutocrudPetJobExportGetQueryIsDeletedDefault = false;
-export const exportModelV1AutocrudPetJobExportGetQueryLimitDefault = 10;
+export const exportModelV1AutocrudPetJobExportGetQueryLimitDefault = 4294967295;
 export const exportModelV1AutocrudPetJobExportGetQueryOffsetDefault = 0;
 
 export const ExportModelV1AutocrudPetJobExportGetQueryParams = zod.object({
@@ -17019,7 +17281,7 @@ export const ExportModelV1AutocrudPetJobExportGetQueryParams = zod.object({
     .union([zod.string(), zod.null()])
     .optional()
     .describe(
-      "Query Builder expression. Example: \"QB['foo'] == 123\" or \"QB['age'].gt(18) & QB['status'].eq('active')\"",
+      "Query Builder expression. Example: \"QB['foo'] == 123\" or \"QB['age'].gt(18) & QB['status'].eq('active')\". When qb is used, do not combine it with data_conditions, conditions, or sorts; only limit, offset, and is_deleted may be used alongside qb.",
     ),
   is_deleted: zod
     .union([zod.boolean(), zod.null()])
@@ -17070,7 +17332,9 @@ export const ExportModelV1AutocrudPetJobExportGetQueryParams = zod.object({
   limit: zod
     .number()
     .default(exportModelV1AutocrudPetJobExportGetQueryLimitDefault)
-    .describe('Maximum number of results'),
+    .describe(
+      'Maximum number of results. Default comes from the AUTOCRUD_DEFAULT_QUERY_LIMIT environment variable at startup; set limit explicitly or use the \/count endpoint if you need the full total.',
+    ),
   offset: zod
     .number()
     .default(exportModelV1AutocrudPetJobExportGetQueryOffsetDefault)
@@ -18551,7 +18815,7 @@ export const RestoreResourceV1AutocrudPetJobResourceIdRestorePostResponse = zod
  * @summary Batch restore deleted pet-job
  */
 export const batchRestoreV1AutocrudPetJobRestorePostQueryIsDeletedDefault = false;
-export const batchRestoreV1AutocrudPetJobRestorePostQueryLimitDefault = 10;
+export const batchRestoreV1AutocrudPetJobRestorePostQueryLimitDefault = 4294967295;
 export const batchRestoreV1AutocrudPetJobRestorePostQueryOffsetDefault = 0;
 
 export const BatchRestoreV1AutocrudPetJobRestorePostQueryParams = zod.object({
@@ -18559,7 +18823,7 @@ export const BatchRestoreV1AutocrudPetJobRestorePostQueryParams = zod.object({
     .union([zod.string(), zod.null()])
     .optional()
     .describe(
-      "Query Builder expression. Example: \"QB['foo'] == 123\" or \"QB['age'].gt(18) & QB['status'].eq('active')\"",
+      "Query Builder expression. Example: \"QB['foo'] == 123\" or \"QB['age'].gt(18) & QB['status'].eq('active')\". When qb is used, do not combine it with data_conditions, conditions, or sorts; only limit, offset, and is_deleted may be used alongside qb.",
     ),
   is_deleted: zod
     .union([zod.boolean(), zod.null()])
@@ -18610,7 +18874,9 @@ export const BatchRestoreV1AutocrudPetJobRestorePostQueryParams = zod.object({
   limit: zod
     .number()
     .default(batchRestoreV1AutocrudPetJobRestorePostQueryLimitDefault)
-    .describe('Maximum number of results'),
+    .describe(
+      'Maximum number of results. Default comes from the AUTOCRUD_DEFAULT_QUERY_LIMIT environment variable at startup; set limit explicitly or use the \/count endpoint if you need the full total.',
+    ),
   offset: zod
     .number()
     .default(batchRestoreV1AutocrudPetJobRestorePostQueryOffsetDefault)
@@ -18660,7 +18926,7 @@ No data will be written back to storage - memory-only testing.
  * @summary Test Migrate Resources
  */
 export const testMigrateResourcesV1AutocrudPetJobMigrateTestPostQueryIsDeletedDefault = false;
-export const testMigrateResourcesV1AutocrudPetJobMigrateTestPostQueryLimitDefault = 10;
+export const testMigrateResourcesV1AutocrudPetJobMigrateTestPostQueryLimitDefault = 4294967295;
 export const testMigrateResourcesV1AutocrudPetJobMigrateTestPostQueryOffsetDefault = 0;
 
 export const TestMigrateResourcesV1AutocrudPetJobMigrateTestPostQueryParams = zod.object({
@@ -18668,7 +18934,7 @@ export const TestMigrateResourcesV1AutocrudPetJobMigrateTestPostQueryParams = zo
     .union([zod.string(), zod.null()])
     .optional()
     .describe(
-      "Query Builder expression. Example: \"QB['foo'] == 123\" or \"QB['age'].gt(18) & QB['status'].eq('active')\"",
+      "Query Builder expression. Example: \"QB['foo'] == 123\" or \"QB['age'].gt(18) & QB['status'].eq('active')\". When qb is used, do not combine it with data_conditions, conditions, or sorts; only limit, offset, and is_deleted may be used alongside qb.",
     ),
   is_deleted: zod
     .union([zod.boolean(), zod.null()])
@@ -18719,7 +18985,9 @@ export const TestMigrateResourcesV1AutocrudPetJobMigrateTestPostQueryParams = zo
   limit: zod
     .number()
     .default(testMigrateResourcesV1AutocrudPetJobMigrateTestPostQueryLimitDefault)
-    .describe('Maximum number of results'),
+    .describe(
+      'Maximum number of results. Default comes from the AUTOCRUD_DEFAULT_QUERY_LIMIT environment variable at startup; set limit explicitly or use the \/count endpoint if you need the full total.',
+    ),
   offset: zod
     .number()
     .default(testMigrateResourcesV1AutocrudPetJobMigrateTestPostQueryOffsetDefault)
@@ -18749,7 +19017,7 @@ export const TestMigrateResourcesV1AutocrudPetJobMigrateTestPostResponse = zod.u
  * @summary Execute Migrate Resources
  */
 export const executeMigrateResourcesV1AutocrudPetJobMigrateExecutePostQueryIsDeletedDefault = false;
-export const executeMigrateResourcesV1AutocrudPetJobMigrateExecutePostQueryLimitDefault = 10;
+export const executeMigrateResourcesV1AutocrudPetJobMigrateExecutePostQueryLimitDefault = 4294967295;
 export const executeMigrateResourcesV1AutocrudPetJobMigrateExecutePostQueryOffsetDefault = 0;
 
 export const ExecuteMigrateResourcesV1AutocrudPetJobMigrateExecutePostQueryParams = zod.object({
@@ -18757,7 +19025,7 @@ export const ExecuteMigrateResourcesV1AutocrudPetJobMigrateExecutePostQueryParam
     .union([zod.string(), zod.null()])
     .optional()
     .describe(
-      "Query Builder expression. Example: \"QB['foo'] == 123\" or \"QB['age'].gt(18) & QB['status'].eq('active')\"",
+      "Query Builder expression. Example: \"QB['foo'] == 123\" or \"QB['age'].gt(18) & QB['status'].eq('active')\". When qb is used, do not combine it with data_conditions, conditions, or sorts; only limit, offset, and is_deleted may be used alongside qb.",
     ),
   is_deleted: zod
     .union([zod.boolean(), zod.null()])
@@ -18808,7 +19076,9 @@ export const ExecuteMigrateResourcesV1AutocrudPetJobMigrateExecutePostQueryParam
   limit: zod
     .number()
     .default(executeMigrateResourcesV1AutocrudPetJobMigrateExecutePostQueryLimitDefault)
-    .describe('Maximum number of results'),
+    .describe(
+      'Maximum number of results. Default comes from the AUTOCRUD_DEFAULT_QUERY_LIMIT environment variable at startup; set limit explicitly or use the \/count endpoint if you need the full total.',
+    ),
   offset: zod
     .number()
     .default(executeMigrateResourcesV1AutocrudPetJobMigrateExecutePostQueryOffsetDefault)
@@ -18945,8 +19215,9 @@ export const MigrateSingleResourceV1AutocrudPetJobMigrateSingleResourceIdPostRes
 - Example: `[{"type": "meta", "key": "created_time", "direction": "+"}, {"type": "data", "field_path": "name", "direction": "-"}]`
 
 **Pagination:**
-- `limit`: Maximum number of results to return (default: 10)
+- `limit`: Maximum number of results to return (default comes from `AUTOCRUD_DEFAULT_QUERY_LIMIT` at startup)
 - `offset`: Number of results to skip for pagination (default: 0)
+- If you need an exact full total, use the `/count` endpoint or pass an explicit `limit`.
 
 **Partial Response:**
 - `partial`: List of fields to retrieve (e.g. '/field1', '/nested/field2')
@@ -18959,7 +19230,7 @@ export const MigrateSingleResourceV1AutocrudPetJobMigrateSingleResourceIdPostRes
 - Direct access to resource content only
 
 **Examples:**
-- `GET /quest/data` - Get first 10 resources (data only)
+- `GET /quest/data` - Get the default first page of resources (data only)
 - `GET /quest/data?limit=20&offset=40` - Get resources 41-60 (data only)
 - `GET /quest/data?is_deleted=false&limit=5` - Get 5 non-deleted resources (data only)
 - `GET /quest/data?partial=/name&partial=/email` - Get specific fields for all resources
@@ -18970,7 +19241,7 @@ export const MigrateSingleResourceV1AutocrudPetJobMigrateSingleResourceIdPostRes
  * @summary List quest Data Only
  */
 export const listResourcesDataV1AutocrudQuestDataGetQueryIsDeletedDefault = false;
-export const listResourcesDataV1AutocrudQuestDataGetQueryLimitDefault = 10;
+export const listResourcesDataV1AutocrudQuestDataGetQueryLimitDefault = 4294967295;
 export const listResourcesDataV1AutocrudQuestDataGetQueryOffsetDefault = 0;
 
 export const ListResourcesDataV1AutocrudQuestDataGetQueryParams = zod.object({
@@ -18978,7 +19249,7 @@ export const ListResourcesDataV1AutocrudQuestDataGetQueryParams = zod.object({
     .union([zod.string(), zod.null()])
     .optional()
     .describe(
-      "Query Builder expression. Example: \"QB['foo'] == 123\" or \"QB['age'].gt(18) & QB['status'].eq('active')\"",
+      "Query Builder expression. Example: \"QB['foo'] == 123\" or \"QB['age'].gt(18) & QB['status'].eq('active')\". When qb is used, do not combine it with data_conditions, conditions, or sorts; only limit, offset, and is_deleted may be used alongside qb.",
     ),
   is_deleted: zod
     .union([zod.boolean(), zod.null()])
@@ -19029,7 +19300,9 @@ export const ListResourcesDataV1AutocrudQuestDataGetQueryParams = zod.object({
   limit: zod
     .number()
     .default(listResourcesDataV1AutocrudQuestDataGetQueryLimitDefault)
-    .describe('Maximum number of results'),
+    .describe(
+      'Maximum number of results. Default comes from the AUTOCRUD_DEFAULT_QUERY_LIMIT environment variable at startup; set limit explicitly or use the \/count endpoint if you need the full total.',
+    ),
   offset: zod
     .number()
     .default(listResourcesDataV1AutocrudQuestDataGetQueryOffsetDefault)
@@ -19174,8 +19447,9 @@ export const ListResourcesDataV1AutocrudQuestDataGetResponse = zod.array(
 - Example: `[{"type": "meta", "key": "updated_time", "direction": "-"}, {"type": "data", "field_path": "department", "direction": "+"}]`
 
 **Pagination:**
-- `limit`: Maximum number of results to return (default: 10)
+- `limit`: Maximum number of results to return (default comes from `AUTOCRUD_DEFAULT_QUERY_LIMIT` at startup)
 - `offset`: Number of results to skip for pagination (default: 0)
+- If you need an exact full total, use the `/count` endpoint or pass an explicit `limit`.
 
 **Use Cases:**
 - Resource management and administration
@@ -19184,7 +19458,7 @@ export const ListResourcesDataV1AutocrudQuestDataGetResponse = zod.array(
 - System monitoring and statistics
 
 **Examples:**
-- `GET /quest/meta` - Get metadata for first 10 resources
+- `GET /quest/meta` - Get metadata for the default first page of resources
 - `GET /quest/meta?is_deleted=true` - Get metadata for deleted resources
 - `GET /quest/meta?created_bys=admin&limit=50` - Get metadata for admin-created resources
 
@@ -19194,7 +19468,7 @@ export const ListResourcesDataV1AutocrudQuestDataGetResponse = zod.array(
  * @summary List quest Metadata Only
  */
 export const listResourcesMetaV1AutocrudQuestMetaGetQueryIsDeletedDefault = false;
-export const listResourcesMetaV1AutocrudQuestMetaGetQueryLimitDefault = 10;
+export const listResourcesMetaV1AutocrudQuestMetaGetQueryLimitDefault = 4294967295;
 export const listResourcesMetaV1AutocrudQuestMetaGetQueryOffsetDefault = 0;
 
 export const ListResourcesMetaV1AutocrudQuestMetaGetQueryParams = zod.object({
@@ -19202,7 +19476,7 @@ export const ListResourcesMetaV1AutocrudQuestMetaGetQueryParams = zod.object({
     .union([zod.string(), zod.null()])
     .optional()
     .describe(
-      "Query Builder expression. Example: \"QB['foo'] == 123\" or \"QB['age'].gt(18) & QB['status'].eq('active')\"",
+      "Query Builder expression. Example: \"QB['foo'] == 123\" or \"QB['age'].gt(18) & QB['status'].eq('active')\". When qb is used, do not combine it with data_conditions, conditions, or sorts; only limit, offset, and is_deleted may be used alongside qb.",
     ),
   is_deleted: zod
     .union([zod.boolean(), zod.null()])
@@ -19253,7 +19527,9 @@ export const ListResourcesMetaV1AutocrudQuestMetaGetQueryParams = zod.object({
   limit: zod
     .number()
     .default(listResourcesMetaV1AutocrudQuestMetaGetQueryLimitDefault)
-    .describe('Maximum number of results'),
+    .describe(
+      'Maximum number of results. Default comes from the AUTOCRUD_DEFAULT_QUERY_LIMIT environment variable at startup; set limit explicitly or use the \/count endpoint if you need the full total.',
+    ),
   offset: zod
     .number()
     .default(listResourcesMetaV1AutocrudQuestMetaGetQueryOffsetDefault)
@@ -19332,8 +19608,9 @@ export const ListResourcesMetaV1AutocrudQuestMetaGetResponse = zod.array(
 - Example: `[{"field_path": "status", "operator": "eq", "value": "active"}]`
 
 **Pagination:**
-- `limit`: Maximum number of results to return (default: 10)
+- `limit`: Maximum number of results to return (default comes from `AUTOCRUD_DEFAULT_QUERY_LIMIT` at startup)
 - `offset`: Number of results to skip for pagination (default: 0)
+- If you need an exact full total, use the `/count` endpoint or pass an explicit `limit`.
 
 **Use Cases:**
 - Version control system integration
@@ -19342,8 +19619,8 @@ export const ListResourcesMetaV1AutocrudQuestMetaGetResponse = zod.array(
 - Change tracking and audit trails
 
 **Examples:**
-- `GET /quest/revision-info` - Get current revision info for first 10 resources
-- `GET /quest/revision-info?limit=100` - Get revision info for first 100 resources
+- `GET /quest/revision-info` - Get current revision info for the default first page of resources
+- `GET /quest/revision-info?limit=100` - Get revision info for the first 100 resources
 - `GET /quest/revision-info?updated_bys=editor` - Get revision info for editor-modified resources
 
 **Error Responses:**
@@ -19352,7 +19629,7 @@ export const ListResourcesMetaV1AutocrudQuestMetaGetResponse = zod.array(
  * @summary List quest Current Revision Info
  */
 export const listResourcesRevisionInfoV1AutocrudQuestRevisionInfoGetQueryIsDeletedDefault = false;
-export const listResourcesRevisionInfoV1AutocrudQuestRevisionInfoGetQueryLimitDefault = 10;
+export const listResourcesRevisionInfoV1AutocrudQuestRevisionInfoGetQueryLimitDefault = 4294967295;
 export const listResourcesRevisionInfoV1AutocrudQuestRevisionInfoGetQueryOffsetDefault = 0;
 
 export const ListResourcesRevisionInfoV1AutocrudQuestRevisionInfoGetQueryParams = zod.object({
@@ -19360,7 +19637,7 @@ export const ListResourcesRevisionInfoV1AutocrudQuestRevisionInfoGetQueryParams 
     .union([zod.string(), zod.null()])
     .optional()
     .describe(
-      "Query Builder expression. Example: \"QB['foo'] == 123\" or \"QB['age'].gt(18) & QB['status'].eq('active')\"",
+      "Query Builder expression. Example: \"QB['foo'] == 123\" or \"QB['age'].gt(18) & QB['status'].eq('active')\". When qb is used, do not combine it with data_conditions, conditions, or sorts; only limit, offset, and is_deleted may be used alongside qb.",
     ),
   is_deleted: zod
     .union([zod.boolean(), zod.null()])
@@ -19411,7 +19688,9 @@ export const ListResourcesRevisionInfoV1AutocrudQuestRevisionInfoGetQueryParams 
   limit: zod
     .number()
     .default(listResourcesRevisionInfoV1AutocrudQuestRevisionInfoGetQueryLimitDefault)
-    .describe('Maximum number of results'),
+    .describe(
+      'Maximum number of results. Default comes from the AUTOCRUD_DEFAULT_QUERY_LIMIT environment variable at startup; set limit explicitly or use the \/count endpoint if you need the full total.',
+    ),
   offset: zod
     .number()
     .default(listResourcesRevisionInfoV1AutocrudQuestRevisionInfoGetQueryOffsetDefault)
@@ -19461,7 +19740,7 @@ export const ListResourcesRevisionInfoV1AutocrudQuestRevisionInfoGetResponse = z
  * @summary List quest Complete Information
  */
 export const listResourcesFullV1AutocrudQuestFullGetQueryIsDeletedDefault = false;
-export const listResourcesFullV1AutocrudQuestFullGetQueryLimitDefault = 10;
+export const listResourcesFullV1AutocrudQuestFullGetQueryLimitDefault = 4294967295;
 export const listResourcesFullV1AutocrudQuestFullGetQueryOffsetDefault = 0;
 export const listResourcesFullV1AutocrudQuestFullGetQueryReturnsDefault = `data,revision_info,meta`;
 
@@ -19470,7 +19749,7 @@ export const ListResourcesFullV1AutocrudQuestFullGetQueryParams = zod.object({
     .union([zod.string(), zod.null()])
     .optional()
     .describe(
-      "Query Builder expression. Example: \"QB['foo'] == 123\" or \"QB['age'].gt(18) & QB['status'].eq('active')\"",
+      "Query Builder expression. Example: \"QB['foo'] == 123\" or \"QB['age'].gt(18) & QB['status'].eq('active')\". When qb is used, do not combine it with data_conditions, conditions, or sorts; only limit, offset, and is_deleted may be used alongside qb.",
     ),
   is_deleted: zod
     .union([zod.boolean(), zod.null()])
@@ -19521,7 +19800,9 @@ export const ListResourcesFullV1AutocrudQuestFullGetQueryParams = zod.object({
   limit: zod
     .number()
     .default(listResourcesFullV1AutocrudQuestFullGetQueryLimitDefault)
-    .describe('Maximum number of results'),
+    .describe(
+      'Maximum number of results. Default comes from the AUTOCRUD_DEFAULT_QUERY_LIMIT environment variable at startup; set limit explicitly or use the \/count endpoint if you need the full total.',
+    ),
   offset: zod
     .number()
     .default(listResourcesFullV1AutocrudQuestFullGetQueryOffsetDefault)
@@ -19720,7 +20001,7 @@ export const ListResourcesFullV1AutocrudQuestFullGetResponse = zod.array(
  * @summary Count quest Resources
  */
 export const getResourcesCountV1AutocrudQuestCountGetQueryIsDeletedDefault = false;
-export const getResourcesCountV1AutocrudQuestCountGetQueryLimitDefault = 10;
+export const getResourcesCountV1AutocrudQuestCountGetQueryLimitDefault = 4294967295;
 export const getResourcesCountV1AutocrudQuestCountGetQueryOffsetDefault = 0;
 
 export const GetResourcesCountV1AutocrudQuestCountGetQueryParams = zod.object({
@@ -19728,7 +20009,7 @@ export const GetResourcesCountV1AutocrudQuestCountGetQueryParams = zod.object({
     .union([zod.string(), zod.null()])
     .optional()
     .describe(
-      "Query Builder expression. Example: \"QB['foo'] == 123\" or \"QB['age'].gt(18) & QB['status'].eq('active')\"",
+      "Query Builder expression. Example: \"QB['foo'] == 123\" or \"QB['age'].gt(18) & QB['status'].eq('active')\". When qb is used, do not combine it with data_conditions, conditions, or sorts; only limit, offset, and is_deleted may be used alongside qb.",
     ),
   is_deleted: zod
     .union([zod.boolean(), zod.null()])
@@ -19779,7 +20060,9 @@ export const GetResourcesCountV1AutocrudQuestCountGetQueryParams = zod.object({
   limit: zod
     .number()
     .default(getResourcesCountV1AutocrudQuestCountGetQueryLimitDefault)
-    .describe('Maximum number of results'),
+    .describe(
+      'Maximum number of results. Default comes from the AUTOCRUD_DEFAULT_QUERY_LIMIT environment variable at startup; set limit explicitly or use the \/count endpoint if you need the full total.',
+    ),
   offset: zod
     .number()
     .default(getResourcesCountV1AutocrudQuestCountGetQueryOffsetDefault)
@@ -19816,7 +20099,7 @@ By default all sections are returned: `data`, `revision_info`, `meta`.
  * @summary List quest resources
  */
 export const listResourcesV1AutocrudQuestGetQueryIsDeletedDefault = false;
-export const listResourcesV1AutocrudQuestGetQueryLimitDefault = 10;
+export const listResourcesV1AutocrudQuestGetQueryLimitDefault = 4294967295;
 export const listResourcesV1AutocrudQuestGetQueryOffsetDefault = 0;
 export const listResourcesV1AutocrudQuestGetQueryReturnsDefault = `data,revision_info,meta`;
 
@@ -19825,7 +20108,7 @@ export const ListResourcesV1AutocrudQuestGetQueryParams = zod.object({
     .union([zod.string(), zod.null()])
     .optional()
     .describe(
-      "Query Builder expression. Example: \"QB['foo'] == 123\" or \"QB['age'].gt(18) & QB['status'].eq('active')\"",
+      "Query Builder expression. Example: \"QB['foo'] == 123\" or \"QB['age'].gt(18) & QB['status'].eq('active')\". When qb is used, do not combine it with data_conditions, conditions, or sorts; only limit, offset, and is_deleted may be used alongside qb.",
     ),
   is_deleted: zod
     .union([zod.boolean(), zod.null()])
@@ -19876,7 +20159,9 @@ export const ListResourcesV1AutocrudQuestGetQueryParams = zod.object({
   limit: zod
     .number()
     .default(listResourcesV1AutocrudQuestGetQueryLimitDefault)
-    .describe('Maximum number of results'),
+    .describe(
+      'Maximum number of results. Default comes from the AUTOCRUD_DEFAULT_QUERY_LIMIT environment variable at startup; set limit explicitly or use the \/count endpoint if you need the full total.',
+    ),
   offset: zod
     .number()
     .default(listResourcesV1AutocrudQuestGetQueryOffsetDefault)
@@ -20165,7 +20450,7 @@ export const CreateResourceV1AutocrudQuestPostResponse = zod
  * @summary Batch delete quest
  */
 export const batchDeleteV1AutocrudQuestDeleteQueryIsDeletedDefault = false;
-export const batchDeleteV1AutocrudQuestDeleteQueryLimitDefault = 10;
+export const batchDeleteV1AutocrudQuestDeleteQueryLimitDefault = 4294967295;
 export const batchDeleteV1AutocrudQuestDeleteQueryOffsetDefault = 0;
 
 export const BatchDeleteV1AutocrudQuestDeleteQueryParams = zod.object({
@@ -20173,7 +20458,7 @@ export const BatchDeleteV1AutocrudQuestDeleteQueryParams = zod.object({
     .union([zod.string(), zod.null()])
     .optional()
     .describe(
-      "Query Builder expression. Example: \"QB['foo'] == 123\" or \"QB['age'].gt(18) & QB['status'].eq('active')\"",
+      "Query Builder expression. Example: \"QB['foo'] == 123\" or \"QB['age'].gt(18) & QB['status'].eq('active')\". When qb is used, do not combine it with data_conditions, conditions, or sorts; only limit, offset, and is_deleted may be used alongside qb.",
     ),
   is_deleted: zod
     .union([zod.boolean(), zod.null()])
@@ -20224,7 +20509,9 @@ export const BatchDeleteV1AutocrudQuestDeleteQueryParams = zod.object({
   limit: zod
     .number()
     .default(batchDeleteV1AutocrudQuestDeleteQueryLimitDefault)
-    .describe('Maximum number of results'),
+    .describe(
+      'Maximum number of results. Default comes from the AUTOCRUD_DEFAULT_QUERY_LIMIT environment variable at startup; set limit explicitly or use the \/count endpoint if you need the full total.',
+    ),
   offset: zod
     .number()
     .default(batchDeleteV1AutocrudQuestDeleteQueryOffsetDefault)
@@ -20270,7 +20557,7 @@ which resources are included.
  * @summary Export quest data
  */
 export const exportModelV1AutocrudQuestExportGetQueryIsDeletedDefault = false;
-export const exportModelV1AutocrudQuestExportGetQueryLimitDefault = 10;
+export const exportModelV1AutocrudQuestExportGetQueryLimitDefault = 4294967295;
 export const exportModelV1AutocrudQuestExportGetQueryOffsetDefault = 0;
 
 export const ExportModelV1AutocrudQuestExportGetQueryParams = zod.object({
@@ -20278,7 +20565,7 @@ export const ExportModelV1AutocrudQuestExportGetQueryParams = zod.object({
     .union([zod.string(), zod.null()])
     .optional()
     .describe(
-      "Query Builder expression. Example: \"QB['foo'] == 123\" or \"QB['age'].gt(18) & QB['status'].eq('active')\"",
+      "Query Builder expression. Example: \"QB['foo'] == 123\" or \"QB['age'].gt(18) & QB['status'].eq('active')\". When qb is used, do not combine it with data_conditions, conditions, or sorts; only limit, offset, and is_deleted may be used alongside qb.",
     ),
   is_deleted: zod
     .union([zod.boolean(), zod.null()])
@@ -20329,7 +20616,9 @@ export const ExportModelV1AutocrudQuestExportGetQueryParams = zod.object({
   limit: zod
     .number()
     .default(exportModelV1AutocrudQuestExportGetQueryLimitDefault)
-    .describe('Maximum number of results'),
+    .describe(
+      'Maximum number of results. Default comes from the AUTOCRUD_DEFAULT_QUERY_LIMIT environment variable at startup; set limit explicitly or use the \/count endpoint if you need the full total.',
+    ),
   offset: zod
     .number()
     .default(exportModelV1AutocrudQuestExportGetQueryOffsetDefault)
@@ -21709,7 +21998,7 @@ export const RestoreResourceV1AutocrudQuestResourceIdRestorePostResponse = zod
  * @summary Batch restore deleted quest
  */
 export const batchRestoreV1AutocrudQuestRestorePostQueryIsDeletedDefault = false;
-export const batchRestoreV1AutocrudQuestRestorePostQueryLimitDefault = 10;
+export const batchRestoreV1AutocrudQuestRestorePostQueryLimitDefault = 4294967295;
 export const batchRestoreV1AutocrudQuestRestorePostQueryOffsetDefault = 0;
 
 export const BatchRestoreV1AutocrudQuestRestorePostQueryParams = zod.object({
@@ -21717,7 +22006,7 @@ export const BatchRestoreV1AutocrudQuestRestorePostQueryParams = zod.object({
     .union([zod.string(), zod.null()])
     .optional()
     .describe(
-      "Query Builder expression. Example: \"QB['foo'] == 123\" or \"QB['age'].gt(18) & QB['status'].eq('active')\"",
+      "Query Builder expression. Example: \"QB['foo'] == 123\" or \"QB['age'].gt(18) & QB['status'].eq('active')\". When qb is used, do not combine it with data_conditions, conditions, or sorts; only limit, offset, and is_deleted may be used alongside qb.",
     ),
   is_deleted: zod
     .union([zod.boolean(), zod.null()])
@@ -21768,7 +22057,9 @@ export const BatchRestoreV1AutocrudQuestRestorePostQueryParams = zod.object({
   limit: zod
     .number()
     .default(batchRestoreV1AutocrudQuestRestorePostQueryLimitDefault)
-    .describe('Maximum number of results'),
+    .describe(
+      'Maximum number of results. Default comes from the AUTOCRUD_DEFAULT_QUERY_LIMIT environment variable at startup; set limit explicitly or use the \/count endpoint if you need the full total.',
+    ),
   offset: zod
     .number()
     .default(batchRestoreV1AutocrudQuestRestorePostQueryOffsetDefault)
@@ -21818,7 +22109,7 @@ No data will be written back to storage - memory-only testing.
  * @summary Test Migrate Resources
  */
 export const testMigrateResourcesV1AutocrudQuestMigrateTestPostQueryIsDeletedDefault = false;
-export const testMigrateResourcesV1AutocrudQuestMigrateTestPostQueryLimitDefault = 10;
+export const testMigrateResourcesV1AutocrudQuestMigrateTestPostQueryLimitDefault = 4294967295;
 export const testMigrateResourcesV1AutocrudQuestMigrateTestPostQueryOffsetDefault = 0;
 
 export const TestMigrateResourcesV1AutocrudQuestMigrateTestPostQueryParams = zod.object({
@@ -21826,7 +22117,7 @@ export const TestMigrateResourcesV1AutocrudQuestMigrateTestPostQueryParams = zod
     .union([zod.string(), zod.null()])
     .optional()
     .describe(
-      "Query Builder expression. Example: \"QB['foo'] == 123\" or \"QB['age'].gt(18) & QB['status'].eq('active')\"",
+      "Query Builder expression. Example: \"QB['foo'] == 123\" or \"QB['age'].gt(18) & QB['status'].eq('active')\". When qb is used, do not combine it with data_conditions, conditions, or sorts; only limit, offset, and is_deleted may be used alongside qb.",
     ),
   is_deleted: zod
     .union([zod.boolean(), zod.null()])
@@ -21877,7 +22168,9 @@ export const TestMigrateResourcesV1AutocrudQuestMigrateTestPostQueryParams = zod
   limit: zod
     .number()
     .default(testMigrateResourcesV1AutocrudQuestMigrateTestPostQueryLimitDefault)
-    .describe('Maximum number of results'),
+    .describe(
+      'Maximum number of results. Default comes from the AUTOCRUD_DEFAULT_QUERY_LIMIT environment variable at startup; set limit explicitly or use the \/count endpoint if you need the full total.',
+    ),
   offset: zod
     .number()
     .default(testMigrateResourcesV1AutocrudQuestMigrateTestPostQueryOffsetDefault)
@@ -21907,7 +22200,7 @@ export const TestMigrateResourcesV1AutocrudQuestMigrateTestPostResponse = zod.un
  * @summary Execute Migrate Resources
  */
 export const executeMigrateResourcesV1AutocrudQuestMigrateExecutePostQueryIsDeletedDefault = false;
-export const executeMigrateResourcesV1AutocrudQuestMigrateExecutePostQueryLimitDefault = 10;
+export const executeMigrateResourcesV1AutocrudQuestMigrateExecutePostQueryLimitDefault = 4294967295;
 export const executeMigrateResourcesV1AutocrudQuestMigrateExecutePostQueryOffsetDefault = 0;
 
 export const ExecuteMigrateResourcesV1AutocrudQuestMigrateExecutePostQueryParams = zod.object({
@@ -21915,7 +22208,7 @@ export const ExecuteMigrateResourcesV1AutocrudQuestMigrateExecutePostQueryParams
     .union([zod.string(), zod.null()])
     .optional()
     .describe(
-      "Query Builder expression. Example: \"QB['foo'] == 123\" or \"QB['age'].gt(18) & QB['status'].eq('active')\"",
+      "Query Builder expression. Example: \"QB['foo'] == 123\" or \"QB['age'].gt(18) & QB['status'].eq('active')\". When qb is used, do not combine it with data_conditions, conditions, or sorts; only limit, offset, and is_deleted may be used alongside qb.",
     ),
   is_deleted: zod
     .union([zod.boolean(), zod.null()])
@@ -21966,7 +22259,9 @@ export const ExecuteMigrateResourcesV1AutocrudQuestMigrateExecutePostQueryParams
   limit: zod
     .number()
     .default(executeMigrateResourcesV1AutocrudQuestMigrateExecutePostQueryLimitDefault)
-    .describe('Maximum number of results'),
+    .describe(
+      'Maximum number of results. Default comes from the AUTOCRUD_DEFAULT_QUERY_LIMIT environment variable at startup; set limit explicitly or use the \/count endpoint if you need the full total.',
+    ),
   offset: zod
     .number()
     .default(executeMigrateResourcesV1AutocrudQuestMigrateExecutePostQueryOffsetDefault)
@@ -22099,8 +22394,9 @@ export const MigrateSingleResourceV1AutocrudQuestMigrateSingleResourceIdPostResp
 - Example: `[{"type": "meta", "key": "created_time", "direction": "+"}, {"type": "data", "field_path": "name", "direction": "-"}]`
 
 **Pagination:**
-- `limit`: Maximum number of results to return (default: 10)
+- `limit`: Maximum number of results to return (default comes from `AUTOCRUD_DEFAULT_QUERY_LIMIT` at startup)
 - `offset`: Number of results to skip for pagination (default: 0)
+- If you need an exact full total, use the `/count` endpoint or pass an explicit `limit`.
 
 **Partial Response:**
 - `partial`: List of fields to retrieve (e.g. '/field1', '/nested/field2')
@@ -22113,7 +22409,7 @@ export const MigrateSingleResourceV1AutocrudQuestMigrateSingleResourceIdPostResp
 - Direct access to resource content only
 
 **Examples:**
-- `GET /game-event/data` - Get first 10 resources (data only)
+- `GET /game-event/data` - Get the default first page of resources (data only)
 - `GET /game-event/data?limit=20&offset=40` - Get resources 41-60 (data only)
 - `GET /game-event/data?is_deleted=false&limit=5` - Get 5 non-deleted resources (data only)
 - `GET /game-event/data?partial=/name&partial=/email` - Get specific fields for all resources
@@ -22124,7 +22420,7 @@ export const MigrateSingleResourceV1AutocrudQuestMigrateSingleResourceIdPostResp
  * @summary List game-event Data Only
  */
 export const listResourcesDataV1AutocrudGameEventDataGetQueryIsDeletedDefault = false;
-export const listResourcesDataV1AutocrudGameEventDataGetQueryLimitDefault = 10;
+export const listResourcesDataV1AutocrudGameEventDataGetQueryLimitDefault = 4294967295;
 export const listResourcesDataV1AutocrudGameEventDataGetQueryOffsetDefault = 0;
 
 export const ListResourcesDataV1AutocrudGameEventDataGetQueryParams = zod.object({
@@ -22132,7 +22428,7 @@ export const ListResourcesDataV1AutocrudGameEventDataGetQueryParams = zod.object
     .union([zod.string(), zod.null()])
     .optional()
     .describe(
-      "Query Builder expression. Example: \"QB['foo'] == 123\" or \"QB['age'].gt(18) & QB['status'].eq('active')\"",
+      "Query Builder expression. Example: \"QB['foo'] == 123\" or \"QB['age'].gt(18) & QB['status'].eq('active')\". When qb is used, do not combine it with data_conditions, conditions, or sorts; only limit, offset, and is_deleted may be used alongside qb.",
     ),
   is_deleted: zod
     .union([zod.boolean(), zod.null()])
@@ -22183,7 +22479,9 @@ export const ListResourcesDataV1AutocrudGameEventDataGetQueryParams = zod.object
   limit: zod
     .number()
     .default(listResourcesDataV1AutocrudGameEventDataGetQueryLimitDefault)
-    .describe('Maximum number of results'),
+    .describe(
+      'Maximum number of results. Default comes from the AUTOCRUD_DEFAULT_QUERY_LIMIT environment variable at startup; set limit explicitly or use the \/count endpoint if you need the full total.',
+    ),
   offset: zod
     .number()
     .default(listResourcesDataV1AutocrudGameEventDataGetQueryOffsetDefault)
@@ -22373,8 +22671,9 @@ export const ListResourcesDataV1AutocrudGameEventDataGetResponse = zod.array(
 - Example: `[{"type": "meta", "key": "updated_time", "direction": "-"}, {"type": "data", "field_path": "department", "direction": "+"}]`
 
 **Pagination:**
-- `limit`: Maximum number of results to return (default: 10)
+- `limit`: Maximum number of results to return (default comes from `AUTOCRUD_DEFAULT_QUERY_LIMIT` at startup)
 - `offset`: Number of results to skip for pagination (default: 0)
+- If you need an exact full total, use the `/count` endpoint or pass an explicit `limit`.
 
 **Use Cases:**
 - Resource management and administration
@@ -22383,7 +22682,7 @@ export const ListResourcesDataV1AutocrudGameEventDataGetResponse = zod.array(
 - System monitoring and statistics
 
 **Examples:**
-- `GET /game-event/meta` - Get metadata for first 10 resources
+- `GET /game-event/meta` - Get metadata for the default first page of resources
 - `GET /game-event/meta?is_deleted=true` - Get metadata for deleted resources
 - `GET /game-event/meta?created_bys=admin&limit=50` - Get metadata for admin-created resources
 
@@ -22393,7 +22692,7 @@ export const ListResourcesDataV1AutocrudGameEventDataGetResponse = zod.array(
  * @summary List game-event Metadata Only
  */
 export const listResourcesMetaV1AutocrudGameEventMetaGetQueryIsDeletedDefault = false;
-export const listResourcesMetaV1AutocrudGameEventMetaGetQueryLimitDefault = 10;
+export const listResourcesMetaV1AutocrudGameEventMetaGetQueryLimitDefault = 4294967295;
 export const listResourcesMetaV1AutocrudGameEventMetaGetQueryOffsetDefault = 0;
 
 export const ListResourcesMetaV1AutocrudGameEventMetaGetQueryParams = zod.object({
@@ -22401,7 +22700,7 @@ export const ListResourcesMetaV1AutocrudGameEventMetaGetQueryParams = zod.object
     .union([zod.string(), zod.null()])
     .optional()
     .describe(
-      "Query Builder expression. Example: \"QB['foo'] == 123\" or \"QB['age'].gt(18) & QB['status'].eq('active')\"",
+      "Query Builder expression. Example: \"QB['foo'] == 123\" or \"QB['age'].gt(18) & QB['status'].eq('active')\". When qb is used, do not combine it with data_conditions, conditions, or sorts; only limit, offset, and is_deleted may be used alongside qb.",
     ),
   is_deleted: zod
     .union([zod.boolean(), zod.null()])
@@ -22452,7 +22751,9 @@ export const ListResourcesMetaV1AutocrudGameEventMetaGetQueryParams = zod.object
   limit: zod
     .number()
     .default(listResourcesMetaV1AutocrudGameEventMetaGetQueryLimitDefault)
-    .describe('Maximum number of results'),
+    .describe(
+      'Maximum number of results. Default comes from the AUTOCRUD_DEFAULT_QUERY_LIMIT environment variable at startup; set limit explicitly or use the \/count endpoint if you need the full total.',
+    ),
   offset: zod
     .number()
     .default(listResourcesMetaV1AutocrudGameEventMetaGetQueryOffsetDefault)
@@ -22531,8 +22832,9 @@ export const ListResourcesMetaV1AutocrudGameEventMetaGetResponse = zod.array(
 - Example: `[{"field_path": "status", "operator": "eq", "value": "active"}]`
 
 **Pagination:**
-- `limit`: Maximum number of results to return (default: 10)
+- `limit`: Maximum number of results to return (default comes from `AUTOCRUD_DEFAULT_QUERY_LIMIT` at startup)
 - `offset`: Number of results to skip for pagination (default: 0)
+- If you need an exact full total, use the `/count` endpoint or pass an explicit `limit`.
 
 **Use Cases:**
 - Version control system integration
@@ -22541,8 +22843,8 @@ export const ListResourcesMetaV1AutocrudGameEventMetaGetResponse = zod.array(
 - Change tracking and audit trails
 
 **Examples:**
-- `GET /game-event/revision-info` - Get current revision info for first 10 resources
-- `GET /game-event/revision-info?limit=100` - Get revision info for first 100 resources
+- `GET /game-event/revision-info` - Get current revision info for the default first page of resources
+- `GET /game-event/revision-info?limit=100` - Get revision info for the first 100 resources
 - `GET /game-event/revision-info?updated_bys=editor` - Get revision info for editor-modified resources
 
 **Error Responses:**
@@ -22551,7 +22853,7 @@ export const ListResourcesMetaV1AutocrudGameEventMetaGetResponse = zod.array(
  * @summary List game-event Current Revision Info
  */
 export const listResourcesRevisionInfoV1AutocrudGameEventRevisionInfoGetQueryIsDeletedDefault = false;
-export const listResourcesRevisionInfoV1AutocrudGameEventRevisionInfoGetQueryLimitDefault = 10;
+export const listResourcesRevisionInfoV1AutocrudGameEventRevisionInfoGetQueryLimitDefault = 4294967295;
 export const listResourcesRevisionInfoV1AutocrudGameEventRevisionInfoGetQueryOffsetDefault = 0;
 
 export const ListResourcesRevisionInfoV1AutocrudGameEventRevisionInfoGetQueryParams = zod.object({
@@ -22559,7 +22861,7 @@ export const ListResourcesRevisionInfoV1AutocrudGameEventRevisionInfoGetQueryPar
     .union([zod.string(), zod.null()])
     .optional()
     .describe(
-      "Query Builder expression. Example: \"QB['foo'] == 123\" or \"QB['age'].gt(18) & QB['status'].eq('active')\"",
+      "Query Builder expression. Example: \"QB['foo'] == 123\" or \"QB['age'].gt(18) & QB['status'].eq('active')\". When qb is used, do not combine it with data_conditions, conditions, or sorts; only limit, offset, and is_deleted may be used alongside qb.",
     ),
   is_deleted: zod
     .union([zod.boolean(), zod.null()])
@@ -22610,7 +22912,9 @@ export const ListResourcesRevisionInfoV1AutocrudGameEventRevisionInfoGetQueryPar
   limit: zod
     .number()
     .default(listResourcesRevisionInfoV1AutocrudGameEventRevisionInfoGetQueryLimitDefault)
-    .describe('Maximum number of results'),
+    .describe(
+      'Maximum number of results. Default comes from the AUTOCRUD_DEFAULT_QUERY_LIMIT environment variable at startup; set limit explicitly or use the \/count endpoint if you need the full total.',
+    ),
   offset: zod
     .number()
     .default(listResourcesRevisionInfoV1AutocrudGameEventRevisionInfoGetQueryOffsetDefault)
@@ -22662,7 +22966,7 @@ export const ListResourcesRevisionInfoV1AutocrudGameEventRevisionInfoGetResponse
  * @summary List game-event Complete Information
  */
 export const listResourcesFullV1AutocrudGameEventFullGetQueryIsDeletedDefault = false;
-export const listResourcesFullV1AutocrudGameEventFullGetQueryLimitDefault = 10;
+export const listResourcesFullV1AutocrudGameEventFullGetQueryLimitDefault = 4294967295;
 export const listResourcesFullV1AutocrudGameEventFullGetQueryOffsetDefault = 0;
 export const listResourcesFullV1AutocrudGameEventFullGetQueryReturnsDefault = `data,revision_info,meta`;
 
@@ -22671,7 +22975,7 @@ export const ListResourcesFullV1AutocrudGameEventFullGetQueryParams = zod.object
     .union([zod.string(), zod.null()])
     .optional()
     .describe(
-      "Query Builder expression. Example: \"QB['foo'] == 123\" or \"QB['age'].gt(18) & QB['status'].eq('active')\"",
+      "Query Builder expression. Example: \"QB['foo'] == 123\" or \"QB['age'].gt(18) & QB['status'].eq('active')\". When qb is used, do not combine it with data_conditions, conditions, or sorts; only limit, offset, and is_deleted may be used alongside qb.",
     ),
   is_deleted: zod
     .union([zod.boolean(), zod.null()])
@@ -22722,7 +23026,9 @@ export const ListResourcesFullV1AutocrudGameEventFullGetQueryParams = zod.object
   limit: zod
     .number()
     .default(listResourcesFullV1AutocrudGameEventFullGetQueryLimitDefault)
-    .describe('Maximum number of results'),
+    .describe(
+      'Maximum number of results. Default comes from the AUTOCRUD_DEFAULT_QUERY_LIMIT environment variable at startup; set limit explicitly or use the \/count endpoint if you need the full total.',
+    ),
   offset: zod
     .number()
     .default(listResourcesFullV1AutocrudGameEventFullGetQueryOffsetDefault)
@@ -22978,7 +23284,7 @@ export const ListResourcesFullV1AutocrudGameEventFullGetResponse = zod.array(
  * @summary Count game-event Resources
  */
 export const getResourcesCountV1AutocrudGameEventCountGetQueryIsDeletedDefault = false;
-export const getResourcesCountV1AutocrudGameEventCountGetQueryLimitDefault = 10;
+export const getResourcesCountV1AutocrudGameEventCountGetQueryLimitDefault = 4294967295;
 export const getResourcesCountV1AutocrudGameEventCountGetQueryOffsetDefault = 0;
 
 export const GetResourcesCountV1AutocrudGameEventCountGetQueryParams = zod.object({
@@ -22986,7 +23292,7 @@ export const GetResourcesCountV1AutocrudGameEventCountGetQueryParams = zod.objec
     .union([zod.string(), zod.null()])
     .optional()
     .describe(
-      "Query Builder expression. Example: \"QB['foo'] == 123\" or \"QB['age'].gt(18) & QB['status'].eq('active')\"",
+      "Query Builder expression. Example: \"QB['foo'] == 123\" or \"QB['age'].gt(18) & QB['status'].eq('active')\". When qb is used, do not combine it with data_conditions, conditions, or sorts; only limit, offset, and is_deleted may be used alongside qb.",
     ),
   is_deleted: zod
     .union([zod.boolean(), zod.null()])
@@ -23037,7 +23343,9 @@ export const GetResourcesCountV1AutocrudGameEventCountGetQueryParams = zod.objec
   limit: zod
     .number()
     .default(getResourcesCountV1AutocrudGameEventCountGetQueryLimitDefault)
-    .describe('Maximum number of results'),
+    .describe(
+      'Maximum number of results. Default comes from the AUTOCRUD_DEFAULT_QUERY_LIMIT environment variable at startup; set limit explicitly or use the \/count endpoint if you need the full total.',
+    ),
   offset: zod
     .number()
     .default(getResourcesCountV1AutocrudGameEventCountGetQueryOffsetDefault)
@@ -23074,7 +23382,7 @@ By default all sections are returned: `data`, `revision_info`, `meta`.
  * @summary List game-event resources
  */
 export const listResourcesV1AutocrudGameEventGetQueryIsDeletedDefault = false;
-export const listResourcesV1AutocrudGameEventGetQueryLimitDefault = 10;
+export const listResourcesV1AutocrudGameEventGetQueryLimitDefault = 4294967295;
 export const listResourcesV1AutocrudGameEventGetQueryOffsetDefault = 0;
 export const listResourcesV1AutocrudGameEventGetQueryReturnsDefault = `data,revision_info,meta`;
 
@@ -23083,7 +23391,7 @@ export const ListResourcesV1AutocrudGameEventGetQueryParams = zod.object({
     .union([zod.string(), zod.null()])
     .optional()
     .describe(
-      "Query Builder expression. Example: \"QB['foo'] == 123\" or \"QB['age'].gt(18) & QB['status'].eq('active')\"",
+      "Query Builder expression. Example: \"QB['foo'] == 123\" or \"QB['age'].gt(18) & QB['status'].eq('active')\". When qb is used, do not combine it with data_conditions, conditions, or sorts; only limit, offset, and is_deleted may be used alongside qb.",
     ),
   is_deleted: zod
     .union([zod.boolean(), zod.null()])
@@ -23134,7 +23442,9 @@ export const ListResourcesV1AutocrudGameEventGetQueryParams = zod.object({
   limit: zod
     .number()
     .default(listResourcesV1AutocrudGameEventGetQueryLimitDefault)
-    .describe('Maximum number of results'),
+    .describe(
+      'Maximum number of results. Default comes from the AUTOCRUD_DEFAULT_QUERY_LIMIT environment variable at startup; set limit explicitly or use the \/count endpoint if you need the full total.',
+    ),
   offset: zod
     .number()
     .default(listResourcesV1AutocrudGameEventGetQueryOffsetDefault)
@@ -23518,7 +23828,7 @@ export const CreateResourceV1AutocrudGameEventPostResponse = zod
  * @summary Batch delete game-event
  */
 export const batchDeleteV1AutocrudGameEventDeleteQueryIsDeletedDefault = false;
-export const batchDeleteV1AutocrudGameEventDeleteQueryLimitDefault = 10;
+export const batchDeleteV1AutocrudGameEventDeleteQueryLimitDefault = 4294967295;
 export const batchDeleteV1AutocrudGameEventDeleteQueryOffsetDefault = 0;
 
 export const BatchDeleteV1AutocrudGameEventDeleteQueryParams = zod.object({
@@ -23526,7 +23836,7 @@ export const BatchDeleteV1AutocrudGameEventDeleteQueryParams = zod.object({
     .union([zod.string(), zod.null()])
     .optional()
     .describe(
-      "Query Builder expression. Example: \"QB['foo'] == 123\" or \"QB['age'].gt(18) & QB['status'].eq('active')\"",
+      "Query Builder expression. Example: \"QB['foo'] == 123\" or \"QB['age'].gt(18) & QB['status'].eq('active')\". When qb is used, do not combine it with data_conditions, conditions, or sorts; only limit, offset, and is_deleted may be used alongside qb.",
     ),
   is_deleted: zod
     .union([zod.boolean(), zod.null()])
@@ -23577,7 +23887,9 @@ export const BatchDeleteV1AutocrudGameEventDeleteQueryParams = zod.object({
   limit: zod
     .number()
     .default(batchDeleteV1AutocrudGameEventDeleteQueryLimitDefault)
-    .describe('Maximum number of results'),
+    .describe(
+      'Maximum number of results. Default comes from the AUTOCRUD_DEFAULT_QUERY_LIMIT environment variable at startup; set limit explicitly or use the \/count endpoint if you need the full total.',
+    ),
   offset: zod
     .number()
     .default(batchDeleteV1AutocrudGameEventDeleteQueryOffsetDefault)
@@ -23623,7 +23935,7 @@ which resources are included.
  * @summary Export game-event data
  */
 export const exportModelV1AutocrudGameEventExportGetQueryIsDeletedDefault = false;
-export const exportModelV1AutocrudGameEventExportGetQueryLimitDefault = 10;
+export const exportModelV1AutocrudGameEventExportGetQueryLimitDefault = 4294967295;
 export const exportModelV1AutocrudGameEventExportGetQueryOffsetDefault = 0;
 
 export const ExportModelV1AutocrudGameEventExportGetQueryParams = zod.object({
@@ -23631,7 +23943,7 @@ export const ExportModelV1AutocrudGameEventExportGetQueryParams = zod.object({
     .union([zod.string(), zod.null()])
     .optional()
     .describe(
-      "Query Builder expression. Example: \"QB['foo'] == 123\" or \"QB['age'].gt(18) & QB['status'].eq('active')\"",
+      "Query Builder expression. Example: \"QB['foo'] == 123\" or \"QB['age'].gt(18) & QB['status'].eq('active')\". When qb is used, do not combine it with data_conditions, conditions, or sorts; only limit, offset, and is_deleted may be used alongside qb.",
     ),
   is_deleted: zod
     .union([zod.boolean(), zod.null()])
@@ -23682,7 +23994,9 @@ export const ExportModelV1AutocrudGameEventExportGetQueryParams = zod.object({
   limit: zod
     .number()
     .default(exportModelV1AutocrudGameEventExportGetQueryLimitDefault)
-    .describe('Maximum number of results'),
+    .describe(
+      'Maximum number of results. Default comes from the AUTOCRUD_DEFAULT_QUERY_LIMIT environment variable at startup; set limit explicitly or use the \/count endpoint if you need the full total.',
+    ),
   offset: zod
     .number()
     .default(exportModelV1AutocrudGameEventExportGetQueryOffsetDefault)
@@ -25366,7 +25680,7 @@ export const RestoreResourceV1AutocrudGameEventResourceIdRestorePostResponse = z
  * @summary Batch restore deleted game-event
  */
 export const batchRestoreV1AutocrudGameEventRestorePostQueryIsDeletedDefault = false;
-export const batchRestoreV1AutocrudGameEventRestorePostQueryLimitDefault = 10;
+export const batchRestoreV1AutocrudGameEventRestorePostQueryLimitDefault = 4294967295;
 export const batchRestoreV1AutocrudGameEventRestorePostQueryOffsetDefault = 0;
 
 export const BatchRestoreV1AutocrudGameEventRestorePostQueryParams = zod.object({
@@ -25374,7 +25688,7 @@ export const BatchRestoreV1AutocrudGameEventRestorePostQueryParams = zod.object(
     .union([zod.string(), zod.null()])
     .optional()
     .describe(
-      "Query Builder expression. Example: \"QB['foo'] == 123\" or \"QB['age'].gt(18) & QB['status'].eq('active')\"",
+      "Query Builder expression. Example: \"QB['foo'] == 123\" or \"QB['age'].gt(18) & QB['status'].eq('active')\". When qb is used, do not combine it with data_conditions, conditions, or sorts; only limit, offset, and is_deleted may be used alongside qb.",
     ),
   is_deleted: zod
     .union([zod.boolean(), zod.null()])
@@ -25425,7 +25739,9 @@ export const BatchRestoreV1AutocrudGameEventRestorePostQueryParams = zod.object(
   limit: zod
     .number()
     .default(batchRestoreV1AutocrudGameEventRestorePostQueryLimitDefault)
-    .describe('Maximum number of results'),
+    .describe(
+      'Maximum number of results. Default comes from the AUTOCRUD_DEFAULT_QUERY_LIMIT environment variable at startup; set limit explicitly or use the \/count endpoint if you need the full total.',
+    ),
   offset: zod
     .number()
     .default(batchRestoreV1AutocrudGameEventRestorePostQueryOffsetDefault)
@@ -25475,7 +25791,7 @@ No data will be written back to storage - memory-only testing.
  * @summary Test Migrate Resources
  */
 export const testMigrateResourcesV1AutocrudGameEventMigrateTestPostQueryIsDeletedDefault = false;
-export const testMigrateResourcesV1AutocrudGameEventMigrateTestPostQueryLimitDefault = 10;
+export const testMigrateResourcesV1AutocrudGameEventMigrateTestPostQueryLimitDefault = 4294967295;
 export const testMigrateResourcesV1AutocrudGameEventMigrateTestPostQueryOffsetDefault = 0;
 
 export const TestMigrateResourcesV1AutocrudGameEventMigrateTestPostQueryParams = zod.object({
@@ -25483,7 +25799,7 @@ export const TestMigrateResourcesV1AutocrudGameEventMigrateTestPostQueryParams =
     .union([zod.string(), zod.null()])
     .optional()
     .describe(
-      "Query Builder expression. Example: \"QB['foo'] == 123\" or \"QB['age'].gt(18) & QB['status'].eq('active')\"",
+      "Query Builder expression. Example: \"QB['foo'] == 123\" or \"QB['age'].gt(18) & QB['status'].eq('active')\". When qb is used, do not combine it with data_conditions, conditions, or sorts; only limit, offset, and is_deleted may be used alongside qb.",
     ),
   is_deleted: zod
     .union([zod.boolean(), zod.null()])
@@ -25534,7 +25850,9 @@ export const TestMigrateResourcesV1AutocrudGameEventMigrateTestPostQueryParams =
   limit: zod
     .number()
     .default(testMigrateResourcesV1AutocrudGameEventMigrateTestPostQueryLimitDefault)
-    .describe('Maximum number of results'),
+    .describe(
+      'Maximum number of results. Default comes from the AUTOCRUD_DEFAULT_QUERY_LIMIT environment variable at startup; set limit explicitly or use the \/count endpoint if you need the full total.',
+    ),
   offset: zod
     .number()
     .default(testMigrateResourcesV1AutocrudGameEventMigrateTestPostQueryOffsetDefault)
@@ -25564,7 +25882,7 @@ export const TestMigrateResourcesV1AutocrudGameEventMigrateTestPostResponse = zo
  * @summary Execute Migrate Resources
  */
 export const executeMigrateResourcesV1AutocrudGameEventMigrateExecutePostQueryIsDeletedDefault = false;
-export const executeMigrateResourcesV1AutocrudGameEventMigrateExecutePostQueryLimitDefault = 10;
+export const executeMigrateResourcesV1AutocrudGameEventMigrateExecutePostQueryLimitDefault = 4294967295;
 export const executeMigrateResourcesV1AutocrudGameEventMigrateExecutePostQueryOffsetDefault = 0;
 
 export const ExecuteMigrateResourcesV1AutocrudGameEventMigrateExecutePostQueryParams = zod.object({
@@ -25572,7 +25890,7 @@ export const ExecuteMigrateResourcesV1AutocrudGameEventMigrateExecutePostQueryPa
     .union([zod.string(), zod.null()])
     .optional()
     .describe(
-      "Query Builder expression. Example: \"QB['foo'] == 123\" or \"QB['age'].gt(18) & QB['status'].eq('active')\"",
+      "Query Builder expression. Example: \"QB['foo'] == 123\" or \"QB['age'].gt(18) & QB['status'].eq('active')\". When qb is used, do not combine it with data_conditions, conditions, or sorts; only limit, offset, and is_deleted may be used alongside qb.",
     ),
   is_deleted: zod
     .union([zod.boolean(), zod.null()])
@@ -25623,7 +25941,9 @@ export const ExecuteMigrateResourcesV1AutocrudGameEventMigrateExecutePostQueryPa
   limit: zod
     .number()
     .default(executeMigrateResourcesV1AutocrudGameEventMigrateExecutePostQueryLimitDefault)
-    .describe('Maximum number of results'),
+    .describe(
+      'Maximum number of results. Default comes from the AUTOCRUD_DEFAULT_QUERY_LIMIT environment variable at startup; set limit explicitly or use the \/count endpoint if you need the full total.',
+    ),
   offset: zod
     .number()
     .default(executeMigrateResourcesV1AutocrudGameEventMigrateExecutePostQueryOffsetDefault)
@@ -25762,8 +26082,9 @@ export const MigrateSingleResourceV1AutocrudGameEventMigrateSingleResourceIdPost
 - Example: `[{"type": "meta", "key": "created_time", "direction": "+"}, {"type": "data", "field_path": "name", "direction": "-"}]`
 
 **Pagination:**
-- `limit`: Maximum number of results to return (default: 10)
+- `limit`: Maximum number of results to return (default comes from `AUTOCRUD_DEFAULT_QUERY_LIMIT` at startup)
 - `offset`: Number of results to skip for pagination (default: 0)
+- If you need an exact full total, use the `/count` endpoint or pass an explicit `limit`.
 
 **Partial Response:**
 - `partial`: List of fields to retrieve (e.g. '/field1', '/nested/field2')
@@ -25776,7 +26097,7 @@ export const MigrateSingleResourceV1AutocrudGameEventMigrateSingleResourceIdPost
 - Direct access to resource content only
 
 **Examples:**
-- `GET /new-char1-job/data` - Get first 10 resources (data only)
+- `GET /new-char1-job/data` - Get the default first page of resources (data only)
 - `GET /new-char1-job/data?limit=20&offset=40` - Get resources 41-60 (data only)
 - `GET /new-char1-job/data?is_deleted=false&limit=5` - Get 5 non-deleted resources (data only)
 - `GET /new-char1-job/data?partial=/name&partial=/email` - Get specific fields for all resources
@@ -25787,7 +26108,7 @@ export const MigrateSingleResourceV1AutocrudGameEventMigrateSingleResourceIdPost
  * @summary List new-char1-job Data Only
  */
 export const listResourcesDataV1AutocrudNewChar1JobDataGetQueryIsDeletedDefault = false;
-export const listResourcesDataV1AutocrudNewChar1JobDataGetQueryLimitDefault = 10;
+export const listResourcesDataV1AutocrudNewChar1JobDataGetQueryLimitDefault = 4294967295;
 export const listResourcesDataV1AutocrudNewChar1JobDataGetQueryOffsetDefault = 0;
 
 export const ListResourcesDataV1AutocrudNewChar1JobDataGetQueryParams = zod.object({
@@ -25795,7 +26116,7 @@ export const ListResourcesDataV1AutocrudNewChar1JobDataGetQueryParams = zod.obje
     .union([zod.string(), zod.null()])
     .optional()
     .describe(
-      "Query Builder expression. Example: \"QB['foo'] == 123\" or \"QB['age'].gt(18) & QB['status'].eq('active')\"",
+      "Query Builder expression. Example: \"QB['foo'] == 123\" or \"QB['age'].gt(18) & QB['status'].eq('active')\". When qb is used, do not combine it with data_conditions, conditions, or sorts; only limit, offset, and is_deleted may be used alongside qb.",
     ),
   is_deleted: zod
     .union([zod.boolean(), zod.null()])
@@ -25846,7 +26167,9 @@ export const ListResourcesDataV1AutocrudNewChar1JobDataGetQueryParams = zod.obje
   limit: zod
     .number()
     .default(listResourcesDataV1AutocrudNewChar1JobDataGetQueryLimitDefault)
-    .describe('Maximum number of results'),
+    .describe(
+      'Maximum number of results. Default comes from the AUTOCRUD_DEFAULT_QUERY_LIMIT environment variable at startup; set limit explicitly or use the \/count endpoint if you need the full total.',
+    ),
   offset: zod
     .number()
     .default(listResourcesDataV1AutocrudNewChar1JobDataGetQueryOffsetDefault)
@@ -25961,8 +26284,9 @@ export const ListResourcesDataV1AutocrudNewChar1JobDataGetResponse = zod.array(
 - Example: `[{"type": "meta", "key": "updated_time", "direction": "-"}, {"type": "data", "field_path": "department", "direction": "+"}]`
 
 **Pagination:**
-- `limit`: Maximum number of results to return (default: 10)
+- `limit`: Maximum number of results to return (default comes from `AUTOCRUD_DEFAULT_QUERY_LIMIT` at startup)
 - `offset`: Number of results to skip for pagination (default: 0)
+- If you need an exact full total, use the `/count` endpoint or pass an explicit `limit`.
 
 **Use Cases:**
 - Resource management and administration
@@ -25971,7 +26295,7 @@ export const ListResourcesDataV1AutocrudNewChar1JobDataGetResponse = zod.array(
 - System monitoring and statistics
 
 **Examples:**
-- `GET /new-char1-job/meta` - Get metadata for first 10 resources
+- `GET /new-char1-job/meta` - Get metadata for the default first page of resources
 - `GET /new-char1-job/meta?is_deleted=true` - Get metadata for deleted resources
 - `GET /new-char1-job/meta?created_bys=admin&limit=50` - Get metadata for admin-created resources
 
@@ -25981,7 +26305,7 @@ export const ListResourcesDataV1AutocrudNewChar1JobDataGetResponse = zod.array(
  * @summary List new-char1-job Metadata Only
  */
 export const listResourcesMetaV1AutocrudNewChar1JobMetaGetQueryIsDeletedDefault = false;
-export const listResourcesMetaV1AutocrudNewChar1JobMetaGetQueryLimitDefault = 10;
+export const listResourcesMetaV1AutocrudNewChar1JobMetaGetQueryLimitDefault = 4294967295;
 export const listResourcesMetaV1AutocrudNewChar1JobMetaGetQueryOffsetDefault = 0;
 
 export const ListResourcesMetaV1AutocrudNewChar1JobMetaGetQueryParams = zod.object({
@@ -25989,7 +26313,7 @@ export const ListResourcesMetaV1AutocrudNewChar1JobMetaGetQueryParams = zod.obje
     .union([zod.string(), zod.null()])
     .optional()
     .describe(
-      "Query Builder expression. Example: \"QB['foo'] == 123\" or \"QB['age'].gt(18) & QB['status'].eq('active')\"",
+      "Query Builder expression. Example: \"QB['foo'] == 123\" or \"QB['age'].gt(18) & QB['status'].eq('active')\". When qb is used, do not combine it with data_conditions, conditions, or sorts; only limit, offset, and is_deleted may be used alongside qb.",
     ),
   is_deleted: zod
     .union([zod.boolean(), zod.null()])
@@ -26040,7 +26364,9 @@ export const ListResourcesMetaV1AutocrudNewChar1JobMetaGetQueryParams = zod.obje
   limit: zod
     .number()
     .default(listResourcesMetaV1AutocrudNewChar1JobMetaGetQueryLimitDefault)
-    .describe('Maximum number of results'),
+    .describe(
+      'Maximum number of results. Default comes from the AUTOCRUD_DEFAULT_QUERY_LIMIT environment variable at startup; set limit explicitly or use the \/count endpoint if you need the full total.',
+    ),
   offset: zod
     .number()
     .default(listResourcesMetaV1AutocrudNewChar1JobMetaGetQueryOffsetDefault)
@@ -26119,8 +26445,9 @@ export const ListResourcesMetaV1AutocrudNewChar1JobMetaGetResponse = zod.array(
 - Example: `[{"field_path": "status", "operator": "eq", "value": "active"}]`
 
 **Pagination:**
-- `limit`: Maximum number of results to return (default: 10)
+- `limit`: Maximum number of results to return (default comes from `AUTOCRUD_DEFAULT_QUERY_LIMIT` at startup)
 - `offset`: Number of results to skip for pagination (default: 0)
+- If you need an exact full total, use the `/count` endpoint or pass an explicit `limit`.
 
 **Use Cases:**
 - Version control system integration
@@ -26129,8 +26456,8 @@ export const ListResourcesMetaV1AutocrudNewChar1JobMetaGetResponse = zod.array(
 - Change tracking and audit trails
 
 **Examples:**
-- `GET /new-char1-job/revision-info` - Get current revision info for first 10 resources
-- `GET /new-char1-job/revision-info?limit=100` - Get revision info for first 100 resources
+- `GET /new-char1-job/revision-info` - Get current revision info for the default first page of resources
+- `GET /new-char1-job/revision-info?limit=100` - Get revision info for the first 100 resources
 - `GET /new-char1-job/revision-info?updated_bys=editor` - Get revision info for editor-modified resources
 
 **Error Responses:**
@@ -26139,7 +26466,7 @@ export const ListResourcesMetaV1AutocrudNewChar1JobMetaGetResponse = zod.array(
  * @summary List new-char1-job Current Revision Info
  */
 export const listResourcesRevisionInfoV1AutocrudNewChar1JobRevisionInfoGetQueryIsDeletedDefault = false;
-export const listResourcesRevisionInfoV1AutocrudNewChar1JobRevisionInfoGetQueryLimitDefault = 10;
+export const listResourcesRevisionInfoV1AutocrudNewChar1JobRevisionInfoGetQueryLimitDefault = 4294967295;
 export const listResourcesRevisionInfoV1AutocrudNewChar1JobRevisionInfoGetQueryOffsetDefault = 0;
 
 export const ListResourcesRevisionInfoV1AutocrudNewChar1JobRevisionInfoGetQueryParams = zod.object({
@@ -26147,7 +26474,7 @@ export const ListResourcesRevisionInfoV1AutocrudNewChar1JobRevisionInfoGetQueryP
     .union([zod.string(), zod.null()])
     .optional()
     .describe(
-      "Query Builder expression. Example: \"QB['foo'] == 123\" or \"QB['age'].gt(18) & QB['status'].eq('active')\"",
+      "Query Builder expression. Example: \"QB['foo'] == 123\" or \"QB['age'].gt(18) & QB['status'].eq('active')\". When qb is used, do not combine it with data_conditions, conditions, or sorts; only limit, offset, and is_deleted may be used alongside qb.",
     ),
   is_deleted: zod
     .union([zod.boolean(), zod.null()])
@@ -26198,7 +26525,9 @@ export const ListResourcesRevisionInfoV1AutocrudNewChar1JobRevisionInfoGetQueryP
   limit: zod
     .number()
     .default(listResourcesRevisionInfoV1AutocrudNewChar1JobRevisionInfoGetQueryLimitDefault)
-    .describe('Maximum number of results'),
+    .describe(
+      'Maximum number of results. Default comes from the AUTOCRUD_DEFAULT_QUERY_LIMIT environment variable at startup; set limit explicitly or use the \/count endpoint if you need the full total.',
+    ),
   offset: zod
     .number()
     .default(listResourcesRevisionInfoV1AutocrudNewChar1JobRevisionInfoGetQueryOffsetDefault)
@@ -26250,7 +26579,7 @@ export const ListResourcesRevisionInfoV1AutocrudNewChar1JobRevisionInfoGetRespon
  * @summary List new-char1-job Complete Information
  */
 export const listResourcesFullV1AutocrudNewChar1JobFullGetQueryIsDeletedDefault = false;
-export const listResourcesFullV1AutocrudNewChar1JobFullGetQueryLimitDefault = 10;
+export const listResourcesFullV1AutocrudNewChar1JobFullGetQueryLimitDefault = 4294967295;
 export const listResourcesFullV1AutocrudNewChar1JobFullGetQueryOffsetDefault = 0;
 export const listResourcesFullV1AutocrudNewChar1JobFullGetQueryReturnsDefault = `data,revision_info,meta`;
 
@@ -26259,7 +26588,7 @@ export const ListResourcesFullV1AutocrudNewChar1JobFullGetQueryParams = zod.obje
     .union([zod.string(), zod.null()])
     .optional()
     .describe(
-      "Query Builder expression. Example: \"QB['foo'] == 123\" or \"QB['age'].gt(18) & QB['status'].eq('active')\"",
+      "Query Builder expression. Example: \"QB['foo'] == 123\" or \"QB['age'].gt(18) & QB['status'].eq('active')\". When qb is used, do not combine it with data_conditions, conditions, or sorts; only limit, offset, and is_deleted may be used alongside qb.",
     ),
   is_deleted: zod
     .union([zod.boolean(), zod.null()])
@@ -26310,7 +26639,9 @@ export const ListResourcesFullV1AutocrudNewChar1JobFullGetQueryParams = zod.obje
   limit: zod
     .number()
     .default(listResourcesFullV1AutocrudNewChar1JobFullGetQueryLimitDefault)
-    .describe('Maximum number of results'),
+    .describe(
+      'Maximum number of results. Default comes from the AUTOCRUD_DEFAULT_QUERY_LIMIT environment variable at startup; set limit explicitly or use the \/count endpoint if you need the full total.',
+    ),
   offset: zod
     .number()
     .default(listResourcesFullV1AutocrudNewChar1JobFullGetQueryOffsetDefault)
@@ -26482,7 +26813,7 @@ export const ListResourcesFullV1AutocrudNewChar1JobFullGetResponse = zod.array(
  * @summary Count new-char1-job Resources
  */
 export const getResourcesCountV1AutocrudNewChar1JobCountGetQueryIsDeletedDefault = false;
-export const getResourcesCountV1AutocrudNewChar1JobCountGetQueryLimitDefault = 10;
+export const getResourcesCountV1AutocrudNewChar1JobCountGetQueryLimitDefault = 4294967295;
 export const getResourcesCountV1AutocrudNewChar1JobCountGetQueryOffsetDefault = 0;
 
 export const GetResourcesCountV1AutocrudNewChar1JobCountGetQueryParams = zod.object({
@@ -26490,7 +26821,7 @@ export const GetResourcesCountV1AutocrudNewChar1JobCountGetQueryParams = zod.obj
     .union([zod.string(), zod.null()])
     .optional()
     .describe(
-      "Query Builder expression. Example: \"QB['foo'] == 123\" or \"QB['age'].gt(18) & QB['status'].eq('active')\"",
+      "Query Builder expression. Example: \"QB['foo'] == 123\" or \"QB['age'].gt(18) & QB['status'].eq('active')\". When qb is used, do not combine it with data_conditions, conditions, or sorts; only limit, offset, and is_deleted may be used alongside qb.",
     ),
   is_deleted: zod
     .union([zod.boolean(), zod.null()])
@@ -26541,7 +26872,9 @@ export const GetResourcesCountV1AutocrudNewChar1JobCountGetQueryParams = zod.obj
   limit: zod
     .number()
     .default(getResourcesCountV1AutocrudNewChar1JobCountGetQueryLimitDefault)
-    .describe('Maximum number of results'),
+    .describe(
+      'Maximum number of results. Default comes from the AUTOCRUD_DEFAULT_QUERY_LIMIT environment variable at startup; set limit explicitly or use the \/count endpoint if you need the full total.',
+    ),
   offset: zod
     .number()
     .default(getResourcesCountV1AutocrudNewChar1JobCountGetQueryOffsetDefault)
@@ -26578,7 +26911,7 @@ By default all sections are returned: `data`, `revision_info`, `meta`.
  * @summary List new-char1-job resources
  */
 export const listResourcesV1AutocrudNewChar1JobGetQueryIsDeletedDefault = false;
-export const listResourcesV1AutocrudNewChar1JobGetQueryLimitDefault = 10;
+export const listResourcesV1AutocrudNewChar1JobGetQueryLimitDefault = 4294967295;
 export const listResourcesV1AutocrudNewChar1JobGetQueryOffsetDefault = 0;
 export const listResourcesV1AutocrudNewChar1JobGetQueryReturnsDefault = `data,revision_info,meta`;
 
@@ -26587,7 +26920,7 @@ export const ListResourcesV1AutocrudNewChar1JobGetQueryParams = zod.object({
     .union([zod.string(), zod.null()])
     .optional()
     .describe(
-      "Query Builder expression. Example: \"QB['foo'] == 123\" or \"QB['age'].gt(18) & QB['status'].eq('active')\"",
+      "Query Builder expression. Example: \"QB['foo'] == 123\" or \"QB['age'].gt(18) & QB['status'].eq('active')\". When qb is used, do not combine it with data_conditions, conditions, or sorts; only limit, offset, and is_deleted may be used alongside qb.",
     ),
   is_deleted: zod
     .union([zod.boolean(), zod.null()])
@@ -26638,7 +26971,9 @@ export const ListResourcesV1AutocrudNewChar1JobGetQueryParams = zod.object({
   limit: zod
     .number()
     .default(listResourcesV1AutocrudNewChar1JobGetQueryLimitDefault)
-    .describe('Maximum number of results'),
+    .describe(
+      'Maximum number of results. Default comes from the AUTOCRUD_DEFAULT_QUERY_LIMIT environment variable at startup; set limit explicitly or use the \/count endpoint if you need the full total.',
+    ),
   offset: zod
     .number()
     .default(listResourcesV1AutocrudNewChar1JobGetQueryOffsetDefault)
@@ -26878,7 +27213,7 @@ export const CreateResourceV1AutocrudNewChar1JobPostResponse = zod
  * @summary Batch delete new-char1-job
  */
 export const batchDeleteV1AutocrudNewChar1JobDeleteQueryIsDeletedDefault = false;
-export const batchDeleteV1AutocrudNewChar1JobDeleteQueryLimitDefault = 10;
+export const batchDeleteV1AutocrudNewChar1JobDeleteQueryLimitDefault = 4294967295;
 export const batchDeleteV1AutocrudNewChar1JobDeleteQueryOffsetDefault = 0;
 
 export const BatchDeleteV1AutocrudNewChar1JobDeleteQueryParams = zod.object({
@@ -26886,7 +27221,7 @@ export const BatchDeleteV1AutocrudNewChar1JobDeleteQueryParams = zod.object({
     .union([zod.string(), zod.null()])
     .optional()
     .describe(
-      "Query Builder expression. Example: \"QB['foo'] == 123\" or \"QB['age'].gt(18) & QB['status'].eq('active')\"",
+      "Query Builder expression. Example: \"QB['foo'] == 123\" or \"QB['age'].gt(18) & QB['status'].eq('active')\". When qb is used, do not combine it with data_conditions, conditions, or sorts; only limit, offset, and is_deleted may be used alongside qb.",
     ),
   is_deleted: zod
     .union([zod.boolean(), zod.null()])
@@ -26937,7 +27272,9 @@ export const BatchDeleteV1AutocrudNewChar1JobDeleteQueryParams = zod.object({
   limit: zod
     .number()
     .default(batchDeleteV1AutocrudNewChar1JobDeleteQueryLimitDefault)
-    .describe('Maximum number of results'),
+    .describe(
+      'Maximum number of results. Default comes from the AUTOCRUD_DEFAULT_QUERY_LIMIT environment variable at startup; set limit explicitly or use the \/count endpoint if you need the full total.',
+    ),
   offset: zod
     .number()
     .default(batchDeleteV1AutocrudNewChar1JobDeleteQueryOffsetDefault)
@@ -26985,7 +27322,7 @@ which resources are included.
  * @summary Export new-char1-job data
  */
 export const exportModelV1AutocrudNewChar1JobExportGetQueryIsDeletedDefault = false;
-export const exportModelV1AutocrudNewChar1JobExportGetQueryLimitDefault = 10;
+export const exportModelV1AutocrudNewChar1JobExportGetQueryLimitDefault = 4294967295;
 export const exportModelV1AutocrudNewChar1JobExportGetQueryOffsetDefault = 0;
 
 export const ExportModelV1AutocrudNewChar1JobExportGetQueryParams = zod.object({
@@ -26993,7 +27330,7 @@ export const ExportModelV1AutocrudNewChar1JobExportGetQueryParams = zod.object({
     .union([zod.string(), zod.null()])
     .optional()
     .describe(
-      "Query Builder expression. Example: \"QB['foo'] == 123\" or \"QB['age'].gt(18) & QB['status'].eq('active')\"",
+      "Query Builder expression. Example: \"QB['foo'] == 123\" or \"QB['age'].gt(18) & QB['status'].eq('active')\". When qb is used, do not combine it with data_conditions, conditions, or sorts; only limit, offset, and is_deleted may be used alongside qb.",
     ),
   is_deleted: zod
     .union([zod.boolean(), zod.null()])
@@ -27044,7 +27381,9 @@ export const ExportModelV1AutocrudNewChar1JobExportGetQueryParams = zod.object({
   limit: zod
     .number()
     .default(exportModelV1AutocrudNewChar1JobExportGetQueryLimitDefault)
-    .describe('Maximum number of results'),
+    .describe(
+      'Maximum number of results. Default comes from the AUTOCRUD_DEFAULT_QUERY_LIMIT environment variable at startup; set limit explicitly or use the \/count endpoint if you need the full total.',
+    ),
   offset: zod
     .number()
     .default(exportModelV1AutocrudNewChar1JobExportGetQueryOffsetDefault)
@@ -28398,7 +28737,7 @@ export const RestoreResourceV1AutocrudNewChar1JobResourceIdRestorePostResponse =
  * @summary Batch restore deleted new-char1-job
  */
 export const batchRestoreV1AutocrudNewChar1JobRestorePostQueryIsDeletedDefault = false;
-export const batchRestoreV1AutocrudNewChar1JobRestorePostQueryLimitDefault = 10;
+export const batchRestoreV1AutocrudNewChar1JobRestorePostQueryLimitDefault = 4294967295;
 export const batchRestoreV1AutocrudNewChar1JobRestorePostQueryOffsetDefault = 0;
 
 export const BatchRestoreV1AutocrudNewChar1JobRestorePostQueryParams = zod.object({
@@ -28406,7 +28745,7 @@ export const BatchRestoreV1AutocrudNewChar1JobRestorePostQueryParams = zod.objec
     .union([zod.string(), zod.null()])
     .optional()
     .describe(
-      "Query Builder expression. Example: \"QB['foo'] == 123\" or \"QB['age'].gt(18) & QB['status'].eq('active')\"",
+      "Query Builder expression. Example: \"QB['foo'] == 123\" or \"QB['age'].gt(18) & QB['status'].eq('active')\". When qb is used, do not combine it with data_conditions, conditions, or sorts; only limit, offset, and is_deleted may be used alongside qb.",
     ),
   is_deleted: zod
     .union([zod.boolean(), zod.null()])
@@ -28457,7 +28796,9 @@ export const BatchRestoreV1AutocrudNewChar1JobRestorePostQueryParams = zod.objec
   limit: zod
     .number()
     .default(batchRestoreV1AutocrudNewChar1JobRestorePostQueryLimitDefault)
-    .describe('Maximum number of results'),
+    .describe(
+      'Maximum number of results. Default comes from the AUTOCRUD_DEFAULT_QUERY_LIMIT environment variable at startup; set limit explicitly or use the \/count endpoint if you need the full total.',
+    ),
   offset: zod
     .number()
     .default(batchRestoreV1AutocrudNewChar1JobRestorePostQueryOffsetDefault)
@@ -28507,7 +28848,7 @@ No data will be written back to storage - memory-only testing.
  * @summary Test Migrate Resources
  */
 export const testMigrateResourcesV1AutocrudNewChar1JobMigrateTestPostQueryIsDeletedDefault = false;
-export const testMigrateResourcesV1AutocrudNewChar1JobMigrateTestPostQueryLimitDefault = 10;
+export const testMigrateResourcesV1AutocrudNewChar1JobMigrateTestPostQueryLimitDefault = 4294967295;
 export const testMigrateResourcesV1AutocrudNewChar1JobMigrateTestPostQueryOffsetDefault = 0;
 
 export const TestMigrateResourcesV1AutocrudNewChar1JobMigrateTestPostQueryParams = zod.object({
@@ -28515,7 +28856,7 @@ export const TestMigrateResourcesV1AutocrudNewChar1JobMigrateTestPostQueryParams
     .union([zod.string(), zod.null()])
     .optional()
     .describe(
-      "Query Builder expression. Example: \"QB['foo'] == 123\" or \"QB['age'].gt(18) & QB['status'].eq('active')\"",
+      "Query Builder expression. Example: \"QB['foo'] == 123\" or \"QB['age'].gt(18) & QB['status'].eq('active')\". When qb is used, do not combine it with data_conditions, conditions, or sorts; only limit, offset, and is_deleted may be used alongside qb.",
     ),
   is_deleted: zod
     .union([zod.boolean(), zod.null()])
@@ -28566,7 +28907,9 @@ export const TestMigrateResourcesV1AutocrudNewChar1JobMigrateTestPostQueryParams
   limit: zod
     .number()
     .default(testMigrateResourcesV1AutocrudNewChar1JobMigrateTestPostQueryLimitDefault)
-    .describe('Maximum number of results'),
+    .describe(
+      'Maximum number of results. Default comes from the AUTOCRUD_DEFAULT_QUERY_LIMIT environment variable at startup; set limit explicitly or use the \/count endpoint if you need the full total.',
+    ),
   offset: zod
     .number()
     .default(testMigrateResourcesV1AutocrudNewChar1JobMigrateTestPostQueryOffsetDefault)
@@ -28596,7 +28939,7 @@ export const TestMigrateResourcesV1AutocrudNewChar1JobMigrateTestPostResponse = 
  * @summary Execute Migrate Resources
  */
 export const executeMigrateResourcesV1AutocrudNewChar1JobMigrateExecutePostQueryIsDeletedDefault = false;
-export const executeMigrateResourcesV1AutocrudNewChar1JobMigrateExecutePostQueryLimitDefault = 10;
+export const executeMigrateResourcesV1AutocrudNewChar1JobMigrateExecutePostQueryLimitDefault = 4294967295;
 export const executeMigrateResourcesV1AutocrudNewChar1JobMigrateExecutePostQueryOffsetDefault = 0;
 
 export const ExecuteMigrateResourcesV1AutocrudNewChar1JobMigrateExecutePostQueryParams = zod.object(
@@ -28605,7 +28948,7 @@ export const ExecuteMigrateResourcesV1AutocrudNewChar1JobMigrateExecutePostQuery
       .union([zod.string(), zod.null()])
       .optional()
       .describe(
-        "Query Builder expression. Example: \"QB['foo'] == 123\" or \"QB['age'].gt(18) & QB['status'].eq('active')\"",
+        "Query Builder expression. Example: \"QB['foo'] == 123\" or \"QB['age'].gt(18) & QB['status'].eq('active')\". When qb is used, do not combine it with data_conditions, conditions, or sorts; only limit, offset, and is_deleted may be used alongside qb.",
       ),
     is_deleted: zod
       .union([zod.boolean(), zod.null()])
@@ -28656,7 +28999,9 @@ export const ExecuteMigrateResourcesV1AutocrudNewChar1JobMigrateExecutePostQuery
     limit: zod
       .number()
       .default(executeMigrateResourcesV1AutocrudNewChar1JobMigrateExecutePostQueryLimitDefault)
-      .describe('Maximum number of results'),
+      .describe(
+        'Maximum number of results. Default comes from the AUTOCRUD_DEFAULT_QUERY_LIMIT environment variable at startup; set limit explicitly or use the \/count endpoint if you need the full total.',
+      ),
     offset: zod
       .number()
       .default(executeMigrateResourcesV1AutocrudNewChar1JobMigrateExecutePostQueryOffsetDefault)
@@ -28795,8 +29140,9 @@ export const MigrateSingleResourceV1AutocrudNewChar1JobMigrateSingleResourceIdPo
 - Example: `[{"type": "meta", "key": "created_time", "direction": "+"}, {"type": "data", "field_path": "name", "direction": "-"}]`
 
 **Pagination:**
-- `limit`: Maximum number of results to return (default: 10)
+- `limit`: Maximum number of results to return (default comes from `AUTOCRUD_DEFAULT_QUERY_LIMIT` at startup)
 - `offset`: Number of results to skip for pagination (default: 0)
+- If you need an exact full total, use the `/count` endpoint or pass an explicit `limit`.
 
 **Partial Response:**
 - `partial`: List of fields to retrieve (e.g. '/field1', '/nested/field2')
@@ -28809,7 +29155,7 @@ export const MigrateSingleResourceV1AutocrudNewChar1JobMigrateSingleResourceIdPo
 - Direct access to resource content only
 
 **Examples:**
-- `GET /create-new-character2-job/data` - Get first 10 resources (data only)
+- `GET /create-new-character2-job/data` - Get the default first page of resources (data only)
 - `GET /create-new-character2-job/data?limit=20&offset=40` - Get resources 41-60 (data only)
 - `GET /create-new-character2-job/data?is_deleted=false&limit=5` - Get 5 non-deleted resources (data only)
 - `GET /create-new-character2-job/data?partial=/name&partial=/email` - Get specific fields for all resources
@@ -28820,7 +29166,7 @@ export const MigrateSingleResourceV1AutocrudNewChar1JobMigrateSingleResourceIdPo
  * @summary List create-new-character2-job Data Only
  */
 export const listResourcesDataV1AutocrudCreateNewCharacter2JobDataGetQueryIsDeletedDefault = false;
-export const listResourcesDataV1AutocrudCreateNewCharacter2JobDataGetQueryLimitDefault = 10;
+export const listResourcesDataV1AutocrudCreateNewCharacter2JobDataGetQueryLimitDefault = 4294967295;
 export const listResourcesDataV1AutocrudCreateNewCharacter2JobDataGetQueryOffsetDefault = 0;
 
 export const ListResourcesDataV1AutocrudCreateNewCharacter2JobDataGetQueryParams = zod.object({
@@ -28828,7 +29174,7 @@ export const ListResourcesDataV1AutocrudCreateNewCharacter2JobDataGetQueryParams
     .union([zod.string(), zod.null()])
     .optional()
     .describe(
-      "Query Builder expression. Example: \"QB['foo'] == 123\" or \"QB['age'].gt(18) & QB['status'].eq('active')\"",
+      "Query Builder expression. Example: \"QB['foo'] == 123\" or \"QB['age'].gt(18) & QB['status'].eq('active')\". When qb is used, do not combine it with data_conditions, conditions, or sorts; only limit, offset, and is_deleted may be used alongside qb.",
     ),
   is_deleted: zod
     .union([zod.boolean(), zod.null()])
@@ -28879,7 +29225,9 @@ export const ListResourcesDataV1AutocrudCreateNewCharacter2JobDataGetQueryParams
   limit: zod
     .number()
     .default(listResourcesDataV1AutocrudCreateNewCharacter2JobDataGetQueryLimitDefault)
-    .describe('Maximum number of results'),
+    .describe(
+      'Maximum number of results. Default comes from the AUTOCRUD_DEFAULT_QUERY_LIMIT environment variable at startup; set limit explicitly or use the \/count endpoint if you need the full total.',
+    ),
   offset: zod
     .number()
     .default(listResourcesDataV1AutocrudCreateNewCharacter2JobDataGetQueryOffsetDefault)
@@ -29003,8 +29351,9 @@ export const ListResourcesDataV1AutocrudCreateNewCharacter2JobDataGetResponse = 
 - Example: `[{"type": "meta", "key": "updated_time", "direction": "-"}, {"type": "data", "field_path": "department", "direction": "+"}]`
 
 **Pagination:**
-- `limit`: Maximum number of results to return (default: 10)
+- `limit`: Maximum number of results to return (default comes from `AUTOCRUD_DEFAULT_QUERY_LIMIT` at startup)
 - `offset`: Number of results to skip for pagination (default: 0)
+- If you need an exact full total, use the `/count` endpoint or pass an explicit `limit`.
 
 **Use Cases:**
 - Resource management and administration
@@ -29013,7 +29362,7 @@ export const ListResourcesDataV1AutocrudCreateNewCharacter2JobDataGetResponse = 
 - System monitoring and statistics
 
 **Examples:**
-- `GET /create-new-character2-job/meta` - Get metadata for first 10 resources
+- `GET /create-new-character2-job/meta` - Get metadata for the default first page of resources
 - `GET /create-new-character2-job/meta?is_deleted=true` - Get metadata for deleted resources
 - `GET /create-new-character2-job/meta?created_bys=admin&limit=50` - Get metadata for admin-created resources
 
@@ -29023,7 +29372,7 @@ export const ListResourcesDataV1AutocrudCreateNewCharacter2JobDataGetResponse = 
  * @summary List create-new-character2-job Metadata Only
  */
 export const listResourcesMetaV1AutocrudCreateNewCharacter2JobMetaGetQueryIsDeletedDefault = false;
-export const listResourcesMetaV1AutocrudCreateNewCharacter2JobMetaGetQueryLimitDefault = 10;
+export const listResourcesMetaV1AutocrudCreateNewCharacter2JobMetaGetQueryLimitDefault = 4294967295;
 export const listResourcesMetaV1AutocrudCreateNewCharacter2JobMetaGetQueryOffsetDefault = 0;
 
 export const ListResourcesMetaV1AutocrudCreateNewCharacter2JobMetaGetQueryParams = zod.object({
@@ -29031,7 +29380,7 @@ export const ListResourcesMetaV1AutocrudCreateNewCharacter2JobMetaGetQueryParams
     .union([zod.string(), zod.null()])
     .optional()
     .describe(
-      "Query Builder expression. Example: \"QB['foo'] == 123\" or \"QB['age'].gt(18) & QB['status'].eq('active')\"",
+      "Query Builder expression. Example: \"QB['foo'] == 123\" or \"QB['age'].gt(18) & QB['status'].eq('active')\". When qb is used, do not combine it with data_conditions, conditions, or sorts; only limit, offset, and is_deleted may be used alongside qb.",
     ),
   is_deleted: zod
     .union([zod.boolean(), zod.null()])
@@ -29082,7 +29431,9 @@ export const ListResourcesMetaV1AutocrudCreateNewCharacter2JobMetaGetQueryParams
   limit: zod
     .number()
     .default(listResourcesMetaV1AutocrudCreateNewCharacter2JobMetaGetQueryLimitDefault)
-    .describe('Maximum number of results'),
+    .describe(
+      'Maximum number of results. Default comes from the AUTOCRUD_DEFAULT_QUERY_LIMIT environment variable at startup; set limit explicitly or use the \/count endpoint if you need the full total.',
+    ),
   offset: zod
     .number()
     .default(listResourcesMetaV1AutocrudCreateNewCharacter2JobMetaGetQueryOffsetDefault)
@@ -29164,8 +29515,9 @@ export const ListResourcesMetaV1AutocrudCreateNewCharacter2JobMetaGetResponse = 
 - Example: `[{"field_path": "status", "operator": "eq", "value": "active"}]`
 
 **Pagination:**
-- `limit`: Maximum number of results to return (default: 10)
+- `limit`: Maximum number of results to return (default comes from `AUTOCRUD_DEFAULT_QUERY_LIMIT` at startup)
 - `offset`: Number of results to skip for pagination (default: 0)
+- If you need an exact full total, use the `/count` endpoint or pass an explicit `limit`.
 
 **Use Cases:**
 - Version control system integration
@@ -29174,8 +29526,8 @@ export const ListResourcesMetaV1AutocrudCreateNewCharacter2JobMetaGetResponse = 
 - Change tracking and audit trails
 
 **Examples:**
-- `GET /create-new-character2-job/revision-info` - Get current revision info for first 10 resources
-- `GET /create-new-character2-job/revision-info?limit=100` - Get revision info for first 100 resources
+- `GET /create-new-character2-job/revision-info` - Get current revision info for the default first page of resources
+- `GET /create-new-character2-job/revision-info?limit=100` - Get revision info for the first 100 resources
 - `GET /create-new-character2-job/revision-info?updated_bys=editor` - Get revision info for editor-modified resources
 
 **Error Responses:**
@@ -29184,7 +29536,7 @@ export const ListResourcesMetaV1AutocrudCreateNewCharacter2JobMetaGetResponse = 
  * @summary List create-new-character2-job Current Revision Info
  */
 export const listResourcesRevisionInfoV1AutocrudCreateNewCharacter2JobRevisionInfoGetQueryIsDeletedDefault = false;
-export const listResourcesRevisionInfoV1AutocrudCreateNewCharacter2JobRevisionInfoGetQueryLimitDefault = 10;
+export const listResourcesRevisionInfoV1AutocrudCreateNewCharacter2JobRevisionInfoGetQueryLimitDefault = 4294967295;
 export const listResourcesRevisionInfoV1AutocrudCreateNewCharacter2JobRevisionInfoGetQueryOffsetDefault = 0;
 
 export const ListResourcesRevisionInfoV1AutocrudCreateNewCharacter2JobRevisionInfoGetQueryParams =
@@ -29193,7 +29545,7 @@ export const ListResourcesRevisionInfoV1AutocrudCreateNewCharacter2JobRevisionIn
       .union([zod.string(), zod.null()])
       .optional()
       .describe(
-        "Query Builder expression. Example: \"QB['foo'] == 123\" or \"QB['age'].gt(18) & QB['status'].eq('active')\"",
+        "Query Builder expression. Example: \"QB['foo'] == 123\" or \"QB['age'].gt(18) & QB['status'].eq('active')\". When qb is used, do not combine it with data_conditions, conditions, or sorts; only limit, offset, and is_deleted may be used alongside qb.",
       ),
     is_deleted: zod
       .union([zod.boolean(), zod.null()])
@@ -29248,7 +29600,9 @@ export const ListResourcesRevisionInfoV1AutocrudCreateNewCharacter2JobRevisionIn
       .default(
         listResourcesRevisionInfoV1AutocrudCreateNewCharacter2JobRevisionInfoGetQueryLimitDefault,
       )
-      .describe('Maximum number of results'),
+      .describe(
+        'Maximum number of results. Default comes from the AUTOCRUD_DEFAULT_QUERY_LIMIT environment variable at startup; set limit explicitly or use the \/count endpoint if you need the full total.',
+      ),
     offset: zod
       .number()
       .default(
@@ -29302,7 +29656,7 @@ export const ListResourcesRevisionInfoV1AutocrudCreateNewCharacter2JobRevisionIn
  * @summary List create-new-character2-job Complete Information
  */
 export const listResourcesFullV1AutocrudCreateNewCharacter2JobFullGetQueryIsDeletedDefault = false;
-export const listResourcesFullV1AutocrudCreateNewCharacter2JobFullGetQueryLimitDefault = 10;
+export const listResourcesFullV1AutocrudCreateNewCharacter2JobFullGetQueryLimitDefault = 4294967295;
 export const listResourcesFullV1AutocrudCreateNewCharacter2JobFullGetQueryOffsetDefault = 0;
 export const listResourcesFullV1AutocrudCreateNewCharacter2JobFullGetQueryReturnsDefault = `data,revision_info,meta`;
 
@@ -29311,7 +29665,7 @@ export const ListResourcesFullV1AutocrudCreateNewCharacter2JobFullGetQueryParams
     .union([zod.string(), zod.null()])
     .optional()
     .describe(
-      "Query Builder expression. Example: \"QB['foo'] == 123\" or \"QB['age'].gt(18) & QB['status'].eq('active')\"",
+      "Query Builder expression. Example: \"QB['foo'] == 123\" or \"QB['age'].gt(18) & QB['status'].eq('active')\". When qb is used, do not combine it with data_conditions, conditions, or sorts; only limit, offset, and is_deleted may be used alongside qb.",
     ),
   is_deleted: zod
     .union([zod.boolean(), zod.null()])
@@ -29362,7 +29716,9 @@ export const ListResourcesFullV1AutocrudCreateNewCharacter2JobFullGetQueryParams
   limit: zod
     .number()
     .default(listResourcesFullV1AutocrudCreateNewCharacter2JobFullGetQueryLimitDefault)
-    .describe('Maximum number of results'),
+    .describe(
+      'Maximum number of results. Default comes from the AUTOCRUD_DEFAULT_QUERY_LIMIT environment variable at startup; set limit explicitly or use the \/count endpoint if you need the full total.',
+    ),
   offset: zod
     .number()
     .default(listResourcesFullV1AutocrudCreateNewCharacter2JobFullGetQueryOffsetDefault)
@@ -29556,7 +29912,7 @@ export const ListResourcesFullV1AutocrudCreateNewCharacter2JobFullGetResponse = 
  * @summary Count create-new-character2-job Resources
  */
 export const getResourcesCountV1AutocrudCreateNewCharacter2JobCountGetQueryIsDeletedDefault = false;
-export const getResourcesCountV1AutocrudCreateNewCharacter2JobCountGetQueryLimitDefault = 10;
+export const getResourcesCountV1AutocrudCreateNewCharacter2JobCountGetQueryLimitDefault = 4294967295;
 export const getResourcesCountV1AutocrudCreateNewCharacter2JobCountGetQueryOffsetDefault = 0;
 
 export const GetResourcesCountV1AutocrudCreateNewCharacter2JobCountGetQueryParams = zod.object({
@@ -29564,7 +29920,7 @@ export const GetResourcesCountV1AutocrudCreateNewCharacter2JobCountGetQueryParam
     .union([zod.string(), zod.null()])
     .optional()
     .describe(
-      "Query Builder expression. Example: \"QB['foo'] == 123\" or \"QB['age'].gt(18) & QB['status'].eq('active')\"",
+      "Query Builder expression. Example: \"QB['foo'] == 123\" or \"QB['age'].gt(18) & QB['status'].eq('active')\". When qb is used, do not combine it with data_conditions, conditions, or sorts; only limit, offset, and is_deleted may be used alongside qb.",
     ),
   is_deleted: zod
     .union([zod.boolean(), zod.null()])
@@ -29615,7 +29971,9 @@ export const GetResourcesCountV1AutocrudCreateNewCharacter2JobCountGetQueryParam
   limit: zod
     .number()
     .default(getResourcesCountV1AutocrudCreateNewCharacter2JobCountGetQueryLimitDefault)
-    .describe('Maximum number of results'),
+    .describe(
+      'Maximum number of results. Default comes from the AUTOCRUD_DEFAULT_QUERY_LIMIT environment variable at startup; set limit explicitly or use the \/count endpoint if you need the full total.',
+    ),
   offset: zod
     .number()
     .default(getResourcesCountV1AutocrudCreateNewCharacter2JobCountGetQueryOffsetDefault)
@@ -29652,7 +30010,7 @@ By default all sections are returned: `data`, `revision_info`, `meta`.
  * @summary List create-new-character2-job resources
  */
 export const listResourcesV1AutocrudCreateNewCharacter2JobGetQueryIsDeletedDefault = false;
-export const listResourcesV1AutocrudCreateNewCharacter2JobGetQueryLimitDefault = 10;
+export const listResourcesV1AutocrudCreateNewCharacter2JobGetQueryLimitDefault = 4294967295;
 export const listResourcesV1AutocrudCreateNewCharacter2JobGetQueryOffsetDefault = 0;
 export const listResourcesV1AutocrudCreateNewCharacter2JobGetQueryReturnsDefault = `data,revision_info,meta`;
 
@@ -29661,7 +30019,7 @@ export const ListResourcesV1AutocrudCreateNewCharacter2JobGetQueryParams = zod.o
     .union([zod.string(), zod.null()])
     .optional()
     .describe(
-      "Query Builder expression. Example: \"QB['foo'] == 123\" or \"QB['age'].gt(18) & QB['status'].eq('active')\"",
+      "Query Builder expression. Example: \"QB['foo'] == 123\" or \"QB['age'].gt(18) & QB['status'].eq('active')\". When qb is used, do not combine it with data_conditions, conditions, or sorts; only limit, offset, and is_deleted may be used alongside qb.",
     ),
   is_deleted: zod
     .union([zod.boolean(), zod.null()])
@@ -29712,7 +30070,9 @@ export const ListResourcesV1AutocrudCreateNewCharacter2JobGetQueryParams = zod.o
   limit: zod
     .number()
     .default(listResourcesV1AutocrudCreateNewCharacter2JobGetQueryLimitDefault)
-    .describe('Maximum number of results'),
+    .describe(
+      'Maximum number of results. Default comes from the AUTOCRUD_DEFAULT_QUERY_LIMIT environment variable at startup; set limit explicitly or use the \/count endpoint if you need the full total.',
+    ),
   offset: zod
     .number()
     .default(listResourcesV1AutocrudCreateNewCharacter2JobGetQueryOffsetDefault)
@@ -29974,7 +30334,7 @@ export const CreateResourceV1AutocrudCreateNewCharacter2JobPostResponse = zod
  * @summary Batch delete create-new-character2-job
  */
 export const batchDeleteV1AutocrudCreateNewCharacter2JobDeleteQueryIsDeletedDefault = false;
-export const batchDeleteV1AutocrudCreateNewCharacter2JobDeleteQueryLimitDefault = 10;
+export const batchDeleteV1AutocrudCreateNewCharacter2JobDeleteQueryLimitDefault = 4294967295;
 export const batchDeleteV1AutocrudCreateNewCharacter2JobDeleteQueryOffsetDefault = 0;
 
 export const BatchDeleteV1AutocrudCreateNewCharacter2JobDeleteQueryParams = zod.object({
@@ -29982,7 +30342,7 @@ export const BatchDeleteV1AutocrudCreateNewCharacter2JobDeleteQueryParams = zod.
     .union([zod.string(), zod.null()])
     .optional()
     .describe(
-      "Query Builder expression. Example: \"QB['foo'] == 123\" or \"QB['age'].gt(18) & QB['status'].eq('active')\"",
+      "Query Builder expression. Example: \"QB['foo'] == 123\" or \"QB['age'].gt(18) & QB['status'].eq('active')\". When qb is used, do not combine it with data_conditions, conditions, or sorts; only limit, offset, and is_deleted may be used alongside qb.",
     ),
   is_deleted: zod
     .union([zod.boolean(), zod.null()])
@@ -30033,7 +30393,9 @@ export const BatchDeleteV1AutocrudCreateNewCharacter2JobDeleteQueryParams = zod.
   limit: zod
     .number()
     .default(batchDeleteV1AutocrudCreateNewCharacter2JobDeleteQueryLimitDefault)
-    .describe('Maximum number of results'),
+    .describe(
+      'Maximum number of results. Default comes from the AUTOCRUD_DEFAULT_QUERY_LIMIT environment variable at startup; set limit explicitly or use the \/count endpoint if you need the full total.',
+    ),
   offset: zod
     .number()
     .default(batchDeleteV1AutocrudCreateNewCharacter2JobDeleteQueryOffsetDefault)
@@ -30081,7 +30443,7 @@ which resources are included.
  * @summary Export create-new-character2-job data
  */
 export const exportModelV1AutocrudCreateNewCharacter2JobExportGetQueryIsDeletedDefault = false;
-export const exportModelV1AutocrudCreateNewCharacter2JobExportGetQueryLimitDefault = 10;
+export const exportModelV1AutocrudCreateNewCharacter2JobExportGetQueryLimitDefault = 4294967295;
 export const exportModelV1AutocrudCreateNewCharacter2JobExportGetQueryOffsetDefault = 0;
 
 export const ExportModelV1AutocrudCreateNewCharacter2JobExportGetQueryParams = zod.object({
@@ -30089,7 +30451,7 @@ export const ExportModelV1AutocrudCreateNewCharacter2JobExportGetQueryParams = z
     .union([zod.string(), zod.null()])
     .optional()
     .describe(
-      "Query Builder expression. Example: \"QB['foo'] == 123\" or \"QB['age'].gt(18) & QB['status'].eq('active')\"",
+      "Query Builder expression. Example: \"QB['foo'] == 123\" or \"QB['age'].gt(18) & QB['status'].eq('active')\". When qb is used, do not combine it with data_conditions, conditions, or sorts; only limit, offset, and is_deleted may be used alongside qb.",
     ),
   is_deleted: zod
     .union([zod.boolean(), zod.null()])
@@ -30140,7 +30502,9 @@ export const ExportModelV1AutocrudCreateNewCharacter2JobExportGetQueryParams = z
   limit: zod
     .number()
     .default(exportModelV1AutocrudCreateNewCharacter2JobExportGetQueryLimitDefault)
-    .describe('Maximum number of results'),
+    .describe(
+      'Maximum number of results. Default comes from the AUTOCRUD_DEFAULT_QUERY_LIMIT environment variable at startup; set limit explicitly or use the \/count endpoint if you need the full total.',
+    ),
   offset: zod
     .number()
     .default(exportModelV1AutocrudCreateNewCharacter2JobExportGetQueryOffsetDefault)
@@ -31591,7 +31955,7 @@ export const RestoreResourceV1AutocrudCreateNewCharacter2JobResourceIdRestorePos
  * @summary Batch restore deleted create-new-character2-job
  */
 export const batchRestoreV1AutocrudCreateNewCharacter2JobRestorePostQueryIsDeletedDefault = false;
-export const batchRestoreV1AutocrudCreateNewCharacter2JobRestorePostQueryLimitDefault = 10;
+export const batchRestoreV1AutocrudCreateNewCharacter2JobRestorePostQueryLimitDefault = 4294967295;
 export const batchRestoreV1AutocrudCreateNewCharacter2JobRestorePostQueryOffsetDefault = 0;
 
 export const BatchRestoreV1AutocrudCreateNewCharacter2JobRestorePostQueryParams = zod.object({
@@ -31599,7 +31963,7 @@ export const BatchRestoreV1AutocrudCreateNewCharacter2JobRestorePostQueryParams 
     .union([zod.string(), zod.null()])
     .optional()
     .describe(
-      "Query Builder expression. Example: \"QB['foo'] == 123\" or \"QB['age'].gt(18) & QB['status'].eq('active')\"",
+      "Query Builder expression. Example: \"QB['foo'] == 123\" or \"QB['age'].gt(18) & QB['status'].eq('active')\". When qb is used, do not combine it with data_conditions, conditions, or sorts; only limit, offset, and is_deleted may be used alongside qb.",
     ),
   is_deleted: zod
     .union([zod.boolean(), zod.null()])
@@ -31650,7 +32014,9 @@ export const BatchRestoreV1AutocrudCreateNewCharacter2JobRestorePostQueryParams 
   limit: zod
     .number()
     .default(batchRestoreV1AutocrudCreateNewCharacter2JobRestorePostQueryLimitDefault)
-    .describe('Maximum number of results'),
+    .describe(
+      'Maximum number of results. Default comes from the AUTOCRUD_DEFAULT_QUERY_LIMIT environment variable at startup; set limit explicitly or use the \/count endpoint if you need the full total.',
+    ),
   offset: zod
     .number()
     .default(batchRestoreV1AutocrudCreateNewCharacter2JobRestorePostQueryOffsetDefault)
@@ -31701,7 +32067,7 @@ No data will be written back to storage - memory-only testing.
  * @summary Test Migrate Resources
  */
 export const testMigrateResourcesV1AutocrudCreateNewCharacter2JobMigrateTestPostQueryIsDeletedDefault = false;
-export const testMigrateResourcesV1AutocrudCreateNewCharacter2JobMigrateTestPostQueryLimitDefault = 10;
+export const testMigrateResourcesV1AutocrudCreateNewCharacter2JobMigrateTestPostQueryLimitDefault = 4294967295;
 export const testMigrateResourcesV1AutocrudCreateNewCharacter2JobMigrateTestPostQueryOffsetDefault = 0;
 
 export const TestMigrateResourcesV1AutocrudCreateNewCharacter2JobMigrateTestPostQueryParams =
@@ -31710,7 +32076,7 @@ export const TestMigrateResourcesV1AutocrudCreateNewCharacter2JobMigrateTestPost
       .union([zod.string(), zod.null()])
       .optional()
       .describe(
-        "Query Builder expression. Example: \"QB['foo'] == 123\" or \"QB['age'].gt(18) & QB['status'].eq('active')\"",
+        "Query Builder expression. Example: \"QB['foo'] == 123\" or \"QB['age'].gt(18) & QB['status'].eq('active')\". When qb is used, do not combine it with data_conditions, conditions, or sorts; only limit, offset, and is_deleted may be used alongside qb.",
       ),
     is_deleted: zod
       .union([zod.boolean(), zod.null()])
@@ -31763,7 +32129,9 @@ export const TestMigrateResourcesV1AutocrudCreateNewCharacter2JobMigrateTestPost
     limit: zod
       .number()
       .default(testMigrateResourcesV1AutocrudCreateNewCharacter2JobMigrateTestPostQueryLimitDefault)
-      .describe('Maximum number of results'),
+      .describe(
+        'Maximum number of results. Default comes from the AUTOCRUD_DEFAULT_QUERY_LIMIT environment variable at startup; set limit explicitly or use the \/count endpoint if you need the full total.',
+      ),
     offset: zod
       .number()
       .default(
@@ -31796,7 +32164,7 @@ export const TestMigrateResourcesV1AutocrudCreateNewCharacter2JobMigrateTestPost
  * @summary Execute Migrate Resources
  */
 export const executeMigrateResourcesV1AutocrudCreateNewCharacter2JobMigrateExecutePostQueryIsDeletedDefault = false;
-export const executeMigrateResourcesV1AutocrudCreateNewCharacter2JobMigrateExecutePostQueryLimitDefault = 10;
+export const executeMigrateResourcesV1AutocrudCreateNewCharacter2JobMigrateExecutePostQueryLimitDefault = 4294967295;
 export const executeMigrateResourcesV1AutocrudCreateNewCharacter2JobMigrateExecutePostQueryOffsetDefault = 0;
 
 export const ExecuteMigrateResourcesV1AutocrudCreateNewCharacter2JobMigrateExecutePostQueryParams =
@@ -31805,7 +32173,7 @@ export const ExecuteMigrateResourcesV1AutocrudCreateNewCharacter2JobMigrateExecu
       .union([zod.string(), zod.null()])
       .optional()
       .describe(
-        "Query Builder expression. Example: \"QB['foo'] == 123\" or \"QB['age'].gt(18) & QB['status'].eq('active')\"",
+        "Query Builder expression. Example: \"QB['foo'] == 123\" or \"QB['age'].gt(18) & QB['status'].eq('active')\". When qb is used, do not combine it with data_conditions, conditions, or sorts; only limit, offset, and is_deleted may be used alongside qb.",
       ),
     is_deleted: zod
       .union([zod.boolean(), zod.null()])
@@ -31860,7 +32228,9 @@ export const ExecuteMigrateResourcesV1AutocrudCreateNewCharacter2JobMigrateExecu
       .default(
         executeMigrateResourcesV1AutocrudCreateNewCharacter2JobMigrateExecutePostQueryLimitDefault,
       )
-      .describe('Maximum number of results'),
+      .describe(
+        'Maximum number of results. Default comes from the AUTOCRUD_DEFAULT_QUERY_LIMIT environment variable at startup; set limit explicitly or use the \/count endpoint if you need the full total.',
+      ),
     offset: zod
       .number()
       .default(
@@ -32002,8 +32372,9 @@ export const MigrateSingleResourceV1AutocrudCreateNewCharacter2JobMigrateSingleR
 - Example: `[{"type": "meta", "key": "created_time", "direction": "+"}, {"type": "data", "field_path": "name", "direction": "-"}]`
 
 **Pagination:**
-- `limit`: Maximum number of results to return (default: 10)
+- `limit`: Maximum number of results to return (default comes from `AUTOCRUD_DEFAULT_QUERY_LIMIT` at startup)
 - `offset`: Number of results to skip for pagination (default: 0)
+- If you need an exact full total, use the `/count` endpoint or pass an explicit `limit`.
 
 **Partial Response:**
 - `partial`: List of fields to retrieve (e.g. '/field1', '/nested/field2')
@@ -32016,7 +32387,7 @@ export const MigrateSingleResourceV1AutocrudCreateNewCharacter2JobMigrateSingleR
 - Direct access to resource content only
 
 **Examples:**
-- `GET /create-new-character4-job/data` - Get first 10 resources (data only)
+- `GET /create-new-character4-job/data` - Get the default first page of resources (data only)
 - `GET /create-new-character4-job/data?limit=20&offset=40` - Get resources 41-60 (data only)
 - `GET /create-new-character4-job/data?is_deleted=false&limit=5` - Get 5 non-deleted resources (data only)
 - `GET /create-new-character4-job/data?partial=/name&partial=/email` - Get specific fields for all resources
@@ -32027,7 +32398,7 @@ export const MigrateSingleResourceV1AutocrudCreateNewCharacter2JobMigrateSingleR
  * @summary List create-new-character4-job Data Only
  */
 export const listResourcesDataV1AutocrudCreateNewCharacter4JobDataGetQueryIsDeletedDefault = false;
-export const listResourcesDataV1AutocrudCreateNewCharacter4JobDataGetQueryLimitDefault = 10;
+export const listResourcesDataV1AutocrudCreateNewCharacter4JobDataGetQueryLimitDefault = 4294967295;
 export const listResourcesDataV1AutocrudCreateNewCharacter4JobDataGetQueryOffsetDefault = 0;
 
 export const ListResourcesDataV1AutocrudCreateNewCharacter4JobDataGetQueryParams = zod.object({
@@ -32035,7 +32406,7 @@ export const ListResourcesDataV1AutocrudCreateNewCharacter4JobDataGetQueryParams
     .union([zod.string(), zod.null()])
     .optional()
     .describe(
-      "Query Builder expression. Example: \"QB['foo'] == 123\" or \"QB['age'].gt(18) & QB['status'].eq('active')\"",
+      "Query Builder expression. Example: \"QB['foo'] == 123\" or \"QB['age'].gt(18) & QB['status'].eq('active')\". When qb is used, do not combine it with data_conditions, conditions, or sorts; only limit, offset, and is_deleted may be used alongside qb.",
     ),
   is_deleted: zod
     .union([zod.boolean(), zod.null()])
@@ -32086,7 +32457,9 @@ export const ListResourcesDataV1AutocrudCreateNewCharacter4JobDataGetQueryParams
   limit: zod
     .number()
     .default(listResourcesDataV1AutocrudCreateNewCharacter4JobDataGetQueryLimitDefault)
-    .describe('Maximum number of results'),
+    .describe(
+      'Maximum number of results. Default comes from the AUTOCRUD_DEFAULT_QUERY_LIMIT environment variable at startup; set limit explicitly or use the \/count endpoint if you need the full total.',
+    ),
   offset: zod
     .number()
     .default(listResourcesDataV1AutocrudCreateNewCharacter4JobDataGetQueryOffsetDefault)
@@ -32319,8 +32692,9 @@ export const ListResourcesDataV1AutocrudCreateNewCharacter4JobDataGetResponse = 
 - Example: `[{"type": "meta", "key": "updated_time", "direction": "-"}, {"type": "data", "field_path": "department", "direction": "+"}]`
 
 **Pagination:**
-- `limit`: Maximum number of results to return (default: 10)
+- `limit`: Maximum number of results to return (default comes from `AUTOCRUD_DEFAULT_QUERY_LIMIT` at startup)
 - `offset`: Number of results to skip for pagination (default: 0)
+- If you need an exact full total, use the `/count` endpoint or pass an explicit `limit`.
 
 **Use Cases:**
 - Resource management and administration
@@ -32329,7 +32703,7 @@ export const ListResourcesDataV1AutocrudCreateNewCharacter4JobDataGetResponse = 
 - System monitoring and statistics
 
 **Examples:**
-- `GET /create-new-character4-job/meta` - Get metadata for first 10 resources
+- `GET /create-new-character4-job/meta` - Get metadata for the default first page of resources
 - `GET /create-new-character4-job/meta?is_deleted=true` - Get metadata for deleted resources
 - `GET /create-new-character4-job/meta?created_bys=admin&limit=50` - Get metadata for admin-created resources
 
@@ -32339,7 +32713,7 @@ export const ListResourcesDataV1AutocrudCreateNewCharacter4JobDataGetResponse = 
  * @summary List create-new-character4-job Metadata Only
  */
 export const listResourcesMetaV1AutocrudCreateNewCharacter4JobMetaGetQueryIsDeletedDefault = false;
-export const listResourcesMetaV1AutocrudCreateNewCharacter4JobMetaGetQueryLimitDefault = 10;
+export const listResourcesMetaV1AutocrudCreateNewCharacter4JobMetaGetQueryLimitDefault = 4294967295;
 export const listResourcesMetaV1AutocrudCreateNewCharacter4JobMetaGetQueryOffsetDefault = 0;
 
 export const ListResourcesMetaV1AutocrudCreateNewCharacter4JobMetaGetQueryParams = zod.object({
@@ -32347,7 +32721,7 @@ export const ListResourcesMetaV1AutocrudCreateNewCharacter4JobMetaGetQueryParams
     .union([zod.string(), zod.null()])
     .optional()
     .describe(
-      "Query Builder expression. Example: \"QB['foo'] == 123\" or \"QB['age'].gt(18) & QB['status'].eq('active')\"",
+      "Query Builder expression. Example: \"QB['foo'] == 123\" or \"QB['age'].gt(18) & QB['status'].eq('active')\". When qb is used, do not combine it with data_conditions, conditions, or sorts; only limit, offset, and is_deleted may be used alongside qb.",
     ),
   is_deleted: zod
     .union([zod.boolean(), zod.null()])
@@ -32398,7 +32772,9 @@ export const ListResourcesMetaV1AutocrudCreateNewCharacter4JobMetaGetQueryParams
   limit: zod
     .number()
     .default(listResourcesMetaV1AutocrudCreateNewCharacter4JobMetaGetQueryLimitDefault)
-    .describe('Maximum number of results'),
+    .describe(
+      'Maximum number of results. Default comes from the AUTOCRUD_DEFAULT_QUERY_LIMIT environment variable at startup; set limit explicitly or use the \/count endpoint if you need the full total.',
+    ),
   offset: zod
     .number()
     .default(listResourcesMetaV1AutocrudCreateNewCharacter4JobMetaGetQueryOffsetDefault)
@@ -32480,8 +32856,9 @@ export const ListResourcesMetaV1AutocrudCreateNewCharacter4JobMetaGetResponse = 
 - Example: `[{"field_path": "status", "operator": "eq", "value": "active"}]`
 
 **Pagination:**
-- `limit`: Maximum number of results to return (default: 10)
+- `limit`: Maximum number of results to return (default comes from `AUTOCRUD_DEFAULT_QUERY_LIMIT` at startup)
 - `offset`: Number of results to skip for pagination (default: 0)
+- If you need an exact full total, use the `/count` endpoint or pass an explicit `limit`.
 
 **Use Cases:**
 - Version control system integration
@@ -32490,8 +32867,8 @@ export const ListResourcesMetaV1AutocrudCreateNewCharacter4JobMetaGetResponse = 
 - Change tracking and audit trails
 
 **Examples:**
-- `GET /create-new-character4-job/revision-info` - Get current revision info for first 10 resources
-- `GET /create-new-character4-job/revision-info?limit=100` - Get revision info for first 100 resources
+- `GET /create-new-character4-job/revision-info` - Get current revision info for the default first page of resources
+- `GET /create-new-character4-job/revision-info?limit=100` - Get revision info for the first 100 resources
 - `GET /create-new-character4-job/revision-info?updated_bys=editor` - Get revision info for editor-modified resources
 
 **Error Responses:**
@@ -32500,7 +32877,7 @@ export const ListResourcesMetaV1AutocrudCreateNewCharacter4JobMetaGetResponse = 
  * @summary List create-new-character4-job Current Revision Info
  */
 export const listResourcesRevisionInfoV1AutocrudCreateNewCharacter4JobRevisionInfoGetQueryIsDeletedDefault = false;
-export const listResourcesRevisionInfoV1AutocrudCreateNewCharacter4JobRevisionInfoGetQueryLimitDefault = 10;
+export const listResourcesRevisionInfoV1AutocrudCreateNewCharacter4JobRevisionInfoGetQueryLimitDefault = 4294967295;
 export const listResourcesRevisionInfoV1AutocrudCreateNewCharacter4JobRevisionInfoGetQueryOffsetDefault = 0;
 
 export const ListResourcesRevisionInfoV1AutocrudCreateNewCharacter4JobRevisionInfoGetQueryParams =
@@ -32509,7 +32886,7 @@ export const ListResourcesRevisionInfoV1AutocrudCreateNewCharacter4JobRevisionIn
       .union([zod.string(), zod.null()])
       .optional()
       .describe(
-        "Query Builder expression. Example: \"QB['foo'] == 123\" or \"QB['age'].gt(18) & QB['status'].eq('active')\"",
+        "Query Builder expression. Example: \"QB['foo'] == 123\" or \"QB['age'].gt(18) & QB['status'].eq('active')\". When qb is used, do not combine it with data_conditions, conditions, or sorts; only limit, offset, and is_deleted may be used alongside qb.",
       ),
     is_deleted: zod
       .union([zod.boolean(), zod.null()])
@@ -32564,7 +32941,9 @@ export const ListResourcesRevisionInfoV1AutocrudCreateNewCharacter4JobRevisionIn
       .default(
         listResourcesRevisionInfoV1AutocrudCreateNewCharacter4JobRevisionInfoGetQueryLimitDefault,
       )
-      .describe('Maximum number of results'),
+      .describe(
+        'Maximum number of results. Default comes from the AUTOCRUD_DEFAULT_QUERY_LIMIT environment variable at startup; set limit explicitly or use the \/count endpoint if you need the full total.',
+      ),
     offset: zod
       .number()
       .default(
@@ -32618,7 +32997,7 @@ export const ListResourcesRevisionInfoV1AutocrudCreateNewCharacter4JobRevisionIn
  * @summary List create-new-character4-job Complete Information
  */
 export const listResourcesFullV1AutocrudCreateNewCharacter4JobFullGetQueryIsDeletedDefault = false;
-export const listResourcesFullV1AutocrudCreateNewCharacter4JobFullGetQueryLimitDefault = 10;
+export const listResourcesFullV1AutocrudCreateNewCharacter4JobFullGetQueryLimitDefault = 4294967295;
 export const listResourcesFullV1AutocrudCreateNewCharacter4JobFullGetQueryOffsetDefault = 0;
 export const listResourcesFullV1AutocrudCreateNewCharacter4JobFullGetQueryReturnsDefault = `data,revision_info,meta`;
 
@@ -32627,7 +33006,7 @@ export const ListResourcesFullV1AutocrudCreateNewCharacter4JobFullGetQueryParams
     .union([zod.string(), zod.null()])
     .optional()
     .describe(
-      "Query Builder expression. Example: \"QB['foo'] == 123\" or \"QB['age'].gt(18) & QB['status'].eq('active')\"",
+      "Query Builder expression. Example: \"QB['foo'] == 123\" or \"QB['age'].gt(18) & QB['status'].eq('active')\". When qb is used, do not combine it with data_conditions, conditions, or sorts; only limit, offset, and is_deleted may be used alongside qb.",
     ),
   is_deleted: zod
     .union([zod.boolean(), zod.null()])
@@ -32678,7 +33057,9 @@ export const ListResourcesFullV1AutocrudCreateNewCharacter4JobFullGetQueryParams
   limit: zod
     .number()
     .default(listResourcesFullV1AutocrudCreateNewCharacter4JobFullGetQueryLimitDefault)
-    .describe('Maximum number of results'),
+    .describe(
+      'Maximum number of results. Default comes from the AUTOCRUD_DEFAULT_QUERY_LIMIT environment variable at startup; set limit explicitly or use the \/count endpoint if you need the full total.',
+    ),
   offset: zod
     .number()
     .default(listResourcesFullV1AutocrudCreateNewCharacter4JobFullGetQueryOffsetDefault)
@@ -32981,7 +33362,7 @@ export const ListResourcesFullV1AutocrudCreateNewCharacter4JobFullGetResponse = 
  * @summary Count create-new-character4-job Resources
  */
 export const getResourcesCountV1AutocrudCreateNewCharacter4JobCountGetQueryIsDeletedDefault = false;
-export const getResourcesCountV1AutocrudCreateNewCharacter4JobCountGetQueryLimitDefault = 10;
+export const getResourcesCountV1AutocrudCreateNewCharacter4JobCountGetQueryLimitDefault = 4294967295;
 export const getResourcesCountV1AutocrudCreateNewCharacter4JobCountGetQueryOffsetDefault = 0;
 
 export const GetResourcesCountV1AutocrudCreateNewCharacter4JobCountGetQueryParams = zod.object({
@@ -32989,7 +33370,7 @@ export const GetResourcesCountV1AutocrudCreateNewCharacter4JobCountGetQueryParam
     .union([zod.string(), zod.null()])
     .optional()
     .describe(
-      "Query Builder expression. Example: \"QB['foo'] == 123\" or \"QB['age'].gt(18) & QB['status'].eq('active')\"",
+      "Query Builder expression. Example: \"QB['foo'] == 123\" or \"QB['age'].gt(18) & QB['status'].eq('active')\". When qb is used, do not combine it with data_conditions, conditions, or sorts; only limit, offset, and is_deleted may be used alongside qb.",
     ),
   is_deleted: zod
     .union([zod.boolean(), zod.null()])
@@ -33040,7 +33421,9 @@ export const GetResourcesCountV1AutocrudCreateNewCharacter4JobCountGetQueryParam
   limit: zod
     .number()
     .default(getResourcesCountV1AutocrudCreateNewCharacter4JobCountGetQueryLimitDefault)
-    .describe('Maximum number of results'),
+    .describe(
+      'Maximum number of results. Default comes from the AUTOCRUD_DEFAULT_QUERY_LIMIT environment variable at startup; set limit explicitly or use the \/count endpoint if you need the full total.',
+    ),
   offset: zod
     .number()
     .default(getResourcesCountV1AutocrudCreateNewCharacter4JobCountGetQueryOffsetDefault)
@@ -33077,7 +33460,7 @@ By default all sections are returned: `data`, `revision_info`, `meta`.
  * @summary List create-new-character4-job resources
  */
 export const listResourcesV1AutocrudCreateNewCharacter4JobGetQueryIsDeletedDefault = false;
-export const listResourcesV1AutocrudCreateNewCharacter4JobGetQueryLimitDefault = 10;
+export const listResourcesV1AutocrudCreateNewCharacter4JobGetQueryLimitDefault = 4294967295;
 export const listResourcesV1AutocrudCreateNewCharacter4JobGetQueryOffsetDefault = 0;
 export const listResourcesV1AutocrudCreateNewCharacter4JobGetQueryReturnsDefault = `data,revision_info,meta`;
 
@@ -33086,7 +33469,7 @@ export const ListResourcesV1AutocrudCreateNewCharacter4JobGetQueryParams = zod.o
     .union([zod.string(), zod.null()])
     .optional()
     .describe(
-      "Query Builder expression. Example: \"QB['foo'] == 123\" or \"QB['age'].gt(18) & QB['status'].eq('active')\"",
+      "Query Builder expression. Example: \"QB['foo'] == 123\" or \"QB['age'].gt(18) & QB['status'].eq('active')\". When qb is used, do not combine it with data_conditions, conditions, or sorts; only limit, offset, and is_deleted may be used alongside qb.",
     ),
   is_deleted: zod
     .union([zod.boolean(), zod.null()])
@@ -33137,7 +33520,9 @@ export const ListResourcesV1AutocrudCreateNewCharacter4JobGetQueryParams = zod.o
   limit: zod
     .number()
     .default(listResourcesV1AutocrudCreateNewCharacter4JobGetQueryLimitDefault)
-    .describe('Maximum number of results'),
+    .describe(
+      'Maximum number of results. Default comes from the AUTOCRUD_DEFAULT_QUERY_LIMIT environment variable at startup; set limit explicitly or use the \/count endpoint if you need the full total.',
+    ),
   offset: zod
     .number()
     .default(listResourcesV1AutocrudCreateNewCharacter4JobGetQueryOffsetDefault)
@@ -33612,7 +33997,7 @@ export const CreateResourceV1AutocrudCreateNewCharacter4JobPostResponse = zod
  * @summary Batch delete create-new-character4-job
  */
 export const batchDeleteV1AutocrudCreateNewCharacter4JobDeleteQueryIsDeletedDefault = false;
-export const batchDeleteV1AutocrudCreateNewCharacter4JobDeleteQueryLimitDefault = 10;
+export const batchDeleteV1AutocrudCreateNewCharacter4JobDeleteQueryLimitDefault = 4294967295;
 export const batchDeleteV1AutocrudCreateNewCharacter4JobDeleteQueryOffsetDefault = 0;
 
 export const BatchDeleteV1AutocrudCreateNewCharacter4JobDeleteQueryParams = zod.object({
@@ -33620,7 +34005,7 @@ export const BatchDeleteV1AutocrudCreateNewCharacter4JobDeleteQueryParams = zod.
     .union([zod.string(), zod.null()])
     .optional()
     .describe(
-      "Query Builder expression. Example: \"QB['foo'] == 123\" or \"QB['age'].gt(18) & QB['status'].eq('active')\"",
+      "Query Builder expression. Example: \"QB['foo'] == 123\" or \"QB['age'].gt(18) & QB['status'].eq('active')\". When qb is used, do not combine it with data_conditions, conditions, or sorts; only limit, offset, and is_deleted may be used alongside qb.",
     ),
   is_deleted: zod
     .union([zod.boolean(), zod.null()])
@@ -33671,7 +34056,9 @@ export const BatchDeleteV1AutocrudCreateNewCharacter4JobDeleteQueryParams = zod.
   limit: zod
     .number()
     .default(batchDeleteV1AutocrudCreateNewCharacter4JobDeleteQueryLimitDefault)
-    .describe('Maximum number of results'),
+    .describe(
+      'Maximum number of results. Default comes from the AUTOCRUD_DEFAULT_QUERY_LIMIT environment variable at startup; set limit explicitly or use the \/count endpoint if you need the full total.',
+    ),
   offset: zod
     .number()
     .default(batchDeleteV1AutocrudCreateNewCharacter4JobDeleteQueryOffsetDefault)
@@ -33719,7 +34106,7 @@ which resources are included.
  * @summary Export create-new-character4-job data
  */
 export const exportModelV1AutocrudCreateNewCharacter4JobExportGetQueryIsDeletedDefault = false;
-export const exportModelV1AutocrudCreateNewCharacter4JobExportGetQueryLimitDefault = 10;
+export const exportModelV1AutocrudCreateNewCharacter4JobExportGetQueryLimitDefault = 4294967295;
 export const exportModelV1AutocrudCreateNewCharacter4JobExportGetQueryOffsetDefault = 0;
 
 export const ExportModelV1AutocrudCreateNewCharacter4JobExportGetQueryParams = zod.object({
@@ -33727,7 +34114,7 @@ export const ExportModelV1AutocrudCreateNewCharacter4JobExportGetQueryParams = z
     .union([zod.string(), zod.null()])
     .optional()
     .describe(
-      "Query Builder expression. Example: \"QB['foo'] == 123\" or \"QB['age'].gt(18) & QB['status'].eq('active')\"",
+      "Query Builder expression. Example: \"QB['foo'] == 123\" or \"QB['age'].gt(18) & QB['status'].eq('active')\". When qb is used, do not combine it with data_conditions, conditions, or sorts; only limit, offset, and is_deleted may be used alongside qb.",
     ),
   is_deleted: zod
     .union([zod.boolean(), zod.null()])
@@ -33778,7 +34165,9 @@ export const ExportModelV1AutocrudCreateNewCharacter4JobExportGetQueryParams = z
   limit: zod
     .number()
     .default(exportModelV1AutocrudCreateNewCharacter4JobExportGetQueryLimitDefault)
-    .describe('Maximum number of results'),
+    .describe(
+      'Maximum number of results. Default comes from the AUTOCRUD_DEFAULT_QUERY_LIMIT environment variable at startup; set limit explicitly or use the \/count endpoint if you need the full total.',
+    ),
   offset: zod
     .number()
     .default(exportModelV1AutocrudCreateNewCharacter4JobExportGetQueryOffsetDefault)
@@ -35665,7 +36054,7 @@ export const RestoreResourceV1AutocrudCreateNewCharacter4JobResourceIdRestorePos
  * @summary Batch restore deleted create-new-character4-job
  */
 export const batchRestoreV1AutocrudCreateNewCharacter4JobRestorePostQueryIsDeletedDefault = false;
-export const batchRestoreV1AutocrudCreateNewCharacter4JobRestorePostQueryLimitDefault = 10;
+export const batchRestoreV1AutocrudCreateNewCharacter4JobRestorePostQueryLimitDefault = 4294967295;
 export const batchRestoreV1AutocrudCreateNewCharacter4JobRestorePostQueryOffsetDefault = 0;
 
 export const BatchRestoreV1AutocrudCreateNewCharacter4JobRestorePostQueryParams = zod.object({
@@ -35673,7 +36062,7 @@ export const BatchRestoreV1AutocrudCreateNewCharacter4JobRestorePostQueryParams 
     .union([zod.string(), zod.null()])
     .optional()
     .describe(
-      "Query Builder expression. Example: \"QB['foo'] == 123\" or \"QB['age'].gt(18) & QB['status'].eq('active')\"",
+      "Query Builder expression. Example: \"QB['foo'] == 123\" or \"QB['age'].gt(18) & QB['status'].eq('active')\". When qb is used, do not combine it with data_conditions, conditions, or sorts; only limit, offset, and is_deleted may be used alongside qb.",
     ),
   is_deleted: zod
     .union([zod.boolean(), zod.null()])
@@ -35724,7 +36113,9 @@ export const BatchRestoreV1AutocrudCreateNewCharacter4JobRestorePostQueryParams 
   limit: zod
     .number()
     .default(batchRestoreV1AutocrudCreateNewCharacter4JobRestorePostQueryLimitDefault)
-    .describe('Maximum number of results'),
+    .describe(
+      'Maximum number of results. Default comes from the AUTOCRUD_DEFAULT_QUERY_LIMIT environment variable at startup; set limit explicitly or use the \/count endpoint if you need the full total.',
+    ),
   offset: zod
     .number()
     .default(batchRestoreV1AutocrudCreateNewCharacter4JobRestorePostQueryOffsetDefault)
@@ -35775,7 +36166,7 @@ No data will be written back to storage - memory-only testing.
  * @summary Test Migrate Resources
  */
 export const testMigrateResourcesV1AutocrudCreateNewCharacter4JobMigrateTestPostQueryIsDeletedDefault = false;
-export const testMigrateResourcesV1AutocrudCreateNewCharacter4JobMigrateTestPostQueryLimitDefault = 10;
+export const testMigrateResourcesV1AutocrudCreateNewCharacter4JobMigrateTestPostQueryLimitDefault = 4294967295;
 export const testMigrateResourcesV1AutocrudCreateNewCharacter4JobMigrateTestPostQueryOffsetDefault = 0;
 
 export const TestMigrateResourcesV1AutocrudCreateNewCharacter4JobMigrateTestPostQueryParams =
@@ -35784,7 +36175,7 @@ export const TestMigrateResourcesV1AutocrudCreateNewCharacter4JobMigrateTestPost
       .union([zod.string(), zod.null()])
       .optional()
       .describe(
-        "Query Builder expression. Example: \"QB['foo'] == 123\" or \"QB['age'].gt(18) & QB['status'].eq('active')\"",
+        "Query Builder expression. Example: \"QB['foo'] == 123\" or \"QB['age'].gt(18) & QB['status'].eq('active')\". When qb is used, do not combine it with data_conditions, conditions, or sorts; only limit, offset, and is_deleted may be used alongside qb.",
       ),
     is_deleted: zod
       .union([zod.boolean(), zod.null()])
@@ -35837,7 +36228,9 @@ export const TestMigrateResourcesV1AutocrudCreateNewCharacter4JobMigrateTestPost
     limit: zod
       .number()
       .default(testMigrateResourcesV1AutocrudCreateNewCharacter4JobMigrateTestPostQueryLimitDefault)
-      .describe('Maximum number of results'),
+      .describe(
+        'Maximum number of results. Default comes from the AUTOCRUD_DEFAULT_QUERY_LIMIT environment variable at startup; set limit explicitly or use the \/count endpoint if you need the full total.',
+      ),
     offset: zod
       .number()
       .default(
@@ -35870,7 +36263,7 @@ export const TestMigrateResourcesV1AutocrudCreateNewCharacter4JobMigrateTestPost
  * @summary Execute Migrate Resources
  */
 export const executeMigrateResourcesV1AutocrudCreateNewCharacter4JobMigrateExecutePostQueryIsDeletedDefault = false;
-export const executeMigrateResourcesV1AutocrudCreateNewCharacter4JobMigrateExecutePostQueryLimitDefault = 10;
+export const executeMigrateResourcesV1AutocrudCreateNewCharacter4JobMigrateExecutePostQueryLimitDefault = 4294967295;
 export const executeMigrateResourcesV1AutocrudCreateNewCharacter4JobMigrateExecutePostQueryOffsetDefault = 0;
 
 export const ExecuteMigrateResourcesV1AutocrudCreateNewCharacter4JobMigrateExecutePostQueryParams =
@@ -35879,7 +36272,7 @@ export const ExecuteMigrateResourcesV1AutocrudCreateNewCharacter4JobMigrateExecu
       .union([zod.string(), zod.null()])
       .optional()
       .describe(
-        "Query Builder expression. Example: \"QB['foo'] == 123\" or \"QB['age'].gt(18) & QB['status'].eq('active')\"",
+        "Query Builder expression. Example: \"QB['foo'] == 123\" or \"QB['age'].gt(18) & QB['status'].eq('active')\". When qb is used, do not combine it with data_conditions, conditions, or sorts; only limit, offset, and is_deleted may be used alongside qb.",
       ),
     is_deleted: zod
       .union([zod.boolean(), zod.null()])
@@ -35934,7 +36327,9 @@ export const ExecuteMigrateResourcesV1AutocrudCreateNewCharacter4JobMigrateExecu
       .default(
         executeMigrateResourcesV1AutocrudCreateNewCharacter4JobMigrateExecutePostQueryLimitDefault,
       )
-      .describe('Maximum number of results'),
+      .describe(
+        'Maximum number of results. Default comes from the AUTOCRUD_DEFAULT_QUERY_LIMIT environment variable at startup; set limit explicitly or use the \/count endpoint if you need the full total.',
+      ),
     offset: zod
       .number()
       .default(

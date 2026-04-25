@@ -110,6 +110,13 @@ export const CELL_RENDERERS: Record<FieldKind, CellRenderer> = {
     return NA;
   },
 
+  binaryArray: ({ value }) => {
+    if (Array.isArray(value)) {
+      return `${value.length} file${value.length !== 1 ? 's' : ''}`;
+    }
+    return NA;
+  },
+
   /* ---- Text-like ---- */
 
   json: renderJson,

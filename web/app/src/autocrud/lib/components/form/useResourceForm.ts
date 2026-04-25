@@ -339,6 +339,16 @@ export function useResourceForm<T extends Record<string, any>>({
           const bv = getByPath(values as Record<string, any>, field.name) as BinaryFormValue | null;
           binaryFieldValues.set(field.name, bv);
         }
+        if (field.type === 'binary' && field.isArray) {
+          // Array of binary items — preserve each element before JSON deep copy
+          const items = (values as Record<string, any>)[field.name];
+          if (Array.isArray(items)) {
+            for (let i = 0; i < items.length; i++) {
+              const bv = items[i] as BinaryFormValue | null;
+              arrayItemBinaryValues.set(`${field.name}.${i}`, bv);
+            }
+          }
+        }
         if (field.type === 'file') {
           const fv = getByPath(values as Record<string, any>, field.name) as File | null;
           fileFieldValues.set(field.name, fv);
