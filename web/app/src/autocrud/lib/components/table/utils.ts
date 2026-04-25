@@ -255,7 +255,11 @@ export function conditionToQB(
   // 轉換 Data conditions
   for (const cond of data) {
     const op = cond.operator;
-    const val = typeof cond.value === 'string' ? `"${cond.value}"` : cond.value;
+    const val = Array.isArray(cond.value)
+      ? `[${cond.value.map((v) => (typeof v === 'string' ? `"${v}"` : String(v))).join(', ')}]`
+      : typeof cond.value === 'string'
+        ? `"${cond.value}"`
+        : cond.value;
 
     // 使用 QB["field"] 語法
     const field = `QB["${cond.field}"]`;
@@ -290,6 +294,12 @@ export function conditionToQB(
         break;
       case 'ends_with':
         parts.push(`${field}.ends_with(${val})`);
+        break;
+      case 'in':
+        parts.push(`${field}.in_(${val})`);
+        break;
+      case 'not_in':
+        parts.push(`${field}.not_in(${val})`);
         break;
       default:
         parts.push(`(${field} == ${val})`);
@@ -619,6 +629,10 @@ export function applyClientConditions(rows: any[], conditions: SearchCondition[]
           return String(fieldValue ?? '').startsWith(String(condValue));
         case 'ends_with':
           return String(fieldValue ?? '').endsWith(String(condValue));
+        case 'in':
+          return Array.isArray(condValue) && condValue.some((v) => fieldValue == v);
+        case 'not_in':
+          return !Array.isArray(condValue) || condValue.every((v) => fieldValue != v);
         default:
           return fieldValue == condValue;
       }

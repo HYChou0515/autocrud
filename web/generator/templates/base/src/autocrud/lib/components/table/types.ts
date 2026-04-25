@@ -13,7 +13,7 @@ import type { FullResourceRow } from '../../../types/api';
 export interface SearchCondition {
   field: string;
   operator: string;
-  value: string | number | boolean;
+  value: string | number | boolean | Array<string | number | boolean>;
 }
 
 /**
