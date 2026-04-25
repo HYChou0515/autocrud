@@ -1488,3 +1488,53 @@ class TestCreateActionWithRouterPrefix:
         assert action["path"] == "/item/create-from-query", (
             f"Expected '/item/create-from-query' but got '{action['path']}'"
         )
+
+
+# ---------------------------------------------------------------------------
+# Regression: struct as direct body must not produce duplicate inlineBodyParams
+# ---------------------------------------------------------------------------
+
+
+class TestCreateActionStructBodyNoDuplicate:
+    """When a struct is used directly as the body, its fields must appear only
+    once in the action's fields (via bodySchema), not also as inlineBodyParams."""
+
+    def _build_app(self):
+        class Character(Struct):
+            name: str
+            level: int = 1
+
+        class SkillInput(Struct):
+            skill_name: str
+            power: int
+
+        crud = AutoCRUD()
+        crud.add_model(Character, name="character")
+
+        @crud.create_action("character", label="Add Skill")
+        async def add_skill(body: SkillInput = Body(...)):
+            return Character(name=body.skill_name, level=body.power)
+
+        app = FastAPI()
+        crud.apply(app)
+        crud.openapi(app)
+        return app
+
+    def test_no_inline_body_params_when_body_is_struct(self):
+        """Struct-as-body must NOT produce inlineBodyParams (those fields are
+        already represented by bodySchema)."""
+        app = self._build_app()
+        schema = app.openapi_schema
+        action = schema["x-autocrud-custom-create-actions"]["character"][0]
+        assert "bodySchema" in action
+        assert "inlineBodyParams" not in action, (
+            f"inlineBodyParams must be absent when body is a pure struct; "
+            f"got: {action.get('inlineBodyParams')}"
+        )
+
+    def test_body_schema_name_is_correct(self):
+        """bodySchema should record the struct name."""
+        app = self._build_app()
+        schema = app.openapi_schema
+        action = schema["x-autocrud-custom-create-actions"]["character"][0]
+        assert action["bodySchema"] == "SkillInput"

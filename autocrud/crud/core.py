@@ -2101,12 +2101,23 @@ class AutoCRUD:
             # Fall back to multipart/form-data (when UploadFile is present)
             if not rb:
                 rb = content.get("multipart/form-data", {}).get("schema", {})
-            # Resolve $ref to components/schemas
+            # Resolve $ref to components/schemas.
+            # If the $ref points directly to the body schema struct, the entire
+            # request body IS that struct — skip expanding its properties as
+            # inline params to avoid duplicate fields in the frontend form.
+            _direct_body_ref = False
             if "$ref" in rb:
                 ref_name = rb["$ref"].split("/")[-1]
-                rb = schema.get("components", {}).get("schemas", {}).get(ref_name, {})
-            props: dict = rb.get("properties", {})
-            required_list: list = rb.get("required", [])
+                if body_schema and ref_name == body_schema:
+                    _direct_body_ref = True
+                else:
+                    rb = (
+                        schema.get("components", {})
+                        .get("schemas", {})
+                        .get(ref_name, {})
+                    )
+            props: dict = {} if _direct_body_ref else rb.get("properties", {})
+            required_list: list = [] if _direct_body_ref else rb.get("required", [])
             # When bodySchema is set, identify the property that IS the body
             # schema (via $ref or allOf.$ref) so we can exclude it from inline
             # params and avoid duplication.
@@ -2280,11 +2291,19 @@ class AutoCRUD:
             rb = content.get("application/json", {}).get("schema", {})
             if not rb:
                 rb = content.get("multipart/form-data", {}).get("schema", {})
+            _direct_body_ref = False
             if "$ref" in rb:
                 ref_name = rb["$ref"].split("/")[-1]
-                rb = schema.get("components", {}).get("schemas", {}).get(ref_name, {})
-            props: dict = rb.get("properties", {})
-            required_list: list = rb.get("required", [])
+                if body_schema and ref_name == body_schema:
+                    _direct_body_ref = True
+                else:
+                    rb = (
+                        schema.get("components", {})
+                        .get("schemas", {})
+                        .get(ref_name, {})
+                    )
+            props: dict = {} if _direct_body_ref else rb.get("properties", {})
+            required_list: list = [] if _direct_body_ref else rb.get("required", [])
             body_schema_prop_names: set[str] = set()
             if body_schema:
                 for pname, pschema in props.items():
