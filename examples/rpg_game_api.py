@@ -165,6 +165,9 @@ class Character(Struct):
     # N:N 關係：角色學會的技能（透過 skill resource_id 列表）
     skill_ids: list[Annotated[str, Ref("skill")]] = []
     equipments: list[Equipment | Item] = []  # 角色裝備列表（嵌入式，非 Ref）
+    # list[Binary] 欄位 — 展示多圖上傳功能 (v0.8.4 修復)
+    # 前端會渲染 BinaryArrayFieldRenderer，提供新增/刪除多張圖片的 UI
+    screenshots: list[Binary] = []
     created_at: dt.datetime = dt.datetime.now()
 
 
@@ -668,6 +671,11 @@ def create_sample_data():
                     icon=Binary(data=get_random_image()),
                 ),
             ],
+            # list[Binary] 示範：多張角色截圖（前端可新增/刪除多張圖片）
+            screenshots=[
+                Binary(data=get_random_image()),
+                Binary(data=get_random_image()),
+            ],
         ),
         Character(
             name="資料庫女王",
@@ -700,6 +708,9 @@ def create_sample_data():
                     price=500000,
                     icon=Binary(data=get_random_image()),
                 ),
+            ],
+            screenshots=[
+                Binary(data=get_random_image()),
             ],
         ),
         Character(
