@@ -204,7 +204,6 @@ def test_qb_conflict_with_sorts(client: TestClient, sample_users: list[str]) -> 
 @pytest.mark.parametrize(
     ("extra_params", "expected_params"),
     [
-        ({"is_deleted": "false"}, ["is_deleted"]),
         ({"created_time_start": "2025-01-01T00:00:00"}, ["created_time_start"]),
         ({"created_time_end": "2025-01-31T23:59:59"}, ["created_time_end"]),
         ({"updated_time_start": "2025-02-01T00:00:00"}, ["updated_time_start"]),
@@ -213,11 +212,10 @@ def test_qb_conflict_with_sorts(client: TestClient, sample_users: list[str]) -> 
         ({"updated_bys": ["bob"]}, ["updated_bys"]),
         (
             {
-                "is_deleted": "false",
                 "created_bys": ["alice"],
                 "updated_bys": ["bob"],
             },
-            ["is_deleted", "created_bys", "updated_bys"],
+            ["created_bys", "updated_bys"],
         ),
     ],
 )
@@ -859,3 +857,33 @@ def test_qb_unsupported_ast_node(client: TestClient, sample_users: list[str]) ->
     response = client.get("/user/data", params={"qb": "lambda x: x > 0"})
     assert response.status_code == 400
     assert "AST node type not supported" in response.json()["detail"]
+
+
+def test_qb_with_is_deleted_filter(
+    client: TestClient, sample_users: list[str]
+) -> None:
+    """測試 QB 可以與 is_deleted 同時使用。
+
+    Swagger UI 永遠會在 URL 帶上 is_deleted=false (因為有預設值)，
+    所以禁止組合會讓 QB 在 Swagger 中永遠無法使用。
+    is_deleted 是 meta-level filter，與 QB 的 data-level 查詢不衝突，
+    應允許同時使用。
+    """
+    # is_deleted=false + QB 應該成功（目前會回傳 422）
+    response = client.get(
+        "/user/data",
+        params={"qb": "QB['age'].gt(25)", "is_deleted": "false"},
+    )
+    assert response.status_code == 200
+    data = response.json()
+    # age > 25: Bob(30), Charlie(35), David(28), Eve(32) = 4 人
+    assert len(data) == 4
+    assert all(u["age"] > 25 for u in data)
+
+    # is_deleted=true + QB 應該成功（查詢已刪除的，目前沒有刪除資料，所以回 0 筆）
+    response = client.get(
+        "/user/data",
+        params={"qb": "QB['age'].gt(25)", "is_deleted": "true"},
+    )
+    assert response.status_code == 200
+    assert len(response.json()) == 0

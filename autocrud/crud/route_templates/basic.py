@@ -298,9 +298,8 @@ class QueryInputs(BaseModel):
         description=(
             "Query Builder expression. Example: \"QB['foo'] == 123\" or "
             "\"QB['age'].gt(18) & QB['status'].eq('active')\". "
-            "When qb is used, do not combine it with metadata filter params, "
-            "data_conditions, conditions, or sorts; only limit and offset may "
-            "override pagination."
+            "When qb is used, do not combine it with data_conditions, conditions, "
+            "or sorts; only limit, offset, and is_deleted may be used alongside qb."
         ),
     )
     is_deleted: Optional[bool] = Query(
@@ -406,7 +405,6 @@ def build_query(
             conflicting_params.append("sorts")
 
         for param_name in [
-            "is_deleted",
             "created_time_start",
             "created_time_end",
             "updated_time_start",
@@ -430,6 +428,7 @@ def build_query(
 
         try:
             from autocrud.crud.qb_parser import parse_qb_expression
+            from autocrud.query import QB as _QB
 
             # 使用 AST parser 解析 QB 表達式（比 eval 更安全）
             qb_result = parse_qb_expression(q.qb)
@@ -440,6 +439,17 @@ def build_query(
             # 覆寫 limit 和 offset（如果 QB 表達式中有設置，URL 參數會覆蓋它）
             if q.limit != DEFAULT_QUERY_LIMIT or q.offset != 0:
                 query = msgspec.structs.replace(query, limit=q.limit, offset=q.offset)
+
+            # is_deleted 可以與 QB 同時使用（Swagger 永遠會帶預設值 false）。
+            # 將 is_deleted 條件 append 進 conditions 列表，與 QB 條件形成 AND。
+            if q.is_deleted is not None:
+                is_deleted_cond = _QB.is_deleted().eq(q.is_deleted)._condition
+                existing = (
+                    [] if query.conditions is msgspec.UNSET else list(query.conditions)
+                )
+                query = msgspec.structs.replace(
+                    query, conditions=existing + [is_deleted_cond]
+                )
 
             return query
         except Exception as e:

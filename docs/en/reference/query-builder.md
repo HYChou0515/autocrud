@@ -227,7 +227,8 @@ QB["items"].length() == 0
 ## Important behavior notes
 
 - QB works best with indexed resource fields and built-in metadata fields.
-- In HTTP requests, do not combine `qb` with `data_conditions`, `conditions`, `sorts`, or metadata-filter query parameters such as delete-status and time-range filters. Those conflicts return HTTP 422.
+- In HTTP requests, do not combine `qb` with `data_conditions`, `conditions`, `sorts`, or time-range/user filter parameters (`created_time_start`, `created_time_end`, `updated_time_start`, `updated_time_end`, `created_bys`, `updated_bys`). Those conflicts return HTTP 422.
+- **`is_deleted` is the one exception**: it may be combined with `qb`. The server ANDs it into the QB conditions. Because Swagger sends `is_deleted=false` by default, QB expressions work in Swagger without any extra workaround.
 - Invalid or unsupported QB expressions return HTTP 400.
 - URL `limit` and `offset` override pagination values defined inside the QB expression itself.
 - `QB["user.email"]` refers to the stored field path used by the search layer. It should not be read as a promise of arbitrary deep object traversal beyond what is indexed.
