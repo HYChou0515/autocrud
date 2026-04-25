@@ -172,6 +172,29 @@ const DETAIL_RENDERERS: Record<FieldKind, (ctx: DetailRenderContext) => React.Re
     return <Code block>{safeStringify(truncateForDetail(value), 2)}</Code>;
   },
 
+  binaryArray: ({ value }) => {
+    if (!Array.isArray(value) || value.length === 0) {
+      return (
+        <Text c="dimmed" size="sm">
+          No files
+        </Text>
+      );
+    }
+    return (
+      <Stack gap="xs">
+        {value.map((item: Record<string, unknown>, idx: number) =>
+          isBlobObject(item) ? (
+            <BinaryFieldDisplay key={idx} value={item} />
+          ) : (
+            <Code key={idx} block>
+              {safeStringify(item, 2)}
+            </Code>
+          ),
+        )}
+      </Stack>
+    );
+  },
+
   /* ---- Text-like ---- */
 
   json: ({ value }) => {

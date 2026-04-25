@@ -1901,4 +1901,105 @@ describe('processSubmitValues', () => {
     expect(Array.isArray(result.processed.equipments)).toBe(true);
     expect(result.processed.equipments).toHaveLength(0);
   });
+
+  // ── binary array (isArray: true, type: 'binary') ──
+
+  it('should report each binary array item key in binarySubFieldKeys', () => {
+    const fields = [
+      {
+        name: 'screenshots',
+        label: 'Screenshots',
+        type: 'binary' as const,
+        isArray: true,
+      },
+    ];
+    const values = {
+      screenshots: [
+        { _mode: 'file', file: new File(['a'], 'a.png', { type: 'image/png' }) },
+        { _mode: 'url', url: 'http://example.com/b.png' },
+        { _mode: 'empty' },
+      ],
+    };
+
+    const result = processSubmitValues(values, fields, [], []);
+    expect(result.binarySubFieldKeys).toEqual(['screenshots.0', 'screenshots.1', 'screenshots.2']);
+    expect(result.skippedBinaryFields).toEqual([]);
+  });
+
+  it('should default binary array to empty array in processSubmitValues when value is null', () => {
+    const fields = [
+      {
+        name: 'screenshots',
+        label: 'Screenshots',
+        type: 'binary' as const,
+        isArray: true,
+      },
+    ];
+    const values = { screenshots: null as any };
+
+    const result = processSubmitValues(values, fields, [], []);
+    expect(result.binarySubFieldKeys).toEqual([]);
+    expect(result.skippedBinaryFields).toEqual([]);
+  });
+});
+
+// ── processInitialValues — binary array ──
+
+describe('processInitialValues — binary array (isArray: true, type: binary)', () => {
+  const binaryArrayField = {
+    name: 'screenshots',
+    type: 'binary' as const,
+    isArray: true,
+  };
+
+  it('should convert each item to BinaryFormValue via binaryHandler.toFormValue', () => {
+    const result = processInitialValues(
+      {
+        screenshots: [
+          { file_id: 'f1', content_type: 'image/png', size: 512 },
+          { file_id: 'f2', content_type: 'image/jpeg', size: 1024 },
+        ],
+      },
+      [binaryArrayField],
+      [],
+      [],
+    );
+
+    expect(result.screenshots).toHaveLength(2);
+    expect(result.screenshots[0]).toEqual({
+      _mode: 'existing',
+      file_id: 'f1',
+      content_type: 'image/png',
+      size: 512,
+    });
+    expect(result.screenshots[1]).toEqual({
+      _mode: 'existing',
+      file_id: 'f2',
+      content_type: 'image/jpeg',
+      size: 1024,
+    });
+  });
+
+  it('should default to empty array when value is null', () => {
+    const result = processInitialValues({ screenshots: null }, [binaryArrayField], [], []);
+    expect(result.screenshots).toEqual([]);
+  });
+
+  it('should default to empty array when value is undefined', () => {
+    const result = processInitialValues({}, [binaryArrayField], [], []);
+    expect(result.screenshots).toEqual([]);
+  });
+
+  it('should convert items with no file_id to empty mode', () => {
+    const result = processInitialValues(
+      { screenshots: [null, undefined, {}] },
+      [binaryArrayField],
+      [],
+      [],
+    );
+    expect(result.screenshots).toHaveLength(3);
+    result.screenshots.forEach((item: any) => {
+      expect(item).toEqual({ _mode: 'empty' });
+    });
+  });
 });

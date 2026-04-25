@@ -108,6 +108,15 @@ export function processInitialValues(
       } else {
         setByPath(processed, field.name, []);
       }
+    } else if (field.isArray && field.type === 'binary') {
+      // Array of binary items (e.g. List[bytes]) — convert each item via binaryHandler
+      if (Array.isArray(val)) {
+        const handler = getHandler('binary');
+        const processedItems = val.map((item: any) => handler.toFormValue(item, field));
+        setByPath(processed, field.name, processedItems);
+      } else {
+        setByPath(processed, field.name, []);
+      }
     } else if (field.isArray && field.ref && field.ref.type === 'resource_id') {
       // Array ref field — keep as array for MultiSelect, default to []
       setByPath(processed, field.name, Array.isArray(val) ? val : []);
@@ -372,6 +381,12 @@ export function processSubmitValues(
       const handler = getHandler('date');
       const submitFn = handler.submitValue ?? handler.toApiValue;
       setByPath(processed, field.name, submitFn(val, field));
+    } else if (field.type === 'binary' && field.isArray) {
+      // Array of binary items — each element is an independent BinaryFormValue
+      const items = Array.isArray(val) ? val : [];
+      for (let idx = 0; idx < items.length; idx++) {
+        binarySubFieldKeys.push(`${field.name}.${idx}`);
+      }
     } else if (field.type === 'binary') {
       skippedBinaryFields.push(field.name);
       continue;
