@@ -8,6 +8,9 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { renderHook, act, cleanup } from '@testing-library/react';
 import { useResourceForm } from './useResourceForm';
+import { notifications } from '@mantine/notifications';
+import { uploadFileToBlob } from '../../hooks/useBlobUpload';
+import { processSubmitValues } from '@/autocrud/lib/utils/formUtils';
 
 import {
   computeVisibleFieldsAndGroups,
@@ -65,6 +68,11 @@ vi.mock('../../hooks/useBlobUpload', () => ({
 // ── Mock mantine-form-zod-resolver ──
 vi.mock('mantine-form-zod-resolver', () => ({
   zodResolver: vi.fn(() => vi.fn(() => ({}))),
+}));
+
+// ── Mock @mantine/notifications ──
+vi.mock('@mantine/notifications', () => ({
+  notifications: { show: vi.fn() },
 }));
 
 beforeEach(() => {
@@ -545,5 +553,76 @@ describe('useResourceForm — internal helpers', () => {
     });
 
     expect(computeDepthTransitionUpdates).toHaveBeenCalled();
+  });
+});
+
+describe('useResourceForm — error notifications', () => {
+  it('handleSubmit upload failure shows toast notification', async () => {
+    const onSubmit = vi.fn();
+    const fields = [makeField('avatar', 'binary')];
+
+    // Make processSubmitValues return a binary field to trigger upload path
+    vi.mocked(processSubmitValues).mockReturnValueOnce({
+      skippedBinaryFields: ['avatar'],
+      binarySubFieldKeys: [],
+    } as any);
+
+    const uploadError = Object.assign(new Error('Network error'), {
+      response: { data: { detail: 'S3 unreachable' } },
+    });
+    vi.mocked(uploadFileToBlob).mockRejectedValueOnce(uploadError);
+
+    const { result } = renderUseResourceForm({
+      onSubmit,
+      config: { fields },
+    });
+
+    await act(async () => {
+      await result.current
+        .handleSubmit({
+          avatar: { _mode: 'file', file: new File(['x'], 'img.png') },
+        } as any)
+        .catch(() => {});
+    });
+
+    expect(onSubmit).not.toHaveBeenCalled();
+    expect(vi.mocked(notifications.show)).toHaveBeenCalledWith(
+      expect.objectContaining({ color: 'red', message: 'S3 unreachable' }),
+    );
+  });
+
+  it('handleSubmit zod post-validation failure shows toast notification', async () => {
+    const onSubmit = vi.fn();
+    const zodSchema = {
+      safeParse: vi.fn(() => ({
+        success: false,
+        error: {
+          issues: [
+            { path: ['name'], message: 'Too short' },
+            { path: ['age'], message: 'Must be positive' },
+          ],
+        },
+      })),
+    };
+
+    const { result } = renderUseResourceForm({
+      onSubmit,
+      config: {
+        zodSchema,
+        fields: [makeField('name'), makeField('age', 'number')],
+      },
+    });
+
+    await act(async () => {
+      await result.current.handleSubmit({ name: 'x', age: -1 } as any);
+    });
+
+    expect(onSubmit).not.toHaveBeenCalled();
+    expect(vi.mocked(notifications.show)).toHaveBeenCalledWith(
+      expect.objectContaining({
+        color: 'red',
+        message: expect.stringContaining('Too short'),
+      }),
+    );
   });
 });

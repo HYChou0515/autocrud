@@ -1117,16 +1117,12 @@ describe('conditionToQB', () => {
   });
 
   it('generates not_in condition with number array', () => {
-    const result = conditionToQB({}, [
-      { field: 'level', operator: 'not_in', value: [1, 2, 3] },
-    ]);
+    const result = conditionToQB({}, [{ field: 'level', operator: 'not_in', value: [1, 2, 3] }]);
     expect(result).toBe('QB["level"].not_in([1, 2, 3])');
   });
 
   it('generates in condition with number array', () => {
-    const result = conditionToQB({}, [
-      { field: 'score', operator: 'in', value: [10, 20] },
-    ]);
+    const result = conditionToQB({}, [{ field: 'score', operator: 'in', value: [10, 20] }]);
     expect(result).toBe('QB["score"].in_([10, 20])');
   });
 });
