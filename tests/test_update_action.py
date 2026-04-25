@@ -1078,3 +1078,45 @@ class TestUpdateActionInfoMetaInjection:
         rm = crud.resource_managers["character"]
         resource = rm.get(resource_id)
         assert resource.data.name == f"{revision_id}-1"
+
+
+# ---------------------------------------------------------------------------
+# Regression: struct as direct body must not produce duplicate inlineBodyParams
+# ---------------------------------------------------------------------------
+
+
+class TestUpdateActionStructBodyNoDuplicate:
+    """When a struct is used directly as the update action body, its fields
+    must appear only once (via bodySchema), not also as inlineBodyParams."""
+
+    def _build_app(self):
+        class Character(Struct):
+            name: str
+            level: int = 1
+
+        class RenameInput(Struct):
+            new_name: str
+            suffix: str = ""
+
+        crud = AutoCRUD()
+        crud.add_model(Character, name="character")
+
+        @crud.update_action("character", label="Rename")
+        def rename(existing: Character, body: RenameInput = Body(...)):
+            return Character(name=body.new_name + body.suffix, level=existing.level)
+
+        app = FastAPI()
+        crud.apply(app)
+        crud.openapi(app)
+        return app
+
+    def test_no_inline_body_params_when_body_is_struct(self):
+        """Struct-as-body must NOT produce inlineBodyParams for update actions."""
+        app = self._build_app()
+        schema = app.openapi_schema
+        action = schema["x-autocrud-custom-update-actions"]["character"][0]
+        assert "bodySchema" in action
+        assert "inlineBodyParams" not in action, (
+            f"inlineBodyParams must be absent when body is a pure struct; "
+            f"got: {action.get('inlineBodyParams')}"
+        )
