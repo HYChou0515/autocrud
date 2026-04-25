@@ -9,6 +9,7 @@
 import { useState, useMemo, useCallback, useRef } from 'react';
 import { useForm, type UseFormReturnType } from '@mantine/form';
 import { zodResolver } from 'mantine-form-zod-resolver';
+import { notifications } from '@mantine/notifications';
 import type { ResourceConfig, ResourceField } from '../../resources';
 import {
   getByPath,
@@ -541,6 +542,13 @@ export function useResourceForm<T extends Record<string, any>>({
             isUploading: false,
             error: msg,
           }));
+          notifications.show({
+            title: 'Upload Failed',
+            message: msg,
+            color: 'red',
+            autoClose: 8000,
+            withCloseButton: true,
+          });
           blobAbortRef.current = null;
           throw uploadError;
         }
@@ -562,6 +570,21 @@ export function useResourceForm<T extends Record<string, any>>({
           for (const issue of result.error.issues) {
             form.setFieldError(issue.path.join('.'), issue.message);
           }
+          const errorMessages = result.error.issues
+            .map((issue: { path: PropertyKey[]; message: string }) => {
+              const path = issue.path.map(String).join('.');
+              const fieldDef = config.fields.find((f) => f.name === path);
+              const label = fieldDef?.label || path || 'Root';
+              return `${label}: ${issue.message}`;
+            })
+            .join('\n');
+          notifications.show({
+            title: 'Validation Failed',
+            message: errorMessages,
+            color: 'red',
+            autoClose: 8000,
+            withCloseButton: true,
+          });
           return;
         }
       }
