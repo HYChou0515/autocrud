@@ -859,9 +859,7 @@ def test_qb_unsupported_ast_node(client: TestClient, sample_users: list[str]) ->
     assert "AST node type not supported" in response.json()["detail"]
 
 
-def test_qb_with_is_deleted_filter(
-    client: TestClient, sample_users: list[str]
-) -> None:
+def test_qb_with_is_deleted_filter(client: TestClient, sample_users: list[str]) -> None:
     """測試 QB 可以與 is_deleted 同時使用。
 
     Swagger UI 永遠會在 URL 帶上 is_deleted=false (因為有預設值)，

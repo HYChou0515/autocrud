@@ -180,7 +180,7 @@ export function mrtFiltersToConditions(columnFilters: MRT_ColumnFiltersState): {
     dataConditions.push({
       field: filter.id,
       operator,
-      value: filter.value as string | number | boolean,
+      value: filter.value as string | number | boolean | Array<string | number | boolean>,
     });
   }
 

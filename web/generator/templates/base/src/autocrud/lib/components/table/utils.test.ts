@@ -828,6 +828,30 @@ describe('applyClientConditions', () => {
     expect(result).toHaveLength(1);
     expect(result[0].data.name).toBe('Bob');
   });
+
+  it('supports in operator with string array', () => {
+    const result = applyClientConditions(rows, [
+      { field: 'name', operator: 'in', value: ['Alice', 'Bob'] },
+    ]);
+    expect(result).toHaveLength(2);
+    expect(result.map((r) => r.data.name)).toEqual(expect.arrayContaining(['Alice', 'Bob']));
+  });
+
+  it('supports not_in operator with string array', () => {
+    const result = applyClientConditions(rows, [
+      { field: 'name', operator: 'not_in', value: ['Alice'] },
+    ]);
+    expect(result).toHaveLength(2);
+    expect(result.map((r) => r.data.name)).toEqual(expect.arrayContaining(['Bob', 'Charlie']));
+  });
+
+  it('supports in operator with number array', () => {
+    const result = applyClientConditions(rows, [
+      { field: 'level', operator: 'in', value: [10, 20] },
+    ]);
+    expect(result).toHaveLength(2);
+    expect(result.map((r) => r.data.level)).toEqual(expect.arrayContaining([10, 20]));
+  });
 });
 
 // ---------------------------------------------------------------------------
@@ -1081,6 +1105,29 @@ describe('conditionToQB', () => {
       [{ field: 'name', order: 'asc' }],
     );
     expect(result).toBe('QB["name"].contains("test").order_by("name")');
+  });
+
+  // --- in / not_in operators ---
+
+  it('generates in condition with string array', () => {
+    const result = conditionToQB({}, [
+      { field: 'status', operator: 'in', value: ['active', 'pending'] },
+    ]);
+    expect(result).toBe('QB["status"].in_(["active", "pending"])');
+  });
+
+  it('generates not_in condition with number array', () => {
+    const result = conditionToQB({}, [
+      { field: 'level', operator: 'not_in', value: [1, 2, 3] },
+    ]);
+    expect(result).toBe('QB["level"].not_in([1, 2, 3])');
+  });
+
+  it('generates in condition with number array', () => {
+    const result = conditionToQB({}, [
+      { field: 'score', operator: 'in', value: [10, 20] },
+    ]);
+    expect(result).toBe('QB["score"].in_([10, 20])');
   });
 });
 
