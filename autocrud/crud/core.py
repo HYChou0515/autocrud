@@ -302,27 +302,6 @@ class AutoCRUD:
             or storage_factory is not UNSET
             or message_queue_factory is not UNSET
         ):
-            has_explicit_legacy_backend = (
-                storage_factory is not UNSET and storage_factory is not None
-            ) or (
-                message_queue_factory is not UNSET and message_queue_factory is not None
-            )
-            if has_unified_backend and has_explicit_legacy_backend:
-                warnings.warn(
-                    "The unified 'backend' parameter takes precedence over "
-                    "'storage_factory' and 'message_queue_factory'. The split "
-                    "parameters are deprecated and will be removed in a future version.",
-                    DeprecationWarning,
-                    stacklevel=2,
-                )
-            elif has_explicit_legacy_backend:
-                warnings.warn(
-                    "'storage_factory' and 'message_queue_factory' are deprecated. "
-                    "Prefer the unified 'backend' configuration.",
-                    DeprecationWarning,
-                    stacklevel=2,
-                )
-
             legacy_storage_factory = (
                 self.storage_factory
                 if storage_factory is UNSET
@@ -1114,8 +1093,6 @@ class AutoCRUD:
                 )
 
         # ── Resolve Schema vs type argument ────────────────────────
-        import warnings
-
         resolved_schema: Schema | None = None
         if isinstance(model, Schema):
             # Schema passed as first argument

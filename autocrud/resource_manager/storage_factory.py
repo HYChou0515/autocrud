@@ -1,4 +1,3 @@
-import warnings
 from abc import ABC, abstractmethod
 from pathlib import Path
 from typing import Any, Literal
@@ -494,25 +493,3 @@ class S3StorageFactory(IStorageFactory):
             presigned_url_expiry=self.presigned_url_expiry,
             client_kwargs=self.client_kwargs,
         )
-
-
-PostgreSQLDiskS3StorageFactory = PostgresDiskS3StorageFactory
-
-
-class PostgreSQLStorageFactory(PostgreSQLS3StorageFactory):
-    """Deprecated alias for :class:`PostgreSQLS3StorageFactory`.
-
-    .. deprecated:: 0.9.0
-        Use :class:`PostgreSQLS3StorageFactory` (PostgreSQL meta + S3 resource)
-        or :class:`PostgresStorageFactory` (PostgreSQL-only) instead.
-    """
-
-    def __init__(self, *args, **kwargs):
-        warnings.warn(
-            "PostgreSQLStorageFactory is deprecated and will be removed in a future "
-            "version. Use PostgreSQLS3StorageFactory (PostgreSQL meta + S3 resource) "
-            "or PostgresStorageFactory (PostgreSQL-only) instead.",
-            DeprecationWarning,
-            stacklevel=2,
-        )
-        super().__init__(*args, **kwargs)
