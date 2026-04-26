@@ -15,6 +15,8 @@ from autocrud.events import EventContext
 
 PermissionContext = EventContext
 
+DEFAULT_ROOT_USER = "root"
+
 
 class PermissionResult(StrEnum):
     """權限檢查結果"""
@@ -40,6 +42,7 @@ class IPermissionChecker(ABC):
 
 
 __all__ = [
+    "DEFAULT_ROOT_USER",
     "IPermissionChecker",
     "PermissionContext",
     "PermissionResult",

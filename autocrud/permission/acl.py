@@ -2,7 +2,6 @@ import logging
 
 from msgspec import UNSET, Struct, UnsetType
 
-from autocrud.permission.basic import IPermissionCheckerWithStore
 from autocrud.permission.checker import PermissionContext, PermissionResult
 from autocrud.permission.store_backed import Policy, StoreBackedPermissionChecker
 from autocrud.query_types import (
@@ -89,10 +88,7 @@ class ACLPermission(Struct):
     effect: PermissionResult = PermissionResult.allow
 
 
-class ACLPermissionChecker(
-    StoreBackedPermissionChecker[ACLPermission],
-    IPermissionCheckerWithStore[ACLPermission],
-):
+class ACLPermissionChecker(StoreBackedPermissionChecker[ACLPermission]):
     """ACL 權限檢查器"""
 
     data_type = ACLPermission

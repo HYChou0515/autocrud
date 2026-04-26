@@ -3,9 +3,9 @@ from __future__ import annotations
 from collections import defaultdict
 
 from autocrud.events import (
+    ContextFunc,
     EventContext,
-    HasResourceId,
-    IEventHandler,
+    do,
 )
 from autocrud.query_types import (
     DataSearchCondition,
@@ -20,37 +20,25 @@ from autocrud.types import (
 )
 
 
-class _RefIntegrityHandler(IEventHandler):
-    """Internal event handler that enforces referential integrity on delete.
+def _make_ref_integrity_func(
+    refs: list[_RefInfo],
+    resource_managers: dict[str, IResourceManager],
+) -> ContextFunc:
+    """Build the ``on_success + delete`` callback that enforces referential integrity.
 
-    When a *target* resource is deleted, this handler iterates over all
-    ``_RefInfo`` entries that reference the target and applies the configured
-    ``on_delete`` action:
+    When a *target* resource is deleted, the returned callback iterates over
+    all ``_RefInfo`` entries that reference the target and applies the
+    configured ``on_delete`` action:
 
     * ``cascade``  — soft-delete each referencing resource.
     * ``set_null`` — set the referencing field to ``None`` via update.
     * ``dangling`` — (not handled here; no action needed).
     """
 
-    def __init__(
-        self,
-        refs: list[_RefInfo],
-        resource_managers: dict[str, IResourceManager],
-    ):
-        self._refs = refs
-        self._resource_managers = resource_managers
-
-    def is_supported(self, context: EventContext) -> bool:
-        return isinstance(context, HasResourceId) and (
-            context.phase == "on_success" and context.action is ResourceAction.delete
-        )
-
-    def handle_event(self, context: EventContext) -> None:
-        if not isinstance(context, HasResourceId):
-            return
+    def _handle(context: EventContext) -> None:
         deleted_resource_id: str = context.resource_id
-        for ref_info in self._refs:
-            source_rm = self._resource_managers.get(ref_info.source)
+        for ref_info in refs:
+            source_rm = resource_managers.get(ref_info.source)
             if source_rm is None:
                 continue
 
@@ -85,18 +73,20 @@ class _RefIntegrityHandler(IEventHandler):
                     )
                     source_rm.patch(meta.resource_id, patch)
 
+    return _handle
+
 
 def install_ref_integrity_handlers(
     relationships: list[_RefInfo],
     resource_managers: dict[str, IResourceManager],
 ) -> None:
-    """Install _RefIntegrityHandler on each target ResourceManager.
+    """Install referential integrity event handlers on each target ResourceManager.
 
     For each registered resource that is a *target* of a ``Ref`` with
-    ``on_delete`` of ``cascade`` or ``set_null``, registers a
-    ``_RefIntegrityHandler`` on the target's ``ResourceManager`` so that
-    when the target is deleted the referencing resources are automatically
-    updated.
+    ``on_delete`` of ``cascade`` or ``set_null``, registers an
+    ``on_success + delete`` event handler (built via the ``do(...)`` Builder
+    Helper) on the target's ``ResourceManager`` so that when the target is
+    deleted the referencing resources are automatically updated.
     """
     registered = set(resource_managers.keys())
     target_refs: dict[str, list[_RefInfo]] = defaultdict(list)
@@ -109,9 +99,9 @@ def install_ref_integrity_handlers(
             target_refs[ref_info.target].append(ref_info)
 
     for target_name, refs in target_refs.items():
-        handler = _RefIntegrityHandler(
-            refs=refs,
-            resource_managers=resource_managers,
-        )
         target_rm = resource_managers[target_name]
-        target_rm.event_handlers.append(handler)
+        target_rm.event_handlers.extend(
+            do(_make_ref_integrity_func(refs, resource_managers)).on_success(
+                ResourceAction.delete
+            )
+        )
