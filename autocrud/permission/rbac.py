@@ -4,7 +4,6 @@ from copy import copy
 from msgspec import UNSET, Struct, UnsetType
 
 from autocrud.permission.acl import ACLPermission, ACLPermissionChecker
-from autocrud.permission.basic import IPermissionCheckerWithStore
 from autocrud.permission.checker import PermissionContext, PermissionResult
 from autocrud.permission.store_backed import Policy
 from autocrud.query_types import (
@@ -43,10 +42,7 @@ class RBACPermissionEntry(ACLPermission, tag=True): ...
 RBACPermission = RBACPermissionEntry | RoleMembership
 
 
-class RBACPermissionChecker(
-    ACLPermissionChecker,
-    IPermissionCheckerWithStore[RBACPermission],
-):
+class RBACPermissionChecker(ACLPermissionChecker):
     """RBAC 權限檢查器"""
 
     data_type = RBACPermission

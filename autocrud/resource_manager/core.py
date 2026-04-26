@@ -2,6 +2,7 @@ import concurrent.futures
 import datetime as dt
 import inspect
 import io
+import json
 import threading
 import traceback
 import warnings
@@ -148,7 +149,6 @@ from autocrud.resource_manager.basic import (
     MsgspecSerializer,
 )
 from autocrud.resource_manager.binary_processor import BinaryProcessor
-from autocrud.resource_manager.data_converter import DataConverter
 from autocrud.resource_manager.dump_format import (
     BlobRecord,
     MetaRecord,
@@ -879,7 +879,6 @@ class ResourceManager(IResourceManager[T], Generic[T]):
         else:
             self._resource_name = name
 
-        self.data_converter = DataConverter(self.resource_type)
         schema_version = (
             self._schema.schema_version if self._schema is not None else None
         )
@@ -914,17 +913,11 @@ class ResourceManager(IResourceManager[T], Generic[T]):
         # Constraint checkers（放在最後，在 PermissionEventHandler 之後執行）
         from autocrud.resource_manager.constraint_lifecycle import (
             build_constraint_handler,
-            register_unique_fields,
         )
 
         self._constraint_handler = build_constraint_handler(self, constraint_checkers)
         if self._constraint_handler is not None:
             self.event_handlers.append(self._constraint_handler)
-
-        # Auto-detect Unique-annotated fields and register UniqueConstraintChecker
-        unique_handler = register_unique_fields(self)
-        if unique_handler is not None:
-            self._constraint_handler = unique_handler
 
         self._binary_processor = BinaryProcessor(resource_type)
 
@@ -2182,9 +2175,12 @@ class ResourceManager(IResourceManager[T], Generic[T]):
 
     def _apply_patch(self, resource_id: str, patch_data: JsonPatch) -> T:
         data = self.get(resource_id).data
-        d = self.data_converter.data_to_builtins(data)
+        if isinstance(data, msgspec.Raw):
+            d = json.loads(bytes(data))
+        else:
+            d = msgspec.to_builtins(data)
         patch_data.apply(d, in_place=True)
-        return self.data_converter.builtins_to_data(d)
+        return msgspec.convert(d, self.resource_type)
 
     @execute_with_events(
         (BeforeSwitch, AfterSwitch, OnSuccessSwitch, OnFailureSwitch),
