@@ -17,7 +17,10 @@ from msgspec import Struct
 from autocrud.resource_manager.core import ResourceManager
 from autocrud.resource_manager.pydantic_converter import pydantic_to_struct
 from autocrud.resource_manager.storage_factory import MemoryStorageFactory
-from autocrud.types import RevisionStatus, ValidationError
+from autocrud.types import (
+    RevisionStatus,
+    ValidationError,
+)
 
 # ===== Test Models =====
 

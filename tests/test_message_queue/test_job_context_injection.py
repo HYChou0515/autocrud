@@ -373,7 +373,10 @@ class TestJobContextLogging:
         """ctx.log() should also emit to Python's logging module."""
         from uuid import uuid4
 
-        from autocrud.types import RevisionInfo, RevisionStatus
+        from autocrud.types import (
+            RevisionInfo,
+            RevisionStatus,
+        )
 
         rev_info = RevisionInfo(
             uid=uuid4(),
@@ -406,7 +409,10 @@ class TestJobContextLogging:
         """Logger output should include the resource_id for traceability."""
         from uuid import uuid4
 
-        from autocrud.types import RevisionInfo, RevisionStatus
+        from autocrud.types import (
+            RevisionInfo,
+            RevisionStatus,
+        )
 
         rev_info = RevisionInfo(
             uid=uuid4(),
@@ -432,7 +438,10 @@ class TestJobContextLogging:
         """Each convenience method maps to the correct Python log level."""
         from uuid import uuid4
 
-        from autocrud.types import RevisionInfo, RevisionStatus
+        from autocrud.types import (
+            RevisionInfo,
+            RevisionStatus,
+        )
 
         rev_info = RevisionInfo(
             uid=uuid4(),

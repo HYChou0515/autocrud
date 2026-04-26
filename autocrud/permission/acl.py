@@ -1,29 +1,27 @@
 import logging
-from enum import Flag, auto
 
 from msgspec import UNSET, Struct, UnsetType
 
-from autocrud.permission.basic import (
-    DEFAULT_ROOT_USER,
-    IPermissionCheckerWithStore,
-)
-from autocrud.permission.simple import RootOnly
-from autocrud.resource_manager.core import ResourceManager
-from autocrud.resource_manager.storage_factory import (
-    IStorageFactory,
-    MemoryStorageFactory,
-)
-from autocrud.types import (
+from autocrud.permission.basic import IPermissionCheckerWithStore
+from autocrud.permission.checker import PermissionContext, PermissionResult
+from autocrud.permission.store_backed import Policy, StoreBackedPermissionChecker
+from autocrud.query_types import (
     DataSearchCondition,
     DataSearchOperator,
-    IndexableField,
-    PermissionContext,
-    PermissionResult,
-    ResourceAction,
     ResourceDataSearchSort,
     ResourceMetaSearchQuery,
     ResourceMetaSortDirection,
 )
+from autocrud.types import (
+    IndexableField,
+    ResourceAction,
+)
+
+__all__ = [
+    "ACLPermission",
+    "ACLPermissionChecker",
+    "Policy",
+]
 
 logger = logging.getLogger(__name__)
 
@@ -91,65 +89,20 @@ class ACLPermission(Struct):
     effect: PermissionResult = PermissionResult.allow
 
 
-class Policy(Flag):
-    # 基本策略
-    deny_overrides = auto()  # deny 優先：任何 deny 都會拒絕
-    allow_overrides = auto()  # allow 優先：任何 allow 都會允許
-
-    # 無匹配時的行為
-    default_allow = auto()  # 沒有匹配規則時預設允許
-    default_deny = auto()  # 沒有匹配規則時預設拒絕
-
-    # 常用組合
-    strict = deny_overrides | default_deny  # 嚴格模式：deny 優先且獲勝，無規則拒絕
-    permissive = (
-        allow_overrides | default_allow
-    )  # 寬鬆模式：allow 優先且獲勝，無規則允許
-
-
-class ACLPermissionChecker(IPermissionCheckerWithStore[ACLPermission]):
+class ACLPermissionChecker(
+    StoreBackedPermissionChecker[ACLPermission],
+    IPermissionCheckerWithStore[ACLPermission],
+):
     """ACL 權限檢查器"""
 
-    def __init__(
-        self,
-        *,
-        policy: Policy = Policy.strict,
-        storage_factory: IStorageFactory | None = None,
-        root_user: str = DEFAULT_ROOT_USER,
-    ):
-        if storage_factory is None:
-            self.storage_factory = MemoryStorageFactory()
-        else:
-            self.storage_factory = storage_factory
-        storage = self.storage_factory.build("ACLPermission")
-        self.pm = ResourceManager(
-            ACLPermission,
-            storage=storage,
-            indexed_fields=[
-                IndexableField(field_path="subject", field_type=str),
-                IndexableField(field_path="object", field_type=str),
-                IndexableField(field_path="action", field_type=int),
-                IndexableField(field_path="order", field_type=int),
-            ],
-            permission_checker=RootOnly(root_user),
-        )
-        self.policy = policy
-        self.root_user = root_user
-
-    @property
-    def resource_manager(self):
-        return self.pm
-
-    def _default_action(self, have_more_to_check: bool) -> PermissionResult:
-        if have_more_to_check:
-            return PermissionResult.not_applicable
-        # 處理所有規則後仍無決定，使用預設策略
-        if Policy.default_allow in self.policy:
-            return PermissionResult.allow
-        if Policy.default_deny in self.policy:
-            return PermissionResult.deny
-        # 如果沒有指定預設策略，使用最保守的拒絕
-        return PermissionResult.deny
+    data_type = ACLPermission
+    storage_name = "ACLPermission"
+    indexed_fields = [
+        IndexableField(field_path="subject", field_type=str),
+        IndexableField(field_path="object", field_type=str),
+        IndexableField(field_path="action", field_type=int),
+        IndexableField(field_path="order", field_type=int),
+    ]
 
     def _check_acl_permission(
         self,

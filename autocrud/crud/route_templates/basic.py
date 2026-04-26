@@ -1,27 +1,71 @@
-import datetime as dt
-import json
+"""Route template protocol and shared error helpers.
+
+This module hosts the foundation that every route template builds on:
+
+* :class:`IRouteTemplate` — the abstract route template interface.
+* :class:`BaseRouteTemplate` — concrete base providing dependency wiring
+  and an ``order`` for stable application order.
+* :func:`raise_unique_conflict` — converts a
+  :class:`UniqueConstraintError` into an HTTP 409 response.
+
+For backward compatibility, this module also re-exports the helpers that
+historically lived here:
+
+* :class:`DependencyProvider` from
+  :mod:`autocrud.crud.route_templates.dependency_provider`.
+* Response types and JSON-schema helpers from
+  :mod:`autocrud.crud.route_templates.responses`.
+* Query parameter parsing from
+  :mod:`autocrud.crud.route_templates.query_inputs`.
+"""
+
+from __future__ import annotations
+
 from abc import ABC, abstractmethod
-from collections.abc import Callable
-from typing import Any, Generic, Optional, TypeVar
+from typing import TypeVar
 
-import msgspec
-from fastapi import APIRouter, HTTPException, Query, Request, Response
-from pydantic import BaseModel
+from fastapi import APIRouter, HTTPException
 
+from autocrud.crud.route_templates.dependency_provider import DependencyProvider
+from autocrud.crud.route_templates.query_inputs import (
+    QueryInputs,
+    QueryInputsWithReturns,
+    build_query,
+    get_partial_fields,
+)
+from autocrud.crud.route_templates.responses import (
+    FullResourceResponse,
+    JsonListResponse,
+    MsgspecResponse,
+    RevisionListResponse,
+    _sanitize_schema_names,
+    jsonschema_to_json_schema_extra,
+    jsonschema_to_openapi,
+    struct_to_responses_type,
+)
 from autocrud.types import (
-    DEFAULT_QUERY_LIMIT,
-    DataSearchCondition,
-    DataSearchOperator,
     IResourceManager,
-    ResourceDataSearchSort,
-    ResourceMeta,
-    ResourceMetaSearchQuery,
-    ResourceMetaSearchSort,
-    ResourceMetaSortDirection,
-    ResourceMetaSortKey,
-    RevisionInfo,
     UniqueConstraintError,
 )
+
+__all__ = [
+    "BaseRouteTemplate",
+    "DependencyProvider",
+    "FullResourceResponse",
+    "IRouteTemplate",
+    "JsonListResponse",
+    "MsgspecResponse",
+    "QueryInputs",
+    "QueryInputsWithReturns",
+    "RevisionListResponse",
+    "_sanitize_schema_names",
+    "build_query",
+    "get_partial_fields",
+    "jsonschema_to_json_schema_extra",
+    "jsonschema_to_openapi",
+    "raise_unique_conflict",
+    "struct_to_responses_type",
+]
 
 T = TypeVar("T")
 
@@ -62,87 +106,6 @@ class IRouteTemplate(ABC):
         """獲取路由模板的排序權重"""
 
 
-class DependencyProvider:
-    """依賴提供者，統一管理用戶和時間的依賴函數
-
-    When ``get_user`` is not provided, the provider returns ``"anonymous"``
-    by default.  If the owning :class:`AutoCRUD` instance has a
-    ``default_user`` configured, it will replace that default automatically
-    via :meth:`with_default_user` so that route handlers use the configured
-    user instead of ``"anonymous"``.
-    """
-
-    def __init__(
-        self,
-        get_user: Callable = None,
-        get_now: Callable = None,
-        *,
-        default_user: str = "anonymous",
-    ):
-        """初始化依賴提供者
-
-        Args:
-            get_user: 獲取當前用戶的 dependency 函數，如果為 None 則創建預設函數
-            get_now: 獲取當前時間的 dependency 函數，如果為 None 則創建預設函數
-            default_user: 當 ``get_user`` 未提供時，預設的用戶名稱。
-                AutoCRUD 會在設定 ``default_user`` 時自動傳入此值。
-        """
-        # 記錄 get_user 是否為使用者自訂的
-        self._user_is_default: bool = get_user is None
-        # 如果沒有提供 get_user，創建一個預設的 dependency 函數
-        self.get_user = get_user or self._create_default_user_dependency(default_user)
-        # 如果沒有提供 get_now，創建一個預設的 dependency 函數
-        self.get_now = get_now or self._create_default_now_dependency()
-
-    def with_default_user(
-        self, default_user: "str | Callable[[], str]"
-    ) -> "DependencyProvider":
-        """Return a (possibly new) provider with the given default user.
-
-        If ``get_user`` was explicitly provided by the caller, the provider
-        is returned unchanged — a custom authentication dependency always
-        takes priority over ``default_user``.
-
-        Args:
-            default_user: A string or zero-arg callable that returns the
-                default user name.
-
-        Returns:
-            A ``DependencyProvider`` whose ``get_user`` returns
-            *default_user* (when the original ``get_user`` was the built-in
-            default), or ``self`` unchanged when a custom ``get_user`` was
-            already configured.
-        """
-        if not self._user_is_default:
-            return self  # Custom get_user — never override
-        if callable(default_user):
-            return DependencyProvider(get_user=default_user, get_now=self.get_now)
-        return DependencyProvider(get_now=self.get_now, default_user=default_user)
-
-    def _create_default_user_dependency(
-        self, default_user: str = "anonymous"
-    ) -> Callable:
-        """創建預設的用戶 dependency 函數"""
-
-        def default_get_user() -> str:
-            return default_user
-
-        return default_get_user
-
-    def _create_default_now_dependency(self) -> Callable:
-        """創建預設的時間 dependency 函數
-
-        Returns a callable that produces a **timezone-aware** UTC
-        ``datetime``.  This avoids ``TypeError`` when comparing naive
-        and aware datetimes (e.g. after a msgpack round-trip).
-        """
-
-        def default_get_now() -> dt.datetime:
-            return dt.datetime.now(dt.timezone.utc)
-
-        return default_get_now
-
-
 class BaseRouteTemplate(IRouteTemplate):
     def __init__(
         self,
@@ -166,422 +129,3 @@ class BaseRouteTemplate(IRouteTemplate):
 
     def __le__(self, other: IRouteTemplate):
         return self.order <= other.order
-
-
-class JsonListResponse(Response):
-    media_type = "application/json"
-
-    def render(self, content: list[bytes]) -> bytes:
-        return b"[" + b",".join(content) + b"]"
-
-
-class MsgspecResponse(Response):
-    media_type = "application/json"
-
-    def render(self, content: msgspec.Struct) -> bytes:
-        return msgspec.json.encode(content)
-
-
-def _sanitize_schema_names(
-    schemas: list[dict], components: dict[str, dict]
-) -> tuple[list[dict], dict[str, dict]]:
-    """Replace dots in OpenAPI component schema names and update all ``$ref`` pointers.
-
-    ``msgspec`` may produce schema names containing dots when a generic type
-    parameter is a union (e.g. ``FullResourceResponse[A | B]``) because it
-    falls back to module-qualified names like ``mymod.A``.  Dots in component
-    names are problematic for code generators, so we replace them with ``_``.
-    """
-    # Build old→new mapping only for names that actually contain a dot
-    rename_map: dict[str, str] = {}
-    for name in list(components):
-        if "." in name:
-            new_name = name.replace(".", "_")
-            # Avoid collisions: if the sanitised name already exists, append
-            # a suffix.
-            while new_name in components and new_name not in rename_map.values():
-                new_name += "_"
-            rename_map[name] = new_name
-
-    if not rename_map:
-        return schemas, components
-
-    ref_prefix = "#/components/schemas/"
-
-    def _rewrite(obj: Any) -> Any:
-        """Recursively rewrite ``$ref`` strings inside a JSON-like structure.
-
-        Also handles ``discriminator.mapping`` values which are ``$ref``-style
-        component paths (e.g. ``#/components/schemas/__main__.Foo``).
-        """
-        if isinstance(obj, dict):
-            out: dict[str, Any] = {}
-            for k, v in obj.items():
-                if k == "$ref" and isinstance(v, str) and v.startswith(ref_prefix):
-                    old_name = v[len(ref_prefix) :]
-                    new_name = rename_map.get(old_name, old_name)
-                    out[k] = ref_prefix + new_name
-                elif k == "mapping" and isinstance(v, dict):
-                    # discriminator.mapping values are $ref-style paths
-                    out[k] = {
-                        mk: (
-                            ref_prefix + rename_map[mv[len(ref_prefix) :]]
-                            if isinstance(mv, str)
-                            and mv.startswith(ref_prefix)
-                            and mv[len(ref_prefix) :] in rename_map
-                            else mv
-                        )
-                        for mk, mv in v.items()
-                    }
-                else:
-                    out[k] = _rewrite(v)
-            return out
-        if isinstance(obj, list):
-            return [_rewrite(item) for item in obj]
-        return obj
-
-    # Rewrite per-type schemas
-    schemas = [_rewrite(s) for s in schemas]
-
-    # Rebuild components dict with sanitised keys and rewritten $ref values
-    new_components: dict[str, dict] = {}
-    for old_key, value in components.items():
-        new_key = rename_map.get(old_key, old_key)
-        new_components[new_key] = _rewrite(value)
-
-    return schemas, new_components
-
-
-def jsonschema_to_openapi(structs: list[msgspec.Struct | Any]) -> dict:
-    schemas, components = msgspec.json.schema_components(
-        structs,
-        ref_template="#/components/schemas/{name}",
-    )
-    schemas, components = _sanitize_schema_names(schemas, components)
-    return schemas, components
-
-
-def jsonschema_to_json_schema_extra(struct: msgspec.Struct | Any) -> dict:
-    return jsonschema_to_openapi([struct])[0][0]
-
-
-def struct_to_responses_type(
-    struct: type[msgspec.Struct | Any], status_code: int = 200
-):
-    schema = jsonschema_to_json_schema_extra(struct)
-    return {
-        status_code: {
-            "content": {"application/json": {"schema": schema}},
-        },
-    }
-
-
-class RevisionListResponse(msgspec.Struct):
-    meta: ResourceMeta
-    revisions: list[RevisionInfo]
-    # Total revisions matching query (before limit)
-    total: int = 0
-    # Whether more revisions are available beyond the returned list
-    has_more: bool = False
-
-
-class FullResourceResponse(msgspec.Struct, Generic[T]):
-    data: T | msgspec.UnsetType = msgspec.UNSET
-    revision_info: RevisionInfo | msgspec.UnsetType = msgspec.UNSET
-    meta: ResourceMeta | msgspec.UnsetType = msgspec.UNSET
-
-
-class QueryInputs(BaseModel):
-    # ResourceMetaSearchQuery 的查詢參數
-    qb: Optional[str] = Query(
-        None,
-        description=(
-            "Query Builder expression. Example: \"QB['foo'] == 123\" or "
-            "\"QB['age'].gt(18) & QB['status'].eq('active')\". "
-            "When qb is used, do not combine it with data_conditions, conditions, "
-            "or sorts; only limit, offset, and is_deleted may be used alongside qb."
-        ),
-    )
-    is_deleted: Optional[bool] = Query(
-        False,
-        description="Filter by deletion status",
-    )
-    created_time_start: Optional[str] = Query(
-        None,
-        description="Filter by created time start (ISO format)",
-    )
-    created_time_end: Optional[str] = Query(
-        None,
-        description="Filter by created time end (ISO format)",
-    )
-    updated_time_start: Optional[str] = Query(
-        None,
-        description="Filter by updated time start (ISO format)",
-    )
-    updated_time_end: Optional[str] = Query(
-        None,
-        description="Filter by updated time end (ISO format)",
-    )
-    created_bys: Optional[list[str]] = Query(None, description="Filter by creators")
-    updated_bys: Optional[list[str]] = Query(None, description="Filter by updaters")
-    data_conditions: Optional[str] = Query(
-        None,
-        description='Data filter conditions in JSON format. Example: \'[{"field_path": "department", "operator": "eq", "value": "Engineering"}]\'',
-    )
-    conditions: Optional[str] = Query(
-        None,
-        description='General filter conditions in JSON format for meta fields or data. Example: \'[{"field_path": "resource_id", "operator": "starts_with", "value": "user-"}]\'',
-    )
-    sorts: Optional[str] = Query(
-        None,
-        description='Sort conditions in JSON format. Example: \'[{"type": "meta", "key": "created_time", "direction": "+"}, {"type": "data", "field_path": "name", "direction": "-"}]\'',
-    )
-    limit: int = Query(
-        DEFAULT_QUERY_LIMIT,
-        description=(
-            "Maximum number of results. Default comes from the "
-            "AUTOCRUD_DEFAULT_QUERY_LIMIT environment variable at startup; "
-            "set limit explicitly or use the /count endpoint if you need the full total."
-        ),
-    )
-    offset: int = Query(0, description="Number of results to skip")
-    partial: Optional[list[str]] = Query(
-        None,
-        description="List of fields to retrieve (e.g. '/field1', '/nested/field2')",
-    )
-    partial_brackets: Optional[list[str]] = Query(
-        None,
-        alias="partial[]",
-        description="List of fields to retrieve (e.g. '/field1', '/nested/field2') - for axios support",
-        include_in_schema=False,
-    )
-
-
-class QueryInputsWithReturns(QueryInputs):
-    returns: str = Query(
-        default="data,revision_info,meta",
-        description="Fields to return, comma-separated. Options: data, revision_info, meta",
-    )
-
-
-def get_partial_fields(
-    request: Request,
-    query_params: QueryInputs,
-) -> list[str] | None:
-    """Extract partial fields from query params with Pydantic v1 fallback.
-
-    In Pydantic v1, aliased query parameters (e.g. ``partial[]``) are not
-    properly bound by FastAPI.  This helper falls back to reading the raw
-    query string when the alias-based field is ``None``.
-    """
-    fields = query_params.partial or query_params.partial_brackets
-    if fields is None:
-        raw = [v for k, v in request.query_params.multi_items() if k == "partial[]"]
-        if raw:
-            fields = raw
-    return fields
-
-
-def build_query(
-    q: QueryInputs,
-    request: Request | None = None,
-    forced_conflicting_params: set[str] | None = None,
-) -> ResourceMetaSearchQuery:
-    # 如果提供了 QB 表達式，檢查是否與其他參數衝突
-    if q.qb:
-        provided_params = (
-            set(request.query_params.keys()) if request is not None else set()
-        )
-        if forced_conflicting_params:
-            provided_params.update(forced_conflicting_params)
-
-        # 只有 limit / offset 可以和 QB 一起使用；其他篩選必須寫進 QB 表達式。
-        conflicting_params = []
-        if q.data_conditions:
-            conflicting_params.append("data_conditions")
-        if q.conditions:
-            conflicting_params.append("conditions")
-        if q.sorts:
-            conflicting_params.append("sorts")
-
-        for param_name in [
-            "created_time_start",
-            "created_time_end",
-            "updated_time_start",
-            "updated_time_end",
-            "created_bys",
-            "updated_bys",
-        ]:
-            if param_name in provided_params and getattr(q, param_name) is not None:
-                conflicting_params.append(param_name)
-
-        if conflicting_params:
-            raise HTTPException(
-                status_code=422,
-                detail=(
-                    "Cannot use 'qb' parameter together with: "
-                    f"{', '.join(conflicting_params)}. Please use either 'qb' "
-                    "or the individual query parameters. In QB mode, include "
-                    "metadata filters directly in the QB expression."
-                ),
-            )
-
-        try:
-            from autocrud.crud.qb_parser import parse_qb_expression
-            from autocrud.query import QB as _QB
-
-            # 使用 AST parser 解析 QB 表達式（比 eval 更安全）
-            qb_result = parse_qb_expression(q.qb)
-
-            # 構建查詢對象，並套用 URL 參數中的 limit 和 offset
-            query = qb_result.build()
-
-            # 覆寫 limit 和 offset（如果 QB 表達式中有設置，URL 參數會覆蓋它）
-            if q.limit != DEFAULT_QUERY_LIMIT or q.offset != 0:
-                query = msgspec.structs.replace(query, limit=q.limit, offset=q.offset)
-
-            # is_deleted 可以與 QB 同時使用（Swagger 永遠會帶預設值 false）。
-            # 將 is_deleted 條件 append 進 conditions 列表，與 QB 條件形成 AND。
-            if q.is_deleted is not None:
-                is_deleted_cond = _QB.is_deleted().eq(q.is_deleted)._condition
-                existing = (
-                    [] if query.conditions is msgspec.UNSET else list(query.conditions)
-                )
-                query = msgspec.structs.replace(
-                    query, conditions=existing + [is_deleted_cond]
-                )
-
-            return query
-        except Exception as e:
-            raise HTTPException(
-                status_code=400,
-                detail=f"Invalid QB expression: {e!s}",
-            )
-
-    query_kwargs = {
-        "limit": q.limit,
-        "offset": q.offset,
-    }
-
-    if q.is_deleted is not None:
-        query_kwargs["is_deleted"] = q.is_deleted
-    else:
-        query_kwargs["is_deleted"] = msgspec.UNSET
-
-    if q.created_time_start:
-        query_kwargs["created_time_start"] = dt.datetime.fromisoformat(
-            q.created_time_start,
-        )
-    else:
-        query_kwargs["created_time_start"] = msgspec.UNSET
-
-    if q.created_time_end:
-        query_kwargs["created_time_end"] = dt.datetime.fromisoformat(
-            q.created_time_end,
-        )
-    else:
-        query_kwargs["created_time_end"] = msgspec.UNSET
-
-    if q.updated_time_start:
-        query_kwargs["updated_time_start"] = dt.datetime.fromisoformat(
-            q.updated_time_start,
-        )
-    else:
-        query_kwargs["updated_time_start"] = msgspec.UNSET
-
-    if q.updated_time_end:
-        query_kwargs["updated_time_end"] = dt.datetime.fromisoformat(
-            q.updated_time_end,
-        )
-    else:
-        query_kwargs["updated_time_end"] = msgspec.UNSET
-
-    if q.created_bys:
-        query_kwargs["created_bys"] = q.created_bys
-    else:
-        query_kwargs["created_bys"] = msgspec.UNSET
-
-    if q.updated_bys:
-        query_kwargs["updated_bys"] = q.updated_bys
-    else:
-        query_kwargs["updated_bys"] = msgspec.UNSET
-
-    # 處理 data_conditions
-    if q.data_conditions:
-        try:
-            # 解析 JSON 字符串
-            conditions_data = json.loads(q.data_conditions)
-            # 轉換為 DataSearchCondition 對象列表
-            data_conditions = []
-            for condition_dict in conditions_data:
-                condition = DataSearchCondition(
-                    field_path=condition_dict["field_path"],
-                    operator=DataSearchOperator(condition_dict["operator"]),
-                    value=condition_dict["value"],
-                )
-                data_conditions.append(condition)
-            query_kwargs["data_conditions"] = data_conditions
-        except (json.JSONDecodeError, KeyError, ValueError) as e:
-            raise HTTPException(
-                status_code=400,
-                detail=f"Invalid data_conditions format: {e!s}",
-            )
-    else:
-        query_kwargs["data_conditions"] = msgspec.UNSET
-
-    # 處理 conditions
-    if q.conditions:
-        try:
-            # 解析 JSON 字符串
-            conditions_data = json.loads(q.conditions)
-            # 轉換為 DataSearchCondition 對象列表
-            conditions = []
-            for condition_dict in conditions_data:
-                condition = DataSearchCondition(
-                    field_path=condition_dict["field_path"],
-                    operator=DataSearchOperator(condition_dict["operator"]),
-                    value=condition_dict["value"],
-                )
-                conditions.append(condition)
-            query_kwargs["conditions"] = conditions
-        except (json.JSONDecodeError, KeyError, ValueError) as e:
-            raise HTTPException(
-                status_code=400,
-                detail=f"Invalid conditions format: {e!s}",
-            )
-    else:
-        query_kwargs["conditions"] = msgspec.UNSET
-
-    # 處理 sorts
-    if q.sorts:
-        try:
-            # 解析 JSON 字符串
-            sorts_data = json.loads(q.sorts)
-            # 轉換為排序對象列表
-            sorts = []
-            for sort_dict in sorts_data:
-                if sort_dict["type"] == "meta":
-                    # ResourceMetaSearchSort
-                    sort = ResourceMetaSearchSort(
-                        key=ResourceMetaSortKey(sort_dict["key"]),
-                        direction=ResourceMetaSortDirection(sort_dict["direction"]),
-                    )
-                elif sort_dict["type"] == "data":
-                    # ResourceDataSearchSort
-                    sort = ResourceDataSearchSort(
-                        field_path=sort_dict["field_path"],
-                        direction=ResourceMetaSortDirection(sort_dict["direction"]),
-                    )
-                else:
-                    raise ValueError(f"Invalid sort type: {sort_dict['type']}")
-                sorts.append(sort)
-            query_kwargs["sorts"] = sorts
-        except (json.JSONDecodeError, KeyError, ValueError) as e:
-            raise HTTPException(
-                status_code=400,
-                detail=f"Invalid sorts format: {e!s}",
-            )
-    else:
-        query_kwargs["sorts"] = msgspec.UNSET
-
-    return ResourceMetaSearchQuery(**query_kwargs)

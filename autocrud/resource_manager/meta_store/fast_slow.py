@@ -1,12 +1,13 @@
 import threading
 from collections.abc import Generator
 
+from autocrud.query_types import ResourceMetaSearchQuery
 from autocrud.resource_manager.basic import (
     IFastMetaStore,
     IMetaStore,
     ISlowMetaStore,
 )
-from autocrud.types import ResourceMeta, ResourceMetaSearchQuery
+from autocrud.types import ResourceMeta
 
 
 class FastSlowMetaStore(IMetaStore):

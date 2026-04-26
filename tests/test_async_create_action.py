@@ -1011,21 +1011,26 @@ class TestAutoPayloadTypeConversion:
 class TestAsyncJobBuilderPathTemplates:
     """Path templates are cleaned for Job model/resource naming."""
 
-    def test_clean_action_name(self):
-        from autocrud.crud.async_job_builder import _clean_action_name
-
-        assert _clean_action_name("generate-article") == "generate-article"
-        assert _clean_action_name("/{name}/new") == "new"
-        assert _clean_action_name("/{id}") == ""
-        assert _clean_action_name("/{a}/{b}/create") == "create"
-        assert _clean_action_name("simple") == "simple"
-
     def test_derive_job_resource_name_with_path_template(self):
+        """``derive_job_resource_name`` is the user-visible surface for the
+        path-template normalisation that powers Job model naming. Asserting
+        names through it covers every relevant cleaning case.
+        """
         from autocrud.crud.async_job_builder import derive_job_resource_name
 
+        # Plain kebab-case names pass through unchanged.
         assert derive_job_resource_name("generate-article") == "generate-article-job"
+
+        # Bare identifiers also pass through.
+        assert derive_job_resource_name("simple", "character") == "simple-job"
+
+        # Single placeholder with a literal segment after it: literal wins.
         assert derive_job_resource_name("/{name}/new", "character") == "new-job"
-        # When cleaned name is empty, fallback to resource_name
+
+        # Multiple placeholders followed by a literal segment.
+        assert derive_job_resource_name("/{a}/{b}/create", "character") == "create-job"
+
+        # Only placeholders → cleaned name is empty → fallback to resource_name.
         assert derive_job_resource_name("/{id}", "character") == "character-job"
 
     def test_build_auto_payload_struct(self):

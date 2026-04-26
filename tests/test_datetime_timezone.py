@@ -30,6 +30,7 @@ from autocrud.crud.route_templates.basic import DependencyProvider
 from autocrud.crud.route_templates.create import CreateRouteTemplate
 from autocrud.crud.route_templates.get import ReadRouteTemplate
 from autocrud.crud.route_templates.update import UpdateRouteTemplate
+from autocrud.query_types import ResourceMetaSearchSort
 from autocrud.resource_manager.basic import (
     Encoding,
     MsgspecSerializer,
@@ -39,7 +40,6 @@ from autocrud.resource_manager.basic import (
 )
 from autocrud.types import (
     ResourceMeta,
-    ResourceMetaSearchSort,
     RevisionInfo,
     RevisionStatus,
 )

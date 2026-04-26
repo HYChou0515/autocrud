@@ -22,7 +22,10 @@ from autocrud.crud.route_templates.basic import (
     build_query,
 )
 from autocrud.crud.route_templates.exception_handlers import to_http_exception
-from autocrud.types import IResourceManager, OnDuplicate
+from autocrud.types import (
+    IResourceManager,
+    OnDuplicate,
+)
 
 T = TypeVar("T")
 

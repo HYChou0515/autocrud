@@ -10,7 +10,10 @@ import pytest
 
 from autocrud.resource_manager.resource_store.cache import DiskCache, MemoryCache
 from autocrud.resource_manager.resource_store.cached_s3 import CachedS3ResourceStore
-from autocrud.types import RevisionInfo, RevisionStatus
+from autocrud.types import (
+    RevisionInfo,
+    RevisionStatus,
+)
 
 
 # Dummy RevisionInfo

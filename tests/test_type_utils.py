@@ -6,7 +6,12 @@ from typing import Annotated, Generic, Literal, Optional, TypeVar, Union
 
 from msgspec import Struct
 
-from autocrud.types import Binary, DisplayName, Job, Unique
+from autocrud.types import (
+    Binary,
+    DisplayName,
+    Job,
+    Unique,
+)
 from autocrud.util.type_utils import (
     build_typevar_map,
     collect_nested_struct_types,

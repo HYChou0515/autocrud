@@ -12,18 +12,18 @@ from typing import TypeVar
 
 from msgspec import UNSET
 
+from autocrud.query_types import (
+    DataSearchFilter,
+    ResourceMetaSearchQuery,
+    ResourceMetaSearchSort,
+    ResourceMetaSortDirection,
+)
 from autocrud.resource_manager.basic import (
     Encoding,
     ISlowMetaStore,
     MsgspecSerializer,
 )
-from autocrud.types import (
-    DataSearchFilter,
-    ResourceMeta,
-    ResourceMetaSearchQuery,
-    ResourceMetaSearchSort,
-    ResourceMetaSortDirection,
-)
+from autocrud.types import ResourceMeta
 
 T = TypeVar("T")
 
@@ -319,7 +319,7 @@ class SqliteMetaStore(ISlowMetaStore):
 
     def _build_condition(self, condition: DataSearchFilter) -> tuple[str, list]:
         """構建 SQLite 查詢條件 (支援 Meta 欄位與 JSON 欄位)"""
-        from autocrud.types import (
+        from autocrud.query_types import (
             DataSearchGroup,
             DataSearchLogicOperator,
             DataSearchOperator,
@@ -445,7 +445,7 @@ class SqliteMetaStore(ISlowMetaStore):
 
         # Apply field transformation if specified
         if condition.transform is not None:
-            from autocrud.types import FieldTransform
+            from autocrud.query_types import FieldTransform
 
             if condition.transform == FieldTransform.length:
                 # Get length of JSON value (works for strings and arrays)

@@ -15,7 +15,10 @@ from msgspec import Struct as _Struct
 
 from autocrud.resource_manager.blob_store.simple import DiskBlobStore, MemoryBlobStore
 from autocrud.types import Binary as BinaryField
-from autocrud.types import BlobResponse, BlobStreamInfo
+from autocrud.types import (
+    BlobResponse,
+    BlobStreamInfo,
+)
 from tests.test_blob_store_s3_session_persistence import FakeS3Client, _make_store
 
 

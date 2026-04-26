@@ -1350,16 +1350,23 @@ class TestPydanticConverterEdgeCases:
         with pytest.raises(TypeError, match="validator must be a callable"):
             build_validator(42)  # int is not callable, not IValidator, not BaseModel
 
-    def test_convert_annotation_generic_no_args(self):
-        """_convert_annotation with a generic type that has origin but no args
-        should return the annotation unchanged (L147)."""
+    def test_pydantic_to_struct_preserves_unparameterized_generic_field(self):
+        """A Pydantic model with an unparameterized ``typing.List`` field
+        survives ``pydantic_to_struct`` conversion — the generic with no args
+        is left as-is and the resulting Struct still accepts arbitrary lists.
+        """
         import typing
 
-        from autocrud.resource_manager.pydantic_converter import _convert_annotation
+        import msgspec
+        from pydantic import BaseModel
 
-        # typing.List (unparameterized) has __origin__=list but no __args__
-        result = _convert_annotation(typing.List, {})
-        assert result is typing.List
+        class Bag(BaseModel):
+            items: typing.List = []  # unparameterized generic
+
+        S = pydantic_to_struct(Bag)
+        instance = S(items=[1, "two", {"three": 3}])
+        round_trip = msgspec.json.decode(msgspec.json.encode(instance), type=S)
+        assert round_trip.items == [1, "two", {"three": 3}]
 
     def test_pydantic_to_struct_shared_model_cache_hit(self):
         """Shared nested model should be converted only once via cache (L272)."""

@@ -16,12 +16,12 @@ from autocrud.crud.route_templates.migrate import (
     MigrateResult,
     MigrateRouteTemplate,
 )
-from autocrud.types import (
+from autocrud.query_types import (
     DataSearchCondition,
     DataSearchOperator,
     ResourceMetaSearchQuery,
-    ResourceNotFoundError,
 )
+from autocrud.types import ResourceNotFoundError
 
 
 class User(msgspec.Struct):

@@ -7,15 +7,17 @@ from zoneinfo import ZoneInfo
 import pytest
 from msgspec import UNSET, Struct
 
-from autocrud.resource_manager.core import IndexedValueExtractor
-from autocrud.types import (
+from autocrud.query_types import (
     DataSearchCondition,
     DataSearchOperator,
-    IndexableField,
     ResourceDataSearchSort,
-    ResourceMeta,
     ResourceMetaSearchQuery,
     ResourceMetaSortDirection,
+)
+from autocrud.resource_manager.core import IndexedValueExtractor
+from autocrud.types import (
+    IndexableField,
+    ResourceMeta,
     SpecialIndex,
 )
 

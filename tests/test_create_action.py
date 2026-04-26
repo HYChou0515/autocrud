@@ -24,7 +24,11 @@ from msgspec import Struct
 
 from autocrud import struct_to_pydantic
 from autocrud.crud.core import AutoCRUD
-from autocrud.types import OnDelete, Ref, RefType
+from autocrud.types import (
+    OnDelete,
+    Ref,
+    RefType,
+)
 
 # ---------------------------------------------------------------------------
 # Test Models

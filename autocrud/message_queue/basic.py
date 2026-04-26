@@ -5,14 +5,16 @@ import warnings
 from abc import abstractmethod
 from typing import TYPE_CHECKING, Callable, Generic, TypeVar
 
-from autocrud.types import (
+from autocrud.query_types import (
     DataSearchCondition,
     DataSearchOperator,
+    ResourceMetaSearchQuery,
+)
+from autocrud.types import (
     IMessageQueue,
     IResourceManager,
     Job,
     Resource,
-    ResourceMetaSearchQuery,
     TaskStatus,
 )
 

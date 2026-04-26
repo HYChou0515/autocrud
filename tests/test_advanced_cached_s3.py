@@ -14,7 +14,10 @@ from autocrud.resource_manager.resource_store.etag_cached_s3 import (
     ETagCachedS3ResourceStore,
 )
 from autocrud.resource_manager.resource_store.s3 import S3ResourceStore
-from autocrud.types import RevisionInfo, RevisionStatus
+from autocrud.types import (
+    RevisionInfo,
+    RevisionStatus,
+)
 
 
 @pytest.fixture

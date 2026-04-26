@@ -26,7 +26,10 @@ from fastapi.testclient import TestClient
 from msgspec import Struct
 
 from autocrud.crud.core import AutoCRUD
-from autocrud.types import ResourceMeta, RevisionInfo
+from autocrud.types import (
+    ResourceMeta,
+    RevisionInfo,
+)
 
 # ---------------------------------------------------------------------------
 # Test Models

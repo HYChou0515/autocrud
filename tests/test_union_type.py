@@ -20,7 +20,11 @@ from msgspec import Struct
 
 from autocrud.crud.core import AutoCRUD as AutoCRUDClass
 from autocrud.schema import Schema
-from autocrud.types import DisplayName, OnDelete, Ref
+from autocrud.types import (
+    DisplayName,
+    OnDelete,
+    Ref,
+)
 
 # ---- Sample types ----
 

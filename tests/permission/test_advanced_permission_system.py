@@ -8,6 +8,11 @@ from msgspec import Struct
 
 from autocrud.permission.acl import ACLPermission, ACLPermissionChecker, Policy
 from autocrud.permission.action import ActionBasedPermissionChecker
+from autocrud.permission.checker import (
+    IPermissionChecker,
+    PermissionContext,
+    PermissionResult,
+)
 from autocrud.permission.composite import CompositePermissionChecker
 from autocrud.permission.rbac import (
     RBACPermissionChecker,
@@ -23,10 +28,7 @@ from autocrud.resource_manager.meta_store.simple import MemoryMetaStore
 from autocrud.resource_manager.resource_store.simple import MemoryResourceStore
 from autocrud.resource_manager.storage_factory import MemoryStorageFactory
 from autocrud.types import (
-    IPermissionChecker,
-    PermissionContext,
     PermissionDeniedError,
-    PermissionResult,
     ResourceAction,
     ResourceIDNotFoundError,
 )

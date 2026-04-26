@@ -4,7 +4,10 @@ from msgspec import UNSET
 
 from autocrud.crud.route_templates.blob import BlobRouteTemplate
 from autocrud.resource_manager.core import ResourceManager
-from autocrud.types import Binary, BlobResponse
+from autocrud.types import (
+    Binary,
+    BlobResponse,
+)
 
 
 class MockBlobStore:

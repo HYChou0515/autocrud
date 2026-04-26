@@ -20,7 +20,10 @@ from fastapi.testclient import TestClient
 from msgspec import Struct
 
 from autocrud.crud.core import AutoCRUD
-from autocrud.types import Binary, BlobUploadSession
+from autocrud.types import (
+    Binary,
+    BlobUploadSession,
+)
 
 # ---------------------------------------------------------------------------
 # Test model — needs at least one Binary field so blob routes get mounted

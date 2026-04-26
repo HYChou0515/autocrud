@@ -10,7 +10,10 @@ from autocrud.crud.route_templates.basic import BaseRouteTemplate, MsgspecRespon
 from autocrud.crud.route_templates.exception_handlers import to_http_exception
 from autocrud.resource_manager.basic import IBlobStore
 from autocrud.resource_manager.core import ResourceManager
-from autocrud.types import Binary, IResourceManager
+from autocrud.types import (
+    Binary,
+    IResourceManager,
+)
 
 # ---------------------------------------------------------------------------
 # Request body for creating an upload session

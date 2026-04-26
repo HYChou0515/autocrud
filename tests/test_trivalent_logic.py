@@ -1,113 +1,150 @@
-from autocrud.resource_manager.basic import _evaluate_trivalent
-from autocrud.types import (
+"""Trivalent (three-valued) search semantics, exercised through ``is_match_query``.
+
+``is_match_query`` is the public matching predicate used by every meta_store
+backend. It returns ``True`` only when the trivalent evaluator returns
+``True``; both ``False`` (definitely no match) and ``Unknown`` (a missing or
+NULL field, which SQL would compare as ``NULL``) collapse to a non-match —
+which is what the user observes as "this resource is excluded from results".
+
+The interesting distinction is the ``NOT`` operator: in classical logic
+``NOT(missing == 1)`` would be ``True`` (and the resource would match), but
+trivalent logic propagates Unknown through ``NOT``, so the resource is still
+excluded.
+"""
+
+from __future__ import annotations
+
+import datetime as dt
+
+from autocrud.query_types import (
     DataSearchCondition,
     DataSearchGroup,
     DataSearchLogicOperator,
     DataSearchOperator,
+    ResourceMetaSearchQuery,
 )
+from autocrud.resource_manager.basic import is_match_query
+from autocrud.types import ResourceMeta
 
 
-def test_trivalent_logic_missing_key():
-    data = {"existing": 1}
+def _meta(indexed: dict | None) -> ResourceMeta:
+    now = dt.datetime(2026, 1, 1, tzinfo=dt.timezone.utc)
+    return ResourceMeta(
+        current_revision_id="r1",
+        resource_id="x",
+        total_revision_count=1,
+        created_time=now,
+        updated_time=now,
+        created_by="alice",
+        updated_by="alice",
+        indexed_data=indexed if indexed is not None else {},
+    )
 
-    # 1. missing == 1 -> Unknown (None)
+
+def _query_with(condition) -> ResourceMetaSearchQuery:
+    return ResourceMetaSearchQuery(data_conditions=[condition])
+
+
+def test_missing_key_is_unknown_and_excluded():
     cond = DataSearchCondition(
         field_path="missing", operator=DataSearchOperator.equals, value=1
     )
-    assert _evaluate_trivalent(data, cond) is None
+    assert is_match_query(_meta({"existing": 1}), _query_with(cond)) is False
 
-    # 2. NOT (missing == 1) -> Unknown (None)
-    group = DataSearchGroup(operator=DataSearchLogicOperator.not_op, conditions=[cond])
-    assert _evaluate_trivalent(data, group) is None
 
-    # 3. missing != 1 -> Unknown (None)
-    cond_ne = DataSearchCondition(
+def test_not_of_missing_key_stays_unknown_and_excluded():
+    """trivalent NOT(Unknown) = Unknown; binary NOT(False) would be True."""
+    inner = DataSearchCondition(
+        field_path="missing", operator=DataSearchOperator.equals, value=1
+    )
+    group = DataSearchGroup(operator=DataSearchLogicOperator.not_op, conditions=[inner])
+    assert is_match_query(_meta({"existing": 1}), _query_with(group)) is False
+
+
+def test_not_of_missing_inequality_stays_unknown_and_excluded():
+    inner = DataSearchCondition(
         field_path="missing", operator=DataSearchOperator.not_equals, value=1
     )
-    assert _evaluate_trivalent(data, cond_ne) is None
-
-    # 4. NOT (missing != 1) -> Unknown (None)
-    group_ne = DataSearchGroup(
-        operator=DataSearchLogicOperator.not_op, conditions=[cond_ne]
-    )
-    assert _evaluate_trivalent(data, group_ne) is None
+    group = DataSearchGroup(operator=DataSearchLogicOperator.not_op, conditions=[inner])
+    assert is_match_query(_meta({"existing": 1}), _query_with(group)) is False
 
 
-def test_trivalent_logic_null_value():
-    data = {"null_field": None}
-
-    # 1. null_field == 1 -> Unknown (None)
+def test_null_field_equality_is_unknown_and_excluded():
     cond = DataSearchCondition(
         field_path="null_field", operator=DataSearchOperator.equals, value=1
     )
-    assert _evaluate_trivalent(data, cond) is None
-
-    # 2. NOT (null_field == 1) -> Unknown (None)
-    group = DataSearchGroup(operator=DataSearchLogicOperator.not_op, conditions=[cond])
-    assert _evaluate_trivalent(data, group) is None
+    assert is_match_query(_meta({"null_field": None}), _query_with(cond)) is False
 
 
-def test_trivalent_logic_exists_isna():
-    data = {"existing": 1, "null_field": None}
-
-    # exists(missing) -> False
+def test_exists_returns_definite_false_for_missing_key():
     cond = DataSearchCondition(
         field_path="missing", operator=DataSearchOperator.exists, value=True
     )
-    assert _evaluate_trivalent(data, cond) is False
+    assert is_match_query(_meta({"existing": 1}), _query_with(cond)) is False
 
-    # NOT exists(missing) -> True
-    group = DataSearchGroup(operator=DataSearchLogicOperator.not_op, conditions=[cond])
-    assert _evaluate_trivalent(data, group) is True
 
-    # isna(missing) -> True
-    cond_isna = DataSearchCondition(
+def test_not_exists_returns_definite_true_for_missing_key():
+    inner = DataSearchCondition(
+        field_path="missing", operator=DataSearchOperator.exists, value=True
+    )
+    group = DataSearchGroup(operator=DataSearchLogicOperator.not_op, conditions=[inner])
+    assert is_match_query(_meta({"existing": 1}), _query_with(group)) is True
+
+
+def test_isna_returns_definite_true_for_missing_key():
+    cond = DataSearchCondition(
         field_path="missing", operator=DataSearchOperator.isna, value=True
     )
-    assert _evaluate_trivalent(data, cond_isna) is True
+    assert is_match_query(_meta({"existing": 1}), _query_with(cond)) is True
 
-    # NOT isna(missing) -> False
-    group_isna = DataSearchGroup(
-        operator=DataSearchLogicOperator.not_op, conditions=[cond_isna]
+
+def test_not_isna_returns_definite_false_for_missing_key():
+    inner = DataSearchCondition(
+        field_path="missing", operator=DataSearchOperator.isna, value=True
     )
-    assert _evaluate_trivalent(data, group_isna) is False
+    group = DataSearchGroup(operator=DataSearchLogicOperator.not_op, conditions=[inner])
+    assert is_match_query(_meta({"existing": 1}), _query_with(group)) is False
 
 
-def test_trivalent_logic_and_or():
-    data = {"a": 1}
-    # Unknown AND True -> Unknown
-    # Unknown AND False -> False
-
+def test_unknown_and_true_is_unknown_and_excluded():
+    """trivalent Unknown AND True stays Unknown; user sees exclusion."""
     cond_unknown = DataSearchCondition(
         field_path="missing", operator=DataSearchOperator.equals, value=1
     )
     cond_true = DataSearchCondition(
         field_path="a", operator=DataSearchOperator.equals, value=1
     )
+    group = DataSearchGroup(
+        operator=DataSearchLogicOperator.and_op,
+        conditions=[cond_unknown, cond_true],
+    )
+    assert is_match_query(_meta({"a": 1}), _query_with(group)) is False
+
+
+def test_unknown_or_true_is_true_and_included():
+    """trivalent Unknown OR True = True; user sees the resource match."""
+    cond_unknown = DataSearchCondition(
+        field_path="missing", operator=DataSearchOperator.equals, value=1
+    )
+    cond_true = DataSearchCondition(
+        field_path="a", operator=DataSearchOperator.equals, value=1
+    )
+    group = DataSearchGroup(
+        operator=DataSearchLogicOperator.or_op,
+        conditions=[cond_unknown, cond_true],
+    )
+    assert is_match_query(_meta({"a": 1}), _query_with(group)) is True
+
+
+def test_unknown_or_false_stays_unknown_and_excluded():
+    cond_unknown = DataSearchCondition(
+        field_path="missing", operator=DataSearchOperator.equals, value=1
+    )
     cond_false = DataSearchCondition(
         field_path="a", operator=DataSearchOperator.equals, value=2
     )
-
-    # Unknown AND True
-    group_and_1 = DataSearchGroup(
-        operator=DataSearchLogicOperator.and_op, conditions=[cond_unknown, cond_true]
+    group = DataSearchGroup(
+        operator=DataSearchLogicOperator.or_op,
+        conditions=[cond_unknown, cond_false],
     )
-    assert _evaluate_trivalent(data, group_and_1) is None
-
-    # Unknown AND False
-    group_and_2 = DataSearchGroup(
-        operator=DataSearchLogicOperator.and_op, conditions=[cond_unknown, cond_false]
-    )
-    assert _evaluate_trivalent(data, group_and_2) is False
-
-    # Unknown OR True -> True
-    group_or_1 = DataSearchGroup(
-        operator=DataSearchLogicOperator.or_op, conditions=[cond_unknown, cond_true]
-    )
-    assert _evaluate_trivalent(data, group_or_1) is True
-
-    # Unknown OR False -> Unknown
-    group_or_2 = DataSearchGroup(
-        operator=DataSearchLogicOperator.or_op, conditions=[cond_unknown, cond_false]
-    )
-    assert _evaluate_trivalent(data, group_or_2) is None
+    assert is_match_query(_meta({"a": 1}), _query_with(group)) is False

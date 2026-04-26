@@ -11,24 +11,24 @@ from typing import IO, Any, Generic, TypeVar
 import msgspec
 from msgspec import UNSET, Struct, UnsetType
 
-from autocrud.types import (
-    Binary,
-    BlobResponse,
-    BlobStreamInfo,
-    BlobUploadSession,
+from autocrud.query_types import (
     DataSearchCondition,
     DataSearchGroup,
     DataSearchLogicOperator,
     DataSearchOperator,
     ResourceDataSearchSort,
-    ResourceMeta,
     ResourceMetaSearchQuery,
     ResourceMetaSearchSort,
     ResourceMetaSortDirection,
-    RevisionInfo,
 )
+from autocrud.query_types import ResourceMetaSortKey as ResourceMetaSortKey
 from autocrud.types import (
-    ResourceMetaSortKey as ResourceMetaSortKey,
+    Binary,
+    BlobResponse,
+    BlobStreamInfo,
+    BlobUploadSession,
+    ResourceMeta,
+    RevisionInfo,
 )
 from autocrud.util.datetime_utils import ensure_aware
 
@@ -205,7 +205,7 @@ def _evaluate_trivalent(
     # Apply field transformation if specified
     field_value = val
     if has_key and val is not None and condition.transform is not None:
-        from autocrud.types import FieldTransform
+        from autocrud.query_types import FieldTransform
 
         if condition.transform == FieldTransform.length:
             try:

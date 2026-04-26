@@ -2,7 +2,7 @@
 
 import pytest
 
-from autocrud.types import ResourceMetaSearchQuery
+from autocrud.query_types import ResourceMetaSearchQuery
 
 
 def test_root_exports_qb_for_everyday_usage():
@@ -98,3 +98,136 @@ def test_root_exports_task_status_for_async_workflows():
 
     assert TaskStatus.PENDING.value == "pending"
     assert TaskStatus.COMPLETED.value == "completed"
+
+
+def test_events_namespace_exposes_event_context_structs():
+    """Every event-context struct lives in autocrud.events."""
+    from autocrud.events import (
+        AfterCreate,
+        AfterUpdate,
+        BeforeCreate,
+        BeforeDelete,
+        EventContext,
+        EventContextProto,
+        HasData,
+        HasResourceId,
+        HasRevisionId,
+        OnFailureCreate,
+        OnSuccessCreate,
+        OnSuccessUpdate,
+        SimpleEventHandler,
+    )
+
+    assert BeforeCreate is not None
+    assert AfterCreate is not None
+    assert OnSuccessCreate is not None
+    assert OnFailureCreate is not None
+    assert BeforeDelete is not None
+    assert AfterUpdate is not None
+    assert OnSuccessUpdate is not None
+    assert EventContextProto is not None
+    assert HasData is not None
+    assert HasResourceId is not None
+    assert HasRevisionId is not None
+    assert EventContext is not None
+    assert SimpleEventHandler is not None
+
+
+def test_query_types_namespace_exposes_search_symbols():
+    """Search/query types live in autocrud.query_types."""
+    from autocrud.query_types import (
+        DEFAULT_QUERY_LIMIT,
+        DataSearchCondition,
+        DataSearchOperator,
+        FieldTransform,
+        ResourceMetaSearchQuery,
+        ResourceMetaSortKey,
+    )
+
+    assert isinstance(DEFAULT_QUERY_LIMIT, int)
+    assert DataSearchOperator.equals.value == "eq"
+    assert FieldTransform.length.value == "len"
+    assert DataSearchCondition is not None
+    assert ResourceMetaSearchQuery is not None
+    assert ResourceMetaSortKey is not None
+
+
+def test_types_namespace_no_longer_re_exports_event_context_structs():
+    """Event-context structs must be imported from autocrud.events, not types."""
+    import autocrud.types as types_mod
+
+    for name in (
+        "BeforeCreate",
+        "AfterCreate",
+        "OnSuccessCreate",
+        "OnFailureCreate",
+        "EventContext",
+        "EventContextProto",
+        "HasData",
+        "HasResourceId",
+        "IEventHandler",
+        "do",
+        "SimpleEventHandler",
+    ):
+        assert name not in vars(types_mod), (
+            f"autocrud.types should not expose {name!r}; import it from autocrud.events"
+        )
+
+
+def test_types_namespace_no_longer_re_exports_query_types():
+    """Search/query types must be imported from autocrud.query_types, not types."""
+    import autocrud.types as types_mod
+
+    for name in (
+        "FieldTransform",
+        "DEFAULT_QUERY_LIMIT",
+        "DataSearchCondition",
+        "DataSearchOperator",
+        "ResourceMetaSortKey",
+    ):
+        assert name not in vars(types_mod), (
+            f"autocrud.types should not expose {name!r}; "
+            "import it from autocrud.query_types"
+        )
+
+
+def test_types_namespace_no_longer_re_exports_permission_checker():
+    """Permission interface must come from autocrud.permission, not types."""
+    import autocrud.types as types_mod
+
+    for name in ("IPermissionChecker", "PermissionContext", "PermissionResult"):
+        assert name not in vars(types_mod), (
+            f"autocrud.types should not expose {name!r}; "
+            "import it from autocrud.permission"
+        )
+
+
+def test_resource_manager_events_module_is_gone():
+    """The legacy autocrud.resource_manager.events module is removed."""
+    with pytest.raises(ImportError):
+        import autocrud.resource_manager.events  # noqa: F401
+
+
+def test_events_module_has_no_getattr_shim():
+    """autocrud.events must not rely on a __getattr__ compatibility shim."""
+    import autocrud.events as events_mod
+
+    assert "__getattr__" not in vars(events_mod), (
+        "autocrud.events should expose symbols directly, not through __getattr__"
+    )
+
+
+def test_events_namespace_declares_all():
+    """autocrud.events should publish an explicit __all__."""
+    import autocrud.events as events_mod
+
+    assert hasattr(events_mod, "__all__")
+    for name in (
+        "BeforeCreate",
+        "EventContext",
+        "IEventHandler",
+        "SimpleEventHandler",
+        "do",
+        "ResourceAction",
+    ):
+        assert name in events_mod.__all__

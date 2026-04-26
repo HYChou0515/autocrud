@@ -2,6 +2,11 @@
 
 from autocrud.permission.acl import ACLPermission, ACLPermissionChecker, Policy
 from autocrud.permission.action import ActionBasedPermissionChecker
+from autocrud.permission.checker import (
+    IPermissionChecker,
+    PermissionContext,
+    PermissionResult,
+)
 from autocrud.permission.composite import (
     CompositePermissionChecker,
     ConditionalPermissionChecker,
@@ -14,12 +19,7 @@ from autocrud.permission.rbac import (
     RoleMembership,
 )
 from autocrud.permission.simple import AllowAll, RootOnly
-from autocrud.types import (
-    IPermissionChecker,
-    PermissionContext,
-    PermissionResult,
-    ResourceAction,
-)
+from autocrud.types import ResourceAction
 
 __all__ = [
     "ACLPermission",

@@ -11,7 +11,11 @@ import pytest
 from msgspec import Struct
 
 from autocrud.schema import Schema
-from autocrud.types import IMigration, IValidator, ValidationError
+from autocrud.types import (
+    IMigration,
+    IValidator,
+    ValidationError,
+)
 
 # =====================================================================
 # Test data models

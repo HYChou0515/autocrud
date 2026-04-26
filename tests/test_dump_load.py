@@ -32,7 +32,11 @@ from autocrud.resource_manager.dump_format import (
     ModelStartRecord,
     RevisionRecord,
 )
-from autocrud.types import Binary, DuplicateResourceError, OnDuplicate
+from autocrud.types import (
+    Binary,
+    DuplicateResourceError,
+    OnDuplicate,
+)
 
 # ---------------------------------------------------------------------------
 # Test models

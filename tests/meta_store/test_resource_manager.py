@@ -14,6 +14,12 @@ import redis
 from faker import Faker
 from msgspec import UNSET, Struct, UnsetType
 
+from autocrud.query_types import (
+    ResourceMetaSearchQuery,
+    ResourceMetaSearchSort,
+    ResourceMetaSortDirection,
+    ResourceMetaSortKey,
+)
 from autocrud.resource_manager.core import (
     IResourceStore,
     ResourceManager,
@@ -28,10 +34,6 @@ from autocrud.types import (
     ResourceIDNotFoundError,
     ResourceIsDeletedError,
     ResourceMeta,
-    ResourceMetaSearchQuery,
-    ResourceMetaSearchSort,
-    ResourceMetaSortDirection,
-    ResourceMetaSortKey,
     RevisionInfo,
     RevisionStatus,
 )

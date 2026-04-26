@@ -10,7 +10,12 @@ from msgspec import UNSET, Struct, UnsetType
 from xxhash import xxh3_128, xxh3_128_hexdigest
 
 from autocrud.resource_manager.basic import IBlobStore
-from autocrud.types import Binary, BlobResponse, BlobStreamInfo, BlobUploadSession
+from autocrud.types import (
+    Binary,
+    BlobResponse,
+    BlobStreamInfo,
+    BlobUploadSession,
+)
 
 
 def _fallback_content_type_guesser(data: bytes) -> UnsetType:

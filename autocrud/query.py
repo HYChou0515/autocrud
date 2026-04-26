@@ -2,7 +2,7 @@ from typing import Any, Self
 
 from msgspec import UNSET
 
-from autocrud.types import (
+from autocrud.query_types import (
     DEFAULT_QUERY_LIMIT,
     DataSearchCondition,
     DataSearchFilter,

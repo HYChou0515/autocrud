@@ -392,7 +392,7 @@ def test_s3_sqlite_meta_store_save_many(s3_test_key, cleanup_s3_file):
 def test_s3_sqlite_meta_store_search(s3_test_key, cleanup_s3_file):
     """測試搜索功能"""
     cleanup_s3_file.append(s3_test_key)
-    from autocrud.types import ResourceMetaSearchQuery
+    from autocrud.query_types import ResourceMetaSearchQuery
 
     store = S3SqliteMetaStore(
         bucket=S3_BUCKET,

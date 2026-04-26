@@ -191,7 +191,7 @@ class TestSafeNamingIntegration:
 
     def test_search(self, meta_store_type, model_name):
         """Search after create — verifies meta store indexing works."""
-        from autocrud.types import ResourceMetaSearchQuery
+        from autocrud.query_types import ResourceMetaSearchQuery
 
         data = SimpleData(name=f"search-{model_name}", value=99)
         user, now = faker.user_name(), dt.datetime(2025, 6, 1)

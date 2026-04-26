@@ -3,7 +3,8 @@ from collections.abc import Generator, Iterable
 
 from msgspec import UNSET
 
-from autocrud.types import ResourceMeta, ResourceMetaSearchQuery
+from autocrud.query_types import ResourceMetaSearchQuery
+from autocrud.types import ResourceMeta
 
 try:
     import pandas as pd

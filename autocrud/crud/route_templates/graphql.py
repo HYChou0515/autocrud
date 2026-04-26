@@ -36,18 +36,18 @@ except ModuleNotFoundError as _err:
 from fastapi import APIRouter, Depends
 
 from autocrud.crud.route_templates.basic import BaseRouteTemplate, DependencyProvider
-from autocrud.types import (
+from autocrud.query_types import (
     DataSearchCondition,
     DataSearchGroup,
     DataSearchLogicOperator,
     DataSearchOperator,
-    IResourceManager,
     ResourceDataSearchSort,
     ResourceMetaSearchQuery,
     ResourceMetaSearchSort,
     ResourceMetaSortDirection,
     ResourceMetaSortKey,
 )
+from autocrud.types import IResourceManager
 
 T = TypeVar("T")
 

@@ -40,7 +40,10 @@ from msgspec import Struct
 
 from autocrud.crud.core import AutoCRUD
 from autocrud.resource_manager.basic import Encoding
-from autocrud.types import Binary, OnDuplicate
+from autocrud.types import (
+    Binary,
+    OnDuplicate,
+)
 
 # ---------------------------------------------------------------------------
 # Skip unless benchmark mode is enabled
