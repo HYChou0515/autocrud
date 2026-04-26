@@ -9,6 +9,7 @@ import pytest
 from faker import Faker
 from msgspec import UNSET, Struct
 
+from autocrud.query_types import ResourceMetaSearchQuery
 from autocrud.resource_manager.core import (
     IResourceStore,
     ResourceManager,
@@ -20,7 +21,6 @@ from autocrud.resource_manager.resource_store.simple import (
 )
 from autocrud.types import (
     ResourceMeta,
-    ResourceMetaSearchQuery,
     RevisionInfo,
     SearchedResource,
 )

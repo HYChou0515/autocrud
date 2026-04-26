@@ -25,7 +25,11 @@ from autocrud.resource_manager.dump_format import (
     MetaRecord,
     RevisionRecord,
 )
-from autocrud.types import Binary, DuplicateResourceError, OnDuplicate
+from autocrud.types import (
+    Binary,
+    DuplicateResourceError,
+    OnDuplicate,
+)
 
 # ---------------------------------------------------------------------------
 # Test models
@@ -440,7 +444,7 @@ class TestAutoCRUDLoadBulk:
         # Verify data integrity
         mgr_item = crud2.get_resource_manager(Item)
         mgr_widget = crud2.get_resource_manager(Widget)
-        from autocrud.types import ResourceMetaSearchQuery
+        from autocrud.query_types import ResourceMetaSearchQuery
 
         q = ResourceMetaSearchQuery()
         assert mgr_item.count_resources(q) == 2
@@ -467,7 +471,7 @@ class TestAutoCRUDLoadBulk:
 
         # Verify blob data is accessible
         mgr2 = crud2.get_resource_manager(BlobItem)
-        from autocrud.types import ResourceMetaSearchQuery as _Q
+        from autocrud.query_types import ResourceMetaSearchQuery as _Q
 
         metas = mgr2.search_resources(_Q())
         item = mgr2.get(metas[0].resource_id)

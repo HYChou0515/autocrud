@@ -5,7 +5,10 @@ from typing import IO
 
 from autocrud.resource_manager.resource_store.cache import ICache
 from autocrud.resource_manager.resource_store.s3 import S3ResourceStore
-from autocrud.types import RevisionInfo, RevisionStatus
+from autocrud.types import (
+    RevisionInfo,
+    RevisionStatus,
+)
 
 
 class CachedS3ResourceStore(S3ResourceStore):

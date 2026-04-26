@@ -412,7 +412,7 @@ class TestCompensation:
             rm.create(ItemNoUnique(name="item"))
 
         # Resource should be purged or marked deleted (not findable)
-        from autocrud.types import ResourceMetaSearchQuery
+        from autocrud.query_types import ResourceMetaSearchQuery
 
         results = rm.storage.search(
             ResourceMetaSearchQuery(is_deleted=False, limit=100)

@@ -17,7 +17,10 @@ from msgspec import Struct
 from autocrud.crud.core import AutoCRUD
 from autocrud.message_queue.simple import SimpleMessageQueueFactory
 from autocrud.resource_manager.storage_factory import MemoryStorageFactory
-from autocrud.types import Job, TaskStatus
+from autocrud.types import (
+    Job,
+    TaskStatus,
+)
 
 
 class TaskPayload(Struct):

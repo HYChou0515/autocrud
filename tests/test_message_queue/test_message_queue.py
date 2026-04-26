@@ -26,6 +26,7 @@ try:
     CELERY_AVAILABLE = True
 except ImportError:
     CELERY_AVAILABLE = False
+from autocrud.query_types import ResourceMetaSearchQuery
 from autocrud.resource_manager.core import ResourceManager, SimpleStorage
 from autocrud.resource_manager.meta_store.simple import MemoryMetaStore
 from autocrud.resource_manager.resource_store.simple import MemoryResourceStore
@@ -34,7 +35,6 @@ from autocrud.types import (
     IndexableField,
     Job,
     Resource,
-    ResourceMetaSearchQuery,
     RevisionInfo,
     RevisionStatus,
     TaskStatus,

@@ -13,7 +13,12 @@ from autocrud.message_queue.simple import SimpleMessageQueue
 from autocrud.resource_manager.core import ResourceManager, SimpleStorage
 from autocrud.resource_manager.meta_store.simple import MemoryMetaStore
 from autocrud.resource_manager.resource_store.simple import MemoryResourceStore
-from autocrud.types import IndexableField, Job, Resource, TaskStatus
+from autocrud.types import (
+    IndexableField,
+    Job,
+    Resource,
+    TaskStatus,
+)
 
 # Check if pika is available
 try:

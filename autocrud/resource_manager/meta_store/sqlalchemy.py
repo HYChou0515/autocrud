@@ -33,22 +33,22 @@ from sqlalchemy.engine import Engine
 from sqlalchemy.orm import Session, sessionmaker
 from sqlalchemy.types import TypeDecorator
 
-from autocrud.resource_manager.basic import (
-    Encoding,
-    ISlowMetaStore,
-    MsgspecSerializer,
-)
-from autocrud.types import (
+from autocrud.query_types import (
     DataSearchFilter,
     DataSearchGroup,
     DataSearchLogicOperator,
     DataSearchOperator,
     FieldTransform,
-    ResourceMeta,
     ResourceMetaSearchQuery,
     ResourceMetaSearchSort,
     ResourceMetaSortDirection,
 )
+from autocrud.resource_manager.basic import (
+    Encoding,
+    ISlowMetaStore,
+    MsgspecSerializer,
+)
+from autocrud.types import ResourceMeta
 
 
 class DialectType(EnumType):

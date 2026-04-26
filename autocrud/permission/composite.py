@@ -8,7 +8,7 @@
 
 import logging
 
-from autocrud.types import (
+from autocrud.permission.checker import (
     IPermissionChecker,
     PermissionContext,
     PermissionResult,

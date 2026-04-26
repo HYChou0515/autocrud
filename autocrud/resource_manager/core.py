@@ -26,17 +26,7 @@ from jsonpointer import JsonPointer
 from msgspec import UNSET, Struct, UnsetType
 from xxhash import xxh3_128_hexdigest
 
-from autocrud.resource_manager.partial import (
-    classify_partial_fields,
-    create_partial_type,
-    filter_struct_partial,
-    prune_object,
-)
-from autocrud.resource_manager.pydantic_converter import (  # noqa: E402
-    build_validator,
-    pydantic_to_dict,
-)
-from autocrud.types import (
+from autocrud.events import (
     AfterCreate,
     AfterDelete,
     AfterDump,
@@ -69,18 +59,8 @@ from autocrud.types import (
     BeforeSearchResources,
     BeforeSwitch,
     BeforeUpdate,
-    Binary,
-    CannotModifyResourceError,
-    DuplicateResourceError,
     EventContext,
-    IConstraintChecker,
     IEventHandler,
-    IMessageQueue,
-    IMigration,
-    IndexableField,
-    IResourceManager,
-    IValidator,
-    OnDuplicate,
     OnFailureCreate,
     OnFailureDelete,
     OnFailureDump,
@@ -113,6 +93,29 @@ from autocrud.types import (
     OnSuccessSearchResources,
     OnSuccessSwitch,
     OnSuccessUpdate,
+)
+from autocrud.query_types import ResourceMetaSearchQuery
+from autocrud.resource_manager.partial import (
+    classify_partial_fields,
+    create_partial_type,
+    filter_struct_partial,
+    prune_object,
+)
+from autocrud.resource_manager.pydantic_converter import (  # noqa: E402
+    build_validator,
+    pydantic_to_dict,
+)
+from autocrud.types import (
+    Binary,
+    CannotModifyResourceError,
+    DuplicateResourceError,
+    IConstraintChecker,
+    IMessageQueue,
+    IMigration,
+    IndexableField,
+    IResourceManager,
+    IValidator,
+    OnDuplicate,
     PermissionDeniedError,
     RawResource,
     Resource,
@@ -120,7 +123,6 @@ from autocrud.types import (
     ResourceIDNotFoundError,
     ResourceIsDeletedError,
     ResourceMeta,
-    ResourceMetaSearchQuery,
     RevisionIDNotFoundError,
     RevisionInfo,
     RevisionNotMigratedError,
@@ -131,9 +133,10 @@ from autocrud.types import (
 )
 
 if TYPE_CHECKING:
+    from autocrud.permission.checker import IPermissionChecker
     from autocrud.schema import Schema
-    from autocrud.types import IPermissionChecker
 
+from autocrud.permission.checker import PermissionResult
 from autocrud.query import Query
 from autocrud.resource_manager.basic import (
     Ctx,
@@ -151,7 +154,6 @@ from autocrud.resource_manager.dump_format import (
     MetaRecord,
     RevisionRecord,
 )
-from autocrud.types import PermissionResult
 from autocrud.util.naming import NameConverter, NamingFormat
 from autocrud.util.type_utils import (
     get_type_display_name,
@@ -910,29 +912,19 @@ class ResourceManager(IResourceManager[T], Generic[T]):
             )
 
         # Constraint checkers（放在最後，在 PermissionEventHandler 之後執行）
-        _checkers: list[IConstraintChecker] = []
-        for spec in constraint_checkers or []:
-            if isinstance(spec, IConstraintChecker):
-                _checkers.append(spec)
-            elif callable(spec):
-                _checkers.append(spec(self))
-            else:
-                raise TypeError(
-                    f"constraint_checkers items must be IConstraintChecker instances "
-                    f"or callable(rm) factories, got {type(spec).__name__}"
-                )
-        if _checkers:
-            from autocrud.resource_manager.constraint_handler import (
-                ConstraintEventHandler,
-            )
+        from autocrud.resource_manager.constraint_lifecycle import (
+            build_constraint_handler,
+            register_unique_fields,
+        )
 
-            self._constraint_handler = ConstraintEventHandler(self, _checkers)
+        self._constraint_handler = build_constraint_handler(self, constraint_checkers)
+        if self._constraint_handler is not None:
             self.event_handlers.append(self._constraint_handler)
-        else:
-            self._constraint_handler = None
 
         # Auto-detect Unique-annotated fields and register UniqueConstraintChecker
-        self._register_unique_fields()
+        unique_handler = register_unique_fields(self)
+        if unique_handler is not None:
+            self._constraint_handler = unique_handler
 
         self._binary_processor = BinaryProcessor(resource_type)
 
@@ -1020,46 +1012,6 @@ class ResourceManager(IResourceManager[T], Generic[T]):
             :meth:`register_async_update_job`.
         """
         return list(self._async_update_job_rms.keys())
-
-    def _register_unique_fields(self) -> None:
-        """Auto-detect ``Unique``-annotated fields on the model and register a
-        :class:`UniqueConstraintChecker`.
-
-        If a :class:`ConstraintEventHandler` already exists (from the
-        ``constraint_checkers`` parameter) the checker is appended to it;
-        otherwise a new handler is created.  The checker itself handles
-        auto-indexing the unique fields via :meth:`add_indexed_field`.
-        """
-        from autocrud.resource_manager.constraint_handler import (
-            ConstraintEventHandler,
-        )
-        from autocrud.resource_manager.unique_handler import (
-            UniqueConstraintChecker,
-        )
-        from autocrud.types import extract_unique_fields
-
-        unique_field_names = extract_unique_fields(self.resource_type)
-        if not unique_field_names:
-            return
-
-        # Check if a ConstraintEventHandler already exists (from constraint_checkers param)
-        existing_handler: ConstraintEventHandler | None = None
-        for h in self.event_handlers:
-            if isinstance(h, ConstraintEventHandler):
-                existing_handler = h
-                break
-
-        if existing_handler is not None:
-            # Always append — user's checkers and auto-detected ones may
-            # protect different fields; both should run.
-            existing_handler.checkers.append(UniqueConstraintChecker(self))
-        else:
-            handler = ConstraintEventHandler(
-                self,
-                [UniqueConstraintChecker(self)],
-            )
-            self.event_handlers.append(handler)
-            self._constraint_handler = handler
 
     def encode(self, data: T) -> bytes:
         return self._data_serializer.encode(data)

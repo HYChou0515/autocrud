@@ -20,7 +20,6 @@ from msgspec import Struct
 
 from autocrud import struct_to_pydantic
 from autocrud.crud.core import AutoCRUD
-from autocrud.crud.route_templates.basic import _sanitize_schema_names
 from autocrud.message_queue.simple import SimpleMessageQueueFactory
 from autocrud.types import DisplayName
 
@@ -108,77 +107,65 @@ def _assert_all_refs_resolve(openapi_schema: dict) -> None:
 
 
 # ===================================================================
-# Test: _sanitize_schema_names rewrites discriminator mapping values
+# Test: schema-name sanitisation surfaces in the published OpenAPI spec
 # ===================================================================
 
 
-class TestSanitizeSchemaDiscriminatorMapping:
-    """``_sanitize_schema_names`` must also rewrite ``discriminator.mapping``
-    values that contain dotted ``$ref`` paths."""
+def _walk(obj):
+    """Yield every nested dict/list/scalar so callers can scan a JSON tree."""
+    if isinstance(obj, dict):
+        yield obj
+        for v in obj.values():
+            yield from _walk(v)
+    elif isinstance(obj, list):
+        for v in obj:
+            yield from _walk(v)
 
-    def test_discriminator_mapping_values_rewritten(self):
-        """Mapping values like ``#/components/schemas/mod.Type`` must be
-        sanitised to ``#/components/schemas/mod_Type``."""
-        schemas = [
-            {
-                "anyOf": [
-                    {"$ref": "#/components/schemas/__main__.Cat"},
-                    {"$ref": "#/components/schemas/__main__.Dog"},
-                ],
-                "discriminator": {
-                    "propertyName": "type",
-                    "mapping": {
-                        "Cat": "#/components/schemas/__main__.Cat",
-                        "Dog": "#/components/schemas/__main__.Dog",
-                    },
-                },
-            }
-        ]
-        components = {
-            "__main__.Cat": {
-                "title": "Cat",
-                "type": "object",
-                "properties": {
-                    "type": {"enum": ["Cat"]},
-                    "name": {"type": "string"},
-                },
-            },
-            "__main__.Dog": {
-                "title": "Dog",
-                "type": "object",
-                "properties": {
-                    "type": {"enum": ["Dog"]},
-                    "breed": {"type": "string"},
-                },
-            },
-        }
 
-        new_schemas, new_components = _sanitize_schema_names(schemas, components)
+class TestPublishedSpecHasNoDottedSchemaNames:
+    """Build a real AutoCRUD app whose models include a tagged-union (which
+    forces FastAPI to emit ``discriminator.mapping``) and assert the
+    post-processed OpenAPI spec contains no dotted schema names anywhere —
+    component keys, ``$ref`` values, or ``discriminator.mapping`` values."""
 
-        # Component keys should be sanitised
-        assert "__main___Cat" in new_components
-        assert "__main___Dog" in new_components
-        assert "__main__.Cat" not in new_components
-        assert "__main__.Dog" not in new_components
+    def _build_spec(self) -> dict:
+        crud = _make_crud()
+        crud.configure(model_naming="kebab")
+        crud.add_model(Skill)
+        app = FastAPI()
+        crud.apply(app)
+        crud.openapi(app)
+        return app.openapi_schema
 
-        # $ref values should be sanitised
-        schema = new_schemas[0]
-        for item in schema["anyOf"]:
-            assert "." not in item["$ref"], f"$ref not sanitised: {item['$ref']}"
+    def test_no_dots_in_component_keys(self):
+        spec = self._build_spec()
+        keys = list(spec["components"]["schemas"].keys())
+        dotted = [k for k in keys if "." in k]
+        assert dotted == [], f"dotted component keys: {dotted}"
 
-        # discriminator.mapping values should also be sanitised
-        mapping = schema["discriminator"]["mapping"]
-        for key, value in mapping.items():
-            assert "." not in value, (
-                f"Discriminator mapping value not sanitised: {key}={value}"
+    def test_no_dots_in_any_ref(self):
+        spec = self._build_spec()
+        refs = _collect_all_refs(spec)
+        dotted = [r for r in refs if "." in r]
+        assert dotted == [], f"dotted $ref targets: {dotted}"
+
+    def test_no_dots_in_discriminator_mapping_values(self):
+        spec = self._build_spec()
+        bad: list[str] = []
+        for node in _walk(spec):
+            if not isinstance(node, dict):
+                continue
+            mapping = (
+                node.get("discriminator", {}).get("mapping")
+                if "discriminator" in node
+                else None
             )
-
-    def test_discriminator_mapping_absent_is_harmless(self):
-        """No crash when discriminator has no mapping key."""
-        schemas = [{"$ref": "#/components/schemas/X"}]
-        components = {"X": {"title": "X", "type": "object"}}
-        new_schemas, new_components = _sanitize_schema_names(schemas, components)
-        assert "X" in new_components
+            if not mapping:
+                continue
+            for key, value in mapping.items():
+                if isinstance(value, str) and "." in value:
+                    bad.append(f"{key}={value}")
+        assert bad == [], f"dotted discriminator.mapping values: {bad}"
 
 
 # ===================================================================

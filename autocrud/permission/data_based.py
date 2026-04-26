@@ -1,12 +1,12 @@
 import logging
 from typing import Dict
 
-from autocrud.types import (
+from autocrud.permission.checker import (
     IPermissionChecker,
     PermissionContext,
     PermissionResult,
-    ResourceAction,
 )
+from autocrud.types import ResourceAction
 
 logger = logging.getLogger(__name__)
 

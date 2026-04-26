@@ -195,7 +195,7 @@ def test_configure_event_handlers():
     """Test configuring event handlers."""
     from unittest.mock import Mock
 
-    from autocrud.resource_manager.events import do
+    from autocrud.events import do
     from autocrud.types import ResourceAction
 
     test_crud = AutoCRUD()

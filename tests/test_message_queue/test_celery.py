@@ -23,7 +23,11 @@ from autocrud.message_queue.celery_queue import (
 from autocrud.resource_manager.core import ResourceManager, SimpleStorage
 from autocrud.resource_manager.meta_store.simple import MemoryMetaStore
 from autocrud.resource_manager.resource_store.simple import MemoryResourceStore
-from autocrud.types import Job, Resource, TaskStatus
+from autocrud.types import (
+    Job,
+    Resource,
+    TaskStatus,
+)
 
 
 class TaskData(Struct):

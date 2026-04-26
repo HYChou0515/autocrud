@@ -1,26 +1,29 @@
 import datetime as dt
+import os
 from zoneinfo import ZoneInfo
 
 import pytest
 from msgspec import UNSET
 
 from autocrud.query import QB, ConditionBuilder
+from autocrud.query_types import (
+    DataSearchCondition,
+    DataSearchGroup,
+    DataSearchLogicOperator,
+    DataSearchOperator,
+    ResourceDataSearchSort,
+    ResourceMetaSearchQuery,
+    ResourceMetaSearchSort,
+    ResourceMetaSortDirection,
+    ResourceMetaSortKey,
+)
 from autocrud.resource_manager.basic import get_sort_fn
 from autocrud.resource_manager.core import ResourceManager, SimpleStorage
 from autocrud.resource_manager.meta_store.simple import MemoryMetaStore
 from autocrud.resource_manager.resource_store.simple import MemoryResourceStore
 from autocrud.types import (
-    DataSearchCondition,
-    DataSearchGroup,
-    DataSearchLogicOperator,
-    DataSearchOperator,
     IndexableField,
-    ResourceDataSearchSort,
     ResourceMeta,
-    ResourceMetaSearchQuery,
-    ResourceMetaSearchSort,
-    ResourceMetaSortDirection,
-    ResourceMetaSortKey,
 )
 
 
@@ -2440,7 +2443,7 @@ class TestResourceManagerWithQB:
 
     def test_length_method(self):
         """Test length() method for querying field length."""
-        from autocrud.types import FieldTransform
+        from autocrud.query_types import FieldTransform
 
         # String length
         q = QB["name"].length() > 10
@@ -2454,7 +2457,7 @@ class TestResourceManagerWithQB:
 
     def test_length_with_different_operators(self):
         """Test length() with various comparison operators."""
-        from autocrud.types import FieldTransform
+        from autocrud.query_types import FieldTransform
 
         # Exact length
         q1 = QB["tags"].length() == 3
@@ -2483,7 +2486,7 @@ class TestResourceManagerWithQB:
 
     def test_length_empty_check(self):
         """Test length() for checking empty collections."""
-        from autocrud.types import FieldTransform
+        from autocrud.query_types import FieldTransform
 
         # Empty list
         q1 = QB["tags"].length() == 0
@@ -2502,7 +2505,7 @@ class TestResourceManagerWithQB:
 
     def test_length_combined_with_other_conditions(self):
         """Test combining length() with other query conditions."""
-        from autocrud.types import FieldTransform
+        from autocrud.query_types import FieldTransform
 
         q = (QB["tags"].length() >= 3) & (QB["status"] == "active")
         query = q.build()
@@ -2517,7 +2520,7 @@ class TestResourceManagerWithQB:
 
     def test_length_on_nested_fields(self):
         """Test length() on nested field paths."""
-        from autocrud.types import FieldTransform
+        from autocrud.query_types import FieldTransform
 
         q = QB["user.tags"].length() > 5
         cond = q.build().conditions[0]
@@ -2610,7 +2613,7 @@ class TestQueryBuilderEdgeCases:
         # Should have no conditions (UNSET)
         assert query.conditions is UNSET
         # Should still support chaining
-        from autocrud.types import DEFAULT_QUERY_LIMIT
+        from autocrud.query_types import DEFAULT_QUERY_LIMIT
 
         assert query.limit == DEFAULT_QUERY_LIMIT  # default limit
 
@@ -2722,73 +2725,92 @@ class TestQueryBuilderEdgeCases:
 
 
 class TestQueryLimitConfiguration:
-    """Tests for _read_default_query_limit() helper.
+    """``DEFAULT_QUERY_LIMIT`` is read from the environment at process startup
+    and surfaces as the default value of ``ResourceMetaSearchQuery.limit``.
 
-    We test the helper function directly rather than reloading modules,
-    because importlib.reload() corrupts class identities (ABC, isinstance
-    checks, Struct subclasses) and causes failures in unrelated test files
-    within the same pytest session.
+    Each scenario runs in a fresh subprocess so that ``query_types`` is
+    imported with the desired environment, and we observe the configured
+    limit through the public ``ResourceMetaSearchQuery`` constructor.
     """
 
-    def test_env_var_sets_limit(self, monkeypatch):
-        """Environment variable should be read as the limit."""
-        from autocrud.types import _read_default_query_limit
+    @staticmethod
+    def _run_with_env(env_value: str | None) -> dict:
+        """Spawn a subprocess that imports query_types and reports the result.
 
-        monkeypatch.setenv("AUTOCRUD_DEFAULT_QUERY_LIMIT", "12345")
-        assert _read_default_query_limit() == 12345
+        Returns a dict with ``limit``, ``fallback`` and ``warnings`` keys.
+        """
+        import json
+        import subprocess
+        import sys
 
-    def test_unset_env_returns_fallback(self, monkeypatch):
-        """Unset environment variable should return the fallback value."""
-        from autocrud.types import (
-            DEFAULT_QUERY_LIMIT_FALLBACK,
-            _read_default_query_limit,
+        snippet = (
+            "import json, warnings;"
+            "warnings.simplefilter('always');"
+            "captured = [];"
+            "warnings.showwarning = ("
+            "  lambda message, category, filename, lineno, file=None, line=None:"
+            "  captured.append((category.__name__, str(message)))"
+            ");"
+            "from autocrud.query_types import ("
+            "  DEFAULT_QUERY_LIMIT, DEFAULT_QUERY_LIMIT_FALLBACK,"
+            "  ResourceMetaSearchQuery,"
+            ");"
+            "default_limit = ResourceMetaSearchQuery().limit;"
+            "print(json.dumps({"
+            "  'limit': DEFAULT_QUERY_LIMIT,"
+            "  'default_limit': default_limit,"
+            "  'fallback': DEFAULT_QUERY_LIMIT_FALLBACK,"
+            "  'warnings': captured,"
+            "}))"
+        )
+        env = dict(os.environ)
+        env.pop("AUTOCRUD_DEFAULT_QUERY_LIMIT", None)
+        if env_value is not None:
+            env["AUTOCRUD_DEFAULT_QUERY_LIMIT"] = env_value
+        result = subprocess.run(
+            [sys.executable, "-c", snippet],
+            env=env,
+            capture_output=True,
+            text=True,
+            check=True,
+        )
+        return json.loads(result.stdout)
+
+    def test_env_var_sets_limit(self):
+        """A valid env value becomes the default limit on new queries."""
+        out = self._run_with_env("12345")
+        assert out["limit"] == 12345
+        assert out["default_limit"] == 12345
+
+    def test_unset_env_returns_fallback(self):
+        out = self._run_with_env(None)
+        assert out["limit"] == out["fallback"]
+        assert out["default_limit"] == out["fallback"]
+
+    def test_empty_string_returns_fallback(self):
+        out = self._run_with_env("   ")
+        assert out["limit"] == out["fallback"]
+
+    def test_invalid_value_warns_and_falls_back(self):
+        out = self._run_with_env("not-a-number")
+        assert out["limit"] == out["fallback"]
+        assert any(
+            cat == "RuntimeWarning" and "AUTOCRUD_DEFAULT_QUERY_LIMIT" in msg
+            for cat, msg in out["warnings"]
         )
 
-        monkeypatch.delenv("AUTOCRUD_DEFAULT_QUERY_LIMIT", raising=False)
-        assert _read_default_query_limit() == DEFAULT_QUERY_LIMIT_FALLBACK
-
-    def test_empty_string_returns_fallback(self, monkeypatch):
-        """Empty string environment variable should return the fallback value."""
-        from autocrud.types import (
-            DEFAULT_QUERY_LIMIT_FALLBACK,
-            _read_default_query_limit,
+    def test_zero_warns_and_falls_back(self):
+        out = self._run_with_env("0")
+        assert out["limit"] == out["fallback"]
+        assert any(
+            cat == "RuntimeWarning" and "AUTOCRUD_DEFAULT_QUERY_LIMIT" in msg
+            for cat, msg in out["warnings"]
         )
 
-        monkeypatch.setenv("AUTOCRUD_DEFAULT_QUERY_LIMIT", "   ")
-        assert _read_default_query_limit() == DEFAULT_QUERY_LIMIT_FALLBACK
-
-    def test_invalid_value_warns_and_falls_back(self, monkeypatch):
-        """Invalid environment values should warn and return the fallback."""
-        from autocrud.types import (
-            DEFAULT_QUERY_LIMIT_FALLBACK,
-            _read_default_query_limit,
+    def test_negative_value_warns_and_falls_back(self):
+        out = self._run_with_env("-5")
+        assert out["limit"] == out["fallback"]
+        assert any(
+            cat == "RuntimeWarning" and "AUTOCRUD_DEFAULT_QUERY_LIMIT" in msg
+            for cat, msg in out["warnings"]
         )
-
-        monkeypatch.setenv("AUTOCRUD_DEFAULT_QUERY_LIMIT", "not-a-number")
-        with pytest.warns(RuntimeWarning, match="AUTOCRUD_DEFAULT_QUERY_LIMIT"):
-            result = _read_default_query_limit()
-        assert result == DEFAULT_QUERY_LIMIT_FALLBACK
-
-    def test_zero_warns_and_falls_back(self, monkeypatch):
-        """Zero is not a valid limit; should warn and return the fallback."""
-        from autocrud.types import (
-            DEFAULT_QUERY_LIMIT_FALLBACK,
-            _read_default_query_limit,
-        )
-
-        monkeypatch.setenv("AUTOCRUD_DEFAULT_QUERY_LIMIT", "0")
-        with pytest.warns(RuntimeWarning, match="AUTOCRUD_DEFAULT_QUERY_LIMIT"):
-            result = _read_default_query_limit()
-        assert result == DEFAULT_QUERY_LIMIT_FALLBACK
-
-    def test_negative_value_warns_and_falls_back(self, monkeypatch):
-        """Negative limit should warn and return the fallback."""
-        from autocrud.types import (
-            DEFAULT_QUERY_LIMIT_FALLBACK,
-            _read_default_query_limit,
-        )
-
-        monkeypatch.setenv("AUTOCRUD_DEFAULT_QUERY_LIMIT", "-5")
-        with pytest.warns(RuntimeWarning, match="AUTOCRUD_DEFAULT_QUERY_LIMIT"):
-            result = _read_default_query_limit()
-        assert result == DEFAULT_QUERY_LIMIT_FALLBACK

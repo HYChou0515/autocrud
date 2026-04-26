@@ -1,14 +1,19 @@
+from __future__ import annotations
+
 import logging
+from typing import TYPE_CHECKING
 
 from msgspec import UNSET
 
-from autocrud.resource_manager.core import ResourceManager
-from autocrud.types import (
+from autocrud.permission.checker import (
     IPermissionChecker,
     PermissionContext,
     PermissionResult,
-    ResourceAction,
 )
+from autocrud.types import ResourceAction
+
+if TYPE_CHECKING:
+    from autocrud.resource_manager.core import ResourceManager
 
 logger = logging.getLogger(__name__)
 

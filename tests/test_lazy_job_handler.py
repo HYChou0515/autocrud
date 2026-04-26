@@ -3,7 +3,10 @@ from unittest.mock import MagicMock
 from msgspec import Struct
 
 from autocrud.crud.core import AutoCRUD, LazyJobHandler
-from autocrud.types import Job, Resource
+from autocrud.types import (
+    Job,
+    Resource,
+)
 
 
 class MyPayload(Struct):

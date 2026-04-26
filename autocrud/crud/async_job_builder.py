@@ -25,7 +25,10 @@ from typing import Any
 
 import msgspec
 
-from autocrud.types import Binary, Job
+from autocrud.types import (
+    Binary,
+    Job,
+)
 
 # ---------------------------------------------------------------------------
 # UploadFile surrogate

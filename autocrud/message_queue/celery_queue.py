@@ -3,7 +3,12 @@ from __future__ import annotations
 from typing import TYPE_CHECKING, Callable, Generic, TypeVar
 
 from autocrud.message_queue.basic import DelayableMessageQueue, DelayRetry, NoRetry
-from autocrud.types import Job, Resource, RevisionStatus, TaskStatus
+from autocrud.types import (
+    Job,
+    Resource,
+    RevisionStatus,
+    TaskStatus,
+)
 
 try:
     from celery import Celery

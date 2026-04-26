@@ -396,7 +396,7 @@ class TestReadMethodsNoContext:
         assert resource.data.name == "a"
 
     def test_search_without_context(self):
-        from autocrud.types import ResourceMetaSearchQuery
+        from autocrud.query_types import ResourceMetaSearchQuery
 
         rm = make_rm()
         rm.create(Item(name="a"), user="bob", now=NOW)
@@ -410,7 +410,7 @@ class TestReadMethodsNoContext:
         assert rm.exists("nonexistent") is False
 
     def test_count_without_context(self):
-        from autocrud.types import ResourceMetaSearchQuery
+        from autocrud.query_types import ResourceMetaSearchQuery
 
         rm = make_rm()
         rm.create(Item(name="a"), user="bob", now=NOW)

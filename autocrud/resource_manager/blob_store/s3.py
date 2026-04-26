@@ -8,7 +8,10 @@ from msgspec import UNSET, Struct, UnsetType
 from xxhash import xxh3_128, xxh3_128_hexdigest
 
 from autocrud.resource_manager.blob_store.simple import BasicBlobStore
-from autocrud.types import Binary, BlobUploadSession
+from autocrud.types import (
+    Binary,
+    BlobUploadSession,
+)
 
 try:
     from botocore.exceptions import ClientError as _ClientError

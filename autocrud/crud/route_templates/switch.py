@@ -10,7 +10,10 @@ from autocrud.crud.route_templates.basic import (
     struct_to_responses_type,
 )
 from autocrud.crud.route_templates.exception_handlers import to_http_exception
-from autocrud.types import IResourceManager, ResourceMeta
+from autocrud.types import (
+    IResourceManager,
+    ResourceMeta,
+)
 
 T = TypeVar("T")
 

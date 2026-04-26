@@ -24,7 +24,10 @@ from msgspec import Struct
 from pydantic import BaseModel
 
 from autocrud import struct_to_pydantic
-from autocrud.types import DisplayName, Unique
+from autocrud.types import (
+    DisplayName,
+    Unique,
+)
 
 # ---------------------------------------------------------------------------
 # Test models

@@ -1,7 +1,11 @@
 from autocrud.permission.basic import (
     DEFAULT_ROOT_USER,
 )
-from autocrud.types import IPermissionChecker, PermissionContext, PermissionResult
+from autocrud.permission.checker import (
+    IPermissionChecker,
+    PermissionContext,
+    PermissionResult,
+)
 
 
 class AllowAll(IPermissionChecker):

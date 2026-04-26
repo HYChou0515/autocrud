@@ -22,7 +22,10 @@ from typing import TYPE_CHECKING, Generic
 from typing_extensions import TypeVar as TypeVarExt
 
 from autocrud.resource_manager.basic import IBlobStore
-from autocrud.types import Job, Resource
+from autocrud.types import (
+    Job,
+    Resource,
+)
 
 if TYPE_CHECKING:
     pass

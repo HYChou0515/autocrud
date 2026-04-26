@@ -175,7 +175,7 @@ def test_s3_storage_factory_delete_and_list(crud_with_s3):
         manager.delete(info1.resource_id)
 
     # 驗證已刪除 - 使用 search 查詢已刪除的資源
-    from autocrud.types import ResourceMetaSearchQuery
+    from autocrud.query_types import ResourceMetaSearchQuery
 
     deleted_query = ResourceMetaSearchQuery(is_deleted=True, limit=100)
     deleted_metas = manager.search_resources(deleted_query)

@@ -15,6 +15,7 @@ import pytest
 from jsonpatch import JsonPatch
 from msgspec import Struct
 
+from autocrud.events import EventContext
 from autocrud.resource_manager.constraint_handler import (
     ConstraintEventHandler,
     _PhaseState,
@@ -25,7 +26,6 @@ from autocrud.resource_manager.unique_handler import (
     UniqueConstraintChecker,
 )
 from autocrud.types import (
-    EventContext,
     RevisionStatus,
     Unique,
     UniqueConstraintError,
@@ -134,7 +134,7 @@ class TestIsSupported:
         rm = make_rm_with_unique()
         handler = _get_handler(rm)
         # delete is not in supported actions
-        from autocrud.types import BeforeDelete
+        from autocrud.events import BeforeDelete
 
         ctx = BeforeDelete(
             user="system",
@@ -149,7 +149,10 @@ class TestIsSupported:
         rm = make_rm_with_unique()
         handler = _get_handler(rm)
         # 'after' and 'on_failure' should not be supported
-        from autocrud.types import AfterCreate, OnFailureCreate
+        from autocrud.events import (
+            AfterCreate,
+            OnFailureCreate,
+        )
 
         ctx_after = AfterCreate(
             user="system",
@@ -171,7 +174,7 @@ class TestIsSupported:
         rm = make_rm_with_unique()
         handler = _get_handler(rm)
         # Verify supported actions: create, update, modify, switch, restore
-        from autocrud.types import (
+        from autocrud.events import (
             BeforeCreate,
             BeforeModify,
             BeforeRestore,
@@ -379,7 +382,7 @@ class TestPostCheckCreate:
             rm.create(Item(name="alpha"))
         # After compensation, the second resource should not exist
         # Only one resource should exist
-        from autocrud.types import ResourceMetaSearchQuery
+        from autocrud.query_types import ResourceMetaSearchQuery
 
         results = rm.storage.search(ResourceMetaSearchQuery(is_deleted=False))
         assert len(results) == 1
@@ -702,7 +705,7 @@ def _get_handler(rm: ResourceManager) -> ConstraintEventHandler | None:
 
 
 def _make_before_create(rm: ResourceManager, data) -> EventContext:
-    from autocrud.types import BeforeCreate
+    from autocrud.events import BeforeCreate
 
     return BeforeCreate(
         user="system",

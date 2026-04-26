@@ -5,19 +5,19 @@ from zoneinfo import ZoneInfo
 
 import pytest
 
-from autocrud.resource_manager.basic import is_match_query
-from autocrud.types import (
+from autocrud.query_types import (
     DataSearchCondition,
     DataSearchGroup,
     DataSearchLogicOperator,
     DataSearchOperator,
     ResourceDataSearchSort,
-    ResourceMeta,
     ResourceMetaSearchQuery,
     ResourceMetaSearchSort,
     ResourceMetaSortDirection,
     ResourceMetaSortKey,
 )
+from autocrud.resource_manager.basic import is_match_query
+from autocrud.types import ResourceMeta
 
 from .common import ALL_META_STORE_TYPES, get_meta_store
 

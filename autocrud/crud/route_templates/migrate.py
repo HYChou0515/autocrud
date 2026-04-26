@@ -22,10 +22,8 @@ from autocrud.crud.route_templates.basic import (
     struct_to_responses_type,
 )
 from autocrud.crud.route_templates.exception_handlers import to_http_exception
-from autocrud.types import (
-    IResourceManager,
-    ResourceMetaSearchQuery,
-)
+from autocrud.query_types import ResourceMetaSearchQuery
+from autocrud.types import IResourceManager
 
 T = TypeVar("T")
 

@@ -9,7 +9,10 @@ from autocrud.resource_manager.resource_store.simple import (
     DiskResourceStore,
     MemoryResourceStore,
 )
-from autocrud.types import RevisionInfo, RevisionStatus
+from autocrud.types import (
+    RevisionInfo,
+    RevisionStatus,
+)
 
 # Try to import S3ResourceStore, but make it optional
 try:

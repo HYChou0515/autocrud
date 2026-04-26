@@ -4,6 +4,7 @@ from contextlib import contextmanager
 import redis
 from msgspec import UNSET
 
+from autocrud.query_types import ResourceMetaSearchQuery
 from autocrud.resource_manager.basic import (
     Encoding,
     IFastMetaStore,
@@ -11,7 +12,7 @@ from autocrud.resource_manager.basic import (
     get_sort_fn,
     is_match_query,
 )
-from autocrud.types import ResourceMeta, ResourceMetaSearchQuery
+from autocrud.types import ResourceMeta
 
 
 class RedisMetaStore(IFastMetaStore):

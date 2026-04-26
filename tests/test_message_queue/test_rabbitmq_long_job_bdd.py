@@ -45,7 +45,11 @@ from uuid import uuid4
 import pytest
 from msgspec import Struct
 
-from autocrud.types import IndexableField, Job, TaskStatus
+from autocrud.types import (
+    IndexableField,
+    Job,
+    TaskStatus,
+)
 
 # ── Gate: skip when RabbitMQ is unreachable ──────────────────────────
 

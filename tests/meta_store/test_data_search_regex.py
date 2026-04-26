@@ -4,12 +4,12 @@ from zoneinfo import ZoneInfo
 
 import pytest
 
-from autocrud.types import (
+from autocrud.query_types import (
     DataSearchCondition,
     DataSearchOperator,
-    ResourceMeta,
     ResourceMetaSearchQuery,
 )
+from autocrud.types import ResourceMeta
 
 from .common import ALL_META_STORE_TYPES, get_meta_store
 

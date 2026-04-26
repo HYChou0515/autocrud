@@ -20,7 +20,7 @@ from typing import TYPE_CHECKING, Any, Sequence
 from jsonpatch import JsonPatch
 from msgspec import UNSET
 
-from autocrud.types import (
+from autocrud.events import (
     EventContext,
     EventContextProto,
     HasData,
@@ -28,8 +28,10 @@ from autocrud.types import (
     HasInfo,
     HasResourceId,
     HasRevisionId,
-    IConstraintChecker,
     IEventHandler,
+)
+from autocrud.types import (
+    IConstraintChecker,
     ResourceAction,
     ResourceMeta,
     RevisionInfo,

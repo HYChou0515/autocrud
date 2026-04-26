@@ -20,7 +20,11 @@ from tenacity import retry, stop_after_attempt, wait_fixed
 from typer import Typer
 
 from autocrud.cli import config
-from autocrud.types import ResourceMeta, ResourceMetaSortKey, RevisionInfo
+from autocrud.query_types import ResourceMetaSortKey
+from autocrud.types import (
+    ResourceMeta,
+    RevisionInfo,
+)
 
 
 def build_from_config():

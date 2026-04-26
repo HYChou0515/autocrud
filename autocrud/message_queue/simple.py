@@ -2,17 +2,19 @@ import datetime as dt
 from typing import TYPE_CHECKING, Callable, Generic, TypeVar
 
 from autocrud.message_queue.basic import DelayableMessageQueue, DelayRetry, NoRetry
-from autocrud.types import (
+from autocrud.query_types import (
     DataSearchCondition,
     DataSearchOperator,
-    IMessageQueueFactory,
-    Job,
-    Resource,
     ResourceDataSearchSort,
     ResourceMetaSearchQuery,
     ResourceMetaSearchSort,
     ResourceMetaSortDirection,
     ResourceMetaSortKey,
+)
+from autocrud.types import (
+    IMessageQueueFactory,
+    Job,
+    Resource,
     RevisionStatus,
     TaskStatus,
 )

@@ -8,7 +8,10 @@ from msgspec import Struct, to_builtins
 from autocrud.crud.core import AutoCRUD
 from autocrud.crud.route_templates.get import ReadRouteTemplate
 from autocrud.resource_manager.basic import Encoding
-from autocrud.types import IResourceManager, RevisionInfo
+from autocrud.types import (
+    IResourceManager,
+    RevisionInfo,
+)
 
 
 class User(Struct):
@@ -359,12 +362,45 @@ class TestAutocrudGetPartial:
         for partial, expected in cases:
             self._check(mgr, info, partial, expected)
 
-    def test_get_needs_pruning(self):
-        from autocrud.resource_manager.partial import _needs_pruning
+    def test_prune_object_preserves_identity_when_no_index_or_partial_slice(self):
+        """``prune_object`` is an identity for paths whose list segments are
+        either field-only, full-slice (``:``) or wildcard (``-``). It only
+        builds a pruned copy when the request asks for specific indices or
+        non-trivial slices; this is the user-observable contract of the
+        underlying optimisation.
+        """
+        from autocrud.resource_manager.partial import prune_object
 
-        assert not _needs_pruning([["name"], ["age"]])
-        assert _needs_pruning([["slaves", "0", "name"]])
-        assert not _needs_pruning([["slaves", ":", "name"]])
-        assert _needs_pruning([["slaves", "1:3", "name"]])
-        assert _needs_pruning([["slaves", "::2", "name"]])
-        assert not _needs_pruning([["slaves", "-", "name"]])
+        master = Manager(
+            name="Alice",
+            age=30,
+            slaves=[
+                Manager(name="Dave", age=30),
+                Manager(name="Eve", age=22),
+                Manager(name="Bob", age=18),
+            ],
+        )
+
+        # Plain field paths: nothing to prune; same instance returned.
+        assert prune_object(master, ["/name", "/age"]) is master
+
+        # Full-slice list path: nothing to prune; same instance returned.
+        assert prune_object(master, ["/slaves/:/name"]) is master
+
+        # Wildcard list path: nothing to prune; same instance returned.
+        assert prune_object(master, ["/slaves/-/name"]) is master
+
+        # Specific index requires pruning; result differs.
+        pruned = prune_object(master, ["/slaves/0/name"])
+        assert pruned is not master
+        assert [s.name for s in pruned.slaves] == ["Dave"]
+
+        # Non-trivial slice requires pruning.
+        pruned_slice = prune_object(master, ["/slaves/1:3/name"])
+        assert pruned_slice is not master
+        assert [s.name for s in pruned_slice.slaves] == ["Eve", "Bob"]
+
+        # Step slice requires pruning.
+        pruned_step = prune_object(master, ["/slaves/::2/name"])
+        assert pruned_step is not master
+        assert [s.name for s in pruned_step.slaves] == ["Dave", "Bob"]
