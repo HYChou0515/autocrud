@@ -203,6 +203,7 @@ plugins:
                 - guides/storage.md
                 - guides/performance.md
                 - guides/from-demo-to-production.md
+                - guides/upgrade-0.9.md
 
             - Contributing:
                 - contributing/docs.md
