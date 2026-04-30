@@ -78,6 +78,13 @@ Use helper accessors when you want to filter or sort on built-in resource metada
 | `QB.is_deleted()` | soft-delete flag |
 | `QB.schema_version()` | schema version |
 | `QB.total_revision_count()` | revision count |
+| `QB.rev_status()` | status of the current revision (`draft` / `stable`) |
+| `QB.rev_created_by()` | user who created the current revision |
+| `QB.rev_updated_by()` | user who last updated the current revision |
+| `QB.rev_created_time()` | when the current revision was created |
+| `QB.rev_updated_time()` | when the current revision was last updated |
+
+The `rev_*` helpers target the **current revision** of each resource. AutoCRUD keeps these fields as denormalized mirror values in the meta store, so filtering by them is efficient and does not require reading each revision individually.
 
 Example:
 
@@ -85,6 +92,9 @@ Example:
 QB.resource_id().starts_with("task-")
 QB.updated_by().ne("guest")
 QB.is_deleted().is_false()
+QB.rev_status().eq("draft")
+QB.rev_created_by().one_of(["alice", "bob"])
+QB.rev_created_time().last_n_days(7)
 ```
 
 ---
@@ -227,7 +237,7 @@ QB["items"].length() == 0
 ## Important behavior notes
 
 - QB works best with indexed resource fields and built-in metadata fields.
-- In HTTP requests, do not combine `qb` with `data_conditions`, `conditions`, `sorts`, or time-range/user filter parameters (`created_time_start`, `created_time_end`, `updated_time_start`, `updated_time_end`, `created_bys`, `updated_bys`). Those conflicts return HTTP 422.
+- In HTTP requests, do not combine `qb` with `data_conditions`, `conditions`, `sorts`, time-range/user filter parameters (`created_time_start`, `created_time_end`, `updated_time_start`, `updated_time_end`, `created_bys`, `updated_bys`), or revision filter parameters (`rev_statuses`, `rev_created_bys`, `rev_updated_bys`, `rev_created_time_start`, `rev_created_time_end`, `rev_updated_time_start`, `rev_updated_time_end`). Those conflicts return HTTP 422. Include those conditions inside the QB expression instead.
 - **`is_deleted` is the one exception**: it may be combined with `qb`. The server ANDs it into the QB conditions. Because Swagger sends `is_deleted=false` by default, QB expressions work in Swagger without any extra workaround.
 - Invalid or unsupported QB expressions return HTTP 400.
 - URL `limit` and `offset` override pagination values defined inside the QB expression itself.

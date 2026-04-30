@@ -124,6 +124,21 @@ QB.total_revision_count() > 3
 
 All built-in metadata accessors are filterable and sortable, including `resource_id`, `current_revision_id`, `created_time`, `updated_time`, `created_by`, `updated_by`, `is_deleted`, `schema_version`, and `total_revision_count`.
 
+### Revision mirror fields
+
+AutoCRUD stores a denormalized snapshot of the **current revision's** key attributes directly in `ResourceMeta`. These can be filtered and sorted without any extra revision reads:
+
+```python
+QB.rev_status().eq("draft")                     # only resources with a draft current revision
+QB.rev_status().eq("stable")                    # only stable
+QB.rev_created_by().one_of(["alice", "bob"])    # current revision created by alice or bob
+QB.rev_updated_by().ne("guest")                 # current revision not last touched by guest
+QB.rev_created_time().last_n_days(7)            # current revision created in the past week
+QB.rev_updated_time().this_month()              # current revision updated this month
+```
+
+These fields are kept in sync by AutoCRUD on every `create()`, `update()`, `modify()`, and `switch()` call.
+
 ---
 
 ## Low-level alternative
@@ -163,11 +178,11 @@ This is useful for generated clients or integrations that prefer explicit JSON-l
 ## Important limitations
 
 - queries only work reliably on metadata fields and indexed fields
-- if `qb` is used in HTTP requests, do not combine it with `data_conditions`, `conditions`, `sorts`, or time-range / user filter params such as `created_time_start`, `created_time_end`, `updated_time_start`, `updated_time_end`, `created_bys`, or `updated_bys`; conflicting requests return HTTP 422
+- if `qb` is used in HTTP requests, do not combine it with `data_conditions`, `conditions`, `sorts`, time-range / user filter params (`created_time_start`, `created_time_end`, `updated_time_start`, `updated_time_end`, `created_bys`, `updated_bys`), or revision filter params (`rev_statuses`, `rev_created_bys`, `rev_updated_bys`, `rev_created_time_start`, `rev_created_time_end`, `rev_updated_time_start`, `rev_updated_time_end`); conflicting requests return HTTP 422
 - **`is_deleted` is the one exception**: it may be combined with `qb`. The server ANDs it into the QB conditions automatically. Swagger always sends `is_deleted=false` by default, so QB expressions work in Swagger out of the box.
 - invalid or unsupported QB expressions return HTTP 400
 - URL `limit` and `offset` override pagination values defined inside the QB expression
-- for other metadata filtering in QB mode (time ranges, creator filters, etc.), include them directly in the expression, for example `QB.created_time().last_n_days(7)` or `QB.created_by().eq("alice")`
+- for metadata filtering in QB mode (time ranges, creator filters, revision filters, etc.), include them directly in the expression — for example `QB.created_time().last_n_days(7)`, `QB.created_by().eq("alice")`, or `QB.rev_status().eq("draft")`
 
 ### QB error responses at a glance
 
