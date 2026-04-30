@@ -248,9 +248,13 @@ class ConditionBuilder(Query):
             result = result & (~cond)
         return result
 
-    # Dunder methods for chained comparisons
+    # Dunder methods for chained comparisons. ``__eq__`` / ``__ne__``
+    # are intentionally overridden to return a ``ConditionBuilder``
+    # rather than ``bool`` — this enables the query DSL syntax
+    # ``QB.foo == 1``. The override violates Liskov; suppressed
+    # below since the change is intentional.
     # These allow: 3 <= QB.field <= 5, QB.foo == QB.bar == 2
-    def __eq__(self, value: Any) -> "ConditionBuilder":
+    def __eq__(self, value: Any) -> "ConditionBuilder":  # ty: ignore[invalid-method-override]
         """Support chained comparison: condition == value.
 
         Example:
@@ -268,7 +272,7 @@ class ConditionBuilder(Query):
             )
         )
 
-    def __ne__(self, value: Any) -> "ConditionBuilder":
+    def __ne__(self, value: Any) -> "ConditionBuilder":  # ty: ignore[invalid-method-override]
         """Support chained comparison: condition != value."""
         if not isinstance(self._condition, DataSearchCondition):
             raise TypeError(
@@ -1324,7 +1328,9 @@ class QB(metaclass=QueryBuilderMeta):
         return ConditionBuilder(
             DataSearchGroup(
                 operator=DataSearchLogicOperator.and_op,
-                conditions=[c._condition for c in conditions],
+                conditions=[
+                    c._condition for c in conditions if c._condition is not None
+                ],
             )
         )
 
@@ -1350,7 +1356,9 @@ class QB(metaclass=QueryBuilderMeta):
         return ConditionBuilder(
             DataSearchGroup(
                 operator=DataSearchLogicOperator.or_op,
-                conditions=[c._condition for c in conditions],
+                conditions=[
+                    c._condition for c in conditions if c._condition is not None
+                ],
             )
         )
 

@@ -37,9 +37,9 @@ class RedisMetaStore(IFastMetaStore):
         data = self._redis.get(key)
         if data is None:
             raise KeyError(pk)
-        return self._serializer.decode(data)
+        return self._serializer.decode(data)  # ty:ignore[invalid-argument-type]
 
-    def __setitem__(self, pk: str, meta: ResourceMeta) -> None:
+    def __setitem__(self, pk: str, meta: ResourceMeta) -> None:  # ty:ignore[invalid-method-override]
         key = self._get_key(pk)
         data = self._serializer.encode(meta)
         self._redis.set(key, data)
@@ -70,7 +70,7 @@ class RedisMetaStore(IFastMetaStore):
         for key in self._redis.scan_iter(match=pattern):
             data = self._redis.get(key)
             if data:
-                meta = self._serializer.decode(data)
+                meta = self._serializer.decode(data)  # ty:ignore[invalid-argument-type]
                 metas.append(meta)
 
         try:
@@ -90,7 +90,7 @@ class RedisMetaStore(IFastMetaStore):
         for key in self._redis.scan_iter(match=pattern):
             data = self._redis.get(key)
             if data:
-                meta = self._serializer.decode(data)
+                meta = self._serializer.decode(data)  # ty:ignore[invalid-argument-type]
                 if is_match_query(meta, query):
                     results.append(meta)
         results.sort(key=get_sort_fn([] if query.sorts is UNSET else query.sorts))

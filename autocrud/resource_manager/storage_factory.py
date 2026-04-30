@@ -29,6 +29,16 @@ class IStorageFactory(ABC):
         model_name: str,
     ) -> IStorage: ...
 
+    def build_blob_store(self) -> IBlobStore | None:
+        """Optional hook: return a shared blob store, or ``None`` to defer.
+
+        Factories that own an object backend (S3, etc.) override this so
+        callers can construct a blob store from the same connection /
+        configuration without duck-typing. Default returns ``None`` —
+        callers should fall back to a project-default blob store.
+        """
+        return None
+
 
 class MemoryStorageFactory(IStorageFactory):
     def build(

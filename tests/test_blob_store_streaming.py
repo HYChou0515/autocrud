@@ -44,7 +44,7 @@ class TestDiskBlobStoreGetStream:
         store = DiskBlobStore(tmp_path)
         data = b"A" * 1000
         result = store.put(data, content_type="text/plain")
-        stream_info = store.get_stream(result.file_id)
+        stream_info = store.get_stream(result.file_id)  # ty:ignore[invalid-argument-type]
 
         assert stream_info is not None
         assert isinstance(stream_info, BlobStreamInfo)
@@ -56,7 +56,7 @@ class TestDiskBlobStoreGetStream:
         store = DiskBlobStore(tmp_path)
         data = b"hello streaming world"
         result = store.put(data)
-        stream_info = store.get_stream(result.file_id)
+        stream_info = store.get_stream(result.file_id)  # ty:ignore[invalid-argument-type]
 
         chunks = list(stream_info.iterator)
         assert b"".join(chunks) == data
@@ -70,7 +70,7 @@ class TestDiskBlobStoreGetStream:
         """When no content_type specified, it should be UNSET."""
         store = DiskBlobStore(tmp_path)
         result = store.put(b"no ct")
-        stream_info = store.get_stream(result.file_id)
+        stream_info = store.get_stream(result.file_id)  # ty:ignore[invalid-argument-type]
         assert stream_info is not None
         # content_type depends on whether magic is available; just verify it's set
         assert stream_info.size == 5
@@ -81,7 +81,7 @@ class TestDiskBlobStoreGetStream:
         # 16 MB of data → should yield multiple chunks with 8 MB chunk size
         data = b"X" * (16 * 1024 * 1024)
         result = store.put(data)
-        stream_info = store.get_stream(result.file_id)
+        stream_info = store.get_stream(result.file_id)  # ty:ignore[invalid-argument-type]
 
         chunks = list(stream_info.iterator)
         assert len(chunks) == 2
@@ -96,7 +96,7 @@ class TestS3BlobStoreGetStream:
         store = _make_store(fake, prefix="gs1/")
         data = b"s3 stream test data"
         result = store.put(data, content_type="text/plain")
-        stream_info = store.get_stream(result.file_id)
+        stream_info = store.get_stream(result.file_id)  # ty:ignore[invalid-argument-type]
 
         assert stream_info is not None
         assert isinstance(stream_info, BlobStreamInfo)
@@ -108,7 +108,7 @@ class TestS3BlobStoreGetStream:
         store = _make_store(fake, prefix="gs2/")
         data = b"hello s3 streaming"
         result = store.put(data)
-        stream_info = store.get_stream(result.file_id)
+        stream_info = store.get_stream(result.file_id)  # ty:ignore[invalid-argument-type]
 
         chunks = list(stream_info.iterator)
         assert b"".join(chunks) == data
@@ -130,7 +130,7 @@ class TestS3BlobStoreGetStream:
         store.upload_to_session(uid, b"part2", part_number=2)
         result = store.finalize_upload_session(uid)
 
-        stream_info = store.get_stream(result.file_id)
+        stream_info = store.get_stream(result.file_id)  # ty:ignore[invalid-argument-type]
         assert stream_info is not None
         chunks = list(stream_info.iterator)
         assert b"".join(chunks) == b"part1-part2"

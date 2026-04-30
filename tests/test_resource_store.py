@@ -71,7 +71,7 @@ class TestIResourceStore:
             prefix = f"test-cached-{tmp_path.name}/"
             caches = [MemoryCache()]
             store = CachedS3ResourceStore(
-                caches=caches,
+                caches=caches,  # ty:ignore[invalid-argument-type]
                 encoding=Encoding.json,
                 endpoint_url="http://localhost:9000",
                 bucket="test-autocrud",

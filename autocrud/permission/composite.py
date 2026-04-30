@@ -7,6 +7,7 @@
 """
 
 import logging
+from collections.abc import Callable
 
 from autocrud.permission.checker import (
     IPermissionChecker,
@@ -50,9 +51,9 @@ class ConditionalPermissionChecker(IPermissionChecker):
     """條件式權限檢查器 - 基於資源內容的動態權限檢查"""
 
     def __init__(self):
-        self._conditions: list[callable] = []
+        self._conditions: list[Callable] = []
 
-    def add_condition(self, condition: callable) -> None:
+    def add_condition(self, condition: Callable) -> None:
         """添加條件函數
 
         Args:

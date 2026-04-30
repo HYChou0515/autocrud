@@ -257,7 +257,7 @@ class SQLAlchemyMetaStore(ISlowMetaStore):
                     .where(t.c.resource_id == row["resource_id"])
                     .values(**{k: v for k, v in row.items() if k != "resource_id"})
                 )
-                if result.rowcount == 0:
+                if result.rowcount == 0:  # ty:ignore[unresolved-attribute]
                     session.execute(t.insert().values(**row))
 
     # ------------------------------------------------------------------
@@ -273,7 +273,7 @@ class SQLAlchemyMetaStore(ISlowMetaStore):
                 raise KeyError(pk)
             return self._serializer.decode(row[0])
 
-    def __setitem__(self, pk: str, meta: ResourceMeta) -> None:
+    def __setitem__(self, pk: str, meta: ResourceMeta) -> None:  # ty:ignore[invalid-method-override]
         t = self._table
         row = self._meta_to_row(meta)
         with self._session() as session:
@@ -282,14 +282,14 @@ class SQLAlchemyMetaStore(ISlowMetaStore):
                 .where(t.c.resource_id == pk)
                 .values(**{k: v for k, v in row.items() if k != "resource_id"})
             )
-            if result.rowcount == 0:
+            if result.rowcount == 0:  # ty:ignore[unresolved-attribute]
                 session.execute(t.insert().values(**row))
 
     def __delitem__(self, pk: str) -> None:
         t = self._table
         with self._session() as session:
             result = session.execute(delete(t).where(t.c.resource_id == pk))
-            if result.rowcount == 0:
+            if result.rowcount == 0:  # ty:ignore[unresolved-attribute]
                 raise KeyError(pk)
 
     def __iter__(self) -> Generator[str]:
@@ -813,7 +813,8 @@ class SQLAlchemyMetaStore(ISlowMetaStore):
             if isinstance(value, (list, dict)):
                 elem = self._jsonb_element(field_path)
                 return elem == func.cast(
-                    json.dumps(value), _jsonb_cast_type(self._get_dialect())
+                    json.dumps(value),  # ty:ignore[invalid-argument-type]
+                    _jsonb_cast_type(self._get_dialect()),
                 )
             if isinstance(value, bool):
                 # For SQLite: json_extract returns 1/0, need to use json_type which returns "true"/"false"
@@ -843,7 +844,8 @@ class SQLAlchemyMetaStore(ISlowMetaStore):
                 return (jsonb_text.is_(None)) | (
                     elem
                     != func.cast(
-                        json.dumps(value), _jsonb_cast_type(self._get_dialect())
+                        json.dumps(value),  # ty:ignore[invalid-argument-type]
+                        _jsonb_cast_type(self._get_dialect()),
                     )
                 )
             if isinstance(value, bool):

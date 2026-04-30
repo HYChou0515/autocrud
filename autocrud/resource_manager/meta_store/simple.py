@@ -70,7 +70,7 @@ class DiskMetaStore(IFastMetaStore):
     def _get_path(self, pk: str) -> Path:
         return self._rootdir / f"{pk}{self._suffix}"
 
-    def __contains__(self, pk: str):
+    def __contains__(self, pk: str):  # ty:ignore[invalid-method-override]
         path = self._get_path(pk)
         return path.exists()
 

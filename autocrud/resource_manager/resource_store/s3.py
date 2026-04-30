@@ -15,7 +15,7 @@ from autocrud.types import RevisionInfo
 try:
     from botocore.exceptions import ClientError as _ClientError
 except ImportError:  # pragma: no cover
-    _ClientError = None  # type: ignore[assignment,misc]
+    _ClientError = None  # type: ignore[assignment,misc]  # ty:ignore[invalid-assignment]
 
 
 class S3ResourceStore(IResourceStore):
@@ -185,7 +185,7 @@ class S3ResourceStore(IResourceStore):
         data_key = self._get_raw_data_key(uid)
         try:
             response = self.client.get_object(Bucket=self.bucket, Key=data_key)
-            yield response["Body"]
+            yield response["Body"]  # ty:ignore[invalid-yield]
             # data_bytes = response["Body"].read()
             # yield io.BytesIO(data_bytes)
         except _ClientError as e:
@@ -284,7 +284,7 @@ class S3ResourceStore(IResourceStore):
         # Materialise raw bytes once, outside the pool
         prepared: list[tuple[RevisionInfo, bytes]] = []
         for info, data in item_list:
-            raw = data.read() if hasattr(data, "read") else data
+            raw = data.read() if hasattr(data, "read") else data  # ty:ignore[call-non-callable]
             prepared.append((info, raw))
 
         with ThreadPoolExecutor(max_workers=max_workers) as pool:
@@ -339,9 +339,10 @@ class S3ResourceStore(IResourceStore):
 
     def dump_all_revisions(
         self,
+        *,
         resource_ids: frozenset[str] | None = None,
         max_workers: int = 10,
-    ) -> dict[str, list[tuple[RevisionInfo, bytes]]]:
+    ) -> dict[str, list[tuple[RevisionInfo, bytes]]] | None:
         """Bulk-export all revisions with a single listing + concurrent fetches.
 
         Instead of 6 serial S3 calls per resource (2 listings + 4 GETs),

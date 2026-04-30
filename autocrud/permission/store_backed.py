@@ -89,7 +89,7 @@ class StoreBackedPermissionChecker(IPermissionChecker, Generic[T]):
         self.storage_factory = storage_factory or MemoryStorageFactory()
         storage = self.storage_factory.build(self.storage_name)
         self.pm = ResourceManager[T](
-            self.data_type,
+            self.data_type,  # ty:ignore[invalid-argument-type]
             storage=storage,
             indexed_fields=self.indexed_fields,
             permission_checker=RootOnly(root_user),

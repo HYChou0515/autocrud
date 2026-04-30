@@ -126,7 +126,7 @@ class BasicMessageQueue(IMessageQueue[T], Generic[T]):
                     stacklevel=2,
                 )
                 ctx = JobContext(resource)
-            return self._do(resource, job_context=ctx)
+            return self._do(resource, job_context=ctx)  # ty:ignore[unknown-argument]
         return self._do(resource)
 
     @property
@@ -214,7 +214,7 @@ class BasicMessageQueue(IMessageQueue[T], Generic[T]):
         job.status = TaskStatus.COMPLETED
         job.errmsg = result
         if _artifact is not None:
-            job.artifact = _artifact
+            job.artifact = _artifact  # ty:ignore[invalid-assignment]
 
         with self._rm_using(resource.info.created_by):
             self.rm.create_or_update(resource_id, job)

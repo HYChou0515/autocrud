@@ -164,10 +164,10 @@ def create_sample_data(crud: AutoCRUD):
         ),
     ]
 
-    with guild_manager.meta_provide(current_user, current_time):
+    with guild_manager.meta_provide(current_user, current_time):  # ty:ignore[unresolved-attribute]
         for guild in guilds:
             try:
-                guild_manager.create(guild)
+                guild_manager.create(guild)  # ty:ignore[unresolved-attribute]
                 print(f"✅ 創建公會: {guild.name} (存於 S3)")
             except Exception as e:
                 print(f"❌ 公會創建失敗: {e}")
@@ -228,10 +228,10 @@ def create_sample_data(crud: AutoCRUD):
         ),
     ]
 
-    with character_manager.meta_provide(current_user, current_time):
+    with character_manager.meta_provide(current_user, current_time):  # ty:ignore[unresolved-attribute]
         for character in characters:
             try:
-                character_manager.create(character)
+                character_manager.create(character)  # ty:ignore[unresolved-attribute]
                 print(f"✅ 創建角色: {character.name} (Lv.{character.level}) - 存於 S3")
             except Exception as e:
                 print(f"❌ 角色創建失敗: {e}")
@@ -271,12 +271,12 @@ def create_sample_data(crud: AutoCRUD):
         ),
     ]
 
-    with equipment_manager.meta_provide(current_user, current_time):
+    with equipment_manager.meta_provide(current_user, current_time):  # ty:ignore[unresolved-attribute]
         for equipment in equipment_list:
             try:
-                equipment_manager.create(equipment)
+                equipment_manager.create(equipment)  # ty:ignore[unresolved-attribute]
                 icon_info = (
-                    f"含圖片 ({len(equipment.icon.data)} bytes)"
+                    f"含圖片 ({len(equipment.icon.data)} bytes)"  # ty:ignore[invalid-argument-type]
                     if equipment.icon
                     else "無圖片"
                 )
@@ -298,7 +298,7 @@ def demonstrate_s3_features(crud: AutoCRUD):
 
     print("\n📊 1. 使用 QueryBuilder 搜尋 (數據來自 S3)")
     query = QB["level"].gte(80).sort("-level").limit(3)
-    metas = character_manager.search_resources(query)
+    metas = character_manager.search_resources(query)  # ty:ignore[invalid-argument-type]
     print(f"   找到 {len(metas)} 個高等級角色:")
     for meta in metas:
         resource = character_manager.get(meta.resource_id)
@@ -336,7 +336,7 @@ def demonstrate_s3_features(crud: AutoCRUD):
     print("\n📊 3. 二進制數據存儲 (Blob 存於 S3)")
     equipment_manager = crud.get_resource_manager(Equipment)
     if equipment_manager:
-        eq_metas = equipment_manager.search_resources(QB["price"].gte(1).limit(1))
+        eq_metas = equipment_manager.search_resources(QB["price"].gte(1).limit(1))  # ty:ignore[invalid-argument-type]
         if eq_metas:
             eq_resource = equipment_manager.get(eq_metas[0].resource_id)
             if eq_resource.data.icon:
@@ -443,7 +443,7 @@ def main():
             ("gold", int),
             ("guild_name", str | None),
             ("character_class", CharacterClass),
-        ],
+        ],  # ty:ignore[invalid-argument-type]
     )
     crud.add_model(Guild)
     crud.add_model(Equipment, indexed_fields=[("price", int)])

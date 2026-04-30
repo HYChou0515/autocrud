@@ -14,7 +14,7 @@ from __future__ import annotations
 
 import datetime as dt
 import json
-from typing import Optional
+from typing import Any, Optional
 
 import msgspec
 from fastapi import HTTPException, Query, Request
@@ -199,7 +199,7 @@ def build_query(
                 detail=f"Invalid QB expression: {e!s}",
             )
 
-    query_kwargs = {
+    query_kwargs: dict[str, Any] = {
         "limit": q.limit,
         "offset": q.offset,
     }

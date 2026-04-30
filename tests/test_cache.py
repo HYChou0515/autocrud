@@ -13,7 +13,7 @@ def test_memory_cache_data_expiration():
     data = b"some data"
 
     # Set a very short TTL
-    cache.put_data(resource_id, revision_id, schema_version, data, ttl=0.1)
+    cache.put_data(resource_id, revision_id, schema_version, data, ttl=0.1)  # ty:ignore[invalid-argument-type]
 
     # Wait for expiration
     time.sleep(0.2)
@@ -42,7 +42,7 @@ def test_memory_cache_info_expiration():
     )
 
     # Set a very short TTL
-    cache.put_revision_info(info, ttl=0.1)
+    cache.put_revision_info(info, ttl=0.1)  # ty:ignore[invalid-argument-type]
 
     # Wait for expiration
     time.sleep(0.2)

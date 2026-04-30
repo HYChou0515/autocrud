@@ -496,7 +496,7 @@ def create_sample_data():
     skill_manager = crud.get_resource_manager(Skill)
     character_manager = crud.get_resource_manager(Character)
     equipment_manager = crud.get_resource_manager(Equipment)
-    pet_manager = crud.get_resource_manager(Pet)
+    pet_manager = crud.get_resource_manager(Pet)  # ty:ignore[invalid-argument-type]
 
     if not all(
         [
@@ -937,7 +937,7 @@ def create_sample_data():
             mp=80,
             attack=70,
             defense=55,
-            owner_id=character_ids.get("資料庫女王"),
+            owner_id=character_ids.get("資料庫女王"),  # ty:ignore[invalid-argument-type]
         ),
         Dog(
             name="除錯小柯基",
@@ -954,7 +954,7 @@ def create_sample_data():
             species="火龍",
             speed=80,
             stamina=500,
-            owner_id=character_ids.get("RESTful 劍聖"),
+            owner_id=character_ids.get("RESTful 劍聖"),  # ty:ignore[invalid-argument-type]
         ),
         Mount(
             name="查詢獨角獸",
@@ -968,7 +968,7 @@ def create_sample_data():
             species="飛馬",
             speed=70,
             stamina=450,
-            owner_id=character_ids.get("AutoCRUD 大神"),
+            owner_id=character_ids.get("AutoCRUD 大神"),  # ty:ignore[invalid-argument-type]
         ),
         Dog(
             name="SQL 注入偵測犬",
@@ -985,7 +985,7 @@ def create_sample_data():
             species="毛驢",
             speed=20,
             stamina=200,
-            owner_id=character_ids.get("新手小白"),
+            owner_id=character_ids.get("新手小白"),  # ty:ignore[invalid-argument-type]
         ),
     ]
 
@@ -1138,7 +1138,7 @@ def demonstrate_qb_queries():
 
     print("\n📊 範例 1: 基本查詢 - 搜尋高等級角色 (level >= 50)")
     query1 = QB["level"].gte(50).limit(10)
-    metas1 = character_manager.search_resources(query1)
+    metas1 = character_manager.search_resources(query1)  # ty:ignore[invalid-argument-type]
     print(f"   找到 {len(metas1)} 個高等級角色:")
     for meta in metas1:
         resource = character_manager.get(meta.resource_id)
@@ -1148,7 +1148,7 @@ def demonstrate_qb_queries():
         "\n📊 範例 2: 複雜條件 - 中等級且有公會的角色 (20 <= level <= 80 AND guild_name)"
     )
     query2 = (QB["level"].between(20, 80) & QB["guild_name"].is_not_null()).limit(5)
-    metas2 = character_manager.search_resources(query2)
+    metas2 = character_manager.search_resources(query2)  # ty:ignore[invalid-argument-type]
     print(f"   找到 {len(metas2)} 個符合條件的角色:")
     for meta in metas2:
         resource = character_manager.get(meta.resource_id)
@@ -1167,7 +1167,7 @@ def demonstrate_qb_queries():
         )
         .limit(5)
     )
-    metas3 = character_manager.search_resources(query3)
+    metas3 = character_manager.search_resources(query3)  # ty:ignore[invalid-argument-type]
     print(f"   找到 {len(metas3)} 個富有的戰士:")
     for meta in metas3:
         resource = character_manager.get(meta.resource_id)
@@ -1177,7 +1177,7 @@ def demonstrate_qb_queries():
 
     print("\n📊 範例 4: OR 查詢 - 高等級或高金幣 (level >= 80 OR gold >= 500000)")
     query4 = (QB["level"].gte(80) | QB["gold"].gte(500000)).limit(5)
-    metas4 = character_manager.search_resources(query4)
+    metas4 = character_manager.search_resources(query4)  # ty:ignore[invalid-argument-type]
     print(f"   找到 {len(metas4)} 個角色:")
     for meta in metas4:
         resource = character_manager.get(meta.resource_id)
@@ -1187,7 +1187,7 @@ def demonstrate_qb_queries():
 
     print("\n📊 範例 5: 排序 - 按等級降序，取前3名")
     query5 = QB["level"].gte(1).sort("-level").limit(3)  # 字串排序：-表示降序
-    metas5 = character_manager.search_resources(query5)
+    metas5 = character_manager.search_resources(query5)  # ty:ignore[invalid-argument-type]
     print("   🏆 等級排行榜 TOP 3:")
     for i, meta in enumerate(metas5, 1):
         resource = character_manager.get(meta.resource_id)
@@ -1197,7 +1197,7 @@ def demonstrate_qb_queries():
 
     print("\n📊 範例 6: 使用 QB 內建方法排序 - 按金幣降序")
     query6 = QB["gold"].gte(1).sort(QB["gold"].desc()).limit(3)
-    metas6 = character_manager.search_resources(query6)
+    metas6 = character_manager.search_resources(query6)  # ty:ignore[invalid-argument-type]
     print("   💰 財富排行榜 TOP 3:")
     for i, meta in enumerate(metas6, 1):
         resource = character_manager.get(meta.resource_id)
@@ -1205,7 +1205,7 @@ def demonstrate_qb_queries():
 
     print("\n📊 範例 7: 分頁查詢 - 第1頁，每頁2個")
     query7 = QB["level"].gte(1).sort("-created_at").page(1, 2)  # 第1頁，每頁2個
-    metas7 = character_manager.search_resources(query7)
+    metas7 = character_manager.search_resources(query7)  # ty:ignore[invalid-argument-type]
     print(f"   第1頁結果 (共 {len(metas7)} 個):")
     for meta in metas7:
         resource = character_manager.get(meta.resource_id)
@@ -1213,7 +1213,7 @@ def demonstrate_qb_queries():
 
     print("\n📊 範例 8: 字串包含查詢 - 名字包含 '大' 的角色")
     query8 = QB["name"].contains("大").limit(5)
-    metas8 = character_manager.search_resources(query8)
+    metas8 = character_manager.search_resources(query8)  # ty:ignore[invalid-argument-type]
     print(f"   找到 {len(metas8)} 個角色:")
     for meta in metas8:
         resource = character_manager.get(meta.resource_id)
@@ -1222,7 +1222,7 @@ def demonstrate_qb_queries():
     print("\n📊 範例 9: IN 查詢 - 特定公會的成員")
     target_guilds = ["AutoCRUD 開發者聯盟", "API 法師學院"]
     query9 = QB["guild_name"].in_(target_guilds).limit(10)
-    metas9 = character_manager.search_resources(query9)
+    metas9 = character_manager.search_resources(query9)  # ty:ignore[invalid-argument-type]
     print(f"   找到 {len(metas9)} 個目標公會成員:")
     for meta in metas9:
         resource = character_manager.get(meta.resource_id)
@@ -1235,7 +1235,7 @@ def demonstrate_qb_queries():
         .sort(QB.created_time().desc())
         .limit(3)
     )
-    metas10 = character_manager.search_resources(query10)
+    metas10 = character_manager.search_resources(query10)  # ty:ignore[invalid-argument-type]
     print(f"   最近1小時內創建的角色 ({len(metas10)} 個):")
     for meta in metas10:
         resource = character_manager.get(meta.resource_id)
@@ -1251,7 +1251,7 @@ def demonstrate_qb_queries():
         .sort("-level")
         .limit(5)
     )
-    metas11 = character_manager.search_resources(query11)
+    metas11 = character_manager.search_resources(query11)  # ty:ignore[invalid-argument-type]
     print(f"   找到 {len(metas11)} 個非新手村角色:")
     for meta in metas11:
         resource = character_manager.get(meta.resource_id)
@@ -1259,7 +1259,7 @@ def demonstrate_qb_queries():
 
     print("\n📊 範例 12: first() 使用 - 取得等級最高的角色")
     query12 = QB["level"].gte(1).sort("-level").first()
-    metas12 = character_manager.search_resources(query12)
+    metas12 = character_manager.search_resources(query12)  # ty:ignore[invalid-argument-type]
     if metas12:
         top_meta = metas12[0]
         top = character_manager.get(top_meta.resource_id)
@@ -1353,7 +1353,7 @@ def configure_crud():
             ("guild_name", str | None),  # 用於公會查詢、is_not_null 檢查
             ("character_class", CharacterClass),  # 用於職業篩選
             # guild_id 會由 Ref 自動索引，不需手動添加
-        ],
+        ],  # ty:ignore[invalid-argument-type]
     )
     crud.add_model(Schema(Guild, "v1", validator=validate_guild))  # Callable 風格驗證器
     crud.add_model(
@@ -1367,7 +1367,7 @@ def configure_crud():
         Schema(Equipment, "v1", validator=validate_equipment)
     )  # Callable 風格驗證器
     crud.add_model(
-        Schema(Pet, "v1"),
+        Schema(Pet, "v1"),  # ty:ignore[invalid-argument-type]
         name="pet",
         indexed_fields=[
             ("name", str),
@@ -1395,7 +1395,7 @@ def configure_crud():
     crud.add_model(
         GameEvent,
         indexed_fields=[("status", str)],
-        job_handler=process_game_event,
+        job_handler=process_game_event,  # ty:ignore[invalid-argument-type]
     )
 
     @crud.update_action(
@@ -1467,7 +1467,7 @@ def configure_crud():
         y: Url,
         name: Annotated[str, Body(embed=True), Ref("equipment")],
         z: UploadFile,
-        f: struct_to_pydantic(Skill),  # type: ignore[reportInvalidTypeForm]
+        f: struct_to_pydantic(Skill),  # type: ignore[reportInvalidTypeForm]  # ty:ignore[invalid-type-form]
     ):
         time.sleep(100)
         return Character(
@@ -1591,7 +1591,7 @@ def create_sample_events():
         GameEventPayload(
             event_type=GameEventType.LEVEL_UP,
             character_name="新手小白",
-            character_id=character_revs.get("新手小白").rpartition(":")[0],
+            character_id=character_revs.get("新手小白").rpartition(":")[0],  # ty:ignore[unresolved-attribute]
             description="角色升級到 6 級",
             reward_exp=500,
             reward_gold=100,
@@ -1606,7 +1606,7 @@ def create_sample_events():
         GameEventPayload(
             event_type=GameEventType.DAILY_LOGIN,
             character_name="API 魔法師",
-            character_id=character_revs.get("API 魔法師").rpartition(":")[0],
+            character_id=character_revs.get("API 魔法師").rpartition(":")[0],  # ty:ignore[unresolved-attribute]
             description="每日登入獎勵",
             reward_exp=200,
             reward_gold=50,
@@ -1622,7 +1622,7 @@ def create_sample_events():
         GameEventPayload(
             event_type=GameEventType.EQUIPMENT_ENHANCE,
             character_name="Schema 設計師",
-            character_id=character_revs.get("Schema 設計師").rpartition(":")[0],
+            character_id=character_revs.get("Schema 設計師").rpartition(":")[0],  # ty:ignore[unresolved-attribute]
             description="裝備強化成功",
             reward_gold=0,
             extra_data={"equipment_name": "精準查詢弓", "enhance_level": 5},

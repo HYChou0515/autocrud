@@ -228,7 +228,7 @@ class MemoryBlobStore(BasicBlobStore):
         return BlobUploadSession(
             upload_id=state.upload_id,
             file_id="",
-            status=state.status,
+            status=state.status,  # ty:ignore[invalid-argument-type]
             upload_method="proxy",
             content_type=state.content_type,
             size=state.size,
@@ -556,7 +556,7 @@ class DiskBlobStore(BasicBlobStore):
         return BlobUploadSession(
             upload_id=meta.upload_id,
             file_id="",
-            status=meta.status,
+            status=meta.status,  # ty:ignore[invalid-argument-type]
             upload_method="proxy",
             content_type=meta.content_type,
             size=meta.size,

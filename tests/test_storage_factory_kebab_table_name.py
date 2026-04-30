@@ -170,7 +170,7 @@ class TestSafeNamingIntegration:
     @pytest.fixture(autouse=True)
     def setup(self, meta_store_type: str, model_name: str, my_tmpdir: Path):
         meta_store = get_meta_store(meta_store_type, tmpdir=my_tmpdir)
-        resource_store = MemoryResourceStore(encoding="msgpack")
+        resource_store = MemoryResourceStore(encoding="msgpack")  # ty:ignore[invalid-argument-type]
         storage = SimpleStorage(
             meta_store=meta_store,
             resource_store=resource_store,

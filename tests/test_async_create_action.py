@@ -177,7 +177,7 @@ class TestAsyncJobModelGeneration:
         crud.apply(app)
 
         job_rm = crud.resource_managers["generate-article-job"]
-        assert job_rm.message_queue is not None
+        assert job_rm.message_queue is not None  # ty:ignore[unresolved-attribute]
 
 
 # ---------------------------------------------------------------------------
@@ -1041,8 +1041,8 @@ class TestAsyncJobBuilderPathTemplates:
         )
         assert issubclass(PayloadType, Struct)
         instance = PayloadType(name="hello", count=5)
-        assert instance.name == "hello"
-        assert instance.count == 5
+        assert instance.name == "hello"  # ty:ignore[unresolved-attribute]
+        assert instance.count == 5  # ty:ignore[unresolved-attribute]
 
 
 # ---------------------------------------------------------------------------

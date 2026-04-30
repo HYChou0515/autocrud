@@ -38,7 +38,7 @@ def test_add_model_with_job_handler_factory():
 
     # Get resource manager to access MQ
     rm = autocrud.get_resource_manager(MyJob)
-    mq = rm.message_queue
+    mq = rm.message_queue  # ty:ignore[unresolved-attribute]
 
     # The 'do' callback in MQ should be our LazyJobHandler
     # Implementation detail check: SimpleMessageQueue stores callback in self._do
@@ -83,7 +83,7 @@ def test_add_model_with_job_handler_priority():
     )
 
     rm = autocrud.get_resource_manager("job-priority")
-    mq = rm.message_queue
+    mq = rm.message_queue  # ty:ignore[unresolved-attribute]
 
     assert isinstance(mq._do, LazyJobHandler)
 

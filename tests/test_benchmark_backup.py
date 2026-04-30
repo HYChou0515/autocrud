@@ -278,7 +278,7 @@ def _format_size(nbytes: int) -> str:
     for unit in ("B", "KB", "MB", "GB"):
         if nbytes < 1024:
             return f"{nbytes:.1f} {unit}"
-        nbytes /= 1024
+        nbytes /= 1024  # ty:ignore[invalid-assignment]
     return f"{nbytes:.1f} TB"
 
 
@@ -543,8 +543,8 @@ class TestBackupBenchmark:
         for model_name, stat in stats.items():
             src_rm = crud_src.resource_managers[model_name]
             tgt_rm = crud_tgt.resource_managers[model_name]
-            src_count = len(list(src_rm.iter_metas()))
-            tgt_count = len(list(tgt_rm.iter_metas()))
+            src_count = len(list(src_rm.iter_metas()))  # ty:ignore[unresolved-attribute]
+            tgt_count = len(list(tgt_rm.iter_metas()))  # ty:ignore[unresolved-attribute]
             assert src_count == tgt_count, (
                 f"{model_name}: source has {src_count} but target has {tgt_count}"
             )
@@ -553,7 +553,7 @@ class TestBackupBenchmark:
         # Verify data content for a sample
         src_rm = crud_src.get_resource_manager(Character)
         tgt_rm = crud_tgt.get_resource_manager(Character)
-        for meta in list(src_rm.iter_metas())[:10]:
+        for meta in list(src_rm.iter_metas())[:10]:  # ty:ignore[unresolved-attribute]
             src_data = src_rm.get(meta.resource_id)
             tgt_data = tgt_rm.get(meta.resource_id)
             assert src_data == tgt_data

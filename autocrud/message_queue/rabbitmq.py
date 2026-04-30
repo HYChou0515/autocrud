@@ -97,7 +97,7 @@ class RabbitMQMessageQueue(DelayableMessageQueue[T], Generic[T]):
         :attr:`amqp_heartbeat_seconds` (default 600).
         """
         params = pika.URLParameters(self.amqp_url)
-        params.heartbeat = self.amqp_heartbeat_seconds
+        params.heartbeat = self.amqp_heartbeat_seconds  # ty:ignore[invalid-assignment]
         connection = pika.BlockingConnection(params)
         channel = connection.channel()
         try:
@@ -147,7 +147,7 @@ class RabbitMQMessageQueue(DelayableMessageQueue[T], Generic[T]):
         # Check if job has initial delay configured
         if self._should_apply_initial_delay(job):
             # Use periodic delay queue mechanism for initial delay
-            self._schedule_delayed_job(resource_id, job.periodic_initial_delay_seconds)
+            self._schedule_delayed_job(resource_id, job.periodic_initial_delay_seconds)  # ty:ignore[invalid-argument-type]
         else:
             # Publish Resource ID to RabbitMQ immediately
             with self._get_connection() as (_, channel):
@@ -272,7 +272,7 @@ class RabbitMQMessageQueue(DelayableMessageQueue[T], Generic[T]):
                 "x-message-ttl": interval_seconds * 1000,  # Convert to milliseconds
                 "x-dead-letter-exchange": "",  # Default exchange
                 "x-dead-letter-routing-key": self.queue_name,  # Route back to main queue
-            },
+            },  # ty:ignore[invalid-argument-type]
         )
 
         # Publish to delay queue
@@ -370,7 +370,7 @@ class RabbitMQMessageQueue(DelayableMessageQueue[T], Generic[T]):
 
                 # ACK via I/O thread
                 def _ack():
-                    ch.basic_ack(delivery_tag=method.delivery_tag)
+                    ch.basic_ack(delivery_tag=method.delivery_tag)  # ty:ignore[invalid-argument-type]
 
                 connection.add_callback_threadsafe(_ack)
 
@@ -383,7 +383,7 @@ class RabbitMQMessageQueue(DelayableMessageQueue[T], Generic[T]):
                 ctx.info(f"Job delayed retry: {e.delay_seconds}s")
 
                 def _ack_delay():
-                    ch.basic_ack(delivery_tag=method.delivery_tag)
+                    ch.basic_ack(delivery_tag=method.delivery_tag)  # ty:ignore[invalid-argument-type]
 
                 connection.add_callback_threadsafe(_ack_delay)
                 self._handle_delay_retry(
@@ -422,7 +422,7 @@ class RabbitMQMessageQueue(DelayableMessageQueue[T], Generic[T]):
                         exc,
                         job_max_retries=job_max,
                     )
-                    ch.basic_ack(delivery_tag=method.delivery_tag)
+                    ch.basic_ack(delivery_tag=method.delivery_tag)  # ty:ignore[invalid-argument-type]
 
                 connection.add_callback_threadsafe(_ack_fail)
 
@@ -533,7 +533,7 @@ class RabbitMQMessageQueue(DelayableMessageQueue[T], Generic[T]):
                         e,
                         job_max_retries=job_max_retries,
                     )
-                    ch.basic_ack(delivery_tag=method.delivery_tag)
+                    ch.basic_ack(delivery_tag=method.delivery_tag)  # ty:ignore[invalid-argument-type]
 
             channel.basic_qos(prefetch_count=1)
             channel.basic_consume(queue=self.queue_name, on_message_callback=callback)

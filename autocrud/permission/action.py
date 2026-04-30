@@ -47,7 +47,7 @@ class ActionBasedPermissionChecker(IPermissionChecker):
 
     def check_permission(self, context: PermissionContext) -> PermissionResult:
         """根據 action 分發到對應的處理器"""
-        handlers = [h for a, h in self._action_handlers.items() if context.action in a]
+        handlers = [h for a, h in self._action_handlers.items() if context.action in a]  # ty:ignore[unsupported-operator]
         for handler in it.chain.from_iterable(handlers):
             result = handler(context)
             if result != PermissionResult.not_applicable:
@@ -69,6 +69,6 @@ class ActionBasedPermissionChecker(IPermissionChecker):
             if not isinstance(handler, (list, tuple, set)):
                 handler = [handler]
             for h in handler:
-                checker.register_action_handler(action, h)
+                checker.register_action_handler(action, h)  # ty:ignore[invalid-argument-type]
 
         return checker

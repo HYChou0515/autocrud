@@ -233,7 +233,7 @@ def test_etag_cached_no_external_change(tmp_path: Path):
         head_object_call_count[0] += 1
         return original_head_object(*args, **kwargs)
 
-    store.client.head_object = mock_head_object
+    store.client.head_object = mock_head_object  # ty:ignore[invalid-assignment]
 
     # 第二次讀取（ETag相同，應該用cache）
     with store.get_data_bytes(

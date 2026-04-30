@@ -472,7 +472,7 @@ class TestAutoCRUDLoadIncremental:
         # Verify all 3 exist
         mgr2 = crud2.get_resource_manager(Item)
         for rid in ids1:
-            assert mgr2.storage.exists(rid)
+            assert mgr2.storage.exists(rid)  # ty:ignore[unresolved-attribute]
 
     def test_load_skip_preserves_existing(self):
         """SKIP: load into non-empty storage preserves existing data."""
@@ -554,7 +554,7 @@ class TestFullRoundtrip:
         _load_from_bytes(crud2, data)
 
         mgr2 = crud2.get_resource_manager(Item)
-        meta = mgr2.storage.get_meta(rid)
+        meta = mgr2.storage.get_meta(rid)  # ty:ignore[unresolved-attribute]
         assert meta.is_deleted is True
 
     def test_roundtrip_empty(self):

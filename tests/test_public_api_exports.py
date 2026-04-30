@@ -28,7 +28,11 @@ def test_permission_namespace_exposes_common_symbols():
 
 def test_events_namespace_exposes_builder_api():
     """Event helpers should be importable without deep internal paths."""
-    from autocrud.events import IEventHandler, ResourceAction, do
+    from autocrud.events import (
+        IEventHandler,
+        ResourceAction,
+        do,
+    )
 
     handlers = do(lambda context: None).before(ResourceAction.create)
 
@@ -82,7 +86,7 @@ def test_root_exports_both_pydantic_conversion_directions():
 def test_root_does_not_export_resource_ops():
     """ResourceOps should stay in the resource-manager namespace."""
     with pytest.raises(ImportError):
-        from autocrud import ResourceOps  # noqa: F401
+        from autocrud import ResourceOps  # noqa: F401  # ty:ignore[unresolved-import]
 
 
 def test_root_exports_job_for_async_workflows():
@@ -205,7 +209,7 @@ def test_types_namespace_no_longer_re_exports_permission_checker():
 def test_resource_manager_events_module_is_gone():
     """The legacy autocrud.resource_manager.events module is removed."""
     with pytest.raises(ImportError):
-        import autocrud.resource_manager.events  # noqa: F401
+        import autocrud.resource_manager.events  # noqa: F401  # ty:ignore[unresolved-import]
 
 
 def test_events_module_has_no_getattr_shim():

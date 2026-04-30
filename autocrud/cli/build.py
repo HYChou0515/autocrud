@@ -6,7 +6,7 @@ from datetime import datetime
 from pathlib import Path
 from typing import Annotated, Literal
 
-import fstui
+import fstui  # ty:ignore[unresolved-import]
 import httpx
 import msgspec
 import typer
@@ -35,6 +35,8 @@ def build_from_config():
         user_config = config.UserConfig.model_validate_json(f.read())
     module_name = "autocrud_cli_models"
     spec = importlib.util.spec_from_file_location(module_name, app_dir / "model.py")
+    if spec is None or spec.loader is None:
+        raise RuntimeError(f"Cannot load module spec for {module_name}")
     module = importlib.util.module_from_spec(spec)
     sys.modules[module_name] = module
     spec.loader.exec_module(module)
@@ -112,7 +114,7 @@ def ui_choice(choices: list[Choice]) -> Choice:
                 )
 
     while True:
-        selection = Prompt.ask("/".join(choice_labels))
+        selection = Prompt.ask("/".join(choice_labels))  # ty:ignore[no-matching-overload]
         if selection in choice_map:
             return choice_map[selection]
         print("Please select a valid option.")
@@ -171,7 +173,7 @@ def print_table(
         if row is EMPTY_CELL:
             table.add_section()
         else:
-            table.add_row(*[format_table_cell(item) for item in row])
+            table.add_row(*[format_table_cell(item) for item in row])  # ty:ignore[not-iterable]
     print(table)
 
 
@@ -225,7 +227,7 @@ class ResourceUI:
                 "-updated_time"
             ],
         ):
-            page = PageOptions(page_size=page_size, sort_by=sort_by)
+            page = PageOptions(page_size=page_size, sort_by=sort_by)  # ty:ignore[invalid-argument-type]
             return func(page)
 
         return wrapper
@@ -235,7 +237,7 @@ class ResourceUI:
             self.model, title=f"Create new {self.name}", default_values={}
         )
         if obj is None:
-            raise typer.Exit("Creation cancelled.")
+            raise typer.Exit("Creation cancelled.")  # ty:ignore[invalid-argument-type]
         resp = httpx.post(
             f"{self.user_config.autocrud_url}/{self.name}",
             json=json.loads(obj.model_dump_json()),
@@ -260,7 +262,7 @@ class ResourceUI:
         for obj in self.select_object(page):
             break
         if not obj:
-            raise typer.Exit("No object selected.")
+            raise typer.Exit("No object selected.")  # ty:ignore[invalid-argument-type]
         return obj
 
     def update(self, page: PageOptions):
@@ -344,16 +346,16 @@ class ResourceUI:
             for i in range(len(objs))
         ]
         if page.show_type == "data":
-            choices.append(BasicChoice("meta", label="[M]eta View", abbr="m"))
+            choices.append(BasicChoice("meta", label="[M]eta View", abbr="m"))  # ty:ignore[invalid-argument-type]
         else:
-            choices.append(BasicChoice("data", label="[D]ata View", abbr="d"))
+            choices.append(BasicChoice("data", label="[D]ata View", abbr="d"))  # ty:ignore[invalid-argument-type]
         if has_prev:
-            choices.append(BasicChoice("prev", label="[P]revious Page", abbr="p"))
+            choices.append(BasicChoice("prev", label="[P]revious Page", abbr="p"))  # ty:ignore[invalid-argument-type]
         if has_next:
-            choices.append(BasicChoice("next", label="[N]ext Page", abbr="n"))
+            choices.append(BasicChoice("next", label="[N]ext Page", abbr="n"))  # ty:ignore[invalid-argument-type]
 
-        choices.append(BasicChoice("quit", label="[Q]uit", abbr="q"))
-        action = ui_choice(choices)
+        choices.append(BasicChoice("quit", label="[Q]uit", abbr="q"))  # ty:ignore[invalid-argument-type]
+        action = ui_choice(choices)  # ty:ignore[invalid-argument-type]
         if action.value == "quit":
             return None
         elif action.value == "prev":
@@ -384,13 +386,13 @@ class ResourceUI:
             choices=["yes", "no"],
         )
         if ans.lower() != "yes":
-            raise typer.Exit("Deletion cancelled.")
+            raise typer.Exit("Deletion cancelled.")  # ty:ignore[invalid-argument-type]
 
         ans = Prompt.ask(
             "This action is irreversible. Type the revision ID to confirm",
         )
         if ans != obj.revision_info.revision_id:
-            raise typer.Exit("Revision ID not matched. Deletion cancelled.")
+            raise typer.Exit("Revision ID not matched. Deletion cancelled.")  # ty:ignore[invalid-argument-type]
 
         resp = self.retry(httpx.delete)(
             f"{self.user_config.autocrud_url}/{self.name}/{obj.meta.resource_id}",

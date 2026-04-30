@@ -37,7 +37,7 @@ def test_graphql_import_without_strawberry():
     try:
         import builtins
 
-        builtins.__import__ = mock_import
+        builtins.__import__ = mock_import  # ty:ignore[invalid-assignment]
 
         with pytest.raises(ImportError, match="autocrud\\[graphql\\]"):
             importlib.import_module("autocrud.crud.route_templates.graphql")

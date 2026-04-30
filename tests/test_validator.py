@@ -266,7 +266,7 @@ class TestPydanticValidatorCompat:
 
     def test_pydantic_validator_rejects_invalid(self):
         """Pydantic model with v1-compatible validator should reject invalid data."""
-        from pydantic import BaseModel, validator
+        from pydantic import BaseModel, validator  # ty:ignore[deprecated]
 
         class ItemValidator(BaseModel):
             name: str
@@ -274,7 +274,7 @@ class TestPydanticValidatorCompat:
             quantity: int = 0
             description: str = ""
 
-            @validator("price")
+            @validator("price")  # ty:ignore[deprecated]
             @classmethod
             def price_must_be_positive(cls, v):
                 if v < 0:
@@ -288,7 +288,7 @@ class TestPydanticValidatorCompat:
 
     def test_pydantic_validator_accepts_valid(self):
         """Pydantic model with v1-compatible validator should allow valid data."""
-        from pydantic import BaseModel, validator
+        from pydantic import BaseModel, validator  # ty:ignore[deprecated]
 
         class ItemValidator(BaseModel):
             name: str
@@ -296,7 +296,7 @@ class TestPydanticValidatorCompat:
             quantity: int = 0
             description: str = ""
 
-            @validator("price")
+            @validator("price")  # ty:ignore[deprecated]
             @classmethod
             def price_must_be_positive(cls, v):
                 if v < 0:
@@ -310,7 +310,7 @@ class TestPydanticValidatorCompat:
 
     def test_pydantic_as_model_auto_generates_struct(self):
         """Pydantic model as 'model' to add_model — v1/v2 compatible."""
-        from pydantic import BaseModel, validator
+        from pydantic import BaseModel, validator  # ty:ignore[deprecated]
 
         from autocrud import AutoCRUD
 
@@ -319,7 +319,7 @@ class TestPydanticValidatorCompat:
             price: int
             quantity: int = 0
 
-            @validator("price")
+            @validator("price")  # ty:ignore[deprecated]
             @classmethod
             def price_must_be_positive(cls, v):
                 if v < 0:
@@ -359,7 +359,7 @@ class TestPydanticValidatorCompat:
     def test_add_model_with_pydantic_validator(self):
         """add_model with v1-compatible Pydantic validator."""
         pytest.importorskip("pydantic")
-        from pydantic import BaseModel, validator
+        from pydantic import BaseModel, validator  # ty:ignore[deprecated]
 
         from autocrud import AutoCRUD
 
@@ -369,7 +369,7 @@ class TestPydanticValidatorCompat:
             quantity: int = 0
             description: str = ""
 
-            @validator("price")
+            @validator("price")  # ty:ignore[deprecated]
             @classmethod
             def price_must_be_positive(cls, v):
                 if v < 0:
@@ -515,7 +515,7 @@ class TestPydanticToStruct:
     def test_rejects_non_basemodel(self):
         """Passing a non-BaseModel type should raise TypeError."""
         with pytest.raises(TypeError, match="Expected a Pydantic BaseModel"):
-            pydantic_to_struct(str)
+            pydantic_to_struct(str)  # ty: ignore[invalid-argument-type]
 
     def test_rejects_non_type(self):
         """Passing an instance (not a class) should raise TypeError."""
@@ -525,7 +525,9 @@ class TestPydanticToStruct:
             x: int
 
         with pytest.raises(TypeError, match="Expected a Pydantic BaseModel"):
-            pydantic_to_struct(Foo(x=1))  # instance, not type
+            pydantic_to_struct(
+                Foo(x=1)  # ty:ignore[invalid-argument-type]
+            )  # instance, not type
 
     # --- Required fields (no default, annotation default is None) ---
 
@@ -751,9 +753,9 @@ class TestPydanticToStruct:
         data = {"name": "Alice", "address": {"city": "Taipei", "zip_code": "100"}}
         encoded = msgspec.json.encode(data)
         decoded = msgspec.json.decode(encoded, type=S)
-        assert decoded.name == "Alice"
-        assert decoded.address.city == "Taipei"
-        assert decoded.address.zip_code == "100"
+        assert decoded.name == "Alice"  # ty:ignore[unresolved-attribute]
+        assert decoded.address.city == "Taipei"  # ty:ignore[unresolved-attribute]
+        assert decoded.address.zip_code == "100"  # ty:ignore[unresolved-attribute]
 
     def test_optional_nested_pydantic_model(self):
         """Optional nested Pydantic model fields should work."""
@@ -774,15 +776,15 @@ class TestPydanticToStruct:
         # Without nested field
         data = {"name": "Widget"}
         decoded = msgspec.json.decode(msgspec.json.encode(data), type=S)
-        assert decoded.name == "Widget"
-        assert decoded.tag is None
+        assert decoded.name == "Widget"  # ty:ignore[unresolved-attribute]
+        assert decoded.tag is None  # ty:ignore[unresolved-attribute]
 
         # With nested field
         data = {"name": "Widget", "tag": {"label": "sale", "color": "red"}}
         decoded = msgspec.json.decode(msgspec.json.encode(data), type=S)
-        assert decoded.name == "Widget"
-        assert decoded.tag.label == "sale"
-        assert decoded.tag.color == "red"
+        assert decoded.name == "Widget"  # ty:ignore[unresolved-attribute]
+        assert decoded.tag.label == "sale"  # ty:ignore[unresolved-attribute]
+        assert decoded.tag.color == "red"  # ty:ignore[unresolved-attribute]
 
     def test_list_of_nested_pydantic_model(self):
         """list[NestedModel] fields should be recursively converted."""
@@ -808,11 +810,11 @@ class TestPydanticToStruct:
             ],
         }
         decoded = msgspec.json.decode(msgspec.json.encode(data), type=S)
-        assert decoded.name == "Hero"
-        assert len(decoded.skills) == 2
-        assert decoded.skills[0].name == "Fireball"
-        assert decoded.skills[0].level == 3
-        assert decoded.skills[1].name == "Shield"
+        assert decoded.name == "Hero"  # ty:ignore[unresolved-attribute]
+        assert len(decoded.skills) == 2  # ty:ignore[unresolved-attribute]
+        assert decoded.skills[0].name == "Fireball"  # ty:ignore[unresolved-attribute]
+        assert decoded.skills[0].level == 3  # ty:ignore[unresolved-attribute]
+        assert decoded.skills[1].name == "Shield"  # ty:ignore[unresolved-attribute]
 
     def test_deeply_nested_pydantic_model(self):
         """Multi-level nesting should work recursively."""
@@ -842,10 +844,10 @@ class TestPydanticToStruct:
             },
         }
         decoded = msgspec.json.decode(msgspec.json.encode(data), type=S)
-        assert decoded.name == "Acme"
-        assert decoded.address.city == "Taipei"
-        assert decoded.address.street.name == "Main St"
-        assert decoded.address.street.number == 42
+        assert decoded.name == "Acme"  # ty:ignore[unresolved-attribute]
+        assert decoded.address.city == "Taipei"  # ty:ignore[unresolved-attribute]
+        assert decoded.address.street.name == "Main St"  # ty:ignore[unresolved-attribute]
+        assert decoded.address.street.number == 42  # ty:ignore[unresolved-attribute]
 
     def test_nested_model_with_resource_manager(self):
         """Nested Pydantic models should work end-to-end with ResourceManager."""
@@ -900,16 +902,16 @@ class TestPydanticToStruct:
         # Decode a cat
         data = {"name": "Whiskers", "animal": {"kind": "cat", "meow_volume": 8}}
         decoded = msgspec.json.decode(msgspec.json.encode(data), type=S)
-        assert decoded.name == "Whiskers"
-        assert decoded.animal.meow_volume == 8
-        assert type(decoded.animal).__name__ == "Cat"
+        assert decoded.name == "Whiskers"  # ty:ignore[unresolved-attribute]
+        assert decoded.animal.meow_volume == 8  # ty:ignore[unresolved-attribute]
+        assert type(decoded.animal).__name__ == "Cat"  # ty:ignore[unresolved-attribute]
 
         # Decode a dog
         data = {"name": "Rex", "animal": {"kind": "dog", "bark_volume": 3}}
         decoded = msgspec.json.decode(msgspec.json.encode(data), type=S)
-        assert decoded.name == "Rex"
-        assert decoded.animal.bark_volume == 3
-        assert type(decoded.animal).__name__ == "Dog"
+        assert decoded.name == "Rex"  # ty:ignore[unresolved-attribute]
+        assert decoded.animal.bark_volume == 3  # ty:ignore[unresolved-attribute]
+        assert type(decoded.animal).__name__ == "Dog"  # ty:ignore[unresolved-attribute]
 
     def test_discriminated_union_int_tag(self):
         """Discriminated union with int Literal tags should work."""
@@ -934,13 +936,13 @@ class TestPydanticToStruct:
 
         data = {"item": {"type_id": 1, "value_a": "hello"}}
         decoded = msgspec.json.decode(msgspec.json.encode(data), type=S)
-        assert type(decoded.item).__name__ == "TypeA"
-        assert decoded.item.value_a == "hello"
+        assert type(decoded.item).__name__ == "TypeA"  # ty:ignore[unresolved-attribute]
+        assert decoded.item.value_a == "hello"  # ty:ignore[unresolved-attribute]
 
         data = {"item": {"type_id": 2, "value_b": 42}}
         decoded = msgspec.json.decode(msgspec.json.encode(data), type=S)
-        assert type(decoded.item).__name__ == "TypeB"
-        assert decoded.item.value_b == 42
+        assert type(decoded.item).__name__ == "TypeB"  # ty:ignore[unresolved-attribute]
+        assert decoded.item.value_b == 42  # ty:ignore[unresolved-attribute]
 
     def test_discriminated_union_with_resource_manager(self):
         """Discriminated union should work end-to-end with ResourceManager."""
@@ -1006,14 +1008,14 @@ class TestPydanticToStruct:
             "main_shape": {"shape": "circle", "radius": 5.0},
         }
         decoded = msgspec.json.decode(msgspec.json.encode(data), type=S)
-        assert decoded.extra_shape is None
-        assert type(decoded.main_shape).__name__ == "Circle"
+        assert decoded.extra_shape is None  # ty:ignore[unresolved-attribute]
+        assert type(decoded.main_shape).__name__ == "Circle"  # ty:ignore[unresolved-attribute]
 
         # With optional field
         data["extra_shape"] = {"shape": "square", "side": 3.0}
         decoded = msgspec.json.decode(msgspec.json.encode(data), type=S)
-        assert type(decoded.extra_shape).__name__ == "Square"
-        assert decoded.extra_shape.side == 3.0
+        assert type(decoded.extra_shape).__name__ == "Square"  # ty:ignore[unresolved-attribute]
+        assert decoded.extra_shape.side == 3.0  # ty:ignore[unresolved-attribute]
 
     def test_list_of_discriminated_union(self):
         """list[DiscriminatedUnion] should work."""
@@ -1044,11 +1046,11 @@ class TestPydanticToStruct:
             ]
         }
         decoded = msgspec.json.decode(msgspec.json.encode(data), type=S)
-        assert len(decoded.steps) == 3
-        assert type(decoded.steps[0]).__name__ == "Add"
-        assert decoded.steps[0].value == 10
-        assert type(decoded.steps[1]).__name__ == "Mul"
-        assert decoded.steps[1].factor == 2
+        assert len(decoded.steps) == 3  # ty:ignore[unresolved-attribute]
+        assert type(decoded.steps[0]).__name__ == "Add"  # ty:ignore[unresolved-attribute]
+        assert decoded.steps[0].value == 10  # ty:ignore[unresolved-attribute]
+        assert type(decoded.steps[1]).__name__ == "Mul"  # ty:ignore[unresolved-attribute]
+        assert decoded.steps[1].factor == 2  # ty:ignore[unresolved-attribute]
 
 
 # ===== 7. Unsupported Pydantic Features =====
@@ -1167,7 +1169,7 @@ class TestPydanticToStructUnsupported:
 
         # Struct generation succeeds (it doesn't validate serializability)
         S = pydantic_to_struct(WithAny)
-        assert "payload" in S.__struct_fields__
+        assert "payload" in S.__struct_fields__  # ty:ignore[unresolved-attribute]
 
         # Simple values work
         import msgspec
@@ -1175,8 +1177,8 @@ class TestPydanticToStructUnsupported:
         obj = S(name="test", payload={"key": "val"})
         encoded = msgspec.json.encode(obj)
         decoded = msgspec.json.decode(encoded, type=S)
-        assert decoded.name == "test"
-        assert decoded.payload == {"key": "val"}
+        assert decoded.name == "test"  # ty:ignore[unresolved-attribute]
+        assert decoded.payload == {"key": "val"}  # ty:ignore[unresolved-attribute]
 
 
 # ===== 8. Internal converter edge cases =====
@@ -1202,7 +1204,7 @@ class TestPydanticConverterEdgeCases:
         # Roundtrip with msgspec
         data = {"value": 42}
         decoded = msgspec.json.decode(msgspec.json.encode(data), type=S)
-        assert decoded.value == 42
+        assert decoded.value == 42  # ty:ignore[unresolved-attribute]
 
     def test_annotated_without_discriminator_nested_model(self):
         """Annotated[NestedModel, some_metadata] without discriminator
@@ -1220,7 +1222,7 @@ class TestPydanticConverterEdgeCases:
         S = pydantic_to_struct(Outer)
         data = {"child": {"x": 10}}
         decoded = msgspec.json.decode(msgspec.json.encode(data), type=S)
-        assert decoded.child.x == 10
+        assert decoded.child.x == 10  # ty:ignore[unresolved-attribute]
 
     def test_annotated_nested_in_list_plain_type_unchanged(self):
         """list[Annotated[int, meta]] — inner type unchanged, should return
@@ -1235,7 +1237,7 @@ class TestPydanticConverterEdgeCases:
         S = pydantic_to_struct(M)
         data = {"values": [1, 2, 3]}
         decoded = msgspec.json.decode(msgspec.json.encode(data), type=S)
-        assert decoded.values == [1, 2, 3]
+        assert decoded.values == [1, 2, 3]  # ty:ignore[unresolved-attribute]
 
     def test_annotated_nested_in_list_with_model_converted(self):
         """list[Annotated[BaseModel, meta]] — inner type IS a model, so
@@ -1253,9 +1255,9 @@ class TestPydanticConverterEdgeCases:
         S = pydantic_to_struct(Bag)
         data = {"items": [{"name": "a"}, {"name": "b"}]}
         decoded = msgspec.json.decode(msgspec.json.encode(data), type=S)
-        assert len(decoded.items) == 2
-        assert decoded.items[0].name == "a"
-        assert decoded.items[1].name == "b"
+        assert len(decoded.items) == 2  # ty:ignore[unresolved-attribute]
+        assert decoded.items[0].name == "a"  # ty:ignore[unresolved-attribute]
+        assert decoded.items[1].name == "b"  # ty:ignore[unresolved-attribute]
 
     def test_tagged_struct_missing_discriminator_field(self):
         """_pydantic_to_struct_tagged should raise TypeError when discriminator
@@ -1310,12 +1312,12 @@ class TestPydanticConverterEdgeCases:
 
         data = {"item": {"kind": "a", "name": "test"}}
         decoded = msgspec.json.decode(msgspec.json.encode(data), type=S)
-        assert decoded.item.name == "test"
-        assert decoded.item.description is None
+        assert decoded.item.name == "test"  # ty:ignore[unresolved-attribute]
+        assert decoded.item.description is None  # ty:ignore[unresolved-attribute]
 
         data = {"item": {"kind": "a", "name": "test", "description": "hello"}}
         decoded = msgspec.json.decode(msgspec.json.encode(data), type=S)
-        assert decoded.item.description == "hello"
+        assert decoded.item.description == "hello"  # ty:ignore[unresolved-attribute]
 
     def test_discriminated_union_with_non_basemodel_member(self):
         """_convert_discriminated_union with a non-BaseModel union member
@@ -1348,7 +1350,9 @@ class TestPydanticConverterEdgeCases:
         from autocrud.resource_manager.pydantic_converter import build_validator
 
         with pytest.raises(TypeError, match="validator must be a callable"):
-            build_validator(42)  # int is not callable, not IValidator, not BaseModel
+            build_validator(
+                42  # ty:ignore[invalid-argument-type]
+            )  # int is not callable, not IValidator, not BaseModel
 
     def test_pydantic_to_struct_preserves_unparameterized_generic_field(self):
         """A Pydantic model with an unparameterized ``typing.List`` field
@@ -1366,7 +1370,7 @@ class TestPydanticConverterEdgeCases:
         S = pydantic_to_struct(Bag)
         instance = S(items=[1, "two", {"three": 3}])
         round_trip = msgspec.json.decode(msgspec.json.encode(instance), type=S)
-        assert round_trip.items == [1, "two", {"three": 3}]
+        assert round_trip.items == [1, "two", {"three": 3}]  # ty:ignore[unresolved-attribute]
 
     def test_pydantic_to_struct_shared_model_cache_hit(self):
         """Shared nested model should be converted only once via cache (L272)."""
@@ -1382,7 +1386,7 @@ class TestPydanticConverterEdgeCases:
         S = pydantic_to_struct(Parent)
         data = {"a": {"value": 1}, "b": {"value": 2}}
         decoded = msgspec.json.decode(msgspec.json.encode(data), type=S)
-        assert decoded.a.value == 1
-        assert decoded.b.value == 2
+        assert decoded.a.value == 1  # ty:ignore[unresolved-attribute]
+        assert decoded.b.value == 2  # ty:ignore[unresolved-attribute]
         # Both fields should use the same Struct type (from cache)
-        assert type(decoded.a) is type(decoded.b)
+        assert type(decoded.a) is type(decoded.b)  # ty:ignore[unresolved-attribute]

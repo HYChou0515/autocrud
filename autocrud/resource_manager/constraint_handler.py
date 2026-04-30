@@ -15,7 +15,7 @@ from __future__ import annotations
 import io
 from contextlib import suppress
 from contextvars import ContextVar
-from typing import TYPE_CHECKING, Any, Sequence
+from typing import TYPE_CHECKING, Any, Sequence, cast
 
 from jsonpatch import JsonPatch
 from msgspec import UNSET
@@ -175,17 +175,22 @@ class ConstraintEventHandler(IEventHandler):
         state = self._get_state()
         state.reset()
 
+        # Dispatch by action enum. The protocol-typed handler methods
+        # (HasData / HasDataAndResourceId / etc.) are structurally
+        # satisfied by every event-context that fires for the given
+        # action, but ty can't statically derive this from an enum
+        # comparison — cast to the expected Protocol at each branch.
         action = context.action
         if action == ResourceAction.create:
-            self._before_create(context, state)  # type: ignore[arg-type]
+            self._before_create(cast(HasData, context), state)
         elif action == ResourceAction.update:
-            self._before_update(context, state)  # type: ignore[arg-type]
+            self._before_update(cast(HasDataAndResourceId, context), state)
         elif action == ResourceAction.modify:
-            self._before_modify(context, state)  # type: ignore[arg-type]
+            self._before_modify(cast(HasDataAndResourceId, context), state)
         elif action == ResourceAction.switch:
-            self._before_switch(context, state)  # type: ignore[arg-type]
+            self._before_switch(cast(HasRevisionId, context), state)
         elif action == ResourceAction.restore:
-            self._before_restore(context, state)  # type: ignore[arg-type]
+            self._before_restore(cast(HasResourceId, context), state)
 
     # -- create --------------------------------------------------------------
 
@@ -279,7 +284,7 @@ class ConstraintEventHandler(IEventHandler):
         action = context.action
         try:
             if action == ResourceAction.create:
-                self._post_check_create(context, state)  # type: ignore[arg-type]
+                self._post_check_create(cast(HasInfo, context), state)
             elif action == ResourceAction.update:
                 self._post_check_update(state)
             elif action == ResourceAction.modify:
@@ -355,10 +360,13 @@ class ConstraintEventHandler(IEventHandler):
 
     def _compensate_restore_meta(self, state: _PhaseState) -> None:
         """Restore the previous meta snapshot."""
+        assert state.prev_meta is not None
         self.rm.storage.save_meta(state.prev_meta)
 
     def _compensate_restore_revision(self, state: _PhaseState) -> None:
         """Restore both the previous revision data and meta."""
+        assert state.prev_info is not None
+        assert state.prev_meta is not None
         self.rm.storage.save_revision(
             state.prev_info,
             io.BytesIO(self.rm.encode(state.current_data)),
@@ -367,6 +375,7 @@ class ConstraintEventHandler(IEventHandler):
 
     def _compensate_re_delete(self, state: _PhaseState) -> None:
         """Re-delete a resource that was just restored."""
+        assert state.resource_id is not None
         meta = self.rm._get_meta_no_check_is_deleted(state.resource_id)
         meta.is_deleted = True
         self.rm.storage.save_meta(meta)

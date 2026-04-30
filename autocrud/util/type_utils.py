@@ -183,7 +183,7 @@ def get_struct_fields(
         resolved_type = _substitute_typevars(field.type, tv_map)
         if resolved_type is not field.type:
             changed = True
-            resolved.append(_ResolvedFieldInfo(field, resolved_type))
+            resolved.append(_ResolvedFieldInfo(field, resolved_type))  # ty:ignore[invalid-argument-type]
         else:
             resolved.append(field)
 

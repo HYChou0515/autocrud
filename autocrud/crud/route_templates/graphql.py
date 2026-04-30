@@ -204,12 +204,15 @@ def _convert_msgspec_to_strawberry(type_: Any, name_prefix: str = "") -> Any:
         # Handle Struct types first (including generic aliases like Job[Payload])
         # For generic aliases, resolve the origin for __name__ access
         struct_class = resolve_struct_origin(type_)
+        if struct_class is None:
+            raise TypeError(f"Cannot resolve Struct origin for {type_!r}")
         annotations = {}
         attributes = {}
         field_map = {}
         for field in msgspec.structs.fields(type_):
             field_type = _convert_msgspec_to_strawberry(
-                field.type, f"{name_prefix}{struct_class.__name__}"
+                field.type,
+                f"{name_prefix}{struct_class.__name__}",
             )
             # Handle optional fields in msgspec
             if not field.required:
@@ -322,8 +325,8 @@ def _convert_filter_input(
 class GraphQLRouteTemplate(BaseRouteTemplate, Generic[T]):
     """GraphQL 路由模板"""
 
-    def __init__(self, dependency_provider: DependencyProvider = None):
-        super().__init__(dependency_provider)
+    def __init__(self, dependency_provider: DependencyProvider | None = None):
+        super().__init__(dependency_provider)  # ty:ignore[invalid-argument-type]
         self.resources: dict[str, IResourceManager] = {}
         self.graphql_router: Optional[GraphQLRouter] = None
         self.mounted = False
@@ -354,6 +357,7 @@ class GraphQLRouteTemplate(BaseRouteTemplate, Generic[T]):
             self.mounted = True
         else:
             # Update schema on existing router
+            assert self.graphql_router is not None
             self.graphql_router.schema = schema
 
     def _build_schema(self) -> strawberry.Schema:
@@ -380,7 +384,7 @@ class GraphQLRouteTemplate(BaseRouteTemplate, Generic[T]):
                 class Resource:
                     info: GraphQLRevisionInfo
                     meta: GraphQLResourceMeta
-                    data: GraphQLData  # type: ignore
+                    data: GraphQLData
 
                 # Rename class to avoid confusion
                 Resource.__name__ = f"{safe_model_name}Resource"
@@ -390,7 +394,7 @@ class GraphQLRouteTemplate(BaseRouteTemplate, Generic[T]):
                     async def resolve_get_resource(
                         resource_id: str,
                         revision_id: Optional[str] = None,
-                        info: Info = None,
+                        info: Info = None,  # ty:ignore[invalid-parameter-default]
                     ) -> Optional[Resource]:
                         context = info.context
                         user = context["user"]
@@ -413,7 +417,7 @@ class GraphQLRouteTemplate(BaseRouteTemplate, Generic[T]):
                                     (
                                         f
                                         for f in info.selected_fields
-                                        if f.name == info.field_name
+                                        if f.name == info.field_name  # ty:ignore[unresolved-attribute]
                                     ),
                                     None,
                                 )
@@ -426,7 +430,7 @@ class GraphQLRouteTemplate(BaseRouteTemplate, Generic[T]):
                                         (
                                             f
                                             for f in current_field.selections
-                                            if f.name == "data"
+                                            if f.name == "data"  # ty:ignore[unresolved-attribute]
                                         ),
                                         None,
                                     )
@@ -434,7 +438,7 @@ class GraphQLRouteTemplate(BaseRouteTemplate, Generic[T]):
                                         (
                                             f
                                             for f in current_field.selections
-                                            if f.name == "info"
+                                            if f.name == "info"  # ty:ignore[unresolved-attribute]
                                         ),
                                         None,
                                     )
@@ -485,7 +489,7 @@ class GraphQLRouteTemplate(BaseRouteTemplate, Generic[T]):
                                         **msgspec.structs.asdict(info_obj)
                                     )
                                     if info_obj
-                                    else None,
+                                    else None,  # ty:ignore[invalid-argument-type]
                                     meta=GraphQLResourceMeta(
                                         **msgspec.structs.asdict(meta)
                                     ),
@@ -500,7 +504,7 @@ class GraphQLRouteTemplate(BaseRouteTemplate, Generic[T]):
 
                     async def resolve_list_resources(
                         query: Optional[SearchQueryInput] = None,
-                        info: Info = None,
+                        info: Info = None,  # ty:ignore[invalid-parameter-default]
                     ) -> list[Resource]:
                         context = info.context
                         user = context["user"]
@@ -574,7 +578,7 @@ class GraphQLRouteTemplate(BaseRouteTemplate, Generic[T]):
                                     (
                                         f
                                         for f in info.selected_fields
-                                        if f.name == info.field_name
+                                        if f.name == info.field_name  # ty:ignore[unresolved-attribute]
                                     ),
                                     None,
                                 )
@@ -587,7 +591,7 @@ class GraphQLRouteTemplate(BaseRouteTemplate, Generic[T]):
                                         (
                                             f
                                             for f in current_field.selections
-                                            if f.name == "data"
+                                            if f.name == "data"  # ty:ignore[unresolved-attribute]
                                         ),
                                         None,
                                     )
@@ -595,7 +599,7 @@ class GraphQLRouteTemplate(BaseRouteTemplate, Generic[T]):
                                         (
                                             f
                                             for f in current_field.selections
-                                            if f.name == "info"
+                                            if f.name == "info"  # ty:ignore[unresolved-attribute]
                                         ),
                                         None,
                                     )
@@ -655,7 +659,7 @@ class GraphQLRouteTemplate(BaseRouteTemplate, Generic[T]):
                                                     **msgspec.structs.asdict(info_obj)
                                                 )
                                                 if info_obj
-                                                else None,
+                                                else None,  # ty:ignore[invalid-argument-type]
                                                 meta=GraphQLResourceMeta(
                                                     **msgspec.structs.asdict(meta)
                                                 ),
@@ -676,7 +680,8 @@ class GraphQLRouteTemplate(BaseRouteTemplate, Generic[T]):
                     return resolve_get_resource, resolve_list_resources
 
                 resolve_get_resource, resolve_list_resources = make_resolvers(
-                    resource_manager, GraphQLData
+                    resource_manager,
+                    GraphQLData,  # ty:ignore[invalid-argument-type]
                 )
 
                 f1 = strawberry.field(

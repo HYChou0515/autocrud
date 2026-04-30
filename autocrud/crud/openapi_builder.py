@@ -107,7 +107,7 @@ class OpenAPIBuilder:
                 RevisionListResponse,
                 *[rm.resource_type for rm in self._resource_managers.values()],
                 *[
-                    FullResourceResponse[rm.resource_type]
+                    FullResourceResponse[rm.resource_type]  # ty:ignore[invalid-type-form]
                     for rm in self._resource_managers.values()
                 ],
                 RFC6902_Add,
@@ -374,9 +374,9 @@ class OpenAPIBuilder:
                     if ref_ext:
                         p["schema"].update(ref_ext)
             if pp:
-                info["pathParams"] = pp
+                info["pathParams"] = pp  # ty:ignore[invalid-assignment]
             if qp:
-                info["queryParams"] = qp
+                info["queryParams"] = qp  # ty:ignore[invalid-assignment]
             content = operation.get("requestBody", {}).get("content", {})
             rb = content.get("application/json", {}).get("schema", {})
             if not rb:
@@ -442,9 +442,9 @@ class OpenAPIBuilder:
                 if ref_ext:
                     p["schema"].update(ref_ext)
             if inline_params:
-                info["inlineBodyParams"] = inline_params
+                info["inlineBodyParams"] = inline_params  # ty:ignore[invalid-assignment]
             if file_params:
-                info["fileParams"] = file_params
+                info["fileParams"] = file_params  # ty:ignore[invalid-assignment]
             if action.async_mode is not None:
                 info["asyncMode"] = action.async_mode
                 if action.async_mode == "job":
@@ -680,7 +680,7 @@ class OpenAPIBuilder:
         """Inject ``x-autocrud-indexed-fields`` top-level extension."""
         mapping: dict[str, list[str]] = {}
         for name, rm in self._resource_managers.items():
-            indexed = rm.indexed_fields
+            indexed = rm.indexed_fields  # ty:ignore[unresolved-attribute]
             if indexed:
                 mapping[name] = [f.field_path for f in indexed]
 

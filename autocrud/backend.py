@@ -449,7 +449,7 @@ class RabbitMQBackendProvider(BackendProvider):
             max_retries=options.get("max_retries", 3),
             retry_delay_seconds=options.get("retry_delay_seconds", 10),
             amqp_heartbeat_seconds=options.get("amqp_heartbeat_seconds", 600),
-        )
+        )  # ty:ignore[invalid-return-type]
 
 
 _registry = BackendRegistry()
@@ -501,10 +501,10 @@ def build_backend_bundle(
     resolved_storage_factory = storage_factory or MemoryStorageFactory()
     if isinstance(resolved_storage_factory, DiskStorageFactory):
         resolved_blob_store = DiskBlobStore(resolved_storage_factory.rootdir / "_blobs")
-    elif hasattr(resolved_storage_factory, "build_blob_store"):
-        resolved_blob_store = resolved_storage_factory.build_blob_store()
     else:
-        resolved_blob_store = MemoryBlobStore()
+        resolved_blob_store = (
+            resolved_storage_factory.build_blob_store() or MemoryBlobStore()
+        )
 
     return BackendBundle(
         config=None,

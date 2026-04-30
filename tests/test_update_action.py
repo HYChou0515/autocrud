@@ -406,7 +406,7 @@ class TestUpdateActionMode:
             default_now=dt.datetime.now,
         )
         # Use draft as default status so modify works
-        crud.add_model(Character, name="character", default_status="draft")
+        crud.add_model(Character, name="character", default_status="draft")  # ty:ignore[invalid-argument-type]
 
         @crud.update_action("character", mode="modify", label="Quick Fix")
         def quick_fix(existing: Character, body: RenameInput = Body(...)):
@@ -673,7 +673,7 @@ class TestUpdateActionOpenAPI:
         crud.openapi(app)
         schema = app.openapi_schema
 
-        actions = schema["x-autocrud-custom-update-actions"]["character"]
+        actions = schema["x-autocrud-custom-update-actions"]["character"]  # ty:ignore[not-subscriptable]
         action = actions[0]
         assert "queryParams" in action
         qp_names = {p["name"] for p in action["queryParams"]}
@@ -697,12 +697,12 @@ class TestUpdateActionOpenAPI:
         schema = app.openapi_schema
 
         # No body schema should be extracted (RevisionInfo/ResourceMeta are skipped)
-        actions = schema["x-autocrud-custom-update-actions"]["character"]
+        actions = schema["x-autocrud-custom-update-actions"]["character"]  # ty:ignore[not-subscriptable]
         action = actions[0]
         assert "bodySchema" not in action
 
         # The POST endpoint should have no requestBody
-        paths = schema["paths"]
+        paths = schema["paths"]  # ty:ignore[not-subscriptable]
         op = paths["/character/{resource_id}/stamp"]["post"]
         assert "requestBody" not in op
 

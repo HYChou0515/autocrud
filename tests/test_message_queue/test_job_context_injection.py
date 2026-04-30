@@ -80,7 +80,7 @@ class TestCheckHandlerWantsContext:
     def test_new_style_handler_with_typed_context(self):
         """Handler(resource, job_context: JobContext) → True."""
 
-        def handler(resource: Resource[Job], job_context: JobContext = None):
+        def handler(resource: Resource[Job], job_context: JobContext = None):  # ty:ignore[invalid-parameter-default]
             pass
 
         assert BasicMessageQueue._check_handler_wants_context(handler) is True
@@ -163,7 +163,7 @@ class TestNewStyleHandler:
         """Handler with job_context parameter receives the JobContext."""
         received_ctx = []
 
-        def handler(resource: Resource[Job[Payload]], job_context: JobContext = None):
+        def handler(resource: Resource[Job[Payload]], job_context: JobContext = None):  # ty:ignore[invalid-parameter-default]
             received_ctx.append(job_context)
 
         rm, mq = _make_rm_and_queue(handler)
@@ -183,7 +183,7 @@ class TestNewStyleHandler:
         """Handler can log via job_context and logs appear in get_logs()."""
         bs = MemoryBlobStore()
 
-        def handler(resource: Resource[Job[Payload]], job_context: JobContext = None):
+        def handler(resource: Resource[Job[Payload]], job_context: JobContext = None):  # ty:ignore[invalid-parameter-default]
             job_context.info("Handler says hello")
             job_context.debug("Debug detail")
 
@@ -205,8 +205,8 @@ class TestNewStyleHandler:
     def test_handler_sets_artifact_via_context(self):
         """Handler can set artifact via job_context.set_artifact()."""
 
-        def handler(resource: Resource[Job[Payload]], job_context: JobContext = None):
-            job_context.set_artifact({"score": 99})
+        def handler(resource: Resource[Job[Payload]], job_context: JobContext = None):  # ty:ignore[invalid-parameter-default]
+            job_context.set_artifact({"score": 99})  # ty:ignore[invalid-argument-type]
 
         rm, mq = _make_rm_and_queue(handler, job_type=Job[Payload, dict])
 
@@ -223,8 +223,8 @@ class TestNewStyleHandler:
     def test_handler_sets_artifact_persisted_after_complete(self):
         """Artifact set by handler is persisted to storage after job completes."""
 
-        def handler(resource: Resource[Job[Payload]], job_context: JobContext = None):
-            job_context.set_artifact({"result": "done", "count": 42})
+        def handler(resource: Resource[Job[Payload]], job_context: JobContext = None):  # ty:ignore[invalid-parameter-default]
+            job_context.set_artifact({"result": "done", "count": 42})  # ty:ignore[invalid-argument-type]
 
         rm, mq = _make_rm_and_queue(handler, job_type=Job[Payload, dict])
 
@@ -243,7 +243,7 @@ class TestNewStyleHandler:
         """Handler with job_context that raises still gets error in logs."""
         bs = MemoryBlobStore()
 
-        def handler(resource: Resource[Job[Payload]], job_context: JobContext = None):
+        def handler(resource: Resource[Job[Payload]], job_context: JobContext = None):  # ty:ignore[invalid-parameter-default]
             job_context.info("Before crash")
             raise ValueError("oops")
 
@@ -268,7 +268,7 @@ class TestNewStyleHandler:
 
         call_count = [0]
 
-        def handler(resource: Resource[Job[Payload]], job_context: JobContext = None):
+        def handler(resource: Resource[Job[Payload]], job_context: JobContext = None):  # ty:ignore[invalid-parameter-default]
             call_count[0] += 1
             if call_count[0] == 1:
                 raise RuntimeError("transient failure")
@@ -300,7 +300,7 @@ class TestNoBlobStoreWithJobContext:
         """Handler with job_context but NO blobstore still gets a real ctx."""
         received_ctx = []
 
-        def handler(resource: Resource[Job[Payload]], job_context: JobContext = None):
+        def handler(resource: Resource[Job[Payload]], job_context: JobContext = None):  # ty:ignore[invalid-parameter-default]
             # Must be a real JobContext, not None
             assert job_context is not None
             job_context.info("I can log without blob store")
@@ -322,8 +322,8 @@ class TestNoBlobStoreWithJobContext:
     def test_handler_set_artifact_without_blobstore(self):
         """set_artifact() works even without blobstore."""
 
-        def handler(resource: Resource[Job[Payload]], job_context: JobContext = None):
-            job_context.set_artifact({"x": 1})
+        def handler(resource: Resource[Job[Payload]], job_context: JobContext = None):  # ty:ignore[invalid-parameter-default]
+            job_context.set_artifact({"x": 1})  # ty:ignore[invalid-argument-type]
 
         rm, mq = _make_rm_and_queue(
             handler, blob_store=None, job_type=Job[Payload, dict]
@@ -343,7 +343,7 @@ class TestNoBlobStoreWithJobContext:
         """_invoke_handler creates fallback ctx + emits warning if ctx=None."""
         received_ctx = []
 
-        def handler(resource: Resource[Job[Payload]], job_context: JobContext = None):
+        def handler(resource: Resource[Job[Payload]], job_context: JobContext = None):  # ty:ignore[invalid-parameter-default]
             received_ctx.append(job_context)
 
         rm, mq = _make_rm_and_queue(handler, blob_store=None)

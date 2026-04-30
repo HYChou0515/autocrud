@@ -108,9 +108,9 @@ def mq_context(request: pytest.FixtureRequest):
         )
         queue = rm.message_queue
         # Purge to ensure a clean state for each test
-        if queue.queue_name:
-            with queue._get_connection() as (_, channel):
-                channel.queue_purge(queue.queue_name)
+        if queue.queue_name:  # ty:ignore[unresolved-attribute]
+            with queue._get_connection() as (_, channel):  # ty:ignore[unresolved-attribute]
+                channel.queue_purge(queue.queue_name)  # ty:ignore[unresolved-attribute]
     else:  # celery
         app = Celery("test_app", broker="memory://", backend="cache+memory://")
         app.conf.update(
@@ -148,7 +148,7 @@ class TestMessageQueueUnified:
         self,
         queue: IMessageQueue[Payload],
         rm: ResourceManager[Job[Payload]],
-        worker_logic: callable,
+        worker_logic: callable,  # ty:ignore[invalid-type-form]
         process_timeout: float = 1.0,
         track_published_messages: bool = False,
     ) -> tuple[IMessageQueue[Payload], list[dict]]:
@@ -170,7 +170,7 @@ class TestMessageQueueUnified:
 
         def run_queue():
             consumer = queue
-            consumer._do = worker_logic
+            consumer._do = worker_logic  # ty:ignore[unresolved-attribute]
             consumer_ref[0] = consumer
 
             # 如果需要追蹤訊息且是 RabbitMQ，則 patch start_consume
@@ -188,9 +188,9 @@ class TestMessageQueueUnified:
                     )
 
                 def patched_consume():
-                    with consumer._get_connection() as (connection, channel):
-                        consumer._consuming_connection = connection
-                        consumer._consuming_channel = channel
+                    with consumer._get_connection() as (connection, channel):  # ty:ignore[unresolved-attribute]
+                        consumer._consuming_connection = connection  # ty:ignore[unresolved-attribute]
+                        consumer._consuming_channel = channel  # ty:ignore[unresolved-attribute]
 
                         original_publish = channel.basic_publish
                         channel.basic_publish = lambda **kwargs: (
@@ -208,17 +208,17 @@ class TestMessageQueueUnified:
                                 retry_count = properties.headers["x-retry-count"]
 
                             try:
-                                resource = consumer.rm.get(resource_id)
+                                resource = consumer.rm.get(resource_id)  # ty:ignore[unresolved-attribute]
                                 job = resource.data
                                 job.status = TaskStatus.PROCESSING
-                                with consumer._rm_meta_provide(
+                                with consumer._rm_meta_provide(  # ty:ignore[unresolved-attribute]
                                     resource.info.created_by
                                 ):
-                                    consumer.rm.create_or_update(resource_id, job)
+                                    consumer.rm.create_or_update(resource_id, job)  # ty:ignore[unresolved-attribute]
                                 resource.data = job
 
                                 try:
-                                    consumer._do(resource)
+                                    consumer._do(resource)  # ty:ignore[unresolved-attribute]
                                     consumer.complete(resource_id)
                                     ch.basic_ack(delivery_tag=method.delivery_tag)
                                 except Exception as e:
@@ -226,44 +226,45 @@ class TestMessageQueueUnified:
                                     job.status = TaskStatus.FAILED
                                     job.errmsg = error_msg
                                     job.retries = retry_count + 1
-                                    with consumer._rm_meta_provide(
+                                    with consumer._rm_meta_provide(  # ty:ignore[unresolved-attribute]
                                         resource.info.created_by
                                     ):
-                                        consumer.rm.create_or_update(resource_id, job)
-                                    consumer._send_to_retry_or_dead(
+                                        consumer.rm.create_or_update(resource_id, job)  # ty:ignore[unresolved-attribute]
+                                    consumer._send_to_retry_or_dead(  # ty:ignore[unresolved-attribute]
                                         ch, resource_id, retry_count, e
                                     )
                                     ch.basic_ack(delivery_tag=method.delivery_tag)
                             except Exception as e:
                                 try:
-                                    resource = consumer.rm.get(resource_id)
+                                    resource = consumer.rm.get(resource_id)  # ty:ignore[unresolved-attribute]
                                     job = resource.data
                                     job.status = TaskStatus.FAILED
                                     job.errmsg = str(e)
                                     job.retries = retry_count + 1
-                                    with consumer._rm_meta_provide(
+                                    with consumer._rm_meta_provide(  # ty:ignore[unresolved-attribute]
                                         resource.info.created_by
                                     ):
-                                        consumer.rm.create_or_update(resource_id, job)
+                                        consumer.rm.create_or_update(resource_id, job)  # ty:ignore[unresolved-attribute]
                                 except Exception:
                                     pass
-                                consumer._send_to_retry_or_dead(
+                                consumer._send_to_retry_or_dead(  # ty:ignore[unresolved-attribute]
                                     ch, resource_id, retry_count, e
                                 )
                                 ch.basic_ack(delivery_tag=method.delivery_tag)
 
                         channel.basic_qos(prefetch_count=1)
                         channel.basic_consume(
-                            queue=consumer.queue_name, on_message_callback=callback
+                            queue=consumer.queue_name,  # ty:ignore[unresolved-attribute]
+                            on_message_callback=callback,
                         )
 
                         try:
                             channel.start_consuming()
                         finally:
-                            consumer._consuming_connection = None
-                            consumer._consuming_channel = None
+                            consumer._consuming_connection = None  # ty:ignore[unresolved-attribute]
+                            consumer._consuming_channel = None  # ty:ignore[unresolved-attribute]
 
-                consumer.start_consume = patched_consume
+                consumer.start_consume = patched_consume  # ty:ignore[invalid-assignment]
 
             with rm.meta_provide(user="consumer", now=dt.datetime.now(dt.timezone.utc)):
                 try:
@@ -287,7 +288,7 @@ class TestMessageQueueUnified:
             consumer_ref[0].stop_consuming()
         t.join(timeout=2)
 
-        return consumer_ref[0], published_messages
+        return consumer_ref[0], published_messages  # ty:ignore[invalid-return-type]
 
     @pytest.mark.parametrize("mq_context", ["simple", "rabbitmq"], indirect=True)
     def test_workflow(self):

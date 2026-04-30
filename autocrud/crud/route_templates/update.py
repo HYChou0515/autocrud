@@ -93,7 +93,7 @@ class UpdateRouteTemplate(BaseRouteTemplate):
                     data = msgspec.convert(body, resource_type)
                 if mode == "update":
                     with resource_manager.using(current_user, current_time):
-                        info = resource_manager.update(resource_id, data)
+                        info = resource_manager.update(resource_id, data)  # ty:ignore[invalid-argument-type]
                 else:  # mode == "modify"
                     with resource_manager.using(current_user, current_time):
                         info = resource_manager.modify(

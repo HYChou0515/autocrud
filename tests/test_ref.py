@@ -173,7 +173,7 @@ class TestRef:
 
     def test_on_delete_string_conversion(self):
         """on_delete accepts a string and converts to OnDelete enum."""
-        r = Ref("x", on_delete="cascade")
+        r = Ref("x", on_delete="cascade")  # ty:ignore[invalid-argument-type]
         assert r.on_delete is OnDelete.cascade
 
     def test_repr(self):
@@ -277,7 +277,7 @@ class TestRefInfo:
             nullable=False,
         )
         with pytest.raises(AttributeError):
-            info.source = "other"
+            info.source = "other"  # ty:ignore[invalid-assignment]
 
 
 # ---------------------------------------------------------------------------
@@ -506,7 +506,7 @@ class TestInjectRefMetadata:
         crud.apply(app)
         crud.openapi(app)
         schema = app.openapi_schema
-        assert "x-autocrud-relationships" not in schema
+        assert "x-autocrud-relationships" not in schema  # ty:ignore[unsupported-operator]
 
     def _build_job_app_with_schema(self):
         """Helper: create a FastAPI app with GameEvent (Job[EventPayload]) + deps."""
@@ -595,7 +595,7 @@ class TestRefAutoIndexing:
         crud.add_model(Character, name="character")
         crud.add_model(Monster, name="monster")
         monster_rm = crud.get_resource_manager("monster")
-        indexed_paths = [f.field_path for f in monster_rm.indexed_fields]
+        indexed_paths = [f.field_path for f in monster_rm.indexed_fields]  # ty:ignore[unresolved-attribute]
         assert "zone_id" in indexed_paths
         assert "guild_id" in indexed_paths
         assert "owner_id" in indexed_paths
@@ -614,7 +614,9 @@ class TestRefAutoIndexing:
         )
         monster_rm = crud.get_resource_manager("monster")
         zone_id_fields = [
-            f for f in monster_rm.indexed_fields if f.field_path == "zone_id"
+            f
+            for f in monster_rm.indexed_fields  # ty:ignore[unresolved-attribute]
+            if f.field_path == "zone_id"
         ]
         assert len(zone_id_fields) == 1  # Not duplicated
 
@@ -1234,7 +1236,7 @@ class TestRefWithRefType:
         assert r.on_delete == OnDelete.dangling
 
     def test_revision_id_string_conversion(self):
-        r = Ref("zone", ref_type="revision_id")
+        r = Ref("zone", ref_type="revision_id")  # ty:ignore[invalid-argument-type]
         assert r.ref_type is RefType.revision_id
 
     def test_revision_id_with_dangling_ok(self):
@@ -1380,7 +1382,7 @@ class TestAddModelRefType:
         assert len(rev_refs) == 1
         # Check that indexed fields do NOT include the revision_id ref
         rm = crud.resource_managers["snapshot-holder"]
-        indexed_paths = [f.field_path for f in rm.indexed_fields]
+        indexed_paths = [f.field_path for f in rm.indexed_fields]  # ty:ignore[unresolved-attribute]
         assert "snapshot_id" not in indexed_paths
 
     def test_resource_id_ref_still_indexed(self):
@@ -1389,7 +1391,7 @@ class TestAddModelRefType:
         crud.add_model(Zone, name="zone")
         crud.add_model(MonsterWithRefType, name="monster")
         rm = crud.resource_managers["monster"]
-        indexed_paths = [f.field_path for f in rm.indexed_fields]
+        indexed_paths = [f.field_path for f in rm.indexed_fields]  # ty:ignore[unresolved-attribute]
         assert "zone_id" in indexed_paths
         assert "zone_snapshot_id" not in indexed_paths
 

@@ -55,11 +55,11 @@ def get_resource_store(
     store_type: str, tmpdir: Path | None = None
 ) -> Generator[IResourceStore]:
     if store_type == "memory":
-        yield MemoryResourceStore(encoding="msgpack")
+        yield MemoryResourceStore(encoding="msgpack")  # ty:ignore[invalid-argument-type]
     elif store_type == "disk":
-        d = tmpdir / faker.pystr()
+        d = tmpdir / faker.pystr()  # ty:ignore[unsupported-operator]
         d.mkdir()
-        yield DiskResourceStore(encoding="msgpack", rootdir=d)
+        yield DiskResourceStore(encoding="msgpack", rootdir=d)  # ty:ignore[invalid-argument-type]
     elif store_type == "postgres":
         from autocrud.resource_manager.resource_store.postgres import (
             PostgresResourceStore,
@@ -69,7 +69,7 @@ def get_resource_store(
         table_prefix = f"test_{faker.pystr(min_chars=6, max_chars=10)}_"
         store = PostgresResourceStore(
             pg_dsn=pg_dsn,
-            encoding="msgpack",
+            encoding="msgpack",  # ty:ignore[invalid-argument-type]
             table_prefix=table_prefix,
         )
         yield store
@@ -137,7 +137,7 @@ class TestListResources:
             assert isinstance(item.meta, ResourceMeta)
 
         # Verify data content matches created resources
-        ids = {item.info.resource_id for item in results}
+        ids = {item.info.resource_id for item in results}  # ty:ignore[unresolved-attribute]
         assert info1.resource_id in ids
         assert info2.resource_id in ids
 
@@ -332,7 +332,7 @@ class TestListResources:
             results = self.mgr.list_resources(query)
 
         assert len(results) == 1
-        assert results[0].meta.resource_id == info2.resource_id
+        assert results[0].meta.resource_id == info2.resource_id  # ty:ignore[unresolved-attribute]
 
     # ------------------------------------------------------------------
     # Parallel execution test
@@ -351,7 +351,7 @@ class TestListResources:
             results = self.mgr.list_resources(query)
 
         assert len(results) == 15
-        result_ids = {item.info.resource_id for item in results}
+        result_ids = {item.info.resource_id for item in results}  # ty:ignore[unresolved-attribute]
         for info, _ in created:
             assert info.resource_id in result_ids
 
@@ -381,7 +381,7 @@ class TestListResources:
 
         # 只有成功取得的資源
         assert len(results) == 1
-        assert results[0].info.resource_id == info2.resource_id
+        assert results[0].info.resource_id == info2.resource_id  # ty:ignore[unresolved-attribute]
 
     # ------------------------------------------------------------------
     # Data correctness test
@@ -445,4 +445,4 @@ class TestListResources:
 
         assert isinstance(results, list)
         assert len(results) == 1
-        assert results[0].meta.resource_id == info.resource_id
+        assert results[0].meta.resource_id == info.resource_id  # ty:ignore[unresolved-attribute]

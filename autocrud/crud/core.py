@@ -13,11 +13,12 @@ from typing import (
     Any,
     Literal,
     TypeVar,
+    cast,
 )
 
 from fastapi import APIRouter, Depends, FastAPI, File, HTTPException, UploadFile
 from fastapi.params import Body
-from msgspec import UNSET, UnsetType
+from msgspec import UNSET, Struct, UnsetType
 
 from autocrud.backend import BackendConfig, build_backend_bundle
 from autocrud.crud.custom_actions import (
@@ -188,6 +189,12 @@ class AutoCRUD:
             ``get_user`` on the provider always takes priority.
         default_now:
             Default timestamp function used when time is not specified.
+        default_status:
+            Default revision status applied when registering models via
+            :meth:`add_model` (e.g. ``RevisionStatus.draft``). Per-model
+            ``default_status`` on ``add_model`` overrides this. If neither
+            is set, ``ResourceManager`` falls back to
+            ``RevisionStatus.stable``.
         strict_operation_context:
             When ``True``, all write operations (create, update, delete, etc.)
             will raise :class:`MissingOperationContextError` if required
@@ -222,12 +229,13 @@ class AutoCRUD:
         encoding: Encoding = Encoding.json,
         default_user: str | Callable[[], str] | UnsetType = UNSET,
         default_now: Callable[[], dt.datetime] | UnsetType = UNSET,
+        default_status: RevisionStatus | UnsetType = UNSET,
         strict_operation_context: bool = False,
     ):
         # Initialize empty collections
         self.resource_managers: OrderedDict[str, IResourceManager] = OrderedDict()
         self.message_queues: OrderedDict[str, IMessageQueue] = OrderedDict()
-        self.model_names: dict[type[T], str | None] = {}
+        self.model_names: dict[type, str | None] = {}
         self.relationships: list[_RefInfo] = []
 
         # Initialize attributes with defaults before applying configuration
@@ -241,6 +249,7 @@ class AutoCRUD:
         self.default_encoding = Encoding.json
         self.default_user = UNSET
         self.default_now = UNSET
+        self.default_status: RevisionStatus | UnsetType = UNSET
         self.strict_operation_context = False
         self._pending_create_actions: list[_PendingCreateAction] = []
         self._pending_update_actions: list[_PendingUpdateAction] = []
@@ -260,6 +269,7 @@ class AutoCRUD:
             encoding=encoding,
             default_user=default_user,
             default_now=default_now,
+            default_status=default_status,
             strict_operation_context=strict_operation_context,
         )
 
@@ -283,6 +293,7 @@ class AutoCRUD:
         encoding: Encoding | UnsetType = UNSET,
         default_user: str | Callable[[], str] | UnsetType = UNSET,
         default_now: Callable[[], dt.datetime] | UnsetType = UNSET,
+        default_status: RevisionStatus | UnsetType = UNSET,
         strict_operation_context: bool | UnsetType = UNSET,
     ) -> None:
         """Apply configuration settings to the AutoCRUD instance.
@@ -431,6 +442,10 @@ class AutoCRUD:
         if default_now is not UNSET:
             self.default_now = default_now
 
+        # Update default_status
+        if default_status is not UNSET:
+            self.default_status = default_status
+
         # Update strict_operation_context
         if strict_operation_context is not UNSET:
             self.strict_operation_context = strict_operation_context
@@ -454,6 +469,7 @@ class AutoCRUD:
         encoding: Encoding | UnsetType = UNSET,
         default_user: str | Callable[[], str] | UnsetType = UNSET,
         default_now: Callable[[], dt.datetime] | UnsetType = UNSET,
+        default_status: RevisionStatus | UnsetType = UNSET,
         strict_operation_context: bool | UnsetType = UNSET,
     ) -> None:
         """Configure the AutoCRUD instance dynamically.
@@ -486,6 +502,10 @@ class AutoCRUD:
                 value instead of ``"anonymous"``.  A custom ``get_user`` on the
                 provider always takes priority.
             default_now: Default timestamp function for operations.
+            default_status: Default revision status applied when registering models
+                via :meth:`add_model` (e.g. ``RevisionStatus.draft``). Per-model
+                ``default_status`` on ``add_model`` overrides this. If neither is
+                set, ``ResourceManager`` falls back to ``RevisionStatus.stable``.
             strict_operation_context: When ``True``, write operations on all
                 registered models will raise
                 :class:`MissingOperationContextError` if ``user`` and ``now``
@@ -537,6 +557,7 @@ class AutoCRUD:
             encoding=encoding,
             default_user=default_user,
             default_now=default_now,
+            default_status=default_status,
             strict_operation_context=strict_operation_context,
         )
 
@@ -760,7 +781,7 @@ class AutoCRUD:
         """
 
         def decorator(func: Callable) -> Callable:
-            action_path = path or func.__name__.replace("_", "-")
+            action_path = path or getattr(func, "__name__", "action").replace("_", "-")
             action_label = label or action_path.replace("-", " ").title()
             self._pending_create_actions.append(
                 _PendingCreateAction(
@@ -915,7 +936,7 @@ class AutoCRUD:
         """
 
         def decorator(func: Callable) -> Callable:
-            action_path = path or func.__name__.replace("_", "-")
+            action_path = path or getattr(func, "__name__", "action").replace("_", "-")
             action_label = label or action_path.replace("-", " ").title()
             self._pending_update_actions.append(
                 _PendingUpdateAction(
@@ -947,7 +968,7 @@ class AutoCRUD:
         event_handlers: Sequence[IEventHandler] | None = None,
         permission_checker: IPermissionChecker | None = None,
         encoding: Encoding | None = None,
-        default_status: RevisionStatus | None = None,
+        default_status: RevisionStatus | UnsetType = UNSET,
         default_user: str | Callable[[], str] | UnsetType = UNSET,
         default_now: Callable[[], dt.datetime] | UnsetType = UNSET,
         message_queue_factory: IMessageQueueFactory | None | UnsetType = UNSET,
@@ -998,7 +1019,9 @@ class AutoCRUD:
             encoding:
                 Encoding for stored payloads. If `None`, uses `self.default_encoding`.
             default_status:
-                Default revision status for this resource (if supported by the revision model).
+                Per-model default revision status. If `UNSET`, falls back to
+                `self.default_status` when configured; otherwise `ResourceManager`'s
+                own default (`RevisionStatus.stable`) applies.
             default_user:
                 Per-model default user (or factory). If `UNSET`, falls back to `self.default_user`
                 when configured.
@@ -1094,6 +1117,7 @@ class AutoCRUD:
 
         # ── Resolve Schema vs type argument ────────────────────────
         resolved_schema: Schema | None = None
+        resolved_model: type
         if isinstance(model, Schema):
             # Schema passed as first argument
             if migration is not None:
@@ -1107,13 +1131,15 @@ class AutoCRUD:
                     "Pass validator to Schema(..., validator=...) instead."
                 )
             resolved_schema = model
-            model = resolved_schema.resource_type  # type: ignore[assignment]
-            if model is None:
+            schema_type = resolved_schema.resource_type
+            if schema_type is None:
                 raise ValueError(
                     "Schema passed as first argument must have a resource_type."
                 )
+            resolved_model = schema_type
         else:
             # model is a plain type
+            resolved_model = model
             if isinstance(migration, Schema):
                 resolved_schema = migration
             elif isinstance(migration, IMigration):
@@ -1126,14 +1152,16 @@ class AutoCRUD:
                 resolved_schema = Schema.from_legacy(migration)
             # else migration is None → no schema
 
-        model_name = name or self._resource_name(model)
+        model_name = name or self._resource_name(resolved_model)
 
         # Handle Pydantic BaseModel as model type:
         # auto-generate struct and use Pydantic for validation
-        pydantic_model = None
-        if is_pydantic_model(model):
-            pydantic_model = model
-            model = pydantic_to_struct(pydantic_model)
+        pydantic_model: type | None = None
+        if is_pydantic_model(resolved_model):
+            # ``is_pydantic_model`` runtime-narrows to ``type[BaseModel]``
+            # but ty doesn't track the BaseModel constraint through it.
+            pydantic_model = resolved_model
+            resolved_model = pydantic_to_struct(cast(Any, pydantic_model))
             if validator is None and (
                 resolved_schema is None or not resolved_schema.has_validator
             ):
@@ -1141,21 +1169,23 @@ class AutoCRUD:
 
         if model_name in self.resource_managers:
             raise ValueError(f"Model name {model_name} already exists.")
-        if model in self.model_names:
-            self.model_names[model] = None
+        if resolved_model in self.model_names:
+            self.model_names[resolved_model] = None
             logger.warning(
-                f"Model {get_type_name(model) or repr(model)} is already registered with a different name. "
+                f"Model {get_type_name(resolved_model) or repr(resolved_model)} is already registered with a different name. "
                 f"This resource manager will not be accessible by its type.",
             )
         else:
-            self.model_names[model] = model_name
+            self.model_names[resolved_model] = model_name
         if storage is None:
             storage = self.storage_factory.build(model_name)
         if encoding is None:
             encoding = self.default_encoding
         other_options = {}
-        if default_status is not None:
+        if default_status is not UNSET:
             other_options["default_status"] = default_status
+        elif self.default_status is not UNSET:
+            other_options["default_status"] = self.default_status
         if default_user is not UNSET:
             other_options["default_user"] = default_user
         elif self.default_user is not UNSET:
@@ -1165,7 +1195,7 @@ class AutoCRUD:
         elif self.default_now is not UNSET:
             other_options["default_now"] = self.default_now
         # Auto-detect Job subclass and create message queue
-        if self._is_job_subclass(model) and (
+        if self._is_job_subclass(resolved_model) and (
             job_handler is not None or job_handler_factory is not None
         ):
             # Determine which factory to use
@@ -1177,9 +1207,13 @@ class AutoCRUD:
                 mq_factory = message_queue_factory
 
             if mq_factory is not None:
-                real_handler = job_handler
                 if job_handler_factory is not None:
-                    real_handler = LazyJobHandler(job_handler_factory)
+                    real_handler: Callable[[Resource[Job[T]]], None] = LazyJobHandler(
+                        job_handler_factory
+                    )
+                else:
+                    assert job_handler is not None  # outer guard
+                    real_handler = job_handler
 
                 # Create message queue with job handler
                 other_options["message_queue"] = mq_factory.build(real_handler)
@@ -1196,18 +1230,24 @@ class AutoCRUD:
                         IndexableField(field_path="retries", field_type=int)
                     )
 
+        # ResourceManager binds T from ``resolved_model`` (typed as bare
+        # ``type`` after Pydantic conversion), erasing the caller's T.
+        # Cast the parameterised inputs to the corresponding T-erased
+        # form so ty can match against ``IMigration[object]`` etc.
         resource_manager = ResourceManager(
-            model,
+            resolved_model,
             storage=storage,
             blob_store=self.blob_store,
             id_generator=id_generator,
-            migration=resolved_schema or migration,
+            migration=cast("IMigration | Schema | None", resolved_schema or migration),
             indexed_fields=_indexed_fields,
             event_handlers=self.event_handlers or event_handlers,
             permission_checker=self.permission_checker or permission_checker,
             encoding=encoding,
             name=model_name,
-            validator=validator,
+            validator=cast(
+                "Callable[[Any], None] | IValidator | type | None", validator
+            ),
             pydantic_type=pydantic_model,
             constraint_checkers=constraint_checkers,
             strict_operation_context=self.strict_operation_context,
@@ -1216,7 +1256,7 @@ class AutoCRUD:
         self.resource_managers[model_name] = resource_manager
 
         # Scan Ref / RefRevision annotations and collect relationships
-        refs = extract_refs(model, model_name)
+        refs = extract_refs(resolved_model, model_name)
         self.relationships.extend(refs)
         # Validate set_null requires nullable field
         for ref_info in refs:
@@ -1239,7 +1279,7 @@ class AutoCRUD:
                     )
                 )
 
-    def openapi(self, app: FastAPI, structs: list[type] = None) -> None:
+    def openapi(self, app: FastAPI, structs: list[type] | None = None) -> None:
         """Generate and register the OpenAPI schema for the FastAPI application.
 
         This method customizes the OpenAPI schema generation to include all the
@@ -1360,8 +1400,16 @@ class AutoCRUD:
               skipped (``APIRouter`` has no OpenAPI schema).
             - ``structs`` is ignored when ``app`` is not a ``FastAPI`` instance.
         """
-        # Determine the target router for route generation
-        target = router if router is not None else app
+        # Determine the target router for route generation. ``FastAPI``
+        # is not an ``APIRouter``, but it owns one at ``.router``; the
+        # downstream route templates only need an APIRouter-shaped
+        # target, so unwrap.
+        if router is not None:
+            target: APIRouter = router
+        elif isinstance(app, FastAPI):
+            target = app.router
+        else:
+            target = app
 
         # Validate all Ref targets point to registered resources
         registered = set(self.resource_managers.keys())
@@ -1383,7 +1431,7 @@ class AutoCRUD:
         # Auto-register Job models for async update actions.
         self._register_async_update_job_models()
 
-        self.route_templates.sort()
+        self.route_templates.sort(key=lambda rt: rt.order)
         for model_name, resource_manager in self.resource_managers.items():
             for route_template in self.route_templates:
                 try:
@@ -1470,7 +1518,7 @@ class AutoCRUD:
         async def _convert_params_for_payload(
             kwargs: dict,
             param_convs: dict[str, tuple[str, type]],
-            auto_payload_type: type | None,
+            auto_payload_type: type[Struct] | None,
         ) -> None:
             """Convert non-serialisable kwargs to their payload surrogates.
 
@@ -1845,7 +1893,7 @@ class AutoCRUD:
             wrapper.__qualname__ = handler.__qualname__
             wrapper.__module__ = handler.__module__
             wrapper.__doc__ = handler.__doc__
-            wrapper.__signature__ = new_sig
+            setattr(wrapper, "__signature__", new_sig)
             wrapper.__annotations__ = new_annotations
             return wrapper
 
@@ -2320,7 +2368,7 @@ class AutoCRUD:
             wrapper.__qualname__ = handler.__qualname__
             wrapper.__module__ = handler.__module__
             wrapper.__doc__ = handler.__doc__
-            wrapper.__signature__ = new_sig
+            setattr(wrapper, "__signature__", new_sig)
             wrapper.__annotations__ = new_annotations
             return wrapper
 

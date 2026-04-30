@@ -77,7 +77,7 @@ class BinaryProcessor:
         if self._collector is None:
             return set()
         result: set[str] = set()
-        self._collector(data, result)
+        self._collector(data, result)  # ty:ignore[invalid-argument-type]
         return result
 
     def _compile(
@@ -140,7 +140,7 @@ class BinaryProcessor:
         """
         if type_hint is Binary:
             if mode == "collect":
-                return self._collect_leaf
+                return self._collect_leaf  # ty:ignore[invalid-return-type]
             return self._process_leaf if mode == "process" else self._restore_leaf
 
         if is_union_type(type_hint):
@@ -161,7 +161,7 @@ class BinaryProcessor:
 
                     return optional_wrapper
             if mode == "collect":
-                return self._collect_generic
+                return self._collect_generic  # ty:ignore[invalid-return-type]
             return self._process_generic if mode == "process" else self._restore_generic
 
         if is_list_type(type_hint):
@@ -173,14 +173,14 @@ class BinaryProcessor:
                     def list_processor(data, store):
                         if not data:
                             return data
-                        new_list = [item_proc(item, store) for item in data]
+                        new_list = [item_proc(item, store) for item in data]  # ty:ignore[call-non-callable]
                         if any(n is not o for n, o in zip(new_list, data)):
                             return new_list
                         return data
 
                     return list_processor
             if mode == "collect":
-                return self._collect_generic
+                return self._collect_generic  # ty:ignore[invalid-return-type]
             return self._process_generic if mode == "process" else self._restore_generic
 
         if is_dict_type(type_hint):
@@ -192,14 +192,14 @@ class BinaryProcessor:
                     def dict_processor(data, store):
                         if not data:
                             return data
-                        new_dict = {k: val_proc(v, store) for k, v in data.items()}
+                        new_dict = {k: val_proc(v, store) for k, v in data.items()}  # ty:ignore[call-non-callable]
                         if any(new_dict[k] is not data[k] for k in data):
                             return new_dict
                         return data
 
                     return dict_processor
             if mode == "collect":
-                return self._collect_generic
+                return self._collect_generic  # ty:ignore[invalid-return-type]
             return self._process_generic if mode == "process" else self._restore_generic
 
         # Check for concrete Struct types or generic Struct aliases (e.g. Job[MyPayload])
@@ -243,7 +243,7 @@ class BinaryProcessor:
 
         if type_hint is Any:
             if mode == "collect":
-                return self._collect_generic
+                return self._collect_generic  # ty:ignore[invalid-return-type]
             return self._process_generic if mode == "process" else self._restore_generic
 
         return None

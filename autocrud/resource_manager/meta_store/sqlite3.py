@@ -142,7 +142,7 @@ class SqliteMetaStore(ISlowMetaStore):
             raise KeyError(pk)
         return self._serializer.decode(row[0])
 
-    def __setitem__(self, pk: str, meta: ResourceMeta) -> None:
+    def __setitem__(self, pk: str, meta: ResourceMeta) -> None:  # ty:ignore[invalid-method-override]
         import json
 
         data = self._serializer.encode(meta)

@@ -137,7 +137,7 @@ def test_blob_route_not_implemented_error():
         def __init__(self):
             self.blob_store = MockBlobStore()  # Not None to pass check in apply
 
-        def get(self, resource_id):
+        def get(self, resource_id):  # ty:ignore[invalid-method-override]
             return "ok"
 
         @contextmanager
@@ -178,7 +178,7 @@ def test_blob_route_skip_non_resource_manager():
 
     template = BlobRouteTemplate()
     router = APIRouter()
-    template.apply("test-model", manager, router)
+    template.apply("test-model", manager, router)  # ty:ignore[invalid-argument-type]
 
     assert len(router.routes) == 0
 
@@ -209,7 +209,7 @@ def test_blob_redirect():
         def __init__(self):
             self.blob_store = MockRedirectBlobStore()
 
-        def get(self, resource_id):
+        def get(self, resource_id):  # ty:ignore[invalid-method-override]
             return "ok"  # dummy
 
         @contextmanager

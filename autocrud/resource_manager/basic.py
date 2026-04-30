@@ -60,7 +60,7 @@ class Ctx(Generic[T]):
     def ctx(self, value: T | UnsetType):
         if self.strict_type is not UNSET and not isinstance(value, self.strict_type):
             raise TypeError(f"Context value must be of type {self.strict_type}")
-        token = self.v.set(value)
+        token = self.v.set(value)  # ty:ignore[invalid-argument-type]
         try:
             yield
         finally:
@@ -70,8 +70,8 @@ class Ctx(Generic[T]):
         if self.default is NO_DEFAULT and self.default_factory is NO_DEFAULT:
             return self.v.get()
         if self.default_factory is not NO_DEFAULT:
-            return self.v.get(self.default_factory())
-        return self.v.get(self.default)
+            return self.v.get(self.default_factory())  # ty:ignore[call-non-callable]
+        return self.v.get(self.default)  # ty:ignore[invalid-return-type]
 
 
 class Encoding(StrEnum):
@@ -193,7 +193,7 @@ def _evaluate_trivalent(
     if isinstance(data, dict):
         if actual_field_path in data:
             has_key = True
-            val = data[actual_field_path]
+            val = data[actual_field_path]  # ty:ignore[invalid-argument-type]
     elif isinstance(data, ResourceMeta):
         if hasattr(data, actual_field_path) and actual_field_path != "indexed_data":
             has_key = True
@@ -209,7 +209,7 @@ def _evaluate_trivalent(
 
         if condition.transform == FieldTransform.length:
             try:
-                field_value = len(val)
+                field_value = len(val)  # ty:ignore[invalid-argument-type]
             except TypeError:
                 # Value doesn't support len(), treat as Unknown
                 return None
@@ -494,6 +494,17 @@ class IMetaStore(MutableMapping[str, ResourceMeta]):
         The results are yielded in the order specified by the sort criteria and
         limited by the pagination parameters.
         """
+
+    def save_many(self, metas: Iterable[ResourceMeta]) -> None:
+        """Optional bulk save. Default loops and uses ``__setitem__``.
+
+        ``ISlowMetaStore`` requires this to be overridden for batch
+        durability semantics; the default here lets callers invoke
+        ``store.save_many(...)`` on any meta store without checking
+        ``hasattr``.
+        """
+        for m in metas:
+            self[m.resource_id] = m
 
 
 class IFastMetaStore(IMetaStore):
@@ -977,6 +988,33 @@ class IResourceStore(ABC):
     def save(self, info: RevisionInfo, data: IO[bytes]) -> None:
         """Save a new revision."""
 
+    def save_many(
+        self, items: Iterable[tuple[RevisionInfo, "bytes | IO[bytes]"]]
+    ) -> None:
+        """Optional bulk save. Default loops and calls :meth:`save`.
+
+        Subclasses with bulk-optimised paths (e.g. concurrent S3 PUTs)
+        override this. The default exists so callers can always invoke
+        ``store.save_many(...)`` without checking ``hasattr``.
+        """
+        import io as _io
+
+        for info, raw in items:
+            stream = _io.BytesIO(raw) if isinstance(raw, (bytes, bytearray)) else raw
+            self.save(info, stream)
+
+    def dump_all_revisions(
+        self, *, resource_ids: "frozenset[str] | None" = None
+    ) -> "dict[str, list[tuple[RevisionInfo, bytes]]] | None":
+        """Optional bulk pre-fetch. Default returns ``None``.
+
+        ``None`` signals to the caller to fall back to per-resource
+        streaming. Subclasses with bulk-fetch capability (e.g. S3
+        list+get pipelines) override this to return a dict keyed by
+        ``resource_id``.
+        """
+        return None
+
     def purge_resource(self, resource_id: str) -> None:
         """Hard-delete all revision data for a resource.
 
@@ -1333,6 +1371,34 @@ class IStorage(ABC):
         Returns:
             Generator[tuple[RevisionInfo, IO[bytes]]]: A generator that yields
             tuples of (RevisionInfo, data bytes).
+        """
+
+    def dump_resources_bulk(
+        self, *, resource_ids: "frozenset[str] | None" = None
+    ) -> "dict[str, list[tuple[RevisionInfo, bytes]]] | None":
+        """Optional bulk pre-fetch across multiple resources.
+
+        Returns ``None`` when the underlying resource store has no
+        bulk-fetch path; callers should fall back to per-resource
+        streaming via :meth:`dump_resource`. Implementations that wrap
+        a bulk-capable resource store override this.
+        """
+        return None
+
+    @abstractmethod
+    def save_metas_bulk(self, metas: "list[ResourceMeta]") -> None:
+        """Bulk save resource metadata.
+
+        Implementations should delegate to the underlying meta store's
+        :meth:`IMetaStore.save_many` for batch durability.
+        """
+
+    @abstractmethod
+    def save_revisions_bulk(self, items: "list[tuple[RevisionInfo, bytes]]") -> None:
+        """Bulk save revision records.
+
+        Implementations should delegate to the underlying resource
+        store's :meth:`IResourceStore.save_many`.
         """
 
 

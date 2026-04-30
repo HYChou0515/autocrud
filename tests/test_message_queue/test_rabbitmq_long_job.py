@@ -138,7 +138,7 @@ def make_queue(request):
         )
         if amqp_heartbeat_seconds is not None:
             kwargs["amqp_heartbeat_seconds"] = amqp_heartbeat_seconds
-        queue = RabbitMQMessageQueue(**kwargs)
+        queue = RabbitMQMessageQueue(**kwargs)  # ty:ignore[invalid-argument-type]
         return queue, ch, rm
 
     yield _factory
@@ -196,7 +196,7 @@ class TestWorkerThreadExecution:
         handler_done = threading.Event()
 
         def handler(job):
-            handler_thread_ids.append(threading.current_thread().ident)
+            handler_thread_ids.append(threading.current_thread().ident)  # ty:ignore[invalid-argument-type]
             handler_done.set()
 
         queue, ch, rm = make_queue(handler)
@@ -247,7 +247,7 @@ class TestWorkerThreadExecution:
             threadsafe_calls.append(fn)
             original_cb(fn)
 
-        conn.add_callback_threadsafe = tracking_cb
+        conn.add_callback_threadsafe = tracking_cb  # ty:ignore[invalid-assignment]
 
         method = MagicMock()
         method.delivery_tag = "ack-tag"

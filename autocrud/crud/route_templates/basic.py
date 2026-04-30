@@ -109,7 +109,7 @@ class IRouteTemplate(ABC):
 class BaseRouteTemplate(IRouteTemplate):
     def __init__(
         self,
-        dependency_provider: DependencyProvider = None,
+        dependency_provider: DependencyProvider = None,  # ty:ignore[invalid-parameter-default]
         order: int = 100,
     ):
         """初始化路由模板

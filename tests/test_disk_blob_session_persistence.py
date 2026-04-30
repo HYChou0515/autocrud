@@ -67,7 +67,7 @@ class TestDiskSessionPersistence:
 
         # The blob must be retrievable from any instance
         store_d = DiskBlobStore(shared_root)
-        blob = store_d.get(result.file_id)
+        blob = store_d.get(result.file_id)  # ty:ignore[invalid-argument-type]
         assert blob.data == SAMPLE_BYTES
 
     def test_abort_on_different_instance(self, shared_root):
@@ -109,7 +109,7 @@ class TestDiskSessionPersistence:
         # This implicitly tested by cross-instance tests above, but let's
         # be explicit: a brand-new instance with empty memory sees sessions.
         fresh = DiskBlobStore(shared_root)
-        assert not hasattr(fresh, "_sessions") or len(fresh._sessions) == 0
+        assert not hasattr(fresh, "_sessions") or len(fresh._sessions) == 0  # ty:ignore[invalid-argument-type]
 
     def test_upload_data_persisted_for_finalize(self, shared_root):
         """Uploaded bytes must be persisted so finalize on another instance works."""

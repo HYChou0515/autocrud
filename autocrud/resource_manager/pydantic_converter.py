@@ -11,7 +11,7 @@ Supports both Pydantic v1 (1.x) and v2 (2.x).
 """
 
 from collections.abc import Callable
-from typing import Annotated, Any, Literal, Union
+from typing import TYPE_CHECKING, Annotated, Any, Literal, Union, cast
 
 import msgspec
 
@@ -26,6 +26,9 @@ from autocrud.util.type_utils import (
     unwrap_annotated,
 )
 
+if TYPE_CHECKING:
+    from pydantic import BaseModel
+
 # ---------------------------------------------------------------------------
 # Pydantic version detection
 # ---------------------------------------------------------------------------
@@ -38,7 +41,7 @@ except Exception:  # pragma: no cover
     _PYDANTIC_V2 = False
 
 
-def is_pydantic_model(obj: type) -> bool:
+def is_pydantic_model(obj: Any) -> bool:
     """Check if a type is a Pydantic BaseModel subclass."""
     try:
         from pydantic import BaseModel
@@ -59,7 +62,7 @@ def pydantic_to_dict(obj: Any) -> dict:
         return obj.dict()  # Pydantic v1
 
 
-def pydantic_to_validator(pydantic_model: type) -> Callable:
+def pydantic_to_validator(pydantic_model: "type[BaseModel]") -> Callable:
     """Create a validator function from a Pydantic model class.
 
     Converts the data (a msgspec Struct) to a dict, then validates
@@ -74,12 +77,12 @@ def pydantic_to_validator(pydantic_model: type) -> Callable:
 
         def validate(data):
             d = msgspec.to_builtins(data)
-            pydantic_model.parse_obj(d)
+            pydantic_model.parse_obj(d)  # ty: ignore[deprecated]  # v1 path
 
     return validate
 
 
-def pydantic_to_struct(pydantic_model: type) -> type:
+def pydantic_to_struct(pydantic_model: "type[BaseModel]") -> type:
     """Auto-generate a msgspec Struct from a Pydantic BaseModel.
 
     This allows users to pass a Pydantic model to ``add_model()``
@@ -130,10 +133,10 @@ def build_validator(
         not isinstance(validator, type)
         and callable(getattr(validator, "validate", None))
     ):
-        return validator.validate
+        return cast(Callable, getattr(validator, "validate"))
 
     if is_pydantic_model(validator):
-        return pydantic_to_validator(validator)
+        return pydantic_to_validator(cast("type[BaseModel]", validator))
 
     if callable(validator):
         return validator
@@ -150,7 +153,7 @@ def build_validator(
 
 
 def _iter_model_fields(
-    pydantic_model: type,
+    pydantic_model: "type[BaseModel]",
 ) -> list[tuple[str, Any, bool, Any, "str | None"]]:
     """Iterate model fields with a unified interface for Pydantic v1 and v2.
 
@@ -174,20 +177,23 @@ def _iter_model_fields(
                 (name, annotation, fi.is_required(), fi.default, fi.discriminator)
             )
     else:
-        for name, mf in pydantic_model.__fields__.items():
+        # v1 ``ModelField`` exposes attrs that v2 ``FieldInfo`` doesn't —
+        # ty's pydantic stub is v2-shaped, so reach for them via getattr.
+        for name, mf in pydantic_model.__fields__.items():  # type: ignore[attr-defined]
             # v1 ModelField: outer_type_ preserves generics but strips Optional;
             # annotation preserves the raw annotation including Optional.
-            annotation = mf.outer_type_
+            annotation = getattr(mf, "outer_type_", None)
+            allow_none = getattr(mf, "allow_none", False)
             # Reconstruct Optional if the field allows None but outer_type_
             # already stripped it.
-            if mf.allow_none and not is_union_type(annotation):
-                annotation = Union[annotation, type(None)]
+            if allow_none and not is_union_type(annotation):
+                annotation = Union[annotation, None]
             result.append(
                 (
                     name,
                     annotation,
-                    mf.required,
-                    mf.default,
+                    getattr(mf, "required", False),
+                    getattr(mf, "default", None),
                     getattr(mf, "discriminator_key", None),
                 )
             )
@@ -195,7 +201,7 @@ def _iter_model_fields(
 
 
 def _get_field_annotation(
-    pydantic_model: type, field_name: str
+    pydantic_model: "type[BaseModel]", field_name: str
 ) -> "tuple[Any, Any] | None":
     """Get (annotation, default) for a single field — v1/v2 compatible.
 
@@ -207,10 +213,11 @@ def _get_field_annotation(
             return None
         return fi.annotation, fi.default
     else:
-        mf = pydantic_model.__fields__.get(field_name)
+        # v1 path — ty's pydantic stub is v2-only, so use ``getattr``.
+        mf = pydantic_model.__fields__.get(field_name)  # type: ignore[attr-defined]
         if mf is None:
             return None
-        return mf.outer_type_, mf.default
+        return getattr(mf, "outer_type_", None), getattr(mf, "default", None)
 
 
 def _convert_annotation(annotation: Any, cache: dict) -> Any:
@@ -309,7 +316,7 @@ def _convert_discriminated_union(
 
 
 def _pydantic_to_struct_tagged(
-    pydantic_model: type, tag_field: str, cache: dict
+    pydantic_model: "type[BaseModel]", tag_field: str, cache: dict
 ) -> type:
     """Convert a Pydantic BaseModel to a tagged msgspec Struct for discriminated unions.
 
@@ -370,7 +377,9 @@ def _pydantic_to_struct_tagged(
     return result
 
 
-def _pydantic_to_struct_recursive(pydantic_model: type, cache: dict) -> type:
+def _pydantic_to_struct_recursive(
+    pydantic_model: "type[BaseModel]", cache: dict
+) -> type:
     """Internal recursive implementation of pydantic_to_struct."""
     if pydantic_model in cache:
         return cache[pydantic_model]
@@ -415,7 +424,7 @@ def _pydantic_to_struct_recursive(pydantic_model: type, cache: dict) -> type:
 # ---------------------------------------------------------------------------
 
 
-def struct_to_pydantic(struct_cls: type) -> type:
+def struct_to_pydantic(struct_cls: "type[msgspec.Struct]") -> type:
     """Convert a msgspec Struct class to a Pydantic BaseModel class.
 
     This is the reverse of ``pydantic_to_struct``.  It allows using a
@@ -550,7 +559,7 @@ def _struct_to_pydantic_annotation(annotation: Any, cache: dict) -> Any:
 
 
 def _convert_tagged_union_to_pydantic(
-    members: list[type], none_included: bool, cache: dict
+    members: "list[type[msgspec.Struct]]", none_included: bool, cache: dict
 ) -> Any:
     """Convert tagged Struct union members to Pydantic discriminated union.
 
@@ -566,14 +575,19 @@ def _convert_tagged_union_to_pydantic(
     for member in members:
         converted.append(_struct_to_pydantic_tagged(member, tag_field, cache))
 
-    union_type = Union[tuple(converted)]
+    # ``Union[...]`` / ``Annotated[...]`` are built dynamically here. ty
+    # can't validate runtime tuple-spread into a type expression, hence
+    # the inline ignores.
+    union_type: Any = Union[tuple(converted)]
     if none_included:
         union_type = Union[tuple([*converted, type(None)])]
 
-    return Annotated[union_type, PydanticField(discriminator=tag_field)]
+    return Annotated[union_type, PydanticField(discriminator=tag_field)]  # ty: ignore[invalid-type-form]
 
 
-def _struct_to_pydantic_tagged(struct_cls: type, tag_field: str, cache: dict) -> type:
+def _struct_to_pydantic_tagged(
+    struct_cls: "type[msgspec.Struct]", tag_field: str, cache: dict
+) -> type:
     """Convert a single tagged Struct to a Pydantic model with Literal discriminator."""
     if struct_cls in cache:
         return cache[struct_cls]
@@ -587,8 +601,9 @@ def _struct_to_pydantic_tagged(struct_cls: type, tag_field: str, cache: dict) ->
     field_annotations: dict[str, Any] = {}
     field_defaults: dict[str, Any] = {}
 
-    # Add discriminator field as Literal
-    field_annotations[tag_field] = Literal[tag_value]
+    # Discriminator field as ``Literal[<runtime tag>]``. Inherently
+    # dynamic — ty can't validate, so suppress.
+    field_annotations[tag_field] = Literal[tag_value]  # ty: ignore[invalid-type-form]
     field_defaults[tag_field] = tag_value
 
     # Convert remaining fields
@@ -613,7 +628,9 @@ def _struct_to_pydantic_tagged(struct_cls: type, tag_field: str, cache: dict) ->
     return model
 
 
-def _struct_to_pydantic_recursive(struct_cls: type, cache: dict) -> type:
+def _struct_to_pydantic_recursive(
+    struct_cls: "type[msgspec.Struct]", cache: dict
+) -> type:
     """Convert a (non-tagged) Struct to a Pydantic BaseModel."""
     if struct_cls in cache:
         return cache[struct_cls]
@@ -646,7 +663,7 @@ def _struct_to_pydantic_recursive(struct_cls: type, cache: dict) -> type:
     return model
 
 
-def _get_struct_type_hints(struct_cls: type) -> dict[str, Any]:
+def _get_struct_type_hints(struct_cls: "type[msgspec.Struct]") -> dict[str, Any]:
     """Get type hints for a Struct, including Annotated metadata."""
     from typing import get_type_hints
 

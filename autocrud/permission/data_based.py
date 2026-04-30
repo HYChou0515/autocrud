@@ -16,8 +16,8 @@ class FieldLevelPermissionChecker(IPermissionChecker):
 
     def __init__(
         self,
-        allowed_fields_by_user: Dict[str, set[str]] = None,
-        allowed_fields_by_role: Dict[str, set[str]] = None,
+        allowed_fields_by_user: Dict[str, set[str]] = None,  # ty:ignore[invalid-parameter-default]
+        allowed_fields_by_role: Dict[str, set[str]] = None,  # ty:ignore[invalid-parameter-default]
     ):
         self.allowed_fields_by_user = allowed_fields_by_user or {}
         self.allowed_fields_by_role = allowed_fields_by_role or {}
@@ -34,7 +34,7 @@ class FieldLevelPermissionChecker(IPermissionChecker):
             return PermissionResult.not_applicable
 
         # 獲取用戶允許修改的欄位
-        allowed_fields = self._get_user_allowed_fields(context.user)
+        allowed_fields = self._get_user_allowed_fields(context.user)  # ty:ignore[invalid-argument-type]
 
         # 檢查是否所有修改的欄位都被允許
         if modified_fields.issubset(allowed_fields):
@@ -47,7 +47,7 @@ class FieldLevelPermissionChecker(IPermissionChecker):
         # 例如從 method_kwargs 中獲取 data 參數，然後分析要修改的欄位
         modified_fields = set()
 
-        data = context.data
+        data = context.data  # ty:ignore[unresolved-attribute]
         if hasattr(data, "__dict__"):
             modified_fields = set(data.__dict__.keys())
         elif isinstance(data, dict):

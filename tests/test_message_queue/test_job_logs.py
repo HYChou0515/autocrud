@@ -108,7 +108,7 @@ class TestJobContext:
 
     def test_set_artifact(self):
         ctx = self._make_ctx()
-        ctx.set_artifact({"result": "ok"})
+        ctx.set_artifact({"result": "ok"})  # ty:ignore[invalid-argument-type]
         assert ctx.data.artifact == {"result": "ok"}
 
     def test_duck_compatible_revision_info_data(self):
@@ -126,7 +126,7 @@ class TestJobContext:
         ctx.flush_logs(bs, "test-key")
 
         blob = bs.get("test-key")
-        text = blob.data.decode("utf-8")
+        text = blob.data.decode("utf-8")  # ty:ignore[unresolved-attribute]
         assert "[INFO] line1" in text
         assert "[ERROR] line2" in text
 
@@ -166,7 +166,7 @@ class TestLogFlushThread:
         lf.stop()  # Stop does a final flush
 
         blob = bs.get("lf-test")
-        text = blob.data.decode("utf-8")
+        text = blob.data.decode("utf-8")  # ty:ignore[unresolved-attribute]
         assert "[INFO] before-start" in text
         assert "[INFO] during-run" in text
 
@@ -189,7 +189,7 @@ class TestLogFlushThread:
         lf.stop()
 
         blob = bs.get("final-test")
-        text = blob.data.decode("utf-8")
+        text = blob.data.decode("utf-8")  # ty:ignore[unresolved-attribute]
         assert "[INFO] only-after-stop" in text
 
 

@@ -32,8 +32,8 @@ try:
     import psycopg2.pool
     from psycopg2.extras import execute_batch
 except ImportError:  # pragma: no cover
-    psycopg2 = None  # type: ignore[assignment]
-    execute_batch = None  # type: ignore[assignment]
+    psycopg2 = None  # type: ignore[assignment]  # ty:ignore[invalid-assignment]
+    execute_batch = None  # type: ignore[assignment]  # ty:ignore[invalid-assignment]
 
 
 class PostgresResourceStore(IResourceStore):
@@ -83,7 +83,7 @@ class PostgresResourceStore(IResourceStore):
         conns: list[Any] = []
         while True:
             try:
-                conn = self._conn_pool.getconn(timeout=1)
+                conn = self._conn_pool.getconn(timeout=1)  # ty:ignore[unknown-argument]
                 conns.append(conn)
             except Exception:
                 break
@@ -316,7 +316,7 @@ class PostgresResourceStore(IResourceStore):
             data_rows: list[tuple[str, bytes, bytes]] = []
             index_rows: list[tuple[str, str, str, str]] = []
             for info, data in item_list:
-                raw = data.read() if hasattr(data, "read") else data
+                raw = data.read() if hasattr(data, "read") else data  # ty:ignore[call-non-callable]
                 uid = str(info.uid)
                 raw_info = self._info_serializer.encode(info)
                 data_rows.append((uid, raw, raw_info))

@@ -17,7 +17,7 @@ class TestDiskBlobStoreRawStorage:
         data = b"hello world raw storage test"
         result = store.put(data)
 
-        safe_name = result.file_id.replace("/", "_").replace("..", "_")
+        safe_name = result.file_id.replace("/", "_").replace("..", "_")  # ty:ignore[unresolved-attribute]
         blob_path = tmp_path / safe_name
         assert blob_path.read_bytes() == data
 
@@ -27,7 +27,7 @@ class TestDiskBlobStoreRawStorage:
         data = b"sidecar test"
         result = store.put(data, content_type="text/plain")
 
-        safe_name = result.file_id.replace("/", "_").replace("..", "_")
+        safe_name = result.file_id.replace("/", "_").replace("..", "_")  # ty:ignore[unresolved-attribute]
         meta_path = tmp_path / f"{safe_name}.blobmeta"
         assert meta_path.exists()
 
@@ -37,7 +37,7 @@ class TestDiskBlobStoreRawStorage:
         data = b"roundtrip test data " * 100
         result = store.put(data, content_type="text/plain")
 
-        retrieved = store.get(result.file_id)
+        retrieved = store.get(result.file_id)  # ty:ignore[invalid-argument-type]
         assert retrieved.data == data
         assert retrieved.file_id == result.file_id
         assert retrieved.size == len(data)
@@ -60,14 +60,14 @@ class TestDiskBlobStoreRawStorage:
         r1 = store.put(data)
         r2 = store.put(data)
         assert r1.file_id == r2.file_id
-        assert store.get(r1.file_id).data == data
+        assert store.get(r1.file_id).data == data  # ty:ignore[invalid-argument-type]
 
     def test_exists_after_put(self, tmp_path):
         """exists() should find blobs stored via put()."""
         store = DiskBlobStore(tmp_path)
         data = b"exists test"
         result = store.put(data)
-        assert store.exists(result.file_id)
+        assert store.exists(result.file_id)  # ty:ignore[invalid-argument-type]
         assert not store.exists("nonexistent")
 
     def test_finalize_stores_raw_bytes(self, tmp_path):
@@ -78,13 +78,13 @@ class TestDiskBlobStoreRawStorage:
         store.upload_to_session(session.upload_id, data, part_number=1)
         result = store.finalize_upload_session(session.upload_id)
 
-        safe_name = result.file_id.replace("/", "_").replace("..", "_")
+        safe_name = result.file_id.replace("/", "_").replace("..", "_")  # ty:ignore[unresolved-attribute]
         blob_path = tmp_path / safe_name
         # The blob file should contain raw bytes, NOT msgpack-encoded Binary
         assert blob_path.read_bytes() == data
 
         # get() should return the same data
-        retrieved = store.get(result.file_id)
+        retrieved = store.get(result.file_id)  # ty:ignore[invalid-argument-type]
         assert retrieved.data == data
 
     def test_finalize_with_key_zero_copy_rename(self, tmp_path):
@@ -113,6 +113,6 @@ class TestDiskBlobStoreRawStorage:
         store.upload_to_session(uid, b"CCC", part_number=3)
         result = store.finalize_upload_session(uid)
 
-        retrieved = store.get(result.file_id)
+        retrieved = store.get(result.file_id)  # ty:ignore[invalid-argument-type]
         assert retrieved.data == b"AAABBBCCC"
         assert retrieved.size == 9

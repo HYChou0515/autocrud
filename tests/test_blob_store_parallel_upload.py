@@ -28,7 +28,7 @@ def blob_store(
     if request.param == "memory":
         yield MemoryBlobStore()
     elif request.param == "disk":
-        yield DiskBlobStore(tmp_path / "blobs_parallel")
+        yield DiskBlobStore(tmp_path / "blobs_parallel")  # ty:ignore[unsupported-operator]
     else:
         raise ValueError(f"Unknown: {request.param}")
 
@@ -60,7 +60,7 @@ class TestOutOfOrderUpload:
         blob_store.upload_to_session(uid, PART_B, part_number=2)  # triggers chain flush
 
         result = blob_store.finalize_upload_session(uid)
-        stored = blob_store.get(result.file_id)
+        stored = blob_store.get(result.file_id)  # ty:ignore[invalid-argument-type]
         assert stored.data == PART_A + PART_B + PART_C
 
     def test_out_of_order_5_parts(self, blob_store: IBlobStore):
@@ -75,7 +75,7 @@ class TestOutOfOrderUpload:
         blob_store.upload_to_session(uid, PART_D, part_number=4)  # flushes 4, 5
 
         result = blob_store.finalize_upload_session(uid)
-        stored = blob_store.get(result.file_id)
+        stored = blob_store.get(result.file_id)  # ty:ignore[invalid-argument-type]
         assert stored.data == ALL_5_PARTS
 
     def test_reverse_order(self, blob_store: IBlobStore):
@@ -88,7 +88,7 @@ class TestOutOfOrderUpload:
         blob_store.upload_to_session(uid, PART_A, part_number=1)  # triggers full flush
 
         result = blob_store.finalize_upload_session(uid)
-        stored = blob_store.get(result.file_id)
+        stored = blob_store.get(result.file_id)  # ty:ignore[invalid-argument-type]
         assert stored.data == PART_A + PART_B + PART_C
 
     def test_uploaded_size_tracks_all_parts(self, blob_store: IBlobStore):
@@ -200,7 +200,7 @@ class TestIdempotentRetry:
         blob_store.upload_to_session(uid, b"XXXX", part_number=1)
 
         result = blob_store.finalize_upload_session(uid)
-        stored = blob_store.get(result.file_id)
+        stored = blob_store.get(result.file_id)  # ty:ignore[invalid-argument-type]
         # Data should be original PART_A + PART_B, not the retry bytes
         assert stored.data == PART_A + PART_B
 
@@ -215,7 +215,7 @@ class TestIdempotentRetry:
         blob_store.upload_to_session(uid, PART_A, part_number=1)  # triggers flush
 
         result = blob_store.finalize_upload_session(uid)
-        stored = blob_store.get(result.file_id)
+        stored = blob_store.get(result.file_id)  # ty:ignore[invalid-argument-type]
         assert stored.data == PART_A + PART_B  # uses the retry data
 
 

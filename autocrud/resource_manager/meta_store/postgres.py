@@ -28,10 +28,10 @@ try:
     import psycopg2.pool
     from psycopg2.extras import DictCursor, execute_batch
 except ImportError:  # pragma: no cover
-    pg = None  # type: ignore[assignment]
-    psycopg2 = None  # type: ignore[assignment]  # noqa: F811
-    DictCursor = None  # type: ignore[assignment,misc]
-    execute_batch = None  # type: ignore[assignment]
+    pg = None  # type: ignore[assignment]  # ty:ignore[invalid-assignment]
+    psycopg2 = None  # type: ignore[assignment]  # noqa: F811  # ty:ignore[invalid-assignment]
+    DictCursor = None  # type: ignore[assignment,misc]  # ty:ignore[invalid-assignment]
+    execute_batch = None  # type: ignore[assignment]  # ty:ignore[invalid-assignment]
 
 
 class PostgresMetaStore(ISlowMetaStore):
@@ -68,7 +68,7 @@ class PostgresMetaStore(ISlowMetaStore):
         conns = []
         while True:
             try:
-                conn = self._conn_pool.getconn(timeout=1)
+                conn = self._conn_pool.getconn(timeout=1)  # ty:ignore[unknown-argument]
                 conns.append(conn)
             except Exception:
                 break
@@ -304,7 +304,7 @@ class PostgresMetaStore(ISlowMetaStore):
                 raise KeyError(pk)
             return self._serializer.decode(row["data"])
 
-    def __setitem__(self, pk: str, meta: ResourceMeta) -> None:
+    def __setitem__(self, pk: str, meta: ResourceMeta) -> None:  # ty:ignore[invalid-method-override]
         # 直接寫入 PostgreSQL
         import json
 

@@ -49,7 +49,7 @@ class TestAutoCRUDDataSearch:
         # 獲取 resource manager
         self.user_manager: ResourceManager[User] = self.autocrud.resource_managers[
             "users"
-        ]
+        ]  # ty:ignore[invalid-assignment]
 
         # 設置用戶上下文
         self.current_user = "test_user"

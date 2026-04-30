@@ -24,7 +24,7 @@ ALL_META_STORE_TYPES = [
 ]
 
 
-def get_meta_store(store_type: str, tmpdir: Path = None):
+def get_meta_store(store_type: str, tmpdir: Path = None):  # ty:ignore[invalid-parameter-default]
     """Get meta store instance."""
     from autocrud.resource_manager.meta_store.df import DFMemoryMetaStore
     from autocrud.resource_manager.meta_store.simple import (
@@ -38,13 +38,13 @@ def get_meta_store(store_type: str, tmpdir: Path = None):
     )
 
     if store_type == "memory":
-        return MemoryMetaStore(encoding="msgpack")
+        return MemoryMetaStore(encoding="msgpack")  # ty:ignore[invalid-argument-type]
     if store_type == "df":
-        return DFMemoryMetaStore(encoding="msgpack")
+        return DFMemoryMetaStore(encoding="msgpack")  # ty:ignore[invalid-argument-type]
     if store_type == "disk":
         d = tmpdir / faker.pystr()
         d.mkdir()
-        return DiskMetaStore(encoding="msgpack", rootdir=d)
+        return DiskMetaStore(encoding="msgpack", rootdir=d)  # ty:ignore[invalid-argument-type]
     if store_type == "postgres":
         import psycopg2
 
@@ -61,7 +61,7 @@ def get_meta_store(store_type: str, tmpdir: Path = None):
                 pg_conn.commit()
             pg_conn.close()
 
-            return PostgresMetaStore(pg_dsn=pg_dsn, encoding="msgpack")
+            return PostgresMetaStore(pg_dsn=pg_dsn, encoding="msgpack")  # ty:ignore[invalid-argument-type]
         except Exception as e:
             pytest.fail(f"PostgreSQL not available: {e}")
 
@@ -84,7 +84,7 @@ def get_meta_store(store_type: str, tmpdir: Path = None):
                 endpoint_url="http://localhost:9000",
                 access_key_id="minioadmin",
                 secret_access_key="minioadmin",
-                encoding="msgpack",
+                encoding="msgpack",  # ty:ignore[invalid-argument-type]
                 auto_sync=False,
                 enable_locking=False,
             )
@@ -129,8 +129,8 @@ def get_meta_store(store_type: str, tmpdir: Path = None):
             pg_conn.close()
 
             return FastSlowMetaStore(
-                fast_store=MemoryMetaStore(encoding="msgpack"),
-                slow_store=PostgresMetaStore(pg_dsn=pg_dsn, encoding="msgpack"),
+                fast_store=MemoryMetaStore(encoding="msgpack"),  # ty:ignore[invalid-argument-type]
+                slow_store=PostgresMetaStore(pg_dsn=pg_dsn, encoding="msgpack"),  # ty:ignore[invalid-argument-type]
             )
         except Exception as e:
             pytest.fail(f"PostgreSQL not available: {e}")
@@ -149,7 +149,7 @@ def get_meta_store(store_type: str, tmpdir: Path = None):
 
             return RedisMetaStore(
                 redis_url=redis_url,
-                encoding="msgpack",
+                encoding="msgpack",  # ty:ignore[invalid-argument-type]
                 prefix=str(tmpdir).rsplit("/", 1)[-1],
             )
         except Exception as e:
@@ -183,10 +183,10 @@ def get_meta_store(store_type: str, tmpdir: Path = None):
             return FastSlowMetaStore(
                 fast_store=RedisMetaStore(
                     redis_url=redis_url,
-                    encoding="msgpack",
+                    encoding="msgpack",  # ty:ignore[invalid-argument-type]
                     prefix=str(tmpdir).rsplit("/", 1)[-1],
                 ),
-                slow_store=PostgresMetaStore(pg_dsn=pg_dsn, encoding="msgpack"),
+                slow_store=PostgresMetaStore(pg_dsn=pg_dsn, encoding="msgpack"),  # ty:ignore[invalid-argument-type]
             )
         except Exception as e:
             pytest.fail(f"Redis or PostgreSQL not available: {e}")
@@ -214,7 +214,9 @@ def get_meta_store(store_type: str, tmpdir: Path = None):
                 "pool_recycle": 3600,
             }
             return SQLAlchemyMetaStore(
-                url=sa_url, encoding="msgpack", engine_kwargs=engine_kwargs
+                url=sa_url,
+                encoding="msgpack",  # ty:ignore[invalid-argument-type]
+                engine_kwargs=engine_kwargs,
             )
         except Exception as e:
             pytest.fail(f"PostgreSQL not available: {e}")
@@ -246,7 +248,9 @@ def get_meta_store(store_type: str, tmpdir: Path = None):
                 "pool_recycle": 3600,
             }
             return SQLAlchemyMetaStore(
-                url=sa_url, encoding="msgpack", engine_kwargs=engine_kwargs
+                url=sa_url,
+                encoding="msgpack",  # ty:ignore[invalid-argument-type]
+                engine_kwargs=engine_kwargs,
             )
         except Exception as e:
             pytest.fail(f"MariaDB not available: {e}")
@@ -278,7 +282,9 @@ def get_meta_store(store_type: str, tmpdir: Path = None):
                 "pool_recycle": 3600,
             }
             return SQLAlchemyMetaStore(
-                url=sa_url, encoding="msgpack", engine_kwargs=engine_kwargs
+                url=sa_url,
+                encoding="msgpack",  # ty:ignore[invalid-argument-type]
+                engine_kwargs=engine_kwargs,
             )
         except Exception as e:
             pytest.fail(f"MySQL not available: {e}")
@@ -291,7 +297,7 @@ def get_meta_store(store_type: str, tmpdir: Path = None):
         db_file = tmpdir / "test_sa_sqlite.db"
         sa_url = f"sqlite:///{db_file}"
         try:
-            return SQLAlchemyMetaStore(url=sa_url, encoding="msgpack")
+            return SQLAlchemyMetaStore(url=sa_url, encoding="msgpack")  # ty:ignore[invalid-argument-type]
         except Exception as e:
             pytest.fail(f"SQLite not available: {e}")
     if store_type == "sa-oracle":
@@ -346,7 +352,9 @@ def get_meta_store(store_type: str, tmpdir: Path = None):
                     raise  # Re-raise if not retryable or last attempt
 
             return SQLAlchemyMetaStore(
-                url=sa_url, encoding="msgpack", engine_kwargs=engine_kwargs
+                url=sa_url,
+                encoding="msgpack",  # ty:ignore[invalid-argument-type]
+                engine_kwargs=engine_kwargs,
             )
         except Exception as e:
             pytest.fail(f"Oracle not available: {e}")

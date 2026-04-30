@@ -319,7 +319,7 @@ class Schema(Generic[T]):
         the persistence layer that were never declared in the Schema.
         """
         self._resolve()
-        edges = list(self._graph.get(version, []))
+        edges = list(self._graph.get(version, []))  # ty:ignore[unresolved-attribute]
         for pattern, to_ver, fn, source_type in self._regex_edges:
             if version != to_ver and pattern.fullmatch(version):
                 edges.append((to_ver, fn, source_type))
@@ -348,7 +348,7 @@ class Schema(Generic[T]):
         if cache_key in self._path_cache:
             return self._path_cache[cache_key]
 
-        initial_edges = self._edges_for(from_ver)  # type: ignore[arg-type]
+        initial_edges = self._edges_for(from_ver)  # type: ignore[arg-type]  # ty:ignore[invalid-argument-type]
         if not initial_edges:
             raise ValueError(
                 f"No migration path from version {from_ver!r} to {to_ver!r}. "
@@ -360,7 +360,7 @@ class Schema(Generic[T]):
         visited: set[str | None] = {from_ver}
 
         for dst, fn, source_type in initial_edges:
-            queue.append([(from_ver, dst, fn, source_type)])
+            queue.append([(from_ver, dst, fn, source_type)])  # ty:ignore[invalid-argument-type]
             visited.add(dst)
 
         while queue:
@@ -408,11 +408,11 @@ class Schema(Generic[T]):
 
         if schema_version == target:
             # Already at target — return raw bytes for caller to decode.
-            return data.read()  # type: ignore[return-value]
+            return data.read()  # type: ignore[return-value]  # ty:ignore[invalid-return-type]
 
         path = self._find_path(schema_version, target)
         if not path:  # pragma: no cover — from_ver==to_ver caught above
-            return data.read()  # type: ignore[return-value]
+            return data.read()  # type: ignore[return-value]  # ty:ignore[invalid-return-type]
 
         result: Any = data
         for _src, _dst, fn, source_type in path:
@@ -534,7 +534,7 @@ class Schema(Generic[T]):
             )
 
         schema: Schema[T] = cls.__new__(cls)
-        schema._resource_type = None  # type: ignore[assignment]
+        schema._resource_type = None  # type: ignore[assignment]  # ty:ignore[invalid-assignment]
         schema._version = migration.schema_version  # type: ignore[assignment]
         schema._raw_validator = None
         schema._validator = None

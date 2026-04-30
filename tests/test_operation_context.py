@@ -434,7 +434,7 @@ class TestAutoCRUDStrictOperationContext:
         )
         crud.add_model(Item)
         rm = crud.get_resource_manager(Item)
-        assert rm.strict_operation_context is True
+        assert rm.strict_operation_context is True  # ty:ignore[unresolved-attribute]
 
     def test_default_is_not_strict(self):
         from autocrud import AutoCRUD
@@ -442,7 +442,7 @@ class TestAutoCRUDStrictOperationContext:
         crud = AutoCRUD(default_user="admin", default_now=dt.datetime.now)
         crud.add_model(Item)
         rm = crud.get_resource_manager(Item)
-        assert rm.strict_operation_context is False
+        assert rm.strict_operation_context is False  # ty:ignore[unresolved-attribute]
 
     def test_configure_after_init(self):
         from autocrud import AutoCRUD
@@ -455,7 +455,7 @@ class TestAutoCRUDStrictOperationContext:
         )
         crud.add_model(Item)
         rm = crud.get_resource_manager(Item)
-        assert rm.strict_operation_context is True
+        assert rm.strict_operation_context is True  # ty:ignore[unresolved-attribute]
 
     def test_strict_autocrud_create_without_context_raises(self):
         from autocrud import AutoCRUD

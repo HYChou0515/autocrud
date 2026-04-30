@@ -65,7 +65,7 @@ def test_permission_checker_none_with_admin():
     """Test setting permission_checker=None with admin parameter."""
     # When permission_checker=None and admin is provided
     crud = AutoCRUD()
-    crud.configure(permission_checker=None, admin="root@example.com")
+    crud.configure(permission_checker=None, admin="root@example.com")  # ty:ignore[invalid-argument-type]
 
     from autocrud.permission.rbac import RBACPermissionChecker
 
@@ -75,7 +75,7 @@ def test_permission_checker_none_with_admin():
 def test_permission_checker_none_without_admin():
     """Test setting permission_checker=None without admin parameter."""
     crud = AutoCRUD()
-    crud.configure(permission_checker=None)
+    crud.configure(permission_checker=None)  # ty:ignore[invalid-argument-type]
 
     assert isinstance(crud.permission_checker, AllowAll)
 
@@ -127,7 +127,10 @@ def test_invalid_indexed_field_type():
     with pytest.raises(
         TypeError, match="Invalid indexed field, should be IndexableField"
     ):
-        crud.add_model(User, indexed_fields=[123])  # Invalid type
+        crud.add_model(
+            User,
+            indexed_fields=[123],  # ty:ignore[invalid-argument-type]
+        )  # Invalid type
 
 
 # Line 672: IndexableField object direct usage
@@ -282,8 +285,8 @@ def test_job_indexed_fields_already_present():
 
     mgr = crud.get_resource_manager(MyJob)
     # Verify indexed_fields doesn't have duplicates
-    status_count = sum(1 for f in mgr.indexed_fields if f.field_path == "status")
-    retries_count = sum(1 for f in mgr.indexed_fields if f.field_path == "retries")
+    status_count = sum(1 for f in mgr.indexed_fields if f.field_path == "status")  # ty:ignore[unresolved-attribute]
+    retries_count = sum(1 for f in mgr.indexed_fields if f.field_path == "retries")  # ty:ignore[unresolved-attribute]
 
     assert status_count == 1
     assert retries_count == 1
@@ -315,7 +318,7 @@ def test_openapi_with_root_path_and_existing_servers():
     crud.openapi(app)
 
     # Should keep existing servers
-    assert app.openapi_schema["servers"] == [{"url": "https://example.com"}]
+    assert app.openapi_schema["servers"] == [{"url": "https://example.com"}]  # ty:ignore[not-subscriptable]
 
 
 def test_openapi_with_custom_structs():

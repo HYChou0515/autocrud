@@ -181,8 +181,8 @@ class TestSafeQBParser:
         result = parser.parse(expression)
         query = result.build()
         assert query.conditions is not None
-        cond = query.conditions[0]
-        assert cond.field_path == expected_field
+        cond = query.conditions[0]  # ty:ignore[not-subscriptable]
+        assert cond.field_path == expected_field  # ty:ignore[unresolved-attribute]
 
     def test_datetime_integration(self):
         """測試 datetime 整合"""

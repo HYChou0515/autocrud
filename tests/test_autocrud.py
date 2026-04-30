@@ -11,6 +11,7 @@ from autocrud.resource_manager.basic import Encoding
 from autocrud.types import (
     IResourceManager,
     RevisionInfo,
+    RevisionStatus,
 )
 
 
@@ -26,27 +27,27 @@ class TestAutocrud:
         crud = AutoCRUD()
         crud.add_model(User)
         assert (
-            crud.get_resource_manager(User)._data_serializer.encoding == Encoding.json
+            crud.get_resource_manager(User)._data_serializer.encoding == Encoding.json  # ty:ignore[unresolved-attribute]
         )
 
         crud = AutoCRUD(encoding=Encoding.msgpack)
         crud.add_model(User)
         assert (
-            crud.get_resource_manager(User)._data_serializer.encoding
+            crud.get_resource_manager(User)._data_serializer.encoding  # ty:ignore[unresolved-attribute]
             == Encoding.msgpack
         )
 
         crud = AutoCRUD(encoding=Encoding.json)
         crud.add_model(User, encoding=Encoding.msgpack)
         assert (
-            crud.get_resource_manager(User)._data_serializer.encoding
+            crud.get_resource_manager(User)._data_serializer.encoding  # ty:ignore[unresolved-attribute]
             == Encoding.msgpack
         )
 
         crud = AutoCRUD()
         crud.add_model(User, encoding=Encoding.msgpack)
         assert (
-            crud.get_resource_manager(User)._data_serializer.encoding
+            crud.get_resource_manager(User)._data_serializer.encoding  # ty:ignore[unresolved-attribute]
             == Encoding.msgpack
         )
 
@@ -61,7 +62,7 @@ class TestAutocrud:
 
     def test_add_model_with_index_fields(self):
         crud = AutoCRUD()
-        crud.add_model(User, indexed_fields=[("wage", int | None)])
+        crud.add_model(User, indexed_fields=[("wage", int | None)])  # ty:ignore[invalid-argument-type]
         crud.add_model(User, name="u2", indexed_fields=[("books", list[str])])
         # no error raised
 
@@ -81,7 +82,7 @@ class TestAutocrud:
             MockRouteTemplateA(order=2),
             MockRouteTemplateB(order=5),
         ]
-        crud = AutoCRUD(route_templates=templates.copy())
+        crud = AutoCRUD(route_templates=templates.copy())  # ty:ignore[invalid-argument-type]
         crud.add_model(User)
         crud.apply(Mock())
         # add_route_template replaces the existing template of the same type
@@ -92,14 +93,43 @@ class TestAutocrud:
         # Second apply (sorted): MockRouteTemplateA(4), MockRouteTemplateB(5) → [4, 5].
         assert applied == [1, 2, 5, 4, 5]
 
-    @pytest.mark.parametrize("default_status", ["stable", "draft", None])
-    def test_add_model_with_default_status(self, default_status: str | None):
+    @pytest.mark.parametrize("default_status", ["stable", "draft"])
+    def test_add_model_with_default_status(self, default_status: str):
         crud = AutoCRUD()
-        crud.add_model(User, default_status=default_status)
+        crud.add_model(User, default_status=default_status)  # ty:ignore[invalid-argument-type]
         mgr = crud.get_resource_manager(User)
         with mgr.meta_provide("user", dt.datetime.now()):
-            info = mgr.create({"name": "Alice", "age": 30})
-        assert info.status == (default_status or "stable")
+            info = mgr.create({"name": "Alice", "age": 30})  # ty:ignore[invalid-argument-type]
+        assert info.status == default_status
+
+    def test_default_status_unset_falls_back_to_stable(self):
+        crud = AutoCRUD()
+        crud.add_model(User)
+        mgr = crud.get_resource_manager(User)
+        with mgr.meta_provide("user", dt.datetime.now()):
+            info = mgr.create({"name": "Alice", "age": 30})  # ty:ignore[invalid-argument-type]
+        assert info.status == "stable"
+
+    @pytest.mark.parametrize("entry", ["init", "configure"])
+    def test_global_default_status_applies_to_add_model(self, entry: str):
+        if entry == "init":
+            crud = AutoCRUD(default_status=RevisionStatus.draft)
+        else:
+            crud = AutoCRUD()
+            crud.configure(default_status=RevisionStatus.draft)
+        crud.add_model(User)
+        mgr = crud.get_resource_manager(User)
+        with mgr.meta_provide("user", dt.datetime.now()):
+            info = mgr.create({"name": "Alice", "age": 30})  # ty:ignore[invalid-argument-type]
+        assert info.status == "draft"
+
+    def test_per_model_default_status_overrides_global(self):
+        crud = AutoCRUD(default_status=RevisionStatus.draft)
+        crud.add_model(User, default_status=RevisionStatus.stable)
+        mgr = crud.get_resource_manager(User)
+        with mgr.meta_provide("user", dt.datetime.now()):
+            info = mgr.create({"name": "Alice", "age": 30})  # ty:ignore[invalid-argument-type]
+        assert info.status == "stable"
 
     @pytest.mark.parametrize("level", ["crud", "model"])
     def test_add_model_with_default_user(self, level: str):
@@ -111,7 +141,7 @@ class TestAutocrud:
             crud.add_model(User, default_user="system")
         mgr = crud.get_resource_manager(User)
         with mgr.meta_provide(now=dt.datetime.now()):
-            info = mgr.create({"name": "Alice", "age": 30})
+            info = mgr.create({"name": "Alice", "age": 30})  # ty:ignore[invalid-argument-type]
         assert info.created_by == "system"
 
     def test_add_model_without_default_user(self):
@@ -120,7 +150,7 @@ class TestAutocrud:
         mgr = crud.get_resource_manager(User)
         with pytest.raises(LookupError):
             with mgr.meta_provide(now=dt.datetime.now()):
-                mgr.create({"name": "Alice", "age": 30})
+                mgr.create({"name": "Alice", "age": 30})  # ty:ignore[invalid-argument-type]
 
     @pytest.mark.parametrize("level", ["crud", "model"])
     def test_add_model_with_default_now(self, level: str):
@@ -132,7 +162,7 @@ class TestAutocrud:
             crud.add_model(User, default_now=lambda: dt.datetime(2023, 1, 1))
         mgr = crud.get_resource_manager(User)
         with mgr.meta_provide("system"):
-            info = mgr.create({"name": "Alice", "age": 30})
+            info = mgr.create({"name": "Alice", "age": 30})  # ty:ignore[invalid-argument-type]
         assert info.created_time == dt.datetime(2023, 1, 1)
 
     def test_add_model_without_default_now(self):
@@ -141,13 +171,13 @@ class TestAutocrud:
         mgr = crud.get_resource_manager(User)
         with pytest.raises(LookupError):
             with mgr.meta_provide("system"):
-                mgr.create({"name": "Alice", "age": 30})
+                mgr.create({"name": "Alice", "age": 30})  # ty:ignore[invalid-argument-type]
 
     def test_add_model_with_default_user_and_now(self):
         crud = AutoCRUD()
         crud.add_model(User, default_user="system", default_now=dt.datetime.now)
         mgr = crud.get_resource_manager(User)
-        info = mgr.create({"name": "Alice", "age": 30})
+        info = mgr.create({"name": "Alice", "age": 30})  # ty:ignore[invalid-argument-type]
         assert info.created_time - dt.datetime.now() < dt.timedelta(seconds=1)
         assert info.created_by == "system"
 
@@ -180,7 +210,7 @@ class TestAutocrudGetPartial:
 
     def test_get_with_revision_id(self):
         mgr = self.crud.get_resource_manager(Manager)
-        info = mgr.create({"name": "Alice", "age": 30})
+        info = mgr.create({"name": "Alice", "age": 30})  # ty:ignore[invalid-argument-type]
         assert mgr.get(info.resource_id) == mgr.get(
             info.resource_id, revision_id=info.revision_id
         )
@@ -193,7 +223,7 @@ class TestAutocrudGetPartial:
                 "age": 30,
                 "slaves": [{"name": "Bob", "age": 25}, {"name": "Charlie", "age": 28}],
                 "boss": {"name": "Diana", "age": 40},
-            }
+            }  # ty:ignore[invalid-argument-type]
         )
 
         self._check(
@@ -206,7 +236,7 @@ class TestAutocrudGetPartial:
         self._check(
             mgr,
             info,
-            ["name", "boss", "slaves/-/name"],
+            ["name", "boss", "slaves/-/name"],  # ty:ignore[invalid-argument-type]
             {
                 "name": "Alice",
                 "boss": {"name": "Diana", "age": 40, "wage": None, "books": []},
@@ -217,7 +247,7 @@ class TestAutocrudGetPartial:
         self._check(
             mgr,
             info,
-            ["slaves"],
+            ["slaves"],  # ty:ignore[invalid-argument-type]
             {
                 "slaves": [
                     {
@@ -251,13 +281,13 @@ class TestAutocrudGetPartial:
         slaves[1]["slaves"] = [
             {"name": "Bob Jr.", "age": 5},
             {"name": "Bob III", "age": 3},
-        ]
-        info = mgr.create({"name": "Alice", "age": 30, "slaves": slaves})
+        ]  # ty:ignore[invalid-assignment]
+        info = mgr.create({"name": "Alice", "age": 30, "slaves": slaves})  # ty:ignore[invalid-argument-type]
 
         self._check(
             mgr,
             info,
-            ["slaves/:2/name", "slaves/1:2/slaves/-/name", "slaves/1:/age"],
+            ["slaves/:2/name", "slaves/1:2/slaves/-/name", "slaves/1:/age"],  # ty:ignore[invalid-argument-type]
             {
                 "slaves": [
                     {"name": "Bob"},
@@ -283,15 +313,15 @@ class TestAutocrudGetPartial:
         slaves[0]["slaves"] = [
             {"name": "Bob Jr.", "age": 5},
             {"name": "Bob III", "age": 3},
-        ]
-        slaves[0]["boss"] = {"name": "Bob Sr.", "age": 55}
-        slaves[1]["boss"] = {"name": "Charlie Sr.", "age": 50}
-        info = mgr.create({"name": "Alice", "age": 30, "slaves": slaves})
+        ]  # ty:ignore[invalid-assignment]
+        slaves[0]["boss"] = {"name": "Bob Sr.", "age": 55}  # ty:ignore[invalid-assignment]
+        slaves[1]["boss"] = {"name": "Charlie Sr.", "age": 50}  # ty:ignore[invalid-assignment]
+        info = mgr.create({"name": "Alice", "age": 30, "slaves": slaves})  # ty:ignore[invalid-argument-type]
 
         self._check(
             mgr,
             info,
-            ["slaves/:2/slaves/1:/age", "slaves/1:/boss/age"],
+            ["slaves/:2/slaves/1:/age", "slaves/1:/boss/age"],  # ty:ignore[invalid-argument-type]
             {
                 "slaves": [
                     {"slaves": [{"age": 3}]},
@@ -314,7 +344,7 @@ class TestAutocrudGetPartial:
                     {"name": "Dave", "age": 30},
                     {"name": "Eve", "age": 22},
                 ],
-            }
+            }  # ty:ignore[invalid-argument-type]
         )
 
         cases = [
@@ -360,7 +390,7 @@ class TestAutocrudGetPartial:
         ]
 
         for partial, expected in cases:
-            self._check(mgr, info, partial, expected)
+            self._check(mgr, info, partial, expected)  # ty:ignore[invalid-argument-type]
 
     def test_prune_object_preserves_identity_when_no_index_or_partial_slice(self):
         """``prune_object`` is an identity for paths whose list segments are

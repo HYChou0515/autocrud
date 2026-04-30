@@ -36,7 +36,7 @@ def _make_ref_integrity_func(
     """
 
     def _handle(context: EventContext) -> None:
-        deleted_resource_id: str = context.resource_id
+        deleted_resource_id: str = context.resource_id  # ty:ignore[unresolved-attribute]
         for ref_info in refs:
             source_rm = resource_managers.get(ref_info.source)
             if source_rm is None:
@@ -100,7 +100,7 @@ def install_ref_integrity_handlers(
 
     for target_name, refs in target_refs.items():
         target_rm = resource_managers[target_name]
-        target_rm.event_handlers.extend(
+        target_rm.event_handlers.extend(  # ty:ignore[unresolved-attribute]
             do(_make_ref_integrity_func(refs, resource_managers)).on_success(
                 ResourceAction.delete
             )
