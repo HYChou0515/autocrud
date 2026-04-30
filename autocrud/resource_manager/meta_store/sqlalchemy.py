@@ -97,12 +97,22 @@ def _build_resource_meta_table(
         Column("is_deleted", Boolean, nullable=False),
         Column("schema_version", String(100), nullable=True),
         Column("indexed_data", indexed_data_type, nullable=True),
+        Column("rev_status", String(50), nullable=True),
+        Column("rev_created_by", String(255), nullable=True),
+        Column("rev_updated_by", String(255), nullable=True),
+        Column("rev_created_time", DateTime(timezone=True), nullable=True),
+        Column("rev_updated_time", DateTime(timezone=True), nullable=True),
     )
     Index(f"ix_{table_name}_created_time", table.c.created_time)
     Index(f"ix_{table_name}_updated_time", table.c.updated_time)
     Index(f"ix_{table_name}_created_by", table.c.created_by)
     Index(f"ix_{table_name}_updated_by", table.c.updated_by)
     Index(f"ix_{table_name}_is_deleted", table.c.is_deleted)
+    Index(f"ix_{table_name}_rev_status", table.c.rev_status)
+    Index(f"ix_{table_name}_rev_created_by", table.c.rev_created_by)
+    Index(f"ix_{table_name}_rev_updated_by", table.c.rev_updated_by)
+    Index(f"ix_{table_name}_rev_created_time", table.c.rev_created_time)
+    Index(f"ix_{table_name}_rev_updated_time", table.c.rev_updated_time)
     return table
 
 
@@ -145,8 +155,67 @@ class SQLAlchemyMetaStore(ISlowMetaStore):
         # Create tables
         self._metadata.create_all(self._engine)
 
+        # ``create_all`` does not touch tables that already exist — patch in
+        # any columns introduced after the table was first created so we do
+        # not break older deployments.
+        self._migrate_columns()
+
         # Migrate existing data
         self._migrate_existing_data()
+
+    # ------------------------------------------------------------------
+    # Column migration (ALTER TABLE ADD COLUMN for older deployments)
+    # ------------------------------------------------------------------
+    def _migrate_columns(self) -> None:
+        """Add any columns missing from a pre-existing table.
+
+        SQLAlchemy's ``create_all`` is a no-op when the table already
+        exists, so deployments that predate a schema change need an
+        explicit ``ALTER TABLE ADD COLUMN`` for each new column.
+        """
+        from sqlalchemy import inspect
+
+        inspector = inspect(self._engine)
+        if self.table_name not in inspector.get_table_names():
+            return  # Fresh table created above; nothing to alter
+
+        existing = {col["name"] for col in inspector.get_columns(self.table_name)}
+        # ``DDL`` types here mirror those declared on the Table object.
+        alterations: list[tuple[str, str]] = [
+            ("indexed_data", self._column_ddl("indexed_data")),
+            ("schema_version", "VARCHAR(100)"),
+            ("rev_status", "VARCHAR(50)"),
+            ("rev_created_by", "VARCHAR(255)"),
+            ("rev_updated_by", "VARCHAR(255)"),
+            ("rev_created_time", self._timestamp_ddl()),
+            ("rev_updated_time", self._timestamp_ddl()),
+        ]
+
+        with self._engine.begin() as conn:
+            for col_name, col_ddl in alterations:
+                if col_name in existing:
+                    continue
+                conn.execute(
+                    text(
+                        f'ALTER TABLE "{self.table_name}" '
+                        f"ADD COLUMN {col_name} {col_ddl}"
+                    )
+                )
+
+    def _column_ddl(self, name: str) -> str:
+        """Return dialect-specific DDL for ``indexed_data``."""
+        if name != "indexed_data":
+            return "TEXT"
+        if self._get_dialect() == DialectType.postgresql:
+            return "JSONB"
+        return "TEXT"
+
+    def _timestamp_ddl(self) -> str:
+        if self._get_dialect() == DialectType.postgresql:
+            return "TIMESTAMP WITH TIME ZONE"
+        if self._get_dialect() == DialectType.mysql:
+            return "DATETIME"
+        return "TIMESTAMP"
 
     # ------------------------------------------------------------------
     # Session helpers
@@ -238,6 +307,23 @@ class SQLAlchemyMetaStore(ISlowMetaStore):
             "is_deleted": meta.is_deleted,
             "schema_version": meta.schema_version,
             "indexed_data": indexed,
+            "rev_status": (meta.rev_status if meta.rev_status is not UNSET else None),
+            "rev_created_by": (
+                meta.rev_created_by if meta.rev_created_by is not UNSET else None
+            ),
+            "rev_updated_by": (
+                meta.rev_updated_by if meta.rev_updated_by is not UNSET else None
+            ),
+            "rev_created_time": (
+                self._to_utc(meta.rev_created_time)
+                if meta.rev_created_time is not UNSET
+                else None
+            ),
+            "rev_updated_time": (
+                self._to_utc(meta.rev_updated_time)
+                if meta.rev_updated_time is not UNSET
+                else None
+            ),
         }
 
     # ------------------------------------------------------------------
@@ -331,6 +417,29 @@ class SQLAlchemyMetaStore(ISlowMetaStore):
             filters.append(t.c.created_by.in_(query.created_bys))
         if query.updated_bys is not UNSET:
             filters.append(t.c.updated_by.in_(query.updated_bys))
+
+        if query.rev_statuses is not UNSET:
+            filters.append(t.c.rev_status.in_(query.rev_statuses))
+        if query.rev_created_bys is not UNSET:
+            filters.append(t.c.rev_created_by.in_(query.rev_created_bys))
+        if query.rev_updated_bys is not UNSET:
+            filters.append(t.c.rev_updated_by.in_(query.rev_updated_bys))
+        if query.rev_created_time_start is not UNSET:
+            filters.append(
+                t.c.rev_created_time >= self._to_utc(query.rev_created_time_start)
+            )
+        if query.rev_created_time_end is not UNSET:
+            filters.append(
+                t.c.rev_created_time <= self._to_utc(query.rev_created_time_end)
+            )
+        if query.rev_updated_time_start is not UNSET:
+            filters.append(
+                t.c.rev_updated_time >= self._to_utc(query.rev_updated_time_start)
+            )
+        if query.rev_updated_time_end is not UNSET:
+            filters.append(
+                t.c.rev_updated_time <= self._to_utc(query.rev_updated_time_end)
+            )
 
         # data_conditions
         if query.data_conditions is not UNSET:
@@ -713,6 +822,11 @@ class SQLAlchemyMetaStore(ISlowMetaStore):
             "updated_by",
             "is_deleted",
             "schema_version",
+            "rev_status",
+            "rev_created_by",
+            "rev_updated_by",
+            "rev_created_time",
+            "rev_updated_time",
         }
 
         if field_path in meta_fields:

@@ -67,7 +67,12 @@ class SqliteMetaStore(ISlowMetaStore):
                 updated_by TEXT NOT NULL,
                 is_deleted INTEGER NOT NULL,
                 schema_version TEXT,
-                indexed_data TEXT  -- JSON 格式的索引數據
+                indexed_data TEXT,  -- JSON 格式的索引數據
+                rev_status TEXT,
+                rev_created_by TEXT,
+                rev_updated_by TEXT,
+                rev_created_time REAL,
+                rev_updated_time REAL
             )
         """)
 
@@ -80,6 +85,18 @@ class SqliteMetaStore(ISlowMetaStore):
         if "schema_version" not in columns:
             _conn.execute("ALTER TABLE resource_meta ADD COLUMN schema_version TEXT")
             _conn.commit()
+        for col_name, col_type in (
+            ("rev_status", "TEXT"),
+            ("rev_created_by", "TEXT"),
+            ("rev_updated_by", "TEXT"),
+            ("rev_created_time", "REAL"),
+            ("rev_updated_time", "REAL"),
+        ):
+            if col_name not in columns:
+                _conn.execute(
+                    f"ALTER TABLE resource_meta ADD COLUMN {col_name} {col_type}"
+                )
+                _conn.commit()
 
         _conn.execute("""
             CREATE INDEX IF NOT EXISTS idx_created_time ON resource_meta(created_time)
@@ -95,6 +112,21 @@ class SqliteMetaStore(ISlowMetaStore):
         """)
         _conn.execute("""
             CREATE INDEX IF NOT EXISTS idx_is_deleted ON resource_meta(is_deleted)
+        """)
+        _conn.execute("""
+            CREATE INDEX IF NOT EXISTS idx_rev_status ON resource_meta(rev_status)
+        """)
+        _conn.execute("""
+            CREATE INDEX IF NOT EXISTS idx_rev_created_by ON resource_meta(rev_created_by)
+        """)
+        _conn.execute("""
+            CREATE INDEX IF NOT EXISTS idx_rev_updated_by ON resource_meta(rev_updated_by)
+        """)
+        _conn.execute("""
+            CREATE INDEX IF NOT EXISTS idx_rev_created_time ON resource_meta(rev_created_time)
+        """)
+        _conn.execute("""
+            CREATE INDEX IF NOT EXISTS idx_rev_updated_time ON resource_meta(rev_updated_time)
         """)
 
         # 遷移已存在的記錄，填充 indexed_data
@@ -142,71 +174,66 @@ class SqliteMetaStore(ISlowMetaStore):
             raise KeyError(pk)
         return self._serializer.decode(row[0])
 
-    def __setitem__(self, pk: str, meta: ResourceMeta) -> None:  # ty:ignore[invalid-method-override]
+    def _meta_to_row(self, meta: ResourceMeta) -> tuple:
+        """Pack a ResourceMeta into the column-order tuple used by INSERT/UPSERT."""
         import json
 
-        data = self._serializer.encode(meta)
-        # 將 indexed_data 轉換為 JSON 字符串
         indexed_data_json = (
             json.dumps(meta.indexed_data, ensure_ascii=False)
             if meta.indexed_data is not UNSET
             else None
         )
-        _conn = self._conns[threading.get_ident()]
-        _conn.execute(
-            """
-            INSERT OR REPLACE INTO resource_meta 
-            (resource_id, data, created_time, updated_time, created_by, updated_by, is_deleted, schema_version, indexed_data)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
-        """,
+        return (
+            meta.resource_id,
+            self._serializer.encode(meta),
+            meta.created_time.timestamp(),
+            meta.updated_time.timestamp(),
+            meta.created_by,
+            meta.updated_by,
+            1 if meta.is_deleted else 0,
+            meta.schema_version,
+            indexed_data_json,
+            meta.rev_status if meta.rev_status is not UNSET else None,
+            meta.rev_created_by if meta.rev_created_by is not UNSET else None,
+            meta.rev_updated_by if meta.rev_updated_by is not UNSET else None,
             (
-                pk,
-                data,
-                meta.created_time.timestamp(),
-                meta.updated_time.timestamp(),
-                meta.created_by,
-                meta.updated_by,
-                1 if meta.is_deleted else 0,
-                meta.schema_version,
-                indexed_data_json,
+                meta.rev_created_time.timestamp()
+                if meta.rev_created_time is not UNSET
+                else None
+            ),
+            (
+                meta.rev_updated_time.timestamp()
+                if meta.rev_updated_time is not UNSET
+                else None
             ),
         )
+
+    _UPSERT_SQL = """
+        INSERT OR REPLACE INTO resource_meta
+        (resource_id, data, created_time, updated_time, created_by, updated_by,
+         is_deleted, schema_version, indexed_data,
+         rev_status, rev_created_by, rev_updated_by, rev_created_time, rev_updated_time)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    """
+
+    def __setitem__(self, pk: str, meta: ResourceMeta) -> None:  # ty:ignore[invalid-method-override]
+        _conn = self._conns[threading.get_ident()]
+        # ``meta.resource_id`` may differ from ``pk`` only via misuse, but we
+        # honour the dict-style key by overriding the first column.
+        row = (pk, *self._meta_to_row(meta)[1:])
+        _conn.execute(self._UPSERT_SQL, row)
         _conn.commit()
 
     def save_many(self, metas):
         """批量保存元数据到 SQLite（ISlowMetaStore 接口方法）"""
-        import json
-
         if not metas:
             return
 
-        sql = """
-        INSERT OR REPLACE INTO resource_meta 
-        (resource_id, data, created_time, updated_time, created_by, updated_by, is_deleted, schema_version, indexed_data)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
-        """
         _conn = self._conns[threading.get_ident()]
         with _conn:
             _conn.executemany(
-                sql,
-                [
-                    (
-                        meta.resource_id,
-                        self._serializer.encode(meta),
-                        meta.created_time.timestamp(),
-                        meta.updated_time.timestamp(),
-                        meta.created_by,
-                        meta.updated_by,
-                        1 if meta.is_deleted else 0,
-                        meta.schema_version,
-                        (
-                            json.dumps(meta.indexed_data, ensure_ascii=False)
-                            if meta.indexed_data is not UNSET
-                            else None
-                        ),
-                    )
-                    for meta in metas
-                ],
+                self._UPSERT_SQL,
+                [self._meta_to_row(meta) for meta in metas],
             )
 
     def __delitem__(self, pk: str) -> None:
@@ -260,6 +287,34 @@ class SqliteMetaStore(ISlowMetaStore):
             placeholders = ",".join("?" * len(query.updated_bys))
             conditions.append(f"updated_by IN ({placeholders})")
             params.extend(query.updated_bys)
+
+        if query.rev_statuses is not UNSET:
+            placeholders = ",".join("?" * len(query.rev_statuses))
+            conditions.append(f"rev_status IN ({placeholders})")
+            params.extend(query.rev_statuses)
+
+        if query.rev_created_bys is not UNSET:
+            placeholders = ",".join("?" * len(query.rev_created_bys))
+            conditions.append(f"rev_created_by IN ({placeholders})")
+            params.extend(query.rev_created_bys)
+
+        if query.rev_updated_bys is not UNSET:
+            placeholders = ",".join("?" * len(query.rev_updated_bys))
+            conditions.append(f"rev_updated_by IN ({placeholders})")
+            params.extend(query.rev_updated_bys)
+
+        if query.rev_created_time_start is not UNSET:
+            conditions.append("rev_created_time >= ?")
+            params.append(query.rev_created_time_start.timestamp())
+        if query.rev_created_time_end is not UNSET:
+            conditions.append("rev_created_time <= ?")
+            params.append(query.rev_created_time_end.timestamp())
+        if query.rev_updated_time_start is not UNSET:
+            conditions.append("rev_updated_time >= ?")
+            params.append(query.rev_updated_time_start.timestamp())
+        if query.rev_updated_time_end is not UNSET:
+            conditions.append("rev_updated_time <= ?")
+            params.append(query.rev_updated_time_end.timestamp())
 
         # 處理 data_conditions - 在 SQL 層面過濾
         if query.data_conditions is not UNSET:
@@ -367,11 +422,21 @@ class SqliteMetaStore(ISlowMetaStore):
             "updated_by",
             "is_deleted",
             "schema_version",
+            "rev_status",
+            "rev_created_by",
+            "rev_updated_by",
+            "rev_created_time",
+            "rev_updated_time",
         }
 
         if field_path in meta_fields:
             # Handle datetime conversion for time fields which are stored as REAL (timestamp)
-            if field_path in ("created_time", "updated_time"):
+            if field_path in (
+                "created_time",
+                "updated_time",
+                "rev_created_time",
+                "rev_updated_time",
+            ):
                 if isinstance(value, dt.datetime):
                     value = value.timestamp()
                 elif isinstance(value, (list, tuple, set)):
@@ -681,7 +746,12 @@ class S3SqliteMetaStore(SqliteMetaStore):
                 updated_by TEXT NOT NULL,
                 is_deleted INTEGER NOT NULL,
                 schema_version TEXT,
-                indexed_data TEXT
+                indexed_data TEXT,
+                rev_status TEXT,
+                rev_created_by TEXT,
+                rev_updated_by TEXT,
+                rev_created_time REAL,
+                rev_updated_time REAL
             )
             """
         )
@@ -693,6 +763,11 @@ class S3SqliteMetaStore(SqliteMetaStore):
             "created_by",
             "updated_by",
             "is_deleted",
+            "rev_status",
+            "rev_created_by",
+            "rev_updated_by",
+            "rev_created_time",
+            "rev_updated_time",
         ):
             conn.execute(
                 f"CREATE INDEX IF NOT EXISTS idx_{field} ON resource_meta({field})"

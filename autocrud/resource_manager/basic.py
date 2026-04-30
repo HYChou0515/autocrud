@@ -109,6 +109,49 @@ def is_match_query(meta: ResourceMeta, query: ResourceMetaSearchQuery) -> bool:
     if query.updated_bys is not UNSET and meta.updated_by not in query.updated_bys:
         return False
 
+    # rev_* filters: a meta whose rev_* field is UNSET (legacy / not
+    # backfilled) cannot satisfy the filter — treat as no-match so that
+    # callers don't get spurious hits with missing data.
+    if query.rev_statuses is not UNSET:
+        if meta.rev_status is UNSET or meta.rev_status not in query.rev_statuses:
+            return False
+    if query.rev_created_bys is not UNSET:
+        if (
+            meta.rev_created_by is UNSET
+            or meta.rev_created_by not in query.rev_created_bys
+        ):
+            return False
+    if query.rev_updated_bys is not UNSET:
+        if (
+            meta.rev_updated_by is UNSET
+            or meta.rev_updated_by not in query.rev_updated_bys
+        ):
+            return False
+    if query.rev_created_time_start is not UNSET:
+        if (
+            meta.rev_created_time is UNSET
+            or meta.rev_created_time < query.rev_created_time_start
+        ):
+            return False
+    if query.rev_created_time_end is not UNSET:
+        if (
+            meta.rev_created_time is UNSET
+            or meta.rev_created_time > query.rev_created_time_end
+        ):
+            return False
+    if query.rev_updated_time_start is not UNSET:
+        if (
+            meta.rev_updated_time is UNSET
+            or meta.rev_updated_time < query.rev_updated_time_start
+        ):
+            return False
+    if query.rev_updated_time_end is not UNSET:
+        if (
+            meta.rev_updated_time is UNSET
+            or meta.rev_updated_time > query.rev_updated_time_end
+        ):
+            return False
+
     if query.conditions is not UNSET:
         for condition in query.conditions:
             if not _match_condition(meta, condition):
