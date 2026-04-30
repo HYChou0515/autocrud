@@ -118,6 +118,11 @@ class SafeQBParser:
         "is_deleted",
         "schema_version",
         "total_revision_count",
+        "rev_status",
+        "rev_created_by",
+        "rev_updated_by",
+        "rev_created_time",
+        "rev_updated_time",
         "all",
         "any",
     }

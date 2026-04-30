@@ -598,6 +598,28 @@ class ResourceMeta(Struct, kw_only=True):
     indexed_data: dict[str, Any] | UnsetType = UNSET
     """A dictionary of indexed fields for the resource, used for searching and sorting."""
 
+    rev_status: RevisionStatus | UnsetType = UNSET
+    """Status of the current revision (mirrors ``RevisionInfo.status``).
+
+    Embedded so that callers can filter / sort resources by the status of
+    their *current* revision without an extra read against ``IResourceStore``.
+
+    ``UNSET`` indicates the resource was created before this field existed
+    and has not yet been backfilled (see ``ResourceManager.backfill_revision_meta``).
+    """
+
+    rev_created_by: str | UnsetType = UNSET
+    """User who created the current revision (mirrors ``RevisionInfo.created_by``)."""
+
+    rev_updated_by: str | UnsetType = UNSET
+    """User who last updated the current revision (mirrors ``RevisionInfo.updated_by``)."""
+
+    rev_created_time: dt.datetime | UnsetType = UNSET
+    """Creation time of the current revision (mirrors ``RevisionInfo.created_time``)."""
+
+    rev_updated_time: dt.datetime | UnsetType = UNSET
+    """Last update time of the current revision (mirrors ``RevisionInfo.updated_time``)."""
+
 
 class SearchedResource(Struct, Generic[T]):
     """A resource item returned by list_resources.

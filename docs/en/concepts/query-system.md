@@ -80,6 +80,11 @@ QB["some.field.with.dots"]
 | `QB.is_deleted()` | Soft-delete flag |
 | `QB.schema_version()` | Current schema version |
 | `QB.total_revision_count()` | Total number of revisions |
+| `QB.rev_status()` | Status of the current revision (`draft` / `stable`) |
+| `QB.rev_created_by()` | User who created the current revision |
+| `QB.rev_updated_by()` | User who last updated the current revision |
+| `QB.rev_created_time()` | When the current revision was created |
+| `QB.rev_updated_time()` | When the current revision was last updated |
 
 Examples:
 
@@ -88,9 +93,12 @@ QB.resource_id().starts_with("user-")
 QB.created_time() >= datetime.datetime(2024, 1, 1)
 QB.updated_by().ne("guest")
 QB.is_deleted().is_false()
+QB.rev_status().eq("draft")
+QB.rev_created_by().one_of(["alice", "bob"])
+QB.rev_created_time().last_n_days(7)
 ```
 
-> Filtering and built-in metadata sorting both work for all of the accessors above. For revision filtering and sorting, use `QB.current_revision_id()`.
+> Filtering and built-in metadata sorting both work for all of the accessors above. The `rev_*` accessors target the **current revision** only; they are denormalized mirror fields kept in sync by AutoCRUD, so no extra revision reads are needed.
 
 ---
 
@@ -198,8 +206,10 @@ When `qb` is present, do not also send:
 - `data_conditions`
 - `conditions`
 - `sorts`
+- time-range or user filter parameters: `created_time_start`, `created_time_end`, `updated_time_start`, `updated_time_end`, `created_bys`, `updated_bys`
+- revision filter parameters: `rev_statuses`, `rev_created_bys`, `rev_updated_bys`, `rev_created_time_start`, `rev_created_time_end`, `rev_updated_time_start`, `rev_updated_time_end`
 
-That combination is rejected by the API.
+That combination is rejected by the API. Instead, include those conditions directly in the QB expression — for example `QB.rev_status().eq("draft")` or `QB.rev_created_time().last_n_days(7)`.
 
 ## Pagination behavior
 

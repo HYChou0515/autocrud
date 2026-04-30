@@ -1177,6 +1177,50 @@ class ResourceManager(IResourceManager[T], Generic[T]):
 
         return meta
 
+    def backfill_revision_meta(self) -> int:
+        """Populate ``ResourceMeta.rev_*`` for resources created before this feature.
+
+        Iterates every resource currently in the meta store; for each one
+        whose ``rev_status`` is still ``UNSET`` (i.e. the resource was
+        created on a release that did not yet embed current-revision info),
+        loads the current ``RevisionInfo`` from the resource store and
+        copies its ``status`` / ``created_by`` / ``updated_by`` /
+        ``created_time`` / ``updated_time`` into the meta, then saves it.
+
+        Returns:
+            int: The number of resources that were updated.
+
+        Notes:
+            This is opt-in (not auto-run on startup) because for very
+            large stores it can be expensive — every backfilled resource
+            triggers a read against ``IResourceStore``.  Run it once
+            after upgrading.
+        """
+        updated = 0
+        # Snapshot the metas first so an update half-way through doesn't
+        # disturb the iterator (some meta stores are dict-backed).
+        for meta in list(self.storage.dump_meta()):
+            if meta.rev_status is not UNSET:
+                continue
+            try:
+                info = self.storage.get_resource_revision_info(
+                    meta.resource_id,
+                    meta.current_revision_id,
+                    schema_version=meta.schema_version,
+                )
+            except Exception:
+                # Skip resources whose current revision cannot be read —
+                # the caller can investigate them separately.
+                continue
+            meta.rev_status = info.status
+            meta.rev_created_by = info.created_by
+            meta.rev_updated_by = info.updated_by
+            meta.rev_created_time = info.created_time
+            meta.rev_updated_time = info.updated_time
+            self.storage.save_meta(meta)
+            updated += 1
+        return updated
+
     @property
     def resource_name(self):
         return self._resource_name
@@ -1353,6 +1397,10 @@ class ResourceManager(IResourceManager[T], Generic[T]):
             else:
                 indexed_data = self._extract_indexed_values(mode.data)
 
+        # rev_* fields mirror the now-current ``RevisionInfo`` so that
+        # search/sort by *current revision* attributes does not require an
+        # extra read against ``IResourceStore``.
+        rev_info = mode.rev_info
         return ResourceMeta(
             current_revision_id=current_revision_id,
             resource_id=resource_id,
@@ -1363,6 +1411,11 @@ class ResourceManager(IResourceManager[T], Generic[T]):
             created_by=created_by,
             updated_by=self.user_ctx.get(),
             indexed_data=indexed_data,
+            rev_status=rev_info.status,
+            rev_created_by=rev_info.created_by,
+            rev_updated_by=rev_info.updated_by,
+            rev_created_time=rev_info.created_time,
+            rev_updated_time=rev_info.updated_time,
         )
 
     def get_data_hash(self, data: T) -> str:
@@ -2245,6 +2298,17 @@ class ResourceManager(IResourceManager[T], Generic[T]):
         if self._indexed_fields:
             data = self._load_revision_data(resource_id, revision_id)
             meta.indexed_data = self._extract_indexed_values(data)
+
+        # Refresh the embedded ``rev_*`` mirror to point at the new
+        # current revision so search-by-revision-attrs stays consistent.
+        target_info = self.storage.get_resource_revision_info(
+            resource_id, revision_id, schema_version=meta.schema_version
+        )
+        meta.rev_status = target_info.status
+        meta.rev_created_by = target_info.created_by
+        meta.rev_updated_by = target_info.updated_by
+        meta.rev_created_time = target_info.created_time
+        meta.rev_updated_time = target_info.updated_time
 
         meta.updated_by = self.user_ctx.get()
         meta.updated_time = self.now_ctx.get()

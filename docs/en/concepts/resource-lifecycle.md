@@ -220,7 +220,14 @@ updated_time
 created_by
 updated_by
 is_deleted
+rev_status
+rev_created_by
+rev_updated_by
+rev_created_time
+rev_updated_time
 ```
+
+The `rev_*` fields mirror key attributes of the current revision so that filtering and sorting by revision properties is efficient. AutoCRUD keeps them in sync on every write.
 
 Metadata is accessed via:
 

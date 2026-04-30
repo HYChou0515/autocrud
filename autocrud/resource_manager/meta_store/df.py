@@ -35,6 +35,11 @@ class DFMemoryMetaStore(ISlowMetaStore):
                 "created_by",
                 "updated_by",
                 "is_deleted",
+                "rev_status",
+                "rev_created_by",
+                "rev_updated_by",
+                "rev_created_time",
+                "rev_updated_time",
             ],
             index=pd.Index([], dtype="object", name="resource_id"),
         )
@@ -57,6 +62,19 @@ class DFMemoryMetaStore(ISlowMetaStore):
                     "created_by": b.created_by,
                     "updated_by": b.updated_by,
                     "is_deleted": b.is_deleted,
+                    "rev_status": (b.rev_status if b.rev_status is not UNSET else None),
+                    "rev_created_by": (
+                        b.rev_created_by if b.rev_created_by is not UNSET else None
+                    ),
+                    "rev_updated_by": (
+                        b.rev_updated_by if b.rev_updated_by is not UNSET else None
+                    ),
+                    "rev_created_time": (
+                        b.rev_created_time if b.rev_created_time is not UNSET else None
+                    ),
+                    "rev_updated_time": (
+                        b.rev_updated_time if b.rev_updated_time is not UNSET else None
+                    ),
                 },
             )
         udf = pd.DataFrame(values).set_index("resource_id")
@@ -107,6 +125,20 @@ class DFMemoryMetaStore(ISlowMetaStore):
             exps.append("created_by.isin(@query.created_bys)")
         if query.updated_bys is not UNSET:
             exps.append("updated_by.isin(@query.updated_bys)")
+        if query.rev_statuses is not UNSET:
+            exps.append("rev_status.isin(@query.rev_statuses)")
+        if query.rev_created_bys is not UNSET:
+            exps.append("rev_created_by.isin(@query.rev_created_bys)")
+        if query.rev_updated_bys is not UNSET:
+            exps.append("rev_updated_by.isin(@query.rev_updated_bys)")
+        if query.rev_created_time_start is not UNSET:
+            exps.append("rev_created_time >= @query.rev_created_time_start")
+        if query.rev_created_time_end is not UNSET:
+            exps.append("rev_created_time <= @query.rev_created_time_end")
+        if query.rev_updated_time_start is not UNSET:
+            exps.append("rev_updated_time >= @query.rev_updated_time_start")
+        if query.rev_updated_time_end is not UNSET:
+            exps.append("rev_updated_time <= @query.rev_updated_time_end")
         query_str = " and ".join(exps)
         candidates_index = self._df.query(query_str).index if exps else self._df.index
         results: list[ResourceMeta] = []
