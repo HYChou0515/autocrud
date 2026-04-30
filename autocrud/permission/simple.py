@@ -1,7 +1,5 @@
-from autocrud.permission.basic import (
-    DEFAULT_ROOT_USER,
-)
 from autocrud.permission.checker import (
+    DEFAULT_ROOT_USER,
     IPermissionChecker,
     PermissionContext,
     PermissionResult,

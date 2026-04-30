@@ -102,7 +102,7 @@ class TestDiskBlobStoreGetResponse:
         store = DiskBlobStore(tmp_path)
         data = b"disk content"
         result = store.put(data, content_type="application/pdf")
-        resp = store.get_response(result.file_id)
+        resp = store.get_response(result.file_id)  # ty:ignore[invalid-argument-type]
 
         assert resp.kind == "stream"
         assert resp.stream is not None
@@ -113,9 +113,9 @@ class TestDiskBlobStoreGetResponse:
     def test_stream_has_correct_content_type(self, tmp_path):
         store = DiskBlobStore(tmp_path)
         result = store.put(b"test", content_type="image/png")
-        resp = store.get_response(result.file_id)
+        resp = store.get_response(result.file_id)  # ty:ignore[invalid-argument-type]
         assert resp.kind == "stream"
-        assert resp.stream.content_type == "image/png"
+        assert resp.stream.content_type == "image/png"  # ty:ignore[unresolved-attribute]
 
     def test_not_found_raises(self, tmp_path):
         store = DiskBlobStore(tmp_path)
@@ -137,7 +137,7 @@ class TestS3BlobStoreGetResponseDefault:
         data = b"s3 stream content"
         result = store.put(data, content_type="text/plain")
 
-        resp = store.get_response(result.file_id)
+        resp = store.get_response(result.file_id)  # ty:ignore[invalid-argument-type]
         assert resp.kind == "stream"
         assert resp.stream is not None
         chunks = list(resp.stream.iterator)

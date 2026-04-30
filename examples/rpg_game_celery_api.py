@@ -301,7 +301,7 @@ def get_crud():
         _crud = AutoCRUD(
             default_now=lambda: dt.datetime.now(),
             storage_factory=storage_factory,
-            message_queue_factory=celery_mq_factory,
+            message_queue_factory=celery_mq_factory,  # ty:ignore[invalid-argument-type]
         )
 
         # 添加路由模板
@@ -322,7 +322,7 @@ def get_crud():
         _crud.add_model(
             GameEvent,
             indexed_fields=[("status", str)],
-            job_handler=process_game_event,
+            job_handler=process_game_event,  # ty:ignore[invalid-argument-type]
         )
 
         print("✅ AutoCRUD 初始化完成")

@@ -426,7 +426,7 @@ def native_client():
     native_store = _NativeBlobStore()
     for tmpl in crud.route_templates:
         if hasattr(tmpl, "_blob_store") and tmpl._blob_store is not None:
-            tmpl._blob_store = native_store
+            tmpl._blob_store = native_store  # ty:ignore[invalid-assignment]
             break
 
     return TestClient(app)
@@ -549,7 +549,7 @@ def error_native_client():
     store = _ErrorBlobStore()
     for tmpl in crud.route_templates:
         if isinstance(tmpl, BlobRouteTemplate) and tmpl.mounted:
-            tmpl._blob_store = store
+            tmpl._blob_store = store  # ty:ignore[invalid-assignment]
             break
     return TestClient(app)
 

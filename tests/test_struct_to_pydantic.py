@@ -148,17 +148,17 @@ class TestSimpleConversion:
 
     def test_field_names_preserved(self):
         Model = struct_to_pydantic(SimpleStruct)
-        assert set(Model.model_fields.keys()) == {"name", "age", "score", "active"}
+        assert set(Model.model_fields.keys()) == {"name", "age", "score", "active"}  # ty:ignore[unresolved-attribute]
 
     def test_required_field_is_required(self):
         Model = struct_to_pydantic(SimpleStruct)
-        assert Model.model_fields["name"].is_required()
-        assert Model.model_fields["age"].is_required()
+        assert Model.model_fields["name"].is_required()  # ty:ignore[unresolved-attribute]
+        assert Model.model_fields["age"].is_required()  # ty:ignore[unresolved-attribute]
 
     def test_default_values_preserved(self):
         Model = struct_to_pydantic(SimpleStruct)
-        assert Model.model_fields["score"].default == 0.0
-        assert Model.model_fields["active"].default is True
+        assert Model.model_fields["score"].default == 0.0  # ty:ignore[unresolved-attribute]
+        assert Model.model_fields["active"].default is True  # ty:ignore[unresolved-attribute]
 
     def test_instantiation_with_defaults(self):
         Model = struct_to_pydantic(SimpleStruct)
@@ -355,7 +355,7 @@ class TestCaching:
         # Different invocations create separate caches, so models may differ
         # But both should work identically
         assert M1.__name__ == M2.__name__
-        assert set(M1.model_fields.keys()) == set(M2.model_fields.keys())
+        assert set(M1.model_fields.keys()) == set(M2.model_fields.keys())  # ty:ignore[unresolved-attribute]
 
 
 # ---------------------------------------------------------------------------
@@ -366,18 +366,18 @@ class TestCaching:
 class TestErrorHandling:
     def test_non_struct_raises_type_error(self):
         with pytest.raises(TypeError, match="Expected a msgspec Struct class"):
-            struct_to_pydantic(str)
+            struct_to_pydantic(str)  # ty: ignore[invalid-argument-type]
 
     def test_pydantic_model_raises_type_error(self):
         class MyModel(BaseModel):
             x: int = 0
 
         with pytest.raises(TypeError, match="Expected a msgspec Struct class"):
-            struct_to_pydantic(MyModel)
+            struct_to_pydantic(MyModel)  # ty: ignore[invalid-argument-type]
 
     def test_instance_raises_type_error(self):
         with pytest.raises(TypeError, match="Expected a msgspec Struct class"):
-            struct_to_pydantic(SimpleStruct(name="x", age=1))
+            struct_to_pydantic(SimpleStruct(name="x", age=1))  # ty:ignore[invalid-argument-type]
 
 
 # ---------------------------------------------------------------------------
@@ -509,14 +509,14 @@ class TestUnsupportedMsgspecTypes:
 class TestJSONSchema:
     def test_json_schema_generated(self):
         Model = struct_to_pydantic(SimpleStruct)
-        schema = Model.model_json_schema()
+        schema = Model.model_json_schema()  # ty:ignore[unresolved-attribute]
         assert "properties" in schema
         assert "name" in schema["properties"]
         assert "age" in schema["properties"]
 
     def test_tagged_union_json_schema(self):
         Model = struct_to_pydantic(StructWithTaggedUnion)
-        schema = Model.model_json_schema()
+        schema = Model.model_json_schema()  # ty:ignore[unresolved-attribute]
         # Should have discriminator in the detail field
         assert "$defs" in schema
         # TagA and TagB should appear in $defs
@@ -526,13 +526,13 @@ class TestJSONSchema:
 
     def test_enum_in_json_schema(self):
         Model = struct_to_pydantic(StructWithEnum)
-        schema = Model.model_json_schema()
+        schema = Model.model_json_schema()  # ty:ignore[unresolved-attribute]
         # Color enum should appear in $defs
         assert "Color" in schema.get("$defs", {})
 
     def test_rpg_skill_schema_has_discriminator(self):
         Model = struct_to_pydantic(RPGSkill)
-        schema = Model.model_json_schema()
+        schema = Model.model_json_schema()  # ty:ignore[unresolved-attribute]
         defs = schema.get("$defs", {})
         assert "ActiveSkill" in defs
         assert "PassiveSkill" in defs
@@ -554,7 +554,7 @@ class TestFastAPIIntegration:
         SkillModel = struct_to_pydantic(RPGSkill)
 
         @app.post("/skill")
-        async def create_skill(body: SkillModel):
+        async def create_skill(body: SkillModel):  # ty:ignore[invalid-type-form]
             return {"skname": body.skname, "detail_type": body.detail.type}
 
         client = TestClient(app)
@@ -575,7 +575,7 @@ class TestFastAPIIntegration:
         SkillModel = struct_to_pydantic(RPGSkill)
 
         @app.post("/skill")
-        async def create_skill(body: SkillModel):
+        async def create_skill(body: SkillModel):  # ty:ignore[invalid-type-form]
             return {}
 
         schema = app.openapi()

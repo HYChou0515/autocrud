@@ -16,7 +16,7 @@ from autocrud.types import (
 try:
     from botocore.exceptions import ClientError as _ClientError
 except ImportError:  # pragma: no cover
-    _ClientError = None  # type: ignore[assignment,misc]
+    _ClientError = None  # type: ignore[assignment,misc]  # ty:ignore[invalid-assignment]
 
 
 # ---------------------------------------------------------------------------
@@ -353,8 +353,8 @@ class S3BlobStore(BasicBlobStore):
         return BlobUploadSession(
             upload_id=meta.upload_id,
             file_id=meta.key or "",
-            status=meta.status,
-            upload_method=meta.upload_method,
+            status=meta.status,  # ty:ignore[invalid-argument-type]
+            upload_method=meta.upload_method,  # ty:ignore[invalid-argument-type]
             content_type=_ct_from_meta(meta.content_type),
             size=meta.size,
             uploaded_size=meta.uploaded_size,
@@ -445,7 +445,7 @@ class S3BlobStore(BasicBlobStore):
                 Bucket=self.bucket,
                 Key=meta.s3_key,
                 UploadId=meta.multipart_upload_id,
-                MultipartUpload={"Parts": sorted_parts},
+                MultipartUpload={"Parts": sorted_parts},  # ty:ignore[invalid-argument-type]
             )
         elif meta.status == "uploaded":
             # Legacy: single upload_to_session wrote to s3_key directly

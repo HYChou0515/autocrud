@@ -87,7 +87,7 @@ class TestJobArtifact:
 
         def handler(resource: Resource[Job[Payload]]):
             # Simulate handler producing an artifact
-            resource.data.artifact = {"result": "computed", "count": 42}
+            resource.data.artifact = {"result": "computed", "count": 42}  # ty:ignore[invalid-assignment]
 
         rm, mq = _make_rm_and_queue(handler, job_type=Job[Payload, dict])
 
@@ -108,7 +108,7 @@ class TestJobArtifact:
         """After rerun, artifact=None, errmsg=None, retries=0, but payload preserved."""
 
         def handler(resource: Resource[Job[Payload]]):
-            resource.data.artifact = {"result": "done"}
+            resource.data.artifact = {"result": "done"}  # ty:ignore[invalid-assignment]
 
         rm, mq = _make_rm_and_queue(handler, job_type=Job[Payload, dict])
 
@@ -171,7 +171,7 @@ class TestJobArtifact:
         assert hasattr(job, "artifact")
         assert job.artifact is None
 
-        job.artifact = "some_value"
+        job.artifact = "some_value"  # ty:ignore[invalid-assignment]
         assert job.artifact == "some_value"
 
     def test_artifact_ordering_in_struct(self):
@@ -184,5 +184,5 @@ class TestJobArtifact:
             retries=2,
         )
         assert job.errmsg == "done"
-        assert job.artifact.result == "ok"
+        assert job.artifact.result == "ok"  # ty:ignore[unresolved-attribute]
         assert job.retries == 2

@@ -24,7 +24,7 @@ class JobLogsRouteTemplate(BaseRouteTemplate):
         router: APIRouter,
     ) -> None:
         # Only register when a message queue is configured
-        if resource_manager.message_queue is None:
+        if resource_manager.message_queue is None:  # ty:ignore[unresolved-attribute]
             return
 
         @router.get(
@@ -51,7 +51,7 @@ class JobLogsRouteTemplate(BaseRouteTemplate):
                     # Ensure the resource exists (raises 404 otherwise)
                     resource_manager.get(resource_id)
 
-                    logs = resource_manager.message_queue.get_logs(resource_id)
+                    logs = resource_manager.message_queue.get_logs(resource_id)  # ty:ignore[unresolved-attribute]
                     if logs is None:
                         return Response(status_code=204)
                     return PlainTextResponse(logs)

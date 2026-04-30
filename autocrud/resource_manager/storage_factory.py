@@ -1,4 +1,3 @@
-import warnings
 from abc import ABC, abstractmethod
 from pathlib import Path
 from typing import Any, Literal
@@ -29,6 +28,16 @@ class IStorageFactory(ABC):
         self,
         model_name: str,
     ) -> IStorage: ...
+
+    def build_blob_store(self) -> IBlobStore | None:
+        """Optional hook: return a shared blob store, or ``None`` to defer.
+
+        Factories that own an object backend (S3, etc.) override this so
+        callers can construct a blob store from the same connection /
+        configuration without duck-typing. Default returns ``None`` —
+        callers should fall back to a project-default blob store.
+        """
+        return None
 
 
 class MemoryStorageFactory(IStorageFactory):
@@ -494,25 +503,3 @@ class S3StorageFactory(IStorageFactory):
             presigned_url_expiry=self.presigned_url_expiry,
             client_kwargs=self.client_kwargs,
         )
-
-
-PostgreSQLDiskS3StorageFactory = PostgresDiskS3StorageFactory
-
-
-class PostgreSQLStorageFactory(PostgreSQLS3StorageFactory):
-    """Deprecated alias for :class:`PostgreSQLS3StorageFactory`.
-
-    .. deprecated:: 0.9.0
-        Use :class:`PostgreSQLS3StorageFactory` (PostgreSQL meta + S3 resource)
-        or :class:`PostgresStorageFactory` (PostgreSQL-only) instead.
-    """
-
-    def __init__(self, *args, **kwargs):
-        warnings.warn(
-            "PostgreSQLStorageFactory is deprecated and will be removed in a future "
-            "version. Use PostgreSQLS3StorageFactory (PostgreSQL meta + S3 resource) "
-            "or PostgresStorageFactory (PostgreSQL-only) instead.",
-            DeprecationWarning,
-            stacklevel=2,
-        )
-        super().__init__(*args, **kwargs)

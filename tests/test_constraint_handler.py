@@ -153,8 +153,8 @@ class TestPhaseState:
     def test_reset_clears_all(self):
         state = _PhaseState()
         state.needs_post_check = True
-        state.prev_meta = "x"
-        state.prev_info = "y"
+        state.prev_meta = "x"  # ty:ignore[invalid-assignment]
+        state.prev_info = "y"  # ty:ignore[invalid-assignment]
         state.current_data = "z"
         state.data = "d"
         state.resource_id = "rid"

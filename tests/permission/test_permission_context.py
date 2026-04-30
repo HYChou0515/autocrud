@@ -49,7 +49,7 @@ class TestCaseUtil:
     def setup_context_system(self):
         """設置權限上下文測試系統"""
         # 設定基本組件
-        resource_store = MemoryResourceStore(TestDocument)
+        resource_store = MemoryResourceStore(TestDocument)  # ty:ignore[invalid-argument-type]
         storage = SimpleStorage(
             meta_store=MemoryMetaStore(),
             resource_store=resource_store,
@@ -92,7 +92,7 @@ class TestActionBasedPermissionChecker(TestCaseUtil):
             resource_name="documents",
             data={"title": "Test", "content": "Content"},
         )
-        result = checker.check_permission(context)
+        result = checker.check_permission(context)  # ty:ignore[invalid-argument-type]
         assert result == PermissionResult.allow
 
         # 測試普通用戶
@@ -102,7 +102,7 @@ class TestActionBasedPermissionChecker(TestCaseUtil):
             resource_name="documents",
             data={"title": "Test", "content": "Content"},
         )
-        result = checker.check_permission(context)
+        result = checker.check_permission(context)  # ty:ignore[invalid-argument-type]
         assert result == PermissionResult.deny
 
     def test_action_handler_registration2(self):
@@ -131,7 +131,7 @@ class TestActionBasedPermissionChecker(TestCaseUtil):
             resource_name="documents",
             data={"title": "Test", "content": "Content"},
         )
-        result = checker.check_permission(context)
+        result = checker.check_permission(context)  # ty:ignore[invalid-argument-type]
         assert result == PermissionResult.deny
 
     def test_unregistered_action(self):
@@ -145,7 +145,7 @@ class TestActionBasedPermissionChecker(TestCaseUtil):
             data={"title": "Test", "content": "Content"},
         )
 
-        result = checker.check_permission(context)
+        result = checker.check_permission(context)  # ty:ignore[invalid-argument-type]
         assert result == PermissionResult.not_applicable
 
 
@@ -167,7 +167,7 @@ class TestFieldLevelPermissionChecker(TestCaseUtil):
             data={"title": "new title", "content": "new content"},
         )
 
-        result = checker.check_permission(context)
+        result = checker.check_permission(context)  # ty:ignore[invalid-argument-type]
         assert result == PermissionResult.allow
 
         # 測試 alice 修改不允許的欄位
@@ -179,7 +179,7 @@ class TestFieldLevelPermissionChecker(TestCaseUtil):
             data={"status": "published"},  # alice 不能修改 status
         )
 
-        result = checker.check_permission(context)
+        result = checker.check_permission(context)  # ty:ignore[invalid-argument-type]
         assert result == PermissionResult.deny
 
     def test_non_update_action(self):
@@ -267,7 +267,7 @@ class TestConditionalPermissionChecker(TestCaseUtil):
             data={"title": "Updated Title"},
         )
 
-        result = checker.check_permission(context)
+        result = checker.check_permission(context)  # ty:ignore[invalid-argument-type]
         assert result == PermissionResult.allow
 
 
@@ -288,7 +288,7 @@ class TestCompositePermissionChecker(TestCaseUtil):
                 return PermissionResult.allow
 
         composite = CompositePermissionChecker(
-            [AlwaysDenyChecker(), AlwaysAllowChecker()],
+            [AlwaysDenyChecker(), AlwaysAllowChecker()],  # ty:ignore[invalid-argument-type]
         )
 
         context = BeforeCreate(
@@ -298,7 +298,7 @@ class TestCompositePermissionChecker(TestCaseUtil):
             data={},
         )
 
-        result = composite.check_permission(context)
+        result = composite.check_permission(context)  # ty:ignore[invalid-argument-type]
         assert result == PermissionResult.deny
 
     def test_composite_checker_skip_not_applicable(self):
@@ -312,7 +312,7 @@ class TestCompositePermissionChecker(TestCaseUtil):
             def check_permission(self, context):
                 return PermissionResult.allow
 
-        composite = CompositePermissionChecker([NotApplicableChecker(), AllowChecker()])
+        composite = CompositePermissionChecker([NotApplicableChecker(), AllowChecker()])  # ty:ignore[invalid-argument-type]
 
         context = BeforeCreate(
             user="alice",
@@ -321,7 +321,7 @@ class TestCompositePermissionChecker(TestCaseUtil):
             data={},
         )
 
-        result = composite.check_permission(context)
+        result = composite.check_permission(context)  # ty:ignore[invalid-argument-type]
         assert result == PermissionResult.allow
 
 
@@ -349,7 +349,7 @@ class TestResourceOwnershipChecker(TestCaseUtil):
     def test_owner_can_update(self):
         """測試擁有者可以更新"""
         mock_rm = MockResourceManager()
-        checker = ResourceOwnershipChecker(mock_rm)
+        checker = ResourceOwnershipChecker(mock_rm)  # ty:ignore[invalid-argument-type]
 
         context = BeforeGet(
             user="alice",
@@ -364,7 +364,7 @@ class TestResourceOwnershipChecker(TestCaseUtil):
     def test_non_owner_cannot_update(self):
         """測試非擁有者不能更新"""
         mock_rm = MockResourceManager()
-        checker = ResourceOwnershipChecker(mock_rm)
+        checker = ResourceOwnershipChecker(mock_rm)  # ty:ignore[invalid-argument-type]
 
         context = BeforeGet(
             user="alice",
@@ -380,8 +380,8 @@ class TestResourceOwnershipChecker(TestCaseUtil):
         """測試不適用的操作"""
         mock_rm = MockResourceManager()
         checker = ResourceOwnershipChecker(
-            mock_rm,
-            allowed_actions={ResourceAction.update, ResourceAction.delete},
+            mock_rm,  # ty:ignore[invalid-argument-type]
+            allowed_actions={ResourceAction.update, ResourceAction.delete},  # ty:ignore[invalid-argument-type]
         )
 
         context = BeforeCreate(
@@ -391,7 +391,7 @@ class TestResourceOwnershipChecker(TestCaseUtil):
             data={},
         )
 
-        result = checker.check_permission(context)
+        result = checker.check_permission(context)  # ty:ignore[invalid-argument-type]
         assert result == PermissionResult.not_applicable
 
 
@@ -436,7 +436,7 @@ class TestDefaultPermissionChecker(TestCaseUtil):
             data={},
         )
 
-        result = checker.check_permission(context)
+        result = checker.check_permission(context)  # ty:ignore[invalid-argument-type]
         assert result == PermissionResult.deny
 
 
@@ -510,7 +510,7 @@ class TestIntegratedPermissionContextSystem(TestCaseUtil):
             data={},
         )
 
-        result = composite.check_permission(context)
+        result = composite.check_permission(context)  # ty:ignore[invalid-argument-type]
         assert result == PermissionResult.allow
 
         # 測試場景 2: 普通用戶嘗試更新文檔（欄位權限拒絕）
@@ -522,7 +522,7 @@ class TestIntegratedPermissionContextSystem(TestCaseUtil):
             data={},
         )
 
-        result = composite.check_permission(context)
+        result = composite.check_permission(context)  # ty:ignore[invalid-argument-type]
         assert result == PermissionResult.deny  # 被欄位檢查器拒絕
 
         # 測試場景 3: 普通用戶讀取文檔（應該允許）
@@ -563,7 +563,7 @@ class TestIntegratedPermissionContextSystem(TestCaseUtil):
             data={"title": "After Hours Doc"},
         )
 
-        result = conditional_checker.check_permission(context)
+        result = conditional_checker.check_permission(context)  # ty:ignore[invalid-argument-type]
         assert result == PermissionResult.deny
 
         # 測試管理員在非工作時間創建（應該允許）
@@ -574,7 +574,7 @@ class TestIntegratedPermissionContextSystem(TestCaseUtil):
             data={"title": "Admin After Hours Doc"},
         )
 
-        result = conditional_checker.check_permission(context)
+        result = conditional_checker.check_permission(context)  # ty:ignore[invalid-argument-type]
         assert result == PermissionResult.not_applicable  # 管理員不受工作時間限制
 
 

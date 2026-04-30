@@ -14,7 +14,7 @@ from __future__ import annotations
 
 import datetime as dt
 import json
-from typing import Optional
+from typing import Any, Optional
 
 import msgspec
 from fastapi import HTTPException, Query, Request
@@ -65,6 +65,34 @@ class QueryInputs(BaseModel):
     )
     created_bys: Optional[list[str]] = Query(None, description="Filter by creators")
     updated_bys: Optional[list[str]] = Query(None, description="Filter by updaters")
+    rev_statuses: Optional[list[str]] = Query(
+        None,
+        description="Filter by current revision status (e.g. 'draft', 'stable')",
+    )
+    rev_created_bys: Optional[list[str]] = Query(
+        None,
+        description="Filter by users who created the current revision",
+    )
+    rev_updated_bys: Optional[list[str]] = Query(
+        None,
+        description="Filter by users who last updated the current revision",
+    )
+    rev_created_time_start: Optional[str] = Query(
+        None,
+        description="Filter resources whose current revision was created >= this time (ISO format)",
+    )
+    rev_created_time_end: Optional[str] = Query(
+        None,
+        description="Filter resources whose current revision was created <= this time (ISO format)",
+    )
+    rev_updated_time_start: Optional[str] = Query(
+        None,
+        description="Filter resources whose current revision was updated >= this time (ISO format)",
+    )
+    rev_updated_time_end: Optional[str] = Query(
+        None,
+        description="Filter resources whose current revision was updated <= this time (ISO format)",
+    )
     data_conditions: Optional[str] = Query(
         None,
         description='Data filter conditions in JSON format. Example: \'[{"field_path": "department", "operator": "eq", "value": "Engineering"}]\'',
@@ -152,6 +180,13 @@ def build_query(
             "updated_time_end",
             "created_bys",
             "updated_bys",
+            "rev_statuses",
+            "rev_created_bys",
+            "rev_updated_bys",
+            "rev_created_time_start",
+            "rev_created_time_end",
+            "rev_updated_time_start",
+            "rev_updated_time_end",
         ]:
             if param_name in provided_params and getattr(q, param_name) is not None:
                 conflicting_params.append(param_name)
@@ -199,7 +234,7 @@ def build_query(
                 detail=f"Invalid QB expression: {e!s}",
             )
 
-    query_kwargs = {
+    query_kwargs: dict[str, Any] = {
         "limit": q.limit,
         "offset": q.offset,
     }
@@ -246,6 +281,49 @@ def build_query(
         query_kwargs["updated_bys"] = q.updated_bys
     else:
         query_kwargs["updated_bys"] = msgspec.UNSET
+
+    if q.rev_statuses:
+        query_kwargs["rev_statuses"] = q.rev_statuses
+    else:
+        query_kwargs["rev_statuses"] = msgspec.UNSET
+
+    if q.rev_created_bys:
+        query_kwargs["rev_created_bys"] = q.rev_created_bys
+    else:
+        query_kwargs["rev_created_bys"] = msgspec.UNSET
+
+    if q.rev_updated_bys:
+        query_kwargs["rev_updated_bys"] = q.rev_updated_bys
+    else:
+        query_kwargs["rev_updated_bys"] = msgspec.UNSET
+
+    if q.rev_created_time_start:
+        query_kwargs["rev_created_time_start"] = dt.datetime.fromisoformat(
+            q.rev_created_time_start,
+        )
+    else:
+        query_kwargs["rev_created_time_start"] = msgspec.UNSET
+
+    if q.rev_created_time_end:
+        query_kwargs["rev_created_time_end"] = dt.datetime.fromisoformat(
+            q.rev_created_time_end,
+        )
+    else:
+        query_kwargs["rev_created_time_end"] = msgspec.UNSET
+
+    if q.rev_updated_time_start:
+        query_kwargs["rev_updated_time_start"] = dt.datetime.fromisoformat(
+            q.rev_updated_time_start,
+        )
+    else:
+        query_kwargs["rev_updated_time_start"] = msgspec.UNSET
+
+    if q.rev_updated_time_end:
+        query_kwargs["rev_updated_time_end"] = dt.datetime.fromisoformat(
+            q.rev_updated_time_end,
+        )
+    else:
+        query_kwargs["rev_updated_time_end"] = msgspec.UNSET
 
     # 處理 data_conditions
     if q.data_conditions:

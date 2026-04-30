@@ -109,22 +109,22 @@ def _build_type(current_type: Any, paths: list[list[str]], prefix: str) -> Any:
                             default=field_def.default,
                             default_factory=field_def.default_factory,
                             name=field_def.name,
-                        ),
+                        ),  # ty:ignore[no-matching-overload]
                     )
                 )
 
         # For generic aliases (e.g. Job[Payload]), resolve the origin for __name__
         struct_class = resolve_struct_origin(current_type)
-        type_name = f"{prefix}_{struct_class.__name__}"
+        type_name = f"{prefix}_{struct_class.__name__}"  # ty:ignore[unresolved-attribute]
 
         # Keep tag info
         kwargs = {}
         try:
             info = msgspec.inspect.type_info(current_type)
-            kwargs["tag"] = info.tag
-            kwargs["tag_field"] = info.tag_field
-            kwargs["array_like"] = info.array_like
-            kwargs["forbid_unknown_fields"] = info.forbid_unknown_fields
+            kwargs["tag"] = info.tag  # ty:ignore[unresolved-attribute]
+            kwargs["tag_field"] = info.tag_field  # ty:ignore[unresolved-attribute]
+            kwargs["array_like"] = info.array_like  # ty:ignore[unresolved-attribute]
+            kwargs["forbid_unknown_fields"] = info.forbid_unknown_fields  # ty:ignore[unresolved-attribute]
         except Exception:
             pass
 

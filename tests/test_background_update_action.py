@@ -551,7 +551,7 @@ class TestBackgroundUpdateTaskIsSync:
             captured_tasks.append(func)
             return original_add_task(self, func, *args, **kwargs)
 
-        BackgroundTasks.add_task = spy_add_task
+        BackgroundTasks.add_task = spy_add_task  # ty:ignore[invalid-assignment]
         try:
             client = TestClient(app)
             resource_id = _create_character(client, name="A", level=1)
@@ -593,7 +593,7 @@ class TestBackgroundUpdateTaskIsSync:
             captured_tasks.append(func)
             return original_add_task(self, func, *args, **kwargs)
 
-        BackgroundTasks.add_task = spy_add_task
+        BackgroundTasks.add_task = spy_add_task  # ty:ignore[invalid-assignment]
         try:
             client = TestClient(app)
             resource_id = _create_character(client, name="B", level=2)

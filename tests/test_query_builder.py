@@ -49,8 +49,8 @@ class TestQueryBuilder:
     def test_and_condition(self):
         q = QB["name"].eq("Alice") & QB["age"].gt(30)
         query = q.build()
-        assert len(query.conditions) == 1
-        group = query.conditions[0]
+        assert len(query.conditions) == 1  # ty:ignore[invalid-argument-type]
+        group = query.conditions[0]  # ty:ignore[not-subscriptable]
         assert isinstance(group, DataSearchGroup)
         assert group.operator == DataSearchLogicOperator.and_op
         assert len(group.conditions) == 2
@@ -69,7 +69,7 @@ class TestQueryBuilder:
     def test_or_condition(self):
         q = QB["name"].eq("Alice") | QB["name"].eq("Bob")
         query = q.build()
-        group = query.conditions[0]
+        group = query.conditions[0]  # ty:ignore[not-subscriptable]
         assert isinstance(group, DataSearchGroup)
         assert group.operator == DataSearchLogicOperator.or_op
         assert len(group.conditions) == 2
@@ -80,7 +80,7 @@ class TestQueryBuilder:
             QB["department"].eq("HR") & QB["active"].eq(True)
         )
         query = q.build()
-        group = query.conditions[0]
+        group = query.conditions[0]  # ty:ignore[not-subscriptable]
         assert isinstance(group, DataSearchGroup)
         assert group.operator == DataSearchLogicOperator.or_op
         assert len(group.conditions) == 2
@@ -110,7 +110,7 @@ class TestQueryBuilder:
         assert len(query.sorts) == 2
 
         s1 = query.sorts[0]
-        assert s1.key == ResourceMetaSortKey.created_time
+        assert s1.key == ResourceMetaSortKey.created_time  # ty:ignore[unresolved-attribute]
         assert s1.direction == ResourceMetaSortDirection.descending
 
         s2 = query.sorts[1]
@@ -181,88 +181,88 @@ class TestQueryBuilder:
     def test_nested_field(self):
         q = QB["user.profile.email"].eq("test@example.com")
         query = q.build()
-        condition = query.conditions[0]
-        assert condition.field_path == "user.profile.email"
-        assert condition.value == "test@example.com"
+        condition = query.conditions[0]  # ty:ignore[not-subscriptable]
+        assert condition.field_path == "user.profile.email"  # ty:ignore[unresolved-attribute]
+        assert condition.value == "test@example.com"  # ty:ignore[unresolved-attribute]
 
     def test_all_operators(self):
         """Test all supported operators in Field class."""
         field = QB["test_field"]
 
         # eq
-        c = field.eq(1).build().conditions[0]
+        c = field.eq(1).build().conditions[0]  # ty:ignore[not-subscriptable]
         assert c.operator == DataSearchOperator.equals
-        assert c.value == 1
+        assert c.value == 1  # ty:ignore[unresolved-attribute]
 
         # ne
-        c = field.ne(1).build().conditions[0]
+        c = field.ne(1).build().conditions[0]  # ty:ignore[not-subscriptable]
         assert c.operator == DataSearchOperator.not_equals
 
         # gt
-        c = field.gt(1).build().conditions[0]
+        c = field.gt(1).build().conditions[0]  # ty:ignore[not-subscriptable]
         assert c.operator == DataSearchOperator.greater_than
 
         # gte
-        c = field.gte(1).build().conditions[0]
+        c = field.gte(1).build().conditions[0]  # ty:ignore[not-subscriptable]
         assert c.operator == DataSearchOperator.greater_than_or_equal
 
         # lt
-        c = field.lt(1).build().conditions[0]
+        c = field.lt(1).build().conditions[0]  # ty:ignore[not-subscriptable]
         assert c.operator == DataSearchOperator.less_than
 
         # lte
-        c = field.lte(1).build().conditions[0]
+        c = field.lte(1).build().conditions[0]  # ty:ignore[not-subscriptable]
         assert c.operator == DataSearchOperator.less_than_or_equal
 
         # contains
-        c = field.contains("x").build().conditions[0]
+        c = field.contains("x").build().conditions[0]  # ty:ignore[not-subscriptable]
         assert c.operator == DataSearchOperator.contains
 
         # starts_with
-        c = field.starts_with("x").build().conditions[0]
+        c = field.starts_with("x").build().conditions[0]  # ty:ignore[not-subscriptable]
         assert c.operator == DataSearchOperator.starts_with
 
         # ends_with
-        c = field.ends_with("x").build().conditions[0]
+        c = field.ends_with("x").build().conditions[0]  # ty:ignore[not-subscriptable]
         assert c.operator == DataSearchOperator.ends_with
 
         # in_
-        c = field.in_([1, 2]).build().conditions[0]
+        c = field.in_([1, 2]).build().conditions[0]  # ty:ignore[not-subscriptable]
         assert c.operator == DataSearchOperator.in_list
-        assert c.value == [1, 2]
+        assert c.value == [1, 2]  # ty:ignore[unresolved-attribute]
 
         # not_in
-        c = field.not_in([1, 2]).build().conditions[0]
+        c = field.not_in([1, 2]).build().conditions[0]  # ty:ignore[not-subscriptable]
         assert c.operator == DataSearchOperator.not_in_list
 
         # is_null
-        c = field.is_null().build().conditions[0]
+        c = field.is_null().build().conditions[0]  # ty:ignore[not-subscriptable]
         assert c.operator == DataSearchOperator.is_null
-        assert c.value is True
+        assert c.value is True  # ty:ignore[unresolved-attribute]
 
         # exists
-        c = field.exists().build().conditions[0]
+        c = field.exists().build().conditions[0]  # ty:ignore[not-subscriptable]
         assert c.operator == DataSearchOperator.exists
 
         # isna
-        c = field.isna().build().conditions[0]
+        c = field.isna().build().conditions[0]  # ty:ignore[not-subscriptable]
         assert c.operator == DataSearchOperator.isna
 
         # regex
-        c = field.regex(".*").build().conditions[0]
+        c = field.regex(".*").build().conditions[0]  # ty:ignore[not-subscriptable]
         assert c.operator == DataSearchOperator.regex
 
     def test_invert_operator(self):
         """Test the ~ (not) operator."""
         q = ~QB["age"].gt(18)
         query = q.build()
-        group = query.conditions[0]
+        group = query.conditions[0]  # ty:ignore[not-subscriptable]
         assert isinstance(group, DataSearchGroup)
         assert group.operator == DataSearchLogicOperator.not_op
         assert len(group.conditions) == 1
 
         inner = group.conditions[0]
-        assert inner.field_path == "age"
+        assert inner.field_path == "age"  # ty:ignore[unresolved-attribute]
         assert inner.operator == DataSearchOperator.greater_than
 
     def test_nested_logic_transformation(self):
@@ -270,30 +270,30 @@ class TestQueryBuilder:
         q = (QB["a"].eq(1) & QB["b"].eq(2)) | ~(QB["c"].eq(3) & QB["d"].eq(4))
         query = q.build()
 
-        root_group = query.conditions[0]
+        root_group = query.conditions[0]  # ty:ignore[not-subscriptable]
         assert root_group.operator == DataSearchLogicOperator.or_op
-        assert len(root_group.conditions) == 2
+        assert len(root_group.conditions) == 2  # ty:ignore[unresolved-attribute]
 
         # Left side: A & B
-        left = root_group.conditions[0]
+        left = root_group.conditions[0]  # ty:ignore[unresolved-attribute]
         assert left.operator == DataSearchLogicOperator.and_op
-        assert len(left.conditions) == 2
+        assert len(left.conditions) == 2  # ty:ignore[unresolved-attribute]
 
         # Right side: ~(C & D)
-        right = root_group.conditions[1]
+        right = root_group.conditions[1]  # ty:ignore[unresolved-attribute]
         assert right.operator == DataSearchLogicOperator.not_op
-        assert len(right.conditions) == 1
+        assert len(right.conditions) == 1  # ty:ignore[unresolved-attribute]
 
         # Inside Not: C & D
-        inner_right = right.conditions[0]
+        inner_right = right.conditions[0]  # ty:ignore[unresolved-attribute]
         assert inner_right.operator == DataSearchLogicOperator.and_op
-        assert len(inner_right.conditions) == 2
+        assert len(inner_right.conditions) == 2  # ty:ignore[unresolved-attribute]
 
     def test_invert_dual_usage(self):
         """Test ~ operator has different meanings for Field vs ConditionBuilder."""
         # Case 1: ~Field -> is_falsy() which is NOT(is_truthy)
         q1 = ~QB["comment"]
-        cond1 = q1.build().conditions[0]
+        cond1 = q1.build().conditions[0]  # ty:ignore[not-subscriptable]
         assert isinstance(cond1, DataSearchGroup)
         assert cond1.operator == DataSearchLogicOperator.not_op
         assert len(cond1.conditions) == 1
@@ -309,30 +309,30 @@ class TestQueryBuilder:
         # Case 2: ~(condition) -> NOT condition (logical negation)
         q2 = ~(QB["age"] > 18)
         query2 = q2.build()
-        group = query2.conditions[0]
+        group = query2.conditions[0]  # ty:ignore[not-subscriptable]
         assert isinstance(group, DataSearchGroup)
         assert group.operator == DataSearchLogicOperator.not_op
         assert len(group.conditions) == 1
 
         inner = group.conditions[0]
-        assert inner.field_path == "age"
+        assert inner.field_path == "age"  # ty:ignore[unresolved-attribute]
         assert inner.operator == DataSearchOperator.greater_than
-        assert inner.value == 18
+        assert inner.value == 18  # ty:ignore[unresolved-attribute]
 
         # Case 3: Complex - NOT (field1 > 10 AND field2 < 20)
         q3 = ~((QB["score"] > 80) & (QB["age"] < 30))
         query3 = q3.build()
-        root = query3.conditions[0]
+        root = query3.conditions[0]  # ty:ignore[not-subscriptable]
         assert root.operator == DataSearchLogicOperator.not_op
-        assert len(root.conditions) == 1
+        assert len(root.conditions) == 1  # ty:ignore[unresolved-attribute]
 
-        inner_group = root.conditions[0]
+        inner_group = root.conditions[0]  # ty:ignore[unresolved-attribute]
         assert inner_group.operator == DataSearchLogicOperator.and_op
 
         # Case 4: ~~Field -> NOT(NOT(is_truthy())) 雙重否定
         q4 = ~~QB["optional_field"]
         query4 = q4.build()
-        double_not = query4.conditions[0]
+        double_not = query4.conditions[0]  # ty:ignore[not-subscriptable]
         assert isinstance(double_not, DataSearchGroup)
         assert double_not.operator == DataSearchLogicOperator.not_op
         assert len(double_not.conditions) == 1
@@ -356,39 +356,39 @@ class TestQueryBuilder:
         # Basic range
         q = QB["age"].between(18, 65)
         query = q.build()
-        cond = query.conditions[0]
+        cond = query.conditions[0]  # ty:ignore[not-subscriptable]
         assert isinstance(cond, DataSearchGroup)
         assert cond.operator == DataSearchLogicOperator.and_op
         assert len(cond.conditions) == 2
 
         # First condition: age >= 18
         first = cond.conditions[0]
-        assert first.field_path == "age"
+        assert first.field_path == "age"  # ty:ignore[unresolved-attribute]
         assert first.operator == DataSearchOperator.greater_than_or_equal
-        assert first.value == 18
+        assert first.value == 18  # ty:ignore[unresolved-attribute]
 
         # Second condition: age <= 65
         second = cond.conditions[1]
-        assert second.field_path == "age"
+        assert second.field_path == "age"  # ty:ignore[unresolved-attribute]
         assert second.operator == DataSearchOperator.less_than_or_equal
-        assert second.value == 65
+        assert second.value == 65  # ty:ignore[unresolved-attribute]
 
     def test_between_with_other_operators(self):
         """Test between() combined with other conditions."""
         # Age between 18-65 AND status is active
         q = QB["age"].between(18, 65) & (QB["status"] == "active")
         query = q.build()
-        root = query.conditions[0]
+        root = query.conditions[0]  # ty:ignore[not-subscriptable]
         assert root.operator == DataSearchLogicOperator.and_op
-        assert len(root.conditions) == 2
+        assert len(root.conditions) == 2  # ty:ignore[unresolved-attribute]
 
         # First: age between
-        age_cond = root.conditions[0]
+        age_cond = root.conditions[0]  # ty:ignore[unresolved-attribute]
         assert age_cond.operator == DataSearchLogicOperator.and_op
 
         # Second: status condition
-        status_cond = root.conditions[1]
-        assert status_cond.field_path == "status"
+        status_cond = root.conditions[1]  # ty:ignore[unresolved-attribute]
+        assert status_cond.field_path == "status"  # ty:ignore[unresolved-attribute]
         assert status_cond.operator == DataSearchOperator.equals
 
     def test_between_with_datetime(self):
@@ -400,11 +400,11 @@ class TestQueryBuilder:
 
         q = QB.created_time().between(start, end)
         query = q.build()
-        cond = query.conditions[0]
+        cond = query.conditions[0]  # ty:ignore[not-subscriptable]
         assert isinstance(cond, DataSearchGroup)
         assert len(cond.conditions) == 2
-        assert cond.conditions[0].value == start
-        assert cond.conditions[1].value == end
+        assert cond.conditions[0].value == start  # ty:ignore[unresolved-attribute]
+        assert cond.conditions[1].value == end  # ty:ignore[unresolved-attribute]
 
     def test_chained_comparison_conditional_builder(self):
         """Test chained comparison: min <= condition <= max."""
@@ -415,18 +415,18 @@ class TestQueryBuilder:
 
         q = 100 <= QB["price"] <= 500
         query = q.build()
-        cond = query.conditions[0]
+        cond = query.conditions[0]  # ty:ignore[not-subscriptable]
 
         # This should be price <= 500 (the last condition applied)
-        assert cond.field_path == "price"
+        assert cond.field_path == "price"  # ty:ignore[unresolved-attribute]
         assert cond.operator == DataSearchOperator.less_than_or_equal
-        assert cond.value == 500
+        assert cond.value == 500  # ty:ignore[unresolved-attribute]
 
         # Note: The chained comparison only keeps the last condition
         # For proper range queries, use between() instead:
         q2 = QB["price"].between(100, 500)
         query2 = q2.build()
-        cond2 = query2.conditions[0]
+        cond2 = query2.conditions[0]  # ty:ignore[not-subscriptable]
         assert isinstance(cond2, DataSearchGroup)
         assert cond2.operator == DataSearchLogicOperator.and_op
 
@@ -436,41 +436,41 @@ class TestQueryBuilder:
         # ConditionBuilder == 2 should create condition bar == 2
         q = QB["foo"] == QB["bar"] == 2
         query = q.build()
-        cond = query.conditions[0]
+        cond = query.conditions[0]  # ty:ignore[not-subscriptable]
 
         # Should be bar == 2 (the last condition applied)
-        assert cond.field_path == "bar"
+        assert cond.field_path == "bar"  # ty:ignore[unresolved-attribute]
         assert cond.operator == DataSearchOperator.equals
-        assert cond.value == 2
+        assert cond.value == 2  # ty:ignore[unresolved-attribute]
 
     def test_chained_not_equals_comparison(self):
         """Test chained not-equals: QB["foo"] != QB["bar"] != 3."""
         q = QB["foo"] != QB["bar"] != 3
         query = q.build()
-        cond = query.conditions[0]
+        cond = query.conditions[0]  # ty:ignore[not-subscriptable]
 
         # Should be bar != 3
-        assert cond.field_path == "bar"
+        assert cond.field_path == "bar"  # ty:ignore[unresolved-attribute]
         assert cond.operator == DataSearchOperator.not_equals
-        assert cond.value == 3
+        assert cond.value == 3  # ty:ignore[unresolved-attribute]
 
     def test_conditionbuilder_eq_ne_with_values(self):
         """Test ConditionBuilder __eq__ and __ne__ with different value types."""
         # String values
         q1 = QB["status"] == QB["type"] == "active"
-        assert q1.build().conditions[0].value == "active"
+        assert q1.build().conditions[0].value == "active"  # ty:ignore[not-subscriptable, unresolved-attribute]
 
         # Integer values
         q2 = QB["count"] == QB["total"] == 100
-        assert q2.build().conditions[0].value == 100
+        assert q2.build().conditions[0].value == 100  # ty:ignore[not-subscriptable, unresolved-attribute]
 
         # None values
         q3 = QB["value"] == QB["other"] == None  # noqa: E711
-        assert q3.build().conditions[0].value is None
+        assert q3.build().conditions[0].value is None  # ty:ignore[not-subscriptable, unresolved-attribute]
 
         # List values
         q4 = QB["tags"] != QB["labels"] != ["test"]
-        assert q4.build().conditions[0].value == ["test"]
+        assert q4.build().conditions[0].value == ["test"]  # ty:ignore[not-subscriptable, unresolved-attribute]
 
     def test_conditionbuilder_eq_with_logical_group_raises(self):
         """Test that __eq__ raises TypeError on logical groups."""
@@ -495,26 +495,26 @@ class TestQueryBuilder:
         # Basic all() with multiple conditions
         q = QB.all(QB["age"] > 18, QB["status"] == "active", QB["score"] >= 80)
         query = q.build()
-        root = query.conditions[0]
+        root = query.conditions[0]  # ty:ignore[not-subscriptable]
 
         assert isinstance(root, DataSearchGroup)
         assert root.operator == DataSearchLogicOperator.and_op
         assert len(root.conditions) == 3
 
         # First: age > 18
-        assert root.conditions[0].field_path == "age"
+        assert root.conditions[0].field_path == "age"  # ty:ignore[unresolved-attribute]
         assert root.conditions[0].operator == DataSearchOperator.greater_than
-        assert root.conditions[0].value == 18
+        assert root.conditions[0].value == 18  # ty:ignore[unresolved-attribute]
 
         # Second: status == "active"
-        assert root.conditions[1].field_path == "status"
+        assert root.conditions[1].field_path == "status"  # ty:ignore[unresolved-attribute]
         assert root.conditions[1].operator == DataSearchOperator.equals
-        assert root.conditions[1].value == "active"
+        assert root.conditions[1].value == "active"  # ty:ignore[unresolved-attribute]
 
         # Third: score >= 80
-        assert root.conditions[2].field_path == "score"
+        assert root.conditions[2].field_path == "score"  # ty:ignore[unresolved-attribute]
         assert root.conditions[2].operator == DataSearchOperator.greater_than_or_equal
-        assert root.conditions[2].value == 80
+        assert root.conditions[2].value == 80  # ty:ignore[unresolved-attribute]
 
     def test_qb_any_combinator(self):
         """Test QB.any() to combine multiple conditions with OR."""
@@ -525,7 +525,7 @@ class TestQueryBuilder:
             QB["status"] == "draft", QB["status"] == "pending", QB["status"] == "review"
         )
         query = q.build()
-        root = query.conditions[0]
+        root = query.conditions[0]  # ty:ignore[not-subscriptable]
 
         assert isinstance(root, DataSearchGroup)
         assert root.operator == DataSearchLogicOperator.or_op
@@ -533,9 +533,9 @@ class TestQueryBuilder:
 
         # All should be status checks
         for i, expected_value in enumerate(["draft", "pending", "review"]):
-            assert root.conditions[i].field_path == "status"
+            assert root.conditions[i].field_path == "status"  # ty:ignore[unresolved-attribute]
             assert root.conditions[i].operator == DataSearchOperator.equals
-            assert root.conditions[i].value == expected_value
+            assert root.conditions[i].value == expected_value  # ty:ignore[unresolved-attribute]
 
     def test_qb_all_single_condition(self):
         """Test QB.all() with single condition returns that condition."""
@@ -543,12 +543,12 @@ class TestQueryBuilder:
 
         q = QB.all(QB["age"] > 18)
         query = q.build()
-        cond = query.conditions[0]
+        cond = query.conditions[0]  # ty:ignore[not-subscriptable]
 
         # Should just return the single condition, not wrapped in a group
-        assert cond.field_path == "age"
+        assert cond.field_path == "age"  # ty:ignore[unresolved-attribute]
         assert cond.operator == DataSearchOperator.greater_than
-        assert cond.value == 18
+        assert cond.value == 18  # ty:ignore[unresolved-attribute]
 
     def test_qb_all_any_combined(self):
         """Test combining QB.all() and QB.any() for complex logic."""
@@ -557,19 +557,19 @@ class TestQueryBuilder:
         # (age > 18 AND score >= 80) OR (status == "premium")
         q = QB.any(QB.all(QB["age"] > 18, QB["score"] >= 80), QB["status"] == "premium")
         query = q.build()
-        root = query.conditions[0]
+        root = query.conditions[0]  # ty:ignore[not-subscriptable]
 
         assert root.operator == DataSearchLogicOperator.or_op
-        assert len(root.conditions) == 2
+        assert len(root.conditions) == 2  # ty:ignore[unresolved-attribute]
 
         # First: AND group (age > 18 AND score >= 80)
-        and_group = root.conditions[0]
+        and_group = root.conditions[0]  # ty:ignore[unresolved-attribute]
         assert and_group.operator == DataSearchLogicOperator.and_op
-        assert len(and_group.conditions) == 2
+        assert len(and_group.conditions) == 2  # ty:ignore[unresolved-attribute]
 
         # Second: status == "premium"
-        assert root.conditions[1].field_path == "status"
-        assert root.conditions[1].operator == DataSearchOperator.equals
+        assert root.conditions[1].field_path == "status"  # ty:ignore[unresolved-attribute]
+        assert root.conditions[1].operator == DataSearchOperator.equals  # ty:ignore[unresolved-attribute]
 
     def test_qb_all_any_with_normal_operators(self):
         """Test QB.all() and QB.any() combined with & and | operators."""
@@ -578,17 +578,17 @@ class TestQueryBuilder:
         # QB.all(...) & other_condition
         q = QB.all(QB["age"] > 18, QB["score"] >= 80) & (QB["verified"] == "yes")
         query = q.build()
-        root = query.conditions[0]
+        root = query.conditions[0]  # ty:ignore[not-subscriptable]
 
         assert root.operator == DataSearchLogicOperator.and_op
-        assert len(root.conditions) == 2
+        assert len(root.conditions) == 2  # ty:ignore[unresolved-attribute]
 
         # First is the all() group
-        all_group = root.conditions[0]
+        all_group = root.conditions[0]  # ty:ignore[unresolved-attribute]
         assert all_group.operator == DataSearchLogicOperator.and_op
 
         # Second is verified == "yes"
-        assert root.conditions[1].field_path == "verified"
+        assert root.conditions[1].field_path == "verified"  # ty:ignore[unresolved-attribute]
 
     def test_sorting_transformation(self):
         """Test sorting transformation for both meta and data fields."""
@@ -596,15 +596,15 @@ class TestQueryBuilder:
         creation_time_sort = QB.created_time().desc()
         query = QB["x"].eq(1).sort(creation_time_sort).build()
 
-        s1 = query.sorts[0]
-        assert s1.key == ResourceMetaSortKey.created_time
+        s1 = query.sorts[0]  # ty:ignore[not-subscriptable]
+        assert s1.key == ResourceMetaSortKey.created_time  # ty:ignore[unresolved-attribute]
         assert s1.direction == ResourceMetaSortDirection.descending
 
         # Data field sort
         age_sort = QB["user.age"].asc()
         query = QB["x"].eq(1).sort(age_sort).build()
 
-        s2 = query.sorts[0]
+        s2 = query.sorts[0]  # ty:ignore[not-subscriptable]
         assert isinstance(s2, ResourceDataSearchSort)
         assert s2.field_path == "user.age"
         assert s2.direction == ResourceMetaSortDirection.ascending
@@ -615,20 +615,20 @@ class TestQueryBuilder:
         """Test QB meta attribute static methods with proper typing."""
         # Test resource_id
         q = QB.resource_id().eq("abc-123")
-        cond = q.build().conditions[0]
-        assert cond.field_path == "resource_id"
+        cond = q.build().conditions[0]  # ty:ignore[not-subscriptable]
+        assert cond.field_path == "resource_id"  # ty:ignore[unresolved-attribute]
         assert cond.operator == DataSearchOperator.equals
 
         # Test created_by with in_list
         q = QB.created_by() << ["user1", "user2", "admin"]
-        cond = q.build().conditions[0]
-        assert cond.field_path == "created_by"
+        cond = q.build().conditions[0]  # ty:ignore[not-subscriptable]
+        assert cond.field_path == "created_by"  # ty:ignore[unresolved-attribute]
         assert cond.operator == DataSearchOperator.in_list
 
         # Test created_time with datetime methods
         q = QB.created_time().today()
         query = q.build()
-        cond = query.conditions[0]
+        cond = query.conditions[0]  # ty:ignore[not-subscriptable]
         assert isinstance(cond, DataSearchGroup)
         assert cond.operator == DataSearchLogicOperator.and_op
 
@@ -637,33 +637,33 @@ class TestQueryBuilder:
 
         timestamp = dt.datetime(2024, 1, 1)
         q = QB.updated_time() >= timestamp
-        cond = q.build().conditions[0]
-        assert cond.field_path == "updated_time"
+        cond = q.build().conditions[0]  # ty:ignore[not-subscriptable]
+        assert cond.field_path == "updated_time"  # ty:ignore[unresolved-attribute]
         assert cond.operator == DataSearchOperator.greater_than_or_equal
 
         # Test is_deleted
         q = QB.is_deleted() == False  # noqa: E712
-        cond = q.build().conditions[0]
-        assert cond.field_path == "is_deleted"
-        assert cond.value is False
+        cond = q.build().conditions[0]  # ty:ignore[not-subscriptable]
+        assert cond.field_path == "is_deleted"  # ty:ignore[unresolved-attribute]
+        assert cond.value is False  # ty:ignore[unresolved-attribute]
 
         # Test schema_version
         q = QB.schema_version().eq("v2")
-        cond = q.build().conditions[0]
-        assert cond.field_path == "schema_version"
+        cond = q.build().conditions[0]  # ty:ignore[not-subscriptable]
+        assert cond.field_path == "schema_version"  # ty:ignore[unresolved-attribute]
 
         # Test current_revision_id
         q = QB.current_revision_id().eq("rev-456")
-        cond = q.build().conditions[0]
-        assert cond.field_path == "current_revision_id"
+        cond = q.build().conditions[0]  # ty:ignore[not-subscriptable]
+        assert cond.field_path == "current_revision_id"  # ty:ignore[unresolved-attribute]
 
         # revision_id alias should not be exposed anymore
         assert not hasattr(QB, "revision_id")
 
         # Test total_revision_count
         q = QB.total_revision_count() > 5
-        cond = q.build().conditions[0]
-        assert cond.field_path == "total_revision_count"
+        cond = q.build().conditions[0]  # ty:ignore[not-subscriptable]
+        assert cond.field_path == "total_revision_count"  # ty:ignore[unresolved-attribute]
         assert cond.operator == DataSearchOperator.greater_than
 
     def test_meta_vs_data_fields(self):
@@ -671,28 +671,28 @@ class TestQueryBuilder:
         # Combine meta attribute with data field
         q = (QB.created_by().eq("admin")) & (QB["status"].eq("active"))
         query = q.build()
-        group = query.conditions[0]
+        group = query.conditions[0]  # ty:ignore[not-subscriptable]
 
         assert group.operator == DataSearchLogicOperator.and_op
-        assert len(group.conditions) == 2
+        assert len(group.conditions) == 2  # ty:ignore[unresolved-attribute]
 
         # First: created_by (meta)
-        assert group.conditions[0].field_path == "created_by"
+        assert group.conditions[0].field_path == "created_by"  # ty:ignore[unresolved-attribute]
 
         # Second: status (data)
-        assert group.conditions[1].field_path == "status"
+        assert group.conditions[1].field_path == "status"  # ty:ignore[unresolved-attribute]
 
     def test_qb_getitem_basic(self):
         """Test QB['field'] syntax for accessing data fields."""
         q1 = QB["name"].eq("Alice")
         q2 = QB["name"].eq("Alice")
 
-        cond1 = q1.build().conditions[0]
-        cond2 = q2.build().conditions[0]
+        cond1 = q1.build().conditions[0]  # ty:ignore[not-subscriptable]
+        cond2 = q2.build().conditions[0]  # ty:ignore[not-subscriptable]
 
-        assert cond1.field_path == cond2.field_path == "name"
+        assert cond1.field_path == cond2.field_path == "name"  # ty:ignore[unresolved-attribute]
         assert cond1.operator == cond2.operator
-        assert cond1.value == cond2.value
+        assert cond1.value == cond2.value  # ty:ignore[unresolved-attribute]
 
     def test_qb_getitem_reserved_keywords(self):
         """Test QB['keyword'] for Python reserved keywords."""
@@ -703,64 +703,64 @@ class TestQueryBuilder:
             q1 = QB[keyword].eq("value")
             q2 = QB[keyword].eq("value")
 
-            cond1 = q1.build().conditions[0]
-            cond2 = q2.build().conditions[0]
+            cond1 = q1.build().conditions[0]  # ty:ignore[not-subscriptable]
+            cond2 = q2.build().conditions[0]  # ty:ignore[not-subscriptable]
 
-            assert cond1.field_path == cond2.field_path == keyword
+            assert cond1.field_path == cond2.field_path == keyword  # ty:ignore[unresolved-attribute]
 
     def test_qb_getitem_special_chars(self):
         """Test QB['field'] with special characters."""
         # Hyphen
         q = QB["field-name"].eq("value")
-        cond = q.build().conditions[0]
-        assert cond.field_path == "field-name"
+        cond = q.build().conditions[0]  # ty:ignore[not-subscriptable]
+        assert cond.field_path == "field-name"  # ty:ignore[unresolved-attribute]
 
         # Space
         q = QB["field name"].contains("test")
-        cond = q.build().conditions[0]
-        assert cond.field_path == "field name"
+        cond = q.build().conditions[0]  # ty:ignore[not-subscriptable]
+        assert cond.field_path == "field name"  # ty:ignore[unresolved-attribute]
 
         # Dots
         q = QB["user.email"].starts_with("test")
-        cond = q.build().conditions[0]
-        assert cond.field_path == "user.email"
+        cond = q.build().conditions[0]  # ty:ignore[not-subscriptable]
+        assert cond.field_path == "user.email"  # ty:ignore[unresolved-attribute]
 
         # Numbers
         q = QB["field123"].gt(10)
-        cond = q.build().conditions[0]
-        assert cond.field_path == "field123"
+        cond = q.build().conditions[0]  # ty:ignore[not-subscriptable]
+        assert cond.field_path == "field123"  # ty:ignore[unresolved-attribute]
 
     def test_qb_getitem_complex_query(self):
         """Test QB['field'] in complex queries."""
         q = (QB["status"].eq("active") & QB["age"].gt(18)) | QB["role"].eq("admin")
         query = q.build()
 
-        group = query.conditions[0]
+        group = query.conditions[0]  # ty:ignore[not-subscriptable]
         assert isinstance(group, DataSearchGroup)
         assert group.operator == DataSearchLogicOperator.or_op
 
     def test_qb_getitem_with_operators(self):
         """Test QB['field'] with all operators."""
         # Comparison operators
-        assert QB["age"].eq(30).build().conditions[0].field_path == "age"
-        assert QB["age"].ne(30).build().conditions[0].field_path == "age"
-        assert QB["age"].gt(30).build().conditions[0].field_path == "age"
-        assert QB["age"].gte(30).build().conditions[0].field_path == "age"
-        assert QB["age"].lt(30).build().conditions[0].field_path == "age"
-        assert QB["age"].lte(30).build().conditions[0].field_path == "age"
+        assert QB["age"].eq(30).build().conditions[0].field_path == "age"  # ty:ignore[not-subscriptable, unresolved-attribute]
+        assert QB["age"].ne(30).build().conditions[0].field_path == "age"  # ty:ignore[not-subscriptable, unresolved-attribute]
+        assert QB["age"].gt(30).build().conditions[0].field_path == "age"  # ty:ignore[not-subscriptable, unresolved-attribute]
+        assert QB["age"].gte(30).build().conditions[0].field_path == "age"  # ty:ignore[not-subscriptable, unresolved-attribute]
+        assert QB["age"].lt(30).build().conditions[0].field_path == "age"  # ty:ignore[not-subscriptable, unresolved-attribute]
+        assert QB["age"].lte(30).build().conditions[0].field_path == "age"  # ty:ignore[not-subscriptable, unresolved-attribute]
 
         # String operators
-        assert QB["name"].contains("test").build().conditions[0].field_path == "name"
+        assert QB["name"].contains("test").build().conditions[0].field_path == "name"  # ty:ignore[not-subscriptable, unresolved-attribute]
         assert (
-            QB["email"].starts_with("admin").build().conditions[0].field_path == "email"
+            QB["email"].starts_with("admin").build().conditions[0].field_path == "email"  # ty:ignore[not-subscriptable, unresolved-attribute]
         )
-        assert QB["file"].ends_with(".txt").build().conditions[0].field_path == "file"
+        assert QB["file"].ends_with(".txt").build().conditions[0].field_path == "file"  # ty:ignore[not-subscriptable, unresolved-attribute]
 
         # Dunder operators
-        assert (QB["age"] == 30).build().conditions[0].field_path == "age"
-        assert (QB["age"] > 30).build().conditions[0].field_path == "age"
-        assert (QB["status"] << ["a", "b"]).build().conditions[0].field_path == "status"
-        assert (QB["desc"] >> "test").build().conditions[0].field_path == "desc"
+        assert (QB["age"] == 30).build().conditions[0].field_path == "age"  # ty:ignore[not-subscriptable, unresolved-attribute]
+        assert (QB["age"] > 30).build().conditions[0].field_path == "age"  # ty:ignore[not-subscriptable, unresolved-attribute]
+        assert (QB["status"] << ["a", "b"]).build().conditions[0].field_path == "status"  # ty:ignore[not-subscriptable, unresolved-attribute]
+        assert (QB["desc"] >> "test").build().conditions[0].field_path == "desc"  # ty:ignore[not-subscriptable, unresolved-attribute]
 
     def test_qb_getitem_with_sorting(self):
         """Test QB['field'] with sorting."""
@@ -770,7 +770,7 @@ class TestQueryBuilder:
         assert query.sorts is not UNSET
         assert len(query.sorts) == 1
         sort = query.sorts[0]
-        assert sort.field_path == "age"
+        assert sort.field_path == "age"  # ty:ignore[unresolved-attribute]
         assert sort.direction == ResourceMetaSortDirection.descending
 
     def test_qb_getitem_equivalence(self):
@@ -792,18 +792,18 @@ class TestQueryBuilder:
         )
         query = q.build()
 
-        root = query.conditions[0]
+        root = query.conditions[0]  # ty:ignore[not-subscriptable]
         assert root.operator == DataSearchLogicOperator.or_op
 
         # Left: (class == "A" AND normal_field > 10)
-        left = root.conditions[0]
+        left = root.conditions[0]  # ty:ignore[unresolved-attribute]
         assert left.operator == DataSearchLogicOperator.and_op
-        assert left.conditions[0].field_path == "class"
-        assert left.conditions[1].field_path == "normal_field"
+        assert left.conditions[0].field_path == "class"  # ty:ignore[unresolved-attribute]
+        assert left.conditions[1].field_path == "normal_field"  # ty:ignore[unresolved-attribute]
 
         # Right: import in ["os", "sys"]
-        right = root.conditions[1]
-        assert right.field_path == "import"
+        right = root.conditions[1]  # ty:ignore[unresolved-attribute]
+        assert right.field_path == "import"  # ty:ignore[unresolved-attribute]
         assert right.operator == DataSearchOperator.in_list
 
     def test_field_method_with_sorting(self):
@@ -819,18 +819,18 @@ class TestQueryBuilder:
         query = q.build()
 
         # Check condition
-        cond = query.conditions[0]
-        assert cond.field_path == "sort-by"
+        cond = query.conditions[0]  # ty:ignore[not-subscriptable]
+        assert cond.field_path == "sort-by"  # ty:ignore[unresolved-attribute]
 
         # Check sorts
-        assert len(query.sorts) == 2
-        s1 = query.sorts[0]
+        assert len(query.sorts) == 2  # ty:ignore[invalid-argument-type]
+        s1 = query.sorts[0]  # ty:ignore[not-subscriptable]
         assert isinstance(s1, ResourceDataSearchSort)
         assert s1.field_path == "created-at"
         assert s1.direction == ResourceMetaSortDirection.descending
 
-        s2 = query.sorts[1]
-        assert s2.field_path == "priority-level"
+        s2 = query.sorts[1]  # ty:ignore[not-subscriptable]
+        assert s2.field_path == "priority-level"  # ty:ignore[unresolved-attribute]
         assert s2.direction == ResourceMetaSortDirection.ascending
 
         # Check pagination
@@ -842,95 +842,95 @@ class TestQueryBuilder:
         field = QB["test-field"]
 
         # Test a few key operators
-        assert field.eq(1).build().conditions[0].operator == DataSearchOperator.equals
+        assert field.eq(1).build().conditions[0].operator == DataSearchOperator.equals  # ty:ignore[not-subscriptable]
         assert (
-            field.ne(1).build().conditions[0].operator == DataSearchOperator.not_equals
+            field.ne(1).build().conditions[0].operator == DataSearchOperator.not_equals  # ty:ignore[not-subscriptable]
         )
         assert (
-            field.gt(1).build().conditions[0].operator
+            field.gt(1).build().conditions[0].operator  # ty:ignore[not-subscriptable]
             == DataSearchOperator.greater_than
         )
         assert (
-            field.in_([1, 2]).build().conditions[0].operator
+            field.in_([1, 2]).build().conditions[0].operator  # ty:ignore[not-subscriptable]
             == DataSearchOperator.in_list
         )
         assert (
-            field.regex(".*").build().conditions[0].operator == DataSearchOperator.regex
+            field.regex(".*").build().conditions[0].operator == DataSearchOperator.regex  # ty:ignore[not-subscriptable]
         )
         assert (
-            field.is_null().build().conditions[0].operator == DataSearchOperator.is_null
+            field.is_null().build().conditions[0].operator == DataSearchOperator.is_null  # ty:ignore[not-subscriptable]
         )
 
     def test_field_dunder_methods(self):
         """Test Field dunder methods for Pythonic syntax."""
         # Test ==
         q = QB["name"] == "Alice"
-        cond = q.build().conditions[0]
-        assert cond.field_path == "name"
+        cond = q.build().conditions[0]  # ty:ignore[not-subscriptable]
+        assert cond.field_path == "name"  # ty:ignore[unresolved-attribute]
         assert cond.operator == DataSearchOperator.equals
-        assert cond.value == "Alice"
+        assert cond.value == "Alice"  # ty:ignore[unresolved-attribute]
 
         # Test !=
         q = QB["age"] != 30
-        cond = q.build().conditions[0]
+        cond = q.build().conditions[0]  # ty:ignore[not-subscriptable]
         assert cond.operator == DataSearchOperator.not_equals
-        assert cond.value == 30
+        assert cond.value == 30  # ty:ignore[unresolved-attribute]
 
         # Test >
         q = QB["score"] > 80
-        cond = q.build().conditions[0]
+        cond = q.build().conditions[0]  # ty:ignore[not-subscriptable]
         assert cond.operator == DataSearchOperator.greater_than
-        assert cond.value == 80
+        assert cond.value == 80  # ty:ignore[unresolved-attribute]
 
         # Test >=
         q = QB["score"] >= 90
-        cond = q.build().conditions[0]
+        cond = q.build().conditions[0]  # ty:ignore[not-subscriptable]
         assert cond.operator == DataSearchOperator.greater_than_or_equal
-        assert cond.value == 90
+        assert cond.value == 90  # ty:ignore[unresolved-attribute]
 
         # Test <
         q = QB["age"] < 18
-        cond = q.build().conditions[0]
+        cond = q.build().conditions[0]  # ty:ignore[not-subscriptable]
         assert cond.operator == DataSearchOperator.less_than
-        assert cond.value == 18
+        assert cond.value == 18  # ty:ignore[unresolved-attribute]
 
         # Test <=
         q = QB["age"] <= 65
-        cond = q.build().conditions[0]
+        cond = q.build().conditions[0]  # ty:ignore[not-subscriptable]
         assert cond.operator == DataSearchOperator.less_than_or_equal
-        assert cond.value == 65
+        assert cond.value == 65  # ty:ignore[unresolved-attribute]
 
     def test_field_dunder_methods_equivalence(self):
         """Verify dunder methods produce same results as named methods."""
         # == vs eq
         q1 = QB["name"] == "test"
         q2 = QB["name"].eq("test")
-        assert q1.build().conditions[0].operator == q2.build().conditions[0].operator
+        assert q1.build().conditions[0].operator == q2.build().conditions[0].operator  # ty:ignore[not-subscriptable]
 
         # != vs ne
         q1 = QB["age"] != 30
         q2 = QB["age"].ne(30)
-        assert q1.build().conditions[0].operator == q2.build().conditions[0].operator
+        assert q1.build().conditions[0].operator == q2.build().conditions[0].operator  # ty:ignore[not-subscriptable]
 
         # > vs gt
         q1 = QB["score"] > 80
         q2 = QB["score"].gt(80)
-        assert q1.build().conditions[0].operator == q2.build().conditions[0].operator
+        assert q1.build().conditions[0].operator == q2.build().conditions[0].operator  # ty:ignore[not-subscriptable]
 
         # >= vs gte
         q1 = QB["score"] >= 90
         q2 = QB["score"].gte(90)
-        assert q1.build().conditions[0].operator == q2.build().conditions[0].operator
+        assert q1.build().conditions[0].operator == q2.build().conditions[0].operator  # ty:ignore[not-subscriptable]
 
         # < vs lt
         q1 = QB["age"] < 18
         q2 = QB["age"].lt(18)
-        assert q1.build().conditions[0].operator == q2.build().conditions[0].operator
+        assert q1.build().conditions[0].operator == q2.build().conditions[0].operator  # ty:ignore[not-subscriptable]
 
         # <= vs lte
         q1 = QB["age"] <= 65
         q2 = QB["age"].lte(65)
-        assert q1.build().conditions[0].operator == q2.build().conditions[0].operator
+        assert q1.build().conditions[0].operator == q2.build().conditions[0].operator  # ty:ignore[not-subscriptable]
 
     def test_field_dunder_methods_in_complex_query(self):
         """Test dunder methods in complex queries with AND/OR."""
@@ -940,43 +940,43 @@ class TestQueryBuilder:
         )
         query = q.build()
 
-        root = query.conditions[0]
+        root = query.conditions[0]  # ty:ignore[not-subscriptable]
         assert root.operator == DataSearchLogicOperator.or_op
-        assert len(root.conditions) == 2
+        assert len(root.conditions) == 2  # ty:ignore[unresolved-attribute]
 
         # Left side: name == "Alice" AND age > 30
-        left = root.conditions[0]
+        left = root.conditions[0]  # ty:ignore[unresolved-attribute]
         assert left.operator == DataSearchLogicOperator.and_op
-        assert left.conditions[0].field_path == "name"
-        assert left.conditions[0].operator == DataSearchOperator.equals
-        assert left.conditions[1].field_path == "age"
-        assert left.conditions[1].operator == DataSearchOperator.greater_than
+        assert left.conditions[0].field_path == "name"  # ty:ignore[unresolved-attribute]
+        assert left.conditions[0].operator == DataSearchOperator.equals  # ty:ignore[unresolved-attribute]
+        assert left.conditions[1].field_path == "age"  # ty:ignore[unresolved-attribute]
+        assert left.conditions[1].operator == DataSearchOperator.greater_than  # ty:ignore[unresolved-attribute]
 
         # Right side: score >= 90 AND status != "inactive"
-        right = root.conditions[1]
+        right = root.conditions[1]  # ty:ignore[unresolved-attribute]
         assert right.operator == DataSearchLogicOperator.and_op
-        assert right.conditions[0].field_path == "score"
-        assert right.conditions[0].operator == DataSearchOperator.greater_than_or_equal
-        assert right.conditions[1].field_path == "status"
-        assert right.conditions[1].operator == DataSearchOperator.not_equals
+        assert right.conditions[0].field_path == "score"  # ty:ignore[unresolved-attribute]
+        assert right.conditions[0].operator == DataSearchOperator.greater_than_or_equal  # ty:ignore[unresolved-attribute]
+        assert right.conditions[1].field_path == "status"  # ty:ignore[unresolved-attribute]
+        assert right.conditions[1].operator == DataSearchOperator.not_equals  # ty:ignore[unresolved-attribute]
 
     def test_field_dunder_methods_with_field_method(self):
         """Test dunder methods work with QB[) for special names."""
         # Reserved keyword with dunder method
         q = QB["class"] == "A"
-        cond = q.build().conditions[0]
-        assert cond.field_path == "class"
+        cond = q.build().conditions[0]  # ty:ignore[not-subscriptable]
+        assert cond.field_path == "class"  # ty:ignore[unresolved-attribute]
         assert cond.operator == DataSearchOperator.equals
 
         # Special character with comparison operators
         q = (QB["priority-level"] >= 5) & (QB["max-score"] <= 100)
         query = q.build()
-        group = query.conditions[0]
+        group = query.conditions[0]  # ty:ignore[not-subscriptable]
         assert group.operator == DataSearchLogicOperator.and_op
-        assert group.conditions[0].field_path == "priority-level"
-        assert group.conditions[0].operator == DataSearchOperator.greater_than_or_equal
-        assert group.conditions[1].field_path == "max-score"
-        assert group.conditions[1].operator == DataSearchOperator.less_than_or_equal
+        assert group.conditions[0].field_path == "priority-level"  # ty:ignore[unresolved-attribute]
+        assert group.conditions[0].operator == DataSearchOperator.greater_than_or_equal  # ty:ignore[unresolved-attribute]
+        assert group.conditions[1].field_path == "max-score"  # ty:ignore[unresolved-attribute]
+        assert group.conditions[1].operator == DataSearchOperator.less_than_or_equal  # ty:ignore[unresolved-attribute]
 
     def test_field_dunder_methods_practical_example(self):
         """Test practical query using dunder methods."""
@@ -989,7 +989,7 @@ class TestQueryBuilder:
         query = q.build()
 
         # Verify structure
-        root = query.conditions[0]
+        root = query.conditions[0]  # ty:ignore[not-subscriptable]
         assert root.operator == DataSearchLogicOperator.and_op
 
         # This creates nested AND groups
@@ -1001,28 +1001,28 @@ class TestQueryBuilder:
         """Test advanced dunder methods: %, <<, >>, ~"""
         # Test % for regex
         q = QB["email"] % r".*@example\.com"
-        cond = q.build().conditions[0]
-        assert cond.field_path == "email"
+        cond = q.build().conditions[0]  # ty:ignore[not-subscriptable]
+        assert cond.field_path == "email"  # ty:ignore[unresolved-attribute]
         assert cond.operator == DataSearchOperator.regex
-        assert cond.value == r".*@example\.com"
+        assert cond.value == r".*@example\.com"  # ty:ignore[unresolved-attribute]
 
         # Test << for in_list
         q = QB["status"] << ["active", "pending", "approved"]
-        cond = q.build().conditions[0]
-        assert cond.field_path == "status"
+        cond = q.build().conditions[0]  # ty:ignore[not-subscriptable]
+        assert cond.field_path == "status"  # ty:ignore[unresolved-attribute]
         assert cond.operator == DataSearchOperator.in_list
-        assert cond.value == ["active", "pending", "approved"]
+        assert cond.value == ["active", "pending", "approved"]  # ty:ignore[unresolved-attribute]
 
         # Test >> for contains
         q = QB["description"] >> "important"
-        cond = q.build().conditions[0]
-        assert cond.field_path == "description"
+        cond = q.build().conditions[0]  # ty:ignore[not-subscriptable]
+        assert cond.field_path == "description"  # ty:ignore[unresolved-attribute]
         assert cond.operator == DataSearchOperator.contains
-        assert cond.value == "important"
+        assert cond.value == "important"  # ty:ignore[unresolved-attribute]
 
         # Test ~ for is_falsy (NOT of is_truthy)
         q = ~QB["comment"]
-        cond = q.build().conditions[0]
+        cond = q.build().conditions[0]  # ty:ignore[not-subscriptable]
         assert isinstance(cond, DataSearchGroup)
         assert cond.operator == DataSearchLogicOperator.not_op
         assert len(cond.conditions) == 1
@@ -1038,24 +1038,24 @@ class TestQueryBuilder:
         # % vs regex
         q1 = QB["name"] % ".*test.*"
         q2 = QB["name"].regex(".*test.*")
-        assert q1.build().conditions[0].operator == q2.build().conditions[0].operator
+        assert q1.build().conditions[0].operator == q2.build().conditions[0].operator  # ty:ignore[not-subscriptable]
 
         # << vs in_
         q1 = QB["status"] << [1, 2, 3]
         q2 = QB["status"].in_([1, 2, 3])
-        assert q1.build().conditions[0].operator == q2.build().conditions[0].operator
+        assert q1.build().conditions[0].operator == q2.build().conditions[0].operator  # ty:ignore[not-subscriptable]
 
         # >> vs contains
         q1 = QB["text"] >> "substring"
         q2 = QB["text"].contains("substring")
-        assert q1.build().conditions[0].operator == q2.build().conditions[0].operator
+        assert q1.build().conditions[0].operator == q2.build().conditions[0].operator  # ty:ignore[not-subscriptable]
 
         # ~ vs is_falsy()
         q1 = ~QB["field1"]
         q2 = QB["field1"].is_falsy()
         # Both should produce NOT groups
-        cond1 = q1.build().conditions[0]
-        cond2 = q2.build().conditions[0]
+        cond1 = q1.build().conditions[0]  # ty:ignore[not-subscriptable]
+        cond2 = q2.build().conditions[0]  # ty:ignore[not-subscriptable]
         assert isinstance(cond1, DataSearchGroup)
         assert isinstance(cond2, DataSearchGroup)
         assert cond1.operator == cond2.operator == DataSearchLogicOperator.not_op
@@ -1063,7 +1063,7 @@ class TestQueryBuilder:
 
         # Inside NOT should be is_truthy (AND group with 5 conditions)
         assert cond1.conditions[0].operator == DataSearchLogicOperator.and_op
-        assert len(cond1.conditions[0].conditions) == 5
+        assert len(cond1.conditions[0].conditions) == 5  # ty:ignore[unresolved-attribute]
 
     def test_field_advanced_dunder_methods_in_complex_query(self):
         """Test advanced dunder methods in complex queries."""
@@ -1076,7 +1076,7 @@ class TestQueryBuilder:
         )
         query = q.build()
 
-        root = query.conditions[0]
+        root = query.conditions[0]  # ty:ignore[not-subscriptable]
         assert root.operator == DataSearchLogicOperator.and_op
 
         # Verify all conditions are present
@@ -1087,22 +1087,22 @@ class TestQueryBuilder:
         """Test advanced dunder methods work with QB[) for special names."""
         # Test with special field names
         q = QB["email-address"] % r".*@test\.com"
-        cond = q.build().conditions[0]
-        assert cond.field_path == "email-address"
+        cond = q.build().conditions[0]  # ty:ignore[not-subscriptable]
+        assert cond.field_path == "email-address"  # ty:ignore[unresolved-attribute]
         assert cond.operator == DataSearchOperator.regex
 
         q = QB["user-status"] << ["active", "pending"]
-        cond = q.build().conditions[0]
-        assert cond.field_path == "user-status"
+        cond = q.build().conditions[0]  # ty:ignore[not-subscriptable]
+        assert cond.field_path == "user-status"  # ty:ignore[unresolved-attribute]
         assert cond.operator == DataSearchOperator.in_list
 
         q = QB["full-name"] >> "John"
-        cond = q.build().conditions[0]
-        assert cond.field_path == "full-name"
+        cond = q.build().conditions[0]  # ty:ignore[not-subscriptable]
+        assert cond.field_path == "full-name"  # ty:ignore[unresolved-attribute]
         assert cond.operator == DataSearchOperator.contains
 
         q = ~QB["comment"]
-        cond = q.build().conditions[0]
+        cond = q.build().conditions[0]  # ty:ignore[not-subscriptable]
         assert isinstance(cond, DataSearchGroup)
         assert cond.operator == DataSearchLogicOperator.not_op
         assert len(cond.conditions) == 1
@@ -1142,74 +1142,76 @@ class TestQueryBuilder:
         query1 = q1.build()
         query2 = q2.build()
 
-        cond1 = query1.conditions[0]
-        cond2 = query2.conditions[0]
+        cond1 = query1.conditions[0]  # ty:ignore[not-subscriptable]
+        cond2 = query2.conditions[0]  # ty:ignore[not-subscriptable]
 
-        assert cond1.field_path == cond2.field_path == "status"
+        assert cond1.field_path == cond2.field_path == "status"  # ty:ignore[unresolved-attribute]
         assert cond1.operator == cond2.operator == DataSearchOperator.in_list
-        assert cond1.value == cond2.value == ["active", "pending", "approved"]
+        assert cond1.value == cond2.value == ["active", "pending", "approved"]  # ty:ignore[unresolved-attribute]
 
     def test_case_insensitive_methods(self):
         """Test icontains(), istarts_with(), iends_with()."""
         # icontains
         q = QB["name"].icontains("alice")
-        cond = q.build().conditions[0]
-        assert cond.field_path == "name"
+        cond = q.build().conditions[0]  # ty:ignore[not-subscriptable]
+        assert cond.field_path == "name"  # ty:ignore[unresolved-attribute]
         assert cond.operator == DataSearchOperator.regex
-        assert "(?i)" in cond.value  # Case-insensitive flag
-        assert "alice" in cond.value
+        assert (
+            "(?i)" in cond.value  # ty:ignore[unresolved-attribute]
+        )  # Case-insensitive flag
+        assert "alice" in cond.value  # ty:ignore[unresolved-attribute]
 
         # istarts_with
         q = QB["email"].istarts_with("admin")
-        cond = q.build().conditions[0]
-        assert cond.field_path == "email"
+        cond = q.build().conditions[0]  # ty:ignore[not-subscriptable]
+        assert cond.field_path == "email"  # ty:ignore[unresolved-attribute]
         assert cond.operator == DataSearchOperator.regex
-        assert "(?i)" in cond.value
-        assert "^" in cond.value  # Start anchor
-        assert "admin" in cond.value
+        assert "(?i)" in cond.value  # ty:ignore[unresolved-attribute]
+        assert "^" in cond.value  # Start anchor  # ty:ignore[unresolved-attribute]
+        assert "admin" in cond.value  # ty:ignore[unresolved-attribute]
 
         # iends_with
         q = QB["domain"].iends_with("@gmail.com")
-        cond = q.build().conditions[0]
-        assert cond.field_path == "domain"
+        cond = q.build().conditions[0]  # ty:ignore[not-subscriptable]
+        assert cond.field_path == "domain"  # ty:ignore[unresolved-attribute]
         assert cond.operator == DataSearchOperator.regex
-        assert "(?i)" in cond.value
-        assert "$" in cond.value  # End anchor
+        assert "(?i)" in cond.value  # ty:ignore[unresolved-attribute]
+        assert "$" in cond.value  # End anchor  # ty:ignore[unresolved-attribute]
 
     def test_negative_string_methods(self):
         """Test not_contains(), not_starts_with(), not_ends_with()."""
         # not_contains
         q = QB["description"].not_contains("spam")
         query = q.build()
-        root = query.conditions[0]
+        root = query.conditions[0]  # ty:ignore[not-subscriptable]
         assert root.operator == DataSearchLogicOperator.not_op
-        assert len(root.conditions) == 1
-        inner = root.conditions[0]
-        assert inner.field_path == "description"
+        assert len(root.conditions) == 1  # ty:ignore[unresolved-attribute]
+        inner = root.conditions[0]  # ty:ignore[unresolved-attribute]
+        assert inner.field_path == "description"  # ty:ignore[unresolved-attribute]
         assert inner.operator == DataSearchOperator.contains
-        assert inner.value == "spam"
+        assert inner.value == "spam"  # ty:ignore[unresolved-attribute]
 
         # not_starts_with
         q = QB["email"].not_starts_with("spam")
         query = q.build()
-        root = query.conditions[0]
+        root = query.conditions[0]  # ty:ignore[not-subscriptable]
         assert root.operator == DataSearchLogicOperator.not_op
-        inner = root.conditions[0]
+        inner = root.conditions[0]  # ty:ignore[unresolved-attribute]
         assert inner.operator == DataSearchOperator.starts_with
 
         # not_ends_with
         q = QB["filename"].not_ends_with(".tmp")
         query = q.build()
-        root = query.conditions[0]
+        root = query.conditions[0]  # ty:ignore[not-subscriptable]
         assert root.operator == DataSearchLogicOperator.not_op
-        inner = root.conditions[0]
+        inner = root.conditions[0]  # ty:ignore[unresolved-attribute]
         assert inner.operator == DataSearchOperator.ends_with
 
     def test_is_empty(self):
         """Test is_empty() - checks for empty string or null."""
         q = QB["description"].is_empty()
         query = q.build()
-        root = query.conditions[0]
+        root = query.conditions[0]  # ty:ignore[not-subscriptable]
 
         assert isinstance(root, DataSearchGroup)
         assert root.operator == DataSearchLogicOperator.or_op
@@ -1217,21 +1219,21 @@ class TestQueryBuilder:
 
         # First: equals ""
         cond1 = root.conditions[0]
-        assert cond1.field_path == "description"
+        assert cond1.field_path == "description"  # ty:ignore[unresolved-attribute]
         assert cond1.operator == DataSearchOperator.equals
-        assert cond1.value == ""
+        assert cond1.value == ""  # ty:ignore[unresolved-attribute]
 
         # Second: is_null
         cond2 = root.conditions[1]
-        assert cond2.field_path == "description"
+        assert cond2.field_path == "description"  # ty:ignore[unresolved-attribute]
         assert cond2.operator == DataSearchOperator.is_null
-        assert cond2.value is True
+        assert cond2.value is True  # ty:ignore[unresolved-attribute]
 
     def test_is_blank(self):
         """Test is_blank() - checks for empty, null, or whitespace-only."""
         q = QB["name"].is_blank()
         query = q.build()
-        root = query.conditions[0]
+        root = query.conditions[0]  # ty:ignore[not-subscriptable]
 
         assert isinstance(root, DataSearchGroup)
         assert root.operator == DataSearchLogicOperator.or_op
@@ -1239,14 +1241,14 @@ class TestQueryBuilder:
 
         # First: equals ""
         assert root.conditions[0].operator == DataSearchOperator.equals
-        assert root.conditions[0].value == ""
+        assert root.conditions[0].value == ""  # ty:ignore[unresolved-attribute]
 
         # Second: is_null
         assert root.conditions[1].operator == DataSearchOperator.is_null
 
         # Third: regex for whitespace
         assert root.conditions[2].operator == DataSearchOperator.regex
-        assert root.conditions[2].value == r"^\s*$"
+        assert root.conditions[2].value == r"^\s*$"  # ty:ignore[unresolved-attribute]
 
     def test_match_alias(self):
         """Test match() as alias for regex()."""
@@ -1257,36 +1259,36 @@ class TestQueryBuilder:
         query1 = q1.build()
         query2 = q2.build()
 
-        cond1 = query1.conditions[0]
-        cond2 = query2.conditions[0]
+        cond1 = query1.conditions[0]  # ty:ignore[not-subscriptable]
+        cond2 = query2.conditions[0]  # ty:ignore[not-subscriptable]
 
-        assert cond1.field_path == cond2.field_path == "email"
+        assert cond1.field_path == cond2.field_path == "email"  # ty:ignore[unresolved-attribute]
         assert cond1.operator == cond2.operator == DataSearchOperator.regex
-        assert cond1.value == cond2.value == r".*@gmail\.com$"
+        assert cond1.value == cond2.value == r".*@gmail\.com$"  # ty:ignore[unresolved-attribute]
 
     def test_sort_with_string_ascending(self):
         """Test sort() with string parameter for ascending order."""
         # Without prefix (default ascending)
         q1 = QB["age"].gt(0).sort("name")
         query1 = q1.build()
-        assert len(query1.sorts) == 1
-        assert query1.sorts[0].field_path == "name"
-        assert query1.sorts[0].direction == ResourceMetaSortDirection.ascending
+        assert len(query1.sorts) == 1  # ty:ignore[invalid-argument-type]
+        assert query1.sorts[0].field_path == "name"  # ty:ignore[not-subscriptable, unresolved-attribute]
+        assert query1.sorts[0].direction == ResourceMetaSortDirection.ascending  # ty:ignore[not-subscriptable]
 
         # With + prefix (explicit ascending)
         q2 = QB["age"].gt(0).sort("+age")
         query2 = q2.build()
-        assert len(query2.sorts) == 1
-        assert query2.sorts[0].field_path == "age"
-        assert query2.sorts[0].direction == ResourceMetaSortDirection.ascending
+        assert len(query2.sorts) == 1  # ty:ignore[invalid-argument-type]
+        assert query2.sorts[0].field_path == "age"  # ty:ignore[not-subscriptable, unresolved-attribute]
+        assert query2.sorts[0].direction == ResourceMetaSortDirection.ascending  # ty:ignore[not-subscriptable]
 
     def test_sort_with_string_descending(self):
         """Test sort() with string parameter for descending order."""
         q = QB["age"].gt(0).sort("-created_time")
         query = q.build()
-        assert len(query.sorts) == 1
-        assert query.sorts[0].key == ResourceMetaSortKey.created_time
-        assert query.sorts[0].direction == ResourceMetaSortDirection.descending
+        assert len(query.sorts) == 1  # ty:ignore[invalid-argument-type]
+        assert query.sorts[0].key == ResourceMetaSortKey.created_time  # ty:ignore[not-subscriptable, unresolved-attribute]
+        assert query.sorts[0].direction == ResourceMetaSortDirection.descending  # ty:ignore[not-subscriptable]
 
     def test_all_metadata_accessors_are_sortable(self):
         """All built-in metadata accessors should produce meta sorts, not data sorts."""
@@ -1307,9 +1309,9 @@ class TestQueryBuilder:
 
         for sort_obj, expected_key in sort_cases:
             query = QB["age"].gt(0).sort(sort_obj).build()
-            assert len(query.sorts) == 1
-            assert isinstance(query.sorts[0], ResourceMetaSearchSort)
-            assert query.sorts[0].key == expected_key
+            assert len(query.sorts) == 1  # ty:ignore[invalid-argument-type]
+            assert isinstance(query.sorts[0], ResourceMetaSearchSort)  # ty:ignore[not-subscriptable]
+            assert query.sorts[0].key == expected_key  # ty:ignore[not-subscriptable]
 
     def test_extended_metadata_sort_execution(self):
         """Extended metadata keys should affect actual result ordering."""
@@ -1366,37 +1368,37 @@ class TestQueryBuilder:
         """Test sort() with multiple string parameters."""
         q = QB["age"].gt(0).sort("-created_time", "+name", "age")
         query = q.build()
-        assert len(query.sorts) == 3
+        assert len(query.sorts) == 3  # ty:ignore[invalid-argument-type]
 
         # First: created_time descending (meta field)
-        assert query.sorts[0].key == ResourceMetaSortKey.created_time
-        assert query.sorts[0].direction == ResourceMetaSortDirection.descending
+        assert query.sorts[0].key == ResourceMetaSortKey.created_time  # ty:ignore[not-subscriptable, unresolved-attribute]
+        assert query.sorts[0].direction == ResourceMetaSortDirection.descending  # ty:ignore[not-subscriptable]
 
         # Second: name ascending (data field)
-        assert query.sorts[1].field_path == "name"
-        assert query.sorts[1].direction == ResourceMetaSortDirection.ascending
+        assert query.sorts[1].field_path == "name"  # ty:ignore[not-subscriptable, unresolved-attribute]
+        assert query.sorts[1].direction == ResourceMetaSortDirection.ascending  # ty:ignore[not-subscriptable]
 
         # Third: age ascending (data field, no prefix)
-        assert query.sorts[2].field_path == "age"
-        assert query.sorts[2].direction == ResourceMetaSortDirection.ascending
+        assert query.sorts[2].field_path == "age"  # ty:ignore[not-subscriptable, unresolved-attribute]
+        assert query.sorts[2].direction == ResourceMetaSortDirection.ascending  # ty:ignore[not-subscriptable]
 
     def test_sort_mixed_string_and_objects(self):
         """Test sort() with mix of strings and sort objects."""
         q = QB["age"].gt(0).sort("-name", QB.created_time().desc(), "+age")
         query = q.build()
-        assert len(query.sorts) == 3
+        assert len(query.sorts) == 3  # ty:ignore[invalid-argument-type]
 
         # First: name descending (string)
-        assert query.sorts[0].field_path == "name"
-        assert query.sorts[0].direction == ResourceMetaSortDirection.descending
+        assert query.sorts[0].field_path == "name"  # ty:ignore[not-subscriptable, unresolved-attribute]
+        assert query.sorts[0].direction == ResourceMetaSortDirection.descending  # ty:ignore[not-subscriptable]
 
         # Second: created_time descending (object)
-        assert query.sorts[1].key == ResourceMetaSortKey.created_time
-        assert query.sorts[1].direction == ResourceMetaSortDirection.descending
+        assert query.sorts[1].key == ResourceMetaSortKey.created_time  # ty:ignore[not-subscriptable, unresolved-attribute]
+        assert query.sorts[1].direction == ResourceMetaSortDirection.descending  # ty:ignore[not-subscriptable]
 
         # Third: age ascending (string)
-        assert query.sorts[2].field_path == "age"
-        assert query.sorts[2].direction == ResourceMetaSortDirection.ascending
+        assert query.sorts[2].field_path == "age"  # ty:ignore[not-subscriptable, unresolved-attribute]
+        assert query.sorts[2].direction == ResourceMetaSortDirection.ascending  # ty:ignore[not-subscriptable]
 
     def test_order_by_alias(self):
         """Test order_by() as alias for sort()."""
@@ -1407,11 +1409,11 @@ class TestQueryBuilder:
         query1 = q1.build()
         query2 = q2.build()
 
-        assert len(query1.sorts) == len(query2.sorts) == 2
-        assert query1.sorts[0].key == query2.sorts[0].key
-        assert query1.sorts[0].direction == query2.sorts[0].direction
-        assert query1.sorts[1].field_path == query2.sorts[1].field_path
-        assert query1.sorts[1].direction == query2.sorts[1].direction
+        assert len(query1.sorts) == len(query2.sorts) == 2  # ty:ignore[invalid-argument-type]
+        assert query1.sorts[0].key == query2.sorts[0].key  # ty:ignore[not-subscriptable, unresolved-attribute]
+        assert query1.sorts[0].direction == query2.sorts[0].direction  # ty:ignore[not-subscriptable]
+        assert query1.sorts[1].field_path == query2.sorts[1].field_path  # ty:ignore[not-subscriptable, unresolved-attribute]
+        assert query1.sorts[1].direction == query2.sorts[1].direction  # ty:ignore[not-subscriptable]
 
     def test_order_by_with_objects(self):
         """Test order_by() with sort objects."""
@@ -1421,9 +1423,9 @@ class TestQueryBuilder:
             .order_by(QB.created_time().desc(), QB["age"].asc())
         )
         query = q.build()
-        assert len(query.sorts) == 2
-        assert query.sorts[0].key == ResourceMetaSortKey.created_time
-        assert query.sorts[1].field_path == "age"
+        assert len(query.sorts) == 2  # ty:ignore[invalid-argument-type]
+        assert query.sorts[0].key == ResourceMetaSortKey.created_time  # ty:ignore[not-subscriptable, unresolved-attribute]
+        assert query.sorts[1].field_path == "age"  # ty:ignore[not-subscriptable, unresolved-attribute]
 
     def test_convenience_methods_combined(self):
         """Test combining new convenience methods in real query."""
@@ -1446,26 +1448,26 @@ class TestQueryBuilder:
         """Test that icontains/istarts_with/iends_with properly escape special regex chars."""
         # Test with regex special characters
         q = QB["text"].icontains("$100.00")
-        cond = q.build().conditions[0]
+        cond = q.build().conditions[0]  # ty:ignore[not-subscriptable]
         # $ and . should be escaped
-        assert r"\$" in cond.value or "\\$" in cond.value
-        assert r"\." in cond.value or "\\." in cond.value
+        assert r"\$" in cond.value or "\\$" in cond.value  # ty:ignore[unresolved-attribute]
+        assert r"\." in cond.value or "\\." in cond.value  # ty:ignore[unresolved-attribute]
 
         q = QB["pattern"].istarts_with("test[123]")
-        cond = q.build().conditions[0]
+        cond = q.build().conditions[0]  # ty:ignore[not-subscriptable]
         # [ and ] should be escaped
-        assert r"\[" in cond.value or "\\[" in cond.value
+        assert r"\[" in cond.value or "\\[" in cond.value  # ty:ignore[unresolved-attribute]
 
     def test_invert_operator_practical_examples(self):
         """Test ~ operator in practical use cases."""
         # Case 1: Find records with empty optional fields
         q = (QB["status"] == "active") & ~QB["comment"]
         query = q.build()
-        root = query.conditions[0]
+        root = query.conditions[0]  # ty:ignore[not-subscriptable]
         assert root.operator == DataSearchLogicOperator.and_op
 
         # Right side should be is_falsy (NOT group)
-        falsy_group = root.conditions[1]
+        falsy_group = root.conditions[1]  # ty:ignore[unresolved-attribute]
         assert isinstance(falsy_group, DataSearchGroup)
         assert falsy_group.operator == DataSearchLogicOperator.not_op
         assert len(falsy_group.conditions) == 1
@@ -1480,15 +1482,15 @@ class TestQueryBuilder:
             ~QB["deleted"],  # Not deleted (falsy)
         )
         query = q.build()
-        root = query.conditions[0]
+        root = query.conditions[0]  # ty:ignore[not-subscriptable]
         assert root.operator == DataSearchLogicOperator.and_op
-        assert len(root.conditions) == 4
+        assert len(root.conditions) == 4  # ty:ignore[unresolved-attribute]
 
     def test_field_as_truthy_condition(self):
         """Test that Field can be used directly as is_truthy() condition."""
         # Case 1: Single field acts as is_truthy()
         q = QB["verified"]
-        cond = q.build().conditions[0]
+        cond = q.build().conditions[0]  # ty:ignore[not-subscriptable]
         assert isinstance(cond, DataSearchGroup)
         assert cond.operator == DataSearchLogicOperator.and_op
         assert len(cond.conditions) == 5  # not null, not false, not 0, not "", not []
@@ -1496,25 +1498,25 @@ class TestQueryBuilder:
         # Case 2: Field in AND operation
         q = QB["verified"] & (QB["status"] == "active")
         query = q.build()
-        root = query.conditions[0]
+        root = query.conditions[0]  # ty:ignore[not-subscriptable]
         assert root.operator == DataSearchLogicOperator.and_op
-        assert len(root.conditions) == 2
+        assert len(root.conditions) == 2  # ty:ignore[unresolved-attribute]
 
         # First should be verified (is_truthy)
-        verified_cond = root.conditions[0]
+        verified_cond = root.conditions[0]  # ty:ignore[unresolved-attribute]
         assert isinstance(verified_cond, DataSearchGroup)
         assert verified_cond.operator == DataSearchLogicOperator.and_op
 
         # Second should be status == "active"
-        status_cond = root.conditions[1]
-        assert status_cond.field_path == "status"
+        status_cond = root.conditions[1]  # ty:ignore[unresolved-attribute]
+        assert status_cond.field_path == "status"  # ty:ignore[unresolved-attribute]
         assert status_cond.operator == DataSearchOperator.equals
 
     def test_field_as_truthy_with_negation(self):
         """Test ~Field produces is_falsy() as expected."""
         # ~Field should give is_falsy() which is NOT(is_truthy)
         q = ~QB["optional"]
-        cond = q.build().conditions[0]
+        cond = q.build().conditions[0]  # ty:ignore[not-subscriptable]
         assert isinstance(cond, DataSearchGroup)
         assert cond.operator == DataSearchLogicOperator.not_op
         assert len(cond.conditions) == 1
@@ -1531,8 +1533,8 @@ class TestQueryBuilder:
         q1 = QB["name"]
         q2 = QB["name"].is_truthy()
 
-        cond1 = q1.build().conditions[0]
-        cond2 = q2.build().conditions[0]
+        cond1 = q1.build().conditions[0]  # ty:ignore[not-subscriptable]
+        cond2 = q2.build().conditions[0]  # ty:ignore[not-subscriptable]
 
         assert isinstance(cond1, DataSearchGroup)
         assert isinstance(cond2, DataSearchGroup)
@@ -1545,17 +1547,17 @@ class TestQueryBuilder:
         # All four fields act as is_truthy()
         q = (QB["verified"] & QB["email"]) | (QB["admin"] & QB["active"])
         query = q.build()
-        root = query.conditions[0]
+        root = query.conditions[0]  # ty:ignore[not-subscriptable]
 
         assert root.operator == DataSearchLogicOperator.or_op
-        assert len(root.conditions) == 2
+        assert len(root.conditions) == 2  # ty:ignore[unresolved-attribute]
 
         # Left: verified AND email
-        left = root.conditions[0]
+        left = root.conditions[0]  # ty:ignore[unresolved-attribute]
         assert left.operator == DataSearchLogicOperator.and_op
 
         # Right: admin AND active
-        right = root.conditions[1]
+        right = root.conditions[1]  # ty:ignore[unresolved-attribute]
         assert right.operator == DataSearchLogicOperator.and_op
 
 
@@ -1661,7 +1663,7 @@ class TestResourceManagerWithQB:
         """Test LIKE pattern %value% converts to contains (no underscore)."""
         q = QB["description"].like("%urgent%")
         query = q.build()
-        condition = query.conditions[0]
+        condition = query.conditions[0]  # ty:ignore[not-subscriptable]
         assert isinstance(condition, DataSearchCondition)
         assert condition.operator == DataSearchOperator.contains
         assert condition.value == "urgent"
@@ -1670,7 +1672,7 @@ class TestResourceManagerWithQB:
         """Test LIKE pattern value% converts to starts_with (no underscore)."""
         q = QB["name"].like("Alice%")
         query = q.build()
-        condition = query.conditions[0]
+        condition = query.conditions[0]  # ty:ignore[not-subscriptable]
         assert isinstance(condition, DataSearchCondition)
         assert condition.operator == DataSearchOperator.starts_with
         assert condition.value == "Alice"
@@ -1679,7 +1681,7 @@ class TestResourceManagerWithQB:
         """Test LIKE pattern %value converts to ends_with (no underscore)."""
         q = QB["email"].like("%@gmail.com")
         query = q.build()
-        condition = query.conditions[0]
+        condition = query.conditions[0]  # ty:ignore[not-subscriptable]
         assert isinstance(condition, DataSearchCondition)
         assert condition.operator == DataSearchOperator.ends_with
         assert condition.value == "@gmail.com"
@@ -1688,7 +1690,7 @@ class TestResourceManagerWithQB:
         """Test LIKE pattern with _ converts to regex."""
         q = QB["code"].like("A_C")
         query = q.build()
-        condition = query.conditions[0]
+        condition = query.conditions[0]  # ty:ignore[not-subscriptable]
         assert isinstance(condition, DataSearchCondition)
         assert condition.operator == DataSearchOperator.regex
         # Should convert _ to . and add anchors
@@ -1698,7 +1700,7 @@ class TestResourceManagerWithQB:
         """Test LIKE pattern %val_ue% with _ uses regex, not contains."""
         q = QB["desc"].like("%ur_ent%")
         query = q.build()
-        condition = query.conditions[0]
+        condition = query.conditions[0]  # ty:ignore[not-subscriptable]
         assert isinstance(condition, DataSearchCondition)
         assert condition.operator == DataSearchOperator.regex
         # Should convert to regex with .* for % and . for _
@@ -1708,7 +1710,7 @@ class TestResourceManagerWithQB:
         """Test LIKE pattern val_% with _ uses regex, not starts_with."""
         q = QB["name"].like("Ali_e%")
         query = q.build()
-        condition = query.conditions[0]
+        condition = query.conditions[0]  # ty:ignore[not-subscriptable]
         assert isinstance(condition, DataSearchCondition)
         assert condition.operator == DataSearchOperator.regex
         assert condition.value == "^Ali.e.*$"
@@ -1717,7 +1719,7 @@ class TestResourceManagerWithQB:
         """Test LIKE pattern %val_e with _ uses regex, not ends_with."""
         q = QB["email"].like("%gma_l.com")
         query = q.build()
-        condition = query.conditions[0]
+        condition = query.conditions[0]  # ty:ignore[not-subscriptable]
         assert isinstance(condition, DataSearchCondition)
         assert condition.operator == DataSearchOperator.regex
         assert condition.value == "^.*gma.l\\.com$"
@@ -1726,7 +1728,7 @@ class TestResourceManagerWithQB:
         """Test complex LIKE pattern with multiple % and _."""
         q = QB["path"].like("%file_%.txt")
         query = q.build()
-        condition = query.conditions[0]
+        condition = query.conditions[0]  # ty:ignore[not-subscriptable]
         assert isinstance(condition, DataSearchCondition)
         assert condition.operator == DataSearchOperator.regex
         # % -> .*, _ -> ., escape .txt
@@ -1736,20 +1738,20 @@ class TestResourceManagerWithQB:
         """Test LIKE pattern with only % (matches any)."""
         q = QB["value"].like("%")
         query = q.build()
-        condition = query.conditions[0]
+        condition = query.conditions[0]  # ty:ignore[not-subscriptable]
         # Single % should become regex .*
         assert condition.operator == DataSearchOperator.regex
-        assert condition.value == "^.*$"
+        assert condition.value == "^.*$"  # ty:ignore[unresolved-attribute]
 
     def test_like_escape_special_chars(self):
         """Test LIKE properly escapes regex special characters."""
         # Pattern without % or _ should be treated as literal match with anchors
         q = QB["pattern"].like("file[0-9].txt")
         query = q.build()
-        condition = query.conditions[0]
+        condition = query.conditions[0]  # ty:ignore[not-subscriptable]
         assert condition.operator == DataSearchOperator.regex
         # Should escape [] and . in regex
-        assert condition.value == r"^file\[0\-9\]\.txt$"
+        assert condition.value == r"^file\[0\-9\]\.txt$"  # ty:ignore[unresolved-attribute]
 
     def test_today_default_timezone(self):
         """Test today() uses local timezone by default."""
@@ -1757,7 +1759,7 @@ class TestResourceManagerWithQB:
 
         q = QB.created_time().today()
         query = q.build()
-        group = query.conditions[0]
+        group = query.conditions[0]  # ty:ignore[not-subscriptable]
         assert isinstance(group, DataSearchGroup)
         assert group.operator == DataSearchLogicOperator.and_op
 
@@ -1768,8 +1770,8 @@ class TestResourceManagerWithQB:
         assert cond_end.operator == DataSearchOperator.less_than_or_equal
 
         # Verify it's today's date
-        start_val = cond_start.value
-        end_val = cond_end.value
+        start_val = cond_start.value  # ty:ignore[unresolved-attribute]
+        end_val = cond_end.value  # ty:ignore[unresolved-attribute]
         assert isinstance(start_val, dt.datetime)
         assert isinstance(end_val, dt.datetime)
         assert start_val.hour == 0
@@ -1784,10 +1786,10 @@ class TestResourceManagerWithQB:
         utc = ZoneInfo("UTC")
         q = QB.created_time().today(utc)
         query = q.build()
-        group = query.conditions[0]
+        group = query.conditions[0]  # ty:ignore[not-subscriptable]
 
-        cond_start = group.conditions[0]
-        start_val = cond_start.value
+        cond_start = group.conditions[0]  # ty:ignore[unresolved-attribute]
+        start_val = cond_start.value  # ty:ignore[unresolved-attribute]
         assert start_val.tzinfo == utc
 
     def test_this_week_default(self):
@@ -1795,14 +1797,14 @@ class TestResourceManagerWithQB:
 
         q = QB.created_time().this_week()
         query = q.build()
-        group = query.conditions[0]
+        group = query.conditions[0]  # ty:ignore[not-subscriptable]
         assert isinstance(group, DataSearchGroup)
         assert group.operator == DataSearchLogicOperator.and_op
 
         cond_start = group.conditions[0]
         cond_end = group.conditions[1]
-        start_val = cond_start.value
-        end_val = cond_end.value
+        start_val = cond_start.value  # ty:ignore[unresolved-attribute]
+        end_val = cond_end.value  # ty:ignore[unresolved-attribute]
 
         # Start should be Monday 00:00:00
         assert start_val.weekday() == 0  # Monday
@@ -1818,12 +1820,12 @@ class TestResourceManagerWithQB:
         """Test this_week() with custom week start (Sunday)."""
         q = QB.created_time().this_week(week_start=6)
         query = q.build()
-        group = query.conditions[0]
+        group = query.conditions[0]  # ty:ignore[not-subscriptable]
 
-        cond_start = group.conditions[0]
-        cond_end = group.conditions[1]
-        start_val = cond_start.value
-        end_val = cond_end.value
+        cond_start = group.conditions[0]  # ty:ignore[unresolved-attribute]
+        cond_end = group.conditions[1]  # ty:ignore[unresolved-attribute]
+        start_val = cond_start.value  # ty:ignore[unresolved-attribute]
+        end_val = cond_end.value  # ty:ignore[unresolved-attribute]
 
         # Start should be Sunday
         assert start_val.weekday() == 6  # Sunday
@@ -1837,10 +1839,10 @@ class TestResourceManagerWithQB:
         taipei = ZoneInfo("Asia/Taipei")
         q = QB.created_time().this_week(taipei)
         query = q.build()
-        group = query.conditions[0]
+        group = query.conditions[0]  # ty:ignore[not-subscriptable]
 
-        cond_start = group.conditions[0]
-        start_val = cond_start.value
+        cond_start = group.conditions[0]  # ty:ignore[unresolved-attribute]
+        start_val = cond_start.value  # ty:ignore[unresolved-attribute]
         assert start_val.tzinfo == taipei
 
     def test_last_n_days(self):
@@ -1849,10 +1851,10 @@ class TestResourceManagerWithQB:
 
         q = QB.created_time().last_n_days(7)
         query = q.build()
-        condition = query.conditions[0]
+        condition = query.conditions[0]  # ty:ignore[not-subscriptable]
 
         assert condition.operator == DataSearchOperator.greater_than_or_equal
-        start_val = condition.value
+        start_val = condition.value  # ty:ignore[unresolved-attribute]
         assert isinstance(start_val, dt.datetime)
 
         # Should be 7 days ago at 00:00:00
@@ -1872,9 +1874,9 @@ class TestResourceManagerWithQB:
         utc = ZoneInfo("UTC")
         q = QB.created_time().last_n_days(30, utc)
         query = q.build()
-        condition = query.conditions[0]
+        condition = query.conditions[0]  # ty:ignore[not-subscriptable]
 
-        start_val = condition.value
+        start_val = condition.value  # ty:ignore[unresolved-attribute]
         assert start_val.tzinfo == utc
 
     def test_last_n_days_single_day(self):
@@ -1883,9 +1885,9 @@ class TestResourceManagerWithQB:
 
         q = QB.created_time().last_n_days(1)
         query = q.build()
-        condition = query.conditions[0]
+        condition = query.conditions[0]  # ty:ignore[not-subscriptable]
 
-        start_val = condition.value
+        start_val = condition.value  # ty:ignore[unresolved-attribute]
         now = dt.datetime.now().astimezone()
 
         # Should be today at 00:00:00
@@ -1898,7 +1900,7 @@ class TestResourceManagerWithQB:
         q = QB.created_time().last_n_days(7) & QB["status"].eq("active")
         query = q.build()
 
-        group = query.conditions[0]
+        group = query.conditions[0]  # ty:ignore[not-subscriptable]
         assert isinstance(group, DataSearchGroup)
         assert group.operator == DataSearchLogicOperator.and_op
         assert len(group.conditions) == 2
@@ -1908,7 +1910,7 @@ class TestResourceManagerWithQB:
         q = QB.created_time().today() | QB.updated_time().this_week()
         query = q.build()
 
-        group = query.conditions[0]
+        group = query.conditions[0]  # ty:ignore[not-subscriptable]
         assert isinstance(group, DataSearchGroup)
         assert group.operator == DataSearchLogicOperator.or_op
 
@@ -1918,10 +1920,10 @@ class TestResourceManagerWithQB:
 
         q = QB.created_time().today(8)
         query = q.build()
-        group = query.conditions[0]
+        group = query.conditions[0]  # ty:ignore[not-subscriptable]
 
-        cond_start = group.conditions[0]
-        start_val = cond_start.value
+        cond_start = group.conditions[0]  # ty:ignore[unresolved-attribute]
+        start_val = cond_start.value  # ty:ignore[unresolved-attribute]
         assert isinstance(start_val, dt.datetime)
         # Should be UTC+8
         assert start_val.utcoffset() == dt.timedelta(hours=8)
@@ -1932,10 +1934,10 @@ class TestResourceManagerWithQB:
 
         q = QB.created_time().today("+8")
         query = q.build()
-        group = query.conditions[0]
+        group = query.conditions[0]  # ty:ignore[not-subscriptable]
 
-        cond_start = group.conditions[0]
-        start_val = cond_start.value
+        cond_start = group.conditions[0]  # ty:ignore[unresolved-attribute]
+        start_val = cond_start.value  # ty:ignore[unresolved-attribute]
         # Should be UTC+8
         assert start_val.utcoffset() == dt.timedelta(hours=8)
 
@@ -1945,10 +1947,10 @@ class TestResourceManagerWithQB:
 
         q = QB.created_time().today("-4")
         query = q.build()
-        group = query.conditions[0]
+        group = query.conditions[0]  # ty:ignore[not-subscriptable]
 
-        cond_start = group.conditions[0]
-        start_val = cond_start.value
+        cond_start = group.conditions[0]  # ty:ignore[unresolved-attribute]
+        start_val = cond_start.value  # ty:ignore[unresolved-attribute]
         # Should be UTC-4
         assert start_val.utcoffset() == dt.timedelta(hours=-4)
 
@@ -1958,10 +1960,10 @@ class TestResourceManagerWithQB:
 
         q = QB.created_time().this_week(8)
         query = q.build()
-        group = query.conditions[0]
+        group = query.conditions[0]  # ty:ignore[not-subscriptable]
 
-        cond_start = group.conditions[0]
-        start_val = cond_start.value
+        cond_start = group.conditions[0]  # ty:ignore[unresolved-attribute]
+        start_val = cond_start.value  # ty:ignore[unresolved-attribute]
         # Should be UTC+8
         assert start_val.utcoffset() == dt.timedelta(hours=8)
 
@@ -1971,10 +1973,10 @@ class TestResourceManagerWithQB:
 
         q = QB.created_time().this_week("-5")
         query = q.build()
-        group = query.conditions[0]
+        group = query.conditions[0]  # ty:ignore[not-subscriptable]
 
-        cond_start = group.conditions[0]
-        start_val = cond_start.value
+        cond_start = group.conditions[0]  # ty:ignore[unresolved-attribute]
+        start_val = cond_start.value  # ty:ignore[unresolved-attribute]
         # Should be UTC-5
         assert start_val.utcoffset() == dt.timedelta(hours=-5)
 
@@ -1984,9 +1986,9 @@ class TestResourceManagerWithQB:
 
         q = QB.created_time().last_n_days(7, 8)
         query = q.build()
-        condition = query.conditions[0]
+        condition = query.conditions[0]  # ty:ignore[not-subscriptable]
 
-        start_val = condition.value
+        start_val = condition.value  # ty:ignore[unresolved-attribute]
         # Should be UTC+8
         assert start_val.utcoffset() == dt.timedelta(hours=8)
 
@@ -1996,9 +1998,9 @@ class TestResourceManagerWithQB:
 
         q = QB.created_time().last_n_days(30, "+9")
         query = q.build()
-        condition = query.conditions[0]
+        condition = query.conditions[0]  # ty:ignore[not-subscriptable]
 
-        start_val = condition.value
+        start_val = condition.value  # ty:ignore[unresolved-attribute]
         # Should be UTC+9
         assert start_val.utcoffset() == dt.timedelta(hours=9)
 
@@ -2008,10 +2010,10 @@ class TestResourceManagerWithQB:
 
         q = QB.created_time().today(0)
         query = q.build()
-        group = query.conditions[0]
+        group = query.conditions[0]  # ty:ignore[not-subscriptable]
 
-        cond_start = group.conditions[0]
-        start_val = cond_start.value
+        cond_start = group.conditions[0]  # ty:ignore[unresolved-attribute]
+        start_val = cond_start.value  # ty:ignore[unresolved-attribute]
         # Should be UTC (offset 0)
         assert start_val.utcoffset() == dt.timedelta(hours=0)
 
@@ -2020,7 +2022,7 @@ class TestResourceManagerWithQB:
         q = QB.created_time().last_n_days(7, "+8") & QB["status"].eq("active")
         query = q.build()
 
-        group = query.conditions[0]
+        group = query.conditions[0]  # ty:ignore[not-subscriptable]
         assert isinstance(group, DataSearchGroup)
         assert group.operator == DataSearchLogicOperator.and_op
         assert len(group.conditions) == 2
@@ -2029,7 +2031,7 @@ class TestResourceManagerWithQB:
         """Test filter() method for chaining AND conditions."""
         q = QB["age"].gt(18).filter(QB["status"].eq("active"), QB["verified"].eq(True))
         query = q.build()
-        root = query.conditions[0]
+        root = query.conditions[0]  # ty:ignore[not-subscriptable]
 
         assert isinstance(root, DataSearchGroup)
         assert root.operator == DataSearchLogicOperator.and_op
@@ -2040,32 +2042,32 @@ class TestResourceManagerWithQB:
         """Test exclude() method for excluding conditions."""
         q = QB["status"].eq("active").exclude(QB["role"].eq("guest"))
         query = q.build()
-        root = query.conditions[0]
+        root = query.conditions[0]  # ty:ignore[not-subscriptable]
 
         assert isinstance(root, DataSearchGroup)
         assert root.operator == DataSearchLogicOperator.and_op
         assert len(root.conditions) == 2
 
         # First: status == "active"
-        assert root.conditions[0].field_path == "status"
+        assert root.conditions[0].field_path == "status"  # ty:ignore[unresolved-attribute]
 
         # Second: NOT(role == "guest")
         not_group = root.conditions[1]
         assert isinstance(not_group, DataSearchGroup)
         assert not_group.operator == DataSearchLogicOperator.not_op
-        assert not_group.conditions[0].field_path == "role"
+        assert not_group.conditions[0].field_path == "role"  # ty:ignore[unresolved-attribute]
 
     def test_exclude_multiple_conditions(self):
         """Test exclude() with multiple conditions."""
         q = QB["age"].gt(18).exclude(QB["deleted"].eq(True), QB["banned"].eq(True))
         query = q.build()
-        root = query.conditions[0]
+        root = query.conditions[0]  # ty:ignore[not-subscriptable]
 
         # Should AND all conditions (the original + negated ones)
         assert root.operator == DataSearchLogicOperator.and_op
         # Structure: (age > 18 AND NOT(deleted)) AND NOT(banned)
         # Root has 2 conditions: left group and right NOT
-        assert len(root.conditions) == 2
+        assert len(root.conditions) == 2  # ty:ignore[unresolved-attribute]
 
     def test_in_range_alias(self):
         """Test in_range() as alias for between()."""
@@ -2075,8 +2077,8 @@ class TestResourceManagerWithQB:
         query1 = q1.build()
         query2 = q2.build()
 
-        cond1 = query1.conditions[0]
-        cond2 = query2.conditions[0]
+        cond1 = query1.conditions[0]  # ty:ignore[not-subscriptable]
+        cond2 = query2.conditions[0]  # ty:ignore[not-subscriptable]
 
         assert isinstance(cond1, DataSearchGroup)
         assert isinstance(cond2, DataSearchGroup)
@@ -2087,11 +2089,11 @@ class TestResourceManagerWithQB:
         """Test is_not_null() method."""
         q = QB["email"].is_not_null()
         query = q.build()
-        cond = query.conditions[0]
+        cond = query.conditions[0]  # ty:ignore[not-subscriptable]
 
-        assert cond.field_path == "email"
+        assert cond.field_path == "email"  # ty:ignore[unresolved-attribute]
         assert cond.operator == DataSearchOperator.is_null
-        assert cond.value is False
+        assert cond.value is False  # ty:ignore[unresolved-attribute]
 
     def test_has_value_alias(self):
         """Test has_value() as alias for is_not_null()."""
@@ -2101,12 +2103,12 @@ class TestResourceManagerWithQB:
         query1 = q1.build()
         query2 = q2.build()
 
-        cond1 = query1.conditions[0]
-        cond2 = query2.conditions[0]
+        cond1 = query1.conditions[0]  # ty:ignore[not-subscriptable]
+        cond2 = query2.conditions[0]  # ty:ignore[not-subscriptable]
 
-        assert cond1.field_path == cond2.field_path == "description"
+        assert cond1.field_path == cond2.field_path == "description"  # ty:ignore[unresolved-attribute]
         assert cond1.operator == cond2.operator == DataSearchOperator.is_null
-        assert cond1.value == cond2.value is False
+        assert cond1.value == cond2.value is False  # ty:ignore[unresolved-attribute]
 
     def test_yesterday(self):
         """Test yesterday() datetime method."""
@@ -2114,13 +2116,13 @@ class TestResourceManagerWithQB:
 
         q = QB.created_time().yesterday()
         query = q.build()
-        group = query.conditions[0]
+        group = query.conditions[0]  # ty:ignore[not-subscriptable]
 
         assert isinstance(group, DataSearchGroup)
         assert group.operator == DataSearchLogicOperator.and_op
 
-        start_val = group.conditions[0].value
-        end_val = group.conditions[1].value
+        start_val = group.conditions[0].value  # ty:ignore[unresolved-attribute]
+        end_val = group.conditions[1].value  # ty:ignore[unresolved-attribute]
 
         # Should be yesterday's date
         yesterday = dt.datetime.now().astimezone() - dt.timedelta(days=1)
@@ -2135,13 +2137,13 @@ class TestResourceManagerWithQB:
 
         q = QB.created_time().this_month()
         query = q.build()
-        group = query.conditions[0]
+        group = query.conditions[0]  # ty:ignore[not-subscriptable]
 
         assert isinstance(group, DataSearchGroup)
         assert group.operator == DataSearchLogicOperator.and_op
 
-        start_val = group.conditions[0].value
-        end_val = group.conditions[1].value
+        start_val = group.conditions[0].value  # ty:ignore[unresolved-attribute]
+        end_val = group.conditions[1].value  # ty:ignore[unresolved-attribute]
 
         # Should be this month
         now = dt.datetime.now().astimezone()
@@ -2156,13 +2158,13 @@ class TestResourceManagerWithQB:
 
         q = QB.created_time().this_year()
         query = q.build()
-        group = query.conditions[0]
+        group = query.conditions[0]  # ty:ignore[not-subscriptable]
 
         assert isinstance(group, DataSearchGroup)
         assert group.operator == DataSearchLogicOperator.and_op
 
-        start_val = group.conditions[0].value
-        end_val = group.conditions[1].value
+        start_val = group.conditions[0].value  # ty:ignore[unresolved-attribute]
+        end_val = group.conditions[1].value  # ty:ignore[unresolved-attribute]
 
         # Should be this year
         now = dt.datetime.now().astimezone()
@@ -2179,9 +2181,9 @@ class TestResourceManagerWithQB:
 
         q = QB.created_time().yesterday("+8")
         query = q.build()
-        group = query.conditions[0]
+        group = query.conditions[0]  # ty:ignore[not-subscriptable]
 
-        start_val = group.conditions[0].value
+        start_val = group.conditions[0].value  # ty:ignore[unresolved-attribute]
         # Should be UTC+8
         assert start_val.utcoffset() == dt.timedelta(hours=8)
 
@@ -2191,9 +2193,9 @@ class TestResourceManagerWithQB:
 
         q = QB.created_time().this_month(-5)
         query = q.build()
-        group = query.conditions[0]
+        group = query.conditions[0]  # ty:ignore[not-subscriptable]
 
-        start_val = group.conditions[0].value
+        start_val = group.conditions[0].value  # ty:ignore[unresolved-attribute]
         # Should be UTC-5
         assert start_val.utcoffset() == dt.timedelta(hours=-5)
 
@@ -2206,7 +2208,7 @@ class TestResourceManagerWithQB:
             .exclude(QB["deleted"].eq(True))
         )
         query = q.build()
-        root = query.conditions[0]
+        root = query.conditions[0]  # ty:ignore[not-subscriptable]
 
         assert isinstance(root, DataSearchGroup)
         assert root.operator == DataSearchLogicOperator.and_op
@@ -2218,51 +2220,51 @@ class TestResourceManagerWithQB:
         """Test is_true() method for boolean True checks."""
         q = QB["verified"].is_true()
         query = q.build()
-        cond = query.conditions[0]
+        cond = query.conditions[0]  # ty:ignore[not-subscriptable]
 
-        assert cond.field_path == "verified"
+        assert cond.field_path == "verified"  # ty:ignore[unresolved-attribute]
         assert cond.operator == DataSearchOperator.equals
-        assert cond.value is True
+        assert cond.value is True  # ty:ignore[unresolved-attribute]
 
     def test_is_false(self):
         """Test is_false() method for boolean False checks."""
         q = QB["deleted"].is_false()
         query = q.build()
-        cond = query.conditions[0]
+        cond = query.conditions[0]  # ty:ignore[not-subscriptable]
 
-        assert cond.field_path == "deleted"
+        assert cond.field_path == "deleted"  # ty:ignore[unresolved-attribute]
         assert cond.operator == DataSearchOperator.equals
-        assert cond.value is False
+        assert cond.value is False  # ty:ignore[unresolved-attribute]
 
     def test_is_true_is_false_combined(self):
         """Test combining is_true() and is_false()."""
         q = QB["active"].is_true() & QB["deleted"].is_false()
         query = q.build()
-        group = query.conditions[0]
+        group = query.conditions[0]  # ty:ignore[not-subscriptable]
 
         assert group.operator == DataSearchLogicOperator.and_op
-        assert len(group.conditions) == 2
-        assert group.conditions[0].value is True
-        assert group.conditions[1].value is False
+        assert len(group.conditions) == 2  # ty:ignore[unresolved-attribute]
+        assert group.conditions[0].value is True  # ty:ignore[unresolved-attribute]
+        assert group.conditions[1].value is False  # ty:ignore[unresolved-attribute]
 
     def test_is_truthy(self):
         """Test is_truthy() for truthy value checks."""
         q = QB["status"].is_truthy()
         query = q.build()
-        root = query.conditions[0]
+        root = query.conditions[0]  # ty:ignore[not-subscriptable]
 
         # Should be a complex AND group checking != null, != false, != 0, != ""
         assert isinstance(root, DataSearchGroup)
         assert root.operator == DataSearchLogicOperator.and_op
         # Check not null condition exists
         assert root.conditions[0].operator == DataSearchOperator.is_null
-        assert root.conditions[0].value is False
+        assert root.conditions[0].value is False  # ty:ignore[unresolved-attribute]
 
     def test_is_falsy(self):
         """Test is_falsy() for falsy value checks."""
         q = QB["optional"].is_falsy()
         query = q.build()
-        root = query.conditions[0]
+        root = query.conditions[0]  # ty:ignore[not-subscriptable]
 
         # Should be NOT(is_truthy()), i.e., NOT group with inner AND group
         assert isinstance(root, DataSearchGroup)
@@ -2277,7 +2279,7 @@ class TestResourceManagerWithQB:
 
         # Check all truthy conditions (negated)
         operators = [c.operator for c in inner.conditions]
-        values = [c.value for c in inner.conditions]
+        values = [c.value for c in inner.conditions]  # ty:ignore[unresolved-attribute]
 
         assert DataSearchOperator.is_null in operators
         assert False in values  # is_null(False)
@@ -2297,53 +2299,53 @@ class TestResourceManagerWithQB:
         query2 = q2.build()
 
         # Both should create complex conditions
-        assert isinstance(query1.conditions[0], DataSearchGroup)
-        assert isinstance(query2.conditions[0], DataSearchGroup)
+        assert isinstance(query1.conditions[0], DataSearchGroup)  # ty:ignore[not-subscriptable]
+        assert isinstance(query2.conditions[0], DataSearchGroup)  # ty:ignore[not-subscriptable]
 
     def test_boolean_methods_practical_example(self):
         """Test practical usage of boolean convenience methods."""
         # Find active, verified users who are not deleted
         q = QB["active"].is_true() & QB["verified"].is_true() & QB["deleted"].is_false()
         query = q.build()
-        root = query.conditions[0]
+        root = query.conditions[0]  # ty:ignore[not-subscriptable]
 
         assert root.operator == DataSearchLogicOperator.and_op
         # Structure is nested due to & chaining: (a & b) & c
         # So root has 2 conditions: left group and right condition
-        assert len(root.conditions) == 2
+        assert len(root.conditions) == 2  # ty:ignore[unresolved-attribute]
 
     def test_truthy_with_other_conditions(self):
         """Test is_truthy() combined with other query conditions."""
         q = QB["status"].is_truthy() & QB["age"].gte(18)
         query = q.build()
-        root = query.conditions[0]
+        root = query.conditions[0]  # ty:ignore[not-subscriptable]
 
         assert root.operator == DataSearchLogicOperator.and_op
-        assert len(root.conditions) == 2
+        assert len(root.conditions) == 2  # ty:ignore[unresolved-attribute]
 
     def test_is_truthy_rejects_empty_list(self):
         """Test that is_truthy() correctly rejects empty list."""
         q = QB["tags"].is_truthy()
         query = q.build()
-        root = query.conditions[0]
+        root = query.conditions[0]  # ty:ignore[not-subscriptable]
 
         # Should check not equals []
         assert root.operator == DataSearchLogicOperator.and_op
-        values = [c.value for c in root.conditions]
+        values = [c.value for c in root.conditions]  # ty:ignore[unresolved-attribute]
         assert [] in values
 
     def test_is_falsy_matches_empty_list(self):
         """Test that is_falsy() correctly matches empty list."""
         q = QB["tags"].is_falsy()
         query = q.build()
-        root = query.conditions[0]
+        root = query.conditions[0]  # ty:ignore[not-subscriptable]
 
         # Should be NOT(is_truthy()), with inner AND group having [] in conditions
         assert root.operator == DataSearchLogicOperator.not_op
-        inner = root.conditions[0]
+        inner = root.conditions[0]  # ty:ignore[unresolved-attribute]
         assert isinstance(inner, DataSearchGroup)
         assert inner.operator == DataSearchLogicOperator.and_op
-        values = [c.value for c in inner.conditions]
+        values = [c.value for c in inner.conditions]  # ty:ignore[unresolved-attribute]
         assert [] in values
 
     def test_invert_operator_is_falsy(self):
@@ -2355,11 +2357,11 @@ class TestResourceManagerWithQB:
         query2 = q2.build()
 
         # Both should produce identical conditions
-        assert isinstance(query1.conditions[0], DataSearchGroup)
-        assert isinstance(query2.conditions[0], DataSearchGroup)
+        assert isinstance(query1.conditions[0], DataSearchGroup)  # ty:ignore[not-subscriptable]
+        assert isinstance(query2.conditions[0], DataSearchGroup)  # ty:ignore[not-subscriptable]
 
-        root1 = query1.conditions[0]
-        root2 = query2.conditions[0]
+        root1 = query1.conditions[0]  # ty:ignore[not-subscriptable]
+        root2 = query2.conditions[0]  # ty:ignore[not-subscriptable]
 
         # Should be NOT groups
         assert root1.operator == DataSearchLogicOperator.not_op
@@ -2381,8 +2383,8 @@ class TestResourceManagerWithQB:
         assert len(inner2.conditions) == 5
 
         # Check values match
-        values1 = [c.value for c in inner1.conditions]
-        values2 = [c.value for c in inner2.conditions]
+        values1 = [c.value for c in inner1.conditions]  # ty:ignore[unresolved-attribute]
+        values2 = [c.value for c in inner2.conditions]  # ty:ignore[unresolved-attribute]
 
         # Convert to comparable form (use tuple for lists)
         def normalize_value(v):
@@ -2403,14 +2405,14 @@ class TestResourceManagerWithQB:
         # Active tasks without comments
         q = (QB["status"] == "active") & ~QB["comment"]
         query = q.build()
-        root = query.conditions[0]
+        root = query.conditions[0]  # ty:ignore[not-subscriptable]
 
         assert isinstance(root, DataSearchGroup)
         assert root.operator == DataSearchLogicOperator.and_op
         assert len(root.conditions) == 2
 
         # First condition: status == "active"
-        assert root.conditions[0].field_path == "status"
+        assert root.conditions[0].field_path == "status"  # ty:ignore[unresolved-attribute]
         assert root.conditions[0].operator == DataSearchOperator.equals
 
         # Second condition: is_falsy() group (NOT with inner AND)
@@ -2429,17 +2431,17 @@ class TestResourceManagerWithQB:
         # Find items without tags
         q1 = ~QB["tags"]
         query1 = q1.build()
-        assert isinstance(query1.conditions[0], DataSearchGroup)
+        assert isinstance(query1.conditions[0], DataSearchGroup)  # ty:ignore[not-subscriptable]
 
         # Find items without descriptions (empty or null)
         q2 = ~QB["description"]
         query2 = q2.build()
-        assert isinstance(query2.conditions[0], DataSearchGroup)
+        assert isinstance(query2.conditions[0], DataSearchGroup)  # ty:ignore[not-subscriptable]
 
         # Find inactive items (status is falsy)
         q3 = ~QB["status"]
         query3 = q3.build()
-        assert isinstance(query3.conditions[0], DataSearchGroup)
+        assert isinstance(query3.conditions[0], DataSearchGroup)  # ty:ignore[not-subscriptable]
 
     def test_length_method(self):
         """Test length() method for querying field length."""
@@ -2448,12 +2450,16 @@ class TestResourceManagerWithQB:
         # String length
         q = QB["name"].length() > 10
         query = q.build()
-        cond = query.conditions[0]
+        cond = query.conditions[0]  # ty:ignore[not-subscriptable]
 
-        assert cond.field_path == "name"  # Field path unchanged
-        assert cond.transform == FieldTransform.length  # Transform applied
+        assert (
+            cond.field_path == "name"  # ty:ignore[unresolved-attribute]
+        )  # Field path unchanged
+        assert (
+            cond.transform == FieldTransform.length  # ty:ignore[unresolved-attribute]
+        )  # Transform applied
         assert cond.operator == DataSearchOperator.greater_than
-        assert cond.value == 10
+        assert cond.value == 10  # ty:ignore[unresolved-attribute]
 
     def test_length_with_different_operators(self):
         """Test length() with various comparison operators."""
@@ -2461,27 +2467,27 @@ class TestResourceManagerWithQB:
 
         # Exact length
         q1 = QB["tags"].length() == 3
-        cond1 = q1.build().conditions[0]
-        assert cond1.field_path == "tags"
-        assert cond1.transform == FieldTransform.length
+        cond1 = q1.build().conditions[0]  # ty:ignore[not-subscriptable]
+        assert cond1.field_path == "tags"  # ty:ignore[unresolved-attribute]
+        assert cond1.transform == FieldTransform.length  # ty:ignore[unresolved-attribute]
         assert cond1.operator == DataSearchOperator.equals
 
         # Length range
         q2 = QB["description"].length().between(50, 200)
         query2 = q2.build()
-        group = query2.conditions[0]
+        group = query2.conditions[0]  # ty:ignore[not-subscriptable]
         assert isinstance(group, DataSearchGroup)
         assert group.operator == DataSearchLogicOperator.and_op
-        assert group.conditions[0].field_path == "description"
-        assert group.conditions[0].transform == FieldTransform.length
-        assert group.conditions[1].field_path == "description"
-        assert group.conditions[1].transform == FieldTransform.length
+        assert group.conditions[0].field_path == "description"  # ty:ignore[unresolved-attribute]
+        assert group.conditions[0].transform == FieldTransform.length  # ty:ignore[unresolved-attribute]
+        assert group.conditions[1].field_path == "description"  # ty:ignore[unresolved-attribute]
+        assert group.conditions[1].transform == FieldTransform.length  # ty:ignore[unresolved-attribute]
 
         # Less than
         q3 = QB["items"].length() < 5
-        cond3 = q3.build().conditions[0]
-        assert cond3.field_path == "items"
-        assert cond3.transform == FieldTransform.length
+        cond3 = q3.build().conditions[0]  # ty:ignore[not-subscriptable]
+        assert cond3.field_path == "items"  # ty:ignore[unresolved-attribute]
+        assert cond3.transform == FieldTransform.length  # ty:ignore[unresolved-attribute]
         assert cond3.operator == DataSearchOperator.less_than
 
     def test_length_empty_check(self):
@@ -2490,18 +2496,18 @@ class TestResourceManagerWithQB:
 
         # Empty list
         q1 = QB["tags"].length() == 0
-        cond1 = q1.build().conditions[0]
-        assert cond1.field_path == "tags"
-        assert cond1.transform == FieldTransform.length
-        assert cond1.value == 0
+        cond1 = q1.build().conditions[0]  # ty:ignore[not-subscriptable]
+        assert cond1.field_path == "tags"  # ty:ignore[unresolved-attribute]
+        assert cond1.transform == FieldTransform.length  # ty:ignore[unresolved-attribute]
+        assert cond1.value == 0  # ty:ignore[unresolved-attribute]
 
         # Non-empty
         q2 = QB["items"].length() > 0
-        cond2 = q2.build().conditions[0]
-        assert cond2.field_path == "items"
-        assert cond2.transform == FieldTransform.length
+        cond2 = q2.build().conditions[0]  # ty:ignore[not-subscriptable]
+        assert cond2.field_path == "items"  # ty:ignore[unresolved-attribute]
+        assert cond2.transform == FieldTransform.length  # ty:ignore[unresolved-attribute]
         assert cond2.operator == DataSearchOperator.greater_than
-        assert cond2.value == 0
+        assert cond2.value == 0  # ty:ignore[unresolved-attribute]
 
     def test_length_combined_with_other_conditions(self):
         """Test combining length() with other query conditions."""
@@ -2509,26 +2515,28 @@ class TestResourceManagerWithQB:
 
         q = (QB["tags"].length() >= 3) & (QB["status"] == "active")
         query = q.build()
-        group = query.conditions[0]
+        group = query.conditions[0]  # ty:ignore[not-subscriptable]
 
         assert group.operator == DataSearchLogicOperator.and_op
-        assert len(group.conditions) == 2
-        assert group.conditions[0].field_path == "tags"
-        assert group.conditions[0].transform == FieldTransform.length
-        assert group.conditions[1].field_path == "status"
-        assert group.conditions[1].transform is None  # No transform
+        assert len(group.conditions) == 2  # ty:ignore[unresolved-attribute]
+        assert group.conditions[0].field_path == "tags"  # ty:ignore[unresolved-attribute]
+        assert group.conditions[0].transform == FieldTransform.length  # ty:ignore[unresolved-attribute]
+        assert group.conditions[1].field_path == "status"  # ty:ignore[unresolved-attribute]
+        assert (
+            group.conditions[1].transform is None  # ty:ignore[unresolved-attribute]
+        )  # No transform
 
     def test_length_on_nested_fields(self):
         """Test length() on nested field paths."""
         from autocrud.query_types import FieldTransform
 
         q = QB["user.tags"].length() > 5
-        cond = q.build().conditions[0]
+        cond = q.build().conditions[0]  # ty:ignore[not-subscriptable]
 
-        assert cond.field_path == "user.tags"
-        assert cond.transform == FieldTransform.length
+        assert cond.field_path == "user.tags"  # ty:ignore[unresolved-attribute]
+        assert cond.transform == FieldTransform.length  # ty:ignore[unresolved-attribute]
         assert cond.operator == DataSearchOperator.greater_than
-        assert cond.value == 5
+        assert cond.value == 5  # ty:ignore[unresolved-attribute]
 
     def test_length_with_resource_manager(self, resource_manager: ResourceManager):
         """Test length() integration with actual resource search."""
@@ -2562,7 +2570,7 @@ class TestResourceManagerWithQB:
                 "tags": ["python", "docker", "k8s"],
             },
         )
-        resource_manager.storage._meta_store["5"] = meta_with_tags
+        resource_manager.storage._meta_store["5"] = meta_with_tags  # ty:ignore[unresolved-attribute]
 
         # Search for resources with more than 2 tags
         query = QB["tags"].length() > 2
@@ -2589,7 +2597,7 @@ class TestResourceManagerWithQB:
             updated_by="user6",
             indexed_data={"name": "Frank", "age": 45, "dept": "HR", "tags": []},
         )
-        resource_manager.storage._meta_store["6"] = meta_empty
+        resource_manager.storage._meta_store["6"] = meta_empty  # ty:ignore[unresolved-attribute]
 
         # Search for resources with no tags
         query = QB["tags"].length() == 0
@@ -2628,7 +2636,7 @@ class TestQueryBuilderEdgeCases:
         assert query.conditions is UNSET
         # Chaining works
         assert query.limit == 20
-        assert len(query.sorts) == 1
+        assert len(query.sorts) == 1  # ty:ignore[invalid-argument-type]
 
     def test_all_empty_with_and_operator(self):
         """Test QB.all() with no conditions can be combined with & operator."""
@@ -2638,8 +2646,8 @@ class TestQueryBuilderEdgeCases:
         query = q.build()
 
         # Should have just the age condition
-        assert len(query.conditions) == 1
-        cond = query.conditions[0]
+        assert len(query.conditions) == 1  # ty:ignore[invalid-argument-type]
+        cond = query.conditions[0]  # ty:ignore[not-subscriptable]
         assert isinstance(cond, DataSearchCondition)
         assert cond.field_path == "age"
         assert cond.operator == DataSearchOperator.greater_than
@@ -2661,8 +2669,8 @@ class TestQueryBuilderEdgeCases:
         query = q.build()
 
         # Should be a single condition, not wrapped in a group
-        assert len(query.conditions) == 1
-        cond = query.conditions[0]
+        assert len(query.conditions) == 1  # ty:ignore[invalid-argument-type]
+        cond = query.conditions[0]  # ty:ignore[not-subscriptable]
         assert isinstance(cond, DataSearchCondition)
         assert cond.field_path == "age"
         assert cond.operator == DataSearchOperator.greater_than
@@ -2675,8 +2683,8 @@ class TestQueryBuilderEdgeCases:
         query = q.build()
 
         # Should be a single condition, not wrapped in a group
-        assert len(query.conditions) == 1
-        cond = query.conditions[0]
+        assert len(query.conditions) == 1  # ty:ignore[invalid-argument-type]
+        cond = query.conditions[0]  # ty:ignore[not-subscriptable]
         assert isinstance(cond, DataSearchCondition)
         assert cond.field_path == "status"
         assert cond.operator == DataSearchOperator.equals

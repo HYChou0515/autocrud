@@ -232,13 +232,13 @@ class ImportRouteTemplate(BaseRouteTemplate):
                         skipped += 1
                         # Decode meta to track skipped resource ids so we
                         # can skip their revisions too.
-                        meta = resource_manager.meta_serializer.decode(record.data)
+                        meta = resource_manager.meta_serializer.decode(record.data)  # ty:ignore[unresolved-attribute]
                         skipped_ids.add(meta.resource_id)
 
                 elif isinstance(record, RevisionRecord):
                     if not in_target_section:
                         continue
-                    raw = resource_manager.resource_serializer.decode(record.data)
+                    raw = resource_manager.resource_serializer.decode(record.data)  # ty:ignore[unresolved-attribute]
                     if raw.info.resource_id in skipped_ids:
                         continue
                     resource_manager.load_record(record, strategy)

@@ -42,7 +42,7 @@ class TestCaseUtil:
     def setup_permission_system(self):
         """設置完整的權限系統"""
         # 設定基本組件
-        resource_store = MemoryResourceStore(TestDocument)
+        resource_store = MemoryResourceStore(TestDocument)  # ty:ignore[invalid-argument-type]
         storage = SimpleStorage(
             meta_store=MemoryMetaStore(),
             resource_store=resource_store,
@@ -100,7 +100,9 @@ class TestPermissionCreationAndManagement(TestCaseUtil):
             # 驗證權限被正確創建
             assert alice_resource_id is not None
             assert bob_resource_id is not None
-            assert len(pm.storage._meta_store) == 2  # 兩個權限記錄
+            assert (
+                len(pm.storage._meta_store) == 2  # ty:ignore[unresolved-attribute]
+            )  # 兩個權限記錄
 
 
 class TestRootUserPermissions(TestCaseUtil):
@@ -115,7 +117,7 @@ class TestRootUserPermissions(TestCaseUtil):
                     now=self.current_time,
                     resource_name="test_document",
                     data={"title": "Root's Doc", "content": "Content"},
-                ),
+                ),  # ty:ignore[invalid-argument-type]
             )
             is PermissionResult.allow
         )
@@ -137,7 +139,7 @@ class TestRootUserPermissions(TestCaseUtil):
                     now=self.current_time,
                     resource_name="test_document",
                     data={"title": "Root's Doc", "content": "Content"},
-                ),
+                ),  # ty:ignore[invalid-argument-type]
             )
             is PermissionResult.allow
         )
@@ -521,7 +523,7 @@ class TestComplexPermissionScenarios(TestCaseUtil):
                     now=current_time,
                     resource_name="other_resource",
                     data={"field": "value"},
-                ),
+                ),  # ty:ignore[invalid-argument-type]
             )
             is PermissionResult.allow
         )
@@ -545,7 +547,7 @@ class TestComplexPermissionScenarios(TestCaseUtil):
                     now=current_time,
                     resource_name="test_document",
                     data={"field": "value"},
-                ),
+                ),  # ty:ignore[invalid-argument-type]
             )
             is PermissionResult.deny
         )

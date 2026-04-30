@@ -117,6 +117,7 @@ AutoCRUD stores two levels of metadata:
 * audit fields (`created_*`, `updated_*`)
 * `is_deleted`
 * `indexed_data` (for search)
+* **revision mirror fields** (`rev_status`, `rev_created_by`, `rev_updated_by`, `rev_created_time`, `rev_updated_time`) — a denormalized snapshot of the current revision's key attributes, kept in sync automatically so they can be used as search filters without reading each revision separately
 
 ### Revision-level meta: `RevisionInfo`
 

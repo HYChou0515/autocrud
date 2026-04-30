@@ -28,34 +28,32 @@ from msgspec import Struct
 # Record types (tagged union via ``tag_field="t"``)
 # ---------------------------------------------------------------------------
 
-_TAG = {"tag": True, "tag_field": "t"}
 
-
-class HeaderRecord(Struct, **_TAG):
+class HeaderRecord(Struct, tag=True, tag_field="t"):
     """First record — carries format version."""
 
     version: int = 2
 
 
-class ModelStartRecord(Struct, **_TAG):
+class ModelStartRecord(Struct, tag=True, tag_field="t"):
     """Marks the beginning of a model section."""
 
     model_name: str
 
 
-class MetaRecord(Struct, **_TAG):
+class MetaRecord(Struct, tag=True, tag_field="t"):
     """Serialised ``ResourceMeta`` bytes."""
 
     data: bytes
 
 
-class RevisionRecord(Struct, **_TAG):
+class RevisionRecord(Struct, tag=True, tag_field="t"):
     """Serialised ``RawResource`` bytes (RevisionInfo + raw data)."""
 
     data: bytes
 
 
-class BlobRecord(Struct, **_TAG):
+class BlobRecord(Struct, tag=True, tag_field="t"):
     """Complete binary blob entry."""
 
     file_id: str
@@ -64,13 +62,13 @@ class BlobRecord(Struct, **_TAG):
     content_type: str
 
 
-class ModelEndRecord(Struct, **_TAG):
+class ModelEndRecord(Struct, tag=True, tag_field="t"):
     """Marks the end of a model section."""
 
     model_name: str
 
 
-class EofRecord(Struct, **_TAG):
+class EofRecord(Struct, tag=True, tag_field="t"):
     """Last record — signals end of stream."""
 
     pass

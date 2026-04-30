@@ -39,7 +39,7 @@ class TestMigrateProgressInOpenAPI:
 
     def test_migrate_progress_in_openapi_components(self, app_with_migrate: FastAPI):
         """MigrateProgress 應出現在 components/schemas 中"""
-        schemas = app_with_migrate.openapi_schema["components"]["schemas"]
+        schemas = app_with_migrate.openapi_schema["components"]["schemas"]  # ty:ignore[not-subscriptable]
         assert "MigrateProgress" in schemas, (
             f"MigrateProgress not found in OpenAPI components/schemas. "
             f"Available schemas: {sorted(schemas.keys())}"
@@ -47,7 +47,7 @@ class TestMigrateProgressInOpenAPI:
 
     def test_migrate_result_in_openapi_components(self, app_with_migrate: FastAPI):
         """MigrateResult 應出現在 components/schemas 中"""
-        schemas = app_with_migrate.openapi_schema["components"]["schemas"]
+        schemas = app_with_migrate.openapi_schema["components"]["schemas"]  # ty:ignore[not-subscriptable]
         assert "MigrateResult" in schemas, (
             f"MigrateResult not found in OpenAPI components/schemas. "
             f"Available schemas: {sorted(schemas.keys())}"
@@ -57,7 +57,7 @@ class TestMigrateProgressInOpenAPI:
         self, app_with_migrate: FastAPI
     ):
         """MigrateProgress schema 應包含 resource_id 和 status 必填欄位"""
-        schemas = app_with_migrate.openapi_schema["components"]["schemas"]
+        schemas = app_with_migrate.openapi_schema["components"]["schemas"]  # ty:ignore[not-subscriptable]
         if "MigrateProgress" not in schemas:
             pytest.skip(
                 "MigrateProgress not yet in OpenAPI (test_migrate_progress_in_openapi_components should fail first)"
@@ -72,7 +72,7 @@ class TestMigrateProgressInOpenAPI:
 
     def test_migrate_result_schema_has_required_fields(self, app_with_migrate: FastAPI):
         """MigrateResult schema 應包含 total, success, failed, skipped 必填欄位"""
-        schemas = app_with_migrate.openapi_schema["components"]["schemas"]
+        schemas = app_with_migrate.openapi_schema["components"]["schemas"]  # ty:ignore[not-subscriptable]
         if "MigrateResult" not in schemas:
             pytest.skip(
                 "MigrateResult not yet in OpenAPI (test_migrate_result_in_openapi_components should fail first)"

@@ -213,7 +213,7 @@ class TestMetaStoreIterSearch:
         condition = QB["name"].length() > 6
 
         query = ResourceMetaSearchQuery(
-            data_conditions=[condition._condition],
+            data_conditions=[condition._condition],  # ty:ignore[invalid-argument-type]
             limit=10,
             offset=0,
         )
@@ -232,7 +232,7 @@ class TestMetaStoreIterSearch:
         condition = QB["email"].length() >= 20
 
         query = ResourceMetaSearchQuery(
-            data_conditions=[condition._condition],
+            data_conditions=[condition._condition],  # ty:ignore[invalid-argument-type]
             limit=10,
             offset=0,
         )
@@ -253,7 +253,7 @@ class TestMetaStoreIterSearch:
         condition = QB["name"].length().eq(3)
 
         query = ResourceMetaSearchQuery(
-            data_conditions=[condition._condition],
+            data_conditions=[condition._condition],  # ty:ignore[invalid-argument-type]
             limit=10,
             offset=0,
         )
@@ -326,7 +326,7 @@ class TestMetaStoreIterSearch:
         condition = QB["tags"].length() > 1
 
         query = ResourceMetaSearchQuery(
-            data_conditions=[condition._condition],
+            data_conditions=[condition._condition],  # ty:ignore[invalid-argument-type]
             limit=10,
             offset=0,
         )
@@ -346,7 +346,7 @@ class TestMetaStoreIterSearch:
         condition = (QB["department"].eq("Engineering")) & (QB["name"].length() > 4)
 
         query = ResourceMetaSearchQuery(
-            data_conditions=[condition._condition],
+            data_conditions=[condition._condition],  # ty:ignore[invalid-argument-type]
             limit=10,
             offset=0,
         )
@@ -393,7 +393,7 @@ class TestMetaStoreIterSearch:
         )
 
         query_eng_devs = ResourceMetaSearchQuery(
-            data_conditions=[condition._condition],
+            data_conditions=[condition._condition],  # ty:ignore[invalid-argument-type]
         )
 
         results = list(self.meta_store.iter_search(query_eng_devs))
@@ -481,7 +481,7 @@ class TestMetaStoreIterSearch:
         )
 
         query_combined = ResourceMetaSearchQuery(
-            data_conditions=[condition._condition],
+            data_conditions=[condition._condition],  # ty:ignore[invalid-argument-type]
         )
 
         results = list(self.meta_store.iter_search(query_combined))
@@ -570,7 +570,7 @@ class TestMetaStoreIterSearch:
 
         # Test 1: Using QB.is_deleted() == False
         query1 = ResourceMetaSearchQuery(
-            conditions=[QB["is_deleted"].eq(False)._condition],
+            conditions=[QB["is_deleted"].eq(False)._condition],  # ty:ignore[invalid-argument-type]
             limit=100,
             offset=0,
         )
@@ -581,7 +581,7 @@ class TestMetaStoreIterSearch:
         # ~QB.is_deleted() should negate it
         condition2 = ~QB["is_deleted"]
         query2 = ResourceMetaSearchQuery(
-            conditions=[condition2._condition],
+            conditions=[condition2._condition],  # ty:ignore[invalid-argument-type]
             limit=100,
             offset=0,
         )
@@ -923,7 +923,7 @@ class TestIndexedValueExtractor:
 
         indexed_fields = [
             IndexableField(field_path="name", field_type=str),
-            IndexableField(field_path="email", field_type=str | None),
+            IndexableField(field_path="email", field_type=str | None),  # ty:ignore[invalid-argument-type]
         ]
         extractor = IndexedValueExtractor(indexed_fields)
 
@@ -944,7 +944,7 @@ class TestIndexedValueExtractor:
         indexed_fields = [
             IndexableField(field_path="name", field_type=str),
             IndexableField(field_path="created_at", field_type=dt.datetime),
-            IndexableField(field_path="updated_at", field_type=dt.datetime | None),
+            IndexableField(field_path="updated_at", field_type=dt.datetime | None),  # ty:ignore[invalid-argument-type]
         ]
         extractor = IndexedValueExtractor(indexed_fields)
 
@@ -977,7 +977,7 @@ class TestIndexedValueExtractor:
             IndexableField(field_path="name", field_type=str),
             IndexableField(field_path="price", field_type=float),
             IndexableField(field_path="quantity", field_type=int),
-            IndexableField(field_path="discount_rate", field_type=float | None),
+            IndexableField(field_path="discount_rate", field_type=float | None),  # ty:ignore[invalid-argument-type]
         ]
         extractor = IndexedValueExtractor(indexed_fields)
 

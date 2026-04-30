@@ -621,7 +621,7 @@ class TestFindAnnotatedFields:
 
     def test_non_class_returns_empty(self):
         """Non-type input should return empty list, not raise."""
-        assert find_annotated_fields(42, _MarkerA) == []  # type: ignore[arg-type]
+        assert find_annotated_fields(42, _MarkerA) == []  # type: ignore[arg-type]  # ty:ignore[invalid-argument-type]
 
 
 # ── get_type_name ───────────────────────────────────────────────────────────
@@ -794,4 +794,4 @@ class TestGetFieldRawType:
         assert get_field_raw_type(M, "val") == int | None
 
     def test_non_class_returns_default(self):
-        assert get_field_raw_type(42, "x") is None  # type: ignore[arg-type]
+        assert get_field_raw_type(42, "x") is None  # type: ignore[arg-type]  # ty:ignore[invalid-argument-type]

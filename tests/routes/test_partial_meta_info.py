@@ -149,13 +149,13 @@ class TestFilterStructPartial:
             current_revision_id="rev1",
             resource_id="r1",
             total_revision_count=1,
-            created_time=msgspec.UNSET,
-            updated_time=msgspec.UNSET,
+            created_time=msgspec.UNSET,  # ty:ignore[invalid-argument-type]
+            updated_time=msgspec.UNSET,  # ty:ignore[invalid-argument-type]
             created_by="user",
             updated_by="user",
         )
         result = filter_struct_partial(meta, ["/resource_id"])
-        assert result.resource_id == "r1"
+        assert result.resource_id == "r1"  # ty:ignore[unresolved-attribute]
         # Partial type only contains requested fields
         assert not hasattr(result, "current_revision_id")
 
@@ -164,20 +164,20 @@ class TestFilterStructPartial:
             current_revision_id="rev1",
             resource_id="r1",
             total_revision_count=3,
-            created_time=msgspec.UNSET,
-            updated_time=msgspec.UNSET,
+            created_time=msgspec.UNSET,  # ty:ignore[invalid-argument-type]
+            updated_time=msgspec.UNSET,  # ty:ignore[invalid-argument-type]
             created_by="admin",
             updated_by="admin",
         )
         result = filter_struct_partial(meta, ["/resource_id", "/created_by"])
-        assert result.resource_id == "r1"
-        assert result.created_by == "admin"
+        assert result.resource_id == "r1"  # ty:ignore[unresolved-attribute]
+        assert result.created_by == "admin"  # ty:ignore[unresolved-attribute]
         assert not hasattr(result, "current_revision_id")
 
     def test_filter_item_struct(self):
         item = Item(name="Widget", description="A fine widget", price=42)
         result = filter_struct_partial(item, ["/name"])
-        assert result.name == "Widget"
+        assert result.name == "Widget"  # ty:ignore[unresolved-attribute]
         assert (
             not hasattr(result, "description")
             or getattr(result, "description", msgspec.UNSET) is msgspec.UNSET

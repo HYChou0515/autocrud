@@ -1,6 +1,6 @@
 import datetime as dt
 import textwrap
-from typing import Generic, Optional, TypeVar
+from typing import Any, Generic, Optional, TypeVar, cast
 
 from fastapi import APIRouter, Depends, HTTPException, Path, Query, Request, Response
 from msgspec import UNSET
@@ -261,14 +261,19 @@ class ReadRouteTemplate(BaseRouteTemplate, Generic[T]):
             return MsgspecResponse(
                 FullResourceResponse(
                     data=data,
-                    revision_info=revision_info,
-                    meta=meta,
+                    # ``filter_struct_partial`` returns a partial-shaped Struct;
+                    # ty sees ``Struct`` while runtime is still RevisionInfo/
+                    # ResourceMeta-compatible.
+                    revision_info=cast(Any, revision_info),
+                    meta=cast(Any, meta),
                 ),
             )
 
         @router.get(
             f"/{model_name}/{{resource_id}}/full",
-            responses=struct_to_responses_type(FullResourceResponse[resource_type]),
+            responses=struct_to_responses_type(
+                FullResourceResponse[resource_type]  # ty: ignore[invalid-type-form]
+            ),
             summary=f"Get Complete {model_name} Information",
             tags=[f"{model_name}"],
             deprecated=True,
@@ -518,18 +523,23 @@ class ReadRouteTemplate(BaseRouteTemplate, Generic[T]):
                     revision_infos = revision_infos[offset : offset + limit]
                     has_more = offset + limit < total
 
-                    # Apply partial filtering
+                    # Apply partial filtering. ``filter_struct_partial``
+                    # narrows to ``Struct`` for ty; runtime keeps the
+                    # RevisionInfo / ResourceMeta shape.
                     if spec.meta_fields:
                         meta = filter_struct_partial(meta, spec.meta_fields)
                     if spec.info_fields:
-                        revision_infos = [
-                            filter_struct_partial(r, spec.info_fields)
-                            for r in revision_infos
-                        ]
+                        revision_infos = cast(
+                            "list[RevisionInfo]",
+                            [
+                                filter_struct_partial(r, spec.info_fields)
+                                for r in revision_infos
+                            ],
+                        )
 
                     return MsgspecResponse(
                         RevisionListResponse(
-                            meta=meta,
+                            meta=cast(Any, meta),
                             revisions=revision_infos,
                             total=total,
                             has_more=has_more,
@@ -684,7 +694,9 @@ class ReadRouteTemplate(BaseRouteTemplate, Generic[T]):
         # New bare path endpoint — canonical GET for a single resource
         @router.get(
             f"/{model_name}/{{resource_id}}",
-            responses=struct_to_responses_type(FullResourceResponse[resource_type]),
+            responses=struct_to_responses_type(
+                FullResourceResponse[resource_type]  # ty: ignore[invalid-type-form]
+            ),
             summary=f"Get {model_name} resource",
             tags=[f"{model_name}"],
             description=textwrap.dedent(

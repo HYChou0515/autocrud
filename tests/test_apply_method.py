@@ -177,7 +177,7 @@ class TestApplyWithRouter:
         sub_router = APIRouter(prefix="/api")
         crud.apply(app, router=sub_router, structs=[ExtraSchema])
 
-        assert "ExtraSchema" in app.openapi_schema["components"]["schemas"]
+        assert "ExtraSchema" in app.openapi_schema["components"]["schemas"]  # ty:ignore[not-subscriptable]
 
 
 # ---------------------------------------------------------------------------

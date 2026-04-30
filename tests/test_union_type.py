@@ -60,35 +60,35 @@ def test_resource_name_union_type_two_args():
     """_resource_name(Cat | Dog) with default kebab naming should return 'cat-or-dog'."""
     ac = AutoCRUDClass()
     ac.configure()
-    assert ac._resource_name(Cat | Dog) == "cat-or-dog"
+    assert ac._resource_name(Cat | Dog) == "cat-or-dog"  # ty:ignore[invalid-argument-type]
 
 
 def test_resource_name_union_type_three_args():
     """_resource_name(Cat | Dog | Bird) with kebab should return 'cat-or-dog-or-bird'."""
     ac = AutoCRUDClass()
     ac.configure()
-    assert ac._resource_name(Cat | Dog | Bird) == "cat-or-dog-or-bird"
+    assert ac._resource_name(Cat | Dog | Bird) == "cat-or-dog-or-bird"  # ty:ignore[invalid-argument-type]
 
 
 def test_resource_name_union_type_snake():
     """_resource_name with snake model_naming should return 'cat_or_dog'."""
     ac = AutoCRUDClass()
     ac.configure(model_naming="snake")
-    assert ac._resource_name(Cat | Dog) == "cat_or_dog"
+    assert ac._resource_name(Cat | Dog) == "cat_or_dog"  # ty:ignore[invalid-argument-type]
 
 
 def test_resource_name_union_type_kebab():
     """_resource_name with kebab model_naming should return 'cat-or-dog'."""
     ac = AutoCRUDClass()
     ac.configure(model_naming="kebab")
-    assert ac._resource_name(Cat | Dog) == "cat-or-dog"
+    assert ac._resource_name(Cat | Dog) == "cat-or-dog"  # ty:ignore[invalid-argument-type]
 
 
 def test_resource_name_union_type_same():
     """_resource_name with 'same' model_naming should return 'CatOrDog' (PascalCase)."""
     ac = AutoCRUDClass()
     ac.configure(model_naming="same")
-    assert ac._resource_name(Cat | Dog) == "CatOrDog"
+    assert ac._resource_name(Cat | Dog) == "CatOrDog"  # ty:ignore[invalid-argument-type]
 
 
 def test_resource_name_uninferrable_raises_clear_error():
@@ -113,9 +113,11 @@ def test_get_resource_manager_multiple_names_error_message_safe():
     ac = AutoCRUDClass()
     ac.configure()
     # Manually simulate a conflicting registration state
-    ac.model_names[Cat | Dog] = None  # None means multiple names registered
+    ac.model_names[Cat | Dog] = (
+        None  # None means multiple names registered  # ty:ignore[invalid-assignment]
+    )
     with pytest.raises(ValueError, match="registered with multiple names"):
-        ac.get_resource_manager(Cat | Dog)
+        ac.get_resource_manager(Cat | Dog)  # ty:ignore[invalid-argument-type]
 
 
 def test_add_model_duplicate_registration_warning_safe(caplog):
@@ -125,7 +127,7 @@ def test_add_model_duplicate_registration_warning_safe(caplog):
     ac = AutoCRUDClass()
     ac.configure()
     # Simulate conflicting registration state: model is in model_names with None value
-    ac.model_names[Cat | Dog] = None
+    ac.model_names[Cat | Dog] = None  # ty:ignore[invalid-assignment]
     with caplog.at_level(logging.WARNING, logger="autocrud"):
         model = Cat | Dog
         # Verify getattr fallback doesn't crash and produces a readable message
@@ -144,7 +146,7 @@ def test_add_model_duplicate_registration_warning_safe(caplog):
 
 UNION_MODELS = [
     pytest.param(Cat | Dog, id="Cat|Dog"),
-    pytest.param(Schema(Cat | Dog, "v1"), id="Schema(Cat|Dog)"),
+    pytest.param(Schema(Cat | Dog, "v1"), id="Schema(Cat|Dog)"),  # ty:ignore[invalid-argument-type]
 ]
 
 STRUCT_WITH_UNION_MODELS = [
@@ -244,7 +246,7 @@ def test_struct_with_union_field_create_and_get(model):
 
 OPENAPI_UNION_MODELS = [
     pytest.param(Cat | Dog, id="Cat|Dog"),
-    pytest.param(Schema(Cat | Dog, "v1"), id="Schema(Cat|Dog)"),
+    pytest.param(Schema(Cat | Dog, "v1"), id="Schema(Cat|Dog)"),  # ty:ignore[invalid-argument-type]
 ]
 
 OPENAPI_STRUCT_MODELS = [
@@ -301,7 +303,7 @@ def test_openapi_schema_names_no_dots_for_union_resource(model):
     ac.apply(app)
     ac.openapi(app)
 
-    schema_names = list(app.openapi_schema["components"]["schemas"].keys())
+    schema_names = list(app.openapi_schema["components"]["schemas"].keys())  # ty:ignore[not-subscriptable]
     dotted = [n for n in schema_names if "." in n]
     assert dotted == [], f"Schema names must not contain dots, but found: {dotted}"
 
@@ -318,7 +320,7 @@ def test_openapi_schema_names_no_dots_for_struct_with_union_field(model):
     ac.apply(app)
     ac.openapi(app)
 
-    schema_names = list(app.openapi_schema["components"]["schemas"].keys())
+    schema_names = list(app.openapi_schema["components"]["schemas"].keys())  # ty:ignore[not-subscriptable]
     dotted = [n for n in schema_names if "." in n]
     assert dotted == [], f"Schema names must not contain dots, but found: {dotted}"
 
@@ -331,13 +333,13 @@ def test_openapi_refs_consistent_after_dot_sanitisation():
 
     ac = AutoCRUDClass()
     ac.configure(model_naming="same")
-    ac.add_model(Cat | Dog)
+    ac.add_model(Cat | Dog)  # ty:ignore[invalid-argument-type]
     app = FastAPI()
     ac.apply(app)
     ac.openapi(app)
 
     schema_json = json.dumps(app.openapi_schema)
-    components = app.openapi_schema["components"]["schemas"]
+    components = app.openapi_schema["components"]["schemas"]  # ty:ignore[not-subscriptable]
 
     # Every $ref must point to an existing component
     import re
@@ -383,11 +385,11 @@ class TestUnionMemberMetadataInjection:
         ac = AutoCRUDClass()
         ac.configure(model_naming="same")
         ac.add_model(Owner)
-        ac.add_model(RefPet)
+        ac.add_model(RefPet)  # ty:ignore[invalid-argument-type]
         app = FastAPI()
         ac.apply(app)
         ac.openapi(app)
-        return app.openapi_schema["components"]["schemas"]
+        return app.openapi_schema["components"]["schemas"]  # ty:ignore[not-subscriptable]
 
     def test_union_member_ref_injected_on_dog(self):
         """RefDog.owner_id should have x-ref-resource = 'owner'."""
@@ -422,12 +424,12 @@ class TestUnionMemberMetadataInjection:
         ac = AutoCRUDClass()
         ac.configure(model_naming="same")
         ac.add_model(Owner)
-        ac.add_model(RefPet, name="ref-pet")
+        ac.add_model(RefPet, name="ref-pet")  # ty:ignore[invalid-argument-type]
         app = FastAPI()
         ac.apply(app)
         ac.openapi(app)
 
-        rels = app.openapi_schema.get("x-autocrud-relationships", [])
+        rels = app.openapi_schema.get("x-autocrud-relationships", [])  # ty:ignore[unresolved-attribute]
         pet_rels = [r for r in rels if r["source"] == "ref-pet"]
         assert len(pet_rels) >= 2, (
             f"Expected >=2 refs from union members, got: {pet_rels}"

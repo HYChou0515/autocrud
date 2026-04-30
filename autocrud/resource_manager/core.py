@@ -2,11 +2,12 @@ import concurrent.futures
 import datetime as dt
 import inspect
 import io
+import json
 import threading
 import traceback
 import warnings
 from collections.abc import Callable, Generator, Iterable, Sequence
-from contextlib import ExitStack, contextmanager, suppress
+from contextlib import AbstractContextManager, ExitStack, contextmanager, suppress
 from functools import cached_property, wraps
 from typing import (
     IO,
@@ -15,6 +16,7 @@ from typing import (
     Generic,
     Literal,
     NamedTuple,
+    TypedDict,
     TypeVar,
 )
 from uuid import uuid4
@@ -148,7 +150,6 @@ from autocrud.resource_manager.basic import (
     MsgspecSerializer,
 )
 from autocrud.resource_manager.binary_processor import BinaryProcessor
-from autocrud.resource_manager.data_converter import DataConverter
 from autocrud.resource_manager.dump_format import (
     BlobRecord,
     MetaRecord,
@@ -190,7 +191,7 @@ class IndexedValueExtractor:
             value = UNSET
             if field.field_type == SpecialIndex.msgspec_tag:
                 with suppress(Exception):
-                    value = msgspec.inspect.type_info(type(data)).tag
+                    value = getattr(msgspec.inspect.type_info(type(data)), "tag", UNSET)
             else:
                 # 使用 JSON path 提取值
                 with suppress(Exception):
@@ -275,7 +276,7 @@ class SimpleStorage(IStorage):
         resource_id: str,
         revision_id: str,
         schema_version: str | None | UnsetType = UNSET,
-    ) -> IO[bytes]:
+    ) -> AbstractContextManager[IO[bytes]]:
         if schema_version is UNSET:
             meta = self.get_meta(resource_id)
             schema_version = meta.schema_version
@@ -359,11 +360,7 @@ class SimpleStorage(IStorage):
         provide a bulk dump method, signalling the caller to fall back
         to per-resource streaming via :meth:`dump_resource`.
         """
-        if hasattr(self._resource_store, "dump_all_revisions"):
-            return self._resource_store.dump_all_revisions(
-                resource_ids=resource_ids,
-            )
-        return None
+        return self._resource_store.dump_all_revisions(resource_ids=resource_ids)
 
     # ------------------------------------------------------------------
     # Bulk load helpers
@@ -378,11 +375,7 @@ class SimpleStorage(IStorage):
         """
         if not metas:
             return
-        if hasattr(self._meta_store, "save_many"):
-            self._meta_store.save_many(metas)
-        else:
-            for m in metas:
-                self._meta_store[m.resource_id] = m
+        self._meta_store.save_many(metas)
 
     def save_revisions_bulk(self, items: list[tuple[RevisionInfo, bytes]]) -> None:
         """Bulk save multiple revisions.
@@ -393,11 +386,7 @@ class SimpleStorage(IStorage):
         """
         if not items:
             return
-        if hasattr(self._resource_store, "save_many"):
-            self._resource_store.save_many(items)
-        else:
-            for info, raw in items:
-                self._resource_store.save(info, io.BytesIO(raw))
+        self._resource_store.save_many(items)
 
 
 class _BlobEntry(Struct, kw_only=True):
@@ -409,46 +398,59 @@ class _BlobEntry(Struct, kw_only=True):
     content_type: str
 
 
-class _BuildRevInfoCreate(Struct):
+class _BuildRevInfoCreate(Struct, Generic[T]):
     data: T
     status: RevisionStatus = RevisionStatus.stable
 
 
-class _BuildRevInfoUpdate(Struct):
+class _BuildRevInfoUpdate(Struct, Generic[T]):
     prev_res_meta: ResourceMeta
     data: T
     status: RevisionStatus = RevisionStatus.stable
 
 
-class _BuildRevInfoModify(Struct):
+class _BuildRevInfoModify(Struct, Generic[T]):
     prev_res_meta: ResourceMeta
     prev_info: RevisionInfo
     data: T | UnsetType
     status: RevisionStatus | UnsetType = RevisionStatus.stable
 
 
-class _BuildResMetaCreate(Struct):
+class _BuildResMetaCreate(Struct, Generic[T]):
     rev_info: RevisionInfo
     data: T
 
 
-class _BuildResMetaUpdate(Struct):
+class _BuildResMetaUpdate(Struct, Generic[T]):
     prev_res_meta: ResourceMeta
     rev_info: RevisionInfo
     data: T
 
 
-class _BuildResMetaModify(Struct):
+class _BuildResMetaModify(Struct, Generic[T]):
     prev_res_meta: ResourceMeta
     rev_info: RevisionInfo
     data: T | UnsetType
 
 
 class _Contexts(NamedTuple):
-    before: EventContext
-    after: EventContext
-    on_success: EventContext
-    on_failure: EventContext
+    # Each entry is one of the 64 event-context Struct *classes*; we
+    # construct via ``contexts.before(**inputs_)`` etc. ty can't
+    # statically validate the dict-spread against the specific
+    # constructor signature, so we widen to ``Any``.
+    before: Any
+    after: Any
+    on_success: Any
+    on_failure: Any
+
+
+class _LoadCtxKw(TypedDict):
+    """Common kwargs shared by every Load event context constructor."""
+
+    user: str | UnsetType
+    now: dt.datetime | UnsetType
+    resource_name: str
+    record_type: str
 
 
 class PermissionEventHandler(IEventHandler):
@@ -492,7 +494,7 @@ def coerce_data_to_resource_type(func):
 
 
 def execute_with_events(
-    contexts: _Contexts,
+    contexts: "_Contexts | tuple[Any, Any, Any, Any]",
     result: str | Callable[[Any], dict[str, Any]],
     *,
     inputs: dict[str, str | UnsetType] | None = None,
@@ -850,14 +852,18 @@ class ResourceManager(IResourceManager[T], Generic[T]):
                 f"migration must be Schema, IMigration, or None, got {type(migration).__name__}"
             )
 
+        self.user_ctx: Ctx[str]
+        self.now_ctx: Ctx[dt.datetime]
         if default_user is UNSET:
             self.user_ctx = Ctx("user_ctx", strict_type=str)
-        elif callable(default_user):
-            self.user_ctx = Ctx(
-                "user_ctx", strict_type=str, default_factory=default_user
-            )
-        else:
+        elif isinstance(default_user, str):
             self.user_ctx = Ctx("user_ctx", strict_type=str, default=default_user)
+        else:
+            self.user_ctx = Ctx(
+                "user_ctx",
+                strict_type=str,
+                default_factory=default_user,
+            )
         if default_now is UNSET:
             self.now_ctx = Ctx("now_ctx", strict_type=dt.datetime)
         else:
@@ -879,7 +885,6 @@ class ResourceManager(IResourceManager[T], Generic[T]):
         else:
             self._resource_name = name
 
-        self.data_converter = DataConverter(self.resource_type)
         schema_version = (
             self._schema.schema_version if self._schema is not None else None
         )
@@ -914,17 +919,11 @@ class ResourceManager(IResourceManager[T], Generic[T]):
         # Constraint checkers（放在最後，在 PermissionEventHandler 之後執行）
         from autocrud.resource_manager.constraint_lifecycle import (
             build_constraint_handler,
-            register_unique_fields,
         )
 
         self._constraint_handler = build_constraint_handler(self, constraint_checkers)
         if self._constraint_handler is not None:
             self.event_handlers.append(self._constraint_handler)
-
-        # Auto-detect Unique-annotated fields and register UniqueConstraintChecker
-        unique_handler = register_unique_fields(self)
-        if unique_handler is not None:
-            self._constraint_handler = unique_handler
 
         self._binary_processor = BinaryProcessor(resource_type)
 
@@ -940,15 +939,15 @@ class ResourceManager(IResourceManager[T], Generic[T]):
         # Reverse mapping filled by AutoCRUD._register_async_job_models().
         # Maps job resource name → job ResourceManager for async create actions
         # that target this resource.
-        self._async_create_job_rms: dict[str, "ResourceManager"] = {}
+        self._async_create_job_rms: dict[str, "IResourceManager"] = {}
 
         # Reverse mapping filled by AutoCRUD._register_async_update_job_models().
         # Maps job resource name → job ResourceManager for async update actions
         # that target this resource.
-        self._async_update_job_rms: dict[str, "ResourceManager"] = {}
+        self._async_update_job_rms: dict[str, "IResourceManager"] = {}
 
     def register_async_create_job(
-        self, job_resource_name: str, job_rm: "ResourceManager"
+        self, job_resource_name: str, job_rm: "IResourceManager"
     ) -> None:
         """Register an async create-job ResourceManager for this resource.
 
@@ -1178,6 +1177,50 @@ class ResourceManager(IResourceManager[T], Generic[T]):
 
         return meta
 
+    def backfill_revision_meta(self) -> int:
+        """Populate ``ResourceMeta.rev_*`` for resources created before this feature.
+
+        Iterates every resource currently in the meta store; for each one
+        whose ``rev_status`` is still ``UNSET`` (i.e. the resource was
+        created on a release that did not yet embed current-revision info),
+        loads the current ``RevisionInfo`` from the resource store and
+        copies its ``status`` / ``created_by`` / ``updated_by`` /
+        ``created_time`` / ``updated_time`` into the meta, then saves it.
+
+        Returns:
+            int: The number of resources that were updated.
+
+        Notes:
+            This is opt-in (not auto-run on startup) because for very
+            large stores it can be expensive — every backfilled resource
+            triggers a read against ``IResourceStore``.  Run it once
+            after upgrading.
+        """
+        updated = 0
+        # Snapshot the metas first so an update half-way through doesn't
+        # disturb the iterator (some meta stores are dict-backed).
+        for meta in list(self.storage.dump_meta()):
+            if meta.rev_status is not UNSET:
+                continue
+            try:
+                info = self.storage.get_resource_revision_info(
+                    meta.resource_id,
+                    meta.current_revision_id,
+                    schema_version=meta.schema_version,
+                )
+            except Exception:
+                # Skip resources whose current revision cannot be read —
+                # the caller can investigate them separately.
+                continue
+            meta.rev_status = info.status
+            meta.rev_created_by = info.created_by
+            meta.rev_updated_by = info.updated_by
+            meta.rev_created_time = info.created_time
+            meta.rev_updated_time = info.updated_time
+            self.storage.save_meta(meta)
+            updated += 1
+        return updated
+
     @property
     def resource_name(self):
         return self._resource_name
@@ -1354,6 +1397,10 @@ class ResourceManager(IResourceManager[T], Generic[T]):
             else:
                 indexed_data = self._extract_indexed_values(mode.data)
 
+        # rev_* fields mirror the now-current ``RevisionInfo`` so that
+        # search/sort by *current revision* attributes does not require an
+        # extra read against ``IResourceStore``.
+        rev_info = mode.rev_info
         return ResourceMeta(
             current_revision_id=current_revision_id,
             resource_id=resource_id,
@@ -1364,6 +1411,11 @@ class ResourceManager(IResourceManager[T], Generic[T]):
             created_by=created_by,
             updated_by=self.user_ctx.get(),
             indexed_data=indexed_data,
+            rev_status=rev_info.status,
+            rev_created_by=rev_info.created_by,
+            rev_updated_by=rev_info.updated_by,
+            rev_created_time=rev_info.created_time,
+            rev_updated_time=rev_info.updated_time,
         )
 
     def get_data_hash(self, data: T) -> str:
@@ -1551,7 +1603,7 @@ class ResourceManager(IResourceManager[T], Generic[T]):
         block: bool = True,
         custom_creation: "Literal['all'] | list[str] | None" = None,
         custom_update: "Literal['all'] | list[str] | None" = None,
-    ) -> None:
+    ) -> "threading.Thread | None":
         """Start consuming jobs from the message queue.
 
         When both *custom_creation* and *custom_update* are ``None``
@@ -2182,9 +2234,12 @@ class ResourceManager(IResourceManager[T], Generic[T]):
 
     def _apply_patch(self, resource_id: str, patch_data: JsonPatch) -> T:
         data = self.get(resource_id).data
-        d = self.data_converter.data_to_builtins(data)
+        if isinstance(data, msgspec.Raw):
+            d = json.loads(bytes(data))
+        else:
+            d = msgspec.to_builtins(data)
         patch_data.apply(d, in_place=True)
-        return self.data_converter.builtins_to_data(d)
+        return msgspec.convert(d, self.resource_type)
 
     @execute_with_events(
         (BeforeSwitch, AfterSwitch, OnSuccessSwitch, OnFailureSwitch),
@@ -2243,6 +2298,17 @@ class ResourceManager(IResourceManager[T], Generic[T]):
         if self._indexed_fields:
             data = self._load_revision_data(resource_id, revision_id)
             meta.indexed_data = self._extract_indexed_values(data)
+
+        # Refresh the embedded ``rev_*`` mirror to point at the new
+        # current revision so search-by-revision-attrs stays consistent.
+        target_info = self.storage.get_resource_revision_info(
+            resource_id, revision_id, schema_version=meta.schema_version
+        )
+        meta.rev_status = target_info.status
+        meta.rev_created_by = target_info.created_by
+        meta.rev_updated_by = target_info.updated_by
+        meta.rev_created_time = target_info.created_time
+        meta.rev_updated_time = target_info.updated_time
 
         meta.updated_by = self.user_ctx.get()
         meta.updated_time = self.now_ctx.get()
@@ -2364,11 +2430,7 @@ class ResourceManager(IResourceManager[T], Generic[T]):
     def dump(
         self,
         query: Query | ResourceMetaSearchQuery | None = None,
-    ) -> Generator[
-        BlobRecord,
-        MetaRecord,
-        RevisionRecord,
-    ]:
+    ) -> Generator[MetaRecord | RevisionRecord | BlobRecord]:
         """Dump metadata, revision data, and blobs as Record objects.
 
         Args:
@@ -2393,7 +2455,7 @@ class ResourceManager(IResourceManager[T], Generic[T]):
 
         # Build meta iterator
         if query is not None:
-            if hasattr(query, "build") and callable(query.build):
+            if isinstance(query, Query):
                 query = query.build()
             q = msgspec.structs.replace(query, limit=2**31 - 1, offset=0)
             metas = self.storage.iter_search(q)
@@ -2407,23 +2469,18 @@ class ResourceManager(IResourceManager[T], Generic[T]):
             )
 
         def _collect_blobs(raw_data: bytes):
-            if collect is not None:
+            if collect is not None and data_decode is not None:
                 try:
                     blob_file_ids.update(collect(data_decode(raw_data)))
                 except Exception:
                     pass
 
-        # Try bulk pre-fetch (concurrent S3 downloads when supported)
-        has_bulk = hasattr(self.storage, "dump_resources_bulk")
-
-        if has_bulk:
-            # Fast path: materialise metas, pre-fetch all revision data
-            metas_list = list(metas)
-            rid_set = frozenset(m.resource_id for m in metas_list)
-            bulk = self.storage.dump_resources_bulk(resource_ids=rid_set)
-        else:
-            metas_list = None
-            bulk = None
+        # Try bulk pre-fetch (concurrent S3 downloads when supported).
+        # Materialise the metas once: the bulk path needs the id set, and
+        # the slow fallback iterates the same list.
+        metas_list = list(metas)
+        rid_set = frozenset(m.resource_id for m in metas_list)
+        bulk = self.storage.dump_resources_bulk(resource_ids=rid_set)
 
         if bulk is not None:
             for meta in metas_list:
@@ -2432,10 +2489,9 @@ class ResourceManager(IResourceManager[T], Generic[T]):
                     yield _make_rev_record(info, raw_data)
                     _collect_blobs(raw_data)
         else:
-            # Slow path: stream one resource at a time (original behaviour)
-            it = metas_list if metas_list is not None else metas
+            # Slow path: stream one resource at a time
             dump_resource = self.storage.dump_resource
-            for meta in it:
+            for meta in metas_list:
                 yield MetaRecord(data=meta_encode(meta))
                 for info, data_io in dump_resource(meta.resource_id):
                     raw_data = data_io.read()
@@ -2509,7 +2565,7 @@ class ResourceManager(IResourceManager[T], Generic[T]):
                 *on_duplicate* is :attr:`OnDuplicate.raise_error`.
         """
         record_type = type(record).__name__
-        ctx_kw = {
+        ctx_kw: _LoadCtxKw = {
             "user": self.user_or_unset,
             "now": self.now_or_unset,
             "resource_name": self.resource_name,
@@ -2602,7 +2658,7 @@ class ResourceManager(IResourceManager[T], Generic[T]):
         stats = _LoadStats()
 
         # --- fire BeforeLoad once for the batch --------------------------
-        ctx_kw = {
+        ctx_kw: _LoadCtxKw = {
             "user": self.user_or_unset,
             "now": self.now_or_unset,
             "resource_name": self.resource_name,

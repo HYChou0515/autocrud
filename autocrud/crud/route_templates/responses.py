@@ -104,8 +104,8 @@ def jsonschema_to_openapi(structs: list[msgspec.Struct | Any]) -> dict:
         structs,
         ref_template="#/components/schemas/{name}",
     )
-    schemas, components = _sanitize_schema_names(schemas, components)
-    return schemas, components
+    schemas, components = _sanitize_schema_names(schemas, components)  # ty:ignore[invalid-argument-type]
+    return schemas, components  # ty:ignore[invalid-return-type]
 
 
 def jsonschema_to_json_schema_extra(struct: msgspec.Struct | Any) -> dict:

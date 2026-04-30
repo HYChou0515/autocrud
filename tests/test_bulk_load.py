@@ -112,13 +112,13 @@ class TestMemoryResourceStoreSaveMany:
         # Decode the revisions
         items_to_save = []
         for r in revisions:
-            raw_res = mgr.resource_serializer.decode(r.data)
+            raw_res = mgr.resource_serializer.decode(r.data)  # ty:ignore[unresolved-attribute]
             items_to_save.append((raw_res.info, raw_res.raw_data))
 
         # save_many into a new ResourceStore
         crud2 = _make_crud(Item)
         mgr2 = crud2.get_resource_manager(Item)
-        store = mgr2.storage._resource_store
+        store = mgr2.storage._resource_store  # ty:ignore[unresolved-attribute]
         store.save_many(items_to_save)
 
         # Verify all revisions are stored
@@ -129,7 +129,7 @@ class TestMemoryResourceStoreSaveMany:
         """save_many with empty list does nothing."""
         crud = _make_crud(Item)
         mgr = crud.get_resource_manager(Item)
-        store = mgr.storage._resource_store
+        store = mgr.storage._resource_store  # ty:ignore[unresolved-attribute]
         store.save_many([])
         assert list(store.list_resources()) == []
 
@@ -151,16 +151,16 @@ class TestSimpleStorageBulk:
         metas, _, _ = _get_records_by_type(data)
 
         # Decode metas
-        meta_objs = [mgr.meta_serializer.decode(r.data) for r in metas]
+        meta_objs = [mgr.meta_serializer.decode(r.data) for r in metas]  # ty:ignore[unresolved-attribute]
 
         # Bulk save into fresh storage
         crud2 = _make_crud(Item)
         mgr2 = crud2.get_resource_manager(Item)
-        mgr2.storage.save_metas_bulk(meta_objs)
+        mgr2.storage.save_metas_bulk(meta_objs)  # ty:ignore[unresolved-attribute]
 
         # Verify
         for m in meta_objs:
-            assert mgr2.storage.exists(m.resource_id)
+            assert mgr2.storage.exists(m.resource_id)  # ty:ignore[unresolved-attribute]
 
     def test_save_revisions_bulk(self):
         """save_revisions_bulk writes multiple revisions at once."""
@@ -173,14 +173,14 @@ class TestSimpleStorageBulk:
 
         items_to_save = []
         for r in revisions:
-            raw_res = mgr.resource_serializer.decode(r.data)
+            raw_res = mgr.resource_serializer.decode(r.data)  # ty:ignore[unresolved-attribute]
             items_to_save.append((raw_res.info, raw_res.raw_data))
 
         crud2 = _make_crud(Item)
         mgr2 = crud2.get_resource_manager(Item)
-        mgr2.storage.save_revisions_bulk(items_to_save)
+        mgr2.storage.save_revisions_bulk(items_to_save)  # ty:ignore[unresolved-attribute]
 
-        resource_ids = list(mgr2.storage._resource_store.list_resources())
+        resource_ids = list(mgr2.storage._resource_store.list_resources())  # ty:ignore[unresolved-attribute]
         assert len(resource_ids) == 2
 
 
@@ -208,8 +208,8 @@ class TestResourceManagerLoadRecordsBulk:
 
         # Verify data
         for m in metas:
-            meta = mgr2.meta_serializer.decode(m.data)
-            assert mgr2.storage.exists(meta.resource_id)
+            meta = mgr2.meta_serializer.decode(m.data)  # ty:ignore[unresolved-attribute]
+            assert mgr2.storage.exists(meta.resource_id)  # ty:ignore[unresolved-attribute]
             res = mgr2.get(meta.resource_id)
             assert isinstance(res.data, Item)
 
@@ -402,7 +402,7 @@ class TestAutoCRUDLoadBulk:
         _load_from_bytes(crud2, data)
 
         mgr2 = crud2.get_resource_manager(Item)
-        meta = mgr2.storage.get_meta(rid)
+        meta = mgr2.storage.get_meta(rid)  # ty:ignore[unresolved-attribute]
         assert meta.is_deleted is True
 
     def test_load_empty(self):

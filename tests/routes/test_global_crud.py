@@ -299,7 +299,7 @@ def test_configure_dependency_provider():
     # Verify route templates were recreated with new dependency provider
     assert len(test_crud.route_templates) > 0
     # Verify the dependency provider is used
-    assert test_crud.route_templates[0].deps.get_user == custom_get_user
+    assert test_crud.route_templates[0].deps.get_user == custom_get_user  # ty:ignore[unresolved-attribute]
 
 
 def test_configure_route_templates_dict():
@@ -417,7 +417,7 @@ def test_shared_configuration_handles_all_parameters():
         assert isinstance(crud.storage_factory, DiskStorageFactory)
         assert crud.default_encoding == Encoding.msgpack
         assert callable(crud.default_user)
-        assert crud.default_user() == "custom_user"
+        assert crud.default_user() == "custom_user"  # ty:ignore[call-top-callable]
         assert callable(crud.default_now)
         assert crud.default_now() == dt.datetime(2024, 1, 1)
 

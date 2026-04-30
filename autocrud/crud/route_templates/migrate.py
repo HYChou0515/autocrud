@@ -200,7 +200,7 @@ class MigrateRouteTemplate(BaseRouteTemplate):
                     else:
                         progress = await self._migrate_single_resource(
                             resource_manager,
-                            resource_id,
+                            resource_id,  # ty:ignore[invalid-argument-type]
                             current_user,
                             current_time,
                             write_back=write_back,

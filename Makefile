@@ -22,6 +22,8 @@ help:
 	@echo "  check        檢查程式碼品質 (ruff check)"
 	@echo "  format       格式化程式碼 (ruff format)"
 	@echo "  lint         執行 lint 檢查"
+	@echo "  stubs        重新產生 autocrud/events.pyi 型別 stub"
+	@echo "  stubs-check  檢查 events.pyi 是否與生成器同步（CI 用）"
 	@echo "  install      安裝專案依賴"
 	@echo "  dev-install  安裝開發依賴"
 	@echo "  build        建置套件"
@@ -125,6 +127,25 @@ format:
 .PHONY: lint
 lint: check
 	@echo "Lint 檢查完成"
+
+# 重新生成 .pyi stub（目前只生 autocrud/events.pyi）
+.PHONY: stubs
+stubs:
+	@echo "產生 events.pyi stub..."
+	uv run python scripts/gen_events_stub.py > autocrud/events.pyi
+	uv run ruff format autocrud/events.pyi
+
+# 確認 stub 與生成器同步（CI 用）
+.PHONY: stubs-check
+stubs-check:
+	@echo "檢查 events.pyi 是否與生成器同步..."
+	@cp autocrud/events.pyi /tmp/events.pyi.expected
+	@$(MAKE) stubs >/dev/null
+	@diff -u /tmp/events.pyi.expected autocrud/events.pyi || ( \
+		cp /tmp/events.pyi.expected autocrud/events.pyi; \
+		echo "events.pyi 過期 — 請執行 make stubs"; \
+		exit 1)
+	@rm -f /tmp/events.pyi.expected
 
 # 清理所有暫存和構建文件
 .PHONY: clean

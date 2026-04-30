@@ -93,9 +93,11 @@ def resolve_payload_field_type(raw_ann: Any) -> tuple[Any, str | None]:
 
     # Pydantic BaseModel → convert to equivalent Struct
     try:
-        from pydantic import BaseModel as _PydanticBase
+        from pydantic import BaseModel
+
+        _PydanticBase: type | None = BaseModel
     except ImportError:  # pragma: no cover
-        _PydanticBase = None  # type: ignore[assignment,misc]
+        _PydanticBase = None
 
     if (
         _PydanticBase is not None
@@ -172,13 +174,19 @@ def build_async_job_model(
     resource_pascal = resource_name.replace("-", " ").title().replace(" ", "")
     class_name = f"{action_pascal}{resource_pascal}Job"
 
-    # Create a Job subclass with concrete payload type and dict artifact
-    job_model = types.new_class(class_name, (Job[payload_type, dict],), {})
+    # Create a Job subclass with concrete payload type and dict artifact.
+    # ``payload_type`` is dynamic so ``Job[payload_type, dict]`` can't be
+    # validated as a type expression.
+    job_model = types.new_class(
+        class_name,
+        (Job[payload_type, dict],),  # ty: ignore[invalid-type-form]
+        {},
+    )
 
-    # Attach metadata for identification and linking
-    job_model._is_async_create_job = True  # type: ignore[attr-defined]
-    job_model._target_resource_name = resource_name  # type: ignore[attr-defined]
-    job_model._action_name = action_name  # type: ignore[attr-defined]
+    # Attach metadata for identification and linking.
+    setattr(job_model, "_is_async_create_job", True)
+    setattr(job_model, "_target_resource_name", resource_name)
+    setattr(job_model, "_action_name", action_name)
 
     return job_model
 
@@ -224,14 +232,18 @@ def build_async_update_job_model(
     resource_pascal = resource_name.replace("-", " ").title().replace(" ", "")
     class_name = f"{action_pascal}{resource_pascal}Job"
 
-    # Create a Job subclass with concrete payload type and dict artifact
-    job_model = types.new_class(class_name, (Job[payload_type, dict],), {})
+    # Create a Job subclass with concrete payload type and dict artifact.
+    job_model = types.new_class(
+        class_name,
+        (Job[payload_type, dict],),  # ty: ignore[invalid-type-form]
+        {},
+    )
 
-    # Attach metadata for identification and linking
-    job_model._is_async_update_job = True  # type: ignore[attr-defined]
-    job_model._target_resource_name = resource_name  # type: ignore[attr-defined]
-    job_model._action_name = action_name  # type: ignore[attr-defined]
-    job_model._update_mode = update_mode  # type: ignore[attr-defined]
+    # Attach metadata for identification and linking.
+    setattr(job_model, "_is_async_update_job", True)
+    setattr(job_model, "_target_resource_name", resource_name)
+    setattr(job_model, "_action_name", action_name)
+    setattr(job_model, "_update_mode", update_mode)
 
     return job_model
 

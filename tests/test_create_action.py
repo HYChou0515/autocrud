@@ -453,7 +453,7 @@ class TestCreateActionScalarParams:
         crud.openapi(app)
 
         schema = app.openapi_schema
-        custom_actions = schema.get("x-autocrud-custom-create-actions", {})
+        custom_actions = schema.get("x-autocrud-custom-create-actions", {})  # ty:ignore[unresolved-attribute]
         assert "character" in custom_actions
         actions = custom_actions["character"]
         assert len(actions) == 1
@@ -488,7 +488,7 @@ class TestCreateActionScalarParams:
         crud.openapi(app)
 
         schema = app.openapi_schema
-        custom_actions = schema.get("x-autocrud-custom-create-actions", {})
+        custom_actions = schema.get("x-autocrud-custom-create-actions", {})  # ty:ignore[unresolved-attribute]
         qp = custom_actions["character"][0]["queryParams"]
         qp_by_name = {p["name"]: p for p in qp}
         assert qp_by_name["name"]["required"] is True
@@ -543,7 +543,7 @@ class TestCreateActionPathParams:
         crud.openapi(app)
 
         schema = app.openapi_schema
-        custom_actions = schema.get("x-autocrud-custom-create-actions", {})
+        custom_actions = schema.get("x-autocrud-custom-create-actions", {})  # ty:ignore[unresolved-attribute]
         assert "character" in custom_actions
         action = custom_actions["character"][0]
         assert "pathParams" in action, (
@@ -584,7 +584,7 @@ class TestCreateActionPathParams:
         assert resource.data.level == 5
 
         schema = app.openapi_schema
-        action = schema["x-autocrud-custom-create-actions"]["character"][0]
+        action = schema["x-autocrud-custom-create-actions"]["character"][0]  # ty:ignore[not-subscriptable]
         assert "pathParams" in action
         assert action["pathParams"][0]["name"] == "name"
         assert "queryParams" in action
@@ -649,7 +649,7 @@ class TestCreateActionInlineBodyParams:
         crud.openapi(app)
 
         schema = app.openapi_schema
-        action = schema["x-autocrud-custom-create-actions"]["character"][0]
+        action = schema["x-autocrud-custom-create-actions"]["character"][0]  # ty:ignore[not-subscriptable]
         assert "inlineBodyParams" in action, (
             "inlineBodyParams must be injected for Body(embed=True) params"
         )
@@ -684,7 +684,7 @@ class TestCreateActionInlineBodyParams:
         crud.openapi(app)
 
         schema = app.openapi_schema
-        action = schema["x-autocrud-custom-create-actions"]["character"][0]
+        action = schema["x-autocrud-custom-create-actions"]["character"][0]  # ty:ignore[not-subscriptable]
         ibp_by_name = {p["name"]: p for p in action["inlineBodyParams"]}
         assert ibp_by_name["name"]["required"] is True
         assert ibp_by_name["level"]["required"] is False
@@ -910,7 +910,7 @@ class TestCreateActionEnumParams:
         crud.openapi(app)
 
         schema = app.openapi_schema
-        action = schema["x-autocrud-custom-create-actions"]["character"][0]
+        action = schema["x-autocrud-custom-create-actions"]["character"][0]  # ty:ignore[not-subscriptable]
         assert "queryParams" in action
         qp_by_name = {p["name"]: p for p in action["queryParams"]}
         assert "role" in qp_by_name
@@ -942,7 +942,7 @@ class TestCreateActionEnumParams:
         crud.openapi(app)
 
         schema = app.openapi_schema
-        action = schema["x-autocrud-custom-create-actions"]["character"][0]
+        action = schema["x-autocrud-custom-create-actions"]["character"][0]  # ty:ignore[not-subscriptable]
         assert "inlineBodyParams" in action
         ibp_by_name = {p["name"]: p for p in action["inlineBodyParams"]}
         assert "role" in ibp_by_name
@@ -1218,7 +1218,7 @@ class TestCreateActionMixedParams:
             q: str,
             name: Annotated[str, Body(embed=True), Ref("pequipment")],
             pic: UploadFile,
-            item: _MixedItemPydantic,  # type: ignore[reportInvalidTypeForm]
+            item: _MixedItemPydantic,  # type: ignore[reportInvalidTypeForm]  # ty:ignore[invalid-type-form]
         ):
             return _MixedResource(name=name)
 
@@ -1313,7 +1313,7 @@ class TestCreateActionMixedParams:
             q: str,
             name: Annotated[str, Body(embed=True), Ref("pequipment")],
             pic: UploadFile,
-            item: _MixedItemPydantic,  # type: ignore[reportInvalidTypeForm]
+            item: _MixedItemPydantic,  # type: ignore[reportInvalidTypeForm]  # ty:ignore[invalid-type-form]
         ):
             return _MixedResource(name=f"{name}-{item.label}-{item.value}")
 
@@ -1447,7 +1447,7 @@ class TestCreateActionWithRouterPrefix:
         crud.openapi(app)
 
         schema = app.openapi_schema
-        action = schema["x-autocrud-custom-create-actions"]["character"][0]
+        action = schema["x-autocrud-custom-create-actions"]["character"][0]  # ty:ignore[not-subscriptable]
         assert "pathParams" in action, (
             f"pathParams missing — action only has keys: {list(action.keys())}"
         )
@@ -1476,7 +1476,7 @@ class TestCreateActionWithRouterPrefix:
         crud.openapi(app)
 
         schema = app.openapi_schema
-        action = schema["x-autocrud-custom-create-actions"]["character"][0]
+        action = schema["x-autocrud-custom-create-actions"]["character"][0]  # ty:ignore[not-subscriptable]
         assert "inlineBodyParams" in action, (
             f"inlineBodyParams missing — action only has keys: {list(action.keys())}"
         )

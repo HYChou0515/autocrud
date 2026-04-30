@@ -138,7 +138,7 @@ def test_disk_cache_write_expiration_none(tmp_path):
 def test_cached_s3_get_ttl_none(cached_store):
     # Cover _get_ttl returning None
     # Just mock info with weird status
-    info = create_info(status="unknown_status")  # type: ignore
+    info = create_info(status="unknown_status")
     assert cached_store._get_ttl(info) is None
 
 

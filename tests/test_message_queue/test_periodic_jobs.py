@@ -129,11 +129,11 @@ def mq_fixture(request, rm_fixture):
 
     # Delete RabbitMQ queues after test
     if queue_type == "rabbitmq":
-        with mq._get_connection() as (_, channel):
+        with mq._get_connection() as (_, channel):  # ty:ignore[unresolved-attribute]
             for queue_name in [
-                mq.queue_name,
-                f"{mq.queue_name}:retry",
-                f"{mq.queue_name}:dead",
+                mq.queue_name,  # ty:ignore[unresolved-attribute]
+                f"{mq.queue_name}:retry",  # ty:ignore[unresolved-attribute]
+                f"{mq.queue_name}:dead",  # ty:ignore[unresolved-attribute]
             ]:
                 try:
                     channel.queue_delete(queue=queue_name)

@@ -25,8 +25,8 @@ class DependencyProvider:
 
     def __init__(
         self,
-        get_user: Callable = None,
-        get_now: Callable = None,
+        get_user: Callable = None,  # ty:ignore[invalid-parameter-default]
+        get_now: Callable = None,  # ty:ignore[invalid-parameter-default]
         *,
         default_user: str = "anonymous",
     ):

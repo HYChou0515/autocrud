@@ -142,7 +142,7 @@ def _run_scenario(
     crud = AutoCRUD(storage_factory=storage_factory, encoding=encoding)
     crud.add_model(
         model_info.struct_type,
-        indexed_fields=model_info.indexed_fields,
+        indexed_fields=model_info.indexed_fields,  # ty:ignore[invalid-argument-type]
     )
     rm = crud.get_resource_manager(model_info.struct_type)
 
@@ -165,11 +165,11 @@ def _run_scenario(
             if "create" in ops:
                 cr = bench_create(rm, round_data)
                 all_results["create"].append(cr)
-                resource_ids = cr._resource_ids  # type: ignore[attr-defined]
+                resource_ids = cr._resource_ids  # type: ignore[attr-defined]  # ty:ignore[unresolved-attribute]
             else:
                 # Seed data silently for other operations
                 for data in round_data:
-                    info = rm.create(data)
+                    info = rm.create(data)  # ty:ignore[invalid-argument-type]
                     resource_ids.append(info.resource_id)
 
             # --- GET ---

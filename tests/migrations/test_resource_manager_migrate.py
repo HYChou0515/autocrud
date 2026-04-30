@@ -139,7 +139,7 @@ class TestResourceManagerMigrate:
         """測試從舊版本遷移的情況"""
         # 創建測試數據
         legacy_revision_info = RevisionInfo(
-            uid="test-uid",
+            uid="test-uid",  # ty:ignore[invalid-argument-type]
             resource_id="test:123",
             revision_id="test:123:1",
             schema_version=old_version,  # 舊版本

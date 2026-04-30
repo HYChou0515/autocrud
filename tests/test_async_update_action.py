@@ -260,7 +260,7 @@ class TestAsyncUpdateJobModelGeneration:
         crud.apply(app)
 
         job_rm = crud.resource_managers["train-job"]
-        assert job_rm.message_queue is not None
+        assert job_rm.message_queue is not None  # ty:ignore[unresolved-attribute]
 
     def test_job_model_is_async_update_job(self):
         """Job model should be marked as _is_async_update_job=True."""
@@ -954,9 +954,9 @@ class TestAsyncUpdateJobRmsMapping:
         crud.apply(app)
 
         char_rm = crud.resource_managers["character"]
-        assert len(char_rm.async_update_job_names) == 2
-        assert "train-job" in char_rm.async_update_job_names
-        assert "boost-job" in char_rm.async_update_job_names
+        assert len(char_rm.async_update_job_names) == 2  # ty:ignore[unresolved-attribute]
+        assert "train-job" in char_rm.async_update_job_names  # ty:ignore[unresolved-attribute]
+        assert "boost-job" in char_rm.async_update_job_names  # ty:ignore[unresolved-attribute]
 
     def test_mapping_uses_custom_job_name(self):
         crud = _make_crud()
@@ -976,7 +976,7 @@ class TestAsyncUpdateJobRmsMapping:
         crud.apply(app)
 
         char_rm = crud.resource_managers["character"]
-        assert "custom-train" in char_rm.async_update_job_names
+        assert "custom-train" in char_rm.async_update_job_names  # ty:ignore[unresolved-attribute]
 
     def test_mapping_empty_without_async_actions(self):
         crud = _make_crud()
@@ -986,7 +986,7 @@ class TestAsyncUpdateJobRmsMapping:
         crud.apply(app)
 
         char_rm = crud.resource_managers["character"]
-        assert char_rm.async_update_job_names == []
+        assert char_rm.async_update_job_names == []  # ty:ignore[unresolved-attribute]
 
     def test_register_duplicate_raises(self):
         crud = _make_crud()
@@ -996,9 +996,9 @@ class TestAsyncUpdateJobRmsMapping:
         crud.apply(app)
 
         char_rm = crud.resource_managers["character"]
-        char_rm.register_async_update_job("dup-job", char_rm)
+        char_rm.register_async_update_job("dup-job", char_rm)  # ty:ignore[unresolved-attribute]
         with pytest.raises(ValueError, match="already registered"):
-            char_rm.register_async_update_job("dup-job", char_rm)
+            char_rm.register_async_update_job("dup-job", char_rm)  # ty:ignore[unresolved-attribute]
 
 
 # ---------------------------------------------------------------------------

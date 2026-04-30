@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import datetime as dt
+import threading
 from abc import ABC, abstractmethod
 from collections.abc import Generator, Iterable, Iterator
 from contextlib import AbstractContextManager
@@ -24,7 +25,13 @@ from typing_extensions import TypeVar as TypeVarExt
 from autocrud.query_types import ResourceMetaSearchQuery
 
 if TYPE_CHECKING:
+    from autocrud.crud.core import LoadStats
     from autocrud.query import Query
+    from autocrud.resource_manager.dump_format import (
+        BlobRecord,
+        MetaRecord,
+        RevisionRecord,
+    )
 
 T = TypeVar("T")
 D = TypeVarExt("D", default=None)
@@ -591,6 +598,28 @@ class ResourceMeta(Struct, kw_only=True):
     indexed_data: dict[str, Any] | UnsetType = UNSET
     """A dictionary of indexed fields for the resource, used for searching and sorting."""
 
+    rev_status: RevisionStatus | UnsetType = UNSET
+    """Status of the current revision (mirrors ``RevisionInfo.status``).
+
+    Embedded so that callers can filter / sort resources by the status of
+    their *current* revision without an extra read against ``IResourceStore``.
+
+    ``UNSET`` indicates the resource was created before this field existed
+    and has not yet been backfilled (see ``ResourceManager.backfill_revision_meta``).
+    """
+
+    rev_created_by: str | UnsetType = UNSET
+    """User who created the current revision (mirrors ``RevisionInfo.created_by``)."""
+
+    rev_updated_by: str | UnsetType = UNSET
+    """User who last updated the current revision (mirrors ``RevisionInfo.updated_by``)."""
+
+    rev_created_time: dt.datetime | UnsetType = UNSET
+    """Creation time of the current revision (mirrors ``RevisionInfo.created_time``)."""
+
+    rev_updated_time: dt.datetime | UnsetType = UNSET
+    """Last update time of the current revision (mirrors ``RevisionInfo.updated_time``)."""
+
 
 class SearchedResource(Struct, Generic[T]):
     """A resource item returned by list_resources.
@@ -925,7 +954,12 @@ class IResourceManager(ABC, Generic[T]):
 
     @abstractmethod
     def get_partial(
-        self, resource_id: str, revision_id: str, partial: Iterable[str | JsonPointer]
+        self,
+        resource_id: str,
+        revision_id: str,
+        partial: Iterable[str | JsonPointer],
+        *,
+        schema_version: "str | None | UnsetType" = UNSET,
     ) -> Struct:
         """Get a partial view of the resource data for a specific revision.
 
@@ -951,7 +985,11 @@ class IResourceManager(ABC, Generic[T]):
 
     @abstractmethod
     def get_revision_info(
-        self, resource_id: str, revision_id: str | UnsetType = UNSET
+        self,
+        resource_id: str,
+        revision_id: str | UnsetType = UNSET,
+        *,
+        schema_version: "str | None | UnsetType" = UNSET,
     ) -> RevisionInfo:
         """Get the RevisionInfo for a specific revision of the resource.
 
@@ -1184,6 +1222,7 @@ class IResourceManager(ABC, Generic[T]):
         resource_id: str,
         data: T,
         *,
+        status: "RevisionStatus | UnsetType" = UNSET,
         user: str | UnsetType = UNSET,
         now: dt.datetime | UnsetType = UNSET,
     ) -> RevisionInfo:
@@ -1415,7 +1454,7 @@ class IResourceManager(ABC, Generic[T]):
     def dump(
         self,
         query: Query | ResourceMetaSearchQuery | None = None,
-    ) -> Generator[tuple[str, IO[bytes]]]:
+    ) -> "Generator[MetaRecord | RevisionRecord | BlobRecord]":
         """Dump all resource data as a series of tar archive entries.
 
         Returns:
@@ -1486,7 +1525,9 @@ class IResourceManager(ABC, Generic[T]):
 
     @abstractmethod
     def load_record(
-        self, record: object, on_duplicate: "OnDuplicate" = OnDuplicate.raise_error
+        self,
+        record: "MetaRecord | RevisionRecord | BlobRecord",
+        on_duplicate: "OnDuplicate" = OnDuplicate.raise_error,
     ) -> bool:
         """Load a single dump record into storage.
 
@@ -1504,6 +1545,19 @@ class IResourceManager(ABC, Generic[T]):
         Raises:
             DuplicateResourceError: When the resource already exists and
                 *on_duplicate* is :attr:`OnDuplicate.raise_error`.
+        """
+
+    @abstractmethod
+    def load_records_bulk(
+        self,
+        meta_records: "list[MetaRecord]",
+        revision_records: "list[RevisionRecord]",
+        blob_records: "list[BlobRecord]",
+        on_duplicate: "OnDuplicate" = OnDuplicate.raise_error,
+    ) -> "LoadStats":
+        """Batch-load multiple dump records into storage.
+
+        Optimised counterpart to :meth:`load_record` for the bulk path.
         """
 
     @abstractmethod
@@ -1539,7 +1593,7 @@ class IResourceManager(ABC, Generic[T]):
         block: bool = True,
         custom_creation: "Literal['all'] | list[str] | None" = None,
         custom_update: "Literal['all'] | list[str] | None" = None,
-    ) -> None:
+    ) -> "threading.Thread | None":
         """Start consuming jobs from the message queue.
 
         When both *custom_creation* and *custom_update* are ``None``

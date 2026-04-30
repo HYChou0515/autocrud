@@ -76,6 +76,8 @@ class ResourceMetaSortKey(StrEnum):
     is_deleted = "is_deleted"
     schema_version = "schema_version"
     total_revision_count = "total_revision_count"
+    rev_created_time = "rev_created_time"
+    rev_updated_time = "rev_updated_time"
 
 
 class ResourceMetaSearchSort(Struct, kw_only=True, tag=True):
@@ -152,6 +154,23 @@ class ResourceMetaSearchQuery(Struct, kw_only=True):
     """Filter resources created by these users."""
     updated_bys: list[str] | UnsetType = UNSET
     """Filter resources updated by these users."""
+
+    rev_statuses: list[str] | UnsetType = UNSET
+    """Filter by ``ResourceMeta.rev_status`` (current-revision status)."""
+
+    rev_created_bys: list[str] | UnsetType = UNSET
+    """Filter by users who created the current revision."""
+    rev_updated_bys: list[str] | UnsetType = UNSET
+    """Filter by users who last updated the current revision."""
+
+    rev_created_time_start: dt.datetime | UnsetType = UNSET
+    """Filter resources whose current revision was created >= this time."""
+    rev_created_time_end: dt.datetime | UnsetType = UNSET
+    """Filter resources whose current revision was created <= this time."""
+    rev_updated_time_start: dt.datetime | UnsetType = UNSET
+    """Filter resources whose current revision was last updated >= this time."""
+    rev_updated_time_end: dt.datetime | UnsetType = UNSET
+    """Filter resources whose current revision was last updated <= this time."""
 
     data_conditions: list[DataSearchFilter] | UnsetType = UNSET
     """Deprecated. Use `conditions` instead. Conditions to filter resources based on their indexed data fields."""

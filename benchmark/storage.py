@@ -45,7 +45,9 @@ def build_storage_factory(
         return DiskStorageFactory(rootdir=rootdir)
 
     if storage_name == "postgres":
-        from autocrud.resource_manager.storage_factory import PostgreSQLStorageFactory
+        from autocrud.resource_manager.storage_factory import (
+            PostgreSQLStorageFactory,  # ty:ignore[unresolved-import]
+        )
 
         return PostgreSQLStorageFactory(
             connection_string=params["dsn"],

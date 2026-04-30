@@ -135,7 +135,7 @@ class TestPublishedSpecHasNoDottedSchemaNames:
         app = FastAPI()
         crud.apply(app)
         crud.openapi(app)
-        return app.openapi_schema
+        return app.openapi_schema  # ty:ignore[invalid-return-type]
 
     def test_no_dots_in_component_keys(self):
         spec = self._build_spec()
@@ -381,7 +381,7 @@ class TestAsyncCreateActionPydanticSchemaRefs:
         crud.add_model(Article)
 
         @crud.create_action("article", async_mode="job")
-        def generate_article(skill: SkillPydantic):  # type: ignore[valid-type]
+        def generate_article(skill: SkillPydantic):  # type: ignore[valid-type]  # ty:ignore[invalid-type-form]
             return Article(title=skill.name, content="generated")
 
         app = FastAPI()
@@ -392,12 +392,12 @@ class TestAsyncCreateActionPydanticSchemaRefs:
     def test_all_refs_resolve(self):
         """Every $ref pointer in the spec must point to an existing component."""
         _, app = self._build_app()
-        _assert_all_refs_resolve(app.openapi_schema)
+        _assert_all_refs_resolve(app.openapi_schema)  # ty:ignore[invalid-argument-type]
 
     def test_no_dots_in_schema_names(self):
         """Schema names must not contain dots (breaks code generators)."""
         _, app = self._build_app()
-        schema_names = list(app.openapi_schema["components"]["schemas"].keys())
+        schema_names = list(app.openapi_schema["components"]["schemas"].keys())  # ty:ignore[not-subscriptable]
         dotted = [n for n in schema_names if "." in n]
         assert dotted == [], f"Schema names with dots: {dotted}"
 
@@ -418,7 +418,7 @@ class TestNoConflictWithoutPydanticRoundTrip:
         app = FastAPI()
         crud.apply(app)
         crud.openapi(app)
-        _assert_all_refs_resolve(app.openapi_schema)
+        _assert_all_refs_resolve(app.openapi_schema)  # ty:ignore[invalid-argument-type]
 
 
 # ===================================================================
@@ -653,7 +653,7 @@ class TestDisplayNameFieldSurvivesDedup:
         @crud.create_action("article", async_mode="job")
         def gen_article(
             attachment: UploadFile,
-            skill: SkillWithDNPydantic,  # type: ignore[valid-type]
+            skill: SkillWithDNPydantic,  # type: ignore[valid-type]  # ty:ignore[invalid-type-form]
         ):
             return Article(title=skill.skname, content="generated")
 
@@ -666,7 +666,7 @@ class TestDisplayNameFieldSurvivesDedup:
         """``x-display-name-field`` must be set on the SkillWithDN
         component even when a struct_to_pydantic duplicate exists."""
         _, app = self._build_app()
-        components = app.openapi_schema["components"]["schemas"]
+        components = app.openapi_schema["components"]["schemas"]  # ty:ignore[not-subscriptable]
         comp = components.get("SkillWithDN")
         assert comp is not None, (
             f"SkillWithDN not in components. Available: {sorted(components.keys())}"
@@ -678,4 +678,4 @@ class TestDisplayNameFieldSurvivesDedup:
     def test_all_refs_still_resolve(self):
         """Ensure the fix doesn't break $ref resolution."""
         _, app = self._build_app()
-        _assert_all_refs_resolve(app.openapi_schema)
+        _assert_all_refs_resolve(app.openapi_schema)  # ty:ignore[invalid-argument-type]

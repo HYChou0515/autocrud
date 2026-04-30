@@ -4,7 +4,6 @@ from copy import copy
 from msgspec import UNSET, Struct, UnsetType
 
 from autocrud.permission.acl import ACLPermission, ACLPermissionChecker
-from autocrud.permission.basic import IPermissionCheckerWithStore
 from autocrud.permission.checker import PermissionContext, PermissionResult
 from autocrud.permission.store_backed import Policy
 from autocrud.query_types import (
@@ -43,10 +42,7 @@ class RBACPermissionEntry(ACLPermission, tag=True): ...
 RBACPermission = RBACPermissionEntry | RoleMembership
 
 
-class RBACPermissionChecker(
-    ACLPermissionChecker,
-    IPermissionCheckerWithStore[RBACPermission],
-):
+class RBACPermissionChecker(ACLPermissionChecker):
     """RBAC 權限檢查器"""
 
     data_type = RBACPermission
@@ -193,14 +189,14 @@ class RBACPermissionChecker(
     ) -> bool:
         """檢查用戶對特定資源的 RBAC 權限"""
         stack: list[str] = []
-        stack.append(context.user)
+        stack.append(context.user)  # ty:ignore[invalid-argument-type]
         while stack:
             role_name = stack.pop()
             context_copy = copy(context)
             context_copy.user = role_name
             p = self._check_acl_permission(context_copy, have_more_to_check=True)
             if p != PermissionResult.not_applicable:
-                return p
+                return p  # ty:ignore[invalid-return-type]
 
             with self.pm.using(self.root_user, context.now):
                 role_metas = self.pm.search_resources(
@@ -233,10 +229,10 @@ class RBACPermissionChecker(
                     role: Resource[RoleMembership] = self.pm.get(meta.resource_id)
                     stack.append(role.data.group)
 
-        return self._default_action(False)
+        return self._default_action(False)  # ty:ignore[invalid-return-type]
 
     def check_permission(self, context: PermissionContext) -> PermissionResult:
         """檢查用戶權限的主入口方法"""
         if context.user == self.root_user:
             return PermissionResult.allow
-        return self._check_rbac_permission(context)
+        return self._check_rbac_permission(context)  # ty:ignore[invalid-return-type]

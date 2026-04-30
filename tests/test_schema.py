@@ -460,7 +460,7 @@ class TestFromLegacy:
 
     def test_from_legacy_invalid_type_raises(self):
         with pytest.raises(TypeError, match="Expected IMigration instance"):
-            Schema.from_legacy("not a migration")  # type: ignore
+            Schema.from_legacy("not a migration")
 
     def test_from_legacy_has_migration(self):
         class Mig(IMigration[V1Data]):
@@ -558,7 +558,7 @@ class TestEdgeCases:
             def schema_version(self) -> str:
                 return "v1"
 
-            def migrate(self, data, sv):
+            def migrate(self, data, sv):  # ty:ignore[invalid-method-override]
                 return V1Data(name="x", value=0)
 
         s = Schema.from_legacy(Mig())
@@ -748,7 +748,7 @@ class TestCoverageSupplementary:
             def schema_version(self) -> str | None:
                 return None
 
-            def migrate(self, data: IO[bytes], sv: str | None) -> V1Data:
+            def migrate(self, data: IO[bytes], sv: str | None) -> V1Data:  # ty:ignore[invalid-method-override]
                 return V1Data(name="legacy", value=0)
 
         s = Schema.from_legacy(NoneVersionMig())
@@ -766,7 +766,7 @@ class TestCoverageSupplementary:
             def schema_version(self) -> str | None:
                 return None
 
-            def migrate(self, data: IO[bytes], sv: str | None) -> V1Data:
+            def migrate(self, data: IO[bytes], sv: str | None) -> V1Data:  # ty:ignore[invalid-method-override]
                 return V1Data(name="x", value=0)
 
         s = Schema.from_legacy(NoneVersionMig())
@@ -887,7 +887,7 @@ class TestCoverageSupplementary:
             def schema_version(self) -> str | None:
                 return None
 
-            def migrate(self, data: IO[bytes], sv: str | None) -> V1Data:
+            def migrate(self, data: IO[bytes], sv: str | None) -> V1Data:  # ty:ignore[invalid-method-override]
                 return V1Data(name="x", value=0)
 
         s = Schema.from_legacy(NoneVerMig())

@@ -52,7 +52,7 @@ class MockMigration:
             return UserV2(
                 name=data.name, email=data.email, age=data.age, department="Migrated"
             )
-        return data
+        return data  # ty:ignore[invalid-return-type]
 
 
 @pytest.fixture
@@ -201,7 +201,7 @@ class TestMigrateSingleResource:
 
         assert progress.resource_id == "user:123"
         assert progress.status == "success"
-        assert "Migrated user:123 from" in progress.message
+        assert "Migrated user:123 from" in progress.message  # ty:ignore[unsupported-operator]
         assert progress.error is None
 
     @pytest.mark.asyncio
@@ -228,7 +228,7 @@ class TestMigrateSingleResource:
 
         assert progress.resource_id == "user:123"
         assert progress.status == "skipped"
-        assert "Resource already at current schema version" in progress.message
+        assert "Resource already at current schema version" in progress.message  # ty:ignore[unsupported-operator]
         assert progress.error is None
 
     @pytest.mark.asyncio
@@ -280,7 +280,7 @@ class TestMigrateSingleResource:
 
         assert progress.resource_id == "user:123"
         assert progress.status == "failed"
-        assert "Resource not found" in progress.error
+        assert "Resource not found" in progress.error  # ty:ignore[unsupported-operator]
         assert progress.message is None
 
 
@@ -311,7 +311,7 @@ class TestMigrateResourcesGenerator:
                 message="Migrated successfully",
             )
 
-        migrate_template._migrate_single_resource = mock_migrate_single
+        migrate_template._migrate_single_resource = mock_migrate_single  # ty:ignore[invalid-assignment]
 
         # 創建查詢條件
         query = ResourceMetaSearchQuery(
@@ -369,7 +369,7 @@ class TestMigrateResourcesGenerator:
                 message="Migrated successfully",
             )
 
-        migrate_template._migrate_single_resource = mock_migrate_single
+        migrate_template._migrate_single_resource = mock_migrate_single  # ty:ignore[invalid-assignment]
 
         # 執行批次遷移（無查詢條件）
         results: List[MigrateProgress] = []
@@ -405,7 +405,7 @@ class TestMigrateResourcesGenerator:
 
         assert len(results) == 1
         assert results[0].status == "failed"
-        assert "Migration process failed: Database error" in results[0].error
+        assert "Migration process failed: Database error" in results[0].error  # ty:ignore[unsupported-operator]
 
 
 class TestMigrateResourcesGeneratorRevisionId:
@@ -429,7 +429,7 @@ class TestMigrateResourcesGeneratorRevisionId:
                 resource_id=resource_id, status="success", message="ok"
             )
 
-        migrate_template._migrate_single_resource = mock_migrate_single
+        migrate_template._migrate_single_resource = mock_migrate_single  # ty:ignore[invalid-assignment]
 
         results = []
         async for p in migrate_template._migrate_resources_generator(
@@ -458,7 +458,7 @@ class TestMigrateResourcesGeneratorRevisionId:
                 resource_id=resource_id, status="success", message="ok"
             )
 
-        migrate_template._migrate_single_resource = mock_migrate_single
+        migrate_template._migrate_single_resource = mock_migrate_single  # ty:ignore[invalid-assignment]
 
         results = []
         async for p in migrate_template._migrate_resources_generator(
@@ -496,7 +496,7 @@ class TestMigrateResourcesGeneratorRevisionId:
                 resource_id=resource_id, status="success", message="ok"
             )
 
-        migrate_template._migrate_single_resource = mock_migrate_single
+        migrate_template._migrate_single_resource = mock_migrate_single  # ty:ignore[invalid-assignment]
 
         results = []
         async for p in migrate_template._migrate_resources_generator(
@@ -870,7 +870,7 @@ class TestApiMigration:
                             break
                     except Exception:
                         break
-                assert_messages(messages)
+                assert_messages(messages)  # ty:ignore[call-non-callable]
 
     def test_http_test_migration(
         self,
@@ -896,7 +896,7 @@ class TestApiMigration:
             for r in resp.iter_lines():
                 data = json.loads(r)
                 messages.append(data)
-            assert_messages(messages)
+            assert_messages(messages)  # ty:ignore[call-non-callable]
 
 
 class TestMigrateRouteTemplate:

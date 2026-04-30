@@ -99,7 +99,7 @@ class TestPhaseState:
     def test_reset_clears_all(self):
         state = _PhaseState()
         state.needs_post_check = True
-        state.prev_meta = "something"
+        state.prev_meta = "something"  # ty:ignore[invalid-assignment]
         state.data = "data"
         state.resource_id = "rid"
         state.reset()
@@ -142,7 +142,7 @@ class TestIsSupported:
             resource_name="item",
             resource_id="rid",
         )
-        assert handler.is_supported(ctx) is False
+        assert handler.is_supported(ctx) is False  # ty:ignore[unresolved-attribute]
 
     def test_supported_phases(self):
         """Only 'before' and 'on_success' phases should be supported."""
@@ -160,7 +160,7 @@ class TestIsSupported:
             resource_name="item",
             data=Item(name="x"),
         )
-        assert handler.is_supported(ctx_after) is False
+        assert handler.is_supported(ctx_after) is False  # ty:ignore[unresolved-attribute, invalid-argument-type]
         ctx_fail = OnFailureCreate(
             user="system",
             now=dt.datetime.now(),
@@ -168,7 +168,7 @@ class TestIsSupported:
             data=Item(name="x"),
             error="boom",
         )
-        assert handler.is_supported(ctx_fail) is False
+        assert handler.is_supported(ctx_fail) is False  # ty:ignore[unresolved-attribute, invalid-argument-type]
 
     def test_supported_for_all_actions(self):
         rm = make_rm_with_unique()
@@ -184,33 +184,33 @@ class TestIsSupported:
 
         now = dt.datetime.now()
         assert (
-            handler.is_supported(
+            handler.is_supported(  # ty:ignore[unresolved-attribute]
                 BeforeCreate(
                     user="s", now=now, resource_name="item", data=Item(name="x")
-                )
+                )  # ty:ignore[invalid-argument-type]
             )
             is True
         )
         assert (
-            handler.is_supported(
+            handler.is_supported(  # ty:ignore[unresolved-attribute]
                 BeforeUpdate(
                     user="s",
                     now=now,
                     resource_name="item",
                     resource_id="r",
                     data=Item(name="x"),
-                )
+                )  # ty:ignore[invalid-argument-type]
             )
             is True
         )
         assert (
-            handler.is_supported(
+            handler.is_supported(  # ty:ignore[unresolved-attribute]
                 BeforeModify(user="s", now=now, resource_name="item", resource_id="r")
             )
             is True
         )
         assert (
-            handler.is_supported(
+            handler.is_supported(  # ty:ignore[unresolved-attribute]
                 BeforeSwitch(
                     user="s",
                     now=now,
@@ -222,7 +222,7 @@ class TestIsSupported:
             is True
         )
         assert (
-            handler.is_supported(
+            handler.is_supported(  # ty:ignore[unresolved-attribute]
                 BeforeRestore(user="s", now=now, resource_name="item", resource_id="r")
             )
             is True
@@ -502,7 +502,7 @@ class TestThreadLocalIsolation:
         rm = make_rm_with_unique()
         handler = _get_handler(rm)
         rm.create(Item(name="alpha"))
-        state = handler._get_state()
+        state = handler._get_state()  # ty:ignore[unresolved-attribute]
         assert state.needs_post_check is False
         assert state.data is None
 
@@ -520,7 +520,9 @@ class TestHandlerHelpers:
         from autocrud.resource_manager.unique_handler import UniqueConstraintChecker
 
         checker = next(
-            c for c in handler.checkers if isinstance(c, UniqueConstraintChecker)
+            c
+            for c in handler.checkers  # ty:ignore[unresolved-attribute]
+            if isinstance(c, UniqueConstraintChecker)
         )
         assert (
             checker.data_relevant_changed(Item(name="alpha"), Item(name="beta")) is True
@@ -532,7 +534,9 @@ class TestHandlerHelpers:
         from autocrud.resource_manager.unique_handler import UniqueConstraintChecker
 
         checker = next(
-            c for c in handler.checkers if isinstance(c, UniqueConstraintChecker)
+            c
+            for c in handler.checkers  # ty:ignore[unresolved-attribute]
+            if isinstance(c, UniqueConstraintChecker)
         )
         assert (
             checker.data_relevant_changed(
@@ -572,14 +576,16 @@ class TestHandlerHelpers:
         info = rm.create(Item(name="alpha"))
         rid = info.resource_id
         assert rm.storage.exists(rid)
-        handler._compensate_create(rid)
+        handler._compensate_create(rid)  # ty:ignore[unresolved-attribute]
         assert not rm.storage.exists(rid)
 
     def test_hard_purge_nonexistent_noop(self):
         """Purging a non-existent resource should not raise."""
         rm = make_rm_with_unique()
         handler = _get_handler(rm)
-        handler._compensate_create("nonexistent")  # should not raise
+        handler._compensate_create(  # ty:ignore[unresolved-attribute]
+            "nonexistent"
+        )  # should not raise
 
 
 # ---------------------------------------------------------------------------

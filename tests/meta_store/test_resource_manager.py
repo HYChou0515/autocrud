@@ -109,16 +109,16 @@ def get_resource_store(
 ) -> Generator[IResourceStore]:
     """Fixture to provide a fast store for testing."""
     if store_type == "memory":
-        yield MemoryResourceStore(encoding="msgpack")
+        yield MemoryResourceStore(encoding="msgpack")  # ty:ignore[invalid-argument-type]
     elif store_type == "disk":
-        d = tmpdir / faker.pystr()
+        d = tmpdir / faker.pystr()  # ty:ignore[unsupported-operator]
         d.mkdir()
-        yield DiskResourceStore(encoding="msgpack", rootdir=d)
+        yield DiskResourceStore(encoding="msgpack", rootdir=d)  # ty:ignore[invalid-argument-type]
     elif store_type == "s3":
         from autocrud.resource_manager.resource_store.s3 import S3ResourceStore
 
         s3 = S3ResourceStore(
-            encoding="msgpack",
+            encoding="msgpack",  # ty:ignore[invalid-argument-type]
             endpoint_url="http://localhost:9000",
             prefix=str(tmpdir).rsplit("/", 1)[-1] + "/",
         )
@@ -137,7 +137,7 @@ def get_resource_store(
         table_prefix = f"test_{faker.pystr(min_chars=6, max_chars=10)}_"
         store = PostgresResourceStore(
             pg_dsn=pg_dsn,
-            encoding="msgpack",
+            encoding="msgpack",  # ty:ignore[invalid-argument-type]
             table_prefix=table_prefix,
         )
         with suppress(Exception):
@@ -162,8 +162,8 @@ class TestResourceManager:
         res_store_type: str,
         my_tmpdir: str,
     ):
-        meta_store = get_meta_store(meta_store_type, tmpdir=my_tmpdir)
-        with get_resource_store(res_store_type, tmpdir=my_tmpdir) as resource_store:
+        meta_store = get_meta_store(meta_store_type, tmpdir=my_tmpdir)  # ty:ignore[invalid-argument-type]
+        with get_resource_store(res_store_type, tmpdir=my_tmpdir) as resource_store:  # ty:ignore[invalid-argument-type]
             storage = SimpleStorage(
                 meta_store=meta_store,
                 resource_store=resource_store,
@@ -211,13 +211,13 @@ class TestResourceManager:
 
     def test_create_invalid_data(self):
         invalid_data = Data(
-            string=123,  # 應為 str
-            number="not_a_number",  # 應為 int
-            fp="not_a_float",  # 應為 float
-            times="not_a_datetime",  # 應為 datetime
-            data="not_an_inner_data",  # 應為 InnerData
-            list_data="not_a_list",  # 應為 list[InnerData]
-            dict_data="not_a_dict",  # 應為 dict[str, InnerData]
+            string=123,  # 應為 str  # ty:ignore[invalid-argument-type]
+            number="not_a_number",  # 應為 int  # ty:ignore[invalid-argument-type]
+            fp="not_a_float",  # 應為 float  # ty:ignore[invalid-argument-type]
+            times="not_a_datetime",  # 應為 datetime  # ty:ignore[invalid-argument-type]
+            data="not_an_inner_data",  # 應為 InnerData  # ty:ignore[invalid-argument-type]
+            list_data="not_a_list",  # 應為 list[InnerData]  # ty:ignore[invalid-argument-type]
+            dict_data="not_a_dict",  # 應為 dict[str, InnerData]  # ty:ignore[invalid-argument-type]
         )
         user = faker.user_name()
         now = faker.date_time()
@@ -260,7 +260,7 @@ class TestResourceManager:
         assert u_info.revision_id == info.revision_id
         assert u_info.parent_revision_id == info.parent_revision_id
         assert u_info.schema_version is None
-        self.assert_valid_datahash(u_info.data_hash)
+        self.assert_valid_datahash(u_info.data_hash)  # ty:ignore[invalid-argument-type]
         assert u_info.status == u_status
         assert u_info.created_time == now
         assert u_info.updated_time == u_now
@@ -1044,7 +1044,9 @@ class TestDefaultStatus:
                 resource_store=resource_store,
             )
             self.mgr = ResourceManager(
-                Data, storage=storage, default_status=default_status
+                Data,
+                storage=storage,
+                default_status=default_status,  # ty:ignore[invalid-argument-type]
             )
             yield
 
@@ -1063,7 +1065,7 @@ class TestDefaultStatus:
 
     def test_update(self):
         data = new_data()
-        user, now, meta = self.create(data, status="draft")
+        user, now, meta = self.create(data, status="draft")  # ty:ignore[invalid-argument-type]
         u_data = new_data()
         u_user = faker.user_name()
         u_now = faker.date_time()
@@ -1106,7 +1108,7 @@ class TestMetaStore:
         store_type: str,
         my_tmpdir: str,
     ):
-        self.meta_store = get_meta_store(store_type, tmpdir=my_tmpdir)
+        self.meta_store = get_meta_store(store_type, tmpdir=my_tmpdir)  # ty:ignore[invalid-argument-type]
         self.store_type = store_type
 
     @pytest.mark.benchmark
@@ -1191,13 +1193,13 @@ class TestMetaStore:
 
         all_meta: list[ResourceMeta] = []
         tt = dt.timedelta(0)
-        for _ in range(trials):
+        for _ in range(trials):  # ty:ignore[invalid-argument-type]
             meta = get_fake_meta()
             all_meta.append(meta)
             st = dt.datetime.now()
             self.meta_store[meta.resource_id] = meta
             tt += dt.datetime.now() - st
-        assert expected_create_time * minimum_time_rate < tt < expected_create_time, (
+        assert expected_create_time * minimum_time_rate < tt < expected_create_time, (  # ty:ignore[unsupported-operator]
             f"Benchmark failed, took {tt.total_seconds()} seconds"
         )
 
@@ -1205,7 +1207,7 @@ class TestMetaStore:
 
         metas_by_time = sorted(times, key=lambda x: x.resource_id)
 
-        time.sleep(search_wait.total_seconds())
+        time.sleep(search_wait.total_seconds())  # ty:ignore[unresolved-attribute]
         st = dt.datetime.now()
         got = [
             k
@@ -1224,4 +1226,4 @@ class TestMetaStore:
         ]
         tt = dt.datetime.now() - st
         assert got == metas_by_time[:10]
-        assert expected_search_time * minimum_time_rate < tt < expected_search_time
+        assert expected_search_time * minimum_time_rate < tt < expected_search_time  # ty:ignore[unsupported-operator]

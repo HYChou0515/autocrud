@@ -51,7 +51,7 @@ class BlobRouteTemplate(BaseRouteTemplate):
     """
 
     def __init__(self, dependency_provider=None):
-        super().__init__(dependency_provider)
+        super().__init__(dependency_provider)  # ty:ignore[invalid-argument-type]
         self.mounted = False
         self._blob_getter_rm: IResourceManager | None = None
         self._blob_store: IBlobStore | None = None

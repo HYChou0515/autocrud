@@ -29,7 +29,7 @@ class RerunRouteTemplate(BaseRouteTemplate):
         router: APIRouter,
     ) -> None:
         # Only register the route when the resource manager has a message queue
-        if resource_manager.message_queue is None:
+        if resource_manager.message_queue is None:  # ty:ignore[unresolved-attribute]
             return
 
         @router.post(
@@ -61,21 +61,21 @@ class RerunRouteTemplate(BaseRouteTemplate):
                     resource = resource_manager.get(resource_id)
                     job = resource.data
 
-                    if job.status in (TaskStatus.PENDING, TaskStatus.PROCESSING):
+                    if job.status in (TaskStatus.PENDING, TaskStatus.PROCESSING):  # ty:ignore[unresolved-attribute]
                         raise HTTPException(
                             status_code=400,
-                            detail=f"Cannot rerun a job with status '{job.status}'. "
+                            detail=f"Cannot rerun a job with status '{job.status}'. "  # ty:ignore[unresolved-attribute]
                             f"Only completed or failed jobs can be rerun.",
                         )
 
                     # Reset job fields
-                    job.status = TaskStatus.PENDING
-                    job.retries = 0
-                    job.errmsg = None
-                    job.artifact = None
+                    job.status = TaskStatus.PENDING  # ty:ignore[unresolved-attribute]
+                    job.retries = 0  # ty:ignore[unresolved-attribute]
+                    job.errmsg = None  # ty:ignore[unresolved-attribute]
+                    job.artifact = None  # ty:ignore[unresolved-attribute]
 
                     info = resource_manager.create_or_update(resource_id, job)
-                    resource_manager.message_queue.put(resource_id)
+                    resource_manager.message_queue.put(resource_id)  # ty:ignore[unresolved-attribute]
 
                 return MsgspecResponse(info)
             except Exception as e:

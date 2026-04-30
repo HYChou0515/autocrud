@@ -26,7 +26,7 @@ def blob_store(
     if request.param == "memory":
         yield MemoryBlobStore()
     elif request.param == "disk":
-        yield DiskBlobStore(tmp_path / "blobs_chunked")
+        yield DiskBlobStore(tmp_path / "blobs_chunked")  # ty:ignore[unsupported-operator]
     else:
         raise ValueError(f"Unknown: {request.param}")
 
@@ -188,5 +188,5 @@ class TestBackwardCompatibility:
         result = blob_store.finalize_upload_session(uid)
         assert result.size == len(data)
 
-        stored = blob_store.get(result.file_id)
+        stored = blob_store.get(result.file_id)  # ty:ignore[invalid-argument-type]
         assert stored.data == data

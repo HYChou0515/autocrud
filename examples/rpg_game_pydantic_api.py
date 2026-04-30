@@ -345,11 +345,11 @@ def create_sample_data():
     ]
 
     guild_ids = {}
-    with guild_manager.meta_provide(current_user, current_time):
+    with guild_manager.meta_provide(current_user, current_time):  # ty:ignore[unresolved-attribute]
         for gdata in guilds_data:
             try:
                 # 直接傳入 dict — ResourceManager 會自動轉換
-                info = guild_manager.create(gdata)
+                info = guild_manager.create(gdata)  # ty:ignore[unresolved-attribute]
                 guild_ids[gdata["name"]] = info.resource_id
                 print(f"✅ 創建公會: {gdata['name']}")
             except Exception as e:
@@ -404,10 +404,10 @@ def create_sample_data():
     ]
 
     skill_ids = {}
-    with skill_manager.meta_provide(current_user, current_time):
+    with skill_manager.meta_provide(current_user, current_time):  # ty:ignore[unresolved-attribute]
         for sdata in skills_data:
             try:
-                info = skill_manager.create(sdata)
+                info = skill_manager.create(sdata)  # ty:ignore[unresolved-attribute]
                 skill_ids[sdata["skname"]] = info.resource_id
                 print(f"✅ 創建技能: {sdata['skname']}")
             except Exception as e:
@@ -468,10 +468,10 @@ def create_sample_data():
         },
     ]
 
-    with character_manager.meta_provide(current_user, current_time):
+    with character_manager.meta_provide(current_user, current_time):  # ty:ignore[unresolved-attribute]
         for cdata in characters_data:
             try:
-                info = character_manager.create(cdata)
+                info = character_manager.create(cdata)  # ty:ignore[unresolved-attribute]
                 print(f"✅ 創建角色: {cdata['name']} (Lv.{cdata['level']})")
             except Exception as e:
                 print(f"❌ 角色創建失敗: {e}")
@@ -495,10 +495,10 @@ def create_sample_data():
         },
     ]
 
-    with equipment_manager.meta_provide(current_user, current_time):
+    with equipment_manager.meta_provide(current_user, current_time):  # ty:ignore[unresolved-attribute]
         for edata in equipment_data:
             try:
-                info = equipment_manager.create(edata)
+                info = equipment_manager.create(edata)  # ty:ignore[unresolved-attribute]
                 print(f"✅ 創建裝備: {edata['name']}")
             except Exception as e:
                 print(f"❌ 裝備創建失敗: {e}")
@@ -507,10 +507,10 @@ def create_sample_data():
     print("\n🔒 === Pydantic 驗證範例 ===")
     print("嘗試創建不合法的資料...")
 
-    with character_manager.meta_provide(current_user, current_time):
+    with character_manager.meta_provide(current_user, current_time):  # ty:ignore[unresolved-attribute]
         # 嘗試建立一個 HP 為負數的角色
         try:
-            character_manager.create(
+            character_manager.create(  # ty:ignore[unresolved-attribute]
                 {
                     "name": "壞資料角色",
                     "character_class": CharacterClass.WARRIOR.value,
@@ -523,7 +523,7 @@ def create_sample_data():
 
         # 嘗試建立一個名稱為空的角色
         try:
-            character_manager.create(
+            character_manager.create(  # ty:ignore[unresolved-attribute]
                 {
                     "name": "   ",  # ❌ 空白名稱 — Pydantic 驗證會攔截
                     "character_class": CharacterClass.MAGE.value,
@@ -570,7 +570,7 @@ def configure_crud():
             ("gold", int),
             ("guild_name", str | None),
             ("character_class", CharacterClass),
-        ],
+        ],  # ty:ignore[invalid-argument-type]
         # validator 不需要指定 — AutoCRUD 自動使用 Pydantic model
     )
 

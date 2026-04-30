@@ -118,7 +118,7 @@ def bench_create(rm, data_list: list[dict]) -> OperationResult:
         timings.append(elapsed)
         resource_ids.append(info.resource_id)
     result = _build_result("create", timings)
-    result._resource_ids = resource_ids  # type: ignore[attr-defined]
+    result._resource_ids = resource_ids  # type: ignore[attr-defined]  # ty:ignore[unresolved-attribute]
     return result
 
 

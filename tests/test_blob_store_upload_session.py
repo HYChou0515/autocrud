@@ -27,11 +27,11 @@ def blob_store(
     if request.param == "memory":
         yield MemoryBlobStore()
     elif request.param == "disk":
-        yield DiskBlobStore(tmp_path / "blobs_session")
+        yield DiskBlobStore(tmp_path / "blobs_session")  # ty:ignore[unsupported-operator]
     elif request.param == "s3_proxy":
         from autocrud.resource_manager.blob_store.s3 import S3BlobStore
 
-        prefix = f"{tmp_path.name}_proxy/"
+        prefix = f"{tmp_path.name}_proxy/"  # ty:ignore[unresolved-attribute]
         store = S3BlobStore(
             endpoint_url="http://localhost:9000",
             prefix=prefix,
@@ -41,7 +41,7 @@ def blob_store(
     elif request.param == "s3_single_put":
         from autocrud.resource_manager.blob_store.s3 import S3BlobStore
 
-        prefix = f"{tmp_path.name}_sput/"
+        prefix = f"{tmp_path.name}_sput/"  # ty:ignore[unresolved-attribute]
         store = S3BlobStore(
             endpoint_url="http://localhost:9000",
             prefix=prefix,
@@ -61,11 +61,11 @@ def proxy_blob_store(
     if request.param == "memory":
         yield MemoryBlobStore()
     elif request.param == "disk":
-        yield DiskBlobStore(tmp_path / "blobs_proxy")
+        yield DiskBlobStore(tmp_path / "blobs_proxy")  # ty:ignore[unsupported-operator]
     elif request.param == "s3_proxy":
         from autocrud.resource_manager.blob_store.s3 import S3BlobStore
 
-        prefix = f"{tmp_path.name}_pxy/"
+        prefix = f"{tmp_path.name}_pxy/"  # ty:ignore[unresolved-attribute]
         store = S3BlobStore(
             endpoint_url="http://localhost:9000",
             prefix=prefix,
@@ -225,7 +225,7 @@ class TestFinalizeUploadSession:
         assert result.size == len(SAMPLE_BYTES)
 
         # Data must be in the blob store
-        blob = proxy_blob_store.get(result.file_id)
+        blob = proxy_blob_store.get(result.file_id)  # ty:ignore[invalid-argument-type]
         assert blob.data == SAMPLE_BYTES
 
     def test_finalize_without_upload_raises(self, proxy_blob_store: IBlobStore):
@@ -433,7 +433,7 @@ class TestFullLifecycle:
         proxy_blob_store.upload_to_session(session.upload_id, content, part_number=1)
         result = proxy_blob_store.finalize_upload_session(session.upload_id)
         assert result.file_id
-        blob = proxy_blob_store.get(result.file_id)
+        blob = proxy_blob_store.get(result.file_id)  # ty:ignore[invalid-argument-type]
         assert blob.data == content
 
     def test_create_abort_then_finalize_fails(self, proxy_blob_store: IBlobStore):
@@ -453,5 +453,5 @@ class TestFullLifecycle:
         proxy_blob_store.upload_to_session(s2.upload_id, b"data2", part_number=1)
         r1 = proxy_blob_store.finalize_upload_session(s1.upload_id)
         r2 = proxy_blob_store.finalize_upload_session(s2.upload_id)
-        assert proxy_blob_store.get(r1.file_id).data == b"data1"
-        assert proxy_blob_store.get(r2.file_id).data == b"data2"
+        assert proxy_blob_store.get(r1.file_id).data == b"data1"  # ty:ignore[invalid-argument-type]
+        assert proxy_blob_store.get(r2.file_id).data == b"data2"  # ty:ignore[invalid-argument-type]

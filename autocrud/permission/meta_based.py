@@ -35,13 +35,14 @@ class ResourceOwnershipChecker(IPermissionChecker):
         if context.action not in self.allowed_actions:
             return PermissionResult.not_applicable
 
-        # 需要有 resource_id
-        if context.resource_id is UNSET:
+        # 需要有 resource_id (some context variants don't carry it)
+        resource_id = getattr(context, "resource_id", UNSET)
+        if resource_id is UNSET:
             return PermissionResult.not_applicable
 
         try:
             # 獲取資源元資料
-            meta = self.resource_manager.get_meta(context.resource_id)
+            meta = self.resource_manager.get_meta(resource_id)
 
             # 檢查創建者
             if meta.created_by == context.user:

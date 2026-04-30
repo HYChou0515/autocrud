@@ -582,8 +582,8 @@ def autocrud_extended():
     crud.add_model(DateModel)
     crud.add_model(DefaultFieldModel)
 
-    crud.resource_managers["list_model"] = MockListResourceManager()
-    crud.resource_managers["dict_model"] = MockDictResourceManager()
+    crud.resource_managers["list_model"] = MockListResourceManager()  # ty:ignore[invalid-assignment]
+    crud.resource_managers["dict_model"] = MockDictResourceManager()  # ty:ignore[invalid-assignment]
 
     return crud
 

@@ -13,8 +13,8 @@ def run_benchmarks():
     """Run both benchmarks."""
     # We import here so that sys.path modification takes effect
     try:
-        import benchmark_metastore_perf
-        import benchmark_resource_store_perf
+        import benchmark_metastore_perf  # ty:ignore[unresolved-import]
+        import benchmark_resource_store_perf  # ty:ignore[unresolved-import]
     except ImportError as e:
         print(f"Error importing benchmark scripts: {e}")
         sys.exit(1)

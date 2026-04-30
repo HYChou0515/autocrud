@@ -48,7 +48,7 @@ def test_get_content_type_guesser_warns_when_libmagic_missing():
     import builtins
 
     old_import = builtins.__import__
-    builtins.__import__ = patched_import
+    builtins.__import__ = patched_import  # ty:ignore[invalid-assignment]
     try:
         with warnings.catch_warnings(record=True) as w:
             warnings.simplefilter("always")
@@ -74,11 +74,11 @@ def blob_store(
     if request.param == "memory":
         yield MemoryBlobStore()
     elif request.param == "simple":
-        yield DiskBlobStore(tmp_path / "blobs_behavior")
+        yield DiskBlobStore(tmp_path / "blobs_behavior")  # ty:ignore[unsupported-operator]
     elif request.param == "s3":
         from autocrud.resource_manager.blob_store.s3 import S3BlobStore
 
-        prefix = f"{tmp_path.name}/"
+        prefix = f"{tmp_path.name}/"  # ty:ignore[unresolved-attribute]
         store = S3BlobStore(
             endpoint_url="http://localhost:9000",
             prefix=prefix,
@@ -104,7 +104,7 @@ class TestIBlobStoreBehavior:
         assert file_id == expected_hash
 
         # 2. Get
-        retrieved = self.blob_store.get(file_id)
+        retrieved = self.blob_store.get(file_id)  # ty:ignore[invalid-argument-type]
         assert retrieved.data == data
         assert isinstance(retrieved, Binary)
         assert retrieved.file_id == file_id
@@ -115,7 +115,7 @@ class TestIBlobStoreBehavior:
         file_id = self.blob_store.put(data).file_id
 
         # True for existing
-        assert self.blob_store.exists(file_id) is True
+        assert self.blob_store.exists(file_id) is True  # ty:ignore[invalid-argument-type]
 
         # False for non-existing
         assert self.blob_store.exists("non_existent_id_999") is False
@@ -131,7 +131,7 @@ class TestIBlobStoreBehavior:
 
         assert file_id_1 == file_id_2
         # Ensure data is stillretrievable
-        assert self.blob_store.get(file_id_1).data == data
+        assert self.blob_store.get(file_id_1).data == data  # ty:ignore[invalid-argument-type]
 
     def test_get_not_found(self):
         with pytest.raises(FileNotFoundError):
@@ -145,15 +145,15 @@ class TestIBlobStoreBehavior:
         id2 = self.blob_store.put(data2).file_id
 
         assert id1 != id2
-        assert self.blob_store.get(id1).data == data1
-        assert self.blob_store.get(id2).data == data2
+        assert self.blob_store.get(id1).data == data1  # ty:ignore[invalid-argument-type]
+        assert self.blob_store.get(id2).data == data2  # ty:ignore[invalid-argument-type]
 
     def test_get_url_contract(self):
         """Ensure get_url returns str or None (and no error)."""
         data = b"url_check_data"
         file_id = self.blob_store.put(data).file_id
 
-        url = self.blob_store.get_url(file_id)
+        url = self.blob_store.get_url(file_id)  # ty:ignore[invalid-argument-type]
         assert url is None or isinstance(url, str)
 
     def test_put_with_custom_key(self):
@@ -196,7 +196,7 @@ class TestIBlobStoreBehavior:
         custom_data = b"custom_keyed_blob"
         self.blob_store.put(custom_data, key="ck-get-test")
 
-        assert self.blob_store.get(hash_id).data == hash_data
+        assert self.blob_store.get(hash_id).data == hash_data  # ty:ignore[invalid-argument-type]
         assert self.blob_store.get("ck-get-test").data == custom_data
 
     def test_exists_custom_key(self):

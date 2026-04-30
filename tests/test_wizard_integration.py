@@ -476,7 +476,8 @@ def _cleanup_s3(s3_unique: str) -> None:
                 if objects:
                     delete_keys = [{"Key": obj["Key"]} for obj in objects]
                     client.delete_objects(
-                        Bucket=bucket, Delete={"Objects": delete_keys}
+                        Bucket=bucket,
+                        Delete={"Objects": delete_keys},  # ty:ignore[invalid-argument-type]
                     )
             client.delete_bucket(Bucket=bucket)
         except client.exceptions.NoSuchBucket:
@@ -490,7 +491,7 @@ def _cleanup_s3(s3_unique: str) -> None:
 def _cleanup_pg(db_unique: str) -> None:
     """Drop all tables with the test prefix."""
     try:
-        import psycopg
+        import psycopg  # ty:ignore[unresolved-import]
 
         with psycopg.connect(
             "postgresql://admin:password@localhost:5432/your_database",
@@ -519,7 +520,7 @@ def _cleanup_redis(db_unique: str) -> None:
         cursor = 0
         prefix = f"{db_unique}:"
         while True:
-            cursor, keys = r.scan(cursor=cursor, match=f"{prefix}*", count=100)
+            cursor, keys = r.scan(cursor=cursor, match=f"{prefix}*", count=100)  # ty:ignore[not-iterable]
             if keys:
                 r.delete(*keys)
             if cursor == 0:

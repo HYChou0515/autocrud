@@ -99,7 +99,7 @@ class TestAdvancedPermissionChecking:
     def setup_method(self):
         storage = SimpleStorage(
             meta_store=MemoryMetaStore(),
-            resource_store=MemoryResourceStore(DataStruct),
+            resource_store=MemoryResourceStore(DataStruct),  # ty:ignore[invalid-argument-type]
         )
 
         permission_checker = ACLPermissionChecker(
@@ -115,7 +115,7 @@ class TestAdvancedPermissionChecking:
         self.resource_manager = resource_manager
         storage = SimpleStorage(
             meta_store=MemoryMetaStore(),
-            resource_store=MemoryResourceStore(dict),
+            resource_store=MemoryResourceStore(dict),  # ty:ignore[invalid-argument-type]
         )
 
     def test_default_permission_checker(self):

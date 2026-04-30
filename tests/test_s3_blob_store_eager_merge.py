@@ -132,7 +132,7 @@ class TestS3FinalizeStreaming:
         assert result.file_id == expected_hash
         assert result.size == 10
 
-        blob = store.get(result.file_id)
+        blob = store.get(result.file_id)  # ty:ignore[invalid-argument-type]
         assert blob.data == b"helloworld"
 
     def test_finalize_with_key(self):
@@ -180,7 +180,7 @@ class TestS3FinalizeStreaming:
         store.upload_to_session(uid, b"BBB", part_number=2)
 
         result = store.finalize_upload_session(uid)
-        blob = store.get(result.file_id)
+        blob = store.get(result.file_id)  # ty:ignore[invalid-argument-type]
         assert blob.data == b"AAABBBCCC"
         assert result.size == 9
 

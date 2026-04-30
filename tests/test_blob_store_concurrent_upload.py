@@ -88,7 +88,7 @@ class TestDiskBlobStoreConcurrency:
         assert not errors
 
         result = store.finalize_upload_session(uid)
-        blob = store.get(result.file_id)
+        blob = store.get(result.file_id)  # ty:ignore[invalid-argument-type]
         expected = b"".join(f"[{i}]".encode() for i in range(1, n_parts + 1))
         assert blob.data == expected
 
@@ -142,6 +142,6 @@ class TestMemoryBlobStoreConcurrency:
         assert not errors
 
         result = store.finalize_upload_session(uid)
-        blob = store.get(result.file_id)
+        blob = store.get(result.file_id)  # ty:ignore[invalid-argument-type]
         expected = b"".join(f"[{i}]".encode() for i in range(1, n_parts + 1))
         assert blob.data == expected

@@ -106,24 +106,25 @@ _type_setting = {
     "tag": True,
     "tag_field": "context_type",
 }
-_base_context = [
+_DefstructField = tuple[str, Any] | tuple[str, Any, Any]
+_base_context: list[_DefstructField] = [
     ("user", str | UnsetType),
     ("now", dt.datetime | UnsetType),
     ("resource_name", str),
 ]
-_before_context = [
+_before_context: list[_DefstructField] = [
     ("phase", Literal["before"], "before"),
     *_base_context,
 ]
-_after_context = [
+_after_context: list[_DefstructField] = [
     ("phase", Literal["after"], "after"),
     *_base_context,
 ]
-_on_success_context = [
+_on_success_context: list[_DefstructField] = [
     ("phase", Literal["on_success"], "on_success"),
     *_base_context,
 ]
-_on_failure_context = [
+_on_failure_context: list[_DefstructField] = [
     ("phase", Literal["on_failure"], "on_failure"),
     *_base_context,
     ("error", str),
@@ -134,7 +135,7 @@ _on_failure_context = [
 # Create Context Classes
 # ============================================================================
 
-_create_context = [
+_create_context: list[_DefstructField] = [
     ("action", Literal[ResourceAction.create], ResourceAction.create),
     ("data", T),
     ("status", RevisionStatus | UnsetType, UNSET),
@@ -146,7 +147,9 @@ BeforeCreate = defstruct(
         *_before_context,
         *_create_context,
     ],
-    **_type_setting,
+    kw_only=True,
+    tag=True,
+    tag_field="context_type",
 )
 
 AfterCreate = defstruct(
@@ -155,7 +158,9 @@ AfterCreate = defstruct(
         *_after_context,
         *_create_context,
     ],
-    **_type_setting,
+    kw_only=True,
+    tag=True,
+    tag_field="context_type",
 )
 
 OnSuccessCreate = defstruct(
@@ -165,7 +170,9 @@ OnSuccessCreate = defstruct(
         *_create_context,
         ("info", RevisionInfo),
     ],
-    **_type_setting,
+    kw_only=True,
+    tag=True,
+    tag_field="context_type",
 )
 
 OnFailureCreate = defstruct(
@@ -174,7 +181,9 @@ OnFailureCreate = defstruct(
         *_on_failure_context,
         *_create_context,
     ],
-    **_type_setting,
+    kw_only=True,
+    tag=True,
+    tag_field="context_type",
 )
 
 
@@ -182,7 +191,7 @@ OnFailureCreate = defstruct(
 # Get Context Classes
 # ============================================================================
 
-_get_context = [
+_get_context: list[_DefstructField] = [
     ("action", Literal[ResourceAction.get], ResourceAction.get),
     ("resource_id", str),
     ("revision_id", str | UnsetType, UNSET),
@@ -195,7 +204,9 @@ BeforeGet = defstruct(
         *_before_context,
         *_get_context,
     ],
-    **_type_setting,
+    kw_only=True,
+    tag=True,
+    tag_field="context_type",
 )
 
 AfterGet = defstruct(
@@ -204,7 +215,9 @@ AfterGet = defstruct(
         *_after_context,
         *_get_context,
     ],
-    **_type_setting,
+    kw_only=True,
+    tag=True,
+    tag_field="context_type",
 )
 
 OnSuccessGet = defstruct(
@@ -214,7 +227,9 @@ OnSuccessGet = defstruct(
         *_get_context,
         ("resource", Resource[T]),
     ],
-    **_type_setting,
+    kw_only=True,
+    tag=True,
+    tag_field="context_type",
 )
 
 OnFailureGet = defstruct(
@@ -223,7 +238,9 @@ OnFailureGet = defstruct(
         *_on_failure_context,
         *_get_context,
     ],
-    **_type_setting,
+    kw_only=True,
+    tag=True,
+    tag_field="context_type",
 )
 
 
@@ -231,7 +248,7 @@ OnFailureGet = defstruct(
 # Get Resource Revision Context Classes
 # ============================================================================
 
-_get_resource_revision_context = [
+_get_resource_revision_context: list[_DefstructField] = [
     (
         "action",
         Literal[ResourceAction.get_resource_revision],
@@ -248,7 +265,9 @@ BeforeGetResourceRevision = defstruct(
         *_before_context,
         *_get_resource_revision_context,
     ],
-    **_type_setting,
+    kw_only=True,
+    tag=True,
+    tag_field="context_type",
 )
 
 AfterGetResourceRevision = defstruct(
@@ -257,7 +276,9 @@ AfterGetResourceRevision = defstruct(
         *_after_context,
         *_get_resource_revision_context,
     ],
-    **_type_setting,
+    kw_only=True,
+    tag=True,
+    tag_field="context_type",
 )
 
 OnSuccessGetResourceRevision = defstruct(
@@ -267,7 +288,9 @@ OnSuccessGetResourceRevision = defstruct(
         *_get_resource_revision_context,
         ("resource", Resource[T]),
     ],
-    **_type_setting,
+    kw_only=True,
+    tag=True,
+    tag_field="context_type",
 )
 
 OnFailureGetResourceRevision = defstruct(
@@ -276,7 +299,9 @@ OnFailureGetResourceRevision = defstruct(
         *_on_failure_context,
         *_get_resource_revision_context,
     ],
-    **_type_setting,
+    kw_only=True,
+    tag=True,
+    tag_field="context_type",
 )
 
 
@@ -284,7 +309,7 @@ OnFailureGetResourceRevision = defstruct(
 # List Revisions Context Classes
 # ============================================================================
 
-_list_revisions_context = [
+_list_revisions_context: list[_DefstructField] = [
     ("action", Literal[ResourceAction.list_revisions], ResourceAction.list_revisions),
     ("resource_id", str),
 ]
@@ -295,7 +320,9 @@ BeforeListRevisions = defstruct(
         *_before_context,
         *_list_revisions_context,
     ],
-    **_type_setting,
+    kw_only=True,
+    tag=True,
+    tag_field="context_type",
 )
 
 AfterListRevisions = defstruct(
@@ -304,7 +331,9 @@ AfterListRevisions = defstruct(
         *_after_context,
         *_list_revisions_context,
     ],
-    **_type_setting,
+    kw_only=True,
+    tag=True,
+    tag_field="context_type",
 )
 
 OnSuccessListRevisions = defstruct(
@@ -314,7 +343,9 @@ OnSuccessListRevisions = defstruct(
         *_list_revisions_context,
         ("revisions", list[str]),
     ],
-    **_type_setting,
+    kw_only=True,
+    tag=True,
+    tag_field="context_type",
 )
 
 OnFailureListRevisions = defstruct(
@@ -323,7 +354,9 @@ OnFailureListRevisions = defstruct(
         *_on_failure_context,
         *_list_revisions_context,
     ],
-    **_type_setting,
+    kw_only=True,
+    tag=True,
+    tag_field="context_type",
 )
 
 
@@ -331,7 +364,7 @@ OnFailureListRevisions = defstruct(
 # Get Meta Context Classes
 # ============================================================================
 
-_get_meta_context = [
+_get_meta_context: list[_DefstructField] = [
     ("action", Literal[ResourceAction.get_meta], ResourceAction.get_meta),
     ("resource_id", str),
 ]
@@ -342,7 +375,9 @@ BeforeGetMeta = defstruct(
         *_before_context,
         *_get_meta_context,
     ],
-    **_type_setting,
+    kw_only=True,
+    tag=True,
+    tag_field="context_type",
 )
 
 AfterGetMeta = defstruct(
@@ -351,7 +386,9 @@ AfterGetMeta = defstruct(
         *_after_context,
         *_get_meta_context,
     ],
-    **_type_setting,
+    kw_only=True,
+    tag=True,
+    tag_field="context_type",
 )
 
 OnSuccessGetMeta = defstruct(
@@ -361,7 +398,9 @@ OnSuccessGetMeta = defstruct(
         *_get_meta_context,
         ("meta", ResourceMeta),
     ],
-    **_type_setting,
+    kw_only=True,
+    tag=True,
+    tag_field="context_type",
 )
 
 OnFailureGetMeta = defstruct(
@@ -370,7 +409,9 @@ OnFailureGetMeta = defstruct(
         *_on_failure_context,
         *_get_meta_context,
     ],
-    **_type_setting,
+    kw_only=True,
+    tag=True,
+    tag_field="context_type",
 )
 
 
@@ -378,7 +419,7 @@ OnFailureGetMeta = defstruct(
 # Search Resources Context Classes
 # ============================================================================
 
-_search_resources_context = [
+_search_resources_context: list[_DefstructField] = [
     (
         "action",
         Literal[ResourceAction.search_resources],
@@ -393,7 +434,9 @@ BeforeSearchResources = defstruct(
         *_before_context,
         *_search_resources_context,
     ],
-    **_type_setting,
+    kw_only=True,
+    tag=True,
+    tag_field="context_type",
 )
 
 AfterSearchResources = defstruct(
@@ -402,7 +445,9 @@ AfterSearchResources = defstruct(
         *_after_context,
         *_search_resources_context,
     ],
-    **_type_setting,
+    kw_only=True,
+    tag=True,
+    tag_field="context_type",
 )
 
 OnSuccessSearchResources = defstruct(
@@ -412,7 +457,9 @@ OnSuccessSearchResources = defstruct(
         *_search_resources_context,
         ("results", list[ResourceMeta]),
     ],
-    **_type_setting,
+    kw_only=True,
+    tag=True,
+    tag_field="context_type",
 )
 
 OnFailureSearchResources = defstruct(
@@ -421,7 +468,9 @@ OnFailureSearchResources = defstruct(
         *_on_failure_context,
         *_search_resources_context,
     ],
-    **_type_setting,
+    kw_only=True,
+    tag=True,
+    tag_field="context_type",
 )
 
 
@@ -429,7 +478,7 @@ OnFailureSearchResources = defstruct(
 # Update Context Classes
 # ============================================================================
 
-_update_context = [
+_update_context: list[_DefstructField] = [
     ("action", Literal[ResourceAction.update], ResourceAction.update),
     ("resource_id", str),
     ("data", T),
@@ -442,7 +491,9 @@ BeforeUpdate = defstruct(
         *_before_context,
         *_update_context,
     ],
-    **_type_setting,
+    kw_only=True,
+    tag=True,
+    tag_field="context_type",
 )
 
 AfterUpdate = defstruct(
@@ -451,7 +502,9 @@ AfterUpdate = defstruct(
         *_after_context,
         *_update_context,
     ],
-    **_type_setting,
+    kw_only=True,
+    tag=True,
+    tag_field="context_type",
 )
 
 OnSuccessUpdate = defstruct(
@@ -461,7 +514,9 @@ OnSuccessUpdate = defstruct(
         *_update_context,
         ("revision_info", RevisionInfo),
     ],
-    **_type_setting,
+    kw_only=True,
+    tag=True,
+    tag_field="context_type",
 )
 
 OnFailureUpdate = defstruct(
@@ -470,7 +525,9 @@ OnFailureUpdate = defstruct(
         *_on_failure_context,
         *_update_context,
     ],
-    **_type_setting,
+    kw_only=True,
+    tag=True,
+    tag_field="context_type",
 )
 
 
@@ -478,7 +535,7 @@ OnFailureUpdate = defstruct(
 # Modify Context Classes
 # ============================================================================
 
-_modify_context = [
+_modify_context: list[_DefstructField] = [
     ("action", Literal[ResourceAction.modify], ResourceAction.modify),
     ("resource_id", str),
     ("data", T | UnsetType, UNSET),
@@ -491,7 +548,9 @@ BeforeModify = defstruct(
         *_before_context,
         *_modify_context,
     ],
-    **_type_setting,
+    kw_only=True,
+    tag=True,
+    tag_field="context_type",
 )
 
 AfterModify = defstruct(
@@ -500,7 +559,9 @@ AfterModify = defstruct(
         *_after_context,
         *_modify_context,
     ],
-    **_type_setting,
+    kw_only=True,
+    tag=True,
+    tag_field="context_type",
 )
 
 OnSuccessModify = defstruct(
@@ -510,7 +571,9 @@ OnSuccessModify = defstruct(
         *_modify_context,
         ("revision_info", RevisionInfo),
     ],
-    **_type_setting,
+    kw_only=True,
+    tag=True,
+    tag_field="context_type",
 )
 
 OnFailureModify = defstruct(
@@ -519,7 +582,9 @@ OnFailureModify = defstruct(
         *_on_failure_context,
         *_modify_context,
     ],
-    **_type_setting,
+    kw_only=True,
+    tag=True,
+    tag_field="context_type",
 )
 
 
@@ -527,7 +592,7 @@ OnFailureModify = defstruct(
 # Patch Context Classes
 # ============================================================================
 
-_patch_context = [
+_patch_context: list[_DefstructField] = [
     ("action", Literal[ResourceAction.patch], ResourceAction.patch),
     ("resource_id", str),
     ("patch_data", JsonPatch),
@@ -539,7 +604,9 @@ BeforePatch = defstruct(
         *_before_context,
         *_patch_context,
     ],
-    **_type_setting,
+    kw_only=True,
+    tag=True,
+    tag_field="context_type",
 )
 
 AfterPatch = defstruct(
@@ -548,7 +615,9 @@ AfterPatch = defstruct(
         *_after_context,
         *_patch_context,
     ],
-    **_type_setting,
+    kw_only=True,
+    tag=True,
+    tag_field="context_type",
 )
 
 OnSuccessPatch = defstruct(
@@ -558,7 +627,9 @@ OnSuccessPatch = defstruct(
         *_patch_context,
         ("revision_info", RevisionInfo),
     ],
-    **_type_setting,
+    kw_only=True,
+    tag=True,
+    tag_field="context_type",
 )
 
 OnFailurePatch = defstruct(
@@ -567,7 +638,9 @@ OnFailurePatch = defstruct(
         *_on_failure_context,
         *_patch_context,
     ],
-    **_type_setting,
+    kw_only=True,
+    tag=True,
+    tag_field="context_type",
 )
 
 
@@ -575,7 +648,7 @@ OnFailurePatch = defstruct(
 # Switch Context Classes
 # ============================================================================
 
-_switch_context = [
+_switch_context: list[_DefstructField] = [
     ("action", Literal[ResourceAction.switch], ResourceAction.switch),
     ("resource_id", str),
     ("revision_id", str),
@@ -587,7 +660,9 @@ BeforeSwitch = defstruct(
         *_before_context,
         *_switch_context,
     ],
-    **_type_setting,
+    kw_only=True,
+    tag=True,
+    tag_field="context_type",
 )
 
 AfterSwitch = defstruct(
@@ -596,7 +671,9 @@ AfterSwitch = defstruct(
         *_after_context,
         *_switch_context,
     ],
-    **_type_setting,
+    kw_only=True,
+    tag=True,
+    tag_field="context_type",
 )
 
 OnSuccessSwitch = defstruct(
@@ -606,7 +683,9 @@ OnSuccessSwitch = defstruct(
         *_switch_context,
         ("meta", ResourceMeta),
     ],
-    **_type_setting,
+    kw_only=True,
+    tag=True,
+    tag_field="context_type",
 )
 
 OnFailureSwitch = defstruct(
@@ -615,7 +694,9 @@ OnFailureSwitch = defstruct(
         *_on_failure_context,
         *_switch_context,
     ],
-    **_type_setting,
+    kw_only=True,
+    tag=True,
+    tag_field="context_type",
 )
 
 
@@ -623,7 +704,7 @@ OnFailureSwitch = defstruct(
 # Delete Context Classes
 # ============================================================================
 
-_delete_context = [
+_delete_context: list[_DefstructField] = [
     ("action", Literal[ResourceAction.delete], ResourceAction.delete),
     ("resource_id", str),
 ]
@@ -634,7 +715,9 @@ BeforeDelete = defstruct(
         *_before_context,
         *_delete_context,
     ],
-    **_type_setting,
+    kw_only=True,
+    tag=True,
+    tag_field="context_type",
 )
 
 AfterDelete = defstruct(
@@ -643,7 +726,9 @@ AfterDelete = defstruct(
         *_after_context,
         *_delete_context,
     ],
-    **_type_setting,
+    kw_only=True,
+    tag=True,
+    tag_field="context_type",
 )
 
 OnSuccessDelete = defstruct(
@@ -653,7 +738,9 @@ OnSuccessDelete = defstruct(
         *_delete_context,
         ("meta", ResourceMeta),
     ],
-    **_type_setting,
+    kw_only=True,
+    tag=True,
+    tag_field="context_type",
 )
 
 OnFailureDelete = defstruct(
@@ -662,7 +749,9 @@ OnFailureDelete = defstruct(
         *_on_failure_context,
         *_delete_context,
     ],
-    **_type_setting,
+    kw_only=True,
+    tag=True,
+    tag_field="context_type",
 )
 
 
@@ -670,7 +759,7 @@ OnFailureDelete = defstruct(
 # PermanentlyDelete Context Classes
 # ============================================================================
 
-_permanently_delete_context = [
+_permanently_delete_context: list[_DefstructField] = [
     (
         "action",
         Literal[ResourceAction.permanently_delete],
@@ -685,7 +774,9 @@ BeforePermanentlyDelete = defstruct(
         *_before_context,
         *_permanently_delete_context,
     ],
-    **_type_setting,
+    kw_only=True,
+    tag=True,
+    tag_field="context_type",
 )
 
 AfterPermanentlyDelete = defstruct(
@@ -694,7 +785,9 @@ AfterPermanentlyDelete = defstruct(
         *_after_context,
         *_permanently_delete_context,
     ],
-    **_type_setting,
+    kw_only=True,
+    tag=True,
+    tag_field="context_type",
 )
 
 OnSuccessPermanentlyDelete = defstruct(
@@ -704,7 +797,9 @@ OnSuccessPermanentlyDelete = defstruct(
         *_permanently_delete_context,
         ("meta", ResourceMeta),
     ],
-    **_type_setting,
+    kw_only=True,
+    tag=True,
+    tag_field="context_type",
 )
 
 OnFailurePermanentlyDelete = defstruct(
@@ -713,7 +808,9 @@ OnFailurePermanentlyDelete = defstruct(
         *_on_failure_context,
         *_permanently_delete_context,
     ],
-    **_type_setting,
+    kw_only=True,
+    tag=True,
+    tag_field="context_type",
 )
 
 
@@ -721,7 +818,7 @@ OnFailurePermanentlyDelete = defstruct(
 # Restore Context Classes
 # ============================================================================
 
-_restore_context = [
+_restore_context: list[_DefstructField] = [
     ("action", Literal[ResourceAction.restore], ResourceAction.restore),
     ("resource_id", str),
 ]
@@ -732,7 +829,9 @@ BeforeRestore = defstruct(
         *_before_context,
         *_restore_context,
     ],
-    **_type_setting,
+    kw_only=True,
+    tag=True,
+    tag_field="context_type",
 )
 
 AfterRestore = defstruct(
@@ -741,7 +840,9 @@ AfterRestore = defstruct(
         *_after_context,
         *_restore_context,
     ],
-    **_type_setting,
+    kw_only=True,
+    tag=True,
+    tag_field="context_type",
 )
 
 OnSuccessRestore = defstruct(
@@ -751,7 +852,9 @@ OnSuccessRestore = defstruct(
         *_restore_context,
         ("meta", ResourceMeta),
     ],
-    **_type_setting,
+    kw_only=True,
+    tag=True,
+    tag_field="context_type",
 )
 
 OnFailureRestore = defstruct(
@@ -760,14 +863,16 @@ OnFailureRestore = defstruct(
         *_on_failure_context,
         *_restore_context,
     ],
-    **_type_setting,
+    kw_only=True,
+    tag=True,
+    tag_field="context_type",
 )
 
 # ============================================================================
 # Migrate Context Classes
 # ============================================================================
 
-_migrate_context = [
+_migrate_context: list[_DefstructField] = [
     ("action", Literal[ResourceAction.migrate], ResourceAction.migrate),
     ("resource_id", str),
     ("revision_id", str | UnsetType, UNSET),
@@ -779,7 +884,9 @@ BeforeMigrate = defstruct(
         *_before_context,
         *_migrate_context,
     ],
-    **_type_setting,
+    kw_only=True,
+    tag=True,
+    tag_field="context_type",
 )
 
 AfterMigrate = defstruct(
@@ -788,7 +895,9 @@ AfterMigrate = defstruct(
         *_after_context,
         *_migrate_context,
     ],
-    **_type_setting,
+    kw_only=True,
+    tag=True,
+    tag_field="context_type",
 )
 
 OnSuccessMigrate = defstruct(
@@ -798,7 +907,9 @@ OnSuccessMigrate = defstruct(
         *_migrate_context,
         ("meta", ResourceMeta),
     ],
-    **_type_setting,
+    kw_only=True,
+    tag=True,
+    tag_field="context_type",
 )
 
 OnFailureMigrate = defstruct(
@@ -807,7 +918,9 @@ OnFailureMigrate = defstruct(
         *_on_failure_context,
         *_migrate_context,
     ],
-    **_type_setting,
+    kw_only=True,
+    tag=True,
+    tag_field="context_type",
 )
 
 
@@ -815,7 +928,7 @@ OnFailureMigrate = defstruct(
 # Dump Context Classes
 # ============================================================================
 
-_dump_context = [
+_dump_context: list[_DefstructField] = [
     ("action", Literal[ResourceAction.dump], ResourceAction.dump),
 ]
 
@@ -825,7 +938,9 @@ BeforeDump = defstruct(
         *_before_context,
         *_dump_context,
     ],
-    **_type_setting,
+    kw_only=True,
+    tag=True,
+    tag_field="context_type",
 )
 
 AfterDump = defstruct(
@@ -834,7 +949,9 @@ AfterDump = defstruct(
         *_after_context,
         *_dump_context,
     ],
-    **_type_setting,
+    kw_only=True,
+    tag=True,
+    tag_field="context_type",
 )
 
 OnSuccessDump = defstruct(
@@ -844,7 +961,9 @@ OnSuccessDump = defstruct(
         *_dump_context,
         ("result", Generator[tuple[str, IO[bytes]], None, None]),
     ],
-    **_type_setting,
+    kw_only=True,
+    tag=True,
+    tag_field="context_type",
 )
 
 OnFailureDump = defstruct(
@@ -853,7 +972,9 @@ OnFailureDump = defstruct(
         *_on_failure_context,
         *_dump_context,
     ],
-    **_type_setting,
+    kw_only=True,
+    tag=True,
+    tag_field="context_type",
 )
 
 
@@ -861,7 +982,7 @@ OnFailureDump = defstruct(
 # Load Context Classes
 # ============================================================================
 
-_load_context = [
+_load_context: list[_DefstructField] = [
     ("action", Literal[ResourceAction.load], ResourceAction.load),
     ("record_type", str),
 ]
@@ -872,7 +993,9 @@ BeforeLoad = defstruct(
         *_before_context,
         *_load_context,
     ],
-    **_type_setting,
+    kw_only=True,
+    tag=True,
+    tag_field="context_type",
 )
 
 AfterLoad = defstruct(
@@ -881,7 +1004,9 @@ AfterLoad = defstruct(
         *_after_context,
         *_load_context,
     ],
-    **_type_setting,
+    kw_only=True,
+    tag=True,
+    tag_field="context_type",
 )
 
 OnSuccessLoad = defstruct(
@@ -890,7 +1015,9 @@ OnSuccessLoad = defstruct(
         *_on_success_context,
         *_load_context,
     ],
-    **_type_setting,
+    kw_only=True,
+    tag=True,
+    tag_field="context_type",
 )
 
 OnFailureLoad = defstruct(
@@ -899,7 +1026,9 @@ OnFailureLoad = defstruct(
         *_on_failure_context,
         *_load_context,
     ],
-    **_type_setting,
+    kw_only=True,
+    tag=True,
+    tag_field="context_type",
 )
 
 EventContext = (
@@ -971,17 +1100,17 @@ class IEventHandler(ABC):
     """An event handler invoked by :class:`ResourceManager` when an event fires."""
 
     @abstractmethod
-    def is_supported(self, context: EventContext) -> bool: ...
+    def is_supported(self, context: EventContext) -> bool: ...  # ty:ignore[invalid-type-form]
 
     @abstractmethod
-    def handle_event(self, context: EventContext) -> None: ...
+    def handle_event(self, context: EventContext) -> None: ...  # ty:ignore[invalid-type-form]
 
 
 # ============================================================================
 # Builder helper: do(callable).{phase}(action)
 # ============================================================================
 
-ContextFunc = Callable[[EventContext], None]
+ContextFunc = Callable[[EventContext], None]  # ty:ignore[invalid-type-form]
 
 
 class SimpleEventHandler(IEventHandler):
@@ -990,10 +1119,10 @@ class SimpleEventHandler(IEventHandler):
         self.phase = phase
         self.action = action
 
-    def is_supported(self, context: EventContext) -> bool:
+    def is_supported(self, context: EventContext) -> bool:  # ty:ignore[invalid-type-form]
         return context.phase == self.phase and context.action in self.action
 
-    def handle_event(self, context: EventContext) -> None:
+    def handle_event(self, context: EventContext) -> None:  # ty:ignore[invalid-type-form]
         self.func(context)
 
 
@@ -1015,7 +1144,7 @@ class SimpleEventHandlerBuilder(Sequence[SimpleEventHandler]):
         if not isinstance(func, list):
             self.func.append(func)
         else:
-            self.func.extend(func)
+            self.func.extend(func)  # ty:ignore[invalid-argument-type]
 
     def _build_phase(self, phase: str, action: ResourceAction) -> Self:
         if phase not in {"before", "after", "on_success", "on_failure"}:

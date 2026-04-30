@@ -57,7 +57,7 @@ def _reconstruct_params(kwargs: dict, conversions: dict[str, tuple[str, type]]) 
                 headers=Headers({"content-type": ct}),
             )
         elif conv_kind == "pydantic":
-            kwargs[field_name] = orig_type.model_validate(_ms.to_builtins(val))
+            kwargs[field_name] = orig_type.model_validate(_ms.to_builtins(val))  # ty:ignore[unresolved-attribute]
         elif conv_kind == "to_str":
             try:
                 kwargs[field_name] = orig_type(val)

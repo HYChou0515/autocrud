@@ -57,7 +57,9 @@ class Item(Struct):
 # Helpers
 # ---------------------------------------------------------------------------
 def _make_storage_factory(prefix: str = ""):
-    from autocrud.resource_manager.storage_factory import PostgreSQLStorageFactory
+    from autocrud.resource_manager.storage_factory import (
+        PostgreSQLStorageFactory,  # ty:ignore[unresolved-import]
+    )
 
     return PostgreSQLStorageFactory(
         connection_string=POSTGRES_DSN,
@@ -102,7 +104,7 @@ def _format_size(nbytes: int) -> str:
     for unit in ("B", "KB", "MB", "GB"):
         if nbytes < 1024:
             return f"{nbytes:.1f} {unit}"
-        nbytes /= 1024
+        nbytes /= 1024  # ty:ignore[invalid-assignment]
     return f"{nbytes:.1f} TB"
 
 
@@ -146,7 +148,7 @@ def _cleanup_s3_prefix(prefix: str):
             objects = page.get("Contents", [])
             if objects:
                 keys = [{"Key": obj["Key"]} for obj in objects]
-                s3.delete_objects(Bucket=S3_BUCKET, Delete={"Objects": keys})
+                s3.delete_objects(Bucket=S3_BUCKET, Delete={"Objects": keys})  # ty:ignore[invalid-argument-type]
     except Exception as exc:
         print(f"  [cleanup] S3: {exc}")
 
@@ -336,39 +338,39 @@ def bench_load_breakdown(data: bytes, n: int, prefix: str):
 
         # Decode only
         t_decode = (
-            timeit.timeit(lambda: mgr.meta_serializer.decode(rec.data), number=1000)
+            timeit.timeit(lambda: mgr.meta_serializer.decode(rec.data), number=1000)  # ty:ignore[unresolved-attribute]
             / 1000
         )
         print("\n  --- Per-record micro-timing (avg of 1000) ---")
         print(f"  MetaRecord decode: {t_decode * 1e6:.1f} µs")
 
         # Storage exists check
-        meta_obj = mgr.meta_serializer.decode(rec.data)
+        meta_obj = mgr.meta_serializer.decode(rec.data)  # ty:ignore[unresolved-attribute]
         t_exists = (
-            timeit.timeit(lambda: mgr.storage.exists(meta_obj.resource_id), number=1000)
+            timeit.timeit(lambda: mgr.storage.exists(meta_obj.resource_id), number=1000)  # ty:ignore[unresolved-attribute]
             / 1000
         )
         print(f"  storage.exists(): {t_exists * 1e6:.1f} µs")
 
         # Storage save_meta
         t_save = (
-            timeit.timeit(lambda: mgr.storage.save_meta(meta_obj), number=100) / 100
+            timeit.timeit(lambda: mgr.storage.save_meta(meta_obj), number=100) / 100  # ty:ignore[unresolved-attribute]
         )
         print(f"  storage.save_meta(): {t_save * 1e6:.1f} µs")
 
     if rev_records:
         rec = rev_records[0]
-        raw_res = mgr.resource_serializer.decode(rec.data)
+        raw_res = mgr.resource_serializer.decode(rec.data)  # ty:ignore[unresolved-attribute]
 
         t_decode = (
-            timeit.timeit(lambda: mgr.resource_serializer.decode(rec.data), number=1000)
+            timeit.timeit(lambda: mgr.resource_serializer.decode(rec.data), number=1000)  # ty:ignore[unresolved-attribute]
             / 1000
         )
         print(f"  RevisionRecord decode: {t_decode * 1e6:.1f} µs")
 
         t_save_rev = (
             timeit.timeit(
-                lambda: mgr.storage.save_revision(
+                lambda: mgr.storage.save_revision(  # ty:ignore[unresolved-attribute]
                     raw_res.info, io.BytesIO(raw_res.raw_data)
                 ),
                 number=100,

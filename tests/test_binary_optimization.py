@@ -47,7 +47,7 @@ class MockBlobStore:
 
 @pytest.fixture
 def storage():
-    resource_store = MemoryResourceStore(encoding="json")
+    resource_store = MemoryResourceStore(encoding="json")  # ty:ignore[invalid-argument-type]
     meta_store = MemoryMetaStore()
     return SimpleStorage(resource_store=resource_store, meta_store=meta_store)
 
@@ -55,7 +55,9 @@ def storage():
 def test_binary_traversal_optimization(storage):
     tracker_store = MockBlobStore()
     manager = ResourceManager(
-        resource_type=UserWithBinary, storage=storage, blob_store=tracker_store
+        resource_type=UserWithBinary,
+        storage=storage,
+        blob_store=tracker_store,  # ty:ignore[invalid-argument-type]
     )
 
     assert manager._binary_processor is not None, "Processor should be compiled"
@@ -75,7 +77,7 @@ def test_binary_traversal_optimization(storage):
         },
     }
 
-    manager._binary_processor.process(input_dict, tracker_store)
+    manager._binary_processor.process(input_dict, tracker_store)  # ty:ignore[invalid-argument-type]
     assert len(tracker_store.puts) == 4
 
     # Test Struct Input
@@ -92,7 +94,7 @@ def test_binary_traversal_optimization(storage):
         },
     )
 
-    manager._binary_processor.process(input_struct, tracker_store)
+    manager._binary_processor.process(input_struct, tracker_store)  # ty:ignore[invalid-argument-type]
     assert len(tracker_store.puts) == 4
 
 
@@ -101,7 +103,9 @@ def test_recursive_struct_compilation(storage):
     # This should not raise RecursionError during init
     try:
         manager = ResourceManager(
-            resource_type=Menu, storage=storage, blob_store=tracker_store
+            resource_type=Menu,
+            storage=storage,
+            blob_store=tracker_store,  # ty:ignore[invalid-argument-type]
         )
     except RecursionError:
         pytest.fail(
@@ -119,7 +123,7 @@ def test_recursive_struct_compilation(storage):
         sub_menus=[Menu(name="child", icon=Binary(data=raw_content))],
     )
 
-    manager._binary_processor.process(menu, tracker_store)
+    manager._binary_processor.process(menu, tracker_store)  # ty:ignore[invalid-argument-type]
     assert len(tracker_store.puts) == 2
 
 
@@ -127,7 +131,9 @@ def test_recursion_broken_structure(storage):
     # Test that we can handle recursive dicts without infinite loop if they are finite
     tracker_store = MockBlobStore()
     manager = ResourceManager(
-        resource_type=Menu, storage=storage, blob_store=tracker_store
+        resource_type=Menu,
+        storage=storage,
+        blob_store=tracker_store,  # ty:ignore[invalid-argument-type]
     )
 
     raw_content = b"icon"
@@ -141,7 +147,7 @@ def test_recursion_broken_structure(storage):
         ],
     }
 
-    manager._binary_processor.process(menu_dict, tracker_store)
+    manager._binary_processor.process(menu_dict, tracker_store)  # ty:ignore[invalid-argument-type]
     assert len(tracker_store.puts) == 2
 
 
@@ -152,13 +158,15 @@ class LooseStruct(Struct):
 def test_binary_generic_coverage(storage):
     tracker_store = MockBlobStore()
     manager = ResourceManager(
-        resource_type=LooseStruct, storage=storage, blob_store=tracker_store
+        resource_type=LooseStruct,
+        storage=storage,
+        blob_store=tracker_store,  # ty:ignore[invalid-argument-type]
     )
 
     # 1. Test Generic List (hits _process_binary_generic list branch)
     tracker_store.puts = []
     data_list = LooseStruct(payload=[Binary(data=b"1"), Binary(data=b"2")])
-    processed_list = manager._binary_processor.process(data_list, tracker_store)
+    processed_list = manager._binary_processor.process(data_list, tracker_store)  # ty:ignore[invalid-argument-type]
 
     assert len(tracker_store.puts) == 2
     assert processed_list.payload[0].file_id == "mock_file_id"
@@ -167,7 +175,7 @@ def test_binary_generic_coverage(storage):
     # 2. Test Generic Dict (hits _process_binary_generic dict branch)
     tracker_store.puts = []
     data_dict = LooseStruct(payload={"k1": Binary(data=b"3"), "k2": Binary(data=b"4")})
-    processed_dict = manager._binary_processor.process(data_dict, tracker_store)
+    processed_dict = manager._binary_processor.process(data_dict, tracker_store)  # ty:ignore[invalid-argument-type]
 
     assert len(tracker_store.puts) == 2
     assert processed_dict.payload["k1"].file_id == "mock_file_id"
@@ -176,7 +184,7 @@ def test_binary_generic_coverage(storage):
     tracker_store.puts = []
     d = BinaryData(content=Binary(data=b"5"), name="n")
     data_struct = LooseStruct(payload=d)
-    processed_struct = manager._binary_processor.process(data_struct, tracker_store)
+    processed_struct = manager._binary_processor.process(data_struct, tracker_store)  # ty:ignore[invalid-argument-type]
 
     assert len(tracker_store.puts) == 1
     assert processed_struct.payload.content.file_id == "mock_file_id"
@@ -186,13 +194,13 @@ def test_binary_generic_coverage(storage):
 
     # List no change
     l_no_change = LooseStruct(payload=["a", "b"])
-    res_l = manager._binary_processor.process(l_no_change, tracker_store)
+    res_l = manager._binary_processor.process(l_no_change, tracker_store)  # ty:ignore[invalid-argument-type]
     # Checks that original object is returned when no changes
     assert res_l.payload is l_no_change.payload
 
     # Dict no change
     d_no_change = LooseStruct(payload={"k": "v"})
-    res_d = manager._binary_processor.process(d_no_change, tracker_store)
+    res_d = manager._binary_processor.process(d_no_change, tracker_store)  # ty:ignore[invalid-argument-type]
     assert res_d.payload is d_no_change.payload
 
     # Struct no change
@@ -201,14 +209,16 @@ def test_binary_generic_coverage(storage):
 
     simple = Simple(x=1)
     s_wrapper = LooseStruct(payload=simple)
-    res_s = manager._binary_processor.process(s_wrapper, tracker_store)
+    res_s = manager._binary_processor.process(s_wrapper, tracker_store)  # ty:ignore[invalid-argument-type]
     assert res_s.payload is s_wrapper.payload
 
 
 def test_public_api_binary_handling(storage):
     tracker_store = MockBlobStore()
     manager = ResourceManager(
-        resource_type=UserWithBinary, storage=storage, blob_store=tracker_store
+        resource_type=UserWithBinary,
+        storage=storage,
+        blob_store=tracker_store,  # ty:ignore[invalid-argument-type]
     )
 
     raw_content = b"public_api_content"
@@ -277,7 +287,9 @@ def test_binary_restore(storage):
 
     blob_store = InMemoryBlobStore()
     manager = ResourceManager(
-        resource_type=UserWithBinary, storage=storage, blob_store=blob_store
+        resource_type=UserWithBinary,
+        storage=storage,
+        blob_store=blob_store,  # ty:ignore[invalid-argument-type]
     )
 
     raw_content = b"testdata-restore"
@@ -291,7 +303,7 @@ def test_binary_restore(storage):
     )
 
     # Process converts data to file_id reference
-    processed = manager._binary_processor.process(input_struct, blob_store)
+    processed = manager._binary_processor.process(input_struct, blob_store)  # ty:ignore[invalid-argument-type]
 
     # Check it is processed (data is UNSET, file_id is set)
     assert isinstance(processed.avatar.content.data, type(UNSET))
@@ -301,8 +313,8 @@ def test_binary_restore(storage):
     restored = manager.restore_binary(processed)
 
     # Check it is restored
-    assert restored.avatar.content.data == raw_content
-    assert restored.avatar.content.file_id == processed.avatar.content.file_id
+    assert restored.avatar.content.data == raw_content  # ty:ignore[unresolved-attribute]
+    assert restored.avatar.content.file_id == processed.avatar.content.file_id  # ty:ignore[unresolved-attribute]
 
 
 def test_binary_generic_restore(storage):
@@ -315,7 +327,7 @@ def test_binary_generic_restore(storage):
                 file_id="generic-id", data=b"generic-restored"
             )
 
-        def put(self, data: bytes, *, content_type: Any = UNSET) -> Binary:
+        def put(self, data: bytes, *, content_type: Any = UNSET) -> Binary:  # ty:ignore[empty-body]
             pass
 
         def get(self, file_id: str) -> Binary:
@@ -323,7 +335,9 @@ def test_binary_generic_restore(storage):
 
     blob_store = InMemoryBlobStore()
     manager = ResourceManager(
-        resource_type=LooseStruct, storage=storage, blob_store=blob_store
+        resource_type=LooseStruct,
+        storage=storage,
+        blob_store=blob_store,  # ty:ignore[invalid-argument-type]
     )
 
     # 1. Test Generic List restore
@@ -332,12 +346,12 @@ def test_binary_generic_restore(storage):
     data_list = LooseStruct(payload=[stored_binary])
 
     restored_list = manager.restore_binary(data_list)
-    assert restored_list.payload[0].data == b"generic-restored"
+    assert restored_list.payload[0].data == b"generic-restored"  # ty:ignore[unresolved-attribute]
 
     # 2. Test Generic Dict restore
     data_dict = LooseStruct(payload={"key": stored_binary})
     restored_dict = manager.restore_binary(data_dict)
-    assert restored_dict.payload["key"].data == b"generic-restored"
+    assert restored_dict.payload["key"].data == b"generic-restored"  # ty:ignore[unresolved-attribute]
 
     # 3. Test Generic Struct restore (nested inside Any)
     # Since it's inside 'Any', compiled processor uses _restore_generic which checks isinstance(data, Struct)
@@ -345,7 +359,7 @@ def test_binary_generic_restore(storage):
     data_struct_wrapper = LooseStruct(payload=struct_data)
 
     restored_struct = manager.restore_binary(data_struct_wrapper)
-    assert restored_struct.payload.content.data == b"generic-restored"
+    assert restored_struct.payload.content.data == b"generic-restored"  # ty:ignore[unresolved-attribute]
 
 
 # ── Generic Struct (Job[T]) tests ──────────────────────────────────────
@@ -371,13 +385,15 @@ class TestGenericStructBinaryProcess:
         """MyJob(Job[MyPayload]) should process nested Binary in payload."""
         tracker_store = MockBlobStore()
         manager = ResourceManager(
-            resource_type=MyJob, storage=storage, blob_store=tracker_store
+            resource_type=MyJob,
+            storage=storage,
+            blob_store=tracker_store,  # ty:ignore[invalid-argument-type]
         )
 
         data = MyJob(
             payload=MyPayload(filezip=ZipFile(content=Binary(data=b"hello")), age=12)
         )
-        processed = manager._binary_processor.process(data, tracker_store)
+        processed = manager._binary_processor.process(data, tracker_store)  # ty:ignore[invalid-argument-type]
 
         assert len(tracker_store.puts) == 1
         assert tracker_store.puts[0] == b"hello"
@@ -403,7 +419,9 @@ class TestGenericStructBinaryProcess:
 
         blob_store = InMemBlobStore()
         manager = ResourceManager(
-            resource_type=MyJob, storage=storage, blob_store=blob_store
+            resource_type=MyJob,
+            storage=storage,
+            blob_store=blob_store,  # ty:ignore[invalid-argument-type]
         )
 
         data = MyJob(
@@ -411,11 +429,11 @@ class TestGenericStructBinaryProcess:
                 filezip=ZipFile(content=Binary(data=b"restore-me")), age=5
             )
         )
-        processed = manager._binary_processor.process(data, blob_store)
+        processed = manager._binary_processor.process(data, blob_store)  # ty:ignore[invalid-argument-type]
         assert processed.payload.filezip.content.data is UNSET
 
         restored = manager.restore_binary(processed)
-        assert restored.payload.filezip.content.data == b"restore-me"
+        assert restored.payload.filezip.content.data == b"restore-me"  # ty:ignore[unresolved-attribute]
 
     def test_generic_alias_process(self):
         """Job[MyPayload] (generic alias, not subclass) should process nested Binary."""
@@ -425,7 +443,7 @@ class TestGenericStructBinaryProcess:
         data = Job(
             payload=MyPayload(filezip=ZipFile(content=Binary(data=b"alias")), age=99)
         )
-        processed = processor.process(data, tracker_store)
+        processed = processor.process(data, tracker_store)  # ty:ignore[invalid-argument-type]
 
         assert len(tracker_store.puts) == 1
         assert tracker_store.puts[0] == b"alias"
@@ -444,7 +462,7 @@ class TestGenericStructBinaryProcess:
             },
             "status": "pending",
         }
-        processed = processor.process(data, tracker_store)
+        processed = processor.process(data, tracker_store)  # ty:ignore[invalid-argument-type]
 
         assert len(tracker_store.puts) == 1
         assert processed["payload"]["filezip"]["content"].file_id == "mock_file_id"
@@ -470,7 +488,7 @@ class TestGenericStructBinaryProcess:
                 filezip=ZipFile(content=Binary(file_id="fid-0", data=UNSET)), age=1
             )
         )
-        restored = processor.restore(data, blob_store)
+        restored = processor.restore(data, blob_store)  # ty:ignore[invalid-argument-type]
         assert restored.payload.filezip.content.data == b"restored-alias"
 
     def test_custom_generic_struct_process(self):
@@ -485,7 +503,7 @@ class TestGenericStructBinaryProcess:
         processor = BinaryProcessor(Wrapper[ZipFile])
 
         data = Wrapper(inner=ZipFile(content=Binary(data=b"custom")), label="test")
-        processed = processor.process(data, tracker_store)
+        processed = processor.process(data, tracker_store)  # ty:ignore[invalid-argument-type]
 
         assert len(tracker_store.puts) == 1
         assert processed.inner.content.file_id == "mock_file_id"

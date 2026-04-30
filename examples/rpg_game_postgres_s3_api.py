@@ -36,7 +36,9 @@ from msgspec import Struct
 
 from autocrud.crud.core import AutoCRUD
 from autocrud.resource_manager.basic import Encoding
-from autocrud.resource_manager.storage_factory import PostgreSQLStorageFactory
+from autocrud.resource_manager.storage_factory import (
+    PostgreSQLStorageFactory,  # ty:ignore[unresolved-import]
+)
 
 # ============================================================================
 # Configuration

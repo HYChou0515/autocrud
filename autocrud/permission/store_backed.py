@@ -26,11 +26,11 @@ from __future__ import annotations
 from enum import Flag, auto
 from typing import TYPE_CHECKING, Generic, TypeVar
 
-from autocrud.permission.basic import (
+from autocrud.permission.checker import (
     DEFAULT_ROOT_USER,
-    IPermissionCheckerWithStore,
+    IPermissionChecker,
+    PermissionResult,
 )
-from autocrud.permission.checker import PermissionResult
 from autocrud.permission.simple import RootOnly
 from autocrud.types import IndexableField
 
@@ -58,7 +58,7 @@ class Policy(Flag):
     )  # 寬鬆模式：allow 優先且獲勝，無規則允許
 
 
-class StoreBackedPermissionChecker(IPermissionCheckerWithStore, Generic[T]):
+class StoreBackedPermissionChecker(IPermissionChecker, Generic[T]):
     """Permission checker backed by a private :class:`ResourceManager`.
 
     Subclasses configure three class-level attributes:
@@ -89,17 +89,14 @@ class StoreBackedPermissionChecker(IPermissionCheckerWithStore, Generic[T]):
         self.storage_factory = storage_factory or MemoryStorageFactory()
         storage = self.storage_factory.build(self.storage_name)
         self.pm = ResourceManager[T](
-            self.data_type,
+            self.data_type,  # ty:ignore[invalid-argument-type]
             storage=storage,
             indexed_fields=self.indexed_fields,
             permission_checker=RootOnly(root_user),
         )
+        self.resource_manager = self.pm
         self.policy = policy
         self.root_user = root_user
-
-    @property
-    def resource_manager(self):
-        return self.pm
 
     def _default_action(self, have_more_to_check: bool) -> PermissionResult:
         if have_more_to_check:

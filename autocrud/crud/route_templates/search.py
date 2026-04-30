@@ -52,7 +52,7 @@ class ListRouteTemplate(BaseRouteTemplate):
     ) -> None:
         @router.get(
             f"/{model_name}/data",
-            responses=struct_to_responses_type(list[resource_manager.resource_type]),
+            responses=struct_to_responses_type(list[resource_manager.resource_type]),  # ty:ignore[invalid-type-form]
             summary=f"List {model_name} Data Only",
             tags=[f"{model_name}"],
             deprecated=True,
@@ -138,7 +138,7 @@ class ListRouteTemplate(BaseRouteTemplate):
                         returns=["data"],
                         partial=fields,
                     )
-                return MsgspecResponse([item.data for item in results])
+                return MsgspecResponse([item.data for item in results])  # ty:ignore[invalid-return-type]
             except Exception as e:
                 raise to_http_exception(e)
 
@@ -372,8 +372,8 @@ class ListRouteTemplate(BaseRouteTemplate):
                     responses.append(
                         FullResourceResponse(
                             data=item.data,
-                            revision_info=item.info,
-                            meta=item.meta,
+                            revision_info=item.info,  # ty:ignore[invalid-argument-type]
+                            meta=item.meta,  # ty:ignore[invalid-argument-type]
                         )
                     )
                 return MsgspecResponse(responses)
@@ -383,7 +383,7 @@ class ListRouteTemplate(BaseRouteTemplate):
         @router.get(
             f"/{model_name}/full",
             responses=struct_to_responses_type(
-                list[FullResourceResponse[resource_manager.resource_type]],
+                list[FullResourceResponse[resource_manager.resource_type]],  # ty:ignore[invalid-type-form]
             ),
             summary=f"List {model_name} Complete Information",
             tags=[f"{model_name}"],
@@ -472,7 +472,7 @@ class ListRouteTemplate(BaseRouteTemplate):
         @router.get(
             f"/{model_name}",
             responses=struct_to_responses_type(
-                list[FullResourceResponse[resource_manager.resource_type]],
+                list[FullResourceResponse[resource_manager.resource_type]],  # ty:ignore[invalid-type-form]
             ),
             summary=f"List {model_name} resources",
             tags=[f"{model_name}"],

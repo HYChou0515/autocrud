@@ -183,7 +183,7 @@ def _make_store(
 ) -> S3BlobStore:
     """Create an S3BlobStore backed by the given FakeS3Client."""
     with patch("boto3.client", return_value=fake_client):
-        return S3BlobStore(prefix=prefix, upload_method=upload_method)
+        return S3BlobStore(prefix=prefix, upload_method=upload_method)  # ty:ignore[invalid-argument-type]
 
 
 # ===================================================================
@@ -222,7 +222,7 @@ class TestCrossInstanceProxy:
 
         assert result.file_id
         assert result.size == len(SAMPLE_BYTES)
-        blob = store_b.get(result.file_id)
+        blob = store_b.get(result.file_id)  # ty:ignore[invalid-argument-type]
         assert blob.data == SAMPLE_BYTES
 
     def test_abort_from_different_instance(self):
@@ -337,7 +337,7 @@ class TestSingleInstanceProxy:
         result = store.finalize_upload_session(session.upload_id)
         assert result.file_id
         assert result.size == len(SAMPLE_BYTES)
-        blob = store.get(result.file_id)
+        blob = store.get(result.file_id)  # ty:ignore[invalid-argument-type]
         assert blob.data == SAMPLE_BYTES
 
     def test_not_found_session(self):

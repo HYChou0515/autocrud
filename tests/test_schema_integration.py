@@ -136,7 +136,7 @@ class TestSchemaResourceManagerIntegration:
             def schema_version(self) -> str:
                 return "v2"
 
-            def migrate(self, data: IO[bytes], sv: str | None) -> ItemV2:
+            def migrate(self, data: IO[bytes], sv: str | None) -> ItemV2:  # ty:ignore[invalid-method-override]
                 obj = msgspec.json.decode(data.read(), type=ItemV1)
                 return ItemV2(name=obj.name, price=obj.price, currency="EUR")
 
@@ -161,7 +161,7 @@ class TestSchemaResourceManagerIntegration:
         # Set up mock
         legacy_data = ItemV1(name="widget", price=100)
         revision_info = RevisionInfo(
-            uid="uid-1",
+            uid="uid-1",  # ty:ignore[invalid-argument-type]
             resource_id="item:1",
             revision_id="item:1:1",
             schema_version="v1",
@@ -271,7 +271,7 @@ class TestSchemaAddModelIntegration:
             def schema_version(self) -> str:
                 return "v2"
 
-            def migrate(self, data, sv):
+            def migrate(self, data, sv):  # ty:ignore[invalid-method-override]
                 pass
 
         with warnings.catch_warnings(record=True) as w:
@@ -356,7 +356,7 @@ class TestSchemaAddModelIntegration:
         rm = app.resource_managers["pyd-item"]
         # Since Schema already has a validator, Pydantic should NOT override it
         # The rm._validator should be the Schema's validator
-        assert rm._validator is not None
+        assert rm._validator is not None  # ty:ignore[unresolved-attribute]
 
     def test_add_model_pydantic_no_schema_validator_uses_pydantic(self):
         """Pydantic model + Schema without validator: auto-uses Pydantic."""
@@ -374,7 +374,7 @@ class TestSchemaAddModelIntegration:
         app.add_model(schema)
         rm = app.resource_managers["pyd-item2"]
         # Pydantic auto-detect should set the validator
-        assert rm._validator is not None
+        assert rm._validator is not None  # ty:ignore[unresolved-attribute]
 
     def test_schema_importable_from_autocrud(self):
         """Schema is importable from autocrud package."""
@@ -416,7 +416,10 @@ class TestMigrateRevisionAndSwitch:
         """Create a ResourceManager with ItemV2 + migration from v1/None."""
         schema = (
             Schema(ItemV2, "v2")
-            .step(None, migrate_v1_to_v2)  # None = created without schema
+            .step(
+                None,  # ty:ignore[invalid-argument-type]
+                migrate_v1_to_v2,
+            )  # None = created without schema
             .plus("v1", migrate_v1_to_v2)  # parallel chain for explicit v1
         )
         return ResourceManager(

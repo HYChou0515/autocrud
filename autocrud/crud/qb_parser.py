@@ -118,6 +118,11 @@ class SafeQBParser:
         "is_deleted",
         "schema_version",
         "total_revision_count",
+        "rev_status",
+        "rev_created_by",
+        "rev_updated_by",
+        "rev_created_time",
+        "rev_updated_time",
         "all",
         "any",
     }
@@ -238,7 +243,7 @@ class SafeQBParser:
 
             # 調用函數
             try:
-                return func(*args, **kwargs)
+                return func(*args, **kwargs)  # ty:ignore[invalid-argument-type]
             except Exception as e:
                 raise QBParseError(f"Error calling function: {e}")
 

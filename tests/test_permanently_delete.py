@@ -175,12 +175,12 @@ class TestPurgeResource:
         info = RevisionInfo(
             resource_id="r1",
             revision_id="rev1",
-            uid="uid1",
+            uid="uid1",  # ty:ignore[invalid-argument-type]
             created_by="u",
             updated_by="u",
             created_time=dt.datetime.now(),
             updated_time=dt.datetime.now(),
-            status="stable",
+            status="stable",  # ty:ignore[invalid-argument-type]
             parent_revision_id=None,
             schema_version=None,
             data_hash="xxh3_128:00000000000000000000000000000000",

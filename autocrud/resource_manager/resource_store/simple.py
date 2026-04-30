@@ -4,6 +4,7 @@ from collections.abc import Generator, Iterable
 from contextlib import contextmanager
 from pathlib import Path
 from typing import IO
+from uuid import UUID
 
 from autocrud.resource_manager.basic import (
     Encoding,
@@ -12,7 +13,8 @@ from autocrud.resource_manager.basic import (
 )
 from autocrud.types import RevisionInfo
 
-UID = str
+UID = UUID
+UIDStr = str
 SchemaVersion = str
 ResourceID = str
 RevisionID = str
@@ -92,7 +94,7 @@ class MemoryResourceStore(IResourceStore):
         ``IO[bytes]`` file-like object (only ``read()`` is called).
         """
         for info, data in items:
-            raw = data.read() if hasattr(data, "read") else data
+            raw = bytes(data) if isinstance(data, (bytes, bytearray)) else data.read()
             self._store.setdefault(info.resource_id, {}).setdefault(
                 info.revision_id, {}
             )[info.schema_version] = info.uid
@@ -118,7 +120,9 @@ def relative_walk_up(path: Path, start: Path) -> Path:
     keyword is removed (Python 3.14+).
     """
     try:
-        return path.relative_to(start, walk_up=True)
+        # ``walk_up`` is a Python 3.12+ kwarg; the except below catches
+        # the TypeError on older stdlibs.
+        return path.relative_to(start, walk_up=True)  # ty: ignore[unknown-argument]
     except TypeError:
         if path.drive != start.drive:
             # fallback: return absolute instead of crash
@@ -140,13 +144,13 @@ class DiskResourceStore(IResourceStore):
         self._rootdir = Path(rootdir)
         self._rootdir.mkdir(parents=True, exist_ok=True)
 
-    def _get_uid_store_realdir(self, uid: UID) -> Path:
+    def _get_uid_store_realdir(self, uid: UIDStr) -> Path:
         return self._rootdir / "store" / uid
 
-    def _get_raw_data_path(self, uid: UID) -> Path:
+    def _get_raw_data_path(self, uid: UIDStr) -> Path:
         return self._get_uid_store_realdir(uid) / "data"
 
-    def _get_raw_info_path(self, uid: UID) -> Path:
+    def _get_raw_info_path(self, uid: UIDStr) -> Path:
         return self._get_uid_store_realdir(uid) / "info"
 
     def _get_uid_store_symdir(

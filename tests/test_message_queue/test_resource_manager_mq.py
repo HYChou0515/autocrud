@@ -58,7 +58,8 @@ def test_resource_manager_has_message_queue(mq_factory_type):
         mq_factory = CeleryMessageQueueFactory(celery_app=app)
 
     crud = AutoCRUD(
-        storage_factory=MemoryStorageFactory(), message_queue_factory=mq_factory
+        storage_factory=MemoryStorageFactory(),
+        message_queue_factory=mq_factory,  # ty:ignore[invalid-argument-type]
     )
 
     def handler(job):
@@ -82,7 +83,7 @@ def test_resource_manager_has_message_queue(mq_factory_type):
     rm_regular = crud.get_resource_manager("regular-model")
 
     # For regular (non-Job) models, there's no message queue
-    assert rm_regular.message_queue is None
+    assert rm_regular.message_queue is None  # ty:ignore[unresolved-attribute]
 
 
 @pytest.mark.parametrize(
@@ -108,7 +109,7 @@ def test_resource_manager_start_consume(mq_factory_type):
 
     crud = AutoCRUD(
         storage_factory=MemoryStorageFactory(),
-        message_queue_factory=mq_factory,
+        message_queue_factory=mq_factory,  # ty:ignore[invalid-argument-type]
         default_now=dt.datetime.now,
         default_user="test-user",
     )
@@ -138,9 +139,9 @@ def test_resource_manager_start_consume(mq_factory_type):
 
     def process_and_stop(job):
         original_process(job)
-        rm.message_queue.stop_consuming()
+        rm.message_queue.stop_consuming()  # ty:ignore[unresolved-attribute]
 
-    rm.message_queue._do = process_and_stop
+    rm.message_queue._do = process_and_stop  # ty:ignore[unresolved-attribute]
 
     # Start consuming
     with rm.meta_provide(user="worker", now=dt.datetime.now()):
@@ -158,7 +159,7 @@ def test_resource_manager_message_queue_none_for_non_job():
     rm = crud.get_resource_manager("regular-model")
 
     # Should have no message queue
-    assert rm.message_queue is None
+    assert rm.message_queue is None  # ty:ignore[unresolved-attribute]
 
 
 def test_resource_manager_disabled_message_queue():
@@ -171,7 +172,7 @@ def test_resource_manager_disabled_message_queue():
     rm = crud.get_resource_manager("email-jobs")
 
     # Should have no message queue
-    assert rm.message_queue is None
+    assert rm.message_queue is None  # ty:ignore[unresolved-attribute]
 
 
 @pytest.mark.parametrize(
@@ -197,7 +198,7 @@ def test_resource_manager_message_queue_workflow(mq_factory_type):
 
     crud = AutoCRUD(
         storage_factory=MemoryStorageFactory(),
-        message_queue_factory=mq_factory,
+        message_queue_factory=mq_factory,  # ty:ignore[invalid-argument-type]
         default_now=dt.datetime.now,
         default_user="test-user",
     )
@@ -235,9 +236,9 @@ def test_resource_manager_message_queue_workflow(mq_factory_type):
     def process_and_stop(job):
         original_process(job)
         if len(consumed_jobs) >= 2:
-            rm.message_queue.stop_consuming()
+            rm.message_queue.stop_consuming()  # ty:ignore[unresolved-attribute]
 
-    rm.message_queue._do = process_and_stop
+    rm.message_queue._do = process_and_stop  # ty:ignore[unresolved-attribute]
 
     # Process jobs
     with rm.meta_provide(user="worker", now=dt.datetime.now()):
@@ -264,7 +265,8 @@ def test_resource_manager_custom_mq_factory(mq_factory_type):
         custom_factory = CeleryMessageQueueFactory(celery_app=app)
 
     crud = AutoCRUD(
-        storage_factory=MemoryStorageFactory(), message_queue_factory=custom_factory
+        storage_factory=MemoryStorageFactory(),
+        message_queue_factory=custom_factory,  # ty:ignore[invalid-argument-type]
     )
 
     def handler(job):

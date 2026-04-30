@@ -28,10 +28,10 @@ try:
     import psycopg2.pool
     from psycopg2.extras import DictCursor, execute_batch
 except ImportError:  # pragma: no cover
-    pg = None  # type: ignore[assignment]
-    psycopg2 = None  # type: ignore[assignment]  # noqa: F811
-    DictCursor = None  # type: ignore[assignment,misc]
-    execute_batch = None  # type: ignore[assignment]
+    pg = None  # type: ignore[assignment]  # ty:ignore[invalid-assignment]
+    psycopg2 = None  # type: ignore[assignment]  # noqa: F811  # ty:ignore[invalid-assignment]
+    DictCursor = None  # type: ignore[assignment,misc]  # ty:ignore[invalid-assignment]
+    execute_batch = None  # type: ignore[assignment]  # ty:ignore[invalid-assignment]
 
 
 class PostgresMetaStore(ISlowMetaStore):
@@ -68,7 +68,7 @@ class PostgresMetaStore(ISlowMetaStore):
         conns = []
         while True:
             try:
-                conn = self._conn_pool.getconn(timeout=1)
+                conn = self._conn_pool.getconn(timeout=1)  # ty:ignore[unknown-argument]
                 conns.append(conn)
             except Exception:
                 break
@@ -160,13 +160,18 @@ class PostgresMetaStore(ISlowMetaStore):
                     updated_by TEXT NOT NULL,
                     is_deleted BOOLEAN NOT NULL,
                     schema_version TEXT,
-                    indexed_data JSONB  -- JSON 格式的索引數據
+                    indexed_data JSONB,  -- JSON 格式的索引數據
+                    rev_status TEXT,
+                    rev_created_by TEXT,
+                    rev_updated_by TEXT,
+                    rev_created_time TIMESTAMP,
+                    rev_updated_time TIMESTAMP
                 )
             """)
 
             # 檢查是否需要添加 indexed_data 欄位（用於向後兼容）
             cur.execute(f"""
-                SELECT column_name FROM information_schema.columns 
+                SELECT column_name FROM information_schema.columns
                 WHERE table_name = '{self.table_name}' AND column_name = 'indexed_data'
             """)
             if not cur.fetchone():
@@ -176,13 +181,32 @@ class PostgresMetaStore(ISlowMetaStore):
 
             # 檢查是否需要添加 schema_version 欄位（用於向後兼容）
             cur.execute(f"""
-                SELECT column_name FROM information_schema.columns 
+                SELECT column_name FROM information_schema.columns
                 WHERE table_name = '{self.table_name}' AND column_name = 'schema_version'
             """)
             if not cur.fetchone():
                 cur.execute(
                     f'ALTER TABLE "{self.table_name}" ADD COLUMN schema_version TEXT'
                 )
+
+            # 為 rev_* 欄位逐一檢查並補欄（向後兼容舊表）
+            for col_name, col_type in (
+                ("rev_status", "TEXT"),
+                ("rev_created_by", "TEXT"),
+                ("rev_updated_by", "TEXT"),
+                ("rev_created_time", "TIMESTAMP"),
+                ("rev_updated_time", "TIMESTAMP"),
+            ):
+                cur.execute(
+                    f"""
+                    SELECT column_name FROM information_schema.columns
+                    WHERE table_name = '{self.table_name}' AND column_name = '{col_name}'
+                    """
+                )
+                if not cur.fetchone():
+                    cur.execute(
+                        f'ALTER TABLE "{self.table_name}" ADD COLUMN {col_name} {col_type}'
+                    )
 
             # 創建索引
             cur.execute(
@@ -200,6 +224,16 @@ class PostgresMetaStore(ISlowMetaStore):
             cur.execute(
                 f'CREATE INDEX IF NOT EXISTS idx_is_deleted ON "{self.table_name}"(is_deleted)',
             )
+            for col_name in (
+                "rev_status",
+                "rev_created_by",
+                "rev_updated_by",
+                "rev_created_time",
+                "rev_updated_time",
+            ):
+                cur.execute(
+                    f'CREATE INDEX IF NOT EXISTS idx_{col_name} ON "{self.table_name}"({col_name})'
+                )
             # 為 JSONB 創建 GIN 索引以提高查詢效能
             cur.execute(
                 f'CREATE INDEX IF NOT EXISTS idx_indexed_data_gin ON "{self.table_name}" USING GIN (indexed_data)',
@@ -240,17 +274,38 @@ class PostgresMetaStore(ISlowMetaStore):
                     ("{}", resource_id),
                 )
 
-    def save_many(self, metas: Iterable[ResourceMeta]) -> None:
-        """批量保存元数据到 PostgreSQL（ISlowMetaStore 接口方法）"""
+    def _meta_row_values(self, meta: ResourceMeta) -> tuple:
+        """Pack a ResourceMeta into the column-order tuple used by INSERT/UPSERT."""
         import json
 
-        metas_list = list(metas)
-        if not metas_list:
-            return
+        return (
+            meta.resource_id,
+            self._serializer.encode(meta),
+            meta.created_time,
+            meta.updated_time,
+            meta.created_by,
+            meta.updated_by,
+            meta.is_deleted,
+            meta.schema_version,
+            (
+                json.dumps(meta.indexed_data, ensure_ascii=False)
+                if meta.indexed_data is not UNSET
+                else None
+            ),
+            meta.rev_status if meta.rev_status is not UNSET else None,
+            meta.rev_created_by if meta.rev_created_by is not UNSET else None,
+            meta.rev_updated_by if meta.rev_updated_by is not UNSET else None,
+            meta.rev_created_time if meta.rev_created_time is not UNSET else None,
+            meta.rev_updated_time if meta.rev_updated_time is not UNSET else None,
+        )
 
-        sql = f"""
-        INSERT INTO "{self.table_name}" (resource_id, data, created_time, updated_time, created_by, updated_by, is_deleted, schema_version, indexed_data)
-        VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s)
+    def _upsert_sql(self) -> str:
+        return f"""
+        INSERT INTO "{self.table_name}"
+        (resource_id, data, created_time, updated_time, created_by, updated_by,
+         is_deleted, schema_version, indexed_data,
+         rev_status, rev_created_by, rev_updated_by, rev_created_time, rev_updated_time)
+        VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
         ON CONFLICT (resource_id) DO UPDATE SET
             data = EXCLUDED.data,
             created_time = EXCLUDED.created_time,
@@ -259,31 +314,25 @@ class PostgresMetaStore(ISlowMetaStore):
             updated_by = EXCLUDED.updated_by,
             is_deleted = EXCLUDED.is_deleted,
             schema_version = EXCLUDED.schema_version,
-            indexed_data = EXCLUDED.indexed_data
+            indexed_data = EXCLUDED.indexed_data,
+            rev_status = EXCLUDED.rev_status,
+            rev_created_by = EXCLUDED.rev_created_by,
+            rev_updated_by = EXCLUDED.rev_updated_by,
+            rev_created_time = EXCLUDED.rev_created_time,
+            rev_updated_time = EXCLUDED.rev_updated_time
         """
+
+    def save_many(self, metas: Iterable[ResourceMeta]) -> None:
+        """批量保存元数据到 PostgreSQL（ISlowMetaStore 接口方法）"""
+        metas_list = list(metas)
+        if not metas_list:
+            return
 
         with self.transaction() as cur:
             execute_batch(
                 cur,
-                sql,
-                [
-                    (
-                        meta.resource_id,
-                        self._serializer.encode(meta),
-                        meta.created_time,
-                        meta.updated_time,
-                        meta.created_by,
-                        meta.updated_by,
-                        meta.is_deleted,
-                        meta.schema_version,
-                        (
-                            json.dumps(meta.indexed_data, ensure_ascii=False)
-                            if meta.indexed_data is not UNSET
-                            else None
-                        ),
-                    )
-                    for meta in metas_list
-                ],
+                self._upsert_sql(),
+                [self._meta_row_values(m) for m in metas_list],
             )
 
     def values(self):
@@ -304,45 +353,12 @@ class PostgresMetaStore(ISlowMetaStore):
                 raise KeyError(pk)
             return self._serializer.decode(row["data"])
 
-    def __setitem__(self, pk: str, meta: ResourceMeta) -> None:
-        # 直接寫入 PostgreSQL
-        import json
-
-        sql = f"""
-        INSERT INTO "{self.table_name}" (resource_id, data, created_time, updated_time, created_by, updated_by, is_deleted, schema_version, indexed_data)
-        VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s)
-        ON CONFLICT (resource_id) DO UPDATE SET
-            data = EXCLUDED.data,
-            created_time = EXCLUDED.created_time,
-            updated_time = EXCLUDED.updated_time,
-            created_by = EXCLUDED.created_by,
-            updated_by = EXCLUDED.updated_by,
-            is_deleted = EXCLUDED.is_deleted,
-            schema_version = EXCLUDED.schema_version,
-            indexed_data = EXCLUDED.indexed_data
-        """
-
-        indexed_data_json = (
-            json.dumps(meta.indexed_data, ensure_ascii=False)
-            if meta.indexed_data is not UNSET
-            else None
-        )
-
+    def __setitem__(self, pk: str, meta: ResourceMeta) -> None:  # ty:ignore[invalid-method-override]
+        # 直接寫入 PostgreSQL — honour caller-supplied ``pk`` even if it
+        # differs from ``meta.resource_id`` for compat with dict-style usage.
+        row = (pk, *self._meta_row_values(meta)[1:])
         with self.transaction() as cur:
-            cur.execute(
-                sql,
-                (
-                    pk,
-                    self._serializer.encode(meta),
-                    meta.created_time,
-                    meta.updated_time,
-                    meta.created_by,
-                    meta.updated_by,
-                    meta.is_deleted,
-                    meta.schema_version,
-                    indexed_data_json,
-                ),
-            )
+            cur.execute(self._upsert_sql(), row)
 
     def __delitem__(self, pk: str) -> None:
         # 從 PostgreSQL 刪除
@@ -402,6 +418,34 @@ class PostgresMetaStore(ISlowMetaStore):
             placeholders = ",".join(["%s"] * len(query.updated_bys))
             conditions.append(f"updated_by IN ({placeholders})")
             params.extend(query.updated_bys)
+
+        if query.rev_statuses is not UNSET:
+            placeholders = ",".join(["%s"] * len(query.rev_statuses))
+            conditions.append(f"rev_status IN ({placeholders})")
+            params.extend(query.rev_statuses)
+
+        if query.rev_created_bys is not UNSET:
+            placeholders = ",".join(["%s"] * len(query.rev_created_bys))
+            conditions.append(f"rev_created_by IN ({placeholders})")
+            params.extend(query.rev_created_bys)
+
+        if query.rev_updated_bys is not UNSET:
+            placeholders = ",".join(["%s"] * len(query.rev_updated_bys))
+            conditions.append(f"rev_updated_by IN ({placeholders})")
+            params.extend(query.rev_updated_bys)
+
+        if query.rev_created_time_start is not UNSET:
+            conditions.append("rev_created_time >= %s")
+            params.append(query.rev_created_time_start)
+        if query.rev_created_time_end is not UNSET:
+            conditions.append("rev_created_time <= %s")
+            params.append(query.rev_created_time_end)
+        if query.rev_updated_time_start is not UNSET:
+            conditions.append("rev_updated_time >= %s")
+            params.append(query.rev_updated_time_start)
+        if query.rev_updated_time_end is not UNSET:
+            conditions.append("rev_updated_time <= %s")
+            params.append(query.rev_updated_time_end)
 
         # 處理 data_conditions - 在 PostgreSQL 層面過濾
         if query.data_conditions is not UNSET:
@@ -502,6 +546,11 @@ class PostgresMetaStore(ISlowMetaStore):
             "updated_by",
             "is_deleted",
             "schema_version",
+            "rev_status",
+            "rev_created_by",
+            "rev_updated_by",
+            "rev_created_time",
+            "rev_updated_time",
         }
 
         if field_path in meta_fields:

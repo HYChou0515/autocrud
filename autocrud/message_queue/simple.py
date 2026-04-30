@@ -80,7 +80,7 @@ class SimpleMessageQueue(DelayableMessageQueue[T], Generic[T]):
                 self.rm.create_or_update(resource_id, job)
 
             # Schedule for delayed execution
-            self._schedule_delayed_job(resource_id, job.periodic_initial_delay_seconds)
+            self._schedule_delayed_job(resource_id, job.periodic_initial_delay_seconds)  # ty:ignore[invalid-argument-type]
         # else: job remains PENDING and will be picked up by pop() immediately
 
         return resource

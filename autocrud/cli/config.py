@@ -62,4 +62,4 @@ def install(ctx: typer.Context):
 
 
 if __name__ == "__main__":
-    install("http://localhost:8000/openapi.json")
+    install("http://localhost:8000/openapi.json")  # ty:ignore[invalid-argument-type]

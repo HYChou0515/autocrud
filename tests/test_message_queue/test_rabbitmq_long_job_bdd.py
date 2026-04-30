@@ -115,21 +115,23 @@ def rmq():
         indexed_fields=[IndexableField(field_path="status", field_type=str)],
     )
     queue = rm.message_queue
-    queue._heartbeat_interval = 1.0  # fast app-level heartbeat
+    queue._heartbeat_interval = (  # ty:ignore[invalid-assignment]
+        1.0  # fast app-level heartbeat
+    )
 
     yield queue, rm
 
     # Teardown — stop consumer, delete queues
     try:
-        queue.stop_consuming()
+        queue.stop_consuming()  # ty:ignore[unresolved-attribute]
     except Exception:
         pass
     time.sleep(1)
     try:
-        with queue._get_connection() as (_, ch):
-            ch.queue_delete(queue.queue_name)
-            ch.queue_delete(queue.retry_queue_name)
-            ch.queue_delete(queue.dead_queue_name)
+        with queue._get_connection() as (_, ch):  # ty:ignore[unresolved-attribute]
+            ch.queue_delete(queue.queue_name)  # ty:ignore[unresolved-attribute]
+            ch.queue_delete(queue.retry_queue_name)  # ty:ignore[unresolved-attribute]
+            ch.queue_delete(queue.dead_queue_name)  # ty:ignore[unresolved-attribute]
     except Exception:
         pass
 

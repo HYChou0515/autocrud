@@ -37,7 +37,7 @@ class TestResourceManagerEventHandlers:
     def storage(self) -> IStorage:
         """創建測試用的存儲"""
         meta_store = MemoryMetaStore()
-        resource_store = MemoryResourceStore(SampleData)
+        resource_store = MemoryResourceStore(SampleData)  # ty:ignore[invalid-argument-type]
         return SimpleStorage(meta_store, resource_store)
 
     @pytest.fixture
@@ -323,7 +323,7 @@ class TestResourceManagerEventHandlers:
             # 在創建前修改數據
             if hasattr(context, "data") and context.data:
                 # 這裡假設事件處理器可以修改數據
-                context.data.value = context.data.value * 2
+                context.data.value = context.data.value * 2  # ty:ignore[invalid-assignment, unresolved-attribute]
 
         event_handlers = do(modify_data_handler).before(ResourceAction.create)
 

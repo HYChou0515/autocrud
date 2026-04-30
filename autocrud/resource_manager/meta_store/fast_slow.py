@@ -64,7 +64,7 @@ class FastSlowMetaStore(IMetaStore):
             # 如果 Fast 存儲 中沒有，從慢速存儲查詢
             return self._slow_store[pk]
 
-    def __setitem__(self, pk: str, meta: ResourceMeta) -> None:
+    def __setitem__(self, pk: str, meta: ResourceMeta) -> None:  # ty:ignore[invalid-method-override]
         # 只寫入 Fast 存儲
         self._fast_store[pk] = meta
 
