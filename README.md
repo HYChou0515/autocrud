@@ -1,5 +1,5 @@
 <p align="center">
-  <img src="docs/assets/logo-text.svg" alt="SpecStar" height="120">
+  <img src="https://github.com/HYChou0515/specstar/raw/master/docs/assets/logo-text.svg" alt="SpecStar" height="120">
 </p>
 
 <p align="center">
