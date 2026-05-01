@@ -4,7 +4,7 @@ import pytest
 from fastapi import FastAPI
 from msgspec import Struct
 
-from specstar import SpecStar, Schema
+from specstar import Schema, SpecStar
 
 # ---------------------------------------------------------------------------
 # Test models

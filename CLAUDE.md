@@ -4,7 +4,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project Overview
 
-SpecStar (v0.8.3) is a model-driven backend platform for FastAPI. Define a `msgspec.Struct` model once; the framework generates REST APIs, GraphQL, search, version history, permissions, background jobs, and an admin UI automatically.
+SpecStar is a model-driven backend platform for FastAPI. Define a `msgspec.Struct` model once; the framework generates REST APIs, GraphQL, search, version history, permissions, background jobs, and an admin UI automatically.
 
 ## Commands
 
@@ -33,7 +33,7 @@ uv run pytest tests/ -k "test_add_model" -v
 ### Core Components
 
 - **`SpecStar`** (`specstar/crud/core.py`): Entry point — model registration + route generation.
-  - **Global Instance** (recommended): `from specstar import crud` → `crud.configure()` → `crud.add_model()`
+  - **Global Instance** (recommended): `from specstar import spec` → `spec.configure()` → `spec.add_model()`
   - **Manual Instance**: `SpecStar()` constructor for multiple independent instances
 - **`ResourceManager`** (`specstar/resource_manager/core.py`): Core business logic — CRUD, versioning, permissions, events, migration, unique constraints, data coercion.
 - **Route Templates** (`specstar/crud/route_templates/`): Each template generates specific API endpoints.
@@ -60,7 +60,7 @@ uv run pytest tests/ -k "test_add_model" -v
 
 ### Public API
 
-Only exports from `specstar/__init__.py` are public: `SpecStar`, `crud`, `Schema`, `LoadStats`, `struct_to_pydantic`, `DisplayName`, `Unique`, `UniqueConstraintError`, `IConstraintChecker`, `IValidator`, `ValidationError`, `DuplicateResourceError`, `OnDelete`, `OnDuplicate`, `Ref`, `RefRevision`, `RefType`, `RevisionNotMigratedError`, `SearchedResource`, `ResourceOps`, `BackgroundTaskAccepted`, `BlobUploadSession`, `JobRedirectInfo`, `MissingOperationContextError`.
+Only exports from `specstar/__init__.py` are public: `SpecStar`, `spec`, `Schema`, `LoadStats`, `struct_to_pydantic`, `DisplayName`, `Unique`, `UniqueConstraintError`, `IConstraintChecker`, `IValidator`, `ValidationError`, `DuplicateResourceError`, `OnDelete`, `OnDuplicate`, `Ref`, `RefRevision`, `RefType`, `RevisionNotMigratedError`, `SearchedResource`, `ResourceOps`, `BackgroundTaskAccepted`, `BlobUploadSession`, `JobRedirectInfo`, `MissingOperationContextError`.
 
 ## Coding Conventions
 
@@ -86,7 +86,7 @@ class PatchUser(Struct, kw_only=True):
 from specstar import Schema
 
 schema = Schema(UserV2, "v2").step("v1", migrate_v1_to_v2).plus(validator_fn)
-crud.add_model(User, schema=schema)
+spec.add_model(User, schema=schema)
 ```
 
 ### General

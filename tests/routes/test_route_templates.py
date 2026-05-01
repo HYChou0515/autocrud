@@ -9,8 +9,8 @@ from fastapi import APIRouter, FastAPI
 from fastapi.testclient import TestClient
 
 from specstar.crud.core import (
-    SpecStar,
     NameConverter,
+    SpecStar,
 )
 from specstar.crud.route_templates.create import CreateRouteTemplate
 from specstar.crud.route_templates.delete import (

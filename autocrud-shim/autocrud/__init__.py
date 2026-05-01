@@ -18,9 +18,7 @@ import warnings
 
 _PREFIX = "autocrud"
 _TARGET = "specstar"
-_MIGRATION_URL = (
-    "https://github.com/HYChou0515/specstar/blob/master/MIGRATION.md"
-)
+_MIGRATION_URL = "https://github.com/HYChou0515/specstar/blob/master/MIGRATION.md"
 _warned: set[str] = set()
 
 
@@ -28,10 +26,9 @@ def _warn_once(name: str) -> None:
     if name in _warned:
         return
     _warned.add(name)
-    new_name = _TARGET + name[len(_PREFIX):]
+    new_name = _TARGET + name[len(_PREFIX) :]
     warnings.warn(
-        f"`{name}` is deprecated. Use `{new_name}` instead. "
-        f"See {_MIGRATION_URL}",
+        f"`{name}` is deprecated. Use `{new_name}` instead. See {_MIGRATION_URL}",
         DeprecationWarning,
         stacklevel=3,
     )
@@ -49,7 +46,7 @@ class _SpecstarRedirector(importlib.abc.MetaPathFinder):
     def find_spec(self, name, path, target=None):  # type: ignore[override]
         if name != _PREFIX and not name.startswith(_PREFIX + "."):
             return None
-        target_name = _TARGET + name[len(_PREFIX):]
+        target_name = _TARGET + name[len(_PREFIX) :]
         _warn_once(name)
         # Import the real module (loads specstar.X into sys.modules).
         real_module = importlib.import_module(target_name)

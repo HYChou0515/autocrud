@@ -4,7 +4,7 @@ import msgspec
 import pytest
 from fastapi import FastAPI
 
-from specstar import SpecStar, Schema
+from specstar import Schema, SpecStar
 from specstar.crud.route_templates.migrate import MigrateRouteTemplate
 
 

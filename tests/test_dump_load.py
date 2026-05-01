@@ -18,7 +18,7 @@ import io
 import pytest
 from msgspec import Struct
 
-from specstar.crud.core import SpecStar, LoadStats
+from specstar.crud.core import LoadStats, SpecStar
 from specstar.query import QB
 from specstar.resource_manager.binary_processor import BinaryProcessor
 from specstar.resource_manager.dump_format import (

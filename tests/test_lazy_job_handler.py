@@ -2,7 +2,7 @@ from unittest.mock import MagicMock
 
 from msgspec import Struct
 
-from specstar.crud.core import SpecStar, LazyJobHandler
+from specstar.crud.core import LazyJobHandler, SpecStar
 from specstar.types import (
     Job,
     Resource,
