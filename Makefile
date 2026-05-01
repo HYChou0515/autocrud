@@ -167,15 +167,27 @@ clean-dev:
 	find . -type f -name "*.pyc" -delete
 	find . -type f -name "*.pyo" -delete
 
-# 建置套件
+# 建置 specstar 套件
 .PHONY: build
 build: clean-dev
-	@echo "建置套件..."
+	@echo "建置 specstar..."
 	uv build
+
+# 建置 autocrud-shim（autocrud 0.10.0 deprecation 套件）
+.PHONY: build-shim
+build-shim:
+	@echo "建置 autocrud-shim..."
+	cd autocrud-shim && uv build
+
+# 同時建置 specstar 與 autocrud-shim 兩個 wheel
+.PHONY: build-all
+build-all: build build-shim
+	@echo "兩個 wheel 都建置完成："
+	@ls -1 dist/*.whl autocrud-shim/dist/*.whl
 
 # 發布套件到 PyPI
 .PHONY: publish
-publish: build 
+publish: build
 	@echo "發布套件到 PyPI..."
 	uv run python scripts/publish.py
 

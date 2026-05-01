@@ -3,7 +3,7 @@ name = "autocrud"
 version = "0.10.0"
 description = "Deprecated alias for specstar. See https://github.com/HYChou0515/specstar"
 readme = "README.md"
-license = {file = "../LICENSE"}
+license = {file = "LICENSE"}
 requires-python = ">=3.11"
 authors = [
     {name = "HYChou0515", email = "hychou.svm@example.com"}
