@@ -53,7 +53,7 @@ A minimal app often looks like this:
 from fastapi import FastAPI
 from msgspec import Struct
 
-from specstar import crud
+from specstar import spec
 
 
 class User(Struct):
@@ -62,8 +62,8 @@ class User(Struct):
 
 
 app = FastAPI()
-crud.add_model(User)
-crud.apply(app)
+spec.add_model(User)
+spec.apply(app)
 ```
 
 From that small definition, SpecStar can generate the repetitive infrastructure needed for a usable API.

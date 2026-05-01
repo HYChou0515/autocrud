@@ -58,7 +58,7 @@ POST /{model}
 The initial revision status is configured when the model is registered:
 
 ```python
-crud.add_model(..., default_status=...)
+spec.add_model(..., default_status=...)
 ```
 
 If not configured, the default is:

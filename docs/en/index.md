@@ -70,13 +70,13 @@ Create a FastAPI app:
 
 ```python
 from fastapi import FastAPI
-from specstar import crud
+from specstar import spec
 
 app = FastAPI()
 
-crud.configure()
-crud.add_model(Schema(User, "v1"))
-crud.apply(app)
+spec.configure()
+spec.add_model(Schema(User, "v1"))
+spec.apply(app)
 ```
 
 SpecStar will generate the standard CRUD surface, OpenAPI documentation, validation handling, and revision tracking.

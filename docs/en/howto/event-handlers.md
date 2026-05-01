@@ -37,9 +37,9 @@ event_handlers = do(audit_log).before(ResourceAction.create)
 You can configure handlers globally:
 
 ```python
-from specstar import crud
+from specstar import spec
 
-crud.configure(event_handlers=event_handlers)
+spec.configure(event_handlers=event_handlers)
 ```
 
 Or pass them for a specific model when registering it.

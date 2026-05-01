@@ -26,7 +26,7 @@ from typing import Literal
 import msgspec
 from fastapi import FastAPI
 
-from specstar import crud, Schema
+from specstar import spec, Schema
 
 
 class Issue(msgspec.Struct):
@@ -41,14 +41,14 @@ class Issue(msgspec.Struct):
 
 app = FastAPI()
 
-crud.add_model(Schema(Issue, "v1"))
-crud.apply(app)
+spec.add_model(Schema(Issue, "v1"))
+spec.apply(app)
 ```
 
 Then get the resource manager:
 
 ```python
-mgr = crud.get_resource_manager(Issue)
+mgr = spec.get_resource_manager(Issue)
 ```
 
 ---
@@ -209,7 +209,7 @@ from typing import Literal
 import msgspec
 from fastapi import FastAPI
 
-from specstar import crud, Schema
+from specstar import spec, Schema
 
 
 class Issue(msgspec.Struct):
@@ -224,11 +224,11 @@ class Issue(msgspec.Struct):
 
 app = FastAPI()
 
-crud.configure()
-crud.add_model(Schema(Issue, "v1"))
-crud.apply(app)
+spec.configure()
+spec.add_model(Schema(Issue, "v1"))
+spec.apply(app)
 
-mgr = crud.get_resource_manager(Issue)
+mgr = spec.get_resource_manager(Issue)
 
 info = mgr.create(
     Issue(

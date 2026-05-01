@@ -74,16 +74,16 @@ In this example:
 ### Attach via `add_model(...)`
 
 ```python
-crud.add_model(User, validator=validate_user)
+spec.add_model(User, validator=validate_user)
 # or
-crud.add_model(User, validator=PriceValidator())
+spec.add_model(User, validator=PriceValidator())
 ```
 
 ### Attach via `Schema(...)`
 
 ```python
 schema = Schema(User, "v2", validator=validate_user).step("v1", migrate)
-crud.add_model(schema)
+spec.add_model(schema)
 ```
 
 ## Errors

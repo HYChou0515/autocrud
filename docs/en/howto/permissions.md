@@ -19,10 +19,10 @@ For production systems, you should explicitly define a permission strategy.
 This is the simplest setup and is useful for local experiments.
 
 ```python
-from specstar import crud
+from specstar import spec
 from specstar.permission import AllowAll
 
-crud.configure(permission_checker=AllowAll())
+spec.configure(permission_checker=AllowAll())
 ```
 
 ---
@@ -32,10 +32,10 @@ crud.configure(permission_checker=AllowAll())
 If you want a single operator account to manage everything, use `RootOnly`.
 
 ```python
-from specstar import crud
+from specstar import spec
 from specstar.permission import RootOnly
 
-crud.configure(permission_checker=RootOnly("admin@example.com"))
+spec.configure(permission_checker=RootOnly("admin@example.com"))
 ```
 
 Only the configured root user will be allowed to perform operations.
@@ -49,7 +49,7 @@ For per-user or per-role rules, use `ACLPermissionChecker`.
 ```python
 import datetime as dt
 
-from specstar import crud
+from specstar import spec
 from specstar.permission import (
     ACLPermission,
     ACLPermissionChecker,
@@ -59,7 +59,7 @@ from specstar.permission import (
 )
 
 checker = ACLPermissionChecker(policy=Policy.strict)
-crud.configure(permission_checker=checker)
+spec.configure(permission_checker=checker)
 ```
 
 Once the checker is installed, you can create permission rules through the checker's own resource manager.
@@ -102,7 +102,7 @@ For role-based systems, use `RBACPermissionChecker`.
 ```python
 import datetime as dt
 
-from specstar import crud
+from specstar import spec
 from specstar.permission import (
     PermissionResult,
     RBACPermissionChecker,
@@ -112,7 +112,7 @@ from specstar.permission import (
 )
 
 checker = RBACPermissionChecker()
-crud.configure(permission_checker=checker)
+spec.configure(permission_checker=checker)
 
 with checker.resource_manager.meta_provide("root", dt.datetime.now()):
     checker.resource_manager.create(
@@ -140,7 +140,7 @@ In this setup:
 If you provide an admin user and do not supply a custom checker, SpecStar can enable an RBAC-style setup for you:
 
 ```python
-crud.configure(admin="root@example.com")
+spec.configure(admin="root@example.com")
 ```
 
 Use this when you want a convenient starting point and plan to build out the rules afterward.

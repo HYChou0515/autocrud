@@ -16,9 +16,9 @@ This page starts with the unified backend config, then maps the lower-level fact
 The unified backend config is the most compact way to choose the default backend:
 
 ```python
-from specstar import BackendBinding, BackendConfig, ConnectionProfile, crud
+from specstar import BackendBinding, BackendConfig, ConnectionProfile, spec
 
-crud.configure(
+spec.configure(
     backend=BackendConfig(
         connections={
             "local": ConnectionProfile(
@@ -41,7 +41,7 @@ crud.configure(
 You can also load the same shape from a JSON file:
 
 ```python
-crud.configure(backend="./backend.json")
+spec.configure(backend="./backend.json")
 ```
 
 The lower-level `storage_factory=` and `message_queue_factory=` parameters remain fully supported when you need more direct control over the underlying storage composition.
@@ -108,10 +108,10 @@ If your app uses file uploads or binary fields, do not assume every SQL-backed s
 ### DiskStorageFactory
 
 ```python
-from specstar import crud
+from specstar import spec
 from specstar.resource_manager import DiskStorageFactory
 
-crud.configure(
+spec.configure(
     storage_factory=DiskStorageFactory("./data")
 )
 ```
@@ -138,10 +138,10 @@ Cons:
 ### S3StorageFactory
 
 ```python
-from specstar import crud
+from specstar import spec
 from specstar.resource_manager import S3StorageFactory
 
-crud.configure(
+spec.configure(
     storage_factory=S3StorageFactory(
         bucket="my-bucket",
         endpoint_url="https://s3.amazonaws.com",
@@ -171,10 +171,10 @@ Cons:
 ### PostgresStorageFactory
 
 ```python
-from specstar import crud
+from specstar import spec
 from specstar.resource_manager import PostgresStorageFactory
 
-crud.configure(
+spec.configure(
     storage_factory=PostgresStorageFactory(
         connection_string="postgresql://user:pass@host:5432/appdb",
     )
@@ -205,10 +205,10 @@ If you need durable file uploads as well, prefer `PostgresDiskS3StorageFactory` 
 ### PostgresDiskStorageFactory
 
 ```python
-from specstar import crud
+from specstar import spec
 from specstar.resource_manager import PostgresDiskStorageFactory
 
-crud.configure(
+spec.configure(
     storage_factory=PostgresDiskStorageFactory(
         connection_string="postgresql://user:pass@host:5432/appdb",
         rootdir="./data",
@@ -240,10 +240,10 @@ Pair this setup with S3-backed blob handling when your application stores upload
 ### PostgresDiskS3StorageFactory
 
 ```python
-from specstar import crud
+from specstar import spec
 from specstar.resource_manager import PostgresDiskS3StorageFactory
 
-crud.configure(
+spec.configure(
     storage_factory=PostgresDiskS3StorageFactory(
         connection_string="postgresql://user:pass@host:5432/appdb",
         rootdir="./data",
@@ -274,10 +274,10 @@ Cons:
 ### PostgreSQLS3StorageFactory
 
 ```python
-from specstar import crud
+from specstar import spec
 from specstar.resource_manager import Encoding, PostgreSQLS3StorageFactory
 
-crud.configure(
+spec.configure(
     storage_factory=PostgreSQLS3StorageFactory(
         connection_string="postgresql://user:pass@host:5432/appdb",
         s3_bucket="my-bucket",
@@ -309,10 +309,10 @@ Cons:
 ### MemoryStorageFactory
 
 ```python
-from specstar import crud
+from specstar import spec
 from specstar.resource_manager import MemoryStorageFactory
 
-crud.configure(
+spec.configure(
     storage_factory=MemoryStorageFactory()
 )
 ```
@@ -354,13 +354,13 @@ Different resources can use different storage backends.
 from specstar import SpecStar
 from specstar.resource_manager import DiskStorageFactory, S3StorageFactory
 
-crud = SpecStar(
+spec = SpecStar(
     storage_factory=DiskStorageFactory("./data")
 )
 
-crud.add_model(User)
+spec.add_model(User)
 
-crud.add_model(
+spec.add_model(
     Image,
     storage=S3StorageFactory(bucket="image-bucket")
 )
@@ -378,7 +378,7 @@ All resources still share the same SpecStar programming model.
 
 ## Common gotchas
 
-- call `crud.configure(...)` before `add_model(...)`
+- call `spec.configure(...)` before `add_model(...)`
 - do not use in-memory storage if restarts must preserve data
 - if the app stores files, verify the selected factory gives you durable blob storage
 - for jobs and workers, combine the storage decision with a queue decision from the [Job Queue quickstart](/specstar/quickstart/job-queue)

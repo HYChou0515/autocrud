@@ -91,9 +91,9 @@ This schema can be completely independent from your existing routes and handlers
 Register the resource with SpecStar:
 
 ```python
-from specstar import crud, Schema
+from specstar import spec, Schema
 
-crud.add_model(Schema(Issue, "v1"))
+spec.add_model(Schema(Issue, "v1"))
 ```
 
 At this point, SpecStar knows about the resource, but it is not attached to your FastAPI app yet.
@@ -105,7 +105,7 @@ At this point, SpecStar knows about the resource, but it is not attached to your
 Now attach SpecStar to the existing FastAPI instance:
 
 ```python
-crud.apply(app)
+spec.apply(app)
 ```
 
 This will add CRUD routes for the registered resource.
@@ -128,7 +128,7 @@ from typing import Literal
 import msgspec
 from fastapi import FastAPI
 
-from specstar import crud, Schema
+from specstar import spec, Schema
 from specstar.resource_manager import DiskStorageFactory
 
 
@@ -150,11 +150,11 @@ def ping():
     return {"message": "pong"}
 
 
-crud.configure(
+spec.configure(
     storage_factory=DiskStorageFactory("./data")
 )
-crud.add_model(Schema(Issue, "v1"))
-crud.apply(app)
+spec.add_model(Schema(Issue, "v1"))
+spec.apply(app)
 ```
 
 ---
@@ -166,7 +166,7 @@ If your application is structured with `APIRouter`, you can attach SpecStar to a
 ```python
 from fastapi import APIRouter, FastAPI
 
-from specstar import crud, Schema
+from specstar import spec, Schema
 
 app = FastAPI()
 router = APIRouter(prefix="/api")
@@ -177,9 +177,9 @@ def ping():
     return {"message": "pong"}
 
 
-crud.configure()
-crud.add_model(Schema(Issue, "v1"))
-crud.apply(app, router=router)
+spec.configure()
+spec.add_model(Schema(Issue, "v1"))
+spec.apply(app, router=router)
 ```
 
 When `router` is provided, `apply()` automatically:
@@ -199,9 +199,9 @@ If no router is provided, SpecStar will attach routes directly to the app.
 If you need to include the router yourself (e.g. with custom tags or dependencies), pass `auto_include=False`:
 
 ```python
-crud.apply(app, router=router, auto_include=False)
+spec.apply(app, router=router, auto_include=False)
 app.include_router(router, tags=["my-custom-tag"])
-crud.openapi(app)
+spec.openapi(app)
 ```
 
 ---
@@ -319,7 +319,7 @@ def validate_and_finalize_issue(new: Issue, old: Issue | None = None) -> Issue:
 To enable this rule, update the schema registration (validators are part of the schema):
 
 ```python
-crud.add_model(
+spec.add_model(
     Schema(Issue, "v1", validator=validate_and_finalize_issue),
 )
 ```
@@ -383,7 +383,7 @@ from typing import Literal
 import msgspec
 from fastapi import APIRouter, FastAPI
 
-from specstar import Schema, crud
+from specstar import Schema, spec
 
 
 class Issue(msgspec.Struct):
@@ -426,10 +426,10 @@ def ping():
     return {"message": "pong"}
 
 
-crud.configure()
-crud.add_model(
+spec.configure()
+spec.add_model(
     Schema(Issue, "v1", validator=validate_and_finalize_issue),
 )
 
-crud.apply(app, router=router)
+spec.apply(app, router=router)
 ```

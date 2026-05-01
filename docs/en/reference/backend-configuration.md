@@ -4,7 +4,7 @@ This page is the lookup reference for SpecStar backend settings.
 
 It covers both supported setup levels:
 
-- the higher-level unified API via `crud.configure(backend=...)`
+- the higher-level unified API via `spec.configure(backend=...)`
 - the lower-level factory path via `storage_factory=` and `message_queue_factory=`
 
 The guide pages focus on workflow. This page focuses on the settings surface.
@@ -41,9 +41,9 @@ The four backend roles are:
 Example:
 
 ```python
-from specstar import BackendBinding, BackendConfig, ConnectionProfile, crud
+from specstar import BackendBinding, BackendConfig, ConnectionProfile, spec
 
-crud.configure(
+spec.configure(
     backend=BackendConfig(
         connections={
             "local": ConnectionProfile(
@@ -220,11 +220,11 @@ This makes it practical to keep secrets and environment-specific values outside 
 The factory path stays useful when you want to construct the exact backend objects yourself.
 
 ```python
-from specstar import crud
+from specstar import spec
 from specstar.message_queue import RabbitMQMessageQueueFactory
 from specstar.resource_manager import PostgresDiskS3StorageFactory
 
-crud.configure(
+spec.configure(
     storage_factory=PostgresDiskS3StorageFactory(
         connection_string="postgresql://user:pass@host:5432/appdb",
         rootdir="./data",

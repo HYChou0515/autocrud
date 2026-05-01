@@ -27,11 +27,11 @@ Most applications start with one of these two patterns:
 
 ```python
 from fastapi import FastAPI
-from specstar import crud
+from specstar import spec
 
 app = FastAPI()
-crud.add_model(User)
-crud.apply(app)
+spec.add_model(User)
+spec.apply(app)
 ```
 
 Use this when you want a simple application-wide SpecStar instance.
@@ -41,7 +41,7 @@ Use this when you want a simple application-wide SpecStar instance.
 ```python
 from specstar import SpecStar
 
-crud = SpecStar()
+spec = SpecStar()
 ```
 
 Use this when you want separate instances with different configuration.
@@ -53,7 +53,7 @@ Use this when you want separate instances with different configuration.
 ### Core setup
 
 - `SpecStar` — main entry point for model registration and route generation
-- `crud` — pre-created global instance for simple usage
+- `spec` — pre-created global instance for simple usage
 - `LoadStats` — summary information returned by bulk load operations
 
 ### Schema and model conversion

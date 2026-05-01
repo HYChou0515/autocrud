@@ -108,10 +108,10 @@ def migrate_v1_to_v2(old: IssueV1) -> Issue:
 Attach the migration step when registering the new schema:
 
 ```python
-from specstar import crud, Schema
+from specstar import spec, Schema
 
-crud.configure()
-crud.add_model(
+spec.configure()
+spec.add_model(
     Schema(Issue, "v2").step(
         "v1",
         migrate_v1_to_v2,

@@ -24,7 +24,7 @@ Add the GraphQL route template before applying SpecStar to your FastAPI app.
 from fastapi import FastAPI
 from msgspec import Struct
 
-from specstar import crud
+from specstar import spec
 from specstar.crud.route_templates.graphql import GraphQLRouteTemplate
 
 
@@ -35,9 +35,9 @@ class Character(Struct):
 
 app = FastAPI()
 
-crud.add_model(Character)
-crud.add_route_template(GraphQLRouteTemplate())
-crud.apply(app)
+spec.add_model(Character)
+spec.add_route_template(GraphQLRouteTemplate())
+spec.apply(app)
 ```
 
 After startup, GraphQL is mounted at:
