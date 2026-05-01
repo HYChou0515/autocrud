@@ -131,8 +131,8 @@ export class IRBuilder {
       const fields = this.extractFields(schema, '', 1, 10);
       const maxFormDepth = computeMaxFieldDepth(fields);
 
-      // Read indexed fields from x-autocrud-indexed-fields top-level extension
-      const indexedFieldsMap: Record<string, string[]> = this.spec['x-autocrud-indexed-fields'] ?? {};
+      // Read indexed fields from x-specstar-indexed-fields top-level extension
+      const indexedFieldsMap: Record<string, string[]> = this.spec['x-specstar-indexed-fields'] ?? {};
       const indexedFields = indexedFieldsMap[name];
 
       this.resources.push({
@@ -179,7 +179,7 @@ export class IRBuilder {
   // ── Custom Create Actions ─────────────────────────────────────────────────
 
   private extractCustomCreateActions() {
-    const actionsMap: Record<string, any[]> = this.spec['x-autocrud-custom-create-actions'] ?? {};
+    const actionsMap: Record<string, any[]> = this.spec['x-specstar-custom-create-actions'] ?? {};
     if (Object.keys(actionsMap).length === 0) return;
 
     for (const resource of this.resources) {
@@ -290,7 +290,7 @@ export class IRBuilder {
   // ── Custom Update Actions ─────────────────────────────────────────────────
 
   private extractCustomUpdateActions() {
-    const actionsMap: Record<string, any[]> = this.spec['x-autocrud-custom-update-actions'] ?? {};
+    const actionsMap: Record<string, any[]> = this.spec['x-specstar-custom-update-actions'] ?? {};
     if (Object.keys(actionsMap).length === 0) return;
 
     for (const resource of this.resources) {
@@ -646,7 +646,7 @@ export class IRBuilder {
       !prop.enum
     ) {
       console.warn(
-        `[autocrud-web-generator] Unrecognized schema type "${type}" for field "${name}", falling back to 'object'.`,
+        `[specstar-web-generator] Unrecognized schema type "${type}" for field "${name}", falling back to 'object'.`,
       );
       type = 'object';
     }

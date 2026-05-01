@@ -1,4 +1,4 @@
-# AutoCRUD Web Generator - 快速開始
+# SpecStar Web Generator - 快速開始
 
 ## 專案結構
 
@@ -46,7 +46,7 @@ npm link
 
 # 現在可以在任何地方使用
 cd /tmp
-autocrud-web init my-app
+specstar-web init my-app
 cd my-app
 pnpm install
 pnpm generate --url http://localhost:8000
@@ -57,14 +57,14 @@ pnpm dev
 
 使用者安裝：
 ```bash
-npm install -g autocrud-web-generator
+npm install -g specstar-web-generator
 # 或使用 npx（不用安裝）
-npx autocrud-web-generator init my-app
+npx specstar-web-generator init my-app
 ```
 
 ## 兩個主要命令
 
-### `autocrud-web init <project-name>`
+### `specstar-web init <project-name>`
 
 功能：
 - 複製 `templates/base/` 到新目錄
@@ -73,19 +73,19 @@ npx autocrud-web-generator init my-app
 
 實作位置：`src/commands/init.ts`
 
-### `autocrud-web generate [--url API_URL]`
+### `specstar-web generate [--url API_URL]`
 
 功能：
-- 從 AutoCRUD API 抓取 `/openapi.json`
+- 從 SpecStar API 抓取 `/openapi.json`
 - 解析 OpenAPI spec 找出所有 resources
 - 生成以下檔案到 `src/` 目錄：
-  - `autocrud/generated/types.ts` - TypeScript 介面
-  - `autocrud/generated/resources.ts` - Resource 註冊表
-  - `autocrud/generated/api/*.ts` - 各 resource 的 API client
-  - `routes/autocrud-admin/index.tsx` - Dashboard
-  - `routes/autocrud-admin/{resource}/index.tsx` - List 頁面
-  - `routes/autocrud-admin/{resource}/create.tsx` - Create 頁面
-  - `routes/autocrud-admin/{resource}/$resourceId.tsx` - Detail 頁面
+  - `specstar/generated/types.ts` - TypeScript 介面
+  - `specstar/generated/resources.ts` - Resource 註冊表
+  - `specstar/generated/api/*.ts` - 各 resource 的 API client
+  - `routes/specstar-admin/index.tsx` - Dashboard
+  - `routes/specstar-admin/{resource}/index.tsx` - List 頁面
+  - `routes/specstar-admin/{resource}/create.tsx` - Create 頁面
+  - `routes/specstar-admin/{resource}/$resourceId.tsx` - Detail 頁面
 
 實作位置：`src/commands/generate.ts`（977 行，主要邏輯）
 
@@ -103,7 +103,7 @@ npx autocrud-web-generator init my-app
 ### 模板系統
 - 模板位於 `templates/base/`
 - `init` 命令直接複製整個目錄
-- 不包含 `node_modules`、`dist`、`scripts`、`src/autocrud/generated`、`src/routes/autocrud-admin`
+- 不包含 `node_modules`、`dist`、`scripts`、`src/specstar/generated`、`src/routes/specstar-admin`
 
 ### 檔案生成
 - 使用字串模板（template literals）
@@ -140,10 +140,10 @@ pnpm test     # 測試（如果有寫測試）
    ```bash
    cd /tmp
    rm -rf test-app
-   autocrud-web init test-app
+   specstar-web init test-app
    cd test-app
    pnpm install
-   autocrud-web generate --url http://localhost:8000
+   specstar-web generate --url http://localhost:8000
    pnpm dev
    ```
 4. 確認所有頁面正常運作
@@ -156,12 +156,12 @@ A: 因為它會讀取 `process.cwd()` 來決定輸出位置。可以用 `-o` 參
 
 ### Q: 如何更新已經生成的專案？
 
-A: 直接再次執行 `pnpm generate`，會覆蓋 `src/autocrud/generated/` 和 `src/routes/autocrud-admin/` 下的自動生成檔案。
+A: 直接再次執行 `pnpm generate`，會覆蓋 `src/specstar/generated/` 和 `src/routes/specstar-admin/` 下的自動生成檔案。
 
-### Q: 模板中的 package.json 為什麼不包含 autocrud-web-generator？
+### Q: 模板中的 package.json 為什麼不包含 specstar-web-generator？
 
 A: 因為使用者通常會全域安裝或用 npx，不需要加到專案 dependencies。但可以加入 `devDependencies`。
 
-### Q: 如何支援新的 AutoCRUD 功能？
+### Q: 如何支援新的 SpecStar 功能？
 
 A: 修改 `src/commands/generate.ts` 中的相關 generator 函數，例如要支援新的 API endpoint 就修改 `genApi()`。

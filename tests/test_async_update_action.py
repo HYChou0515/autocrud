@@ -23,9 +23,9 @@ from fastapi import Body, FastAPI
 from fastapi.testclient import TestClient
 from msgspec import Struct
 
-from autocrud.crud.core import AutoCRUD
-from autocrud.message_queue.simple import SimpleMessageQueueFactory
-from autocrud.types import TaskStatus
+from specstar.crud.core import SpecStar
+from specstar.message_queue.simple import SimpleMessageQueueFactory
+from specstar.types import TaskStatus
 
 # ---------------------------------------------------------------------------
 # Test Models
@@ -51,8 +51,8 @@ class BoostPayload(Struct):
 # ---------------------------------------------------------------------------
 
 
-def _make_crud(**kwargs) -> AutoCRUD:
-    return AutoCRUD(
+def _make_crud(**kwargs) -> SpecStar:
+    return SpecStar(
         default_user="tester",
         default_now=dt.datetime.now,
         message_queue_factory=SimpleMessageQueueFactory(max_retries=1),
@@ -61,10 +61,10 @@ def _make_crud(**kwargs) -> AutoCRUD:
 
 
 def _wait_for_job_completion(
-    crud: AutoCRUD, job_resource_name: str, job_resource_id: str, timeout: float = 5.0
+    spec: SpecStar, job_resource_name: str, job_resource_id: str, timeout: float = 5.0
 ):
     """Poll until the job reaches COMPLETED or FAILED status."""
-    rm = crud.resource_managers[job_resource_name]
+    rm = spec.resource_managers[job_resource_name]
     start = time.monotonic()
     while time.monotonic() - start < timeout:
         resource = rm.get(job_resource_id)
@@ -90,13 +90,13 @@ def _create_character(client, name="Alice", level=5, hp=100) -> str:
 
 
 class TestAsyncUpdateActionDecorator:
-    """@crud.update_action(async_mode='job') stores async_mode in pending action."""
+    """@spec.update_action(async_mode='job') stores async_mode in pending action."""
 
     def test_async_mode_stored_in_pending_action(self):
-        crud = _make_crud()
-        crud.add_model(Character, name="character")
+        spec = _make_crud()
+        spec.add_model(Character, name="character")
 
-        @crud.update_action("character", async_mode="job", label="Train")
+        @spec.update_action("character", async_mode="job", label="Train")
         def train(existing: Character, payload: TrainRequest = Body(...)) -> Character:
             return Character(
                 name=existing.name,
@@ -104,27 +104,27 @@ class TestAsyncUpdateActionDecorator:
                 hp=existing.hp,
             )
 
-        assert len(crud._pending_update_actions) == 1
-        action = crud._pending_update_actions[0]
+        assert len(spec._pending_update_actions) == 1
+        action = spec._pending_update_actions[0]
         assert action.async_mode == "job"
         assert action.label == "Train"
 
     def test_default_async_mode_is_none(self):
-        crud = _make_crud()
-        crud.add_model(Character, name="character")
+        spec = _make_crud()
+        spec.add_model(Character, name="character")
 
-        @crud.update_action("character", label="Rename")
+        @spec.update_action("character", label="Rename")
         def rename(existing: Character, name: str) -> Character:
             return Character(name=name, level=existing.level, hp=existing.hp)
 
-        action = crud._pending_update_actions[0]
+        action = spec._pending_update_actions[0]
         assert action.async_mode is None
 
     def test_job_name_stored_in_pending_action(self):
-        crud = _make_crud()
-        crud.add_model(Character, name="character")
+        spec = _make_crud()
+        spec.add_model(Character, name="character")
 
-        @crud.update_action(
+        @spec.update_action(
             "character", async_mode="job", label="Train", job_name="my-train-job"
         )
         def train(existing: Character, payload: TrainRequest = Body(...)) -> Character:
@@ -134,14 +134,14 @@ class TestAsyncUpdateActionDecorator:
                 hp=existing.hp,
             )
 
-        action = crud._pending_update_actions[0]
+        action = spec._pending_update_actions[0]
         assert action.job_name == "my-train-job"
 
     def test_job_name_default_is_none(self):
-        crud = _make_crud()
-        crud.add_model(Character, name="character")
+        spec = _make_crud()
+        spec.add_model(Character, name="character")
 
-        @crud.update_action("character", async_mode="job", label="Train")
+        @spec.update_action("character", async_mode="job", label="Train")
         def train(existing: Character, payload: TrainRequest = Body(...)) -> Character:
             return Character(
                 name=existing.name,
@@ -149,7 +149,7 @@ class TestAsyncUpdateActionDecorator:
                 hp=existing.hp,
             )
 
-        action = crud._pending_update_actions[0]
+        action = spec._pending_update_actions[0]
         assert action.job_name is None
 
 
@@ -162,10 +162,10 @@ class TestAsyncUpdateJobModelGeneration:
     """apply() auto-generates a Job Model for async_mode='job' update actions."""
 
     def test_job_model_registered(self):
-        crud = _make_crud()
-        crud.add_model(Character, name="character")
+        spec = _make_crud()
+        spec.add_model(Character, name="character")
 
-        @crud.update_action("character", async_mode="job", label="Train")
+        @spec.update_action("character", async_mode="job", label="Train")
         def train(existing: Character, payload: TrainRequest = Body(...)) -> Character:
             return Character(
                 name=existing.name,
@@ -174,15 +174,15 @@ class TestAsyncUpdateJobModelGeneration:
             )
 
         app = FastAPI()
-        crud.apply(app)
+        spec.apply(app)
 
-        assert "train-job" in crud.resource_managers
+        assert "train-job" in spec.resource_managers
 
     def test_job_model_is_job_subclass(self):
-        crud = _make_crud()
-        crud.add_model(Character, name="character")
+        spec = _make_crud()
+        spec.add_model(Character, name="character")
 
-        @crud.update_action("character", async_mode="job", label="Train")
+        @spec.update_action("character", async_mode="job", label="Train")
         def train(existing: Character, payload: TrainRequest = Body(...)) -> Character:
             return Character(
                 name=existing.name,
@@ -191,16 +191,16 @@ class TestAsyncUpdateJobModelGeneration:
             )
 
         app = FastAPI()
-        crud.apply(app)
+        spec.apply(app)
 
-        job_rm = crud.resource_managers["train-job"]
-        assert crud._is_job_subclass(job_rm.resource_type)
+        job_rm = spec.resource_managers["train-job"]
+        assert spec._is_job_subclass(job_rm.resource_type)
 
     def test_job_model_has_correct_fields(self):
-        crud = _make_crud()
-        crud.add_model(Character, name="character")
+        spec = _make_crud()
+        spec.add_model(Character, name="character")
 
-        @crud.update_action("character", async_mode="job", label="Train")
+        @spec.update_action("character", async_mode="job", label="Train")
         def train(existing: Character, payload: TrainRequest = Body(...)) -> Character:
             return Character(
                 name=existing.name,
@@ -209,9 +209,9 @@ class TestAsyncUpdateJobModelGeneration:
             )
 
         app = FastAPI()
-        crud.apply(app)
+        spec.apply(app)
 
-        job_rm = crud.resource_managers["train-job"]
+        job_rm = spec.resource_managers["train-job"]
         model = job_rm.resource_type
         field_names = set(model.__struct_fields__)
         assert "payload" in field_names
@@ -222,10 +222,10 @@ class TestAsyncUpdateJobModelGeneration:
 
     def test_job_model_payload_contains_resource_id(self):
         """The Job payload struct must include resource_id."""
-        crud = _make_crud()
-        crud.add_model(Character, name="character")
+        spec = _make_crud()
+        spec.add_model(Character, name="character")
 
-        @crud.update_action("character", async_mode="job", label="Train")
+        @spec.update_action("character", async_mode="job", label="Train")
         def train(existing: Character, payload: TrainRequest = Body(...)) -> Character:
             return Character(
                 name=existing.name,
@@ -234,9 +234,9 @@ class TestAsyncUpdateJobModelGeneration:
             )
 
         app = FastAPI()
-        crud.apply(app)
+        spec.apply(app)
 
-        job_rm = crud.resource_managers["train-job"]
+        job_rm = spec.resource_managers["train-job"]
         job_model = job_rm.resource_type
         # Create a dummy instance to inspect payload type
         # The payload type should have resource_id and payload_data fields
@@ -245,10 +245,10 @@ class TestAsyncUpdateJobModelGeneration:
         assert "payload" in payload_type
 
     def test_job_model_has_message_queue(self):
-        crud = _make_crud()
-        crud.add_model(Character, name="character")
+        spec = _make_crud()
+        spec.add_model(Character, name="character")
 
-        @crud.update_action("character", async_mode="job", label="Train")
+        @spec.update_action("character", async_mode="job", label="Train")
         def train(existing: Character, payload: TrainRequest = Body(...)) -> Character:
             return Character(
                 name=existing.name,
@@ -257,17 +257,17 @@ class TestAsyncUpdateJobModelGeneration:
             )
 
         app = FastAPI()
-        crud.apply(app)
+        spec.apply(app)
 
-        job_rm = crud.resource_managers["train-job"]
+        job_rm = spec.resource_managers["train-job"]
         assert job_rm.message_queue is not None  # ty:ignore[unresolved-attribute]
 
     def test_job_model_is_async_update_job(self):
         """Job model should be marked as _is_async_update_job=True."""
-        crud = _make_crud()
-        crud.add_model(Character, name="character")
+        spec = _make_crud()
+        spec.add_model(Character, name="character")
 
-        @crud.update_action("character", async_mode="job", label="Train")
+        @spec.update_action("character", async_mode="job", label="Train")
         def train(existing: Character, payload: TrainRequest = Body(...)) -> Character:
             return Character(
                 name=existing.name,
@@ -276,9 +276,9 @@ class TestAsyncUpdateJobModelGeneration:
             )
 
         app = FastAPI()
-        crud.apply(app)
+        spec.apply(app)
 
-        job_rm = crud.resource_managers["train-job"]
+        job_rm = spec.resource_managers["train-job"]
         model = job_rm.resource_type
         assert getattr(model, "_is_async_update_job", False) is True
 
@@ -293,10 +293,10 @@ class TestAsyncUpdateActionHTTPFlow:
 
     @pytest.fixture
     def crud_and_client(self):
-        crud = _make_crud()
-        crud.add_model(Character, name="character")
+        spec = _make_crud()
+        spec.add_model(Character, name="character")
 
-        @crud.update_action("character", async_mode="job", label="Train")
+        @spec.update_action("character", async_mode="job", label="Train")
         def train(existing: Character, payload: TrainRequest = Body(...)) -> Character:
             return Character(
                 name=existing.name,
@@ -305,12 +305,12 @@ class TestAsyncUpdateActionHTTPFlow:
             )
 
         app = FastAPI()
-        crud.apply(app)
+        spec.apply(app)
         client = TestClient(app)
-        return crud, client
+        return spec, client
 
     def test_returns_202_with_job_redirect_info(self, crud_and_client):
-        crud, client = crud_and_client
+        spec, client = crud_and_client
         resource_id = _create_character(client, name="Alice", level=5)
 
         resp = client.post(
@@ -326,7 +326,7 @@ class TestAsyncUpdateActionHTTPFlow:
     def test_job_resource_created_with_payload_containing_resource_id(
         self, crud_and_client
     ):
-        crud, client = crud_and_client
+        spec, client = crud_and_client
         resource_id = _create_character(client, name="Bob", level=10)
 
         resp = client.post(
@@ -334,22 +334,22 @@ class TestAsyncUpdateActionHTTPFlow:
             json={"levels": 2},
         )
         data = resp.json()
-        job_rm = crud.resource_managers["train-job"]
+        job_rm = spec.resource_managers["train-job"]
         job = job_rm.get(data["job_resource_id"])
         # Payload should include resource_id
         assert job.data.payload.resource_id == resource_id
 
     def test_standard_sync_update_action_unchanged(self):
         """async_mode=None (default) update action still returns 200 + RevisionInfo."""
-        crud = _make_crud()
-        crud.add_model(Character, name="character")
+        spec = _make_crud()
+        spec.add_model(Character, name="character")
 
-        @crud.update_action("character", label="Rename")
+        @spec.update_action("character", label="Rename")
         def rename(existing: Character, name: str) -> Character:
             return Character(name=name, level=existing.level, hp=existing.hp)
 
         app = FastAPI()
-        crud.apply(app)
+        spec.apply(app)
         client = TestClient(app)
 
         resource_id = _create_character(client, name="Original", level=1)
@@ -370,10 +370,10 @@ class TestAsyncUpdateJobExecution:
 
     @pytest.fixture
     def crud_and_client(self):
-        crud = _make_crud()
-        crud.add_model(Character, name="character")
+        spec = _make_crud()
+        spec.add_model(Character, name="character")
 
-        @crud.update_action("character", async_mode="job", label="Train")
+        @spec.update_action("character", async_mode="job", label="Train")
         def train(existing: Character, payload: TrainRequest = Body(...)) -> Character:
             return Character(
                 name=existing.name,
@@ -382,17 +382,17 @@ class TestAsyncUpdateJobExecution:
             )
 
         app = FastAPI()
-        crud.apply(app)
+        spec.apply(app)
 
         # Start consuming jobs
-        job_rm = crud.resource_managers["train-job"]
+        job_rm = spec.resource_managers["train-job"]
         job_rm.start_consume(block=False)
 
         client = TestClient(app)
-        yield crud, client
+        yield spec, client
 
     def test_job_handler_updates_character(self, crud_and_client):
-        crud, client = crud_and_client
+        spec, client = crud_and_client
         resource_id = _create_character(client, name="Alice", level=5, hp=100)
 
         resp = client.post(
@@ -402,7 +402,7 @@ class TestAsyncUpdateJobExecution:
         data = resp.json()
 
         # Wait for job completion
-        job = _wait_for_job_completion(crud, "train-job", data["job_resource_id"])
+        job = _wait_for_job_completion(spec, "train-job", data["job_resource_id"])
         assert job.data.status == TaskStatus.COMPLETED
 
         # Verify the Character was updated
@@ -414,7 +414,7 @@ class TestAsyncUpdateJobExecution:
         assert char_data["hp"] == 100
 
     def test_job_artifact_contains_revision_info(self, crud_and_client):
-        crud, client = crud_and_client
+        spec, client = crud_and_client
         resource_id = _create_character(client, name="Bob", level=10)
 
         resp = client.post(
@@ -423,7 +423,7 @@ class TestAsyncUpdateJobExecution:
         )
         data = resp.json()
 
-        job = _wait_for_job_completion(crud, "train-job", data["job_resource_id"])
+        job = _wait_for_job_completion(spec, "train-job", data["job_resource_id"])
         assert job.data.artifact is not None
         artifact = job.data.artifact
         assert "resource_id" in artifact
@@ -432,10 +432,10 @@ class TestAsyncUpdateJobExecution:
 
     def test_job_handler_returns_none_no_update(self):
         """If handler returns None, no update is performed but job completes."""
-        crud = _make_crud()
-        crud.add_model(Character, name="character")
+        spec = _make_crud()
+        spec.add_model(Character, name="character")
 
-        @crud.update_action("character", async_mode="job", label="Validate Only")
+        @spec.update_action("character", async_mode="job", label="Validate Only")
         def validate_only(
             existing: Character, payload: TrainRequest = Body(...)
         ) -> None:
@@ -443,9 +443,9 @@ class TestAsyncUpdateJobExecution:
             return None
 
         app = FastAPI()
-        crud.apply(app)
+        spec.apply(app)
 
-        job_rm = crud.resource_managers["validate-only-job"]
+        job_rm = spec.resource_managers["validate-only-job"]
         job_rm.start_consume(block=False)
 
         client = TestClient(app)
@@ -458,7 +458,7 @@ class TestAsyncUpdateJobExecution:
         data = resp.json()
 
         job = _wait_for_job_completion(
-            crud, "validate-only-job", data["job_resource_id"]
+            spec, "validate-only-job", data["job_resource_id"]
         )
         assert job.data.status == TaskStatus.COMPLETED
         assert job.data.artifact is None
@@ -478,10 +478,10 @@ class TestAsyncUpdateJobModifyMode:
 
     def test_update_mode_creates_new_revision(self):
         """mode='update' creates a new revision with the handler's result."""
-        crud = _make_crud()
-        crud.add_model(Character, name="character")
+        spec = _make_crud()
+        spec.add_model(Character, name="character")
 
-        @crud.update_action("character", async_mode="job", label="Boost HP")
+        @spec.update_action("character", async_mode="job", label="Boost HP")
         def boost_hp(
             existing: Character, payload: BoostPayload = Body(...)
         ) -> Character:
@@ -492,9 +492,9 @@ class TestAsyncUpdateJobModifyMode:
             )
 
         app = FastAPI()
-        crud.apply(app)
+        spec.apply(app)
 
-        job_rm = crud.resource_managers["boost-hp-job"]
+        job_rm = spec.resource_managers["boost-hp-job"]
         job_rm.start_consume(block=False)
 
         client = TestClient(app)
@@ -507,7 +507,7 @@ class TestAsyncUpdateJobModifyMode:
         assert resp.status_code == 202
         data = resp.json()
 
-        job = _wait_for_job_completion(crud, "boost-hp-job", data["job_resource_id"])
+        job = _wait_for_job_completion(spec, "boost-hp-job", data["job_resource_id"])
         assert job.data.status == TaskStatus.COMPLETED
 
         # Verify update applied
@@ -526,10 +526,10 @@ class TestAsyncUpdateActionOpenAPI:
     """OpenAPI schema contains asyncMode and jobResourceName for update actions."""
 
     def test_openapi_has_async_mode_and_job_resource_name(self):
-        crud = _make_crud()
-        crud.add_model(Character, name="character")
+        spec = _make_crud()
+        spec.add_model(Character, name="character")
 
-        @crud.update_action("character", async_mode="job", label="Train")
+        @spec.update_action("character", async_mode="job", label="Train")
         def train(existing: Character, payload: TrainRequest = Body(...)) -> Character:
             return Character(
                 name=existing.name,
@@ -538,11 +538,11 @@ class TestAsyncUpdateActionOpenAPI:
             )
 
         app = FastAPI()
-        crud.apply(app)
-        crud.openapi(app)
+        spec.apply(app)
+        spec.openapi(app)
         schema = app.openapi()
 
-        custom_actions = schema.get("x-autocrud-custom-update-actions", {})
+        custom_actions = schema.get("x-specstar-custom-update-actions", {})
         assert "character" in custom_actions
         actions = custom_actions["character"]
         train_action = next(a for a in actions if a["label"] == "Train")
@@ -550,10 +550,10 @@ class TestAsyncUpdateActionOpenAPI:
         assert train_action.get("jobResourceName") == "train-job"
 
     def test_openapi_has_async_update_jobs_mapping(self):
-        crud = _make_crud()
-        crud.add_model(Character, name="character")
+        spec = _make_crud()
+        spec.add_model(Character, name="character")
 
-        @crud.update_action("character", async_mode="job", label="Train")
+        @spec.update_action("character", async_mode="job", label="Train")
         def train(existing: Character, payload: TrainRequest = Body(...)) -> Character:
             return Character(
                 name=existing.name,
@@ -562,28 +562,28 @@ class TestAsyncUpdateActionOpenAPI:
             )
 
         app = FastAPI()
-        crud.apply(app)
-        crud.openapi(app)
+        spec.apply(app)
+        spec.openapi(app)
         schema = app.openapi()
 
-        async_jobs = schema.get("x-autocrud-async-update-jobs", {})
+        async_jobs = schema.get("x-specstar-async-update-jobs", {})
         assert "train-job" in async_jobs
         assert async_jobs["train-job"] == "character"
 
     def test_openapi_sync_action_has_no_async_mode(self):
-        crud = _make_crud()
-        crud.add_model(Character, name="character")
+        spec = _make_crud()
+        spec.add_model(Character, name="character")
 
-        @crud.update_action("character", label="Rename")
+        @spec.update_action("character", label="Rename")
         def rename(existing: Character, name: str) -> Character:
             return Character(name=name, level=existing.level, hp=existing.hp)
 
         app = FastAPI()
-        crud.apply(app)
-        crud.openapi(app)
+        spec.apply(app)
+        spec.openapi(app)
         schema = app.openapi()
 
-        custom_actions = schema.get("x-autocrud-custom-update-actions", {})
+        custom_actions = schema.get("x-specstar-custom-update-actions", {})
         actions = custom_actions["character"]
         action = next(a for a in actions if a["label"] == "Rename")
         assert "asyncMode" not in action
@@ -599,10 +599,10 @@ class TestAsyncUpdateJobCRUDEndpoints:
     """Auto-generated Job resource has its own CRUD endpoints."""
 
     def test_job_resource_has_search_endpoint(self):
-        crud = _make_crud()
-        crud.add_model(Character, name="character")
+        spec = _make_crud()
+        spec.add_model(Character, name="character")
 
-        @crud.update_action("character", async_mode="job", label="Train")
+        @spec.update_action("character", async_mode="job", label="Train")
         def train(existing: Character, payload: TrainRequest = Body(...)) -> Character:
             return Character(
                 name=existing.name,
@@ -611,17 +611,17 @@ class TestAsyncUpdateJobCRUDEndpoints:
             )
 
         app = FastAPI()
-        crud.apply(app)
+        spec.apply(app)
         client = TestClient(app)
 
         resp = client.get("/train-job")
         assert resp.status_code == 200
 
     def test_job_resource_is_readable(self):
-        crud = _make_crud()
-        crud.add_model(Character, name="character")
+        spec = _make_crud()
+        spec.add_model(Character, name="character")
 
-        @crud.update_action("character", async_mode="job", label="Train")
+        @spec.update_action("character", async_mode="job", label="Train")
         def train(existing: Character, payload: TrainRequest = Body(...)) -> Character:
             return Character(
                 name=existing.name,
@@ -630,7 +630,7 @@ class TestAsyncUpdateJobCRUDEndpoints:
             )
 
         app = FastAPI()
-        crud.apply(app)
+        spec.apply(app)
         client = TestClient(app)
 
         resource_id = _create_character(client, name="Alice", level=5)
@@ -653,10 +653,10 @@ class TestMultipleAsyncUpdateActions:
     """Multiple async_mode='job' update actions on the same resource."""
 
     def test_multiple_async_actions_create_separate_jobs(self):
-        crud = _make_crud()
-        crud.add_model(Character, name="character")
+        spec = _make_crud()
+        spec.add_model(Character, name="character")
 
-        @crud.update_action("character", async_mode="job", label="Train")
+        @spec.update_action("character", async_mode="job", label="Train")
         def train(existing: Character, payload: TrainRequest = Body(...)) -> Character:
             return Character(
                 name=existing.name,
@@ -664,7 +664,7 @@ class TestMultipleAsyncUpdateActions:
                 hp=existing.hp,
             )
 
-        @crud.update_action("character", async_mode="job", label="Boost HP")
+        @spec.update_action("character", async_mode="job", label="Boost HP")
         def boost_hp(
             existing: Character, payload: BoostPayload = Body(...)
         ) -> Character:
@@ -675,16 +675,16 @@ class TestMultipleAsyncUpdateActions:
             )
 
         app = FastAPI()
-        crud.apply(app)
+        spec.apply(app)
 
-        assert "train-job" in crud.resource_managers
-        assert "boost-hp-job" in crud.resource_managers
+        assert "train-job" in spec.resource_managers
+        assert "boost-hp-job" in spec.resource_managers
 
     def test_mixed_sync_and_async_actions(self):
-        crud = _make_crud()
-        crud.add_model(Character, name="character")
+        spec = _make_crud()
+        spec.add_model(Character, name="character")
 
-        @crud.update_action("character", async_mode="job", label="Train")
+        @spec.update_action("character", async_mode="job", label="Train")
         def train(existing: Character, payload: TrainRequest = Body(...)) -> Character:
             return Character(
                 name=existing.name,
@@ -692,12 +692,12 @@ class TestMultipleAsyncUpdateActions:
                 hp=existing.hp,
             )
 
-        @crud.update_action("character", label="Rename")
+        @spec.update_action("character", label="Rename")
         def rename(existing: Character, name: str) -> Character:
             return Character(name=name, level=existing.level, hp=existing.hp)
 
         app = FastAPI()
-        crud.apply(app)
+        spec.apply(app)
         client = TestClient(app)
 
         resource_id = _create_character(client, name="Alice", level=5)
@@ -724,10 +724,10 @@ class TestUpdateJobNameParam:
     """Tests for the ``job_name`` parameter on ``update_action()``."""
 
     def test_custom_job_name_registers_correct_resource(self):
-        crud = _make_crud()
-        crud.add_model(Character, name="character")
+        spec = _make_crud()
+        spec.add_model(Character, name="character")
 
-        @crud.update_action(
+        @spec.update_action(
             "character", async_mode="job", label="Train", job_name="my-train-job"
         )
         def train(existing: Character, payload: TrainRequest = Body(...)) -> Character:
@@ -738,15 +738,15 @@ class TestUpdateJobNameParam:
             )
 
         app = FastAPI()
-        crud.apply(app)
+        spec.apply(app)
 
-        assert "my-train-job" in crud.resource_managers
+        assert "my-train-job" in spec.resource_managers
 
     def test_custom_job_name_in_openapi(self):
-        crud = _make_crud()
-        crud.add_model(Character, name="character")
+        spec = _make_crud()
+        spec.add_model(Character, name="character")
 
-        @crud.update_action(
+        @spec.update_action(
             "character",
             async_mode="job",
             label="Train",
@@ -761,23 +761,23 @@ class TestUpdateJobNameParam:
             )
 
         app = FastAPI()
-        crud.apply(app)
-        crud.openapi(app)
+        spec.apply(app)
+        spec.openapi(app)
         schema = app.openapi()
 
-        custom_actions = schema.get("x-autocrud-custom-update-actions", {})
+        custom_actions = schema.get("x-specstar-custom-update-actions", {})
         action = next(a for a in custom_actions["character"] if a["label"] == "Train")
         assert action["jobResourceName"] == "my-train-job"
 
-        async_jobs = schema.get("x-autocrud-async-update-jobs", {})
+        async_jobs = schema.get("x-specstar-async-update-jobs", {})
         assert "my-train-job" in async_jobs
         assert async_jobs["my-train-job"] == "character"
 
     def test_custom_job_name_full_http_flow(self):
-        crud = _make_crud()
-        crud.add_model(Character, name="character")
+        spec = _make_crud()
+        spec.add_model(Character, name="character")
 
-        @crud.update_action(
+        @spec.update_action(
             "character", async_mode="job", label="Train", job_name="my-train-job"
         )
         def train(existing: Character, payload: TrainRequest = Body(...)) -> Character:
@@ -788,9 +788,9 @@ class TestUpdateJobNameParam:
             )
 
         app = FastAPI()
-        crud.apply(app)
+        spec.apply(app)
 
-        job_rm = crud.resource_managers["my-train-job"]
+        job_rm = spec.resource_managers["my-train-job"]
         job_rm.start_consume(block=False)
 
         client = TestClient(app)
@@ -805,7 +805,7 @@ class TestUpdateJobNameParam:
         assert body["job_resource_name"] == "my-train-job"
 
         resource = _wait_for_job_completion(
-            crud, "my-train-job", body["job_resource_id"]
+            spec, "my-train-job", body["job_resource_id"]
         )
         assert resource.data.status == TaskStatus.COMPLETED
 
@@ -823,10 +823,10 @@ class TestAutoPayloadScalarUpdateParams:
     """async_mode='job' with scalar-only handlers (no Struct body param)."""
 
     def test_scalar_params_auto_generate_job_model(self):
-        crud = _make_crud()
-        crud.add_model(Character, name="character")
+        spec = _make_crud()
+        spec.add_model(Character, name="character")
 
-        @crud.update_action(
+        @spec.update_action(
             "character",
             async_mode="job",
             label="Set Name",
@@ -836,15 +836,15 @@ class TestAutoPayloadScalarUpdateParams:
             return Character(name=name, level=existing.level, hp=existing.hp)
 
         app = FastAPI()
-        crud.apply(app)
+        spec.apply(app)
 
-        assert "set-name-job" in crud.resource_managers
+        assert "set-name-job" in spec.resource_managers
 
     def test_scalar_params_returns_202(self):
-        crud = _make_crud()
-        crud.add_model(Character, name="character")
+        spec = _make_crud()
+        spec.add_model(Character, name="character")
 
-        @crud.update_action(
+        @spec.update_action(
             "character",
             async_mode="job",
             label="Set Name",
@@ -854,7 +854,7 @@ class TestAutoPayloadScalarUpdateParams:
             return Character(name=name, level=existing.level, hp=existing.hp)
 
         app = FastAPI()
-        crud.apply(app)
+        spec.apply(app)
         client = TestClient(app)
 
         resource_id = _create_character(client, name="A", level=1)
@@ -864,10 +864,10 @@ class TestAutoPayloadScalarUpdateParams:
         assert data["job_resource_name"] == "set-name-job"
 
     def test_scalar_params_job_payload_has_resource_id(self):
-        crud = _make_crud()
-        crud.add_model(Character, name="character")
+        spec = _make_crud()
+        spec.add_model(Character, name="character")
 
-        @crud.update_action(
+        @spec.update_action(
             "character",
             async_mode="job",
             label="Set Name",
@@ -877,23 +877,23 @@ class TestAutoPayloadScalarUpdateParams:
             return Character(name=name, level=existing.level, hp=existing.hp)
 
         app = FastAPI()
-        crud.apply(app)
+        spec.apply(app)
         client = TestClient(app)
 
         resource_id = _create_character(client, name="A", level=1)
         resp = client.post(f"/character/{resource_id}/set-name?name=B")
         data = resp.json()
 
-        job_rm = crud.resource_managers["set-name-job"]
+        job_rm = spec.resource_managers["set-name-job"]
         job = job_rm.get(data["job_resource_id"])
         assert job.data.payload.resource_id == resource_id
         assert job.data.payload.name == "B"
 
     def test_scalar_params_job_execution_updates_resource(self):
-        crud = _make_crud()
-        crud.add_model(Character, name="character")
+        spec = _make_crud()
+        spec.add_model(Character, name="character")
 
-        @crud.update_action(
+        @spec.update_action(
             "character",
             async_mode="job",
             label="Set Name",
@@ -903,9 +903,9 @@ class TestAutoPayloadScalarUpdateParams:
             return Character(name=name, level=existing.level, hp=existing.hp)
 
         app = FastAPI()
-        crud.apply(app)
+        spec.apply(app)
 
-        job_rm = crud.resource_managers["set-name-job"]
+        job_rm = spec.resource_managers["set-name-job"]
         job_rm.start_consume(block=False)
 
         client = TestClient(app)
@@ -914,7 +914,7 @@ class TestAutoPayloadScalarUpdateParams:
         resp = client.post(f"/character/{resource_id}/set-name?name=New")
         data = resp.json()
 
-        job = _wait_for_job_completion(crud, "set-name-job", data["job_resource_id"])
+        job = _wait_for_job_completion(spec, "set-name-job", data["job_resource_id"])
         assert job.data.status == TaskStatus.COMPLETED
 
         char_resp = client.get(f"/character/{resource_id}")
@@ -931,10 +931,10 @@ class TestAsyncUpdateJobRmsMapping:
     """register_async_update_job / async_update_job_names on target RM."""
 
     def test_mapping_populated_after_apply(self):
-        crud = _make_crud()
-        crud.add_model(Character, name="character")
+        spec = _make_crud()
+        spec.add_model(Character, name="character")
 
-        @crud.update_action("character", async_mode="job", label="Train", path="train")
+        @spec.update_action("character", async_mode="job", label="Train", path="train")
         def train(existing: Character, payload: TrainRequest = Body(...)) -> Character:
             return Character(
                 name=existing.name,
@@ -942,7 +942,7 @@ class TestAsyncUpdateJobRmsMapping:
                 hp=existing.hp,
             )
 
-        @crud.update_action("character", async_mode="job", label="Boost", path="boost")
+        @spec.update_action("character", async_mode="job", label="Boost", path="boost")
         def boost(existing: Character, payload: BoostPayload = Body(...)) -> Character:
             return Character(
                 name=existing.name,
@@ -951,18 +951,18 @@ class TestAsyncUpdateJobRmsMapping:
             )
 
         app = FastAPI()
-        crud.apply(app)
+        spec.apply(app)
 
-        char_rm = crud.resource_managers["character"]
+        char_rm = spec.resource_managers["character"]
         assert len(char_rm.async_update_job_names) == 2  # ty:ignore[unresolved-attribute]
         assert "train-job" in char_rm.async_update_job_names  # ty:ignore[unresolved-attribute]
         assert "boost-job" in char_rm.async_update_job_names  # ty:ignore[unresolved-attribute]
 
     def test_mapping_uses_custom_job_name(self):
-        crud = _make_crud()
-        crud.add_model(Character, name="character")
+        spec = _make_crud()
+        spec.add_model(Character, name="character")
 
-        @crud.update_action(
+        @spec.update_action(
             "character", async_mode="job", label="Train", job_name="custom-train"
         )
         def train(existing: Character, payload: TrainRequest = Body(...)) -> Character:
@@ -973,29 +973,29 @@ class TestAsyncUpdateJobRmsMapping:
             )
 
         app = FastAPI()
-        crud.apply(app)
+        spec.apply(app)
 
-        char_rm = crud.resource_managers["character"]
+        char_rm = spec.resource_managers["character"]
         assert "custom-train" in char_rm.async_update_job_names  # ty:ignore[unresolved-attribute]
 
     def test_mapping_empty_without_async_actions(self):
-        crud = _make_crud()
-        crud.add_model(Character, name="character")
+        spec = _make_crud()
+        spec.add_model(Character, name="character")
 
         app = FastAPI()
-        crud.apply(app)
+        spec.apply(app)
 
-        char_rm = crud.resource_managers["character"]
+        char_rm = spec.resource_managers["character"]
         assert char_rm.async_update_job_names == []  # ty:ignore[unresolved-attribute]
 
     def test_register_duplicate_raises(self):
-        crud = _make_crud()
-        crud.add_model(Character, name="character")
+        spec = _make_crud()
+        spec.add_model(Character, name="character")
 
         app = FastAPI()
-        crud.apply(app)
+        spec.apply(app)
 
-        char_rm = crud.resource_managers["character"]
+        char_rm = spec.resource_managers["character"]
         char_rm.register_async_update_job("dup-job", char_rm)  # ty:ignore[unresolved-attribute]
         with pytest.raises(ValueError, match="already registered"):
             char_rm.register_async_update_job("dup-job", char_rm)  # ty:ignore[unresolved-attribute]
@@ -1010,17 +1010,17 @@ class TestUpdateActionDependencyProvider:
     """Async-job update actions respect DependencyProvider.get_user."""
 
     def test_custom_user_propagated_to_job_and_target(self):
-        from autocrud.crud.route_templates.basic import DependencyProvider
+        from specstar.crud.route_templates.basic import DependencyProvider
 
         def custom_get_user() -> str:
             return "custom-user"
 
-        crud = _make_crud(
+        spec = _make_crud(
             dependency_provider=DependencyProvider(get_user=custom_get_user),
         )
-        crud.add_model(Character, name="character")
+        spec.add_model(Character, name="character")
 
-        @crud.update_action("character", async_mode="job", label="Train")
+        @spec.update_action("character", async_mode="job", label="Train")
         def train(existing: Character, payload: TrainRequest = Body(...)) -> Character:
             return Character(
                 name=existing.name,
@@ -1029,9 +1029,9 @@ class TestUpdateActionDependencyProvider:
             )
 
         app = FastAPI()
-        crud.apply(app)
+        spec.apply(app)
 
-        job_rm = crud.resource_managers["train-job"]
+        job_rm = spec.resource_managers["train-job"]
         job_rm.start_consume(block=False)
 
         client = TestClient(app)
@@ -1050,7 +1050,7 @@ class TestUpdateActionDependencyProvider:
 
         # Wait for completion and verify target resource update user
         resource = _wait_for_job_completion(
-            crud, "train-job", job_data["job_resource_id"]
+            spec, "train-job", job_data["job_resource_id"]
         )
         assert resource.data.status == TaskStatus.COMPLETED
 
@@ -1064,10 +1064,10 @@ class TestStartConsumeDirectJobRm:
     """Job consumers can be started directly on the job RM."""
 
     def test_direct_job_rm_start_consume(self):
-        crud = _make_crud()
-        crud.add_model(Character, name="character")
+        spec = _make_crud()
+        spec.add_model(Character, name="character")
 
-        @crud.update_action("character", async_mode="job", label="Train", path="train")
+        @spec.update_action("character", async_mode="job", label="Train", path="train")
         def train(existing: Character, payload: TrainRequest = Body(...)) -> Character:
             return Character(
                 name=existing.name,
@@ -1075,7 +1075,7 @@ class TestStartConsumeDirectJobRm:
                 hp=existing.hp,
             )
 
-        @crud.update_action("character", async_mode="job", label="Boost", path="boost")
+        @spec.update_action("character", async_mode="job", label="Boost", path="boost")
         def boost(existing: Character, payload: BoostPayload = Body(...)) -> Character:
             return Character(
                 name=existing.name,
@@ -1084,11 +1084,11 @@ class TestStartConsumeDirectJobRm:
             )
 
         app = FastAPI()
-        crud.apply(app)
+        spec.apply(app)
 
         # Start each job consumer directly
-        crud.resource_managers["train-job"].start_consume(block=False)
-        crud.resource_managers["boost-job"].start_consume(block=False)
+        spec.resource_managers["train-job"].start_consume(block=False)
+        spec.resource_managers["boost-job"].start_consume(block=False)
 
         client = TestClient(app)
         resource_id = _create_character(client, name="Z", level=1, hp=50)
@@ -1100,7 +1100,7 @@ class TestStartConsumeDirectJobRm:
         assert resp1.status_code == 202
 
         r1 = _wait_for_job_completion(
-            crud, "train-job", resp1.json()["job_resource_id"]
+            spec, "train-job", resp1.json()["job_resource_id"]
         )
         assert r1.data.status == TaskStatus.COMPLETED
 
@@ -1111,6 +1111,6 @@ class TestStartConsumeDirectJobRm:
         assert resp2.status_code == 202
 
         r2 = _wait_for_job_completion(
-            crud, "boost-job", resp2.json()["job_resource_id"]
+            spec, "boost-job", resp2.json()["job_resource_id"]
         )
         assert r2.data.status == TaskStatus.COMPLETED

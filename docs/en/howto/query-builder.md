@@ -1,10 +1,10 @@
 # Query Builder
 
-AutoCRUD includes a high-level query builder for searching indexed resource fields and resource metadata.
+SpecStar includes a high-level query builder for searching indexed resource fields and resource metadata.
 
 Use it when you want expressive filtering logic in Python or when you want your HTTP `qb` expressions to mirror the same mental model.
 
-If you need a complete method-by-method lookup, see the [Query Builder reference](/autocrud/reference/query-builder).
+If you need a complete method-by-method lookup, see the [Query Builder reference](/specstar/reference/query-builder).
 
 ---
 
@@ -22,7 +22,7 @@ The query builder is useful for:
 ## Basic Python usage
 
 ```python
-from autocrud import QB
+from specstar import QB
 
 query = (
     QB["status"].eq("active")
@@ -126,7 +126,7 @@ All built-in metadata accessors are filterable and sortable, including `resource
 
 ### Revision mirror fields
 
-AutoCRUD stores a denormalized snapshot of the **current revision's** key attributes directly in `ResourceMeta`. These can be filtered and sorted without any extra revision reads:
+SpecStar stores a denormalized snapshot of the **current revision's** key attributes directly in `ResourceMeta`. These can be filtered and sorted without any extra revision reads:
 
 ```python
 QB.rev_status().eq("draft")                     # only resources with a draft current revision
@@ -137,7 +137,7 @@ QB.rev_created_time().last_n_days(7)            # current revision created in th
 QB.rev_updated_time().this_month()              # current revision updated this month
 ```
 
-These fields are kept in sync by AutoCRUD on every `create()`, `update()`, `modify()`, and `switch()` call.
+These fields are kept in sync by SpecStar on every `create()`, `update()`, `modify()`, and `switch()` call.
 
 ---
 
@@ -146,7 +146,7 @@ These fields are kept in sync by AutoCRUD on every `create()`, `update()`, `modi
 If you need fully explicit structured queries, you can still build `ResourceMetaSearchQuery` objects manually:
 
 ```python
-from autocrud.types import (
+from specstar.types import (
     DataSearchCondition,
     DataSearchOperator,
     ResourceMetaSearchQuery,
@@ -206,8 +206,8 @@ For the shared route-level error mapping, see the HTTP error reference page.
 
 ## Related pages
 
-- [Query Builder reference](/autocrud/reference/query-builder)
-- [Query system](/autocrud/concepts/query-system)
-- [Search indexing](/autocrud/concepts/search-indexing)
-- [Routes generation](/autocrud/howto/routes)
-- [Troubleshooting](/autocrud/howto/troubleshooting)
+- [Query Builder reference](/specstar/reference/query-builder)
+- [Query system](/specstar/concepts/query-system)
+- [Search indexing](/specstar/concepts/search-indexing)
+- [Routes generation](/specstar/howto/routes)
+- [Troubleshooting](/specstar/howto/troubleshooting)

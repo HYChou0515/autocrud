@@ -1,6 +1,6 @@
-# AutoCRUD Web App
+# SpecStar Web App
 
-自動從 AutoCRUD 後端 API 生成的前端管理介面。
+自動從 SpecStar 後端 API 生成的前端管理介面。
 
 ## 技術棧
 
@@ -16,7 +16,7 @@
 # 1. 安裝依賴
 pnpm install
 
-# 2. 從 API 自動生成程式碼（指定你的 AutoCRUD 後端 URL）
+# 2. 從 API 自動生成程式碼（指定你的 SpecStar 後端 URL）
 pnpm generate --url http://0.0.0.0:8000
 
 # 3. 啟動開發伺服器
@@ -27,7 +27,7 @@ pnpm dev
 
 ```text
 src/
-├── autocrud/
+├── specstar/
 │   ├── types/api.ts            # 共用 API 型別 (ResourceMeta, RevisionInfo, etc.)
 │   ├── lib/client.ts           # Axios 基礎客戶端
 │   └── generated/              # ⚡ 自動生成的程式碼
@@ -36,9 +36,9 @@ src/
 │       └── api/                # 每個資源的 API 客戶端
 └── routes/
     ├── __root.tsx              # 根路由 (AppShell + 導航)
-    ├── autocrud-admin.tsx      # Admin layout
+    ├── specstar-admin.tsx      # Admin layout
     ├── index.tsx               # 首頁
-    └── autocrud-admin/
+    └── specstar-admin/
         ├── index.tsx           # Dashboard (資源總覽)
         └── {resource}/
             ├── index.tsx       # 列表頁 (搜尋/篩選/分頁)

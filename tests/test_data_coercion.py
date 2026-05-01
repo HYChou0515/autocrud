@@ -14,10 +14,10 @@ import datetime as dt
 import pytest
 from msgspec import Struct
 
-from autocrud.resource_manager.core import ResourceManager
-from autocrud.resource_manager.pydantic_converter import pydantic_to_struct
-from autocrud.resource_manager.storage_factory import MemoryStorageFactory
-from autocrud.types import (
+from specstar.resource_manager.core import ResourceManager
+from specstar.resource_manager.pydantic_converter import pydantic_to_struct
+from specstar.resource_manager.storage_factory import MemoryStorageFactory
+from specstar.types import (
     RevisionStatus,
     ValidationError,
 )

@@ -1,11 +1,11 @@
 #!/usr/bin/env python3
-"""⚔️ RPG 遊戲 API 系統（Pydantic 版本）- AutoCRUD + FastAPI 完整示範 🛡️
+"""⚔️ RPG 遊戲 API 系統（Pydantic 版本）- SpecStar + FastAPI 完整示範 🛡️
 
-這個範例展示 AutoCRUD 如何使用 Pydantic BaseModel：
+這個範例展示 SpecStar 如何使用 Pydantic BaseModel：
 - Pydantic BaseModel → 自動驗證 + 高效存儲
 - 使用 @field_validator (Pydantic v2) 進行資料驗證
 - Pydantic Discriminated Union (Field(discriminator=...)) 完整支援
-- 完整的 AutoCRUD + FastAPI 集成
+- 完整的 SpecStar + FastAPI 集成
 
 與 rpg_game_api.py 的差異：
 - 使用 Pydantic BaseModel 定義模型，享受 Pydantic 驗證能力
@@ -29,13 +29,13 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 
-from autocrud import DisplayName, OnDelete, Ref, crud
-from autocrud.crud.route_templates.blob import BlobRouteTemplate
-from autocrud.crud.route_templates.graphql import GraphQLRouteTemplate
-from autocrud.crud.route_templates.migrate import MigrateRouteTemplate
-from autocrud.message_queue.simple import SimpleMessageQueueFactory
-from autocrud.resource_manager.storage_factory import DiskStorageFactory
-from autocrud.types import Binary
+from specstar import DisplayName, OnDelete, Ref, spec
+from specstar.crud.route_templates.blob import BlobRouteTemplate
+from specstar.crud.route_templates.graphql import GraphQLRouteTemplate
+from specstar.crud.route_templates.migrate import MigrateRouteTemplate
+from specstar.message_queue.simple import SimpleMessageQueueFactory
+from specstar.resource_manager.storage_factory import DiskStorageFactory
+from specstar.types import Binary
 
 # ===== Enum 定義 =====
 
@@ -56,13 +56,13 @@ class ItemRarity(Enum):
     RARE = "稀有"
     EPIC = "史詩"
     LEGENDARY = "傳奇"
-    AUTOCRUD = "🚀 AutoCRUD 神器"
+    AUTOCRUD = "🚀 SpecStar 神器"
 
 
 # ===== 技能系統 — Pydantic Discriminated Union =====
 #
 # Pydantic v2 使用 Literal + Field(discriminator=...) 來實現
-# 被辨別的聯合類型 (discriminated union)，AutoCRUD 完整支援。
+# 被辨別的聯合類型 (discriminated union)，SpecStar 完整支援。
 
 
 class ActiveSkillData(BaseModel):
@@ -214,7 +214,7 @@ class Character(BaseModel):
     """遊戲角色 — Pydantic 版
 
     所有驗證邏輯都透過 @field_validator 定義在模型上，
-    AutoCRUD 會自動使用 Pydantic 進行資料驗證。
+    SpecStar 會自動使用 Pydantic 進行資料驗證。
     """
 
     model_config = ConfigDict(use_enum_values=False)
@@ -304,10 +304,10 @@ def create_sample_data():
     """創建示範數據"""
     print("🎮 創建示範遊戲數據（Pydantic 版）...")
 
-    guild_manager = crud.resource_managers.get("guild")
-    skill_manager = crud.resource_managers.get("skill")
-    character_manager = crud.resource_managers.get("character")
-    equipment_manager = crud.resource_managers.get("equipment")
+    guild_manager = spec.resource_managers.get("guild")
+    skill_manager = spec.resource_managers.get("skill")
+    character_manager = spec.resource_managers.get("character")
+    equipment_manager = spec.resource_managers.get("equipment")
 
     if not all([guild_manager, skill_manager, character_manager, equipment_manager]):
         print("❌ 資源管理器未找到，請確保已註冊模型")
@@ -319,8 +319,8 @@ def create_sample_data():
     # 🏰 創建公會
     guilds_data = [
         {
-            "name": "AutoCRUD 開發者聯盟",
-            "description": "致力於推廣 AutoCRUD 技術的頂尖公會",
+            "name": "SpecStar 開發者聯盟",
+            "description": "致力於推廣 SpecStar 技術的頂尖公會",
             "leader": "架構師阿明",
             "member_count": 50,
             "level": 10,
@@ -416,7 +416,7 @@ def create_sample_data():
     # ⚔️ 創建角色
     characters_data = [
         {
-            "name": "AutoCRUD 大神",
+            "name": "SpecStar 大神",
             "character_class": CharacterClass.DATA_KEEPER.value,
             "level": 99,
             "hp": 9999,
@@ -425,8 +425,8 @@ def create_sample_data():
             "defense": 300,
             "experience": 999999,
             "gold": 1000000,
-            "guild_id": guild_ids.get("AutoCRUD 開發者聯盟"),
-            "guild_name": "AutoCRUD 開發者聯盟",
+            "guild_id": guild_ids.get("SpecStar 開發者聯盟"),
+            "guild_name": "SpecStar 開發者聯盟",
             "special_ability": "🚀 一鍵生成完美 API",
             "skill_ids": [
                 skill_ids.get("CRUD 終極奧義", ""),
@@ -479,7 +479,7 @@ def create_sample_data():
     # 🗡️ 創建裝備
     equipment_data = [
         {
-            "name": "AutoCRUD 神劍",
+            "name": "SpecStar 神劍",
             "rarity": ItemRarity.AUTOCRUD.value,
             "attack_bonus": 200,
             "defense_bonus": 50,
@@ -535,7 +535,7 @@ def create_sample_data():
 
 
 def configure_crud():
-    """設定全域 crud 實例"""
+    """設定全域 spec 實例"""
     storage_type = input("使用memory or disk storage？ [[M]emory/(D)isk]: ")
 
     if storage_type.lower() in ("d", "disk"):
@@ -549,20 +549,20 @@ def configure_crud():
 
     mq_factory = SimpleMessageQueueFactory()
 
-    crud.configure(storage_factory=storage_factory, message_queue_factory=mq_factory)
+    spec.configure(storage_factory=storage_factory, message_queue_factory=mq_factory)
 
     # 添加額外的路由模板
-    crud.add_route_template(GraphQLRouteTemplate())
-    crud.add_route_template(BlobRouteTemplate())
-    crud.add_route_template(MigrateRouteTemplate())
+    spec.add_route_template(GraphQLRouteTemplate())
+    spec.add_route_template(BlobRouteTemplate())
+    spec.add_route_template(MigrateRouteTemplate())
 
     # 🎯 重點：直接傳入 Pydantic BaseModel！
-    # AutoCRUD 會自動：
+    # SpecStar 會自動：
     # 1. 使用 Pydantic model 作為驗證器
     # 2. create/update 接受 dict 或 Pydantic instance
     # 3. get 回傳 Pydantic instance
     # 4. 保留 Annotated 元數據（Ref, DisplayName 等）
-    crud.add_model(
+    spec.add_model(
         Character,  # ← Pydantic BaseModel，直接傳入即可！
         indexed_fields=[
             ("level", int),
@@ -571,18 +571,18 @@ def configure_crud():
             ("guild_name", str | None),
             ("character_class", CharacterClass),
         ],  # ty:ignore[invalid-argument-type]
-        # validator 不需要指定 — AutoCRUD 自動使用 Pydantic model
+        # validator 不需要指定 — SpecStar 自動使用 Pydantic model
     )
 
-    crud.add_model(Guild)
-    crud.add_model(
+    spec.add_model(Guild)
+    spec.add_model(
         Skill,
         indexed_fields=[
             ("skname", str),
             ("required_level", int),
         ],
     )
-    crud.add_model(Equipment)
+    spec.add_model(Equipment)
 
 
 def main():
@@ -602,7 +602,7 @@ def main():
         - 📤 get 回傳 **Pydantic instance**
         - 🏷️ Pydantic **Discriminated Union** 完整支援
         
-        🎯 所有 AutoCRUD 功能完整支援：
+        🎯 所有 SpecStar 功能完整支援：
         - Ref 關聯、DisplayName、Binary 二進位資料
         - 版本控制、搜尋索引、QueryBuilder
         """,
@@ -618,8 +618,8 @@ def main():
     )
 
     configure_crud()
-    crud.apply(app)
-    crud.openapi(app)
+    spec.apply(app)
+    spec.openapi(app)
 
     ans = input("需要創建示範數據嗎？[y/N]: ")
     if ans.lower() == "y":

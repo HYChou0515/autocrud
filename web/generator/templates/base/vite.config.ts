@@ -25,11 +25,11 @@ export default defineConfig(({ mode }) => {
   test: {
     environment: 'happy-dom',
     include: [
-      'src/autocrud/lib/*.test.ts',
-      'src/autocrud/lib/utils/**/*.test.{ts,tsx}',
-      'src/autocrud/lib/utils/formUtils/**/*.test.ts',
-      'src/autocrud/lib/components/**/*.test.{ts,tsx}',
-      'src/autocrud/lib/hooks/**/*.test.ts',
+      'src/specstar/lib/*.test.ts',
+      'src/specstar/lib/utils/**/*.test.{ts,tsx}',
+      'src/specstar/lib/utils/formUtils/**/*.test.ts',
+      'src/specstar/lib/components/**/*.test.{ts,tsx}',
+      'src/specstar/lib/hooks/**/*.test.ts',
     ],
     coverage: {
       provider: 'v8',
@@ -42,24 +42,24 @@ export default defineConfig(({ mode }) => {
         statements: 50,
       },
       include: [
-        'src/autocrud/lib/**/*.{ts,tsx}',
+        'src/specstar/lib/**/*.{ts,tsx}',
       ],
       exclude: [
         '**/*.test.{ts,tsx}',
         '**/*.d.ts',
         // Barrel re-export files (no runtime logic)
-        'src/autocrud/lib/**/index.ts',
+        'src/specstar/lib/**/index.ts',
         // Shim re-export files at components root
-        'src/autocrud/lib/components/JobTable.tsx',
-        'src/autocrud/lib/components/PendingJobsAccordion.tsx',
-        'src/autocrud/lib/components/ResourceCreate.tsx',
-        'src/autocrud/lib/components/ResourceDetail.tsx',
+        'src/specstar/lib/components/JobTable.tsx',
+        'src/specstar/lib/components/PendingJobsAccordion.tsx',
+        'src/specstar/lib/components/ResourceCreate.tsx',
+        'src/specstar/lib/components/ResourceDetail.tsx',
         // Pure type definition files (no runtime logic)
-        'src/autocrud/lib/types/**',
-        'src/autocrud/lib/hooks/types.ts',
-        'src/autocrud/lib/utils/formUtils/types.ts',
+        'src/specstar/lib/types/**',
+        'src/specstar/lib/hooks/types.ts',
+        'src/specstar/lib/utils/formUtils/types.ts',
         // User customization file (not library logic)
-        'src/autocrud/lib/resourceCustomization.ts',
+        'src/specstar/lib/resourceCustomization.ts',
       ],
     },
   },

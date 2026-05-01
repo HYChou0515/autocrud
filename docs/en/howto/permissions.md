@@ -1,6 +1,6 @@
 # Permissions
 
-AutoCRUD lets you enforce access control at the resource layer.
+SpecStar lets you enforce access control at the resource layer.
 
 The main entry point is a permission checker. It receives a permission context for each operation and decides whether to allow, deny, or defer the decision.
 
@@ -19,8 +19,8 @@ For production systems, you should explicitly define a permission strategy.
 This is the simplest setup and is useful for local experiments.
 
 ```python
-from autocrud import crud
-from autocrud.permission import AllowAll
+from specstar import crud
+from specstar.permission import AllowAll
 
 crud.configure(permission_checker=AllowAll())
 ```
@@ -32,8 +32,8 @@ crud.configure(permission_checker=AllowAll())
 If you want a single operator account to manage everything, use `RootOnly`.
 
 ```python
-from autocrud import crud
-from autocrud.permission import RootOnly
+from specstar import crud
+from specstar.permission import RootOnly
 
 crud.configure(permission_checker=RootOnly("admin@example.com"))
 ```
@@ -49,8 +49,8 @@ For per-user or per-role rules, use `ACLPermissionChecker`.
 ```python
 import datetime as dt
 
-from autocrud import crud
-from autocrud.permission import (
+from specstar import crud
+from specstar.permission import (
     ACLPermission,
     ACLPermissionChecker,
     PermissionResult,
@@ -102,8 +102,8 @@ For role-based systems, use `RBACPermissionChecker`.
 ```python
 import datetime as dt
 
-from autocrud import crud
-from autocrud.permission import (
+from specstar import crud
+from specstar.permission import (
     PermissionResult,
     RBACPermissionChecker,
     RBACPermissionEntry,
@@ -137,7 +137,7 @@ In this setup:
 
 ## Using the admin shortcut
 
-If you provide an admin user and do not supply a custom checker, AutoCRUD can enable an RBAC-style setup for you:
+If you provide an admin user and do not supply a custom checker, SpecStar can enable an RBAC-style setup for you:
 
 ```python
 crud.configure(admin="root@example.com")
@@ -176,6 +176,6 @@ Because actions are represented as flags, you can combine them with the bitwise 
 
 ## Related pages
 
-- [Behavior reference](/autocrud/reference/behavior)
-- [Routes generation](/autocrud/howto/routes)
-- [Constraints](/autocrud/howto/constraints)
+- [Behavior reference](/specstar/reference/behavior)
+- [Routes generation](/specstar/howto/routes)
+- [Constraints](/specstar/howto/constraints)

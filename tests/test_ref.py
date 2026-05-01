@@ -8,7 +8,7 @@ Covers:
 - _inject_ref_metadata() OpenAPI extension injection
 - add_model() validation (set_null + non-nullable raise)
 - apply() validation (unregistered target warning)
-- x-autocrud-relationships top-level extension
+- x-specstar-relationships top-level extension
 - Referential integrity: cascade delete, set_null on delete
 - Auto-indexing of Ref fields
 - API: GET /{target}/{resource_id}/referrers
@@ -25,8 +25,8 @@ from fastapi import FastAPI
 from fastapi.testclient import TestClient
 from msgspec import Struct
 
-from autocrud.crud.core import AutoCRUD
-from autocrud.types import (
+from specstar.crud.core import SpecStar
+from specstar.types import (
     DisplayName,
     Job,
     OnDelete,
@@ -367,57 +367,57 @@ class TestExtractRefs:
 
 
 # ---------------------------------------------------------------------------
-# AutoCRUD add_model() validation
+# SpecStar add_model() validation
 # ---------------------------------------------------------------------------
 
 
 class TestAddModelRefValidation:
     def test_set_null_non_nullable_raises(self):
         """set_null on a non-Optional field must raise ValueError."""
-        crud = AutoCRUD()
+        spec = SpecStar()
         with pytest.raises(ValueError, match="set_null"):
-            crud.add_model(SetNullNonNullable, name="set-null-bad")
+            spec.add_model(SetNullNonNullable, name="set-null-bad")
 
     def test_valid_refs_collected(self):
         """add_model should populate self.relationships."""
-        crud = AutoCRUD()
-        crud.add_model(Zone, name="zone")
-        crud.add_model(Guild, name="guild")
-        crud.add_model(Character, name="character")
-        crud.add_model(Monster, name="monster")
-        assert len(crud.relationships) == 4  # Monster has 4 refs
+        spec = SpecStar()
+        spec.add_model(Zone, name="zone")
+        spec.add_model(Guild, name="guild")
+        spec.add_model(Character, name="character")
+        spec.add_model(Monster, name="monster")
+        assert len(spec.relationships) == 4  # Monster has 4 refs
 
     def test_no_refs_no_relationships(self):
-        crud = AutoCRUD()
-        crud.add_model(NoRefs, name="norefs")
-        assert len(crud.relationships) == 0
+        spec = SpecStar()
+        spec.add_model(NoRefs, name="norefs")
+        assert len(spec.relationships) == 0
 
 
 # ---------------------------------------------------------------------------
-# AutoCRUD apply() — unregistered target warning
+# SpecStar apply() — unregistered target warning
 # ---------------------------------------------------------------------------
 
 
 class TestApplyRefValidation:
     def test_unregistered_target_warns(self, caplog):
         """apply() should log a warning when a Ref target is not registered."""
-        crud = AutoCRUD()
-        crud.add_model(UnregisteredTarget, name="with-dangling-ref")
+        spec = SpecStar()
+        spec.add_model(UnregisteredTarget, name="with-dangling-ref")
         app = FastAPI()
         with caplog.at_level(logging.WARNING):
-            crud.apply(app)
+            spec.apply(app)
         assert any("nonexistent" in r.message for r in caplog.records)
 
     def test_valid_targets_no_warning(self, caplog):
         """No warning when all Ref targets are registered."""
-        crud = AutoCRUD()
-        crud.add_model(Zone, name="zone")
-        crud.add_model(Guild, name="guild")
-        crud.add_model(Character, name="character")
-        crud.add_model(Monster, name="monster")
+        spec = SpecStar()
+        spec.add_model(Zone, name="zone")
+        spec.add_model(Guild, name="guild")
+        spec.add_model(Character, name="character")
+        spec.add_model(Monster, name="monster")
         app = FastAPI()
         with caplog.at_level(logging.WARNING):
-            crud.apply(app)
+            spec.apply(app)
         ref_warnings = [r for r in caplog.records if "not registered" in r.message]
         assert len(ref_warnings) == 0
 
@@ -430,14 +430,14 @@ class TestApplyRefValidation:
 class TestInjectRefMetadata:
     def _build_app_with_schema(self):
         """Helper: create a FastAPI app with Monster + deps, return app."""
-        crud = AutoCRUD()
-        crud.add_model(Zone, name="zone")
-        crud.add_model(Guild, name="guild")
-        crud.add_model(Character, name="character")
-        crud.add_model(Monster, name="monster")
+        spec = SpecStar()
+        spec.add_model(Zone, name="zone")
+        spec.add_model(Guild, name="guild")
+        spec.add_model(Character, name="character")
+        spec.add_model(Monster, name="monster")
         app = FastAPI()
-        crud.apply(app)
-        crud.openapi(app)
+        spec.apply(app)
+        spec.openapi(app)
         return app
 
     def test_x_ref_resource_on_property(self):
@@ -481,11 +481,11 @@ class TestInjectRefMetadata:
         # RefRevision has no on_delete extension
         assert "x-ref-on-delete" not in props["zone_revision_id"]
 
-    def test_x_autocrud_relationships_extension(self):
+    def test_x_specstar_relationships_extension(self):
         app = self._build_app_with_schema()
         schema = app.openapi_schema
 
-        rels = schema.get("x-autocrud-relationships")
+        rels = schema.get("x-specstar-relationships")
         assert rels is not None
         assert isinstance(rels, list)
         assert len(rels) == 4
@@ -499,24 +499,24 @@ class TestInjectRefMetadata:
         assert zone_rel["nullable"] is False
 
     def test_no_refs_no_extension(self):
-        """When no models have refs, x-autocrud-relationships should be absent."""
-        crud = AutoCRUD()
-        crud.add_model(NoRefs, name="norefs")
+        """When no models have refs, x-specstar-relationships should be absent."""
+        spec = SpecStar()
+        spec.add_model(NoRefs, name="norefs")
         app = FastAPI()
-        crud.apply(app)
-        crud.openapi(app)
+        spec.apply(app)
+        spec.openapi(app)
         schema = app.openapi_schema
-        assert "x-autocrud-relationships" not in schema  # ty:ignore[unsupported-operator]
+        assert "x-specstar-relationships" not in schema  # ty:ignore[unsupported-operator]
 
     def _build_job_app_with_schema(self):
         """Helper: create a FastAPI app with GameEvent (Job[EventPayload]) + deps."""
-        crud = AutoCRUD()
-        crud.add_model(Zone, name="zone")
-        crud.add_model(Character, name="character")
-        crud.add_model(GameEvent, name="game-event")
+        spec = SpecStar()
+        spec.add_model(Zone, name="zone")
+        spec.add_model(Character, name="character")
+        spec.add_model(GameEvent, name="game-event")
         app = FastAPI()
-        crud.apply(app)
-        crud.openapi(app)
+        spec.apply(app)
+        spec.openapi(app)
         return app
 
     def test_x_ref_on_nested_struct_revision(self):
@@ -542,11 +542,11 @@ class TestInjectRefMetadata:
         assert props["zone_id"]["x-ref-type"] == "resource_id"
         assert props["zone_id"]["x-ref-on-delete"] == "set_null"
 
-    def test_x_autocrud_relationships_includes_nested(self):
-        """x-autocrud-relationships should include refs from nested Structs."""
+    def test_x_specstar_relationships_includes_nested(self):
+        """x-specstar-relationships should include refs from nested Structs."""
         app = self._build_job_app_with_schema()
         schema = app.openapi_schema
-        rels = schema.get("x-autocrud-relationships")
+        rels = schema.get("x-specstar-relationships")
         assert rels is not None
 
         # Should contain refs from EventPayload
@@ -560,23 +560,23 @@ class TestInjectRefMetadata:
 
 
 # ---------------------------------------------------------------------------
-# Public import from autocrud
+# Public import from specstar
 # ---------------------------------------------------------------------------
 
 
 class TestPublicImport:
-    def test_import_ref_from_autocrud(self):
-        from autocrud import Ref
+    def test_import_ref_from_specstar(self):
+        from specstar import Ref
 
         assert Ref is not None
 
-    def test_import_ref_revision_from_autocrud(self):
-        from autocrud import RefRevision
+    def test_import_ref_revision_from_specstar(self):
+        from specstar import RefRevision
 
         assert RefRevision is not None
 
-    def test_import_on_delete_from_autocrud(self):
-        from autocrud import OnDelete
+    def test_import_on_delete_from_specstar(self):
+        from specstar import OnDelete
 
         assert OnDelete is not None
 
@@ -589,12 +589,12 @@ class TestPublicImport:
 class TestRefAutoIndexing:
     def test_ref_fields_auto_indexed(self):
         """Ref fields should be automatically added as indexed fields."""
-        crud = AutoCRUD()
-        crud.add_model(Zone, name="zone")
-        crud.add_model(Guild, name="guild")
-        crud.add_model(Character, name="character")
-        crud.add_model(Monster, name="monster")
-        monster_rm = crud.get_resource_manager("monster")
+        spec = SpecStar()
+        spec.add_model(Zone, name="zone")
+        spec.add_model(Guild, name="guild")
+        spec.add_model(Character, name="character")
+        spec.add_model(Monster, name="monster")
+        monster_rm = spec.get_resource_manager("monster")
         indexed_paths = [f.field_path for f in monster_rm.indexed_fields]  # ty:ignore[unresolved-attribute]
         assert "zone_id" in indexed_paths
         assert "guild_id" in indexed_paths
@@ -603,16 +603,16 @@ class TestRefAutoIndexing:
     def test_ref_fields_no_duplicate_index(self):
         """If user already indexed a Ref field, don't add it again."""
 
-        crud = AutoCRUD()
-        crud.add_model(Zone, name="zone")
-        crud.add_model(Guild, name="guild")
-        crud.add_model(Character, name="character")
-        crud.add_model(
+        spec = SpecStar()
+        spec.add_model(Zone, name="zone")
+        spec.add_model(Guild, name="guild")
+        spec.add_model(Character, name="character")
+        spec.add_model(
             Monster,
             name="monster",
             indexed_fields=[("zone_id", str)],
         )
-        monster_rm = crud.get_resource_manager("monster")
+        monster_rm = spec.get_resource_manager("monster")
         zone_id_fields = [
             f
             for f in monster_rm.indexed_fields  # ty:ignore[unresolved-attribute]
@@ -630,23 +630,23 @@ class TestRefIntegrityCascade:
     """Test cascade delete: deleting a target auto-deletes referencing resources."""
 
     def _setup_crud(self):
-        """Create AutoCRUD with Zone, Character, Monster (cascade on owner_id)."""
-        crud = AutoCRUD(
+        """Create SpecStar with Zone, Character, Monster (cascade on owner_id)."""
+        spec = SpecStar(
             default_user="admin",
             default_now=dt.datetime.now,
         )
-        crud.add_model(Zone, name="zone")
-        crud.add_model(Guild, name="guild")
-        crud.add_model(Character, name="character")
-        crud.add_model(Monster, name="monster")
+        spec.add_model(Zone, name="zone")
+        spec.add_model(Guild, name="guild")
+        spec.add_model(Character, name="character")
+        spec.add_model(Monster, name="monster")
         app = FastAPI()
-        crud.apply(app)  # Installs ref integrity handlers
-        return crud
+        spec.apply(app)  # Installs ref integrity handlers
+        return spec
 
     def test_cascade_deletes_referencing_resources(self):
-        crud = self._setup_crud()
-        character_rm = crud.resource_managers["character"]
-        monster_rm = crud.resource_managers["monster"]
+        spec = self._setup_crud()
+        character_rm = spec.resource_managers["character"]
+        monster_rm = spec.resource_managers["monster"]
 
         # Create a character
         char_info = character_rm.create(Character(name="Hero"))
@@ -691,22 +691,22 @@ class TestRefIntegritySetNull:
     """Test set_null: deleting a target sets referencing field to null."""
 
     def _setup_crud(self):
-        crud = AutoCRUD(
+        spec = SpecStar(
             default_user="admin",
             default_now=dt.datetime.now,
         )
-        crud.add_model(Zone, name="zone")
-        crud.add_model(Guild, name="guild")
-        crud.add_model(Character, name="character")
-        crud.add_model(Monster, name="monster")
+        spec.add_model(Zone, name="zone")
+        spec.add_model(Guild, name="guild")
+        spec.add_model(Character, name="character")
+        spec.add_model(Monster, name="monster")
         app = FastAPI()
-        crud.apply(app)  # Installs ref integrity handlers
-        return crud
+        spec.apply(app)  # Installs ref integrity handlers
+        return spec
 
     def test_set_null_on_delete(self):
-        crud = self._setup_crud()
-        guild_rm = crud.resource_managers["guild"]
-        monster_rm = crud.resource_managers["monster"]
+        spec = self._setup_crud()
+        guild_rm = spec.resource_managers["guild"]
+        monster_rm = spec.resource_managers["monster"]
 
         # Create a guild
         guild_info = guild_rm.create(Guild(name="Warriors"))
@@ -750,9 +750,9 @@ class TestRefIntegritySetNull:
 
     def test_dangling_does_nothing(self):
         """on_delete=dangling should leave referencing resources untouched."""
-        crud = self._setup_crud()
-        zone_rm = crud.resource_managers["zone"]
-        monster_rm = crud.resource_managers["monster"]
+        spec = self._setup_crud()
+        zone_rm = spec.resource_managers["zone"]
+        monster_rm = spec.resource_managers["monster"]
 
         # Create a zone
         zone_info = zone_rm.create(Zone(name="Forest"))
@@ -783,24 +783,24 @@ class TestReferrersAPI:
 
     @pytest.fixture
     def crud_and_client(self):
-        crud = AutoCRUD(
+        spec = SpecStar(
             default_user="admin",
             default_now=dt.datetime.now,
         )
-        crud.add_model(Zone, name="zone")
-        crud.add_model(Guild, name="guild")
-        crud.add_model(Character, name="character")
-        crud.add_model(Monster, name="monster")
+        spec.add_model(Zone, name="zone")
+        spec.add_model(Guild, name="guild")
+        spec.add_model(Character, name="character")
+        spec.add_model(Monster, name="monster")
         app = FastAPI()
-        crud.apply(app)
+        spec.apply(app)
         client = TestClient(app)
-        return crud, client
+        return spec, client
 
     def test_referrers_returns_matching_resources(self, crud_and_client):
         """Querying referrers of a zone returns monsters that reference it."""
-        crud, client = crud_and_client
-        zone_rm = crud.resource_managers["zone"]
-        monster_rm = crud.resource_managers["monster"]
+        spec, client = crud_and_client
+        zone_rm = spec.resource_managers["zone"]
+        monster_rm = spec.resource_managers["monster"]
 
         zone = zone_rm.create(Zone(name="Forest"))
         m1 = monster_rm.create(
@@ -843,8 +843,8 @@ class TestReferrersAPI:
 
     def test_referrers_empty(self, crud_and_client):
         """If no resources reference the target, return empty list."""
-        crud, client = crud_and_client
-        zone_rm = crud.resource_managers["zone"]
+        spec, client = crud_and_client
+        zone_rm = spec.resource_managers["zone"]
         zone = zone_rm.create(Zone(name="Empty Zone"))
 
         resp = client.get(f"/zone/{zone.resource_id}/referrers")
@@ -853,9 +853,9 @@ class TestReferrersAPI:
 
     def test_referrers_multiple_sources(self, crud_and_client):
         """Zone is referenced by monster.zone_id — verify multiple resources."""
-        crud, client = crud_and_client
-        zone_rm = crud.resource_managers["zone"]
-        monster_rm = crud.resource_managers["monster"]
+        spec, client = crud_and_client
+        zone_rm = spec.resource_managers["zone"]
+        monster_rm = spec.resource_managers["monster"]
 
         zone = zone_rm.create(Zone(name="Desert"))
         m1 = monster_rm.create(
@@ -885,9 +885,9 @@ class TestReferrersAPI:
 
     def test_referrers_character_cascade(self, crud_and_client):
         """Character is referenced by monster.owner_id (cascade)."""
-        crud, client = crud_and_client
-        char_rm = crud.resource_managers["character"]
-        monster_rm = crud.resource_managers["monster"]
+        spec, client = crud_and_client
+        char_rm = spec.resource_managers["character"]
+        monster_rm = spec.resource_managers["monster"]
 
         char = char_rm.create(Character(name="Hero"))
         monster_rm.create(
@@ -917,9 +917,9 @@ class TestReferrersAPI:
 
     def test_referrers_response_shape(self, crud_and_client):
         """Verify the shape of each referrer group in the response."""
-        crud, client = crud_and_client
-        guild_rm = crud.resource_managers["guild"]
-        monster_rm = crud.resource_managers["monster"]
+        spec, client = crud_and_client
+        guild_rm = spec.resource_managers["guild"]
+        monster_rm = spec.resource_managers["monster"]
 
         guild = guild_rm.create(Guild(name="Knights"))
         monster_rm.create(
@@ -953,16 +953,16 @@ class TestRelationshipsAPI:
     """Test the global relationships metadata endpoint."""
 
     def test_relationships_returns_all_refs(self):
-        crud = AutoCRUD(
+        spec = SpecStar(
             default_user="admin",
             default_now=dt.datetime.now,
         )
-        crud.add_model(Zone, name="zone")
-        crud.add_model(Guild, name="guild")
-        crud.add_model(Character, name="character")
-        crud.add_model(Monster, name="monster")
+        spec.add_model(Zone, name="zone")
+        spec.add_model(Guild, name="guild")
+        spec.add_model(Character, name="character")
+        spec.add_model(Monster, name="monster")
         app = FastAPI()
-        crud.apply(app)
+        spec.apply(app)
         client = TestClient(app)
 
         resp = client.get("/_relationships")
@@ -978,13 +978,13 @@ class TestRelationshipsAPI:
         assert ("monster", "zone_revision_id") in sources
 
     def test_relationships_empty_when_no_refs(self):
-        crud = AutoCRUD(
+        spec = SpecStar(
             default_user="admin",
             default_now=dt.datetime.now,
         )
-        crud.add_model(NoRefs, name="norefs")
+        spec.add_model(NoRefs, name="norefs")
         app = FastAPI()
-        crud.apply(app)
+        spec.apply(app)
         client = TestClient(app)
 
         resp = client.get("/_relationships")
@@ -992,16 +992,16 @@ class TestRelationshipsAPI:
         assert resp.json() == []
 
     def test_relationships_shape(self):
-        crud = AutoCRUD(
+        spec = SpecStar(
             default_user="admin",
             default_now=dt.datetime.now,
         )
-        crud.add_model(Zone, name="zone")
-        crud.add_model(Guild, name="guild")
-        crud.add_model(Character, name="character")
-        crud.add_model(Monster, name="monster")
+        spec.add_model(Zone, name="zone")
+        spec.add_model(Guild, name="guild")
+        spec.add_model(Character, name="character")
+        spec.add_model(Monster, name="monster")
         app = FastAPI()
-        crud.apply(app)
+        spec.apply(app)
         client = TestClient(app)
 
         resp = client.get("/_relationships")
@@ -1025,22 +1025,22 @@ class TestListRefReferrers:
 
     @pytest.fixture
     def crud_and_client(self):
-        crud = AutoCRUD(
+        spec = SpecStar(
             default_user="admin",
             default_now=dt.datetime.now,
         )
-        crud.add_model(Skill, name="skill")
-        crud.add_model(CharacterWithSkills, name="character")
+        spec.add_model(Skill, name="skill")
+        spec.add_model(CharacterWithSkills, name="character")
         app = FastAPI()
-        crud.apply(app)
+        spec.apply(app)
         client = TestClient(app)
-        return crud, client
+        return spec, client
 
     def test_referrers_for_list_ref_field(self, crud_and_client):
         """A skill referenced inside character.skill_ids should appear in referrers."""
-        crud, client = crud_and_client
-        skill_rm = crud.resource_managers["skill"]
-        char_rm = crud.resource_managers["character"]
+        spec, client = crud_and_client
+        skill_rm = spec.resource_managers["skill"]
+        char_rm = spec.resource_managers["character"]
 
         s1 = skill_rm.create(Skill(name="Fireball"))
         s2 = skill_rm.create(Skill(name="Heal"))
@@ -1071,9 +1071,9 @@ class TestListRefReferrers:
 
     def test_referrers_list_ref_empty_when_not_referenced(self, crud_and_client):
         """A skill not in any character's skill_ids returns empty referrers."""
-        crud, client = crud_and_client
-        skill_rm = crud.resource_managers["skill"]
-        char_rm = crud.resource_managers["character"]
+        spec, client = crud_and_client
+        skill_rm = spec.resource_managers["skill"]
+        char_rm = spec.resource_managers["character"]
 
         s1 = skill_rm.create(Skill(name="Unused Skill"))
         char_rm.create(CharacterWithSkills(name="Solo", skill_ids=[]))
@@ -1140,7 +1140,7 @@ class TestInjectDisplayNameMetadata:
 
     def _build_app(self, *models_and_names):
         app = FastAPI()
-        c = AutoCRUD()
+        c = SpecStar()
         for model, name in models_and_names:
             c.add_model(model, name=name)
         c.apply(app)
@@ -1374,23 +1374,23 @@ class TestExtractRefsWithRefType:
 class TestAddModelRefType:
     def test_revision_id_ref_not_indexed(self):
         """revision_id ref should NOT be auto-indexed."""
-        crud = AutoCRUD()
-        crud.add_model(Zone, name="zone")
-        crud.add_model(RevisionRefOnly, name="snapshot-holder")
+        spec = SpecStar()
+        spec.add_model(Zone, name="zone")
+        spec.add_model(RevisionRefOnly, name="snapshot-holder")
         # Check that the ref is collected
-        rev_refs = [r for r in crud.relationships if r.ref_type == "revision_id"]
+        rev_refs = [r for r in spec.relationships if r.ref_type == "revision_id"]
         assert len(rev_refs) == 1
         # Check that indexed fields do NOT include the revision_id ref
-        rm = crud.resource_managers["snapshot-holder"]
+        rm = spec.resource_managers["snapshot-holder"]
         indexed_paths = [f.field_path for f in rm.indexed_fields]  # ty:ignore[unresolved-attribute]
         assert "snapshot_id" not in indexed_paths
 
     def test_resource_id_ref_still_indexed(self):
         """resource_id ref should be auto-indexed (backward compat)."""
-        crud = AutoCRUD()
-        crud.add_model(Zone, name="zone")
-        crud.add_model(MonsterWithRefType, name="monster")
-        rm = crud.resource_managers["monster"]
+        spec = SpecStar()
+        spec.add_model(Zone, name="zone")
+        spec.add_model(MonsterWithRefType, name="monster")
+        rm = spec.resource_managers["monster"]
         indexed_paths = [f.field_path for f in rm.indexed_fields]  # ty:ignore[unresolved-attribute]
         assert "zone_id" in indexed_paths
         assert "zone_snapshot_id" not in indexed_paths
@@ -1404,19 +1404,19 @@ class TestAddModelRefType:
 
     def test_referrers_excludes_revision_id_ref(self):
         """Referrers endpoint should not include revision_id refs."""
-        crud = AutoCRUD()
-        crud.add_model(Zone, name="zone")
-        crud.add_model(Guild, name="guild")
-        crud.add_model(MonsterWithRefType, name="monster")
+        spec = SpecStar()
+        spec.add_model(Zone, name="zone")
+        spec.add_model(Guild, name="guild")
+        spec.add_model(MonsterWithRefType, name="monster")
         app = FastAPI()
-        crud.apply(app)
+        spec.apply(app)
 
         client = TestClient(app)
         # Create a zone first
-        with crud.resource_managers["zone"].meta_provide(
+        with spec.resource_managers["zone"].meta_provide(
             user="test", now=dt.datetime.now()
         ):
-            info = crud.resource_managers["zone"].create(Zone(name="Forest"))
+            info = spec.resource_managers["zone"].create(Zone(name="Forest"))
 
         resp = client.get(f"/zone/{info.resource_id}/referrers")
         assert resp.status_code == 200
@@ -1431,7 +1431,7 @@ class TestOpenAPIRefType:
 
     def _build_app(self, *models_and_names):
         app = FastAPI()
-        c = AutoCRUD()
+        c = SpecStar()
         for model, name in models_and_names:
             c.add_model(model, name=name)
         c.apply(app)
@@ -1469,12 +1469,12 @@ class TestOpenAPIRefType:
 
     def test_relationships_include_ref_type(self):
         """GET /_relationships should include revision_id ref entries."""
-        crud = AutoCRUD()
-        crud.add_model(Zone, name="zone")
-        crud.add_model(Guild, name="guild")
-        crud.add_model(MonsterWithRefType, name="monster")
+        spec = SpecStar()
+        spec.add_model(Zone, name="zone")
+        spec.add_model(Guild, name="guild")
+        spec.add_model(MonsterWithRefType, name="monster")
         app = FastAPI()
-        crud.apply(app)
+        spec.apply(app)
 
         client = TestClient(app)
         resp = client.get("/_relationships")

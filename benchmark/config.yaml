@@ -1,4 +1,4 @@
-# AutoCRUD CRUD Benchmark Configuration
+# SpecStar CRUD Benchmark Configuration
 # ======================================
 # Adjust these settings to control what gets benchmarked.
 # Environment variables can be referenced as ${VAR_NAME}.
@@ -26,18 +26,18 @@ models:
 storage:
   memory: {}
   disk:
-    rootdir: /tmp/autocrud-benchmark
+    rootdir: /tmp/specstar-benchmark
   pg_disk:
-    dsn: postgresql://admin:password@localhost:5432/autocrud_bench
-    rootdir: /tmp/autocrud-benchmark-pg-disk
+    dsn: postgresql://admin:password@localhost:5432/specstar_bench
+    rootdir: /tmp/specstar-benchmark-pg-disk
   postgres:
-    dsn: postgresql://admin:password@localhost:5432/autocrud_bench
-    s3_bucket: autocrud-bench
+    dsn: postgresql://admin:password@localhost:5432/specstar_bench
+    s3_bucket: specstar-bench
     s3_endpoint_url: http://localhost:9000
     s3_access_key: minioadmin
     s3_secret_key: minioadmin
   s3:
-    bucket: autocrud-bench
+    bucket: specstar-bench
     endpoint_url: http://localhost:9000
     access_key: minioadmin
     secret_key: minioadmin

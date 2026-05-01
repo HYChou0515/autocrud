@@ -1,10 +1,10 @@
 # Query Builder Reference
 
-This page is the single lookup reference for the Query Builder in AutoCRUD.
+This page is the single lookup reference for the Query Builder in SpecStar.
 
 Use it when you already understand the basic idea and need the exact method names, operator shortcuts, metadata helpers, or pagination behavior.
 
-For task-oriented examples, start with the [Query Builder guide](/autocrud/howto/query-builder). For the bigger mental model, see the [Query system overview](/autocrud/concepts/query-system).
+For task-oriented examples, start with the [Query Builder guide](/specstar/howto/query-builder). For the bigger mental model, see the [Query system overview](/specstar/concepts/query-system).
 
 ---
 
@@ -84,7 +84,7 @@ Use helper accessors when you want to filter or sort on built-in resource metada
 | `QB.rev_created_time()` | when the current revision was created |
 | `QB.rev_updated_time()` | when the current revision was last updated |
 
-The `rev_*` helpers target the **current revision** of each resource. AutoCRUD keeps these fields as denormalized mirror values in the meta store, so filtering by them is efficient and does not require reading each revision individually.
+The `rev_*` helpers target the **current revision** of each resource. SpecStar keeps these fields as denormalized mirror values in the meta store, so filtering by them is efficient and does not require reading each revision individually.
 
 Example:
 
@@ -247,10 +247,10 @@ QB["items"].length() == 0
 
 ## Related pages
 
-- [Query Builder guide](/autocrud/howto/query-builder)
-- [Query system overview](/autocrud/concepts/query-system)
-- [Search indexing](/autocrud/concepts/search-indexing)
-- [HTTP errors](/autocrud/howto/http-errors)
+- [Query Builder guide](/specstar/howto/query-builder)
+- [Query system overview](/specstar/concepts/query-system)
+- [Search indexing](/specstar/concepts/search-indexing)
+- [HTTP errors](/specstar/howto/http-errors)
 
 ---
 
@@ -258,4 +258,4 @@ QB["items"].length() == 0
 
 For the full docstring-backed API surface, see the generated module reference below.
 
-::: autocrud.query
+::: specstar.query

@@ -114,288 +114,6 @@ wheels = [
 ]
 
 [[package]]
-name = "autocrud"
-source = { editable = "." }
-dependencies = [
-    { name = "fastapi" },
-    { name = "jsonpatch" },
-    { name = "jsonpointer" },
-    { name = "more-itertools" },
-    { name = "msgpack" },
-    { name = "msgspec" },
-    { name = "pydantic" },
-    { name = "python-multipart" },
-    { name = "qqabc" },
-    { name = "ty" },
-    { name = "xxhash" },
-]
-
-[package.optional-dependencies]
-all = [
-    { name = "boto3" },
-    { name = "celery" },
-    { name = "datamodel-code-generator", extra = ["http"] },
-    { name = "httpx" },
-    { name = "oracledb" },
-    { name = "pika" },
-    { name = "psycopg2-binary" },
-    { name = "pymysql" },
-    { name = "python-magic" },
-    { name = "redis" },
-    { name = "sqlalchemy" },
-    { name = "strawberry-graphql" },
-    { name = "tenacity" },
-    { name = "textual" },
-    { name = "typer" },
-]
-benchmark = [
-    { name = "matplotlib" },
-    { name = "pyyaml" },
-    { name = "rich" },
-]
-celery = [
-    { name = "celery" },
-]
-cli = [
-    { name = "datamodel-code-generator", extra = ["http"] },
-    { name = "httpx" },
-    { name = "tenacity" },
-    { name = "textual" },
-    { name = "typer" },
-]
-dev = [
-    { name = "boto3" },
-    { name = "celery" },
-    { name = "coverage" },
-    { name = "datamodel-code-generator", extra = ["http"] },
-    { name = "httpx" },
-    { name = "matplotlib" },
-    { name = "mkdocs" },
-    { name = "mkdocs-gen-files" },
-    { name = "mkdocs-literate-nav" },
-    { name = "mkdocs-material" },
-    { name = "mkdocs-material-extensions" },
-    { name = "mkdocs-section-index" },
-    { name = "mkdocs-static-i18n" },
-    { name = "mkdocstrings", extra = ["python"] },
-    { name = "oracledb" },
-    { name = "pika" },
-    { name = "psycopg2-binary" },
-    { name = "pymdown-extensions" },
-    { name = "pymysql" },
-    { name = "pytest" },
-    { name = "pytest-asyncio" },
-    { name = "pytest-markdown-docs" },
-    { name = "pytest-rerunfailures" },
-    { name = "python-magic" },
-    { name = "pyyaml" },
-    { name = "redis" },
-    { name = "rich" },
-    { name = "ruff" },
-    { name = "sqlalchemy" },
-    { name = "strawberry-graphql" },
-    { name = "tenacity" },
-    { name = "textual" },
-    { name = "typer" },
-]
-docs = [
-    { name = "boto3" },
-    { name = "mkdocs" },
-    { name = "mkdocs-gen-files" },
-    { name = "mkdocs-literate-nav" },
-    { name = "mkdocs-material" },
-    { name = "mkdocs-material-extensions" },
-    { name = "mkdocs-section-index" },
-    { name = "mkdocs-static-i18n" },
-    { name = "mkdocstrings", extra = ["python"] },
-    { name = "pymdown-extensions" },
-]
-graphql = [
-    { name = "strawberry-graphql" },
-]
-magic = [
-    { name = "python-magic" },
-]
-mq = [
-    { name = "pika" },
-]
-mysql = [
-    { name = "pymysql" },
-]
-oracle = [
-    { name = "oracledb" },
-]
-postgresql = [
-    { name = "psycopg2-binary" },
-]
-redis = [
-    { name = "redis" },
-]
-s3 = [
-    { name = "boto3" },
-]
-sqlalchemy = [
-    { name = "sqlalchemy" },
-]
-
-[package.dev-dependencies]
-dev = [
-    { name = "boto3-stubs", extra = ["full"] },
-    { name = "build" },
-    { name = "celery" },
-    { name = "coverage" },
-    { name = "faker" },
-    { name = "fastapi", extra = ["standard"] },
-    { name = "furo" },
-    { name = "httpx" },
-    { name = "ipykernel" },
-    { name = "ipython" },
-    { name = "linkify-it-py" },
-    { name = "myst-parser" },
-    { name = "oracledb" },
-    { name = "pandas" },
-    { name = "pika-stubs" },
-    { name = "polars" },
-    { name = "psycopg2-binary" },
-    { name = "pytest" },
-    { name = "pytest-asyncio" },
-    { name = "pytest-retry" },
-    { name = "redis" },
-    { name = "ruff" },
-    { name = "sphinx" },
-    { name = "sphinx-autodoc-typehints" },
-    { name = "sphinx-design" },
-    { name = "sqlalchemy" },
-    { name = "twine" },
-    { name = "uvicorn" },
-]
-
-[package.metadata]
-requires-dist = [
-    { name = "boto3", marker = "extra == 'all'", specifier = ">=1.40.21" },
-    { name = "boto3", marker = "extra == 'dev'", specifier = ">=1.40.21" },
-    { name = "boto3", marker = "extra == 'docs'", specifier = ">=1.40.21" },
-    { name = "boto3", marker = "extra == 's3'", specifier = ">=1.40.21" },
-    { name = "celery", marker = "extra == 'all'", specifier = ">=5.6.2" },
-    { name = "celery", marker = "extra == 'celery'", specifier = ">=5.6.2" },
-    { name = "celery", marker = "extra == 'dev'", specifier = ">=5.6.2" },
-    { name = "coverage", marker = "extra == 'dev'", specifier = ">=7.9.2" },
-    { name = "datamodel-code-generator", extras = ["http"], marker = "extra == 'all'", specifier = ">=0.35.0" },
-    { name = "datamodel-code-generator", extras = ["http"], marker = "extra == 'cli'", specifier = ">=0.35.0" },
-    { name = "datamodel-code-generator", extras = ["http"], marker = "extra == 'dev'", specifier = ">=0.35.0" },
-    { name = "fastapi", specifier = ">=0.115" },
-    { name = "httpx", marker = "extra == 'all'", specifier = ">=0.28.1" },
-    { name = "httpx", marker = "extra == 'cli'", specifier = ">=0.28.1" },
-    { name = "httpx", marker = "extra == 'dev'", specifier = ">=0.28.1" },
-    { name = "jsonpatch", specifier = ">=1.33" },
-    { name = "jsonpointer", specifier = ">=3.0.0" },
-    { name = "matplotlib", marker = "extra == 'benchmark'", specifier = ">=3.8" },
-    { name = "matplotlib", marker = "extra == 'dev'", specifier = ">=3.8" },
-    { name = "mkdocs", marker = "extra == 'dev'", specifier = ">=1.6.0" },
-    { name = "mkdocs", marker = "extra == 'docs'", specifier = ">=1.6.0" },
-    { name = "mkdocs-gen-files", marker = "extra == 'dev'", specifier = ">=0.5.0" },
-    { name = "mkdocs-gen-files", marker = "extra == 'docs'", specifier = ">=0.5.0" },
-    { name = "mkdocs-literate-nav", marker = "extra == 'dev'", specifier = ">=0.6.0" },
-    { name = "mkdocs-literate-nav", marker = "extra == 'docs'", specifier = ">=0.6.0" },
-    { name = "mkdocs-material", marker = "extra == 'dev'", specifier = ">=9.5.0" },
-    { name = "mkdocs-material", marker = "extra == 'docs'", specifier = ">=9.5.0" },
-    { name = "mkdocs-material-extensions", marker = "extra == 'dev'", specifier = ">=1.3.0" },
-    { name = "mkdocs-material-extensions", marker = "extra == 'docs'", specifier = ">=1.3.0" },
-    { name = "mkdocs-section-index", marker = "extra == 'dev'", specifier = ">=0.3.0" },
-    { name = "mkdocs-section-index", marker = "extra == 'docs'", specifier = ">=0.3.0" },
-    { name = "mkdocs-static-i18n", marker = "extra == 'dev'", specifier = ">=1.2.0" },
-    { name = "mkdocs-static-i18n", marker = "extra == 'docs'", specifier = ">=1.2.0" },
-    { name = "mkdocstrings", extras = ["python"], marker = "extra == 'dev'", specifier = ">=0.26.0" },
-    { name = "mkdocstrings", extras = ["python"], marker = "extra == 'docs'", specifier = ">=0.26.0" },
-    { name = "more-itertools", specifier = ">=10.7.0" },
-    { name = "msgpack", specifier = ">=1.1.1" },
-    { name = "msgspec", specifier = ">=0.19.0" },
-    { name = "oracledb", marker = "extra == 'all'", specifier = ">=3.4.2" },
-    { name = "oracledb", marker = "extra == 'dev'", specifier = ">=3.4.2" },
-    { name = "oracledb", marker = "extra == 'oracle'", specifier = ">=3.4.2" },
-    { name = "pika", marker = "extra == 'all'", specifier = ">=1.3.2" },
-    { name = "pika", marker = "extra == 'dev'", specifier = ">=1.3.2" },
-    { name = "pika", marker = "extra == 'mq'", specifier = ">=1.3.2" },
-    { name = "psycopg2-binary", marker = "extra == 'all'", specifier = ">=2.9.10" },
-    { name = "psycopg2-binary", marker = "extra == 'dev'", specifier = ">=2.9.10" },
-    { name = "psycopg2-binary", marker = "extra == 'postgresql'", specifier = ">=2.9.10" },
-    { name = "pydantic", specifier = ">=1.10.26,<3" },
-    { name = "pymdown-extensions", marker = "extra == 'dev'", specifier = ">=10.0.0" },
-    { name = "pymdown-extensions", marker = "extra == 'docs'", specifier = ">=10.0.0" },
-    { name = "pymysql", marker = "extra == 'all'", specifier = ">=1.1.2" },
-    { name = "pymysql", marker = "extra == 'dev'", specifier = ">=1.1.2" },
-    { name = "pymysql", marker = "extra == 'mysql'", specifier = ">=1.1.2" },
-    { name = "pytest", marker = "extra == 'dev'", specifier = ">=8.4.1" },
-    { name = "pytest-asyncio", marker = "extra == 'dev'", specifier = ">=1.1.0" },
-    { name = "pytest-markdown-docs", marker = "extra == 'dev'", specifier = ">=0.9.1" },
-    { name = "pytest-rerunfailures", marker = "extra == 'dev'", specifier = ">=15.0" },
-    { name = "python-magic", marker = "extra == 'all'", specifier = ">=0.4.27" },
-    { name = "python-magic", marker = "extra == 'dev'", specifier = ">=0.4.27" },
-    { name = "python-magic", marker = "extra == 'magic'", specifier = ">=0.4.27" },
-    { name = "python-multipart", specifier = ">=0.0.22" },
-    { name = "pyyaml", marker = "extra == 'benchmark'", specifier = ">=6.0" },
-    { name = "pyyaml", marker = "extra == 'dev'", specifier = ">=6.0" },
-    { name = "qqabc", specifier = ">=0.2.1" },
-    { name = "redis", marker = "extra == 'all'", specifier = ">=6.4.0" },
-    { name = "redis", marker = "extra == 'dev'", specifier = ">=6.4.0" },
-    { name = "redis", marker = "extra == 'redis'", specifier = ">=6.4.0" },
-    { name = "rich", marker = "extra == 'benchmark'", specifier = ">=13.0" },
-    { name = "rich", marker = "extra == 'dev'", specifier = ">=13.0" },
-    { name = "ruff", marker = "extra == 'dev'", specifier = ">=0.12.4" },
-    { name = "sqlalchemy", marker = "extra == 'all'", specifier = ">=2.0.46" },
-    { name = "sqlalchemy", marker = "extra == 'dev'", specifier = ">=2.0.46" },
-    { name = "sqlalchemy", marker = "extra == 'sqlalchemy'", specifier = ">=2.0.46" },
-    { name = "strawberry-graphql", marker = "extra == 'all'", specifier = ">=0.288.1" },
-    { name = "strawberry-graphql", marker = "extra == 'dev'", specifier = ">=0.288.1" },
-    { name = "strawberry-graphql", marker = "extra == 'graphql'", specifier = ">=0.288.1" },
-    { name = "tenacity", marker = "extra == 'all'", specifier = ">=9.1.2" },
-    { name = "tenacity", marker = "extra == 'cli'", specifier = ">=9.1.2" },
-    { name = "tenacity", marker = "extra == 'dev'", specifier = ">=9.1.2" },
-    { name = "textual", marker = "extra == 'all'", specifier = ">=6.3.0" },
-    { name = "textual", marker = "extra == 'cli'", specifier = ">=6.3.0" },
-    { name = "textual", marker = "extra == 'dev'", specifier = ">=6.3.0" },
-    { name = "ty", extras = ["dev"], specifier = ">=0.0.33" },
-    { name = "typer", marker = "extra == 'all'", specifier = ">=0.20.0" },
-    { name = "typer", marker = "extra == 'cli'", specifier = ">=0.20.0" },
-    { name = "typer", marker = "extra == 'dev'", specifier = ">=0.20.0" },
-    { name = "xxhash", specifier = ">=3.5.0" },
-]
-provides-extras = ["all", "benchmark", "celery", "cli", "dev", "docs", "graphql", "magic", "mq", "mysql", "oracle", "postgresql", "redis", "s3", "sqlalchemy"]
-
-[package.metadata.requires-dev]
-dev = [
-    { name = "boto3-stubs", extras = ["full"], specifier = ">=1.40.21" },
-    { name = "build", specifier = ">=1.2.2.post1" },
-    { name = "celery", specifier = ">=5.6.2" },
-    { name = "coverage", specifier = ">=7.9.2" },
-    { name = "faker", specifier = ">=37.5.3" },
-    { name = "fastapi", extras = ["standard"], specifier = ">=0.116.1" },
-    { name = "furo", specifier = ">=2025.7.19" },
-    { name = "httpx", specifier = ">=0.28.1" },
-    { name = "ipykernel", specifier = ">=7.1.0" },
-    { name = "ipython", specifier = ">=9.4.0" },
-    { name = "linkify-it-py", specifier = ">=2.0.3" },
-    { name = "myst-parser", specifier = ">=4.0.1" },
-    { name = "oracledb", specifier = ">=3.4.2" },
-    { name = "pandas", specifier = ">=2.3.1" },
-    { name = "pika-stubs", specifier = ">=0.1.3" },
-    { name = "polars", specifier = ">=1.32.2" },
-    { name = "psycopg2-binary", specifier = ">=2.9.10" },
-    { name = "pytest", specifier = ">=8.4.1" },
-    { name = "pytest-asyncio", specifier = ">=1.1.0" },
-    { name = "pytest-retry", specifier = ">=1.7.0" },
-    { name = "redis", specifier = ">=6.4.0" },
-    { name = "ruff", specifier = ">=0.12.4" },
-    { name = "sphinx", specifier = ">=8.2.3" },
-    { name = "sphinx-autodoc-typehints", specifier = ">=3.2.0" },
-    { name = "sphinx-design", specifier = ">=0.6.1" },
-    { name = "sqlalchemy", specifier = ">=2.0.46" },
-    { name = "twine", specifier = ">=6.1.0" },
-    { name = "uvicorn", specifier = ">=0.35.0" },
-]
-pytest = []
-
-[[package]]
 name = "babel"
 version = "2.18.0"
 source = { registry = "https://pypi.org/simple" }
@@ -3802,6 +3520,288 @@ sdist = { url = "https://files.pythonhosted.org/packages/7b/ae/2d9c981590ed9999a
 wheels = [
     { url = "https://files.pythonhosted.org/packages/46/2c/1462b1d0a634697ae9e55b3cecdcb64788e8b7d63f54d923fcd0bb140aed/soupsieve-2.8.3-py3-none-any.whl", hash = "sha256:ed64f2ba4eebeab06cc4962affce381647455978ffc1e36bb79a545b91f45a95", size = 37016, upload-time = "2026-01-20T04:27:01.012Z" },
 ]
+
+[[package]]
+name = "specstar"
+source = { editable = "." }
+dependencies = [
+    { name = "fastapi" },
+    { name = "jsonpatch" },
+    { name = "jsonpointer" },
+    { name = "more-itertools" },
+    { name = "msgpack" },
+    { name = "msgspec" },
+    { name = "pydantic" },
+    { name = "python-multipart" },
+    { name = "qqabc" },
+    { name = "ty" },
+    { name = "xxhash" },
+]
+
+[package.optional-dependencies]
+all = [
+    { name = "boto3" },
+    { name = "celery" },
+    { name = "datamodel-code-generator", extra = ["http"] },
+    { name = "httpx" },
+    { name = "oracledb" },
+    { name = "pika" },
+    { name = "psycopg2-binary" },
+    { name = "pymysql" },
+    { name = "python-magic" },
+    { name = "redis" },
+    { name = "sqlalchemy" },
+    { name = "strawberry-graphql" },
+    { name = "tenacity" },
+    { name = "textual" },
+    { name = "typer" },
+]
+benchmark = [
+    { name = "matplotlib" },
+    { name = "pyyaml" },
+    { name = "rich" },
+]
+celery = [
+    { name = "celery" },
+]
+cli = [
+    { name = "datamodel-code-generator", extra = ["http"] },
+    { name = "httpx" },
+    { name = "tenacity" },
+    { name = "textual" },
+    { name = "typer" },
+]
+dev = [
+    { name = "boto3" },
+    { name = "celery" },
+    { name = "coverage" },
+    { name = "datamodel-code-generator", extra = ["http"] },
+    { name = "httpx" },
+    { name = "matplotlib" },
+    { name = "mkdocs" },
+    { name = "mkdocs-gen-files" },
+    { name = "mkdocs-literate-nav" },
+    { name = "mkdocs-material" },
+    { name = "mkdocs-material-extensions" },
+    { name = "mkdocs-section-index" },
+    { name = "mkdocs-static-i18n" },
+    { name = "mkdocstrings", extra = ["python"] },
+    { name = "oracledb" },
+    { name = "pika" },
+    { name = "psycopg2-binary" },
+    { name = "pymdown-extensions" },
+    { name = "pymysql" },
+    { name = "pytest" },
+    { name = "pytest-asyncio" },
+    { name = "pytest-markdown-docs" },
+    { name = "pytest-rerunfailures" },
+    { name = "python-magic" },
+    { name = "pyyaml" },
+    { name = "redis" },
+    { name = "rich" },
+    { name = "ruff" },
+    { name = "sqlalchemy" },
+    { name = "strawberry-graphql" },
+    { name = "tenacity" },
+    { name = "textual" },
+    { name = "typer" },
+]
+docs = [
+    { name = "boto3" },
+    { name = "mkdocs" },
+    { name = "mkdocs-gen-files" },
+    { name = "mkdocs-literate-nav" },
+    { name = "mkdocs-material" },
+    { name = "mkdocs-material-extensions" },
+    { name = "mkdocs-section-index" },
+    { name = "mkdocs-static-i18n" },
+    { name = "mkdocstrings", extra = ["python"] },
+    { name = "pymdown-extensions" },
+]
+graphql = [
+    { name = "strawberry-graphql" },
+]
+magic = [
+    { name = "python-magic" },
+]
+mq = [
+    { name = "pika" },
+]
+mysql = [
+    { name = "pymysql" },
+]
+oracle = [
+    { name = "oracledb" },
+]
+postgresql = [
+    { name = "psycopg2-binary" },
+]
+redis = [
+    { name = "redis" },
+]
+s3 = [
+    { name = "boto3" },
+]
+sqlalchemy = [
+    { name = "sqlalchemy" },
+]
+
+[package.dev-dependencies]
+dev = [
+    { name = "boto3-stubs", extra = ["full"] },
+    { name = "build" },
+    { name = "celery" },
+    { name = "coverage" },
+    { name = "faker" },
+    { name = "fastapi", extra = ["standard"] },
+    { name = "furo" },
+    { name = "httpx" },
+    { name = "ipykernel" },
+    { name = "ipython" },
+    { name = "linkify-it-py" },
+    { name = "myst-parser" },
+    { name = "oracledb" },
+    { name = "pandas" },
+    { name = "pika-stubs" },
+    { name = "polars" },
+    { name = "psycopg2-binary" },
+    { name = "pytest" },
+    { name = "pytest-asyncio" },
+    { name = "pytest-retry" },
+    { name = "redis" },
+    { name = "ruff" },
+    { name = "sphinx" },
+    { name = "sphinx-autodoc-typehints" },
+    { name = "sphinx-design" },
+    { name = "sqlalchemy" },
+    { name = "twine" },
+    { name = "uvicorn" },
+]
+
+[package.metadata]
+requires-dist = [
+    { name = "boto3", marker = "extra == 'all'", specifier = ">=1.40.21" },
+    { name = "boto3", marker = "extra == 'dev'", specifier = ">=1.40.21" },
+    { name = "boto3", marker = "extra == 'docs'", specifier = ">=1.40.21" },
+    { name = "boto3", marker = "extra == 's3'", specifier = ">=1.40.21" },
+    { name = "celery", marker = "extra == 'all'", specifier = ">=5.6.2" },
+    { name = "celery", marker = "extra == 'celery'", specifier = ">=5.6.2" },
+    { name = "celery", marker = "extra == 'dev'", specifier = ">=5.6.2" },
+    { name = "coverage", marker = "extra == 'dev'", specifier = ">=7.9.2" },
+    { name = "datamodel-code-generator", extras = ["http"], marker = "extra == 'all'", specifier = ">=0.35.0" },
+    { name = "datamodel-code-generator", extras = ["http"], marker = "extra == 'cli'", specifier = ">=0.35.0" },
+    { name = "datamodel-code-generator", extras = ["http"], marker = "extra == 'dev'", specifier = ">=0.35.0" },
+    { name = "fastapi", specifier = ">=0.115" },
+    { name = "httpx", marker = "extra == 'all'", specifier = ">=0.28.1" },
+    { name = "httpx", marker = "extra == 'cli'", specifier = ">=0.28.1" },
+    { name = "httpx", marker = "extra == 'dev'", specifier = ">=0.28.1" },
+    { name = "jsonpatch", specifier = ">=1.33" },
+    { name = "jsonpointer", specifier = ">=3.0.0" },
+    { name = "matplotlib", marker = "extra == 'benchmark'", specifier = ">=3.8" },
+    { name = "matplotlib", marker = "extra == 'dev'", specifier = ">=3.8" },
+    { name = "mkdocs", marker = "extra == 'dev'", specifier = ">=1.6.0" },
+    { name = "mkdocs", marker = "extra == 'docs'", specifier = ">=1.6.0" },
+    { name = "mkdocs-gen-files", marker = "extra == 'dev'", specifier = ">=0.5.0" },
+    { name = "mkdocs-gen-files", marker = "extra == 'docs'", specifier = ">=0.5.0" },
+    { name = "mkdocs-literate-nav", marker = "extra == 'dev'", specifier = ">=0.6.0" },
+    { name = "mkdocs-literate-nav", marker = "extra == 'docs'", specifier = ">=0.6.0" },
+    { name = "mkdocs-material", marker = "extra == 'dev'", specifier = ">=9.5.0" },
+    { name = "mkdocs-material", marker = "extra == 'docs'", specifier = ">=9.5.0" },
+    { name = "mkdocs-material-extensions", marker = "extra == 'dev'", specifier = ">=1.3.0" },
+    { name = "mkdocs-material-extensions", marker = "extra == 'docs'", specifier = ">=1.3.0" },
+    { name = "mkdocs-section-index", marker = "extra == 'dev'", specifier = ">=0.3.0" },
+    { name = "mkdocs-section-index", marker = "extra == 'docs'", specifier = ">=0.3.0" },
+    { name = "mkdocs-static-i18n", marker = "extra == 'dev'", specifier = ">=1.2.0" },
+    { name = "mkdocs-static-i18n", marker = "extra == 'docs'", specifier = ">=1.2.0" },
+    { name = "mkdocstrings", extras = ["python"], marker = "extra == 'dev'", specifier = ">=0.26.0" },
+    { name = "mkdocstrings", extras = ["python"], marker = "extra == 'docs'", specifier = ">=0.26.0" },
+    { name = "more-itertools", specifier = ">=10.7.0" },
+    { name = "msgpack", specifier = ">=1.1.1" },
+    { name = "msgspec", specifier = ">=0.19.0" },
+    { name = "oracledb", marker = "extra == 'all'", specifier = ">=3.4.2" },
+    { name = "oracledb", marker = "extra == 'dev'", specifier = ">=3.4.2" },
+    { name = "oracledb", marker = "extra == 'oracle'", specifier = ">=3.4.2" },
+    { name = "pika", marker = "extra == 'all'", specifier = ">=1.3.2" },
+    { name = "pika", marker = "extra == 'dev'", specifier = ">=1.3.2" },
+    { name = "pika", marker = "extra == 'mq'", specifier = ">=1.3.2" },
+    { name = "psycopg2-binary", marker = "extra == 'all'", specifier = ">=2.9.10" },
+    { name = "psycopg2-binary", marker = "extra == 'dev'", specifier = ">=2.9.10" },
+    { name = "psycopg2-binary", marker = "extra == 'postgresql'", specifier = ">=2.9.10" },
+    { name = "pydantic", specifier = ">=1.10.26,<3" },
+    { name = "pymdown-extensions", marker = "extra == 'dev'", specifier = ">=10.0.0" },
+    { name = "pymdown-extensions", marker = "extra == 'docs'", specifier = ">=10.0.0" },
+    { name = "pymysql", marker = "extra == 'all'", specifier = ">=1.1.2" },
+    { name = "pymysql", marker = "extra == 'dev'", specifier = ">=1.1.2" },
+    { name = "pymysql", marker = "extra == 'mysql'", specifier = ">=1.1.2" },
+    { name = "pytest", marker = "extra == 'dev'", specifier = ">=8.4.1" },
+    { name = "pytest-asyncio", marker = "extra == 'dev'", specifier = ">=1.1.0" },
+    { name = "pytest-markdown-docs", marker = "extra == 'dev'", specifier = ">=0.9.1" },
+    { name = "pytest-rerunfailures", marker = "extra == 'dev'", specifier = ">=15.0" },
+    { name = "python-magic", marker = "extra == 'all'", specifier = ">=0.4.27" },
+    { name = "python-magic", marker = "extra == 'dev'", specifier = ">=0.4.27" },
+    { name = "python-magic", marker = "extra == 'magic'", specifier = ">=0.4.27" },
+    { name = "python-multipart", specifier = ">=0.0.22" },
+    { name = "pyyaml", marker = "extra == 'benchmark'", specifier = ">=6.0" },
+    { name = "pyyaml", marker = "extra == 'dev'", specifier = ">=6.0" },
+    { name = "qqabc", specifier = ">=0.2.1" },
+    { name = "redis", marker = "extra == 'all'", specifier = ">=6.4.0" },
+    { name = "redis", marker = "extra == 'dev'", specifier = ">=6.4.0" },
+    { name = "redis", marker = "extra == 'redis'", specifier = ">=6.4.0" },
+    { name = "rich", marker = "extra == 'benchmark'", specifier = ">=13.0" },
+    { name = "rich", marker = "extra == 'dev'", specifier = ">=13.0" },
+    { name = "ruff", marker = "extra == 'dev'", specifier = ">=0.12.4" },
+    { name = "sqlalchemy", marker = "extra == 'all'", specifier = ">=2.0.46" },
+    { name = "sqlalchemy", marker = "extra == 'dev'", specifier = ">=2.0.46" },
+    { name = "sqlalchemy", marker = "extra == 'sqlalchemy'", specifier = ">=2.0.46" },
+    { name = "strawberry-graphql", marker = "extra == 'all'", specifier = ">=0.288.1" },
+    { name = "strawberry-graphql", marker = "extra == 'dev'", specifier = ">=0.288.1" },
+    { name = "strawberry-graphql", marker = "extra == 'graphql'", specifier = ">=0.288.1" },
+    { name = "tenacity", marker = "extra == 'all'", specifier = ">=9.1.2" },
+    { name = "tenacity", marker = "extra == 'cli'", specifier = ">=9.1.2" },
+    { name = "tenacity", marker = "extra == 'dev'", specifier = ">=9.1.2" },
+    { name = "textual", marker = "extra == 'all'", specifier = ">=6.3.0" },
+    { name = "textual", marker = "extra == 'cli'", specifier = ">=6.3.0" },
+    { name = "textual", marker = "extra == 'dev'", specifier = ">=6.3.0" },
+    { name = "ty", extras = ["dev"], specifier = ">=0.0.33" },
+    { name = "typer", marker = "extra == 'all'", specifier = ">=0.20.0" },
+    { name = "typer", marker = "extra == 'cli'", specifier = ">=0.20.0" },
+    { name = "typer", marker = "extra == 'dev'", specifier = ">=0.20.0" },
+    { name = "xxhash", specifier = ">=3.5.0" },
+]
+provides-extras = ["all", "benchmark", "celery", "cli", "dev", "docs", "graphql", "magic", "mq", "mysql", "oracle", "postgresql", "redis", "s3", "sqlalchemy"]
+
+[package.metadata.requires-dev]
+dev = [
+    { name = "boto3-stubs", extras = ["full"], specifier = ">=1.40.21" },
+    { name = "build", specifier = ">=1.2.2.post1" },
+    { name = "celery", specifier = ">=5.6.2" },
+    { name = "coverage", specifier = ">=7.9.2" },
+    { name = "faker", specifier = ">=37.5.3" },
+    { name = "fastapi", extras = ["standard"], specifier = ">=0.116.1" },
+    { name = "furo", specifier = ">=2025.7.19" },
+    { name = "httpx", specifier = ">=0.28.1" },
+    { name = "ipykernel", specifier = ">=7.1.0" },
+    { name = "ipython", specifier = ">=9.4.0" },
+    { name = "linkify-it-py", specifier = ">=2.0.3" },
+    { name = "myst-parser", specifier = ">=4.0.1" },
+    { name = "oracledb", specifier = ">=3.4.2" },
+    { name = "pandas", specifier = ">=2.3.1" },
+    { name = "pika-stubs", specifier = ">=0.1.3" },
+    { name = "polars", specifier = ">=1.32.2" },
+    { name = "psycopg2-binary", specifier = ">=2.9.10" },
+    { name = "pytest", specifier = ">=8.4.1" },
+    { name = "pytest-asyncio", specifier = ">=1.1.0" },
+    { name = "pytest-retry", specifier = ">=1.7.0" },
+    { name = "redis", specifier = ">=6.4.0" },
+    { name = "ruff", specifier = ">=0.12.4" },
+    { name = "sphinx", specifier = ">=8.2.3" },
+    { name = "sphinx-autodoc-typehints", specifier = ">=3.2.0" },
+    { name = "sphinx-design", specifier = ">=0.6.1" },
+    { name = "sqlalchemy", specifier = ">=2.0.46" },
+    { name = "twine", specifier = ">=6.1.0" },
+    { name = "uvicorn", specifier = ">=0.35.0" },
+]
+pytest = []
 
 [[package]]
 name = "sphinx"

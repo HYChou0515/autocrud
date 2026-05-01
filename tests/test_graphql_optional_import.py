@@ -8,7 +8,7 @@ import pytest
 
 def test_graphql_import_without_strawberry():
     """When strawberry is not installed, importing graphql.py should raise
-    ImportError with a clear message telling user to install autocrud[graphql].
+    ImportError with a clear message telling user to install specstar[graphql].
     """
     # Save and remove strawberry from sys.modules to simulate it being missing
     saved_modules = {}
@@ -21,7 +21,7 @@ def test_graphql_import_without_strawberry():
         saved_modules[mod_name] = sys.modules.pop(mod_name)
 
     # Also remove the cached graphql module so it gets re-imported
-    graphql_mod_key = "autocrud.crud.route_templates.graphql"
+    graphql_mod_key = "specstar.crud.route_templates.graphql"
     saved_graphql = sys.modules.pop(graphql_mod_key, None)
 
     # Install an import hook that blocks strawberry
@@ -39,8 +39,8 @@ def test_graphql_import_without_strawberry():
 
         builtins.__import__ = mock_import  # ty:ignore[invalid-assignment]
 
-        with pytest.raises(ImportError, match="autocrud\\[graphql\\]"):
-            importlib.import_module("autocrud.crud.route_templates.graphql")
+        with pytest.raises(ImportError, match="specstar\\[graphql\\]"):
+            importlib.import_module("specstar.crud.route_templates.graphql")
     finally:
         # Restore everything
         builtins.__import__ = original_import

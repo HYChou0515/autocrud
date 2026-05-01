@@ -3068,7 +3068,7 @@
 <span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-neutral">&nbsp;</span></td><td class="text"><pre class="prettyprint lang-js">/**
- * AutoCRUD Starter Code Generator
+ * SpecStar Starter Code Generator
  *
  * Pure functions that transform WizardState → Map&lt;filename, content&gt;
  * for a complete uv Python project.
@@ -3130,7 +3130,7 @@ export function generatePyprojectToml(state: WizardState): string {
   return `[project]
 name = "${state.projectName}"
 version = "0.1.0"
-description = "AutoCRUD-powered FastAPI application"
+description = "SpecStar-powered FastAPI application"
 requires-python = "&gt;=${state.pythonVersion}"
 dependencies = [
 ${depsStr}
@@ -3198,9 +3198,9 @@ export function computeDependencies(state: WizardState): string[] {
   const deps: string[] = [];
   if (extras.size &gt; 0) {
     const sorted = [...extras].sort();
-    deps.push(`autocrud[${sorted.join(",")}]&gt;=0.8.2`);
+    deps.push(`specstar[${sorted.join(",")}]&gt;=0.8.2`);
   } else {
-    deps.push("autocrud&gt;=0.8.2");
+    deps.push("specstar&gt;=0.8.2");
   }
   deps.push("uvicorn&gt;=0.30.0");
 &nbsp;
@@ -3244,8 +3244,8 @@ export function generateMainPy(state: WizardState): string {
 &nbsp;
 export function generateImports(state: WizardState): string {
   const lines: string[] = [];
-  const autocrudImports = new Set&lt;string&gt;(["crud", "Schema"]);
-  const autocrudTypesImports = new Set&lt;string&gt;();
+  const specstarImports = new Set&lt;string&gt;(["crud", "Schema"]);
+  const specstarTypesImports = new Set&lt;string&gt;();
   const typingImports = new Set&lt;string&gt;();
   let needDatetime = state.defaultNow !== "";
   const needZoneInfo = state.defaultNow !== "" &amp;&amp; state.defaultNow !== "UTC";
@@ -3273,17 +3273,17 @@ export function generateImports(state: WizardState): string {
           needEnum = true;
         }
         if (field.isDisplayName) {
-          autocrudImports.add("DisplayName");
+          specstarImports.add("DisplayName");
         }
         if (field.type === "Ref" || field.ref) {
-          autocrudImports.add("Ref");
-          autocrudImports.add("OnDelete");
+          specstarImports.add("Ref");
+          specstarImports.add("OnDelete");
         }
         if (field.type === "RefRevision" || field.refRevision) {
-          autocrudTypesImports.add("RefRevision");
+          specstarTypesImports.add("RefRevision");
         }
         if (field.type === "Binary") {
-          autocrudTypesImports.add("Binary");
+          specstarTypesImports.add("Binary");
         }
         if (
           field.type === "dict" &amp;&amp;
@@ -3299,21 +3299,21 @@ export function generateImports(state: WizardState): string {
       }
       // Job detection for form-mode
       if (model.isJob) {
-        autocrudTypesImports.add("Job");
-        autocrudTypesImports.add("Resource");
+        specstarTypesImports.add("Job");
+        specstarTypesImports.add("Resource");
       }
     } else {
       // code-mode: scan rawCode for keywords
       const code = model.rawCode;
-      <span class="missing-if-branch" title="if path not taken" >I</span>if (code.includes("DisplayName")) <span class="cstat-no" title="statement not covered" >autocrudImports.add("DisplayName");</span>
+      <span class="missing-if-branch" title="if path not taken" >I</span>if (code.includes("DisplayName")) <span class="cstat-no" title="statement not covered" >specstarImports.add("DisplayName");</span>
       if (code.includes("Ref(") || code.includes('Ref("')) {
-        autocrudImports.add("Ref");
-        autocrudImports.add("OnDelete");
+        specstarImports.add("Ref");
+        specstarImports.add("OnDelete");
       }
-      <span class="missing-if-branch" title="if path not taken" >I</span>if (code.includes("RefRevision")) <span class="cstat-no" title="statement not covered" >autocrudTypesImports.add("RefRevision");</span>
-      if (code.includes("Binary")) autocrudTypesImports.add("Binary");
-      if (code.includes("Job[")) autocrudTypesImports.add("Job");
-      <span class="missing-if-branch" title="if path not taken" >I</span>if (code.includes("Resource[") || code.includes("Resource)")) <span class="cstat-no" title="statement not covered" >autocrudTypesImports.add("Resource");</span>
+      <span class="missing-if-branch" title="if path not taken" >I</span>if (code.includes("RefRevision")) <span class="cstat-no" title="statement not covered" >specstarTypesImports.add("RefRevision");</span>
+      if (code.includes("Binary")) specstarTypesImports.add("Binary");
+      if (code.includes("Job[")) specstarTypesImports.add("Job");
+      <span class="missing-if-branch" title="if path not taken" >I</span>if (code.includes("Resource[") || code.includes("Resource)")) <span class="cstat-no" title="statement not covered" >specstarTypesImports.add("Resource");</span>
       if (code.includes("Annotated")) typingImports.add("Annotated");
       <span class="missing-if-branch" title="if path not taken" >I</span>if (code.includes("Optional")) <span class="cstat-no" title="statement not covered" >typingImports.add("Optional");</span>
       <span class="missing-if-branch" title="if path not taken" >I</span>if (code.includes("datetime")) <span class="cstat-no" title="statement not covered" >needDatetime = true;</span>
@@ -3374,13 +3374,13 @@ export function generateImports(state: WizardState): string {
   }
   lines.push("");
 &nbsp;
-  // AutoCRUD imports
-  const sortedAutocrud = [...autocrudImports].sort();
-  lines.push(`from autocrud import ${sortedAutocrud.join(", ")}`);
+  // SpecStar imports
+  const sortedAutocrud = [...specstarImports].sort();
+  lines.push(`from specstar import ${sortedAutocrud.join(", ")}`);
 &nbsp;
   // Encoding import (needed when non-default encoding is used)
   <span class="missing-if-branch" title="else path not taken" >E</span>if (state.encoding !== "json") {
-    lines.push("from autocrud.resource_manager.basic import Encoding");
+    lines.push("from specstar.resource_manager.basic import Encoding");
   }
 &nbsp;
   // Storage factory import
@@ -3406,14 +3406,14 @@ export function generateImports(state: WizardState): string {
   const mqImport = getMQFactoryImport(state.messageQueue);
   if (mqImport) lines.push(mqImport);
 &nbsp;
-  // autocrud.types imports
+  // specstar.types imports
   // Add IValidator if any model has validators enabled
   if (state.models.some((m) =&gt; m.enableValidator)) {
-    autocrudTypesImports.add("IValidator");
+    specstarTypesImports.add("IValidator");
   }
-  if (autocrudTypesImports.size &gt; 0) {
-    const sorted = [...autocrudTypesImports].sort();
-    lines.push(`from autocrud.types import ${sorted.join(", ")}`);
+  if (specstarTypesImports.size &gt; 0) {
+    const sorted = [...specstarTypesImports].sort();
+    lines.push(`from specstar.types import ${sorted.join(", ")}`);
   }
 &nbsp;
   return lines.join("\n");
@@ -3422,11 +3422,11 @@ export function generateImports(state: WizardState): string {
 function getStorageImport(storage: WizardState["storage"]): string | null {
   switch (storage) {
     case "disk":
-      return "from autocrud.resource_manager.storage_factory import DiskStorageFactory";
+      return "from specstar.resource_manager.storage_factory import DiskStorageFactory";
     case "s3":
-      return "from autocrud.resource_manager.storage_factory import S3StorageFactory";
+      return "from specstar.resource_manager.storage_factory import S3StorageFactory";
     case "postgresql":
-      return "from autocrud.resource_manager.storage_factory import PostgreSQLStorageFactory";
+      return "from specstar.resource_manager.storage_factory import PostgreSQLStorageFactory";
     default:
       return null;
   }
@@ -3437,11 +3437,11 @@ function getMQFactoryImport(
 ): string | null {
   switch (mq) {
     case "simple":
-      return "from autocrud.message_queue.simple import SimpleMessageQueueFactory";
+      return "from specstar.message_queue.simple import SimpleMessageQueueFactory";
     case "rabbitmq":
-      return "from autocrud.message_queue.rabbitmq import RabbitMQMessageQueueFactory";
+      return "from specstar.message_queue.rabbitmq import RabbitMQMessageQueueFactory";
     case "celery":
-      return "from autocrud.message_queue.celery_queue import CeleryMessageQueueFactory";
+      return "from specstar.message_queue.celery_queue import CeleryMessageQueueFactory";
     default:
       return null;
   }
@@ -3504,11 +3504,11 @@ function getCustomStorageImports(state: WizardState): string[] {
   const meta = sc.customMetaStore || <span class="branch-1 cbranch-no" title="branch not covered" >"memory";</span>
   const res = sc.customResourceStore || <span class="branch-1 cbranch-no" title="branch not covered" >"memory";</span>
 &nbsp;
-  imports.push("from autocrud.resource_manager.core import SimpleStorage");
+  imports.push("from specstar.resource_manager.core import SimpleStorage");
   imports.push(
-    "from autocrud.resource_manager.storage_factory import IStorageFactory",
+    "from specstar.resource_manager.storage_factory import IStorageFactory",
   );
-  imports.push("from autocrud.resource_manager.basic import IStorage");
+  imports.push("from specstar.resource_manager.basic import IStorage");
 &nbsp;
   // Meta store import
   if (meta === "fast-slow") {
@@ -3531,19 +3531,19 @@ function getCustomStorageImports(state: WizardState): string[] {
   // S3 blob store imports (for build_blob_store) — based on blobStore selection
   if (state.blobStore === "s3") {
     imports.push(
-      "from autocrud.resource_manager.blob_store.s3 import S3BlobStore",
+      "from specstar.resource_manager.blob_store.s3 import S3BlobStore",
     );
-    imports.push("from autocrud.resource_manager.basic import IBlobStore");
+    imports.push("from specstar.resource_manager.basic import IBlobStore");
   <span class="missing-if-branch" title="if path not taken" >I</span>} else if (state.blobStore === "disk") {
 <span class="cstat-no" title="statement not covered" >    imports.push(</span>
-      "from autocrud.resource_manager.blob_store.simple import DiskBlobStore",
+      "from specstar.resource_manager.blob_store.simple import DiskBlobStore",
     );
-<span class="cstat-no" title="statement not covered" >    imports.push("from autocrud.resource_manager.basic import IBlobStore");</span>
+<span class="cstat-no" title="statement not covered" >    imports.push("from specstar.resource_manager.basic import IBlobStore");</span>
   <span class="missing-if-branch" title="else path not taken" >E</span>} else if (state.blobStore === "memory") {
     imports.push(
-      "from autocrud.resource_manager.blob_store.simple import MemoryBlobStore",
+      "from specstar.resource_manager.blob_store.simple import MemoryBlobStore",
     );
-    imports.push("from autocrud.resource_manager.basic import IBlobStore");
+    imports.push("from specstar.resource_manager.basic import IBlobStore");
   }
 &nbsp;
   return imports;
@@ -3575,20 +3575,20 @@ function getBlobStoreOverrideImports(state: WizardState): string[] {
   switch (state.blobStore) {
     case "s3":
 <span class="cstat-no" title="statement not covered" >      imports.push(</span>
-        "from autocrud.resource_manager.blob_store.s3 import S3BlobStore",
+        "from specstar.resource_manager.blob_store.s3 import S3BlobStore",
       );
 <span class="cstat-no" title="statement not covered" >      break;</span>
 <span class="branch-1 cbranch-no" title="branch not covered" >    case "disk":</span>
 <span class="cstat-no" title="statement not covered" >      imports.push(</span>
-        "from autocrud.resource_manager.blob_store.simple import DiskBlobStore",
+        "from specstar.resource_manager.blob_store.simple import DiskBlobStore",
       );
 <span class="cstat-no" title="statement not covered" >      break;</span>
     case "memory":
       imports.push(
-        "from autocrud.resource_manager.blob_store.simple import MemoryBlobStore",
+        "from specstar.resource_manager.blob_store.simple import MemoryBlobStore",
       );
       break;
-    // "none" → no override needed, AutoCRUD falls back to MemoryBlobStore automatically
+    // "none" → no override needed, SpecStar falls back to MemoryBlobStore automatically
   }
   return imports;
 }
@@ -3602,7 +3602,7 @@ function generateBlobStoreOverride(state: WizardState): string | null {
   switch (state.blobStore) {
     case "s3": {
       const args: string[] = <span class="cstat-no" title="statement not covered" >[];</span>
-<span class="cstat-no" title="statement not covered" >      args.push(`bucket="${sc.blobS3Bucket || "autocrud"}"`);</span>
+<span class="cstat-no" title="statement not covered" >      args.push(`bucket="${sc.blobS3Bucket || "specstar"}"`);</span>
 <span class="cstat-no" title="statement not covered" >      args.push(</span>
         `endpoint_url="${sc.blobS3EndpointUrl || "http://localhost:9000"}"`,
       );
@@ -3637,22 +3637,22 @@ const META_STORE_CLASS_MAP: Record&lt;MetaStoreType, string&gt; = {
 &nbsp;
 const META_STORE_IMPORT_MAP: Record&lt;MetaStoreType, string&gt; = {
   memory:
-    "from autocrud.resource_manager.meta_store.simple import MemoryMetaStore",
-  disk: "from autocrud.resource_manager.meta_store.simple import DiskMetaStore",
+    "from specstar.resource_manager.meta_store.simple import MemoryMetaStore",
+  disk: "from specstar.resource_manager.meta_store.simple import DiskMetaStore",
   "memory-sqlite":
-    "from autocrud.resource_manager.meta_store.sqlite3 import MemorySqliteMetaStore",
+    "from specstar.resource_manager.meta_store.sqlite3 import MemorySqliteMetaStore",
   "file-sqlite":
-    "from autocrud.resource_manager.meta_store.sqlite3 import FileSqliteMetaStore",
+    "from specstar.resource_manager.meta_store.sqlite3 import FileSqliteMetaStore",
   "s3-sqlite":
-    "from autocrud.resource_manager.meta_store.sqlite3 import S3SqliteMetaStore",
+    "from specstar.resource_manager.meta_store.sqlite3 import S3SqliteMetaStore",
   postgres:
-    "from autocrud.resource_manager.meta_store.postgres import PostgresMetaStore",
+    "from specstar.resource_manager.meta_store.postgres import PostgresMetaStore",
   sqlalchemy:
-    "from autocrud.resource_manager.meta_store.sqlalchemy import SQLAlchemyMetaStore",
+    "from specstar.resource_manager.meta_store.sqlalchemy import SQLAlchemyMetaStore",
   redis:
-    "from autocrud.resource_manager.meta_store.redis import RedisMetaStore",
+    "from specstar.resource_manager.meta_store.redis import RedisMetaStore",
   "fast-slow":
-    "from autocrud.resource_manager.meta_store.fast_slow import FastSlowMetaStore",
+    "from specstar.resource_manager.meta_store.fast_slow import FastSlowMetaStore",
 };
 &nbsp;
 const RESOURCE_STORE_CLASS_MAP: Record&lt;ResourceStoreType, string&gt; = {
@@ -3666,15 +3666,15 @@ const RESOURCE_STORE_CLASS_MAP: Record&lt;ResourceStoreType, string&gt; = {
 &nbsp;
 const RESOURCE_STORE_IMPORT_MAP: Record&lt;ResourceStoreType, string&gt; = {
   memory:
-    "from autocrud.resource_manager.resource_store import MemoryResourceStore",
-  disk: "from autocrud.resource_manager.resource_store import DiskResourceStore",
-  s3: "from autocrud.resource_manager.resource_store import S3ResourceStore",
+    "from specstar.resource_manager.resource_store import MemoryResourceStore",
+  disk: "from specstar.resource_manager.resource_store import DiskResourceStore",
+  s3: "from specstar.resource_manager.resource_store import S3ResourceStore",
   "cached-s3":
-    "from autocrud.resource_manager.resource_store import CachedS3ResourceStore",
+    "from specstar.resource_manager.resource_store import CachedS3ResourceStore",
   "etag-cached-s3":
-    "from autocrud.resource_manager.resource_store import ETagCachedS3ResourceStore",
+    "from specstar.resource_manager.resource_store import ETagCachedS3ResourceStore",
   "mq-cached-s3":
-    "from autocrud.resource_manager.resource_store import MQCachedS3ResourceStore",
+    "from specstar.resource_manager.resource_store import MQCachedS3ResourceStore",
 };
 &nbsp;
 import type { StorageConfig } from "@/types/wizard";
@@ -3760,7 +3760,7 @@ function buildResourceStoreArgsForFactory(
     case "cached-s3":
     case "etag-cached-s3":
     case "mq-cached-s3": {
-      const bucket = sc.resBucket || "autocrud";
+      const bucket = sc.resBucket || "specstar";
       const prefix = sc.resPrefix || "";
       args.push(`bucket="${bucket}"`);
       args.push(`prefix=f"${prefix}{model_name}/"`);
@@ -3775,7 +3775,7 @@ function buildResourceStoreArgsForFactory(
           `amqp_url="${sc.resAmqpUrl || <span class="branch-1 cbranch-no" title="branch not covered" >"amqp://guest:guest@localhost:5672/"}</span>"`,
         );
         args.push(
-          `queue_prefix=f"${sc.resQueuePrefix || "autocrud:"}{model_name}:"`,
+          `queue_prefix=f"${sc.resQueuePrefix || "specstar:"}{model_name}:"`,
         );
       }
       break;
@@ -4161,7 +4161,7 @@ export function generateAppSetup(state: WizardState): string {
   const lines: string[] = [];
 &nbsp;
   // configure section
-  lines.push("# ===== Configure AutoCRUD =====");
+  lines.push("# ===== Configure SpecStar =====");
   lines.push("");
   lines.push(generateConfigureCall(state));
   lines.push("");
@@ -4257,7 +4257,7 @@ export function generateConfigureCall(state: WizardState): string {
     case "s3": {
       const sc = state.storageConfig;
       const s3Args: string[] = [];
-      s3Args.push(`bucket="${sc.bucket || "autocrud"}"`);
+      s3Args.push(`bucket="${sc.bucket || "specstar"}"`);
       s3Args.push(
         `endpoint_url="${sc.endpointUrl || "http://localhost:9000"}"`,
       );
@@ -4275,7 +4275,7 @@ export function generateConfigureCall(state: WizardState): string {
       pgArgs.push(
         `connection_string="${sc.connectionString || "postgresql://user:pass@localhost:5432/mydb"}"`,
       );
-      pgArgs.push(`s3_bucket="${sc.s3Bucket || "autocrud"}"`);
+      pgArgs.push(`s3_bucket="${sc.s3Bucket || "specstar"}"`);
       pgArgs.push(
         `s3_endpoint_url="${sc.s3EndpointUrl || "http://localhost:9000"}"`,
       );
@@ -4287,7 +4287,7 @@ export function generateConfigureCall(state: WizardState): string {
       pgArgs.push(`table_prefix="${sc.tablePrefix || ""}"`);
       pgArgs.push(`blob_prefix="${sc.blobPrefix || "blobs/"}"`);
       pgArgs.push(
-        `blob_bucket="${sc.blobBucket || sc.s3Bucket || "autocrud"}"`,
+        `blob_bucket="${sc.blobBucket || sc.s3Bucket || "specstar"}"`,
       );
       args.push(
         `storage_factory=PostgreSQLStorageFactory(\n        ${pgArgs.join(",\n        ")},\n    )`,
@@ -4350,7 +4350,7 @@ export function generateConfigureCall(state: WizardState): string {
         factoryLines.push("    def build_blob_store(self) -&gt; IBlobStore:");
         const blobArgs: string[] = [];
         blobArgs.push(
-          `bucket="${sc.blobS3Bucket || sc.resBucket || <span class="branch-2 cbranch-no" title="branch not covered" >"autocrud"}</span>"`,
+          `bucket="${sc.blobS3Bucket || sc.resBucket || <span class="branch-2 cbranch-no" title="branch not covered" >"specstar"}</span>"`,
         );
         blobArgs.push(
           `endpoint_url="${sc.blobS3EndpointUrl || sc.resEndpointUrl || <span class="branch-2 cbranch-no" title="branch not covered" >"http://localhost:9000"}</span>"`,
@@ -4512,7 +4512,7 @@ function fieldTypeToPythonType(field: FieldDefinition): string {
 export function generateReadme(state: WizardState): string {
   return `# ${state.projectName}
 &nbsp;
-AutoCRUD-powered FastAPI application.
+SpecStar-powered FastAPI application.
 &nbsp;
 ## Quick Start
 &nbsp;
@@ -4538,7 +4538,7 @@ ${getStorageDescription(state)}
 &nbsp;
 ## Learn More
 &nbsp;
-- [AutoCRUD Documentation](https://github.com/autocrud/autocrud)
+- [SpecStar Documentation](https://github.com/specstar/specstar)
 - [FastAPI Documentation](https://fastapi.tiangolo.com)
 `;
 }

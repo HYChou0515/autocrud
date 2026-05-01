@@ -2,7 +2,7 @@
 
 This section is for task-oriented documentation.
 
-Use it when you already know what you want to do in AutoCRUD and need the shortest path to implementation.
+Use it when you already know what you want to do in SpecStar and need the shortest path to implementation.
 
 ---
 
@@ -10,31 +10,31 @@ Use it when you already know what you want to do in AutoCRUD and need the shorte
 
 ### API behavior and route design
 
-- [API conventions](/autocrud/howto/api-conventions)
-- [Routes](/autocrud/howto/routes)
-- [HTTP errors](/autocrud/howto/http-errors)
-- [Error handling](/autocrud/howto/errors)
-- [Troubleshooting](/autocrud/howto/troubleshooting)
+- [API conventions](/specstar/howto/api-conventions)
+- [Routes](/specstar/howto/routes)
+- [HTTP errors](/specstar/howto/http-errors)
+- [Error handling](/specstar/howto/errors)
+- [Troubleshooting](/specstar/howto/troubleshooting)
 
 ### Data modeling and relationships
 
-- [Relationships](/autocrud/howto/relationships)
-- [Constraints](/autocrud/howto/constraints)
-- [Migrations](/autocrud/howto/migrations)
-- [Pydantic integration](/autocrud/howto/pydantic-integration)
+- [Relationships](/specstar/howto/relationships)
+- [Constraints](/specstar/howto/constraints)
+- [Migrations](/specstar/howto/migrations)
+- [Pydantic integration](/specstar/howto/pydantic-integration)
 
 ### Querying and access control
 
-- [Query builder](/autocrud/howto/query-builder)
-- [Permissions](/autocrud/howto/permissions)
-- [Event handlers](/autocrud/howto/event-handlers)
+- [Query builder](/specstar/howto/query-builder)
+- [Permissions](/specstar/howto/permissions)
+- [Event handlers](/specstar/howto/event-handlers)
 
 ### Extended capabilities
 
-- [GraphQL](/autocrud/howto/graphql)
-- [Binary data](/autocrud/howto/binary-data)
-- [Backup and restore](/autocrud/howto/backup-restore)
-- [Web UI](/autocrud/howto/web-ui)
+- [GraphQL](/specstar/howto/graphql)
+- [Binary data](/specstar/howto/binary-data)
+- [Backup and restore](/specstar/howto/backup-restore)
+- [Web UI](/specstar/howto/web-ui)
 
 ---
 
@@ -42,6 +42,6 @@ Use it when you already know what you want to do in AutoCRUD and need the shorte
 
 If you are still learning the project, start here instead:
 
-1. [Installation](/autocrud/installation/)
-2. [Fast Demo](/autocrud/quickstart/fast-demo)
+1. [Installation](/specstar/installation/)
+2. [Fast Demo](/specstar/quickstart/fast-demo)
 3. Return to this section for the feature you need

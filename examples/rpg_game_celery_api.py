@@ -1,8 +1,8 @@
 #!/usr/bin/env python3
-"""⚔️ RPG 遊戲 API 系統 - AutoCRUD + Celery Message Queue 示範 🛡️
+"""⚔️ RPG 遊戲 API 系統 - SpecStar + Celery Message Queue 示範 🛡️
 
 這個範例展示：
-- 完整的 AutoCRUD + FastAPI + Celery 集成
+- 完整的 SpecStar + FastAPI + Celery 集成
 - 使用 Celery 處理異步任務
 - Redis 作為 Celery broker 和 result backend
 - 分散式任務處理架構
@@ -38,12 +38,12 @@ from celery import Celery
 from fastapi import FastAPI
 from msgspec import Struct
 
-from autocrud import AutoCRUD
-from autocrud.crud.route_templates.graphql import GraphQLRouteTemplate
-from autocrud.message_queue.basic import DelayRetry, NoRetry
-from autocrud.message_queue.celery_queue import CeleryMessageQueueFactory
-from autocrud.resource_manager.storage_factory import DiskStorageFactory
-from autocrud.types import Job, Resource
+from specstar import SpecStar
+from specstar.crud.route_templates.graphql import GraphQLRouteTemplate
+from specstar.message_queue.basic import DelayRetry, NoRetry
+from specstar.message_queue.celery_queue import CeleryMessageQueueFactory
+from specstar.resource_manager.storage_factory import DiskStorageFactory
+from specstar.types import Job, Resource
 
 # ===== Celery 配置 =====
 # 創建 Celery 應用實例
@@ -276,16 +276,16 @@ def process_game_event(event_resource: Resource[GameEvent]):
     return None
 
 
-# ===== AutoCRUD 與 FastAPI 集成 =====
+# ===== SpecStar 與 FastAPI 集成 =====
 
 _crud = None
 
 
 def get_crud():
-    """創建並返回 AutoCRUD 實例"""
+    """創建並返回 SpecStar 實例"""
     global _crud
     if _crud is None:
-        print("\n⚙️ 初始化 AutoCRUD + Celery...")
+        print("\n⚙️ 初始化 SpecStar + Celery...")
 
         # 使用磁盤存儲
         storage_factory = DiskStorageFactory(rootdir="./rpg_celery_data")
@@ -298,7 +298,7 @@ def get_crud():
             retry_delay_seconds=10,  # 重試延遲（秒）
         )
 
-        _crud = AutoCRUD(
+        _crud = SpecStar(
             default_now=lambda: dt.datetime.now(),
             storage_factory=storage_factory,
             message_queue_factory=celery_mq_factory,  # ty:ignore[invalid-argument-type]
@@ -325,7 +325,7 @@ def get_crud():
             job_handler=process_game_event,  # ty:ignore[invalid-argument-type]
         )
 
-        print("✅ AutoCRUD 初始化完成")
+        print("✅ SpecStar 初始化完成")
         print(f"   Celery Broker: {celery_app.conf.broker_url}")
         print(f"   Celery Backend: {celery_app.conf.result_backend}")
         print(
@@ -335,11 +335,11 @@ def get_crud():
     return _crud
 
 
-def create_sample_characters(crud: AutoCRUD):
+def create_sample_characters(spec: SpecStar):
     """創建示範角色"""
     print("\n👥 創建示範角色...")
 
-    character_manager = crud.resource_managers.get("character")
+    character_manager = spec.resource_managers.get("character")
     if not character_manager:
         print("❌ 角色管理器未找到")
         return
@@ -403,11 +403,11 @@ def create_sample_characters(crud: AutoCRUD):
                 print(f"   ❌ 創建失敗: {e}")
 
 
-def create_sample_events(crud: AutoCRUD):
+def create_sample_events(spec: SpecStar):
     """創建示範遊戲事件"""
     print("\n🎮 創建示範遊戲事件...")
 
-    event_manager = crud.resource_managers.get("game-event")
+    event_manager = spec.resource_managers.get("game-event")
     if not event_manager:
         print("❌ 遊戲事件管理器未找到")
         return
@@ -567,24 +567,24 @@ def main():
         redoc_url="/redoc",
     )
 
-    # 創建 AutoCRUD 實例
-    crud = get_crud()
+    # 創建 SpecStar 實例
+    spec = get_crud()
 
     # 應用到 FastAPI
-    crud.apply(app)
-    crud.openapi(app)
+    spec.apply(app)
+    spec.openapi(app)
 
     # 創建示範數據
     ans = input("需要創建示範角色嗎？[y/N]: ")
     if ans.lower() == "y":
-        create_sample_characters(crud)
+        create_sample_characters(spec)
 
     # 創建示範遊戲事件
     ans = input("需要創建示範遊戲事件嗎？[y/N]: ")
     if ans.lower() == "y":
-        create_sample_events(crud)
+        create_sample_events(spec)
 
-    crud.get_resource_manager(GameEvent).start_consume(block=False)
+    spec.get_resource_manager(GameEvent).start_consume(block=False)
 
     print("\n🚀 === 服務器啟動成功 === 🚀")
     print("📖 OpenAPI 文檔: http://localhost:8000/docs")

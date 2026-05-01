@@ -1,5 +1,5 @@
 /**
- * AutoCRUD Web Code Generator — Entry Point
+ * SpecStar Web Code Generator — Entry Point
  *
  * Orchestrates:
  *   1. swagger-parser: load + validate + dereference OpenAPI spec
@@ -58,13 +58,13 @@ export interface GenerateOptions {
 export async function generateCode(apiUrl: string, outputRoot: string, options: GenerateOptions = {}): Promise<void> {
   const ROOT = process.cwd();
   const SRC = path.join(ROOT, outputRoot);
-  const GEN = path.join(SRC, 'autocrud/generated');
+  const GEN = path.join(SRC, 'specstar/generated');
   const ROUTES = path.join(SRC, 'routes');
 
   const openapiPath = options.openapiPath ?? '/openapi.json';
   const specUrl = `${apiUrl}${openapiPath}`;
 
-  console.log('🚀 AutoCRUD Web Code Generator');
+  console.log('🚀 SpecStar Web Code Generator');
   console.log(`📡 Fetching OpenAPI spec from ${specUrl}...\n`);
 
   // ── Step 1: Fetch spec via HTTP, then validate + dereference ─────────────
@@ -88,7 +88,7 @@ export async function generateCode(apiUrl: string, outputRoot: string, options: 
   const preScan = preScanSpec(specObj, basePath);
 
   // Save spec to temp file for Orval (needs file path input)
-  const tempSpecPath = path.join(os.tmpdir(), `autocrud-openapi-${Date.now()}.json`);
+  const tempSpecPath = path.join(os.tmpdir(), `specstar-openapi-${Date.now()}.json`);
   fs.writeFileSync(tempSpecPath, specJson, 'utf-8');
 
   // ── Step 3: Dereference spec (resolve all $refs inline) ──────────────────

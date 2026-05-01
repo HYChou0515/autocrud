@@ -5,9 +5,9 @@ import datetime as dt
 import pytest
 from msgspec import Struct
 
-from autocrud.resource_manager.core import ResourceManager, ResourceOps, SimpleStorage
-from autocrud.resource_manager.meta_store.simple import MemoryMetaStore
-from autocrud.resource_manager.resource_store.simple import MemoryResourceStore
+from specstar.resource_manager.core import ResourceManager, ResourceOps, SimpleStorage
+from specstar.resource_manager.meta_store.simple import MemoryMetaStore
+from specstar.resource_manager.resource_store.simple import MemoryResourceStore
 
 # ── Test model ──────────────────────────────────────────────────────
 

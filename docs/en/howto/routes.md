@@ -1,6 +1,6 @@
 # Routes generation (FastAPI)
 
-AutoCRUD generates API endpoints by applying **route templates** to each registered resource
+SpecStar generates API endpoints by applying **route templates** to each registered resource
 when you call `apply()`.
 
 > Important: the final set of endpoints depends on:
@@ -12,7 +12,7 @@ when you call `apply()`.
 
 ```python
 from fastapi import FastAPI
-from autocrud import crud
+from specstar import crud
 
 app = FastAPI()
 
@@ -24,7 +24,7 @@ crud.apply(app)  # routes + OpenAPI schema generated automatically
 
 ```python
 from fastapi import APIRouter, FastAPI
-from autocrud import crud
+from specstar import crud
 
 app = FastAPI()
 router = APIRouter(prefix="/api/v1")
@@ -46,7 +46,7 @@ A model is registered with a resource name:
 
 ## Default templates (typical endpoints)
 
-When `route_templates` is `None` (default behavior) or a configuration dict, AutoCRUD installs
+When `route_templates` is `None` (default behavior) or a configuration dict, SpecStar installs
 a default set of templates (create/list/read/update/patch/delete/restore/export/import, etc).
 
 For a resource named `users`, you typically get endpoints like:
@@ -62,7 +62,7 @@ For a resource named `users`, you typically get endpoints like:
 
 ### Why the endpoints are not listed exhaustively here
 
-AutoCRUD supports customizing templates and adding custom routes. If you need an authoritative list,
+SpecStar supports customizing templates and adding custom routes. If you need an authoritative list,
 use your generated OpenAPI docs (Swagger UI / ReDoc) after calling `apply()`.
 
 ## Custom route templates
@@ -72,10 +72,10 @@ use your generated OpenAPI docs (Swagger UI / ReDoc) after calling `apply()`.
 You can pass a dict `{TemplateClass: kwargs}` to configure default templates:
 
 ```python
-from autocrud import AutoCRUD
-from autocrud.crud.route_templates import ListRouteTemplate
+from specstar import SpecStar
+from specstar.crud.route_templates import ListRouteTemplate
 
-autocrud = AutoCRUD(route_templates={
+specstar = SpecStar(route_templates={
     ListRouteTemplate: {"dependency_provider": my_provider},
 })
 ```
@@ -83,7 +83,7 @@ autocrud = AutoCRUD(route_templates={
 ### Provide a full template list
 
 ```python
-autocrud = AutoCRUD(route_templates=[
+specstar = SpecStar(route_templates=[
     CreateRouteTemplate(...),
     ListRouteTemplate(...),
 ])
@@ -92,7 +92,7 @@ autocrud = AutoCRUD(route_templates=[
 ### Add templates incrementally
 
 ```python
-autocrud.add_route_template(MyCustomTemplate())
+specstar.add_route_template(MyCustomTemplate())
 ```
 
 Templates should be added before `apply()` for predictable behavior.
@@ -104,7 +104,7 @@ Use `create_action()` to add additional create endpoints for a resource:
 ```python
 from msgspec import Struct
 from fastapi import Body
-from autocrud import crud
+from specstar import crud
 
 class ImportFromUrl(Struct):
     url: str
@@ -126,7 +126,7 @@ and can optionally receive `RevisionInfo` and `ResourceMeta`.
 ```python
 from msgspec import Struct
 from fastapi import Body
-from autocrud import crud
+from specstar import crud
 
 class LevelUpInput(Struct):
     levels: int = 1
@@ -164,7 +164,7 @@ long-running operations:
 ```python
 from msgspec import Struct
 from fastapi import Body
-from autocrud import crud
+from specstar import crud
 
 
 class TrainInput(Struct):
@@ -197,17 +197,17 @@ Key points:
 
 ## Relationships (refs)
 
-If you use `Ref(...)` fields, AutoCRUD may install relationship-related routes and behaviors.
+If you use `Ref(...)` fields, SpecStar may install relationship-related routes and behaviors.
 
 See also:
 
-- [Relationships](/autocrud/howto/relationships)
-- [Behavior Reference](/autocrud/concepts/refs)
+- [Relationships](/specstar/howto/relationships)
+- [Behavior Reference](/specstar/concepts/refs)
 
 ## Common follow-ups
 
 After your routes are generated, the next questions are usually:
 
-- how to validate writes reliably → [Validation](/autocrud/concepts/validation)
-- how to filter and search results → [Query Builder](/autocrud/howto/query-builder)
-- what to check when something behaves unexpectedly → [Troubleshooting](/autocrud/howto/troubleshooting)
+- how to validate writes reliably → [Validation](/specstar/concepts/validation)
+- how to filter and search results → [Query Builder](/specstar/howto/query-builder)
+- what to check when something behaves unexpectedly → [Troubleshooting](/specstar/howto/troubleshooting)

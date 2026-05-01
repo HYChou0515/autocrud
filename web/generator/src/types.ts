@@ -1,5 +1,5 @@
 /**
- * AutoCRUD Web Generator — Intermediate Representation (IR) Types
+ * SpecStar Web Generator — Intermediate Representation (IR) Types
  *
  * These types represent the **semantic** information extracted from an OpenAPI
  * spec, decoupled from any code-generation concerns (no tsType / zodType).
@@ -106,7 +106,7 @@ export interface Field {
 // ─── Custom Create Actions ───────────────────────────────────────────────────
 
 /**
- * Custom create action discovered from x-autocrud-custom-create-actions.
+ * Custom create action discovered from x-specstar-custom-create-actions.
  * Each action represents an alternative POST endpoint for creating a resource.
  */
 export interface CustomCreateAction {
@@ -143,7 +143,7 @@ export interface CustomCreateAction {
 // ─── Custom Update Actions ───────────────────────────────────────────────────
 
 /**
- * Custom update action discovered from x-autocrud-custom-update-actions.
+ * Custom update action discovered from x-specstar-custom-update-actions.
  * Each action represents a POST endpoint that modifies an existing resource,
  * registered via the backend's @crud.update_action() decorator.
  */
@@ -191,7 +191,7 @@ export interface Resource {
   unionVariantSchemaNames?: string[];
   customCreateActions?: CustomCreateAction[];
   customUpdateActions?: CustomUpdateAction[];
-  /** Indexed field paths from backend (x-autocrud-indexed-fields). */
+  /** Indexed field paths from backend (x-specstar-indexed-fields). */
   indexedFields?: string[];
 }
 

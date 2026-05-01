@@ -84,24 +84,24 @@ describe("generateProject", () => {
 // ─── computeDependencies ───────────────────────────────────────
 
 describe("computeDependencies", () => {
-  it("memory storage → autocrud[graphql] + uvicorn (graphql default on)", () => {
+  it("memory storage → specstar[graphql] + uvicorn (graphql default on)", () => {
     const deps = computeDependencies(makeState({ storage: "memory" }));
-    expect(deps).toContain("autocrud[graphql]>=0.8.2");
+    expect(deps).toContain("specstar[graphql]>=0.8.2");
     expect(deps).toContain("uvicorn>=0.30.0");
     expect(deps).toHaveLength(2);
   });
 
-  it("memory storage with graphql off → base autocrud only", () => {
+  it("memory storage with graphql off → base specstar only", () => {
     const deps = computeDependencies(
       makeState({ storage: "memory", enableGraphql: false }),
     );
-    expect(deps).toContain("autocrud>=0.8.2");
+    expect(deps).toContain("specstar>=0.8.2");
     expect(deps).toHaveLength(2);
   });
 
-  it("disk storage → autocrud[graphql] (no s3)", () => {
+  it("disk storage → specstar[graphql] (no s3)", () => {
     const deps = computeDependencies(makeState({ storage: "disk" }));
-    expect(deps).toContain("autocrud[graphql]>=0.8.2");
+    expect(deps).toContain("specstar[graphql]>=0.8.2");
     expect(deps).not.toContain("magic");
   });
 
@@ -125,14 +125,14 @@ describe("computeDependencies", () => {
   it("extras are sorted alphabetically", () => {
     const deps = computeDependencies(makeState({ storage: "postgresql" }));
     // graphql, magic, postgresql, s3
-    expect(deps[0]).toBe("autocrud[graphql,magic,postgresql,s3]>=0.8.2");
+    expect(deps[0]).toBe("specstar[graphql,magic,postgresql,s3]>=0.8.2");
   });
 
   it("s3 with graphql off → s3 + magic only", () => {
     const deps = computeDependencies(
       makeState({ storage: "s3", enableGraphql: false }),
     );
-    expect(deps[0]).toBe("autocrud[magic,s3]>=0.8.2");
+    expect(deps[0]).toBe("specstar[magic,s3]>=0.8.2");
   });
 });
 
@@ -162,7 +162,7 @@ describe("generatePyprojectToml", () => {
 describe("generateImports", () => {
   it("always imports crud and Schema", () => {
     const imports = generateImports(makeState());
-    expect(imports).toContain("from autocrud import");
+    expect(imports).toContain("from specstar import");
     expect(imports).toContain("Schema");
     expect(imports).toContain("crud");
   });
@@ -200,15 +200,15 @@ describe("generateImports", () => {
     expect(imports).toContain("OnDelete");
   });
 
-  it("imports Binary from autocrud.types", () => {
+  it("imports Binary from specstar.types", () => {
     const model = makeModel({
       fields: [makeField({ type: "Binary" })],
     });
     const imports = generateImports(makeState({ models: [model] }));
-    expect(imports).toContain("from autocrud.types import Binary");
+    expect(imports).toContain("from specstar.types import Binary");
   });
 
-  it("imports RefRevision from autocrud.types", () => {
+  it("imports RefRevision from specstar.types", () => {
     const model = makeModel({
       fields: [
         makeField({
@@ -579,7 +579,7 @@ describe("generateConfigureCall", () => {
         storageConfig: {},
       }),
     );
-    expect(result).toContain('bucket="autocrud"');
+    expect(result).toContain('bucket="specstar"');
     expect(result).toContain('endpoint_url="http://localhost:9000"');
     expect(result).toContain('access_key_id="minioadmin"');
     expect(result).toContain('secret_access_key="minioadmin"');
@@ -689,7 +689,7 @@ describe("generateAddModelCall", () => {
 describe("generateMainPy", () => {
   it("generates valid structure for default state", () => {
     const code = generateMainPy(DEFAULT_WIZARD_STATE);
-    expect(code).toContain("from autocrud import");
+    expect(code).toContain("from specstar import");
     expect(code).toContain("class Todo");
     expect(code).toContain("crud.configure(encoding=Encoding.msgpack)");
     expect(code).toContain("crud.add_model(");
@@ -1298,8 +1298,8 @@ describe("F1: PostgreSQL+S3 full params", () => {
     expect(result).toContain('s3_endpoint_url="http://localhost:9000"');
     expect(result).toContain('table_prefix=""');
     expect(result).toContain('blob_prefix="blobs/"');
-    // blob_bucket always emitted, fallback to s3_bucket or 'autocrud'
-    expect(result).toContain('blob_bucket="autocrud"');
+    // blob_bucket always emitted, fallback to s3_bucket or 'specstar'
+    expect(result).toContain('blob_bucket="specstar"');
   });
 });
 
@@ -1409,7 +1409,7 @@ describe("F2: Custom SimpleStorage", () => {
     expect(deps).not.toContain("redis"); // no bare redis
   });
 
-  it("custom storage memory+memory → autocrud[graphql] only", () => {
+  it("custom storage memory+memory → specstar[graphql] only", () => {
     const deps = computeDependencies(
       makeState({
         storage: "custom",
@@ -1419,10 +1419,10 @@ describe("F2: Custom SimpleStorage", () => {
         },
       }),
     );
-    expect(deps[0]).toBe("autocrud[graphql]>=0.8.2");
+    expect(deps[0]).toBe("specstar[graphql]>=0.8.2");
   });
 
-  it("custom storage memory+memory graphql off → base autocrud", () => {
+  it("custom storage memory+memory graphql off → base specstar", () => {
     const deps = computeDependencies(
       makeState({
         storage: "custom",
@@ -1433,7 +1433,7 @@ describe("F2: Custom SimpleStorage", () => {
         },
       }),
     );
-    expect(deps[0]).toBe("autocrud>=0.8.2");
+    expect(deps[0]).toBe("specstar>=0.8.2");
   });
 
   it("custom storage README description", () => {
@@ -1574,7 +1574,7 @@ describe("F2: Custom SimpleStorage", () => {
       }),
     );
     expect(result).toContain(
-      'S3ResourceStore(bucket="autocrud", prefix=f"{model_name}/"',
+      'S3ResourceStore(bucket="specstar", prefix=f"{model_name}/"',
     );
     expect(result).toContain('access_key_id="minioadmin"');
     expect(result).toContain('region_name="us-east-1"');
@@ -2245,14 +2245,14 @@ describe("F6: computeDependencies with MQ", () => {
     const deps = computeDependencies(
       makeState({ messageQueue: "simple", enableGraphql: false }),
     );
-    expect(deps[0]).toBe("autocrud>=0.8.2");
+    expect(deps[0]).toBe("specstar>=0.8.2");
   });
 
   it("none → no extra MQ deps", () => {
     const deps = computeDependencies(
       makeState({ messageQueue: "none", enableGraphql: false }),
     );
-    expect(deps[0]).toBe("autocrud>=0.8.2");
+    expect(deps[0]).toBe("specstar>=0.8.2");
   });
 
   it("rabbitmq + graphql → sorted extras", () => {
@@ -2265,7 +2265,7 @@ describe("F6: computeDependencies with MQ", () => {
 });
 
 describe("F6: generateImports with Job", () => {
-  it("form-mode isJob → imports Job and Resource from autocrud.types", () => {
+  it("form-mode isJob → imports Job and Resource from specstar.types", () => {
     const model = makeModel({
       name: "MyTask",
       inputMode: "form",
@@ -2280,7 +2280,7 @@ describe("F6: generateImports with Job", () => {
     );
     expect(result).toContain("Job");
     expect(result).toContain("Resource");
-    expect(result).toContain("from autocrud.types import");
+    expect(result).toContain("from specstar.types import");
   });
 
   it("code-mode with Job[ → imports Job", () => {
@@ -2606,7 +2606,7 @@ describe("F6: generateMainPy e2e with Job", () => {
     );
 
     // Imports
-    expect(code).toContain("from autocrud.types import Job, Resource");
+    expect(code).toContain("from specstar.types import Job, Resource");
     expect(code).toContain("SimpleMessageQueueFactory");
 
     // Payload + Job

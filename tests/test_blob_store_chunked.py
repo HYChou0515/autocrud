@@ -11,8 +11,8 @@ from collections.abc import Generator
 import pytest
 from msgspec import UNSET
 
-from autocrud.resource_manager.basic import IBlobStore
-from autocrud.resource_manager.blob_store.simple import DiskBlobStore, MemoryBlobStore
+from specstar.resource_manager.basic import IBlobStore
+from specstar.resource_manager.blob_store.simple import DiskBlobStore, MemoryBlobStore
 
 # ---------------------------------------------------------------------------
 # Fixtures

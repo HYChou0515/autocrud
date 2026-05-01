@@ -1,6 +1,6 @@
 # Validation (validator / IValidator / ValidationError)
 
-AutoCRUD supports **custom validation** on write operations (create/update/patch/modify),
+SpecStar supports **custom validation** on write operations (create/update/patch/modify),
 in addition to msgspec's own type-level validation.
 
 ## Two layers of validation
@@ -9,13 +9,13 @@ in addition to msgspec's own type-level validation.
 - Happens when decoding / constructing your `msgspec.Struct`
 - Errors are typically `msgspec.ValidationError`
 
-### B) Domain/business validation (AutoCRUD)
+### B) Domain/business validation (SpecStar)
 - Your custom rule checks (e.g. cross-field constraints, invariants)
-- Should raise `autocrud.types.ValidationError` (or `ValueError`, which AutoCRUD will wrap)
+- Should raise `specstar.types.ValidationError` (or `ValueError`, which SpecStar will wrap)
 
 ## Validator forms accepted
 
-Depending on where you attach it, AutoCRUD accepts validators in these forms:
+Depending on where you attach it, SpecStar accepts validators in these forms:
 
 ### 1) Callable
 A simple function:
@@ -29,7 +29,7 @@ def validate_user(u: User) -> None:
 ### 2) `IValidator` implementation
 
 ```python
-from autocrud.types import IValidator
+from specstar.types import IValidator
 
 class PriceValidator(IValidator):
     def validate(self, data) -> None:
@@ -39,7 +39,7 @@ class PriceValidator(IValidator):
 
 ### 3) Pydantic model (bridge)
 
-If you register a Pydantic `BaseModel` as the model type, AutoCRUD can use it as a validator
+If you register a Pydantic `BaseModel` as the model type, SpecStar can use it as a validator
 (by converting it and validating through Pydantic), when no validator is provided elsewhere.
 
 ## Practical example
@@ -47,7 +47,7 @@ If you register a Pydantic `BaseModel` as the model type, AutoCRUD can use it as
 A useful mental model is:
 
 - let **msgspec** check whether the payload shape and field types are valid
-- let **AutoCRUD validators** check whether the data makes sense for your business rules
+- let **SpecStar validators** check whether the data makes sense for your business rules
 
 For example:
 
@@ -90,13 +90,13 @@ crud.add_model(schema)
 
 ### `ValidationError`
 
-AutoCRUD uses `ValidationError` (a `ValueError` subclass) for domain validation failures.
+SpecStar uses `ValidationError` (a `ValueError` subclass) for domain validation failures.
 This is intentionally distinct from `msgspec.ValidationError`.
 
 Practical rule:
 
 * in validators, raise `ValueError` with a clear message
-* AutoCRUD will surface it as `ValidationError` (or pass through if already `ValidationError`)
+* SpecStar will surface it as `ValidationError` (or pass through if already `ValidationError`)
 
 ## Common debugging pattern
 
@@ -108,7 +108,7 @@ If a write is rejected and you are not sure why, check the failure in this order
 
 See also:
 
-- [Constraints](/autocrud/howto/constraints)
-- [Troubleshooting](/autocrud/howto/troubleshooting)
-- [Pydantic integration](/autocrud/howto/pydantic-integration)
+- [Constraints](/specstar/howto/constraints)
+- [Troubleshooting](/specstar/howto/troubleshooting)
+- [Pydantic integration](/specstar/howto/pydantic-integration)
 

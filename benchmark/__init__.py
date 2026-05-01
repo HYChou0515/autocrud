@@ -1,6 +1,6 @@
-"""AutoCRUD Configurable CRUD Benchmark System.
+"""SpecStar Configurable CRUD Benchmark System.
 
-A YAML-config-driven benchmark framework for measuring AutoCRUD CRUD
+A YAML-config-driven benchmark framework for measuring SpecStar CRUD
 operation performance across different storage backends, encodings, model
 complexities, and operation types.
 

@@ -118,7 +118,7 @@ def upload_to_pypi():
 
 def main():
     """主函數"""
-    print("🚀 AutoCRUD PyPI 發布工具")
+    print("🚀 SpecStar PyPI 發布工具")
     print("=" * 50)
 
     # 檢查前置條件

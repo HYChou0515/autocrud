@@ -1,6 +1,6 @@
 # Data model
 
-AutoCRUD is built around a single idea:
+SpecStar is built around a single idea:
 
 **`ResourceManager` is the only place you manipulate resources.**
 
@@ -45,7 +45,7 @@ Resource-level metadata (`ResourceMeta`) is accessed via dedicated endpoints (or
 
 ### `revision_id`
 
-AutoCRUD uses a human-readable revision identifier:
+SpecStar uses a human-readable revision identifier:
 
 * `revision_id = "{resource_id}:{n}"`
 
@@ -82,11 +82,11 @@ r1 -> r2 -> r4 (HEAD)
            -> r3
 ```
 
-So AutoCRUD maintains **a revision DAG**, not just a linear history.
+So SpecStar maintains **a revision DAG**, not just a linear history.
 
 ## Revision status: `draft` vs `stable`
 
-AutoCRUD uses `RevisionStatus` to support draft workflows:
+SpecStar uses `RevisionStatus` to support draft workflows:
 
 * `draft`: editable in-place (via `modify()`), no restrictions
 * `stable`: immutable data by default (data cannot be modified in-place)
@@ -104,7 +104,7 @@ This gives you a clean workflow:
 
 ## ResourceMeta vs RevisionInfo
 
-AutoCRUD stores two levels of metadata:
+SpecStar stores two levels of metadata:
 
 ### Resource-level meta: `ResourceMeta`
 
@@ -154,7 +154,7 @@ Important: `updated_time` may differ from `created_time` **only** when a revisio
 
 ### `delete()`
 
-AutoCRUD uses soft delete:
+SpecStar uses soft delete:
 
 * Only flips `ResourceMeta.is_deleted = True`
 * Does **not** create a new revision
@@ -168,7 +168,7 @@ AutoCRUD uses soft delete:
 
 ## Binary payloads (blob store)
 
-AutoCRUD supports efficient binary storage via `Binary` fields:
+SpecStar supports efficient binary storage via `Binary` fields:
 
 * On `create()` / `update()` / `modify()`, `ResourceManager` scans the data object
 * Any `Binary(data=...)` is:
@@ -191,5 +191,5 @@ Migration happens at the `ResourceManager` layer (not in storage):
   * `RevisionInfo.schema_version`
 * Migration updates `indexed_data` based on migrated data
 
-If a user requests an old revision, AutoCRUD attempts to decode it using the current schema.
+If a user requests an old revision, SpecStar attempts to decode it using the current schema.
 If decoding fails, the revision is ignored (not returned as 404). Use migration APIs to fix it.

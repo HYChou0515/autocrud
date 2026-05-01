@@ -8,8 +8,8 @@ from fastapi import FastAPI
 from fastapi.testclient import TestClient
 from msgspec import Struct, to_builtins
 
-from autocrud.crud.core import AutoCRUD
-from autocrud.resource_manager.storage_factory import MemoryStorageFactory
+from specstar.crud.core import SpecStar
+from specstar.resource_manager.storage_factory import MemoryStorageFactory
 
 
 # 測試數據模型
@@ -64,12 +64,12 @@ def test_data():
 
 
 @pytest.fixture
-def autocrud_with_data(test_data: list[User]):
-    """創建包含測試數據的 AutoCRUD 實例"""
-    autocrud = AutoCRUD(storage_factory=MemoryStorageFactory())
+def specstar_with_data(test_data: list[User]):
+    """創建包含測試數據的 SpecStar 實例"""
+    specstar = SpecStar(storage_factory=MemoryStorageFactory())
 
     # 註冊用戶模型
-    autocrud.add_model(
+    specstar.add_model(
         User,
         name="user",
         indexed_fields=[
@@ -80,14 +80,14 @@ def autocrud_with_data(test_data: list[User]):
         ],
     )
 
-    return autocrud
+    return specstar
 
 
 @pytest.fixture
-def test_client(autocrud_with_data: AutoCRUD, test_data: list[User]):
+def test_client(specstar_with_data: SpecStar, test_data: list[User]):
     """創建 FastAPI 測試客戶端"""
     app = FastAPI()
-    autocrud_with_data.apply(app)
+    specstar_with_data.apply(app)
 
     client = TestClient(app)
 

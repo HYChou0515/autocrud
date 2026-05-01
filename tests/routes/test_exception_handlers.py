@@ -12,20 +12,20 @@ import pytest
 from fastapi import APIRouter, FastAPI, HTTPException
 from fastapi.testclient import TestClient
 
-from autocrud.crud.core import AutoCRUD
-from autocrud.crud.route_templates.create import CreateRouteTemplate
-from autocrud.crud.route_templates.delete import (
+from specstar.crud.core import SpecStar
+from specstar.crud.route_templates.create import CreateRouteTemplate
+from specstar.crud.route_templates.delete import (
     DeleteRouteTemplate,
     PermanentlyDeleteRouteTemplate,
     RestoreRouteTemplate,
 )
-from autocrud.crud.route_templates.exception_handlers import to_http_exception
-from autocrud.crud.route_templates.get import ReadRouteTemplate
-from autocrud.crud.route_templates.patch import PatchRouteTemplate
-from autocrud.crud.route_templates.search import ListRouteTemplate
-from autocrud.crud.route_templates.switch import SwitchRevisionRouteTemplate
-from autocrud.crud.route_templates.update import UpdateRouteTemplate
-from autocrud.types import (
+from specstar.crud.route_templates.exception_handlers import to_http_exception
+from specstar.crud.route_templates.get import ReadRouteTemplate
+from specstar.crud.route_templates.patch import PatchRouteTemplate
+from specstar.crud.route_templates.search import ListRouteTemplate
+from specstar.crud.route_templates.switch import SwitchRevisionRouteTemplate
+from specstar.crud.route_templates.update import UpdateRouteTemplate
+from specstar.types import (
     CannotModifyResourceError,
     DuplicateResourceError,
     PermissionDeniedError,
@@ -55,7 +55,7 @@ class TestToHttpException:
         assert exc.status_code == 422
         assert "bad type" in exc.detail
 
-    def test_autocrud_validation_error(self):
+    def test_specstar_validation_error(self):
         exc = to_http_exception(ValidationError("custom validation failed"))
         assert exc.status_code == 422
         assert "custom validation failed" in exc.detail
@@ -210,22 +210,22 @@ class Item(msgspec.Struct):
 @pytest.fixture
 def app_and_client():
     """Build a full CRUD app for *Item* and return (app, client)."""
-    crud = AutoCRUD(model_naming="kebab")
-    crud.add_route_template(CreateRouteTemplate())
-    crud.add_route_template(ReadRouteTemplate())
-    crud.add_route_template(UpdateRouteTemplate())
-    crud.add_route_template(DeleteRouteTemplate())
-    crud.add_route_template(PermanentlyDeleteRouteTemplate())
-    crud.add_route_template(RestoreRouteTemplate())
-    crud.add_route_template(ListRouteTemplate())
-    crud.add_route_template(SwitchRevisionRouteTemplate())
-    crud.add_route_template(PatchRouteTemplate())
+    spec = SpecStar(model_naming="kebab")
+    spec.add_route_template(CreateRouteTemplate())
+    spec.add_route_template(ReadRouteTemplate())
+    spec.add_route_template(UpdateRouteTemplate())
+    spec.add_route_template(DeleteRouteTemplate())
+    spec.add_route_template(PermanentlyDeleteRouteTemplate())
+    spec.add_route_template(RestoreRouteTemplate())
+    spec.add_route_template(ListRouteTemplate())
+    spec.add_route_template(SwitchRevisionRouteTemplate())
+    spec.add_route_template(PatchRouteTemplate())
 
-    crud.add_model(Item)
+    spec.add_model(Item)
 
     app = FastAPI()
     router = APIRouter()
-    crud.apply(router)
+    spec.apply(router)
     app.include_router(router)
 
     return app, TestClient(app)

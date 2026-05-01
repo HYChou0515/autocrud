@@ -20,8 +20,8 @@ from fastapi import Body, FastAPI
 from fastapi.testclient import TestClient
 from msgspec import Struct
 
-from autocrud.crud.core import AutoCRUD
-from autocrud.types import BackgroundTaskAccepted
+from specstar.crud.core import SpecStar
+from specstar.types import BackgroundTaskAccepted
 
 # ---------------------------------------------------------------------------
 # Test Models
@@ -43,17 +43,17 @@ class GenerateRequest(Struct):
 # ---------------------------------------------------------------------------
 
 
-def _make_crud(**kwargs) -> AutoCRUD:
-    return AutoCRUD(
+def _make_crud(**kwargs) -> SpecStar:
+    return SpecStar(
         default_user="tester",
         default_now=dt.datetime.now,
         **kwargs,
     )
 
 
-def _build_app(crud: AutoCRUD) -> FastAPI:
+def _build_app(spec: SpecStar) -> FastAPI:
     app = FastAPI()
-    crud.apply(app)
+    spec.apply(app)
     return app
 
 
@@ -63,32 +63,32 @@ def _build_app(crud: AutoCRUD) -> FastAPI:
 
 
 class TestBackgroundCreateActionDecorator:
-    """@crud.create_action(async_mode='background') stores metadata."""
+    """@spec.create_action(async_mode='background') stores metadata."""
 
     def test_async_mode_stored_in_pending_action(self):
-        crud = _make_crud()
-        crud.add_model(Article, name="article")
+        spec = _make_crud()
+        spec.add_model(Article, name="article")
 
-        @crud.create_action(
+        @spec.create_action(
             "article", async_mode="background", label="Generate Article"
         )
         def generate_article(body: GenerateRequest = Body(...)) -> Article:
             return Article(title=body.title, content="generated")
 
-        assert len(crud._pending_create_actions) == 1
-        action = crud._pending_create_actions[0]
+        assert len(spec._pending_create_actions) == 1
+        action = spec._pending_create_actions[0]
         assert action.async_mode == "background"
         assert action.label == "Generate Article"
 
     def test_default_async_mode_is_none(self):
-        crud = _make_crud()
-        crud.add_model(Article, name="article")
+        spec = _make_crud()
+        spec.add_model(Article, name="article")
 
-        @crud.create_action("article")
+        @spec.create_action("article")
         def create_article(body: Article = Body(...)) -> Article:
             return body
 
-        action = crud._pending_create_actions[0]
+        action = spec._pending_create_actions[0]
         assert action.async_mode is None
 
 
@@ -101,17 +101,17 @@ class TestBackgroundNoJobModel:
     """async_mode='background' does NOT generate a Job model."""
 
     def test_no_job_model_registered(self):
-        crud = _make_crud()
-        crud.add_model(Article, name="article")
+        spec = _make_crud()
+        spec.add_model(Article, name="article")
 
-        @crud.create_action("article", async_mode="background", label="Generate")
+        @spec.create_action("article", async_mode="background", label="Generate")
         def generate(body: GenerateRequest = Body(...)) -> Article:
             return Article(title=body.title, content="bg")
 
-        app = _build_app(crud)
+        app = _build_app(spec)
 
         # No resource manager with "job" in the name should exist
-        job_rms = [name for name in crud.resource_managers if "job" in name.lower()]
+        job_rms = [name for name in spec.resource_managers if "job" in name.lower()]
         assert job_rms == [], f"Unexpected Job resources: {job_rms}"
 
 
@@ -124,14 +124,14 @@ class TestBackgroundCreateActionEndpoint:
     """POST to a background action returns 202 immediately."""
 
     def test_sync_handler_returns_202(self):
-        crud = _make_crud()
-        crud.add_model(Article, name="article")
+        spec = _make_crud()
+        spec.add_model(Article, name="article")
 
-        @crud.create_action("article", async_mode="background", label="Generate")
+        @spec.create_action("article", async_mode="background", label="Generate")
         def generate(body: GenerateRequest = Body(...)) -> Article:
             return Article(title=body.title, content="bg-sync")
 
-        app = _build_app(crud)
+        app = _build_app(spec)
         client = TestClient(app)
 
         resp = client.post(
@@ -143,14 +143,14 @@ class TestBackgroundCreateActionEndpoint:
         assert data["message"] == "Task accepted"
 
     def test_async_handler_returns_202(self):
-        crud = _make_crud()
-        crud.add_model(Article, name="article")
+        spec = _make_crud()
+        spec.add_model(Article, name="article")
 
-        @crud.create_action("article", async_mode="background", label="Async Generate")
+        @spec.create_action("article", async_mode="background", label="Async Generate")
         async def async_generate(body: GenerateRequest = Body(...)) -> Article:
             return Article(title=body.title, content="bg-async")
 
-        app = _build_app(crud)
+        app = _build_app(spec)
         client = TestClient(app)
 
         resp = client.post(
@@ -171,14 +171,14 @@ class TestBackgroundAutoCreate:
     """Background handler creates target resource after completion."""
 
     def test_sync_handler_creates_resource(self):
-        crud = _make_crud()
-        crud.add_model(Article, name="article")
+        spec = _make_crud()
+        spec.add_model(Article, name="article")
 
-        @crud.create_action("article", async_mode="background", label="Generate")
+        @spec.create_action("article", async_mode="background", label="Generate")
         def generate(body: GenerateRequest = Body(...)) -> Article:
             return Article(title=body.title, content="bg-created")
 
-        app = _build_app(crud)
+        app = _build_app(spec)
         # TestClient runs background tasks synchronously before returning
         client = TestClient(app)
 
@@ -197,14 +197,14 @@ class TestBackgroundAutoCreate:
         assert found, "Background task did not create the article"
 
     def test_async_handler_creates_resource(self):
-        crud = _make_crud()
-        crud.add_model(Article, name="article")
+        spec = _make_crud()
+        spec.add_model(Article, name="article")
 
-        @crud.create_action("article", async_mode="background", label="Async Generate")
+        @spec.create_action("article", async_mode="background", label="Async Generate")
         async def async_generate(body: GenerateRequest = Body(...)) -> Article:
             return Article(title=body.title, content="async-bg-created")
 
-        app = _build_app(crud)
+        app = _build_app(spec)
         client = TestClient(app)
 
         resp = client.post(
@@ -229,15 +229,15 @@ class TestBackgroundReturnsNone:
     """When the handler returns None, no resource is created."""
 
     def test_sync_handler_returns_none_no_create(self):
-        crud = _make_crud()
-        crud.add_model(Article, name="article")
+        spec = _make_crud()
+        spec.add_model(Article, name="article")
 
-        @crud.create_action("article", async_mode="background", label="Maybe Create")
+        @spec.create_action("article", async_mode="background", label="Maybe Create")
         def maybe_create(body: GenerateRequest = Body(...)):
             # Explicitly return None → no auto-create
             return None
 
-        app = _build_app(crud)
+        app = _build_app(spec)
         client = TestClient(app)
 
         resp = client.post(
@@ -251,14 +251,14 @@ class TestBackgroundReturnsNone:
         assert results == []
 
     def test_async_handler_returns_none_no_create(self):
-        crud = _make_crud()
-        crud.add_model(Article, name="article")
+        spec = _make_crud()
+        spec.add_model(Article, name="article")
 
-        @crud.create_action("article", async_mode="background", label="Async Maybe")
+        @spec.create_action("article", async_mode="background", label="Async Maybe")
         async def async_maybe(body: GenerateRequest = Body(...)):
             return None
 
-        app = _build_app(crud)
+        app = _build_app(spec)
         client = TestClient(app)
 
         resp = client.post(
@@ -281,18 +281,18 @@ class TestBackgroundOpenAPI:
     """OpenAPI extension metadata for background create actions."""
 
     def test_openapi_has_async_mode_background(self):
-        crud = _make_crud()
-        crud.add_model(Article, name="article")
+        spec = _make_crud()
+        spec.add_model(Article, name="article")
 
-        @crud.create_action("article", async_mode="background", label="Generate")
+        @spec.create_action("article", async_mode="background", label="Generate")
         def generate(body: GenerateRequest = Body(...)) -> Article:
             return Article(title=body.title, content="bg")
 
-        app = _build_app(crud)
-        crud.openapi(app)
+        app = _build_app(spec)
+        spec.openapi(app)
         schema = app.openapi()
 
-        actions = schema.get("x-autocrud-custom-create-actions", {})
+        actions = schema.get("x-specstar-custom-create-actions", {})
         assert "article" in actions
         article_actions = actions["article"]
         assert len(article_actions) == 1
@@ -302,20 +302,20 @@ class TestBackgroundOpenAPI:
         assert "jobResourceName" not in action_info
 
     def test_openapi_no_async_create_jobs_for_background(self):
-        """x-autocrud-async-create-jobs should NOT contain background actions."""
-        crud = _make_crud()
-        crud.add_model(Article, name="article")
+        """x-specstar-async-create-jobs should NOT contain background actions."""
+        spec = _make_crud()
+        spec.add_model(Article, name="article")
 
-        @crud.create_action("article", async_mode="background", label="Generate")
+        @spec.create_action("article", async_mode="background", label="Generate")
         def generate(body: GenerateRequest = Body(...)) -> Article:
             return Article(title=body.title, content="bg")
 
-        app = _build_app(crud)
-        crud.openapi(app)
+        app = _build_app(spec)
+        spec.openapi(app)
         schema = app.openapi()
 
-        # x-autocrud-async-create-jobs should be absent or empty
-        async_jobs = schema.get("x-autocrud-async-create-jobs", {})
+        # x-specstar-async-create-jobs should be absent or empty
+        async_jobs = schema.get("x-specstar-async-create-jobs", {})
         assert async_jobs == {}
 
 
@@ -328,14 +328,14 @@ class TestBackgroundErrorHandling:
     """Errors in background tasks are logged, not propagated."""
 
     def test_sync_handler_error_does_not_crash(self):
-        crud = _make_crud()
-        crud.add_model(Article, name="article")
+        spec = _make_crud()
+        spec.add_model(Article, name="article")
 
-        @crud.create_action("article", async_mode="background", label="Failing")
+        @spec.create_action("article", async_mode="background", label="Failing")
         def failing(body: GenerateRequest = Body(...)) -> Article:
             raise ValueError("Something went wrong")
 
-        app = _build_app(crud)
+        app = _build_app(spec)
         client = TestClient(app, raise_server_exceptions=False)
 
         resp = client.post(
@@ -351,14 +351,14 @@ class TestBackgroundErrorHandling:
         assert results == []
 
     def test_async_handler_error_does_not_crash(self):
-        crud = _make_crud()
-        crud.add_model(Article, name="article")
+        spec = _make_crud()
+        spec.add_model(Article, name="article")
 
-        @crud.create_action("article", async_mode="background", label="Async Failing")
+        @spec.create_action("article", async_mode="background", label="Async Failing")
         async def async_failing(body: GenerateRequest = Body(...)) -> Article:
             raise RuntimeError("Async failure")
 
-        app = _build_app(crud)
+        app = _build_app(spec)
         client = TestClient(app, raise_server_exceptions=False)
 
         resp = client.post(
@@ -381,18 +381,18 @@ class TestBackgroundMixedActions:
     """Background and sync actions coexist on the same resource."""
 
     def test_background_and_sync_both_work(self):
-        crud = _make_crud()
-        crud.add_model(Article, name="article")
+        spec = _make_crud()
+        spec.add_model(Article, name="article")
 
-        @crud.create_action("article", label="Sync Import")
+        @spec.create_action("article", label="Sync Import")
         def sync_import(body: Article = Body(...)) -> Article:
             return body
 
-        @crud.create_action("article", async_mode="background", label="BG Generate")
+        @spec.create_action("article", async_mode="background", label="BG Generate")
         def bg_generate(body: GenerateRequest = Body(...)) -> Article:
             return Article(title=body.title, content="bg")
 
-        app = _build_app(crud)
+        app = _build_app(spec)
         client = TestClient(app)
 
         # Sync action returns 200 with RevisionInfo
@@ -449,14 +449,14 @@ class TestBackgroundTaskIsSync:
     def test_async_handler_bg_task_is_not_coroutine(self):
         """Even when the handler is async def, the task added to
         BackgroundTasks must be a plain (sync) callable."""
-        crud = _make_crud()
-        crud.add_model(Article, name="article")
+        spec = _make_crud()
+        spec.add_model(Article, name="article")
 
-        @crud.create_action("article", async_mode="background", label="Generate")
+        @spec.create_action("article", async_mode="background", label="Generate")
         async def generate(body: GenerateRequest = Body(...)) -> Article:
             return Article(title=body.title, content="bg")
 
-        app = _build_app(crud)
+        app = _build_app(spec)
 
         # Patch BackgroundTasks.add_task to capture the function
         captured_tasks: list = []
@@ -489,14 +489,14 @@ class TestBackgroundTaskIsSync:
         )
 
     def test_sync_handler_bg_task_is_not_coroutine(self):
-        crud = _make_crud()
-        crud.add_model(Article, name="article")
+        spec = _make_crud()
+        spec.add_model(Article, name="article")
 
-        @crud.create_action("article", async_mode="background", label="Generate")
+        @spec.create_action("article", async_mode="background", label="Generate")
         def generate(body: GenerateRequest = Body(...)) -> Article:
             return Article(title=body.title, content="bg")
 
-        app = _build_app(crud)
+        app = _build_app(spec)
 
         captured_tasks: list = []
         from starlette.background import BackgroundTasks

@@ -13,19 +13,19 @@ from dataclasses import dataclass
 
 import pytest
 
-from autocrud.events import (
+from specstar.events import (
     BeforeCreate,
     BeforeDelete,
     BeforeGet,
     BeforeLoad,
 )
-from autocrud.permission.acl import ACLPermission, ACLPermissionChecker, Policy
-from autocrud.permission.checker import PermissionResult
-from autocrud.resource_manager.core import ResourceManager, SimpleStorage
-from autocrud.resource_manager.meta_store.simple import MemoryMetaStore
-from autocrud.resource_manager.resource_store.simple import MemoryResourceStore
-from autocrud.resource_manager.storage_factory import MemoryStorageFactory
-from autocrud.types import (
+from specstar.permission.acl import ACLPermission, ACLPermissionChecker, Policy
+from specstar.permission.checker import PermissionResult
+from specstar.resource_manager.core import ResourceManager, SimpleStorage
+from specstar.resource_manager.meta_store.simple import MemoryMetaStore
+from specstar.resource_manager.resource_store.simple import MemoryResourceStore
+from specstar.resource_manager.storage_factory import MemoryStorageFactory
+from specstar.types import (
     PermissionDeniedError,
     ResourceAction,
 )
@@ -333,7 +333,7 @@ class TestResourceManagerCRUDOperations(TestCaseUtil):
                 doc = TestDocument(title=f"Search Test Doc {i}", content=f"Content {i}")
                 dm.create(doc)
 
-        from autocrud.query_types import ResourceMetaSearchQuery
+        from specstar.query_types import ResourceMetaSearchQuery
 
         # Alice 可以搜索
         with dm.meta_provide("alice", current_time):
@@ -385,7 +385,7 @@ class TestRootUserOperations(TestCaseUtil):
             assert meta.resource_id == doc_id
 
             # Root 可以搜索
-            from autocrud.query_types import ResourceMetaSearchQuery
+            from specstar.query_types import ResourceMetaSearchQuery
 
             query = ResourceMetaSearchQuery(limit=10)
             results = dm.search_resources(query)

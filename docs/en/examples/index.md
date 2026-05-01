@@ -2,9 +2,9 @@
 
 This page helps you find the most useful runnable examples in the repository.
 
-If you want to learn AutoCRUD by copying a working project instead of starting from a blank file, begin here.
+If you want to learn SpecStar by copying a working project instead of starting from a blank file, begin here.
 
-If your first question is how to choose metadata, resource, blob, and queue backends, read the [backend setup guide](/autocrud/guides/backend-setup) before picking a production-style example.
+If your first question is how to choose metadata, resource, blob, and queue backends, read the [backend setup guide](/specstar/guides/backend-setup) before picking a production-style example.
 
 ---
 
@@ -24,11 +24,11 @@ If you are new to the project, this is the suggested reading and running order:
 
 | Example | What it demonstrates | Run command |
 | --- | --- | --- |
-| [Basic RPG API](https://github.com/HYChou0515/autocrud/blob/master/examples/rpg_game_api.py) | core CRUD setup, refs, search, GraphQL, blobs, migrations, custom actions | `uv run python examples/rpg_game_api.py` |
-| [Pydantic RPG API](https://github.com/HYChou0515/autocrud/blob/master/examples/rpg_game_pydantic_api.py) | using Pydantic models, validators, discriminated unions, GraphQL, blob support | `uv run python examples/rpg_game_pydantic_api.py` |
-| [S3 backend example](https://github.com/HYChou0515/autocrud/blob/master/examples/rpg_game_s3_api.py) | object storage for data and binary files, MinIO or AWS-style deployment | `uv run python examples/rpg_game_s3_api.py` |
-| [PostgreSQL + S3 example](https://github.com/HYChou0515/autocrud/blob/master/examples/rpg_game_postgres_s3_api.py) | production-oriented metadata queries in PostgreSQL; use it as a reference when your deployment prefers object storage for payloads and blobs | `uv run python examples/rpg_game_postgres_s3_api.py` |
-| [Celery queue example](https://github.com/HYChou0515/autocrud/blob/master/examples/rpg_game_celery_api.py) | worker-based background jobs; useful when your platform already uses Celery instead of the default RabbitMQ recommendation | `uv run python examples/rpg_game_celery_api.py` |
+| [Basic RPG API](https://github.com/HYChou0515/specstar/blob/master/examples/rpg_game_api.py) | core CRUD setup, refs, search, GraphQL, blobs, migrations, custom actions | `uv run python examples/rpg_game_api.py` |
+| [Pydantic RPG API](https://github.com/HYChou0515/specstar/blob/master/examples/rpg_game_pydantic_api.py) | using Pydantic models, validators, discriminated unions, GraphQL, blob support | `uv run python examples/rpg_game_pydantic_api.py` |
+| [S3 backend example](https://github.com/HYChou0515/specstar/blob/master/examples/rpg_game_s3_api.py) | object storage for data and binary files, MinIO or AWS-style deployment | `uv run python examples/rpg_game_s3_api.py` |
+| [PostgreSQL + S3 example](https://github.com/HYChou0515/specstar/blob/master/examples/rpg_game_postgres_s3_api.py) | production-oriented metadata queries in PostgreSQL; use it as a reference when your deployment prefers object storage for payloads and blobs | `uv run python examples/rpg_game_postgres_s3_api.py` |
+| [Celery queue example](https://github.com/HYChou0515/specstar/blob/master/examples/rpg_game_celery_api.py) | worker-based background jobs; useful when your platform already uses Celery instead of the default RabbitMQ recommendation | `uv run python examples/rpg_game_celery_api.py` |
 
 ---
 
@@ -36,7 +36,7 @@ If you are new to the project, this is the suggested reading and running order:
 
 ### Choose the basic RPG API if you want:
 
-- the fastest path to understanding AutoCRUD
+- the fastest path to understanding SpecStar
 - a broad overview of features in one file
 - an example that matches the main documentation flow
 
@@ -70,9 +70,9 @@ Most examples expose a FastAPI application, so the next step is usually to open:
 
 Then compare what you see with these guides:
 
-- [Routes generation](/autocrud/howto/routes)
-- [Permissions](/autocrud/howto/permissions)
-- [Event handlers](/autocrud/howto/event-handlers)
-- [Query builder](/autocrud/howto/query-builder)
-- [GraphQL](/autocrud/howto/graphql)
-- [Binary data](/autocrud/howto/binary-data)
+- [Routes generation](/specstar/howto/routes)
+- [Permissions](/specstar/howto/permissions)
+- [Event handlers](/specstar/howto/event-handlers)
+- [Query builder](/specstar/howto/query-builder)
+- [GraphQL](/specstar/howto/graphql)
+- [Binary data](/specstar/howto/binary-data)

@@ -4,18 +4,18 @@ import json
 import pytest
 from msgspec import Struct
 
-from autocrud import AutoCRUD
-from autocrud.backend import (
+from specstar import SpecStar
+from specstar.backend import (
     BackendBinding,
     BackendConfig,
     BackendProvider,
     ConnectionProfile,
     register_backend_provider,
 )
-from autocrud.message_queue.simple import SimpleMessageQueueFactory
-from autocrud.resource_manager.blob_store.simple import DiskBlobStore, MemoryBlobStore
-from autocrud.resource_manager.meta_store.simple import MemoryMetaStore
-from autocrud.resource_manager.resource_store.simple import MemoryResourceStore
+from specstar.message_queue.simple import SimpleMessageQueueFactory
+from specstar.resource_manager.blob_store.simple import DiskBlobStore, MemoryBlobStore
+from specstar.resource_manager.meta_store.simple import MemoryMetaStore
+from specstar.resource_manager.resource_store.simple import MemoryResourceStore
 
 
 class User(Struct):
@@ -43,13 +43,13 @@ def test_configure_with_backend_config_and_json_file(tmp_path):
         )
     )
 
-    crud = AutoCRUD(backend=config_path)
+    spec = SpecStar(backend=config_path)
 
-    assert isinstance(crud.blob_store, DiskBlobStore)
-    assert isinstance(crud.message_queue_factory, SimpleMessageQueueFactory)
+    assert isinstance(spec.blob_store, DiskBlobStore)
+    assert isinstance(spec.message_queue_factory, SimpleMessageQueueFactory)
 
-    crud.add_model(User)
-    manager = crud.get_resource_manager(User)
+    spec.add_model(User)
+    manager = spec.get_resource_manager(User)
     with manager.meta_provide(user="tester", now=dt.datetime.now()):
         info = manager.create(User(name="Alice", age=30))
 
@@ -70,11 +70,11 @@ def test_backend_config_object_supports_shared_connections(tmp_path):
         mq=BackendBinding(type="simple", options={"max_retries": 2}),
     )
 
-    crud = AutoCRUD()
-    crud.configure(backend=backend)
+    spec = SpecStar()
+    spec.configure(backend=backend)
 
-    assert isinstance(crud.blob_store, DiskBlobStore)
-    assert isinstance(crud.message_queue_factory, SimpleMessageQueueFactory)
+    assert isinstance(spec.blob_store, DiskBlobStore)
+    assert isinstance(spec.message_queue_factory, SimpleMessageQueueFactory)
 
 
 def test_custom_backend_provider_can_be_registered():
@@ -93,7 +93,7 @@ def test_custom_backend_provider_can_be_registered():
 
     register_backend_provider(CustomMemoryProvider())
 
-    crud = AutoCRUD(
+    spec = SpecStar(
         backend=BackendConfig(
             meta=BackendBinding(type="custom-memory"),
             resource=BackendBinding(type="custom-memory"),
@@ -101,12 +101,12 @@ def test_custom_backend_provider_can_be_registered():
         )
     )
 
-    assert isinstance(crud.blob_store, MemoryBlobStore)
+    assert isinstance(spec.blob_store, MemoryBlobStore)
 
 
 def test_backend_config_rejects_unknown_connection():
     with pytest.raises(ValueError, match="unknown connection"):
-        AutoCRUD(
+        SpecStar(
             backend=BackendConfig(
                 meta=BackendBinding(use="missing"),
                 resource=BackendBinding(type="memory"),

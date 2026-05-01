@@ -1228,7 +1228,7 @@ function CodeModeEditor({
     <Stack gap="sm">
       <Text size="xs" c="dimmed">
         直接寫 Python class 定義。支援
-        Annotated、DisplayName、Ref、RefRevision、Binary 等所有 AutoCRUD
+        Annotated、DisplayName、Ref、RefRevision、Binary 等所有 SpecStar
         型別。import 會自動從 code 中偵測。
       </Text>
 

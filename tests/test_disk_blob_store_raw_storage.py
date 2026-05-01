@@ -5,7 +5,7 @@ metadata file, avoiding msgpack's 4 GB encoding limit and enabling
 zero-copy finalization via file rename.
 """
 
-from autocrud.resource_manager.blob_store.simple import DiskBlobStore
+from specstar.resource_manager.blob_store.simple import DiskBlobStore
 
 
 class TestDiskBlobStoreRawStorage:

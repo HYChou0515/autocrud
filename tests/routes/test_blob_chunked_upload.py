@@ -12,8 +12,8 @@ from fastapi import FastAPI
 from fastapi.testclient import TestClient
 from msgspec import Struct
 
-from autocrud.crud.core import AutoCRUD
-from autocrud.types import Binary
+from specstar.crud.core import SpecStar
+from specstar.types import Binary
 
 # ---------------------------------------------------------------------------
 # Test model
@@ -31,16 +31,16 @@ class Doc(Struct):
 
 
 @pytest.fixture
-def autocrud():
-    app = AutoCRUD()
+def specstar():
+    app = SpecStar()
     app.add_model(Doc)
     return app
 
 
 @pytest.fixture
-def client(autocrud):
+def client(specstar):
     app = FastAPI()
-    autocrud.apply(app)
+    specstar.apply(app)
     return TestClient(app)
 
 

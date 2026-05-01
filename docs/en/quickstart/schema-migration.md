@@ -2,7 +2,7 @@
 
 Schema evolves over time.
 
-AutoCRUD helps you handle schema changes safely — without losing data.
+SpecStar helps you handle schema changes safely — without losing data.
 
 ⏱️ Estimated time: 5 minutes
 
@@ -19,7 +19,7 @@ Schema changes can be divided into two categories:
 
 ## 1. Backward compatible changes
 
-Some schema changes are automatically handled by AutoCRUD at runtime.
+Some schema changes are automatically handled by SpecStar at runtime.
 
 These include:
 
@@ -50,7 +50,7 @@ class Issue(msgspec.Struct):
 
 No migration is required.
 
-When AutoCRUD reads older data, missing fields are automatically filled using default values.
+When SpecStar reads older data, missing fields are automatically filled using default values.
 
 ---
 
@@ -108,7 +108,7 @@ def migrate_v1_to_v2(old: IssueV1) -> Issue:
 Attach the migration step when registering the new schema:
 
 ```python
-from autocrud import crud, Schema
+from specstar import crud, Schema
 
 crud.configure()
 crud.add_model(
@@ -120,7 +120,7 @@ crud.add_model(
 )
 ```
 
-This tells AutoCRUD how to upgrade data from `v1` → `v2`.
+This tells SpecStar how to upgrade data from `v1` → `v2`.
 
 ---
 
@@ -158,7 +158,7 @@ After migration:
 
 Schema changes are one of the hardest parts of maintaining a system.
 
-With AutoCRUD:
+With SpecStar:
 
 - backward-compatible changes require no action
 - breaking changes are explicit and controlled
@@ -175,6 +175,6 @@ If your application is evolving in place, backend setup becomes an important fol
 
 Next Steps:
 
-- [Set up backend persistence and deployment choices](/autocrud/guides/backend-setup)
-- [Learn how revision history behaves in practice](/autocrud/quickstart/data-versioning)
-- [Move from demo to production](/autocrud/guides/from-demo-to-production)
+- [Set up backend persistence and deployment choices](/specstar/guides/backend-setup)
+- [Learn how revision history behaves in practice](/specstar/quickstart/data-versioning)
+- [Move from demo to production](/specstar/guides/from-demo-to-production)

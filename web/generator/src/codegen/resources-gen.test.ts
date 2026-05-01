@@ -249,7 +249,7 @@ describe('genResourcesConfig — custom create actions', () => {
         '/article/import-from-url': {
           post: {
             summary: 'Import',
-            'x-autocrud-create-action': { resource: 'article', label: 'Import from URL' },
+            'x-specstar-create-action': { resource: 'article', label: 'Import from URL' },
             requestBody: {
               content: {
                 'application/json': {
@@ -265,7 +265,7 @@ describe('genResourcesConfig — custom create actions', () => {
           },
         },
       },
-      'x-autocrud-custom-create-actions': {
+      'x-specstar-custom-create-actions': {
         article: [
           {
             path: '/article/import-from-url',
@@ -299,7 +299,7 @@ describe('genResourcesConfig — custom create actions', () => {
           },
         },
       },
-      'x-autocrud-custom-create-actions': {
+      'x-specstar-custom-create-actions': {
         article: [
           {
             path: '/article/trigger',
@@ -370,7 +370,7 @@ describe('genResourcesConfig — enum serialization', () => {
           },
         },
       },
-      'x-autocrud-custom-create-actions': {
+      'x-specstar-custom-create-actions': {
         character: [
           {
             path: '/character/action',
@@ -423,7 +423,7 @@ describe('genResourcesConfig — async create action metadata', () => {
         '/generate-article-job': { get: {} },
         '/generate-article-job/{id}': { get: {} },
       },
-      'x-autocrud-custom-create-actions': {
+      'x-specstar-custom-create-actions': {
         article: [
           {
             path: '/article/generate-article',
@@ -435,7 +435,7 @@ describe('genResourcesConfig — async create action metadata', () => {
           },
         ],
       },
-      'x-autocrud-async-create-jobs': { 'generate-article-job': 'article' },
+      'x-specstar-async-create-jobs': { 'generate-article-job': 'article' },
       components: {
         schemas: {
           Article: {
@@ -469,7 +469,7 @@ describe('genResourcesConfig — async create action metadata', () => {
         },
         '/article/import-from-url': { post: {} },
       },
-      'x-autocrud-custom-create-actions': {
+      'x-specstar-custom-create-actions': {
         article: [
           {
             path: '/article/import-from-url',
@@ -491,7 +491,7 @@ describe('genResourcesConfig — async create action metadata', () => {
     expect(code).not.toContain('jobResourceName');
   });
 
-  it('emits asyncCreateJobs mapping from x-autocrud-async-create-jobs', () => {
+  it('emits asyncCreateJobs mapping from x-specstar-async-create-jobs', () => {
     const code = parseAndGenConfig(buildAsyncCreateActionSpec());
     expect(code).toContain('asyncCreateJobs');
     expect(code).toContain("'generate-article-job': 'article'");
@@ -591,7 +591,7 @@ describe('genResourcesConfig — async create action metadata', () => {
         },
         '/article/import-from-url': { post: {} },
       },
-      'x-autocrud-custom-create-actions': {
+      'x-specstar-custom-create-actions': {
         article: [
           {
             path: '/article/import-from-url',
@@ -620,7 +620,7 @@ describe('genResourcesConfig — setApiBasePath injection', () => {
   it('emits setApiBasePath with basePath when basePath is non-empty', () => {
     const spec = {
       paths: {
-        '/v1/autocrud/character': {
+        '/v1/specstar/character': {
           post: {
             requestBody: { content: { 'application/json': { schema: { $ref: '#/components/schemas/Character' } } } },
           },
@@ -630,10 +630,10 @@ describe('genResourcesConfig — setApiBasePath injection', () => {
         schemas: { Character: { type: 'object', properties: { name: { type: 'string' } }, required: ['name'] } },
       },
     };
-    const code = parseAndGenConfig(spec, '/v1/autocrud');
+    const code = parseAndGenConfig(spec, '/v1/specstar');
 
     expect(code).toContain("import { setApiBasePath } from '../lib/client'");
-    expect(code).toContain("setApiBasePath('/v1/autocrud')");
+    expect(code).toContain("setApiBasePath('/v1/specstar')");
   });
 
   it('emits setApiBasePath with empty string when no basePath', () => {
@@ -801,7 +801,7 @@ describe('buildNestedZodFields — nullable optional struct grouping', () => {
 // ─── indexedFields generation ────────────────────────────────────────────────
 
 describe('indexedFields generation', () => {
-  it('should emit indexedFields when x-autocrud-indexed-fields is present', () => {
+  it('should emit indexedFields when x-specstar-indexed-fields is present', () => {
     const spec = {
       info: { title: 'Test', version: '1.0' },
       paths: {
@@ -823,7 +823,7 @@ describe('indexedFields generation', () => {
           },
         },
       },
-      'x-autocrud-indexed-fields': {
+      'x-specstar-indexed-fields': {
         hero: ['name', 'level'],
       },
     };
@@ -910,7 +910,7 @@ describe('genResourcesConfig — customUpdateActions', () => {
           },
         },
       },
-      'x-autocrud-custom-update-actions': {
+      'x-specstar-custom-update-actions': {
         character: [
           {
             path: '/character/{resource_id}/level-up',
@@ -985,7 +985,7 @@ describe('genResourcesConfig — async update action metadata', () => {
         '/character/{resource_id}/train': {
           post: {
             summary: 'Train (character)',
-            'x-autocrud-update-action': { resource: 'character', label: 'Train' },
+            'x-specstar-update-action': { resource: 'character', label: 'Train' },
             requestBody: {
               content: {
                 'application/json': {
@@ -1003,7 +1003,7 @@ describe('genResourcesConfig — async update action metadata', () => {
         '/train-character-job': { get: {} },
         '/train-character-job/{id}': { get: {} },
       },
-      'x-autocrud-custom-update-actions': {
+      'x-specstar-custom-update-actions': {
         character: [
           {
             path: '/character/{resource_id}/train',
@@ -1016,7 +1016,7 @@ describe('genResourcesConfig — async update action metadata', () => {
           },
         ],
       },
-      'x-autocrud-async-update-jobs': { 'train-character-job': 'character' },
+      'x-specstar-async-update-jobs': { 'train-character-job': 'character' },
       components: {
         schemas: {
           Character: {
@@ -1052,7 +1052,7 @@ describe('genResourcesConfig — async update action metadata', () => {
         '/character/{resource_id}/level-up': {
           post: {
             summary: 'Level Up (character)',
-            'x-autocrud-update-action': { resource: 'character', label: 'Level Up' },
+            'x-specstar-update-action': { resource: 'character', label: 'Level Up' },
             requestBody: {
               content: {
                 'application/json': {
@@ -1068,7 +1068,7 @@ describe('genResourcesConfig — async update action metadata', () => {
           },
         },
       },
-      'x-autocrud-custom-update-actions': {
+      'x-specstar-custom-update-actions': {
         character: [
           {
             path: '/character/{resource_id}/level-up',
@@ -1100,7 +1100,7 @@ describe('genResourcesConfig — async update action metadata', () => {
     expect(code).not.toMatch(/customUpdateActions[\s\S]*asyncMode/);
   });
 
-  it('emits asyncUpdateJobs mapping from x-autocrud-async-update-jobs', () => {
+  it('emits asyncUpdateJobs mapping from x-specstar-async-update-jobs', () => {
     const code = parseAndGenConfig(buildAsyncUpdateActionSpec());
     expect(code).toContain('asyncUpdateJobs');
     expect(code).toContain("'train-character-job': 'character'");

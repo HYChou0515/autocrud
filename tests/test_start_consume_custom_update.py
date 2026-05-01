@@ -17,9 +17,9 @@ from fastapi import Body, FastAPI
 from fastapi.testclient import TestClient
 from msgspec import Struct
 
-from autocrud.crud.core import AutoCRUD
-from autocrud.message_queue.simple import SimpleMessageQueueFactory
-from autocrud.types import TaskStatus
+from specstar.crud.core import SpecStar
+from specstar.message_queue.simple import SimpleMessageQueueFactory
+from specstar.types import TaskStatus
 
 # ---------------------------------------------------------------------------
 # Test Models
@@ -49,8 +49,8 @@ class GenerateRequest(Struct):
 # ---------------------------------------------------------------------------
 
 
-def _make_crud(**kwargs) -> AutoCRUD:
-    return AutoCRUD(
+def _make_crud(**kwargs) -> SpecStar:
+    return SpecStar(
         default_user="tester",
         default_now=dt.datetime.now,
         message_queue_factory=SimpleMessageQueueFactory(max_retries=1),
@@ -59,13 +59,13 @@ def _make_crud(**kwargs) -> AutoCRUD:
 
 
 def _wait_for_job_completion(
-    crud: AutoCRUD,
+    spec: SpecStar,
     job_resource_name: str,
     job_resource_id: str,
     timeout: float = 5.0,
 ):
     """Poll until the job reaches COMPLETED or FAILED status."""
-    rm = crud.resource_managers[job_resource_name]
+    rm = spec.resource_managers[job_resource_name]
     start = time.monotonic()
     while time.monotonic() - start < timeout:
         resource = rm.get(job_resource_id)
@@ -85,11 +85,11 @@ def _create_character(client, name="Alice", level=5, hp=100) -> str:
     return resp.json()["resource_id"]
 
 
-def _setup_two_update_actions(crud):
+def _setup_two_update_actions(spec):
     """Register two async update actions on Character."""
-    crud.add_model(Character, name="character")
+    spec.add_model(Character, name="character")
 
-    @crud.update_action("character", async_mode="job", label="Train", path="train")
+    @spec.update_action("character", async_mode="job", label="Train", path="train")
     def train(existing: Character, payload: TrainRequest = Body(...)) -> Character:
         return Character(
             name=existing.name,
@@ -97,7 +97,7 @@ def _setup_two_update_actions(crud):
             hp=existing.hp,
         )
 
-    @crud.update_action("character", async_mode="job", label="Boost", path="boost")
+    @spec.update_action("character", async_mode="job", label="Boost", path="boost")
     def boost(existing: Character, payload: BoostPayload = Body(...)) -> Character:
         return Character(
             name=existing.name,
@@ -105,7 +105,7 @@ def _setup_two_update_actions(crud):
             hp=existing.hp + payload.amount,
         )
 
-    return crud
+    return spec
 
 
 # ---------------------------------------------------------------------------
@@ -117,14 +117,14 @@ class TestStartConsumeCustomUpdateAll:
     """custom_update='all' starts all async update-job consumers."""
 
     def test_custom_update_all_starts_consumers(self):
-        crud = _make_crud()
-        _setup_two_update_actions(crud)
+        spec = _make_crud()
+        _setup_two_update_actions(spec)
 
         app = FastAPI()
-        crud.apply(app)
+        spec.apply(app)
 
         # Start all update-job consumers via custom_update="all"
-        crud.get_resource_manager(Character).start_consume(
+        spec.get_resource_manager(Character).start_consume(
             block=False, custom_update="all"
         )
 
@@ -135,7 +135,7 @@ class TestStartConsumeCustomUpdateAll:
         resp = client.post(f"/character/{resource_id}/train", json={"levels": 3})
         assert resp.status_code == 202
 
-        r = _wait_for_job_completion(crud, "train-job", resp.json()["job_resource_id"])
+        r = _wait_for_job_completion(spec, "train-job", resp.json()["job_resource_id"])
         assert r.data.status == TaskStatus.COMPLETED
 
         # Submit boost job
@@ -143,7 +143,7 @@ class TestStartConsumeCustomUpdateAll:
         assert resp2.status_code == 202
 
         r2 = _wait_for_job_completion(
-            crud, "boost-job", resp2.json()["job_resource_id"]
+            spec, "boost-job", resp2.json()["job_resource_id"]
         )
         assert r2.data.status == TaskStatus.COMPLETED
 
@@ -152,14 +152,14 @@ class TestStartConsumeCustomUpdateSpecific:
     """custom_update=[...] starts only specific update-job consumers."""
 
     def test_custom_update_specific_names(self):
-        crud = _make_crud()
-        _setup_two_update_actions(crud)
+        spec = _make_crud()
+        _setup_two_update_actions(spec)
 
         app = FastAPI()
-        crud.apply(app)
+        spec.apply(app)
 
         # Start only train-job consumer
-        crud.get_resource_manager(Character).start_consume(
+        spec.get_resource_manager(Character).start_consume(
             block=False, custom_update=["train-job"]
         )
 
@@ -170,17 +170,17 @@ class TestStartConsumeCustomUpdateSpecific:
         resp = client.post(f"/character/{resource_id}/train", json={"levels": 2})
         assert resp.status_code == 202
 
-        r = _wait_for_job_completion(crud, "train-job", resp.json()["job_resource_id"])
+        r = _wait_for_job_completion(spec, "train-job", resp.json()["job_resource_id"])
         assert r.data.status == TaskStatus.COMPLETED
 
     def test_custom_update_invalid_name_raises(self):
-        crud = _make_crud()
-        _setup_two_update_actions(crud)
+        spec = _make_crud()
+        _setup_two_update_actions(spec)
 
         app = FastAPI()
-        crud.apply(app)
+        spec.apply(app)
 
-        rm = crud.get_resource_manager(Character)
+        rm = spec.get_resource_manager(Character)
         with pytest.raises(ValueError, match="not a registered async update-job"):
             rm.start_consume(block=False, custom_update=["nonexistent-job"])
 
@@ -189,14 +189,14 @@ class TestStartConsumeBothCreationAndUpdate:
     """custom_creation + custom_update together start both kinds."""
 
     def test_both_creation_and_update(self):
-        crud = _make_crud()
-        crud.add_model(Character, name="character")
+        spec = _make_crud()
+        spec.add_model(Character, name="character")
 
-        @crud.create_action("character", async_mode="job", label="Generate")
+        @spec.create_action("character", async_mode="job", label="Generate")
         def generate(req: GenerateRequest = Body(...)) -> Character:
             return Character(name=req.base_name, level=1, hp=50)
 
-        @crud.update_action("character", async_mode="job", label="Train", path="train")
+        @spec.update_action("character", async_mode="job", label="Train", path="train")
         def train(existing: Character, payload: TrainRequest = Body(...)) -> Character:
             return Character(
                 name=existing.name,
@@ -205,10 +205,10 @@ class TestStartConsumeBothCreationAndUpdate:
             )
 
         app = FastAPI()
-        crud.apply(app)
+        spec.apply(app)
 
         # Start both create and update consumers together
-        crud.get_resource_manager(Character).start_consume(
+        spec.get_resource_manager(Character).start_consume(
             block=False, custom_creation="all", custom_update="all"
         )
 
@@ -221,7 +221,7 @@ class TestStartConsumeBothCreationAndUpdate:
         assert resp_create.status_code == 202
 
         r_create = _wait_for_job_completion(
-            crud,
+            spec,
             "generate-job",
             resp_create.json()["job_resource_id"],
         )
@@ -233,7 +233,7 @@ class TestStartConsumeBothCreationAndUpdate:
         assert resp_update.status_code == 202
 
         r_update = _wait_for_job_completion(
-            crud, "train-job", resp_update.json()["job_resource_id"]
+            spec, "train-job", resp_update.json()["job_resource_id"]
         )
         assert r_update.data.status == TaskStatus.COMPLETED
 
@@ -242,14 +242,14 @@ class TestStartConsumeCustomUpdateNoJobs:
     """custom_update='all' with no registered update jobs is a no-op."""
 
     def test_custom_update_all_with_no_registered_jobs(self):
-        crud = _make_crud()
-        crud.add_model(Character, name="character")
+        spec = _make_crud()
+        spec.add_model(Character, name="character")
 
         app = FastAPI()
-        crud.apply(app)
+        spec.apply(app)
 
         # Should not raise, just a no-op (no update jobs registered)
-        crud.get_resource_manager(Character).start_consume(
+        spec.get_resource_manager(Character).start_consume(
             block=False, custom_update="all"
         )
 
@@ -259,12 +259,12 @@ class TestStartConsumeDefaultBehaviour:
 
     def test_default_no_mq_raises(self):
         """Without message queue, start_consume() raises NotImplementedError."""
-        crud = AutoCRUD(default_user="tester", default_now=dt.datetime.now)
-        crud.add_model(Character, name="character")
+        spec = SpecStar(default_user="tester", default_now=dt.datetime.now)
+        spec.add_model(Character, name="character")
         app = FastAPI()
-        crud.apply(app)
+        spec.apply(app)
 
-        rm = crud.get_resource_manager(Character)
+        rm = spec.get_resource_manager(Character)
         with pytest.raises(
             NotImplementedError, match="Message queue is not configured"
         ):

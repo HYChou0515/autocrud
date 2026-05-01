@@ -1,13 +1,13 @@
 # Behavior & initialization guarantees
 
-This page documents safe startup and runtime usage rules for `AutoCRUD`.
+This page documents safe startup and runtime usage rules for `SpecStar`.
 
 > This page is about initialization, configuration timing, and runtime mutation safety.
-> For data evolution and revision history semantics, see [Resource lifecycle](/autocrud/concepts/resource-lifecycle).
+> For data evolution and revision history semantics, see [Resource lifecycle](/specstar/concepts/resource-lifecycle).
 
 ## Recommended initialization order
 
-1. Create `AutoCRUD` instance (or import global `crud`)
+1. Create `SpecStar` instance (or import global `crud`)
 2. `configure()` (optional) — configure defaults for the instance
 3. `add_model()` — register all models/schemas
 4. `apply()` — generate routes on a `FastAPI` / `APIRouter`
@@ -15,7 +15,7 @@ This page documents safe startup and runtime usage rules for `AutoCRUD`.
 
 ## Thread safety & concurrency
 
-`AutoCRUD` maintains mutable registries such as:
+`SpecStar` maintains mutable registries such as:
 
 - `resource_managers`
 - route template list
@@ -54,10 +54,10 @@ Calling `apply()` will:
 
 `openapi()` mutates `app.openapi_schema` to inject:
 
-- AutoCRUD-related schemas into `components.schemas`
+- SpecStar-related schemas into `components.schemas`
 - ref metadata extensions (`x-ref-*`, `x-ref-revision-*`) on schema properties
-- top-level extension for custom create actions (`x-autocrud-custom-create-actions`)
-- top-level extension for custom update actions (`x-autocrud-custom-update-actions`)
+- top-level extension for custom create actions (`x-specstar-custom-create-actions`)
+- top-level extension for custom update actions (`x-specstar-custom-update-actions`)
 
 In most cases you don't need to call `openapi()` manually because it is used by `apply()` flows.
 
@@ -65,7 +65,7 @@ In most cases you don't need to call `openapi()` manually because it is used by 
 
 For a predictable setup, follow this order:
 
-1. create or import the AutoCRUD instance
+1. create or import the SpecStar instance
 2. call `configure()` if you need custom defaults
 3. register all models
 4. add route templates or custom actions
@@ -83,4 +83,4 @@ If your app behaves unexpectedly, the most common causes are:
 - confusing initialization issues with revision lifecycle issues
 - mixing the global instance pattern with ad-hoc manual instances without realizing which one owns the routes
 
-For symptom-to-fix guidance, see the [troubleshooting guide](/autocrud/howto/troubleshooting).
+For symptom-to-fix guidance, see the [troubleshooting guide](/specstar/howto/troubleshooting).

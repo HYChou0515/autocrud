@@ -1,0 +1,436 @@
+import datetime as dt
+from unittest.mock import Mock
+
+import pytest
+from jsonpointer import JsonPointer
+from msgspec import Struct, to_builtins
+
+from specstar.crud.core import SpecStar
+from specstar.crud.route_templates.get import ReadRouteTemplate
+from specstar.resource_manager.basic import Encoding
+from specstar.types import (
+    IResourceManager,
+    RevisionInfo,
+    RevisionStatus,
+)
+
+
+class User(Struct):
+    name: str
+    age: int
+    wage: int | None = None
+    books: list[str] = []
+
+
+class TestSpecStar:
+    def test_add_model_with_encoding(self):
+        spec = SpecStar()
+        spec.add_model(User)
+        assert (
+            spec.get_resource_manager(User)._data_serializer.encoding == Encoding.json  # ty:ignore[unresolved-attribute]
+        )
+
+        spec = SpecStar(encoding=Encoding.msgpack)
+        spec.add_model(User)
+        assert (
+            spec.get_resource_manager(User)._data_serializer.encoding  # ty:ignore[unresolved-attribute]
+            == Encoding.msgpack
+        )
+
+        spec = SpecStar(encoding=Encoding.json)
+        spec.add_model(User, encoding=Encoding.msgpack)
+        assert (
+            spec.get_resource_manager(User)._data_serializer.encoding  # ty:ignore[unresolved-attribute]
+            == Encoding.msgpack
+        )
+
+        spec = SpecStar()
+        spec.add_model(User, encoding=Encoding.msgpack)
+        assert (
+            spec.get_resource_manager(User)._data_serializer.encoding  # ty:ignore[unresolved-attribute]
+            == Encoding.msgpack
+        )
+
+    def test_add_model_with_name(self):
+        spec = SpecStar()
+        spec.add_model(User, name="xx")
+        assert spec.get_resource_manager("xx").resource_name == "xx"
+        mgr = spec.get_resource_manager("xx")
+        with mgr.meta_provide("user", dt.datetime.now()):
+            info = mgr.create({"name": "Alice", "age": 30})
+        assert info.resource_id.startswith("xx:")
+
+    def test_add_model_with_index_fields(self):
+        spec = SpecStar()
+        spec.add_model(User, indexed_fields=[("wage", int | None)])  # ty:ignore[invalid-argument-type]
+        spec.add_model(User, name="u2", indexed_fields=[("books", list[str])])
+        # no error raised
+
+    def test_apply_router_templates_order(self):
+        applied = []
+
+        class MockRouteTemplateA(ReadRouteTemplate):
+            def apply(self, *args, **kwargs):
+                applied.append(self.order)
+
+        class MockRouteTemplateB(ReadRouteTemplate):
+            def apply(self, *args, **kwargs):
+                applied.append(self.order)
+
+        templates = [
+            MockRouteTemplateA(order=1),
+            MockRouteTemplateA(order=2),
+            MockRouteTemplateB(order=5),
+        ]
+        spec = SpecStar(route_templates=templates.copy())  # ty:ignore[invalid-argument-type]
+        spec.add_model(User)
+        spec.apply(Mock())
+        # add_route_template replaces the existing template of the same type
+        spec.add_route_template(MockRouteTemplateA(order=4))
+        spec.apply(Mock())
+        # First apply: [1, 2, 5].
+        # add_route_template replaces both MockRouteTemplateA(1) and (2) with (4).
+        # Second apply (sorted): MockRouteTemplateA(4), MockRouteTemplateB(5) → [4, 5].
+        assert applied == [1, 2, 5, 4, 5]
+
+    @pytest.mark.parametrize("default_status", ["stable", "draft"])
+    def test_add_model_with_default_status(self, default_status: str):
+        spec = SpecStar()
+        spec.add_model(User, default_status=default_status)  # ty:ignore[invalid-argument-type]
+        mgr = spec.get_resource_manager(User)
+        with mgr.meta_provide("user", dt.datetime.now()):
+            info = mgr.create({"name": "Alice", "age": 30})  # ty:ignore[invalid-argument-type]
+        assert info.status == default_status
+
+    def test_default_status_unset_falls_back_to_stable(self):
+        spec = SpecStar()
+        spec.add_model(User)
+        mgr = spec.get_resource_manager(User)
+        with mgr.meta_provide("user", dt.datetime.now()):
+            info = mgr.create({"name": "Alice", "age": 30})  # ty:ignore[invalid-argument-type]
+        assert info.status == "stable"
+
+    @pytest.mark.parametrize("entry", ["init", "configure"])
+    def test_global_default_status_applies_to_add_model(self, entry: str):
+        if entry == "init":
+            spec = SpecStar(default_status=RevisionStatus.draft)
+        else:
+            spec = SpecStar()
+            spec.configure(default_status=RevisionStatus.draft)
+        spec.add_model(User)
+        mgr = spec.get_resource_manager(User)
+        with mgr.meta_provide("user", dt.datetime.now()):
+            info = mgr.create({"name": "Alice", "age": 30})  # ty:ignore[invalid-argument-type]
+        assert info.status == "draft"
+
+    def test_per_model_default_status_overrides_global(self):
+        spec = SpecStar(default_status=RevisionStatus.draft)
+        spec.add_model(User, default_status=RevisionStatus.stable)
+        mgr = spec.get_resource_manager(User)
+        with mgr.meta_provide("user", dt.datetime.now()):
+            info = mgr.create({"name": "Alice", "age": 30})  # ty:ignore[invalid-argument-type]
+        assert info.status == "stable"
+
+    @pytest.mark.parametrize("level", ["spec", "model"])
+    def test_add_model_with_default_user(self, level: str):
+        if level == "spec":
+            spec = SpecStar(default_user="system")
+            spec.add_model(User)
+        else:
+            spec = SpecStar(default_user="foo")
+            spec.add_model(User, default_user="system")
+        mgr = spec.get_resource_manager(User)
+        with mgr.meta_provide(now=dt.datetime.now()):
+            info = mgr.create({"name": "Alice", "age": 30})  # ty:ignore[invalid-argument-type]
+        assert info.created_by == "system"
+
+    def test_add_model_without_default_user(self):
+        spec = SpecStar()
+        spec.add_model(User)
+        mgr = spec.get_resource_manager(User)
+        with pytest.raises(LookupError):
+            with mgr.meta_provide(now=dt.datetime.now()):
+                mgr.create({"name": "Alice", "age": 30})  # ty:ignore[invalid-argument-type]
+
+    @pytest.mark.parametrize("level", ["spec", "model"])
+    def test_add_model_with_default_now(self, level: str):
+        if level == "spec":
+            spec = SpecStar(default_now=lambda: dt.datetime(2023, 1, 1))
+            spec.add_model(User)
+        else:
+            spec = SpecStar(default_now=lambda: dt.datetime(2024, 1, 1))
+            spec.add_model(User, default_now=lambda: dt.datetime(2023, 1, 1))
+        mgr = spec.get_resource_manager(User)
+        with mgr.meta_provide("system"):
+            info = mgr.create({"name": "Alice", "age": 30})  # ty:ignore[invalid-argument-type]
+        assert info.created_time == dt.datetime(2023, 1, 1)
+
+    def test_add_model_without_default_now(self):
+        spec = SpecStar()
+        spec.add_model(User)
+        mgr = spec.get_resource_manager(User)
+        with pytest.raises(LookupError):
+            with mgr.meta_provide("system"):
+                mgr.create({"name": "Alice", "age": 30})  # ty:ignore[invalid-argument-type]
+
+    def test_add_model_with_default_user_and_now(self):
+        spec = SpecStar()
+        spec.add_model(User, default_user="system", default_now=dt.datetime.now)
+        mgr = spec.get_resource_manager(User)
+        info = mgr.create({"name": "Alice", "age": 30})  # ty:ignore[invalid-argument-type]
+        assert info.created_time - dt.datetime.now() < dt.timedelta(seconds=1)
+        assert info.created_by == "system"
+
+
+class Manager(User):
+    slaves: list["Manager"] = []
+    boss: User | None = None
+
+
+class TestSpecStarGetPartial:
+    @pytest.fixture(autouse=True)
+    def setup_method(self):
+        self.crud = SpecStar()
+        self.crud.add_model(Manager, default_user="system", default_now=dt.datetime.now)
+        self.crud.add_model(User, default_user="system", default_now=dt.datetime.now)
+
+    def _check(
+        self,
+        mgr: IResourceManager,
+        info: RevisionInfo,
+        partial: list[JsonPointer],
+        expected: dict,
+    ):
+        d = mgr.get_partial(
+            info.resource_id,
+            info.revision_id,
+            partial=partial,
+        )
+        assert to_builtins(d) == expected
+
+    def test_get_with_revision_id(self):
+        mgr = self.crud.get_resource_manager(Manager)
+        info = mgr.create({"name": "Alice", "age": 30})  # ty:ignore[invalid-argument-type]
+        assert mgr.get(info.resource_id) == mgr.get(
+            info.resource_id, revision_id=info.revision_id
+        )
+
+    def test_get_partial(self):
+        mgr = self.crud.get_resource_manager(Manager)
+        info = mgr.create(
+            {
+                "name": "Alice",
+                "age": 30,
+                "slaves": [{"name": "Bob", "age": 25}, {"name": "Charlie", "age": 28}],
+                "boss": {"name": "Diana", "age": 40},
+            }  # ty:ignore[invalid-argument-type]
+        )
+
+        self._check(
+            mgr,
+            info,
+            [JsonPointer("/name"), JsonPointer("/slaves/0/age")],
+            {"name": "Alice", "slaves": [{"age": 25}]},
+        )
+
+        self._check(
+            mgr,
+            info,
+            ["name", "boss", "slaves/-/name"],  # ty:ignore[invalid-argument-type]
+            {
+                "name": "Alice",
+                "boss": {"name": "Diana", "age": 40, "wage": None, "books": []},
+                "slaves": [{"name": "Bob"}, {"name": "Charlie"}],
+            },
+        )
+
+        self._check(
+            mgr,
+            info,
+            ["slaves"],  # ty:ignore[invalid-argument-type]
+            {
+                "slaves": [
+                    {
+                        "age": 25,
+                        "name": "Bob",
+                        "wage": None,
+                        "books": [],
+                        "slaves": [],
+                        "boss": None,
+                    },
+                    {
+                        "age": 28,
+                        "name": "Charlie",
+                        "wage": None,
+                        "books": [],
+                        "slaves": [],
+                        "boss": None,
+                    },
+                ]
+            },
+        )
+
+    def test_get_partial_slicing11(self):
+        mgr = self.crud.get_resource_manager(Manager)
+        slaves = [
+            {"name": "Bob", "age": 25},
+            {"name": "Charlie", "age": 28},
+            {"name": "Dave", "age": 30},
+            {"name": "Eve", "age": 22},
+        ]
+        slaves[1]["slaves"] = [
+            {"name": "Bob Jr.", "age": 5},
+            {"name": "Bob III", "age": 3},
+        ]  # ty:ignore[invalid-assignment]
+        info = mgr.create({"name": "Alice", "age": 30, "slaves": slaves})  # ty:ignore[invalid-argument-type]
+
+        self._check(
+            mgr,
+            info,
+            ["slaves/:2/name", "slaves/1:2/slaves/-/name", "slaves/1:/age"],  # ty:ignore[invalid-argument-type]
+            {
+                "slaves": [
+                    {"name": "Bob"},
+                    {
+                        "name": "Charlie",
+                        "age": 28,
+                        "slaves": [{"name": "Bob Jr."}, {"name": "Bob III"}],
+                    },
+                    {"age": 30},
+                    {"age": 22},
+                ]
+            },
+        )
+
+    def test_get_partial_slicing1(self):
+        mgr = self.crud.get_resource_manager(Manager)
+        slaves = [
+            {"name": "Bob", "age": 25},
+            {"name": "Charlie", "age": 28},
+            {"name": "Dave", "age": 30},
+            {"name": "Eve", "age": 22},
+        ]
+        slaves[0]["slaves"] = [
+            {"name": "Bob Jr.", "age": 5},
+            {"name": "Bob III", "age": 3},
+        ]  # ty:ignore[invalid-assignment]
+        slaves[0]["boss"] = {"name": "Bob Sr.", "age": 55}  # ty:ignore[invalid-assignment]
+        slaves[1]["boss"] = {"name": "Charlie Sr.", "age": 50}  # ty:ignore[invalid-assignment]
+        info = mgr.create({"name": "Alice", "age": 30, "slaves": slaves})  # ty:ignore[invalid-argument-type]
+
+        self._check(
+            mgr,
+            info,
+            ["slaves/:2/slaves/1:/age", "slaves/1:/boss/age"],  # ty:ignore[invalid-argument-type]
+            {
+                "slaves": [
+                    {"slaves": [{"age": 3}]},
+                    {"boss": {"age": 50}, "slaves": []},
+                    {"boss": None},
+                    {"boss": None},
+                ]
+            },
+        )
+
+    def test_get_partial_slicing(self):
+        mgr = self.crud.get_resource_manager(Manager)
+        info = mgr.create(
+            {
+                "name": "Alice",
+                "age": 30,
+                "slaves": [
+                    {"name": "Bob", "age": 25},
+                    {"name": "Charlie", "age": 28},
+                    {"name": "Dave", "age": 30},
+                    {"name": "Eve", "age": 22},
+                ],
+            }  # ty:ignore[invalid-argument-type]
+        )
+
+        cases = [
+            (["slaves/:2/name"], {"slaves": [{"name": "Bob"}, {"name": "Charlie"}]}),
+            (["slaves/1:3/name"], {"slaves": [{"name": "Charlie"}, {"name": "Dave"}]}),
+            (["slaves/::2/name"], {"slaves": [{"name": "Bob"}, {"name": "Dave"}]}),
+            (
+                ["slaves/0/name", "slaves/3/age"],
+                {"slaves": [{"name": "Bob"}, {"age": 22}]},
+            ),
+            (
+                ["slaves/-/age"],
+                {"slaves": [{"age": 25}, {"age": 28}, {"age": 30}, {"age": 22}]},
+            ),
+            (
+                ["slaves/:/age"],
+                {"slaves": [{"age": 25}, {"age": 28}, {"age": 30}, {"age": 22}]},
+            ),
+            (["slaves/1::2/age"], {"slaves": [{"age": 28}, {"age": 22}]}),
+            (["slaves/1:3:2/age"], {"slaves": [{"age": 28}]}),
+            (
+                ["slaves/:/age", "slaves/:/name"],
+                {
+                    "slaves": [
+                        {"age": 25, "name": "Bob"},
+                        {"age": 28, "name": "Charlie"},
+                        {"age": 30, "name": "Dave"},
+                        {"age": 22, "name": "Eve"},
+                    ]
+                },
+            ),
+            (
+                ["slaves/:/age", "slaves/:/name", "slaves/1::2/wage"],
+                {
+                    "slaves": [
+                        {"age": 25, "name": "Bob"},
+                        {"age": 28, "name": "Charlie", "wage": None},
+                        {"age": 30, "name": "Dave"},
+                        {"age": 22, "name": "Eve", "wage": None},
+                    ]
+                },
+            ),
+        ]
+
+        for partial, expected in cases:
+            self._check(mgr, info, partial, expected)  # ty:ignore[invalid-argument-type]
+
+    def test_prune_object_preserves_identity_when_no_index_or_partial_slice(self):
+        """``prune_object`` is an identity for paths whose list segments are
+        either field-only, full-slice (``:``) or wildcard (``-``). It only
+        builds a pruned copy when the request asks for specific indices or
+        non-trivial slices; this is the user-observable contract of the
+        underlying optimisation.
+        """
+        from specstar.resource_manager.partial import prune_object
+
+        master = Manager(
+            name="Alice",
+            age=30,
+            slaves=[
+                Manager(name="Dave", age=30),
+                Manager(name="Eve", age=22),
+                Manager(name="Bob", age=18),
+            ],
+        )
+
+        # Plain field paths: nothing to prune; same instance returned.
+        assert prune_object(master, ["/name", "/age"]) is master
+
+        # Full-slice list path: nothing to prune; same instance returned.
+        assert prune_object(master, ["/slaves/:/name"]) is master
+
+        # Wildcard list path: nothing to prune; same instance returned.
+        assert prune_object(master, ["/slaves/-/name"]) is master
+
+        # Specific index requires pruning; result differs.
+        pruned = prune_object(master, ["/slaves/0/name"])
+        assert pruned is not master
+        assert [s.name for s in pruned.slaves] == ["Dave"]
+
+        # Non-trivial slice requires pruning.
+        pruned_slice = prune_object(master, ["/slaves/1:3/name"])
+        assert pruned_slice is not master
+        assert [s.name for s in pruned_slice.slaves] == ["Eve", "Bob"]
+
+        # Step slice requires pruning.
+        pruned_step = prune_object(master, ["/slaves/::2/name"])
+        assert pruned_step is not master
+        assert [s.name for s in pruned_step.slaves] == ["Dave", "Bob"]

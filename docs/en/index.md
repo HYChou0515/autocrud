@@ -1,6 +1,6 @@
-# AutoCRUD
+# SpecStar
 
-**AutoCRUD** is a **model-driven FastAPI framework** with built-in **versioning, permissions, search, and API generation**.
+**SpecStar** is a **model-driven FastAPI framework** with built-in **versioning, permissions, search, and API generation**.
 
 It helps you spend less time wiring repetitive infrastructure and more time on your domain logic.
 
@@ -8,7 +8,7 @@ It helps you spend less time wiring repetitive infrastructure and more time on y
 
 ## What you get
 
-With a Python model as the source of truth, AutoCRUD can generate and manage:
+With a Python model as the source of truth, SpecStar can generate and manage:
 
 - REST APIs
 - GraphQL APIs
@@ -22,34 +22,34 @@ With a Python model as the source of truth, AutoCRUD can generate and manage:
 
 ## Choose your path
 
-### I am new to AutoCRUD
+### I am new to SpecStar
 
 Start here in order:
 
-1. [Installation](/autocrud/installation/)
-2. [Quickstart](/autocrud/quickstart/)
-3. [Core Concepts](/autocrud/concepts/core-concepts)
-4. [How-to Guides](/autocrud/howto/)
+1. [Installation](/specstar/installation/)
+2. [Quickstart](/specstar/quickstart/)
+3. [Core Concepts](/specstar/concepts/core-concepts)
+4. [How-to Guides](/specstar/howto/)
 
-### I want to evaluate whether AutoCRUD fits my project
+### I want to evaluate whether SpecStar fits my project
 
 Read these pages first:
 
-- [Why AutoCRUD](/autocrud/concepts/why-autocrud)
-- [AutoCRUD vs Hasura vs Django](/autocrud/concepts/autocrud-vs-hasura-vs-django)
-- [Architecture](/autocrud/concepts/architecture)
-- [From demo to production](/autocrud/guides/from-demo-to-production)
+- [Why SpecStar](/specstar/concepts/why-specstar)
+- [SpecStar vs Hasura vs Django](/specstar/concepts/specstar-vs-hasura-vs-django)
+- [Architecture](/specstar/concepts/architecture)
+- [From demo to production](/specstar/guides/from-demo-to-production)
 
 ### I already know which feature I need
 
 Go directly to:
 
-- [Routes](/autocrud/howto/routes)
-- [Relationships](/autocrud/howto/relationships)
-- [Permissions](/autocrud/howto/permissions)
-- [Query builder](/autocrud/howto/query-builder)
-- [Web UI](/autocrud/howto/web-ui)
-- [Backup and restore](/autocrud/howto/backup-restore)
+- [Routes](/specstar/howto/routes)
+- [Relationships](/specstar/howto/relationships)
+- [Permissions](/specstar/howto/permissions)
+- [Query builder](/specstar/howto/query-builder)
+- [Web UI](/specstar/howto/web-ui)
+- [Backup and restore](/specstar/howto/backup-restore)
 
 ---
 
@@ -59,7 +59,7 @@ Define a model:
 
 ```python
 from msgspec import Struct
-from autocrud import Schema
+from specstar import Schema
 
 class User(Struct):
     name: str
@@ -70,7 +70,7 @@ Create a FastAPI app:
 
 ```python
 from fastapi import FastAPI
-from autocrud import crud
+from specstar import crud
 
 app = FastAPI()
 
@@ -79,7 +79,7 @@ crud.add_model(Schema(User, "v1"))
 crud.apply(app)
 ```
 
-AutoCRUD will generate the standard CRUD surface, OpenAPI documentation, validation handling, and revision tracking.
+SpecStar will generate the standard CRUD surface, OpenAPI documentation, validation handling, and revision tracking.
 
 ---
 
@@ -87,32 +87,32 @@ AutoCRUD will generate the standard CRUD surface, OpenAPI documentation, validat
 
 ### Learn the basics
 
-- [Quickstart](/autocrud/quickstart/)
-- [Examples](/autocrud/examples/)
-- [Overview](/autocrud/concepts/overview)
+- [Quickstart](/specstar/quickstart/)
+- [Examples](/specstar/examples/)
+- [Overview](/specstar/concepts/overview)
 
 ### Understand the system design
 
-- [Core Concepts](/autocrud/concepts/core-concepts)
-- [Resource Lifecycle](/autocrud/concepts/resource-lifecycle)
-- [Schema](/autocrud/concepts/schema)
-- [Query System](/autocrud/concepts/query-system)
+- [Core Concepts](/specstar/concepts/core-concepts)
+- [Resource Lifecycle](/specstar/concepts/resource-lifecycle)
+- [Schema](/specstar/concepts/schema)
+- [Query System](/specstar/concepts/query-system)
 
 ### Build real features
 
-- [How-to Guides](/autocrud/howto/)
-- [Guides](/autocrud/guides/)
-- [Reference](/autocrud/reference/)
+- [How-to Guides](/specstar/howto/)
+- [Guides](/specstar/guides/)
+- [Reference](/specstar/reference/)
 
 ---
 
 ## Project links
 
-- GitHub: [https://github.com/HYChou0515/autocrud](https://github.com/HYChou0515/autocrud)
-- PyPI: [https://pypi.org/project/autocrud/](https://pypi.org/project/autocrud/)
+- GitHub: [https://github.com/HYChou0515/specstar](https://github.com/HYChou0515/specstar)
+- PyPI: [https://pypi.org/project/specstar/](https://pypi.org/project/specstar/)
 
 ---
 
-If you want to build **versioned APIs with FastAPI** and avoid repetitive boilerplate, AutoCRUD gives you a strong starting point without locking you into a full-stack monolith.
+If you want to build **versioned APIs with FastAPI** and avoid repetitive boilerplate, SpecStar gives you a strong starting point without locking you into a full-stack monolith.
 
 

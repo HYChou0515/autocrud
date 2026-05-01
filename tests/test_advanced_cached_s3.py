@@ -9,12 +9,12 @@ from uuid import uuid4
 
 import pytest
 
-from autocrud.resource_manager.resource_store.cache import MemoryCache
-from autocrud.resource_manager.resource_store.etag_cached_s3 import (
+from specstar.resource_manager.resource_store.cache import MemoryCache
+from specstar.resource_manager.resource_store.etag_cached_s3 import (
     ETagCachedS3ResourceStore,
 )
-from autocrud.resource_manager.resource_store.s3 import S3ResourceStore
-from autocrud.types import (
+from specstar.resource_manager.resource_store.s3 import S3ResourceStore
+from specstar.types import (
     RevisionInfo,
     RevisionStatus,
 )
@@ -62,7 +62,7 @@ def test_mq_cached_invalidation(tmp_path: Path, wait_mq: bool, require_rabbitmq)
     """
     import time
 
-    from autocrud.resource_manager.resource_store.mq_cached_s3 import (
+    from specstar.resource_manager.resource_store.mq_cached_s3 import (
         MQCachedS3ResourceStore,
     )
 
@@ -74,7 +74,7 @@ def test_mq_cached_invalidation(tmp_path: Path, wait_mq: bool, require_rabbitmq)
         ttl_draft=3600,
         ttl_stable=3600,
         endpoint_url="http://localhost:9000",
-        bucket="autocrud-test",
+        bucket="specstar-test",
         access_key_id="minioadmin",
         secret_access_key="minioadmin",
     )
@@ -87,7 +87,7 @@ def test_mq_cached_invalidation(tmp_path: Path, wait_mq: bool, require_rabbitmq)
         ttl_draft=3600,
         ttl_stable=3600,
         endpoint_url="http://localhost:9000",
-        bucket="autocrud-test",
+        bucket="specstar-test",
         access_key_id="minioadmin",
         secret_access_key="minioadmin",
     )
@@ -148,7 +148,7 @@ def test_etag_cached_validation(tmp_path: Path):
         ttl_draft=3600,
         ttl_stable=3600,
         endpoint_url="http://localhost:9000",
-        bucket="test-autocrud",
+        bucket="test-specstar",
         prefix=f"test-etag-{tmp_path.name}/",
         access_key_id="minioadmin",
         secret_access_key="minioadmin",
@@ -207,7 +207,7 @@ def test_etag_cached_no_external_change(tmp_path: Path):
         ttl_draft=3600,
         ttl_stable=3600,
         endpoint_url="http://localhost:9000",
-        bucket="test-autocrud",
+        bucket="test-specstar",
         prefix=f"test-etag-nochan-{tmp_path.name}/",
         access_key_id="minioadmin",
         secret_access_key="minioadmin",
@@ -255,7 +255,7 @@ def test_mq_cached_auto_subscriber(tmp_path: Path, require_rabbitmq):
     """
     import time
 
-    from autocrud.resource_manager.resource_store.mq_cached_s3 import (
+    from specstar.resource_manager.resource_store.mq_cached_s3 import (
         MQCachedS3ResourceStore,
     )
 
@@ -269,7 +269,7 @@ def test_mq_cached_auto_subscriber(tmp_path: Path, require_rabbitmq):
         ttl_draft=3600,
         ttl_stable=3600,
         endpoint_url="http://localhost:9000",
-        bucket="autocrud-test",
+        bucket="specstar-test",
         access_key_id="minioadmin",
         secret_access_key="minioadmin",
     )
@@ -319,7 +319,7 @@ def test_mq_cached_rabbitmq_unavailable(tmp_path: Path):
     """
     測試當RabbitMQ不可用時，store仍能正常工作
     """
-    from autocrud.resource_manager.resource_store.mq_cached_s3 import (
+    from specstar.resource_manager.resource_store.mq_cached_s3 import (
         MQCachedS3ResourceStore,
     )
 
@@ -331,7 +331,7 @@ def test_mq_cached_rabbitmq_unavailable(tmp_path: Path):
         ttl_draft=3600,
         ttl_stable=3600,
         endpoint_url="http://localhost:9000",
-        bucket="autocrud-test",
+        bucket="specstar-test",
         access_key_id="minioadmin",
         secret_access_key="minioadmin",
     )
@@ -373,7 +373,7 @@ def test_mq_cached_close_idempotent(tmp_path: Path, require_rabbitmq):
     """
     測試多次調用close()是安全的
     """
-    from autocrud.resource_manager.resource_store.mq_cached_s3 import (
+    from specstar.resource_manager.resource_store.mq_cached_s3 import (
         MQCachedS3ResourceStore,
     )
 
@@ -384,7 +384,7 @@ def test_mq_cached_close_idempotent(tmp_path: Path, require_rabbitmq):
         ttl_draft=3600,
         ttl_stable=3600,
         endpoint_url="http://localhost:9000",
-        bucket="autocrud-test",
+        bucket="specstar-test",
         access_key_id="minioadmin",
         secret_access_key="minioadmin",
     )

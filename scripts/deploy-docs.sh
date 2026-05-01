@@ -4,7 +4,7 @@
 
 set -e
 
-echo "🚀 開始構建 AutoCRUD 文檔..."
+echo "🚀 開始構建 SpecStar 文檔..."
 
 # 檢查依賴
 echo "📦 檢查依賴..."

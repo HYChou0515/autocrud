@@ -1,4 +1,4 @@
-# AutoCRUD 開發與文檔 Makefile
+# SpecStar 開發與文檔 Makefile
 
 # 變數設定
 MKDOCS       ?= uv run mkdocs
@@ -8,7 +8,7 @@ SITEDIR      = site
 # 默認目標
 .PHONY: help
 help:
-	@echo "AutoCRUD 開發與文檔工具"
+	@echo "SpecStar 開發與文檔工具"
 	@echo ""
 	@echo "開發工具："
 	@echo "  test         執行所有測試（排除基準測試）"
@@ -22,7 +22,7 @@ help:
 	@echo "  check        檢查程式碼品質 (ruff check)"
 	@echo "  format       格式化程式碼 (ruff format)"
 	@echo "  lint         執行 lint 檢查"
-	@echo "  stubs        重新產生 autocrud/events.pyi 型別 stub"
+	@echo "  stubs        重新產生 specstar/events.pyi 型別 stub"
 	@echo "  stubs-check  檢查 events.pyi 是否與生成器同步（CI 用）"
 	@echo "  install      安裝專案依賴"
 	@echo "  dev-install  安裝開發依賴"
@@ -128,21 +128,21 @@ format:
 lint: check
 	@echo "Lint 檢查完成"
 
-# 重新生成 .pyi stub（目前只生 autocrud/events.pyi）
+# 重新生成 .pyi stub（目前只生 specstar/events.pyi）
 .PHONY: stubs
 stubs:
 	@echo "產生 events.pyi stub..."
-	uv run python scripts/gen_events_stub.py > autocrud/events.pyi
-	uv run ruff format autocrud/events.pyi
+	uv run python scripts/gen_events_stub.py > specstar/events.pyi
+	uv run ruff format specstar/events.pyi
 
 # 確認 stub 與生成器同步（CI 用）
 .PHONY: stubs-check
 stubs-check:
 	@echo "檢查 events.pyi 是否與生成器同步..."
-	@cp autocrud/events.pyi /tmp/events.pyi.expected
+	@cp specstar/events.pyi /tmp/events.pyi.expected
 	@$(MAKE) stubs >/dev/null
-	@diff -u /tmp/events.pyi.expected autocrud/events.pyi || ( \
-		cp /tmp/events.pyi.expected autocrud/events.pyi; \
+	@diff -u /tmp/events.pyi.expected specstar/events.pyi || ( \
+		cp /tmp/events.pyi.expected specstar/events.pyi; \
 		echo "events.pyi 過期 — 請執行 make stubs"; \
 		exit 1)
 	@rm -f /tmp/events.pyi.expected

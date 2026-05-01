@@ -46,18 +46,18 @@ function App() {
       <Container size="lg" py="xl">
         {/* Header */}
         <Stack gap={4} mb="xl" align="center">
-          <Title order={1}>AutoCRUD Starter Wizard</Title>
+          <Title order={1}>SpecStar Starter Wizard</Title>
           <Text c="dimmed" size="sm">
-            快速產生 AutoCRUD Python 專案模板 —{" "}
+            快速產生 SpecStar Python 專案模板 —{" "}
             <Anchor
-              href="https://hychou0515.github.io/autocrud/"
+              href="https://hychou0515.github.io/specstar/"
               target="_blank"
             >
               文件
             </Anchor>
             {" · "}
             <Anchor
-              href="https://github.com/HYChou0515/autocrud"
+              href="https://github.com/HYChou0515/specstar"
               target="_blank"
             >
               GitHub

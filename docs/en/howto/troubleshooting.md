@@ -1,6 +1,6 @@
 # Troubleshooting
 
-This page helps you diagnose the most common AutoCRUD issues in real projects.
+This page helps you diagnose the most common SpecStar issues in real projects.
 
 Use it when something is failing and you need a practical path from symptom to likely fix.
 
@@ -22,7 +22,7 @@ Use it when something is failing and you need a practical path from symptom to l
 
 See also:
 
-- [Behavior reference](/autocrud/reference/behavior)
+- [Behavior reference](/specstar/reference/behavior)
 
 ---
 
@@ -42,10 +42,10 @@ See also:
 
 See also:
 
-- [Errors](/autocrud/howto/errors)
-- [Constraints](/autocrud/howto/constraints)
-- [Validation](/autocrud/concepts/validation)
-- [Schema migration](/autocrud/quickstart/schema-migration)
+- [Errors](/specstar/howto/errors)
+- [Constraints](/specstar/howto/constraints)
+- [Validation](/specstar/concepts/validation)
+- [Schema migration](/specstar/quickstart/schema-migration)
 
 ---
 
@@ -66,7 +66,7 @@ See also:
 
 See also:
 
-- [Permissions](/autocrud/howto/permissions)
+- [Permissions](/specstar/howto/permissions)
 
 ---
 
@@ -88,10 +88,10 @@ See also:
 
 See also:
 
-- [Query builder](/autocrud/howto/query-builder)
-- [Query system](/autocrud/concepts/query-system)
-- [Search indexing](/autocrud/concepts/search-indexing)
-- [Routes generation](/autocrud/howto/routes)
+- [Query builder](/specstar/howto/query-builder)
+- [Query system](/specstar/concepts/query-system)
+- [Search indexing](/specstar/concepts/search-indexing)
+- [Routes generation](/specstar/howto/routes)
 
 ---
 
@@ -112,8 +112,8 @@ See also:
 
 See also:
 
-- [Binary data](/autocrud/howto/binary-data)
-- [API conventions](/autocrud/howto/api-conventions)
+- [Binary data](/specstar/howto/binary-data)
+- [API conventions](/specstar/howto/api-conventions)
 
 ---
 
@@ -133,8 +133,8 @@ See also:
 
 See also:
 
-- [Backup and restore](/autocrud/howto/backup-restore)
-- [From demo to production](/autocrud/guides/from-demo-to-production)
+- [Backup and restore](/specstar/howto/backup-restore)
+- [From demo to production](/specstar/guides/from-demo-to-production)
 
 ---
 
@@ -149,13 +149,13 @@ See also:
 ### What to check
 
 - whether the resource was registered as a Pydantic model
-- whether the validation error comes from Pydantic or from an AutoCRUD domain rule
+- whether the validation error comes from Pydantic or from an SpecStar domain rule
 - whether you are assuming the stored output remains a Pydantic instance internally
 
 See also:
 
-- [Pydantic integration](/autocrud/howto/pydantic-integration)
-- [Validation](/autocrud/concepts/validation)
+- [Pydantic integration](/specstar/howto/pydantic-integration)
+- [Validation](/specstar/concepts/validation)
 
 ---
 
@@ -175,13 +175,13 @@ See also:
 
 See also:
 
-- [Job queue quickstart](/autocrud/quickstart/job-queue)
+- [Job queue quickstart](/specstar/quickstart/job-queue)
 
 ---
 
 ## General debugging advice
 
-When diagnosing AutoCRUD issues, start by narrowing the problem to one layer:
+When diagnosing SpecStar issues, start by narrowing the problem to one layer:
 
 1. model and validation
 2. resource lifecycle

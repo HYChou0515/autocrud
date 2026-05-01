@@ -1,15 +1,15 @@
 # Quickstart - Integrate with Existing Codebase
 
-In this quickstart, we will show how to integrate AutoCRUD into an existing FastAPI codebase.
+In this quickstart, we will show how to integrate SpecStar into an existing FastAPI codebase.
 
-AutoCRUD is designed for incremental adoption.  
+SpecStar is designed for incremental adoption.  
 You can add it to your current system without rewriting your application.
 
 ---
 
 ## Requirements
 
-AutoCRUD requires:
+SpecStar requires:
 
 - Python 3.11+
 - FastAPI 0.115+
@@ -25,7 +25,7 @@ This guide is for you if:
 
 - you already have a FastAPI service
 - you don’t want to rewrite existing endpoints
-- you want to gradually adopt AutoCRUD for new or existing resources
+- you want to gradually adopt SpecStar for new or existing resources
 
 ---
 
@@ -34,7 +34,7 @@ This guide is for you if:
 In this guide, we will:
 
 - keep an existing FastAPI app
-- add one AutoCRUD-managed resource
+- add one SpecStar-managed resource
 - expose CRUD endpoints alongside existing APIs
 - keep the original endpoints unchanged
 
@@ -61,7 +61,7 @@ Your app is already running and serving endpoints.
 
 ## 2. Add a schema for the resource you want to manage
 
-You can introduce AutoCRUD by defining a schema for one resource.
+You can introduce SpecStar by defining a schema for one resource.
 
 In this example, we add an `Issue` resource:
 
@@ -86,23 +86,23 @@ This schema can be completely independent from your existing routes and handlers
 
 ---
 
-## 3. Register the schema with AutoCRUD
+## 3. Register the schema with SpecStar
 
-Register the resource with AutoCRUD:
+Register the resource with SpecStar:
 
 ```python
-from autocrud import crud, Schema
+from specstar import crud, Schema
 
 crud.add_model(Schema(Issue, "v1"))
 ```
 
-At this point, AutoCRUD knows about the resource, but it is not attached to your FastAPI app yet.
+At this point, SpecStar knows about the resource, but it is not attached to your FastAPI app yet.
 
 ---
 
-## 4. Apply AutoCRUD to your existing app
+## 4. Apply SpecStar to your existing app
 
-Now attach AutoCRUD to the existing FastAPI instance:
+Now attach SpecStar to the existing FastAPI instance:
 
 ```python
 crud.apply(app)
@@ -110,8 +110,8 @@ crud.apply(app)
 
 This will add CRUD routes for the registered resource.
 
-Your existing endpoints are still there, and AutoCRUD adds new ones alongside them.  
-AutoCRUD only adds new routes and does not modify your existing endpoints.
+Your existing endpoints are still there, and SpecStar adds new ones alongside them.  
+SpecStar only adds new routes and does not modify your existing endpoints.
 
 Routes are generated directly from model names:
 
@@ -128,8 +128,8 @@ from typing import Literal
 import msgspec
 from fastapi import FastAPI
 
-from autocrud import crud, Schema
-from autocrud.resource_manager import DiskStorageFactory
+from specstar import crud, Schema
+from specstar.resource_manager import DiskStorageFactory
 
 
 class Issue(msgspec.Struct):
@@ -161,12 +161,12 @@ crud.apply(app)
 
 ### Using APIRouter (recommended for existing projects)
 
-If your application is structured with `APIRouter`, you can attach AutoCRUD to a router instead of the main app.
+If your application is structured with `APIRouter`, you can attach SpecStar to a router instead of the main app.
 
 ```python
 from fastapi import APIRouter, FastAPI
 
-from autocrud import crud, Schema
+from specstar import crud, Schema
 
 app = FastAPI()
 router = APIRouter(prefix="/api")
@@ -190,11 +190,11 @@ When `router` is provided, `apply()` automatically:
 
 This allows you to:
 
-- group AutoCRUD routes under a prefix (e.g. `/api/issue`)
+- group SpecStar routes under a prefix (e.g. `/api/issue`)
 - keep your existing routing structure unchanged
-- integrate AutoCRUD without modifying your main app layout
+- integrate SpecStar without modifying your main app layout
 
-If no router is provided, AutoCRUD will attach routes directly to the app.
+If no router is provided, SpecStar will attach routes directly to the app.
 
 If you need to include the router yourself (e.g. with custom tags or dependencies), pass `auto_include=False`:
 
@@ -217,13 +217,13 @@ uvicorn main:app --reload
 Now your app serves both:
 
 - your original endpoint: `/ping`
-- AutoCRUD-generated endpoints: `/issue` or `/api/issue`
+- SpecStar-generated endpoints: `/issue` or `/api/issue`
 
 You can also open:
 
 - http://127.0.0.1:8000/docs
 
-You should see both your existing routes and AutoCRUD-generated routes.
+You should see both your existing routes and SpecStar-generated routes.
 
 ---
 
@@ -277,7 +277,7 @@ Or:
 curl http://127.0.0.1:8000/api/issue
 ```
 
-This shows that AutoCRUD can coexist with your current application instead of replacing it.
+This shows that SpecStar can coexist with your current application instead of replacing it.
 
 ---
 
@@ -326,13 +326,13 @@ crud.add_model(
 
 ---
 
-## 8. Adopt AutoCRUD gradually
+## 8. Adopt SpecStar gradually
 
 A common migration path:
 
 - start with one resource
 - keep existing endpoints unchanged
-- let AutoCRUD manage new CRUD-heavy resources
+- let SpecStar manage new CRUD-heavy resources
 - gradually move validation and lifecycle logic into schema-driven rules
 
 You do not need to migrate your whole codebase at once.
@@ -341,15 +341,15 @@ You do not need to migrate your whole codebase at once.
 
 ## 9. Optional features
 
-AutoCRUD also supports:
+SpecStar also supports:
 
 - generated Web UI
 - job queue for background processing
 
 See:
 
-- [Web UI](/autocrud/howto/web-ui)
-- [Job Queue](/autocrud/quickstart/job-queue)
+- [Web UI](/specstar/howto/web-ui)
+- [Job Queue](/specstar/quickstart/job-queue)
 
 ---
 
@@ -367,9 +367,9 @@ A common next step is backend setup so your integrated resources persist correct
 
 Next Steps:
 
-- [Set up the backend for persistence, blobs, and jobs](/autocrud/guides/backend-setup)
-- [Job Queue](/autocrud/quickstart/job-queue)
-- [Fast Demo](/autocrud/quickstart/fast-demo)
+- [Set up the backend for persistence, blobs, and jobs](/specstar/guides/backend-setup)
+- [Job Queue](/specstar/quickstart/job-queue)
+- [Fast Demo](/specstar/quickstart/fast-demo)
 
 ---
 
@@ -383,7 +383,7 @@ from typing import Literal
 import msgspec
 from fastapi import APIRouter, FastAPI
 
-from autocrud import Schema, crud
+from specstar import Schema, crud
 
 
 class Issue(msgspec.Struct):

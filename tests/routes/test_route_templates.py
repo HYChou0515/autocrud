@@ -8,20 +8,20 @@ import pytest
 from fastapi import APIRouter, FastAPI
 from fastapi.testclient import TestClient
 
-from autocrud.crud.core import (
-    AutoCRUD,
+from specstar.crud.core import (
+    SpecStar,
     NameConverter,
 )
-from autocrud.crud.route_templates.create import CreateRouteTemplate
-from autocrud.crud.route_templates.delete import (
+from specstar.crud.route_templates.create import CreateRouteTemplate
+from specstar.crud.route_templates.delete import (
     DeleteRouteTemplate,
     RestoreRouteTemplate,
 )
-from autocrud.crud.route_templates.get import ReadRouteTemplate
-from autocrud.crud.route_templates.search import ListRouteTemplate
-from autocrud.crud.route_templates.switch import SwitchRevisionRouteTemplate
-from autocrud.crud.route_templates.update import UpdateRouteTemplate
-from autocrud.util.naming import NamingFormat
+from specstar.crud.route_templates.get import ReadRouteTemplate
+from specstar.crud.route_templates.search import ListRouteTemplate
+from specstar.crud.route_templates.switch import SwitchRevisionRouteTemplate
+from specstar.crud.route_templates.update import UpdateRouteTemplate
+from specstar.util.naming import NamingFormat
 
 
 class User(msgspec.Struct):
@@ -31,33 +31,33 @@ class User(msgspec.Struct):
 
 
 @pytest.fixture
-def autocrud():
-    """創建 AutoCRUD 實例"""
-    crud = AutoCRUD(model_naming="kebab")
+def specstar():
+    """創建 SpecStar 實例"""
+    spec = SpecStar(model_naming="kebab")
 
     # 添加所有路由模板
-    crud.add_route_template(CreateRouteTemplate())
-    crud.add_route_template(ReadRouteTemplate())
-    crud.add_route_template(UpdateRouteTemplate())
-    crud.add_route_template(DeleteRouteTemplate())
-    crud.add_route_template(ListRouteTemplate())
-    crud.add_route_template(SwitchRevisionRouteTemplate())
-    crud.add_route_template(RestoreRouteTemplate())
+    spec.add_route_template(CreateRouteTemplate())
+    spec.add_route_template(ReadRouteTemplate())
+    spec.add_route_template(UpdateRouteTemplate())
+    spec.add_route_template(DeleteRouteTemplate())
+    spec.add_route_template(ListRouteTemplate())
+    spec.add_route_template(SwitchRevisionRouteTemplate())
+    spec.add_route_template(RestoreRouteTemplate())
 
     # 添加 User 模型
-    crud.add_model(User)
+    spec.add_model(User)
 
-    return crud
+    return spec
 
 
 @pytest.fixture
-def client(autocrud):
+def client(specstar):
     """創建測試客戶端"""
     app = FastAPI()
     router = APIRouter()
 
     # 應用路由
-    autocrud.apply(router)
+    specstar.apply(router)
     app.include_router(router)
 
     return TestClient(app)
@@ -789,17 +789,17 @@ class TestRouteTemplates:
         assert restore_data["is_deleted"] is False
 
 
-class TestAutoCRUD:
-    """測試 AutoCRUD 類別"""
+class TestSpecStar:
+    """測試 SpecStar 類別"""
 
     def test_resource_name_conversion(self):
         """測試資源名稱轉換"""
-        autocrud = AutoCRUD(model_naming="kebab")
+        specstar = SpecStar(model_naming="kebab")
 
         class UserProfile:
             pass
 
-        name = autocrud._resource_name(UserProfile)
+        name = specstar._resource_name(UserProfile)
         assert name == "user-profile"
 
     def test_custom_naming_function(self):
@@ -808,22 +808,22 @@ class TestAutoCRUD:
         def custom_naming(model_type):
             return f"api_{model_type.__name__.lower()}"
 
-        autocrud = AutoCRUD(model_naming=custom_naming)
+        specstar = SpecStar(model_naming=custom_naming)
 
         class TestModel:
             pass
 
-        name = autocrud._resource_name(TestModel)
+        name = specstar._resource_name(TestModel)
         assert name == "api_testmodel"
 
     def test_add_model_with_custom_name(self):
         """測試添加模型時使用自定義名稱"""
-        autocrud = AutoCRUD()
+        specstar = SpecStar()
 
-        autocrud.add_model(User, name="custom-user")
+        specstar.add_model(User, name="custom-user")
 
-        assert "custom-user" in autocrud.resource_managers
-        assert autocrud.resource_managers["custom-user"].resource_type == User
+        assert "custom-user" in specstar.resource_managers
+        assert specstar.resource_managers["custom-user"].resource_type == User
 
 
 class TestRevisionListAdvanced:

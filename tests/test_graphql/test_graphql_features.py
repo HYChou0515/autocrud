@@ -8,9 +8,9 @@ import pytest
 from fastapi import APIRouter, FastAPI
 from fastapi.testclient import TestClient
 
-from autocrud.crud.core import AutoCRUD
-from autocrud.crud.route_templates.graphql import GraphQLRouteTemplate
-from autocrud.types import (
+from specstar.crud.core import SpecStar
+from specstar.crud.route_templates.graphql import GraphQLRouteTemplate
+from specstar.types import (
     Resource,
     ResourceMeta,
     RevisionInfo,
@@ -37,18 +37,18 @@ class ComplexModel(msgspec.Struct):
 
 
 @pytest.fixture
-def autocrud_complex():
-    crud = AutoCRUD(model_naming="kebab")
-    crud.add_route_template(GraphQLRouteTemplate())
-    crud.add_model(ComplexModel, indexed_fields=["name"])
-    return crud
+def specstar_complex():
+    spec = SpecStar(model_naming="kebab")
+    spec.add_route_template(GraphQLRouteTemplate())
+    spec.add_model(ComplexModel, indexed_fields=["name"])
+    return spec
 
 
 @pytest.fixture
-def client_complex(autocrud_complex):
+def client_complex(specstar_complex):
     app = FastAPI()
     router = APIRouter()
-    autocrud_complex.apply(router)
+    specstar_complex.apply(router)
     app.include_router(router)
     return TestClient(app)
 
@@ -85,8 +85,8 @@ def test_complex_types_schema(client_complex):
     assert "meta" in field_names
 
 
-def test_filtering_and_sorting(autocrud_complex, client_complex):
-    rm = autocrud_complex.get_resource_manager(ComplexModel)
+def test_filtering_and_sorting(specstar_complex, client_complex):
+    rm = specstar_complex.get_resource_manager(ComplexModel)
 
     now = dt.datetime.now(dt.timezone.utc)
 
@@ -172,8 +172,8 @@ def test_filtering_and_sorting(autocrud_complex, client_complex):
     assert data["data"]["complex_model_list"][0]["data"]["name"] == "B"
 
 
-def test_get_single_resource(autocrud_complex, client_complex):
-    rm = autocrud_complex.get_resource_manager(ComplexModel)
+def test_get_single_resource(specstar_complex, client_complex):
+    rm = specstar_complex.get_resource_manager(ComplexModel)
     now = dt.datetime.now(dt.timezone.utc)
 
     with rm.meta_provide("user1", now):
@@ -217,8 +217,8 @@ def test_get_single_resource(autocrud_complex, client_complex):
     assert data["data"]["complex_model"]["meta"]["createdBy"] == "user1"
 
 
-def test_partial_fetching(autocrud_complex, client_complex):
-    rm = autocrud_complex.get_resource_manager(ComplexModel)
+def test_partial_fetching(specstar_complex, client_complex):
+    rm = specstar_complex.get_resource_manager(ComplexModel)
     now = dt.datetime.now(dt.timezone.utc)
 
     with rm.meta_provide("user1", now):
@@ -254,7 +254,7 @@ def test_partial_fetching(autocrud_complex, client_complex):
     # We can't easily verify get_partial was called without mocking, but this exercises the code path.
 
 
-def test_error_handling(autocrud_complex, client_complex):
+def test_error_handling(specstar_complex, client_complex):
     # Query non-existent resource
     query = """
     query {
@@ -271,8 +271,8 @@ def test_error_handling(autocrud_complex, client_complex):
     assert data["data"]["complex_model"] is None
 
 
-def test_extended_filtering_and_sorting(autocrud_complex, client_complex):
-    rm = autocrud_complex.get_resource_manager(ComplexModel)
+def test_extended_filtering_and_sorting(specstar_complex, client_complex):
+    rm = specstar_complex.get_resource_manager(ComplexModel)
     now = dt.datetime.now(dt.timezone.utc)
 
     with rm.meta_provide("user1", now):
@@ -365,8 +365,8 @@ def test_extended_filtering_and_sorting(autocrud_complex, client_complex):
     assert data["data"]["complex_model_list"][0]["data"]["name"] == "A"
 
 
-def test_get_resource_revision(autocrud_complex, client_complex):
-    rm = autocrud_complex.get_resource_manager(ComplexModel)
+def test_get_resource_revision(specstar_complex, client_complex):
+    rm = specstar_complex.get_resource_manager(ComplexModel)
     now = dt.datetime.now(dt.timezone.utc)
 
     resource_id = None
@@ -575,24 +575,24 @@ class MockDictResourceManager:
 
 
 @pytest.fixture
-def autocrud_extended():
-    crud = AutoCRUD(model_naming="kebab")
-    crud.add_route_template(GraphQLRouteTemplate())
-    crud.add_model(ComplexUnionModel)
-    crud.add_model(DateModel)
-    crud.add_model(DefaultFieldModel)
+def specstar_extended():
+    spec = SpecStar(model_naming="kebab")
+    spec.add_route_template(GraphQLRouteTemplate())
+    spec.add_model(ComplexUnionModel)
+    spec.add_model(DateModel)
+    spec.add_model(DefaultFieldModel)
 
-    crud.resource_managers["list_model"] = MockListResourceManager()  # ty:ignore[invalid-assignment]
-    crud.resource_managers["dict_model"] = MockDictResourceManager()  # ty:ignore[invalid-assignment]
+    spec.resource_managers["list_model"] = MockListResourceManager()  # ty:ignore[invalid-assignment]
+    spec.resource_managers["dict_model"] = MockDictResourceManager()  # ty:ignore[invalid-assignment]
 
-    return crud
+    return spec
 
 
 @pytest.fixture
-def client_extended(autocrud_extended):
+def client_extended(specstar_extended):
     app = FastAPI()
     router = APIRouter()
-    autocrud_extended.apply(router)
+    specstar_extended.apply(router)
     app.include_router(router)
     return TestClient(app)
 
@@ -609,8 +609,8 @@ def test_complex_union_coverage(client_extended):
     assert response.status_code == 200
 
 
-def test_date_coverage(autocrud_extended, client_extended):
-    rm = autocrud_extended.get_resource_manager(DateModel)
+def test_date_coverage(specstar_extended, client_extended):
+    rm = specstar_extended.get_resource_manager(DateModel)
     with rm.meta_provide("user", dt.datetime.now(dt.timezone.utc)):
         rm.create(DateModel(d=dt.date(2023, 1, 1)))
 
@@ -626,7 +626,7 @@ def test_date_coverage(autocrud_extended, client_extended):
     assert response.json()["data"]["date_model_list"][0]["data"]["d"] == "2023-01-01"
 
 
-def test_list_filters(autocrud_extended, client_extended):
+def test_list_filters(specstar_extended, client_extended):
     query = """
     query {
         date_model_list(query: {
@@ -665,8 +665,8 @@ def test_list_resource_partial(client_extended):
     assert response.json()["data"]["list_model"]["data"][0]["name"] == "partial"
 
 
-def test_fetch_info_only(autocrud_extended, client_extended):
-    rm = autocrud_extended.get_resource_manager(DateModel)
+def test_fetch_info_only(specstar_extended, client_extended):
+    rm = specstar_extended.get_resource_manager(DateModel)
     with rm.meta_provide("user", dt.datetime.now(dt.timezone.utc)):
         rm.create(DateModel(d=dt.date(2023, 1, 1)))
 

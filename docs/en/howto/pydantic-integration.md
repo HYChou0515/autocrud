@@ -1,14 +1,14 @@
 # Pydantic Integration
 
-AutoCRUD works well with Pydantic models when you want declarative validation and a familiar model authoring style.
+SpecStar works well with Pydantic models when you want declarative validation and a familiar model authoring style.
 
 This is especially useful if your project already uses `BaseModel` or relies on field validators and discriminated unions.
 
 ---
 
-## What AutoCRUD does for you
+## What SpecStar does for you
 
-When you register a Pydantic model, AutoCRUD can:
+When you register a Pydantic model, SpecStar can:
 
 - accept Pydantic model instances as input
 - accept plain dictionaries and validate them through Pydantic
@@ -25,7 +25,7 @@ A key rule is that the internal resource manager still works with Struct-based s
 from pydantic import BaseModel, field_validator
 from fastapi import FastAPI
 
-from autocrud import crud
+from specstar import crud
 
 
 class Character(BaseModel):
@@ -65,9 +65,9 @@ Pydantic checks:
 - discriminated unions
 - model-level rules you define
 
-### 2. AutoCRUD resource handling
+### 2. SpecStar resource handling
 
-After validation, AutoCRUD converts the model into its internal representation and continues with:
+After validation, SpecStar converts the model into its internal representation and continues with:
 
 - indexing
 - versioning
@@ -75,7 +75,7 @@ After validation, AutoCRUD converts the model into its internal representation a
 - route generation
 - search and lifecycle behavior
 
-This means you get the ergonomics of Pydantic without giving up the core AutoCRUD model.
+This means you get the ergonomics of Pydantic without giving up the core SpecStar model.
 
 ---
 
@@ -119,7 +119,7 @@ Use this style when the rule belongs naturally to the schema itself.
 
 ## Discriminated unions
 
-AutoCRUD also supports Pydantic discriminated unions.
+SpecStar also supports Pydantic discriminated unions.
 
 This is useful for data that can take multiple tagged shapes, such as different skill types or event payloads.
 
@@ -158,7 +158,7 @@ This pattern is demonstrated in the Pydantic RPG example in the repository.
 
 ### Choose msgspec-first models when you want:
 
-- the simplest native AutoCRUD path
+- the simplest native SpecStar path
 - minimal overhead
 - direct alignment with the internal storage representation
 
@@ -168,7 +168,7 @@ Both approaches are valid. Pick the one that matches your team’s workflow.
 
 ## Related pages
 
-- [Validation](/autocrud/concepts/validation)
-- [Schema](/autocrud/concepts/schema)
-- [Examples](/autocrud/examples/)
-- [Routes generation](/autocrud/howto/routes)
+- [Validation](/specstar/concepts/validation)
+- [Schema](/specstar/concepts/schema)
+- [Examples](/specstar/examples/)
+- [Routes generation](/specstar/howto/routes)

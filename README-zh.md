@@ -1,15 +1,15 @@
-# AutoCRUD
+# SpecStar
 
-[![Docs](https://img.shields.io/badge/Docs-Documentation-blue)](https://hychou0515.github.io/autocrud/)
-[![Wizard](https://img.shields.io/badge/Wizard-Starter_Wizard-ff69b4)](https://hychou0515.github.io/autocrud/wizard/)
-[![PyPI](https://img.shields.io/pypi/v/autocrud)](https://pypi.org/project/autocrud/)
+[![Docs](https://img.shields.io/badge/Docs-Documentation-blue)](https://hychou0515.github.io/specstar/)
+[![Wizard](https://img.shields.io/badge/Wizard-Starter_Wizard-ff69b4)](https://hychou0515.github.io/specstar/wizard/)
+[![PyPI](https://img.shields.io/pypi/v/specstar)](https://pypi.org/project/specstar/)
 [![FastAPI](https://img.shields.io/badge/FastAPI-Automation-009688)](https://fastapi.tiangolo.com)
 [![GraphQL](https://img.shields.io/badge/GraphQL-Supported-E10098?logo=graphql)](https://graphql.org/)
 [![msgspec](https://img.shields.io/badge/msgspec-Supported-5e60ce)](https://github.com/jcrist/msgspec)
 [![Versioning](https://img.shields.io/badge/Versioning-Built--in-blue)]()
 
 <div style="padding:12px;border:1px solid #add3ff99;border-radius:8px;background: #add3ff33;">
-  <strong>AutoCRUD 是模型驅動的自動化FastAPI：</strong>內建版本控制、權限與搜尋，聚焦業務邏輯快速上線。
+  <strong>SpecStar 是模型驅動的自動化FastAPI：</strong>內建版本控制、權限與搜尋，聚焦業務邏輯快速上線。
 </div>
 
 ## ✨ 特色
@@ -22,9 +22,9 @@
 
 ## 🧙 Starter Wizard
 
-使用互動式 **Starter Wizard** 快速生成可直接執行的 AutoCRUD 專案，包含模型、儲存與權限配置 — 免去手動撰寫樣板程式碼。
+使用互動式 **Starter Wizard** 快速生成可直接執行的 SpecStar 專案，包含模型、儲存與權限配置 — 免去手動撰寫樣板程式碼。
 
-👉 [https://hychou0515.github.io/autocrud/wizard/](https://hychou0515.github.io/autocrud/wizard/)
+👉 [https://hychou0515.github.io/specstar/wizard/](https://hychou0515.github.io/specstar/wizard/)
 
 ## 功能概覽
 
@@ -49,7 +49,7 @@
 ## 安裝
 
 ```
-pip install autocrud
+pip install specstar
 ```
 
 **Optional Dependencies**
@@ -57,22 +57,22 @@ pip install autocrud
 若需要 **S3** 儲存支援：
 
 ```
-pip install "autocrud[s3]"
+pip install "specstar[s3]"
 ```
 
 若需要 **BlobStore 自動偵測 Content-Type**：
 
 ```
-pip install "autocrud[magic]"
+pip install "specstar[magic]"
 ```
 
-`autocrud[magic]` 依賴 `python-magic`。
+`specstar[magic]` 依賴 `python-magic`。
 - **Linux**: 需確認環境已安裝 `libmagic` (例如 Ubuntu 下執行 `sudo apt-get install libmagic1`)。
 - **其他 OS**: 請參考 [python-magic 安裝說明](https://github.com/ahupp/python-magic#installation)。
 
 ## 文檔
 
-https://hychou0515.github.io/autocrud/
+https://hychou0515.github.io/specstar/
 
 ## 查詢分頁預設值設定
 
@@ -86,9 +86,9 @@ export AUTOCRUD_DEFAULT_QUERY_LIMIT=1000
 - 單次請求仍可用 `limit` 參數覆寫
 - 若需要精確總數，請呼叫 `/count`
 
-## AutoCRUD Web Generator
+## SpecStar Web Generator
 
-[`autocrud-web-generator`](https://www.npmjs.com/package/autocrud-web-generator) 可以直接從 AutoCRUD 後端的 OpenAPI 規格，在幾秒內生成一個完整的 React 管理後台，不需要手寫任何前端樣板程式碼。
+[`specstar-web-generator`](https://www.npmjs.com/package/specstar-web-generator) 可以直接從 SpecStar 後端的 OpenAPI 規格，在幾秒內生成一個完整的 React 管理後台，不需要手寫任何前端樣板程式碼。
 
 對著正在執行的 API 跑一次 generator，就能得到：
 
@@ -96,7 +96,7 @@ export AUTOCRUD_DEFAULT_QUERY_LIMIT=1000
 - **Axios API client** — 每個資源各自一份，可直接使用
 - **列表頁面** — 含伺服器端分頁、排序與搜尋
 - **新增頁面** — 依 schema 自動產生表單，搭配 Zod 驗證
-- **詳情頁面** — 含完整版本歷史瀏覽（AutoCRUD revision）
+- **詳情頁面** — 含完整版本歷史瀏覽（SpecStar revision）
 - **Dashboard** — 顯示各資源的即時數量
 
 生成結果是完整獨立的 [Vite](https://vitejs.dev/) + [React](https://react.dev/) + [Mantine](https://mantine.dev/) + [TanStack Router](https://tanstack.com/router) 專案，產出的程式碼完全歸你所有，可以自由客製化。
@@ -104,8 +104,8 @@ export AUTOCRUD_DEFAULT_QUERY_LIMIT=1000
 **快速開始**（後端須先在 `http://localhost:8000` 執行）：
 
 ```bash
-npm install -g autocrud-web-generator
-autocrud-web init my-app
+npm install -g specstar-web-generator
+specstar-web init my-app
 cd my-app && pnpm install
 pnpm generate --url http://localhost:8000
 pnpm dev
@@ -119,7 +119,7 @@ pnpm dev
 from datetime import datetime, timedelta
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
-from autocrud import AutoCRUD
+from specstar import SpecStar
 from msgspec import Struct
 
 class TodoItem(Struct):
@@ -131,8 +131,8 @@ class TodoList(Struct):
     items: list[TodoItem]
     notes: str
 
-# 創建 AutoCRUD
-crud = AutoCRUD()
+# 創建 SpecStar
+crud = SpecStar()
 crud.add_model(TodoItem)
 crud.add_model(TodoList)
 
@@ -151,15 +151,15 @@ uvicorn.run(app, host="0.0.0.0", port=8000, log_level="info")
 - `GET /todo-list/data` - 列表, 支援搜尋
 - *其他十多種auto endpoints*
 
-➡️ *[AutoCRUD 使用指南](https://hychou0515.github.io/autocrud/auto_routes)*
+➡️ *[SpecStar 使用指南](https://hychou0515.github.io/specstar/auto_routes)*
 
 ## 透過 ResourceManager 操作資源
 
-ResourceManager 是 AutoCRUD 的資源操作入口，負責管理資源的建立、查詢、更新、刪除、版本等操作。
+ResourceManager 是 SpecStar 的資源操作入口，負責管理資源的建立、查詢、更新、刪除、版本等操作。
 
 其核心是「版本控制」：每次 `create/update/patch` 都會產生新的 `revision_id`（進版），完整保留歷史；草稿（`draft`）可用 `modify` 不進版反覆編輯，確認後切換為 `stable`。你也可以列出所有版本、讀取任意版本、`switch` 切換目前版本，或在軟刪除後 `restore` 還原。索引查詢支援依 metadata 與資料欄位（indexed fields）進行篩選、排序與分頁，適合審計、回溯與大量資料的檢索。
 
-➡️ *[ResourceManager 使用說明](https://hychou0515.github.io/autocrud/resource_manager)*
+➡️ *[ResourceManager 使用說明](https://hychou0515.github.io/specstar/resource_manager)*
 
 
 ## 🚀 快速開始
@@ -169,7 +169,7 @@ ResourceManager 是 AutoCRUD 的資源操作入口，負責管理資源的建立
 from datetime import datetime, timedelta
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
-from autocrud import AutoCRUD
+from specstar import SpecStar
 from msgspec import Struct
 
 class TodoItem(Struct):
@@ -182,7 +182,7 @@ class TodoList(Struct):
     notes: str
 
 # 創建 CRUD API
-crud = AutoCRUD()
+crud = SpecStar()
 crud.add_model(TodoItem)
 crud.add_model(TodoList)
 

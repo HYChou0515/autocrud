@@ -5,13 +5,13 @@ import uuid
 
 import pytest
 
-from autocrud.resource_manager.basic import Encoding
-from autocrud.resource_manager.meta_store.sqlite3 import S3SqliteMetaStore
-from autocrud.types import ResourceMeta
+from specstar.resource_manager.basic import Encoding
+from specstar.resource_manager.meta_store.sqlite3 import S3SqliteMetaStore
+from specstar.types import ResourceMeta
 
 # 使用真實的 S3/MinIO 連接進行測試
 S3_ENDPOINT = "http://localhost:9000"
-S3_BUCKET = "test-autocrud"
+S3_BUCKET = "test-specstar"
 S3_ACCESS_KEY = "minioadmin"
 S3_SECRET_KEY = "minioadmin"
 
@@ -209,7 +209,7 @@ def test_s3_sqlite_meta_store_etag_locking(s3_test_key, cleanup_s3_file):
     """測試 ETag 鎖定機制"""
     cleanup_s3_file.append(s3_test_key)
 
-    from autocrud.resource_manager.meta_store.sqlite3 import S3ConflictError
+    from specstar.resource_manager.meta_store.sqlite3 import S3ConflictError
 
     # 創建第一個實例並寫入數據
     store1 = S3SqliteMetaStore(
@@ -392,7 +392,7 @@ def test_s3_sqlite_meta_store_save_many(s3_test_key, cleanup_s3_file):
 def test_s3_sqlite_meta_store_search(s3_test_key, cleanup_s3_file):
     """測試搜索功能"""
     cleanup_s3_file.append(s3_test_key)
-    from autocrud.query_types import ResourceMetaSearchQuery
+    from specstar.query_types import ResourceMetaSearchQuery
 
     store = S3SqliteMetaStore(
         bucket=S3_BUCKET,
@@ -489,7 +489,7 @@ def test_s3_sqlite_meta_store_force_sync(s3_test_key, cleanup_s3_file):
 def test_s3_sqlite_meta_store_auto_reload_on_conflict(s3_test_key, cleanup_s3_file):
     """測試衝突時自動重載"""
     cleanup_s3_file.append(s3_test_key)
-    from autocrud.resource_manager.meta_store.sqlite3 import S3ConflictError
+    from specstar.resource_manager.meta_store.sqlite3 import S3ConflictError
 
     # 創建第一個實例
     store1 = S3SqliteMetaStore(

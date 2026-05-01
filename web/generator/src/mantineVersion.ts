@@ -179,13 +179,13 @@ export async function patchSourceFiles(srcDir: string, version: MantineVersion):
 }
 
 // ---------------------------------------------------------------------------
-// .autocrudrc.json management
+// .specstarrc.json management
 // ---------------------------------------------------------------------------
 
-const RC_FILENAME = '.autocrudrc.json';
+const RC_FILENAME = '.specstarrc.json';
 
 /**
- * Write the Mantine version choice to .autocrudrc.json in the project root.
+ * Write the Mantine version choice to .specstarrc.json in the project root.
  */
 export async function writeVersionConfig(projectDir: string, version: MantineVersion): Promise<void> {
   const rcPath = path.join(projectDir, RC_FILENAME);
@@ -194,7 +194,7 @@ export async function writeVersionConfig(projectDir: string, version: MantineVer
 }
 
 /**
- * Read the Mantine version from .autocrudrc.json.
+ * Read the Mantine version from .specstarrc.json.
  * Returns '7' as default if the file doesn't exist or is invalid.
  */
 export async function readVersionConfig(projectDir: string): Promise<MantineVersion> {

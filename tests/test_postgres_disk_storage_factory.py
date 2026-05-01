@@ -11,8 +11,8 @@ from unittest.mock import patch
 import pytest
 from msgspec import Struct
 
-from autocrud.resource_manager.basic import Encoding
-from autocrud.resource_manager.storage_factory import (
+from specstar.resource_manager.basic import Encoding
+from specstar.resource_manager.storage_factory import (
     PostgresDiskS3StorageFactory,
     PostgresDiskStorageFactory,
 )
@@ -32,7 +32,7 @@ class TestPostgresDiskStorageFactoryInit:
         """Test initialization with all parameters explicitly set."""
         factory = PostgresDiskStorageFactory(
             connection_string="postgresql://admin:password@localhost:5432/mydb",
-            rootdir="/data/autocrud",
+            rootdir="/data/specstar",
             encoding=Encoding.json,
             table_prefix="prod_",
         )
@@ -41,7 +41,7 @@ class TestPostgresDiskStorageFactoryInit:
             factory.connection_string
             == "postgresql://admin:password@localhost:5432/mydb"
         )
-        assert factory.rootdir == Path("/data/autocrud")
+        assert factory.rootdir == Path("/data/specstar")
         assert factory.encoding == Encoding.json
         assert factory.table_prefix == "prod_"
 
@@ -83,15 +83,15 @@ class TestPostgresDiskStorageFactoryBuild:
         """Create factory with mocked stores."""
         with (
             patch(
-                "autocrud.resource_manager.storage_factory.PostgresMetaStore"
+                "specstar.resource_manager.storage_factory.PostgresMetaStore"
             ) as mock_pg,
             patch(
-                "autocrud.resource_manager.storage_factory.DiskResourceStore"
+                "specstar.resource_manager.storage_factory.DiskResourceStore"
             ) as mock_disk,
         ):
             factory = PostgresDiskStorageFactory(
                 connection_string="postgresql://test:test@localhost:5432/testdb",
-                rootdir="/tmp/autocrud-test",
+                rootdir="/tmp/specstar-test",
                 encoding=Encoding.msgpack,
                 table_prefix="bench_",
             )
@@ -114,7 +114,7 @@ class TestPostgresDiskStorageFactoryBuild:
         factory.build("TestItem")
 
         mock_disk.assert_called_once_with(
-            rootdir=Path("/tmp/autocrud-test") / "TestItem" / "data",
+            rootdir=Path("/tmp/specstar-test") / "TestItem" / "data",
         )
 
     def test_build_returns_storage(self, mock_factory):
@@ -139,8 +139,8 @@ class TestPostgresDiskStorageFactoryBuild:
         assert pg_calls[1][1]["table_name"] == "bench_post_meta"
 
         disk_calls = mock_disk.call_args_list
-        assert disk_calls[0][1]["rootdir"] == Path("/tmp/autocrud-test/User/data")
-        assert disk_calls[1][1]["rootdir"] == Path("/tmp/autocrud-test/Post/data")
+        assert disk_calls[0][1]["rootdir"] == Path("/tmp/specstar-test/User/data")
+        assert disk_calls[1][1]["rootdir"] == Path("/tmp/specstar-test/Post/data")
 
 
 class TestPostgresDiskStorageFactoryTablePrefix:
@@ -150,9 +150,9 @@ class TestPostgresDiskStorageFactoryTablePrefix:
         """Test table name without prefix."""
         with (
             patch(
-                "autocrud.resource_manager.storage_factory.PostgresMetaStore"
+                "specstar.resource_manager.storage_factory.PostgresMetaStore"
             ) as mock_pg,
-            patch("autocrud.resource_manager.storage_factory.DiskResourceStore"),
+            patch("specstar.resource_manager.storage_factory.DiskResourceStore"),
         ):
             factory = PostgresDiskStorageFactory(
                 connection_string="postgresql://localhost/db",
@@ -168,9 +168,9 @@ class TestPostgresDiskStorageFactoryTablePrefix:
         """Test table name with prefix."""
         with (
             patch(
-                "autocrud.resource_manager.storage_factory.PostgresMetaStore"
+                "specstar.resource_manager.storage_factory.PostgresMetaStore"
             ) as mock_pg,
-            patch("autocrud.resource_manager.storage_factory.DiskResourceStore"),
+            patch("specstar.resource_manager.storage_factory.DiskResourceStore"),
         ):
             factory = PostgresDiskStorageFactory(
                 connection_string="postgresql://localhost/db",
@@ -186,9 +186,9 @@ class TestPostgresDiskStorageFactoryTablePrefix:
         """Test table name with a longer prefix."""
         with (
             patch(
-                "autocrud.resource_manager.storage_factory.PostgresMetaStore"
+                "specstar.resource_manager.storage_factory.PostgresMetaStore"
             ) as mock_pg,
-            patch("autocrud.resource_manager.storage_factory.DiskResourceStore"),
+            patch("specstar.resource_manager.storage_factory.DiskResourceStore"),
         ):
             factory = PostgresDiskStorageFactory(
                 connection_string="postgresql://localhost/db",
@@ -208,7 +208,7 @@ class TestPostgresDiskS3StorageFactory:
         """Test initialization with PostgreSQL, disk, and S3 blob parameters."""
         factory = PostgresDiskS3StorageFactory(
             connection_string="postgresql://admin:password@localhost:5432/mydb",
-            rootdir="/data/autocrud",
+            rootdir="/data/specstar",
             s3_bucket="blob-bucket",
             s3_region="ap-northeast-1",
             s3_access_key_id="my-key",
@@ -226,7 +226,7 @@ class TestPostgresDiskS3StorageFactory:
             factory.connection_string
             == "postgresql://admin:password@localhost:5432/mydb"
         )
-        assert factory.rootdir == Path("/data/autocrud")
+        assert factory.rootdir == Path("/data/specstar")
         assert factory.s3_bucket == "blob-bucket"
         assert factory.s3_region == "ap-northeast-1"
         assert factory.s3_access_key_id == "my-key"
@@ -243,10 +243,10 @@ class TestPostgresDiskS3StorageFactory:
         """Test build() keeps the PostgreSQL + disk behavior."""
         with (
             patch(
-                "autocrud.resource_manager.storage_factory.PostgresMetaStore"
+                "specstar.resource_manager.storage_factory.PostgresMetaStore"
             ) as mock_pg,
             patch(
-                "autocrud.resource_manager.storage_factory.DiskResourceStore"
+                "specstar.resource_manager.storage_factory.DiskResourceStore"
             ) as mock_disk,
         ):
             factory = PostgresDiskS3StorageFactory(
@@ -271,7 +271,7 @@ class TestPostgresDiskS3StorageFactory:
     def test_build_blob_store_creates_s3_blob_store(self):
         """Test build_blob_store() creates S3-backed blob storage."""
         with patch(
-            "autocrud.resource_manager.storage_factory.S3BlobStore"
+            "specstar.resource_manager.storage_factory.S3BlobStore"
         ) as mock_blob:
             factory = PostgresDiskS3StorageFactory(
                 connection_string="postgresql://localhost/db",
@@ -309,9 +309,9 @@ class TestPostgresDiskStorageFactoryEncoding:
         """Test factory with JSON encoding."""
         with (
             patch(
-                "autocrud.resource_manager.storage_factory.PostgresMetaStore"
+                "specstar.resource_manager.storage_factory.PostgresMetaStore"
             ) as mock_pg,
-            patch("autocrud.resource_manager.storage_factory.DiskResourceStore"),
+            patch("specstar.resource_manager.storage_factory.DiskResourceStore"),
         ):
             factory = PostgresDiskStorageFactory(
                 connection_string="postgresql://localhost/db",
@@ -327,9 +327,9 @@ class TestPostgresDiskStorageFactoryEncoding:
         """Test factory with msgpack encoding."""
         with (
             patch(
-                "autocrud.resource_manager.storage_factory.PostgresMetaStore"
+                "specstar.resource_manager.storage_factory.PostgresMetaStore"
             ) as mock_pg,
-            patch("autocrud.resource_manager.storage_factory.DiskResourceStore"),
+            patch("specstar.resource_manager.storage_factory.DiskResourceStore"),
         ):
             factory = PostgresDiskStorageFactory(
                 connection_string="postgresql://localhost/db",

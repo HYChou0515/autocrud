@@ -10,9 +10,9 @@ from collections.abc import Generator
 import pytest
 from msgspec import UNSET
 
-from autocrud.resource_manager.basic import IBlobStore
-from autocrud.resource_manager.blob_store.simple import DiskBlobStore, MemoryBlobStore
-from autocrud.types import BlobUploadSession
+from specstar.resource_manager.basic import IBlobStore
+from specstar.resource_manager.blob_store.simple import DiskBlobStore, MemoryBlobStore
+from specstar.types import BlobUploadSession
 
 # ---------------------------------------------------------------------------
 # Parametrized fixture — runs every test against all implementations
@@ -29,7 +29,7 @@ def blob_store(
     elif request.param == "disk":
         yield DiskBlobStore(tmp_path / "blobs_session")  # ty:ignore[unsupported-operator]
     elif request.param == "s3_proxy":
-        from autocrud.resource_manager.blob_store.s3 import S3BlobStore
+        from specstar.resource_manager.blob_store.s3 import S3BlobStore
 
         prefix = f"{tmp_path.name}_proxy/"  # ty:ignore[unresolved-attribute]
         store = S3BlobStore(
@@ -39,7 +39,7 @@ def blob_store(
         )
         yield store
     elif request.param == "s3_single_put":
-        from autocrud.resource_manager.blob_store.s3 import S3BlobStore
+        from specstar.resource_manager.blob_store.s3 import S3BlobStore
 
         prefix = f"{tmp_path.name}_sput/"  # ty:ignore[unresolved-attribute]
         store = S3BlobStore(
@@ -63,7 +63,7 @@ def proxy_blob_store(
     elif request.param == "disk":
         yield DiskBlobStore(tmp_path / "blobs_proxy")  # ty:ignore[unsupported-operator]
     elif request.param == "s3_proxy":
-        from autocrud.resource_manager.blob_store.s3 import S3BlobStore
+        from specstar.resource_manager.blob_store.s3 import S3BlobStore
 
         prefix = f"{tmp_path.name}_pxy/"  # ty:ignore[unresolved-attribute]
         store = S3BlobStore(
@@ -117,7 +117,7 @@ class TestCreateUploadSession:
 
     def test_s3_single_put_has_single_put_method(self, tmp_path):
         """S3 single_put returns upload_method='single_put' with a presigned URL."""
-        from autocrud.resource_manager.blob_store.s3 import S3BlobStore
+        from specstar.resource_manager.blob_store.s3 import S3BlobStore
 
         store = S3BlobStore(
             endpoint_url="http://localhost:9000",
@@ -195,7 +195,7 @@ class TestUploadToSession:
 
     def test_s3_single_put_raises_not_implemented(self, tmp_path):
         """In single_put mode, upload_to_session is not supported."""
-        from autocrud.resource_manager.blob_store.s3 import S3BlobStore
+        from specstar.resource_manager.blob_store.s3 import S3BlobStore
 
         store = S3BlobStore(
             endpoint_url="http://localhost:9000",
@@ -324,7 +324,7 @@ class TestS3SinglePutFinalize:
 
     @pytest.fixture
     def s3_single_put_store(self, tmp_path):
-        from autocrud.resource_manager.blob_store.s3 import S3BlobStore
+        from specstar.resource_manager.blob_store.s3 import S3BlobStore
 
         return S3BlobStore(
             endpoint_url="http://localhost:9000",

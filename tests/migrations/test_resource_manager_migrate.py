@@ -7,8 +7,8 @@ import msgspec
 import pytest
 from msgspec import Struct
 
-from autocrud.resource_manager.core import ResourceManager
-from autocrud.types import (
+from specstar.resource_manager.core import ResourceManager
+from specstar.types import (
     IMigration,
     IndexableField,
     ResourceMeta,

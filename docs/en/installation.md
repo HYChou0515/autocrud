@@ -1,6 +1,6 @@
 # Installation
 
-AutoCRUD is designed for modern FastAPI projects and works with Python 3.11 or newer.
+SpecStar is designed for modern FastAPI projects and works with Python 3.11 or newer.
 
 For most applications, the base package is enough to get started. Optional extras are available for storage backends, GraphQL, queues, and CLI utilities.
 
@@ -21,13 +21,13 @@ Before installing, make sure your environment has:
 Install the core package with pip:
 
 ```bash
-pip install autocrud
+pip install specstar
 ```
 
 If you use `uv` to manage dependencies:
 
 ```bash
-uv add autocrud
+uv add specstar
 ```
 
 ---
@@ -38,19 +38,19 @@ Install only the integrations you need.
 
 | Use case | Package spec |
 | --- | --- |
-| S3 support | `autocrud[s3]` |
-| GraphQL routes | `autocrud[graphql]` |
-| Message queue backends | `autocrud[mq]` |
-| CLI tooling | `autocrud[cli]` |
-| PostgreSQL support | `autocrud[postgresql]` |
-| Redis support | `autocrud[redis]` |
-| SQLAlchemy integration | `autocrud[sqlalchemy]` |
-| Everything included | `autocrud[all]` |
+| S3 support | `specstar[s3]` |
+| GraphQL routes | `specstar[graphql]` |
+| Message queue backends | `specstar[mq]` |
+| CLI tooling | `specstar[cli]` |
+| PostgreSQL support | `specstar[postgresql]` |
+| Redis support | `specstar[redis]` |
+| SQLAlchemy integration | `specstar[sqlalchemy]` |
+| Everything included | `specstar[all]` |
 
 Example:
 
 ```bash
-pip install 'autocrud[graphql,mq]'
+pip install 'specstar[graphql,mq]'
 ```
 
 ### Common backend bundles
@@ -59,15 +59,15 @@ Use a bundle that matches your deployment stage:
 
 | Goal | Recommended install |
 | --- | --- |
-| local MVP with durable files | `pip install autocrud` |
-| PostgreSQL-backed API | `pip install 'autocrud[postgresql]'` |
-| object storage and blob uploads | `pip install 'autocrud[s3]'` |
-| production jobs and workers | `pip install 'autocrud[mq]'` |
-| recommended production stack | `pip install 'autocrud[postgresql,s3,mq]'` |
+| local MVP with durable files | `pip install specstar` |
+| PostgreSQL-backed API | `pip install 'specstar[postgresql]'` |
+| object storage and blob uploads | `pip install 'specstar[s3]'` |
+| production jobs and workers | `pip install 'specstar[mq]'` |
+| recommended production stack | `pip install 'specstar[postgresql,s3,mq]'` |
 
 The recommended production stack is `PostgresDiskS3StorageFactory(...)` plus `RabbitMQMessageQueueFactory()`.
 
-If you are not sure which one to choose, continue with the [backend setup guide](/autocrud/guides/backend-setup).
+If you are not sure which one to choose, continue with the [backend setup guide](/specstar/guides/backend-setup).
 
 ---
 
@@ -76,7 +76,7 @@ If you are not sure which one to choose, continue with the [backend setup guide]
 You can quickly verify that the package is available:
 
 ```bash
-python -c "import autocrud; print(autocrud.__version__)"
+python -c "import specstar; print(specstar.__version__)"
 ```
 
 If that command prints a version string, the installation is ready.
@@ -97,7 +97,7 @@ uvicorn main:app --reload
 
 Notes:
 
-- if unset, AutoCRUD falls back to a very large default first page size
+- if unset, SpecStar falls back to a very large default first page size
 - a request-level `limit` still overrides the startup default
 - if you need an exact total count, use the `/count` endpoint
 
@@ -109,7 +109,7 @@ Notes:
 from fastapi import FastAPI
 from msgspec import Struct
 
-from autocrud import crud, Schema
+from specstar import crud, Schema
 
 
 class User(Struct):
@@ -138,7 +138,7 @@ Then open:
 
 ## Choose your next step
 
-- [Fast demo](/autocrud/quickstart/fast-demo) if you want the quickest end-to-end example
-- [Backend setup](/autocrud/guides/backend-setup) if you need to choose metadata, resource, blob, or queue backends
-- [Integrate with an existing FastAPI app](/autocrud/quickstart/integrate-existing) if you already have a project
-- [Routes generation](/autocrud/howto/routes) if you want to understand what gets exposed automatically
+- [Fast demo](/specstar/quickstart/fast-demo) if you want the quickest end-to-end example
+- [Backend setup](/specstar/guides/backend-setup) if you need to choose metadata, resource, blob, or queue backends
+- [Integrate with an existing FastAPI app](/specstar/quickstart/integrate-existing) if you already have a project
+- [Routes generation](/specstar/howto/routes) if you want to understand what gets exposed automatically

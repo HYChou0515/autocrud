@@ -1,11 +1,11 @@
 # Documentation rules
 
-This page summarizes the conventions for writing and updating AutoCRUD documentation.
+This page summarizes the conventions for writing and updating SpecStar documentation.
 
 ## Public API boundary
-Only symbols exported from `autocrud/__init__.py` are considered public API for onboarding-oriented imports.
+Only symbols exported from `specstar/__init__.py` are considered public API for onboarding-oriented imports.
 
-For exceptions, prefer documenting and importing them from `autocrud.errors`.
+For exceptions, prefer documenting and importing them from `specstar.errors`.
 
 ## Where docs live
 

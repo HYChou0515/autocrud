@@ -7,15 +7,15 @@ from zoneinfo import ZoneInfo
 import pytest
 from msgspec import UNSET, Struct
 
-from autocrud.query_types import (
+from specstar.query_types import (
     DataSearchCondition,
     DataSearchOperator,
     ResourceDataSearchSort,
     ResourceMetaSearchQuery,
     ResourceMetaSortDirection,
 )
-from autocrud.resource_manager.core import IndexedValueExtractor
-from autocrud.types import (
+from specstar.resource_manager.core import IndexedValueExtractor
+from specstar.types import (
     IndexableField,
     ResourceMeta,
     SpecialIndex,
@@ -207,7 +207,7 @@ class TestMetaStoreIterSearch:
 
     def test_length_transform_on_string_field(self):
         """Test using length() transform on string fields (name field)."""
-        from autocrud.query import QB
+        from specstar.query import QB
 
         # Create condition: name.length() > 6 (should match "Charlie" only, not "Task 1/2/3")
         condition = QB["name"].length() > 6
@@ -226,7 +226,7 @@ class TestMetaStoreIterSearch:
 
     def test_length_transform_on_email_field(self):
         """Test using length() transform with different operators."""
-        from autocrud.query import QB
+        from specstar.query import QB
 
         # Find emails with length >= 20
         condition = QB["email"].length() >= 20
@@ -247,7 +247,7 @@ class TestMetaStoreIterSearch:
 
     def test_length_transform_equals(self):
         """Test using length() with exact equality."""
-        from autocrud.query import QB
+        from specstar.query import QB
 
         # Find names with exactly 3 characters
         condition = QB["name"].length().eq(3)
@@ -269,7 +269,7 @@ class TestMetaStoreIterSearch:
         """Test using length() transform on list/array fields."""
         import uuid
 
-        from autocrud.query import QB
+        from specstar.query import QB
 
         now = dt.datetime.now(ZoneInfo("UTC"))
 
@@ -286,7 +286,7 @@ class TestMetaStoreIterSearch:
                 is_deleted=False,
                 indexed_data={
                     "name": "Product1",
-                    "tags": ["python", "fastapi", "autocrud"],
+                    "tags": ["python", "fastapi", "specstar"],
                 },
             ),
             ResourceMeta(
@@ -340,7 +340,7 @@ class TestMetaStoreIterSearch:
 
     def test_length_transform_with_combined_conditions(self):
         """Test length() combined with other conditions."""
-        from autocrud.query import QB
+        from specstar.query import QB
 
         # Find Engineering users with name length > 4
         condition = (QB["department"].eq("Engineering")) & (QB["name"].length() > 4)
@@ -369,7 +369,7 @@ class TestMetaStoreIterSearch:
         Uses the existing sample data which includes a 'role' Enum field.
         """
 
-        from autocrud.query import QB
+        from specstar.query import QB
 
         # Test 1: Search for all DEVELOPER roles using Enum object
         query_developers = ResourceMetaSearchQuery(
@@ -442,7 +442,7 @@ class TestMetaStoreIterSearch:
 
         Uses the existing sample data which includes Priority and Status Enum fields.
         """
-        from autocrud.query import QB
+        from specstar.query import QB
 
         # Test 1: Search by int Enum (explicit value)
         query_high_priority = ResourceMetaSearchQuery(
@@ -550,7 +550,7 @@ class TestMetaStoreIterSearch:
         # Create some deleted and non-deleted resources
         import uuid
 
-        from autocrud.query import QB
+        from specstar.query import QB
 
         base_time = dt.datetime(2024, 1, 1, 12, 0, 0, tzinfo=ZoneInfo("UTC"))
 
@@ -1032,15 +1032,15 @@ class TestIndexedValueExtractor:
         extractor = IndexedValueExtractor(indexed_fields)
 
         project = Project(
-            name="AutoCRUD",
-            tags=["python", "fastapi", "crud"],
+            name="SpecStar",
+            tags=["python", "fastapi", "spec"],
             contributors=["Alice", "Bob"],
         )
         result = extractor.extract_indexed_values(project)
 
         assert result == {
-            "name": "AutoCRUD",
-            "tags": ["python", "fastapi", "crud"],
+            "name": "SpecStar",
+            "tags": ["python", "fastapi", "spec"],
             "contributors": ["Alice", "Bob"],
         }
         assert isinstance(result["tags"], list)

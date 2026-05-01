@@ -1,6 +1,6 @@
 # Web UI
 
-AutoCRUD can generate a complete React admin application from your backend's OpenAPI schema.
+SpecStar can generate a complete React admin application from your backend's OpenAPI schema.
 
 This is useful when you want a working internal tool quickly without building list pages, forms, clients, and revision views by hand.
 
@@ -8,7 +8,7 @@ This is useful when you want a working internal tool quickly without building li
 
 ## What the generator gives you
 
-From a running AutoCRUD backend, the web generator can produce:
+From a running SpecStar backend, the web generator can produce:
 
 - TypeScript types from OpenAPI
 - API clients for each resource
@@ -25,7 +25,7 @@ The generated app is a normal React project, so you can keep customizing it afte
 
 Before generating the UI, make sure you have:
 
-- a running AutoCRUD backend
+- a running SpecStar backend
 - the OpenAPI schema available at `/openapi.json`
 - Node.js 18+
 - `pnpm` or `npm`
@@ -37,31 +37,31 @@ Before generating the UI, make sure you have:
 ### 1. Install the generator
 
 ```bash
-npm install -g autocrud-web-generator
+npm install -g specstar-web-generator
 ```
 
 Or with pnpm:
 
 ```bash
-pnpm add -g autocrud-web-generator
+pnpm add -g specstar-web-generator
 ```
 
-> The published package name is `autocrud-web-generator`, while the command you run after installation is `autocrud-web`.
+> The published package name is `specstar-web-generator`, while the command you run after installation is `specstar-web`.
 
 ### 2. Create a new frontend project
 
 ```bash
-autocrud-web init my-admin
+specstar-web init my-admin
 cd my-admin
 pnpm install
 ```
 
 ### 3. Generate code from your backend
 
-Make sure your AutoCRUD API is already running, then fetch its schema:
+Make sure your SpecStar API is already running, then fetch its schema:
 
 ```bash
-autocrud-web generate --url http://localhost:8000
+specstar-web generate --url http://localhost:8000
 ```
 
 ### 4. Start the development server
@@ -80,9 +80,9 @@ Then open:
 
 Use this workflow during development:
 
-1. update your AutoCRUD models in the backend
+1. update your SpecStar models in the backend
 2. restart the backend if needed
-3. re-run `autocrud-web generate --url ...`
+3. re-run `specstar-web generate --url ...`
 4. continue customizing the React app
 
 This keeps the frontend aligned with the latest API schema.
@@ -95,7 +95,7 @@ A typical project contains these important areas:
 
 ```text
 src/
-├── autocrud/
+├── specstar/
 │   ├── generated/   # generated types, API clients, resource metadata
 │   └── lib/         # reusable customizable components and customization hooks
 └── routes/          # application routes
@@ -103,7 +103,7 @@ src/
 
 ### Edit these files
 
-You should customize the tracked files under `src/autocrud/lib/` and the route layer.
+You should customize the tracked files under `src/specstar/lib/` and the route layer.
 
 Common customization points include:
 
@@ -113,7 +113,7 @@ Common customization points include:
 
 ### Avoid editing generated files directly
 
-The files under `src/autocrud/generated/` are overwritten whenever you regenerate from OpenAPI.
+The files under `src/specstar/generated/` are overwritten whenever you regenerate from OpenAPI.
 
 If you need stable custom behavior, add it in the tracked customization layer instead.
 
@@ -124,10 +124,10 @@ If you need stable custom behavior, add it in the tracked customization layer in
 If you already have a React project, use the integrate command instead of creating a new app:
 
 ```bash
-autocrud-web integrate --url http://localhost:8000
+specstar-web integrate --url http://localhost:8000
 ```
 
-This adds the AutoCRUD-generated pieces without replacing your main project configuration.
+This adds the SpecStar-generated pieces without replacing your main project configuration.
 
 ---
 
@@ -145,7 +145,7 @@ This avoids common CORS issues during local development.
 
 ## Related guides
 
-- [Routes generation](/autocrud/howto/routes)
-- [Job Queue](/autocrud/quickstart/job-queue)
-- [Integrate with an existing FastAPI app](/autocrud/quickstart/integrate-existing)
+- [Routes generation](/specstar/howto/routes)
+- [Job Queue](/specstar/quickstart/job-queue)
+- [Integrate with an existing FastAPI app](/specstar/quickstart/integrate-existing)
 

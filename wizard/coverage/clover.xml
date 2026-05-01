@@ -2,7 +2,7 @@
 <coverage generated="1771820857344" clover="3.2.0">
   <project timestamp="1771820857344" name="All files">
     <metrics statements="639" coveredstatements="598" conditionals="594" coveredconditionals="487" methods="55" coveredmethods="54" elements="1288" coveredelements="1139" complexity="0" loc="639" ncloc="639" packages="1" files="2" classes="2"/>
-    <file name="generateProject.ts" path="/home/hychou/project/autocrud/autocrud-lib/wizard/src/lib/generator/generateProject.ts">
+    <file name="generateProject.ts" path="/home/hychou/project/specstar/specstar-lib/wizard/src/lib/generator/generateProject.ts">
       <metrics statements="639" coveredstatements="598" conditionals="594" coveredconditionals="487" methods="55" coveredmethods="54"/>
       <line num="31" count="2" type="stmt"/>
       <line num="58" count="5" type="stmt"/>
@@ -644,7 +644,7 @@
       <line num="1490" count="1" type="stmt"/>
       <line num="1498" count="49" type="stmt"/>
     </file>
-    <file name="index.ts" path="/home/hychou/project/autocrud/autocrud-lib/wizard/src/lib/generator/index.ts">
+    <file name="index.ts" path="/home/hychou/project/specstar/specstar-lib/wizard/src/lib/generator/index.ts">
       <metrics statements="0" coveredstatements="0" conditionals="0" coveredconditionals="0" methods="0" coveredmethods="0"/>
     </file>
   </project>

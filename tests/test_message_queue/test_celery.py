@@ -15,15 +15,15 @@ from unittest.mock import patch
 import pytest
 from msgspec import Struct
 
-from autocrud.message_queue.basic import DelayRetry, NoRetry
-from autocrud.message_queue.celery_queue import (
+from specstar.message_queue.basic import DelayRetry, NoRetry
+from specstar.message_queue.celery_queue import (
     CeleryMessageQueue,
     CeleryMessageQueueFactory,
 )
-from autocrud.resource_manager.core import ResourceManager, SimpleStorage
-from autocrud.resource_manager.meta_store.simple import MemoryMetaStore
-from autocrud.resource_manager.resource_store.simple import MemoryResourceStore
-from autocrud.types import (
+from specstar.resource_manager.core import ResourceManager, SimpleStorage
+from specstar.resource_manager.meta_store.simple import MemoryMetaStore
+from specstar.resource_manager.resource_store.simple import MemoryResourceStore
+from specstar.types import (
     Job,
     Resource,
     TaskStatus,

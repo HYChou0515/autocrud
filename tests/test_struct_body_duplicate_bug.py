@@ -26,7 +26,7 @@ import pytest
 from fastapi import Body, FastAPI, UploadFile
 from msgspec import Struct
 
-from autocrud.crud.core import AutoCRUD
+from specstar.crud.core import SpecStar
 
 # ---------------------------------------------------------------------------
 # Shared models
@@ -55,10 +55,10 @@ class TestDirectStructBodyParam:
     """
 
     def _build_app(self):
-        crud = AutoCRUD()
-        crud.add_model(DirectStructResource, name="dresource")
+        spec = SpecStar()
+        spec.add_model(DirectStructResource, name="dresource")
 
-        @crud.create_action("dresource", label="Direct Struct Action")
+        @spec.create_action("dresource", label="Direct Struct Action")
         async def direct_struct_action(
             q: str,
             name: Annotated[str, Body(embed=True)],
@@ -68,14 +68,14 @@ class TestDirectStructBodyParam:
             return DirectStructResource(name=f"{name}-{item.label}-{item.value}")
 
         app = FastAPI()
-        crud.apply(app)
-        crud.openapi(app)
+        spec.apply(app)
+        spec.openapi(app)
         return app
 
     def test_body_schema_detected(self):
         """bodySchema should be detected for direct Struct param."""
         app = self._build_app()
-        action = app.openapi_schema["x-autocrud-custom-create-actions"]["dresource"][0]
+        action = app.openapi_schema["x-specstar-custom-create-actions"]["dresource"][0]
         assert "bodySchema" in action, (
             "bodySchema must be present when a direct Struct is used as body param"
         )
@@ -90,7 +90,7 @@ class TestDirectStructBodyParam:
         is not set.
         """
         app = self._build_app()
-        action = app.openapi_schema["x-autocrud-custom-create-actions"]["dresource"][0]
+        action = app.openapi_schema["x-specstar-custom-create-actions"]["dresource"][0]
         assert action.get("bodySchemaParamName") == "item", (
             "bodySchemaParamName must equal the Python parameter name 'item'. "
             f"Got: {action.get('bodySchemaParamName')!r}. "
@@ -107,7 +107,7 @@ class TestDirectStructBodyParam:
         WHILE ALSO generating flat fields (label, value) from bodySchema.
         """
         app = self._build_app()
-        action = app.openapi_schema["x-autocrud-custom-create-actions"]["dresource"][0]
+        action = app.openapi_schema["x-specstar-custom-create-actions"]["dresource"][0]
         ibp_names = {p["name"] for p in action.get("inlineBodyParams", [])}
         assert "item" not in ibp_names, (
             f"'item' must NOT be in inlineBodyParams. Got: {ibp_names}. "
@@ -118,7 +118,7 @@ class TestDirectStructBodyParam:
     def test_other_params_still_present(self):
         """Even when body schema is a direct Struct, other params must be extracted."""
         app = self._build_app()
-        action = app.openapi_schema["x-autocrud-custom-create-actions"]["dresource"][0]
+        action = app.openapi_schema["x-specstar-custom-create-actions"]["dresource"][0]
         # queryParams
         assert "queryParams" in action
         qp_names = {p["name"] for p in action["queryParams"]}
@@ -172,7 +172,7 @@ class TestIRBuilderStructBodyDuplication:
                 },
                 "/dresource/{id}": {"get": {}},
             },
-            "x-autocrud-custom-create-actions": {
+            "x-specstar-custom-create-actions": {
                 "dresource": [
                     {
                         "path": "/dresource/direct-struct-action",
@@ -261,7 +261,7 @@ class TestIRBuilderStructBodyDuplication:
                 },
                 "/dresource/{id}": {"get": {}},
             },
-            "x-autocrud-custom-create-actions": {
+            "x-specstar-custom-create-actions": {
                 "dresource": [
                     {
                         "path": "/dresource/direct-struct-action",
@@ -322,7 +322,7 @@ class TestIRBuilderStructBodyDuplication:
                                             ↑ duplicated from bodySchema (no prefix)
                                                         ↑ duplicated from inlineBodyParams expand
         """
-        pytest.importorskip("autocrud")
+        pytest.importorskip("specstar")
         import os
         import sys
 
@@ -333,13 +333,13 @@ class TestIRBuilderStructBodyDuplication:
         sys.path.insert(0, gen_src) if gen_src not in sys.path else None
 
         try:
-            from autocrud_web_ir_builder_helper import build_ir_from_spec  # noqa  # ty:ignore[unresolved-import]
+            from specstar_web_ir_builder_helper import build_ir_from_spec  # noqa  # ty:ignore[unresolved-import]
         except ImportError:
             pass
 
         # Use the test-helpers from generator if available
         spec = self._build_spec_no_param_name()
-        buggy_action = spec["x-autocrud-custom-create-actions"]["dresource"][0]
+        buggy_action = spec["x-specstar-custom-create-actions"]["dresource"][0]
 
         # Simulate what ir-builder does with the buggy extension:
         # bodySchema fields (no prefix because bodySchemaParamName is absent)
@@ -370,7 +370,7 @@ class TestIRBuilderStructBodyDuplication:
         - No duplicate
         """
         spec = self._build_spec_with_param_name()
-        fixed_action = spec["x-autocrud-custom-create-actions"]["dresource"][0]
+        fixed_action = spec["x-specstar-custom-create-actions"]["dresource"][0]
 
         # With bodySchemaParamName='item' and hasOtherParams=True:
         # body schema gets prefixed → item.label, item.value
@@ -408,7 +408,7 @@ class TestIRBuilderStructBodyDuplication:
 
         # Write spec to temp file and invoke node ir-builder test
         # For now, just validate the logic via the spec structure itself
-        buggy_action = spec["x-autocrud-custom-create-actions"]["dresource"][0]
+        buggy_action = spec["x-specstar-custom-create-actions"]["dresource"][0]
 
         # Verify buggy preconditions are present
         assert buggy_action.get("bodySchemaParamName") is None, (

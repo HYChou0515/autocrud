@@ -14,8 +14,8 @@ from fastapi import FastAPI
 from fastapi.testclient import TestClient
 from msgspec import Struct
 
-from autocrud.crud.core import AutoCRUD
-from autocrud.types import Unique
+from specstar.crud.core import SpecStar
+from specstar.types import Unique
 
 # ── models ────────────────────────────────────────────────────────────
 
@@ -28,16 +28,16 @@ class UniqueItem(Struct):
 # ── helpers ───────────────────────────────────────────────────────────
 
 
-def _make_app() -> tuple[AutoCRUD, TestClient]:
-    """Build an AutoCRUD + FastAPI app with a unique-constrained model."""
-    crud = AutoCRUD(
+def _make_app() -> tuple[SpecStar, TestClient]:
+    """Build an SpecStar + FastAPI app with a unique-constrained model."""
+    spec = SpecStar(
         default_user="tester",
         default_now=dt.datetime.now,
     )
-    crud.add_model(UniqueItem, name="uniqueitem")
+    spec.add_model(UniqueItem, name="uniqueitem")
     app = FastAPI()
-    crud.apply(app)
-    return crud, TestClient(app)
+    spec.apply(app)
+    return spec, TestClient(app)
 
 
 # ── tests ─────────────────────────────────────────────────────────────
@@ -48,7 +48,7 @@ class TestPatchUniqueConflict:
 
     def test_patch_unique_field_returns_409(self):
         """PATCH that violates unique constraint should return 409, not 400."""
-        crud, client = _make_app()
+        spec, client = _make_app()
 
         # Create two resources with different unique names
         resp_a = client.post("/uniqueitem", json={"name": "alpha", "value": 1})
@@ -72,7 +72,7 @@ class TestPatchUniqueConflict:
 
     def test_patch_non_unique_field_ok(self):
         """PATCH that doesn't touch unique fields should succeed."""
-        crud, client = _make_app()
+        spec, client = _make_app()
 
         resp_a = client.post("/uniqueitem", json={"name": "alpha", "value": 1})
         assert resp_a.status_code == 200
@@ -115,7 +115,7 @@ class TestPatchUniqueConflict:
 
     def test_all_write_endpoints_consistent_409(self):
         """POST, PUT, and PATCH should all return 409 for unique violations."""
-        crud, client = _make_app()
+        spec, client = _make_app()
 
         # Seed: create "alpha"
         resp = client.post("/uniqueitem", json={"name": "alpha", "value": 1})

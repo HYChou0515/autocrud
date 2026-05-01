@@ -6,7 +6,7 @@
 
 # Schema & model types
 
-AutoCRUD separates two concepts:
+SpecStar separates two concepts:
 
 1. **Resource model** – the Python type representing stored data
 2. **Schema** – the descriptor defining versioning, migrations, and validation
@@ -17,7 +17,7 @@ In most cases you will define your resource using **`msgspec.Struct`**.
 
 ## Resource models (`msgspec.Struct`)
 
-AutoCRUD primarily uses **`msgspec.Struct`** to define resource models.
+SpecStar primarily uses **`msgspec.Struct`** to define resource models.
 
 ```python
 from msgspec import Struct
@@ -44,7 +44,7 @@ With `msgspec.Struct`, the persisted model stays explicit and predictable. We re
 
 This approach also helps avoid the need to create multiple near-duplicate models for the same concept, such as separate input and output models for every resource.
 
-In AutoCRUD, we encourage a clean architecture style: the resource schema is the durable domain model, while input/output layers can be adapted separately when needed.
+In SpecStar, we encourage a clean architecture style: the resource schema is the durable domain model, while input/output layers can be adapted separately when needed.
 
 #### 2. Union types are ergonomic
 
@@ -81,11 +81,11 @@ This can reduce CPU and memory overhead in metadata-heavy or projection-based wo
 
 ## Other supported model types
 
-AutoCRUD can also accept other model types.
+SpecStar can also accept other model types.
 
 ### Pydantic `BaseModel`
 
-Pydantic models are supported and converted into AutoCRUD's internal struct-based representation.
+Pydantic models are supported and converted into SpecStar's internal struct-based representation.
 
 ```python
 from pydantic import BaseModel
@@ -97,14 +97,14 @@ class User(BaseModel):
 
 Behavior:
 
-* AutoCRUD converts the model into its internal struct-based representation for storage
+* SpecStar converts the model into its internal struct-based representation for storage
 * the Pydantic model can still be used for **validation** at integration boundaries
 
 ---
 
 ### `dataclass` / `TypedDict`
 
-AutoCRUD is designed primarily around `msgspec.Struct`. Other model styles may work in limited integrations, but they are not part of the recommended default workflow.
+SpecStar is designed primarily around `msgspec.Struct`. Other model styles may work in limited integrations, but they are not part of the recommended default workflow.
 
 ---
 
@@ -126,7 +126,7 @@ Add **`Schema`** when:
 
 ## Schema (migration & validation)
 
-AutoCRUD also provides the **`Schema` descriptor**, which defines:
+SpecStar also provides the **`Schema` descriptor**, which defines:
 
 * the **target schema version**
 * **migration steps**
@@ -135,7 +135,7 @@ AutoCRUD also provides the **`Schema` descriptor**, which defines:
 Example:
 
 ```python
-from autocrud import Schema
+from specstar import Schema
 
 schema = (
     Schema(User, "v2")
@@ -143,7 +143,7 @@ schema = (
 )
 ```
 
-When AutoCRUD loads stored resources:
+When SpecStar loads stored resources:
 
 * it reads the stored version
 * finds the **shortest migration path**
@@ -160,7 +160,7 @@ Start with plain **`msgspec.Struct`**. Introduce **`Schema`** only when you need
 Recommended workflow:
 
 1. Define your model using `msgspec.Struct`
-2. Register it with AutoCRUD
+2. Register it with SpecStar
 
 ```python
 crud.add_model(User)

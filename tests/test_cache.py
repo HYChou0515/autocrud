@@ -1,8 +1,8 @@
 import time
 from uuid import uuid4
 
-from autocrud.resource_manager.resource_store.cache import MemoryCache
-from autocrud.types import RevisionInfo
+from specstar.resource_manager.resource_store.cache import MemoryCache
+from specstar.types import RevisionInfo
 
 
 def test_memory_cache_data_expiration():

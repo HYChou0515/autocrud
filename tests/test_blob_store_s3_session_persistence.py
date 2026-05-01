@@ -15,7 +15,7 @@ from unittest.mock import patch
 import pytest
 from botocore.exceptions import ClientError
 
-from autocrud.resource_manager.blob_store.s3 import S3BlobStore
+from specstar.resource_manager.blob_store.s3 import S3BlobStore
 
 SAMPLE_BYTES = b"cross-instance-test-data"
 

@@ -4,9 +4,9 @@ import pytest
 from msgspec import UNSET
 from xxhash import xxh3_128_hexdigest
 
-from autocrud.resource_manager.basic import IBlobStore
-from autocrud.resource_manager.blob_store.simple import DiskBlobStore, MemoryBlobStore
-from autocrud.types import Binary
+from specstar.resource_manager.basic import IBlobStore
+from specstar.resource_manager.blob_store.simple import DiskBlobStore, MemoryBlobStore
+from specstar.types import Binary
 
 # -----------------------------------------------------------------------------
 # Behavior / Contract Tests
@@ -15,7 +15,7 @@ from autocrud.types import Binary
 
 def test_fallback_content_type_guesser():
     """Test that the fallback content type guesser returns UNSET."""
-    from autocrud.resource_manager.blob_store.simple import (
+    from specstar.resource_manager.blob_store.simple import (
         _fallback_content_type_guesser,
     )
 
@@ -29,7 +29,7 @@ def test_get_content_type_guesser_warns_when_libmagic_missing():
     import warnings
     from unittest.mock import MagicMock
 
-    from autocrud.resource_manager.blob_store import simple as mod
+    from specstar.resource_manager.blob_store import simple as mod
 
     # Create a fake magic module whose from_buffer raises an OSError
     # (simulates libmagic shared library not found)
@@ -76,7 +76,7 @@ def blob_store(
     elif request.param == "simple":
         yield DiskBlobStore(tmp_path / "blobs_behavior")  # ty:ignore[unsupported-operator]
     elif request.param == "s3":
-        from autocrud.resource_manager.blob_store.s3 import S3BlobStore
+        from specstar.resource_manager.blob_store.s3 import S3BlobStore
 
         prefix = f"{tmp_path.name}/"  # ty:ignore[unresolved-attribute]
         store = S3BlobStore(

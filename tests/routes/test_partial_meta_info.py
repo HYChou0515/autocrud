@@ -5,17 +5,17 @@ import pytest
 from fastapi import APIRouter, FastAPI
 from fastapi.testclient import TestClient
 
-from autocrud.crud.core import AutoCRUD
-from autocrud.crud.route_templates.create import CreateRouteTemplate
-from autocrud.crud.route_templates.get import ReadRouteTemplate
-from autocrud.crud.route_templates.search import ListRouteTemplate
-from autocrud.crud.route_templates.update import UpdateRouteTemplate
-from autocrud.resource_manager.partial import (
+from specstar.crud.core import SpecStar
+from specstar.crud.route_templates.create import CreateRouteTemplate
+from specstar.crud.route_templates.get import ReadRouteTemplate
+from specstar.crud.route_templates.search import ListRouteTemplate
+from specstar.crud.route_templates.update import UpdateRouteTemplate
+from specstar.resource_manager.partial import (
     PartialFieldsSpec,
     classify_partial_fields,
     filter_struct_partial,
 )
-from autocrud.types import ResourceMeta
+from specstar.types import ResourceMeta
 
 # ---------------------------------------------------------------------------
 # Test model
@@ -34,21 +34,21 @@ class Item(msgspec.Struct):
 
 
 @pytest.fixture
-def autocrud():
-    crud = AutoCRUD(model_naming="kebab")
-    crud.add_route_template(CreateRouteTemplate())
-    crud.add_route_template(ReadRouteTemplate())
-    crud.add_route_template(UpdateRouteTemplate())
-    crud.add_route_template(ListRouteTemplate())
-    crud.add_model(Item)
-    return crud
+def specstar():
+    spec = SpecStar(model_naming="kebab")
+    spec.add_route_template(CreateRouteTemplate())
+    spec.add_route_template(ReadRouteTemplate())
+    spec.add_route_template(UpdateRouteTemplate())
+    spec.add_route_template(ListRouteTemplate())
+    spec.add_model(Item)
+    return spec
 
 
 @pytest.fixture
-def client(autocrud):
+def client(specstar):
     app = FastAPI()
     router = APIRouter()
-    autocrud.apply(router)
+    specstar.apply(router)
     app.include_router(router)
     return TestClient(app)
 

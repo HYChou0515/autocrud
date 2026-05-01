@@ -13,12 +13,12 @@ from uuid import uuid4
 import pytest
 from msgspec import Struct
 
-from autocrud.message_queue.rabbitmq import RabbitMQMessageQueue
-from autocrud.message_queue.simple import SimpleMessageQueueFactory
-from autocrud.resource_manager.core import ResourceManager, SimpleStorage
-from autocrud.resource_manager.meta_store.simple import MemoryMetaStore
-from autocrud.resource_manager.resource_store.simple import MemoryResourceStore
-from autocrud.types import (
+from specstar.message_queue.rabbitmq import RabbitMQMessageQueue
+from specstar.message_queue.simple import SimpleMessageQueueFactory
+from specstar.resource_manager.core import ResourceManager, SimpleStorage
+from specstar.resource_manager.meta_store.simple import MemoryMetaStore
+from specstar.resource_manager.resource_store.simple import MemoryResourceStore
+from specstar.types import (
     IndexableField,
     Job,
     Resource,
@@ -347,7 +347,7 @@ class TestPerJobMaxRetriesRabbitMQ:
     def _build_mock_queue(self, max_retries=3):
         mock_channel = self.MockChannel()
 
-        with patch("autocrud.message_queue.rabbitmq.pika") as mock_pika:
+        with patch("specstar.message_queue.rabbitmq.pika") as mock_pika:
             mock_pika.URLParameters = MagicMock()
 
             def create_connection(*args, **kwargs):

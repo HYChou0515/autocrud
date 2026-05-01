@@ -2,8 +2,8 @@ from unittest.mock import MagicMock
 
 from msgspec import Struct
 
-from autocrud.crud.core import AutoCRUD, LazyJobHandler
-from autocrud.types import (
+from specstar.crud.core import SpecStar, LazyJobHandler
+from specstar.types import (
     Job,
     Resource,
 )
@@ -23,21 +23,21 @@ def test_add_model_with_job_handler_factory():
     mock_handler = MagicMock()
     mock_factory = MagicMock(return_value=mock_handler)
 
-    autocrud = AutoCRUD()
+    specstar = SpecStar()
 
     # Add model with factory
-    autocrud.add_model(
+    specstar.add_model(
         MyJob,
         job_handler_factory=mock_factory,
         # We need a message queue factory active, simpler to rely on default or mock
-        # Default AutoCRUD has SimpleMessageQueueFactory
+        # Default SpecStar has SimpleMessageQueueFactory
     )
 
     # Factory should NOT be called yet
     mock_factory.assert_not_called()
 
     # Get resource manager to access MQ
-    rm = autocrud.get_resource_manager(MyJob)
+    rm = specstar.get_resource_manager(MyJob)
     mq = rm.message_queue  # ty:ignore[unresolved-attribute]
 
     # The 'do' callback in MQ should be our LazyJobHandler
@@ -73,16 +73,16 @@ def test_add_model_with_job_handler_priority():
     mock_handler_from_factory = MagicMock()
     mock_factory = MagicMock(return_value=mock_handler_from_factory)
 
-    autocrud = AutoCRUD()
+    specstar = SpecStar()
 
-    autocrud.add_model(
+    specstar.add_model(
         MyJob,
         name="job-priority",
         job_handler=mock_handler_direct,
         job_handler_factory=mock_factory,
     )
 
-    rm = autocrud.get_resource_manager("job-priority")
+    rm = specstar.get_resource_manager("job-priority")
     mq = rm.message_queue  # ty:ignore[unresolved-attribute]
 
     assert isinstance(mq._do, LazyJobHandler)

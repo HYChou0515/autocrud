@@ -34,9 +34,9 @@ import uvicorn
 from fastapi import FastAPI
 from msgspec import Struct
 
-from autocrud.crud.core import AutoCRUD
-from autocrud.resource_manager.basic import Encoding
-from autocrud.resource_manager.storage_factory import (
+from specstar.crud.core import SpecStar
+from specstar.resource_manager.basic import Encoding
+from specstar.resource_manager.storage_factory import (
     PostgreSQLStorageFactory,  # ty:ignore[unresolved-import]
 )
 
@@ -135,13 +135,13 @@ storage_factory = PostgreSQLStorageFactory(
     table_prefix="rpg_",  # Tables will be: rpg_Character_meta, rpg_Item_meta, etc.
 )
 
-# Initialize AutoCRUD with PostgreSQL + S3 backend.
+# Initialize SpecStar with PostgreSQL + S3 backend.
 # This example is a valid production reference, but the default recommendation
 # now prefers PostgreSQL metadata + Disk resource storage + S3 blobs.
-crud = AutoCRUD(storage_factory=storage_factory)
+spec = SpecStar(storage_factory=storage_factory)
 
 # Register models with indexed fields for fast queries
-crud.add_model(
+spec.add_model(
     Character,
     indexed_fields=[
         ("level", int),
@@ -150,7 +150,7 @@ crud.add_model(
     ],
 )
 
-crud.add_model(
+spec.add_model(
     Item,
     indexed_fields=[
         ("rarity", str),
@@ -158,7 +158,7 @@ crud.add_model(
     ],
 )
 
-crud.add_model(
+spec.add_model(
     Quest,
     indexed_fields=[
         ("required_level", int),
@@ -166,9 +166,9 @@ crud.add_model(
     ],
 )
 
-# Mount AutoCRUD routes
-crud.apply(app)
-crud.openapi(app)
+# Mount SpecStar routes
+spec.apply(app)
+spec.openapi(app)
 
 
 # ============================================================================
@@ -224,7 +224,7 @@ def seed_example_data():
         Character("Gimli", CharacterClass.WARRIOR, 25, 200, 50, 8088, 1200),
     ]
 
-    char_manager = crud.get_resource_manager(Character)
+    char_manager = spec.get_resource_manager(Character)
     with char_manager.meta_provide(user="system", now=now):
         for char in characters:
             try:
@@ -258,7 +258,7 @@ def seed_example_data():
         ),
     ]
 
-    item_manager = crud.get_resource_manager(Item)
+    item_manager = spec.get_resource_manager(Item)
     with item_manager.meta_provide(user="system", now=now):
         for item in items:
             try:
@@ -285,7 +285,7 @@ def seed_example_data():
         ),
     ]
 
-    quest_manager = crud.get_resource_manager(Quest)
+    quest_manager = spec.get_resource_manager(Quest)
     with quest_manager.meta_provide(user="system", now=now):
         for quest in quests:
             try:

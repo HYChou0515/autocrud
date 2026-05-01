@@ -20,14 +20,14 @@ export function StepProject({ state, onChange }: Props) {
       <div>
         <Title order={3}>專案基本設定</Title>
         <Text size="sm" c="dimmed">
-          設定你的 AutoCRUD 專案名稱與基本參數
+          設定你的 SpecStar 專案名稱與基本參數
         </Text>
       </div>
 
       <TextInput
         label="專案名稱"
         description="用於 pyproject.toml 中的 package name"
-        placeholder="my-autocrud-app"
+        placeholder="my-specstar-app"
         value={state.projectName}
         onChange={(e) => onChange({ projectName: e.currentTarget.value })}
       />
@@ -35,7 +35,7 @@ export function StepProject({ state, onChange }: Props) {
       <TextInput
         label="FastAPI Title"
         description="顯示在 Swagger UI 的 API 標題"
-        placeholder="My AutoCRUD API"
+        placeholder="My SpecStar API"
         value={state.fastapiTitle}
         onChange={(e) => onChange({ fastapiTitle: e.currentTarget.value })}
       />
@@ -74,7 +74,7 @@ export function StepProject({ state, onChange }: Props) {
 
       <Switch
         label="GraphQL Endpoint"
-        description="自動產生 Strawberry GraphQL endpoint（需安裝 autocrud[graphql]）"
+        description="自動產生 Strawberry GraphQL endpoint（需安裝 specstar[graphql]）"
         checked={state.enableGraphql}
         onChange={(e) => onChange({ enableGraphql: e.currentTarget.checked })}
       />

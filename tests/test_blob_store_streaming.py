@@ -12,9 +12,9 @@ import pytest
 # Model for route tests — must be module-level for msgspec type resolution
 from msgspec import Struct as _Struct
 
-from autocrud.resource_manager.blob_store.simple import DiskBlobStore, MemoryBlobStore
-from autocrud.types import Binary as BinaryField
-from autocrud.types import BlobStreamInfo
+from specstar.resource_manager.blob_store.simple import DiskBlobStore, MemoryBlobStore
+from specstar.types import Binary as BinaryField
+from specstar.types import BlobStreamInfo
 from tests.test_blob_store_s3_session_persistence import FakeS3Client, _make_store
 
 
@@ -149,11 +149,11 @@ class TestBlobRouteStreaming:
     def app_and_store(self, tmp_path):
         from fastapi import FastAPI
 
-        from autocrud.crud.core import AutoCRUD
+        from specstar.crud.core import SpecStar
 
         store = DiskBlobStore(tmp_path / "blobs")
 
-        crud_instance = AutoCRUD()
+        crud_instance = SpecStar()
         # Set blob_store BEFORE add_model so the ResourceManager uses it
         crud_instance.blob_store = store
         crud_instance.add_model(_FileModel)

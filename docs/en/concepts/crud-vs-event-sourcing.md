@@ -1,10 +1,10 @@
-# AutoCRUD vs Traditional CRUD vs Event Sourcing
+# SpecStar vs Traditional CRUD vs Event Sourcing
 
 Modern backend systems typically follow one of three data management models:
 
 1. **Traditional CRUD systems**
 2. **Event sourcing systems**
-3. **Revision-based systems (AutoCRUD)**
+3. **Revision-based systems (SpecStar)**
 
 Each approach solves different problems and introduces different trade-offs.
 
@@ -170,11 +170,11 @@ But it is frequently overkill for typical application backends.
 
 ---
 
-# AutoCRUD revision model
+# SpecStar revision model
 
-AutoCRUD uses a **revision-based resource model**.
+SpecStar uses a **revision-based resource model**.
 
-Instead of overwriting data or storing events, AutoCRUD stores **immutable revisions**.
+Instead of overwriting data or storing events, SpecStar stores **immutable revisions**.
 
 ```
 
@@ -276,7 +276,7 @@ The current revision is tracked by metadata.
 
 # Draft workflow
 
-AutoCRUD supports a draft workflow.
+SpecStar supports a draft workflow.
 
 ```
 
@@ -297,7 +297,7 @@ This allows editing drafts without creating new revisions.
 
 # Search model
 
-AutoCRUD avoids scanning revision payloads.
+SpecStar avoids scanning revision payloads.
 
 Instead, searchable fields are extracted into metadata.
 
@@ -336,7 +336,7 @@ This allows efficient queries without loading full resource data.
 
 # Jobs as resources
 
-AutoCRUD treats background jobs as resources.
+SpecStar treats background jobs as resources.
 
 Example job model:
 
@@ -374,7 +374,7 @@ This unifies job management with the same resource model.
 
 # Storage independence
 
-AutoCRUD separates storage through `IStorage`.
+SpecStar separates storage through `IStorage`.
 
 Example deployment options:
 
@@ -391,7 +391,7 @@ This allows different storage strategies without changing application logic.
 
 # Comparison
 
-| Feature | Traditional CRUD | Event Sourcing | AutoCRUD |
+| Feature | Traditional CRUD | Event Sourcing | SpecStar |
 |---|---|---|---|
 | Data model | mutable rows | event log | immutable revisions |
 | History | optional | built-in | built-in |
@@ -416,14 +416,14 @@ This allows different storage strategies without changing application logic.
 - distributed systems are involved
 - strict auditability is required
 
-## Use AutoCRUD when
+## Use SpecStar when
 
 - version history is important
 - APIs should be generated automatically
 - developers want to focus on domain models
 - search and indexing should be built-in
 
-AutoCRUD is particularly well suited for **FastAPI-based backends** where rapid development and consistent APIs are important.
+SpecStar is particularly well suited for **FastAPI-based backends** where rapid development and consistent APIs are important.
 
 ---
 
@@ -433,6 +433,6 @@ Traditional CRUD focuses on **simplicity**.
 
 Event sourcing focuses on **event history and distributed systems**.
 
-AutoCRUD focuses on **model-driven APIs with built-in revision history**.
+SpecStar focuses on **model-driven APIs with built-in revision history**.
 
 The goal is to remove repetitive infrastructure code and allow developers to focus on the domain logic of their applications.

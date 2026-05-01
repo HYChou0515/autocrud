@@ -8,7 +8,7 @@ from fastapi import APIRouter, FastAPI
 from fastapi.testclient import TestClient
 from msgspec import Struct
 
-from autocrud import AutoCRUD
+from specstar import SpecStar
 
 
 class Item(Struct):
@@ -21,12 +21,12 @@ def client() -> TestClient:
     """建立測試客戶端"""
     app: FastAPI = FastAPI()
     router: APIRouter = APIRouter()
-    crud: AutoCRUD = AutoCRUD()
-    crud.add_model(
+    spec: SpecStar = SpecStar()
+    spec.add_model(
         Item,
         indexed_fields=[("category", str)],
     )
-    crud.apply(router)
+    spec.apply(router)
     app.include_router(router)
     return TestClient(app)
 

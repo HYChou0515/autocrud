@@ -5,9 +5,9 @@ import pytest
 from fastapi import APIRouter, FastAPI
 from fastapi.testclient import TestClient
 
-from autocrud.crud.core import AutoCRUD
-from autocrud.crud.route_templates.create import CreateRouteTemplate
-from autocrud.crud.route_templates.graphql import GraphQLRouteTemplate
+from specstar.crud.core import SpecStar
+from specstar.crud.route_templates.create import CreateRouteTemplate
+from specstar.crud.route_templates.graphql import GraphQLRouteTemplate
 
 
 class UserRole(enum.Enum):
@@ -21,21 +21,21 @@ class User(msgspec.Struct):
 
 
 @pytest.fixture
-def autocrud():
-    """Create AutoCRUD instance with GraphQL support"""
-    crud = AutoCRUD(model_naming="kebab")
-    crud.add_route_template(CreateRouteTemplate())
-    crud.add_route_template(GraphQLRouteTemplate())
-    crud.add_model(User)
-    return crud
+def specstar():
+    """Create SpecStar instance with GraphQL support"""
+    spec = SpecStar(model_naming="kebab")
+    spec.add_route_template(CreateRouteTemplate())
+    spec.add_route_template(GraphQLRouteTemplate())
+    spec.add_model(User)
+    return spec
 
 
 @pytest.fixture
-def client(autocrud):
+def client(specstar):
     """Create test client"""
     app = FastAPI()
     router = APIRouter()
-    autocrud.apply(router)
+    specstar.apply(router)
     app.include_router(router)
     return TestClient(app)
 

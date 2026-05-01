@@ -9,7 +9,7 @@ from fastapi import APIRouter, FastAPI
 from fastapi.testclient import TestClient
 from msgspec import Struct
 
-from autocrud import AutoCRUD
+from specstar import SpecStar
 
 
 class User(Struct):
@@ -24,8 +24,8 @@ def client() -> TestClient:
     """創建測試客戶端"""
     app: FastAPI = FastAPI()
     router: APIRouter = APIRouter()
-    crud: AutoCRUD = AutoCRUD()
-    crud.add_model(
+    spec: SpecStar = SpecStar()
+    spec.add_model(
         User,
         indexed_fields=[
             ("age", int),
@@ -34,7 +34,7 @@ def client() -> TestClient:
             ("name", str),  # 添加 name 來支持 complex expression 測試
         ],
     )
-    crud.apply(router)
+    spec.apply(router)
     app.include_router(router)
     return TestClient(app)
 

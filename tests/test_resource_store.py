@@ -4,21 +4,21 @@ from uuid import uuid4
 
 import pytest
 
-from autocrud.resource_manager.basic import Encoding
-from autocrud.resource_manager.resource_store.simple import (
+from specstar.resource_manager.basic import Encoding
+from specstar.resource_manager.resource_store.simple import (
     DiskResourceStore,
     MemoryResourceStore,
 )
-from autocrud.types import (
+from specstar.types import (
     RevisionInfo,
     RevisionStatus,
 )
 
 # Try to import S3ResourceStore, but make it optional
 try:
-    from autocrud.resource_manager.resource_store.cache import MemoryCache
-    from autocrud.resource_manager.resource_store.cached_s3 import CachedS3ResourceStore
-    from autocrud.resource_manager.resource_store.s3 import S3ResourceStore
+    from specstar.resource_manager.resource_store.cache import MemoryCache
+    from specstar.resource_manager.resource_store.cached_s3 import CachedS3ResourceStore
+    from specstar.resource_manager.resource_store.s3 import S3ResourceStore
 
     S3_AVAILABLE = True
 except ImportError:
@@ -26,7 +26,7 @@ except ImportError:
 
 # Try to import PostgresResourceStore, but make it optional
 try:
-    from autocrud.resource_manager.resource_store.postgres import PostgresResourceStore
+    from specstar.resource_manager.resource_store.postgres import PostgresResourceStore
 
     PG_AVAILABLE = True
 except ImportError:
@@ -53,7 +53,7 @@ class TestIResourceStore:
             store = S3ResourceStore(
                 encoding=Encoding.json,
                 endpoint_url="http://localhost:9000",
-                bucket="test-autocrud",
+                bucket="test-specstar",
                 prefix=prefix,
             )
             # Clean up before and after
@@ -74,7 +74,7 @@ class TestIResourceStore:
                 caches=caches,  # ty:ignore[invalid-argument-type]
                 encoding=Encoding.json,
                 endpoint_url="http://localhost:9000",
-                bucket="test-autocrud",
+                bucket="test-specstar",
                 prefix=prefix,
                 ttl_draft=5,
                 ttl_stable=60,

@@ -17,13 +17,13 @@ from zoneinfo import ZoneInfo
 
 import pytest
 
-from autocrud.query_types import (
+from specstar.query_types import (
     ResourceMetaSearchQuery,
     ResourceMetaSearchSort,
     ResourceMetaSortDirection,
     ResourceMetaSortKey,
 )
-from autocrud.types import ResourceMeta, RevisionStatus
+from specstar.types import ResourceMeta, RevisionStatus
 
 from .common import ALL_META_STORE_TYPES, get_meta_store
 

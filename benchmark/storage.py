@@ -11,8 +11,8 @@ import shutil
 from pathlib import Path
 from typing import Any
 
-from autocrud.resource_manager.basic import Encoding
-from autocrud.resource_manager.storage_factory import (
+from specstar.resource_manager.basic import Encoding
+from specstar.resource_manager.storage_factory import (
     DiskStorageFactory,
     IStorageFactory,
     MemoryStorageFactory,
@@ -41,11 +41,11 @@ def build_storage_factory(
         return MemoryStorageFactory()
 
     if storage_name == "disk":
-        rootdir = params.get("rootdir", "/tmp/autocrud-benchmark")
+        rootdir = params.get("rootdir", "/tmp/specstar-benchmark")
         return DiskStorageFactory(rootdir=rootdir)
 
     if storage_name == "postgres":
-        from autocrud.resource_manager.storage_factory import (
+        from specstar.resource_manager.storage_factory import (
             PostgreSQLStorageFactory,  # ty:ignore[unresolved-import]
         )
 
@@ -59,7 +59,7 @@ def build_storage_factory(
         )
 
     if storage_name == "s3":
-        from autocrud.resource_manager.storage_factory import S3StorageFactory
+        from specstar.resource_manager.storage_factory import S3StorageFactory
 
         return S3StorageFactory(
             bucket=params["bucket"],
@@ -70,11 +70,11 @@ def build_storage_factory(
         )
 
     if storage_name == "pg_disk":
-        from autocrud.resource_manager.storage_factory import PostgresDiskStorageFactory
+        from specstar.resource_manager.storage_factory import PostgresDiskStorageFactory
 
         return PostgresDiskStorageFactory(
             connection_string=params["dsn"],
-            rootdir=params.get("rootdir", "/tmp/autocrud-benchmark-pg-disk"),
+            rootdir=params.get("rootdir", "/tmp/specstar-benchmark-pg-disk"),
             encoding=encoding,
         )
 
@@ -150,7 +150,7 @@ def cleanup_storage(storage_name: str, params: dict[str, Any]) -> None:
         params: Backend parameters.
     """
     if storage_name == "disk":
-        rootdir = Path(params.get("rootdir", "/tmp/autocrud-benchmark"))
+        rootdir = Path(params.get("rootdir", "/tmp/specstar-benchmark"))
         if rootdir.exists():
             shutil.rmtree(rootdir, ignore_errors=True)
 
@@ -267,6 +267,6 @@ def _cleanup_pg_disk(params: dict[str, Any]) -> None:
         except Exception:
             pass
 
-    rootdir = Path(params.get("rootdir", "/tmp/autocrud-benchmark-pg-disk"))
+    rootdir = Path(params.get("rootdir", "/tmp/specstar-benchmark-pg-disk"))
     if rootdir.exists():
         shutil.rmtree(rootdir, ignore_errors=True)

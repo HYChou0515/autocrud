@@ -1,8 +1,8 @@
-# AutoCRUD
+# SpecStar
 
 **Model-driven backend platform for FastAPI**
 
-AutoCRUD automatically generates **REST APIs, GraphQL APIs, search, version history, and admin UI** from Python models.
+SpecStar automatically generates **REST APIs, GraphQL APIs, search, version history, and admin UI** from Python models.
 
 Focus on **business logic**, not infrastructure.
 
@@ -10,7 +10,7 @@ Focus on **business logic**, not infrastructure.
 
 ---
 
-# Why AutoCRUD
+# Why SpecStar
 
 Modern backend development repeatedly rebuilds the same infrastructure:
 
@@ -24,7 +24,7 @@ Modern backend development repeatedly rebuilds the same infrastructure:
 
 Most of this code is **not business logic**.
 
-AutoCRUD eliminates this repetition by using a **model-driven architecture**.
+SpecStar eliminates this repetition by using a **model-driven architecture**.
 
 Define your model once, and the framework generates the rest.
 
@@ -46,7 +46,7 @@ Register the model:
 
 ```python
 from fastapi import FastAPI
-from autocrud import crud
+from specstar import crud
 
 app = FastAPI()
 
@@ -89,17 +89,17 @@ OpenAPI documentation is generated automatically.
 ```mermaid
 graph TD
 
-FastAPI --> AutoCRUD
-AutoCRUD --> ResourceManager
+FastAPI --> SpecStar
+SpecStar --> ResourceManager
 ResourceManager --> Storage
 
 Storage --> MetaStore
 Storage --> RevisionStore
 Storage --> BlobStore
 
-AutoCRUD --> REST_API
-AutoCRUD --> GraphQL_API
-AutoCRUD --> UI_Generator
+SpecStar --> REST_API
+SpecStar --> GraphQL_API
+SpecStar --> UI_Generator
 ```
 
 ---
@@ -108,7 +108,7 @@ AutoCRUD --> UI_Generator
 
 ## Model-driven APIs
 
-AutoCRUD generates APIs directly from Python models.
+SpecStar generates APIs directly from Python models.
 
 ```
 Model
@@ -174,7 +174,7 @@ ResourceManager.start_consume()
 
 ## Storage abstraction
 
-AutoCRUD supports multiple storage backends.
+SpecStar supports multiple storage backends.
 
 | Backend  | Meta       | Revision | Blob       |
 | -------- | ---------- | -------- | ---------- |
@@ -189,7 +189,7 @@ You can also implement custom storage systems.
 
 ## UI generation
 
-AutoCRUD can generate a web interface directly from the API.
+SpecStar can generate a web interface directly from the API.
 
 ```
 API
@@ -205,7 +205,7 @@ This allows rapid creation of internal tools.
 
 # Comparison
 
-| Feature         | AutoCRUD  | Hasura     | Django     |
+| Feature         | SpecStar  | Hasura     | Django     |
 | --------------- | --------- | ---------- | ---------- |
 | REST API        | ✅         | ❌          | ✅          |
 | GraphQL         | ✅         | ✅          | ⚠️         |
@@ -222,7 +222,7 @@ This allows rapid creation of internal tools.
 Install:
 
 ```bash
-pip install autocrud
+pip install specstar
 ```
 
 Run your app:
@@ -243,13 +243,13 @@ http://localhost:8000/docs
 
 Full documentation:
 
-[https://hychou0515.github.io/autocrud/](https://hychou0515.github.io/autocrud/)
+[https://hychou0515.github.io/specstar/](https://hychou0515.github.io/specstar/)
 
 ---
 
 # Example use cases
 
-AutoCRUD works well for:
+SpecStar works well for:
 
 * internal tools
 * content systems

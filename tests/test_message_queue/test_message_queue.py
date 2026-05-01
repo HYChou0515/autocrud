@@ -7,18 +7,18 @@ from uuid import uuid4
 import pytest
 from msgspec import Struct
 
-from autocrud.message_queue.basic import NoRetry
-from autocrud.message_queue.rabbitmq import (
+from specstar.message_queue.basic import NoRetry
+from specstar.message_queue.rabbitmq import (
     RabbitMQMessageQueue,
     RabbitMQMessageQueueFactory,
 )
-from autocrud.message_queue.simple import SimpleMessageQueue, SimpleMessageQueueFactory
+from specstar.message_queue.simple import SimpleMessageQueue, SimpleMessageQueueFactory
 
 # Check if celery is available
 try:
     from celery import Celery
 
-    from autocrud.message_queue.celery_queue import (
+    from specstar.message_queue.celery_queue import (
         CeleryMessageQueue,
         CeleryMessageQueueFactory,
     )
@@ -26,11 +26,11 @@ try:
     CELERY_AVAILABLE = True
 except ImportError:
     CELERY_AVAILABLE = False
-from autocrud.query_types import ResourceMetaSearchQuery
-from autocrud.resource_manager.core import ResourceManager, SimpleStorage
-from autocrud.resource_manager.meta_store.simple import MemoryMetaStore
-from autocrud.resource_manager.resource_store.simple import MemoryResourceStore
-from autocrud.types import (
+from specstar.query_types import ResourceMetaSearchQuery
+from specstar.resource_manager.core import ResourceManager, SimpleStorage
+from specstar.resource_manager.meta_store.simple import MemoryMetaStore
+from specstar.resource_manager.resource_store.simple import MemoryResourceStore
+from specstar.types import (
     IMessageQueue,
     IndexableField,
     Job,
@@ -629,7 +629,7 @@ class TestMessageQueueUnified:
         """Create a RabbitMQ queue with mocked connection."""
         mock_channel = self.MockChannel()
 
-        with patch("autocrud.message_queue.rabbitmq.pika") as mock_pika:
+        with patch("specstar.message_queue.rabbitmq.pika") as mock_pika:
             mock_pika.URLParameters = MagicMock()
 
             # Create a factory function that returns new connections with the same channel
@@ -665,7 +665,7 @@ class TestMessageQueueUnified:
         mock_channel = self.MockChannel()
         mock_connection = self.MockConnection(mock_channel)
 
-        with patch("autocrud.message_queue.rabbitmq.pika") as mock_pika:
+        with patch("specstar.message_queue.rabbitmq.pika") as mock_pika:
             mock_pika.URLParameters = MagicMock()
             mock_pika.BlockingConnection = MagicMock(return_value=mock_connection)
             mock_pika.DeliveryMode.Persistent = 2
@@ -815,7 +815,7 @@ class TestMessageQueueUnified:
         mock_channel = self.MockChannel()
         mock_connection = self.MockConnection(mock_channel)
 
-        with patch("autocrud.message_queue.rabbitmq.pika") as mock_pika:
+        with patch("specstar.message_queue.rabbitmq.pika") as mock_pika:
             mock_pika.URLParameters = MagicMock()
             mock_pika.BlockingConnection = MagicMock(return_value=mock_connection)
             mock_pika.DeliveryMode.Persistent = 2
@@ -1049,7 +1049,7 @@ class TestMessageQueueFactories:
         assert isinstance(queue, RabbitMQMessageQueue)
         assert queue._do == dummy_handler
         assert queue.amqp_url == "amqp://guest:guest@localhost:5672/"
-        assert queue.queue_prefix == "autocrud:"
+        assert queue.queue_prefix == "specstar:"
         assert queue.queue_name is not None  # Now set during construction
         assert queue.max_retries == 3
         assert queue.retry_delay_seconds == 10

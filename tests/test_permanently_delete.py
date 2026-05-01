@@ -15,19 +15,19 @@ from faker import Faker
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
 
-from autocrud.crud.core import AutoCRUD
-from autocrud.crud.route_templates.create import CreateRouteTemplate
-from autocrud.crud.route_templates.delete import (
+from specstar.crud.core import SpecStar
+from specstar.crud.route_templates.create import CreateRouteTemplate
+from specstar.crud.route_templates.delete import (
     DeleteRouteTemplate,
     PermanentlyDeleteRouteTemplate,
     RestoreRouteTemplate,
 )
-from autocrud.crud.route_templates.get import ReadRouteTemplate
-from autocrud.crud.route_templates.search import ListRouteTemplate
-from autocrud.resource_manager.core import ResourceManager, SimpleStorage
-from autocrud.resource_manager.meta_store.simple import MemoryMetaStore
-from autocrud.resource_manager.resource_store.simple import MemoryResourceStore
-from autocrud.types import (
+from specstar.crud.route_templates.get import ReadRouteTemplate
+from specstar.crud.route_templates.search import ListRouteTemplate
+from specstar.resource_manager.core import ResourceManager, SimpleStorage
+from specstar.resource_manager.meta_store.simple import MemoryMetaStore
+from specstar.resource_manager.resource_store.simple import MemoryResourceStore
+from specstar.types import (
     ResourceIDNotFoundError,
     ResourceMeta,
 )
@@ -170,7 +170,7 @@ class TestPurgeResource:
         store = MemoryResourceStore()
         import io
 
-        from autocrud.types import RevisionInfo
+        from specstar.types import RevisionInfo
 
         info = RevisionInfo(
             resource_id="r1",
@@ -230,22 +230,22 @@ class TestPurgeResource:
 @pytest.fixture
 def client():
     """Create a FastAPI test client with permanently delete route."""
-    crud = AutoCRUD(model_naming="kebab")
+    spec = SpecStar(model_naming="kebab")
 
-    crud.add_route_template(CreateRouteTemplate())
-    crud.add_route_template(ReadRouteTemplate())
-    crud.add_route_template(ListRouteTemplate())
-    crud.add_route_template(DeleteRouteTemplate())
-    crud.add_route_template(RestoreRouteTemplate())
-    crud.add_route_template(PermanentlyDeleteRouteTemplate())
+    spec.add_route_template(CreateRouteTemplate())
+    spec.add_route_template(ReadRouteTemplate())
+    spec.add_route_template(ListRouteTemplate())
+    spec.add_route_template(DeleteRouteTemplate())
+    spec.add_route_template(RestoreRouteTemplate())
+    spec.add_route_template(PermanentlyDeleteRouteTemplate())
 
-    crud.add_model(Item)
+    spec.add_model(Item)
 
     app = FastAPI()
     from fastapi import APIRouter
 
     router = APIRouter()
-    crud.apply(router)
+    spec.apply(router)
     app.include_router(router)
     return TestClient(app)
 
@@ -313,11 +313,11 @@ class TestPermanentlyDeleteRoute:
         assert rid2 not in rids
 
     def test_default_route_templates_include_permanently_delete(self):
-        """AutoCRUD default templates should include PermanentlyDeleteRouteTemplate."""
-        crud = AutoCRUD()
+        """SpecStar default templates should include PermanentlyDeleteRouteTemplate."""
+        spec = SpecStar()
         has_perm_delete = any(
             isinstance(rt, PermanentlyDeleteRouteTemplate)
-            for rt in crud.route_templates
+            for rt in spec.route_templates
         )
         assert has_perm_delete, (
             "PermanentlyDeleteRouteTemplate should be in default templates"

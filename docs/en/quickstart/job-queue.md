@@ -1,10 +1,10 @@
 # Quickstart - Job Queue
 
-AutoCRUD can treat jobs as first-class resources.
+SpecStar can treat jobs as first-class resources.
 
 That means background work is not just pushed into a broker and forgotten. Each job can carry structured input, status, history, and management metadata.
 
-Queue setup is part of the broader backend story. This page focuses on the job-specific workflow, while the [backend setup guide](/autocrud/guides/backend-setup) helps when you are ready to choose the right persistence and queue shape for your environment.
+Queue setup is part of the broader backend story. This page focuses on the job-specific workflow, while the [backend setup guide](/specstar/guides/backend-setup) helps when you are ready to choose the right persistence and queue shape for your environment.
 
 This quickstart shows the smallest useful setup:
 
@@ -23,8 +23,8 @@ For first-time setup, make the queue backend explicit.
 That removes ambiguity about where jobs are processed.
 
 ```python
-from autocrud import crud
-from autocrud.message_queue import SimpleMessageQueueFactory
+from specstar import crud
+from specstar.message_queue import SimpleMessageQueueFactory
 
 crud.configure(
     message_queue_factory=SimpleMessageQueueFactory(),
@@ -47,7 +47,7 @@ Traditional queue systems are powerful, but they often leave application teams t
 - operator visibility
 - UI-based inspection and manual operations
 
-AutoCRUD wraps queue execution in a resource-oriented model so that jobs are easier to operate and reason about.
+SpecStar wraps queue execution in a resource-oriented model so that jobs are easier to operate and reason about.
 
 ---
 
@@ -60,7 +60,7 @@ from typing import Any, Literal
 
 import msgspec
 
-from autocrud.types import Job, Resource
+from specstar.types import Job, Resource
 
 
 class TrainingPayload(msgspec.Struct):
@@ -90,18 +90,18 @@ def training(job: Resource[TrainingJob]) -> TrainingJob:
 Here:
 
 - `TrainingPayload` defines the input shape
-- `TrainingJob` is the resource type stored and tracked by AutoCRUD
+- `TrainingJob` is the resource type stored and tracked by SpecStar
 - `training()` is the handler that performs the work
 
 ---
 
 ## 2. Register the job handler
 
-Once the schema and handler are ready, register them with AutoCRUD:
+Once the schema and handler are ready, register them with SpecStar:
 
 ```python
-from autocrud import Schema, crud
-from autocrud.message_queue import SimpleMessageQueueFactory
+from specstar import Schema, crud
+from specstar.message_queue import SimpleMessageQueueFactory
 
 crud.configure(
     message_queue_factory=SimpleMessageQueueFactory(),
@@ -113,7 +113,7 @@ crud.add_model(
 )
 ```
 
-After this, AutoCRUD knows which resource type represents the job and which function should process it.
+After this, SpecStar knows which resource type represents the job and which function should process it.
 
 ---
 
@@ -154,9 +154,9 @@ You can also trigger jobs through the HTTP API or the generated Web UI when thos
 
 See also:
 
-- [Backend setup guide](/autocrud/guides/backend-setup)
-- [Routes generation (FastAPI)](/autocrud/howto/routes)
-- [Web UI](/autocrud/howto/web-ui)
+- [Backend setup guide](/specstar/guides/backend-setup)
+- [Routes generation (FastAPI)](/specstar/howto/routes)
+- [Web UI](/specstar/howto/web-ui)
 
 ---
 
@@ -166,7 +166,7 @@ A simple polling loop is often enough to verify the workflow during development:
 
 ```python
 import time
-from autocrud import TaskStatus
+from specstar import TaskStatus
 
 job_id = job_info.resource_id
 
@@ -204,9 +204,9 @@ from typing import Any, Literal
 
 import msgspec
 
-from autocrud import Job, Schema, TaskStatus, crud
-from autocrud.message_queue import SimpleMessageQueueFactory
-from autocrud.types import Resource
+from specstar import Job, Schema, TaskStatus, crud
+from specstar.message_queue import SimpleMessageQueueFactory
+from specstar.types import Resource
 
 
 class TrainingPayload(msgspec.Struct):

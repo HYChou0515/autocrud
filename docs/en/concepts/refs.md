@@ -1,6 +1,6 @@
 # References (Ref / RefType / OnDelete)
 
-AutoCRUD uses `typing.Annotated` + metadata markers to express relationships between resources.
+SpecStar uses `typing.Annotated` + metadata markers to express relationships between resources.
 
 ## The basic pattern
 
@@ -9,7 +9,7 @@ A reference field is typically a `str` holding another resource's **resource_id*
 ```python
 from typing import Annotated
 from msgspec import Struct
-from autocrud.types import Ref
+from specstar.types import Ref
 
 class Monster(Struct):
     zone_id: Annotated[str, Ref("zone")]
@@ -19,7 +19,7 @@ Here `Ref("zone")` means:
 
 * this field targets the resource named `"zone"`
 * the stored value is a `resource_id` by default
-* AutoCRUD may enforce referential integrity and build ref-related features
+* SpecStar may enforce referential integrity and build ref-related features
 
 ## OnDelete policies
 
@@ -32,7 +32,7 @@ Use `on_delete=` to define what happens when the referenced target is deleted:
 Example:
 
 ```python
-from autocrud.types import Ref, OnDelete
+from specstar.types import Ref, OnDelete
 
 class Monster(Struct):
     # set_null requires Optional / nullable type
@@ -68,7 +68,7 @@ These refs are intentionally treated differently:
 Example:
 
 ```python
-from autocrud.types import Ref, RefType
+from specstar.types import Ref, RefType
 
 class Monster(Struct):
     zone_snapshot_id: Annotated[str, Ref("zone", ref_type=RefType.revision_id)]

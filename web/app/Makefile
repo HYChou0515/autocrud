@@ -1,9 +1,9 @@
-# AutoCRUD Web App Makefile
+# SpecStar Web App Makefile
 
 # 默認目標
 .PHONY: help
 help:
-	@echo "AutoCRUD Web App 開發工具"
+	@echo "SpecStar Web App 開發工具"
 	@echo ""
 	@echo "開發工具："
 	@echo "  style        格式化程式碼並修復 lint 問題 (prettier + eslint --fix)"

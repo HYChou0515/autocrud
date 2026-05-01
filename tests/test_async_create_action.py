@@ -22,9 +22,9 @@ from fastapi import Body, FastAPI
 from fastapi.testclient import TestClient
 from msgspec import Struct
 
-from autocrud.crud.core import AutoCRUD
-from autocrud.message_queue.simple import SimpleMessageQueueFactory
-from autocrud.types import TaskStatus
+from specstar.crud.core import SpecStar
+from specstar.message_queue.simple import SimpleMessageQueueFactory
+from specstar.types import TaskStatus
 
 # ---------------------------------------------------------------------------
 # Test Models
@@ -50,8 +50,8 @@ class ImportPayload(Struct):
 # ---------------------------------------------------------------------------
 
 
-def _make_crud(**kwargs) -> AutoCRUD:
-    return AutoCRUD(
+def _make_crud(**kwargs) -> SpecStar:
+    return SpecStar(
         default_user="tester",
         default_now=dt.datetime.now,
         message_queue_factory=SimpleMessageQueueFactory(max_retries=1),
@@ -60,10 +60,10 @@ def _make_crud(**kwargs) -> AutoCRUD:
 
 
 def _wait_for_job_completion(
-    crud: AutoCRUD, job_resource_name: str, job_resource_id: str, timeout: float = 5.0
+    spec: SpecStar, job_resource_name: str, job_resource_id: str, timeout: float = 5.0
 ):
     """Poll until the job reaches COMPLETED or FAILED status."""
-    rm = crud.resource_managers[job_resource_name]
+    rm = spec.resource_managers[job_resource_name]
     start = time.monotonic()
     while time.monotonic() - start < timeout:
         resource = rm.get(job_resource_id)
@@ -79,30 +79,30 @@ def _wait_for_job_completion(
 
 
 class TestAsyncCreateActionDecorator:
-    """@crud.create_action(async_mode='job') stores async_mode in pending action."""
+    """@spec.create_action(async_mode='job') stores async_mode in pending action."""
 
     def test_async_mode_stored_in_pending_action(self):
-        crud = _make_crud()
-        crud.add_model(Article, name="article")
+        spec = _make_crud()
+        spec.add_model(Article, name="article")
 
-        @crud.create_action("article", async_mode="job", label="Generate Article")
+        @spec.create_action("article", async_mode="job", label="Generate Article")
         def generate_article(payload: ArticleRequest = Body(...)) -> Article:
             return Article(title=payload.title, content="generated")
 
-        assert len(crud._pending_create_actions) == 1
-        action = crud._pending_create_actions[0]
+        assert len(spec._pending_create_actions) == 1
+        action = spec._pending_create_actions[0]
         assert action.async_mode == "job"
         assert action.label == "Generate Article"
 
     def test_default_async_mode_is_none(self):
-        crud = _make_crud()
-        crud.add_model(Article, name="article")
+        spec = _make_crud()
+        spec.add_model(Article, name="article")
 
-        @crud.create_action("article", label="Sync Import")
+        @spec.create_action("article", label="Sync Import")
         async def sync_import(body: ImportPayload = Body(...)):
             return Article(title="imported", content=body.url)
 
-        action = crud._pending_create_actions[0]
+        action = spec._pending_create_actions[0]
         assert action.async_mode is None
 
 
@@ -115,47 +115,47 @@ class TestAsyncJobModelGeneration:
     """apply() auto-generates a Job Model for async_mode='job' actions."""
 
     def test_job_model_registered(self):
-        crud = _make_crud()
-        crud.add_model(Article, name="article")
+        spec = _make_crud()
+        spec.add_model(Article, name="article")
 
-        @crud.create_action("article", async_mode="job", label="Generate")
+        @spec.create_action("article", async_mode="job", label="Generate")
         def generate_article(payload: ArticleRequest = Body(...)) -> Article:
             return Article(title=payload.title, content="ok")
 
         app = FastAPI()
-        crud.apply(app)
+        spec.apply(app)
 
         # The auto-generated Job model should be registered as a resource manager
         job_resource_name = "generate-article-job"
-        assert job_resource_name in crud.resource_managers
+        assert job_resource_name in spec.resource_managers
 
     def test_job_model_is_job_subclass(self):
-        crud = _make_crud()
-        crud.add_model(Article, name="article")
+        spec = _make_crud()
+        spec.add_model(Article, name="article")
 
-        @crud.create_action("article", async_mode="job", label="Generate")
+        @spec.create_action("article", async_mode="job", label="Generate")
         def generate_article(payload: ArticleRequest = Body(...)) -> Article:
             return Article(title=payload.title, content="ok")
 
         app = FastAPI()
-        crud.apply(app)
+        spec.apply(app)
 
-        job_rm = crud.resource_managers["generate-article-job"]
+        job_rm = spec.resource_managers["generate-article-job"]
         # The model should be recognized as a Job subclass
-        assert crud._is_job_subclass(job_rm.resource_type)
+        assert spec._is_job_subclass(job_rm.resource_type)
 
     def test_job_model_has_correct_fields(self):
-        crud = _make_crud()
-        crud.add_model(Article, name="article")
+        spec = _make_crud()
+        spec.add_model(Article, name="article")
 
-        @crud.create_action("article", async_mode="job", label="Generate")
+        @spec.create_action("article", async_mode="job", label="Generate")
         def generate_article(payload: ArticleRequest = Body(...)) -> Article:
             return Article(title=payload.title, content="ok")
 
         app = FastAPI()
-        crud.apply(app)
+        spec.apply(app)
 
-        job_rm = crud.resource_managers["generate-article-job"]
+        job_rm = spec.resource_managers["generate-article-job"]
         model = job_rm.resource_type
         # Should have Job-like fields
         field_names = {f for f in model.__struct_fields__}
@@ -166,17 +166,17 @@ class TestAsyncJobModelGeneration:
         assert "retries" in field_names
 
     def test_job_model_has_message_queue(self):
-        crud = _make_crud()
-        crud.add_model(Article, name="article")
+        spec = _make_crud()
+        spec.add_model(Article, name="article")
 
-        @crud.create_action("article", async_mode="job", label="Generate")
+        @spec.create_action("article", async_mode="job", label="Generate")
         def generate_article(payload: ArticleRequest = Body(...)) -> Article:
             return Article(title=payload.title, content="ok")
 
         app = FastAPI()
-        crud.apply(app)
+        spec.apply(app)
 
-        job_rm = crud.resource_managers["generate-article-job"]
+        job_rm = spec.resource_managers["generate-article-job"]
         assert job_rm.message_queue is not None  # ty:ignore[unresolved-attribute]
 
 
@@ -190,20 +190,20 @@ class TestAsyncCreateActionHTTPFlow:
 
     @pytest.fixture
     def crud_and_client(self):
-        crud = _make_crud()
-        crud.add_model(Article, name="article")
+        spec = _make_crud()
+        spec.add_model(Article, name="article")
 
-        @crud.create_action("article", async_mode="job", label="Generate")
+        @spec.create_action("article", async_mode="job", label="Generate")
         def generate_article(payload: ArticleRequest = Body(...)) -> Article:
             return Article(title=payload.title, content=f"generated:{payload.prompt}")
 
         app = FastAPI()
-        crud.apply(app)
+        spec.apply(app)
         client = TestClient(app)
-        return crud, client
+        return spec, client
 
     def test_returns_202_with_job_redirect_info(self, crud_and_client):
-        crud, client = crud_and_client
+        spec, client = crud_and_client
         resp = client.post(
             "/article/generate-article",
             json={"prompt": "hello", "title": "My Title"},
@@ -215,28 +215,28 @@ class TestAsyncCreateActionHTTPFlow:
         assert data["job_resource_name"] == "generate-article-job"
 
     def test_job_resource_created_with_pending_status(self, crud_and_client):
-        crud, client = crud_and_client
+        spec, client = crud_and_client
         resp = client.post(
             "/article/generate-article",
             json={"prompt": "hello", "title": "My Title"},
         )
         data = resp.json()
-        job_rm = crud.resource_managers["generate-article-job"]
+        job_rm = spec.resource_managers["generate-article-job"]
         job = job_rm.get(data["job_resource_id"])
         assert job.data.payload.prompt == "hello"
         assert job.data.payload.title == "My Title"
 
     def test_standard_sync_create_action_unchanged(self):
         """async_mode=None (default) create action still returns 200 + RevisionInfo."""
-        crud = _make_crud()
-        crud.add_model(Article, name="article")
+        spec = _make_crud()
+        spec.add_model(Article, name="article")
 
-        @crud.create_action("article", label="Quick Import")
+        @spec.create_action("article", label="Quick Import")
         async def quick_import(body: ImportPayload = Body(...)):
             return Article(title="imported", content=body.url)
 
         app = FastAPI()
-        crud.apply(app)
+        spec.apply(app)
         client = TestClient(app)
 
         resp = client.post("/article/quick-import", json={"url": "https://example.com"})
@@ -256,27 +256,27 @@ class TestAsyncJobExecution:
 
     @pytest.fixture
     def crud_and_client(self):
-        crud = _make_crud()
-        crud.add_model(Article, name="article")
+        spec = _make_crud()
+        spec.add_model(Article, name="article")
 
-        @crud.create_action("article", async_mode="job", label="Generate")
+        @spec.create_action("article", async_mode="job", label="Generate")
         def generate_article(payload: ArticleRequest = Body(...)) -> Article:
             return Article(title=payload.title, content=f"generated:{payload.prompt}")
 
         app = FastAPI()
-        crud.apply(app)
+        spec.apply(app)
 
         # Start consuming jobs
-        job_rm = crud.resource_managers["generate-article-job"]
+        job_rm = spec.resource_managers["generate-article-job"]
         job_rm.start_consume(block=False)
 
         client = TestClient(app)
-        yield crud, client
+        yield spec, client
 
         # Cleanup: daemon thread dies with process, no explicit stop needed
 
     def test_job_handler_creates_article(self, crud_and_client):
-        crud, client = crud_and_client
+        spec, client = crud_and_client
         resp = client.post(
             "/article/generate-article",
             json={"prompt": "write about AI", "title": "AI Article"},
@@ -285,7 +285,7 @@ class TestAsyncJobExecution:
 
         # Wait for job completion
         job = _wait_for_job_completion(
-            crud, "generate-article-job", data["job_resource_id"]
+            spec, "generate-article-job", data["job_resource_id"]
         )
         assert job.data.status == TaskStatus.COMPLETED
 
@@ -304,7 +304,7 @@ class TestAsyncJobExecution:
         assert articles[0]["data"]["title"] == "AI Article"
 
     def test_job_artifact_contains_revision_info(self, crud_and_client):
-        crud, client = crud_and_client
+        spec, client = crud_and_client
         resp = client.post(
             "/article/generate-article",
             json={"prompt": "test", "title": "Test Article"},
@@ -312,7 +312,7 @@ class TestAsyncJobExecution:
         data = resp.json()
 
         job = _wait_for_job_completion(
-            crud, "generate-article-job", data["job_resource_id"]
+            spec, "generate-article-job", data["job_resource_id"]
         )
         assert job.data.artifact is not None
         # Artifact should have resource_id and revision_id (RevisionInfo-like)
@@ -322,18 +322,18 @@ class TestAsyncJobExecution:
 
     def test_job_handler_returns_none_no_create(self):
         """If handler returns None, no target resource is created but job completes."""
-        crud = _make_crud()
-        crud.add_model(Article, name="article")
+        spec = _make_crud()
+        spec.add_model(Article, name="article")
 
-        @crud.create_action("article", async_mode="job", label="Validate Only")
+        @spec.create_action("article", async_mode="job", label="Validate Only")
         def validate_only(payload: ArticleRequest = Body(...)):
             # Validate but don't create
             return None
 
         app = FastAPI()
-        crud.apply(app)
+        spec.apply(app)
 
-        job_rm = crud.resource_managers["validate-only-job"]
+        job_rm = spec.resource_managers["validate-only-job"]
         job_rm.start_consume(block=False)
 
         client = TestClient(app)
@@ -344,7 +344,7 @@ class TestAsyncJobExecution:
         data = resp.json()
 
         job = _wait_for_job_completion(
-            crud, "validate-only-job", data["job_resource_id"]
+            spec, "validate-only-job", data["job_resource_id"]
         )
         assert job.data.status == TaskStatus.COMPLETED
         assert job.data.artifact is None
@@ -359,19 +359,19 @@ class TestAsyncCreateActionOpenAPI:
     """OpenAPI schema contains asyncMode and jobResourceName."""
 
     def test_openapi_has_async_mode_and_job_resource_name(self):
-        crud = _make_crud()
-        crud.add_model(Article, name="article")
+        spec = _make_crud()
+        spec.add_model(Article, name="article")
 
-        @crud.create_action("article", async_mode="job", label="Generate")
+        @spec.create_action("article", async_mode="job", label="Generate")
         def generate_article(payload: ArticleRequest = Body(...)) -> Article:
             return Article(title=payload.title, content="ok")
 
         app = FastAPI()
-        crud.apply(app)
-        crud.openapi(app)
+        spec.apply(app)
+        spec.openapi(app)
         schema = app.openapi()
 
-        custom_actions = schema.get("x-autocrud-custom-create-actions", {})
+        custom_actions = schema.get("x-specstar-custom-create-actions", {})
         assert "article" in custom_actions
         actions = custom_actions["article"]
         gen_action = next(a for a in actions if a["label"] == "Generate")
@@ -379,37 +379,37 @@ class TestAsyncCreateActionOpenAPI:
         assert gen_action.get("jobResourceName") == "generate-article-job"
 
     def test_openapi_has_async_create_jobs_mapping(self):
-        crud = _make_crud()
-        crud.add_model(Article, name="article")
+        spec = _make_crud()
+        spec.add_model(Article, name="article")
 
-        @crud.create_action("article", async_mode="job", label="Generate")
+        @spec.create_action("article", async_mode="job", label="Generate")
         def generate_article(payload: ArticleRequest = Body(...)) -> Article:
             return Article(title=payload.title, content="ok")
 
         app = FastAPI()
-        crud.apply(app)
-        crud.openapi(app)
+        spec.apply(app)
+        spec.openapi(app)
         schema = app.openapi()
 
-        # x-autocrud-async-create-jobs maps job resource → parent resource
-        async_jobs = schema.get("x-autocrud-async-create-jobs", {})
+        # x-specstar-async-create-jobs maps job resource → parent resource
+        async_jobs = schema.get("x-specstar-async-create-jobs", {})
         assert "generate-article-job" in async_jobs
         assert async_jobs["generate-article-job"] == "article"
 
     def test_openapi_sync_action_has_no_async_mode(self):
-        crud = _make_crud()
-        crud.add_model(Article, name="article")
+        spec = _make_crud()
+        spec.add_model(Article, name="article")
 
-        @crud.create_action("article", label="Quick Import")
+        @spec.create_action("article", label="Quick Import")
         async def quick_import(body: ImportPayload = Body(...)):
             return Article(title="imported", content=body.url)
 
         app = FastAPI()
-        crud.apply(app)
-        crud.openapi(app)
+        spec.apply(app)
+        spec.openapi(app)
         schema = app.openapi()
 
-        custom_actions = schema.get("x-autocrud-custom-create-actions", {})
+        custom_actions = schema.get("x-specstar-custom-create-actions", {})
         actions = custom_actions["article"]
         action = next(a for a in actions if a["label"] == "Quick Import")
         assert "asyncMode" not in action
@@ -425,15 +425,15 @@ class TestAsyncJobCRUDEndpoints:
     """The auto-generated Job resource has its own CRUD endpoints."""
 
     def test_job_resource_has_endpoints(self):
-        crud = _make_crud()
-        crud.add_model(Article, name="article")
+        spec = _make_crud()
+        spec.add_model(Article, name="article")
 
-        @crud.create_action("article", async_mode="job", label="Generate")
+        @spec.create_action("article", async_mode="job", label="Generate")
         def generate_article(payload: ArticleRequest = Body(...)) -> Article:
             return Article(title=payload.title, content="ok")
 
         app = FastAPI()
-        crud.apply(app)
+        spec.apply(app)
         client = TestClient(app)
 
         # GET /generate-article-job (search endpoint) should exist
@@ -441,15 +441,15 @@ class TestAsyncJobCRUDEndpoints:
         assert resp.status_code == 200
 
     def test_job_resource_is_readable(self):
-        crud = _make_crud()
-        crud.add_model(Article, name="article")
+        spec = _make_crud()
+        spec.add_model(Article, name="article")
 
-        @crud.create_action("article", async_mode="job", label="Generate")
+        @spec.create_action("article", async_mode="job", label="Generate")
         def generate_article(payload: ArticleRequest = Body(...)) -> Article:
             return Article(title=payload.title, content="ok")
 
         app = FastAPI()
-        crud.apply(app)
+        spec.apply(app)
         client = TestClient(app)
 
         # Create a job via the async create action
@@ -473,37 +473,37 @@ class TestMultipleAsyncCreateActions:
     """Multiple async_mode='job' actions on the same resource."""
 
     def test_multiple_async_actions_create_separate_jobs(self):
-        crud = _make_crud()
-        crud.add_model(Article, name="article")
+        spec = _make_crud()
+        spec.add_model(Article, name="article")
 
-        @crud.create_action("article", async_mode="job", label="Generate")
+        @spec.create_action("article", async_mode="job", label="Generate")
         def generate_article(payload: ArticleRequest = Body(...)) -> Article:
             return Article(title=payload.title, content="generated")
 
-        @crud.create_action("article", async_mode="job", label="Import Async")
+        @spec.create_action("article", async_mode="job", label="Import Async")
         def import_async(payload: ImportPayload = Body(...)) -> Article:
             return Article(title="imported", content=payload.url)
 
         app = FastAPI()
-        crud.apply(app)
+        spec.apply(app)
 
-        assert "generate-article-job" in crud.resource_managers
-        assert "import-async-job" in crud.resource_managers
+        assert "generate-article-job" in spec.resource_managers
+        assert "import-async-job" in spec.resource_managers
 
     def test_mixed_sync_and_async_actions(self):
-        crud = _make_crud()
-        crud.add_model(Article, name="article")
+        spec = _make_crud()
+        spec.add_model(Article, name="article")
 
-        @crud.create_action("article", async_mode="job", label="Generate")
+        @spec.create_action("article", async_mode="job", label="Generate")
         def generate_article(payload: ArticleRequest = Body(...)) -> Article:
             return Article(title=payload.title, content="generated")
 
-        @crud.create_action("article", label="Quick Import")
+        @spec.create_action("article", label="Quick Import")
         async def quick_import(body: ImportPayload = Body(...)):
             return Article(title="imported", content=body.url)
 
         app = FastAPI()
-        crud.apply(app)
+        spec.apply(app)
         client = TestClient(app)
 
         # Async action → 202
@@ -530,8 +530,8 @@ class TestMultipleAsyncCreateActions:
 class TestJobRedirectInfoType:
     """JobRedirectInfo is importable and has correct fields."""
 
-    def test_importable_from_autocrud(self):
-        from autocrud.types import JobRedirectInfo
+    def test_importable_from_specstar(self):
+        from specstar.types import JobRedirectInfo
 
         info = JobRedirectInfo(
             job_resource_name="test-job",
@@ -543,7 +543,7 @@ class TestJobRedirectInfoType:
         assert info.redirect_url == "/test-job/abc123"
 
     def test_serializable_with_msgspec(self):
-        from autocrud.types import JobRedirectInfo
+        from specstar.types import JobRedirectInfo
 
         info = JobRedirectInfo(
             job_resource_name="test-job",
@@ -564,36 +564,36 @@ class TestAutoPayloadScalarParams:
 
     def test_scalar_params_auto_generate_job_model(self):
         """Handler with only str param auto-generates a payload Struct."""
-        crud = _make_crud()
-        crud.add_model(Article, name="article")
+        spec = _make_crud()
+        spec.add_model(Article, name="article")
 
-        @crud.create_action(
+        @spec.create_action(
             "article", async_mode="job", label="Create by Name", path="by-name"
         )
         async def create_by_name(name: str):
             return Article(title=name, content="auto")
 
         app = FastAPI()
-        crud.apply(app)
+        spec.apply(app)
 
         # Job resource should be registered
-        assert "by-name-job" in crud.resource_managers
-        job_rm = crud.resource_managers["by-name-job"]
-        assert crud._is_job_subclass(job_rm.resource_type)
+        assert "by-name-job" in spec.resource_managers
+        job_rm = spec.resource_managers["by-name-job"]
+        assert spec._is_job_subclass(job_rm.resource_type)
 
     def test_scalar_params_returns_202(self):
         """POST to scalar-param async action returns 202 + JobRedirectInfo."""
-        crud = _make_crud()
-        crud.add_model(Article, name="article")
+        spec = _make_crud()
+        spec.add_model(Article, name="article")
 
-        @crud.create_action(
+        @spec.create_action(
             "article", async_mode="job", label="Create by Name", path="by-name"
         )
         async def create_by_name(name: str):
             return Article(title=name, content="auto")
 
         app = FastAPI()
-        crud.apply(app)
+        spec.apply(app)
         client = TestClient(app)
 
         resp = client.post("/article/by-name?name=hello")
@@ -604,48 +604,48 @@ class TestAutoPayloadScalarParams:
 
     def test_scalar_params_job_payload_correct(self):
         """The auto-generated payload Struct captures the scalar value."""
-        crud = _make_crud()
-        crud.add_model(Article, name="article")
+        spec = _make_crud()
+        spec.add_model(Article, name="article")
 
-        @crud.create_action(
+        @spec.create_action(
             "article", async_mode="job", label="Create by Name", path="by-name"
         )
         async def create_by_name(name: str):
             return Article(title=name, content="auto")
 
         app = FastAPI()
-        crud.apply(app)
+        spec.apply(app)
         client = TestClient(app)
 
         resp = client.post("/article/by-name?name=hello")
         data = resp.json()
 
-        job_rm = crud.resource_managers["by-name-job"]
+        job_rm = spec.resource_managers["by-name-job"]
         job = job_rm.get(data["job_resource_id"])
         assert job.data.payload.name == "hello"
 
     def test_scalar_params_job_execution_creates_resource(self):
         """Background job unpacks auto-payload, calls handler, creates resource."""
-        crud = _make_crud()
-        crud.add_model(Article, name="article")
+        spec = _make_crud()
+        spec.add_model(Article, name="article")
 
-        @crud.create_action(
+        @spec.create_action(
             "article", async_mode="job", label="Create by Name", path="by-name"
         )
         async def create_by_name(name: str):
             return Article(title=name, content="auto-generated")
 
         app = FastAPI()
-        crud.apply(app)
+        spec.apply(app)
 
-        job_rm = crud.resource_managers["by-name-job"]
+        job_rm = spec.resource_managers["by-name-job"]
         job_rm.start_consume(block=False)
 
         client = TestClient(app)
         resp = client.post("/article/by-name?name=TestArticle")
         data = resp.json()
 
-        job = _wait_for_job_completion(crud, "by-name-job", data["job_resource_id"])
+        job = _wait_for_job_completion(spec, "by-name-job", data["job_resource_id"])
         assert job.data.status == TaskStatus.COMPLETED
 
         # Verify the Article was created
@@ -663,19 +663,19 @@ class TestAutoPayloadScalarParams:
 
     def test_multiple_scalar_params(self):
         """Handler with multiple scalar params all captured in auto-payload."""
-        crud = _make_crud()
-        crud.add_model(Article, name="article")
+        spec = _make_crud()
+        spec.add_model(Article, name="article")
 
-        @crud.create_action(
+        @spec.create_action(
             "article", async_mode="job", label="Create from parts", path="from-parts"
         )
         def create_from_parts(title: str, body: str, count: int):
             return Article(title=f"{title} #{count}", content=body)
 
         app = FastAPI()
-        crud.apply(app)
+        spec.apply(app)
 
-        job_rm = crud.resource_managers["from-parts-job"]
+        job_rm = spec.resource_managers["from-parts-job"]
         job_rm.start_consume(block=False)
 
         client = TestClient(app)
@@ -683,7 +683,7 @@ class TestAutoPayloadScalarParams:
         assert resp.status_code == 202
         data = resp.json()
 
-        job = _wait_for_job_completion(crud, "from-parts-job", data["job_resource_id"])
+        job = _wait_for_job_completion(spec, "from-parts-job", data["job_resource_id"])
         assert job.data.status == TaskStatus.COMPLETED
         assert job.data.payload.title == "Hi"
         assert job.data.payload.body == "World"
@@ -691,10 +691,10 @@ class TestAutoPayloadScalarParams:
 
     def test_path_template_params(self):
         """Handler with path template variables works with auto-payload."""
-        crud = _make_crud()
-        crud.add_model(Article, name="article")
+        spec = _make_crud()
+        spec.add_model(Article, name="article")
 
-        @crud.create_action(
+        @spec.create_action(
             "article",
             async_mode="job",
             label="Create by slug",
@@ -704,10 +704,10 @@ class TestAutoPayloadScalarParams:
             return Article(title=slug, content="from-slug")
 
         app = FastAPI()
-        crud.apply(app)
+        spec.apply(app)
 
         # Job resource name should be cleaned of path templates
-        assert "create-job" in crud.resource_managers
+        assert "create-job" in spec.resource_managers
 
         client = TestClient(app)
         resp = client.post("/article/my-slug/create")
@@ -715,25 +715,25 @@ class TestAutoPayloadScalarParams:
         data = resp.json()
         assert data["job_resource_name"] == "create-job"
 
-        job_rm = crud.resource_managers["create-job"]
+        job_rm = spec.resource_managers["create-job"]
         job = job_rm.get(data["job_resource_id"])
         assert job.data.payload.slug == "my-slug"
 
     def test_sync_scalar_handler_works(self):
         """Non-async (sync) scalar handler also works with auto-payload."""
-        crud = _make_crud()
-        crud.add_model(Article, name="article")
+        spec = _make_crud()
+        spec.add_model(Article, name="article")
 
-        @crud.create_action(
+        @spec.create_action(
             "article", async_mode="job", label="Sync Create", path="sync-create"
         )
         def sync_create(name: str):
             return Article(title=name, content="sync")
 
         app = FastAPI()
-        crud.apply(app)
+        spec.apply(app)
 
-        job_rm = crud.resource_managers["sync-create-job"]
+        job_rm = spec.resource_managers["sync-create-job"]
         job_rm.start_consume(block=False)
 
         client = TestClient(app)
@@ -741,7 +741,7 @@ class TestAutoPayloadScalarParams:
         assert resp.status_code == 202
         data = resp.json()
 
-        job = _wait_for_job_completion(crud, "sync-create-job", data["job_resource_id"])
+        job = _wait_for_job_completion(spec, "sync-create-job", data["job_resource_id"])
         assert job.data.status == TaskStatus.COMPLETED
 
         # Verify the Article was created
@@ -765,8 +765,8 @@ class TestAutoPayloadTypeConversion:
 
     def test_upload_file_payload_struct(self):
         """UploadFilePayload wraps Binary + filename and round-trips."""
-        from autocrud.crud.async_job_builder import UploadFilePayload
-        from autocrud.types import Binary
+        from specstar.crud.async_job_builder import UploadFilePayload
+        from specstar.types import Binary
 
         payload = UploadFilePayload(
             binary=Binary(data=b"hello", content_type="text/plain", size=5),
@@ -787,7 +787,7 @@ class TestAutoPayloadTypeConversion:
         """UploadFile maps to UploadFilePayload."""
         from fastapi import UploadFile
 
-        from autocrud.crud.async_job_builder import (
+        from specstar.crud.async_job_builder import (
             UploadFilePayload,
             resolve_payload_field_type,
         )
@@ -800,7 +800,7 @@ class TestAutoPayloadTypeConversion:
         """Pydantic BaseModel maps to a msgspec Struct."""
         from pydantic import BaseModel
 
-        from autocrud.crud.async_job_builder import resolve_payload_field_type
+        from specstar.crud.async_job_builder import resolve_payload_field_type
 
         class MyModel(BaseModel):
             name: str
@@ -811,7 +811,7 @@ class TestAutoPayloadTypeConversion:
 
     def test_resolve_payload_field_type_scalars(self):
         """Scalars and unions pass through unchanged."""
-        from autocrud.crud.async_job_builder import resolve_payload_field_type
+        from specstar.crud.async_job_builder import resolve_payload_field_type
 
         for t in (str, int, float, bool, bytes):
             ser_type, conv_kind = resolve_payload_field_type(t)
@@ -822,7 +822,7 @@ class TestAutoPayloadTypeConversion:
         """Non-msgspec class (e.g. pydantic_core.Url) → str."""
         from pydantic_core import Url
 
-        from autocrud.crud.async_job_builder import resolve_payload_field_type
+        from specstar.crud.async_job_builder import resolve_payload_field_type
 
         ser_type, conv_kind = resolve_payload_field_type(Url)
         assert ser_type is str
@@ -832,10 +832,10 @@ class TestAutoPayloadTypeConversion:
         """UploadFile param is auto-converted → async job succeeds."""
         from fastapi import UploadFile
 
-        crud = _make_crud()
-        crud.add_model(Article, name="article")
+        spec = _make_crud()
+        spec.add_model(Article, name="article")
 
-        @crud.create_action(
+        @spec.create_action(
             "article", async_mode="job", label="Upload", path="upload-create"
         )
         async def upload_create(name: str, file: UploadFile):
@@ -843,12 +843,12 @@ class TestAutoPayloadTypeConversion:
             return Article(title=name, content=content.decode())
 
         app = FastAPI()
-        crud.apply(app)
+        spec.apply(app)
 
         # Job resource should exist (NOT fallen back to sync)
-        assert "upload-create-job" in crud.resource_managers
+        assert "upload-create-job" in spec.resource_managers
 
-        job_rm = crud.resource_managers["upload-create-job"]
+        job_rm = spec.resource_managers["upload-create-job"]
         job_rm.start_consume(block=False)
 
         client = TestClient(app)
@@ -861,7 +861,7 @@ class TestAutoPayloadTypeConversion:
         assert "job_resource_id" in data
 
         job = _wait_for_job_completion(
-            crud, "upload-create-job", data["job_resource_id"]
+            spec, "upload-create-job", data["job_resource_id"]
         )
         assert job.data.status == TaskStatus.COMPLETED
 
@@ -882,22 +882,22 @@ class TestAutoPayloadTypeConversion:
         class PydanticInput(BaseModel):
             name: str
 
-        crud = _make_crud()
-        crud.add_model(Article, name="article")
+        spec = _make_crud()
+        spec.add_model(Article, name="article")
 
-        @crud.create_action(
+        @spec.create_action(
             "article", async_mode="job", label="Pydantic", path="pydantic-create"
         )
         def pydantic_create(data: PydanticInput):
             return Article(title=data.name, content="from-pydantic")
 
         app = FastAPI()
-        crud.apply(app)
+        spec.apply(app)
 
         # Job resource should exist
-        assert "pydantic-create-job" in crud.resource_managers
+        assert "pydantic-create-job" in spec.resource_managers
 
-        job_rm = crud.resource_managers["pydantic-create-job"]
+        job_rm = spec.resource_managers["pydantic-create-job"]
         job_rm.start_consume(block=False)
 
         client = TestClient(app)
@@ -906,7 +906,7 @@ class TestAutoPayloadTypeConversion:
         data = resp.json()
 
         job = _wait_for_job_completion(
-            crud, "pydantic-create-job", data["job_resource_id"]
+            spec, "pydantic-create-job", data["job_resource_id"]
         )
         assert job.data.status == TaskStatus.COMPLETED
 
@@ -925,21 +925,21 @@ class TestAutoPayloadTypeConversion:
         """Non-msgspec type param (Url) is converted to str → async ok."""
         from pydantic_core import Url
 
-        crud = _make_crud()
-        crud.add_model(Article, name="article")
+        spec = _make_crud()
+        spec.add_model(Article, name="article")
 
-        @crud.create_action(
+        @spec.create_action(
             "article", async_mode="job", label="UrlCreate", path="url-create"
         )
         def url_create(name: str, url: Url):
             return Article(title=name, content=str(url))
 
         app = FastAPI()
-        crud.apply(app)
+        spec.apply(app)
 
-        assert "url-create-job" in crud.resource_managers
+        assert "url-create-job" in spec.resource_managers
 
-        job_rm = crud.resource_managers["url-create-job"]
+        job_rm = spec.resource_managers["url-create-job"]
         job_rm.start_consume(block=False)
 
         client = TestClient(app)
@@ -947,7 +947,7 @@ class TestAutoPayloadTypeConversion:
         assert resp.status_code == 202
         data = resp.json()
 
-        job = _wait_for_job_completion(crud, "url-create-job", data["job_resource_id"])
+        job = _wait_for_job_completion(spec, "url-create-job", data["job_resource_id"])
         assert job.data.status == TaskStatus.COMPLETED
 
         search_resp = client.get("/article/?limit=50")
@@ -964,10 +964,10 @@ class TestAutoPayloadTypeConversion:
         from fastapi import UploadFile
         from pydantic_core import Url
 
-        crud = _make_crud()
-        crud.add_model(Article, name="article")
+        spec = _make_crud()
+        spec.add_model(Article, name="article")
 
-        @crud.create_action(
+        @spec.create_action(
             "article", async_mode="job", label="Mixed", path="mixed-create"
         )
         async def mixed_create(
@@ -982,11 +982,11 @@ class TestAutoPayloadTypeConversion:
             )
 
         app = FastAPI()
-        crud.apply(app)
+        spec.apply(app)
 
-        assert "mixed-create-job" in crud.resource_managers
+        assert "mixed-create-job" in spec.resource_managers
 
-        job_rm = crud.resource_managers["mixed-create-job"]
+        job_rm = spec.resource_managers["mixed-create-job"]
         job_rm.start_consume(block=False)
 
         client = TestClient(app)
@@ -998,7 +998,7 @@ class TestAutoPayloadTypeConversion:
         data = resp.json()
 
         job = _wait_for_job_completion(
-            crud, "mixed-create-job", data["job_resource_id"]
+            spec, "mixed-create-job", data["job_resource_id"]
         )
         assert job.data.status == TaskStatus.COMPLETED
 
@@ -1016,7 +1016,7 @@ class TestAsyncJobBuilderPathTemplates:
         path-template normalisation that powers Job model naming. Asserting
         names through it covers every relevant cleaning case.
         """
-        from autocrud.crud.async_job_builder import derive_job_resource_name
+        from specstar.crud.async_job_builder import derive_job_resource_name
 
         # Plain kebab-case names pass through unchanged.
         assert derive_job_resource_name("generate-article") == "generate-article-job"
@@ -1034,7 +1034,7 @@ class TestAsyncJobBuilderPathTemplates:
         assert derive_job_resource_name("/{id}", "character") == "character-job"
 
     def test_build_auto_payload_struct(self):
-        from autocrud.crud.async_job_builder import build_auto_payload_struct
+        from specstar.crud.async_job_builder import build_auto_payload_struct
 
         PayloadType = build_auto_payload_struct(
             "by-name", "article", [("name", str), ("count", int)]
@@ -1054,29 +1054,29 @@ class TestAutoPayloadOpenAPI:
     """OpenAPI schema correctly reports async metadata for auto-payload actions."""
 
     def test_openapi_has_async_mode_for_scalar_action(self):
-        crud = _make_crud()
-        crud.add_model(Article, name="article")
+        spec = _make_crud()
+        spec.add_model(Article, name="article")
 
-        @crud.create_action(
+        @spec.create_action(
             "article", async_mode="job", label="Create by Name", path="by-name"
         )
         async def create_by_name(name: str):
             return Article(title=name, content="auto")
 
         app = FastAPI()
-        crud.apply(app)
-        crud.openapi(app)
+        spec.apply(app)
+        spec.openapi(app)
         schema = app.openapi()
 
-        custom_actions = schema.get("x-autocrud-custom-create-actions", {})
+        custom_actions = schema.get("x-specstar-custom-create-actions", {})
         assert "article" in custom_actions
         actions = custom_actions["article"]
         action = next(a for a in actions if a["label"] == "Create by Name")
         assert action.get("asyncMode") == "job"
         assert action.get("jobResourceName") == "by-name-job"
 
-        # Also in x-autocrud-async-create-jobs
-        async_jobs = schema.get("x-autocrud-async-create-jobs", {})
+        # Also in x-specstar-async-create-jobs
+        async_jobs = schema.get("x-specstar-async-create-jobs", {})
         assert "by-name-job" in async_jobs
         assert async_jobs["by-name-job"] == "article"
 
@@ -1091,52 +1091,52 @@ class TestJobNameParam:
 
     def test_job_name_stored_in_pending_action(self):
         """``job_name`` is persisted on ``_PendingCreateAction``."""
-        crud = _make_crud()
-        crud.add_model(Article, name="article")
+        spec = _make_crud()
+        spec.add_model(Article, name="article")
 
-        @crud.create_action(
+        @spec.create_action(
             "article", async_mode="job", label="Gen", job_name="my-gen-job"
         )
         def gen_article(prompt: str):
             return Article(title=prompt, content="ok")
 
-        action = crud._pending_create_actions[0]
+        action = spec._pending_create_actions[0]
         assert action.job_name == "my-gen-job"
 
     def test_job_name_default_is_none(self):
         """Without ``job_name``, the field defaults to ``None``."""
-        crud = _make_crud()
-        crud.add_model(Article, name="article")
+        spec = _make_crud()
+        spec.add_model(Article, name="article")
 
-        @crud.create_action("article", async_mode="job", label="Gen")
+        @spec.create_action("article", async_mode="job", label="Gen")
         def gen_article(prompt: str):
             return Article(title=prompt, content="ok")
 
-        action = crud._pending_create_actions[0]
+        action = spec._pending_create_actions[0]
         assert action.job_name is None
 
     def test_custom_job_name_registers_correct_resource(self):
         """apply() uses ``job_name`` as the registered job resource name."""
-        crud = _make_crud()
-        crud.add_model(Article, name="article")
+        spec = _make_crud()
+        spec.add_model(Article, name="article")
 
-        @crud.create_action(
+        @spec.create_action(
             "article", async_mode="job", label="Gen", job_name="my-gen-job"
         )
         def gen_article(prompt: str):
             return Article(title=prompt, content="ok")
 
         app = FastAPI()
-        crud.apply(app)
+        spec.apply(app)
 
-        assert "my-gen-job" in crud.resource_managers
+        assert "my-gen-job" in spec.resource_managers
 
     def test_custom_job_name_in_openapi_create_actions(self):
         """OpenAPI ``jobResourceName`` uses the custom ``job_name``."""
-        crud = _make_crud()
-        crud.add_model(Article, name="article")
+        spec = _make_crud()
+        spec.add_model(Article, name="article")
 
-        @crud.create_action(
+        @spec.create_action(
             "article",
             async_mode="job",
             label="Gen",
@@ -1147,49 +1147,49 @@ class TestJobNameParam:
             return Article(title=prompt, content="ok")
 
         app = FastAPI()
-        crud.apply(app)
-        crud.openapi(app)
+        spec.apply(app)
+        spec.openapi(app)
         schema = app.openapi()
 
-        custom_actions = schema.get("x-autocrud-custom-create-actions", {})
+        custom_actions = schema.get("x-specstar-custom-create-actions", {})
         action = next(a for a in custom_actions["article"] if a["label"] == "Gen")
         assert action["jobResourceName"] == "my-gen-job"
 
     def test_custom_job_name_in_openapi_async_create_jobs(self):
-        """``x-autocrud-async-create-jobs`` uses the custom ``job_name``."""
-        crud = _make_crud()
-        crud.add_model(Article, name="article")
+        """``x-specstar-async-create-jobs`` uses the custom ``job_name``."""
+        spec = _make_crud()
+        spec.add_model(Article, name="article")
 
-        @crud.create_action(
+        @spec.create_action(
             "article", async_mode="job", label="Gen", job_name="my-gen-job"
         )
         def gen_article(prompt: str):
             return Article(title=prompt, content="ok")
 
         app = FastAPI()
-        crud.apply(app)
-        crud.openapi(app)
+        spec.apply(app)
+        spec.openapi(app)
         schema = app.openapi()
 
-        async_jobs = schema.get("x-autocrud-async-create-jobs", {})
+        async_jobs = schema.get("x-specstar-async-create-jobs", {})
         assert "my-gen-job" in async_jobs
         assert async_jobs["my-gen-job"] == "article"
 
     def test_custom_job_name_full_http_flow(self):
         """POST → 202 + job completion with custom job_name."""
-        crud = _make_crud()
-        crud.add_model(Article, name="article")
+        spec = _make_crud()
+        spec.add_model(Article, name="article")
 
-        @crud.create_action(
+        @spec.create_action(
             "article", async_mode="job", label="Gen", job_name="my-gen-job"
         )
         def gen_article(prompt: str):
             return Article(title=prompt, content="generated")
 
         app = FastAPI()
-        crud.apply(app)
+        spec.apply(app)
 
-        job_rm = crud.resource_managers["my-gen-job"]
+        job_rm = spec.resource_managers["my-gen-job"]
         job_rm.start_consume(block=False)
 
         client = TestClient(app)
@@ -1198,7 +1198,7 @@ class TestJobNameParam:
         body = resp.json()
         assert body["job_resource_name"] == "my-gen-job"
 
-        resource = _wait_for_job_completion(crud, "my-gen-job", body["job_resource_id"])
+        resource = _wait_for_job_completion(spec, "my-gen-job", body["job_resource_id"])
         assert resource.data.status == TaskStatus.COMPLETED
 
 
@@ -1212,81 +1212,81 @@ class TestAsyncCreateJobRmsMapping:
 
     def test_mapping_populated_after_apply(self):
         """Target RM's async_create_job_names contains all job names."""
-        crud = _make_crud()
-        crud.add_model(Article, name="article")
+        spec = _make_crud()
+        spec.add_model(Article, name="article")
 
-        @crud.create_action("article", async_mode="job", label="Gen1", path="gen1")
+        @spec.create_action("article", async_mode="job", label="Gen1", path="gen1")
         def gen1(prompt: str):
             return Article(title=prompt, content="ok")
 
-        @crud.create_action("article", async_mode="job", label="Gen2", path="gen2")
+        @spec.create_action("article", async_mode="job", label="Gen2", path="gen2")
         def gen2(prompt: str):
             return Article(title=prompt, content="ok")
 
         app = FastAPI()
-        crud.apply(app)
+        spec.apply(app)
 
-        article_rm = crud.resource_managers["article"]
+        article_rm = spec.resource_managers["article"]
         assert len(article_rm.async_create_job_names) == 2
         assert "gen1-job" in article_rm.async_create_job_names
         assert "gen2-job" in article_rm.async_create_job_names
 
     def test_mapping_uses_custom_job_name(self):
         """Custom job_name appears in async_create_job_names."""
-        crud = _make_crud()
-        crud.add_model(Article, name="article")
+        spec = _make_crud()
+        spec.add_model(Article, name="article")
 
-        @crud.create_action(
+        @spec.create_action(
             "article", async_mode="job", label="Gen", job_name="custom-name"
         )
         def gen(prompt: str):
             return Article(title=prompt, content="ok")
 
         app = FastAPI()
-        crud.apply(app)
+        spec.apply(app)
 
-        article_rm = crud.resource_managers["article"]
+        article_rm = spec.resource_managers["article"]
         assert "custom-name" in article_rm.async_create_job_names
 
     def test_mapping_empty_without_async_actions(self):
         """RM has empty async_create_job_names when no async actions exist."""
-        crud = _make_crud()
-        crud.add_model(Article, name="article")
+        spec = _make_crud()
+        spec.add_model(Article, name="article")
 
         app = FastAPI()
-        crud.apply(app)
+        spec.apply(app)
 
-        article_rm = crud.resource_managers["article"]
+        article_rm = spec.resource_managers["article"]
         assert article_rm.async_create_job_names == []
 
     def test_mapping_values_are_resource_managers(self):
-        """Registered job RMs match those in crud.resource_managers."""
-        crud = _make_crud()
-        crud.add_model(Article, name="article")
+        """Registered job RMs match those in spec.resource_managers."""
+        spec = _make_crud()
+        spec.add_model(Article, name="article")
 
-        @crud.create_action(
+        @spec.create_action(
             "article", async_mode="job", label="Gen", job_name="gen-job"
         )
         def gen(prompt: str):
             return Article(title=prompt, content="ok")
 
         app = FastAPI()
-        crud.apply(app)
+        spec.apply(app)
 
-        article_rm = crud.resource_managers["article"]
+        article_rm = spec.resource_managers["article"]
         assert "gen-job" in article_rm.async_create_job_names
-        # The job RM in crud.resource_managers should be the same instance
-        assert crud.resource_managers["gen-job"] is not None
+        # The job RM in spec.resource_managers should be the same instance
+        assert spec.resource_managers["gen-job"] is not None
 
     def test_register_duplicate_raises(self):
         """Registering the same job name twice raises ValueError."""
-        crud = _make_crud()
-        crud.add_model(Article, name="article")
+        spec = _make_crud()
+        spec.add_model(Article, name="article")
 
         app = FastAPI()
-        crud.apply(app)
+        spec.apply(app)
 
-        article_rm = crud.resource_managers["article"]
+        article_rm = spec.resource_managers["article"]
         # Manually register a fake entry to test duplicate detection
         article_rm.register_async_create_job("dup-job", article_rm)
         with pytest.raises(ValueError, match="already registered"):
@@ -1303,21 +1303,21 @@ class TestStartConsumeCustomCreation:
 
     def test_custom_creation_all_starts_all_job_consumers(self):
         """custom_creation='all' starts consumers for all child job RMs."""
-        crud = _make_crud()
-        crud.add_model(Article, name="article")
+        spec = _make_crud()
+        spec.add_model(Article, name="article")
 
-        @crud.create_action("article", async_mode="job", label="Gen1", path="gen1")
+        @spec.create_action("article", async_mode="job", label="Gen1", path="gen1")
         def gen1(prompt: str):
             return Article(title=prompt, content="1")
 
-        @crud.create_action("article", async_mode="job", label="Gen2", path="gen2")
+        @spec.create_action("article", async_mode="job", label="Gen2", path="gen2")
         def gen2(prompt: str):
             return Article(title=prompt, content="2")
 
         app = FastAPI()
-        crud.apply(app)
+        spec.apply(app)
 
-        article_rm = crud.resource_managers["article"]
+        article_rm = spec.resource_managers["article"]
         # Start all child consumers (non-blocking)
         article_rm.start_consume(block=False, custom_creation="all")
 
@@ -1328,28 +1328,28 @@ class TestStartConsumeCustomCreation:
         assert resp1.status_code == 202
         assert resp2.status_code == 202
 
-        r1 = _wait_for_job_completion(crud, "gen1-job", resp1.json()["job_resource_id"])
-        r2 = _wait_for_job_completion(crud, "gen2-job", resp2.json()["job_resource_id"])
+        r1 = _wait_for_job_completion(spec, "gen1-job", resp1.json()["job_resource_id"])
+        r2 = _wait_for_job_completion(spec, "gen2-job", resp2.json()["job_resource_id"])
         assert r1.data.status == TaskStatus.COMPLETED
         assert r2.data.status == TaskStatus.COMPLETED
 
     def test_custom_creation_list_starts_specific_consumers(self):
         """custom_creation=['gen1-job'] only starts that specific consumer."""
-        crud = _make_crud()
-        crud.add_model(Article, name="article")
+        spec = _make_crud()
+        spec.add_model(Article, name="article")
 
-        @crud.create_action("article", async_mode="job", label="Gen1", path="gen1")
+        @spec.create_action("article", async_mode="job", label="Gen1", path="gen1")
         def gen1(prompt: str):
             return Article(title=prompt, content="1")
 
-        @crud.create_action("article", async_mode="job", label="Gen2", path="gen2")
+        @spec.create_action("article", async_mode="job", label="Gen2", path="gen2")
         def gen2(prompt: str):
             return Article(title=prompt, content="2")
 
         app = FastAPI()
-        crud.apply(app)
+        spec.apply(app)
 
-        article_rm = crud.resource_managers["article"]
+        article_rm = spec.resource_managers["article"]
         # Only start gen1-job consumer
         article_rm.start_consume(block=False, custom_creation=["gen1-job"])
 
@@ -1358,40 +1358,40 @@ class TestStartConsumeCustomCreation:
         assert resp.status_code == 202
 
         resource = _wait_for_job_completion(
-            crud, "gen1-job", resp.json()["job_resource_id"]
+            spec, "gen1-job", resp.json()["job_resource_id"]
         )
         assert resource.data.status == TaskStatus.COMPLETED
 
     def test_custom_creation_invalid_name_raises_value_error(self):
         """custom_creation with unknown name raises ValueError."""
-        crud = _make_crud()
-        crud.add_model(Article, name="article")
+        spec = _make_crud()
+        spec.add_model(Article, name="article")
 
-        @crud.create_action("article", async_mode="job", label="Gen", path="gen")
+        @spec.create_action("article", async_mode="job", label="Gen", path="gen")
         def gen(prompt: str):
             return Article(title=prompt, content="ok")
 
         app = FastAPI()
-        crud.apply(app)
+        spec.apply(app)
 
-        article_rm = crud.resource_managers["article"]
+        article_rm = spec.resource_managers["article"]
         with pytest.raises(ValueError, match="not-exist.*not a registered"):
             article_rm.start_consume(custom_creation=["not-exist"])
 
     def test_custom_creation_none_starts_own_consumer(self):
         """custom_creation=None (default) starts the RM's own MQ consumer."""
-        crud = _make_crud()
-        crud.add_model(Article, name="article")
+        spec = _make_crud()
+        spec.add_model(Article, name="article")
 
-        @crud.create_action("article", async_mode="job", label="Gen", path="gen")
+        @spec.create_action("article", async_mode="job", label="Gen", path="gen")
         def gen(prompt: str):
             return Article(title=prompt, content="ok")
 
         app = FastAPI()
-        crud.apply(app)
+        spec.apply(app)
 
         # The gen-job RM has its own MQ; start that directly
-        job_rm = crud.resource_managers["gen-job"]
+        job_rm = spec.resource_managers["gen-job"]
         job_rm.start_consume(block=False)  # default custom_creation=None
 
         client = TestClient(app)
@@ -1399,59 +1399,59 @@ class TestStartConsumeCustomCreation:
         assert resp.status_code == 202
 
         resource = _wait_for_job_completion(
-            crud, "gen-job", resp.json()["job_resource_id"]
+            spec, "gen-job", resp.json()["job_resource_id"]
         )
         assert resource.data.status == TaskStatus.COMPLETED
 
     def test_custom_creation_none_no_mq_raises(self):
         """custom_creation=None on RM without MQ raises NotImplementedError."""
-        crud = _make_crud()
-        crud.add_model(Article, name="article")
+        spec = _make_crud()
+        spec.add_model(Article, name="article")
 
         app = FastAPI()
-        crud.apply(app)
+        spec.apply(app)
 
-        article_rm = crud.resource_managers["article"]
+        article_rm = spec.resource_managers["article"]
         with pytest.raises(NotImplementedError, match="Message queue"):
             article_rm.start_consume()
 
     def test_custom_creation_all_no_child_jobs_is_noop(self):
         """custom_creation='all' on RM with no child jobs is a no-op."""
-        crud = _make_crud()
-        crud.add_model(Article, name="article")
+        spec = _make_crud()
+        spec.add_model(Article, name="article")
 
         app = FastAPI()
-        crud.apply(app)
+        spec.apply(app)
 
-        article_rm = crud.resource_managers["article"]
+        article_rm = spec.resource_managers["article"]
         # Should not raise — just does nothing
         article_rm.start_consume(block=False, custom_creation="all")
 
     def test_custom_creation_all_with_block_true(self):
         """custom_creation='all' with block=True starts and blocks."""
-        crud = _make_crud()
-        crud.add_model(Article, name="article")
+        spec = _make_crud()
+        spec.add_model(Article, name="article")
 
-        @crud.create_action(
+        @spec.create_action(
             "article", async_mode="job", label="Gen", job_name="gen-job"
         )
         def gen(prompt: str):
             return Article(title=prompt, content="ok")
 
         app = FastAPI()
-        crud.apply(app)
+        spec.apply(app)
 
         client = TestClient(app)
         resp = client.post("/article/gen?prompt=hello")
         assert resp.status_code == 202
 
-        article_rm = crud.resource_managers["article"]
+        article_rm = spec.resource_managers["article"]
         # block=True will block after starting the consumer — but since
         # SimpleMessageQueue consumers run in daemon threads with a loop,
         # we start with block=False first, then verify the job completes.
         article_rm.start_consume(block=False, custom_creation="all")
         resource = _wait_for_job_completion(
-            crud, "gen-job", resp.json()["job_resource_id"]
+            spec, "gen-job", resp.json()["job_resource_id"]
         )
         assert resource.data.status == TaskStatus.COMPLETED
 
@@ -1468,22 +1468,22 @@ class TestCreateActionDependencyProvider:
     def test_sync_create_action_async_handler_uses_dependency_provider_user(self):
         """Sync create action (async handler) should use get_user from
         DependencyProvider, not hard-coded 'system'."""
-        from autocrud.crud.route_templates.basic import DependencyProvider
+        from specstar.crud.route_templates.basic import DependencyProvider
 
         def custom_get_user() -> str:
             return "custom-user-async"
 
-        crud = _make_crud(
+        spec = _make_crud(
             dependency_provider=DependencyProvider(get_user=custom_get_user),
         )
-        crud.add_model(Article, name="article")
+        spec.add_model(Article, name="article")
 
-        @crud.create_action("article", label="Quick Import")
+        @spec.create_action("article", label="Quick Import")
         async def quick_import(body: ImportPayload = Body(...)):
             return Article(title="imported", content=body.url)
 
         app = FastAPI()
-        crud.apply(app)
+        spec.apply(app)
         client = TestClient(app)
 
         resp = client.post("/article/quick-import", json={"url": "https://example.com"})
@@ -1492,29 +1492,29 @@ class TestCreateActionDependencyProvider:
         resource_id = data["resource_id"]
 
         # Verify the created resource's created_by
-        rm = crud.resource_managers["article"]
+        rm = spec.resource_managers["article"]
         resource = rm.get(resource_id)
         assert resource.info.created_by == "custom-user-async"
 
     def test_sync_create_action_sync_handler_uses_dependency_provider_user(self):
         """Sync create action (sync handler) should use get_user from
         DependencyProvider, not hard-coded 'system'."""
-        from autocrud.crud.route_templates.basic import DependencyProvider
+        from specstar.crud.route_templates.basic import DependencyProvider
 
         def custom_get_user() -> str:
             return "custom-user-sync"
 
-        crud = _make_crud(
+        spec = _make_crud(
             dependency_provider=DependencyProvider(get_user=custom_get_user),
         )
-        crud.add_model(Article, name="article")
+        spec.add_model(Article, name="article")
 
-        @crud.create_action("article", label="Sync Import")
+        @spec.create_action("article", label="Sync Import")
         def sync_import(body: ImportPayload = Body(...)):
             return Article(title="imported", content=body.url)
 
         app = FastAPI()
-        crud.apply(app)
+        spec.apply(app)
         client = TestClient(app)
 
         resp = client.post("/article/sync-import", json={"url": "https://example.com"})
@@ -1523,7 +1523,7 @@ class TestCreateActionDependencyProvider:
         resource_id = data["resource_id"]
 
         # Verify the created resource's created_by
-        rm = crud.resource_managers["article"]
+        rm = spec.resource_managers["article"]
         resource = rm.get(resource_id)
         assert resource.info.created_by == "custom-user-sync"
 
@@ -1531,26 +1531,26 @@ class TestCreateActionDependencyProvider:
         """Async-job create action should use get_user from DependencyProvider
         for both the Job resource and the target resource created by the
         background handler."""
-        from autocrud.crud.route_templates.basic import DependencyProvider
+        from specstar.crud.route_templates.basic import DependencyProvider
 
         def custom_get_user() -> str:
             return "custom-user-job"
 
-        crud = _make_crud(
+        spec = _make_crud(
             dependency_provider=DependencyProvider(get_user=custom_get_user),
         )
-        crud.add_model(Article, name="article")
+        spec.add_model(Article, name="article")
 
-        @crud.create_action("article", async_mode="job", label="Generate")
+        @spec.create_action("article", async_mode="job", label="Generate")
         def generate_article(payload: ArticleRequest = Body(...)) -> Article:
             return Article(title=payload.title, content=f"generated:{payload.prompt}")
 
         app = FastAPI()
-        crud.apply(app)
+        spec.apply(app)
         client = TestClient(app)
 
         # Start consuming jobs
-        job_rm = crud.resource_managers["generate-article-job"]
+        job_rm = spec.resource_managers["generate-article-job"]
         job_rm.start_consume(block=False)
 
         resp = client.post(
@@ -1566,12 +1566,12 @@ class TestCreateActionDependencyProvider:
 
         # Wait for the background job to finish
         resource = _wait_for_job_completion(
-            crud, "generate-article-job", job_data["job_resource_id"]
+            spec, "generate-article-job", job_data["job_resource_id"]
         )
         assert resource.data.status == TaskStatus.COMPLETED
 
         # Verify the target Article resource's created_by
-        article_rm = crud.resource_managers["article"]
+        article_rm = spec.resource_managers["article"]
         artifact = resource.data.artifact
         article = article_rm.get(artifact["resource_id"])
         assert article.info.created_by == "custom-user-job"
@@ -1579,17 +1579,17 @@ class TestCreateActionDependencyProvider:
     def test_default_dependency_provider_uses_anonymous(self):
         """Without custom DependencyProvider, create action should use
         the default 'anonymous' user (from DependencyProvider default)."""
-        crud = AutoCRUD(
+        spec = SpecStar(
             message_queue_factory=SimpleMessageQueueFactory(max_retries=1),
         )
-        crud.add_model(Article, name="article")
+        spec.add_model(Article, name="article")
 
-        @crud.create_action("article", label="Import")
+        @spec.create_action("article", label="Import")
         def import_article(body: ImportPayload = Body(...)):
             return Article(title="imported", content=body.url)
 
         app = FastAPI()
-        crud.apply(app)
+        spec.apply(app)
         client = TestClient(app)
 
         resp = client.post(
@@ -1599,7 +1599,7 @@ class TestCreateActionDependencyProvider:
         data = resp.json()
         resource_id = data["resource_id"]
 
-        rm = crud.resource_managers["article"]
+        rm = spec.resource_managers["article"]
         resource = rm.get(resource_id)
         # Default DependencyProvider returns "anonymous"
         assert resource.info.created_by == "anonymous"

@@ -1,6 +1,6 @@
 # Backup and Restore
 
-AutoCRUD includes export and import workflows so you can move data between environments, preserve demo data, or prepare a disaster recovery process.
+SpecStar includes export and import workflows so you can move data between environments, preserve demo data, or prepare a disaster recovery process.
 
 This guide covers the practical side of using those features.
 
@@ -8,7 +8,7 @@ This guide covers the practical side of using those features.
 
 ## Two backup paths
 
-AutoCRUD supports two main approaches:
+SpecStar supports two main approaches:
 
 ### Per-model export and import
 
@@ -123,7 +123,7 @@ If your deployment needs durable storage, background jobs, and binary uploads, b
 
 ## Related pages
 
-- [From demo to production](/autocrud/guides/from-demo-to-production)
-- [Routes generation](/autocrud/howto/routes)
-- [Binary data](/autocrud/howto/binary-data)
-- [Examples](/autocrud/examples/)
+- [From demo to production](/specstar/guides/from-demo-to-production)
+- [Routes generation](/specstar/howto/routes)
+- [Binary data](/specstar/howto/binary-data)
+- [Examples](/specstar/examples/)

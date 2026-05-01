@@ -13,12 +13,12 @@ from unittest.mock import patch
 import pytest
 from msgspec import Struct
 
-from autocrud.message_queue.basic import NoRetry
-from autocrud.message_queue.simple import SimpleMessageQueueFactory
-from autocrud.resource_manager.core import ResourceManager, SimpleStorage
-from autocrud.resource_manager.meta_store.simple import MemoryMetaStore
-from autocrud.resource_manager.resource_store.simple import MemoryResourceStore
-from autocrud.types import (
+from specstar.message_queue.basic import NoRetry
+from specstar.message_queue.simple import SimpleMessageQueueFactory
+from specstar.resource_manager.core import ResourceManager, SimpleStorage
+from specstar.resource_manager.meta_store.simple import MemoryMetaStore
+from specstar.resource_manager.resource_store.simple import MemoryResourceStore
+from specstar.types import (
     IndexableField,
     Job,
     Resource,

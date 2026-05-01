@@ -2,9 +2,9 @@ from fastapi import APIRouter, FastAPI
 from fastapi.testclient import TestClient
 from msgspec import UNSET
 
-from autocrud.crud.route_templates.blob import BlobRouteTemplate
-from autocrud.resource_manager.core import ResourceManager
-from autocrud.types import (
+from specstar.crud.route_templates.blob import BlobRouteTemplate
+from specstar.resource_manager.core import ResourceManager
+from specstar.types import (
     Binary,
     BlobResponse,
 )

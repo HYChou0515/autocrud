@@ -10,7 +10,7 @@ Both ``MemoryBlobStore`` (thread-pool scenario) and ``DiskBlobStore``
 
 import threading
 
-from autocrud.resource_manager.blob_store.simple import DiskBlobStore, MemoryBlobStore
+from specstar.resource_manager.blob_store.simple import DiskBlobStore, MemoryBlobStore
 
 
 def _run_concurrent_uploads(

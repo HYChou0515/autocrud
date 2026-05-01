@@ -1,10 +1,10 @@
 {
-  "name": "autocrud-web-generator",
+  "name": "specstar-web-generator",
   "version": "0.3.4",
-  "description": "Code generator for AutoCRUD frontend - generates React/Mantine/TanStack apps from OpenAPI spec",
+  "description": "Code generator for SpecStar frontend - generates React/Mantine/TanStack apps from OpenAPI spec",
   "type": "module",
   "bin": {
-    "autocrud-web": "./dist/cli.js"
+    "specstar-web": "./dist/cli.js"
   },
   "files": [
     "dist",
@@ -22,7 +22,7 @@
     "prepublishOnly": "npm run build"
   },
   "keywords": [
-    "autocrud",
+    "specstar",
     "code-generator",
     "fastapi",
     "openapi",

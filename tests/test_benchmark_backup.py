@@ -1,6 +1,6 @@
 """Benchmark: backup (dump) & restore (load) with PostgreSQL + S3 storage.
 
-Measures end-to-end throughput of AutoCRUD's ``.acbak`` archive export and
+Measures end-to-end throughput of SpecStar's ``.acbak`` archive export and
 import using ``PostgreSQLS3StorageFactory`` (PostgreSQL meta + S3 resource/blob).
 
 Requirements
@@ -11,8 +11,8 @@ Requirements
 Environment variables
 ~~~~~~~~~~~~~~~~~~~~~
 * ``POSTGRES_DSN``  – PostgreSQL connection string
-                     (default: ``postgresql://admin:password@localhost:5432/autocrud_bench``)
-* ``S3_BUCKET``     – S3 bucket name (default: ``autocrud-bench``)
+                     (default: ``postgresql://admin:password@localhost:5432/specstar_bench``)
+* ``S3_BUCKET``     – S3 bucket name (default: ``specstar-bench``)
 * ``S3_ENDPOINT_URL`` – MinIO endpoint (default: ``http://localhost:9000``)
 * ``S3_ACCESS_KEY_ID`` / ``S3_SECRET_ACCESS_KEY`` – credentials (default: ``minioadmin``)
 
@@ -38,9 +38,9 @@ import uuid
 import pytest
 from msgspec import Struct
 
-from autocrud.crud.core import AutoCRUD
-from autocrud.resource_manager.basic import Encoding
-from autocrud.types import (
+from specstar.crud.core import SpecStar
+from specstar.resource_manager.basic import Encoding
+from specstar.types import (
     Binary,
     OnDuplicate,
 )
@@ -63,9 +63,9 @@ pytestmark = [
 
 POSTGRES_DSN = os.getenv(
     "POSTGRES_DSN",
-    "postgresql://admin:password@localhost:5432/autocrud_bench",
+    "postgresql://admin:password@localhost:5432/specstar_bench",
 )
-S3_BUCKET = os.getenv("S3_BUCKET", "autocrud-bench")
+S3_BUCKET = os.getenv("S3_BUCKET", "specstar-bench")
 S3_REGION = os.getenv("S3_REGION", "us-east-1")
 S3_ACCESS_KEY_ID = os.getenv("S3_ACCESS_KEY_ID", "minioadmin")
 S3_SECRET_ACCESS_KEY = os.getenv("S3_SECRET_ACCESS_KEY", "minioadmin")
@@ -182,7 +182,7 @@ class Avatar(Struct):
 
 def _make_storage_factory():
     """Build a PostgreSQLS3StorageFactory from environment variables."""
-    from autocrud.resource_manager.storage_factory import PostgreSQLS3StorageFactory
+    from specstar.resource_manager.storage_factory import PostgreSQLS3StorageFactory
 
     return PostgreSQLS3StorageFactory(
         connection_string=POSTGRES_DSN,
@@ -200,18 +200,18 @@ def _make_crud(
     *models,
     storage_factory=None,
     indexed_fields=None,
-) -> AutoCRUD:
-    """Create an AutoCRUD instance backed by PostgreSQL + S3."""
+) -> SpecStar:
+    """Create an SpecStar instance backed by PostgreSQL + S3."""
     sf = storage_factory or _make_storage_factory()
-    crud = AutoCRUD(storage_factory=sf)
+    spec = SpecStar(storage_factory=sf)
     for m in models:
-        crud.add_model(m, indexed_fields=indexed_fields or [])
-    return crud
+        spec.add_model(m, indexed_fields=indexed_fields or [])
+    return spec
 
 
-def _seed_characters(crud: AutoCRUD, n: int) -> list[str]:
+def _seed_characters(spec: SpecStar, n: int) -> list[str]:
     """Create *n* Character resources and return their IDs."""
-    rm = crud.get_resource_manager(Character)
+    rm = spec.get_resource_manager(Character)
     ids = []
     with rm.meta_provide("bench", dt.datetime.now()):
         for i in range(n):
@@ -228,9 +228,9 @@ def _seed_characters(crud: AutoCRUD, n: int) -> list[str]:
     return ids
 
 
-def _seed_equipment(crud: AutoCRUD, n: int) -> list[str]:
+def _seed_equipment(spec: SpecStar, n: int) -> list[str]:
     """Create *n* Equipment resources and return their IDs."""
-    rm = crud.get_resource_manager(Equipment)
+    rm = spec.get_resource_manager(Equipment)
     ids = []
     with rm.meta_provide("bench", dt.datetime.now()):
         for i in range(n):
@@ -246,9 +246,9 @@ def _seed_equipment(crud: AutoCRUD, n: int) -> list[str]:
     return ids
 
 
-def _seed_avatars(crud: AutoCRUD, n: int, blob_size: int) -> list[str]:
+def _seed_avatars(spec: SpecStar, n: int, blob_size: int) -> list[str]:
     """Create *n* Avatar resources with random binary data."""
-    rm = crud.get_resource_manager(Avatar)
+    rm = spec.get_resource_manager(Avatar)
     ids = []
     with rm.meta_provide("bench", dt.datetime.now()):
         for i in range(n):
@@ -263,14 +263,14 @@ def _seed_avatars(crud: AutoCRUD, n: int, blob_size: int) -> list[str]:
     return ids
 
 
-def _dump_to_bytes(crud: AutoCRUD, **kw) -> bytes:
+def _dump_to_bytes(spec: SpecStar, **kw) -> bytes:
     buf = io.BytesIO()
-    crud.dump(buf, **kw)
+    spec.dump(buf, **kw)
     return buf.getvalue()
 
 
-def _load_from_bytes(crud: AutoCRUD, data: bytes, **kw):
-    return crud.load(io.BytesIO(data), **kw)
+def _load_from_bytes(spec: SpecStar, data: bytes, **kw):
+    return spec.load(io.BytesIO(data), **kw)
 
 
 def _format_size(nbytes: int) -> str:
@@ -397,12 +397,12 @@ class TestBackupBenchmark:
 
     def test_export_small(self):
         """Export {SMALL_N} Character resources."""
-        crud = _make_crud(Character, storage_factory=self.storage_factory)
-        ids = _seed_characters(crud, SMALL_N)
+        spec = _make_crud(Character, storage_factory=self.storage_factory)
+        ids = _seed_characters(spec, SMALL_N)
         print(f"\n--- Export {SMALL_N} characters (no blobs) ---")
 
         t0 = time.perf_counter()
-        data = _dump_to_bytes(crud)
+        data = _dump_to_bytes(spec)
         elapsed = time.perf_counter() - t0
 
         _print_result("export", elapsed, len(data), len(ids))
@@ -435,16 +435,16 @@ class TestBackupBenchmark:
 
     def test_export_large(self):
         """Export {LARGE_N} records across 2 models."""
-        crud = _make_crud(Character, Equipment, storage_factory=self.storage_factory)
+        spec = _make_crud(Character, Equipment, storage_factory=self.storage_factory)
         n_char = LARGE_N // 2
         n_equip = LARGE_N - n_char
-        ids_c = _seed_characters(crud, n_char)
-        ids_e = _seed_equipment(crud, n_equip)
+        ids_c = _seed_characters(spec, n_char)
+        ids_e = _seed_equipment(spec, n_equip)
         total = len(ids_c) + len(ids_e)
         print(f"\n--- Export {total} records (2 models, no blobs) ---")
 
         t0 = time.perf_counter()
-        data = _dump_to_bytes(crud)
+        data = _dump_to_bytes(spec)
         elapsed = time.perf_counter() - t0
 
         _print_result("export", elapsed, len(data), total)
@@ -481,8 +481,8 @@ class TestBackupBenchmark:
 
     def test_export_with_blobs(self):
         """Export {BLOB_N} Avatar resources with {BLOB_SIZE} byte blobs."""
-        crud = _make_crud(Avatar, storage_factory=self.storage_factory)
-        ids = _seed_avatars(crud, BLOB_N, BLOB_SIZE)
+        spec = _make_crud(Avatar, storage_factory=self.storage_factory)
+        ids = _seed_avatars(spec, BLOB_N, BLOB_SIZE)
         total_blob_mb = (BLOB_N * BLOB_SIZE) / (1024 * 1024)
         print(
             f"\n--- Export {BLOB_N} avatars "
@@ -490,7 +490,7 @@ class TestBackupBenchmark:
         )
 
         t0 = time.perf_counter()
-        data = _dump_to_bytes(crud)
+        data = _dump_to_bytes(spec)
         elapsed = time.perf_counter() - t0
 
         _print_result("export", elapsed, len(data), len(ids))
@@ -564,14 +564,14 @@ class TestBackupBenchmark:
 
     def test_import_skip_duplicates(self):
         """Import over existing data with on_duplicate=skip."""
-        crud = _make_crud(Character, storage_factory=self.storage_factory)
-        _seed_characters(crud, SMALL_N)
-        data = _dump_to_bytes(crud)
+        spec = _make_crud(Character, storage_factory=self.storage_factory)
+        _seed_characters(spec, SMALL_N)
+        data = _dump_to_bytes(spec)
         print(f"\n--- Import {SMALL_N} characters (skip duplicates) ---")
 
         # Import again into the SAME store
         t0 = time.perf_counter()
-        stats = _load_from_bytes(crud, data, on_duplicate=OnDuplicate.skip)
+        stats = _load_from_bytes(spec, data, on_duplicate=OnDuplicate.skip)
         elapsed = time.perf_counter() - t0
 
         total_skipped = sum(s.skipped for s in stats.values())
@@ -584,13 +584,13 @@ class TestBackupBenchmark:
 
     def test_import_overwrite_duplicates(self):
         """Import over existing data with on_duplicate=overwrite."""
-        crud = _make_crud(Character, storage_factory=self.storage_factory)
-        _seed_characters(crud, SMALL_N)
-        data = _dump_to_bytes(crud)
+        spec = _make_crud(Character, storage_factory=self.storage_factory)
+        _seed_characters(spec, SMALL_N)
+        data = _dump_to_bytes(spec)
         print(f"\n--- Import {SMALL_N} characters (overwrite duplicates) ---")
 
         t0 = time.perf_counter()
-        stats = _load_from_bytes(crud, data, on_duplicate=OnDuplicate.overwrite)
+        stats = _load_from_bytes(spec, data, on_duplicate=OnDuplicate.overwrite)
         elapsed = time.perf_counter() - t0
 
         total_loaded = sum(s.loaded for s in stats.values())

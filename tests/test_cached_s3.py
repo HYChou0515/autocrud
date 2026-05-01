@@ -8,9 +8,9 @@ from uuid import uuid4
 
 import pytest
 
-from autocrud.resource_manager.resource_store.cache import DiskCache, MemoryCache
-from autocrud.resource_manager.resource_store.cached_s3 import CachedS3ResourceStore
-from autocrud.types import (
+from specstar.resource_manager.resource_store.cache import DiskCache, MemoryCache
+from specstar.resource_manager.resource_store.cached_s3 import CachedS3ResourceStore
+from specstar.types import (
     RevisionInfo,
     RevisionStatus,
 )
@@ -44,7 +44,7 @@ def get_cached_store(
         ttl_draft=ttl_draft,
         ttl_stable=ttl_stable,
         endpoint_url="http://localhost:9000",
-        bucket="test-autocrud",
+        bucket="test-specstar",
         prefix=f"test-{tmp_path.name}/",
     )
     return store
@@ -355,7 +355,7 @@ def test_disk_cache_get_revision_info_exception(tmp_path):
 
 
 def test_disk_cache_get_data_exception(tmp_path):
-    # Covers autocrud/resource_manager/resource_store/cache.py:220 (exception)
+    # Covers specstar/resource_manager/resource_store/cache.py:220 (exception)
     cache_dir = tmp_path / "data_exc"
     dc = DiskCache(str(cache_dir))
     info = create_info()
@@ -380,7 +380,7 @@ def test_disk_cache_get_data_exception(tmp_path):
 
 
 def test_disk_cache_miss(tmp_path):
-    # Covers autocrud/resource_manager/resource_store/cache.py:187 (if not path.exists())
+    # Covers specstar/resource_manager/resource_store/cache.py:187 (if not path.exists())
     cache_dir = tmp_path / "miss"
     dc = DiskCache(str(cache_dir))
 
@@ -400,7 +400,7 @@ def test_cached_s3_get_revision_info_miss_populates_cache(cached_store):
 
     # Patch S3ResourceStore.get_revision_info to return our info
     with patch(
-        "autocrud.resource_manager.resource_store.s3.S3ResourceStore.get_revision_info",
+        "specstar.resource_manager.resource_store.s3.S3ResourceStore.get_revision_info",
         return_value=info,
     ) as mock_super_call:
         result = cached_store.get_revision_info(

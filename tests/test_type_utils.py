@@ -1,4 +1,4 @@
-"""Tests for autocrud.util.type_utils — unified type introspection helpers."""
+"""Tests for specstar.util.type_utils — unified type introspection helpers."""
 
 from __future__ import annotations
 
@@ -6,13 +6,13 @@ from typing import Annotated, Generic, Literal, Optional, TypeVar, Union
 
 from msgspec import Struct
 
-from autocrud.types import (
+from specstar.types import (
     Binary,
     DisplayName,
     Job,
     Unique,
 )
-from autocrud.util.type_utils import (
+from specstar.util.type_utils import (
     build_typevar_map,
     collect_nested_struct_types,
     find_annotated_fields,
@@ -522,7 +522,7 @@ class TestGetHints:
 
         hints = get_hints(WithAnnotated)
         # The hint should still be Annotated, not unwrapped int
-        from autocrud.util.type_utils import is_annotated_type
+        from specstar.util.type_utils import is_annotated_type
 
         assert is_annotated_type(hints["val"])
 
@@ -601,7 +601,7 @@ class TestFindAnnotatedFields:
         assert find_annotated_fields(Model, _MarkerB) == ["f"]
 
     def test_with_display_name_marker(self):
-        """Integration test with real DisplayName marker from autocrud.types."""
+        """Integration test with real DisplayName marker from specstar.types."""
 
         class Character(Struct):
             name: Annotated[str, DisplayName()]
@@ -610,7 +610,7 @@ class TestFindAnnotatedFields:
         assert find_annotated_fields(Character, DisplayName) == ["name"]
 
     def test_with_unique_marker(self):
-        """Integration test with real Unique marker from autocrud.types."""
+        """Integration test with real Unique marker from specstar.types."""
 
         class User(Struct):
             username: Annotated[str, Unique()]
@@ -654,7 +654,7 @@ class TestGetTypeName:
         assert get_type_name(list[int]) == "list"
 
     def test_job_generic(self):
-        from autocrud.types import Job
+        from specstar.types import Job
 
         class Payload(Struct):
             x: int = 0

@@ -1,10 +1,10 @@
-# AutoCRUD Web - Makefile
+# SpecStar Web - Makefile
 # 常用開發指令
 
 # Configurable backend API URL (override with: make gen-app API_URL=http://myhost:9000)
 # Used to fetch OpenAPI spec during generation and as Vite dev proxy target
 API_URL ?= http://localhost:8000
-BASE_PATH ?= /v1/autocrud
+BASE_PATH ?= /v1/specstar
 
 # Include test files in generated app (override with: make gen-app INCLUDE_TESTS=1)
 INCLUDE_TESTS ?=
@@ -18,13 +18,13 @@ endif
 
 # 預設目標：顯示幫助
 help:
-	@echo "AutoCRUD Web - 常用指令"
+	@echo "SpecStar Web - 常用指令"
 	@echo ""
 	@echo "App 管理（推薦）："
 	@echo "  make clean-app    - 刪除整個 app 目錄"
 	@echo "  make gen-app      - 用 generator 生成全新的 app（需先 build-gen）"
 	@echo "  make reset-app    - 刪除 + 重新生成 app（完整重置）"
-	@echo "  make regen-app    - 從 AutoCRUD 後端重新生成前端代碼"
+	@echo "  make regen-app    - 從 SpecStar 後端重新生成前端代碼"
 	@echo "  make dev-app      - 啟動 app 開發服務器"
 	@echo ""
 	@echo "開發流程："
@@ -59,7 +59,7 @@ build-gen:
 # 重新生成前端代碼
 gen:
 	@echo "🚀 重新生成前端代碼..."
-	cd app && rm -rf src/autocrud/generated
+	cd app && rm -rf src/specstar/generated
 	cd app && node ../generator/dist/cli.js generate
 	@echo "✅ 代碼生成完成"
 
@@ -86,7 +86,7 @@ clean:
 	@echo "🧹 清理生成的檔案..."
 	rm -rf generator/dist
 	rm -rf generator/node_modules
-	rm -rf app/src/autocrud/generated
+	rm -rf app/src/specstar/generated
 	rm -rf app/node_modules
 	rm -rf app/dist
 	@echo "✅ 清理完成"
@@ -118,8 +118,8 @@ sync-templates:
 		--exclude='.mantine-version' \
 		--exclude='coverage' \
 		--exclude='pnpm-lock.yaml' \
-		--exclude='src/autocrud/generated' \
-		--exclude='src/routes/autocrud-admin' \
+		--exclude='src/specstar/generated' \
+		--exclude='src/routes/specstar-admin' \
 		--exclude='src/routeTree.gen.ts' \
 		app/ generator/templates/base/
 	@echo "✅ Templates 同步完成"
@@ -149,7 +149,7 @@ gen-app: build-gen
 	cd generator && node dist/cli.js init app  --mantine 8 --dir .. $(INIT_TEST_FLAG)
 	@echo "📦 安裝 app 依賴..."
 	cd app && pnpm install
-	@echo "🔧 從 AutoCRUD 後端生成代碼... ($(API_URL))"
+	@echo "🔧 從 SpecStar 後端生成代碼... ($(API_URL))"
 	cd app && node ../generator/dist/cli.js generate --url $(API_URL) --base-path ${BASE_PATH} --proxy-path "/proxy/backend"
 	@echo "✅ App 生成完成！"
 	@echo ""
@@ -163,15 +163,15 @@ reset-app:
 	$(MAKE) gen-app INCLUDE_TESTS=1
 	@echo "✅ App 完全重置完成！"
 
-# 從 AutoCRUD 後端生成前端代碼
+# 從 SpecStar 後端生成前端代碼
 regen-app: build-gen
-	@echo "🚀 從 AutoCRUD 後端重新生成前端代碼..."
+	@echo "🚀 從 SpecStar 後端重新生成前端代碼..."
 	@if [ ! -d "app" ]; then \
 		echo "❌ Error: app 目錄不存在，請先執行 'make gen-app'"; \
 		exit 1; \
 	fi
 	@echo "🔧 清除舊的生成代碼..."
-	rm -rf app/src/autocrud/generated app/src/routes/autocrud-admin
+	rm -rf app/src/specstar/generated app/src/routes/specstar-admin
 	@echo "📡 連接到 $(API_URL)..."
 	cd app && node ../generator/dist/cli.js generate --url $(API_URL)
 	@echo "✅ 代碼生成完成"

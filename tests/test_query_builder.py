@@ -5,8 +5,8 @@ from zoneinfo import ZoneInfo
 import pytest
 from msgspec import UNSET
 
-from autocrud.query import QB, ConditionBuilder
-from autocrud.query_types import (
+from specstar.query import QB, ConditionBuilder
+from specstar.query_types import (
     DataSearchCondition,
     DataSearchGroup,
     DataSearchLogicOperator,
@@ -17,11 +17,11 @@ from autocrud.query_types import (
     ResourceMetaSortDirection,
     ResourceMetaSortKey,
 )
-from autocrud.resource_manager.basic import get_sort_fn
-from autocrud.resource_manager.core import ResourceManager, SimpleStorage
-from autocrud.resource_manager.meta_store.simple import MemoryMetaStore
-from autocrud.resource_manager.resource_store.simple import MemoryResourceStore
-from autocrud.types import (
+from specstar.resource_manager.basic import get_sort_fn
+from specstar.resource_manager.core import ResourceManager, SimpleStorage
+from specstar.resource_manager.meta_store.simple import MemoryMetaStore
+from specstar.resource_manager.resource_store.simple import MemoryResourceStore
+from specstar.types import (
     IndexableField,
     ResourceMeta,
 )
@@ -29,7 +29,7 @@ from autocrud.types import (
 
 class TestQueryBuilder:
     def test_resource_meta_sort_key_is_reexported_from_basic(self):
-        from autocrud.resource_manager.basic import ResourceMetaSortKey as BasicSortKey
+        from specstar.resource_manager.basic import ResourceMetaSortKey as BasicSortKey
 
         assert BasicSortKey is ResourceMetaSortKey
 
@@ -490,7 +490,7 @@ class TestQueryBuilder:
 
     def test_qb_all_combinator(self):
         """Test QB.all() to combine multiple conditions with AND."""
-        from autocrud.query import QB
+        from specstar.query import QB
 
         # Basic all() with multiple conditions
         q = QB.all(QB["age"] > 18, QB["status"] == "active", QB["score"] >= 80)
@@ -518,7 +518,7 @@ class TestQueryBuilder:
 
     def test_qb_any_combinator(self):
         """Test QB.any() to combine multiple conditions with OR."""
-        from autocrud.query import QB
+        from specstar.query import QB
 
         # Basic any() with multiple conditions
         q = QB.any(
@@ -539,7 +539,7 @@ class TestQueryBuilder:
 
     def test_qb_all_single_condition(self):
         """Test QB.all() with single condition returns that condition."""
-        from autocrud.query import QB
+        from specstar.query import QB
 
         q = QB.all(QB["age"] > 18)
         query = q.build()
@@ -552,7 +552,7 @@ class TestQueryBuilder:
 
     def test_qb_all_any_combined(self):
         """Test combining QB.all() and QB.any() for complex logic."""
-        from autocrud.query import QB
+        from specstar.query import QB
 
         # (age > 18 AND score >= 80) OR (status == "premium")
         q = QB.any(QB.all(QB["age"] > 18, QB["score"] >= 80), QB["status"] == "premium")
@@ -573,7 +573,7 @@ class TestQueryBuilder:
 
     def test_qb_all_any_with_normal_operators(self):
         """Test QB.all() and QB.any() combined with & and | operators."""
-        from autocrud.query import QB
+        from specstar.query import QB
 
         # QB.all(...) & other_condition
         q = QB.all(QB["age"] > 18, QB["score"] >= 80) & (QB["verified"] == "yes")
@@ -2445,7 +2445,7 @@ class TestResourceManagerWithQB:
 
     def test_length_method(self):
         """Test length() method for querying field length."""
-        from autocrud.query_types import FieldTransform
+        from specstar.query_types import FieldTransform
 
         # String length
         q = QB["name"].length() > 10
@@ -2463,7 +2463,7 @@ class TestResourceManagerWithQB:
 
     def test_length_with_different_operators(self):
         """Test length() with various comparison operators."""
-        from autocrud.query_types import FieldTransform
+        from specstar.query_types import FieldTransform
 
         # Exact length
         q1 = QB["tags"].length() == 3
@@ -2492,7 +2492,7 @@ class TestResourceManagerWithQB:
 
     def test_length_empty_check(self):
         """Test length() for checking empty collections."""
-        from autocrud.query_types import FieldTransform
+        from specstar.query_types import FieldTransform
 
         # Empty list
         q1 = QB["tags"].length() == 0
@@ -2511,7 +2511,7 @@ class TestResourceManagerWithQB:
 
     def test_length_combined_with_other_conditions(self):
         """Test combining length() with other query conditions."""
-        from autocrud.query_types import FieldTransform
+        from specstar.query_types import FieldTransform
 
         q = (QB["tags"].length() >= 3) & (QB["status"] == "active")
         query = q.build()
@@ -2528,7 +2528,7 @@ class TestResourceManagerWithQB:
 
     def test_length_on_nested_fields(self):
         """Test length() on nested field paths."""
-        from autocrud.query_types import FieldTransform
+        from specstar.query_types import FieldTransform
 
         q = QB["user.tags"].length() > 5
         cond = q.build().conditions[0]  # ty:ignore[not-subscriptable]
@@ -2613,7 +2613,7 @@ class TestQueryBuilderEdgeCases:
 
     def test_all_empty_conditions_returns_no_filter(self):
         """Test QB.all() with no conditions returns query matching all resources."""
-        from autocrud.query import QB
+        from specstar.query import QB
 
         q = QB.all()
         query = q.build()
@@ -2621,13 +2621,13 @@ class TestQueryBuilderEdgeCases:
         # Should have no conditions (UNSET)
         assert query.conditions is UNSET
         # Should still support chaining
-        from autocrud.query_types import DEFAULT_QUERY_LIMIT
+        from specstar.query_types import DEFAULT_QUERY_LIMIT
 
         assert query.limit == DEFAULT_QUERY_LIMIT  # default limit
 
     def test_all_empty_with_chaining(self):
         """Test QB.all() with no conditions supports method chaining."""
-        from autocrud.query import QB
+        from specstar.query import QB
 
         q = QB.all().sort("-created_time").limit(20)
         query = q.build()
@@ -2640,7 +2640,7 @@ class TestQueryBuilderEdgeCases:
 
     def test_all_empty_with_and_operator(self):
         """Test QB.all() with no conditions can be combined with & operator."""
-        from autocrud.query import QB
+        from specstar.query import QB
 
         q = QB.all() & (QB["age"] > 18)
         query = q.build()
@@ -2654,7 +2654,7 @@ class TestQueryBuilderEdgeCases:
 
     def test_any_empty_conditions_raises_error(self):
         """Test QB.any() with no conditions raises ValueError."""
-        from autocrud.query import QB
+        from specstar.query import QB
 
         with pytest.raises(
             ValueError, match="any\\(\\) requires at least one condition"
@@ -2663,7 +2663,7 @@ class TestQueryBuilderEdgeCases:
 
     def test_all_single_condition_unwraps(self):
         """Test QB.all() with single condition returns unwrapped condition."""
-        from autocrud.query import QB
+        from specstar.query import QB
 
         q = QB.all(QB["age"] > 18)
         query = q.build()
@@ -2677,7 +2677,7 @@ class TestQueryBuilderEdgeCases:
 
     def test_any_single_condition_unwraps(self):
         """Test QB.any() with single condition returns unwrapped condition."""
-        from autocrud.query import QB
+        from specstar.query import QB
 
         q = QB.any(QB["status"] == "active")
         query = q.build()
@@ -2693,7 +2693,7 @@ class TestQueryBuilderEdgeCases:
         """Test filter() method with Enum value - RPG game example."""
         from enum import Enum
 
-        from autocrud.query import QB
+        from specstar.query import QB
 
         class CharacterClass(Enum):
             WARRIOR = "⚔️ 戰士"
@@ -2759,7 +2759,7 @@ class TestQueryLimitConfiguration:
             "  lambda message, category, filename, lineno, file=None, line=None:"
             "  captured.append((category.__name__, str(message)))"
             ");"
-            "from autocrud.query_types import ("
+            "from specstar.query_types import ("
             "  DEFAULT_QUERY_LIMIT, DEFAULT_QUERY_LIMIT_FALLBACK,"
             "  ResourceMetaSearchQuery,"
             ");"
