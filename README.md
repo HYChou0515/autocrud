@@ -1,8 +1,19 @@
-# SpecStar
+<p align="center">
+  <img src="branding/logo-text.svg" alt="SpecStar" height="120">
+</p>
 
-**Model-driven backend platform for FastAPI**
+<p align="center">
+  <strong>Model-driven backend platform for FastAPI</strong><br>
+  Generate REST APIs, GraphQL, search, version history, and an admin UI from a single Python model.
+</p>
 
-SpecStar automatically generates **REST APIs, GraphQL APIs, search, version history, and admin UI** from Python models.
+<p align="center">
+  <a href="https://pypi.org/project/specstar/"><img alt="PyPI" src="https://img.shields.io/pypi/v/specstar"></a>
+  <a href="https://github.com/HYChou0515/specstar/blob/master/LICENSE"><img alt="License" src="https://img.shields.io/pypi/l/specstar"></a>
+  <a href="https://hychou0515.github.io/specstar/"><img alt="Docs" src="https://img.shields.io/badge/docs-mkdocs-blue"></a>
+</p>
+
+> **Renamed from `autocrud` to `specstar` (v0.10.0).** The old name still installs as a deprecation shim that redirects every `autocrud[.X]` import to `specstar[.X]`. New projects should `pip install specstar`. See the [migration guide](MIGRATION.md).
 
 Focus on **business logic**, not infrastructure.
 
@@ -46,12 +57,12 @@ Register the model:
 
 ```python
 from fastapi import FastAPI
-from specstar import crud
+from specstar import spec
 
 app = FastAPI()
 
-crud.add_model(User)
-crud.apply(app)
+spec.add_model(User)
+spec.apply(app)
 ```
 
 Start the server:
@@ -63,7 +74,7 @@ uvicorn main:app
 Optional startup tuning:
 
 ```bash
-export AUTOCRUD_DEFAULT_QUERY_LIMIT=1000
+export SPECSTAR_DEFAULT_QUERY_LIMIT=1000
 ```
 
 This controls the default page size for list endpoints. Per-request `limit`

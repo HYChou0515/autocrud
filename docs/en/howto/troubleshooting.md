@@ -83,7 +83,7 @@ See also:
 - confirm the target field is indexed
 - confirm the operator matches the expected value type
 - test with a simpler query first, then add more conditions gradually
-- if results look truncated rather than missing, pass an explicit `limit` or set `AUTOCRUD_DEFAULT_QUERY_LIMIT` at startup
+- if results look truncated rather than missing, pass an explicit `limit` or set `SPECSTAR_DEFAULT_QUERY_LIMIT` at startup
 - use the `/count` endpoint when you need the exact total number of matches
 
 See also:

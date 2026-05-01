@@ -85,12 +85,17 @@ class ResourceMetaSearchSort(Struct, kw_only=True, tag=True):
     key: ResourceMetaSortKey
 
 
-DEFAULT_QUERY_LIMIT_ENV_VAR = "AUTOCRUD_DEFAULT_QUERY_LIMIT"
+DEFAULT_QUERY_LIMIT_ENV_VAR = "SPECSTAR_DEFAULT_QUERY_LIMIT"
+DEFAULT_QUERY_LIMIT_LEGACY_ENV_VAR = "AUTOCRUD_DEFAULT_QUERY_LIMIT"
 DEFAULT_QUERY_LIMIT_FALLBACK = 2**32 - 1
 
 
 def _read_default_query_limit() -> int:
     """Read the startup default query limit from the environment.
+
+    Prefers ``SPECSTAR_DEFAULT_QUERY_LIMIT``; falls back to the legacy
+    ``AUTOCRUD_DEFAULT_QUERY_LIMIT`` (with a one-shot DeprecationWarning) for
+    deployments that have not yet migrated their environment.
 
     The value is intentionally configurable so operators can decide whether
     list endpoints should behave more like a small page or an effectively
@@ -98,15 +103,29 @@ def _read_default_query_limit() -> int:
     """
 
     raw = os.getenv(DEFAULT_QUERY_LIMIT_ENV_VAR)
+    source = DEFAULT_QUERY_LIMIT_ENV_VAR
     if raw is None or raw.strip() == "":
-        return DEFAULT_QUERY_LIMIT_FALLBACK
+        legacy = os.getenv(DEFAULT_QUERY_LIMIT_LEGACY_ENV_VAR)
+        if legacy is not None and legacy.strip() != "":
+            warnings.warn(
+                (
+                    f"{DEFAULT_QUERY_LIMIT_LEGACY_ENV_VAR} is deprecated; "
+                    f"set {DEFAULT_QUERY_LIMIT_ENV_VAR} instead."
+                ),
+                DeprecationWarning,
+                stacklevel=2,
+            )
+            raw = legacy
+            source = DEFAULT_QUERY_LIMIT_LEGACY_ENV_VAR
+        else:
+            return DEFAULT_QUERY_LIMIT_FALLBACK
 
     try:
         value = int(raw)
     except ValueError:
         warnings.warn(
             (
-                f"Invalid {DEFAULT_QUERY_LIMIT_ENV_VAR}={raw!r}; "
+                f"Invalid {source}={raw!r}; "
                 f"falling back to {DEFAULT_QUERY_LIMIT_FALLBACK}."
             ),
             RuntimeWarning,
@@ -117,7 +136,7 @@ def _read_default_query_limit() -> int:
     if value < 1:
         warnings.warn(
             (
-                f"{DEFAULT_QUERY_LIMIT_ENV_VAR} must be >= 1, got {value}; "
+                f"{source} must be >= 1, got {value}; "
                 f"falling back to {DEFAULT_QUERY_LIMIT_FALLBACK}."
             ),
             RuntimeWarning,
@@ -131,9 +150,11 @@ def _read_default_query_limit() -> int:
 DEFAULT_QUERY_LIMIT = _read_default_query_limit()
 """Default page size for list-style search endpoints.
 
-Configurable at process startup through the AUTOCRUD_DEFAULT_QUERY_LIMIT
-environment variable. Falls back to a very large first-page limit so users do
-not easily mistake pagination for missing data.
+Configurable at process startup through the ``SPECSTAR_DEFAULT_QUERY_LIMIT``
+environment variable (legacy ``AUTOCRUD_DEFAULT_QUERY_LIMIT`` is still read
+with a DeprecationWarning during the migration window). Falls back to a very
+large first-page limit so users do not easily mistake pagination for missing
+data.
 """
 
 

@@ -1,7 +1,7 @@
 [project]
 name = "specstar"
 dynamic = ["version"]
-description = "自動產生 CRUD API 的 Python 函式庫"
+description = "Model-driven backend platform for FastAPI: REST + GraphQL + search + version history + admin UI from a single msgspec.Struct"
 readme = "README.md"
 license = {file = "LICENSE"}
 requires-python = ">=3.11"
