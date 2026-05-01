@@ -204,6 +204,7 @@ plugins:
                 - guides/performance.md
                 - guides/from-demo-to-production.md
                 - guides/upgrade-0.9.md
+                - guides/upgrade-0.10.md
 
             - Contributing:
                 - contributing/docs.md
