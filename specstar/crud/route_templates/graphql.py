@@ -166,6 +166,29 @@ class GraphQLResourceMeta:
     indexed_data: Optional[JSON]
 
 
+def _struct_to_graphql_kwargs(struct: Any, gql_type: type) -> dict[str, Any]:
+    """Project a msgspec.Struct onto a strawberry type's accepted kwargs.
+
+    Drops fields the GraphQL type does not declare, maps ``UNSET`` to ``None``
+    (the GraphQL type uses ``Optional`` for fields that may be unset), and
+    coerces ``UUID`` values to ``str`` so they pass strawberry's String scalar.
+    """
+    import uuid
+
+    accepted = set(gql_type.__annotations__.keys())
+    out: dict[str, Any] = {}
+    for field in msgspec.structs.fields(struct):
+        if field.name not in accepted:
+            continue
+        value = getattr(struct, field.name)
+        if value is msgspec.UNSET:
+            value = None
+        elif isinstance(value, uuid.UUID):
+            value = str(value)
+        out[field.name] = value
+    return out
+
+
 def _convert_msgspec_to_strawberry(type_: Any, name_prefix: str = "") -> Any:
     """Convert msgspec/python types to strawberry types recursively"""
 
@@ -486,12 +509,16 @@ class GraphQLRouteTemplate(BaseRouteTemplate, Generic[T]):
 
                                 return Resource(
                                     info=GraphQLRevisionInfo(
-                                        **msgspec.structs.asdict(info_obj)
+                                        **_struct_to_graphql_kwargs(
+                                            info_obj, GraphQLRevisionInfo
+                                        )
                                     )
                                     if info_obj
                                     else None,  # ty:ignore[invalid-argument-type]
                                     meta=GraphQLResourceMeta(
-                                        **msgspec.structs.asdict(meta)
+                                        **_struct_to_graphql_kwargs(
+                                            meta, GraphQLResourceMeta
+                                        )
                                     ),
                                     data=data_obj
                                     if gql_data is not JSON
@@ -656,12 +683,16 @@ class GraphQLRouteTemplate(BaseRouteTemplate, Generic[T]):
                                         results.append(
                                             Resource(
                                                 info=GraphQLRevisionInfo(
-                                                    **msgspec.structs.asdict(info_obj)
+                                                    **_struct_to_graphql_kwargs(
+                                                        info_obj, GraphQLRevisionInfo
+                                                    )
                                                 )
                                                 if info_obj
                                                 else None,  # ty:ignore[invalid-argument-type]
                                                 meta=GraphQLResourceMeta(
-                                                    **msgspec.structs.asdict(meta)
+                                                    **_struct_to_graphql_kwargs(
+                                                        meta, GraphQLResourceMeta
+                                                    )
                                                 ),
                                                 data=data_obj
                                                 if gql_data is not JSON

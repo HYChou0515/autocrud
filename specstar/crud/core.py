@@ -1463,7 +1463,13 @@ class SpecStar:
             if router is None or auto_include:
                 self.openapi(app, structs or [])
 
-        return target
+        # Return the externally-meaningful router/app: the caller's ``router``
+        # if one was provided, otherwise the original ``app`` (FastAPI or
+        # APIRouter). Note ``target`` may be ``app.router`` when ``app`` is a
+        # FastAPI instance, which is an internal detail.
+        if router is not None:
+            return router
+        return app  # ty:ignore[invalid-return-type]
 
     def _register_async_job_models(self) -> None:
         from specstar.crud.async_jobs import register_async_create_jobs
