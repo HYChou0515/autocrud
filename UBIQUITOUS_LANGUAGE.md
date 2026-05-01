@@ -4,7 +4,7 @@
 
 | Term         | Definition                                                                       | Aliases to avoid              |
 | ------------ | -------------------------------------------------------------------------------- | ----------------------------- |
-| **Resource** | A model-driven domain entity managed by SpecStar.                                | Record, entity, row           |
+| **Resource** | A spec-driven domain entity managed by SpecStar.                                | Record, entity, row           |
 | **Revision** | An immutable, versioned snapshot of a **Resource** at a point in time.           | Version, snapshot, history    |
 | **Action**   | A named category of operation performed on a **Resource** (create, get, update). | Operation, verb               |
 | **Phase**    | A point in the **Action** lifecycle: before, after, on_success, on_failure.      | Stage, step, hook point       |

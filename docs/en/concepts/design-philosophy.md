@@ -89,7 +89,7 @@ It is not trying to be a universal replacement for every web framework pattern.
 
 ## The trade-off
 
-This design gives you strong consistency and less repetitive code, but it also means SpecStar is most valuable when your project fits a **model-driven, API-first** workflow.
+This design gives you strong consistency and less repetitive code, but it also means SpecStar is most valuable when your project fits a **spec-driven, API-first** workflow.
 
 If your team wants a traditional full-stack monolith or a purely database-first GraphQL layer, another tool may be a better fit.
 

@@ -25,7 +25,7 @@ The problem is not that this work is unnecessary. The problem is that teams keep
 
 ---
 
-## The model-driven shift
+## The spec-driven shift
 
 SpecStar changes the development flow from:
 
@@ -40,6 +40,18 @@ $$
 $$
 
 That shift is most useful when you want predictable APIs and operational behavior without spending most of the project on plumbing.
+
+The name reflects this: you write the **spec** (a `msgspec.Struct`) and SpecStar generates the **rest of the star** — REST routes, GraphQL, search, version history, admin UI.
+
+---
+
+## Why versioning is built-in, not bolted on
+
+Most CRUD generators stop at "model → API" — history-tracking is left to you. You'd add an audit log table, wire up event sourcing, or simply accept that "what was this row 3 weeks ago?" is a question you can't answer.
+
+SpecStar treats every resource as a **versioned timeline** by default. Updates create new revisions; old revisions stay queryable; you can roll back, work in draft mode, or migrate forward through schema changes.
+
+This is opt-in friendly. If you don't need history, you ignore it — the same routes work as plain CRUD. But when "who changed this and when?" becomes a real question, the answer is already there.
 
 ---
 

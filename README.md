@@ -1,9 +1,9 @@
 <p align="center">
-  <img src="branding/logo-text.svg" alt="SpecStar" height="120">
+  <img src="docs/assets/logo-text.svg" alt="SpecStar" height="120">
 </p>
 
 <p align="center">
-  <strong>Model-driven backend platform for FastAPI</strong><br>
+  <strong>Spec-driven backend platform for FastAPI</strong><br>
   Generate REST APIs, GraphQL, search, version history, and an admin UI from a single Python model.
 </p>
 
@@ -35,9 +35,13 @@ Modern backend development repeatedly rebuilds the same infrastructure:
 
 Most of this code is **not business logic**.
 
-SpecStar eliminates this repetition by using a **model-driven architecture**.
+SpecStar eliminates this repetition by using a **spec-driven architecture**.
 
 Define your model once, and the framework generates the rest.
+
+## What sets SpecStar apart
+
+Most "model → API" generators stop at routes. SpecStar treats every resource as a **versioned timeline by default**: updates create revisions, history stays queryable, and rollback is built in. Don't need history? Ignore it — the same routes work as plain CRUD.
 
 ---
 
@@ -117,7 +121,7 @@ SpecStar --> UI_Generator
 
 # Core Features
 
-## Model-driven APIs
+## Spec-driven APIs
 
 SpecStar generates APIs directly from Python models.
 

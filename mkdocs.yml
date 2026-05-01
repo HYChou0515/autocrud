@@ -1,6 +1,6 @@
 site_name: SpecStar
 site_url: https://hychou0515.github.io/specstar/
-site_description: 模型驅動的自動化 FastAPI：內建版本控制、權限與搜尋
+site_description: Spec-driven backend platform for FastAPI with built-in versioning, permissions, and search
 site_author: HYChou0515
 repo_url: https://github.com/HYChou0515/specstar
 repo_name: HYChou0515/specstar
@@ -69,9 +69,9 @@ theme:
     edit: material/pencil
     view: material/eye
     
-  # Logo and favicon (add these files if available)
-  # logo: assets/logo.png
-  # favicon: assets/favicon.png
+  # Logo and favicon
+  logo: assets/logo-text.svg
+  favicon: assets/logo-mark.svg
 
 # Plugins
 plugins:
@@ -119,7 +119,7 @@ plugins:
         #   name: English
         #   build: true
         #   site_name: SpecStar
-        #   site_description: "Model-driven automated FastAPI: Built-in versioning, permissions, and search"
+        #   site_description: "Spec-driven backend platform for FastAPI with built-in versioning, permissions, and search"
           # theme:
           #   language: en
           # nav:
