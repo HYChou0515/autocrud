@@ -175,7 +175,7 @@ export function generateMainPy(state: WizardState): string {
 
 export function generateImports(state: WizardState): string {
   const lines: string[] = [];
-  const specstarImports = new Set<string>(["crud", "Schema"]);
+  const specstarImports = new Set<string>(["spec", "Schema"]);
   const specstarTypesImports = new Set<string>();
   const typingImports = new Set<string>();
   let needDatetime = state.defaultNow !== "";
@@ -517,7 +517,7 @@ function getBlobStoreOverrideImports(state: WizardState): string[] {
   return imports;
 }
 
-/** Generate a `crud.blob_store = ...` line when blobStore differs from storage default (non-custom). */
+/** Generate a `spec.blob_store = ...` line when blobStore differs from storage default (non-custom). */
 function generateBlobStoreOverride(state: WizardState): string | null {
   if (state.storage === "custom") return null; // custom handles via build_blob_store
   const defaultBlob = defaultBlobStoreForStorage(state.storage);
@@ -536,12 +536,12 @@ function generateBlobStoreOverride(state: WizardState): string | null {
       );
       args.push(`region_name="${sc.blobS3RegionName || "us-east-1"}"`);
       args.push(`prefix="${sc.blobS3Prefix || "blobs/"}"`);
-      return `crud.blob_store = S3BlobStore(${args.join(", ")})`;
+      return `spec.blob_store = S3BlobStore(${args.join(", ")})`;
     }
     case "disk":
-      return `crud.blob_store = DiskBlobStore(rootdir="${sc.blobRootdir || "./blobs"}")`;
+      return `spec.blob_store = DiskBlobStore(rootdir="${sc.blobRootdir || "./blobs"}")`;
     case "memory":
-      return "crud.blob_store = MemoryBlobStore()";
+      return "spec.blob_store = MemoryBlobStore()";
     case "none":
       return null; // fallback to default
   }
@@ -1122,7 +1122,7 @@ export function generateAppSetup(state: WizardState): string {
       lines.push('#     data.new_field = "default_value"');
       lines.push("#     return data");
       lines.push("#");
-      lines.push("# crud.add_model(");
+      lines.push("# spec.add_model(");
       lines.push(`#     Schema(${firstName}, "v2").step("v1", ${fnName}),`);
       lines.push("# )");
       lines.push("");
@@ -1146,8 +1146,8 @@ export function generateAppSetup(state: WizardState): string {
     lines.push("");
   }
 
-  lines.push("crud.apply(app)");
-  lines.push("crud.openapi(app)");
+  lines.push("spec.apply(app)");
+  lines.push("spec.openapi(app)");
   lines.push("");
 
   // Start consumers for Job models
@@ -1158,7 +1158,7 @@ export function generateAppSetup(state: WizardState): string {
     lines.push("# ===== Start Job Consumers =====");
     for (const model of jobModels) {
       lines.push(
-        `crud.get_resource_manager(${model.name}).start_consume(block=False)`,
+        `spec.get_resource_manager(${model.name}).start_consume(block=False)`,
       );
     }
     lines.push("");
@@ -1350,15 +1350,15 @@ export function generateConfigureCall(state: WizardState): string {
   }
 
   if (args.length === 0) {
-    return customFactoryClass + "crud.configure()";
+    return customFactoryClass + "spec.configure()";
   }
 
   if (args.length === 1 && !args[0].includes("\n")) {
-    return customFactoryClass + `crud.configure(${args[0]})`;
+    return customFactoryClass + `spec.configure(${args[0]})`;
   }
 
   return (
-    customFactoryClass + `crud.configure(\n    ${args.join(",\n    ")},\n)`
+    customFactoryClass + `spec.configure(\n    ${args.join(",\n    ")},\n)`
   );
 }
 
@@ -1391,10 +1391,10 @@ export function generateAddModelCall(model: ModelDefinition): string {
   }
 
   if (args.length === 1) {
-    return `crud.add_model(${args[0]})`;
+    return `spec.add_model(${args[0]})`;
   }
 
-  return `crud.add_model(\n    ${args.join(",\n    ")},\n)`;
+  return `spec.add_model(\n    ${args.join(",\n    ")},\n)`;
 }
 
 interface IndexedFieldInfo {

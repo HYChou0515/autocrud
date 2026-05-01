@@ -160,11 +160,11 @@ describe("generatePyprojectToml", () => {
 // ─── imports ───────────────────────────────────────────────────
 
 describe("generateImports", () => {
-  it("always imports crud and Schema", () => {
+  it("always imports spec and Schema", () => {
     const imports = generateImports(makeState());
     expect(imports).toContain("from specstar import");
     expect(imports).toContain("Schema");
-    expect(imports).toContain("crud");
+    expect(imports).toContain("spec");
   });
 
   it("imports Struct for struct style", () => {
@@ -544,9 +544,9 @@ describe("generateValidators", () => {
 // ─── generateConfigureCall ─────────────────────────────────────
 
 describe("generateConfigureCall", () => {
-  it("memory + defaults → crud.configure()", () => {
+  it("memory + defaults → spec.configure()", () => {
     const result = generateConfigureCall(makeState({ encoding: "json" }));
-    expect(result).toBe("crud.configure()");
+    expect(result).toBe("spec.configure()");
   });
 
   it("disk storage → DiskStorageFactory", () => {
@@ -670,7 +670,7 @@ describe("generateAddModelCall", () => {
       fields: [makeField({ name: "key", type: "str" })],
     });
     const result = generateAddModelCall(model);
-    expect(result).toBe('crud.add_model(Schema(Config, "v1"))');
+    expect(result).toBe('spec.add_model(Schema(Config, "v1"))');
   });
 
   it("code-mode model → no indexed_fields", () => {
@@ -680,7 +680,7 @@ describe("generateAddModelCall", () => {
       rawCode: "class Custom(Struct):\n    x: int",
     });
     const result = generateAddModelCall(model);
-    expect(result).toBe('crud.add_model(Schema(Custom, "v1"))');
+    expect(result).toBe('spec.add_model(Schema(Custom, "v1"))');
   });
 });
 
@@ -691,11 +691,11 @@ describe("generateMainPy", () => {
     const code = generateMainPy(DEFAULT_WIZARD_STATE);
     expect(code).toContain("from specstar import");
     expect(code).toContain("class Todo");
-    expect(code).toContain("crud.configure(encoding=Encoding.msgpack)");
-    expect(code).toContain("crud.add_model(");
+    expect(code).toContain("spec.configure(encoding=Encoding.msgpack)");
+    expect(code).toContain("spec.add_model(");
     expect(code).toContain("Schema(Todo,");
-    expect(code).toContain("crud.apply(app)");
-    expect(code).toContain("crud.openapi(app)");
+    expect(code).toContain("spec.apply(app)");
+    expect(code).toContain("spec.openapi(app)");
     expect(code).toContain("uvicorn.run");
   });
 
@@ -2111,8 +2111,8 @@ describe("F4: Migration comment snippet", () => {
     const model2 = makeModel({ name: "Beta" });
     const result = generateAppSetup(makeState({ models: [model1, model2] }));
     const migIdx = result.indexOf("# ===== Migration");
-    const addAlphaIdx = result.indexOf("crud.add_model(Schema(Alpha");
-    const addBetaIdx = result.indexOf("crud.add_model(Schema(Beta");
+    const addAlphaIdx = result.indexOf("spec.add_model(Schema(Alpha");
+    const addBetaIdx = result.indexOf("spec.add_model(Schema(Beta");
     // Migration is after first model but before second model
     expect(addAlphaIdx).toBeGreaterThanOrEqual(0);
     expect(addBetaIdx).toBeGreaterThanOrEqual(0);
@@ -2551,7 +2551,7 @@ describe("F6: generateAppSetup with Job", () => {
     );
     expect(result).toContain("# ===== Start Job Consumers =====");
     expect(result).toContain(
-      "crud.get_resource_manager(MyTask).start_consume(block=False)",
+      "spec.get_resource_manager(MyTask).start_consume(block=False)",
     );
   });
 
@@ -2576,10 +2576,10 @@ describe("F6: generateAppSetup with Job", () => {
       }),
     );
     expect(result).toContain(
-      "crud.get_resource_manager(Task1).start_consume(block=False)",
+      "spec.get_resource_manager(Task1).start_consume(block=False)",
     );
     expect(result).toContain(
-      "crud.get_resource_manager(Task2).start_consume(block=False)",
+      "spec.get_resource_manager(Task2).start_consume(block=False)",
     );
     expect(result).not.toContain("get_resource_manager(Normal)");
   });
@@ -2624,7 +2624,7 @@ describe("F6: generateMainPy e2e with Job", () => {
     expect(code).toContain("message_queue_factory=SimpleMessageQueueFactory()");
     expect(code).toContain("job_handler=process_background_task");
     expect(code).toContain(
-      "crud.get_resource_manager(BackgroundTask).start_consume(block=False)",
+      "spec.get_resource_manager(BackgroundTask).start_consume(block=False)",
     );
   });
 

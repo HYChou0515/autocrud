@@ -1163,7 +1163,7 @@ export function StepStorage({ state, onChange }: Props) {
 
       <Select
         label="Default Now"
-        description="crud.configure(default_now=...) — 自動時間戳的時區"
+        description="spec.configure(default_now=...) — 自動時間戳的時區"
         data={TIMEZONE_OPTIONS}
         value={isCustomTz ? "__other__" : state.defaultNow}
         onChange={(v) => {
