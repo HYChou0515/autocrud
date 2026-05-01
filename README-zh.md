@@ -79,7 +79,7 @@ https://hychou0515.github.io/specstar/
 列表型端點預設會分頁。若想調整啟動時的預設上限，可設定環境變數：
 
 ```bash
-export AUTOCRUD_DEFAULT_QUERY_LIMIT=1000
+export SPECSTAR_DEFAULT_QUERY_LIMIT=1000
 ```
 
 - 若未設定，系統會使用非常大的 fallback
@@ -132,13 +132,13 @@ class TodoList(Struct):
     notes: str
 
 # 創建 SpecStar
-crud = SpecStar()
-crud.add_model(TodoItem)
-crud.add_model(TodoList)
+spec = SpecStar()
+spec.add_model(TodoItem)
+spec.add_model(TodoList)
 
 app = FastAPI()
-crud.apply(app)
-crud.openapi(app)
+spec.apply(app)
+spec.openapi(app)
 
 uvicorn.run(app, host="0.0.0.0", port=8000, log_level="info")
 ```
@@ -182,12 +182,12 @@ class TodoList(Struct):
     notes: str
 
 # 創建 CRUD API
-crud = SpecStar()
-crud.add_model(TodoItem)
-crud.add_model(TodoList)
+spec = SpecStar()
+spec.add_model(TodoItem)
+spec.add_model(TodoList)
 
 app = FastAPI()
-crud.apply(app)
+spec.apply(app)
 
 # 測試
 client = TestClient(app)
